@@ -17,7 +17,7 @@
  * - `'tax-b'` (no tax rate at all): either the order is excluded for a
  *   reason OTHER than the pre-rollout era (a genuinely unresolved line on a
  *   post-rollout order, or no line items — {@link
- *   findNetExcludedOrderCandidates}'s population can include both), or it
+ *   findNetExcludedOrderCandidatesPage}'s population can include both), or it
  *   IS pre-rollout but the catalogue has confirmed at least one unresolved
  *   line's product/variant carries NO rate (`taxRateState === 'no-rate'`).
  *   No remediation action exists for this category.
@@ -36,11 +36,23 @@
  *
  * Not pushed into SQL: whether a line "resolves a rate" depends on a live
  * catalogue read (`IProductsService.getEffectiveTaxRate`), which has no SQL
- * equivalent — so the base candidate population is fetched UNPAGED (see
- * `OrderRecordRepositoryPort.findNetExcludedOrderCandidates`'s doc comment)
- * and classified here in the application layer; page slicing for
- * {@link getCategoryPage} happens in-memory over the already-classified
- * result.
+ * equivalent — so classification happens here in the application layer.
+ * {@link getCategoryPage} still slices in-memory over `classify()`'s
+ * returned result.
+ *
+ * Base population fetched in BOUNDED PAGES, not one unbounded read (#2834):
+ * `classify()` drives `OrderRecordRepositoryPort.findNetExcludedOrderCandidatesPage`
+ * in a loop via {@link classifyBatch} and appends each page's classification
+ * result. This is provably equivalent to classifying the whole population in
+ * one pass — a candidate's `'tax-a'`/`'tax-b'`/`'tax-c'` bucket is a pure
+ * function of that candidate's OWN `taxRateEra`, its own lines, and the
+ * catalogue's answer for its own unresolved lines; it never depends on any
+ * OTHER candidate's state or on its position within the population. Batching
+ * therefore only changes how many round trips the base fetch costs and how
+ * much is held in memory at once — never which bucket any order lands in,
+ * and never the per-category totals (proven by the #2834 multi-page
+ * int-spec, which asserts identical output to a single-page population for
+ * the same fixture data).
  *
  * @module libs/core/src/orders/application/services
  * @implements {ITaxCoverageDetectionService}
@@ -64,6 +76,7 @@ import {
   TaxCoverageCategoryValues,
   type CoverageDetectionPagination,
   type NetExcludedOrderCandidate,
+  type NetExcludedOrderCandidateCursor,
   type PaginatedTaxCoverageOrders,
   type TaxCoverageCategory,
   type TaxCoverageClassification,
@@ -118,17 +131,65 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
     private readonly productsService: IProductsService
   ) {}
 
+  /**
+   * Drives {@link OrderRecordRepositoryPort.findNetExcludedOrderCandidatesPage}
+   * in a bounded-page loop (#2834) and appends each page's classification
+   * (via {@link classifyBatch}) into one running result — see the class doc
+   * comment for why batch-then-append is provably equivalent to classifying
+   * the whole unbounded population in one pass. No single call to the
+   * repository can return more than one page's worth of rows, and no more
+   * than one page's candidates are held in memory (beyond the accumulating
+   * `result`) at any point in the loop.
+   */
   async classify(
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string,
     includeBackfilledPreRollout = false
   ): Promise<TaxCoverageClassification> {
-    const candidates = await this.orderRecordRepository.findNetExcludedOrderCandidates(
-      filters,
-      currentReportingCurrency,
-      includeBackfilledPreRollout
-    );
+    const result: TaxCoverageClassification = {
+      'tax-a': [],
+      'tax-b': [],
+      'tax-c': [],
+    };
 
+    let cursor: NetExcludedOrderCandidateCursor | null = null;
+
+    for (;;) {
+      const page = await this.orderRecordRepository.findNetExcludedOrderCandidatesPage(
+        filters,
+        currentReportingCurrency,
+        includeBackfilledPreRollout,
+        cursor
+      );
+
+      if (page.items.length === 0) {
+        break;
+      }
+
+      const batchResult = await this.classifyBatch(page.items);
+      for (const category of TaxCoverageCategoryValues) {
+        result[category].push(...batchResult[category]);
+      }
+
+      if (page.nextCursor === null) {
+        break;
+      }
+      cursor = page.nextCursor;
+    }
+
+    return result;
+  }
+
+  /**
+   * Classify ONE bounded page's worth of candidates into their A/B/C
+   * buckets (#2834) — the pre-#2834 body of `classify()` itself, unchanged
+   * in logic and scoped to operate over any candidate array rather than
+   * assuming it is the whole population. {@link classify} calls this once
+   * per page and appends the result.
+   */
+  private async classifyBatch(
+    candidates: NetExcludedOrderCandidate[]
+  ): Promise<TaxCoverageClassification> {
     // Only a pre-rollout candidate needs a line-item read at all — every
     // other candidate is unconditionally 'tax-b' (see `classifyOne`'s doc
     // comment). Narrowing here means neither the batched line-item read nor

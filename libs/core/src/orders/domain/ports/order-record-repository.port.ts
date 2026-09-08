@@ -35,7 +35,8 @@ import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/ord
 import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
-  NetExcludedOrderCandidate,
+  NetExcludedOrderCandidateCursor,
+  NetExcludedOrderCandidatePage,
   PaginatedProductMatchingErrorOrders,
   CoverageConnectionAggregateRow,
 } from '../types/coverage-detection.types';
@@ -377,25 +378,37 @@ export interface OrderRecordRepositoryPort {
   ): Promise<CoverageConnectionAggregateRow[]>;
 
   /**
-   * Data Coverage tax A/B/C detector's base population (#2465) — every
-   * order EXCLUDED from `getDailyOrderAggregates`' `net_excluded_count`
-   * figure, i.e. the IDENTICAL predicate mirrored from
-   * `netExcludedAndNotCancelled` there: `recordStatus = 'ready'`, resolvable
-   * `placedAt`/`totalAmount`, `[filters.from, filters.to)`, optional
-   * connection narrowing, non-cancelled, current-era stamped
-   * (`reportingCurrency = currentReportingCurrency`), and `NOT
-   * netSalesOrderNetEligibleSql(...)`. Kept as the SAME predicate on purpose
-   * so `candidates.length` is exactly `netExcludedCount` summed over the
-   * same filters — the #2465 regression guard.
+   * Data Coverage tax A/B/C detector's base population, ONE BOUNDED PAGE at
+   * a time (#2465, re-bounded by #2834) — every order EXCLUDED from
+   * `getDailyOrderAggregates`' `net_excluded_count` figure, i.e. the
+   * IDENTICAL predicate mirrored from `netExcludedAndNotCancelled` there:
+   * `recordStatus = 'ready'`, resolvable `placedAt`/`totalAmount`,
+   * `[filters.from, filters.to)`, optional connection narrowing,
+   * non-cancelled, current-era stamped (`reportingCurrency =
+   * currentReportingCurrency`), and `NOT netSalesOrderNetEligibleSql(...)`.
+   * Kept as the SAME predicate on purpose so the SUM of every page's
+   * `items.length` is exactly `netExcludedCount` summed over the same
+   * filters — the #2465 regression guard, now proven across a
+   * multi-page population by the #2834 int-spec.
    *
-   * Unpaged by design: unlike {@link findCurrencyMismatchOrders}, this read
-   * feeds `TaxCoverageDetectionService`'s classification pass, which needs
-   * the FULL candidate set (to compute correct per-category totals) before
-   * any page can be sliced — pushing pagination down to SQL here would
-   * paginate the wrong population (page-of-candidates, not
-   * page-of-one-category). Bounded in practice by the same
-   * `[filters.from, filters.to)` window every sales-analytics read already
-   * requires (10-100 orders/day persona scale, per #1985's ADR-039 note).
+   * Keyset-paginated by `(placedAt DESC, internalOrderId DESC)` — the same
+   * order the pre-#2834 unbounded read already sorted by, with
+   * `internalOrderId` added purely as a deterministic tiebreak for rows
+   * sharing a `placedAt`. `placedAt` is guaranteed non-null in scope (see
+   * {@link NetExcludedOrderCandidateCursor}'s doc comment), so no
+   * null-ordering special case is needed. `cursor: null` starts from the
+   * beginning; `page.nextCursor === null` means this was the last page.
+   *
+   * #2834 replaces the pre-existing unbounded `findNetExcludedOrderCandidates`
+   * (a single `getRawMany()` with no `LIMIT`, whose row count scaled
+   * linearly with total net-excluded order history for the filter window —
+   * currently up to 400 days). Bounding it here does NOT, on its own,
+   * change what a caller can compute: `TaxCoverageDetectionService.classify()`
+   * drives this method in a loop and appends each page's classification
+   * result, which is provably equivalent to classifying the whole unbounded
+   * set at once — see that service's doc comment for why (per-order
+   * classification never depends on any OTHER order's state or on its
+   * position in the population).
    *
    * `includeBackfilledPreRollout` (#2469) is the same operator opt-in
    * {@link getDailyOrderAggregates} documents, and threading it here is a
@@ -403,12 +416,18 @@ export interface OrderRecordRepositoryPort {
    * setting ON a backfilled pre-rollout order becomes net-ELIGIBLE, so it must
    * leave this candidate population too — otherwise the Data Coverage panel
    * keeps reporting as `tax-a` an order that is already inside Net Sales.
+   *
+   * `limit` defaults to the repository's own page-size constant when
+   * omitted; callers (test code in particular) may pass a smaller value to
+   * exercise multi-page behaviour without seeding a large fixture.
    */
-  findNetExcludedOrderCandidates(
+  findNetExcludedOrderCandidatesPage(
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string,
-    includeBackfilledPreRollout?: boolean
-  ): Promise<NetExcludedOrderCandidate[]>;
+    includeBackfilledPreRollout?: boolean,
+    cursor?: NetExcludedOrderCandidateCursor | null,
+    limit?: number
+  ): Promise<NetExcludedOrderCandidatePage>;
 
   /**
    * Data Coverage `'product-matching'` category drill-down (#2466) — orders

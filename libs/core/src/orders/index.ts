@@ -188,6 +188,8 @@ export type {
   TaxCoverageLineRateObservation,
   PaginatedTaxCoverageOrders,
   NetExcludedOrderCandidate,
+  NetExcludedOrderCandidateCursor,
+  NetExcludedOrderCandidatePage,
   TaxCoverageClassification,
   ProductMatchingErrorOrderRow,
   PaginatedProductMatchingErrorOrders,

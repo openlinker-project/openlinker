@@ -4,13 +4,16 @@ import type { StoredTaxRate } from '@openlinker/core/products';
 import { OrderLineItem } from '../../domain/entities/order-line-item.entity';
 import type { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import type { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
-import type { NetExcludedOrderCandidate } from '../../domain/types/coverage-detection.types';
+import type {
+  NetExcludedOrderCandidate,
+  NetExcludedOrderCandidatePage,
+} from '../../domain/types/coverage-detection.types';
 import { TaxCoverageDetectionService } from './tax-coverage-detection.service';
 
 describe('TaxCoverageDetectionService (#2465)', () => {
   let service: TaxCoverageDetectionService;
   let recordRepository: jest.Mocked<
-    Pick<OrderRecordRepositoryPort, 'findNetExcludedOrderCandidates'>
+    Pick<OrderRecordRepositoryPort, 'findNetExcludedOrderCandidatesPage'>
   >;
   let lineItemRepository: jest.Mocked<Pick<OrderLineItemRepositoryPort, 'findByOrderIds'>>;
   let productsService: jest.Mocked<Pick<IProductsService, 'getEffectiveTaxRate'>>;
@@ -81,7 +84,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
   };
 
   beforeEach(() => {
-    recordRepository = { findNetExcludedOrderCandidates: jest.fn() };
+    recordRepository = { findNetExcludedOrderCandidatesPage: jest.fn() };
     lineItemRepository = { findByOrderIds: jest.fn().mockResolvedValue(new Map()) };
     productsService = { getEffectiveTaxRate: jest.fn() };
 
@@ -92,9 +95,23 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     );
   });
 
+  /**
+   * Configure `findNetExcludedOrderCandidatesPage` to answer with the WHOLE
+   * given candidate set as one page, `nextCursor: null` (#2834) — the direct
+   * counterpart of the pre-#2834 `findNetExcludedOrderCandidates.mockResolvedValue(
+   * candidates)`, for every test in this file whose fixture population fits
+   * comfortably under one page and is not itself testing pagination.
+   */
+  const mockSinglePage = (items: NetExcludedOrderCandidate[]): void => {
+    recordRepository.findNetExcludedOrderCandidatesPage.mockResolvedValue({
+      items,
+      nextCursor: null,
+    });
+  };
+
   describe('classify', () => {
     it('reports tax-b for a non-pre-rollout candidate without touching line items or the catalogue', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-post-rollout', taxRateEra: null }),
       ]);
 
@@ -113,7 +130,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
 
     it('reports tax-a when a pre-rollout order already has every line resolved (backfill already ran)', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-a', taxRateEra: 'pre-rollout' }),
       ]);
       setLines(
@@ -128,7 +145,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
 
     it('reports tax-a when a pre-rollout order has an unresolved line that resolves live via the catalogue (the 31-row demo case)', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-a', taxRateEra: 'pre-rollout' }),
       ]);
       setLines(
@@ -145,7 +162,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
 
     it('reports tax-b when a pre-rollout order has an unresolved line the catalogue confirms carries no rate', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-b', taxRateEra: 'pre-rollout' }),
       ]);
       setLines(
@@ -161,7 +178,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
 
     it('reports tax-c when a pre-rollout order has an unresolved line the catalogue has never checked', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-c', taxRateEra: 'pre-rollout' }),
       ]);
       setLines(
@@ -177,7 +194,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
 
     it('prefers tax-b over tax-c when a pre-rollout order mixes a confirmed-no-rate line with a not-checked line', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-mixed', taxRateEra: 'pre-rollout' }),
       ]);
       setLines(
@@ -195,7 +212,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
 
     it('treats a catalogue read failure like not-checked rather than a confirmed no-rate', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-fail', taxRateEra: 'pre-rollout' }),
       ]);
       setLines(
@@ -215,7 +232,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
         candidate({ internalOrderId: 'order-2', taxRateEra: 'pre-rollout' }),
         candidate({ internalOrderId: 'order-3', taxRateEra: 'pre-rollout' }),
       ];
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+      mockSinglePage(candidates);
       lineItemRepository.findByOrderIds.mockResolvedValue(
         linesMap(
           makeLine({ orderRecordId: 'order-2', productId: 'p-order-2', taxRate: '23' }),
@@ -235,7 +252,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
 
     it('resolves the catalogue rate ONCE per distinct (productId, variantId) pair, even when several orders/lines share it (#2826)', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-x', taxRateEra: 'pre-rollout' }),
         candidate({ internalOrderId: 'order-y', taxRateEra: 'pre-rollout' }),
       ]);
@@ -256,7 +273,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
 
     it('never runs more than the bounded concurrency ceiling of catalogue lookups in flight at once (#2826)', async () => {
       const KEY_COUNT = 12; // comfortably above RATE_LOOKUP_CONCURRENCY (5)
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(
+      mockSinglePage(
         Array.from({ length: KEY_COUNT }, (_, i) =>
           candidate({ internalOrderId: `order-${i}`, taxRateEra: 'pre-rollout' })
         )
@@ -294,9 +311,138 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
   });
 
+  describe('classify — bounded pagination (#2834)', () => {
+    /**
+     * Configure `findNetExcludedOrderCandidatesPage` to answer with `pages`
+     * in order, one per successive call — the LAST page must carry
+     * `nextCursor: null` or the mock under-specifies the loop's stop
+     * condition and the test would hang against a real (non-mocked)
+     * implementation.
+     */
+    const mockPages = (...pages: NetExcludedOrderCandidatePage[]): void => {
+      for (const page of pages) {
+        recordRepository.findNetExcludedOrderCandidatesPage.mockResolvedValueOnce(page);
+      }
+    };
+
+    it('drives the repository across multiple pages and accumulates every page into one result', async () => {
+      mockPages(
+        {
+          items: [
+            candidate({ internalOrderId: 'order-page1-a', taxRateEra: null }),
+            candidate({ internalOrderId: 'order-page1-b', taxRateEra: 'pre-rollout' }),
+          ],
+          nextCursor: { placedAt: new Date('2026-08-02T00:00:00Z'), internalOrderId: 'order-page1-b' },
+        },
+        {
+          items: [candidate({ internalOrderId: 'order-page2-a', taxRateEra: null })],
+          nextCursor: null,
+        }
+      );
+      setLines(makeLine({ orderRecordId: 'order-page1-b', taxRate: '23' }));
+
+      const result = await service.classify(baseFilters, 'EUR');
+
+      expect(recordRepository.findNetExcludedOrderCandidatesPage).toHaveBeenCalledTimes(2);
+      const total = result['tax-a'].length + result['tax-b'].length + result['tax-c'].length;
+      expect(total).toBe(3);
+      expect(result['tax-a'].map((row) => row.internalOrderId)).toEqual(['order-page1-b']);
+      expect(result['tax-b'].map((row) => row.internalOrderId).sort()).toEqual([
+        'order-page1-a',
+        'order-page2-a',
+      ]);
+    });
+
+    it('passes the previous page\'s nextCursor as the next call\'s cursor argument', async () => {
+      const secondPageCursor = {
+        placedAt: new Date('2026-08-03T00:00:00Z'),
+        internalOrderId: 'order-page1-last',
+      };
+      mockPages(
+        {
+          items: [candidate({ internalOrderId: 'order-page1-last', taxRateEra: null })],
+          nextCursor: secondPageCursor,
+        },
+        { items: [], nextCursor: null }
+      );
+
+      await service.classify(baseFilters, 'EUR');
+
+      expect(recordRepository.findNetExcludedOrderCandidatesPage).toHaveBeenNthCalledWith(
+        1,
+        baseFilters,
+        'EUR',
+        false,
+        null
+      );
+      expect(recordRepository.findNetExcludedOrderCandidatesPage).toHaveBeenNthCalledWith(
+        2,
+        baseFilters,
+        'EUR',
+        false,
+        secondPageCursor
+      );
+    });
+
+    it('stops as soon as a page reports nextCursor: null, without an extra trailing call', async () => {
+      mockSinglePage([candidate({ internalOrderId: 'order-only', taxRateEra: null })]);
+
+      await service.classify(baseFilters, 'EUR');
+
+      expect(recordRepository.findNetExcludedOrderCandidatesPage).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops immediately when the very first page is empty', async () => {
+      mockSinglePage([]);
+
+      const result = await service.classify(baseFilters, 'EUR');
+
+      expect(recordRepository.findNetExcludedOrderCandidatesPage).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ 'tax-a': [], 'tax-b': [], 'tax-c': [] });
+    });
+
+    it('produces byte-identical output to a single-page population classifying the same candidates (batch-then-append equivalence)', async () => {
+      const allCandidates = [
+        candidate({ internalOrderId: 'order-1', taxRateEra: null }),
+        candidate({ internalOrderId: 'order-2', taxRateEra: 'pre-rollout' }),
+        candidate({ internalOrderId: 'order-3', taxRateEra: 'pre-rollout' }),
+        candidate({ internalOrderId: 'order-4', taxRateEra: null }),
+      ];
+      const lines = linesMap(
+        makeLine({ orderRecordId: 'order-2', productId: 'p-order-2', taxRate: '23' }),
+        makeLine({ orderRecordId: 'order-3', productId: 'p-order-3', taxRate: null })
+      );
+
+      // Reference run: the whole population as ONE page (the pre-#2834 shape).
+      recordRepository.findNetExcludedOrderCandidatesPage.mockReset();
+      mockSinglePage(allCandidates);
+      lineItemRepository.findByOrderIds.mockResolvedValue(lines);
+      productsService.getEffectiveTaxRate.mockResolvedValue(notChecked);
+      const singlePageResult = await service.classify(baseFilters, 'EUR');
+
+      // Batched run: the SAME population split across three small pages.
+      recordRepository.findNetExcludedOrderCandidatesPage.mockReset();
+      mockPages(
+        { items: [allCandidates[0]], nextCursor: { placedAt: new Date(), internalOrderId: 'a' } },
+        { items: [allCandidates[1], allCandidates[2]], nextCursor: { placedAt: new Date(), internalOrderId: 'b' } },
+        { items: [allCandidates[3]], nextCursor: null }
+      );
+      lineItemRepository.findByOrderIds.mockResolvedValue(lines);
+      productsService.getEffectiveTaxRate.mockResolvedValue(notChecked);
+      const multiPageResult = await service.classify(baseFilters, 'EUR');
+
+      const sortByOrderId = (rows: typeof singlePageResult['tax-a']) =>
+        [...rows].sort((a, b) => a.internalOrderId.localeCompare(b.internalOrderId));
+
+      expect(sortByOrderId(multiPageResult['tax-a'])).toEqual(sortByOrderId(singlePageResult['tax-a']));
+      expect(sortByOrderId(multiPageResult['tax-b'])).toEqual(sortByOrderId(singlePageResult['tax-b']));
+      expect(sortByOrderId(multiPageResult['tax-c'])).toEqual(sortByOrderId(singlePageResult['tax-c']));
+    });
+  });
+
   describe('classify — per-line rate observations (#2798)', () => {
     it('threads the resolved rate for a multi-line, mixed-known/unknown pre-rollout order (regression guard for a single order-level rate)', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-mixed-rates', taxRateEra: 'pre-rollout' }),
       ]);
       setLines(
@@ -329,7 +475,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
 
     it('reports a confirmed-no-rate line and a not-checked line each with their own state, never collapsed to one value', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-mixed-unresolved', taxRateEra: 'pre-rollout' }),
       ]);
       setLines(
@@ -350,7 +496,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
 
     it('carries the catalogue-reported reason (#2264) onto a no-rate observation, never onto a known or not-checked one', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-unknown-reason', taxRateEra: 'pre-rollout' }),
       ]);
       setLines(
@@ -377,7 +523,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
 
     it('does not touch line items or the catalogue for a non-pre-rollout candidate, reporting an empty lineRates array', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-post-rollout', taxRateEra: null }),
       ]);
 
@@ -391,7 +537,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
 
     it('reports a catalogue read failure as a not-checked observation with no fabricated rate code', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-fail', taxRateEra: 'pre-rollout' }),
       ]);
       setLines(
@@ -407,7 +553,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
     });
 
     it('normalizes rateCode the same way regardless of which of the two sources produced it (#2802 review)', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-normalize', taxRateEra: 'pre-rollout' }),
       ]);
       setLines(
@@ -430,7 +576,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       const candidates = Array.from({ length: 5 }, (_, i) =>
         candidate({ internalOrderId: `order-${i}`, taxRateEra: null })
       );
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+      mockSinglePage(candidates);
 
       const result = await service.getCategoryPage('tax-b', baseFilters, 'EUR', {
         limit: 2,
@@ -445,7 +591,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
 
   describe('getCategoryCounts', () => {
     it('returns a count per category, including zero for an empty category', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([
+      mockSinglePage([
         candidate({ internalOrderId: 'order-1', taxRateEra: null }),
       ]);
 
@@ -461,7 +607,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
         candidate({ internalOrderId: 'order-1', taxRateEra: null }),
         candidate({ internalOrderId: 'order-2', taxRateEra: 'pre-rollout' }),
       ];
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+      mockSinglePage(candidates);
       setLines(
         makeLine({ orderRecordId: 'order-2', taxRate: '23' }),
       );
@@ -471,7 +617,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
         offset: 0,
       });
 
-      expect(recordRepository.findNetExcludedOrderCandidates).toHaveBeenCalledTimes(1);
+      expect(recordRepository.findNetExcludedOrderCandidatesPage).toHaveBeenCalledTimes(1);
       expect(pages['tax-a']).toEqual({
         items: [
           {
@@ -509,7 +655,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       const candidates = Array.from({ length: 5 }, (_, i) =>
         candidate({ internalOrderId: `order-${i}`, taxRateEra: null })
       );
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+      mockSinglePage(candidates);
 
       const pages = await service.getAllCategoryPages(baseFilters, 'EUR', {
         limit: 2,
@@ -529,11 +675,11 @@ describe('TaxCoverageDetectionService (#2465)', () => {
         candidate({ internalOrderId: 'order-2', sourceConnectionId: 'conn-a', taxRateEra: null }),
         candidate({ internalOrderId: 'order-3', sourceConnectionId: 'conn-b', taxRateEra: null }),
       ];
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+      mockSinglePage(candidates);
 
       const counts = await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');
 
-      expect(recordRepository.findNetExcludedOrderCandidates).toHaveBeenCalledTimes(1);
+      expect(recordRepository.findNetExcludedOrderCandidatesPage).toHaveBeenCalledTimes(1);
       expect(counts['tax-b']).toEqual([
         { sourceConnectionId: 'conn-a', affectedCount: 2 },
         { sourceConnectionId: 'conn-b', affectedCount: 1 },
@@ -548,7 +694,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
         candidate({ internalOrderId: 'order-2', sourceConnectionId: 'conn-b', taxRateEra: null }),
         candidate({ internalOrderId: 'order-3', sourceConnectionId: 'conn-b', taxRateEra: null }),
       ];
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue(candidates);
+      mockSinglePage(candidates);
 
       const counts = await service.getCategoryCounts(baseFilters, 'EUR');
       const byConnection = await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');
@@ -560,16 +706,16 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       expect(totalFromByConnection).toBe(counts['tax-b']);
     });
 
-    it('never calls findNetExcludedOrderCandidates more than once, regardless of category count', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([]);
+    it('never calls findNetExcludedOrderCandidatesPage more than once, regardless of category count', async () => {
+      mockSinglePage([]);
 
       await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');
 
-      expect(recordRepository.findNetExcludedOrderCandidates).toHaveBeenCalledTimes(1);
+      expect(recordRepository.findNetExcludedOrderCandidatesPage).toHaveBeenCalledTimes(1);
     });
 
     it('returns an empty array per category when nothing matches', async () => {
-      recordRepository.findNetExcludedOrderCandidates.mockResolvedValue([]);
+      mockSinglePage([]);
 
       const counts = await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');
 

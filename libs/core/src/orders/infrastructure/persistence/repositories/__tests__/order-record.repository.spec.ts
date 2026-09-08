@@ -1265,7 +1265,7 @@ describe('OrderRecordRepository', () => {
     });
   });
 
-  describe('findNetExcludedOrderCandidates (#2465)', () => {
+  describe('findNetExcludedOrderCandidatesPage (#2465, keyset-bounded by #2834)', () => {
     const baseFilters = {
       from: new Date('2026-08-01T00:00:00.000Z'),
       to: new Date('2026-08-08T00:00:00.000Z'),
@@ -1275,81 +1275,146 @@ describe('OrderRecordRepository', () => {
     const rawCandidateRow = (overrides: {
       internal_order_id: string;
       source_connection_id: string;
-      placed_at: Date | null;
+      placed_at: Date;
       tax_rate_era: string | null;
     }): typeof overrides => overrides;
 
-    it('selects only the four candidate columns and applies the non-cancelled, current-era-stamped, NOT-net-eligible predicate (#2826)', async () => {
-      const select = jest.fn().mockReturnThis();
-      const addSelect = jest.fn().mockReturnThis();
-      const andWhere = jest.fn().mockReturnThis();
-      const orderBy = jest.fn().mockReturnThis();
-      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
-        select,
-        addSelect,
-        andWhere,
-        orderBy,
-        getRawMany: jest.fn().mockResolvedValue([]),
-      });
-
-      await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
-
-      expect(select).toHaveBeenCalledWith('rec."internalOrderId"', 'internal_order_id');
-      expect(addSelect).toHaveBeenCalledWith('rec."sourceConnectionId"', 'source_connection_id');
-      expect(addSelect).toHaveBeenCalledWith('rec."placedAt"', 'placed_at');
-      expect(addSelect).toHaveBeenCalledWith('rec."taxRateEra"', 'tax_rate_era');
-      expect(andWhere).toHaveBeenCalledWith(
-        expect.stringContaining('rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency AND NOT'),
-        { currentReportingCurrency: 'EUR' }
-      );
-      expect(orderBy).toHaveBeenCalledWith('rec."placedAt"', 'DESC');
-    });
-
-    it('is unpaged — no take/skip call on the query builder', async () => {
+    /** A fully-chainable query-builder mock, matching this repository's fluent-call style. */
+    const makeQb = (rows: ReturnType<typeof rawCandidateRow>[]): Record<string, jest.Mock> => {
       const qb: Record<string, jest.Mock> = {
         select: jest.fn(),
         addSelect: jest.fn(),
         andWhere: jest.fn(),
         orderBy: jest.fn(),
-        getRawMany: jest.fn().mockResolvedValue([]),
+        addOrderBy: jest.fn(),
+        take: jest.fn(),
+        getRawMany: jest.fn().mockResolvedValue(rows),
       };
       qb.select.mockReturnValue(qb);
       qb.addSelect.mockReturnValue(qb);
       qb.andWhere.mockReturnValue(qb);
       qb.orderBy.mockReturnValue(qb);
+      qb.addOrderBy.mockReturnValue(qb);
+      qb.take.mockReturnValue(qb);
+      return qb;
+    };
+
+    it('selects only the four candidate columns and applies the non-cancelled, current-era-stamped, NOT-net-eligible predicate (#2826)', async () => {
+      const qb = makeQb([]);
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
-      await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+      await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR');
 
-      expect(qb.take).toBeUndefined();
-      expect(qb.skip).toBeUndefined();
+      expect(qb.select).toHaveBeenCalledWith('rec."internalOrderId"', 'internal_order_id');
+      expect(qb.addSelect).toHaveBeenCalledWith('rec."sourceConnectionId"', 'source_connection_id');
+      expect(qb.addSelect).toHaveBeenCalledWith('rec."placedAt"', 'placed_at');
+      expect(qb.addSelect).toHaveBeenCalledWith('rec."taxRateEra"', 'tax_rate_era');
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency AND NOT'),
+        { currentReportingCurrency: 'EUR' }
+      );
+      expect(qb.orderBy).toHaveBeenCalledWith('rec."placedAt"', 'DESC');
+      expect(qb.addOrderBy).toHaveBeenCalledWith('rec."internalOrderId"', 'DESC');
     });
 
-    it('maps a pre-rollout candidate to the row shape, including taxRateEra', async () => {
+    it('is bounded — requests exactly limit + 1 rows via take() (#2834)', async () => {
+      const qb = makeQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR', false, null, 50);
+
+      expect(qb.take).toHaveBeenCalledWith(51);
+    });
+
+    it('defaults to the repository page-size constant when no limit is passed', async () => {
+      const qb = makeQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR');
+
+      expect(qb.take).toHaveBeenCalledWith(501);
+    });
+
+    it('applies no cursor predicate on the first page (cursor: null)', async () => {
+      const qb = makeQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR', false, null, 10);
+
+      const cursorCall = qb.andWhere.mock.calls.find(([sql]) =>
+        String(sql).includes('cursorPlacedAt')
+      );
+      expect(cursorCall).toBeUndefined();
+    });
+
+    it('applies the keyset cursor predicate when a cursor is supplied', async () => {
+      const qb = makeQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+      const cursor = { placedAt: new Date('2026-08-05T00:00:00.000Z'), internalOrderId: 'order-99' };
+
+      await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR', false, cursor, 10);
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('rec."placedAt" < :cursorPlacedAt'),
+        { cursorPlacedAt: cursor.placedAt, cursorInternalOrderId: cursor.internalOrderId }
+      );
+    });
+
+    it('reports nextCursor: null and returns every row when fewer than limit+1 rows come back', async () => {
       const row = rawCandidateRow({
         internal_order_id: 'order-pre-rollout',
         source_connection_id: 'conn-a',
         placed_at: new Date('2026-08-02T00:00:00.000Z'),
         tax_rate_era: 'pre-rollout',
       });
-      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        getRawMany: jest.fn().mockResolvedValue([row]),
+      const qb = makeQb([row]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR', false, null, 10);
+
+      expect(result).toEqual({
+        items: [
+          {
+            internalOrderId: 'order-pre-rollout',
+            sourceConnectionId: 'conn-a',
+            placedAt: row.placed_at,
+            taxRateEra: 'pre-rollout',
+          },
+        ],
+        nextCursor: null,
       });
+    });
 
-      const result = await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+    it('trims the peeked extra row and derives nextCursor from the LAST row of the returned page when limit+1 rows come back', async () => {
+      const rowA = rawCandidateRow({
+        internal_order_id: 'order-a',
+        source_connection_id: 'conn-a',
+        placed_at: new Date('2026-08-03T00:00:00.000Z'),
+        tax_rate_era: null,
+      });
+      const rowB = rawCandidateRow({
+        internal_order_id: 'order-b',
+        source_connection_id: 'conn-a',
+        placed_at: new Date('2026-08-02T00:00:00.000Z'),
+        tax_rate_era: null,
+      });
+      const peekedExtraRow = rawCandidateRow({
+        internal_order_id: 'order-c',
+        source_connection_id: 'conn-a',
+        placed_at: new Date('2026-08-01T00:00:00.000Z'),
+        tax_rate_era: null,
+      });
+      const qb = makeQb([rowA, rowB, peekedExtraRow]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
-      expect(result).toEqual([
-        {
-          internalOrderId: 'order-pre-rollout',
-          sourceConnectionId: 'conn-a',
-          placedAt: row.placed_at,
-          taxRateEra: 'pre-rollout',
-        },
-      ]);
+      const result = await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR', false, null, 2);
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items.map((item) => item.internalOrderId)).toEqual(['order-a', 'order-b']);
+      expect(result.nextCursor).toEqual({
+        placedAt: rowB.placed_at,
+        internalOrderId: 'order-b',
+      });
     });
 
     it('maps a non-pre-rollout candidate with taxRateEra: null', async () => {
@@ -1359,17 +1424,12 @@ describe('OrderRecordRepository', () => {
         placed_at: new Date('2026-08-03T00:00:00.000Z'),
         tax_rate_era: null,
       });
-      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        getRawMany: jest.fn().mockResolvedValue([row]),
-      });
+      const qb = makeQb([row]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
-      const result = await repository.findNetExcludedOrderCandidates(baseFilters, 'EUR');
+      const result = await repository.findNetExcludedOrderCandidatesPage(baseFilters, 'EUR');
 
-      expect(result).toEqual([
+      expect(result.items).toEqual([
         {
           internalOrderId: 'order-post-rollout',
           sourceConnectionId: 'conn-a',
@@ -1380,21 +1440,15 @@ describe('OrderRecordRepository', () => {
     });
 
     it('scopes to the sourceConnectionId filter when provided (via the shared analytics scope)', async () => {
-      const andWhere = jest.fn().mockReturnThis();
-      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        addSelect: jest.fn().mockReturnThis(),
-        andWhere,
-        orderBy: jest.fn().mockReturnThis(),
-        getRawMany: jest.fn().mockResolvedValue([]),
-      });
+      const qb = makeQb([]);
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
 
-      await repository.findNetExcludedOrderCandidates(
+      await repository.findNetExcludedOrderCandidatesPage(
         { ...baseFilters, sourceConnectionId: 'conn-a' },
         'EUR'
       );
 
-      expect(andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
+      expect(qb.andWhere).toHaveBeenCalledWith('rec.sourceConnectionId = :salesConnectionId', {
         salesConnectionId: 'conn-a',
       });
     });
