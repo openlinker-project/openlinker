@@ -470,9 +470,57 @@ log "teardown armed (restores runner/scheduler posture, destination rate limit, 
 mixed_registered_tasks() {
   local w out=""
   for w in $WORKER_CONTAINERS; do
-    out="$out$(docker logs "$w" 2>&1 | grep -F 'Registered scheduler task:' | sed 's/.*Registered scheduler task: //' | sort -u || true)"$'\n'
+    # `sed 's/\x1b\[[0-9;]*m//g'` strips the Nest logger's ANSI colour codes,
+    # which wrap the message on both sides - harmless for the `grep -F` that
+    # finds the line, fatal for the trailing `)[39m` that would otherwise end
+    # up inside every recorded task description.
+    out="$out$(docker logs "$w" 2>&1 \
+      | grep -F 'Registered scheduler task:' \
+      | sed 's/\x1b\[[0-9;]*m//g' \
+      | sed 's/.*Registered scheduler task: //' | sort -u || true)"$'\n'
   done
   printf '%s' "$out" | sed '/^$/d' | sort -u
+}
+
+# ---------------------------------------------------------------------------
+# Wait for the scheduler to actually REGISTER, then refuse a run where it did
+# not. Both halves are load-bearing and the first smoke run of this scenario
+# is why they exist.
+#
+# The wait: the scheduler is a fleet singleton behind a Redis lease
+# (`SchedulerLeaseCoordinator`, #2279), so registration happens only after
+# `SingletonRoleLease` acquires `singleton:scheduler` - measured at ~5s after
+# boot on this stand, and up to a full lease TTL (`OL_SCHEDULER_LEASE_TTL_MS`,
+# default 60s) if a previous holder died without releasing. The runner's own
+# `Starting sync job runner loop` line lands well before that, so a scenario
+# that reads the log as soon as `guard_runner_state` passes reads it too
+# early. That is exactly what happened: 27 tasks were registered and the
+# scenario recorded "0 task(s)".
+#
+# The refusal: a mixed-workload run whose scheduler registered nothing is not
+# a mixed-workload run - it is an order-only run wearing the wrong label, and
+# every co-tenancy figure it produced would be a statement about a condition
+# that never existed. Recording 0 and continuing is the reported-versus-
+# enforced gap this harness exists to close.
+# ---------------------------------------------------------------------------
+mixed_wait_for_scheduler() {
+  local tries=0 n tasks
+  while :; do
+    tasks="$(mixed_registered_tasks)"
+    n="$(printf '%s\n' "$tasks" | sed '/^$/d' | wc -l | tr -d ' ')"
+    [ "${n:-0}" -eq 0 ] || { printf '%s' "$tasks"; return 0; }
+    tries=$((tries + 1))
+    if [ "$tries" -ge 30 ]; then
+      die "mixed_wait_for_scheduler: no 'Registered scheduler task:' line appeared on [$WORKER_CONTAINERS] within 150s of the recreate.
+  This scenario's entire premise is that the scheduler is ON, so a run with
+  zero registered tasks must abort rather than measure an order-only window
+  and label it mixed. Check that OL_SCHEDULER_ENABLED=true really reached the
+  container (docker exec $WORKER_CONTAINERS printenv OL_SCHEDULER_ENABLED) and
+  that the singleton lease is free:
+    docker exec -i $REDIS_CONTAINER redis-cli GET singleton:scheduler"
+    fi
+    sleep 5
+  done
 }
 
 # SHARED or DEDICATED, read from the worker's own startup line
@@ -481,16 +529,32 @@ mixed_registered_tasks() {
 # the difference between 207 and 2 233 orders/h in the retest campaign. The
 # module logs on BOTH branches precisely so a harness can assert it.
 #
+# THE VALUE IS THE TOKEN IMMEDIATELY AFTER THE COLON, and nothing else.
+# Substring-matching the line is wrong in a way that inverts the answer: the
+# SHARED message reads
+#   "Job intake Redis client: SHARED (OL_JOB_INTAKE_DEDICATED_REDIS is not true)"
+# which CONTAINS the string `DEDICATED` inside the variable's own name. A
+# `case "$line" in *DEDICATED*)` test therefore reports DEDICATED for a
+# worker that logged SHARED - caught on this scenario's first smoke run,
+# where the log said SHARED and the scenario recorded DEDICATED. Publishing
+# that would have inverted the single most consequential configuration fact
+# in this campaign.
+#
 # `unknown` is reported rather than defaulted: a worker that printed neither
 # line is a worker whose intake wiring this run cannot describe, and guessing
 # `SHARED` would put an unverified condition into the manifest.
 mixed_intake_client() {
-  local w line answer="unknown"
+  local w tok answer="unknown"
   for w in $WORKER_CONTAINERS; do
-    line="$(docker logs "$w" 2>&1 | grep -F 'Job intake Redis client:' | tail -1 || true)"
-    case "$line" in
-      *DEDICATED*) answer="DEDICATED" ;;
-      *SHARED*)    answer="SHARED" ;;
+    # ANSI-stripped first (the Nest logger colours the message), then the one
+    # word following the colon.
+    tok="$(docker logs "$w" 2>&1 \
+      | grep -F 'Job intake Redis client:' \
+      | sed 's/\x1b\[[0-9;]*m//g' \
+      | sed -n 's/.*Job intake Redis client: \([A-Z]*\).*/\1/p' \
+      | tail -1 || true)"
+    case "$tok" in
+      DEDICATED|SHARED) answer="$tok" ;;
     esac
   done
   printf '%s' "$answer"
@@ -681,7 +745,8 @@ MIXED_INTAKE_CLIENT="$(mixed_intake_client)"
 log "job intake Redis client: $MIXED_INTAKE_CLIENT (env OL_JOB_INTAKE_DEDICATED_REDIS=$(docker exec "$(printf '%s' "$WORKER_CONTAINERS" | awk '{print $1}')" printenv OL_JOB_INTAKE_DEDICATED_REDIS 2>/dev/null || printf '<unset>'))"
 [ "$MIXED_INTAKE_CLIENT" != "unknown" ] || warn "could not read the worker's 'Job intake Redis client:' line - the manifest will say unknown rather than guess"
 
-MIXED_TASKS="$(mixed_registered_tasks)"
+log "waiting for the scheduler singleton to acquire its lease and register"
+MIXED_TASKS="$(mixed_wait_for_scheduler)"
 MIXED_TASK_COUNT="$(printf '%s\n' "$MIXED_TASKS" | sed '/^$/d' | wc -l | tr -d ' ')"
 log "scheduler registered $MIXED_TASK_COUNT task(s)"
 printf '%s\n' "$MIXED_TASKS" | sed 's/^/    /'
