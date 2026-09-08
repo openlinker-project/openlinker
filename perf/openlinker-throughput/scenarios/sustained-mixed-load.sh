@@ -790,7 +790,16 @@ reset_between_repeats "'$ALLEGRO_A_CONNECTION_ID'" "'$OF_CURSOR_KEY'"
 
 # Prime the feed so the first poll tick has something to take, then bring the
 # worker up with BOTH the runner and the scheduler on.
-MIXED_PRIME_ORDERS="${MIXED_PRIME_ORDERS:-$MIXED_ORDERS_PER_MIN}"
+# Under a RAMP the default is 1, not MIXED_ORDERS_PER_MIN (#2840). A ramp exists
+# to observe the queue the ramp itself builds, so priming with a whole minute of
+# the constant rate - which a ramp makes meaningless anyway - would hand the
+# burst phase a backlog it did not create and make "did the burst saturate"
+# unanswerable. Enough to keep the first poll tick from reading empty, no more.
+if [ -n "$MIXED_RAMP" ]; then
+  MIXED_PRIME_ORDERS="${MIXED_PRIME_ORDERS:-1}"
+else
+  MIXED_PRIME_ORDERS="${MIXED_PRIME_ORDERS:-$MIXED_ORDERS_PER_MIN}"
+fi
 log "priming the stub with $MIXED_PRIME_ORDERS order(s)"
 of_push_orders "$MIXED_TENANT" "$MIXED_PRIME_ORDERS" >/dev/null
 
