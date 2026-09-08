@@ -179,24 +179,56 @@ All 29 others match byte for byte - including `OL_JOB_INTAKE_DEDICATED_REDIS=`
 runner then resolved are the same string in both:
 `realtime=4/2 bulk=12/8 fiscal=2/1 fan-out=8/4`.
 
-#### A note on the verifier itself, because it failed the wrong way first
+#### 1.3.1 Two guard failures, in OPPOSITE directions - and only one of them is in the standing lesson
 
-On its first run against the fixed image the verifier printed
-`VERDICT: FAILED` while every individual read-back was green. `grep -c` PRINTS
-its count and EXITS 1 when that count is zero, so the defensive
-`|| printf 0` fallback appended a second zero and the variable became
-`"0\n0"`, which compares unequal to `"0"`. A less careful reading would have
-concluded the image was wrong and rebuilt it.
+The campaign already knows that a counting guard must be proven able to
+**fail** before a zero from it is trusted. Both failures below are outside
+that lesson, and a reader who has only seen the false-negative version will
+not recognise either. **The generalisation is the finding: a guard's output
+has to be verified in both directions, because a false pass sends someone to
+rebuild something that was already correct, and a false fail hides a real
+defect.**
 
-Two other instances of the same family were hit while setting this run up and
-are recorded here rather than quietly fixed. `exit=$?` after a
-`... | tee file` reports **tee's** status, not the script's - so the first
-failure looked like a pass on the line below it. And three background waiters
-built on `until ! pgrep -f 'docker build --target worker'` never terminated,
-because each matched **its own sibling waiter's command line**: the api image
-was never built at all while a poll reported `api build running? yes`. The
-campaign's standing lesson is to prove a counting guard can fail before
-trusting a zero; the same rule applies to a guard that reports a pass.
+**A guard reported a FALSE FAIL on a correct image.** On its first run against
+the fixed image the verifier printed `VERDICT: FAILED` while every individual
+read-back was green. The mechanism: `grep -c` **prints its count and exits 1
+when that count is zero**, so the defensive `|| printf 0` fallback fired *on
+success* and appended a second zero. The variable became `"0\n0"`, which
+compares unequal to `"0"`, so the arm that was supposed to confirm "the
+deleted flag is mentioned zero times" failed **precisely because it was
+mentioned zero times**. The correct answer produced the failing branch. Had it
+been believed, the next step would have been to rebuild a correct image and
+re-measure - burning the window this run exists to spend.
+
+It is the mirror of the known `grep -q` / `| head -1` trap, which reports
+failure on success via SIGPIPE under `pipefail`. Same root, opposite surface:
+a shell builtin whose exit status encodes a *count* rather than an *error*.
+
+**A poll observed itself, and therefore always reported the condition it was
+waiting for.** Three background waiters built on
+
+```
+until ! pgrep -f 'docker build --target worker'; do sleep 20; done
+```
+
+never terminated, because `pgrep -f` matches full command lines and each
+waiter's own command line **contains the string it is searching for** - as did
+its two sibling waiters'. So the wait could not end even after the build
+finished, and a separate check printing `api build running? yes` was reading
+the same self-match rather than a build. **The api image was never built at
+all for ten minutes while a poll asserted it was in progress.** This is the
+false-pass shape one layer out: not a guard that miscounts, but a poll whose
+own existence satisfies its predicate.
+
+**And a third, which is why the first one was nearly missed.** `exit=$?` after
+`... | tee file` reports **tee's** status, not the script's - so the false FAIL
+was printed with `exit=0` on the line directly below it. Two contradictory
+signals, and the reassuring one was the artefact.
+
+All three were fixed rather than worked around: the count is read without a
+success-swallowing fallback, the waiters were replaced with condition checks
+that cannot match themselves, and exit status is read from the command rather
+than from the end of a pipeline.
 
 ### 1.4 Dataset, and how it differs from the baseline's
 
@@ -272,8 +304,8 @@ orders/day is **208/h averaged**; concentrated into four to six hours it is
 drain > 208/h, and survives its peak iff drain > 500-600/h. The baseline's
 ~216/h is marginally above the first line and far below the second.
 
-**What binds: a falsifiable prediction.** `marketplace.order.sync` is
-registered on the **`realtime`** lane
+**The question this run answers is narrow, and the baseline is what narrows
+it.** `marketplace.order.sync` is registered on the **`realtime`** lane
 (`handler-registration.service.ts:150-154`), whose caps this stand resolved to
 `realtime=4/2` - total 4, **perScope 2**. Every order from one source
 connection shares one scope, so at most two order-sync jobs run at once, and
@@ -283,18 +315,43 @@ the ceiling is
 orders/h  =  2 slots  x  3600  /  mean-seconds-per-order
 ```
 
-That already explains all three shipped figures: 216/h implies ~33.3 s per
-order (the smoke run measured p50 29.8 s); the isolated A/B's 226/h implies
-31.9 s and its 333/h implies 21.6 s - so the +47% is exactly what removing
-~10 s of per-order latency buys at two slots. **Prediction: if the fix removes
-the same ~10 s under mixed load, drain lands near 300-330/h with per-order
-duration near 21-23 s.** If drain rises by less than the duration fell,
-something in the mixed window adds latency the isolated A/B did not have. If
-neither moves, the limiter degradation was not costing per-order latency here.
-Concurrency is confirmed independently by Little's law -
-`L = throughput/s x mean duration` - which must read ~2 in both arms if the
-per-scope cap is the binding structure and the fix moved only the service time
-inside it.
+The baseline did not leave that as arithmetic. It established the ceiling is
+**slot-bound, not budget-bound**, and confirmed the concurrency twice over:
+Little's law read **1.941**, and an interval-overlap count found a maximum of
+**2 concurrent of 105 probes, with none above**. Meanwhile the destination ran
+at roughly **12% of its 300 req/min** allowance, so the rate limit was nowhere
+near binding. And the lane cap is not the lever either: **arm ED raised it and
+throughput FELL 12.5%.**
+
+So exactly one term in that equation is in play here, and it is the service
+time. The baseline's mean per-order service time was **31.4 s**, which at two
+slots gives 229 orders/h against the 217.3 it measured. **The question is
+therefore: does removing the intake block cut the 31.4 s, and by how much?**
+The ceiling then moves as `2 / new service time` and nothing about the rate
+limit or the lane cap enters into it.
+
+**Consequently no throughput number appears anywhere in this report without
+the service time it came from.** A reader handed "N orders/h" and no service
+time will attribute the change to the wrong lever - most likely to the rate
+limit, which arm ED already showed is not it, or to the cap, which arm ED
+showed moves it the wrong way.
+
+Pre-registered prediction, kept as written: *if the fix removes the same ~10 s
+the isolated A/B implies (226/h ⇒ 31.9 s, 333/h ⇒ 21.6 s), drain lands near
+300-330/h with per-order duration near 21-23 s.* One correction to how that
+was derived - it inferred ~33.3 s per order from the baseline's own drain, and
+the baseline's directly measured mean is 31.4 s, so the inference was close but
+the measurement supersedes it. Note also that summary § 8's **p50 of
+16 776 ms is not this statistic** and must not be substituted for it: that
+percentile is over every attempted row including requeued partial attempts, so
+it is far below the mean service time of a completed order.
+
+**The early limiter reading is early, not the result.** At t+68 s this window
+recorded `limiter_degraded_delta = 0` against 87% of baseline samples carrying
+at least one - but the baseline's degradations ran at roughly 8/min in steady
+state, so 68 s is inside the noise for that rate. The claim that carries
+weight is the **whole-window** count against the baseline's authoritative
+**1454**, and that is the only limiter figure quoted in § 3.
 
 **Both arms come out of one query.** The teardown purges only
 `queued`/`running`, so the baseline's *succeeded* order-sync rows and their
@@ -337,9 +394,36 @@ TBD.
 
 TBD.
 
-## 5. Verdict and post-guards
+## 5. Verdict, post-guards, and whether any figure here is VALID
 
-TBD.
+Figures: TBD.
+
+**Why this section is not a formality.** All four F1 order-path runs are
+`DISCARDED`, and #2847 records that their **66 s** and **182-295 orders/h**
+figures are **withdrawn**. Two client-facing documents currently read
+"measurement in progress" for that flow. So the question of whether this
+window's `verdict.txt` reads `VALID` is not bookkeeping - it decides whether
+there is an order-path number anybody may publish.
+
+**The honest expectation, stated before the verdict is read**, is that this
+window is also `DISCARDED`, for the same three structural reasons the baseline
+was: `post_guard_attempts` (scheduler-minted jobs carry the entity default of
+10 attempts, and `PERF_MAX_ATTEMPTS` is deliberately not applied here),
+`post_guard_deferrals`, and `post_guard_destination_creates` (which counts
+every window order lacking a `syncedAt` on the declared destination, and a
+deliberately saturating window always ends with work queued). A window built
+to saturate cannot satisfy guards that assume it drained.
+
+That does **not** make the two arms incomparable - both carry the same
+structural discards, which is exactly why a like-for-like re-run was the right
+instrument. But it does mean § 3's figures travel with a named scope rather
+than as a clean `VALID`, and this section says which ones and why. If the
+verdict does come back `VALID`, that is stated explicitly and prominently,
+because it would be the first valid order-path measurement in the campaign.
+
+`post_guard_limiter_degraded` is the one guard whose answer here is a
+**finding rather than an artefact**: it fires on any degraded-mode line inside
+the window, and the baseline's authoritative count was 1454.
 
 ## 6. What this did not establish
 
