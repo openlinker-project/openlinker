@@ -337,6 +337,10 @@ describe('SchedulerService', () => {
         // Capability-scoped like the rest — it drains OfferManager /
         // ProductPublisher connections and names no platform (#1979).
         'destination-taxonomy-sync',
+        // #2712 — global scope and platform-free like the reservation sweeps
+        // below: `IDX_fulfillment_works_request_status` carries no connection
+        // axis, and a dispatch nobody answered is stalled whoever holds it.
+        'fulfillment-timeout-sweep',
         // Also core-owned and platform-free, and the most so of any task here:
         // it has neither a platform nor a capability, because its subject is a
         // predicate over one OL table (#2317).

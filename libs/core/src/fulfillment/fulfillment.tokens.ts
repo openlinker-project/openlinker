@@ -81,3 +81,11 @@ export const FULFILLMENT_VERIFICATION_SERVICE_TOKEN = Symbol('IFulfillmentVerifi
  * router-less — see the port's header.
  */
 export const FULFILLMENT_ROUTER_RESOLVER_TOKEN = Symbol('FulfillmentRouterResolverPort');
+
+/**
+ * ADR-054's timeout-as-rejection sweep (#2712).
+ * `FulfillmentDispatchTimeoutService` binds here.
+ */
+export const FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN = Symbol(
+  'IFulfillmentDispatchTimeoutService'
+);

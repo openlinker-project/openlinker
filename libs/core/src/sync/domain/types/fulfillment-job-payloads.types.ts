@@ -106,3 +106,26 @@ export interface FulfillmentWorkRoutePayloadV1 {
   readonly schemaVersion: 1;
   readonly orderId: string;
 }
+
+/**
+ * Reap fulfilment dispatches nobody answered (#2712, ADR-054).
+ *
+ * Carries a page limit and nothing else. The pass is **frontier-as-query** — the
+ * candidate set is `requestStatus = 'submitted' AND updatedAt < cutoff` and
+ * every page consumes its own selection — so there is deliberately no cursor and
+ * no offset: an offset over a shrinking set steps over rows, which here means a
+ * work that is never reaped at all.
+ *
+ * The DEADLINE is likewise absent by design. It is resolved once per run by the
+ * handler through `resolveFulfillmentDispatchTimeoutMs`, the single resolution
+ * path (AC3), so a payload-carried value could only ever be a second, drifting
+ * copy of a number an operator reads back off the rejection row.
+ *
+ * Global scope: the work index carries no connection axis and a stalled dispatch
+ * is stalled whoever holds it, so the job runs once for the deployment under the
+ * nil-UUID system connection id — the `inventory.reservations.*` precedent.
+ */
+export interface FulfillmentWorkTimeoutSweepPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly pageLimit?: number;
+}
