@@ -245,10 +245,15 @@ headers['X-OpenLinker-Signature'] = `sha256=${signature}`;
      }'
    ```
 
-3. **Verify**:
-   - Check application logs for "Published webhook event"
-   - Check Redis stream: `XREAD STREAMS events.inbound.webhooks 0`
-   - Check job queue: `XREAD STREAMS jobs.sync 0`
+3. **Verify** — in Postgres, not Redis. Since #2280 the delivery row and the
+   `sync_jobs` work row commit in one transaction at ingress, so the pair is the
+   authoritative record (the inbound Redis stream was retired by #2300):
+   ```sql
+   SELECT status, "dlqReason", "downstreamJobType", "downstreamJobId"
+     FROM webhook_deliveries WHERE "eventId" = '<eventId>';
+   SELECT "jobType", status FROM sync_jobs
+     WHERE "idempotencyKey" = 'prestashop:<connectionId>:<eventId>';
+   ```
 
 ## Event Deduplication
 

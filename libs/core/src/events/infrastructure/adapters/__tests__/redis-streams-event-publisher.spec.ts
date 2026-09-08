@@ -48,18 +48,13 @@ describe('RedisStreamsEventPublisher', () => {
     );
   });
 
-  it('passes a TRIM option for the highest-volume stream', async () => {
-    await publisher.publish(REDIS_STREAM_NAMES.inboundWebhooks, makeEvent());
-
-    expect(redisClient.xAdd).toHaveBeenCalledWith(
-      REDIS_STREAM_NAMES.inboundWebhooks,
-      '*',
-      expect.any(Object),
-      expect.objectContaining({
-        TRIM: { strategy: 'MAXLEN', strategyModifier: '~', threshold: 50_000 },
-      })
-    );
-  });
+  // A second configured-cap case covering `events.inbound.webhooks` (50 000)
+  // was removed with that stream in #2300. Nothing unique went with it: the
+  // "a registered stream gets a MAXLEN TRIM" case is the test above, and the
+  // per-member contract is held exhaustively by `it.each(ALL_STREAMS)` in
+  // `libs/shared/src/redis/__tests__/stream-retention.spec.ts`. What is given
+  // up is an assertion at the 50 000 threshold specifically — a threshold that
+  // no longer exists.
 
   it('still bounds a stream it has no entry for', async () => {
     // The #2163 inversion. Previously this asserted `options` was `{}` — an
