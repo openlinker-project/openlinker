@@ -62,8 +62,23 @@ rung() { # rung <rate> <preallocated> <maxvus>
     "WITH d AS (DELETE FROM sync_jobs WHERE status IN ('queued','running') RETURNING 1) SELECT COUNT(*) FROM d" \
     | sed 's/^/[ladder] drained /'
 
+  # The sampler is started and STOPPED by this rung, by PID. A probe must be
+  # bounded by the thing it probes: the first version bounded itself by the
+  # presence of a k6 container and therefore outlived its window by 2.5 hours
+  # (see k6-mem-sampler.sh's header). MAX_SECS is only the backstop.
+  local mem_pid=0
+  bash drivers/k6-mem-sampler.sh "$R/k6-mem-$tag.csv" 3 3600 \
+    > "$R/k6-mem-$tag.log" 2>&1 &
+  mem_pid=$!
+  log "memory sampler pid $mem_pid -> results/k6-mem-$tag.csv"
+
   TARGET_RATE="$rate" PRE_ALLOCATED_VUS="$pre" MAX_VUS="$mx" \
     bash scenarios/f3-webhook-burst.sh > "$R/f3-$tag.log" 2>&1 || rc=$?
+
+  if [ "$mem_pid" -gt 0 ] && kill -0 "$mem_pid" 2>/dev/null; then
+    kill "$mem_pid" 2>/dev/null
+    log "memory sampler $mem_pid stopped with the rung"
+  fi
   # NOT `local rc=$?` after the command: `local` is itself a command and
   # resets $?, so that form records local's own status and always reads 0.
   log "rung $rate/s scenario exit=$rc"
@@ -81,5 +96,25 @@ rung() { # rung <rate> <preallocated> <maxvus>
 }
 
 log "ladder start"
-rung 1000 600 900
+# Rung 3 STEPS THE RATE DOWN, and the reason is what the first two rungs
+# established rather than a guess about them.
+#
+# At 1000/s offered, twice, the api met its schedule (dropped 0.5% then 0.33%)
+# and the MEDIAN was flat - 77ms then 71ms - while the tail doubled: p99
+# 1029ms -> 2635ms as the pool grew 900 -> 1782. Flat median with a growing
+# tail is queueing, not slowness: the api is running at ~rho 1 at 1000/s,
+# where throughput is met and waiting time is unstable in concurrency.
+#
+# What the two points do NOT establish is that adding VUs never converges:
+# utilisation moved 100.0% -> 92.0%, i.e. TOWARD the 90% limit, so a third
+# rung at 1000/s might well pass the guard. It is not run, because a figure
+# obtained by provisioning until a guard stops complaining is a fitted
+# parameter, and the tail it reports is a property of the provisioning.
+#
+# The informative question is the rate at which the tail STOPS growing. 850/s
+# is ~0.85 of the observed absorption. Provisioning is deliberately generous
+# (1200 pre-allocated, 1500 ceiling = ~1.85 GiB at the measured 1.26 MiB/VU,
+# against 7.5-9.2 GiB available) so that if the guard still fires it is the
+# system's tail talking and not the pool.
+rung 850 1200 1500
 log "ladder finished the scheduled rungs"
