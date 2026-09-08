@@ -1,6 +1,9 @@
 # ADR-049: Durability spine and the domain-event contract
 
-- **Status**: Proposed
+- **Status**: Accepted (implemented in #2163, #2164 and #2280, amended inline by
+  the latter and by #2603/#2604/#2614/#2652; decision 1 has shipped on the
+  webhook path only — the non-webhook writers of `jobs.sync` remain future work
+  under the same decision)
 - **Date**: 2026-08-20
 - **Authors**: @piotrswierzy
 

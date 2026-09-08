@@ -1536,6 +1536,17 @@ describe('SyncJobRunner', () => {
         expect(caps.fiscal).toEqual({ total: 2, perScope: 1 });
       });
 
+      it('should start every lane at the same caps the resolver falls back to', () => {
+        // The pre-#2609 field initializer still declared `fan-out: 1/1` long
+        // after the resolver had been raised to 8/4, so the first numbers a
+        // reader met were wrong. Both now read one constant; this fails if a
+        // literal is ever re-introduced on either side. `onModuleInit` has not
+        // run for this instance, so the field still holds its initializer.
+        const initial = (runner as any).laneCaps;
+
+        expect(initial).toEqual(resolve({}));
+      });
+
       it('should default fan-out above one slot so stock propagation is not serialised (#2609)', () => {
         // A cap of 1 meant one stock write at a time for the whole install.
         const caps = resolve({});
