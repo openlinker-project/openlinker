@@ -624,7 +624,19 @@ echo "--- run_post_guards threads the feed guard through ---"
 # is the failure mode the k6-summary argument already has a warning about in
 # run_post_guards' own docblock. These two assertions pin both directions.
 FAKE_PG[count]=0
+WORKER_CONTAINERS="lab-worker"
 RPG_DIR="$(mktemp -d)"
+# window_start would have captured this baseline; a test calling
+# run_post_guards directly must establish it too, or
+# post_guard_containers_stable correctly refuses to certify a window it has no
+# "before" reading for - and the VALID assertion below then fails for a reason
+# that has nothing to do with the feed argument it is about. That is exactly
+# how this assertion shipped failing: the sibling block under
+# "run_post_guards wiring" below carries this same line and this one did not,
+# so the first of these two assertions has never passed. The missing-baseline
+# refusal itself is covered separately, under
+# "post_guard_containers_stable", so seeding it here hides nothing.
+capture_container_starts "$RPG_DIR"
 run_post_guards "$RPG_DIR" "'c1'" '2026-01-01T00:00:00Z' 0 9999999999 '' '' '' '' >/dev/null 2>&1 || true
 assert_eq "omitting the feed argument leaves the verdict VALID (not applicable)" \
   "VALID" "$(verdict_read "$RPG_DIR" | head -1)"
