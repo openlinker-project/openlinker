@@ -90,6 +90,7 @@ import { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
 import { NotifyDispatchedResponseDto } from './dto/notify-dispatched-response.dto';
 import { PaginatedShipmentsResponseDto } from './dto/paginated-shipments-response.dto';
 import { REDACTED_ERROR_MESSAGE, ShipmentResponseDto } from './dto/shipment-response.dto';
+import { resolveWaybillRelayThresholdFromEnv } from './waybill-relay-threshold';
 
 @ApiBearerAuth()
 @ApiTags('shipments')
@@ -125,6 +126,10 @@ export class ShipmentController {
   ): Promise<PaginatedShipmentsResponseDto> {
     const limit = query.limit ?? 20;
     const offset = query.offset ?? 0;
+    // #2073. Resolved ONCE per request and used for both the filter below and
+    // every row's `stuck` flag, so the rows returned and the badges rendered on
+    // them cannot be computed from two different thresholds.
+    const waybillRelayAlertThreshold = resolveWaybillRelayThresholdFromEnv();
     const filters: ShipmentFilters = {
       orderId: query.orderId,
       status: query.status,
@@ -132,6 +137,12 @@ export class ShipmentController {
       connectionId: query.connectionId,
       shippingMethod: query.shippingMethod,
       hasTracking: query.hasTracking,
+      // The boolean is translated to the numeric floor HERE, at the HTTP
+      // boundary — which is also where `createdFrom`/`createdTo` are coerced
+      // from strings. `false` deliberately applies no filter rather than
+      // selecting the complement: see the query DTO's description.
+      waybillRelayFailureCountAtLeast:
+        query.waybillRelayStuck === true ? waybillRelayAlertThreshold : undefined,
       createdFrom: query.createdFrom ? new Date(query.createdFrom) : undefined,
       createdTo: query.createdTo ? new Date(query.createdTo) : undefined,
     };
@@ -147,6 +158,7 @@ export class ShipmentController {
           context?.customerId ?? null,
           canWrite,
           context?.orderSummary ?? null,
+          waybillRelayAlertThreshold,
         );
       }),
       total: page.total,
@@ -179,6 +191,7 @@ export class ShipmentController {
       await this.resolveCustomerId(shipment.orderId),
       this.hasShipmentsWrite(user),
       null,
+      resolveWaybillRelayThresholdFromEnv(),
     );
   }
 
@@ -200,6 +213,7 @@ export class ShipmentController {
       await this.resolveCustomerId(shipment.orderId),
       this.hasShipmentsWrite(user),
       null,
+      resolveWaybillRelayThresholdFromEnv(),
     );
   }
 
@@ -363,7 +377,13 @@ export class ShipmentController {
     try {
       const shipment = await this.cancellation.cancel(id);
       // `@Roles('admin', 'operator')`-gated — the caller holds `shipments:write`.
-      return ShipmentResponseDto.fromDomain(shipment, null, true, null);
+      return ShipmentResponseDto.fromDomain(
+        shipment,
+        null,
+        true,
+        null,
+        resolveWaybillRelayThresholdFromEnv(),
+      );
     } catch (error) {
       throw this.toHttpException(error, true);
     }

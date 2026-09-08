@@ -32,12 +32,14 @@ function makeShipment(): Shipment {
     null,
     // #2402 fulfillmentWorkId — no work linkage in this fixture.
     null,
+    // #2073 waybill-relay failure history — none in this fixture.
+    null,
   );
 }
 
 describe('ShipmentResponseDto.fromDomain', () => {
   it('sets orderSummary to null when no summary is supplied', () => {
-    const dto = ShipmentResponseDto.fromDomain(makeShipment(), null, true, null);
+    const dto = ShipmentResponseDto.fromDomain(makeShipment(), null, true, null, 3);
     expect(dto.orderSummary).toBeNull();
   });
 
@@ -49,7 +51,7 @@ describe('ShipmentResponseDto.fromDomain', () => {
       itemCount: 2,
     };
 
-    const dto = ShipmentResponseDto.fromDomain(makeShipment(), null, true, summary);
+    const dto = ShipmentResponseDto.fromDomain(makeShipment(), null, true, summary, 3);
 
     expect(dto.orderSummary).toEqual(summary);
   });

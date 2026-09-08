@@ -385,7 +385,15 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
       // letting it propagate would abort `buildPatchAndMaybePush` and discard the
       // whole patch — terminal status, deliveredAt, carrier backfill included —
       // and skip the order-rollup reprojection.
-      await this.shipments.releaseWaybillRelay(shipment.id);
+      // The failure is recorded in the SAME statement that releases the claim
+      // (#2073), so this path cannot release without counting. `connectionId`
+      // is null because the throw happens BEFORE the per-target loop — there is
+      // no participant to name, and inventing one would be a false attribution.
+      await this.shipments.releaseWaybillRelay(shipment.id, {
+        reason: 'threw',
+        connectionId: null,
+        failedAt: new Date(),
+      });
       this.logger.error(
         `Waybill relay threw for shipment ${shipment.id} (order ${shipment.orderId}): ${this.message(error)}`,
         error instanceof Error ? error.stack : undefined,
@@ -421,10 +429,29 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
     );
 
     if (transientlyUnreached.length > 0) {
-      await this.shipments.releaseWaybillRelay(shipment.id);
+      // #2073. The FIRST failing participant is recorded for display; every one
+      // of them is still logged individually below, so the log keeps full
+      // attribution and the column carries one name for the operator's badge.
+      // Nothing reads that name to decide anything — per-target retry state is
+      // #861 and this deliberately does not become it.
+      //
+      // `detail` is NEVER persisted: it is an adapter's free text and can carry
+      // a host, a port or a credential fragment, it already reaches the log,
+      // and this column reaches a browser — a wider audience (#2341's rule: the
+      // code is returned, the message is logged).
+      const [first] = transientlyUnreached;
+      await this.shipments.releaseWaybillRelay(shipment.id, {
+        reason: first.outcome === 'rejected' ? 'rejected' : 'adapter-unresolved',
+        connectionId: first.connectionId,
+        failedAt: new Date(),
+      });
       for (const target of transientlyUnreached) {
-        // The poll job deliberately stays `succeeded` (the next tick retries), so
-        // this log line is the only observable signal — `error` level for triage.
+        // The poll job deliberately stays `succeeded` (the next tick retries).
+        // Since #2073 this log line is no longer the ONLY observable signal —
+        // the shipment now carries a durable consecutive-failure count that the
+        // `/shipments` read surface escalates past a threshold — but it is
+        // still the only place the per-target detail appears, so it stays at
+        // `error` level for triage.
         this.logger.error(
           `Waybill relay to ${target.connectionId} failed for shipment ${shipment.id} ` +
             `(${target.outcome}${target.unsupportedReason ? `/${target.unsupportedReason}` : ''})` +
@@ -432,6 +459,24 @@ export class ShipmentStatusSyncService implements IShipmentStatusSyncService {
         );
       }
       return 'failed';
+    }
+
+    // The relay reached every participant, so the failure history is cleared
+    // (#2073) — without this the escalation is an alarm that never goes off.
+    //
+    // BEST-EFFORT, unlike the increment above. The increment is fused to a
+    // release that was already un-caught, so it adds no failure mode; this is a
+    // genuinely new write on a path that has ALREADY succeeded durably, and
+    // failing the relay because its bookkeeping failed would let the recording
+    // of a success destroy the success. A stale count simply escalates one
+    // shipment that has recovered, which the next successful relay clears.
+    try {
+      await this.shipments.clearWaybillRelayFailures(shipment.id);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to clear waybill relay failure history for shipment ${shipment.id} ` +
+          `(non-fatal, the relay itself succeeded): ${this.message(error)}`,
+      );
     }
 
     return 'relayed';

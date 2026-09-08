@@ -57,6 +57,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.direction ?? 'outbound',
     overrides.reservationConsumedAt ?? null,
     overrides.fulfillmentWorkId ?? null,
+    // #2073 waybill-relay failure history — none by default.
+    overrides.waybillRelayFailure ?? null,
   );
 }
 
@@ -92,6 +94,7 @@ describe('ShipmentDispatchNotificationService', () => {
       update: jest.fn(),
       claimWaybillRelay: jest.fn(),
       releaseWaybillRelay: jest.fn(),
+      clearWaybillRelayFailures: jest.fn(),
       listDispatchedAwaitingReservationConsume: jest.fn(),
       claimReservationConsume: jest.fn(),
       claimFulfillmentWorkLink: jest.fn(),

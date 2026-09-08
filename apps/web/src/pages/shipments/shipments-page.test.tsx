@@ -35,6 +35,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     createdAt: '2026-05-20T10:00:00.000Z',
     updatedAt: '2026-05-20T10:00:00.000Z',
     orderSummary: null,
+    // #2073 waybill-relay failure history — none by default.
+    waybillRelay: null,
     ...overrides,
   };
 }

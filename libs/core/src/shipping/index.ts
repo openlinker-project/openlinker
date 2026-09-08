@@ -34,6 +34,21 @@ export type {
 
 export { ShipmentDirectionValues } from './domain/types/shipment-direction.types';
 export type { ShipmentDirection } from './domain/types/shipment-direction.types';
+// #2073 — the waybill-relay failure vocabulary and its two pure rules. The
+// threshold constants are deliberately NOT exported: only
+// `resolveWaybillRelayAlertThreshold` may produce the number a caller compares
+// against, so a second call site cannot reopen the reported-vs-enforced gap.
+export {
+  WaybillRelayFailureReasonValues,
+  readWaybillRelayFailureReason,
+  resolveWaybillRelayAlertThreshold,
+  isWaybillRelayStuck,
+} from './domain/types/waybill-relay-failure.types';
+export type {
+  WaybillRelayFailureReason,
+  WaybillRelayFailure,
+  RecordWaybillRelayFailureInput,
+} from './domain/types/waybill-relay-failure.types';
 
 export { ShippingMethodValues, SHIPPING_METHOD } from './domain/types/shipping-method.types';
 export type { ShippingMethod } from './domain/types/shipping-method.types';
