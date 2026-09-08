@@ -1,6 +1,8 @@
 # ADR-050: Workload isolation — concurrency lanes, not strict priority, not separate deployables
 
-- **Status**: Proposed
+- **Status**: Accepted (implemented in #2278, amended inline by #2594, #2609 and
+  #2613/#2617; decision 6 is met for `bulk` alone — every other lane's caps stay
+  illustrative pending #1134)
 - **Date**: 2026-08-21
 - **Authors**: @piotrswierzy
 
