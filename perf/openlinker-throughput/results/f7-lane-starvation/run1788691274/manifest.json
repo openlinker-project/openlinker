@@ -1,0 +1,60 @@
+{
+  "scenario": "f7-lane-starvation",
+  "generatedAt": "2026-09-06T10:41:23Z",
+  "gitSha": "151d11c9161175fc2bc1ed9d05bea05e17a3d994",
+  "connectionIds": "'c4710417-5876-40cf-a0a6-bdbef38e823a'",
+  "quick": false,
+  "runnerState": "enabled",
+  "laneCaps": "realtime=4/2 bulk=12/8 fiscal=2/1 fan-out=8/4",
+  "pool": {
+    "maxConnections": "200",
+    "olDbPoolMax": "40",
+    "processCount": "2",
+    "budget": "80"
+  },
+  "schedulerCadenceRow": {},
+  "olLogBodyMaxBytes": "lab-api=8192 lab-worker=8192",
+  "syncJobsRowsAtStart": 123017,
+  "syncJobsRowsAtEnd": 123725,
+  "environment": {
+    "postgres": {
+      "shared_buffers": "128MB",
+      "work_mem": "4MB",
+      "shared_preload_libraries": "pg_stat_statements,auto_explain",
+      "installed_extensions": "pg_trgm,pg_stat_statements"
+    },
+    "node_version": "v22.23.1",
+    "postgres_image_digest": "sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193",
+    "redis_image_digest": "sha256:bd4a0d37e7cd830117ffec9329052b4a1887afa060c265e1768f82b177ff6f43",
+    "redis_used_memory_bytes": "11498528",
+    "host": {
+      "cpu_count": "28",
+      "ram": "15912MB",
+      "load_average": "3.06, 2.94, 2.98"
+    }
+  },
+  "containerLimits": [
+    {
+      "container": "lab-api",
+      "cpu_nanocpus": "none",
+      "memory_bytes": "none"
+    },
+    {
+      "container": "lab-worker",
+      "cpu_nanocpus": "none",
+      "memory_bytes": "none"
+    }
+  ],
+  "excludedPgStatStatementsQueries": [
+    "GET /v1/connections/:id/sync-status (7-day connection-sync-status aggregate over sync_jobs) - issued by sample_queue itself, see README"
+  ],
+  "aggressorRoute": "repeated real master.product.syncFromSweep / master.inventory.syncFromSweep jobs against perf-prestashop (bulk lane) - NOT bulk-create (#2846/#2849 not available, see script header)",
+  "aggressorCount": 600,
+  "probeCount": 12,
+  "products": "20 21 22 23 24 25",
+  "realtimeProbeType": "master.product.syncByExternalId",
+  "fiscalProbeType": "invoicing.issue (deliberately-invalid payload, business_failure by design)",
+  "replicaCount": 1,
+  "threeReplicaArm": "NOT RUN - docker-compose.lab.yml pins container_name: lab-worker, --scale refuses; #2851 compose overlay absent from this worktree",
+  "metricsExporter": "absent (#2850 not in this worktree) - lane occupancy proxied via sync_jobs COUNT(*), event-loop lag not directly measured"
+}

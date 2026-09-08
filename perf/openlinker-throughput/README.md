@@ -229,15 +229,106 @@ One `key=value` per line, LF-terminated. `--resume` (#2845) parses this as a
 machine contract, so the schema is fixed:
 
 ```
-status=VALID|DISCARDED
+status=VALID|DISCARDED|SUPERSEDED
 generatedAt=<ISO8601>
+guard=<post_guard_name>:<ok|failed>   # one per post-guard that RAN
 reason=<free text>            # zero or more, DISCARDED only, one per line
+supersededAt=<ISO8601>                            # SUPERSEDED only
+supersedes_status=<the status it carried before>   # SUPERSEDED only
+superseded_by=<run dir, issue or report>          # SUPERSEDED only
+withdrawn_reason=<free text>  # one or more, SUPERSEDED only, one per line
 ```
 
 `verdict_read <dir>` echoes `status` on its own first line, followed by every
 `reason` line, in file order (`verdict_read "$dir" | tail -n +2` for just the
 reasons). A directory with no `verdict.txt` echoes `MISSING` and returns
 non-zero - never silently treated as either verdict.
+
+**`guard=` lines say which checks actually ran (#3009).** A bare `status=VALID`
+cannot be distinguished from a verdict written *before* a guard existed, and
+`results/f7-lane-starvation/run1788691274/verdict.txt` is exactly that: VALID,
+no reason, no guard record, for a run whose findings have since been withdrawn.
+The guard NAMES are recorded rather than a count, because "passed eight guards"
+and "passed the four that existed then" are different claims and only the names
+tell them apart. The count is the number of `guard=` lines; there is deliberately
+no separate count field, since two spellings of one fact is how a record starts
+disagreeing with itself. A verdict written by a scenario that runs no post-guard
+chain carries no `guard=` lines at all, which is the honest reading - `f5-read-path`
+and `f10-dependency-failure` both write verdicts this way.
+
+**`verdict_quotable <dir>` is the single place that answers "may this figure
+travel".** It exits 0 only for `VALID`. `DISCARDED` failed a guard, `SUPERSEDED`
+has been withdrawn, and `MISSING` was never certified - and the first two have
+both been quoted anyway in this campaign's own history (#2933's ~600/s was
+published as a ceiling off runs today's guard chain discards), which is why this
+is a function rather than a convention. It reads the status column directly
+rather than through `verdict_read | head -1`: that pipeline SIGPIPEs
+`verdict_read`'s second `awk` the moment `head` exits, which on bash 5.2 either
+returns a silently wrong answer or kills the calling script with exit 141,
+depending on whether the call sits inside an `if`.
+
+One pre-existing deviation, recorded rather than silently tolerated:
+`f5-read-path.sh` writes an INFORMATIONAL `reason=` line on a `VALID` verdict
+(its `non2xx=N total_route_requests=N` note), so `reason` is not strictly
+DISCARDED-only in practice - and its smoke step has written `VALID` over
+`total_route_requests=0`, which `verdict_quotable` would still call quotable.
+Both are that scenario's to fix, not this schema's.
+
+### Evidence and artefact retention
+
+**The policy, and it is a deliberate departure from `perf/prestashop-baseline`
+(#3009).** That campaign ignores its whole `results/` tree with a one-line
+nested `.gitignore` and no comment, and none of its reports points a reader at
+raw evidence at all. This campaign splits the tree by ROLE instead:
+
+| Kind | Files | Committed? |
+|---|---|---|
+| Provenance core | `manifest.json`, `verdict.txt`, `summary.json`, `k6-summary.json`, `pg-deadlocks.json`, and any `*.md` written into a run directory | **Yes** |
+| Bulk samples | `pool.json`, `timeseries.csv`, `pg-lockwaits.csv`, the raw k6 JSON, the per-probe CSVs | No - local only |
+
+The patterns are at `.gitignore:97`, and the negation idiom there is load-bearing:
+git cannot re-include a path whose parent directory was excluded, so the
+directory-only `results/` pattern this replaced would have made every `!` line
+unreachable.
+
+**Why split rather than commit everything.** Measured on a 39-run tree: the core
+is **130 KB across 84 files**, the bulk **302 MB across 149**, a ratio of about
+2300:1. `pool.json` alone is 205 MB of that and is not evidence - it is the
+harness's generated INPUT, regenerable from the `meta` block inside it.
+`timeseries.csv` is 96 MB dominated by a `docker_stats_json` column that dumps
+every container on the measuring workstation, most unrelated to the stand.
+Committing the bulk would put 302 MB in git history for ever, to preserve mostly
+the harness's own inputs and the memory usage of unrelated containers.
+
+**Why commit the core rather than nothing.** It is what decides whether a figure
+may be quoted: the git sha of the images under test, the pre-flight guard values,
+the post-guard record and the verdict (#3009), and - in `k6-summary.json` - the
+dropped-iteration and VU-utilisation counters that are the actual evidence
+discrediting the ~600/s F3 ceiling (#2933). None of that is recoverable from a
+report, and all of it fits in 130 KB.
+
+**What this does NOT give you.** A committed core does not let you re-derive a
+percentile; the per-tick series stays on the machine that produced it. If you
+need that, ask the operator who ran it, before the worktree is deleted.
+
+**The honest state of the back catalogue.** The historical artefacts are **not
+yet committed**, and the reason is worse than "they live on one workstation":
+they are fragmented across **15 separate worktree-local `results/` trees**
+(~1.6 GB in total, 2 to 39 run directories each), and **no single one of them is
+the campaign**. The largest is not the one you would guess. The tree with 39 run
+directories holds only four facets and is missing `f8-lane-caps`, `limiter-ab`
+and `weak-shop` entirely - all three cited by published reports - while
+`results-F7-2026-09-06.md` cites `run1788741154` and `results-F3-2026-09-06.md`
+cites `run1788729569-probes`, neither of which is in it. So committing one tree
+wholesale would commit an incomplete set while implying completeness, which is
+this campaign's own signature failure mode. The one-time backfill is therefore a
+separate task: for each worktree still on disk, copy its core files into one
+tree, commit them, and record per run whether its bulk survived.
+
+`results-weak-shop-2026-09-07.md` says its pre-registration file "is committed
+at `results/weak-shop/run-a1d53-sweep/threshold-fixed-in-advance.md`". It was
+not - the blanket ignore covered it. The `*.md` re-include is what makes that
+sentence true for the next one.
 
 ### The sampler excludes itself from `pg_stat_statements`
 
@@ -247,6 +338,50 @@ under test, and every statement it issues lands in `pg_stat_statements`
 (#2843's instrument). `manifest.json`'s `excludedPgStatStatementsQueries`
 records that fact explicitly rather than silently, so a "top queries by
 total time" report built from `pg_stat_statements` knows to exclude it.
+
+## Withdrawing a published figure
+
+A figure that turns out to be unsupported is withdrawn in **two** places, and
+neither half is optional. `results-F7-2026-09-06.md` established the report
+half; #3009 added the machine half, after an audit found three runs whose
+`verdict.txt` still read `VALID` while their findings had been retracted.
+
+**1. The report (the established style).** Leave the original wording readable -
+strike it with `~~...~~` rather than deleting it - and follow it with a
+blockquote note opening `> **WITHDRAWN (<date>).**` that says what is not
+supported, why, what is **not recoverable**, and what replaced it. If the figure
+was a headline, repeat the same four-part note as a blockquote banner at the top
+of the file. Fence the scope explicitly: name what still stands, not only what
+does not. `results-F7-2026-09-06.md` is the worked example of all of this.
+
+**2. The artefact (#3009).** Source `lib.sh` and run:
+
+```bash
+verdict_supersede <run dir> <superseded_by> <reason> [more reasons...]
+```
+
+All three arguments are mandatory and an empty one is refused - a withdrawal
+that names neither a replacement nor a reason is the state this replaced. After
+it, `verdict_read <dir> | head -1` reports `SUPERSEDED` and
+`verdict_quotable <dir>` fails, so every consumer that reads the status sees the
+withdrawal rather than having to be told about it. The original `generatedAt`,
+the guard record, the reasons and the status it used to carry are all preserved
+(`supersedes_status`), so retracting a run loses nothing. An ordinary
+`verdict_write` into a superseded directory is refused outright, so a later
+re-run cannot quietly put `VALID` back; re-superseding is allowed and keeps the
+ORIGINAL status rather than overwriting it with `SUPERSEDED`.
+
+Because `verdict.txt` is in the committed provenance core, the corrected verdict
+is part of the repository - a withdrawal is reviewable in a diff.
+
+**Never record a retraction in a directory name.**
+`run1788650818-unique-TAINTED-runner-was-enabled` did exactly that, and the file
+inside it went on reading `status=VALID`: no reader and no script looks at a
+directory name. That run now carries **three records that disagree** - the
+directory name says the runner was enabled, its own `manifest.json` records
+`"runnerState": "disabled"`, and its verdict said `VALID`. Whichever is right,
+two of the three are wrong, which is precisely why nothing from it may be
+quoted. Rename nothing; supersede the verdict.
 
 ## Agreement arithmetic (`compute_agreement`)
 
@@ -336,7 +471,9 @@ measurement: every `lib.sh` guard, `guard_runner_state disabled` specifically
 (the gate commits real, executable `sync_jobs` rows - with the runner on,
 a burst of routable webhooks becomes that many jobs executing inside the
 measurement window), the three arms, the pg-side sampler, `run_post_guards`,
-and a dated report under `results/results-F3-<date>.md`.
+and a dated report at `perf/openlinker-throughput/results-F3-<date>.md` (beside
+this README, NOT under the partly-ignored `results/` - every dated report in
+this campaign lives here; #3009 corrected this path).
 
 ### The differential probes (P1-P4)
 
@@ -459,7 +596,7 @@ bash scenarios/f2-stock-propagation.sh           # strict measurement
 ```
 
 Three load-bearing findings, each root-caused live rather than assumed -
-see `results/results-F2-*.md` for the full evidence and the exact source
+see `perf/openlinker-throughput/results-F2-*.md` for the full evidence and the exact source
 lines:
 
 - **The PrestaShop webservice cannot fire `actionUpdateQuantity` at all on

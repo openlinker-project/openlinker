@@ -1603,27 +1603,202 @@ post_guard_feed_starved() {
 }
 
 # ---------------------------------------------------------------------------
-# verdict - VALID / DISCARDED + reason, with a documented, machine-parseable
-# schema (--resume parses it, #2845). One `key=value` per line, LF-terminated,
-# no embedded `=` in a key, reason lines may repeat.
+# verdict - VALID / DISCARDED / SUPERSEDED + reasons, with a documented,
+# machine-parseable schema (--resume parses it, #2845). One `key=value` per
+# line, LF-terminated, no embedded `=` in a key, repeatable keys may repeat.
 #
-#   status=VALID|DISCARDED
+#   status=VALID|DISCARDED|SUPERSEDED
 #   generatedAt=<ISO8601>
-#   reason=<free text>            (repeated 0+ times, DISCARDED only)
+#   guard=<post_guard_name>:<ok|failed>   (repeated, once per guard that RAN)
+#   reason=<free text>                    (repeated 0+ times, DISCARDED only)
+#   supersededAt=<ISO8601>                            (SUPERSEDED only)
+#   supersedes_status=<the status it carried before>  (SUPERSEDED only)
+#   superseded_by=<run dir, issue or report>          (SUPERSEDED only)
+#   withdrawn_reason=<free text>          (repeated 1+ times, SUPERSEDED only)
+#
+# Why `guard=` lines exist at all (#3009). A bare `status=VALID` cannot be told
+# apart from a verdict written BEFORE a guard existed.
+# `results/f7-lane-starvation/run1788691274/verdict.txt` is exactly that -
+# `status=VALID`, no reason line, no guard record - for a run whose findings the
+# campaign has since withdrawn, and nothing in the file says which checks it
+# actually passed. `run_post_guards` already computed a per-guard answer and
+# then threw it away.
+#
+# The guard NAMES are recorded, not merely a count: a count of 4 tells a later
+# reader nothing about WHICH four, and the question being asked is "did the
+# check that would have caught this run exist yet?". The count is the number of
+# `guard=` lines and is deliberately NOT written as a field of its own - two
+# spellings of one fact is how a record starts disagreeing with itself.
+#
+# Why SUPERSEDED is a STATUS rather than a field beside the status (#3009). The
+# requirement is that a withdrawn run *cannot read VALID*. Every existing
+# consumer reads the status and only the status - `verdict_read | head -1` backs
+# f3's CSV `verdict` column, f7's log line and f8's `UNKNOWN` fallback - so a
+# withdrawal that left `status=VALID` standing and added a field next to it
+# would be invisible to every one of them. The prior status is preserved as
+# `supersedes_status`, so retracting a run loses nothing.
 # ---------------------------------------------------------------------------
+
+# Per-guard answers from the run `run_post_guards` most recently certified, as
+# "<guard_name>:<ok|failed>", plus the directory they belong to.
+#
+# Scoped to a DIRECTORY rather than global-for-the-process deliberately: a
+# scenario that measures several arms in one shell (f3 does) would otherwise
+# stamp arm 1's guard record onto arm 2's verdict - an instrument that cannot
+# identify its own subject, which is a defect this campaign has already found
+# three times in its own samplers and polls. `verdict_write` uses these only
+# when the directory matches, and falls back to what is already on disk.
+VERDICT_GUARD_RESULTS=()
+VERDICT_GUARD_RESULTS_DIR=""
+
 verdict_write() {
   local dir="$1" status="$2"; shift 2
+  local prior_status=""
+  [ -f "$dir/verdict.txt" ] && \
+    prior_status="$(awk -F= '$1=="status"{print $2; exit}' "$dir/verdict.txt")"
+  # A withdrawal is not something a later write may quietly undo. Putting
+  # `VALID` back on a run whose findings have been retracted is the exact state
+  # #3009 exists to make unreachable, so this refuses loudly rather than
+  # logging and carrying on.
+  if [ "$prior_status" = "SUPERSEDED" ]; then
+    die "refusing to overwrite the SUPERSEDED verdict at $dir/verdict.txt - that would resurrect '$status' on a withdrawn run.
+  A superseded run is final. Measure into a NEW run directory instead."
+  fi
+
+  # A guard answer is an observation about the RUN, not a property of the
+  # verdict, so a later re-write that only downgrades the status (f3's non-2xx
+  # ratio check does exactly this, reading the prior reasons back and
+  # re-passing them) must not erase the guard record on its way past.
+  local guard_lines=() g
+  if [ "${#VERDICT_GUARD_RESULTS[@]}" -gt 0 ] && [ "$VERDICT_GUARD_RESULTS_DIR" = "$dir" ]; then
+    guard_lines=("${VERDICT_GUARD_RESULTS[@]}")
+  elif [ -f "$dir/verdict.txt" ]; then
+    while IFS= read -r g; do
+      [ -n "$g" ] && guard_lines+=("$g")
+    done < <(awk -F= '$1=="guard"{ $1=""; print substr($0,2) }' "$dir/verdict.txt")
+  fi
+
   {
     printf 'status=%s\n' "$status"
     printf 'generatedAt=%s\n' "$(iso_now)"
+    if [ "${#guard_lines[@]}" -gt 0 ]; then
+      for g in "${guard_lines[@]}"; do printf 'guard=%s\n' "$g"; done
+    fi
     local r
     for r in "$@"; do printf 'reason=%s\n' "$r"; done
   } > "$dir/verdict.txt"
   log "verdict: $status ($dir/verdict.txt)"
 }
 
-# Echoes VALID or DISCARDED; reasons print to stdout on subsequent lines
-# (caller can `verdict_read "$dir" | tail -n +2` for just the reasons).
+# verdict_supersede <dir> <superseded_by> <reason> [reason...]
+#
+# Retracts a run. The verdict stops reading VALID (or DISCARDED) and starts
+# reading SUPERSEDED, while keeping every fact the original recorded: its
+# original `generatedAt`, its guard record, its reasons, and the status it used
+# to carry.
+#
+# All three arguments are MANDATORY and an empty one is refused. A withdrawal
+# that names neither a replacement nor a reason is the state this function
+# exists to remove: `run1788650818-unique-TAINTED-runner-was-enabled` encoded
+# its own retraction in a DIRECTORY NAME, where no reader and no script would
+# ever think to look, while the file inside it went on reading `status=VALID`.
+#
+# See README "Withdrawing a published figure" for when to reach for this. The
+# report-side half of a withdrawal is not optional; this is only its
+# machine-readable counterpart.
+verdict_supersede() {
+  if [ "$#" -lt 3 ]; then
+    die "usage: verdict_supersede <dir> <superseded_by> <reason> [reason...]
+  All three are mandatory. 'superseded_by' is the run directory, issue number or
+  report that replaces this run; without it a reader has nowhere to go. A reason
+  is what stops 'status=SUPERSEDED' being as unreadable as the 'status=VALID' it
+  replaces."
+  fi
+  local dir="$1" superseded_by="$2"; shift 2
+  [ -f "$dir/verdict.txt" ] || die \
+"no verdict.txt at $dir - nothing to supersede.
+  A run with no verdict was never certified, so there is no VALID to retract.
+  verdict_read reports MISSING for such a directory, which is already not VALID."
+  [ -n "$superseded_by" ] || die \
+"verdict_supersede was given an empty superseded_by for $dir.
+  Name the run directory, issue or report that replaces this run."
+  local have_reason=0 r
+  for r in "$@"; do [ -n "$r" ] && have_reason=1; done
+  [ "$have_reason" = "1" ] || die \
+"verdict_supersede was given no non-empty withdrawal reason for $dir.
+  'status=SUPERSEDED' with no reason repeats the defect it is meant to fix."
+
+  local prior_status generated_at supersedes_status
+  prior_status="$(awk -F= '$1=="status"{print $2; exit}' "$dir/verdict.txt")"
+  generated_at="$(awk -F= '$1=="generatedAt"{ $1=""; print substr($0,2); exit }' "$dir/verdict.txt")"
+  # Re-superseding (a corrected reason, a different replacement) must NOT
+  # overwrite the original status with "SUPERSEDED" - what the run once claimed
+  # is the one fact the audit trail exists to keep.
+  supersedes_status="$prior_status"
+  if [ "$prior_status" = "SUPERSEDED" ]; then
+    supersedes_status="$(awk -F= '$1=="supersedes_status"{print $2; exit}' "$dir/verdict.txt")"
+  fi
+
+  # Every carried-forward line is read BEFORE the redirect below truncates the
+  # file being read from.
+  local guard_lines=() reason_lines=() line
+  while IFS= read -r line; do
+    [ -n "$line" ] && guard_lines+=("$line")
+  done < <(awk -F= '$1=="guard"{ $1=""; print substr($0,2) }' "$dir/verdict.txt")
+  while IFS= read -r line; do
+    [ -n "$line" ] && reason_lines+=("$line")
+  done < <(awk -F= '$1=="reason"{ $1=""; print substr($0,2) }' "$dir/verdict.txt")
+
+  {
+    printf 'status=SUPERSEDED\n'
+    printf 'generatedAt=%s\n' "${generated_at:-unknown}"
+    printf 'supersededAt=%s\n' "$(iso_now)"
+    printf 'supersedes_status=%s\n' "${supersedes_status:-unknown}"
+    printf 'superseded_by=%s\n' "$superseded_by"
+    for line in "$@"; do
+      [ -n "$line" ] && printf 'withdrawn_reason=%s\n' "$line"
+    done
+    if [ "${#guard_lines[@]}" -gt 0 ]; then
+      for line in "${guard_lines[@]}"; do printf 'guard=%s\n' "$line"; done
+    fi
+    if [ "${#reason_lines[@]}" -gt 0 ]; then
+      for line in "${reason_lines[@]}"; do printf 'reason=%s\n' "$line"; done
+    fi
+  } > "$dir/verdict.txt"
+  log "verdict: SUPERSEDED (was ${supersedes_status:-unknown}) by $superseded_by ($dir/verdict.txt)"
+}
+
+# verdict_quotable <dir> - exits 0 only when this run's figures may be quoted.
+#
+# The question every consumer of a results directory actually asks, answered in
+# one place. VALID is the ONLY quotable status: DISCARDED failed a guard and
+# SUPERSEDED has been withdrawn - and both have been quoted anyway in this
+# campaign's own history, which is why the test is worth having as code rather
+# than as a convention (#2933's ~600/s was published as a ceiling off runs
+# today's guard chain discards).
+#
+# A MISSING verdict is not quotable either. An uncertified run is not a passing
+# one.
+#
+# Reads the status DIRECTLY rather than through `verdict_read | head -1`: that
+# pipeline SIGPIPEs verdict_read's second awk the moment head exits, so under
+# `pipefail` a verdict that HAS reason lines makes the pipeline non-zero even
+# though the read succeeded - and f5-read-path writes an informational reason
+# on a VALID verdict, so that shape exists in this very campaign.
+verdict_quotable() {
+  local dir="$1" status
+  [ -f "$dir/verdict.txt" ] || return 1
+  status="$(awk -F= '$1=="status"{print $2; exit}' "$dir/verdict.txt")"
+  [ "$status" = "VALID" ]
+}
+
+# Echoes VALID, DISCARDED or SUPERSEDED; reasons print to stdout on subsequent
+# lines (caller can `verdict_read "$dir" | tail -n +2` for just the reasons).
+#
+# Deliberately unchanged in SHAPE by #3009: it still emits the status followed
+# by `reason=` lines only. f3 reads this output back and re-passes those lines
+# as reasons to verdict_write, so folding `guard=` or `withdrawn_reason=` lines
+# into it would silently turn them into reasons on the next re-write.
 verdict_read() {
   local dir="$1"
   [ -f "$dir/verdict.txt" ] || { echo "MISSING"; return 1; }
@@ -1631,9 +1806,30 @@ verdict_read() {
   awk -F= '$1=="reason"{ $1=""; print substr($0,2) }' "$dir/verdict.txt"
 }
 
+# Runs one post-guard and records BOTH its name and its answer.
+#
+# The name and the answer are captured in the same call on purpose. The obvious
+# alternative - a hardcoded list of names beside the hardcoded list of calls -
+# is two lists that must stay in the same order, and a campaign that has already
+# shipped a guard reading logs in a format that matched nothing does not need a
+# ninth way to report a check it did not run. Here the recorded name IS the
+# function that was invoked, so a `guard=` line cannot name a guard that never
+# ran, and adding a guard cannot forget to register it.
+_post_guard_run() {
+  local name="$1"; shift
+  local answer
+  answer="$("$name" "$@")"
+  POST_GUARD_ANSWERS+=("$answer")
+  case "$answer" in
+    ok) VERDICT_GUARD_RESULTS+=("$name:ok") ;;
+    *)  VERDICT_GUARD_RESULTS+=("$name:failed") ;;
+  esac
+}
+
 # run_post_guards <dir> <conn_ids_csv> <window_start_iso> <window_start_epoch> <window_stop_epoch> [destination_conn_id]
 # Runs every post-guard and writes verdict.txt: VALID if every one answered
-# "ok", DISCARDED with every non-"ok" reason otherwise.
+# "ok", DISCARDED with every non-"ok" reason otherwise. Either way the verdict
+# records WHICH guards ran and what each answered (#3009).
 # `k6_summary` is optional and its ABSENCE is meaningful: pass the path for any
 # scenario that drives a load generator, and leave it empty only for one that
 # genuinely has none (F2). Omitting it for a k6 scenario silently skips the
@@ -1648,21 +1844,24 @@ verdict_read() {
 # deliberately runs the system dry between samples.
 run_post_guards() {
   local dir="$1" conn_ids="$2" ws_iso="$3" ws_epoch="$4" we_epoch="$5" dest="${6:-}" k6_summary="${7:-}" k6_executor="${8:-ramping-arrival-rate}" min_available_work="${9:-}"
-  local results=() r
-  results+=("$(post_guard_attempts "$conn_ids" "$ws_iso")")
-  results+=("$(post_guard_deferrals "$conn_ids" "$ws_iso")")
-  results+=("$(post_guard_requeues "$conn_ids")")
-  results+=("$(post_guard_destination_creates "$ws_iso" "$dest")")
-  results+=("$(post_guard_limiter_degraded "$ws_epoch" "$we_epoch")")
+  local r
+  POST_GUARD_ANSWERS=()
+  VERDICT_GUARD_RESULTS=()
+  VERDICT_GUARD_RESULTS_DIR="$dir"
+  _post_guard_run post_guard_attempts "$conn_ids" "$ws_iso"
+  _post_guard_run post_guard_deferrals "$conn_ids" "$ws_iso"
+  _post_guard_run post_guard_requeues "$conn_ids"
+  _post_guard_run post_guard_destination_creates "$ws_iso" "$dest"
+  _post_guard_run post_guard_limiter_degraded "$ws_epoch" "$we_epoch"
   # Runs alongside the others rather than first: every guard's answer is worth
   # having, and a reader needs to see WHICH of them a mid-window recreate
   # coincided with.
-  results+=("$(post_guard_containers_stable "$dir")")
-  results+=("$(post_guard_generator_saturated "$k6_summary" "$k6_executor")")
-  results+=("$(post_guard_feed_starved "$min_available_work")")
+  _post_guard_run post_guard_containers_stable "$dir"
+  _post_guard_run post_guard_generator_saturated "$k6_summary" "$k6_executor"
+  _post_guard_run post_guard_feed_starved "$min_available_work"
 
   local reasons=()
-  for r in "${results[@]}"; do
+  for r in "${POST_GUARD_ANSWERS[@]}"; do
     [ "$r" = "ok" ] || reasons+=("$r")
   done
   if [ "${#reasons[@]}" -eq 0 ]; then
