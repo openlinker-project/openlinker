@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (16 realtime / 27 bulk / 5 fiscal / 7 fan-out across 55 job types —
+ * table (16 realtime / 28 bulk / 5 fiscal / 7 fan-out across 56 job types —
  * `fiscalization.register` joined `fiscal` post-ADR, #2156;
  * `inventory.provenance.backfill` joined `bulk` with #2317; the three returns
  * types joined realtime/bulk/fan-out with #2330; `returns.orphan.reconcile`
@@ -52,9 +52,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 55 job types 16/27/5/7 per ADR-050 decision 1', () => {
-    // 16: the THREE fulfilment job types are all `realtime` by
-    // cost-of-starvation.
+  it('should partition the 56 job types 16/28/5/7 per ADR-050 decision 1', () => {
+    // 16: three of the FOUR fulfilment job types are `realtime` by
+    // cost-of-starvation. The fourth, #2712's
+    // `fulfillment.work.timeoutSweep`, is deliberately NOT — see the `bulk`
+    // block below. Stated as a count rather than "all of them" because the
+    // rule is per job type, and a blanket claim about the family is what
+    // would make the next fulfilment sweep look like it belonged here.
     //
     // #2395's `fulfillment.work.route` decides whether an order ships AT ALL,
     // so starving it behind a catalogue sweep delays every order's fulfilment.
@@ -92,8 +96,17 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // #2621's `marketplace.offerQuantity.reconcile` is the twenty-sixth - a
     // scan-style pass over adapter-internal pending state, the same profile,
     // and #2468's `analytics.currency.recalculate` (the Data Coverage
-    // currency-restatement driver) is the twenty-seventh.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(27);
+    // currency-restatement driver) is the twenty-seventh. #2712's
+    // `fulfillment.work.timeoutSweep` is the twenty-eighth, and fits that one
+    // profile exactly: it reaps `submitted` fulfilment work whose holder never
+    // answered, so its subject is work ALREADY STALLED BY DEFINITION — nobody
+    // is waiting on it, and one more tick of delay on a dispatch silent for
+    // hours is immaterial. It is the first `fulfillment.work.*` type NOT in
+    // `realtime`, which is the rule working rather than an exception to it: a
+    // dispatch and a route are outbound acts an order waits on, and letting a
+    // reaper take a slot from an actual dispatch is the wrong trade in the one
+    // direction that costs a shipment.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(28);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });

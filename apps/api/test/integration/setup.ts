@@ -267,6 +267,14 @@ const harness = createIntegrationTestHarness({
     // migration-only, so the closure walk cannot reach it. Found the hard way —
     // a verification written by one case was still counted by the next.
     'fulfillment_work_verifications',
+    // fulfillment_work_rejections (#2399) — the append-only exclusion ledger.
+    // Same migration-only FK as every neighbour above, so the closure walk
+    // cannot reach it either. Listed with #2712, whose timeout sweep is the
+    // first thing to write rejection rows from a pass over the WHOLE table:
+    // until then only a per-work read existed, so leftovers were invisible.
+    // A future spec counting rejections unscoped would otherwise see another
+    // case's rows — the way `fulfillment_work_verifications` was found.
+    'fulfillment_work_rejections',
     'fulfillment_works',
     // routing_decisions (#2394) — the routing INTENT row. Carries no FK at all
     // (both its references are cross-aggregate by value), so nothing cascades

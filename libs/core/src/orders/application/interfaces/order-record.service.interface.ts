@@ -21,6 +21,10 @@ import type {
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type {
+  AuthorityAttentionOutcome,
+  AuthorityAttentionProducer,
+} from '@openlinker/core/fulfillment-authority';
+import type {
   SalesDocumentBlock,
   SalesDocumentMarketDiscovery,
 } from '@openlinker/core/sales-documents';
@@ -267,6 +271,35 @@ export interface IOrderRecordService {
   markFulfillmentBlock(
     internalOrderId: string,
     block: FulfillmentBlock | null
+  ): Promise<void>;
+
+  /**
+   * Set — or clear — ONE producer's OMS inert state on this order (#2352,
+   * first production writer #2712).
+   *
+   * The THIRD instance of the report-then-write one-way edge this interface
+   * already carries, and named `mark*` for the same reason as its two
+   * neighbours: the reporting context REPORTS, `orders` WRITES, and the
+   * repository method it delegates to is `updateOmsAttention`. Here the
+   * reporter is `fulfillment`, a registered zero-sibling-edge leaf that
+   * `scripts/check-no-injection-contracts.mjs` forbids from injecting an
+   * `orders` service at all — so the sweep returns intents and the worker
+   * handler calls this.
+   *
+   * **Producer-scoped, unlike its two neighbours' whole-row `T | null`.** Three
+   * unrelated subsystems write `omsAttention` and an order can genuinely carry
+   * two states at once, so a producer's "nothing is wrong" must clear only its
+   * OWN entry; a level-triggered scalar would make the count depend on which
+   * subsystem ran last.
+   *
+   * **`indeterminate` is a third outcome, never a clear.** It leaves the stored
+   * entry untouched, because clearing on a transient failure erases a true
+   * reason and replaces it with silence (#2100).
+   */
+  markOmsAttention<P extends AuthorityAttentionProducer>(
+    internalOrderId: string,
+    producer: P,
+    outcome: AuthorityAttentionOutcome<P>
   ): Promise<void>;
 
   /**

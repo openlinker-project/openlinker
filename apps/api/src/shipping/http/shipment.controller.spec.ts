@@ -145,6 +145,7 @@ describe('ShipmentController', () => {
       getTopProducts: jest.fn(),
       findDispatchDeadlineCandidates: jest.fn(),
       countOrdersWithOmsAttention: jest.fn(),
+      markOmsAttention: jest.fn(),
       getTopProductVariantSales: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
       getCurrencyMismatchOrders: jest.fn(),

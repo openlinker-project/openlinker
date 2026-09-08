@@ -18,7 +18,7 @@
  * | `locationId` / `deliveryMethod` | `create` | **insert-only** — the router is the single producer. If re-routing mints a NEW row these are never updated; if it ever updates in place, a round-trip from a stale read would silently revert the re-route. Insert-only forces #2395 to choose explicitly |
  * | `assignedConnectionId` | `create`, `assignHolder`, `clearHolder` | settable at insert (ADR-054 R1 creates work ALREADY ASSIGNED, in one transaction); afterwards only the two narrow claims move it |
  * | `status` | `create`, `transitionStatus`, `cancel` | |
- * | `requestStatus` | `create`, `transitionRequestStatus`, `claimDispatchAttempt`, `recordAcceptance`, `recordRejection` | the handshake (#2399) owns it; the router holds a stale copy by construction. A NAMED additional writer is this table's convention (`status` and `assignedConnectionId` each already list three); an UNNAMED one is the defect it guards against |
+ * | `requestStatus` | `create`, `transitionRequestStatus`, `claimDispatchAttempt`, `recordAcceptance`, `recordRejection` | the handshake (#2399) owns it; the router holds a stale copy by construction. A NAMED additional writer is this table's convention (`status` and `assignedConnectionId` each already list three); an UNNAMED one is the defect it guards against. **#2712's timeout sweep adds NO writer here** — it reaps THROUGH `recordRejection`, deliberately, so the guarded `submitted -> rejected` transition and the rejection row stay one statement pair with one owner |
  * | `assignmentAttempt` | `claimDispatchAttempt` (#2399) | monotonic; a round-trip would reset the idempotency key's stability. #2392's `incrementAssignmentAttempt` is REPLACED, not supplemented: its `WHERE` was `"id" = :id` alone, so any caller could bump the counter out from under a live `submitted` dispatch and invalidate an in-flight key |
  * | `acceptedAt` / `externalWorkId` | `recordAcceptance` (#2399) | ADR-054's at-most-once acceptance CLAIM (`WHERE "acceptedAt" IS NULL`); round-tripping a `null` would re-open the claim |
  * | `dispatchRelayedAt` | `claimDispatchRelay`, `releaseDispatchRelay` (#2401) | at-most-once marker; round-tripping a `null` re-opens the relay. The release is a NAMED second writer — this table's convention (`status` and `requestStatus` each list several); it is the unnamed writer that is the defect |
@@ -58,7 +58,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, IsNull, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, In, IsNull, LessThan, QueryFailedError, Repository } from 'typeorm';
 import type { EntityManager, UpdateQueryBuilder } from 'typeorm';
 
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
@@ -78,6 +78,7 @@ import type {
   CreateFulfillmentWorkInput,
   FulfillmentWorkRepositoryPort,
   FulfillmentWorkTransaction,
+  ListTimedOutDispatchesInput,
   ParcelVerifiedCount,
   PlaceFulfillmentHoldInput,
   RecordFulfillmentAcceptanceInput,
@@ -87,6 +88,7 @@ import type {
   ReleaseFulfillmentHoldInput,
   ReopenParcelWriteInput,
   SetFulfillmentWorkExpeditedInput,
+  TimedOutFulfillmentDispatch,
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
 } from '../../../domain/ports/fulfillment-work-repository.port';
@@ -435,7 +437,7 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     // holder on the strength of an answer another writer had already superseded.
     try {
       return await this.dataSource.transaction(async (em) => {
-        const result = await em
+        const update = em
           .createQueryBuilder()
           .update(FulfillmentWorkOrmEntity)
           .set({
@@ -443,8 +445,19 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
             version: () => '"version" + 1',
           })
           .where('"id" = :id', { id: input.workId })
-          .andWhere('"requestStatus" = :from', { from: 'submitted' })
-          .execute();
+          .andWhere('"requestStatus" = :from', { from: 'submitted' });
+
+        // #2712: a DELAYED actor (the timeout sweep) additionally pins the
+        // attempt it read, so a row that left and re-entered `submitted` in the
+        // window is not rejected under an attempt that is no longer live. Absent
+        // for the handshake, whose claim IS the attempt.
+        if (input.expectedAssignmentAttempt !== undefined) {
+          update.andWhere('"assignmentAttempt" = :expectedAssignmentAttempt', {
+            expectedAssignmentAttempt: input.expectedAssignmentAttempt,
+          });
+        }
+
+        const result = await update.execute();
 
         if ((result.affected ?? 0) === 0) return false;
 
@@ -463,6 +476,36 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       });
     } catch (error) {
       throw new FulfillmentPersistenceError('recordRejection', error);
+    }
+  }
+
+  async listTimedOutDispatches(
+    input: ListTimedOutDispatchesInput
+  ): Promise<TimedOutFulfillmentDispatch[]> {
+    try {
+      // Header columns only — no line join. The sweep reaps through
+      // `recordRejection`, which needs four scalars; see the port's
+      // `TimedOutFulfillmentDispatch` for why `listWorks` is not extended.
+      const rows = await this.works.find({
+        select: ['id', 'orderId', 'assignedConnectionId', 'assignmentAttempt', 'updatedAt'],
+        where: {
+          requestStatus: 'submitted' satisfies FulfillmentRequestStatus,
+          updatedAt: LessThan(input.idleBefore),
+        },
+        // Oldest-idle first, matching `IDX_fulfillment_works_request_status`.
+        order: { updatedAt: 'ASC' },
+        take: input.limit,
+      });
+
+      return rows.map((row) => ({
+        workId: row.id,
+        orderId: row.orderId,
+        assignedConnectionId: row.assignedConnectionId,
+        assignmentAttempt: row.assignmentAttempt,
+        idleSince: row.updatedAt,
+      }));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listTimedOutDispatches', error);
     }
   }
 

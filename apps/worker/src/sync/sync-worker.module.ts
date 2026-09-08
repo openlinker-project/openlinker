@@ -78,6 +78,7 @@ import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
 import { PendingRecoveryHandler } from './handlers/pending-recovery.handler';
 import { FulfillmentWorkDispatchHandler } from './handlers/fulfillment-work-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.handler';
+import { FulfillmentWorkTimeoutSweepHandler } from './handlers/fulfillment-work-timeout-sweep.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
 import { AnalyticsCurrencyRecalculateHandler } from './handlers/analytics-currency-recalculate.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
@@ -164,6 +165,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     PaymentStatusRefreshHandler,
     FulfillmentWorkDispatchHandler,
     FulfillmentWorkRouteHandler,
+    FulfillmentWorkTimeoutSweepHandler,
     HandlerRegistrationService,
   ],
 })

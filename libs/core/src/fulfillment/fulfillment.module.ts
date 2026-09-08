@@ -24,12 +24,14 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { FulfillmentDispatchTimeoutService } from './application/services/fulfillment-dispatch-timeout.service';
 import { FulfillmentHandshakeService } from './application/services/fulfillment-handshake.service';
 import { FulfillmentProgressService } from './application/services/fulfillment-progress.service';
 import { FulfillmentRelayGateService } from './application/services/fulfillment-relay-gate.service';
 import { FulfillmentVerificationService } from './application/services/fulfillment-verification.service';
 import { RoutingCommitService } from './application/services/routing-commit.service';
 import {
+  FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN,
   FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
   FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN,
   FULFILLMENT_PROGRESS_SERVICE_TOKEN,
@@ -71,6 +73,11 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     { provide: FULFILLMENT_WORK_REPOSITORY_TOKEN, useExisting: FulfillmentWorkRepository },
     FulfillmentHandshakeService,
     { provide: FULFILLMENT_HANDSHAKE_SERVICE_TOKEN, useExisting: FulfillmentHandshakeService },
+    FulfillmentDispatchTimeoutService,
+    {
+      provide: FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN,
+      useExisting: FulfillmentDispatchTimeoutService,
+    },
     FulfillmentProgressClaimRepository,
     {
       provide: FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN,
@@ -100,6 +107,9 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
   exports: [
     FULFILLMENT_WORK_REPOSITORY_TOKEN,
     FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
+    // Exported for the worker's timeout sweep (#2712), which reaches the
+    // aggregate through this interface and never through the repository port.
+    FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN,
     FULFILLMENT_PROGRESS_SERVICE_TOKEN,
     FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
     ROUTING_DECISION_REPOSITORY_TOKEN,

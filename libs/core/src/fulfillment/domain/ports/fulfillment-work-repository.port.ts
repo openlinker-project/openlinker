@@ -257,6 +257,76 @@ export interface RecordFulfillmentRejectionInput {
   readonly detail: string | null;
   /** OL's observation instant — this one IS ours, unlike `acceptedAt`. */
   readonly rejectedAt: Date;
+  /**
+   * Attempt-scoping precondition (#2712). When present the conditional UPDATE
+   * additionally carries `"assignmentAttempt" = :expectedAssignmentAttempt`.
+   *
+   * **Optional and NEW** — this input carried `assignmentAttempt` alone before
+   * #2712 — so the handshake (#2399) stays byte-identical by omitting it. The
+   * object shape is what makes that purely additive, exactly as this port's
+   * header reserved for `expectedVersion`.
+   *
+   * The timeout sweep passes it because it is a DELAYED actor by definition: it
+   * reads a page, then writes. A work sitting at `submitted` cannot have its
+   * counter moved by the shipped dispatch path — `claimDispatchAttempt` takes
+   * its precondition as an argument and the handshake's `CLAIMABLE_FROM` is
+   * `['unsubmitted','rejected']`, so `submitted` is not claimable — but that is
+   * a property of ONE caller's argument, not of the method, which is exactly
+   * why the sweep does not rely on it. A row that left and re-entered
+   * `submitted` inside the window would otherwise take a rejection naming an
+   * attempt that is no longer live: the same hazard #2399's `claimOrResume`
+   * refuses by comparing the expected attempt.
+   */
+  readonly expectedAssignmentAttempt?: number;
+}
+
+/**
+ * One `submitted` work whose holder has not answered (#2712, ADR-054).
+ *
+ * A NARROW PROJECTION, not the aggregate: the sweep reaps through
+ * `recordRejection`, which needs four scalars, so hydrating lines and holds for
+ * every candidate would be a join for nothing on a pass that exists to be cheap.
+ *
+ * **`listWorks` is deliberately not extended to serve this.** It already filters
+ * `requestStatus[]`, which makes widening it the obvious move and the wrong one:
+ * it backs the operator worklist (#2406), returns a hydrated
+ * `FulfillmentWorkPage`, and its `FulfillmentWorkListFilter` is an
+ * operator-API-facing type whose `orderBy` offers only
+ * `createdAt_DESC | createdAt_ASC`. Adding an idle cutoff and an
+ * `updatedAt_ASC` ordering would widen an operator's filter vocabulary with an
+ * axis no operator uses.
+ */
+export interface TimedOutFulfillmentDispatch {
+  readonly workId: string;
+  readonly orderId: string;
+  /**
+   * The holder that was offered the work. `null` is not reachable through the
+   * dispatch path (`FulfillmentHandshakeService` throws
+   * `FulfillmentWorkUnassignedError` before claiming), but the column is
+   * nullable, so the sweep SKIPS such a row rather than writing a rejection that
+   * names nobody — a rejection that does not say who excludes nobody.
+   */
+  readonly assignedConnectionId: string | null;
+  readonly assignmentAttempt: number;
+  /** The row's `updatedAt` — see {@link ListTimedOutDispatchesInput.idleBefore}. */
+  readonly idleSince: Date;
+}
+
+export interface ListTimedOutDispatchesInput {
+  /**
+   * Reap works whose `updatedAt` is strictly older than this.
+   *
+   * **The clock is "IDLE SINCE", not "submitted since", and the distinction is
+   * stated rather than papered over.** `updatedAt` moves on any applied write
+   * (`recordLineProgress` writes it explicitly), so a work something is actively
+   * touching resets its own clock. That is the SAFE direction: it can only ever
+   * DELAY a reap, never accelerate one, and a work a holder is reporting
+   * progress on is precisely one that should not be reaped. A dedicated
+   * `submittedAt` column would be more literal and would cost a migration for a
+   * strictly worse failure direction.
+   */
+  readonly idleBefore: Date;
+  readonly limit: number;
 }
 
 /**
@@ -417,6 +487,21 @@ export interface FulfillmentWorkRepositoryPort {
    * are different assertions and each is pinned by its own spec.
    */
   recordRejection(input: RecordFulfillmentRejectionInput): Promise<boolean>;
+
+  /**
+   * One page of `submitted` works nobody has answered for, oldest-idle first.
+   *
+   * Ordered `updatedAt ASC` so the longest-stalled work is reaped first — the
+   * fairness rule `inventory.reservations.expire` (#2346) uses — and matching
+   * `IDX_fulfillment_works_request_status` (`['requestStatus','updatedAt']`),
+   * which #2392 created for this sweep by name.
+   *
+   * Scans EVERY connection: a stalled dispatch is a stalled dispatch whoever
+   * holds it, and the index carries no connection axis.
+   */
+  listTimedOutDispatches(
+    input: ListTimedOutDispatchesInput
+  ): Promise<TimedOutFulfillmentDispatch[]>;
 
   /**
    * The holders excluded from re-sourcing this work, most recent first.
