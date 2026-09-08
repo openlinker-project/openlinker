@@ -429,6 +429,134 @@ the window, and the baseline's authoritative count was 1454.
 
 TBD.
 
-## 7. Reproducing it
+## 7. Arm C: a window built to DRAIN - pre-registered before it opened
+
+> Everything in § 7 was written and committed **before arm C's window
+> opened**. Its results appear in § 7.5 and nowhere above.
+
+### 7.1 Why a third arm, and why it is not a re-run
+
+Arms A and B (baseline and fixed) both offer **3 600 orders/h against a
+~200/h ceiling**, and the scenario's own header says that rate is chosen to
+saturate. Meanwhile `post_guard_destination_creates`,
+`post_guard_attempts` and `post_guard_deferrals` all assume the window
+**drained**.
+
+Those two facts are incompatible. **That scenario can never return `VALID`,
+however healthy the system is** - not because anything is broken, but because
+the load shape and the guards disagree about what the window is for. It is a
+scenario-versus-guard mismatch, and its consequence is that the campaign
+currently has **no instrument capable of producing a valid order-path figure
+at all**. All four F1 runs are `DISCARDED` and #2847 has withdrawn their 66 s
+and 182-295 orders/h figures.
+
+Arm C exists to close that gap: offer *below* the ceiling so the window
+provably drains, and see whether the guards then pass.
+
+### 7.2 Design, and one constraint that forced a deviation
+
+Every variable is held at arms A and B's value except the offered rate, and
+the fault is switched off (`MIXED_FAULT_AT_SECS=0`, which the scenario skips
+on a `-gt 0` gate, so no edit is needed). A dependency fault guarantees a
+backlog and would reintroduce exactly the non-drainage the guards refuse;
+#2978 and arm B already cover fault behaviour.
+
+**The requested 150 orders/h is not expressible, and I did not round toward
+the ceiling.** `MIXED_ORDERS_PER_MIN` is passed straight to `of_push_orders`
+as an integer count per one-minute tick (`sustained-mixed-load.sh:829-830`),
+so the reachable rates are 60, 120, 180, 240 orders/h. 150 would be 2.5/min.
+
+| Option | Offered | Headroom under A's 200.6/h completed |
+|---|---|---|
+| `3`/min | 180/h | 10% |
+| **`2`/min** | **120/h** | **40%** |
+
+I chose **`2`/min = 120 orders/h**. 180/h leaves 10% headroom, which makes
+drainage a coin flip - the precise thing the instruction warned against by
+saying not to offer at the ceiling. 120/h over-delivers on "below the ceiling,
+not at it" rather than under-delivering on it, and it is robust to arm B's
+result in both directions: if the fix raised the ceiling, the headroom is
+wider still; if it did not, 40% is ample.
+
+`MIXED_PRIME_ORDERS` defaults to the offered rate, so the stub is primed with
+**2** orders rather than 60 - no artificial starting backlog, which matters for
+a convergence test.
+
+### 7.3 Acceptance criteria, pre-registered
+
+Two criteria at two grains, both declared now so neither can be selected after
+the fact.
+
+**C1 - PRIMARY, aggregate convergence.** `drivers/queue-curve.awk`'s
+last-third verdict over `g_queued_due` must be `plateau` or `converging`.
+`growing` is a **reject**. The awk decides on the last-third least-squares
+slope against a noise band of the tail's own standard deviation, so `plateau`
+means the slope is not distinguishable from jitter - which is the correct
+reading of "statistically indistinguishable from zero".
+
+**C2 - PRIMARY, depth.** `g_queued_due` at the last sample must be **no
+greater than** at the first sample.
+
+**C3 - the order path on its own, un-confounded.** `ord_sync_queued` at close
+no greater than at open, and `ord_sync_succeeded` over the window at least
+**95%** of orders offered.
+
+**Reject means reject.** If C1 comes back `growing`, arm C did not converge and
+that is what gets reported. I will not re-run at a lower rate to manufacture a
+pass, and I will not move a criterion after reading it.
+
+### 7.4 Two things I expect to go wrong, named in advance
+
+**(a) The aggregate queue may fail to converge for reasons that have nothing
+to do with orders.** `g_queued_due` is install-wide across every job type. At
+arm A's close, ~1 090 of ~12 800 queued rows were **not** order-sync:
+`marketplace.offerQuantity.update` 504, `master.inventory.syncByExternalId`
+366, `marketplace.offerQuantity.reconcile` 180,
+`marketplace.offer.updateFields` 41. Those come from the catalogue and
+inventory sweeps, whose enqueue rate is set by their crons and is
+**independent of the offered order rate**. Arm A's own numbers show
+`master.inventory.syncByExternalId` enqueuing ~217/h and draining ~95/h by
+itself.
+
+So C1 may fail while the order path is perfectly healthy. If that happens I
+will decompose the residue by job type, report which types carry it, and treat
+a non-order residue as **a separate finding about the sweeps** - not as a
+failure of the order path, and **not** as grounds to retro-fit C1 to exclude
+those types. C3 exists precisely so the order path gets a verdict that cannot
+be confounded this way. Both criteria are reported whichever way each lands.
+
+**(b) `post_guard_destination_creates` will very likely fire even on a
+perfectly draining window, and that is a defect in the guard.** Its `failed`
+arm carries **no destination filter at all**:
+
+```sql
+SELECT COUNT(*) FROM order_records
+WHERE "createdAt" >= '$window_start_iso'
+  AND EXISTS (SELECT 1 FROM jsonb_array_elements("syncStatus") e
+              WHERE e->>'status' = 'failed')
+```
+
+It counts an order with a failed entry on **any** destination, while the
+guard's message calls it "the declared destination". The stand's five
+connections include WooCommerce, which has no product mappings for the seeded
+catalogue and therefore fails **every** order with
+`No WC product mapping for OL product ...`. Arm A's § 7 shows the shape
+exactly: **652 ingested, 649 with `syncedAt` on the declared destination, 650
+carrying a failed entry.** Nearly every order both succeeded on the
+destination under test and carried an unrelated second-destination failure.
+
+So this guard reports non-drainage for a condition that is not non-drainage
+and cannot be drained away, and it will do so at 120 orders/h just as at
+3 600. **I will not disable the WooCommerce connection to make it pass** - that
+would change a held variable and hide the defect. If it fires, it is reported
+as a guard defect with this SQL as the evidence, in the same class as § 1.3.1's
+two instrument failures: a guard that refuses a healthy window is worse than no
+guard.
+
+### 7.5 Results
+
+TBD.
+
+## 8. Reproducing it
 
 TBD.
