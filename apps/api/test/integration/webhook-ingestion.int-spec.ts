@@ -6,10 +6,16 @@
  * commits the `webhook_deliveries` row and the `sync_jobs` work row together.
  * Redis is asserted to be OUT of the durable path — no `jobs.sync` stream
  * entry, no `jobdedup:*` key, and a wiped Redis neither loses a webhook nor
- * lets a redelivery double-enqueue. The one-shot `LegacyInboundWebhookDrain`
- * is exercised against a seeded pre-upgrade backlog. (The Redis-hard-down
- * ingress case is unit-covered in `webhook.service.spec.ts` — stopping the
- * shared Testcontainer here would poison sibling suites.)
+ * lets a redelivery double-enqueue. (The Redis-hard-down ingress case is
+ * unit-covered in `webhook.service.spec.ts` — stopping the shared
+ * Testcontainer here would poison sibling suites.)
+ *
+ * The one-shot `LegacyInboundWebhookDrain` block was removed with the drain
+ * itself in #2300. Its sibling assertion below — that the live path publishes
+ * nothing to `events.inbound.webhooks` — is deliberately RETAINED: it is the
+ * only runtime proof that ingress does not revive the retired stream, and
+ * `EventPublisherPort.publish` takes a plain `string`, so a revival would not
+ * be a compile error.
  *
  * @module apps/api/test/integration
  */
@@ -17,13 +23,12 @@ import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import { IntegrationTestHarness } from './setup';
 import { createTestConnection } from './helpers/test-connection.helper';
 import type { EntityManager } from 'typeorm';
-import { LegacyInboundWebhookDrain } from '../../src/webhooks/application/handlers/legacy-inbound-webhook-drain';
 import type { IWebhookJobGateService } from '../../src/webhooks/application/interfaces/webhook-job-gate.service.interface';
 import { WEBHOOK_JOB_GATE_SERVICE_TOKEN } from '../../src/webhooks/application/interfaces/webhook-job-gate.service.interface';
 import * as crypto from 'crypto';
 
-const INBOUND_WEBHOOK_STREAM = 'events.inbound.webhooks';
-const WEBHOOK_HANDLER_CONSUMER_GROUP = 'webhook-handler';
+/** Retired by #2300 — kept only to assert the live path never writes to it. */
+const RETIRED_INBOUND_WEBHOOK_STREAM = 'events.inbound.webhooks';
 const JOBS_SYNC_STREAM = 'jobs.sync';
 
 interface WebhookDeliveryRow {
@@ -144,7 +149,9 @@ describe('Webhook Ingestion Integration', () => {
       expect(delivery!.downstreamJobId).toBe(jobs[0].id);
 
       // Redis carries no part of the durable path: no jobs.sync stream entry,
-      // no jobdedup reservation, no inbound-webhook stream entry.
+      // no jobdedup reservation, and nothing written to the inbound-webhook
+      // stream #2300 retired (a revival would not be a compile error, since
+      // `EventPublisherPort.publish` takes a plain `string`).
       const redisClient = harness.getRedisClient();
       if (!redisClient) throw new Error('Redis client not available');
       const streamJobs = await redisClient.xRead([{ key: JOBS_SYNC_STREAM, id: '0' }], {
@@ -155,9 +162,10 @@ describe('Webhook Ingestion Integration', () => {
       );
       expect(streamedJob).toBeUndefined();
       expect(await redisClient.exists(`jobdedup:${idempotencyKey}`)).toBe(0);
-      const inbound = await redisClient.xRead([{ key: INBOUND_WEBHOOK_STREAM, id: '0' }], {
-        COUNT: 100,
-      });
+      const inbound = await redisClient.xRead(
+        [{ key: RETIRED_INBOUND_WEBHOOK_STREAM, id: '0' }],
+        { COUNT: 100 },
+      );
       const inboundEntry = inbound?.[0]?.messages.find((msg) => msg.message.eventId === eventId);
       expect(inboundEntry).toBeUndefined();
     });
@@ -532,74 +540,6 @@ describe('Webhook Ingestion Integration', () => {
         ['prestashop', connection.id, 'stale-timestamp-test'],
       )) as Array<{ id: string }>;
       expect(rows).toHaveLength(0);
-    });
-  });
-
-  describe('LegacyInboundWebhookDrain (upgrade backlog, #2280)', () => {
-    it('drains a pre-upgrade stream entry: creates the job and advances the legacy published row', async () => {
-      const redisClient = harness.getRedisClient();
-      if (!redisClient) throw new Error('Redis client not available');
-
-      const connection = await createTestConnection(harness.getDataSource(), {
-        platformType: 'prestashop',
-        status: 'active',
-        enabledCapabilities: ['OrderSource'],
-      });
-
-      const eventId = 'legacy-drain-event-1';
-      const externalOrderId = '445566';
-      const now = new Date();
-
-      // Recreate the pre-upgrade state: the consumer group anchored at '0' (so
-      // the seeded entry is unread), a stream entry the retired publisher
-      // wrote, and a delivery row stuck at 'published' with no job.
-      try {
-        await redisClient.xGroupCreate(INBOUND_WEBHOOK_STREAM, WEBHOOK_HANDLER_CONSUMER_GROUP, '0', {
-          MKSTREAM: true,
-        });
-      } catch (error) {
-        if (!(error instanceof Error && error.message.includes('BUSYGROUP'))) throw error;
-      }
-      await harness.getDataSource().query(
-        `INSERT INTO webhook_deliveries
-           ("eventId", "provider", "connectionId", "status", "receivedAt", "createdAt", "updatedAt")
-         VALUES ($1, $2, $3, 'published', $4, now(), now())`,
-        [eventId, 'prestashop', connection.id, now],
-      );
-      await redisClient.xAdd(INBOUND_WEBHOOK_STREAM, '*', {
-        eventId,
-        eventType: 'inbound.webhook.order.created',
-        payloadJson: JSON.stringify({
-          objectType: 'order',
-          externalId: externalOrderId,
-          payload: { id_order: externalOrderId },
-        }),
-        metadataJson: JSON.stringify({ provider: 'prestashop', connectionId: connection.id }),
-        occurredAt: now.toISOString(),
-        publishedAt: now.toISOString(),
-      });
-
-      // Re-trigger the one-shot drain (its boot run happened before this
-      // seed). `onModuleInit` detaches deliberately so it cannot block boot,
-      // so drive the drain body directly rather than racing a setImmediate.
-      const drain = harness.getApp().get(LegacyInboundWebhookDrain) as unknown as {
-        runDetachedDrain: () => Promise<void>;
-      };
-      await drain.runDetachedDrain();
-
-      const jobs = await readJobRows(harness, `prestashop:${connection.id}:${eventId}`);
-      expect(jobs).toHaveLength(1);
-      expect(jobs[0].jobType).toBe('marketplace.order.sync');
-
-      const delivery = await readDeliveryRow(harness, connection.id, eventId);
-      expect(delivery!.status).toBe('job_enqueued');
-      expect(delivery!.downstreamJobId).toBe(jobs[0].id);
-
-      // The drained entry is ACKed — a second drain run finds nothing new and
-      // creates no second job.
-      await drain.runDetachedDrain();
-      const jobsAfter = await readJobRows(harness, `prestashop:${connection.id}:${eventId}`);
-      expect(jobsAfter).toHaveLength(1);
     });
   });
 });
