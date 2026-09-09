@@ -88,3 +88,41 @@ the whole seeded database in cache; 15 GB may not.
    already recorded (accepted without error, returns nothing) was verified on
    29.5.2; this host runs a later 29.x. Re-verified here - see
    `docker-logs-since-probe-epyc32-2026-09-08.txt`.
+
+---
+
+## Independent re-verification (#2840, order-arrival-latency + burst-drain)
+
+Every figure above was **re-measured** before the two windows in
+`results-order-arrival-latency-2026-09-08-epyc32.md` and
+`results-burst-drain-2026-09-08-epyc32.md` opened, rather than cited on
+trust. All matched: 32 threads (16 cores x 2, AMD EPYC-Milan, KVM guest, 1
+NUMA node), `MemTotal` 128 805 664 kB with `SwapTotal` 0, `/dev/sda1` 564 G
+ext4 on a non-rotational QEMU virtual disk, kernel
+`6.12.101+deb13-cloud-amd64`, Debian 13, Docker 29.8.0 / Compose v5.5.1.
+
+**Exclusivity, verified rather than assumed.** Both windows are latency- and
+queue-shaped and would be invalidated by a co-tenant, so it is a *condition*
+of their figures:
+
+- all **11** running containers belong to the single `lab` compose project;
+- **0** non-`lab` containers;
+- load average 1.30 on 32 threads at the start of the latency window;
+- no foreign process of any significance (the only non-stand CPU is this
+  session's own tooling, ~14% of one core out of 32).
+
+**One caveat above is tightened rather than repeated.** Caveat 1 says steal
+time "is not observable from inside" a KVM guest. It is:
+`/proc/stat`'s 8th `cpu` field and `vmstat`'s `st` column both expose it, and
+both read **0.0000%** — cumulative since boot and across live samples. So
+host contention is not merely unmeasured here, it is measured and absent. That
+does not make the guest bare metal, and the rest of caveat 1 (no `cpuset`
+pinning, so container-to-container contention is real and is part of what is
+measured) stands unchanged.
+
+**Timezone.** The host is `Etc/UTC` and `System clock synchronized: yes` with
+NTP active, which is why every timestamp in both reports carries an explicit
+`Z`. A ~4-hour apparent jump observed mid-session was checked and was **not** a
+clock jump: monotonic uptime (36.96 h, boot 2026-09-07T10:27:53Z) and container
+uptimes moving 7 h -> 12 h in step both confirm real elapsed time. No figure
+spans a clock discontinuity.

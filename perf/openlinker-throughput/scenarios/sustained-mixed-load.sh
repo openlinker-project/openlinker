@@ -187,6 +187,28 @@ MIXED_DURATION_SECS="${MIXED_DURATION_SECS:-14400}"
 # Orders pushed into the stub per minute. See "THE ARRIVAL RATE" above.
 MIXED_ORDERS_PER_MIN="${MIXED_ORDERS_PER_MIN:-60}"
 
+# ---------------------------------------------------------------------------
+# RAMP SCHEDULE (#2840). Every window in this campaign so far offered a
+# CONSTANT rate: two saturated from the first second and never converged, one
+# ran below capacity from the first second. Nobody had run
+# offered-above-capacity followed by offered-below-capacity, which is the only
+# shape real retail has - a customer's first bad day is a spike, not a Tuesday.
+#
+# Format: `label:orders_per_min:duration_secs`, comma-separated. Labels are
+# EXPLICIT rather than inferred from whether the rate went up or down, because
+# a phase label ends up in the sampler CSV and in the report's own acceptance
+# criteria, and a label the scenario guessed is a label that can be wrong.
+#
+#   MIXED_RAMP="burst:50:1800,drain:8:5400"
+#
+# Empty (the default) means no ramp: MIXED_ORDERS_PER_MIN applies for the whole
+# window exactly as before, so an untouched invocation is byte-identical.
+#
+# When set, MIXED_DURATION_SECS defaults to the ramp's own total, so the two
+# cannot silently disagree about how long the window is - a window shorter than
+# its ramp would cut the drain phase off mid-measurement and still look healthy.
+MIXED_RAMP="${MIXED_RAMP:-}"
+
 # Sampling cadence for BOTH samplers. See "THE SAMPLER IS SLOWED DOWN".
 MIXED_SAMPLE_INTERVAL_SECS="${MIXED_SAMPLE_INTERVAL_SECS:-30}"
 
@@ -221,6 +243,32 @@ MIXED_TENANT="${MIXED_TENANT:-perf-allegro-a}"
 # heartbeat, so a TTL shorter than the window would expire mid-run and let a
 # peer take a stand that is under load.
 # ---------------------------------------------------------------------------
+# Parse and validate the ramp BEFORE the stand lock is taken, so a typo costs
+# nothing rather than surfacing at tick 31 of a multi-hour held window.
+MIXED_RAMP_LABELS=(); MIXED_RAMP_RATES=(); MIXED_RAMP_ENDS=(); MIXED_RAMP_TOTAL=0
+if [ -n "$MIXED_RAMP" ]; then
+  _ramp_acc=0
+  IFS=',' read -r -a _ramp_segs <<< "$MIXED_RAMP"
+  for _seg in "${_ramp_segs[@]}"; do
+    _lbl="${_seg%%:*}"; _rest="${_seg#*:}"
+    _rate="${_rest%%:*}"; _dur="${_rest##*:}"
+    [ -n "$_lbl" ] && [ "$_lbl" != "$_seg" ] || die "MIXED_RAMP segment [$_seg] is not label:rate:duration"
+    case "$_rate" in ''|*[!0-9]*) die "MIXED_RAMP segment [$_seg]: rate [$_rate] is not a non-negative integer (orders/min is pushed as an integer count per tick)" ;; esac
+    case "$_dur"  in ''|*[!0-9]*) die "MIXED_RAMP segment [$_seg]: duration [$_dur] is not a non-negative integer of seconds" ;; esac
+    [ "$_dur" -gt 0 ] || die "MIXED_RAMP segment [$_seg]: duration must be > 0"
+    _ramp_acc=$(( _ramp_acc + _dur ))
+    MIXED_RAMP_LABELS+=("$_lbl"); MIXED_RAMP_RATES+=("$_rate"); MIXED_RAMP_ENDS+=("$_ramp_acc")
+  done
+  MIXED_RAMP_TOTAL="$_ramp_acc"
+  [ "${#MIXED_RAMP_LABELS[@]}" -ge 2 ] || warn "MIXED_RAMP has a single segment - that is a constant-rate window with extra steps"
+  # The ramp total IS the window length when a ramp is given. There is
+  # deliberately no override: two knobs that can disagree about how long the
+  # window is would let a window end mid-drain and still look healthy, and a
+  # knob nobody can discover is a false statement about what is configurable.
+  MIXED_DURATION_SECS="$MIXED_RAMP_TOTAL"
+  log "ramp: $MIXED_RAMP (total ${MIXED_RAMP_TOTAL}s, window ${MIXED_DURATION_SECS}s)"
+fi
+
 MIXED_MIN_LOCK_TTL=$(( MIXED_DURATION_SECS + SETTLE_SECS + 1800 ))
 [ "$STAND_LOCK_TTL_SECS" -ge "$MIXED_MIN_LOCK_TTL" ] || die \
 "the stand lock TTL (${STAND_LOCK_TTL_SECS}s) is shorter than this run needs (${MIXED_MIN_LOCK_TTL}s
@@ -572,7 +620,7 @@ mixed_phase_set() {
 }
 
 mixed_supp_header() {
-  printf 'ts,epoch,elapsed,phase,g_queued_due,g_queued_deferred,g_running,g_dead,ord_sync_queued,ord_sync_succeeded,ord_sync_dead,orders_ingested,pg_backends,pg_backends_active,pg_max_conn,limiter_degraded_delta,stub_backlog,mem_json,queue_by_type_json\n' > "$1"
+  printf 'ts,epoch,elapsed,phase,g_queued_due,g_queued_deferred,g_running,g_dead,ord_sync_queued,ord_sync_succeeded,ord_sync_dead,orders_ingested,pg_backends,pg_backends_active,pg_max_conn,limiter_degraded_delta,stub_backlog,src_queued_due,src_queued_deferred,mem_json,queue_by_type_json\n' > "$1"
 }
 
 # One sample. Every query is chosen to be servable by an existing index:
@@ -592,6 +640,19 @@ mixed_supp_sample() {
   gd="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE status='queued' AND \"nextRunAt\">NOW()" 2>/dev/null || printf -1)"
   gr="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE status='running'" 2>/dev/null || printf -1)"
   gdead="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE status='dead' AND \"createdAt\">='$ws_iso'" 2>/dev/null || printf -1)"
+
+  # SOURCE-SCOPED queue depth (#2840). The `g_` columns above are deliberately
+  # global - that is the whole-install view an operator sees - but they cannot
+  # answer "did the burst this window offered build a queue", because with the
+  # scheduler ON every other active connection's default-on tasks are also
+  # enqueueing. Measured on this stand: a 28-minute scheduler-on window
+  # drained a DIFFERENT connection's stub backlog into 396 retrying
+  # marketplace.order.sync rows, which would have swamped the burst signal
+  # entirely. Both views are recorded; the ramp's acceptance criteria are
+  # computed on the source-scoped pair.
+  local sqd sqf
+  sqd="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$ALLEGRO_A_CONNECTION_ID' AND status='queued' AND \"nextRunAt\"<=NOW()" 2>/dev/null || printf -1)"
+  sqf="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE \"connectionId\"='$ALLEGRO_A_CONNECTION_ID' AND status='queued' AND \"nextRunAt\">NOW()" 2>/dev/null || printf -1)"
 
   local osq oss osd
   osq="$(pg_sql "SELECT COUNT(*) FROM sync_jobs WHERE \"jobType\"='marketplace.order.sync' AND status='queued' AND \"createdAt\">='$ws_iso'" 2>/dev/null || printf -1)"
@@ -636,11 +697,12 @@ mixed_supp_sample() {
   # comma-splitting an unquoted JSON column into extra fields instead of
   # erroring - the internal escaping was right and the outer quote pair was
   # the missing half.
-  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"%s","%s"\n' \
+  printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,"%s","%s"\n' \
     "$(iso_now)" "$now" "$((now - ws_epoch))" "$phase" \
     "$gq" "$gd" "$gr" "$gdead" \
     "$osq" "$oss" "$osd" "$ing" \
     "$be" "$bea" "$mx" "$deg" "$backlog" \
+    "$sqd" "$sqf" \
     "$(printf '%s' "$mem" | sed 's/"/""/g')" \
     "$(printf '%s' "$bytype" | sed 's/"/""/g')" >> "$csv"
 }
@@ -742,7 +804,16 @@ reset_between_repeats "'$ALLEGRO_A_CONNECTION_ID'" "'$OF_CURSOR_KEY'"
 
 # Prime the feed so the first poll tick has something to take, then bring the
 # worker up with BOTH the runner and the scheduler on.
-MIXED_PRIME_ORDERS="${MIXED_PRIME_ORDERS:-$MIXED_ORDERS_PER_MIN}"
+# Under a RAMP the default is 1, not MIXED_ORDERS_PER_MIN (#2840). A ramp exists
+# to observe the queue the ramp itself builds, so priming with a whole minute of
+# the constant rate - which a ramp makes meaningless anyway - would hand the
+# burst phase a backlog it did not create and make "did the burst saturate"
+# unanswerable. Enough to keep the first poll tick from reading empty, no more.
+if [ -n "$MIXED_RAMP" ]; then
+  MIXED_PRIME_ORDERS="${MIXED_PRIME_ORDERS:-1}"
+else
+  MIXED_PRIME_ORDERS="${MIXED_PRIME_ORDERS:-$MIXED_ORDERS_PER_MIN}"
+fi
 log "priming the stub with $MIXED_PRIME_ORDERS order(s)"
 of_push_orders "$MIXED_TENANT" "$MIXED_PRIME_ORDERS" >/dev/null
 
@@ -836,8 +907,38 @@ MIXED_PUSH_LOG="$RESULTS_DIR/pushes.csv"
 printf 'ts,epoch,elapsed,phase,asked,minted,total\n' > "$MIXED_PUSH_LOG"
 MIXED_PUSHED_TOTAL=0
 
+# The offered rate at an elapsed second. With no ramp this is the constant, so
+# the non-ramp path is untouched.
+mixed_ramp_rate_at() {
+  local elapsed="$1" i=0
+  [ -n "$MIXED_RAMP" ] || { printf '%s' "$MIXED_ORDERS_PER_MIN"; return 0; }
+  while [ "$i" -lt "${#MIXED_RAMP_ENDS[@]}" ]; do
+    if [ "$elapsed" -lt "${MIXED_RAMP_ENDS[$i]}" ]; then
+      printf '%s' "${MIXED_RAMP_RATES[$i]}"; return 0
+    fi
+    i=$((i + 1))
+  done
+  # Past the last segment: hold the final rate rather than falling back to
+  # MIXED_ORDERS_PER_MIN, which would silently re-saturate a drain phase that
+  # overran its schedule.
+  printf '%s' "${MIXED_RAMP_RATES[$(( ${#MIXED_RAMP_RATES[@]} - 1 ))]}"
+}
+
+mixed_ramp_label_at() {
+  local elapsed="$1" i=0
+  [ -n "$MIXED_RAMP" ] || { printf ''; return 0; }
+  while [ "$i" -lt "${#MIXED_RAMP_ENDS[@]}" ]; do
+    if [ "$elapsed" -lt "${MIXED_RAMP_ENDS[$i]}" ]; then
+      printf '%s' "${MIXED_RAMP_LABELS[$i]}"; return 0
+    fi
+    i=$((i + 1))
+  done
+  printf '%s' "${MIXED_RAMP_LABELS[$(( ${#MIXED_RAMP_LABELS[@]} - 1 ))]}"
+}
+
 mixed_push_tick() {
-  local phase="$1" asked="$MIXED_ORDERS_PER_MIN" minted now
+  local phase="$1" asked minted now
+  asked="$(mixed_ramp_rate_at "${MIXED_ELAPSED:-0}")"
   minted="$(of_push_orders "$MIXED_TENANT" "$asked" 2>/dev/null || printf 0)"
   MIXED_PUSHED_TOTAL=$((MIXED_PUSHED_TOTAL + ${minted:-0}))
   now="$(epoch)"
@@ -894,6 +995,14 @@ while :; do
     fi
   fi
 
+  # With a ramp, the phase IS the ramp segment - so the sampler CSV carries it
+  # and the report's acceptance criteria can be computed per phase. A fault
+  # phase still wins, because it describes something more specific.
+  if [ -n "$MIXED_RAMP" ] && [ "$MIXED_FAULT_ACTIVE" = "0" ]; then
+    _ramp_lbl="$(mixed_ramp_label_at "$MIXED_ELAPSED")"
+    [ "$(cat "$MIXED_PHASE_FILE" 2>/dev/null || printf '')" = "$_ramp_lbl" ] \
+      || mixed_phase_set "$_ramp_lbl"
+  fi
   mixed_push_tick "$(cat "$MIXED_PHASE_FILE" 2>/dev/null || printf 'steady')"
   mixed_track_available_work
 
@@ -911,7 +1020,7 @@ while :; do
   if [ "$MIXED_SLEEP" -gt 0 ]; then
     sleep "$MIXED_SLEEP"
   else
-    warn "push tick $MIXED_TICK ran $(( -MIXED_SLEEP ))s late - the offered rate is drifting below ${MIXED_ORDERS_PER_MIN}/min"
+    warn "push tick $MIXED_TICK ran $(( -MIXED_SLEEP ))s late - the offered rate is drifting below $(mixed_ramp_rate_at "$MIXED_ELAPSED")/min"
   fi
 done
 
@@ -937,6 +1046,23 @@ log "=== summary ==="
 bash "$SCRIPT_DIR/../drivers/mixed-summarize.sh" "$RESULTS_DIR" \
   "$WS_ISO" "$ALLEGRO_A_CONNECTION_ID" "$PS_CONNECTION_ID" "$MIXED_PUSHED_TOTAL" \
   | tee "$RESULTS_DIR/summary.txt"
+
+# Per-order end-to-end age (#2840). APPENDED rather than folded into
+# mixed-summarize.sh, so a run without a ramp produces a byte-identical
+# summary and this section simply does not exist for it.
+#
+# The phase boundary is the first ramp segment's end, converted from the
+# window's own start epoch. `date -u -d @epoch` is GNU date, which DOES accept
+# an @-prefixed epoch - it is `docker logs --since` that silently accepts one
+# and returns nothing, a different tool and a different defect.
+if [ -n "$MIXED_RAMP" ]; then
+  _age_boundary_epoch=$(( WINDOW_START_EPOCH + ${MIXED_RAMP_ENDS[0]} ))
+  _age_boundary_iso="$(date -u -d "@$_age_boundary_epoch" +%Y-%m-%dT%H:%M:%SZ)"
+  log "=== per-order end-to-end age (ramp boundary $_age_boundary_iso) ==="
+  bash "$SCRIPT_DIR/../drivers/order-age-percentiles.sh" \
+    "$ALLEGRO_A_CONNECTION_ID" "$WS_ISO" "$_age_boundary_iso" \
+    | tee -a "$RESULTS_DIR/summary.txt"
+fi
 
 # ---------------------------------------------------------------------------
 # Hand the stand back. The runner goes off FIRST so nothing is mid-flight
