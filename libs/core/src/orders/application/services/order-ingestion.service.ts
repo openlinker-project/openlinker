@@ -1213,14 +1213,19 @@ export class OrderIngestionService implements IOrderIngestionService {
 
   /**
    * Inbound source cancellation → destination(s) via the lifecycle relay (#1158).
-   * Resolves the existing internal order; if unknown (never ingested) there is
-   * nothing to cancel. Applies the same destination-echo guard as ingestion
-   * (ADR-017) so a re-read of an order OL itself created elsewhere doesn't
-   * propagate a spurious cancel. Also durably records the cancellation on the
-   * order record itself via `markCancelled` (#1984), best-effort and before
-   * the relay call — see the inline comment at the call site for why a DB
-   * failure there must never block the relay. Returns an empty result set —
-   * a cancel is not an order-create, so there are no OrderSyncResults to report.
+   * Resolves the existing internal order; if unknown (never ingested), there is
+   * no `order_records` row to mark cancelled yet — instead, a durable
+   * `(sourceConnectionId, externalOrderId)`-keyed signal is recorded (#2069)
+   * so the later create/sync job can observe the cancellation and skip
+   * destination provisioning (`OrderSyncService`'s `#2284` guard) instead of
+   * provisioning the order as active. Applies the same destination-echo guard
+   * as ingestion (ADR-017) so a re-read of an order OL itself created
+   * elsewhere doesn't propagate a spurious cancel. Also durably records the
+   * cancellation on the order record itself via `markCancelled` (#1984),
+   * best-effort and before the relay call — see the inline comment at the
+   * call site for why a DB failure there must never block the relay. Returns
+   * an empty result set — a cancel is not an order-create, so there are no
+   * OrderSyncResults to report.
    */
   private async handleSourceCancellation(
     connectionId: string,
@@ -1232,9 +1237,28 @@ export class OrderIngestionService implements IOrderIngestionService {
       connectionId
     );
     if (!internalOrderId) {
+      // #2069: a cancel for an order OL has not yet ingested must still leave
+      // a durable trace, or the later create provisions the order as active
+      // at every destination. No internal id exists yet, and minting one via
+      // getOrCreateInternalId would point every downstream trigger at a
+      // phantom order before any real order data arrives (the #2328 lesson
+      // for returns attribution) — so the signal is keyed on
+      // (sourceConnectionId, externalOrderId) instead, and consumed by
+      // OrderRecordService.persistIncomingSnapshot the moment the order is
+      // genuinely first ingested. Left unguarded (not try/caught): the only
+      // action on this branch is the write, so a DB failure here should
+      // retry the job rather than be silently swallowed — unlike the
+      // known-order branch below, where a relay to already-resolved
+      // destinations must proceed regardless.
+      await this.orderRecordService.recordEarlyCancellationSignal(
+        connectionId,
+        externalOrderId,
+        new Date()
+      );
       this.logger.warn(
         `Cancellation for unknown order: external ${externalOrderId} on connection ${connectionId} ` +
-          `has no internal mapping — nothing to cancel`
+          `has no internal mapping yet — recorded as a pending cancellation signal so the later ` +
+          `create is not provisioned active`
       );
       return [];
     }
@@ -1283,11 +1307,20 @@ export class OrderIngestionService implements IOrderIngestionService {
     // Surface any non-`applied` target (e.g. a destination that already shipped,
     // so the cancel was rejected) at warn — the cancel is never silently dropped.
     //
-    // Known residual (#1160): a cancel that arrives *before* the order's
-    // create/sync job has run finds no targets here, and the later create then
-    // provisions the order as active. Fully closing that out-of-order race needs
-    // the deferred monotonic / relay-log machinery (ADR-027 guardrails) tracked
-    // with the bidirectional slices — out of scope for this unidirectional slice.
+    // Formerly a known residual (#1160): a cancel that arrives *before* the
+    // order's create/sync job has run finds no relay targets here (there is
+    // no order yet to relay to), and the comment used to say closing that
+    // race needed the deferred monotonic / relay-log machinery (ADR-027
+    // guardrails). #2069's own analysis found that claim false — a per-target
+    // relay-obligation table cannot fix a cancel with zero resolved targets,
+    // because a sweep re-drives writes that were attempted and failed, and
+    // this one was never attemptable. The fix needed only a durable write:
+    // the unknown-order branch above now records a `(sourceConnectionId,
+    // externalOrderId)`-keyed signal, `OrderRecordService
+    // .persistIncomingSnapshot` consumes it the moment the order is
+    // genuinely ingested, and `OrderSyncService`'s `#2284`
+    // `cancelledAt IS NULL` guard is what then withholds destination
+    // creation. No relay-log machinery was ever needed.
     if (result.targets.some((t) => t.outcome !== 'applied')) {
       this.logger.warn(message);
     } else {

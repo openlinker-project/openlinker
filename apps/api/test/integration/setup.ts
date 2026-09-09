@@ -174,6 +174,14 @@ const harness = createIntegrationTestHarness({
     // because the unique index is partial on OPEN rows, that leak surfaces as a
     // spurious `OrderAlreadyOnHoldError` in an unrelated spec.
     'order_holds',
+    // order_cancellation_signals (#2069) — a durable trace that a source
+    // cancellation arrived for an order OL has not yet ingested. No FK to
+    // order_records (the order_holds precedent of an indexed reference by
+    // value — here there is nothing yet to reference at all), so nothing
+    // cascades in and `truncateTables`' CASCADE walk would never reach it.
+    // Truncate explicitly or a signal from one case still holds the
+    // (sourceConnectionId, externalOrderId) slot in the next.
+    'order_cancellation_signals',
     // automation_* (#2358) — the OMS automation v1 storage. NOTHING here
     // carries an FK: not runs/firings -> automation_rules (a deleted rule must
     // neither destroy its history nor be blocked by it), and not subjectId ->

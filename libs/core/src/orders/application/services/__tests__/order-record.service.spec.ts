@@ -10,6 +10,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { OrderRecordService } from '../order-record.service';
 import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-record-repository.port';
+import type { OrderCancellationSignalRepositoryPort } from '../../../domain/ports/order-cancellation-signal-repository.port';
 import type { OrderLineItemRepositoryPort } from '../../../domain/ports/order-line-item-repository.port';
 import type { OrderSyncStatus } from '../../../domain/entities/order-record.entity';
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
@@ -41,6 +42,7 @@ describe('OrderRecordService', () => {
   let fxStamp: jest.Mocked<IOrderFxStampService>;
   let lineItemRepository: jest.Mocked<OrderLineItemRepositoryPort>;
   let reportingCurrencySettings: jest.Mocked<IReportingCurrencySettingsService>;
+  let cancellationSignalRepository: jest.Mocked<OrderCancellationSignalRepositoryPort>;
 
   const originalEnv = process.env.OL_STORE_PII;
   const originalPiiHashSalt = process.env.OL_PII_HASH_SALT;
@@ -97,6 +99,14 @@ describe('OrderRecordService', () => {
       setReportingCurrency: jest.fn(),
       listSelectableCurrencies: jest.fn(),
     } as unknown as jest.Mocked<IReportingCurrencySettingsService>;
+
+    // #2069 — defaults to "no signal" so every pre-existing cancellation
+    // assertion (`incoming.status === 'cancelled'`) keeps its original
+    // meaning unless a test opts into a signal being present.
+    cancellationSignalRepository = {
+      record: jest.fn().mockResolvedValue(undefined),
+      consume: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<OrderCancellationSignalRepositoryPort>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -218,7 +228,14 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII enabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('should persist order with all PII fields when PII storage is enabled', async () => {
@@ -578,7 +595,14 @@ describe('OrderRecordService', () => {
   describe('persistOrder - PII disabled', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('should store no buyer tax id at all when PII storage is disabled (#2599)', async () => {
@@ -710,7 +734,14 @@ describe('OrderRecordService', () => {
   describe('persistOrder — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -781,7 +812,14 @@ describe('OrderRecordService', () => {
   describe('persistOrder - fulfillment rollup left to updateFulfillmentState (#2101)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with a fulfillment state', async () => {
@@ -802,7 +840,14 @@ describe('OrderRecordService', () => {
   describe('persist paths - destination sync state left to updateSyncStatus (#2140)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('never constructs the OrderRecord passed to upsertWithLineItems() with sync state', async () => {
@@ -840,7 +885,14 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('should persist incoming snapshot with awaiting_mapping status', async () => {
@@ -904,7 +956,14 @@ describe('OrderRecordService', () => {
 
     it('should sanitize addresses in snapshot when PII is disabled', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
 
       const incoming = createMockIncomingOrder();
       const expectedRecord = new OrderRecord(
@@ -979,7 +1038,14 @@ describe('OrderRecordService', () => {
 
     it('should omit customerEmail from the snapshot under hash-only PII mode (#948)', async () => {
       process.env.OL_STORE_PII = 'false';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
 
       const incoming = createMockIncomingOrder();
       repository.upsert.mockResolvedValue({} as OrderRecord);
@@ -1030,7 +1096,14 @@ describe('OrderRecordService', () => {
   describe('persistIncomingSnapshot — cancellation recorded via markCancelled (#1984)', () => {
     beforeEach(() => {
       process.env.OL_STORE_PII = 'true';
-      service = new OrderRecordService(repository, fxStamp, lineItemRepository, reportingCurrencySettings, automationEmission);
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
     });
 
     it('never constructs the OrderRecord passed to upsert() with a non-null cancelledAt, even for a cancelled order', async () => {
@@ -1067,6 +1140,109 @@ describe('OrderRecordService', () => {
       await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
 
       expect(repository.markCancelled).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('persistIncomingSnapshot — consuming the early-cancellation signal (#2069)', () => {
+    beforeEach(() => {
+      process.env.OL_STORE_PII = 'true';
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
+    });
+
+    it('consumes the signal keyed on (sourceConnectionId, incoming.externalOrderId)', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'pending';
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+      cancellationSignalRepository.consume.mockResolvedValue(null);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      expect(cancellationSignalRepository.consume).toHaveBeenCalledWith(
+        'conn-123',
+        incoming.externalOrderId
+      );
+    });
+
+    it('marks the order cancelled with the SIGNAL instant (not now) when a signal exists and the incoming order is not itself reported cancelled', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'pending';
+      const signalCancelledAt = new Date('2026-08-01T10:00:00.000Z');
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.findById.mockResolvedValue({} as OrderRecord);
+      cancellationSignalRepository.consume.mockResolvedValue(signalCancelledAt);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      expect(repository.markCancelled).toHaveBeenCalledWith('ol_order_abc', signalCancelledAt);
+    });
+
+    it('does not call markCancelled when no signal exists and the order is not cancelled (regression guard, byte-for-byte pre-#2069 behavior)', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'pending';
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+      cancellationSignalRepository.consume.mockResolvedValue(null);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      expect(repository.markCancelled).not.toHaveBeenCalled();
+    });
+
+    it('calls markCancelled exactly once — never twice — when a signal exists AND incoming.status is already cancelled, preferring the signal instant', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'cancelled';
+      const signalCancelledAt = new Date('2026-08-01T10:00:00.000Z');
+      repository.upsert.mockResolvedValue({} as OrderRecord);
+      repository.findById.mockResolvedValue({} as OrderRecord);
+      cancellationSignalRepository.consume.mockResolvedValue(signalCancelledAt);
+
+      await service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null);
+
+      expect(repository.markCancelled).toHaveBeenCalledTimes(1);
+      expect(repository.markCancelled).toHaveBeenCalledWith('ol_order_abc', signalCancelledAt);
+    });
+
+    it('runs consume() AFTER the snapshot upsert, so a failed upsert never consumes the signal', async () => {
+      const incoming = createMockIncomingOrder();
+      incoming.status = 'pending';
+      repository.upsert.mockRejectedValue(new Error('db unavailable'));
+
+      await expect(
+        service.persistIncomingSnapshot(incoming, 'ol_order_abc', null, 'conn-123', null)
+      ).rejects.toThrow('db unavailable');
+
+      expect(cancellationSignalRepository.consume).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('recordEarlyCancellationSignal (#2069)', () => {
+    beforeEach(() => {
+      service = new OrderRecordService(
+        repository,
+        fxStamp,
+        lineItemRepository,
+        reportingCurrencySettings,
+        automationEmission,
+        cancellationSignalRepository
+      );
+    });
+
+    it('delegates to the repository verbatim', async () => {
+      const cancelledAt = new Date('2026-08-01T10:00:00.000Z');
+
+      await service.recordEarlyCancellationSignal('conn-123', 'ext-order-1', cancelledAt);
+
+      expect(cancellationSignalRepository.record).toHaveBeenCalledWith(
+        'conn-123',
+        'ext-order-1',
+        cancelledAt
+      );
     });
   });
 

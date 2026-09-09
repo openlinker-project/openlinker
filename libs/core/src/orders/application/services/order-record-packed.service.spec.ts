@@ -15,6 +15,7 @@ import type { IOrderFxStampService } from '../interfaces/order-fx-stamp.service.
 import type { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import type { IReportingCurrencySettingsService } from '@openlinker/core/currency';
 import type { IAutomationTriggerEmissionService } from '@openlinker/core/automation';
+import type { OrderCancellationSignalRepositoryPort } from '../../domain/ports/order-cancellation-signal-repository.port';
 
 const ORDER_ID = 'ol_order_packed_001';
 
@@ -80,13 +81,18 @@ describe('OrderRecordService — packed fact (#2287)', () => {
         evaluatedRuleCount: 0,
       }),
     } as unknown as IAutomationTriggerEmissionService;
+    // #2069 collaborator: this suite exercises only the packed-fact path,
+    // which never touches the early-cancellation signal, so an inert stub
+    // keeps the constructor honest without implying participation.
+    const cancellationSignalRepository = {} as unknown as OrderCancellationSignalRepositoryPort;
 
     service = new OrderRecordService(
       repository as unknown as OrderRecordRepositoryPort,
       fxStamp,
       lineItemRepository,
       reportingCurrencySettings,
-      automationEmission
+      automationEmission,
+      cancellationSignalRepository
     );
   });
 

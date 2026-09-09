@@ -147,6 +147,7 @@ describe('OrderIngestionService', () => {
       findByIds: jest.fn(),
       markItemResolutionFailure: jest.fn().mockResolvedValue(undefined),
       markCancelled: jest.fn().mockResolvedValue(undefined),
+      recordEarlyCancellationSignal: jest.fn().mockResolvedValue(undefined),
       markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
       markFulfillmentBlock: jest.fn().mockResolvedValue(undefined),
       recordAmendment: jest.fn().mockResolvedValue(undefined),
@@ -1724,12 +1725,35 @@ describe('OrderIngestionService', () => {
       expect(markCancelledOrder).toBeLessThan(relayOrder);
     });
 
-    it('does NOT mark the record cancelled when the order was never ingested (no internal mapping)', async () => {
+    it('does NOT mark the record cancelled when the order was never ingested (no internal mapping) — instead records a durable early-cancellation signal (#2069)', async () => {
       identifierMapping.getInternalId.mockResolvedValue(null);
 
-      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+      const result = await service.syncOrderFromSource(
+        connectionId,
+        externalOrderId,
+        'evt-1',
+        'cancelled'
+      );
 
+      expect(result).toEqual([]);
       expect(orderRecordService.markCancelled).not.toHaveBeenCalled();
+      expect(orderRecordService.recordEarlyCancellationSignal).toHaveBeenCalledWith(
+        connectionId,
+        externalOrderId,
+        expect.any(Date)
+      );
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('propagates a failure recording the early-cancellation signal (#2069) — unlike the known-order branch, there is no relay to protect', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      orderRecordService.recordEarlyCancellationSignal.mockRejectedValueOnce(
+        new Error('db unavailable')
+      );
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled')
+      ).rejects.toThrow('db unavailable');
     });
 
     it('does NOT mark the record cancelled on a destination-echo cancel', async () => {
