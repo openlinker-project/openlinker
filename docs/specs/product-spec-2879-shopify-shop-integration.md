@@ -50,7 +50,7 @@ drift between two copies; this spec should link to the issue rather than restate
 ## 8. Risks
 
 See `docs/plans/analysis/SPIKE-2879-shopify-admin-api.md § Open risks` for the live-verified list.
-Headline items as of 2026-09-04:
+Headline items as of Session 2, 2026-09-08:
 
 1. `read_all_orders` requires manual, non-SLA'd Shopify review — BLOCKED, tracked in the SPIKE doc.
 2. True concurrent-retry idempotency replay semantics for `inventoryAdjustQuantities` are unverified;
@@ -58,34 +58,27 @@ Headline items as of 2026-09-04:
 3. Onboarding persona: custom-distribution app + Dev Dashboard/Partner org access is required, unlike
    WooCommerce's self-serve model — changes who can configure a Shopify connection without vendor
    involvement.
-4. The issue's own Prerequisites scope list is missing `write_merchant_managed_fulfillment_orders` —
-   confirmed live to block essentially the entire write half of group F (`fulfillmentCreate`,
-   `fulfillmentOrderMove`). Must be added and re-verified before any F6 implementation work.
+4. The issue's own Prerequisites scope list had **three confirmed gaps, all three now added and
+   re-verified working**: `write_merchant_managed_fulfillment_orders` (blocked the entire write half
+   of group F — `fulfillmentCreate`, `fulfillmentOrderMove`), `read_customers` (blocked resolving
+   `order.customer`), and `write_third_party_fulfillment_orders`/`read_third_party_fulfillment_orders`
+   (blocked the negotiation axis on fulfillment-service locations, closing F to 8/8 once added — see
+   SPIKE E-F3/E-F4, E-O7, E-F8/E-F10). Treat this as the reconciled, final count.
 5. `descriptionHtml` has zero server-side sanitization (confirmed live with a literal `<script>`
    payload round-tripping unchanged) — Shopify is not an XSS boundary on this platform, same as
    everywhere else; must not be assumed otherwise when designing the description-format seam.
-
-**F6 upgraded finding**: live introspection shows Shopify's `FulfillmentOrderRequestStatus` /
-`FulfillmentOrderStatus` enums match OL's own ADR-054 vocabulary almost name-for-name — see SPIKE
-E-F5. This strengthens (not weakens) the case for including F6 in a first slice.
-
 6. Return reasons are an OPEN catalog (`ReturnReasonDefinition`, ID-referenced), not a closed enum —
    design the reason-mapping seam open-world from day one (SPIKE E-R4).
-7. `RefundInput` carries no native `returnId` — an adapter must stitch refund↔return association
-   itself via shared line-item references (SPIKE E-R8).
+7. Use `returnProcess` (never raw `refundCreate`) for a return-driven refund — confirmed live as the
+   platform's required path since API 2025-07+, and it correctly populates `Return.refunds` with a
+   real `Refund` id once called cleanly (SPIKE E-R9, closing the earlier open question left by E-R8).
+   `RefundInput` having no native `returnId` is a red herring for this use case, not a gap to design
+   around.
 
-## 11. Session coverage summary (2026-09-04)
-
-**~74 of the issue's ~90 stories verified live** against a real development store sandbox
-(`shopfyol.myshopify.com`) — including M group at 13/13 (bulk operations confirmed end to end) and
-C7/O16 (429/retry) confirmed as a genuine negative result (50-parallel-call burst, zero throttling)
-rather than left untested. All three headline findings from the issue confirmed; F6 confirmed
-stronger than claimed. Six corrections found that change what a downstream implementation plan
-should assume — see SPIKE doc §Recommendation for the full list, plus P13 (`productSet` behaves as
-PATCH, not PUT, despite its name — confirmed behaviourally, not just by schema description).
-Remaining gaps are the ones genuinely outside API-testable scope (OL-side adapter/design code) or
-still blocked (`read_all_orders` manual review) — listed explicitly in the SPIKE doc's coverage tally
-rather than left implicit.
+**F6 upgraded finding**: live introspection shows Shopify's `FulfillmentOrderRequestStatus` /
+`FulfillmentOrderStatus` enums match OL's own ADR-054 vocabulary almost name-for-name (SPIKE E-F5),
+and Session 2 subsequently confirmed the negotiation axis working end to end (SPIKE E-F10), closing
+group F to 8/8. This strengthens (not weakens) the case for including F6 in a first slice.
 
 ## 9. Implementation breakdown
 
@@ -95,5 +88,23 @@ rather than left implicit.
 
 | Date | Decision | Why |
 |---|---|---|
-| 2026-09-04 | Sandbox built on a fresh development store (`shopfyol.myshopify.com`) rather than desk-research-only | Issue #2879 AC2 requires a real authenticated call with transcript, not just confirmation the API exists |
+| 2026-09-04 | Sandbox built on a fresh development store (`{shop-domain}.myshopify.com`) rather than desk-research-only | Issue #2879 AC2 requires a real authenticated call with transcript, not just confirmation the API exists |
 | 2026-09-04 | Access token obtained via full OAuth authorization-code grant rather than the Dev Dashboard "App automation token" shortcut | The automation token (`atkn_` prefix) is scoped for CI/CD app-config deployment, not Admin API calls — confirmed empirically to fail with `Invalid API key or access token` |
+
+## 11. Session coverage summary (2026-09-08)
+
+**80 of the issue's ~90 stories verified live** against a real development store sandbox
+(`{shop-domain}.myshopify.com`) — see the SPIKE doc's `## Coverage tally` section for the exact
+per-group arithmetic behind this number (10+13+6+6+6+14+8+5+8+4 = 80); this is the single
+authoritative figure and supersedes any other count appearing elsewhere in this spec or the PR
+description. Includes M group at 13/13 (bulk operations confirmed end to end) and F group closed to
+8/8 in Session 2 (negotiation axis, SPIKE E-F10). C7/O16 (429/retry) is **not** a confirmed negative
+result — the burst test used was insufficient to reach the platform's real throttling threshold, so
+retry-classification behaviour stays genuinely UNVERIFIED (see SPIKE E-C8 and the corrected coverage
+tally note). All three headline findings from the issue confirmed; F6 confirmed stronger than
+claimed. Six corrections found that change what a downstream implementation plan should assume — see
+SPIKE doc §Recommendation for the full list, plus P13 (`productSet` behaves as PATCH, not PUT,
+despite its name — confirmed behaviourally, not just by schema description).
+Remaining gaps are the ones genuinely outside API-testable scope (OL-side adapter/design code) or
+still blocked (`read_all_orders` manual review) — listed explicitly in the SPIKE doc's coverage tally
+rather than left implicit.

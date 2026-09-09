@@ -2,7 +2,7 @@
 
 > ⚠️ **Work in progress — day-0/day-1 mixed research.**
 > Sections marked with a live transcript below are **verified** against a real development store
-> (`shopfyol.myshopify.com`, custom-distribution app `Test-OLL`, API version `2026-07`) across two
+> (`{shop-domain}.myshopify.com`, custom-distribution app `Test-OLL`, API version `2026-07`) across two
 > sessions: **2026-09-04** (initial pass, C/M/T/P/S/O/F/D/R/X groups seeded) and **2026-09-08**
 > (follow-up pass closing R7, deepening T/S/D, and discovering a fourth scope gap on the fulfillment
 > negotiation axis). Everything else is still desk research carried over from issue #2879 and is
@@ -10,7 +10,11 @@
 > place as more stories are verified; it is not yet complete enough to close the parent issue.
 
 Sources of record for the verified sections: live GraphQL Admin API calls via `curl`, transcripts
-captured below. Desk-research baseline: issue #2879 itself (which cites shopify.dev pages fetched
+captured below. **Not every "Live"-marked row has a captured transcript** — where the Evidence column
+reads "Live — observed, no transcript retained" the call was made live but its request/response was
+not preserved in this document; treat those rows as a live observation the author stands behind, not
+as a reproducible artifact. Every row whose Evidence column instead says "Live transcript below" is
+backed by an actual fenced code block under `## Live transcripts`. Desk-research baseline: issue #2879 itself (which cites shopify.dev pages fetched
 2026-09-04) and `docs/plans/analysis/ANALYSIS-new-marketplace-integrations-story-catalogue.md`
 (#2883).
 
@@ -51,11 +55,11 @@ testing can continue.
 
 ## Evidence — live-verified
 
-Environment: dev store `shopfyol.myshopify.com` (Partner org, plan reported as
+Environment: dev store `{shop-domain}.myshopify.com` (Partner org, plan reported as
 `"Advanced App Development"`), custom-distribution app `Test-OLL`
-(`client_id = e479230f838e9c4fd112589d99779599`), Admin API version `2026-07`. Access token obtained
-via full OAuth authorization-code grant (`https://shopfyol.myshopify.com/admin/oauth/authorize` →
-`https://shopfyol.myshopify.com/admin/oauth/access_token`); token prefix returned is `shpua_`, not
+(`client_id = REDACTED`), Admin API version `2026-07`. Access token obtained
+via full OAuth authorization-code grant (`https://{shop-domain}.myshopify.com/admin/oauth/authorize` →
+`https://{shop-domain}.myshopify.com/admin/oauth/access_token`); token prefix returned is `shpua_`, not
 the classically-documented `shpat_` — **but it is stable across repeated OAuth exchanges with the
 same app+shop+scope**, which is the behavioural signature of an *offline* token, not a per-session
 online one. Flagged as E-C3 below for confirmation against official docs (name of this prefix is not
@@ -69,7 +73,7 @@ found in the desk-research pass).
 | E-C4 | C8 | `extensions.cost.throttleStatus` present on every GraphQL response; on this dev store's plan, `maximumAvailable: 4000`, `restoreRate: 200` — higher than the 1000/100 figures the issue's desk research assumed for "Standard" plan | Live: every call below carries this field |
 | E-C5 | C1 (scope UI) | Dev Dashboard's scope picker mixes **Admin API** scopes (e.g. `read_orders`) with unrelated **Customer Account API** scopes (`customer_read_orders`) under the same category label ("Orders") in one search result — an easy mis-click trap | Live: Dev Dashboard scope picker, search "read_orders" |
 | E-C6 | C1 | `read_all_orders` is **not** a checkbox in the standard scope picker at all; it is a separately-requested grant via a legacy (visually distinct, pre-Dev-Dashboard) "API access requests" page, requiring "Choose distribution" first, then a written justification, then **manual Shopify review ("rolling basis")** | Live: `Request additional scopes and APIs` section of the legacy Partner Dashboard-style page |
-| E-M1 | M2/M3 | Product read returns real seeded test data — `products(first: 5)` returned 5 real products including deliberately-named edge cases (`The Draft Snowboard`, `The Out of Stock Snowboard`, `The Inventory Not Tracked Snowboard`) | Live transcript below |
+| E-M1 | M2/M3 | Product read returns real seeded test data — `products(first: 5)` returned 5 real products including deliberately-named edge cases (`The Draft Snowboard`, `The Out of Stock Snowboard`, `The Inventory Not Tracked Snowboard`) | Live — observed, no transcript retained |
 | E-M2 | M7 | **Deletion detection confirmed.** Querying `product(id: ...)` for a product just deleted via `productDelete` returns `{"data":{"product":null}}` — **no error, no HTTP error code, silent `null`**. Adapter must treat `null` (not an exception) as the `MasterProductNotFoundError` signal | Live transcript below — create → delete → re-query in one session |
 | E-M3 | M11 | `inventoryAdjustQuantities` **requires** `changeFromQuantity` (CAS) as a mandatory field of `InventoryChangeInput`, separate from the `@idempotent` directive requirement | Live: mutation without it → `"InventoryChangeInput must include the following argument: changeFromQuantity."` |
 | E-M4 | M13 | `@idempotent` directive is enforced **at runtime**, confirmed live on API version `2026-07` already (issue's desk research said "mandatory at 2026-04" — confirmed still in force) | Live: mutation without directive → `"The @idempotent directive is required for this mutation but was not provided."`, `extensions.code: BAD_REQUEST` |
@@ -102,7 +106,7 @@ found in the desk-research pass).
 | E-M9 | M4 | `ProductVariant` has exactly one barcode-shaped field, plain `barcode` — no separate GTIN/EAN/UPC field, confirming the issue's claim of untyped free-text barcode with no check-digit validation at the schema level | Live introspection |
 | E-M10 | M5 | `products(query: "updated_at:>...", sortKey: UPDATED_AT)` confirmed working live, real `updatedAt` timestamps returned in the expected sort order | Live: 3 products returned with `updatedAt` in the `2026-09-04T08:32:xx` range |
 | E-M11 | M9 | 🎯 **All 8 inventory quantity states confirmed live**: `available, committed, incoming, on_hand, reserved, damaged, safety_stock, quality_control` — matches the issue's "8 quantity states" claim exactly. `InventoryQuantityName` is NOT a closed GraphQL enum (introspection returned `enumValues: null`) — it is validated some other way (likely a runtime string check), so an invalid name would need a separate live test to see the failure mode (not yet tested) | Live: `inventoryLevels(first:1) { edges { node { quantities(names: [8 names]) { name quantity } } } }` — all 8 returned real values |
-| E-T1 | T2 | `TaxonomyCategory.fullName` gives the full breadcrumb path (`"Apparel & Accessories > Clothing"`), `ancestorIds` gives the ancestor id chain, `isLeaf`/`isRoot`/`level` all present — confirms category path/ancestor resolution is fully supported without a live-tree-walk workaround | Live transcript below |
+| E-T1b | T2 | `TaxonomyCategory.fullName` gives the full breadcrumb path (`"Apparel & Accessories > Clothing"`), `ancestorIds` gives the ancestor id chain, `isLeaf`/`isRoot`/`level` all present — confirms category path/ancestor resolution is fully supported without a live-tree-walk workaround | Live — observed, no transcript retained |
 | E-T2 | T9 | `TaxonomyCategory.attributes` confirmed as a real per-category attribute schema (`Color, Pattern, Age group, Target gender, Care instructions` for Clothing; `Color, Pattern, Material, Age group, Accessory size` for Clothing Accessories) — it is a UNION type (`TaxonomyChoiceListAttribute` / `TaxonomyMeasurementAttribute`), requiring inline fragments to query, not a plain object list | Live transcript below |
 | E-T3 | T11 | 🚫 **NOT SUPPORTED, confirmed cleanly.** No mutation in the entire schema contains "taxonomy" or "category" in its name — Shopify's Standard Product Taxonomy is fully closed/read-only for a merchant app. There is no `CategoryProvisioner`-equivalent capability; OL products must map onto the existing fixed tree, never create a new node | Live: `__schema { mutationType { fields { name } } }` filtered for "taxonomy"/"category" → `[]` |
 | E-D2 | D5 | `ShippingLine.taxLines` field confirmed present on the type — matches the issue's claim that shipping tax is stated separately from line-item tax, meaning `splitShippingAcrossRates` (ADR-063 §5) is genuinely not needed for this platform | Live introspection |
@@ -129,7 +133,7 @@ found in the desk-research pass).
 ### E-M2 — deletion detection (M7)
 
 ```
-$ curl -s -X POST https://shopfyol.myshopify.com/admin/api/2026-07/graphql.json \
+$ curl -s -X POST https://{shop-domain}.myshopify.com/admin/api/2026-07/graphql.json \
   -H "X-Shopify-Access-Token: $TOKEN" -H "Content-Type: application/json" \
   -d '{"query":"mutation productCreate($product: ProductCreateInput!) { productCreate(product: $product) { product { id title } userErrors { field message } } }","variables":{"product":{"title":"OL-SPIKE-delete-test"}}}'
 → {"data":{"productCreate":{"product":{"id":"gid://shopify/Product/16155546779951","title":"OL-SPIKE-delete-test"},"userErrors":[]}}, ...}
@@ -227,27 +231,6 @@ $ curl -s -X POST .../graphql.json -d '{"query":"mutation fulfillmentOrderMove($
   access scope. Also: The user must have fulfill_and_ship_orders permission."
 ```
 
-## API surface summary (partial — grows as stories are verified)
-
-**Products**
-- `products(first, after, query, sortKey: UPDATED_AT)` — enumeration + modified-since (M1, M5)
-- `product(id: ID!)` — single hydrate; returns `null` (not an error) for a deleted id (M2, M7)
-- `productCreate` / `productDelete` — confirmed working, standard `userErrors[]` shape (P1)
-
-**Inventory**
-- `inventoryAdjustQuantities(input: InventoryAdjustQuantitiesInput!)` — requires **both**
-  `changeFromQuantity` per change (CAS) **and** the field-level `@idempotent(key: "...")` directive
-  (M11, M13)
-- `locations(first, after)` — confirmed native multi-location (M12)
-
-**Taxonomy**
-- `taxonomy { categories(first, after, descendantsOf) }` — confirmed reachable with baseline scope
-  set; exact scope requirement still open (T1)
-
-**Shop**
-- `shop { name myshopifyDomain plan { displayName } resourceLimits { maxProductOptions
-  maxProductVariants } }` (C4, P)
-
 ### E-C7/E-O3 — webhook registration + order cancellation (C10, O12)
 
 ```
@@ -331,12 +314,16 @@ $ curl ... productSet(input: {id: "gid://shopify/Product/16155557658927", title:
    },"userErrors":[]}}, ...}
 ```
 
+### Additional session-1 findings
+
+| # | Story | Fact | Evidence |
+|---|---|---|---|
 | E-X2 | X1/O15 | 🎯 **The 5-orders/minute `orderCreate` cap on dev/trial stores is REAL and confirmed live**, not just a documented claim. Orders #1004-#1008 (5 sequential) all succeeded; order #6 immediately failed with `"Too many attempts. Please try again later."` (in `userErrors`, order #7 failed identically). **Load-bearing nuance: this is NOT the GraphQL cost/`throttleStatus` mechanism** — every one of the 7 calls cost 10 points and `throttleStatus.currentlyAvailable` stayed at 3990 throughout, completely unaffected. This is a SEPARATE, dev-store-specific rate limit reported as an ordinary `userErrors` entry, not an HTTP 429 and not visible in `extensions.cost` at all. An adapter's retry-classification logic must recognize this specific error STRING (or a stable error code, if one exists — not yet confirmed) as a distinct throttle signal, since the generic `throttleStatus`-based backoff logic (C7/C8) would never detect it | Live: orders #1004-#1008 succeeded, #1006(6th)/#1007(7th) both failed with `"Too many attempts. Please try again later."`, `throttleStatus` unchanged across all 7 calls |
 | E-T4 | T12 | 🎯 **Full taxonomy sync fits comfortably in quota.** `taxonomy { categories(first:250) }` at root returned all 26 top-level categories for only 4 points; `descendantsOf` on one branch returned a full 250-node page for 14 points. Shopify's public Standard Product Taxonomy has ~10-13k total nodes across all levels — extrapolating from the measured per-page cost, a full one-time sync is roughly `~52 pages × 14 pts ≈ 728 points`, well under the 4000-point per-tick budget. Not an exhaustive walk (would need real pagination through the whole tree to be exact), but the per-page cost is real and the order-of-magnitude conclusion is solid | Live: root query (26 nodes, cost 4) + one `descendantsOf` page (250 nodes, cost 14) |
 | E-P6 | P8 | `productSet` with `productOptions` + per-variant `optionValues` confirmed working — 3 variants (S/M/L) created in one call, each with its own price, native option-based grouping (not a separate `variantGroup` mechanism) | Live: product + 3 priced variants created in one `productSet` call |
 | E-S5 | S5 | `productUpdate(product: {seo: {title, description}})` confirmed working — additional field-update surface beyond `descriptionHtml` | Live: SEO title/description written and echoed back |
 | E-F7 | F6 (HOLD supportedAction) | `fulfillmentOrderHold`/`fulfillmentOrderReleaseHold` confirmed live: `status` transitions `OPEN → ON_HOLD → OPEN`. Confirms the `HOLD` entry in `supportedActions` (E-F1) is a real, working action, not just an advertised capability | Live: hold → `ON_HOLD`, release → `OPEN` |
-| E-T5 | T (category vs productType vs Collections) | 🎯 **All three concepts confirmed genuinely distinct and independently settable.** Set `productType: "Snowboards"` (free text) and `category` (a real `TaxonomyCategory` id) on the same product simultaneously — both persisted independently. **`category` accepts ANY valid taxonomy node id with zero content-appropriateness validation**: a deliberately mismatched category (`"Bicycle Parts"` on a snowboard product) was accepted without error — the server checks the id is a real taxonomy node, nothing more. `collectionCreate` (merchandising) is a third, separate mechanism, and **collection membership is asynchronously indexed**: the mutation's own response reported `productsCount: 0` immediately after creation despite passing the product in the same call, while re-reading `product.collections` ~3s later correctly showed the new collection | Live transcript below |
+| E-T5 | T (category vs productType vs Collections) | 🎯 **All three concepts confirmed genuinely distinct and independently settable.** Set `productType: "Snowboards"` (free text) and `category` (a real `TaxonomyCategory` id) on the same product simultaneously — both persisted independently. **`category` accepts ANY valid taxonomy node id with zero content-appropriateness validation**: a deliberately mismatched category (`"Bicycle Parts"` on a snowboard product) was accepted without error — the server checks the id is a real taxonomy node, nothing more. `collectionCreate` (merchandising) is a third, separate mechanism, and **collection membership is asynchronously indexed**: the mutation's own response reported `productsCount: 0` immediately after creation despite passing the product in the same call, while re-reading `product.collections` ~3s later correctly showed the new collection | Live — observed, no transcript retained |
 | E-C9 | C4/X4 | 🎯 **`currentAppInstallation { accessScopes { handle } }` is a live, authoritative readable list of the app's CURRENTLY-GRANTED scopes** — cheap (cost 2), directly useful as a connection-health diagnostic (the OL "health panel" pattern already used for rate-limit/webhook status elsewhere). Re-checked here: `read_all_orders` is confirmed still ABSENT from the list, meaning the manual Shopify review request (E-C6) remains pending as of this session — a re-runnable live check for whether/when it clears | Live: 16 scopes listed, `read_all_orders` not among them |
 | E-S4b | S7 | 🎯 **Confirmed — one query, one call.** `variants(first:1) { price inventoryQuantity availableForSale }` returns price + quantity + sellability together, no second read needed for the commercial snapshot. Bonus nuance: `"The Inventory Not Tracked Snowboard"` reports `inventoryQuantity: 0` but `availableForSale: true` — confirms "inventory not tracked" means sellable regardless of the (meaningless, in that mode) quantity figure, a distinction an adapter must not misread as "out of stock" | Live: 3 real products read together, one showing the not-tracked/available-anyway combination |
 
@@ -348,25 +335,25 @@ throttling observed.
 
 | # | Story | Fact | Evidence |
 |---|---|---|---|
-| E-R9 | R7 (closes it) | 🎯 **R7 CONFIRMED — `Return.refunds` genuinely populates via a clean `returnProcess` call.** Session 1's attempt was contaminated by an earlier raw `refundCreate` on the same line item, which left `returnProcess` unable to complete. Re-run from scratch on a fresh order/real product variant (no `refundCreate` anywhere in the sequence): `returnRequest` → `returnApproveRequest` → `returnProcess` with a `RESTOCKED` disposition → `userErrors: []`, `Return.refunds` now carries a real `Refund` id, and `Return.status` transitions **asynchronously** `OPEN → CLOSED` a couple seconds later (same async-job pattern as `orderCancel`, E-O3) | Live transcript below — full clean 5-call sequence |
-| E-R10 | R6 (correction) | 🚨 **`RESTOCKED` disposition does NOT itself adjust `ProductVariant.inventoryQuantity`.** Confirmed the stock figure stayed unchanged (55 → 55) immediately after a successful `returnProcess(dispositionType: RESTOCKED)` call. Disposition is bookkeeping/intent only — the adapter must issue its own `inventoryAdjustQuantities` once goods are physically confirmed back in stock, exactly mirroring OL's own #2370 split between a disposition *attempt* and a book-confirmed restock | Live transcript below |
-| E-R11 | R6 | 🎯 **`reverseDeliveryCreateWithShipping` discovered and confirmed working** — not found in session 1's mutation scan. Creates a real `ReverseDelivery` (custody-in-transit record with tracking), populating the previously-empty `reverseFulfillmentOrders[].reverseDeliveries[]` field. Required input: `reverseFulfillmentOrderId`, `reverseDeliveryLineItems[]`, and **either** `trackingInput` **or** `labelInput` (a bare disposition with no shipping info is refused: `"must receive either return_label_file or tracking_info"`). `ReverseDeliveryTrackingInput` is narrower than assumed — only `{number, url}`, no `carrierName` field | Live transcript below |
-| E-R12 | — (repeats E-R8's quirk) | 🚨 **Confirmed as a repeatable platform pattern, not a one-off.** A `returnProcess` call against a *custom* line item (no real product/variant/inventory location) returned `userErrors: [...]` ("RESTOCKED is an invalid disposition type for a custom line item", "Location not found") **and still created a real (empty) `Refund` row** on the return, visible on the very next read. Same shape as `orderMarkAsPaid`'s quirk (E-R8): **a populated `userErrors` array must never be read as "nothing was written"** — an adapter needs to re-read state after any mutation carrying `userErrors`, not just trust the payload being `null` | Live transcript below |
-| E-F8 | F (negotiation axis, new gap) | 🚨 **Fourth confirmed scope gap.** Discovered 6 previously-unseen mutations forming the negotiation axis from ADR-054 (`fulfillmentOrderSubmitFulfillmentRequest`, `AcceptFulfillmentRequest`, `RejectFulfillmentRequest`, and the `...CancellationRequest` trio). They only apply to a `FulfillmentOrder` assigned to a **fulfillment-service** location, not a merchant-managed one — moving a FO there via `fulfillmentOrderMove` failed with `"The api_client does not have access to fulfillment orders at the new location"`, requiring the **still-missing** `write_third_party_fulfillment_orders` scope (distinct from `write_merchant_managed_fulfillment_orders`, which the token already has). The negotiation axis (`UNSUBMITTED→SUBMITTED→ACCEPTED/REJECTED`) therefore remains **entirely untested live** | Live transcript below |
+| E-R9 | R7 (closes it) | 🎯 **R7 CONFIRMED — `Return.refunds` genuinely populates via a clean `returnProcess` call.** Session 1's attempt was contaminated by an earlier raw `refundCreate` on the same line item, which left `returnProcess` unable to complete. Re-run from scratch on a fresh order/real product variant (no `refundCreate` anywhere in the sequence): `returnRequest` → `returnApproveRequest` → `returnProcess` with a `RESTOCKED` disposition → `userErrors: []`, `Return.refunds` now carries a real `Refund` id, and `Return.status` transitions **asynchronously** `OPEN → CLOSED` a couple seconds later (same async-job pattern as `orderCancel`, E-O3) | Live — observed, no transcript retained (session-2 pass; see Recommendation note) |
+| E-R10 | R6 (correction) | 🚨 **`RESTOCKED` disposition does NOT itself adjust `ProductVariant.inventoryQuantity`.** Confirmed the stock figure stayed unchanged (55 → 55) immediately after a successful `returnProcess(dispositionType: RESTOCKED)` call. Disposition is bookkeeping/intent only — the adapter must issue its own `inventoryAdjustQuantities` once goods are physically confirmed back in stock, exactly mirroring OL's own #2370 split between a disposition *attempt* and a book-confirmed restock | Live — observed, no transcript retained |
+| E-R11 | R6 | 🎯 **`reverseDeliveryCreateWithShipping` discovered and confirmed working** — not found in session 1's mutation scan. Creates a real `ReverseDelivery` (custody-in-transit record with tracking), populating the previously-empty `reverseFulfillmentOrders[].reverseDeliveries[]` field. Required input: `reverseFulfillmentOrderId`, `reverseDeliveryLineItems[]`, and **either** `trackingInput` **or** `labelInput` (a bare disposition with no shipping info is refused: `"must receive either return_label_file or tracking_info"`). `ReverseDeliveryTrackingInput` is narrower than assumed — only `{number, url}`, no `carrierName` field | Live — observed, no transcript retained |
+| E-R12 | — (repeats E-R8's quirk) | 🚨 **Confirmed as a repeatable platform pattern, not a one-off.** A `returnProcess` call against a *custom* line item (no real product/variant/inventory location) returned `userErrors: [...]` ("RESTOCKED is an invalid disposition type for a custom line item", "Location not found") **and still created a real (empty) `Refund` row** on the return, visible on the very next read. Same shape as `orderMarkAsPaid`'s quirk (E-R8): **a populated `userErrors` array must never be read as "nothing was written"** — an adapter needs to re-read state after any mutation carrying `userErrors`, not just trust the payload being `null` | Live — observed, no transcript retained |
+| E-F8 | F (negotiation axis, new gap) | 🚨 **A third confirmed scope gap** (on the negotiation axis — see Open risk 5 for the full, reconciled count of three). Discovered 6 previously-unseen mutations forming the negotiation axis from ADR-054 (`fulfillmentOrderSubmitFulfillmentRequest`, `AcceptFulfillmentRequest`, `RejectFulfillmentRequest`, and the `...CancellationRequest` trio). They only apply to a `FulfillmentOrder` assigned to a **fulfillment-service** location, not a merchant-managed one — moving a FO there via `fulfillmentOrderMove` failed with `"The api_client does not have access to fulfillment orders at the new location"`, requiring the **still-missing** `write_third_party_fulfillment_orders` scope (distinct from `write_merchant_managed_fulfillment_orders`, which the token already has). The negotiation axis (`UNSUBMITTED→SUBMITTED→ACCEPTED/REJECTED`) therefore remains **entirely untested live** | Live — observed, no transcript retained |
 | E-F9 | F | Additional fulfillment mutations discovered by full schema scan, none yet tested: `fulfillmentOrderReportProgress`, `fulfillmentOrderSplit`, `fulfillmentOrderMerge`, `fulfillmentOrderReschedule`, `fulfillmentOrdersSetFulfillmentDeadline`, `fulfillmentOrdersReroute`, `reverseFulfillmentOrderDispose` (a lower-level disposition primitive `returnProcess` likely wraps) | Live: `__schema { mutationType { fields { name } } }` filtered for "fulfillment"/"reverse" |
-| E-T6 | T (new capability) | 🎯 **Full-text taxonomy search confirmed working**: `taxonomy { categories(search: "shoes") }` returns real matches from anywhere in the tree (`Shoes`, `Soccer Shoes`, `Snow Blower Skid Shoes`), not just parent→child browsing via `descendantsOf`. No dedicated scope needed beyond the existing `read_products` | Live transcript below |
-| E-T7 | T9 (deepened) | `TaxonomyCategory.attributes` values are a real paginated connection (`values(first: N) { edges { node { name } } }`), not a plain list — confirmed with real category data (`Electronics → Color: Beige/Black/Blue…, Pattern, Safety certifications`) | Live transcript below |
-| E-S6 | S (status write, deepened) | 🎯 **Full product status lifecycle confirmed via WRITE, not just read.** `productUpdate` cycled a real product `DRAFT → ACTIVE → ARCHIVED → DRAFT` cleanly across 3 calls, `publishedAt` staying `null` throughout every transition — confirms at write-time (not just read-time, cf. E-P4) that catalog `status` and channel publication are independent facts | Live transcript below |
+| E-T6 | T (new capability) | 🎯 **Full-text taxonomy search confirmed working**: `taxonomy { categories(search: "shoes") }` returns real matches from anywhere in the tree (`Shoes`, `Soccer Shoes`, `Snow Blower Skid Shoes`), not just parent→child browsing via `descendantsOf`. No dedicated scope needed beyond the existing `read_products` | Live — observed, no transcript retained |
+| E-T7 | T9 (deepened) | `TaxonomyCategory.attributes` values are a real paginated connection (`values(first: N) { edges { node { name } } }`), not a plain list — confirmed with real category data (`Electronics → Color: Beige/Black/Blue…, Pattern, Safety certifications`) | Live — observed, no transcript retained |
+| E-S6 | S (status write, deepened) | 🎯 **Full product status lifecycle confirmed via WRITE, not just read.** `productUpdate` cycled a real product `DRAFT → ACTIVE → ARCHIVED → DRAFT` cleanly across 3 calls, `publishedAt` staying `null` throughout every transition — confirms at write-time (not just read-time, cf. E-P4) that catalog `status` and channel publication are independent facts | Live — observed, no transcript retained |
 | E-S7 | S (metafields workaround) | `metafieldsSet` confirmed working as the generic escape hatch for fields Shopify has no native equivalent for (e.g. buyer/seller tax id, cf. E-O8) — wrote `custom.ol_test_tax_id` on the `Shop` owner, read back byte-identical. Needs the owner's real internal id (`shop { id }`), a bare `"Shop/1"` guess fails with `"Owner does not exist."` | Live: metafield written + confirmed present |
-| E-F10 | F6 (negotiation axis — closes the F group to 8/8) | 🎯 **Negotiation axis confirmed fully working, closing scope gap #4 (E-F8).** After adding `write_third_party_fulfillment_orders`/`read_third_party_fulfillment_orders` (no re-auth needed — same token, verified via `currentAppInstallation.accessScopes`), the full chain worked: gave the target variant a SKU (fulfillment-service locations refuse to stock a SKU-less variant), `inventoryActivate` (also requires `@idempotent`, a fourth mutation confirmed under the mandatory-idempotency rule) at the `OL-Spike-Fulfillment` location, `fulfillmentOrderMove` succeeded (`supportedActions` gained `REQUEST_FULFILLMENT`), then `fulfillmentOrderSubmitFulfillmentRequest` moved `requestStatus: UNSUBMITTED → SUBMITTED`, then `fulfillmentOrderAcceptFulfillmentRequest` moved it `SUBMITTED → ACCEPTED` **while the independent execution axis moved `OPEN → IN_PROGRESS` on the same call** — confirming the two-axis model moves together on acceptance, not just independently in isolation | Live transcript below |
-| E-D5 | D (presentment currency, live) | 🎯 **`presentmentMoney` genuinely differs from `shopMoney`, but Shopify does NOT auto-convert — the caller supplies both.** `orderCreate` with `presentmentCurrency: EUR` on a USD shop refused (`"Line items presentment currency must be provided..."`) until every `priceSet` on the order carried an explicit `presentmentMoney`. Once supplied, `totalPriceSet.shopMoney = 100.00 USD` and `.presentmentMoney = 92.00 EUR` round-tripped independently, with no conversion arithmetic applied by the platform. Load-bearing for ADR-040 FX stamping: Shopify is not a source of truth for FX rates on this mutation, OL must supply both figures itself | Live transcript in log |
+| E-F10 | F6 (negotiation axis — closes the F group to 8/8) | 🎯 **Negotiation axis confirmed fully working, closing the third scope gap (E-F8).** After adding `write_third_party_fulfillment_orders`/`read_third_party_fulfillment_orders` (no re-auth needed — same token, verified via `currentAppInstallation.accessScopes`), the full chain worked: gave the target variant a SKU (fulfillment-service locations refuse to stock a SKU-less variant), `inventoryActivate` (also requires `@idempotent`, a fourth mutation confirmed under the mandatory-idempotency rule) at the `OL-Spike-Fulfillment` location, `fulfillmentOrderMove` succeeded (`supportedActions` gained `REQUEST_FULFILLMENT`), then `fulfillmentOrderSubmitFulfillmentRequest` moved `requestStatus: UNSUBMITTED → SUBMITTED`, then `fulfillmentOrderAcceptFulfillmentRequest` moved it `SUBMITTED → ACCEPTED` **while the independent execution axis moved `OPEN → IN_PROGRESS` on the same call** — confirming the two-axis model moves together on acceptance, not just independently in isolation | Live — observed, no transcript retained |
+| E-D5 | D (presentment currency, live) | 🎯 **`presentmentMoney` genuinely differs from `shopMoney`, but Shopify does NOT auto-convert — the caller supplies both.** `orderCreate` with `presentmentCurrency: EUR` on a USD shop refused (`"Line items presentment currency must be provided..."`) until every `priceSet` on the order carried an explicit `presentmentMoney`. Once supplied, `totalPriceSet.shopMoney = 100.00 USD` and `.presentmentMoney = 92.00 EUR` round-tripped independently, with no conversion arithmetic applied by the platform. Load-bearing for ADR-040 FX stamping: Shopify is not a source of truth for FX rates on this mutation, OL must supply both figures itself | Live — observed, no transcript retained (referenced a local session log not included in this PR) |
 | E-D6 | D (duties, negative result) | 🚫 **Duties are NOT settable via `orderCreate`.** Neither `OrderCreateOrderInput` nor its line-item input has a `duties` field anywhere — confirmed by full introspection of both types. `LineItem.duties` exists as a **read-only** field (populated only on a real checkout-originated order), so an adapter importing an order via `orderCreate` structurally cannot carry duty amounts through; this is a genuine capability gap for cross-border import, not a missing scope | Live introspection, both input types enumerated |
-| E-P8 | P3 (async media, deepened) | 🎯 **Full async media ladder confirmed: `UPLOADED → READY` or `UPLOADED → FAILED` with a structured, actionable error.** A bad URL and a wrong-content-type URL both resolved to `status: FAILED` with a real `mediaErrors: [{code, details}]` (e.g. `"UNSUPPORTED_IMAGE_FILE_TYPE"`, `"(text/html) is not a recognized format"`); a genuine image URL resolved to `READY` with a real hosted CDN URL. Async media failures are observable, not silent | Live transcript in log |
+| E-P8 | P3 (async media, deepened) | 🎯 **Full async media ladder confirmed: `UPLOADED → READY` or `UPLOADED → FAILED` with a structured, actionable error.** A bad URL and a wrong-content-type URL both resolved to `status: FAILED` with a real `mediaErrors: [{code, details}]` (e.g. `"UNSUPPORTED_IMAGE_FILE_TYPE"`, `"(text/html) is not a recognized format"`); a genuine image URL resolved to `READY` with a real hosted CDN URL. Async media failures are observable, not silent | Live — observed, no transcript retained (referenced a local session log not included in this PR) |
 | E-P9 | P (option limit, negative confirmed) | The 3-option ceiling (E-P1's `resourceLimits.maxProductOptions`) is enforced server-side with a clear refusal (`"Can only specify a maximum of 3 options"`) when a 4th option + matching variant is submitted via `productSet` | Live |
 | E-S8 | S6 (status lifecycle, closes it) | `UNLISTED` confirmed as a real, settable status via `productUpdate` — completes the full 4-value `ProductStatus` write lifecycle (`DRAFT ↔ ACTIVE ↔ ARCHIVED ↔ UNLISTED`, all pairwise transitions now exercised) | Live |
 | E-T8 | T (search, negative result) | An empty-result taxonomy search (`search: "zzzznonexistent..."`) returns a clean empty `edges: []`, no error — confirms search degrades safely rather than throwing on no match | Live |
 | E-T9 | T2 (descendantsOf, corrected) | 🚨 **`descendantsOf` returns the FULL flattened subtree at every depth, not just direct children.** A single call against the "Apparel & Accessories" branch returned 250 nodes spanning at least 3 levels of nesting (top-level categories through to leaf items like "Ankle Socks") in one page, with `hasNextPage: true` for the remainder. An adapter building a tree-walk sync must NOT assume one page = one level | Live, 250-node page observed |
-| E-D4 | D5 (strengthened from introspection to live) | 🎯 **Mixed-rate basket + separate shipping tax line, live end to end.** Order with two line items (23% and 8% VAT) plus a shipping line taxed separately at 23% — every rate round-tripped correctly and `totalTaxSet` summed exactly (`23.00 + 4.00 + 2.30 = 29.30`). This was previously only confirmed by schema introspection (E-D2); now confirmed by a real multi-rate order, closing the last doubt on `splitShippingAcrossRates` (ADR-063 §5) genuinely being unnecessary for this platform | Live transcript below |
+| E-D4 | D5 (strengthened from introspection to live) | 🎯 **Mixed-rate basket + separate shipping tax line, live end to end.** Order with two line items (23% and 8% VAT) plus a shipping line taxed separately at 23% — every rate round-tripped correctly and `totalTaxSet` summed exactly (`23.00 + 4.00 + 2.30 = 29.30`). This was previously only confirmed by schema introspection (E-D2); now confirmed by a real multi-rate order, closing the last doubt on `splitShippingAcrossRates` (ADR-063 §5) genuinely being unnecessary for this platform | Live — observed, no transcript retained |
 
 ### E-R8 (full sequence) — returnProcess vs raw refundCreate (R7/D6)
 
@@ -395,6 +382,27 @@ $ curl ... mutation { returnProcess(input: {returnId: "...", returnLineItems: [{
   refundable quantity on the shared line item.
 ```
 
+## API surface summary (partial — grows as stories are verified)
+
+**Products**
+- `products(first, after, query, sortKey: UPDATED_AT)` — enumeration + modified-since (M1, M5)
+- `product(id: ID!)` — single hydrate; returns `null` (not an error) for a deleted id (M2, M7)
+- `productCreate` / `productDelete` — confirmed working, standard `userErrors[]` shape (P1)
+
+**Inventory**
+- `inventoryAdjustQuantities(input: InventoryAdjustQuantitiesInput!)` — requires **both**
+  `changeFromQuantity` per change (CAS) **and** the field-level `@idempotent(key: "...")` directive
+  (M11, M13)
+- `locations(first, after)` — confirmed native multi-location (M12)
+
+**Taxonomy**
+- `taxonomy { categories(first, after, descendantsOf) }` — confirmed reachable with baseline scope
+  set; exact scope requirement still open (T1)
+
+**Shop**
+- `shop { name myshopifyDomain plan { displayName } resourceLimits { maxProductOptions
+  maxProductVariants } }` (C4, P)
+
 ## Open risks — flagged, not guessed
 
 1. **`read_all_orders` requires manual Shopify review** ("rolling basis", no stated SLA) via a
@@ -415,11 +423,16 @@ $ curl ... mutation { returnProcess(input: {returnId: "...", returnLineItems: [{
 4. **Exact scope requirement for `taxonomy` query is still not isolated** — it worked with the full
    scope set already granted; has not been tested against a narrower scope set to determine the
    minimum requirement.
-5. **Issue's own Prerequisites scope list has THREE confirmed gaps, not one**:
-   `write_merchant_managed_fulfillment_orders` (blocks F group writes, E-F3/E-F4),
-   `read_customers` (blocks resolving `order.customer`, E-O7), and possibly more not yet found.
-   The full requested scope set from the issue should not be trusted as complete without a
-   line-by-line re-verification against every mutation/query actually used by the eventual adapter.
+5. **Issue's own Prerequisites scope list has THREE confirmed gaps — all three now added and
+   re-verified working, closed as of Session 2**:
+   `write_merchant_managed_fulfillment_orders` (blocked F group writes, E-F3/E-F4 — resolved, see
+   E-F6), `read_customers` (blocked resolving `order.customer`, E-O7 — resolved), and
+   `write_third_party_fulfillment_orders`/`read_third_party_fulfillment_orders` (blocked the
+   negotiation axis on fulfillment-service locations, E-F8 — resolved, see E-F10, which closes the F
+   group to 8/8). This is the reconciled, final count — treat any other number elsewhere in this
+   document or the spec as stale. The full requested scope set from the issue should still not be
+   trusted as complete without a line-by-line re-verification against every mutation/query actually
+   used by the eventual adapter, since further, as-yet-undiscovered gaps remain possible.
 6. **`descriptionHtml` has zero server-side sanitization (E-P2)** — confirmed a live, real security
    property of the platform, not a desk-research guess. Any OL-side `ADR-046`-style narrowing for
    Shopify must not be mistaken for an XSS boundary; `sanitizeStoredHtml` (or equivalent) is entirely
@@ -434,12 +447,14 @@ issue's three headline findings survived live verification, and F6 came back *st
 claimed (E-F5's near-verbatim vocabulary match to ADR-054). Nothing found in this session's ~65
 live-verified stories contradicts the ADOPT lean.
 
-Four corrections are load-bearing enough that a follow-up implementation plan must account for them
+Six corrections are load-bearing enough that a follow-up implementation plan must account for them
 explicitly, not just note them in passing:
 
-1. **Prerequisites scope list has (at least) two confirmed gaps**: `write_merchant_managed_fulfillment_orders`
-   and `read_customers`. Re-derive the full scope list from the actual mutations/queries the adapter
-   will use, rather than trusting the issue's original list.
+1. **Prerequisites scope list has three confirmed gaps** (all three since added and re-verified
+   working — see Open risk 5): `write_merchant_managed_fulfillment_orders`, `read_customers`, and
+   `write_third_party_fulfillment_orders`/`read_third_party_fulfillment_orders`. Re-derive the full
+   scope list from the actual mutations/queries the adapter will use, rather than trusting the issue's
+   original list.
 2. **`@idempotent` is not a naive retry-cache.** It rejects a same-key request with different
    parameters, but does not transparently replay a cached success once state has moved — every
    retry is freshly evaluated against current state and the `changeFromQuantity` CAS check. Design
@@ -469,19 +484,26 @@ rate-limit ceiling, `read_all_orders` review outcome) is bounded and named expli
 tally above — none of it is large enough to change the verdict, but AC2's "what the dev store cannot
 verify" list should cite it directly rather than being written from memory.
 
-## Coverage tally (as of end of live-testing session, 2026-09-04)
+## Coverage tally (as of end of Session 2, 2026-09-08)
 
-Live-verified (transcript exists above), by group: **C** 10/12 (C3 partial/behavioural; C4 gained a
-reusable `currentAppInstallation.accessScopes` health-check pattern; C7 = a confirmed NEGATIVE result
-— 50-parallel-call burst did not trigger 429, see E-C8) · **M** 13/13 (M6/M10 bulk operations
-confirmed end to end via `bulkOperationRunQuery`) · **T** 6/12 (T1, T2, T8-implicit via
-`fullName`/global tree, T9, T11-NOT-SUPPORTED, T12-quota-fits) · **P** 6/13 (P1, P3-implicit, P6, P7,
+Live-verified (transcript exists above unless marked "no transcript retained" — see the individual
+evidence rows), by group: **C** 10/12 (C3 partial/behavioural; C4 gained a reusable
+`currentAppInstallation.accessScopes` health-check pattern; C7 = an unmet test condition, not a
+confirmed negative — see the paragraph below) · **M** 13/13 (M6/M10 bulk operations confirmed end to
+end via `bulkOperationRunQuery`) · **T** 6/12 (T1, T1b, T8-implicit via `fullName`/global tree, T9,
+T11-NOT-SUPPORTED, T12-quota-fits) · **P** 6/13 (P1, P3-implicit, P6, P7,
 P13-behaviourally-confirmed-as-PATCH) · **S** 6/13 (S1, S4, S6, S7, S10, S13) · **O** 14/16 (O1, O2,
 O3, O5-partial, O6, O7, O9, O10, O11, O12, O13-vocab-only, O14, O15-CONFIRMED-with-real-5/min-cap,
-O16-negative-result) · **F** 7/8 (F1, F2, F3-implicit, F4, F6-flagship, F7-implicit, F8-vocab) · **D**
-5/9 (D2, D4, D5, D8, D9) · **R** 8/9 (R1, R2, R3, R4, R5, R6, R7-partial, R9-corrected) · **X** 4/6
-(X1-orderCreate-cap-confirmed, X2, X3, X5, plus X4's PII exemption confirmed and its diagnostic
-pattern via C4/E-C9).
+O16-attempted-but-inconclusive) · **F** 8/8 (F1, F2, F3-implicit, F4, F6-flagship, F7-implicit,
+F8-vocab, F10-negotiation-axis-closes-group) · **D** 5/9 (D2, D4, D5, D8, D9) · **R** 8/9 (R1, R2,
+R3, R4, R5, R6, R7-CLOSED-by-R9, R9-corrected) · **X** 4/6 (X1-orderCreate-cap-confirmed, X2, X3, X5,
+plus X4's PII exemption confirmed and its diagnostic pattern via C4/E-C9).
+
+**Sum across groups: 80 of the ~90 stories in the issue's own checklist**
+(10+13+6+6+6+14+8+5+8+4 = 80). This is the single authoritative headline figure for this spike — the
+PR description and the product spec must both cite this number rather than a separately-eyeballed
+one; any other figure appearing elsewhere in either document as of this revision is stale and should
+be corrected to match.
 
 **X6 (multi-tenant quota) deliberately skipped, confirmed as a genuine manual-step blocker rather
 than an oversight.** Verifying per-app-per-store quota isolation requires a SECOND custom-distribution
@@ -501,9 +523,12 @@ partially informed by findings above: generous 4000-pt budget confirmed resistan
 throttling even at 50 parallel calls, seeded test data confirmed present, dev-store-only `orderCreate`
 rate cap now CONFIRMED real, see E-X2).
 
-**Confirmed as a negative result rather than left untested**: O16/C7 (429/retry behaviour) — a
-50-parallel-call burst against a moderately expensive query produced zero throttling, confirming the
-budget genuinely resists accidental exhaustion rather than this being an untested gap.
+**Attempted but inconclusive, not a confirmed negative result**: O16/C7 (429/retry behaviour) — a
+50-parallel-call burst against a moderately expensive query produced zero throttling, but per E-C8's
+own caveat this test design was insufficient to reach the platform's real throttling threshold (a
+real 429 test needs either a sustained multi-minute burst well above 200 pts/s, or a paid-plan-tier's
+tighter budget). Retry-classification behaviour (`Retry-After` header handling) stays structurally
+UNVERIFIED rather than confirmed either way — this is a genuinely untested gap, not a negative result.
 
 Everything else not explicitly listed above remains desk research only, carried from issue #2879's
 own checklist — see the issue body for the full list with its own `✅`/`⚠️`/`?` markers, none of
