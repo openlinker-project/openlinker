@@ -117,6 +117,34 @@ of_new_run() {
 }
 
 # ---------------------------------------------------------------------------
+# of_reset_cursor <connection_id> - delete OpenLinker's persisted
+# `connection_cursors` row for this scenario's poll cursor key
+# (`allegro.orders.lastEventId`, $OF_CURSOR_KEY), for one connection.
+#
+# `of_new_run` resets the STUB's own event sequence back to 0, but does
+# nothing to the cursor OpenLinker itself persisted from a PRIOR run/attempt
+# against this same connection - the two are independent stores with no
+# shared reset hook. A stale cursor from an earlier attempt is then compared
+# against the freshly-reset stub's brand-new sequence (which starts back at
+# 0 and will not reach the old cursor's value for a long time, if ever within
+# one run), so a poll immediately after `of_new_run` sees nothing NEW and the
+# ingestion wait spins at 0/N forever - not a stuck pipeline, a stale-cursor
+# mismatch this scenario's own harness caused. This is a bug in the SCENARIO
+# (this driver), not in OpenLinker's product code, so fixing it here is not
+# covered by the "never fix a correctness defect inside the measuring run"
+# rule - that rule is about the application under test.
+#
+# Call this BEFORE `of_new_run` (or any time before the first poll of a
+# fresh run) so every attempt starts the connection's cursor at "never
+# polled" exactly as the stub's own event sequence restarts at 0.
+# ---------------------------------------------------------------------------
+of_reset_cursor() {
+  local conn="$1"
+  pg_sql_write "DELETE FROM connection_cursors WHERE \"connectionId\"='$conn' AND \"cursorKey\"='$OF_CURSOR_KEY'" \
+    >/dev/null 2>&1 || warn "of_reset_cursor: failed to clear $OF_CURSOR_KEY for $conn (continuing - a stale cursor may stall ingestion)"
+}
+
+# ---------------------------------------------------------------------------
 # of_push_orders <tenant> <count> [line_items_per_order] [events_per_order]
 # Echoes the number of orders the stub reports it minted.
 #

@@ -91,7 +91,21 @@ done
 : "${PS_CONNECTION_ID:?PS_CONNECTION_ID not set - source stand-ids.env or export it}"
 : "${WC_CONNECTION_ID:?WC_CONNECTION_ID not set - source stand-ids.env or export it}"
 
-CONN_IDS_CSV="'$ALLEGRO_A_CONNECTION_ID','$PS_CONNECTION_ID','$WC_CONNECTION_ID'"
+# Scoped to the ONE connection this scenario actually enqueues sync_jobs
+# against (marketplace.orders.poll / marketplace.order.sync / the direct
+# marketplace.offer.stockRestore enqueue in arm_cancellation - all via
+# ALLEGRO_A_CONNECTION_ID). PS/WC never gain a sync_jobs row from anything
+# this scenario does (order-destination creation happens inline inside the
+# order-sync job, not as a separate enqueued job; refunds/returns/invoicing
+# are synchronous HTTP writes) - including them here would fail
+# guard_queue_empty on a standing, unrelated artifact: WC_CONNECTION_ID
+# carries a `master.product.syncAll` row dated to this stand's ORIGINAL
+# bootstrap (idempotencyKey `bootstrap:...:product:syncAll`), queued
+# forever because the campaign's steady-state default keeps the runner
+# off. That row is real and legitimate - not a leftover from a concurrent
+# scenario - so the fix is scoping the guard to what this run is actually
+# responsible for, not draining a fact this scenario does not own.
+CONN_IDS_CSV="'$ALLEGRO_A_CONNECTION_ID'"
 
 # ===========================================================================
 # --smoke - cheap self-test, no stand mutation, no results directory, no
@@ -123,9 +137,20 @@ ORIGINAL_RUNNER_ENABLED="$(docker exec "$(discover_worker_containers | awk '{pri
 [ -n "$ORIGINAL_RUNNER_ENABLED" ] || ORIGINAL_RUNNER_ENABLED=false
 
 WORKER_TOUCHED=0
+# Set once results_dir_init has produced a results dir (in run_strict) so the
+# EXIT trap can stop a sampler that window_start started, even if this script
+# dies between window_start and the window_stop that would otherwise reap it.
+# Without this, a mid-window death (a `die`, a signal, an unhandled error)
+# leaves sampler_start's background `while true; do sample_queue ...; done`
+# loop running forever - the exact orphaned-sampler incident this fix closes
+# unconditionally, independent of whatever specific run surfaced it.
+F12_RESULTS_DIR=""
 
 f12_on_exit() {
   local rc=$?
+  if [ -n "$F12_RESULTS_DIR" ]; then
+    sampler_stop "$F12_RESULTS_DIR"
+  fi
   if [ "$WORKER_TOUCHED" = "1" ]; then
     log "restoring worker posture (runner -> $ORIGINAL_RUNNER_ENABLED, replicas -> $ORIGINAL_REPLICAS)"
     if [ -f "$ENV_FILE" ]; then
@@ -272,7 +297,7 @@ arm_cancellation() {
     done_n="$(as_count "${done_n:-}")"
     [ -n "$done_n" ] && [ "$done_n" -ge "$total" ] && break
     waited=$((waited + 3))
-    [ "$waited" -lt 120 ] || { warn "arm_cancellation: only ${done_n:-0}/$total stockRestore jobs settled after 120s"; break; }
+    [ "$waited" -lt 300 ] || { warn "arm_cancellation: only ${done_n:-0}/$total stockRestore jobs settled after 300s"; break; }
     sleep 3
   done
   local after_ts
@@ -575,17 +600,34 @@ run_strict() {
 
   local dir
   dir="$(results_dir_init f12-post-sale-flows main)"
+  F12_RESULTS_DIR="$dir"
   local extra_manifest
   extra_manifest="$(jq -n '{scenario:"f12-post-sale-flows", note:"cancellation drives the real stockRestore job directly (no stub mutate endpoint - see file header); invoice arm is a bounded lock-scope diagnostic (no Invoicing-capable connection on this stand)"}')"
   window_start "$dir" f12-post-sale-flows "$CONN_IDS_CSV" 0 "$extra_manifest"
 
   local seed_since
   seed_since="$(iso_now)"
+  # Clear OpenLinker's OWN persisted poll cursor for this connection BEFORE
+  # resetting the stub's event sequence. `of_new_run` only resets the stub;
+  # a cursor left over from a prior attempt against this same connection
+  # compares against the freshly-zeroed stub sequence and never catches up,
+  # which stalls f12_wait_for_orders at 0/N indefinitely (the exact failure
+  # a prior attempt hit). This is a fix to this scenario's own harness, not
+  # to the product under test - see of_reset_cursor's header for why that
+  # distinction matters here.
+  of_reset_cursor "$ALLEGRO_A_CONNECTION_ID"
   of_new_run "f12-$(date +%s)"
   local seed_n=75
   of_push_orders "$F12_TENANT" "$seed_n" 1 1 >/dev/null
   of_enqueue_poll "$ALLEGRO_A_CONNECTION_ID" "f12-seed"
-  f12_wait_for_orders "$seed_since" "$seed_n" 90
+  # 90s is nowhere near enough here, unlike F1's Allegro-only timing: each
+  # seeded order's marketplace.order.sync child creates a REAL destination
+  # order on BOTH PrestaShop and WooCommerce inline (not a separate job),
+  # under the `realtime` lane's per-scope cap of 2 - measured live at ~1
+  # order every 6-7s for this connection, so 75 orders is genuinely a
+  # ~9-10 minute ingest, not a stuck pipeline (a first attempt at 90s
+  # timed out at 13/75, climbing steadily the whole time).
+  f12_wait_for_orders "$seed_since" "$seed_n" 720
 
   # Captured via command substitution, NOT `< <(f12_pick_orders ...)`: `die`
   # inside a process substitution only kills that subshell (its `exit` never
@@ -625,7 +667,7 @@ run_strict() {
   arm_invoice_lock_diagnostic "$dir" "$invoice_diag_order"
 
   wait "$bg_pid" || warn "background ingestion push/poll exited non-zero"
-  f12_wait_for_orders "$bg_since" 15 60
+  f12_wait_for_orders "$bg_since" 15 180
 
   local bg_ingested
   bg_ingested="$(pg_sql "SELECT COUNT(*) FROM order_records WHERE \"sourceConnectionId\"='$ALLEGRO_A_CONNECTION_ID' AND \"createdAt\">='$bg_since'")"
