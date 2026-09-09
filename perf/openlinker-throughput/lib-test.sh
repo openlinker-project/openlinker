@@ -1560,6 +1560,26 @@ if [ -f "$PSO_DRIVER" ]; then
     "$PSO_SRC" 'HTTP $status'
   assert_contains "ps-order-source resolves reference ids from the LIVE shop, never guesses" \
     "$PSO_SRC" 'pso_resolve_refs'
+
+  # pso_extract_id is the belt-and-braces reader for a create response: the
+  # reference webservice client (prestashop-webservice.client.ts:576) forces
+  # Output-Format: XML on every POST/PUT response regardless of what we ask
+  # for, so a driver that only ever ran `jq -r '.foo.id'` against a live
+  # shop would die on every single create with "returned no id" even though
+  # the create succeeded. Both wire shapes must resolve to the same id.
+  PSO_EXTRACT_RESULT="$(
+    # shellcheck source=/dev/null
+    source "$PSO_DRIVER" 2>/dev/null
+    JSON_RESP='{"customer":{"id":"5"}}'
+    XML_RESP='<?xml version="1.0" encoding="UTF-8"?><prestashop xmlns="http://www.prestashop.com/xml/xsd"><customer><id><![CDATA[5]]></id></customer></prestashop>'
+    XML_RESP_PLAIN='<?xml version="1.0" encoding="UTF-8"?><prestashop><order><id>9</id></order></prestashop>'
+    got_json="$(pso_extract_id "$JSON_RESP" customer)"
+    got_xml_cdata="$(pso_extract_id "$XML_RESP" customer)"
+    got_xml_plain="$(pso_extract_id "$XML_RESP_PLAIN" order)"
+    printf '%s|%s|%s' "$got_json" "$got_xml_cdata" "$got_xml_plain"
+  )"
+  assert_eq "pso_extract_id reads the id whether the shop answers JSON or XML" \
+    "5|5|9" "$PSO_EXTRACT_RESULT"
 else
   FAIL=$((FAIL + 1)); FAILURES+=("ps-order-source.sh not found at $PSO_DRIVER")
 fi

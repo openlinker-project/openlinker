@@ -91,10 +91,20 @@ PSO_CURSOR_KEY="${PSO_CURSOR_KEY:-prestashop.orders.dateUpd}"
 # request body on a write, only `Output-Format: JSON` on the RESPONSE of a
 # GET (verified against this repo's own webservice client,
 # prestashop-webservice.client.ts:380/573-576, which sends
-# `Content-Type: application/xml` on every write and only asks for
-# `Output-Format: JSON` on GET). Dies on a non-2xx with the body printed -
-# PrestaShop's validation errors are the whole point of using the webservice
-# over raw SQL, so swallowing them here would throw away the one advantage.
+# `Content-Type: application/xml` on every write and forces
+# `Output-Format: XML` on the RESPONSE of a write - the reference client
+# deliberately never asks the live shop for a JSON response on POST/PUT, so
+# this driver cannot assume one either).
+#
+# Belt-and-braces on the response format: we ASK for JSON on every call
+# (`output_format=JSON` query param + `Output-Format: JSON` header - both
+# are documented PrestaShop webservice overrides, sent together in case one
+# shop configuration honours only one of the two), but callers must not
+# assume the ask was honoured - see pso_extract_id below, which falls back
+# to parsing the PrestaShop XML envelope when jq finds no JSON. Dies on a
+# non-2xx with the body printed - PrestaShop's validation errors are the
+# whole point of using the webservice over raw SQL, so swallowing them here
+# would throw away the one advantage.
 # ---------------------------------------------------------------------------
 pso_ws_curl() {
   local method="$1" path="$2" body="${3:-}" sep resp status resp_body
@@ -103,10 +113,11 @@ pso_ws_curl() {
   if [ -n "$body" ]; then
     resp="$(curl -sS -w '\n%{http_code}' -X "$method" \
       "$PSO_BASE_URL$path${sep}ws_key=$PSO_WS_KEY&output_format=JSON" \
-      -H 'Content-Type: application/xml' -d "$body")"
+      -H 'Content-Type: application/xml' -H 'Output-Format: JSON' -d "$body")"
   else
     resp="$(curl -sS -w '\n%{http_code}' -X "$method" \
-      "$PSO_BASE_URL$path${sep}ws_key=$PSO_WS_KEY&output_format=JSON")"
+      "$PSO_BASE_URL$path${sep}ws_key=$PSO_WS_KEY&output_format=JSON" \
+      -H 'Output-Format: JSON')"
   fi
   status="$(printf '%s' "$resp" | tail -n1)"
   resp_body="$(printf '%s' "$resp" | sed '$d')"
@@ -115,6 +126,31 @@ pso_ws_curl() {
     *) die "pso_ws_curl: $method $path -> HTTP $status
 $resp_body" ;;
   esac
+}
+
+# ---------------------------------------------------------------------------
+# pso_extract_id <response> <resource-key> - reads the newly-created
+# resource's id out of a pso_ws_curl POST response, whichever wire format
+# the shop actually answered with.
+#
+# jq first (the JSON we asked for); on empty/invalid JSON, fall back to
+# PrestaShop's XML envelope (`<resource><id>N</id>...`, sometimes
+# CDATA-wrapped: `<id><![CDATA[5]]></id>`) via a plain grep/sed extraction -
+# deliberately not a real XML parser, since the only thing this driver reads
+# out of a create response is one integer id. This is what makes
+# pso_ws_curl's belt-and-braces JSON request safe to have been ignored by
+# the shop: every caller (pso_ensure_customer, pso_push_one_order) goes
+# through this rather than assuming `jq -r '.foo.id'` alone.
+# ---------------------------------------------------------------------------
+pso_extract_id() {
+  local resp="$1" key="$2" id
+  id="$(printf '%s' "$resp" | jq -r ".${key}.id // empty" 2>/dev/null || true)"
+  if [ -z "$id" ] || [ "$id" = "null" ]; then
+    id="$(printf '%s' "$resp" | grep -oP '(?<=<id>).*?(?=</id>)' | head -n1)"
+    id="${id#*CDATA[}"
+    id="${id%\]\]*}"
+  fi
+  printf '%s' "$id"
 }
 
 # ---------------------------------------------------------------------------
@@ -190,7 +226,7 @@ pso_ensure_customer() {
     <optin>0</optin>
   </customer>
 </prestashop>")"
-    PSO_CUSTOMER_ID="$(printf '%s' "$resp" | jq -r '.customer.id // empty')"
+    PSO_CUSTOMER_ID="$(pso_extract_id "$resp" customer)"
     [ -n "$PSO_CUSTOMER_ID" ] || die "pso_ensure_customer: create returned no id. Response: $resp"
   fi
 
@@ -211,7 +247,7 @@ pso_ensure_customer() {
     <postcode>00-001</postcode>
   </address>
 </prestashop>")"
-    PSO_ADDRESS_ID="$(printf '%s' "$resp" | jq -r '.address.id // empty')"
+    PSO_ADDRESS_ID="$(pso_extract_id "$resp" address)"
     [ -n "$PSO_ADDRESS_ID" ] || die "pso_ensure_customer: address create returned no id. Response: $resp"
   fi
   log "pso_ensure_customer: customer=$PSO_CUSTOMER_ID address=$PSO_ADDRESS_ID"
@@ -255,7 +291,7 @@ pso_push_one_order() {
     </associations>
   </cart>
 </prestashop>")"
-  cart_id="$(printf '%s' "$resp" | jq -r '.cart.id // empty')"
+  cart_id="$(pso_extract_id "$resp" cart)"
   [ -n "$cart_id" ] || die "pso_push_one_order: cart create returned no id. Response: $resp"
 
   total_excl="$PSO_PRODUCT_PRICE"
@@ -311,7 +347,7 @@ pso_push_one_order() {
     </associations>
   </order>
 </prestashop>")"
-  order_id="$(printf '%s' "$resp" | jq -r '.order.id // empty')"
+  order_id="$(pso_extract_id "$resp" order)"
   [ -n "$order_id" ] || die "pso_push_one_order: order create returned no id. Response: $resp"
   printf '%s' "$order_id"
 }
