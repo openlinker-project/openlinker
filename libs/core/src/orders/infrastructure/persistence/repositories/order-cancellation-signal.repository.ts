@@ -1,11 +1,25 @@
 /**
  * Order Cancellation Signal Repository (#2069)
  *
- * TypeORM implementation of `OrderCancellationSignalRepositoryPort`. Both
- * methods are single raw statements — the same idiom
+ * TypeORM implementation of `OrderCancellationSignalRepositoryPort`.
+ *
+ * `record()` is a single raw statement — the same idiom
  * `OrderRecordRepository.markCancelled` already uses — because TypeORM's
  * `Repository` entity API cannot express `ON CONFLICT DO NOTHING` with no
- * conflict action, or a `DELETE ... RETURNING`, without dropping to raw SQL.
+ * conflict action without dropping to raw SQL.
+ *
+ * `consume()` deliberately goes through the QueryBuilder rather than
+ * `Repository.query()`, even though both can express `DELETE ... RETURNING`.
+ * TypeORM's raw driver-level `query()` special-cases `DELETE`/`UPDATE`: it
+ * wraps the result as `[rows, rowCount]` instead of returning `rows` directly
+ * (see `PostgresQueryRunner.query`'s `switch (raw.command)` branch) — a
+ * caller expecting a plain rows array silently reads `rows[0]` as the WHOLE
+ * `[rows, rowCount]` tuple and gets `undefined` for every field, with no
+ * error anywhere. `DeleteQueryBuilder.execute()` normalizes this itself
+ * (`DeleteResult.raw = queryResult.records`), matching every other
+ * write-with-`RETURNING` in this codebase (`OrderHoldRepository.releaseHeld`,
+ * `InvoiceRecordRepository`, `PromptTemplateRepository`, …) — none of which
+ * uses raw `.query()` for exactly this reason.
  *
  * @module libs/core/src/orders/infrastructure/persistence/repositories
  * @implements {OrderCancellationSignalRepositoryPort}
@@ -37,12 +51,18 @@ export class OrderCancellationSignalRepository implements OrderCancellationSigna
   }
 
   async consume(sourceConnectionId: string, externalOrderId: string): Promise<Date | null> {
-    const rows = (await this.repository.query(
-      `DELETE FROM "order_cancellation_signals"
-       WHERE "sourceConnectionId" = $1 AND "externalOrderId" = $2
-       RETURNING "cancelledAt"`,
-      [sourceConnectionId, externalOrderId]
-    )) as Array<{ cancelledAt: Date }>;
+    const result = await this.repository
+      .createQueryBuilder()
+      .delete()
+      .from(OrderCancellationSignalOrmEntity)
+      .where('"sourceConnectionId" = :sourceConnectionId AND "externalOrderId" = :externalOrderId', {
+        sourceConnectionId,
+        externalOrderId,
+      })
+      .returning('"cancelledAt"')
+      .execute();
+
+    const rows = result.raw as Array<{ cancelledAt: Date }>;
     return rows[0]?.cancelledAt ?? null;
   }
 }
