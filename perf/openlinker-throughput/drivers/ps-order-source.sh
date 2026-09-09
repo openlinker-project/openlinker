@@ -110,14 +110,22 @@ pso_ws_curl() {
   local method="$1" path="$2" body="${3:-}" sep resp status resp_body
   [ -n "$PSO_WS_KEY" ] || die "pso_ws_curl: PSO_WS_KEY is not set - export PS_WS_KEY from stand-ids.env"
   case "$path" in *\?*) sep='&' ;; *) sep='?' ;; esac
+  # -H 'Host: prestashop' works around a canonical-domain redirect: the shop's
+  # ps_shop_url.domain is the docker-network alias "prestashop" (reachable
+  # in-network with no mismatch), but this driver runs on the host and hits
+  # the published port as 127.0.0.1:19080 - curl then sends that as the Host
+  # header, PrestaShop's Dispatcher sees a mismatch against ps_shop_url and
+  # answers 302 to http://prestashop/?..., which this driver can't follow
+  # (it isn't resolvable from the host). Verified manually: identical request
+  # plus this header returns 200 JSON instead of 302.
   if [ -n "$body" ]; then
     resp="$(curl -sS -w '\n%{http_code}' -X "$method" \
       "$PSO_BASE_URL$path${sep}ws_key=$PSO_WS_KEY&output_format=JSON" \
-      -H 'Content-Type: application/xml' -H 'Output-Format: JSON' -d "$body")"
+      -H 'Content-Type: application/xml' -H 'Output-Format: JSON' -H 'Host: prestashop' -d "$body")"
   else
     resp="$(curl -sS -w '\n%{http_code}' -X "$method" \
       "$PSO_BASE_URL$path${sep}ws_key=$PSO_WS_KEY&output_format=JSON" \
-      -H 'Output-Format: JSON')"
+      -H 'Output-Format: JSON' -H 'Host: prestashop')"
   fi
   status="$(printf '%s' "$resp" | tail -n1)"
   resp_body="$(printf '%s' "$resp" | sed '$d')"
@@ -219,7 +227,7 @@ pso_ensure_customer() {
   <customer>
     <passwd>Perf-Source-1234</passwd>
     <lastname>Source</lastname>
-    <firstname>Perf${tag^}</firstname>
+    <firstname>Perf</firstname>
     <email>${email}</email>
     <active>1</active>
     <newsletter>0</newsletter>
@@ -241,7 +249,7 @@ pso_ensure_customer() {
     <id_country>${PSO_COUNTRY_ID}</id_country>
     <alias>perf-source-${tag}</alias>
     <lastname>Source</lastname>
-    <firstname>Perf${tag^}</firstname>
+    <firstname>Perf</firstname>
     <address1>1 Perf Source Street</address1>
     <city>Warsaw</city>
     <postcode>00-001</postcode>
