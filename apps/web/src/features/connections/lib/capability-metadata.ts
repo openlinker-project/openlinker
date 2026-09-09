@@ -36,6 +36,7 @@ export const CAPABILITY_HELP: Record<CoreCapability, string> = {
     'Decides how much of each product is sellable, overriding the stock figure OpenLinker would otherwise compute.',
   FulfillmentExecutor:
     'Picks, packs and ships the work OpenLinker hands it, and reports progress back. One holder at a time per piece of work.',
+  ShippingProviderManager: 'Generate shipping labels and track parcels through this connection.',
 };
 
 /**

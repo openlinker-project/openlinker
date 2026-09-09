@@ -34,10 +34,15 @@ gen_cert() {
   cp "$CERTS_DIR/${name}.crt" "$CERTS_DIR/${name}-ca.pem"
 }
 
-# eparagony-stub: the service name IS the hostname the connection's
-# apiBaseUrl/authBaseUrl point at - no allowlist to satisfy (unlike Erli
-# below), so a plain service-name SAN is enough.
-gen_cert eparagony-stub eparagony-stub
+# eparagony-stub-tls: the TLS FRONT's own container name is the hostname the
+# connection's apiBaseUrl/authBaseUrl point at - deliberately NOT the bare
+# "eparagony-stub" the plain-HTTP backend (container_name: lab-eparagony-stub)
+# already answers to. Docker's embedded DNS resolves "eparagony-stub" to
+# THAT container regardless of what this cert's SAN claims, so an https
+# request there would reach a listener with nothing on port 443 - found
+# live. No allowlist to satisfy (unlike Erli below), so a plain
+# container-name SAN is enough once it names the right container.
+gen_cert eparagony-stub-tls eparagony-stub-tls
 
 # erli-stub: the SAN must match the NETWORK ALIAS `erli-stub.erli.dev`
 # declared on the erli-stub-tls service in docker-compose.lab.yml - see
@@ -48,9 +53,9 @@ gen_cert erli-stub erli-stub.erli.dev
 
 if [ ! -f "$WC_TLS_CA" ]; then
   echo "warning: $WC_TLS_CA not found - run stand/wc-tls/generate-certs.sh first for a complete bundle" >&2
-  cat "$CERTS_DIR/eparagony-stub-ca.pem" "$CERTS_DIR/erli-stub-ca.pem" > "$CERTS_DIR/bundle.pem"
+  cat "$CERTS_DIR/eparagony-stub-tls-ca.pem" "$CERTS_DIR/erli-stub-ca.pem" > "$CERTS_DIR/bundle.pem"
 else
-  cat "$WC_TLS_CA" "$CERTS_DIR/eparagony-stub-ca.pem" "$CERTS_DIR/erli-stub-ca.pem" > "$CERTS_DIR/bundle.pem"
+  cat "$WC_TLS_CA" "$CERTS_DIR/eparagony-stub-tls-ca.pem" "$CERTS_DIR/erli-stub-ca.pem" > "$CERTS_DIR/bundle.pem"
 fi
 
 echo "wrote $CERTS_DIR/{eparagony-stub,erli-stub}.{key,crt}, $CERTS_DIR/bundle.pem"

@@ -571,14 +571,19 @@ JSON
   # (@openlinker/integrations-eparagony, always registered - no gate),
   # pointed at both its documented test-mode overrides
   # (config.apiBaseUrl/authBaseUrl, both `EparagonyHttpClient`-enforced
-  # https) at the ONE stub process fronted by eparagony-stub-tls. posId is
-  # mandatory per EparagonyAdapterFactory; clientId/clientSecret are dummy
-  # values the stub never validates.
+  # https) at the TLS front's own hostname, `eparagony-stub-tls` -
+  # DELIBERATELY NOT the bare "eparagony-stub" the compose service's plain
+  # HTTP backend already answers to (container_name: lab-eparagony-stub):
+  # Docker's embedded DNS resolves "eparagony-stub" to THAT container, whose
+  # only listener is the plain-HTTP port 19084 - an https request there
+  # gets ECONNREFUSED on 443, found live. posId is mandatory per
+  # EparagonyAdapterFactory; clientId/clientSecret are dummy values the stub
+  # never validates.
   ol_ensure_connection EPARAGONY_CONN_ID 'perf-eparagony' "$(cat <<JSON
 {"name":"perf-eparagony","platformType":"eparagony",
  "enabledCapabilities":["Fiscalization"],
  "config":{"environment":"sandbox","posId":"stub-pos-1",
-  "apiBaseUrl":"https://eparagony-stub","authBaseUrl":"https://eparagony-stub"},
+  "apiBaseUrl":"https://eparagony-stub-tls","authBaseUrl":"https://eparagony-stub-tls"},
  "credentials":{"clientId":"stub-client-id","clientSecret":"stub-client-secret"}}
 JSON
 )"
