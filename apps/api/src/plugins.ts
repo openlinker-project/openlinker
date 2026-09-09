@@ -40,6 +40,7 @@ import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
 import { OmsModule } from '@openlinker/oms';
+import { InvoicingStubIntegrationModule } from '@openlinker/integrations-invoicing-stub';
 
 export const apiPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -75,4 +76,12 @@ export const apiPlugins: PluginEntry[] = [
   // `AiIntegrationModule` shape) keeps `OmsModule` a named class while handing
   // back the descriptor-backed DynamicModule.
   OmsModule.register(),
+  // #3006: the perf-lab fixed-latency `InvoicingPort` stub. Registered here so
+  // a lab-side `POST /v1/connections` COULD resolve its manifest, but the
+  // scenario this stub serves creates the connection row directly against
+  // Postgres to avoid an unnecessary api rebuild coupling — see
+  // `perf/openlinker-throughput/scenarios/fiscal-lane-stub.sh`. Gated behind
+  // `OL_INVOICING_STUB_ENABLED=true`, never on by default; see the identical
+  // note in `apps/worker/src/plugins.ts`.
+  ...(process.env.OL_INVOICING_STUB_ENABLED === 'true' ? [InvoicingStubIntegrationModule] : []),
 ];

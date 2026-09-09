@@ -345,6 +345,40 @@ services:
       retries: 5
       start_period: 2s
 
+  # Fixed-latency invoicing-provider stub (#3006). Zero-dependency `node:http`
+  # build, same shape as `allegro-stub` above. Reachable from `lab-api`/
+  # `lab-worker` at `http://invoicing-stub:19082` (service name, not
+  # container name) - used only by a connection whose `platformType` is
+  # `invoicing-stub` and whose `adapterKey` is `invoicing-stub.fake.v1`
+  # (`@openlinker/integrations-invoicing-stub`, registered ONLY when
+  # `OL_INVOICING_STUB_ENABLED=true`). See
+  # `perf/openlinker-throughput/stubs/invoicing/README.md` for what it
+  # measures and does not measure.
+  invoicing-stub:
+    build:
+      context: ./perf/openlinker-throughput/stubs/invoicing
+      args:
+        STUB_GIT_SHA: '${STUB_GIT_SHA:-unknown}'
+    container_name: lab-invoicing-stub
+    environment:
+      STUB_PORT: '19082'
+      # No default latency baked in here on purpose - the scenario sets it at
+      # runtime via `PUT /__stub/config` between arms (see the stub's own
+      # README "Why latency is mutable at runtime"), so this container never
+      # needs a recreate to sweep T = 2s / 10s / 90s.
+      STUB_LATENCY_MS: '${INVOICING_STUB_LATENCY_MS:-0}'
+    ports:
+      # Published so the scenario script (running on the HOST) can set
+      # latency and read `/__stub/config`'s `maxInFlightObserved` directly -
+      # `lab-api`/`lab-worker` never use this published port.
+      - '127.0.0.1:${INVOICING_STUB_HOST_PORT:-19082}:19082'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '-', 'http://127.0.0.1:19082/__stub/health']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+
   # One-shot schema bootstrap. Runs the SAME compiled data-source the api/
   # worker processes use (apps/api/dist/apps/api/src/database/data-source.js),
   # invoked directly through the typeorm CLI binary already in

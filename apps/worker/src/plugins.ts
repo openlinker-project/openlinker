@@ -41,6 +41,7 @@ import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
 import { OmsModule } from '@openlinker/oms';
+import { InvoicingStubIntegrationModule } from '@openlinker/integrations-invoicing-stub';
 
 export const workerPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -79,4 +80,16 @@ export const workerPlugins: PluginEntry[] = [
   // `AiIntegrationModule` shape) keeps `OmsModule` a named class while handing
   // back the descriptor-backed DynamicModule.
   OmsModule.register(),
+  // #3006: the perf-lab fixed-latency `InvoicingPort` stub, used ONLY to
+  // measure the `fiscal` lane's real (non-invalid-payload) throughput and to
+  // confirm/refute the per-order-lock bulk-issue serialisation claim in
+  // `results-lane-caps-2026-09-07.md` § 4.5. Registered ONLY when
+  // `OL_INVOICING_STUB_ENABLED=true` — never on by default, since this plugin
+  // authenticates nothing and issues no real fiscal document; it exists
+  // purely so a `sync_jobs` row can exercise the REAL
+  // `InvoiceService.issueInvoice()` code path against a controllable-latency
+  // fake destination instead of the always-invalid-payload probe F7/F8 use to
+  // measure the runner's own floor. See
+  // `perf/openlinker-throughput/stubs/invoicing/README.md`.
+  ...(process.env.OL_INVOICING_STUB_ENABLED === 'true' ? [InvoicingStubIntegrationModule] : []),
 ];
