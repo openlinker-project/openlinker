@@ -1,0 +1,248 @@
+{
+  "scenario": "f10-dependency-failure",
+  "generatedAt": "2026-09-09T06:57:43Z",
+  "gitSha": "1f9a52d1b4d05916a131cc6efdf59d179da2ae1e",
+  "connectionIds": "'758eb04c-9847-42ba-a905-af62b0b37b39'",
+  "quick": false,
+  "runnerState": "enabled",
+  "laneCaps": "realtime=4/2 bulk=12/8 fiscal=2/1 fan-out=8/4",
+  "workerReplicas": 1,
+  "workerContainers": "lab-worker-1",
+  "laneCapEnforcement": "per-process - the laneCaps above bound ONE worker process, so effective deployment concurrency is laneCaps x workerReplicas (ADR-050 amendment #2594 / #2302)",
+  "pool": {
+    "maxConnections": "200",
+    "olDbPoolMax": "40",
+    "processCount": "2",
+    "budget": "80"
+  },
+  "schedulerCadenceRow": {},
+  "olLogBodyMaxBytes": "lab-api=8192 lab-worker-1=8192",
+  "syncJobsRowsAtStart": 138200,
+  "syncJobsRowsAtEnd": 138222,
+  "environment": {
+    "postgres": {
+      "shared_buffers": "128MB",
+      "work_mem": "4MB",
+      "shared_preload_libraries": "pg_stat_statements,auto_explain",
+      "installed_extensions": "pg_trgm,pg_stat_statements",
+      "nonDefaultSettings": {
+        "roleConfig": {
+          "postgres": [
+            "statement_timeout=30000ms"
+          ]
+        },
+        "databaseRoleConfig": [],
+        "liveSettingsSourceNotDefault": {
+          "lc_time": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "TimeZone": {
+            "source": "configuration file",
+            "setting": "UTC"
+          },
+          "hba_file": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data/pg_hba.conf"
+          },
+          "DateStyle": {
+            "source": "configuration file",
+            "setting": "ISO, MDY"
+          },
+          "ident_file": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data/pg_ident.conf"
+          },
+          "lc_numeric": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "config_file": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data/postgresql.conf"
+          },
+          "lc_messages": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "lc_monetary": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "log_timezone": {
+            "source": "configuration file",
+            "setting": "UTC"
+          },
+          "max_wal_size": {
+            "source": "configuration file",
+            "setting": "1024"
+          },
+          "min_wal_size": {
+            "source": "configuration file",
+            "setting": "80"
+          },
+          "data_directory": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data"
+          },
+          "shared_buffers": {
+            "source": "configuration file",
+            "setting": "16384"
+          },
+          "max_connections": {
+            "source": "command line",
+            "setting": "200"
+          },
+          "application_name": {
+            "source": "client",
+            "setting": "psql"
+          },
+          "listen_addresses": {
+            "source": "configuration file",
+            "setting": "*"
+          },
+          "statement_timeout": {
+            "source": "user",
+            "setting": "30000"
+          },
+          "transaction_isolation": {
+            "source": "override",
+            "setting": "read committed"
+          },
+          "transaction_read_only": {
+            "source": "override",
+            "setting": "off"
+          },
+          "pg_stat_statements.max": {
+            "source": "command line",
+            "setting": "10000"
+          },
+          "transaction_deferrable": {
+            "source": "override",
+            "setting": "off"
+          },
+          "auto_explain.log_analyze": {
+            "source": "command line",
+            "setting": "on"
+          },
+          "auto_explain.log_buffers": {
+            "source": "command line",
+            "setting": "on"
+          },
+          "pg_stat_statements.track": {
+            "source": "command line",
+            "setting": "all"
+          },
+          "shared_preload_libraries": {
+            "source": "command line",
+            "setting": "pg_stat_statements,auto_explain"
+          },
+          "default_text_search_config": {
+            "source": "configuration file",
+            "setting": "pg_catalog.english"
+          },
+          "dynamic_shared_memory_type": {
+            "source": "configuration file",
+            "setting": "posix"
+          },
+          "auto_explain.log_min_duration": {
+            "source": "command line",
+            "setting": "2000"
+          }
+        }
+      }
+    },
+    "node_version": "v22.23.1",
+    "postgres_image_digest": "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
+    "redis_image_digest": "sha256:12da49daa000c2be4d55118574f889c8cc298140ecf343d04f345c818f227823",
+    "redis_used_memory_bytes": "68101072",
+    "host": {
+      "cpu_count": "32",
+      "ram": "125786MB",
+      "load_average": "1.56, 0.91, 1.12"
+    }
+  },
+  "containerLimits": [
+    {
+      "container": "lab-api",
+      "cpu_nanocpus": "none",
+      "memory_bytes": "none"
+    },
+    {
+      "container": "lab-worker-1",
+      "cpu_nanocpus": "none",
+      "memory_bytes": "none"
+    }
+  ],
+  "excludedPgStatStatementsQueries": [
+    "GET /v1/connections/:id/sync-status (7-day connection-sync-status aggregate over sync_jobs) - issued by sample_queue itself, see README"
+  ],
+  "faultId": "D2a",
+  "faultClass": "destination: PrestaShop returns 429 WITH Retry-After",
+  "faultInjection": {
+    "injected": true,
+    "injector": "ps-fault-proxy",
+    "rule": {
+      "mode": "429",
+      "fraction": 0.5,
+      "pathIncludes": null,
+      "methods": null,
+      "retryAfterSeconds": 5
+    },
+    "delivered": {
+      "proxyCounters": {
+        "total": 32,
+        "proxied": 14,
+        "faulted": 18,
+        "upstreamError": 0,
+        "byMode": {
+          "429": 18
+        },
+        "byBucket": {
+          "api:currencies": {
+            "total": 6,
+            "proxied": 3,
+            "faulted": 3
+          },
+          "api:carriers": {
+            "total": 6,
+            "proxied": 2,
+            "faulted": 4
+          },
+          "api:carts": {
+            "total": 2,
+            "proxied": 2,
+            "faulted": 0
+          },
+          "module:cartshipping": {
+            "total": 2,
+            "proxied": 2,
+            "faulted": 0
+          },
+          "api:countries": {
+            "total": 5,
+            "proxied": 2,
+            "faulted": 3
+          },
+          "api:products": {
+            "total": 5,
+            "proxied": 1,
+            "faulted": 4
+          },
+          "api:tax_rules": {
+            "total": 6,
+            "proxied": 2,
+            "faulted": 4
+          }
+        }
+      }
+    }
+  },
+  "loadPath": "order",
+  "windowSecs": 90,
+  "offeredBacklog": 12,
+  "perfMaxAttempts": 3,
+  "perfMaxAttemptsNote": "The shipped default is 10 (sync_jobs entity). This run caps it so a window is bounded and comparable; a retry-cost figure here must be read against THIS cap and extrapolated explicitly, never quoted as the shipped cost.",
+  "prestashopBaseUrlDuringWindow": "http://ps-fault-proxy:8080",
+  "prestashopBaseUrlNote": "Every window in this scenario, baseline included, routes PrestaShop traffic through the ps-fault-proxy container. The baseline window measures that proxy overhead so no fault window is credited with it."
+}

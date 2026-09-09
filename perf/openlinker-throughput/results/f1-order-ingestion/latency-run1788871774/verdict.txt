@@ -1,0 +1,3 @@
+status=DISCARDED
+generatedAt=2026-09-08T12:52:41Z
+reason=DISCARDED post_guard_destination_creates: 25 order(s) carry a failed syncStatus entry, 25 lack syncedAt on the declared destination

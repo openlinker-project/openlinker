@@ -1,0 +1,35 @@
+docker logs --since form probe - host epyc32, 2026-09-08
+=========================================================
+Docker Engine 29.8.0 (the campaign's earlier finding was recorded on 29.5.2).
+
+Container: throwaway alpine emitting one line/second.
+Window: last 10 seconds. Ground truth in that window: 11 lines.
+
+  form A  --since <bare epoch>            -> 11 lines   CORRECT
+  form B  --since @<epoch>                ->  0 lines   WRONG
+  form C  --since <RFC3339>               -> 11 lines   CORRECT
+  form D  --since 10s (relative)          -> 11 lines   CORRECT
+
+DIFFERENCE FROM THE 29.5.2 FINDING
+----------------------------------
+On 29.5.2 the campaign recorded that form B is "accepted without error and
+returns nothing". On 29.8.0 it is NOT silently accepted - it exits 1 and
+writes to stderr:
+
+  invalid value for "since": failed to parse value as time or duration: "@1788865730"
+
+So on this host the broken form is LOUD, not silent. The hazard is
+unchanged in effect, though: any caller that redirects stderr, or that
+pipes into `grep` and ignores the exit status, still sees zero lines and
+cannot tell "no matching log line" from "the flag was rejected".
+
+The standing rule is therefore unchanged: use a BARE epoch.
+
+INCIDENTAL: the `grep -c` trap reproduced live
+----------------------------------------------
+The probe's own `docker logs ... | grep -c PROBE-LINE || echo 0` printed
+"0" TWICE for form B - `grep -c` printed its count of 0 and exited 1, and
+the `|| echo 0` fallback then appended a second 0. This is the exact
+double-zero defect the campaign already recorded, reproduced here by
+accident while probing something else. A comparison against that captured
+string would have been comparing against "0\n0".
