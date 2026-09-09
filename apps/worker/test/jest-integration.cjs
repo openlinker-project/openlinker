@@ -140,5 +140,13 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/eparagony/src/$1',
     ),
+    '^@openlinker/integrations-invoicing-stub$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/invoicing-stub/src/index.ts',
+    ),
+    '^@openlinker/integrations-invoicing-stub/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/invoicing-stub/src/$1',
+    ),
   },
 };

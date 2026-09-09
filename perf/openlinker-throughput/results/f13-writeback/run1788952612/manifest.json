@@ -1,0 +1,189 @@
+{
+  "scenario": "f13-writeback",
+  "generatedAt": "2026-09-09T11:16:54Z",
+  "gitSha": "5876703fa4fd9331e98b934b4943ae2569e06b05",
+  "connectionIds": "'4c9a936b-7ab2-4c7e-9b34-c00021a82468','80da7a65-89bd-4e8b-8b41-0366fbecec93'",
+  "quick": false,
+  "runnerState": "enabled",
+  "laneCaps": "realtime=4/2 bulk=12/8 fiscal=2/1 fan-out=8/4",
+  "workerReplicas": 1,
+  "workerContainers": "lab-worker-1",
+  "laneCapEnforcement": "per-process - the laneCaps above bound ONE worker process, so effective deployment concurrency is laneCaps x workerReplicas (ADR-050 amendment #2594 / #2302)",
+  "pool": {
+    "maxConnections": "200",
+    "olDbPoolMax": "40",
+    "processCount": "2",
+    "budget": "80"
+  },
+  "schedulerCadenceRow": {},
+  "olLogBodyMaxBytes": "lab-api=8192 lab-worker-1=8192",
+  "syncJobsRowsAtStart": 87,
+  "syncJobsRowsAtEnd": 99,
+  "environment": {
+    "postgres": {
+      "shared_buffers": "128MB",
+      "work_mem": "4MB",
+      "shared_preload_libraries": "pg_stat_statements,auto_explain",
+      "installed_extensions": "pg_trgm,pg_stat_statements",
+      "nonDefaultSettings": {
+        "roleConfig": {},
+        "databaseRoleConfig": [],
+        "liveSettingsSourceNotDefault": {
+          "lc_time": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "TimeZone": {
+            "source": "configuration file",
+            "setting": "UTC"
+          },
+          "hba_file": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data/pg_hba.conf"
+          },
+          "DateStyle": {
+            "source": "configuration file",
+            "setting": "ISO, MDY"
+          },
+          "ident_file": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data/pg_ident.conf"
+          },
+          "lc_numeric": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "config_file": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data/postgresql.conf"
+          },
+          "lc_messages": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "lc_monetary": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "log_timezone": {
+            "source": "configuration file",
+            "setting": "UTC"
+          },
+          "max_wal_size": {
+            "source": "configuration file",
+            "setting": "1024"
+          },
+          "min_wal_size": {
+            "source": "configuration file",
+            "setting": "80"
+          },
+          "data_directory": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data"
+          },
+          "shared_buffers": {
+            "source": "configuration file",
+            "setting": "16384"
+          },
+          "max_connections": {
+            "source": "command line",
+            "setting": "200"
+          },
+          "application_name": {
+            "source": "client",
+            "setting": "psql"
+          },
+          "listen_addresses": {
+            "source": "configuration file",
+            "setting": "*"
+          },
+          "statement_timeout": {
+            "source": "command line",
+            "setting": "30000"
+          },
+          "transaction_isolation": {
+            "source": "override",
+            "setting": "read committed"
+          },
+          "transaction_read_only": {
+            "source": "override",
+            "setting": "off"
+          },
+          "pg_stat_statements.max": {
+            "source": "command line",
+            "setting": "10000"
+          },
+          "transaction_deferrable": {
+            "source": "override",
+            "setting": "off"
+          },
+          "auto_explain.log_analyze": {
+            "source": "command line",
+            "setting": "on"
+          },
+          "auto_explain.log_buffers": {
+            "source": "command line",
+            "setting": "on"
+          },
+          "pg_stat_statements.track": {
+            "source": "command line",
+            "setting": "all"
+          },
+          "shared_preload_libraries": {
+            "source": "command line",
+            "setting": "pg_stat_statements,auto_explain"
+          },
+          "default_text_search_config": {
+            "source": "configuration file",
+            "setting": "pg_catalog.english"
+          },
+          "dynamic_shared_memory_type": {
+            "source": "configuration file",
+            "setting": "posix"
+          },
+          "auto_explain.log_min_duration": {
+            "source": "command line",
+            "setting": "2000"
+          }
+        }
+      }
+    },
+    "node_version": "v22.23.1",
+    "postgres_image_digest": "sha256:1bea307dfb3ee30541a7acf7de14b58bcd6948da98e5d31a04c627c4d35ec64b",
+    "redis_image_digest": "sha256:7ebbc18dec8fe54c06b66eb496df0094a2412445e510789b5fcdda3a7085469c",
+    "redis_used_memory_bytes": "1889048",
+    "host": {
+      "cpu_count": "22",
+      "ram": "15729MB",
+      "load_average": "4.70, 2.71, 2.25"
+    }
+  },
+  "containerLimits": [
+    {
+      "container": "lab-api",
+      "cpu_nanocpus": "none",
+      "memory_bytes": "none"
+    },
+    {
+      "container": "lab-worker-1",
+      "cpu_nanocpus": "none",
+      "memory_bytes": "none"
+    }
+  ],
+  "excludedPgStatStatementsQueries": [
+    "GET /v1/connections/:id/sync-status (7-day connection-sync-status aggregate over sync_jobs) - issued by sample_queue itself, see README"
+  ],
+  "builtImageRevision": "5876703fa4fd9331e98b934b4943ae2569e06b05",
+  "headRevision": "5876703fa4fd9331e98b934b4943ae2569e06b05",
+  "cyclesLeg1": 20,
+  "leg2MValues": "5 50",
+  "leg2Repeats": 3,
+  "leg3MatchCount": 100,
+  "leg3NoiseCount": 10000,
+  "leg3Repeats": 3,
+  "cronCadences": {
+    "marketplace.shipment.statusSync": "0 */15 * * * * (allegro-scheduler-tasks.ts, OL_ALLEGRO_SHIPMENT_STATUS_SYNC_INTERVAL_CRON default)",
+    "marketplace.fulfillment.statusSync": "0 */15 * * * * (prestashop-scheduler-tasks.ts, OL_PRESTASHOP_FULFILLMENT_STATUS_SYNC_INTERVAL_CRON default)"
+  },
+  "note": "legs 2 and 3 measure EXECUTION duration of a directly-enqueued job carrying the identical payload shape the real scheduler task builds - the scheduler itself stays OFF (guard_scheduler_off) for the whole window, so the cadence above is a CONFIGURED FACT quoted for comparison, never a measured interval"
+}
