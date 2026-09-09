@@ -42,6 +42,31 @@ The `uq_webhook_deliveries_event_key` unique constraint on `(provider, connectio
 - Two-gate dedup (Postgres outer + Redis inner) means careful failure-handling on both sides; the "what if Postgres succeeds but Redis fails" branch needed explicit logic.
 - The `webhook_deliveries` table grows linearly with webhook volume; needs a periodic compaction policy (deferred — see #711 follow-up notes).
 
+## Amendment (#2886) — the deferred compaction policy is now a real gap, and a delicate one
+
+The Cons above defer a `webhook_deliveries` compaction policy to a "#711 follow-up" that was never
+filed. #2886 re-checked it after the programme-wide persona change to ~1000 orders/day
+(`product-spec-oms-wave3b-scan-pick-pack.md` § 1.1). Three things are now true.
+
+**The table has no retention, and neither does anything else.** `DemoAccountCleanupService` is
+still the only Postgres row-deletion retention anywhere in the tree. `webhook_deliveries` gains one
+row per verified inbound delivery, so its growth tracks *event* volume rather than order volume —
+at P-D that is plausibly several rows per order per connection, but **nobody has measured the
+per-order event fan-out on a real install and this amendment will not invent one.**
+
+**Compaction here is not ordinary retention, and that is why it deserves a design rather than a
+sweep.** The row IS the replay guard: `uq_webhook_deliveries_event_key` is what makes a redelivered
+event a no-op, and #2280 additionally made the row and its `sync_jobs` row commit together. Deleting
+a delivery row **reopens the replay window for that event id**, permanently and silently, for any
+source that redelivers outside the pruned horizon. Any policy therefore has to argue a horizon from
+the sources' own redelivery behaviour, not from table size — the opposite of the argument a growth
+problem invites.
+
+**Status: needs measurement, then its own design — tracked as #2949.** The gap is filed so it is found deliberately;
+this ADR's decision — Postgres as the authoritative dedup gate — is unchanged and unchallenged by
+it.
+
+
 ## References
 
 - Primary doc: [docs/architecture-overview.md](../../architecture-overview.md) § Webhook Ingestion Flow.

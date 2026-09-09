@@ -87,6 +87,18 @@ join across contexts wherever convenient — most cross-context reads still belo
   benefit, since there is no import contract to protect. Same-context joins pass the ORM entity
   class, so a rename stays a compile-time break.
 
+**Amendment (#2886) - the volume this ADR is sized against is not order volume:**
+- The Alternatives section rejects a materialized view as *"disproportionate to today's data
+  volume"*, and #2886 re-examined that after the programme-wide persona change to ~1000 orders/day
+  (`product-spec-oms-wave3b-scan-pick-pack.md` § 1.1). **The decision is unaffected, because the
+  join it sanctions is over `products` / `product_variants` / `inventory_items` / `identifier_mappings` -
+  all four sized by CATALOGUE, not by order count.** A shop selling ten times as much sells the same
+  SKUs; the products-list page is the same query over the same rows. The 50-1000 SKU figure in the
+  original personas is the one that governs here, and no wave has widened it.
+- Stated so the next reader does not transfer #2886's finding about [ADR-039](./039-order-analytics-read-model-persistence-strategy.md)
+  onto this ADR by association. ADR-039's premise really did move; this one did not, and the
+  difference is which axis the table grows along.
+
 **Migration path (if applicable):**
 - If join cost becomes a measured performance problem, revisit the "denormalize" alternative above
   with real numbers instead of pre-optimizing now.

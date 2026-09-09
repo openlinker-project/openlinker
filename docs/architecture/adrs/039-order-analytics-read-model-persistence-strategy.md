@@ -83,6 +83,43 @@ current evidence a live query won't perform acceptably.
   revisit a materialized/incrementally-refreshed projection then, with real numbers — not
   speculatively now.
 
+## Amendment (#2886) — the persona changed by 10×; the decision holds, the argument does not
+
+`docs/specs/product-spec-oms-wave3b-scan-pick-pack.md` § 1.1 widened the operator persona
+**programme-wide** to P-D, ~1000 orders/day. The Context above rests on a sentence that is now
+false: *"This persona's volume (10–100 orders/day) means the total corpus is small for years"*. It
+is not. At 1000 orders/day `order_records` gains ~365 000 rows a year and `order_line_items`
+roughly two to three times that. The corpus stops being small inside the first year, and the
+Alternatives section's *"disproportionate to 10–100 orders/day"* names a number wrong by an order
+of magnitude.
+
+**Decision 3 (no materialized view) still stands, on a different argument.** The property that
+makes the live aggregate cheap was never corpus size — it is that every analytics read is a
+**bounded date-range aggregate over indexed, typed columns**. `/analytics/sales` scans one range,
+not one history: at 1000/day a 30-day window is ~30 000 order rows and ~70 000 line rows, which is
+a small aggregate for Postgres whatever sits behind it, and `order_records.placedAt`,
+`order_line_items (sourceConnectionId, placedAt)` and `(productId, placedAt)` are the indexes that
+keep it bounded. `PERCENTILE_CONT` sorts the window, not the table. A materialized view would
+still buy a refresh-staleness story the trust pillars (spec § 1a, L1–L3) exist to eliminate, and
+that trade is unchanged by volume.
+
+So the restatement is: **the read is bounded, therefore the view is unnecessary** — not *the table
+is small, therefore nothing matters*. The two arguments recommend the same thing today and diverge
+the moment a query is added that is not date-bounded.
+
+**Which is exactly the one read that no longer fits.** `findEarliestOrderDateByConnection` (#2083,
+the per-channel `coverageComplete` signal consumed by `/analytics/sales` and `/analytics/trust`) is
+`MIN(COALESCE("placedAt", "createdAt"))` grouped by connection **over the connection's entire
+history**, with no date bound and — because of the `COALESCE` — no index that can answer it as a
+min-scan. That is the same shape #2615 found and split on `sync_jobs`, one table over. It is not
+known to be slow, and this amendment does not claim it is: **it needs measurement at P-D volume
+before anything is done about it**, and the honest position today is that nobody has that number.
+If it does degrade, the remedy is a bounded or cached coverage floor, not a materialized view of
+the aggregates.
+
+**Unchanged:** the Migration path above already says to revisit with real numbers rather than
+speculatively. That instruction is now live rather than hypothetical.
+
 ## References
 
 - Related issues: #1985, #1976, #1984, #1987, #1988
