@@ -117,7 +117,7 @@ run_smoke() {
   local out
   out="$(printf '%s\n' \
     "{\"id\":\"conn\",\"method\":\"GET\",\"path\":\"/v1/connections\"}" \
-    "{\"id\":\"missing-order-refund\",\"method\":\"POST\",\"path\":\"/orders/ol_order_does-not-exist/refunds\",\"body\":{\"amount\":\"1.00\",\"currency\":\"PLN\",\"reason\":\"other\"}}" \
+    "{\"id\":\"missing-order-refund\",\"method\":\"POST\",\"path\":\"/v1/orders/ol_order_does-not-exist/refunds\",\"body\":{\"amount\":\"1.00\",\"currency\":\"PLN\",\"reason\":\"other\"}}" \
     | node "$DRIVER_JS" "$OL_API_URL" "$OL_TOKEN" race)"
   local conn_status refund_status
   conn_status="$(printf '%s\n' "$out" | jq -r 'select(.id=="conn").status')"
@@ -354,12 +354,12 @@ f12_record_return() {
   local body
   body="$(jq -n --arg oid "$order_id" --arg cid "$ALLEGRO_A_CONNECTION_ID" --argjson qty "$qty" \
     '{internalOrderId:$oid, sourceConnectionId:$cid, lines:[{reason:"other", quantityAdvised:$qty}]}')"
-  ol_api POST /returns/record "$body"
+  ol_api POST /v1/returns/record "$body"
 }
 
 f12_return_line_id() {
   local return_id="$1"
-  ol_api GET "/returns/$return_id" | jq -r '.lines[0].id'
+  ol_api GET "/v1/returns/$return_id" | jq -r '.lines[0].id'
 }
 
 arm_returns() {
@@ -382,32 +382,32 @@ arm_returns() {
   # Receive the full advised quantity on both race lines BEFORE the race, so
   # every concurrent dispose call is contending on the SAME available budget
   # rather than each seeing a different partial receipt.
-  ol_api POST "/returns/$restock_return/lines/$restock_line/receive" "{\"quantity\":$race_qty}" >/dev/null
-  ol_api POST "/returns/$scrap_return/lines/$scrap_line/receive" "{\"quantity\":$race_qty}" >/dev/null
+  ol_api POST "/v1/returns/$restock_return/lines/$restock_line/receive" "{\"quantity\":$race_qty}" >/dev/null
+  ol_api POST "/v1/returns/$scrap_return/lines/$scrap_line/receive" "{\"quantity\":$race_qty}" >/dev/null
 
   # --- Race 1: return:line:{lineId} lock contention, restock (blocked path) ---
   local restock_ndjson restock_out i
   restock_ndjson="$(mktemp)"
   for ((i = 0; i < race_qty; i++)); do
-    jq -nc --arg id "restock-$i" --arg path "/returns/$restock_return/lines/$restock_line/dispose" \
+    jq -nc --arg id "restock-$i" --arg path "/v1/returns/$restock_return/lines/$restock_line/dispose" \
       '{id:$id, method:"POST", path:$path, body:{quantity:1, disposition:"restock"}}'
   done > "$restock_ndjson"
   restock_out="$out_dir/race-restock.ndjson"
   node "$DRIVER_JS" "$OL_API_URL" "$OL_TOKEN" race < "$restock_ndjson" > "$restock_out"
   local restock_final
-  restock_final="$(ol_api GET "/returns/$restock_return")"
+  restock_final="$(ol_api GET "/v1/returns/$restock_return")"
 
   # --- Race 2: same lock, scrap (no master boundary - the real double-apply check) ---
   local scrap_ndjson scrap_out
   scrap_ndjson="$(mktemp)"
   for ((i = 0; i < race_qty; i++)); do
-    jq -nc --arg id "scrap-$i" --arg path "/returns/$scrap_return/lines/$scrap_line/dispose" \
+    jq -nc --arg id "scrap-$i" --arg path "/v1/returns/$scrap_return/lines/$scrap_line/dispose" \
       '{id:$id, method:"POST", path:$path, body:{quantity:1, disposition:"scrap"}}'
   done > "$scrap_ndjson"
   scrap_out="$out_dir/race-scrap.ndjson"
   node "$DRIVER_JS" "$OL_API_URL" "$OL_TOKEN" race < "$scrap_ndjson" > "$scrap_out"
   local scrap_final
-  scrap_final="$(ol_api GET "/returns/$scrap_return")"
+  scrap_final="$(ol_api GET "/v1/returns/$scrap_return")"
 
   local scrap_2xx scrap_quantity_scrapped
   scrap_2xx="$(jq -s '[.[] | select(.ok)] | length' "$scrap_out")"
@@ -432,9 +432,9 @@ arm_returns() {
   for oid in "${pool_orders[@]}"; do
     ret_id="$(f12_record_return "$oid" 1 | jq -r '.returnId')"
     line_id="$(f12_return_line_id "$ret_id")"
-    ol_api POST "/returns/$ret_id/lines/$line_id/receive" '{"quantity":1}' >/dev/null
+    ol_api POST "/v1/returns/$ret_id/lines/$line_id/receive" '{"quantity":1}' >/dev/null
     pool_lines+=("$ret_id:$line_id")
-    jq -nc --arg id "$ret_id" --arg path "/returns/$ret_id/lines/$line_id/dispose" \
+    jq -nc --arg id "$ret_id" --arg path "/v1/returns/$ret_id/lines/$line_id/dispose" \
       '{id:$id, method:"POST", path:$path, body:{quantity:1, disposition:"scrap"}}'
   done > "$pool_ndjson"
   pool_out="$out_dir/pool-dispose.ndjson"
@@ -492,7 +492,7 @@ arm_refunds() {
   local race_ndjson race_out i
   race_ndjson="$(mktemp)"
   for ((i = 0; i < race_n; i++)); do
-    jq -nc --arg id "refund-race-$i" --arg path "/orders/$race_order/refunds" --arg key "$shared_key" \
+    jq -nc --arg id "refund-race-$i" --arg path "/v1/orders/$race_order/refunds" --arg key "$shared_key" \
       '{id:$id, method:"POST", path:$path, body:{amount:"10.00", currency:"PLN", reason:"other", idempotencyKey:$key}}'
   done > "$race_ndjson"
   race_out="$out_dir/race-refund-idempotency.ndjson"
@@ -504,7 +504,7 @@ arm_refunds() {
   race_other="$(jq -s '[.[] | select(.status!=201 and .status!=409)] | length' "$race_out")"
 
   local persisted_refund_count
-  persisted_refund_count="$(ol_api GET "/orders/$race_order/refunds" | jq '[.[] | select(.idempotencyKey=="'"$shared_key"'" or true)] | length')"
+  persisted_refund_count="$(ol_api GET "/v1/orders/$race_order/refunds" | jq '[.[] | select(.idempotencyKey=="'"$shared_key"'" or true)] | length')"
   # Note: RefundRecordResponseDto does not echo idempotencyKey back (see the
   # DTO), so the count above is simply "how many refund rows exist on this
   # order at all" - this order is used ONLY for the race, so any count other
@@ -520,7 +520,7 @@ arm_refunds() {
   local pool_ndjson pool_out oid
   pool_ndjson="$(mktemp)"
   for oid in "${pool_orders[@]}"; do
-    jq -nc --arg id "$oid" --arg path "/orders/$oid/refunds" --arg key "f12-pool-$oid" \
+    jq -nc --arg id "$oid" --arg path "/v1/orders/$oid/refunds" --arg key "f12-pool-$oid" \
       '{id:$id, method:"POST", path:$path, body:{amount:"5.00", currency:"PLN", reason:"withdrawal", idempotencyKey:$key}}'
   done > "$pool_ndjson"
   pool_out="$out_dir/pool-refund.ndjson"
@@ -560,7 +560,7 @@ arm_invoice_lock_diagnostic() {
   for ((i = 0; i < 20; i++)); do
     conn=$([ $((i % 2)) -eq 0 ] && echo "$PS_CONNECTION_ID" || echo "$WC_CONNECTION_ID")
     jq -nc --arg id "invoice-$i" --arg oid "$order_id" --arg cid "$conn" \
-      '{id:$id, method:"POST", path:"/invoices", body:{connectionId:$cid, orderId:$oid}}'
+      '{id:$id, method:"POST", path:"/v1/invoices", body:{connectionId:$cid, orderId:$oid}}'
   done > "$ndjson"
   out="$out_dir/race-invoice-lock.ndjson"
   node "$DRIVER_JS" "$OL_API_URL" "$OL_TOKEN" race < "$ndjson" > "$out"
