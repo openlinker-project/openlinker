@@ -1155,6 +1155,15 @@ run_strict() {
   # table of failures, and - worse - would invite a reader to mistake a stand
   # gap for a WooCommerce performance result. The refusal names what is
   # missing and what would fix it.
+  #
+  # #3025 supplies that fix: `seed/seed-wc-catalogue.sh` clones one real
+  # WooCommerce product per PS-real product `seed_offer_mappings_for` (this
+  # file, above) already selects, and writes the matching numeric
+  # `identifier_mappings` rows - so the `wc_real_products` check below turns
+  # positive the moment that script has been run against this stand, and
+  # this arm (and, since it shares the same underlying pool, any
+  # dual-destination fan-out measurement outside this file) stops being
+  # skipped for lack of data.
   local wc_real_products=0
   if [ "$ARMS" = "all" ]; then
     wc_real_products="$(pg_sql "SELECT COUNT(*) FROM identifier_mappings
@@ -1162,7 +1171,7 @@ run_strict() {
         AND \"externalId\" ~ '^[0-9]+\$'" 2>/dev/null || printf 0)"
   fi
   if [ "$ARMS" = "all" ] && [ "${wc_real_products:-0}" -eq 0 ]; then
-    warn "SKIPPING the WooCommerce arm: the stand carries $(pg_sql "SELECT COUNT(*) FROM identifier_mappings WHERE \"entityType\"='Product' AND \"connectionId\"='$WC_CONNECTION_ID'" 2>/dev/null || printf '?') WooCommerce Product mappings and NONE of them names a numeric WC product id, so no order can resolve a line item there. seed-catalogue.sh seeds mappings, never real WooCommerce products - creating some (wp post create --post_type=product) and re-pointing those mappings is what this arm needs. Reported as not-run rather than run-and-discarded."
+    warn "SKIPPING the WooCommerce arm: the stand carries $(pg_sql "SELECT COUNT(*) FROM identifier_mappings WHERE \"entityType\"='Product' AND \"connectionId\"='$WC_CONNECTION_ID'" 2>/dev/null || printf '?') WooCommerce Product mappings and NONE of them names a numeric WC product id, so no order can resolve a line item there. Run seed/seed-wc-catalogue.sh (#3025) against this stand, which creates real WooCommerce products for the same PS-real pool seed_offer_mappings_for already targets and maps them under WC_CONNECTION_ID. Reported as not-run rather than run-and-discarded."
   elif [ "$ARMS" = "all" ]; then
     log "=== arm woocommerce: $WC_ARM_ORDERS serial samples against the real local WooCommerce ==="
     set_destination "$PS_CONNECTION_ID" off

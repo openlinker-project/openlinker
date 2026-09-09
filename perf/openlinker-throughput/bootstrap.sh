@@ -578,6 +578,15 @@ step_allegro_offer_manager() {
 # and because `OrderSyncService` fans out under `Promise.allSettled`, the job
 # still records `outcome: 'ok'` while the shop receives nothing.
 #
+# The WooCommerce half of that (a real order fanning out to a WooCommerce
+# connection with NO numeric Product mapping at all, "No WC product mapping
+# for OL product ...") is #3025 - `seed/seed-wc-catalogue.sh` closes it by
+# cloning one real WooCommerce product per distinct PS-real product this
+# selection below can reach, and mapping it under `WC_CONNECTION_ID`. Run it
+# once after this step (and again any time the PS-real pool grows) so a
+# dual-destination order-ingestion measurement is not silently missing its
+# WooCommerce half.
+#
 # The target set is therefore variants whose product carries a NUMERIC
 # PrestaShop external id - a real `id_product` in the shop's own catalogue,
 # which on this stand is the six products bootstrap itself installs (20-25,

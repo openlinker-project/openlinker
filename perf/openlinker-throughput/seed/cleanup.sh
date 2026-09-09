@@ -79,4 +79,53 @@ pg_sql_write "DROP TABLE IF EXISTS perf_shop_handback" >/dev/null
 SHOP_REMAINING="$(ps_sql "SELECT COUNT(*) FROM ps_product WHERE reference LIKE '${SHOP_PREFIX}%'" | tail -1)"
 log "PrestaShop products remaining with the ${SHOP_PREFIX} prefix: ${SHOP_REMAINING:-?}"
 
+# ---------------------------------------------------------------------------
+# WooCommerce side (seed-wc-catalogue.sh, #3025). The OL-side mappings it
+# writes carry the internalId of a REAL, already-synced PrestaShop product
+# (`ol_product_*`/`ol_variant_*`, or a seed-shop-catalogue.sh clone) - never
+# the `perfseed_product_*` prefix the block above matches on - so they must
+# be found the same way seed-wc-catalogue.sh itself finds its own work: by
+# the WC_SKU_PREFIX every product it creates carries, never by internalId
+# (which would either miss them, or risk deleting a real synced product's
+# unrelated mapping to another connection).
+# ---------------------------------------------------------------------------
+WC_SKU_PREFIX="PERFWC-"
+WC_PRODUCT_IDS_JSON="$(wc_wp eval '
+  global $wpdb;
+  $ids = $wpdb->get_col($wpdb->prepare(
+    "SELECT p.ID FROM {$wpdb->posts} p
+     JOIN {$wpdb->postmeta} m ON m.post_id = p.ID AND m.meta_key = \"_sku\"
+     WHERE p.post_type = \"product\" AND m.meta_value LIKE %s",
+    $wpdb->esc_like("'"$WC_SKU_PREFIX"'") . "%"
+  ));
+  echo json_encode(array_map("intval", $ids));
+' 2>/dev/null || printf '[]')"
+WC_PRODUCT_COUNT_CLEAN="$(jq 'length' <<<"$WC_PRODUCT_IDS_JSON" 2>/dev/null || printf 0)"
+log "deleting $WC_PRODUCT_COUNT_CLEAN WooCommerce product(s) carrying the ${WC_SKU_PREFIX} SKU prefix"
+
+if [ "${WC_PRODUCT_COUNT_CLEAN:-0}" != "0" ]; then
+  WC_IDS_CSV="$(jq -r 'join(",")' <<<"$WC_PRODUCT_IDS_JSON")"
+  pg_sql_write "DELETE FROM identifier_mappings
+    WHERE \"connectionId\"='${WC_CONNECTION_ID}' AND \"entityType\"='Product' AND \"externalId\" IN
+      (SELECT unnest(string_to_array('${WC_IDS_CSV}', ',')))" >/dev/null
+  # ProductVariant rows carry 'product:{wcId}#{n}' - matched by prefix over
+  # the same id set, since the exact suffix is this seeder's own bookkeeping
+  # detail (see seed-wc-catalogue.sh's own comment) rather than a value a
+  # WHERE ... IN clause can enumerate.
+  pg_sql_write "DELETE FROM identifier_mappings
+    WHERE \"connectionId\"='${WC_CONNECTION_ID}' AND \"entityType\"='ProductVariant'
+      AND \"externalId\" ~ ('^product:(' || replace('${WC_IDS_CSV}', ',', '|') || ')#')" >/dev/null
+
+  wc_wp eval '
+    global $wpdb;
+    $ids = json_decode(file_get_contents("php://stdin"), true);
+    foreach ($ids as $id) { wp_delete_post((int) $id, true); }
+    echo count($ids);
+  ' <<<"$WC_PRODUCT_IDS_JSON" >/dev/null 2>&1 \
+    || warn "cleanup: WooCommerce product deletion reported a non-zero exit - some PERFWC- product(s) may remain (re-run cleanup.sh to retry)"
+fi
+
+WC_REMAINING="$(pg_sql "SELECT COUNT(*) FROM identifier_mappings WHERE \"connectionId\"='${WC_CONNECTION_ID}' AND \"entityType\" IN ('Product','ProductVariant')")"
+log "WooCommerce identifier_mappings remaining for this connection: ${WC_REMAINING:-?}"
+
 log "cleanup done"

@@ -305,6 +305,28 @@ run_size() {
     --arg rng_seed "$SEED_RNG" --arg statement_timeout_ms "$STATEMENT_TIMEOUT_MS" \
     '{f5: {datasetLabel: $label, targetOrders: $target, rowCounts: {order_records: $n_orders, order_line_items: $n_lines, sync_jobs: $n_syncjobs}, seedRngSeed: $rng_seed, statementTimeoutMs: $statement_timeout_ms}}')"
 
+  # #3024 - the additive seeder above is a no-op once the dataset is already
+  # at/above target (its own header comment says so), so a step run out of
+  # order (F5_ONLY_SIZE resuming a single step, or a re-run against a stand
+  # a bigger step already grew) would otherwise silently measure the WRONG
+  # row count under this label and still report VALID - nothing about that
+  # produces a non-2xx response for the "did k6 stay mostly within 2xx"
+  # check below to catch. Checked here, BEFORE window_start, so a
+  # known-mismeasured arm never pays for a k6 window it cannot honestly
+  # report: refuse the arm rather than measure it (#3024 AC - shrinking the
+  # table back down is the alternative, and is not this scenario's call to
+  # make on a table seed-orders.sh documents as shared/additive across
+  # steps).
+  local row_count_check
+  row_count_check="$(check_row_count_target "$n_orders" "$target" "${F5_ROW_COUNT_TOLERANCE_PCT:-1}")"
+  if [ "$row_count_check" != "ok" ]; then
+    warn "size step target=$target label=$label: $row_count_check"
+    manifest_write "$dir" f5-read-path "$CONN_IDS_CSV" "$SMOKE" "$extra"
+    verdict_write "$dir" DISCARDED "$row_count_check"
+    log "size step DISCARDED: $dir ($row_count_check) - no k6 load was run against this mismeasured arm"
+    return
+  fi
+
   window_start "$dir" f5-read-path "$CONN_IDS_CSV" "$SMOKE" "$extra"
   run_k6 "$dir/sample-ids.json" "$label" "$dir/k6-summary.json" "$dir/k6-raw.json"
   window_stop "$dir"
