@@ -62,7 +62,9 @@ function listResponse<T>(entities: T[]): InfaktListResponse<T> {
   return { entities, metainfo: { ...CLIENTS_CAPTURE.metainfo, total_count: entities.length } };
 }
 
-function buyer(overrides: Partial<{ nip: string | null; email: string | null }> = {}): BuyerProfile {
+function buyer(
+  overrides: Partial<{ nip: string | null; email: string | null; countryIso2: string }> = {},
+): BuyerProfile {
   return new BuyerProfile(
     'Acme Sp. z o.o.',
     overrides.nip === undefined || overrides.nip === null
@@ -73,7 +75,7 @@ function buyer(overrides: Partial<{ nip: string | null; email: string | null }> 
       line2: null,
       city: 'Warszawa',
       postalCode: '00-001',
-      countryIso2: 'PL',
+      countryIso2: overrides.countryIso2 ?? 'PL',
     },
     overrides.nip ? 'company' : 'private',
     overrides.email ?? null,
@@ -1800,6 +1802,15 @@ describe('InfaktInvoicingAdapter', () => {
       lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '23' }],
       idempotencyKey: 'idem-1',
     };
+    // AC-3 (#2177): the entire subject of the issue is a non-PL buyer — every
+    // other case in this describe block uses the PL-hardcoded `buyer()`
+    // default, which asserts nothing about the reported bug (a PL client
+    // 422s neither with nor without `sale_type`, since inFakt defaults it
+    // server-side there). This is the first case to actually exercise it.
+    const nonPlInvoiceCmd: IssueInvoiceCommand = {
+      ...invoiceCmd,
+      buyer: buyer({ nip: '1234567890', countryIso2: 'DE' }),
+    };
     const correctionCmd: IssueCorrectionCommand = {
       connectionId: 'conn-1',
       orderId: 'order-1',
@@ -1846,7 +1857,7 @@ describe('InfaktInvoicingAdapter', () => {
       expect('sale_type' in body.invoice).toBe(false);
     });
 
-    it.each(['goods', 'service'] as const)(
+    it.each(['service'] as const)(
       'should send sale_type: %s on issueInvoice when defaultSaleType is configured',
       async (saleType) => {
         const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
@@ -1862,6 +1873,20 @@ describe('InfaktInvoicingAdapter', () => {
       },
     );
 
+    it('should succeed for a non-PL client once defaultSaleType is configured (AC-3, #2177)', async () => {
+      const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+        defaultSaleType: 'service',
+      });
+      seedIssueFixtures();
+
+      await configured.issueInvoice(nonPlInvoiceCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({
+        invoice: expect.objectContaining({ sale_type: 'service' }),
+      });
+    });
+
     it('should NOT include sale_type on issueCorrection when the connection has no defaultSaleType configured (regression guard)', async () => {
       seedCorrectionFixtures();
       await adapter.issueCorrection(correctionCmd);
@@ -1873,7 +1898,7 @@ describe('InfaktInvoicingAdapter', () => {
       expect('sale_type' in body.corrective_invoice).toBe(false);
     });
 
-    it.each(['goods', 'service'] as const)(
+    it.each(['service'] as const)(
       'should send sale_type: %s on issueCorrection when defaultSaleType is configured',
       async (saleType) => {
         const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {

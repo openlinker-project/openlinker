@@ -63,7 +63,16 @@ above should be preferred over relying on that normalization.
 `defaultPaymentMethod` and `bankAccount` are optional (see #1309/#1310 below) -
 omit both to fall back to `cash` with no stamped account.
 `defaultSaleType` is optional (see #2177 below) - omit it to leave `sale_type`
-off the payload entirely, matching pre-#2177 behavior.
+off the payload entirely, matching pre-#2177 behavior. **Set through the raw
+config JSON editor only** — deliberately not surfaced by either the setup
+wizard or the structured edit-form section, unlike `defaultPaymentMethod`
+right above it. Two reasons, both intentional (#2995 review): the field's
+only confirmed value today is `'service'` (see below), so a `<select>` with
+one usable option buys little discoverability over the raw-JSON path; and the
+value is compliance-sensitive per-catalog VAT classification, which is not a
+knob to expose broadly until there's a real goods/services choice to offer.
+Revisit once a confirmed `'goods'` value lands (see the follow-up referenced
+below).
 
 ## Notable implementation details
 
@@ -113,21 +122,28 @@ off the payload entirely, matching pre-#2177 behavior.
   as the inFakt default via `BankAccountDefaultSetter.setDefaultBankAccount()`.
   `transfer` invoices carry the snapshot's `bank_account` / `bank_name` fields.
 - **Per-connection sale type for non-PL clients** (#2177): `config.defaultSaleType`
-  (`goods | service`) is stamped as `sale_type` on every issued invoice/correction
-  when configured. inFakt silently defaults `sale_type` for a PL-country client, so
-  issuance without this field has always worked for PL buyers; for any other
-  country inFakt rejects the request with 422
+  (today only `'service'` — see below) is stamped as `sale_type` on every issued
+  invoice/correction when configured. inFakt silently defaults `sale_type` for a
+  PL-country client, so issuance without this field has always worked for PL
+  buyers; for any other country inFakt rejects the request with 422
   (`{"errors":{"sale_type":["Proszę określić rodzaj sprzedaży."]}}`) unless it is
   present. There is **no safe universal default** — the field is left unset unless
   the operator configures it, and unset means `sale_type` is omitted from the
   payload entirely (PL issuance keeps working; non-PL issuance still 422s exactly
-  as before, unchanged). Only `'service'` is confirmed against inFakt's sandbox
-  (exact lowercase match); the correct value for a physical-goods sale (`'goods'`
-  here is the placement, not a confirmed value) was **not** found and needs
-  confirming separately by an operator with a physical-goods catalog. Picking the
-  wrong value misstates the invoice's VAT sale-type classification, so this is an
-  explicit, compliance-sensitive operator opt-in — OL cannot infer goods vs.
-  services from a possibly-mixed catalog.
+  as before, unchanged). Picking the wrong value misstates the invoice's VAT
+  sale-type classification, so this is an explicit, compliance-sensitive operator
+  opt-in — OL cannot infer goods vs. services from a possibly-mixed catalog.
+  Only `'service'` is confirmed against inFakt's sandbox (exact lowercase match).
+  Several other spellings — `goods`, `product`, `towar`, `usluga`, `mixed`, case
+  variants — were all live-tested and **rejected**, including `'goods'` itself;
+  the correct value for a physical-goods sale was not found. `InfaktSaleTypeValues`
+  therefore lists `'service'` alone (#2995 review) — a placeholder `'goods'` value
+  would pass the save-time shape gate and then 422 at issuance, converting the
+  guard into a trap for exactly the operator this fix is meant to help. Finding
+  the real goods-sale value (and, separately, detecting `errors.sale_type` in a
+  422 body to give an un-configured connection a specific hint instead of the
+  generic "The invoicing provider rejected the request.") is tracked as a
+  follow-up: #3031.
 - **Rendered-PDF download** (#1321): `RegulatoryDocumentReader.getRegulatoryDocument
   (record, 'rendered')` fetches the invoice PDF as rendered by inFakt - this backs
   the **Download PDF** button on the accepted invoice detail page.
