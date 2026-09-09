@@ -56,6 +56,18 @@
 # only the products still missing a WooCommerce mapping and leaves the rest
 # alone, exactly like bootstrap.sh's own found/gap/created seeding.
 #
+# The repair is VARIANT-grain, not just product-grain (#3025 review,
+# IMPORTANT): a product that already carries a WooCommerce mapping is never
+# revisited for a NEW variant added to it after that first run, because the
+# product-level filter that decides "already done" cannot see inside it. So
+# every run also diffs each already-mapped product's candidate variantIds
+# against its OWN existing ProductVariant mappings and inserts whatever is
+# missing, against the product's EXISTING wcId - no new WC product, no
+# re-creation. The variant mapping's suffix is the variant's OWN internal id
+# (`product:{wcId}#{variantId}`), not a positional ordinal - an ordinal
+# recomputed on a later, grown variant list would risk colliding with (or
+# silently duplicating) one already written for the same variant.
+#
 # Usage: ./seed-wc-catalogue.sh
 #
 set -euo pipefail
@@ -96,129 +108,200 @@ CANDIDATES_JSON="$(pg_sql "
 N_CANDIDATES="$(jq 'length' <<<"$CANDIDATES_JSON")"
 [ "${N_CANDIDATES:-0}" -gt 0 ] || die "seed-wc-catalogue: no non-stale product_variants map to a real (numeric-id) PrestaShop product - install/sync the PrestaShop catalogue first (bootstrap.sh step_connections, or seed-shop-catalogue.sh)."
 
-EXISTING_WC_JSON="$(pg_sql "SELECT COALESCE(jsonb_agg(\"internalId\"),'[]'::jsonb) FROM identifier_mappings WHERE \"entityType\"='Product' AND \"connectionId\"='$WC_CONNECTION_ID'")"
-TO_CREATE_JSON="$(jq -c --argjson existing "$EXISTING_WC_JSON" \
+# The Postgres array literal every referential check below scopes itself
+# to (#3025 review, BLOCKING) - this script's OWN candidate set, never a
+# bare `connectionId` match. seed-catalogue.sh's 10k pool also writes
+# `entityType='Product'` rows under this SAME WC_CONNECTION_ID (a
+# deliberately non-numeric synthetic id, see the header above) - a
+# connectionId-only scope counted those too and died reporting a failure
+# on ~10 000 rows this script never touched, on the exact stand F5 uses.
+# Candidate ids are `ol_product_*`/`perfseed_product_s*`, which can never
+# collide with a brace/comma/quote, so no per-id quoting is needed.
+CANDIDATE_IDS_PG_ARRAY="$(jq -r '"{" + ([.[].olId] | join(",")) + "}"' <<<"$CANDIDATES_JSON")"
+# Same scoping, for the variant-grain referential check further down - a
+# variant's identifier_mappings row carries the VARIANT id as internalId,
+# never the product id, so it needs its own candidate array.
+CANDIDATE_VARIANT_IDS_PG_ARRAY="$(jq -r '"{" + ([.[].variantIds[]] | join(",")) + "}"' <<<"$CANDIDATES_JSON")"
+
+# {olId, wcId} for every candidate ALREADY carrying a WC Product mapping -
+# richer than a bare id list because the missing-variant repair below (#3025
+# review, IMPORTANT) needs the wcId to attach a repaired variant to, not just
+# the fact that the product is "done".
+EXISTING_WC_PRODUCTS_JSON="$(pg_sql "SELECT COALESCE(jsonb_agg(jsonb_build_object('olId', \"internalId\", 'wcId', \"externalId\")),'[]'::jsonb) FROM identifier_mappings WHERE \"entityType\"='Product' AND \"connectionId\"='$WC_CONNECTION_ID' AND \"internalId\" = ANY('${CANDIDATE_IDS_PG_ARRAY}'::text[])")"
+EXISTING_OL_IDS_JSON="$(jq -c '[.[].olId]' <<<"$EXISTING_WC_PRODUCTS_JSON")"
+# Every variant that already has ITS OWN mapping, regardless of which
+# product it belongs to - a product-grain "already mapped" check cannot see
+# a variant added to an already-mapped product after the fact (#3025 review,
+# IMPORTANT): this is the set that detection reads instead.
+EXISTING_VARIANT_IDS_JSON="$(pg_sql "SELECT COALESCE(jsonb_agg(\"internalId\"),'[]'::jsonb) FROM identifier_mappings WHERE \"entityType\"='ProductVariant' AND \"connectionId\"='$WC_CONNECTION_ID' AND \"externalId\" LIKE 'product:%'")"
+
+TO_CREATE_JSON="$(jq -c --argjson existing "$EXISTING_OL_IDS_JSON" \
   '[ .[] | select((.olId as $id | ($existing | index($id))) == null) ]' <<<"$CANDIDATES_JSON")"
 N_TO_CREATE="$(jq 'length' <<<"$TO_CREATE_JSON")"
 
-log "PrestaShop-real products: $N_CANDIDATES total, $N_TO_CREATE lacking a WooCommerce mapping"
+# Candidates that already have a WC product, checked for a variant this run
+# needs to REPAIR rather than skip outright - the product-grain filter above
+# would otherwise never revisit a product it already mapped once, no matter
+# how many variants it has grown since.
+ALREADY_MAPPED_JSON="$(jq -c --argjson existing "$EXISTING_OL_IDS_JSON" \
+  '[ .[] | select((.olId as $id | ($existing | index($id))) != null) ]' <<<"$CANDIDATES_JSON")"
+MISSING_VARIANT_ROWS_TSV="$(jq -r --argjson existingVariants "$EXISTING_VARIANT_IDS_JSON" --argjson wcProducts "$EXISTING_WC_PRODUCTS_JSON" '
+  (($wcProducts | map({(.olId): .wcId}) | add) // {}) as $wcIdByProduct
+  | .[] | . as $row
+  | ($wcIdByProduct[$row.olId]) as $wcId
+  | select($wcId != null)
+  | ($row.variantIds[]) as $variantId
+  | select(($existingVariants | index($variantId)) == null)
+  | [$variantId, ("product:" + ($wcId|tostring) + "#" + ($variantId|tostring))] | @tsv
+' <<<"$ALREADY_MAPPED_JSON")"
+N_MISSING_VARIANTS="$(printf '%s\n' "$MISSING_VARIANT_ROWS_TSV" | grep -c . || true)"
 
-if [ "$N_TO_CREATE" = 0 ]; then
-  log "found: every destination-resolvable product already carries a WooCommerce mapping - nothing to do"
+log "PrestaShop-real products: $N_CANDIDATES total, $N_TO_CREATE lacking a WooCommerce mapping, $N_MISSING_VARIANTS variant mapping(s) missing on already-mapped products"
+
+if [ "$N_TO_CREATE" = 0 ] && [ "$N_MISSING_VARIANTS" = 0 ]; then
+  log "found: every destination-resolvable product and variant already carries a WooCommerce mapping - nothing to do"
 else
-  # ---------------------------------------------------------------------------
-  # Clone via the WC PHP API (wp eval), not raw SQL against wp_posts/
-  # wp_postmeta: WooCommerce's own save() path is what stamps every meta row
-  # (including wp_wc_product_meta_lookup, which its own product queries read)
-  # correctly across versions - the same reasoning docker/woocommerce/
-  # 01-seed-wc-data.sh already relies on. The plan crosses via `docker cp`
-  # rather than a `wp eval` argument: WP-CLI's argv has no room for an N-row
-  # JSON blob, and the container's docker-exec user cannot remove a
-  # docker-cp'd file it does not own, so cleanup runs as uid 0 explicitly.
-  # ---------------------------------------------------------------------------
-  PLAN_LOCAL="$(mktemp)"
-  trap 'rm -f "$PLAN_LOCAL"' EXIT
-  jq -c --arg prefix "$SKU_PREFIX" \
-    '[ .[] | {olId, sku: ($prefix + .olId), name: ("Perf WC " + .name), price: ((.price // 0) | tostring), stock: 100} ]' \
-    <<<"$TO_CREATE_JSON" > "$PLAN_LOCAL"
+  PRODUCT_ROWS_TSV=""
+  NEW_VARIANT_ROWS_TSV=""
+  N_CREATED=0
 
-  docker cp "$PLAN_LOCAL" "$WC_CONTAINER:/tmp/perf-wc-plan.json" \
-    || die "seed-wc-catalogue: docker cp of the product plan into $WC_CONTAINER failed"
-  # docker cp preserves the copying HOST user's ownership/mode (0600, this
-  # host's uid) - the container's wp-cli process runs as a DIFFERENT uid
-  # (bitnami's non-root default) and cannot read it back without this: found
-  # live as a silent "Permission denied" PHP warning wc_wp's own stderr
-  # redirect (2>/dev/null) would otherwise have hidden completely.
-  docker exec -u 0 -i "$WC_CONTAINER" chmod 644 /tmp/perf-wc-plan.json \
-    || die "seed-wc-catalogue: could not make the product plan readable inside $WC_CONTAINER"
+  if [ "$N_TO_CREATE" -gt 0 ]; then
+    # ---------------------------------------------------------------------------
+    # Clone via the WC PHP API (wp eval), not raw SQL against wp_posts/
+    # wp_postmeta: WooCommerce's own save() path is what stamps every meta row
+    # (including wp_wc_product_meta_lookup, which its own product queries read)
+    # correctly across versions - the same reasoning docker/woocommerce/
+    # 01-seed-wc-data.sh already relies on. The plan crosses via `docker cp`
+    # rather than a `wp eval` argument: WP-CLI's argv has no room for an N-row
+    # JSON blob, and the container's docker-exec user cannot remove a
+    # docker-cp'd file it does not own, so cleanup runs as uid 0 explicitly.
+    # ---------------------------------------------------------------------------
+    PLAN_LOCAL="$(mktemp)"
+    trap 'rm -f "$PLAN_LOCAL"' EXIT
+    jq -c --arg prefix "$SKU_PREFIX" \
+      '[ .[] | {olId, sku: ($prefix + .olId), name: ("Perf WC " + .name), price: ((.price // 0) | tostring), stock: 100} ]' \
+      <<<"$TO_CREATE_JSON" > "$PLAN_LOCAL"
 
-  # NOT via wc_wp - that helper redirects stderr to /dev/null, which is
-  # exactly what hid the docker-cp ownership mismatch (a silent PHP warning,
-  # empty output, no diagnostic anywhere) the first time this ran live.
-  WP_EVAL_OUT="$(mktemp)"
-  if ! docker exec -i "$WC_CONTAINER" wp --allow-root --no-debug --path="$WC_PATH" eval '
-    $plan = json_decode(file_get_contents("/tmp/perf-wc-plan.json"), true);
-    if (!is_array($plan)) { fwrite(STDERR, "unreadable plan\n"); exit(1); }
-    $out = array();
-    foreach ($plan as $row) {
-      $p = new WC_Product_Simple();
-      $p->set_name($row["name"]);
-      $p->set_sku($row["sku"]);
-      $p->set_regular_price((string) $row["price"]);
-      $p->set_manage_stock(true);
-      $p->set_stock_quantity((int) $row["stock"]);
-      $p->set_status("publish");
-      $id = $p->save();
-      $out[] = array("olId" => $row["olId"], "wcId" => (int) $id);
-    }
-    echo json_encode($out);
-  ' > "$WP_EVAL_OUT" 2>&1; then
-    cat "$WP_EVAL_OUT" >&2
-    die "seed-wc-catalogue: wp eval product creation failed (output above) - nothing was mapped."
+    docker cp "$PLAN_LOCAL" "$WC_CONTAINER:/tmp/perf-wc-plan.json" \
+      || die "seed-wc-catalogue: docker cp of the product plan into $WC_CONTAINER failed"
+    # docker cp preserves the copying HOST user's ownership/mode (0600, this
+    # host's uid) - the container's wp-cli process runs as a DIFFERENT uid
+    # (bitnami's non-root default) and cannot read it back without this: found
+    # live as a silent "Permission denied" PHP warning wc_wp's own stderr
+    # redirect (2>/dev/null) would otherwise have hidden completely.
+    docker exec -u 0 -i "$WC_CONTAINER" chmod 644 /tmp/perf-wc-plan.json \
+      || die "seed-wc-catalogue: could not make the product plan readable inside $WC_CONTAINER"
+
+    # NOT via wc_wp - that helper redirects stderr to /dev/null, which is
+    # exactly what hid the docker-cp ownership mismatch (a silent PHP warning,
+    # empty output, no diagnostic anywhere) the first time this ran live.
+    WP_EVAL_OUT="$(mktemp)"
+    if ! docker exec -i "$WC_CONTAINER" wp --allow-root --no-debug --path="$WC_PATH" eval '
+      $plan = json_decode(file_get_contents("/tmp/perf-wc-plan.json"), true);
+      if (!is_array($plan)) { fwrite(STDERR, "unreadable plan\n"); exit(1); }
+      $out = array();
+      foreach ($plan as $row) {
+        $p = new WC_Product_Simple();
+        $p->set_name($row["name"]);
+        $p->set_sku($row["sku"]);
+        $p->set_regular_price((string) $row["price"]);
+        $p->set_manage_stock(true);
+        $p->set_stock_quantity((int) $row["stock"]);
+        $p->set_status("publish");
+        $id = $p->save();
+        $out[] = array("olId" => $row["olId"], "wcId" => (int) $id);
+      }
+      echo json_encode($out);
+    ' > "$WP_EVAL_OUT" 2>&1; then
+      cat "$WP_EVAL_OUT" >&2
+      die "seed-wc-catalogue: wp eval product creation failed (output above) - nothing was mapped."
+    fi
+    docker exec -u 0 -i "$WC_CONTAINER" rm -f /tmp/perf-wc-plan.json || true
+
+    CREATED_JSON="$(tail -1 "$WP_EVAL_OUT")"
+    rm -f "$WP_EVAL_OUT"
+    N_CREATED="$(jq 'length' <<<"$CREATED_JSON" 2>/dev/null || printf 0)"
+    [ "${N_CREATED:-0}" = "$N_TO_CREATE" ] \
+      || die "seed-wc-catalogue: asked WooCommerce to create $N_TO_CREATE product(s), it reports $N_CREATED - raw output: $CREATED_JSON. Nothing was mapped."
+
+    # ---------------------------------------------------------------------------
+    # Project the (olId -> wcId) result onto identifier_mappings: one Product
+    # row per product, one (synthetic) ProductVariant row per variant that
+    # product's candidate row carried.
+    # ---------------------------------------------------------------------------
+    # Two explicit passes rather than one shape-mixing query, both driven off
+    # the same $CREATED_JSON x $TO_CREATE_JSON join, so there is exactly one
+    # source of truth for "which wcId does this olId now have".
+    PRODUCT_ROWS_TSV="$(jq -r '.[] | [.olId, (.wcId|tostring)] | @tsv' <<<"$CREATED_JSON")"
+    # `isSyntheticVariantExternalId` (woocommerce-variant-id.ts) tests only the
+    # `product:` PREFIX - resolveLineItems never parses what follows it (a
+    # synthetic mapping resolves `product_id` from the separate `Product` row
+    # and leaves `variation_id` unset either way) - so every variant of one OL
+    # product can legitimately point at the SAME simple WC product, as long as
+    # each row's externalId is still distinct enough to satisfy
+    # identifier_mappings' own (entityType, platformType, connectionId,
+    # externalId) uniqueness. The suffix is the VARIANT'S OWN internal id
+    # (never a positional ordinal, #3025 review, IMPORTANT): a variant-array
+    # index is not stable across runs - `variantIds` carries no ORDER BY, and
+    # even if it did, a variant added later can sort ahead of one already
+    # mapped - so a later run's missing-variant repair (below) could recompute
+    # a DIFFERENT ordinal for an already-mapped variant and either collide
+    # with it (identifier_mappings' own uniqueness refuses the insert) or,
+    # worse, silently duplicate it under a second externalId. The variant's
+    # own id can never collide with itself and never needs recomputing.
+    NEW_VARIANT_ROWS_TSV="$(jq -r --argjson plan "$TO_CREATE_JSON" '
+      (map({(.olId): .wcId}) | add // {}) as $wcIdByProduct
+      | $plan[] | . as $row
+      | ($wcIdByProduct[$row.olId]) as $wcId
+      | select($wcId != null)
+      | ($row.variantIds[]) as $variantId
+      | [$variantId, ("product:" + ($wcId|tostring) + "#" + ($variantId|tostring))] | @tsv
+    ' <<<"$CREATED_JSON")"
   fi
-  docker exec -u 0 -i "$WC_CONTAINER" rm -f /tmp/perf-wc-plan.json || true
 
-  CREATED_JSON="$(tail -1 "$WP_EVAL_OUT")"
-  rm -f "$WP_EVAL_OUT"
-  N_CREATED="$(jq 'length' <<<"$CREATED_JSON" 2>/dev/null || printf 0)"
-  [ "${N_CREATED:-0}" = "$N_TO_CREATE" ] \
-    || die "seed-wc-catalogue: asked WooCommerce to create $N_TO_CREATE product(s), it reports $N_CREATED - raw output: $CREATED_JSON. Nothing was mapped."
+  # Missing-variant repair rows (computed above, before this if/else) join
+  # the newly-created products' own variant rows into ONE combined insert -
+  # both use the identical variant-id-suffixed externalId scheme, so there is
+  # no risk of the two passes disagreeing about one variant's shape.
+  ALL_VARIANT_ROWS_TSV="$(printf '%s\n%s\n' "$NEW_VARIANT_ROWS_TSV" "$MISSING_VARIANT_ROWS_TSV" | grep -v '^$' || true)"
 
-  # ---------------------------------------------------------------------------
-  # Project the (olId -> wcId) result onto identifier_mappings: one Product
-  # row per product, one (synthetic) ProductVariant row per variant that
-  # product's candidate row carried.
-  # ---------------------------------------------------------------------------
-  # Two explicit passes rather than one shape-mixing query, both driven off
-  # the same $CREATED_JSON x $TO_CREATE_JSON join, so there is exactly one
-  # source of truth for "which wcId does this olId now have".
-  PRODUCT_ROWS_TSV="$(jq -r '.[] | [.olId, (.wcId|tostring)] | @tsv' <<<"$CREATED_JSON")"
-  # `isSyntheticVariantExternalId` (woocommerce-variant-id.ts) tests only the
-  # `product:` PREFIX - resolveLineItems never parses what follows it (a
-  # synthetic mapping resolves `product_id` from the separate `Product` row
-  # and leaves `variation_id` unset either way) - so every variant of one OL
-  # product can legitimately point at the SAME simple WC product, as long as
-  # each row's externalId is still distinct enough to satisfy
-  # identifier_mappings' own (entityType, platformType, connectionId,
-  # externalId) uniqueness. `#<ordinal>` is appended for exactly that: a
-  # WC-facing seller cannot tell these variants apart on this stand (a real
-  # multi-variant integration would model them as WC variations of a
-  # WC_Product_Variable instead), which is an accepted simplification for a
-  # load-test fixture that only needs the order to be CREATABLE.
-  VARIANT_ROWS_TSV="$(jq -r --argjson plan "$TO_CREATE_JSON" '
-    (map({(.olId): .wcId}) | add // {}) as $wcIdByProduct
-    | $plan[] | . as $row
-    | ($wcIdByProduct[$row.olId]) as $wcId
-    | select($wcId != null)
-    | ($row.variantIds | to_entries[]) as $e
-    | [$e.value, ("product:" + ($wcId|tostring) + "#" + ($e.key|tostring))] | @tsv
-  ' <<<"$CREATED_JSON")"
-
-  seed_sql <<SQL
+  # Two separate statements/transactions rather than one, so an empty
+  # PRODUCT_ROWS_TSV (the missing-variant-only repair path, N_TO_CREATE=0)
+  # never hands COPY a blank line where it expects a two-column row - and so
+  # a script crashing between the two still leaves each half independently
+  # committed; anything left over is exactly what the NEXT run's own
+  # detection (TO_CREATE_JSON / MISSING_VARIANT_ROWS_TSV) picks back up,
+  # which is the whole point of this being repair-shaped rather than
+  # all-or-nothing.
+  if [ -n "$PRODUCT_ROWS_TSV" ]; then
+    seed_sql <<SQL
 BEGIN;
-
 CREATE TEMP TABLE perf_wc_products (ol_id text, wc_id text) ON COMMIT DROP;
 COPY perf_wc_products FROM STDIN;
 ${PRODUCT_ROWS_TSV}
 \.
-
-CREATE TEMP TABLE perf_wc_variants (variant_id text, external_id text) ON COMMIT DROP;
-COPY perf_wc_variants FROM STDIN;
-${VARIANT_ROWS_TSV}
-\.
-
 INSERT INTO identifier_mappings ("entityType", "internalId", "externalId", "platformType", "connectionId", "createdAt", "updatedAt")
 SELECT 'Product', ol_id, wc_id, 'woocommerce', '${WC_CONNECTION_ID}'::uuid, now(), now()
 FROM perf_wc_products;
+COMMIT;
+SQL
+  fi
 
+  if [ -n "$ALL_VARIANT_ROWS_TSV" ]; then
+    seed_sql <<SQL
+BEGIN;
+CREATE TEMP TABLE perf_wc_variants (variant_id text, external_id text) ON COMMIT DROP;
+COPY perf_wc_variants FROM STDIN;
+${ALL_VARIANT_ROWS_TSV}
+\.
 INSERT INTO identifier_mappings ("entityType", "internalId", "externalId", "platformType", "connectionId", "createdAt", "updatedAt")
 SELECT 'ProductVariant', variant_id, external_id, 'woocommerce', '${WC_CONNECTION_ID}'::uuid, now(), now()
 FROM perf_wc_variants;
-
 COMMIT;
 SQL
+  fi
 
-  log "mapped $N_CREATED WooCommerce product(s) ($(printf '%s\n' "$VARIANT_ROWS_TSV" | grep -c . || true) variant mapping row(s))"
+  log "mapped $N_CREATED new WooCommerce product(s), repaired $N_MISSING_VARIANTS missing variant mapping(s) on already-mapped products ($(printf '%s\n' "$ALL_VARIANT_ROWS_TSV" | grep -c . || true) variant mapping row(s) written this run)"
 fi
 
 ELAPSED=$(( $(epoch) - START ))
@@ -229,13 +312,22 @@ seed_check_ceiling "WooCommerce catalogue ($N_TO_CREATE product(s) created this 
 # count proves nothing on its own (that is the whole defect being fixed) -
 # take the external ids OpenLinker now holds for WooCommerce and ask
 # WooCommerce how many of them resolve to a real product.
+#
+# Scoped to THIS script's own candidate set throughout (#3025 review,
+# BLOCKING) - never a bare `connectionId` match. seed-catalogue.sh's 10k pool
+# writes its own `entityType='Product'`/`'ProductVariant'` rows under this
+# SAME connection id with a deliberately non-numeric synthetic externalId
+# (see the header above); on a stand carrying that fixture, an unscoped
+# DANGLING/RESOLVED check counted those ~10 000 unrelated rows and reported a
+# failure on work this script never touched, while the real work it DID do
+# had already succeeded.
 # ---------------------------------------------------------------------------
-N_OL_MAP="$(pg_sql "SELECT COUNT(*) FROM identifier_mappings WHERE \"entityType\"='Product' AND \"connectionId\"='$WC_CONNECTION_ID'")"
-N_OL_VARMAP="$(pg_sql "SELECT COUNT(*) FROM identifier_mappings WHERE \"entityType\"='ProductVariant' AND \"connectionId\"='$WC_CONNECTION_ID' AND \"externalId\" LIKE 'product:%'")"
-DANGLING="$(pg_sql "SELECT COUNT(*) FROM identifier_mappings WHERE \"entityType\"='Product' AND \"connectionId\"='$WC_CONNECTION_ID' AND \"externalId\" !~ '^[0-9]+\$'")"
-[ "$DANGLING" = 0 ] || die "seed-wc-catalogue: referential check: $DANGLING WooCommerce Product mapping(s) carry a non-numeric externalId - those name no WooCommerce product."
+N_OL_MAP="$(pg_sql "SELECT COUNT(*) FROM identifier_mappings WHERE \"entityType\"='Product' AND \"connectionId\"='$WC_CONNECTION_ID' AND \"internalId\" = ANY('${CANDIDATE_IDS_PG_ARRAY}'::text[])")"
+N_OL_VARMAP="$(pg_sql "SELECT COUNT(*) FROM identifier_mappings WHERE \"entityType\"='ProductVariant' AND \"connectionId\"='$WC_CONNECTION_ID' AND \"externalId\" LIKE 'product:%' AND \"internalId\" = ANY('${CANDIDATE_VARIANT_IDS_PG_ARRAY}'::text[])")"
+DANGLING="$(pg_sql "SELECT COUNT(*) FROM identifier_mappings WHERE \"entityType\"='Product' AND \"connectionId\"='$WC_CONNECTION_ID' AND \"internalId\" = ANY('${CANDIDATE_IDS_PG_ARRAY}'::text[]) AND \"externalId\" !~ '^[0-9]+\$'")"
+[ "$DANGLING" = 0 ] || die "seed-wc-catalogue: referential check: $DANGLING WooCommerce Product mapping(s) among this script's own candidates carry a non-numeric externalId - those name no WooCommerce product."
 
-MAPPED_IDS_JSON="$(pg_sql "SELECT COALESCE(jsonb_agg(\"externalId\"),'[]'::jsonb) FROM identifier_mappings WHERE \"entityType\"='Product' AND \"connectionId\"='$WC_CONNECTION_ID'")"
+MAPPED_IDS_JSON="$(pg_sql "SELECT COALESCE(jsonb_agg(\"externalId\"),'[]'::jsonb) FROM identifier_mappings WHERE \"entityType\"='Product' AND \"connectionId\"='$WC_CONNECTION_ID' AND \"internalId\" = ANY('${CANDIDATE_IDS_PG_ARRAY}'::text[])")"
 RESOLVED="$(printf '%s' "$MAPPED_IDS_JSON" | wc_wp eval '
   $ids = json_decode(file_get_contents("php://stdin"), true);
   $n = 0;

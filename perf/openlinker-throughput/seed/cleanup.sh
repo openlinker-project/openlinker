@@ -15,6 +15,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/seed-lib.sh"
 LIB_LOG_PREFIX="seed-cleanup"
 
+# Both guards run BEFORE any DELETE below. require_connections catches an
+# unsourced stand-ids.env here rather than as an "unbound variable" crash
+# after the destructive blocks below have already run (the WC-side block
+# reads $WC_CONNECTION_ID unconditionally, past its own `if`); the confirm
+# gate catches a plain accidental invocation of this whole script.
+require_connections
+require_cleanup_confirmed
+
 log "deleting perfseed order_line_items"
 pg_sql_write "DELETE FROM order_line_items WHERE \"orderRecordId\" LIKE '${PREFIX}\\_ord\\_%' ESCAPE '\\'" >/dev/null
 
@@ -116,13 +124,22 @@ if [ "${WC_PRODUCT_COUNT_CLEAN:-0}" != "0" ]; then
     WHERE \"connectionId\"='${WC_CONNECTION_ID}' AND \"entityType\"='ProductVariant'
       AND \"externalId\" ~ ('^product:(' || replace('${WC_IDS_CSV}', ',', '|') || ')#')" >/dev/null
 
-  wc_wp eval '
+  # NOT via wc_wp (stderr -> /dev/null) - the same swallowing that hid the
+  # docker-cp ownership warning live in seed-wc-catalogue.sh, and this is the
+  # one call in this script that can silently no-op N times (once per
+  # already-deleted or never-created post) with only an exit code to show
+  # for it.
+  WP_DELETE_OUT="$(mktemp)"
+  if ! docker exec -i "$WC_CONTAINER" wp --allow-root --no-debug --path="$WC_PATH" eval '
     global $wpdb;
     $ids = json_decode(file_get_contents("php://stdin"), true);
     foreach ($ids as $id) { wp_delete_post((int) $id, true); }
     echo count($ids);
-  ' <<<"$WC_PRODUCT_IDS_JSON" >/dev/null 2>&1 \
-    || warn "cleanup: WooCommerce product deletion reported a non-zero exit - some PERFWC- product(s) may remain (re-run cleanup.sh to retry)"
+  ' <<<"$WC_PRODUCT_IDS_JSON" > "$WP_DELETE_OUT" 2>&1; then
+    cat "$WP_DELETE_OUT" >&2
+    warn "cleanup: WooCommerce product deletion reported a non-zero exit (output above) - some PERFWC- product(s) may remain (re-run cleanup.sh to retry)"
+  fi
+  rm -f "$WP_DELETE_OUT"
 fi
 
 WC_REMAINING="$(pg_sql "SELECT COUNT(*) FROM identifier_mappings WHERE \"connectionId\"='${WC_CONNECTION_ID}' AND \"entityType\" IN ('Product','ProductVariant')")"

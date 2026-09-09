@@ -30,7 +30,8 @@ sources it rather than re-implementing any piece of it.
 | `seed/seed-catalogue.sh` | Set-based products/variants/inventory_items/identifier_mappings seeder (#2849) across the two connections the lab stand carries - seeded ONCE, independent of order-dataset size. |
 | `seed/seed-jobs.sh` | Set-based `sync_jobs` sweep-child history seeder (#2849) - ~1 year at real cadence (20min/15min), also seeded ONCE. |
 | `seed/seed-orders.sh` | Set-based `order_records` + `order_line_items` seeder (#2849), ADDITIVE across `TARGET_ORDERS` - the three #2843 dataset sizes are three calls, each inserting only the delta. |
-| `seed/cleanup.sh` | Removes every row the three seeders above wrote, matching on the `perfseed` tag alone. Standalone - does NOT touch #2854's `stand-down.sh`. |
+| `seed/seed-wc-catalogue.sh` | WooCommerce-side catalogue seeder (#3025) - clones one real WooCommerce product per PS-real product `bootstrap.sh`'s own offer-mapping selection already targets, and maps it (product + every non-stale variant) under `WC_CONNECTION_ID` in the adapter's own external-id shapes, so a real order can resolve line items against the WooCommerce destination. Idempotent and repair-shaped at BOTH product and variant grain. |
+| `seed/cleanup.sh` | Removes every row the four seeders above wrote (matching on the `perfseed`/`PERFWC-` tags), plus its PrestaShop/WooCommerce counterparts. Standalone - does NOT touch #2854's `stand-down.sh`. Requires `CONFIRM_CLEANUP=1` (below) - a prior accidental invocation against a live stand wiped its `order_records`/`order_line_items`. |
 | `scenarios/f5-read-path.sh` | Operator read-path scenario (#2843) - orders/products/jobs-dashboard routes + the app-shell nav-probe fan-out, at each of the three seeded dataset sizes. See "F5 - operator read path at row count" below. |
 | `drivers/read-path.js` | k6 driver for `f5-read-path.sh` - a weighted browse-mix scenario plus a separate page-shell scenario, one Trend per named route. |
 | `scenarios/f8-lane-caps.sh` | Lane-cap SATURATION sweep (#2867) - drives ONE lane's per-scope cap across a list of values, one worker recreate per value, and reports throughput and per-job latency at each point so the knee is read off a curve. The only scenario that WRITES a lane cap; it restores the caps it found on exit. Reads the applied cap back out of the worker's own startup line and refuses the arm on a mismatch, because a cap that silently did not apply produces a clean curve of the same cap measured five times. See "F8 - lane cap saturation" below. |
@@ -119,6 +120,8 @@ stand.
 | `DRAIN_MAX_WAIT_SECS` | `1800` | `drain_wait`'s max-wait timeout before it marks the remainder dead |
 | `SETTLE_SECS` | `60` | the pause `window_start` inserts before opening the window |
 | `SAMPLE_INTERVAL_SECS` | `1` | nominal observer tick interval (actual drift recorded as `dt`) |
+| `F5_ROW_COUNT_TOLERANCE_PCT` | `1` | `check_row_count_target` (via `f5-read-path.sh`'s `run_size`) - relative tolerance, as a percent of the target, before a size step's row count is DISCARDED as mismeasured |
+| `CONFIRM_CLEANUP` | *(required, no default)* | `seed/cleanup.sh` - must be `1` or the script refuses before its first `DELETE` |
 
 ## Every guard, and what makes a run invalid
 
@@ -664,6 +667,21 @@ distribution rather than merely a similar one. Distribution targets are
 asserted post-seed (recordStatus/connection/currency/reportingCurrency
 mix), not left as a prose claim - see each seeder's own `check_share` /
 distribution-log lines.
+
+**WooCommerce catalogue mapping (#3025)**: `seed/seed-wc-catalogue.sh` closes
+a separate gap the three seeders above don't touch - `perf-woocommerce` is
+created with `OrderProcessorManager` alone (no `ProductMaster`), so nothing
+ever wrote it a `Product`/`ProductVariant` mapping, and every order fanned
+out to it as a destination died at line-item resolution, silently reported
+`outcome: 'ok'` under `OrderSyncService`'s `Promise.allSettled` fan-out.
+Clones one real WooCommerce product (via the WC PHP API) per PS-real product
+`bootstrap.sh`'s own offer-mapping selection already targets, mapping the
+product and every one of its non-stale variants (`product:{wcId}#{variantId}`,
+a synthetic per-variant marker - WooCommerce gets no real variation of its
+own). Idempotent and repair-shaped at both product AND variant grain: a
+re-run only creates what's still missing, including a variant added to an
+already-mapped product after an earlier run. Own env vars: `SKU_PREFIX`
+(`PERFWC-`), `CEILING_SECS` (default `300`).
 
 **Deliberately deferred, named rather than silently skipped**: the
 sample-through-real-ingestion diff against #2846's stubs (#2846 is a

@@ -86,6 +86,19 @@ require_connections() {
   [ -n "${WC_CONNECTION_ID:-}" ] || die "WC_CONNECTION_ID not set - source stand-ids.env (bootstrap.sh) first"
 }
 
+# cleanup.sh deletes every perfseed-tagged row on the stand plus its
+# PrestaShop/WooCommerce counterparts, with no dry-run and no undo. An
+# operator already ran it once by accident against a live lab stand while
+# testing the #3025 WooCommerce teardown block, wiping order_records/
+# order_line_items (see that PR's own "Incident during verification" note) -
+# with nothing between typing the command and the first DELETE. Mirrors
+# refuse_unless_forced's FORCE_SEED gate: an explicit, named opt-in rather
+# than a bare confirmation prompt (which a scripted/CI caller can't answer).
+require_cleanup_confirmed() {
+  [ "${CONFIRM_CLEANUP:-0}" = "1" ] \
+    || die "cleanup.sh deletes every '${PREFIX}'-prefixed row on this stand, plus the PrestaShop/WooCommerce rows it tagged - no dry-run, no undo. Re-run with CONFIRM_CLEANUP=1 once you are sure this is the stand you mean to clear."
+}
+
 # vacuum_analyze_reset <table...> - #2849/#2843 AC: fresh planner statistics
 # per size step, plus a pg_stat_statements reset so the NEXT thing measured
 # (a scenario's own read-path window) is not attributing this seeder's own

@@ -298,20 +298,22 @@ run_size() {
   n_lines="$(pg_sql "SELECT COUNT(*) FROM order_line_items WHERE \"orderRecordId\" LIKE 'perfseed_ord_%'")"
   n_syncjobs="$(pg_sql "SELECT COUNT(*) FROM sync_jobs")"
 
-  local extra
-  extra="$(jq -n \
-    --arg label "$label" --argjson target "$target" \
-    --argjson n_orders "$n_orders" --argjson n_lines "$n_lines" --argjson n_syncjobs "$n_syncjobs" \
-    --arg rng_seed "$SEED_RNG" --arg statement_timeout_ms "$STATEMENT_TIMEOUT_MS" \
-    '{f5: {datasetLabel: $label, targetOrders: $target, rowCounts: {order_records: $n_orders, order_line_items: $n_lines, sync_jobs: $n_syncjobs}, seedRngSeed: $rng_seed, statementTimeoutMs: $statement_timeout_ms}}')"
-
   # #3024 - the additive seeder above is a no-op once the dataset is already
   # at/above target (its own header comment says so), so a step run out of
   # order (F5_ONLY_SIZE resuming a single step, or a re-run against a stand
   # a bigger step already grew) would otherwise silently measure the WRONG
   # row count under this label and still report VALID - nothing about that
   # produces a non-2xx response for the "did k6 stay mostly within 2xx"
-  # check below to catch. Checked here, BEFORE window_start, so a
+  # check below to catch. Checked here, BEFORE `extra` is assembled and
+  # BEFORE window_start (#3025 review, SUGGESTION - moved up from after
+  # `extra`): the assembly below uses `--argjson n_orders "$n_orders"`, which
+  # requires a syntactically valid JSON number, so a failed pg_sql read
+  # (empty `$n_orders`) used to abort THIS FUNCTION inside jq with a bare
+  # "Invalid numeric literal" - never reaching check_row_count_target's own
+  # "actual is not a readable row count" branch at all, despite that branch
+  # being unit-tested (lib-test.sh: `check_row_count_target '' 10000`).
+  # Running the guard first makes that branch genuinely reachable here and
+  # gives the actionable diagnostic instead of a jq parse error. A
   # known-mismeasured arm never pays for a k6 window it cannot honestly
   # report: refuse the arm rather than measure it (#3024 AC - shrinking the
   # table back down is the alternative, and is not this scenario's call to
@@ -321,11 +323,24 @@ run_size() {
   row_count_check="$(check_row_count_target "$n_orders" "$target" "${F5_ROW_COUNT_TOLERANCE_PCT:-1}")"
   if [ "$row_count_check" != "ok" ]; then
     warn "size step target=$target label=$label: $row_count_check"
-    manifest_write "$dir" f5-read-path "$CONN_IDS_CSV" "$SMOKE" "$extra"
+    # A minimal, empty-safe extra: `--arg` (string) tolerates a blank
+    # `$n_orders` where `--argjson` (this branch's whole reason for existing)
+    # would refuse to build at all.
+    local discard_extra
+    discard_extra="$(jq -n --arg label "$label" --argjson target "$target" --arg n_orders "$n_orders" \
+      '{f5: {datasetLabel: $label, targetOrders: $target, rowCounts: {order_records: $n_orders}}}')"
+    manifest_write "$dir" f5-read-path "$CONN_IDS_CSV" "$SMOKE" "$discard_extra"
     verdict_write "$dir" DISCARDED "$row_count_check"
     log "size step DISCARDED: $dir ($row_count_check) - no k6 load was run against this mismeasured arm"
     return
   fi
+
+  local extra
+  extra="$(jq -n \
+    --arg label "$label" --argjson target "$target" \
+    --argjson n_orders "$n_orders" --argjson n_lines "$n_lines" --argjson n_syncjobs "$n_syncjobs" \
+    --arg rng_seed "$SEED_RNG" --arg statement_timeout_ms "$STATEMENT_TIMEOUT_MS" \
+    '{f5: {datasetLabel: $label, targetOrders: $target, rowCounts: {order_records: $n_orders, order_line_items: $n_lines, sync_jobs: $n_syncjobs}, seedRngSeed: $rng_seed, statementTimeoutMs: $statement_timeout_ms}}')"
 
   window_start "$dir" f5-read-path "$CONN_IDS_CSV" "$SMOKE" "$extra"
   run_k6 "$dir/sample-ids.json" "$label" "$dir/k6-summary.json" "$dir/k6-raw.json"
