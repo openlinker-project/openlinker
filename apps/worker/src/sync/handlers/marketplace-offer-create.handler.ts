@@ -180,10 +180,13 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
     }
 
     // Channel resolves from the connection's own platformType (#2202) —
-    // never a hardcoded literal — matching ContentEditor's approach. The
-    // backend falls back to the master template when no channel-specific
-    // prompt template is published, so an unresolved/unknown platform is
-    // still handled gracefully downstream.
+    // never a hardcoded literal — matching ContentEditor's approach.
+    // `PromptTemplateService.render` does an EXACT (key, channel) match and
+    // throws `PromptTemplateNotFoundException` when nothing is published for
+    // it — there is no channel→master fallback. A platform with no seeded
+    // template (or an unresolved connection, below) therefore produces no AI
+    // description at all; the `catch` around `suggestDescription` below is
+    // what keeps that non-fatal (AC-9), not a backend fallback.
     //
     // This is a metadata-only lookup (`getAdapter`, never
     // `getCapabilityAdapter`) and deliberately re-fetches the same

@@ -49,11 +49,15 @@ type SyncJob = SyncJobEntity;
 
 /**
  * Prompt-template channel for shop-publish AI descriptions (#1840). The
- * `offer.description.suggest` template is seeded per channel; the shop-publish
- * flow targets WooCommerce, so it renders the `woocommerce` variant — the
- * open-world channel seam (`PromptTemplateChannel = string`) mirrors the offer
- * handler's hardcoded `allegro` channel. A missing template surfaces as an AI
- * failure and falls through to the master description (see below).
+ * `offer.description.suggest` template is seeded per channel; this handler
+ * hardcodes `'woocommerce'` because it only ever serves WooCommerce today —
+ * unlike `MarketplaceOfferCreateHandler` (#2202/#3027), which resolves its
+ * channel from the connection's `platformType` because it serves every
+ * marketplace. This handler carries the identical latent bug the moment it
+ * serves a second `ProductPublisher` shop: a non-WooCommerce shop would still
+ * render the `woocommerce` prompt (tracked separately). A missing template
+ * surfaces as an AI failure and falls through to the master description (see
+ * below).
  */
 const SHOP_PUBLISH_AI_CHANNEL = 'woocommerce';
 

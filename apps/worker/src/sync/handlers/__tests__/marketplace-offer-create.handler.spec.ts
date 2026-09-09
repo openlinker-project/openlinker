@@ -22,6 +22,7 @@ import {
   type IOfferCreationExecutionService,
 } from '@openlinker/core/listings';
 import type { IContentSuggestionService } from '@openlinker/core/content';
+import { PromptTemplateNotFoundException } from '@openlinker/core/ai';
 import type { IProductsService } from '@openlinker/core/products';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
 
@@ -298,6 +299,50 @@ describe('MarketplaceOfferCreateHandler', () => {
 
       expect(contentSuggestion.suggestDescription).toHaveBeenCalledWith(
         expect.objectContaining({ channel: 'erli' })
+      );
+    });
+
+    it('falls through with operator overrides when the resolved channel has no published template', async () => {
+      // Regression coverage for #3027's review: `channel` resolving
+      // correctly is not the same as a template existing for it —
+      // `PromptTemplateService.render` does an exact (key, channel) match
+      // and throws `PromptTemplateNotFoundException` with no channel→master
+      // fallback, which is exactly what a real, unseeded channel produces.
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { id: CONNECTION_ID, platformType: 'erli' } as never,
+        metadata: {} as never,
+      });
+      products.getVariant.mockResolvedValue({
+        id: VARIANT_ID,
+        productId: PRODUCT_ID,
+      } as never);
+      contentSuggestion.suggestDescription.mockRejectedValue(
+        new PromptTemplateNotFoundException({
+          key: 'offer.description.suggest',
+          channel: 'erli',
+        })
+      );
+      offerCreation.executeCreation.mockResolvedValue({
+        offerCreationRecord: buildRecord({ status: 'failed' }),
+        outcome: 'business_failure',
+      });
+
+      const job = createJob(
+        baseV2({
+          generateDescription: true,
+          overrides: { title: 'Operator Title' },
+        })
+      );
+
+      await handler.execute(job);
+
+      expect(contentSuggestion.suggestDescription).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: 'erli' })
+      );
+      expect(offerCreation.executeCreation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overrides: { title: 'Operator Title' },
+        })
       );
     });
 
