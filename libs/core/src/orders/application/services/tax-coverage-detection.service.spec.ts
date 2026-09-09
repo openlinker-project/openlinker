@@ -9,6 +9,7 @@ import type {
   NetExcludedOrderCandidatePage,
 } from '../../domain/types/coverage-detection.types';
 import { TaxCoverageDetectionService } from './tax-coverage-detection.service';
+import { TaxCoveragePageCeilingExceededError } from '../../domain/exceptions/tax-coverage-page-ceiling-exceeded.error';
 
 describe('TaxCoverageDetectionService (#2465)', () => {
   let service: TaxCoverageDetectionService;
@@ -399,6 +400,60 @@ describe('TaxCoverageDetectionService (#2465)', () => {
 
       expect(recordRepository.findNetExcludedOrderCandidatesPage).toHaveBeenCalledTimes(1);
       expect(result).toEqual({ 'tax-a': [], 'tax-b': [], 'tax-c': [] });
+    });
+
+    it('throws TaxCoveragePageCeilingExceededError rather than looping forever when the repository never reports a null nextCursor (defence-in-depth)', async () => {
+      // A non-conforming port implementer (or a bug in a future one) whose
+      // cursor fails to terminate must not hang the synchronous
+      // `GET /analytics/coverage` request forever — it must fail loudly with
+      // a named, finite-cost error instead (#2834 review).
+      recordRepository.findNetExcludedOrderCandidatesPage.mockImplementation(() =>
+        Promise.resolve({
+          items: [candidate({ internalOrderId: 'order-never-terminates', taxRateEra: null })],
+          nextCursor: { placedAt: new Date(), internalOrderId: 'order-never-terminates' },
+        })
+      );
+
+      await expect(service.classify(baseFilters, 'EUR')).rejects.toThrow(
+        TaxCoveragePageCeilingExceededError
+      );
+    });
+
+    it('resolves the catalogue rate ONCE per distinct (productId, variantId) pair across MULTIPLE pages (#2826/#2834)', async () => {
+      // The whole point of the dedup is that a pair referenced on one page and
+      // again on a LATER page must still cost one catalogue read for the
+      // entire `classify()` run — not once per page. This is the case the
+      // single-page #2826 test (above) cannot exercise.
+      mockPages(
+        {
+          items: [candidate({ internalOrderId: 'order-page1', taxRateEra: 'pre-rollout' })],
+          nextCursor: { placedAt: new Date('2026-08-02T00:00:00Z'), internalOrderId: 'order-page1' },
+        },
+        {
+          items: [candidate({ internalOrderId: 'order-page2', taxRateEra: 'pre-rollout' })],
+          nextCursor: null,
+        }
+      );
+      lineItemRepository.findByOrderIds.mockImplementation((ids: string[]) => {
+        const map = new Map<string, ReturnType<typeof makeLine>[]>();
+        if (ids.includes('order-page1')) {
+          map.set('order-page1', [
+            makeLine({ id: 'line-p1', orderRecordId: 'order-page1', productId: 'shared-product', taxRate: null }),
+          ]);
+        }
+        if (ids.includes('order-page2')) {
+          map.set('order-page2', [
+            makeLine({ id: 'line-p2', orderRecordId: 'order-page2', productId: 'shared-product', taxRate: null }),
+          ]);
+        }
+        return Promise.resolve(map);
+      });
+      productsService.getEffectiveTaxRate.mockResolvedValue(known('23'));
+
+      const result = await service.classify(baseFilters, 'EUR');
+
+      expect(productsService.getEffectiveTaxRate).toHaveBeenCalledTimes(1);
+      expect(result['tax-a']).toHaveLength(2);
     });
 
     it('produces byte-identical output to a single-page population classifying the same candidates (batch-then-append equivalence)', async () => {

@@ -25,11 +25,6 @@ close is the base row fetch: `findNetExcludedOrderCandidates` still returns ever
 one `getRawMany()` call, and `classify()` still builds one big `candidates` array before doing
 anything else.
 
-**Context — session scope reminder**: this plan is being generated and (per explicit instruction)
-implemented **locally only** — no `git commit`, no `git push`, no PR, no GitHub comments on the
-issue. The worktree/PR ceremony this repo's `/plan` skill normally performs at the end is skipped
-entirely for this run.
-
 **Classification**: CORE (Application + Infrastructure layers, `orders` bounded context)
 
 ---
@@ -76,10 +71,6 @@ entirely for this run.
 - Follows PR #2827 — the batched line-item read (`findByOrderIds`) and bounded-concurrency
   catalogue lookup (`resolveRates`) it introduced are reused unchanged, just invoked once per
   batch instead of once for the whole unbounded set.
-- Session-local constraint: **no git commit/push, no PR, no issue comment** for this run. All
-  work stays as uncommitted changes in the working tree until the user reviews and commits it
-  themselves (per [[feedback_work_no_commit]] / [[feedback_work_local_only]] — this session's
-  established convention).
 
 ---
 
@@ -97,9 +88,10 @@ entirely for this run.
 - `OrderLineItemRepositoryPort.findByOrderIds` (#2827's batched line-item read) — called once per
   batch instead of once for the whole candidate set.
 - `TaxCoverageDetectionService.resolveRates` (#2826/#2827's bounded-concurrency catalogue lookup)
-  — called once per batch's deduplicated key set. A product/variant referenced across multiple
-  batches is looked up again in each batch it appears in (see §6 Phase 2 for why this is
-  deliberately accepted rather than engineered away with a cross-batch cache).
+  — called once per batch, over the subset of that batch's deduplicated keys not already resolved
+  on a prior page. The resolved-rate map is owned by `classify()` and shared across every page, so
+  a product/variant referenced across multiple pages is resolved exactly once per `classify()` run
+  — the dedup #2826 introduced stays population-wide rather than resetting per page.
 - `applySalesAnalyticsScope` (existing private helper on `OrderRecordRepository`) — unchanged,
   reused verbatim inside the new paginated query builder.
 
@@ -186,12 +178,15 @@ change: after the rewrite, the exact same assertions must pass unchanged (see §
   batch size, not an operator-tunable sweep cadence, so it stays a `const` in the repository file
   (mirroring how `RATE_LOOKUP_CONCURRENCY` is a plain file-local `const`, not an env-configured
   value).
-- **No cross-batch dedup cache for catalogue lookups**: a `(productId, variantId)` pair referenced
-  by pre-rollout orders in two different batches is looked up twice. This is a deliberate
-  correctness-over-micro-optimization choice — see §7 for why a cross-batch cache is rejected as
-  in-scope for this issue (memory-unbounded within a single request in the worst case, and this
-  issue's stated problem is the *unbounded base fetch*, not catalogue-read count, which #2826/#2827
-  already bounded per-batch via `RATE_LOOKUP_CONCURRENCY`).
+- **Revised during review**: the initial draft accepted a cross-batch dedup gap (a `(productId,
+  variantId)` pair referenced by pre-rollout orders in two different pages would be looked up
+  twice), reasoning it was a micro-optimization out of scope for the *base fetch* bound. Review
+  correctly identified this as silently narrowing #2826's own dedup guarantee — and worse, as
+  making the #2826 regression spec unable to fail on that narrowing, since its fixture was
+  single-page. The final implementation instead threads ONE `rateByKey` map, owned by
+  `classify()`, through every page's `classifyBatch()` call — population-wide dedup is preserved
+  exactly as #2826 shipped it, at the cost of one small map living for the duration of the request
+  (bounded by distinct product/variant count, not by row count).
 - **`internalOrderId` is a stable, unique-per-row sort tiebreaker** — verified: `OrderRecord`'s
   `internalOrderId` is the entity's identifier column (used as the map key throughout this service
   already, e.g. `linesByOrderId.get(candidate.internalOrderId)`), so `(placedAt DESC,

@@ -66,6 +66,7 @@ import {
 } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
 import type { ITaxCoverageDetectionService } from './tax-coverage-detection.service.interface';
+import { TaxCoveragePageCeilingExceededError } from '../../domain/exceptions/tax-coverage-page-ceiling-exceeded.error';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import type { OrderLineItem } from '../../domain/entities/order-line-item.entity';
@@ -95,6 +96,17 @@ const PRE_ROLLOUT_ERA = 'pre-rollout';
  * `Promise.all` over the whole deduplicated key set.
  */
 const RATE_LOOKUP_CONCURRENCY = 5;
+
+/**
+ * Generous ceiling on the number of pages `classify()` will read before
+ * concluding the repository's cursor is not terminating. The shipped
+ * `findNetExcludedOrderCandidatesPage` keyset predicate guarantees forward
+ * progress on a finite population, so this bound exists only to protect the
+ * synchronous `GET /analytics/coverage` request path against a
+ * non-conforming implementer of the port — see
+ * {@link TaxCoveragePageCeilingExceededError}.
+ */
+const MAX_PAGES = 10_000;
 
 /**
  * Canonicalize a rate code before it lands on a
@@ -153,8 +165,26 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
     };
 
     let cursor: NetExcludedOrderCandidateCursor | null = null;
+    // Population-wide dedup (#2826): keyed by (productId, variantId) and
+    // shared across every page, so a pair referenced on page 1 and page 3
+    // resolves its catalogue rate exactly ONCE for the whole `classify()`
+    // call rather than once per page. Only the CANDIDATE rows themselves are
+    // held one page at a time — this map is the one piece of state that
+    // legitimately spans pages, and it is small (one entry per distinct
+    // product/variant, not per line or per order).
+    const rateByKey = new Map<string, StoredTaxRate | null>();
 
-    for (;;) {
+    for (let pagesRead = 0; ; pagesRead++) {
+      if (pagesRead >= MAX_PAGES) {
+        // Defence-in-depth against a non-conforming port implementation
+        // (see the exception's own doc comment) — the shipped repository's
+        // strict keyset predicate guarantees forward progress and can never
+        // reach this. A generous, named ceiling that THROWS is preferable to
+        // a silent `break`, which would under-report every category with no
+        // signal to the caller.
+        throw new TaxCoveragePageCeilingExceededError(pagesRead);
+      }
+
       const page = await this.orderRecordRepository.findNetExcludedOrderCandidatesPage(
         filters,
         currentReportingCurrency,
@@ -162,11 +192,7 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
         cursor
       );
 
-      if (page.items.length === 0) {
-        break;
-      }
-
-      const batchResult = await this.classifyBatch(page.items);
+      const batchResult = await this.classifyBatch(page.items, rateByKey);
       for (const category of TaxCoverageCategoryValues) {
         result[category].push(...batchResult[category]);
       }
@@ -186,9 +212,16 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
    * in logic and scoped to operate over any candidate array rather than
    * assuming it is the whole population. {@link classify} calls this once
    * per page and appends the result.
+   *
+   * `rateByKey` is owned by the caller and shared across every page of one
+   * `classify()` run, so the catalogue dedup #2826 introduced stays
+   * population-wide rather than resetting per page (#2834 review) — a
+   * (productId, variantId) pair already resolved on an earlier page is
+   * never looked up again.
    */
   private async classifyBatch(
-    candidates: NetExcludedOrderCandidate[]
+    candidates: NetExcludedOrderCandidate[],
+    rateByKey: Map<string, StoredTaxRate | null>
   ): Promise<TaxCoverageClassification> {
     // Only a pre-rollout candidate needs a line-item read at all — every
     // other candidate is unconditionally 'tax-b' (see `classifyOne`'s doc
@@ -209,20 +242,24 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
       preRolloutCandidates.map((candidate) => candidate.internalOrderId)
     );
 
-    // Every unresolved line across every pre-rollout candidate, deduplicated
-    // by (productId, variantId) — many lines across many orders reference
-    // the same catalogue entry, so this collapses what used to be one
-    // `getEffectiveTaxRate` call per UNRESOLVED LINE into one call per
-    // distinct product/variant pair (#2826). Only an unresolved line needs a
-    // catalogue read, so a resolved one contributes no key.
-    const uniqueRateKeys = new Map<string, { productId: string; variantId?: string }>();
+    // Every unresolved line across every pre-rollout candidate IN THIS PAGE
+    // that has not already been resolved on a PRIOR page, deduplicated by
+    // (productId, variantId) — many lines across many orders (and pages)
+    // reference the same catalogue entry, so this collapses what used to be
+    // one `getEffectiveTaxRate` call per UNRESOLVED LINE into one call per
+    // distinct product/variant pair for the WHOLE population (#2826).
+    const uncachedRateKeys = new Map<string, { productId: string; variantId?: string }>();
     for (const candidate of preRolloutCandidates) {
       const lines = linesByOrderId.get(candidate.internalOrderId) ?? [];
       for (const line of lines) {
         if (resolveNetSalesTaxRate(line.taxRate).kind !== 'unknown') {
           continue;
         }
-        uniqueRateKeys.set(this.rateKey(line.productId, line.variantId), {
+        const key = this.rateKey(line.productId, line.variantId);
+        if (rateByKey.has(key)) {
+          continue;
+        }
+        uncachedRateKeys.set(key, {
           productId: line.productId,
           variantId: line.variantId ?? undefined,
         });
@@ -231,8 +268,12 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
 
     // Bounded-concurrency fan-out over the DEDUPLICATED key set — never one
     // sequential `await` per line, and never an unbounded `Promise.all`
-    // either (#2826).
-    const rateByKey = await this.resolveRates([...uniqueRateKeys.values()]);
+    // either (#2826). Results are merged into the caller's population-wide
+    // map so a later page never re-resolves a key this page already did.
+    const resolved = await this.resolveRates([...uncachedRateKeys.values()]);
+    for (const [key, rate] of resolved) {
+      rateByKey.set(key, rate);
+    }
 
     const result: TaxCoverageClassification = {
       'tax-a': [],
