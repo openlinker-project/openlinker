@@ -14,7 +14,11 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 
-import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
+import {
+  CapabilityNotSupportedException,
+  IIntegrationsService,
+  INTEGRATIONS_SERVICE_TOKEN,
+} from '@openlinker/core/integrations';
 import { SYNC_LOCK_TOKEN } from '@openlinker/core/sync';
 import { SyncLockPort } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
@@ -376,11 +380,29 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
   private async tryGetAdapter<T>(connectionId: string, capability: string): Promise<T | null> {
     try {
       return await this.integrationsService.getCapabilityAdapter<T>(connectionId, capability);
-    } catch {
+    } catch (error) {
       // A destination legitimately supports only one of the two kinds; probing
-      // is how the kind is discovered, so an unsupported capability is expected
-      // rather than exceptional.
-      return null;
+      // is how the kind is discovered, so an unsupported/disabled capability is
+      // expected rather than exceptional. `CapabilityNotEnabledException`
+      // extends `CapabilityNotSupportedException`, so this one check covers both
+      // (#2146).
+      if (error instanceof CapabilityNotSupportedException) {
+        return null;
+      }
+
+      // Anything else — chiefly `ConnectionNotFoundException` /
+      // `ConnectionDisabledException` — is NOT part of the kind probe: the
+      // probe never got far enough to answer "which kind". Rethrow so the
+      // global `ConnectionExceptionFilter` maps them to 404 / 409 instead of
+      // collapsing them into the capability-shaped 422 below (#2146).
+      //
+      // Deliberate decision (#2146): a DISABLED connection is not granted a
+      // read-only exception here, unlike a borrower with no catalogue
+      // credentials (see `marketplaceBrowseFn` below) — that deferral is a
+      // capability-shaped gap, this is a connection-lifecycle gap, and every
+      // other capability read in the codebase already refuses a disabled
+      // connection. Re-enable the connection to read its taxonomy again.
+      throw error;
     }
   }
 
