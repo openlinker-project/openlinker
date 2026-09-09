@@ -1932,3 +1932,39 @@ compute_agreement() {
     printf "%.6f\n", d/med
   }'
 }
+
+# ---------------------------------------------------------------------------
+# classify_channel_contention <solo_rate> <concurrent_rate> <threshold_pct>
+# (#2979, F11 - concurrent multi-channel load)
+#
+# Echoes "starved" when a channel's throughput running CONCURRENTLY with
+# another has dropped by threshold_pct or more against that same channel's
+# own SOLO baseline; "held" when it has not (including when it is faster
+# concurrently than solo, which happens and is not itself evidence of
+# anything wrong); "unknown" when either rate cannot be read as a
+# non-negative number.
+#
+# "unknown" is a THIRD answer, not a fallback to "held" - #2979's own framing
+# is "an aggregate that holds while one channel gets nothing is the failure
+# that matters", and a starvation check that reads a bad or missing number as
+# "held" would silently manufacture exactly that false reassurance. A caller
+# must treat "unknown" as "starvation was not established either way", never
+# as a passing result.
+#
+# threshold_pct defaults to 20: run-to-run variance on a shared contended
+# stand is real (see MOVED_THRESHOLD_PCT's 15% in f1-order-ingestion.sh for
+# the same reasoning applied to a different question), and 20% is
+# deliberately wider than that variance so an ordinary noisy run does not
+# read as starvation on its own.
+# ---------------------------------------------------------------------------
+classify_channel_contention() {
+  local solo="$1" concurrent="$2" threshold="${3:-20}"
+  case "$solo" in ''|*[!0-9.]*) printf 'unknown'; return 0 ;; esac
+  case "$concurrent" in ''|*[!0-9.]*) printf 'unknown'; return 0 ;; esac
+  case "$threshold" in ''|*[!0-9.]*) printf 'unknown'; return 0 ;; esac
+  awk -v s="$solo" -v c="$concurrent" -v t="$threshold" 'BEGIN {
+    if (s <= 0) { print "unknown"; exit }
+    drop = (s - c) / s * 100
+    if (drop >= t) print "starved"; else print "held"
+  }'
+}
