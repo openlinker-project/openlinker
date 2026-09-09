@@ -161,6 +161,14 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/invoicing-stub/src/$1',
     ),
+    '^@openlinker/integrations-shipping-stub$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/shipping-stub/src/index.ts',
+    ),
+    '^@openlinker/integrations-shipping-stub/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/shipping-stub/src/$1',
+    ),
     '^@openlinker/test-kit$': path.resolve(__dirname, '../../../libs/test-kit/src/index.ts'),
     '^@openlinker/test-kit/(.*)$': path.resolve(__dirname, '../../../libs/test-kit/src/$1'),
   },

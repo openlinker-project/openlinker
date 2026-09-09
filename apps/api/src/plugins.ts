@@ -41,6 +41,7 @@ import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
 import { OmsModule } from '@openlinker/oms';
 import { InvoicingStubIntegrationModule } from '@openlinker/integrations-invoicing-stub';
+import { ShippingStubIntegrationModule } from '@openlinker/integrations-shipping-stub';
 
 export const apiPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -84,4 +85,10 @@ export const apiPlugins: PluginEntry[] = [
   // `OL_INVOICING_STUB_ENABLED=true`, never on by default; see the identical
   // note in `apps/worker/src/plugins.ts`.
   ...(process.env.OL_INVOICING_STUB_ENABLED === 'true' ? [InvoicingStubIntegrationModule] : []),
+  // #3043: the perf-lab `ShippingProviderManagerPort` stub, for the F15
+  // shipping scenario (#3045). Same `OL_*_STUB_ENABLED` gate shape as
+  // invoicing-stub above, and for the identical reason — never on by
+  // default, since this plugin authenticates nothing and buys no real
+  // carrier waybill. See `perf/openlinker-throughput/stubs/shipping/README.md`.
+  ...(process.env.OL_SHIPPING_STUB_ENABLED === 'true' ? [ShippingStubIntegrationModule] : []),
 ];
