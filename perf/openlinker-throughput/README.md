@@ -90,6 +90,51 @@ one of them lands directly inside a `WHERE "connectionId" IN (...)` clause -
 `lib.sh` never builds that quoting for you, since a scenario's own set of
 connections varies.
 
+## Known stand-coordination pitfalls
+
+Four ways a scenario has silently broken the "one scenario measures the
+stand at a time" contract `guard_stand_exclusive` exists to enforce. Read
+before writing anything that touches process lifecycle, the stand lock, or
+concurrent-run detection.
+
+1. **A self-matching `pkill`/`grep`.** `pkill -f <pattern>` matching your own
+   shell's command line kills the very process running the check, and a bare
+   `ps -eo cmd | grep 'scenarios/f' | grep -c` can match `grep`'s own
+   argv and report a false nonzero - or, the mirror failure, silently report
+   zero when it should have matched. Always filter with the bracket trick
+   (`grep '[s]cenarios/f'`) or `awk '!/awk/ && /pattern/'`, and inspect the
+   match before killing anything.
+2. **`grep -c` reporting a false "zero conflicts".** The bracket/`awk` idiom
+   above is not cosmetic - a plain `grep -c 'pattern'` piped through another
+   `grep` can itself match nothing and print `0` even when a real conflicting
+   process is running, because the SEARCH command matched itself out of the
+   process list first. This exact bug produced a false "zero conflicts"
+   finding once already in this campaign.
+3. **A `timeout`-killed scenario does not release the stand lock.**
+   `guard_stand_exclusive`'s lock is released by a normal `EXIT` trap; a
+   process killed by an external `timeout` (or any signal a trap does not
+   catch) leaves the Redis key standing for the rest of its TTL. Confirm via
+   `ps` that nothing is alive before `redis-cli DEL perf:stand:exclusive` -
+   never assume a dead PID means a released lock.
+4. **A fatal `lib.sh` helper called FROM inside the EXIT trap leaks the lock
+   even on a clean exit path (#3001, found live 2026-09-09).** `pg_sql_write`
+   and `ol_api` are fatal BY DESIGN (`die()` on failure) everywhere else in
+   this library - "a write that silently no-ops must never read as success".
+   But bash does not re-enter a trap that is already running, so if a
+   scenario's own `EXIT` trap calls one of them for cleanup and it dies (a
+   transient lock wait, a stray `statement_timeout`, an autovacuum on an
+   unrelated table), every trap statement AFTER that call - including
+   `release_stand_exclusive` - never runs, and the stand lock leaks for the
+   rest of its TTL even though the process is long gone. This is a more
+   subtle variant of pitfall 3: the process is not killed by an external
+   signal, it dies on its OWN cleanup path, inside the very trap meant to
+   release the lock. `release_stand_exclusive` itself is safe (every
+   statement there is already non-fatal), but any OTHER cleanup a scenario
+   adds to its own `EXIT` trap must be equally non-fatal - see
+   `scenarios/f13-writeback.sh`'s `pg_sql_write_besteffort` for the pattern
+   (a bare `docker exec ... psql` that warns instead of dying), and apply it
+   to any `ol_api` call made from trap-time cleanup too.
+
 ## Environment variables
 
 All of these have a `lab`-stand default (#2854) and can be overridden per
