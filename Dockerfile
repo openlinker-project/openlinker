@@ -36,6 +36,7 @@ COPY libs/integrations/eparagony/package.json ./libs/integrations/eparagony/
 COPY libs/integrations/erli/package.json ./libs/integrations/erli/
 COPY libs/integrations/fx/package.json ./libs/integrations/fx/
 COPY libs/integrations/infakt/package.json ./libs/integrations/infakt/
+COPY libs/integrations/invoicing-stub/package.json ./libs/integrations/invoicing-stub/
 COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
 COPY libs/integrations/ksef/package.json ./libs/integrations/ksef/
 COPY libs/integrations/prestashop/package.json ./libs/integrations/prestashop/
@@ -104,6 +105,7 @@ COPY libs/integrations/eparagony/package.json ./libs/integrations/eparagony/
 COPY libs/integrations/erli/package.json ./libs/integrations/erli/
 COPY libs/integrations/fx/package.json ./libs/integrations/fx/
 COPY libs/integrations/infakt/package.json ./libs/integrations/infakt/
+COPY libs/integrations/invoicing-stub/package.json ./libs/integrations/invoicing-stub/
 COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
 COPY libs/integrations/ksef/package.json ./libs/integrations/ksef/
 COPY libs/integrations/prestashop/package.json ./libs/integrations/prestashop/
@@ -140,6 +142,7 @@ COPY --from=base --chown=node:node /app/libs/integrations/eparagony/dist ./libs/
 COPY --from=base --chown=node:node /app/libs/integrations/erli/dist ./libs/integrations/erli/dist
 COPY --from=base --chown=node:node /app/libs/integrations/fx/dist ./libs/integrations/fx/dist
 COPY --from=base --chown=node:node /app/libs/integrations/infakt/dist ./libs/integrations/infakt/dist
+COPY --from=base --chown=node:node /app/libs/integrations/invoicing-stub/dist ./libs/integrations/invoicing-stub/dist
 COPY --from=base --chown=node:node /app/libs/integrations/inpost/dist ./libs/integrations/inpost/dist
 COPY --from=base --chown=node:node /app/libs/integrations/ksef/dist ./libs/integrations/ksef/dist
 COPY --from=base --chown=node:node /app/libs/integrations/prestashop/dist ./libs/integrations/prestashop/dist
