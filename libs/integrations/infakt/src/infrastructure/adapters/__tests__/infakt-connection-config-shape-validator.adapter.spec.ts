@@ -120,12 +120,9 @@ describe('InfaktConnectionConfigShapeValidatorAdapter', () => {
       await expect(validator.validate({})).resolves.toBeUndefined();
     });
 
-    it.each(['goods', 'service'])(
-      'should resolve when defaultSaleType is %s',
-      async (defaultSaleType) => {
-        await expect(validator.validate({ defaultSaleType })).resolves.toBeUndefined();
-      },
-    );
+    it.each(['service'])('should resolve when defaultSaleType is %s', async (defaultSaleType) => {
+      await expect(validator.validate({ defaultSaleType })).resolves.toBeUndefined();
+    });
 
     it('should resolve when defaultSaleType is null', async () => {
       await expect(validator.validate({ defaultSaleType: null })).resolves.toBeUndefined();
@@ -136,9 +133,18 @@ describe('InfaktConnectionConfigShapeValidatorAdapter', () => {
         validator.validate({ defaultSaleType: 'towar' }),
       ).rejects.toMatchObject({
         pluginName: 'Infakt',
-        errors: [
-          { path: 'defaultSaleType', message: expect.stringContaining('goods, service') },
-        ],
+        errors: [{ path: 'defaultSaleType', message: expect.stringContaining('service') }],
+      });
+    });
+
+    // #2995 review: 'goods' is a CONFIRMED-REJECTED inFakt value (#2177), not
+    // merely an unconfirmed one — it must be refused at save time exactly
+    // like any other unsupported string, never accepted as a placeholder for
+    // a still-unknown correct value.
+    it('should reject when defaultSaleType is the confirmed-rejected value "goods"', async () => {
+      await expect(validator.validate({ defaultSaleType: 'goods' })).rejects.toMatchObject({
+        pluginName: 'Infakt',
+        errors: [{ path: 'defaultSaleType', message: expect.stringContaining('service') }],
       });
     });
 
