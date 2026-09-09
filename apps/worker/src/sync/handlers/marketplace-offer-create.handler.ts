@@ -8,9 +8,12 @@
  * V2 payloads (#737, bulk-flow) layer two orthogonal side-effects:
  *
  *   1. **Before** `executeCreation`: if `generateDescription === true`,
- *      call `ContentSuggestionService.suggestDescription({ channel:'allegro' })`
- *      and thread the result into `overrides.description`. AI failure falls
- *      through — operator override or builder default takes over (AC-9).
+ *      call `ContentSuggestionService.suggestDescription({ channel })` with
+ *      the channel resolved from the job's own connection `platformType`
+ *      (#2202 — never a hardcoded `'allegro'`, since this handler serves
+ *      every marketplace offer create, not only Allegro) and thread the
+ *      result into `overrides.description`. AI failure falls through —
+ *      operator override or builder default takes over (AC-9).
  *   2. **After** `executeCreation`, terminal outcome: advance the parent
  *      batch's counters via `BulkListingProgressService` — which
  *      gates on the `bulk_batch_advancements` table to give at-most-once
@@ -32,6 +35,10 @@ import {
   CONTENT_SUGGESTION_SERVICE_TOKEN,
   type IContentSuggestionService,
 } from '@openlinker/core/content';
+import {
+  INTEGRATIONS_SERVICE_TOKEN,
+  type IIntegrationsService,
+} from '@openlinker/core/integrations';
 import {
   BULK_LISTING_PROGRESS_SERVICE_TOKEN,
   type BulkChildOutcome,
@@ -70,7 +77,9 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService,
     @Inject(BULK_LISTING_PROGRESS_SERVICE_TOKEN)
-    private readonly bulkProgress: IBulkListingProgressService
+    private readonly bulkProgress: IBulkListingProgressService,
+    @Inject(INTEGRATIONS_SERVICE_TOKEN)
+    private readonly integrationsService: IIntegrationsService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -81,7 +90,7 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
     );
 
     try {
-      const overrides = await this.maybeRunAiDescription(payload);
+      const overrides = await this.maybeRunAiDescription(payload, job.connectionId);
 
       const { offerCreationRecord, outcome } = await this.offerCreation.executeCreation({
         internalVariantId: payload.internalVariantId,
@@ -145,7 +154,10 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
    * V1 (or V2 with `generateDescription: false`) returns payload.overrides
    * unchanged.
    */
-  private async maybeRunAiDescription(payload: Payload): Promise<CreateOfferOverrides | undefined> {
+  private async maybeRunAiDescription(
+    payload: Payload,
+    connectionId: string
+  ): Promise<CreateOfferOverrides | undefined> {
     if (!this.isV2(payload) || payload.generateDescription !== true) {
       return payload.overrides;
     }
@@ -167,10 +179,32 @@ export class MarketplaceOfferCreateHandler implements SyncJobHandler {
       return payload.overrides;
     }
 
+    // Channel resolves from the connection's own platformType (#2202) —
+    // never a hardcoded literal — matching ContentEditor's approach. The
+    // backend falls back to the master template when no channel-specific
+    // prompt template is published, so an unresolved/unknown platform is
+    // still handled gracefully downstream.
+    //
+    // This is a metadata-only lookup (`getAdapter`, never
+    // `getCapabilityAdapter`) and deliberately re-fetches the same
+    // connection `executeCreation` resolves moments later for the actual
+    // destination adapter — accepted per the issue's own assumption that a
+    // second read is cheap on a path already making an LLM call.
+    let channel: string;
+    try {
+      const { connection } = await this.integrationsService.getAdapter(connectionId);
+      channel = connection.platformType;
+    } catch (err) {
+      this.logger.warn(
+        `AI description skipped — connection lookup failed: ${(err as Error).message}`
+      );
+      return payload.overrides;
+    }
+
     try {
       const result = await this.contentSuggestion.suggestDescription({
         productId,
-        channel: 'allegro',
+        channel,
         tone: payload.descriptionTone,
       });
       return {
