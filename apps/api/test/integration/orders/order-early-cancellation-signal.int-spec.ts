@@ -158,11 +158,13 @@ describe('Order early-cancellation signal (#2069)', () => {
       platformType: 'allegro',
       name: 'Allegro source',
       adapterKey: sourceAdapterKey,
+      enabledCapabilities: ['OrderSource'],
     });
     await createTestConnection(dataSource, {
       platformType: DEST_PLATFORM_TYPE,
       name: 'Destination',
       adapterKey: DEST_ADAPTER_KEY,
+      enabledCapabilities: ['OrderProcessorManager'],
     });
 
     // Act 1: the cancel event arrives before the order has ever been
@@ -235,11 +237,13 @@ describe('Order early-cancellation signal (#2069)', () => {
       platformType: 'allegro',
       name: 'Allegro source',
       adapterKey: sourceAdapterKey,
+      enabledCapabilities: ['OrderSource'],
     });
     await createTestConnection(dataSource, {
       platformType: DEST_PLATFORM_TYPE,
       name: 'Destination',
       adapterKey: DEST_ADAPTER_KEY,
+      enabledCapabilities: ['OrderProcessorManager'],
     });
 
     const syncResult = await ingestion.syncOrderFromSource(
