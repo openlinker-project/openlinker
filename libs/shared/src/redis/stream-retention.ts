@@ -34,12 +34,15 @@
 /**
  * Every stream the system writes.
  *
- * Keeping the names here rather than as private literals in six files is what
- * lets {@link STREAM_BOUNDS} be exhaustive at compile time.
+ * Keeping the names here rather than as private literals at each write site is
+ * what lets {@link STREAM_BOUNDS} be exhaustive at compile time.
+ *
+ * `events.inbound.webhooks` and `events.inbound.webhooks.dead` were removed by
+ * #2300: #2280 moved webhook routing to ingress, retiring the only writer and
+ * (with the one-shot upgrade drain) the last reader. A name with no writer is
+ * a retention decision about nothing.
  */
 export const REDIS_STREAM_NAMES = {
-  inboundWebhooks: 'events.inbound.webhooks',
-  inboundWebhooksDead: 'events.inbound.webhooks.dead',
   masterDeletion: 'events.master.deletion',
   masterDeletionDead: 'events.master.deletion.dead',
   jobsSync: 'jobs.sync',
@@ -84,11 +87,6 @@ export const JOB_DEDUP_TTL_MS = 7 * DAY_MS;
  * a stream name without deciding its retention fails `pnpm type-check`.
  */
 const STREAM_BOUNDS: Record<RedisStreamName, StreamBound> = {
-  // Highest-volume stream in the system, consumed within milliseconds. The cap
-  // is a crash-backlog buffer, not storage, and the fact of every delivery is
-  // durable in `webhook_deliveries` regardless.
-  [REDIS_STREAM_NAMES.inboundWebhooks]: { kind: 'maxlen', threshold: 50_000 },
-
   // Unchanged from the pre-#2163 value. Authority for a deletion is the
   // persisted `product_variants.isStale` flag, never the event.
   [REDIS_STREAM_NAMES.masterDeletion]: { kind: 'maxlen', threshold: 10_000 },
@@ -120,13 +118,8 @@ const STREAM_BOUNDS: Record<RedisStreamName, StreamBound> = {
   // ADR-049 decision 1 (work row inside the business transaction).
   [REDIS_STREAM_NAMES.jobsSync]: { kind: 'minid', maxAgeMs: 14 * DAY_MS },
 
-  // Diagnostic, but the *fact* of dead-lettering is durable in
-  // `webhook_deliveries.status='deadlettered'`. Losing old payload detail is
-  // acceptable, so a count bound is fine here.
-  [REDIS_STREAM_NAMES.inboundWebhooksDead]: { kind: 'maxlen', threshold: 10_000 },
-
-  // AGE-bounded, unlike its sibling above, because it has NO durable
-  // counterpart: `master-deletion-to-job.handler.ts` writes the stream entry and
+  // AGE-bounded, and the reason is that it has NO durable counterpart:
+  // `master-deletion-to-job.handler.ts` writes the stream entry and
   // nothing else, inside a non-fatal catch. It is the sole record that a
   // deletion event was discarded. FIFO-drop is backwards on a diagnostic
   // surface — in the incident that matters (a bad deploy dead-lettering a whole

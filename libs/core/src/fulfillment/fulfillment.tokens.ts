@@ -81,3 +81,20 @@ export const FULFILLMENT_VERIFICATION_SERVICE_TOKEN = Symbol('IFulfillmentVerifi
  * router-less — see the port's header.
  */
 export const FULFILLMENT_ROUTER_RESOLVER_TOKEN = Symbol('FulfillmentRouterResolverPort');
+
+/**
+ * ADR-054's timeout-as-rejection sweep (#2712).
+ * `FulfillmentDispatchTimeoutService` binds here.
+ */
+export const FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN = Symbol(
+  'IFulfillmentDispatchTimeoutService'
+);
+
+/**
+ * The #2728 dispatch-relay reconcile read. Its consumer is the WORKER's
+ * `fulfillment.work.relaySweep` handler, which composes it with the `orders`
+ * relay this context may not inject.
+ */
+export const FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN = Symbol(
+  'IFulfillmentRelayReconcileService'
+);

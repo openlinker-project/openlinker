@@ -21,7 +21,7 @@ describe('InMemoryEventPublisherAdapter', () => {
   it('should return a Redis-Streams-shaped ID on publish', async () => {
     const publisher = new InMemoryEventPublisherAdapter();
 
-    const id = await publisher.publish('events.inbound.webhooks', buildEnvelope());
+    const id = await publisher.publish('events.master.deletion', buildEnvelope());
 
     expect(id).toMatch(/^\d+-\d+$/);
   });
@@ -30,9 +30,9 @@ describe('InMemoryEventPublisherAdapter', () => {
     const publisher = new InMemoryEventPublisherAdapter();
     const envelope = buildEnvelope({ eventId: 'evt-recorded' });
 
-    await publisher.publish('events.inbound.webhooks', envelope);
+    await publisher.publish('events.master.deletion', envelope);
 
-    expect(publisher.getPublishedEvents('events.inbound.webhooks')).toEqual([envelope]);
+    expect(publisher.getPublishedEvents('events.master.deletion')).toEqual([envelope]);
   });
 
   it('should isolate events by stream name', async () => {

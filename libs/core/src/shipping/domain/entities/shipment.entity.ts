@@ -24,6 +24,7 @@
  * @module libs/core/src/shipping/domain/entities
  */
 
+import type { WaybillRelayFailure } from '../types/waybill-relay-failure.types';
 import type { ShipmentDirection } from '../types/shipment-direction.types';
 import type { ShipmentStatus } from '../types/shipment-status.types';
 import type { ShippingMethod } from '../types/shipping-method.types';
@@ -167,5 +168,20 @@ export class Shipment {
     //
     // Appended last for the same anti-collision rationale as every field above.
     public readonly fulfillmentWorkId: string | null,
+    // Consecutive waybill-relay failures, or `null` when there are none (#2073).
+    //
+    // ONE value object rather than five positional fields, and that is a
+    // measured choice: there is no shared `Shipment` fixture in this repo -
+    // eleven specs each hand-roll a private `makeShipment` - so five
+    // same-typed nullable slots would be sixty edits with five chances to
+    // misplace one. `null` is the single representation of healthy, so a
+    // caller tests one thing rather than comparing a count to zero.
+    //
+    // A DISPLAY fact, never a gate: the relay's own control flow does not read
+    // it, and `waybillRelayFailure.connectionId` in particular is not consulted
+    // when deciding what to retry. Per-target notify state is #861.
+    //
+    // Appended last for the same anti-collision rationale as every field above.
+    public readonly waybillRelayFailure: WaybillRelayFailure | null,
   ) {}
 }

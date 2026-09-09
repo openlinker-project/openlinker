@@ -63,6 +63,17 @@ export class ListShipmentsQueryDto {
   @IsBoolean()
   hasTracking?: boolean;
 
+  @ApiPropertyOptional({
+    description:
+      'true → only shipments whose waybill relay has failed at least OL_WAYBILL_RELAY_FAILURE_ALERT_THRESHOLD times in a row (#2073) — the needs-attention bucket for a relay the marketplace never received. false is accepted and, like omitting the parameter, applies no filter: there is no meaningful "not stuck" cohort to select, since a shipment with no failures and one with two are equally not-escalated.',
+  })
+  @IsOptional()
+  @Transform(({ value }): unknown =>
+    value === 'true' ? true : value === 'false' ? false : value,
+  )
+  @IsBoolean()
+  waybillRelayStuck?: boolean;
+
   @ApiPropertyOptional({ description: 'Inclusive lower bound on createdAt (ISO-8601)' })
   @IsOptional()
   @IsDateString()

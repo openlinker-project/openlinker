@@ -170,15 +170,12 @@ Event types follow the pattern: `{category}.{action}` (lowercase, dot-separated)
 
 ## Streams
 
-### `events.inbound.webhooks`
-
-Inbound webhook events stream. Messages contain:
-- `eventId`: Unique event identifier
-- `eventType`: Event type (namespaced as `inbound.webhook.{type}`)
-- `payloadJson`: Stringified JSON payload
-- `metadataJson`: Stringified JSON metadata (includes schemaVersion, provider, connectionId)
-- `occurredAt`: ISO 8601 timestamp when event occurred
-- `publishedAt`: ISO 8601 timestamp when event was published
+> **`events.inbound.webhooks` is retired and no longer exists.** #2280 moved
+> routing to ingress, removing its only writer; #2300 removed its last reader
+> (the one-shot upgrade drain) and the stream name itself. The webhook path
+> touches no Redis stream — the durable write is hop one. See
+> [redis-stream-retention.md](../operations/redis-stream-retention.md) for the
+> upgrade floor and the one-time `DEL`.
 
 ### `jobs.sync`
 
@@ -191,13 +188,11 @@ Sync job requests stream. Messages contain:
 
 ## Consumer Groups
 
-### `webhook-handler`
-
-Consumer group for processing inbound webhook events:
-- **Group Name**: `webhook-handler`
-- **Consumer Name**: `webhook-handler-{pid}` (process ID)
-- **Stream**: `events.inbound.webhooks`
-- **Behavior**: Reads new messages (`>`), ACKs after successful job enqueue
+**None on the webhook path.** The `webhook-handler` group was retired with its
+always-on loop in #2280 and lost its last reader in #2300. An old Redis may
+still carry the group; `DEL events.inbound.webhooks` removes it along with the
+stream. The live groups elsewhere in the system are `job-intake` and
+`master-deletion-offer-pause`.
 
 ## Error Handling
 
@@ -344,17 +339,20 @@ Expected response: `202 Accepted` (no body).
 
 Look in the API logs for:
 
-- `Published inbound webhook event test-event-123 to stream events.inbound.webhooks`
 - `Processed webhook event test-event-123 and enqueued job master.product.syncByExternalId`
 
-Inspect Redis:
+The authoritative check is **Postgres**, not Redis — the delivery row and the
+work row commit in one transaction:
+
+```sql
+SELECT status, "downstreamJobType", "downstreamJobId"
+  FROM webhook_deliveries WHERE "eventId" = 'test-event-123';
+SELECT "jobType", status FROM sync_jobs WHERE "idempotencyKey" = 'prestashop:<connectionId>:test-event-123';
+```
 
 ```bash
 redis-cli
-XREAD STREAMS events.inbound.webhooks 0   # the inbound event
-XREAD STREAMS jobs.sync 0                  # the enqueued sync job
-XINFO GROUPS events.inbound.webhooks       # consumer group state
-KEYS webhook:prestashop:*                  # deduplication keys
+KEYS webhook:prestashop:*                  # best-effort dedup hint only
 ```
 
 ### Integration tests
@@ -425,7 +423,7 @@ describe('Webhook Ingestion', () => {
       .send(payload)
       .expect(202);
 
-    // ... assertions against events.inbound.webhooks stream
+    // ... assertions against the webhook_deliveries + sync_jobs rows
   });
 });
 ```
@@ -437,14 +435,13 @@ describe('Webhook Ingestion', () => {
 | `401 Unauthorized` | Signature mismatch (raw body bytes differ), wrong secret env var name, or timestamp outside the ±5-minute skew window |
 | `404 Not Found` | Connection ID doesn't exist, is disabled, or the URL provider doesn't match `connection.platformType` |
 | `400 Bad Request` | Missing `X-OpenLinker-Timestamp` / `X-OpenLinker-Signature` header, or payload doesn't match the expected DTO |
-| Events not landing in the stream | Handler consumer group not initialized; check API logs for `Created consumer group webhook-handler`. Verify Redis is reachable. |
+| `202` but no job appears | Routing classified the event `unroutable` — read `webhook_deliveries.status` / `dlqReason` for that `eventId`. Since #2280 the delivery row and the job row commit together, so a delivery row reading `job_enqueued` with no `sync_jobs` row is impossible. |
 
 Debugging:
 
 - `LOG_LEVEL=debug` for verbose webhook tracing
-- `XINFO STREAM events.inbound.webhooks` to inspect stream state
-- `XINFO GROUPS events.inbound.webhooks` for consumer status
-- `KEYS webhook:*` for dedup state
+- `webhook_deliveries` (status + `dlqReason`) and `sync_jobs` — the durable pair
+- `KEYS webhook:*` for the best-effort Redis dedup hint
 
 ---
 

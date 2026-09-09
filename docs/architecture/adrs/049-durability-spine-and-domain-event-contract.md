@@ -1,6 +1,9 @@
 # ADR-049: Durability spine and the domain-event contract
 
-- **Status**: Proposed
+- **Status**: Accepted (implemented in #2163, #2164 and #2280, amended inline by
+  the latter and by #2603/#2604/#2614/#2652; decision 1 has shipped on the
+  webhook path only — the non-webhook writers of `jobs.sync` remain future work
+  under the same decision)
 - **Date**: 2026-08-20
 - **Authors**: @piotrswierzy
 
@@ -183,8 +186,14 @@ with the decisions above, as built:
   path. Ingress routing failures are classified — deterministic faults become durable
   `deadlettered` delivery rows with a reason (replacing the Redis DLQ on this path), transient
   faults throw pre-insert so the source retries. The `webhook-handler` consumer loop is retired; a
-  one-shot `LegacyInboundWebhookDrain` recovers the upgrade backlog and is itself removed in a
-  follow-up release.
+  one-shot `LegacyInboundWebhookDrain` recovered the upgrade backlog. **That drain shipped in
+  v0.8.0 and was removed by #2300**, after running at every api boot through v0.10.0 — three
+  releases, against a condition one clean boot resolves. `events.inbound.webhooks` and
+  `events.inbound.webhooks.dead` went with it, out of `REDIS_STREAM_NAMES` and out of the retention
+  policy: neither had a writer after #2280, and removing the drain removed their last reader, so a
+  retention decision about either was a decision about nothing. The version floor an operator must
+  have booted, and the `DEL` that reclaims the leftover keys, are in
+  [docs/operations/redis-stream-retention.md](../../operations/redis-stream-retention.md).
 - **Decision 1's reversal gate (write amplification on the enclosing write) now has a concrete
   surface to watch**: the webhook 202 latency, which absorbed one extra insert inside an existing
   transaction boundary.
