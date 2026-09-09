@@ -1,0 +1,256 @@
+{
+  "scenario": "f1-order-ingestion",
+  "generatedAt": "2026-09-09T07:04:00Z",
+  "gitSha": "1f9a52d1b4d05916a131cc6efdf59d179da2ae1e",
+  "connectionIds": "'53d949aa-b753-49bb-a257-54c944028a7a'",
+  "quick": false,
+  "runnerState": "enabled",
+  "laneCaps": "realtime=4/2 bulk=12/8 fiscal=2/1 fan-out=8/4",
+  "workerReplicas": 1,
+  "workerContainers": "lab-worker-1",
+  "laneCapEnforcement": "per-process - the laneCaps above bound ONE worker process, so effective deployment concurrency is laneCaps x workerReplicas (ADR-050 amendment #2594 / #2302)",
+  "pool": {
+    "maxConnections": "200",
+    "olDbPoolMax": "40",
+    "processCount": "2",
+    "budget": "80"
+  },
+  "schedulerCadenceRow": {},
+  "olLogBodyMaxBytes": "lab-api=8192 lab-worker-1=8192",
+  "syncJobsRowsAtStart": 165137,
+  "syncJobsRowsAtEnd": 166595,
+  "environment": {
+    "postgres": {
+      "shared_buffers": "128MB",
+      "work_mem": "4MB",
+      "shared_preload_libraries": "pg_stat_statements,auto_explain",
+      "installed_extensions": "pg_trgm,pg_stat_statements",
+      "nonDefaultSettings": {
+        "roleConfig": {
+          "postgres": [
+            "statement_timeout=30000ms"
+          ]
+        },
+        "databaseRoleConfig": [],
+        "liveSettingsSourceNotDefault": {
+          "lc_time": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "TimeZone": {
+            "source": "configuration file",
+            "setting": "UTC"
+          },
+          "hba_file": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data/pg_hba.conf"
+          },
+          "DateStyle": {
+            "source": "configuration file",
+            "setting": "ISO, MDY"
+          },
+          "ident_file": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data/pg_ident.conf"
+          },
+          "lc_numeric": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "config_file": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data/postgresql.conf"
+          },
+          "lc_messages": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "lc_monetary": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "log_timezone": {
+            "source": "configuration file",
+            "setting": "UTC"
+          },
+          "max_wal_size": {
+            "source": "configuration file",
+            "setting": "1024"
+          },
+          "min_wal_size": {
+            "source": "configuration file",
+            "setting": "80"
+          },
+          "data_directory": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data"
+          },
+          "shared_buffers": {
+            "source": "configuration file",
+            "setting": "16384"
+          },
+          "max_connections": {
+            "source": "command line",
+            "setting": "200"
+          },
+          "application_name": {
+            "source": "client",
+            "setting": "psql"
+          },
+          "listen_addresses": {
+            "source": "configuration file",
+            "setting": "*"
+          },
+          "statement_timeout": {
+            "source": "user",
+            "setting": "30000"
+          },
+          "transaction_isolation": {
+            "source": "override",
+            "setting": "read committed"
+          },
+          "transaction_read_only": {
+            "source": "override",
+            "setting": "off"
+          },
+          "pg_stat_statements.max": {
+            "source": "command line",
+            "setting": "10000"
+          },
+          "transaction_deferrable": {
+            "source": "override",
+            "setting": "off"
+          },
+          "auto_explain.log_analyze": {
+            "source": "command line",
+            "setting": "on"
+          },
+          "auto_explain.log_buffers": {
+            "source": "command line",
+            "setting": "on"
+          },
+          "pg_stat_statements.track": {
+            "source": "command line",
+            "setting": "all"
+          },
+          "shared_preload_libraries": {
+            "source": "command line",
+            "setting": "pg_stat_statements,auto_explain"
+          },
+          "default_text_search_config": {
+            "source": "configuration file",
+            "setting": "pg_catalog.english"
+          },
+          "dynamic_shared_memory_type": {
+            "source": "configuration file",
+            "setting": "posix"
+          },
+          "auto_explain.log_min_duration": {
+            "source": "command line",
+            "setting": "2000"
+          }
+        }
+      }
+    },
+    "node_version": "v22.23.1",
+    "postgres_image_digest": "sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193",
+    "redis_image_digest": "sha256:bd4a0d37e7cd830117ffec9329052b4a1887afa060c265e1768f82b177ff6f43",
+    "redis_used_memory_bytes": "200405488",
+    "host": {
+      "cpu_count": "28",
+      "ram": "15912MB",
+      "load_average": "2.26, 2.35, 2.16"
+    }
+  },
+  "containerLimits": [
+    {
+      "container": "lab-api",
+      "cpu_nanocpus": "none",
+      "memory_bytes": "none"
+    },
+    {
+      "container": "lab-worker-1",
+      "cpu_nanocpus": "none",
+      "memory_bytes": "none"
+    }
+  ],
+  "excludedPgStatStatementsQueries": [
+    "GET /v1/connections/:id/sync-status (7-day connection-sync-status aggregate over sync_jobs) - issued by sample_queue itself, see README"
+  ],
+  "arm": "throughput-baseline",
+  "orderSource": {
+    "tenant": "perf-allegro-a",
+    "connectionId": "53d949aa-b753-49bb-a257-54c944028a7a"
+  },
+  "destination": {
+    "label": "real PrestaShop (#2860)",
+    "connectionId": "c4710417-5876-40cf-a0a6-bdbef38e823a",
+    "rateLimitInForce": "manifest default (60/min, 4 concurrent)"
+  },
+  "arrivalRate": {
+    "note": "the INDEPENDENT VARIABLE is the offered order rate, kept separate from any seeded row count: min(pollPageLimit, feedBacklog) / pollCadenceSeconds. The 1,000,000 pre-seeded order_records rows on this stand are a fixed dataset size, never an arrival rate.",
+    "pollCadenceSecondsHarnessChosen": 10,
+    "pollPageLimit": 100
+  },
+  "pollCadenceResolved": {
+    "note": "DERIVED, not read from a running scheduler - the scheduler is OFF for this run and the harness enqueues every poll itself. #2279 moved the scheduler into the worker, so the worker environment is the only place a cron override would take effect.",
+    "allegro": {
+      "cron": "*/1 * * * *",
+      "source": "allegro-scheduler-tasks.ts default (unset on the worker)",
+      "meanPollWaitSeconds": 30,
+      "retunable": true,
+      "envVar": "OL_ALLEGRO_POLL_INTERVAL_CRON"
+    },
+    "woocommerce": {
+      "cron": "*/5 * * * *",
+      "source": "woocommerce-scheduler-tasks.ts string literal",
+      "retunable": false
+    },
+    "erli": {
+      "cron": "*/5 * * * *",
+      "source": "erli-scheduler-tasks.ts string literal",
+      "retunable": false
+    },
+    "prestashop": {
+      "cron": "0 */10 * * * *",
+      "source": "prestashop-scheduler-tasks.ts",
+      "retunable": true,
+      "envVar": "OL_PRESTASHOP_POLL_INTERVAL_CRON",
+      "note": "webhook-primary; the poll is the backstop"
+    }
+  },
+  "buyerIdentityMode": "email_fallback (unset - core default)",
+  "warmupOrders": {
+    "perReplica": 2,
+    "replicas": 1,
+    "total": 2,
+    "reason": "excludes the line_prices cold start (27 requests vs 7 for the first order after any worker restart, prestashop-openlinker-module.client.ts) and warms the currency/country/order-state caches"
+  },
+  "stub": {
+    "runId": "mttr3iew675908",
+    "gitSha": "2978-f10",
+    "port": 8080,
+    "tenants": [
+      "perf-allegro-a",
+      "perf-allegro-b"
+    ],
+    "offerPoolSize": 200,
+    "buyerPoolSize": 50,
+    "deliveryCostAmount": "9.99",
+    "latency": {
+      "defaultMs": 120,
+      "eventsMs": 276,
+      "checkoutMs": 1106,
+      "quantityMs": 120,
+      "quantityMsMeasured": false
+    }
+  },
+  "stubOfferPoolSize": 200,
+  "destinationResolvableVariants": 200,
+  "destinationResolvableProducts": 110,
+  "productPoolNote": "THREE DIFFERENT NUMBERS, and the #2856 seeded-mapping contract (the offer pool and the distinct-product count being the same number) CANNOT hold on this stand. The stub mints stubOfferPoolSize distinct offer ids, but seed-catalogue.sh seeds mappings rather than real shop products, so only destinationResolvableProducts products actually exist at the destination and every offer round-robins onto destinationResolvableVariants variants. The PrestaShop tax chain caches 24h per connection+product+country, so it decays against the RESOLVABLE count - a small pool warms almost immediately and understates per-order destination cost for a real catalogue.",
+  "fanOutCoTenancy": "controlled - the scheduler is OFF, so no master sweep parent shares the fan-out lane with marketplace.orders.poll during any window",
+  "latencyPointProvenance": "documented cross-table reconstruction, NOT #2850 instrumentation. See the scenario header; the summarizer counts the heartbeat-rewrite and multi-attempt cases rather than assuming them away, and the single-destination arrange removes the syncedAt late-bias structurally.",
+  "feedBacklogPushed": 900,
+  "windowSeconds": 300
+}
