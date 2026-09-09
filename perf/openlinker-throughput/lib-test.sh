@@ -1151,6 +1151,29 @@ assert_eq "10 vs 12: |10-12|/11 = 0.181818" "0.181818" "$(compute_agreement 10 1
 assert_eq "a deliberately deduped n=0 pair (0 vs 0) reports ratio 0 - the ZERO agreement trap #2845's publish_if_agreed must refuse on its own (a minimum-n check), never here" "0" "$(compute_agreement 0 0)"
 
 # ===========================================================================
+# check_row_count_target (#3024) - f5-read-path.sh's per-arm guard against the
+# additive seeder silently measuring a bigger dataset than the label claims.
+# Verified red-first in both directions, per the issue's own AC.
+# ===========================================================================
+echo "--- check_row_count_target (#3024) ---"
+assert_eq "an arm seeded exactly to target is ok" "ok" \
+  "$(check_row_count_target 10000 10000)"
+assert_eq "the RED case: an arm left at the wrong size (1M actual, 10k target) is DISCARDED and names both figures" \
+  "1" "$(check_row_count_target 1000000 10000 | grep -c 'DISCARDED row_count_mismatch: rowCounts.order_records=1000000 does not match targetOrders=10000')"
+assert_eq "the same RED case reads DISCARDED at the caller's boundary (verdict_write's own vocabulary), not merely a free-text warning" \
+  "DISCARDED" "$(check_row_count_target 1000000 10000 | awk '{print $1}')"
+assert_eq "within the default 1% relative tolerance is still ok" "ok" \
+  "$(check_row_count_target 10050 10000)"
+assert_eq "just outside the default 1% relative tolerance is DISCARDED" "DISCARDED" \
+  "$(check_row_count_target 10200 10000 | awk '{print $1}')"
+assert_eq "an explicit tolerance widens what counts as ok" "ok" \
+  "$(check_row_count_target 10200 10000 5)"
+assert_eq "a non-numeric actual (a failed read) is DISCARDED, never treated as a mismatch of magnitude 0" "DISCARDED" \
+  "$(check_row_count_target '' 10000 | awk '{print $1}')"
+assert_eq "a zero target is refused rather than producing a divide-by-zero percentage" "DISCARDED" \
+  "$(check_row_count_target 0 0 | awk '{print $1}')"
+
+# ===========================================================================
 # results_dir_init / --dry-run (would()) behavior
 # ===========================================================================
 echo "--- results_dir_init ---"

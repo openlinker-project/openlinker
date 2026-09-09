@@ -1932,3 +1932,45 @@ compute_agreement() {
     printf "%.6f\n", d/med
   }'
 }
+
+# ---------------------------------------------------------------------------
+# check_row_count_target <actual> <target> [tolerance_pct] - #3024.
+#
+# f5-read-path.sh's seeder (seed-orders.sh) is ADDITIVE ACROSS SIZES BY
+# DESIGN - it no-ops once the dataset is already at/above TARGET_ORDERS,
+# because the same table is reused across the 10k/100k/1M steps rather than
+# re-seeded from zero each time. That is correct when the steps run in
+# ascending order in a fresh invocation; it is silently WRONG the moment a
+# later invocation asks for a SMALLER size than a table already carries
+# (F5_ONLY_SIZE resuming a single step out of order, a re-run against a
+# stand another campaign already grew) - the seed call becomes a no-op and
+# the scenario proceeds to measure whatever row count is already there
+# under the smaller label. Nothing about that failure mode produces a
+# non-2xx response or trips any guard in the run_post_guards chain: every
+# request still succeeds, it is just answered against the wrong table.
+#
+# Pure comparison, no I/O, so it is testable without a live stand (#3024
+# AC: "verified red-first in both directions"). Echoes "ok" when actual is
+# within tolerance_pct (default 1, a RELATIVE percentage of target) of
+# target; otherwise echoes a single-line DISCARDED reason naming both
+# figures, in the same "DISCARDED <check_name>: <reason>" shape the
+# post_guard_* family already writes into verdict.txt via
+# run_post_guards/_post_guard_run - so a caller that is not itself part of
+# that chain (F5 runs no post-guards - see its own header comment) can still
+# hand the answer straight to verdict_write.
+# ---------------------------------------------------------------------------
+check_row_count_target() {
+  local actual="$1" target="$2" tolerance_pct="${3:-1}"
+  awk -v a="$actual" -v t="$target" -v tol="$tolerance_pct" 'BEGIN {
+    if (t !~ /^[0-9]+(\.[0-9]+)?$/ || t+0 <= 0) {
+      print "DISCARDED row_count_mismatch: target=" t " is not a positive number"; exit
+    }
+    if (a !~ /^[0-9]+(\.[0-9]+)?$/) {
+      print "DISCARDED row_count_mismatch: actual=" a " is not a readable row count"; exit
+    }
+    diff = a - t; if (diff < 0) diff = -diff;
+    pct = (diff / t) * 100;
+    if (pct <= tol + 1e-9) { print "ok"; exit }
+    printf "DISCARDED row_count_mismatch: rowCounts.order_records=%s does not match targetOrders=%s (%.2f%% off, tolerance %s%%) - the additive seeder (seed-orders.sh) no-ops once a bigger arm already ran; re-run this size step alone (F5_ONLY_SIZE/F5_ONLY_LABEL) against a freshly reset dataset\n", a, t, pct, tol
+  }'
+}
