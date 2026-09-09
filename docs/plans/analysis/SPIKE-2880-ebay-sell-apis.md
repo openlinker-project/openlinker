@@ -23,7 +23,7 @@ as a sale at the offer level (`soldQuantity` incrementing) but neither ever appe
 `GET /sell/fulfillment/v1/order`, because both ended in `Payment failed`.
 
 **The cause of that is now most likely the test account, not eBay.** `GET
-/sell/account/v1/privilege` reports **`sellerRegistrationCompleted: false`** (Evidence 27). An
+/sell/account/v1/privilege` reports **`sellerRegistrationCompleted: false`** (Evidence 31). An
 earlier revision of this document attributed the checkout failure to eBay on the strength of
 `getPaymentsProgramOnboarding` → `ONBOARDED`; that check covers managed-payments onboarding only,
 which is a different gate from seller registration, and the latter was never checked. An
@@ -134,7 +134,7 @@ API's `GetOrders`) be considered.
     rejects a user token with `195011 "Not authorized for this topic"` and needs a
     client-credentials token, so the `scope` field on each topic must be read rather than
     assumed.
-7. **Not every category aspect may be used as a variation axis.** `publishOfferByInventoryItemGroup`
+8. **Not every category aspect may be used as a variation axis.** `publishOfferByInventoryItemGroup`
    with `variesBy` set to `Brand` failed with `"Brand is not allowed as a variation specific"`.
    `aspectConstraint.aspectEnabledForVariations` (already surfaced by T6's endpoint) is the
    authoritative signal for which aspects are legal variation axes — this should be read

@@ -47,7 +47,7 @@ carried over from epic-level framing, not as evidence-backed as Erli's.**
 | **Who** | An OL operator selling into GB and/or one or more of DE/FR/PL, already running a PrestaShop/WooCommerce master and (for PL) possibly Allegro |
 | **Company size** | SMB, matching the existing OL cohort |
 | **Sophistication** | Operator-UI driven; not expected to hand-manage RFC 9421 signing or business-policy authoring |
-| **Geographic focus** | Cross-border EU/UK — the spike's own reading of eBay's Polish marketing ("80% sprzedaży to transakcje w UE") suggests **the real PL product may be "a Polish merchant selling into DE/GB/FR"**, not eBay.pl as a domestic channel. This directly informs Out of scope (§6) and is epic #2878's still-open `AC8`.
+| **Geographic focus** | Cross-border EU/UK — issue #2880's own reading of eBay's Polish marketing ("80% sprzedaży to transakcje w UE") suggests **the real PL product may be "a Polish merchant selling into DE/GB/FR"**, not eBay.pl as a domestic channel. This directly informs Out of scope (§6) and is epic #2878's still-open `AC8`.
 
 ## 3. Evidence & user research
 
