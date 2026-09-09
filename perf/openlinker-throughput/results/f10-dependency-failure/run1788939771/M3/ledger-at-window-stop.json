@@ -1,0 +1,82 @@
+{
+  "syncJobs": [
+    {
+      "n": 6,
+      "status": "dead",
+      "outcome": null,
+      "job_type": "marketplace.offerQuantity.update",
+      "attempts_max": 2,
+      "deferred_rows": 0,
+      "attempts_total": 12,
+      "outcome_reason": null,
+      "attempt_ms_rows": 6,
+      "attempt_ms_total": 781,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 6,
+      "status": "queued",
+      "outcome": null,
+      "job_type": "marketplace.offerQuantity.update",
+      "attempts_max": 2,
+      "deferred_rows": 0,
+      "attempts_total": 12,
+      "outcome_reason": null,
+      "attempt_ms_rows": 6,
+      "attempt_ms_total": 775,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    }
+  ],
+  "lastErrors": [
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer ol_variant_1de98ba202c741eca6501b3aa5f7d139: unknown (Allegro rejected offer quantity command c2ff93f6-a726-416e-a80d-8d6f712a9790 for offer ol_variant_1de98ba202c741eca6501b3aa5f7d139: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenan"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer ol_variant_b36f8f81ad1b408a832fd953bfcc8b94: unknown (Allegro rejected offer quantity command 5e840623-4d39-4995-96df-6ca87f41e023 for offer ol_variant_b36f8f81ad1b408a832fd953bfcc8b94: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenan"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer perfseed_product_s200050_v0: unknown (Allegro rejected offer quantity command 97cbd045-ef1c-475c-85e4-10149eafd6bf for offer perfseed_product_s200050_v0: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenant perf-allegro-a)"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer perfseed_product_s200051_v200066: unknown (Allegro rejected offer quantity command 9745e75f-4c29-48e1-b512-c535044333f2 for offer perfseed_product_s200051_v200066: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenant perf-allegro-a)"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer perfseed_product_s200051_v200067: unknown (Allegro rejected offer quantity command 6b62adb0-11d1-404d-b053-d6b9ff5d4087 for offer perfseed_product_s200051_v200067: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenant perf-allegro-a)"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer perfseed_product_s200051_v200068: unknown (Allegro rejected offer quantity command c236dadd-928b-49cf-b134-43baaa50127a for offer perfseed_product_s200051_v200068: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenant perf-allegro-a)"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer perfseed_product_s200052_v200069: unknown (Allegro rejected offer quantity command cf6c8c20-d732-4f3f-953d-d37f9eee253e for offer perfseed_product_s200052_v200069: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenant perf-allegro-a)"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer perfseed_product_s200052_v200070: unknown (Allegro rejected offer quantity command a75dab7e-e837-494e-bdc1-897ff8620f39 for offer perfseed_product_s200052_v200070: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenant perf-allegro-a)"
+    }
+  ],
+  "orderRecords": {
+    "created": 0,
+    "recordStatus": {},
+    "note": "quantity-write load path - no orders are ingested"
+  },
+  "destinationFanOut": {
+    "note": "quantity-write load path - no destination fan-out"
+  },
+  "groundTruth": {
+    "psOrdersCreated": 0,
+    "psCartsCreated": 0,
+    "claimedSyncedToPrestashop": 0,
+    "claimedButAbsentFromPsOrders": 0,
+    "readable": 1,
+    "note": "claimedButAbsentFromPsOrders > 0 is a success report over a failure: OpenLinker recorded syncStatus.status=synced with an externalOrderId that names no row in the shop.\nA nonzero psCartsCreated alongside a zero psOrdersCreated is an orphaned cart - work done at the destination that produced no order.\nreadable=0 means the shop could NOT be read for this window: claimedSyncedToPrestashop and claimedButAbsentFromPsOrders are then BOTH zero because nothing was established, NOT because nothing was missing. A zero from this detector may only be quoted as a measured zero when readable=1."
+  }
+}

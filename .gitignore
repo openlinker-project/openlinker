@@ -120,6 +120,12 @@ perf/openlinker-throughput/results/**
 !perf/openlinker-throughput/results/**/k6-summary.json
 !perf/openlinker-throughput/results/**/pg-deadlocks.json
 !perf/openlinker-throughput/results/**/*.md
+# F10 (#2978) writes its evidence under different names than the scenarios
+# above - these three ARE the silent-loss ground truth its report rests on,
+# so they get the same durability. 228 KB across a full 14-window matrix.
+!perf/openlinker-throughput/results/**/ledger-*.json
+!perf/openlinker-throughput/results/**/recovery.json
+!perf/openlinker-throughput/results/**/fault-observations.txt
 
 # Lighthouse CI (#2866) — the committed artefact is scripts/lighthouse/baseline.json;
 # a per-run report is ephemeral local/CI output.

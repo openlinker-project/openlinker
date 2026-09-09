@@ -1,0 +1,5 @@
+ok
+ok
+DISCARDED post_guard_destination_creates: 9 order(s) carry a failed syncStatus entry on the declared destination c4710417-5876-40cf-a0a6-bdbef38e823a, 9 lack syncedAt on the declared destination c4710417-5876-40cf-a0a6-bdbef38e823a
+ok
+ok offered_work: 12 child job(s) for 12 pushed order(s) - the intended load reached the queue

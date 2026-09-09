@@ -1,0 +1,70 @@
+{
+  "syncJobs": [
+    {
+      "n": 10,
+      "status": "queued",
+      "outcome": null,
+      "job_type": "marketplace.order.sync",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 0,
+      "attempt_ms_total": 0,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 2,
+      "status": "running",
+      "outcome": null,
+      "job_type": "marketplace.order.sync",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 0,
+      "attempt_ms_total": 0,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 10,
+      "status": "succeeded",
+      "outcome": "ok",
+      "job_type": "marketplace.orders.poll",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 10,
+      "attempt_ms_total": 2979,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    }
+  ],
+  "lastErrors": [
+    {
+      "n": 2,
+      "last_error": "Deferred: lane 'realtime' per-scope cap reached within the claim batch — re-queued immediately, no attempt consumed (ADR-050)"
+    }
+  ],
+  "orderRecords": {
+    "created": 0,
+    "recordStatus": {}
+  },
+  "destinationFanOut": {
+    "entriesOther": 0,
+    "entriesFailed": 0,
+    "entriesSynced": 0,
+    "ordersWithNoSyncStatus": 0
+  },
+  "groundTruth": {
+    "psOrdersCreated": 0,
+    "psCartsCreated": 0,
+    "claimedSyncedToPrestashop": 0,
+    "claimedButAbsentFromPsOrders": 0,
+    "readable": 1,
+    "note": "claimedButAbsentFromPsOrders > 0 is a success report over a failure: OpenLinker recorded syncStatus.status=synced with an externalOrderId that names no row in the shop.\nA nonzero psCartsCreated alongside a zero psOrdersCreated is an orphaned cart - work done at the destination that produced no order.\nreadable=0 means the shop could NOT be read for this window: claimedSyncedToPrestashop and claimedButAbsentFromPsOrders are then BOTH zero because nothing was established, NOT because nothing was missing. A zero from this detector may only be quoted as a measured zero when readable=1."
+  }
+}

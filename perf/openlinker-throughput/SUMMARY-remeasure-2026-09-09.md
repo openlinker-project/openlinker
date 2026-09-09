@@ -28,7 +28,7 @@ Acceptance criteria and two falsifiable predictions were pre-registered in
 | F1 | `throughput-destination-raised` | **VALID** | **3 220 orders/hour** (knee) |
 | F1 | `throughput-lane-raised` | DISCARDED | >=10 658 orders/hour (floor), 2 deferrals |
 | F5 | operator read path | VALID (own criterion) | 1 449/1 449 route requests 2xx, at the real 2.01M dataset |
-| F10 | dependency-failure matrix | pending | 14 windows |
+| F10 | dependency-failure matrix | 13 VALID, I3 no verdict | no silent loss on any arm |
 
 Every figure above is **measured** unless stated otherwise. Every
 `verdict.txt` was read before any figure from it was quoted.
@@ -119,6 +119,45 @@ clause. It does **not** add a scaling claim - the earlier 142-150 ms figure was
 taken by direct `psql` against an idle table and this one from
 `pg_stat_statements` under live k6 traffic, so the two are not comparable and
 no super-linear growth is asserted.
+
+## F10 - the correctness answer, and it is the good one
+
+F10 asks per fault whether an order is **lost, retried, or silently marked
+done**. Across all 13 injected faults (each confirmed `"injected":true`):
+
+**`claimedButAbsentFromPsOrders = 0`, with `readable = 1` on every arm.** No
+fault produced an order OpenLinker called `synced` against an id naming no row
+in the shop. Because the shop was readable in every window, those are measured
+zeros rather than the detector's "nothing was established" zero.
+
+Three findings sit alongside that:
+
+1. **A total Redis outage stalls rather than loses - and kills the api.** I2
+   left 12 jobs in flight after 240 s with no recovery, 2 orders carrying no
+   `syncStatus` at all, and `lab-api` **exited code 1** on an unhandled `error`
+   event from a Redis socket, still down 40 minutes later. Nothing was falsely
+   claimed done. The container staying dead is the stand's `restart: 'no'`, not
+   a production claim; the crash is a product behaviour, and it contrasts with
+   the rate limiter, which has a designed degraded mode for the same condition.
+2. **A destination failure is invisible in the job ledger.** D1 failed 6 of 12
+   destinations while all 12 `marketplace.order.sync` jobs record
+   `succeeded/ok` with `attempts_max = 0`. The failure IS on the order's
+   `syncStatus`, so it is not silent loss - but a job-level dashboard or alert
+   cannot see it.
+3. **D4 leaves 9 orphaned carts in the shop** (`psCartsCreated = 12`,
+   `psOrdersCreated = 3`). OL's accounting is honest; the create path is simply
+   not transactional across cart-then-order and nothing cleans up.
+
+**I3 (worker killed) is unmeasured.** `guard_scheduler_off` refused it saying
+the worker `has OL_SCHEDULER_ENABLED=true`; the worker was not running, and
+`lib.sh:567` falls back to `printf 'true'` when `docker exec` fails. Fail-closed
+is right, the message is not - it asserts a value it never read, in the one arm
+whose purpose is to kill the worker.
+
+**The stand was left broken** and F10 said so: the PrestaShop connection still
+pointed at a removed fault proxy, and the api was dead. Both restored by hand.
+A restore path that needs the api to `PATCH` a connection cannot run after the
+scenario is allowed to kill the api.
 
 ## A peer machine measured the same arms - do not average
 

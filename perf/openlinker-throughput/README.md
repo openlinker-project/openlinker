@@ -283,7 +283,8 @@ raw evidence at all. This campaign splits the tree by ROLE instead:
 
 | Kind | Files | Committed? |
 |---|---|---|
-| Provenance core | `manifest.json`, `verdict.txt`, `summary.json`, `k6-summary.json`, `pg-deadlocks.json`, and any `*.md` written into a run directory | **Yes** |
+| Provenance core | `manifest.json`, `verdict.txt`, `summary.json`, `k6-summary.json`, `pg-deadlocks.json`, and any `*.md` written into a run directory | **Yes**
+| Provenance core - F10 (#2978) | `ledger-*.json`, `recovery.json`, `fault-observations.txt` | **Yes** - added 2026-09-09; F10 names its evidence differently from every other scenario and the original list predated it, so its ground-truth ledgers were being dropped. 228 KB across a full 14-window matrix |
 | Bulk samples | `pool.json`, `timeseries.csv`, `pg-lockwaits.csv`, the raw k6 JSON, the per-probe CSVs | No - local only |
 
 The patterns are at `.gitignore:97`, and the negation idiom there is load-bearing:

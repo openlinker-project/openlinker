@@ -1,0 +1,6 @@
+EXPECTED-BY-FAULT DISCARDED post_guard_containers_stable: container(s) restarted or recreated inside the measurement window - lab-redis(was=2026-09-08T03:16:23.950415244Z now=2026-09-09T08:51:49.86753281Z)
+ok
+ok
+ok
+ok
+ok offered_work: 12 child job(s) for 12 pushed order(s) - the intended load reached the queue
