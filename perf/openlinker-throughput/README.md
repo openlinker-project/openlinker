@@ -30,10 +30,13 @@ sources it rather than re-implementing any piece of it.
 | `seed/seed-catalogue.sh` | Set-based products/variants/inventory_items/identifier_mappings seeder (#2849) across the two connections the lab stand carries - seeded ONCE, independent of order-dataset size. |
 | `seed/seed-jobs.sh` | Set-based `sync_jobs` sweep-child history seeder (#2849) - ~1 year at real cadence (20min/15min), also seeded ONCE. |
 | `seed/seed-orders.sh` | Set-based `order_records` + `order_line_items` seeder (#2849), ADDITIVE across `TARGET_ORDERS` - the three #2843 dataset sizes are three calls, each inserting only the delta. |
-| `seed/cleanup.sh` | Removes every row the three seeders above wrote, matching on the `perfseed` tag alone. Standalone - does NOT touch #2854's `stand-down.sh`. |
+| `seed/seed-wc-catalogue.sh` | WooCommerce-side catalogue seeder (#3025) - clones one real WooCommerce product per PS-real product `bootstrap.sh`'s own offer-mapping selection already targets, and maps it (product + every non-stale variant) under `WC_CONNECTION_ID` in the adapter's own external-id shapes, so a real order can resolve line items against the WooCommerce destination. Idempotent and repair-shaped at BOTH product and variant grain. |
+| `seed/cleanup.sh` | Removes every row the four seeders above wrote (matching on the `perfseed`/`PERFWC-` tags), plus its PrestaShop/WooCommerce counterparts. Standalone - does NOT touch #2854's `stand-down.sh`. Requires `CONFIRM_CLEANUP=1` (below) - a prior accidental invocation against a live stand wiped its `order_records`/`order_line_items`. |
 | `scenarios/f5-read-path.sh` | Operator read-path scenario (#2843) - orders/products/jobs-dashboard routes + the app-shell nav-probe fan-out, at each of the three seeded dataset sizes. See "F5 - operator read path at row count" below. |
 | `drivers/read-path.js` | k6 driver for `f5-read-path.sh` - a weighted browse-mix scenario plus a separate page-shell scenario, one Trend per named route. |
 | `scenarios/f8-lane-caps.sh` | Lane-cap SATURATION sweep (#2867) - drives ONE lane's per-scope cap across a list of values, one worker recreate per value, and reports throughput and per-job latency at each point so the knee is read off a curve. The only scenario that WRITES a lane cap; it restores the caps it found on exit. Reads the applied cap back out of the worker's own startup line and refuses the arm on a mismatch, because a cap that silently did not apply produces a clean curve of the same cap measured five times. See "F8 - lane cap saturation" below. |
+| `stubs/invoicing/server.mjs` | Fixed/runtime-mutable-latency `InvoicingPort` destination stub (#3006), in the shape of `stubs/allegro/server.mjs`. Serves one endpoint, `POST /invoices`, and reports `maxInFlightObserved` so achieved concurrency at the destination boundary is read directly rather than inferred from the runner's ~1 Hz poll floor. See `stubs/invoicing/README.md`. |
+| `scenarios/fiscal-lane-stub.sh` | Real (non-invalid-payload) `fiscal`-lane measurement (#3006) - sweeps documents/hour at T = 2s/10s/90s against `perScope` 1 and 4, using the stub above and a real, in-tree `InvoicingPort` adapter so `invoicing.issue` jobs run the ACTUAL `InvoiceService.issueInvoice()` chain (per-order lock included). Confirms/refutes `results-lane-caps-2026-09-07.md` § 4.5's bulk-issue serialisation claim by observed concurrency. See `results-fiscal-lane-<date>.md`. |
 
 | `drivers/ps-latency-probe.mjs` | Measures PrestaShop's OWN response time under a controlled offered rate (#2840). Status-checked per sample against a per-endpoint EXPECTED status, so a fast error cannot count as a fast sample; GET-only (the create path's POSTs mint real rows); URL shapes copied from what OpenLinker actually sent; fixed unique `User-Agent` so `probes/ps-request-mix.sh` can subtract the probe's own requests as a measured count. Uses bare `fetch` deliberately - it is an instrument, not plugin traffic, and must not be paced by the limiter it is measuring around. |
 | `probes/ps-latency-ramp.sh` | Drives `ps-latency-probe.mjs` up a rate ladder with no measurement window open, to find where the shop's latency knees. Repeats the lowest rate LAST as a drift control, so a rising curve can be told from a shop that merely got slower as the run went on. |
@@ -88,6 +91,51 @@ one of them lands directly inside a `WHERE "connectionId" IN (...)` clause -
 `lib.sh` never builds that quoting for you, since a scenario's own set of
 connections varies.
 
+## Known stand-coordination pitfalls
+
+Four ways a scenario has silently broken the "one scenario measures the
+stand at a time" contract `guard_stand_exclusive` exists to enforce. Read
+before writing anything that touches process lifecycle, the stand lock, or
+concurrent-run detection.
+
+1. **A self-matching `pkill`/`grep`.** `pkill -f <pattern>` matching your own
+   shell's command line kills the very process running the check, and a bare
+   `ps -eo cmd | grep 'scenarios/f' | grep -c` can match `grep`'s own
+   argv and report a false nonzero - or, the mirror failure, silently report
+   zero when it should have matched. Always filter with the bracket trick
+   (`grep '[s]cenarios/f'`) or `awk '!/awk/ && /pattern/'`, and inspect the
+   match before killing anything.
+2. **`grep -c` reporting a false "zero conflicts".** The bracket/`awk` idiom
+   above is not cosmetic - a plain `grep -c 'pattern'` piped through another
+   `grep` can itself match nothing and print `0` even when a real conflicting
+   process is running, because the SEARCH command matched itself out of the
+   process list first. This exact bug produced a false "zero conflicts"
+   finding once already in this campaign.
+3. **A `timeout`-killed scenario does not release the stand lock.**
+   `guard_stand_exclusive`'s lock is released by a normal `EXIT` trap; a
+   process killed by an external `timeout` (or any signal a trap does not
+   catch) leaves the Redis key standing for the rest of its TTL. Confirm via
+   `ps` that nothing is alive before `redis-cli DEL perf:stand:exclusive` -
+   never assume a dead PID means a released lock.
+4. **A fatal `lib.sh` helper called FROM inside the EXIT trap leaks the lock
+   even on a clean exit path (#3001, found live 2026-09-09).** `pg_sql_write`
+   and `ol_api` are fatal BY DESIGN (`die()` on failure) everywhere else in
+   this library - "a write that silently no-ops must never read as success".
+   But bash does not re-enter a trap that is already running, so if a
+   scenario's own `EXIT` trap calls one of them for cleanup and it dies (a
+   transient lock wait, a stray `statement_timeout`, an autovacuum on an
+   unrelated table), every trap statement AFTER that call - including
+   `release_stand_exclusive` - never runs, and the stand lock leaks for the
+   rest of its TTL even though the process is long gone. This is a more
+   subtle variant of pitfall 3: the process is not killed by an external
+   signal, it dies on its OWN cleanup path, inside the very trap meant to
+   release the lock. `release_stand_exclusive` itself is safe (every
+   statement there is already non-fatal), but any OTHER cleanup a scenario
+   adds to its own `EXIT` trap must be equally non-fatal - see
+   `scenarios/f13-writeback.sh`'s `pg_sql_write_besteffort` for the pattern
+   (a bare `docker exec ... psql` that warns instead of dying), and apply it
+   to any `ol_api` call made from trap-time cleanup too.
+
 ## Environment variables
 
 All of these have a `lab`-stand default (#2854) and can be overridden per
@@ -119,6 +167,8 @@ stand.
 | `DRAIN_MAX_WAIT_SECS` | `1800` | `drain_wait`'s max-wait timeout before it marks the remainder dead |
 | `SETTLE_SECS` | `60` | the pause `window_start` inserts before opening the window |
 | `SAMPLE_INTERVAL_SECS` | `1` | nominal observer tick interval (actual drift recorded as `dt`) |
+| `F5_ROW_COUNT_TOLERANCE_PCT` | `1` | `check_row_count_target` (via `f5-read-path.sh`'s `run_size`) - relative tolerance, as a percent of the target, before a size step's row count is DISCARDED as mismeasured |
+| `CONFIRM_CLEANUP` | *(required, no default)* | `seed/cleanup.sh` - must be `1` or the script refuses before its first `DELETE` |
 
 ## Every guard, and what makes a run invalid
 
@@ -664,6 +714,21 @@ distribution rather than merely a similar one. Distribution targets are
 asserted post-seed (recordStatus/connection/currency/reportingCurrency
 mix), not left as a prose claim - see each seeder's own `check_share` /
 distribution-log lines.
+
+**WooCommerce catalogue mapping (#3025)**: `seed/seed-wc-catalogue.sh` closes
+a separate gap the three seeders above don't touch - `perf-woocommerce` is
+created with `OrderProcessorManager` alone (no `ProductMaster`), so nothing
+ever wrote it a `Product`/`ProductVariant` mapping, and every order fanned
+out to it as a destination died at line-item resolution, silently reported
+`outcome: 'ok'` under `OrderSyncService`'s `Promise.allSettled` fan-out.
+Clones one real WooCommerce product (via the WC PHP API) per PS-real product
+`bootstrap.sh`'s own offer-mapping selection already targets, mapping the
+product and every one of its non-stale variants (`product:{wcId}#{variantId}`,
+a synthetic per-variant marker - WooCommerce gets no real variation of its
+own). Idempotent and repair-shaped at both product AND variant grain: a
+re-run only creates what's still missing, including a variant added to an
+already-mapped product after an earlier run. Own env vars: `SKU_PREFIX`
+(`PERFWC-`), `CEILING_SECS` (default `300`).
 
 **Deliberately deferred, named rather than silently skipped**: the
 sample-through-real-ingestion diff against #2846's stubs (#2846 is a

@@ -1955,3 +1955,81 @@ compute_agreement() {
     printf "%.6f\n", d/med
   }'
 }
+
+# ---------------------------------------------------------------------------
+# classify_channel_contention <solo_rate> <concurrent_rate> <threshold_pct>
+# (#2979, F11 - concurrent multi-channel load)
+#
+# Echoes "starved" when a channel's throughput running CONCURRENTLY with
+# another has dropped by threshold_pct or more against that same channel's
+# own SOLO baseline; "held" when it has not (including when it is faster
+# concurrently than solo, which happens and is not itself evidence of
+# anything wrong); "unknown" when either rate cannot be read as a
+# non-negative number.
+#
+# "unknown" is a THIRD answer, not a fallback to "held" - #2979's own framing
+# is "an aggregate that holds while one channel gets nothing is the failure
+# that matters", and a starvation check that reads a bad or missing number as
+# "held" would silently manufacture exactly that false reassurance. A caller
+# must treat "unknown" as "starvation was not established either way", never
+# as a passing result.
+#
+# threshold_pct defaults to 20: run-to-run variance on a shared contended
+# stand is real (see MOVED_THRESHOLD_PCT's 15% in f1-order-ingestion.sh for
+# the same reasoning applied to a different question), and 20% is
+# deliberately wider than that variance so an ordinary noisy run does not
+# read as starvation on its own.
+# ---------------------------------------------------------------------------
+classify_channel_contention() {
+  local solo="$1" concurrent="$2" threshold="${3:-20}"
+  case "$solo" in ''|*[!0-9.]*) printf 'unknown'; return 0 ;; esac
+  case "$concurrent" in ''|*[!0-9.]*) printf 'unknown'; return 0 ;; esac
+  case "$threshold" in ''|*[!0-9.]*) printf 'unknown'; return 0 ;; esac
+  awk -v s="$solo" -v c="$concurrent" -v t="$threshold" 'BEGIN {
+    if (s <= 0) { print "unknown"; exit }
+    drop = (s - c) / s * 100
+    if (drop >= t) print "starved"; else print "held"
+  }'
+}
+
+# ---------------------------------------------------------------------------
+# check_row_count_target <actual> <target> [tolerance_pct] - #3024.
+#
+# f5-read-path.sh's seeder (seed-orders.sh) is ADDITIVE ACROSS SIZES BY
+# DESIGN - it no-ops once the dataset is already at/above TARGET_ORDERS,
+# because the same table is reused across the 10k/100k/1M steps rather than
+# re-seeded from zero each time. That is correct when the steps run in
+# ascending order in a fresh invocation; it is silently WRONG the moment a
+# later invocation asks for a SMALLER size than a table already carries
+# (F5_ONLY_SIZE resuming a single step out of order, a re-run against a
+# stand another campaign already grew) - the seed call becomes a no-op and
+# the scenario proceeds to measure whatever row count is already there
+# under the smaller label. Nothing about that failure mode produces a
+# non-2xx response or trips any guard in the run_post_guards chain: every
+# request still succeeds, it is just answered against the wrong table.
+#
+# Pure comparison, no I/O, so it is testable without a live stand (#3024
+# AC: "verified red-first in both directions"). Echoes "ok" when actual is
+# within tolerance_pct (default 1, a RELATIVE percentage of target) of
+# target; otherwise echoes a single-line DISCARDED reason naming both
+# figures, in the same "DISCARDED <check_name>: <reason>" shape the
+# post_guard_* family already writes into verdict.txt via
+# run_post_guards/_post_guard_run - so a caller that is not itself part of
+# that chain (F5 runs no post-guards - see its own header comment) can still
+# hand the answer straight to verdict_write.
+# ---------------------------------------------------------------------------
+check_row_count_target() {
+  local actual="$1" target="$2" tolerance_pct="${3:-1}"
+  awk -v a="$actual" -v t="$target" -v tol="$tolerance_pct" 'BEGIN {
+    if (t !~ /^[0-9]+(\.[0-9]+)?$/ || t+0 <= 0) {
+      print "DISCARDED row_count_mismatch: target=" t " is not a positive number"; exit
+    }
+    if (a !~ /^[0-9]+(\.[0-9]+)?$/) {
+      print "DISCARDED row_count_mismatch: actual=" a " is not a readable row count"; exit
+    }
+    diff = a - t; if (diff < 0) diff = -diff;
+    pct = (diff / t) * 100;
+    if (pct <= tol + 1e-9) { print "ok"; exit }
+    printf "DISCARDED row_count_mismatch: rowCounts.order_records=%s does not match targetOrders=%s (%.2f%% off, tolerance %s%%) - the additive seeder (seed-orders.sh) no-ops once a bigger arm already ran; re-run this size step alone (F5_ONLY_SIZE/F5_ONLY_LABEL) against a freshly reset dataset\n", a, t, pct, tol
+  }'
+}

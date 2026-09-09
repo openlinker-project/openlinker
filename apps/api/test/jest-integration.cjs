@@ -153,6 +153,14 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/eparagony/src/$1',
     ),
+    '^@openlinker/integrations-invoicing-stub$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/invoicing-stub/src/index.ts',
+    ),
+    '^@openlinker/integrations-invoicing-stub/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/invoicing-stub/src/$1',
+    ),
     '^@openlinker/test-kit$': path.resolve(__dirname, '../../../libs/test-kit/src/index.ts'),
     '^@openlinker/test-kit/(.*)$': path.resolve(__dirname, '../../../libs/test-kit/src/$1'),
   },

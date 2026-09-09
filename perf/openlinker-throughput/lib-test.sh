@@ -1151,6 +1151,29 @@ assert_eq "10 vs 12: |10-12|/11 = 0.181818" "0.181818" "$(compute_agreement 10 1
 assert_eq "a deliberately deduped n=0 pair (0 vs 0) reports ratio 0 - the ZERO agreement trap #2845's publish_if_agreed must refuse on its own (a minimum-n check), never here" "0" "$(compute_agreement 0 0)"
 
 # ===========================================================================
+# check_row_count_target (#3024) - f5-read-path.sh's per-arm guard against the
+# additive seeder silently measuring a bigger dataset than the label claims.
+# Verified red-first in both directions, per the issue's own AC.
+# ===========================================================================
+echo "--- check_row_count_target (#3024) ---"
+assert_eq "an arm seeded exactly to target is ok" "ok" \
+  "$(check_row_count_target 10000 10000)"
+assert_eq "the RED case: an arm left at the wrong size (1M actual, 10k target) is DISCARDED and names both figures" \
+  "1" "$(check_row_count_target 1000000 10000 | grep -c 'DISCARDED row_count_mismatch: rowCounts.order_records=1000000 does not match targetOrders=10000')"
+assert_eq "the same RED case reads DISCARDED at the caller's boundary (verdict_write's own vocabulary), not merely a free-text warning" \
+  "DISCARDED" "$(check_row_count_target 1000000 10000 | awk '{print $1}')"
+assert_eq "within the default 1% relative tolerance is still ok" "ok" \
+  "$(check_row_count_target 10050 10000)"
+assert_eq "just outside the default 1% relative tolerance is DISCARDED" "DISCARDED" \
+  "$(check_row_count_target 10200 10000 | awk '{print $1}')"
+assert_eq "an explicit tolerance widens what counts as ok" "ok" \
+  "$(check_row_count_target 10200 10000 5)"
+assert_eq "a non-numeric actual (a failed read) is DISCARDED, never treated as a mismatch of magnitude 0" "DISCARDED" \
+  "$(check_row_count_target '' 10000 | awk '{print $1}')"
+assert_eq "a zero target is refused rather than producing a divide-by-zero percentage" "DISCARDED" \
+  "$(check_row_count_target 0 0 | awk '{print $1}')"
+
+# ===========================================================================
 # results_dir_init / --dry-run (would()) behavior
 # ===========================================================================
 echo "--- results_dir_init ---"
@@ -1477,6 +1500,111 @@ if [ -f "$F8_SCENARIO" ]; then
     "$F8_SRC" 'total=$(( cap * SCOPES ))'
 else
   FAIL=$((FAIL + 1)); FAILURES+=("f8-lane-caps.sh not found at $F8_SCENARIO")
+fi
+
+# ---------------------------------------------------------------------------
+echo
+echo "--- classify_channel_contention (#2979 F11) ---"
+# VALID pass: a mild drop under the default 20% threshold reads held.
+assert_eq "5% drop under threshold reads held" "held" "$(classify_channel_contention 100 95 20)"
+# DISCARDED case: a drop AT the threshold reads starved (>= is the boundary).
+assert_eq "20% drop at threshold reads starved" "starved" "$(classify_channel_contention 100 80 20)"
+assert_eq "50% drop well past threshold reads starved" "starved" "$(classify_channel_contention 200 100 20)"
+# Concurrent faster than solo is not evidence of anything wrong.
+assert_eq "concurrent rate exceeding solo reads held" "held" "$(classify_channel_contention 100 120 20)"
+assert_eq "concurrent rate equal to solo reads held" "held" "$(classify_channel_contention 100 100 20)"
+# unknown is a THIRD answer, never silently "held" - #2979's own framing.
+assert_eq "zero solo rate is unknown, never held" "unknown" "$(classify_channel_contention 0 50 20)"
+assert_eq "non-numeric solo rate is unknown" "unknown" "$(classify_channel_contention abc 50 20)"
+assert_eq "non-numeric concurrent rate is unknown" "unknown" "$(classify_channel_contention 100 xyz 20)"
+assert_eq "empty solo rate is unknown" "unknown" "$(classify_channel_contention '' 50 20)"
+assert_eq "non-numeric threshold is unknown rather than a silent default" "unknown" "$(classify_channel_contention 100 50 abc)"
+# threshold defaults to 20 when omitted.
+assert_eq "omitted threshold defaults to 20" "starved" "$(classify_channel_contention 100 79)"
+assert_eq "omitted threshold, just under 20% drop reads held" "held" "$(classify_channel_contention 100 81)"
+
+# ---------------------------------------------------------------------------
+echo
+echo "--- f11-concurrent-multichannel.sh source-level guards (#2979) ---"
+F11_SCENARIO="$SCRIPT_DIR/scenarios/f11-concurrent-multichannel.sh"
+if [ -f "$F11_SCENARIO" ]; then
+  F11_SRC="$(cat "$F11_SCENARIO")"
+  assert_contains "f11 claims the stand lock before any state mutation" \
+    "$F11_SRC" 'guard_stand_exclusive'
+  # The self-referential-loop guard: the PrestaShop DESTINATION connection's
+  # OrderProcessorManager must be disabled for the whole run, or a
+  # PrestaShop-sourced order would destine back into the SAME physical shop
+  # it came from and get re-ingested as a "new" source order next poll -
+  # an unbounded feedback loop against a container other agents may share.
+  assert_contains "f11 disables the PrestaShop destination's OrderProcessorManager for the run" \
+    "$F11_SRC" 'OrderProcessorManager'
+  assert_contains "f11 states the self-referential-loop hazard explicitly" \
+    "$F11_SRC" 'feedback loop'
+  # Cleanup discipline mirroring F1's own lesson: a single EXIT trap, since a
+  # second `trap ... EXIT` after guard_stand_exclusive's REPLACES it.
+  assert_contains "f11 releases the stand lock from its own on-exit handler" \
+    "$F11_SRC" 'release_stand_exclusive'
+  # Both single-channel baselines must be re-taken in the SAME run, not
+  # quoted from a prior report (#2979's own acceptance criterion).
+  assert_contains "f11 runs an Allegro-only baseline window in this session" \
+    "$F11_SRC" 'baseline'
+  assert_contains "f11 samples per-channel queue depth into separate directories" \
+    "$F11_SRC" 'sampler_start'
+  assert_contains "f11 classifies starvation via the shared lib.sh function" \
+    "$F11_SRC" 'classify_channel_contention'
+  # The scope-cut this scenario documents must be visible in the script
+  # itself, not only in the PR description - a reader six months from now
+  # opens the file, not the review thread.
+  assert_contains "f11 names the fallback from 3 platforms to 2, with reason" \
+    "$F11_SRC" 'two-channel'
+  assert_contains "f11 states why Erli is out of scope (no stub, base-URL policy)" \
+    "$F11_SRC" 'erli.pl'
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("f11-concurrent-multichannel.sh not found at $F11_SCENARIO")
+fi
+
+# ---------------------------------------------------------------------------
+echo
+echo "--- ps-order-source.sh source-level guards (#2979) ---"
+PSO_DRIVER="$SCRIPT_DIR/drivers/ps-order-source.sh"
+if [ -f "$PSO_DRIVER" ]; then
+  PSO_SRC="$(cat "$PSO_DRIVER")"
+  # POST bodies to the PrestaShop webservice MUST be XML - the webservice
+  # client this repo already ships (prestashop-webservice.client.ts) never
+  # accepts a JSON request body, only JSON on GET responses via
+  # Output-Format. A JSON POST body would 400 on every single call.
+  assert_contains "ps-order-source POSTs application/xml, never JSON, to the webservice" \
+    "$PSO_SRC" "Content-Type: application/xml"
+  # A non-2xx must surface PrestaShop's own validation error rather than
+  # being swallowed - this is the whole reason the webservice route was
+  # chosen over raw SQL (#2979 review: a wrong field is now an explicit 400
+  # naming the field, not a silently invalid row).
+  assert_contains "ps-order-source surfaces the webservice's error body on failure" \
+    "$PSO_SRC" 'HTTP $status'
+  assert_contains "ps-order-source resolves reference ids from the LIVE shop, never guesses" \
+    "$PSO_SRC" 'pso_resolve_refs'
+
+  # pso_extract_id is the belt-and-braces reader for a create response: the
+  # reference webservice client (prestashop-webservice.client.ts:576) forces
+  # Output-Format: XML on every POST/PUT response regardless of what we ask
+  # for, so a driver that only ever ran `jq -r '.foo.id'` against a live
+  # shop would die on every single create with "returned no id" even though
+  # the create succeeded. Both wire shapes must resolve to the same id.
+  PSO_EXTRACT_RESULT="$(
+    # shellcheck source=/dev/null
+    source "$PSO_DRIVER" 2>/dev/null
+    JSON_RESP='{"customer":{"id":"5"}}'
+    XML_RESP='<?xml version="1.0" encoding="UTF-8"?><prestashop xmlns="http://www.prestashop.com/xml/xsd"><customer><id><![CDATA[5]]></id></customer></prestashop>'
+    XML_RESP_PLAIN='<?xml version="1.0" encoding="UTF-8"?><prestashop><order><id>9</id></order></prestashop>'
+    got_json="$(pso_extract_id "$JSON_RESP" customer)"
+    got_xml_cdata="$(pso_extract_id "$XML_RESP" customer)"
+    got_xml_plain="$(pso_extract_id "$XML_RESP_PLAIN" order)"
+    printf '%s|%s|%s' "$got_json" "$got_xml_cdata" "$got_xml_plain"
+  )"
+  assert_eq "pso_extract_id reads the id whether the shop answers JSON or XML" \
+    "5|5|9" "$PSO_EXTRACT_RESULT"
+else
+  FAIL=$((FAIL + 1)); FAILURES+=("ps-order-source.sh not found at $PSO_DRIVER")
 fi
 
 # ---------------------------------------------------------------------------
