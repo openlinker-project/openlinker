@@ -147,7 +147,54 @@ export interface Shipment {
    * (not fetched there).
    */
   orderSummary: OrderSummary | null;
+  /**
+   * Consecutive waybill-relay failures (#2073), or `null` when this shipment's
+   * relay has never failed / a successful relay cleared the history.
+   *
+   * `stuck` is derived SERVER-SIDE and rendered here as-is. The threshold that
+   * produces it deliberately has no frontend copy: `apps/web` cannot import
+   * `@openlinker/core` (#591), so a browser-side comparison would be a mirror
+   * needing a `check:invariants` guard, and shipping the boolean means there is
+   * no shared rule to mirror at all. Do not reintroduce the comparison here.
+   */
+  waybillRelay: WaybillRelay | null;
 }
+
+/**
+ * FE mirror of the BE `WaybillRelayResponseDto` (#2073). Hand-maintained under
+ * the FE-001 hand-written-contract strategy.
+ *
+ * `lastFailureReason` is a closed BE vocabulary and is typed as a union so an
+ * unlabelled new member fails type-check at `WAYBILL_RELAY_REASON_LABEL` below
+ * rather than rendering a raw code. It is nullable because the backend coerces
+ * an unrecognised stored value to null rather than asserting it onward.
+ */
+export interface WaybillRelay {
+  failureCount: number;
+  stuck: boolean;
+  firstFailedAt: string;
+  lastFailedAt: string;
+  lastFailureReason: WaybillRelayFailureReason | null;
+  lastFailureConnectionId: string | null;
+}
+
+export const WAYBILL_RELAY_FAILURE_REASON_VALUES = [
+  'rejected',
+  'adapter-unresolved',
+  'threw',
+] as const;
+export type WaybillRelayFailureReason = (typeof WAYBILL_RELAY_FAILURE_REASON_VALUES)[number];
+
+/**
+ * Operator-readable label per failure reason. `Record<Reason, string>` (not
+ * `Partial<>`) so a new BE member fails type-check until labelled — the same
+ * FE↔BE drift discipline as `SHIPPING_METHOD_LABEL`.
+ */
+export const WAYBILL_RELAY_REASON_LABEL: Record<WaybillRelayFailureReason, string> = {
+  rejected: 'the channel refused the update',
+  'adapter-unresolved': 'the connection could not be reached',
+  threw: 'the order participants could not be resolved',
+};
 
 /**
  * Known carrier-of-record vocabulary (#769) — mirrors `KnownCarrierValues` in
@@ -290,6 +337,15 @@ export interface ShipmentFilters {
    * "OMP-fulfilled" rows.
    */
   hasProviderShipmentId?: boolean;
+  /**
+   * `true` → only shipments whose waybill relay has failed enough times in a
+   * row to escalate (#2073). The threshold lives server-side; this filter says
+   * "give me the escalated ones" without the browser knowing the number.
+   *
+   * `false` is never sent — there is no meaningful "not stuck" cohort, since a
+   * shipment with no failures and one with two are equally not-escalated.
+   */
+  waybillRelayStuck?: boolean;
   /** Inclusive lower bound on createdAt (ISO 8601 / `YYYY-MM-DD`). */
   createdFrom?: string;
   /** Inclusive upper bound on createdAt (ISO 8601 / `YYYY-MM-DD`). */

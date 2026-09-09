@@ -50,12 +50,17 @@ describe('resolveStreamBound', () => {
     }
   });
 
-  it('should give the master-deletion DLQ an age bound, unlike the webhook DLQ', () => {
+  it('should give the master-deletion DLQ an age bound, unlike the stream it dead-letters from', () => {
     // The master-deletion DLQ has no Postgres counterpart — it is the sole
     // record that a deletion event was discarded — so FIFO-drop would discard
-    // exactly the first entries that identify an incident's trigger.
+    // exactly the first entries that identify an incident's trigger. Its own
+    // source stream is count-bounded, because a deletion's authority is the
+    // persisted `product_variants.isStale` flag rather than the event.
+    //
+    // The contrast used to be drawn against `events.inbound.webhooks.dead`;
+    // #2300 removed that stream, so it is drawn against the live pair instead.
     expect(resolveStreamBound(REDIS_STREAM_NAMES.masterDeletionDead).kind).toBe('minid');
-    expect(resolveStreamBound(REDIS_STREAM_NAMES.inboundWebhooksDead).kind).toBe('maxlen');
+    expect(resolveStreamBound(REDIS_STREAM_NAMES.masterDeletion).kind).toBe('maxlen');
   });
 
   it('should mark the healthcheck cap exact, since it sits below one macro node', () => {
@@ -95,8 +100,20 @@ describe('streamTrimOptions', () => {
   });
 
   it('should use approximate trimming for a normal count bound', () => {
-    expect(streamTrimOptions(REDIS_STREAM_NAMES.inboundWebhooks)).toEqual({
-      TRIM: { strategy: 'MAXLEN', strategyModifier: '~', threshold: 50_000 },
+    // The only assertion of the `~` MAXLEN path against a concrete threshold —
+    // its `exact` sibling below uses `healthcheck`. It was written against
+    // `events.inbound.webhooks` (50 000); #2300 removed that stream, so it is
+    // repointed onto the remaining count-bounded member rather than dropped.
+    //
+    // Stated because it is easy to over-read: `masterDeletion` is now the ONLY
+    // non-exact maxlen member, and its 10 000 happens to equal
+    // `DEFAULT_STREAM_BOUND` — so this case no longer distinguishes "a
+    // registered bound was honoured" from "it fell through to the default".
+    // The `healthcheck` case below still does (`=` at 1 differs from the
+    // default in both modifier and threshold), which is where that property
+    // is now pinned.
+    expect(streamTrimOptions(REDIS_STREAM_NAMES.masterDeletion)).toEqual({
+      TRIM: { strategy: 'MAXLEN', strategyModifier: '~', threshold: 10_000 },
     });
   });
 

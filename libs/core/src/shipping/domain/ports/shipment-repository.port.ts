@@ -25,6 +25,7 @@ import type {
   CreateShipmentInput,
   UpdateShipmentInput,
 } from '../types/shipment.types';
+import type { RecordWaybillRelayFailureInput } from '../types/waybill-relay-failure.types';
 
 export interface ShipmentRepositoryPort {
   /**
@@ -230,7 +231,40 @@ export interface ShipmentRepositoryPort {
 
   /**
    * Release a claim taken by {@link claimWaybillRelay} so a later tick can
-   * retry. Idempotent: releasing an already-released row is a no-op.
+   * retry, AND record the failure that caused the release. Idempotent:
+   * releasing an already-released row is a no-op.
+   *
+   * **One statement, so a release without a count is not expressible** (#2073).
+   * Before this, a relay that failed on every tick released the claim forever
+   * and reported the fact only to the log. Folding the counter into the release
+   * rather than writing it beside adds NO new failure mode - the release was
+   * already an un-caught `await` on both failure paths - while making the
+   * accounting structurally complete. Both callers are failure paths in
+   * `ShipmentStatusSyncService.relayWaybillToParticipants`; there is no third
+   * caller that could count a non-failure.
+   *
+   * `failure` is REQUIRED, not optional. An optional argument would be a silent
+   * decline: a caller that omitted it would release the claim and record
+   * nothing, which is exactly the invisibility this parameter removes.
+   *
+   * @see clearWaybillRelayFailures for the reset half.
    */
-  releaseWaybillRelay(id: string): Promise<void>;
+  releaseWaybillRelay(id: string, failure: RecordWaybillRelayFailureInput): Promise<void>;
+
+  /**
+   * Clear the failure history after a SUCCESSFUL relay (#2073) - the reset that
+   * keeps the escalation from becoming an alarm that never goes off.
+   *
+   * Conditional on `waybillRelayFailureCount > 0`, so the healthy case matches
+   * zero rows and costs nothing. Idempotent.
+   *
+   * **There is deliberately no time-based auto-clear**, which is where the
+   * `webhook_auth_rejections` precedent (#1814) must NOT be copied. That
+   * counter needs a freshness window because it is an unbounded rolling count
+   * over a connection's whole life with no natural reset, so staleness is the
+   * only way it can go quiet. This one has an explicit reset on success; a
+   * window here would silence the signal while the waybill still never reached
+   * the marketplace, which is the defect being fixed.
+   */
+  clearWaybillRelayFailures(id: string): Promise<void>;
 }
