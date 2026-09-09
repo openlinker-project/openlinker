@@ -8449,9 +8449,8 @@ a.kpi-card:focus-visible {
 /*
  * ── Category Tree Browser (shared primitive, #304) ───────────────
  * Hierarchical tree navigation with breadcrumb + per-row Select/Browse
- * actions. Consumed by `CategoryPicker` (listings, leaf-only mode) and
- * `AllegroCategorySearch` (mappings, any-level staged mode). Density
- * `compact` enables overflow-x scroll + tighter spacing for
+ * actions. Consumed by `AllegroCategorySearch` (mappings, any-level staged
+ * mode). Density `compact` enables overflow-x scroll + tighter spacing for
  * dialog-bounded usage.
  */
 .category-tree-browser {

@@ -234,9 +234,9 @@ interface BulkEditModalProps {
   onOpenChange: (open: boolean) => void;
   row: BulkWizardRow;
   /**
-   * The batch's marketplace connection. Drives the `CategoryPicker` (by id), the
-   * per-row platform section resolved via `platformType`, and the platform
-   * display name used in title-limit / AI-channel copy.
+   * The batch's marketplace connection. Drives the `BulkCategoryChooseModal`
+   * (by id), the per-row platform section resolved via `platformType`, and
+   * the platform display name used in title-limit / AI-channel copy.
    */
   connection: Connection;
   /**
@@ -2116,7 +2116,7 @@ function VariantScopeForm({
   const variantGroupingModel = resolveVariantGroupingModel(connection);
   const canOverrideCategory = variantGroupingModel === 'catalog-implicit';
   const [categoryWarn, setCategoryWarn] = useState(false);
-  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [variantCategoryModalOpen, setVariantCategoryModalOpen] = useState(false);
   const [ownCategoryPathNames, setOwnCategoryPathNames] = useState<string[] | null>(null);
   const hasOwnCategory = edit.categoryId !== undefined;
   /**
@@ -2522,7 +2522,7 @@ function VariantScopeForm({
                   tone="ghost"
                   type="button"
                   className="button--sm"
-                  onClick={() => setCategoryPickerOpen(true)}
+                  onClick={() => setVariantCategoryModalOpen(true)}
                 >
                   Change category
                 </Button>
@@ -2555,7 +2555,7 @@ function VariantScopeForm({
                   className="button--sm"
                   onClick={() => {
                     setCategoryWarn(false);
-                    setCategoryPickerOpen(true);
+                    setVariantCategoryModalOpen(true);
                   }}
                 >
                   Override anyway
@@ -2632,8 +2632,8 @@ function VariantScopeForm({
 
       {canOverrideCategory ? (
         <BulkCategoryChooseModal
-          open={categoryPickerOpen}
-          onOpenChange={setCategoryPickerOpen}
+          open={variantCategoryModalOpen}
+          onOpenChange={setVariantCategoryModalOpen}
           connectionId={connectionId}
           productName={`${label} (variant)`}
           selectedId={edit.categoryId ?? null}

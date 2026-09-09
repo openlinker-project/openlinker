@@ -6,8 +6,8 @@
  * delivery-price-list override) for a single-variant/simple product, plus the
  * multi-variant rail + per-variant EAN override path.
  *
- * The category picker, parameters query, parameters step, and AI suggestion
- * dialog are stubbed so the test isolates the modal's own logic.
+ * The parameters query, parameters step, and AI suggestion dialog are stubbed
+ * so the test isolates the modal's own logic.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -19,11 +19,6 @@ import type { EanMatchCandidate } from '../../api/listings.types';
 import type { Product, ProductVariant } from '../../../products';
 import type { Connection } from '../../../connections';
 
-vi.mock('../category-picker', () => ({
-  CategoryPicker: ({ value }: { value: string | null }) => (
-    <div data-testid="category-picker">{value ?? 'none'}</div>
-  ),
-}));
 // Mutable so a test can drive the category-parameters query result (#1367).
 let mockCategoryParameters: unknown[] = [];
 vi.mock('../../hooks/use-category-parameters-query', () => ({
