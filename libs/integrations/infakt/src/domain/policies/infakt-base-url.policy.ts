@@ -18,13 +18,17 @@
  *   1. Explicit `config.baseUrl` - a legacy override, honoured for backward
  *      compatibility with connections created before the environment select
  *      existed. Trimmed, required to be https (see
- *      {@link isAllowedInfaktBaseUrl}), and normalized to always carry the
- *      `/api/v3` suffix (#2176) - an override supplied without it (e.g. the
- *      README's own historical example, `https://api.infakt.pl`) would
- *      otherwise build a URL that 404s / redirects to a garbage host, with
- *      Node's `fetch` throwing a raw transport `TypeError` rather than an
- *      `InfaktApiError`. Idempotent: an override that already ends in
- *      `/api/v3` is left alone.
+ *      {@link isAllowedInfaktBaseUrl}), and - only when it carries no path of
+ *      its own - normalized to carry the `/api/v3` suffix (#2176) - a bare-host
+ *      override (e.g. the README's own historical example,
+ *      `https://api.infakt.pl`) would otherwise build a URL that 404s /
+ *      redirects to a garbage host, with Node's `fetch` throwing a raw
+ *      transport `TypeError` rather than an `InfaktApiError`. Idempotent: an
+ *      override that already ends in `/api/v3` is left alone. An override that
+ *      carries a *different* path is left alone too - see
+ *      {@link normalizeInfaktBaseUrl} for why: it is read as an operator-run
+ *      proxy, not a broken README-example shape, and must be honoured
+ *      verbatim.
  *   2. `config.environment === 'sandbox'` - the neutral choice both FE forms
  *      persist today.
  *   3. `INFAKT_DEFAULT_BASE_URL` (production) - the default when neither is
@@ -71,17 +75,33 @@ export function isAllowedInfaktBaseUrl(value: string): boolean {
 const INFAKT_API_VERSION_PATH = '/api/v3';
 
 /**
- * Normalizes a legacy `config.baseUrl` override so it always carries the
- * `/api/v3` suffix (#2176) - appending it only when not already present, so a
- * caller who already includes it never gets a doubled `/api/v3/api/v3`. Any
- * trailing slash is stripped first so the suffix is never joined with a
- * doubled slash.
+ * Normalizes a legacy `config.baseUrl` override so a bare-host override (the
+ * README's own historical example, `https://api.infakt.pl`) always carries the
+ * `/api/v3` suffix (#2176 review, Important #1).
+ *
+ * Only a **root-path** override (no path, or bare `/`) is rewritten. An
+ * override that already carries its own path is left completely untouched -
+ * including one whose path does not end in `/api/v3` - because
+ * {@link isAllowedInfaktBaseUrl}'s own docblock declines a host allowlist on
+ * the grounds that this override "may legitimately point at an operator-run
+ * proxy": a proxy mounting the v3 surface under its own prefix (e.g.
+ * `https://proxy.example.com/infakt`) is exactly such a case, and rewriting it
+ * would silently 404 a working connection at read time with no save event and
+ * no log line. Parsing via `URL` (rather than an `endsWith` string test) also
+ * sidesteps two misreads a string test falls for: a query string appended
+ * after `/api/v3` (`https://host/api/v3?probe=1`, previously seen as
+ * "not yet suffixed" and given a second suffix) and a path that merely
+ * contains the substring in a different segment (`https://host/not-api/v3`,
+ * previously seen as "already suffixed" and left broken).
  */
 function normalizeInfaktBaseUrl(value: string): string {
   const withoutTrailingSlash = value.replace(/\/+$/, '');
-  return withoutTrailingSlash.endsWith(INFAKT_API_VERSION_PATH)
-    ? withoutTrailingSlash
-    : `${withoutTrailingSlash}${INFAKT_API_VERSION_PATH}`;
+  // `value` has already passed `isAllowedInfaktBaseUrl`, so this parse cannot throw.
+  const { pathname } = new URL(value);
+  if (pathname !== '' && pathname !== '/') {
+    return withoutTrailingSlash;
+  }
+  return `${withoutTrailingSlash}${INFAKT_API_VERSION_PATH}`;
 }
 
 /**

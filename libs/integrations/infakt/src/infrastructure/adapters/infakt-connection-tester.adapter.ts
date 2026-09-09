@@ -129,8 +129,11 @@ export class InfaktConnectionTesterAdapter implements ConnectionTesterPort {
     // when present — undici wraps DNS/connect failures that way) at warn
     // level; never the operator-facing `message` field above.
     const detail = error instanceof Error ? error.message : String(error);
+    const rawCause = error instanceof Error ? error.cause : undefined;
     const cause =
-      error instanceof Error && error.cause !== undefined ? ` (cause: ${String(error.cause)})` : '';
+      rawCause !== undefined
+        ? ` (cause: ${rawCause instanceof Error ? rawCause.message : String(rawCause)})`
+        : '';
     this.logger.warn(`Infakt probe failed: ${detail}${cause}`);
     return { success: false, status: undefined, message: 'Infakt probe failed', latencyMs };
   }

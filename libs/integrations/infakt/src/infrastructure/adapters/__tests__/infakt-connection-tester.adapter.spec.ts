@@ -114,6 +114,25 @@ describe('InfaktConnectionTesterAdapter', () => {
     warnSpy.mockRestore();
   });
 
+  // #2176 review, Suggestion: an Error `cause` must be read the same way
+  // `detail` is one line above — `String(error.cause)` on a non-Error cause
+  // (e.g. undici's DNS/connect wrapping) yields the useless `[object Object]`.
+  it('should log an Error cause by its message rather than [object Object]', async () => {
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    fetchMock.mockRejectedValue(
+      new TypeError('fetch failed', { cause: new Error('getaddrinfo ENOTFOUND proxy.invalid') }),
+    );
+
+    await tester.test(connection(), resolver);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('getaddrinfo ENOTFOUND proxy.invalid'),
+    );
+    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('[object Object]'));
+
+    warnSpy.mockRestore();
+  });
+
   it('should never surface InfaktApiError.responseBody in the result message', async () => {
     fetchMock.mockResolvedValue(fakeResponse(false, 422));
 
@@ -153,6 +172,34 @@ describe('InfaktConnectionTesterAdapter', () => {
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(url).toContain(overrideUrl);
     expect(url).not.toContain('api.sandbox-infakt.pl');
+  });
+
+  // #2176 review, Important #2: AC-2 asks for a composed-URL assertion —
+  // through `InfaktHttpClient`'s own URL building, not just the pure
+  // `resolveInfaktBaseUrl` return string — proving the exact override shape
+  // the corrected README recommends (an explicit `/api/v3` suffix) actually
+  // reaches `/api/v3/clients.json` on the wire.
+  it('should build the exact request URL the corrected README override example resolves to', async () => {
+    fetchMock.mockResolvedValue(fakeResponse(true, 200));
+
+    await tester.test(
+      connection({ config: { baseUrl: 'https://api.infakt.pl/api/v3' } }),
+      resolver,
+    );
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('https://api.infakt.pl/api/v3/clients.json?limit=1');
+  });
+
+  // The bug #2176 fixed: a bare-host override (the README's own historical,
+  // uncorrected example) reaching the network without `/api/v3` at all.
+  it('should build a working request URL when the override omits /api/v3 (#2176)', async () => {
+    fetchMock.mockResolvedValue(fakeResponse(true, 200));
+
+    await tester.test(connection({ config: { baseUrl: 'https://api.infakt.pl' } }), resolver);
+
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).toBe('https://api.infakt.pl/api/v3/clients.json?limit=1');
   });
 
   describe('https guard on the legacy baseUrl override (#2179 review round 3, Important #1)', () => {

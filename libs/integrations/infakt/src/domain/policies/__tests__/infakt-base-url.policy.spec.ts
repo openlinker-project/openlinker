@@ -13,6 +13,16 @@
  * Also covers the https guard on the legacy override and the trimming of a
  * padded override (#2179 review round 3, Important #1 + Suggestion #1).
  *
+ * The "/api/v3 normalization" block (#2176) covers the bare-host override the
+ * README's historical example produced, and is deliberately narrow: it must
+ * NOT rewrite an override that already carries its own path, since that shape
+ * is an operator-run proxy per `isAllowedInfaktBaseUrl`'s own docblock, not a
+ * broken README example (#2176 review, Important #1). A composed-URL
+ * assertion for the exact corrected README shape lives in
+ * `infakt-connection-tester.adapter.spec.ts` (#2176 review, Important #2) -
+ * this file only asserts the pure function's return string, which does not by
+ * itself cover the `InfaktHttpClient` composition the original bug was in.
+ *
  * @module libs/integrations/infakt/src/domain/policies/__tests__
  */
 import { InfaktConfigException } from '../../exceptions/infakt-config.exception';
@@ -126,6 +136,34 @@ describe('resolveInfaktBaseUrl - /api/v3 normalization (#2176)', () => {
     const config: InfaktConnectionConfig = { baseUrl: 'https://api.sandbox-infakt.pl/api/v3/' };
 
     expect(resolveInfaktBaseUrl(config)).toBe('https://api.sandbox-infakt.pl/api/v3');
+  });
+
+  // #2176 review, Important #1: an override carrying its own path is an
+  // operator-run proxy (see `isAllowedInfaktBaseUrl`'s docblock), not a broken
+  // README-example shape, and must be honoured verbatim - even when its own
+  // path does not end in `/api/v3`.
+  it('should leave an override mounted under its own proxy prefix untouched', () => {
+    const config: InfaktConnectionConfig = { baseUrl: 'https://proxy.example.com/infakt' };
+
+    expect(resolveInfaktBaseUrl(config)).toBe('https://proxy.example.com/infakt');
+  });
+
+  it('should leave a root-mounted proxy override with its own path untouched, trimming only the trailing slash', () => {
+    const config: InfaktConnectionConfig = { baseUrl: 'https://proxy.example.com/infakt/' };
+
+    expect(resolveInfaktBaseUrl(config)).toBe('https://proxy.example.com/infakt');
+  });
+
+  it('should not treat a query string after /api/v3 as needing a second suffix', () => {
+    const config: InfaktConnectionConfig = { baseUrl: 'https://api.sandbox-infakt.pl/api/v3?probe=1' };
+
+    expect(resolveInfaktBaseUrl(config)).toBe('https://api.sandbox-infakt.pl/api/v3?probe=1');
+  });
+
+  it('should not treat a path merely containing the /api/v3 substring as already suffixed', () => {
+    const config: InfaktConnectionConfig = { baseUrl: 'https://proxy.example.com/not-api/v3' };
+
+    expect(resolveInfaktBaseUrl(config)).toBe('https://proxy.example.com/not-api/v3');
   });
 });
 
