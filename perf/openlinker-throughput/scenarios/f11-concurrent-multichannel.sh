@@ -194,6 +194,18 @@ log "posture at start: perf-prestashop caps=$ORIGINAL_PS_CAPS"
 CONNECTIONS_TOUCHED=0
 PS_SOURCE_CONNECTION_ID=""
 RESULTS_DIR_MADE=""
+# Declared here (empty) rather than only in strict mode below, so the EXIT
+# trap's `${d:-}` loop never hits an unbound-variable error under `set -u`
+# when MODE=smoke (or any early-die path) exits before strict mode assigns
+# these - an unbound var inside the trap aborts the trap itself, which means
+# release_stand_exclusive() never runs and the stand lock leaks permanently.
+# Found the hard way: a --smoke run that died in pso_resolve_refs left
+# perf:stand:exclusive stuck under a since-dead PID.
+RESULTS_DIR_ALLEGRO_SOLO=""
+RESULTS_DIR_PS_SOLO=""
+RESULTS_DIR_CONCURRENT_A=""
+RESULTS_DIR_CONCURRENT_B=""
+RESULTS_DIR_CONCURRENT_AGG=""
 
 restore_curl() {
   local method="$1" path="$2" body="${3:-}"
