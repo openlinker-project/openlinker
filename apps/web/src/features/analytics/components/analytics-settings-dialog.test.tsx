@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   renderWithProviders,
@@ -156,6 +156,9 @@ describe('AnalyticsSettingsDialog', () => {
       name: /Use the rate found in the product catalog/,
     });
     await userEvent.click(taxToggle);
+    // Turning the toggle ON opens a confirmation before writing anything
+    // (#2857, mirroring #2668 review, finding 14).
+    await userEvent.click(await screen.findByRole('button', { name: 'Turn on' }));
 
     await waitFor(() => {
       expect(updateSettings).toHaveBeenCalledWith({
@@ -193,12 +196,98 @@ describe('AnalyticsSettingsDialog', () => {
       name: /Use the rate found in the product catalog/,
     });
     await userEvent.click(taxToggle);
+    await userEvent.click(await screen.findByRole('button', { name: 'Turn on' }));
 
     await waitFor(() => {
       expect(updateSettings).toHaveBeenCalledWith({
         displayCurrency: null,
         rateBasis: 'current',
         includeBackfilledTaxRatesInNetSales: true,
+        netGrossBasis: 'gross',
+      });
+    });
+  });
+
+  it('should gate turning the tax-rate toggle ON behind a confirm dialog, leaving it untouched on Cancel (#2857)', async () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined);
+    const apiClient = createMockApiClient({
+      analyticsSettings: {
+        getSettings: vi.fn().mockResolvedValue({
+          displayCurrency: 'PLN',
+          displayCurrencySource: 'default',
+          rateBasis: 'current',
+          includeBackfilledTaxRatesInNetSales: false,
+          netGrossBasis: 'gross',
+          updatedAt: null,
+          updatedByUserId: null,
+        }),
+        updateSettings,
+      },
+    });
+
+    renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const taxToggle = await screen.findByRole('checkbox', {
+      name: /Use the rate found in the product catalog/,
+    });
+    await userEvent.click(taxToggle);
+
+    // Clicking the checkbox alone must not write anything yet.
+    const confirmDialog = await screen.findByRole('dialog', { name: 'Turn on including orders with a guessed tax rate?' });
+    expect(updateSettings).not.toHaveBeenCalled();
+
+    await userEvent.click(within(confirmDialog).getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Turn on including orders with a guessed tax rate?' })).not.toBeInTheDocument();
+    });
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('should turn the tax-rate setting OFF directly, with no confirm dialog (#2857, #2993 review)', async () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined);
+    const apiClient = createMockApiClient({
+      analyticsSettings: {
+        getSettings: vi.fn().mockResolvedValue({
+          displayCurrency: 'EUR',
+          displayCurrencySource: 'setting',
+          rateBasis: 'current',
+          includeBackfilledTaxRatesInNetSales: true,
+          netGrossBasis: 'gross',
+          updatedAt: null,
+          updatedByUserId: null,
+        }),
+        updateSettings,
+      },
+    });
+
+    renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const taxToggle = await screen.findByRole('checkbox', {
+      name: /Use the rate found in the product catalog/,
+    });
+    expect(taxToggle).toBeChecked();
+
+    await userEvent.click(taxToggle);
+
+    // Turning OFF is the safe, reversing direction — it writes immediately,
+    // with no confirm dialog gating it (the ON direction only, per #2857's
+    // own AC). A future edit that starts gating both directions, or drops
+    // the `else` branch, must fail this test.
+    expect(
+      screen.queryByRole('dialog', { name: 'Turn on including orders with a guessed tax rate?' })
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(updateSettings).toHaveBeenCalledWith({
+        displayCurrency: 'EUR',
+        rateBasis: 'current',
+        includeBackfilledTaxRatesInNetSales: false,
         netGrossBasis: 'gross',
       });
     });

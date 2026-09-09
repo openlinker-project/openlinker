@@ -89,6 +89,22 @@ interface AnalyticsSettingsDialogProps {
 
 const NATIVE_VALUE = '';
 
+/**
+ * The one statement of the tax-inclusion toggle's consequence, shared
+ * verbatim by the checkbox description and its confirm-dialog description
+ * (#2857) — so the two can't drift the way they had (#2993 review, IMPORTANT
+ * 3: the checkbox rendered a typographic apostrophe and the dialog a
+ * straight one because each was hand-typed separately).
+ */
+const TAX_INCLUDE_CONSEQUENCE = (
+  <>
+    Trust a tax rate found retroactively in the catalog and include such orders in Net Sales
+    automatically. This applies to everyone and to every date range, not just the one
+    you&rsquo;re viewing - turning it off removes these orders from Net Sales again the next time
+    the figures are queried.
+  </>
+);
+
 export function AnalyticsSettingsDialog({
   open,
   onOpenChange,
@@ -118,6 +134,7 @@ export function AnalyticsSettingsDialog({
   const recalculate = useRecalculateCurrencyMutation();
 
   const [confirmingRecalculate, setConfirmingRecalculate] = useState(false);
+  const [confirmingTaxInclude, setConfirmingTaxInclude] = useState(false);
 
   const currencyRow = coverageQuery.data?.categories.find((row) => row.category === 'currency');
   const currencyPendingCount = currencyRow?.affectedCount ?? 0;
@@ -149,6 +166,24 @@ export function AnalyticsSettingsDialog({
         showToast({ tone: 'error', description: error.message });
       },
     });
+  }
+
+  // A real, deployment-wide financial-reporting write triggered from one
+  // click — same class of action as `handleRecalculate` above, so it gets
+  // the same confirm gate (#2857, mirroring #2668 review, finding 14). It is
+  // NOT a permanent write — per `docs/architecture-overview.md` § Orders
+  // (#2469), it's a pure query-time gate, instantly reversible in both
+  // directions, and no `order_records` row is mutated. The gate is
+  // warranted anyway because the write is deployment-wide (affects every
+  // operator, every date range) and invisible to whoever flipped it — the
+  // operator reading THIS date range has no way to see it silently change
+  // Net Sales for every other range too (#2993 review, IMPORTANT 4). Only
+  // the ON direction is gated: turning the setting back OFF is the safe,
+  // reversing direction (mockup's `tax-confirm` state only offers a confirm
+  // button next to "turn on").
+  function handleConfirmTaxInclude(): void {
+    setConfirmingTaxInclude(false);
+    handleTaxToggleChange(true);
   }
 
   function handleTaxToggleChange(nextInclude: boolean): void {
@@ -368,15 +403,18 @@ export function AnalyticsSettingsDialog({
                   type="checkbox"
                   checked={settingsQuery.data?.includeBackfilledTaxRatesInNetSales ?? false}
                   disabled={!settingsQuery.data || updateSettings.isPending || write.demoReadOnly}
-                  onChange={(event) => handleTaxToggleChange(event.target.checked)}
+                  onChange={(event) => {
+                    if (event.target.checked) {
+                      setConfirmingTaxInclude(true);
+                    } else {
+                      handleTaxToggleChange(false);
+                    }
+                  }}
                 />
                 <span>
                   <strong>Use the rate found in the product catalog</strong>
                   <span className="analytics-settings-dialog__toggle-desc">
-                    Trust a tax rate found retroactively in the catalog and include such orders in Net
-                    Sales automatically. This applies to everyone and to every date range, not just the
-                    one you&rsquo;re viewing - turning it off removes these orders from Net Sales again
-                    the next time the figures are queried.
+                    {TAX_INCLUDE_CONSEQUENCE}
                   </span>
                 </span>
               </label>
@@ -415,6 +453,28 @@ export function AnalyticsSettingsDialog({
         confirmLabel="Recalculate"
         isConfirming={recalculate.isPending}
         onConfirm={handleRecalculate}
+        overlayClassName="dialog__overlay--elevated"
+        className="dialog__content--elevated"
+      />
+      <ConfirmDialog
+        open={confirmingTaxInclude}
+        onOpenChange={setConfirmingTaxInclude}
+        title="Turn on including orders with a guessed tax rate?"
+        description={TAX_INCLUDE_CONSEQUENCE}
+        body={
+          <>
+            <Alert tone="warning">
+              These tax rates come from today&rsquo;s catalog, not the order date. If any of them
+              changed since, Net Sales for those orders will be less accurate.
+            </Alert>
+            <p className="analytics-settings-dialog__status" style={{ marginBottom: 0 }}>
+              Affects {taxA} order{taxA === 1 ? '' : 's'}.
+            </p>
+          </>
+        }
+        confirmLabel="Turn on"
+        isConfirming={updateSettings.isPending}
+        onConfirm={handleConfirmTaxInclude}
         overlayClassName="dialog__overlay--elevated"
         className="dialog__content--elevated"
       />
