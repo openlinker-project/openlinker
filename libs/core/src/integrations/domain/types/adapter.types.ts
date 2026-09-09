@@ -74,6 +74,22 @@ export const CoreCapabilityValues = [
   // and is allowed to act on it. `AUTHORITY_KIND_DESCRIPTORS['fulfillment-execution']
   // .capability` names this string as A3's gate. ADVERTISED since #2409 (openlinker.oms.v1).
   'FulfillmentExecutor',
+  // Shipping label issuance/tracking. Resolves a `ShippingProviderManagerPort`
+  // (`generateLabel` / `getTracking`) — `ShipmentDispatchService.dispatch()`
+  // (libs/core/src/shipping) already resolves it BY CONNECTION ID through
+  // `getCapabilityAdapter<ShippingProviderManagerPort>(connectionId,
+  // 'ShippingProviderManager')`, and the InPost (`inpost-plugin.ts`) and DPD
+  // Polska manifests already advertise it. This entry was simply never added
+  // when that capability shipped — found live (#3043) as a connection-create
+  // 400 that made InPost/DPD Polska shipping unenableable via the API on any
+  // install, ever, despite both adapters being fully implemented. Unlike
+  // `ReturnsAuthority` / `AvailabilityAuthority` above (no shipped manifest
+  // advertises either), this is a pure omission-bug fix, not a new capability
+  // grant — no behaviour changes for an install that never tried to enable
+  // shipping, and every install that has a working InPost/DPD connection was
+  // presumably created before this DTO validation existed or via a path that
+  // bypassed it.
+  'ShippingProviderManager',
 ] as const;
 
 /**

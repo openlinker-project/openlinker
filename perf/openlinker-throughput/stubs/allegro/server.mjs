@@ -131,6 +131,13 @@ function freshTenantState(name) {
     seq: 0,
     events: [], // { id, seq, order, occurredAt, type }
     checkoutForms: new Map(), // checkoutFormId -> AllegroCheckoutForm
+    // #3043 (F17, #3047): the `[BETA]` customer-returns feed. A plain ARRAY,
+    // not a Map, because `GET /order/customer-returns`'s `from` cursor is
+    // documented as "the id of the last seen customer return" - i.e. it
+    // requires an ORDER, which a Map's insertion order alone does not make
+    // queryable by id. Each entry is the full `AllegroCustomerReturnWire`.
+    customerReturns: [],
+    returnCounter: 0,
     orderCounter: 0,
     lineCounter: 0, // drives round-robin offer assignment across the pool
     // { mode, retryAfterSeconds, holdMs, endpoints, fraction } - see
@@ -407,6 +414,22 @@ function listEvents(tenant, fromCursor, limit) {
 
 // ---------------------------------------------------------------------------
 // Fault injection (#2856 "Failure injection")
+// #3043 (F17, #3047): paginate the customer-returns array by id, matching
+// `from`'s documented meaning ("the id of the last seen customer return") -
+// return everything AFTER that id, up to `limit`. An unknown `from` degrades
+// to "nothing after the end" (an empty page) rather than replaying full
+// history, the same "tolerate an unknown cursor, never replay" rule
+// `listEvents` applies to the order-events cursor.
+function listCustomerReturns(tenant, fromCursor, limit) {
+  let startIndex = 0;
+  if (fromCursor) {
+    const idx = tenant.customerReturns.findIndex((r) => r.id === fromCursor);
+    startIndex = idx === -1 ? tenant.customerReturns.length : idx + 1;
+  }
+  const page = tenant.customerReturns.slice(startIndex, startIndex + limit);
+  return { customerReturns: page, count: tenant.customerReturns.length };
+}
+
 // ---------------------------------------------------------------------------
 
 function allegroError(code, message) {
@@ -699,6 +722,43 @@ const server = createServer((req, res) => {
       return;
     }
 
+    // #3043 (F17, #3047): the `[BETA]` customer-returns feed -
+    // `AllegroOrderSourceAdapter.listReturnFeed`'s ONE endpoint. Serves
+    // `limit` + `from` (cursor) exactly as the real adapter sends them;
+    // `createdAt.gte` (the bootstrap-window param, sent only when `from` is
+    // absent) is accepted and ignored - this stub has no real dates to filter
+    // by, and the adapter never composes it WITH `from` (see the adapter's
+    // own docblock), so accepting-and-ignoring cannot silently misbehave.
+    if (method === 'GET' && pathname === '/order/customer-returns') {
+      recordRequestCount(tenant, 'GET', '/order/customer-returns');
+      await delay(latencyFor('returns'));
+      if (applyFault(tenant, req, res, (status) => log(status, '/order/customer-returns'), 'returns')) return;
+      const from = url.searchParams.get('from');
+      const limitParam = url.searchParams.get('limit');
+      const limit = limitParam ? Number.parseInt(limitParam, 10) : 100;
+      const body = listCustomerReturns(tenant, from, Number.isFinite(limit) ? limit : 100);
+      sendJson(res, 200, body);
+      log(200, '/order/customer-returns');
+      return;
+    }
+
+    const returnMatch = /^\/order\/customer-returns\/([^/]+)$/.exec(pathname);
+    if (method === 'GET' && returnMatch) {
+      recordRequestCount(tenant, 'GET', '/order/customer-returns/:id');
+      await delay(latencyFor('returns'));
+      if (applyFault(tenant, req, res, (status) => log(status, '/order/customer-returns/:id'), 'returns')) return;
+      const id = decodeURIComponent(returnMatch[1]);
+      const found = tenant.customerReturns.find((r) => r.id === id);
+      if (!found) {
+        notFound(res, method, pathname);
+        log(404, '/order/customer-returns/:id');
+        return;
+      }
+      sendJson(res, 200, found);
+      log(200, '/order/customer-returns/:id');
+      return;
+    }
+
     // -----------------------------------------------------------------
     // Control surface - /__stub/, driver-facing. No Allegro path uses this
     // prefix (#2856 Build Specification "Control endpoint"). Deliberately
@@ -788,6 +848,58 @@ const server = createServer((req, res) => {
       return;
     }
 
+    // #3043 (F17, #3047) - seed customer returns. Not a real Allegro path
+    // (control surface, unauthenticated, like /orders above). Mints `count`
+    // returns, each with `itemsPerReturn` lines, `status` defaulting to
+    // 'DELIVERED' (non-terminal - the shape a fresh return actually arrives
+    // in; a scenario wanting a terminal one passes it explicitly).
+    const returnsMatch = /^\/__stub\/tenants\/([^/]+)\/returns$/.exec(pathname);
+    if (method === 'POST' && returnsMatch) {
+      const targetTenant = resolveTenantByName(decodeURIComponent(returnsMatch[1]));
+      if (!targetTenant) {
+        sendJson(res, 404, { error: `unknown tenant ${returnsMatch[1]}` });
+        return;
+      }
+      let body;
+      try {
+        body = await readBody(req);
+      } catch {
+        sendJson(res, 400, { error: 'invalid JSON body' });
+        return;
+      }
+      const count = Number.isInteger(body.count) && body.count > 0 ? body.count : 1;
+      const itemsPerReturn =
+        Number.isInteger(body.itemsPerReturn) && body.itemsPerReturn > 0 ? body.itemsPerReturn : 1;
+      const status = typeof body.status === 'string' ? body.status : 'DELIVERED';
+      const orderIdPrefix = typeof body.orderIdPrefix === 'string' ? body.orderIdPrefix : 'stub-order';
+
+      const minted = [];
+      for (let i = 0; i < count; i += 1) {
+        targetTenant.returnCounter += 1;
+        const id = `stub-return-${targetTenant.name}-${targetTenant.returnCounter}`;
+        const wire = {
+          id,
+          orderId: `${orderIdPrefix}-${targetTenant.returnCounter}`,
+          referenceNumber: `REF-${targetTenant.returnCounter}`,
+          createdAt: new Date().toISOString(),
+          status,
+          isFulfillment: false,
+          marketplaceId: 'allegro-pl',
+          buyer: { email: `stub-buyer-${targetTenant.returnCounter}@example.invalid` },
+          items: Array.from({ length: itemsPerReturn }, (_v, idx) => ({
+            offerId: `stub-offer-${idx + 1}`,
+            quantity: 1,
+            name: `Stub returned item ${idx + 1}`,
+            price: { amount: '10.00', currency: 'PLN' },
+          })),
+        };
+        targetTenant.customerReturns.push(wire);
+        minted.push(id);
+      }
+      sendJson(res, 201, { minted });
+      return;
+    }
+
     const faultMatch = /^\/__stub\/tenants\/([^/]+)\/fault$/.exec(pathname);
     if (faultMatch && (method === 'POST' || method === 'DELETE')) {
       const targetTenant = resolveTenantByName(decodeURIComponent(faultMatch[1]));
@@ -821,7 +933,7 @@ const server = createServer((req, res) => {
         });
         return;
       }
-      const ENDPOINTS = ['events', 'checkout', 'quantity'];
+      const ENDPOINTS = ['events', 'checkout', 'quantity', 'returns'];
       if (body.endpoints !== undefined && body.endpoints !== null) {
         if (!Array.isArray(body.endpoints) || body.endpoints.some((e) => !ENDPOINTS.includes(e))) {
           sendJson(res, 400, { error: `endpoints must be an array drawn from ${ENDPOINTS.join(', ')}` });

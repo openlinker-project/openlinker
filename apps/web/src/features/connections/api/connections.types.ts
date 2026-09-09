@@ -61,6 +61,10 @@ export const CORE_CAPABILITY_VALUES = [
   'AvailabilityAuthority',
   // Fulfilment execution authority (ADR-052 A3) - who holds a work object and may act on it.
   'FulfillmentExecutor',
+  // Shipping label issuance/tracking (InPost, DPD Polska) - resolves a
+  // ShippingProviderManagerPort. Found missing live (#3043); the backend
+  // declaration carries the full reasoning.
+  'ShippingProviderManager',
 ] as const;
 
 /**

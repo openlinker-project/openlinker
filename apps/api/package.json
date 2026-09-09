@@ -48,6 +48,7 @@
     "@openlinker/integrations-fx": "workspace:*",
     "@openlinker/integrations-infakt": "workspace:*",
     "@openlinker/integrations-invoicing-stub": "workspace:*",
+    "@openlinker/integrations-shipping-stub": "workspace:*",
     "@openlinker/integrations-eparagony": "workspace:*",
     "@openlinker/integrations-inpost": "workspace:*",
     "@openlinker/integrations-ksef": "workspace:*",

@@ -42,6 +42,7 @@ import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
 import { OmsModule } from '@openlinker/oms';
 import { InvoicingStubIntegrationModule } from '@openlinker/integrations-invoicing-stub';
+import { ShippingStubIntegrationModule } from '@openlinker/integrations-shipping-stub';
 
 export const workerPlugins: PluginEntry[] = [
   PrestashopIntegrationModule,
@@ -92,4 +93,9 @@ export const workerPlugins: PluginEntry[] = [
   // measure the runner's own floor. See
   // `perf/openlinker-throughput/stubs/invoicing/README.md`.
   ...(process.env.OL_INVOICING_STUB_ENABLED === 'true' ? [InvoicingStubIntegrationModule] : []),
+  // #3043: the perf-lab `ShippingProviderManagerPort` stub, for the F15
+  // shipping scenario (#3045). Same gate shape and rationale as
+  // invoicing-stub above — never on by default. See
+  // `perf/openlinker-throughput/stubs/shipping/README.md`.
+  ...(process.env.OL_SHIPPING_STUB_ENABLED === 'true' ? [ShippingStubIntegrationModule] : []),
 ];

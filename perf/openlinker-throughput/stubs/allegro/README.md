@@ -72,8 +72,12 @@ ladder.
   /order/checkout-forms/{id}/shipments` - fire only on a cancellation feed
   event or a dispatch writeback, off the ingestion path this stub exists to
   measure.
-- The returns endpoints - gated behind two scheduler tasks that both default
-  off.
+- The returns endpoints were unserved until #3043 (F17, #3047), which adds
+  `GET /order/customer-returns` (list, `from`-cursor paged) + `GET
+  /order/customer-returns/{id}` (get one), plus a `POST
+  /__stub/tenants/:t/returns` control-surface seed. Their scheduler tasks
+  both still default off on a fresh connection (#2330) - a scenario that
+  wants the poll path running must explicitly enable them.
 - OAuth token exchange (`/auth/oauth/token`) - the token host is hardcoded in
   the real adapter (`allegro-token-refresh.service.ts`) and cannot be
   repointed by `config.apiBaseUrl`. **The workaround is credential shape, not

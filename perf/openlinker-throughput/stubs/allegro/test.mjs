@@ -626,3 +626,76 @@ test('the control surface refuses an unknown mode, a bad endpoint and a bad frac
     'none of the refused rules was installed',
   );
 });
+
+// ---------------------------------------------------------------------------
+// #3043 (F17, #3047) - customer-returns feed
+// ---------------------------------------------------------------------------
+
+test('GET /order/customer-returns starts empty for a fresh run', async () => {
+  await resetRun('t-3043-returns-empty');
+  const { status, body } = await call('GET', '/order/customer-returns?limit=10', { token: TOKEN_A });
+  assert.equal(status, 200);
+  assert.deepEqual(body.customerReturns, []);
+});
+
+test('seeding returns via the control surface surfaces them in the feed and by id - VALID', async () => {
+  await resetRun('t-3043-returns-seed');
+  const seed = await call('POST', `/__stub/tenants/${TENANT_A}/returns`, {
+    token: null,
+    body: { count: 3, itemsPerReturn: 2 },
+  });
+  assert.equal(seed.status, 201);
+  assert.equal(seed.body.minted.length, 3);
+
+  const page = await call('GET', '/order/customer-returns?limit=10', { token: TOKEN_A });
+  assert.equal(page.status, 200);
+  assert.equal(page.body.customerReturns.length, 3);
+  assert.equal(page.body.customerReturns[0].items.length, 2);
+
+  const oneId = seed.body.minted[0];
+  const one = await call('GET', `/order/customer-returns/${oneId}`, { token: TOKEN_A });
+  assert.equal(one.status, 200);
+  assert.equal(one.body.id, oneId);
+});
+
+test('the `from` cursor pages past already-seen returns, not from the start', async () => {
+  await resetRun('t-3043-returns-cursor');
+  const seed = await call('POST', `/__stub/tenants/${TENANT_A}/returns`, {
+    token: null,
+    body: { count: 5 },
+  });
+  const firstPage = await call('GET', '/order/customer-returns?limit=2', { token: TOKEN_A });
+  assert.equal(firstPage.body.customerReturns.length, 2);
+  const lastSeenId = firstPage.body.customerReturns[1].id;
+
+  const secondPage = await call('GET', `/order/customer-returns?limit=2&from=${lastSeenId}`, { token: TOKEN_A });
+  assert.equal(secondPage.body.customerReturns.length, 2);
+  assert.notEqual(secondPage.body.customerReturns[0].id, firstPage.body.customerReturns[0].id);
+  assert.notEqual(secondPage.body.customerReturns[0].id, firstPage.body.customerReturns[1].id);
+  void seed;
+});
+
+test('an unknown `from` cursor answers an empty page, never a replay of full history - DISCARDED', async () => {
+  await resetRun('t-3043-returns-unknown-cursor');
+  await call('POST', `/__stub/tenants/${TENANT_A}/returns`, { token: null, body: { count: 3 } });
+  const page = await call('GET', '/order/customer-returns?limit=10&from=never-seen-id', { token: TOKEN_A });
+  assert.equal(page.status, 200);
+  assert.deepEqual(page.body.customerReturns, []);
+});
+
+test('GET /order/customer-returns/:id for an unknown id answers 404 in Allegro error shape - DISCARDED', async () => {
+  await resetRun('t-3043-returns-404');
+  const { status, body } = await call('GET', '/order/customer-returns/never-created', { token: TOKEN_A });
+  assert.equal(status, 404);
+  assert.equal(body.errors[0].code, 'NotFound');
+});
+
+test('a fault rule scoped to `returns` faults the returns feed and nothing else', async () => {
+  await resetRun('t-3043-returns-fault');
+  await setFault({ mode: '503', endpoints: ['returns'] });
+  const returns = await call('GET', '/order/customer-returns?limit=10', { token: TOKEN_A });
+  assert.equal(returns.status, 503);
+  const events = await call('GET', '/order/events', { token: TOKEN_A });
+  assert.equal(events.status, 200, 'a rule scoped to returns must not fault the unrelated events feed');
+  await clearFault();
+});
