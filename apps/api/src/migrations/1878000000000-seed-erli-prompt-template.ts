@@ -17,9 +17,12 @@
  * Erli's HTML grammar is declared by `ERLI_DESCRIPTION_FORMAT`
  * (`libs/integrations/erli/src/infrastructure/adapters/erli-description-format.ts`):
  * nine tags (`h1`/`h2`/`h3`/`p`/`b`/`br`/`ol`/`ul`/`li`), no attributes, a
- * self-closing `<br/>` requirement, and an 80,000-byte cap — narrower than
- * Allegro's block-formatted subset (no `h1`, `strong`/`em` survive as `b`).
- * The prompt below asks only for that subset so a real completion needs no
+ * self-closing `<br/>` requirement, and an 80,000-byte cap. This is a
+ * SUPERSET of `ALLEGRO_DESCRIPTION_FORMAT`'s seven tags (`h1`/`h2`/`p`/`ul`/
+ * `ol`/`li`/`b`, no `h3`, no `br`) — Erli additionally allows `h3` and a
+ * self-closing `<br/>`, both of which Allegro's validator rejects
+ * (`strong`/`em`/`i` still rewrite to `b` on both platforms). The prompt
+ * below asks only for the Erli-allowed subset so a real completion needs no
  * `applyDescriptionFormat` rewriting to publish cleanly.
  *
  * Data-only seed — no schema change. Idempotent-by-uniqueness: the
