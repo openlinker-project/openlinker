@@ -23,19 +23,34 @@ specifically to surface the orders a figure is *not yet* counting.
 
 ## The date-range toolbar
 
+<!-- screenshot: full analytics page — date-range toolbar with the corrected
+     "No conversion · {code}" default currency option (not "Current rate ·"),
+     KPI strip, channel table, top products table uncropped (no horizontal
+     clipping), Needs attention, Data coverage, and Synchronization panels.
+     Split into two or three captures if one image can't show the products
+     table's rightmost channel columns in full. -->
 ![Analytics page — date-range toolbar, KPI strip, channel table, top products, Needs attention, Data coverage, and Synchronization panels](./images/07-analytics-full-page.png)
 
 - **7d / 30d / 90d** — quick preset ranges, always ending today.
-- **Custom** — reveals **From** / **To** date pickers plus an **Apply** button. Both dates are
-  plain calendar days; the range is inclusive of the whole of the end date.
-- A **400-day limit** applies to every range-scoped read (sales, coverage, needs-attention alike) —
-  a wider request fails with an explicit "Range too wide" error rather than silently truncating.
-- **Order date** (the small pill next to Apply) states which timestamp every figure is bucketed
-  by — an order's own placement date, never its sync or payment date. This matches the metric
-  spec's own rule below.
-- Changing the range re-runs every figure on the page, including the trend sparkline embedded in
-  each KPI card and channel row: a week-long range renders a daily trend, a longer one resamples
-  into up to seven buckets so the shape stays legible without a dense chart.
+- **Custom** sets the toolbar's highlight to Custom and focuses the **From** field — the **From** /
+  **To** date pickers and the **Apply** button are always rendered, not disclosed by picking this
+  option. Both dates are plain calendar days; the range is inclusive of the whole of the end date.
+- A **400-day limit** applies to the sales, channel/product, and Data Coverage reads — every one of
+  them takes the selected range and rejects a wider one with an explicit "Range too wide" error
+  rather than silently truncating. The **Needs attention** panel is different: it takes no date
+  range at all — coverage gaps, stock at risk, and stuck-sync value are reported across the whole
+  install, independent of whatever range you're viewing.
+- **Order date** (the small pill next to Apply) currently opens with a caveat rather than a
+  confirmation: activating it reads *"This range doesn't filter results yet — coming soon."* Take
+  that at face value for now — it's the product's own stated position on the pill, not a claim this
+  guide is making. Separately, and unrelated to that pill: every metric definition below is bucketed
+  by an order's own **placement** date, never its sync or payment date — see the two rules under
+  [KPI strip metric definitions](#kpi-strip-metric-definitions).
+- Changing the range re-runs the KPI strip, the channel/product tables, and the Data Coverage panel
+  — all of which take the selected range, including the trend sparkline embedded in each KPI card
+  and channel row: a week-long range renders a daily trend, a longer one resamples into up to seven
+  buckets so the shape stays legible without a dense chart. The Needs Attention panel does **not**
+  change with the range, per the note above.
 
 ---
 
@@ -45,9 +60,12 @@ The **display currency** picker sits at the top-right of the toolbar. It is a **
 preference — it changes what you see, never what is stored — and lives in the URL
 (`?displayCurrency=`), so a link you copy while viewing EUR opens the same way for the next person.
 
-- The default option is **"Current rate · {reporting currency}"** — the deployment-wide reporting
-  currency an admin configured in Settings (or the `EUR` fallback default), shown with no
-  conversion.
+- The default option reads **"No conversion · {reporting currency}"** — the deployment-wide
+  reporting currency an admin configured in Settings (or the `EUR` fallback default), shown exactly
+  as stamped, with no conversion applied. It deliberately does **not** say "Current rate" — that
+  phrase names a *rate-basis mode* used only when a conversion is actually happening (see below), and
+  reusing it for the option that performs no conversion at all would put one phrase on two different
+  axes.
 - Every other option reads **"Convert to {code}"**: the dashboard's native figures are converted on
   the fly.
 - Two **rate-basis** modes govern *how* a conversion is done, chosen in the Analytics Settings
@@ -71,8 +89,10 @@ a total that would then mix currencies invisibly.
 
 ## The Net / Gross toggle
 
-Directly below the display-currency picker sits a small **Gross | Net** segmented control — the
-page-wide VAT basis every figure is read in.
+Directly below the display-currency picker sits a small **Gross | Net** segmented control — a
+VAT-basis toggle for the figures that actually have two versions of themselves: the **Revenue** and
+**Order value** cards. Units Sold/Units per Order, the Cancellations card, and every trend sparkline
+are unaffected by this toggle — there is only one version of a unit count or a cancellation rate.
 
 - **Gross** (the default) — VAT-inclusive figures: GMV, gross AOV, gross Median.
 - **Net** — VAT-exclusive figures: Net Sales substitutes for GMV, and AOV/Median switch to their
@@ -89,11 +109,12 @@ in Analytics Settings.
 | | Gross | Net |
 |---|---|---|
 | Headline figure | GMV: **PLN 28,454.10** | Net Sales: **PLN 26,270.58** |
-| Average Order Value | PLN 261.05 | (net value field) |
-| Median Order Value | PLN 24.59 | (net value field) |
 
 The gap between the two headline figures is exactly the VAT the gross figure includes and the net
-one excludes — plus, for Net Sales specifically, the value of any returns in the same period. See
+one excludes — plus, for Net Sales specifically, the value of any returns in the same period. The
+**Order value** card's Average and Median follow the same rule: on Gross they read the order's
+VAT-inclusive value field, on Net they read its net-of-VAT value field, over the identical set of
+orders and the identical date cohort either way. See
 [KPI strip metric definitions](#kpi-strip-metric-definitions) below for the precise formulas.
 
 An order whose line items carry no resolvable tax rate is **excluded** from every net figure
@@ -113,7 +134,7 @@ Two rules apply to every metric on this page:
 - All amounts are converted to a single currency at the exchange rate from the day preceding the
   order.
 - An order is assigned to a period based on the **order placement date** (not the payment or
-  shipment date) — this is what the toolbar's "Order date" pill states.
+  shipment date).
 
 | Card | Metric | Definition |
 |---|---|---|
@@ -128,9 +149,39 @@ Two rules apply to every metric on this page:
 | **Cancellations** (rate) | Cancellation Rate | "the share of orders placed in the analyzed period (by placement date) that were cancelled — regardless of when the cancellation itself occurred." |
 | **Cancellations** (value) | Cancellations Value | "the total net value of orders **placed in the analyzed period** (by placement date) that were cancelled before shipment – revenue that was 'in the basket' but did not proceed to fulfillment." |
 
+**The on-screen card label isn't always the metric name above it.** The spec keeps one dedicated
+mapping table for exactly this ("the mapping is deliberate; neither side is a typo"):
+
+| Label on the card | Metric in this file |
+|---|---|
+| Refunded value | Returns Value |
+| Cancelled value | Cancellations Value |
+| Units per order | Units per Order |
+
+Two more labels diverge in the same way without (yet) being in that table: the **Orders** card's
+headline reads **"Placed orders"**, not "Number of Orders"; and the **Cancellations** card renders
+a *third* figure this table doesn't otherwise cover — a **"Cancelled orders"** qualifier next to
+"Cancelled value", the raw count of cancelled orders in the period (Cancellation Rate's numerator).
+
 A **Returns & refunds** card is visible on the page carrying a **Planned** badge — the Return Rate
 and Returns Value metrics are defined in the spec but not yet computed by this build; the card is a
 placeholder rather than a metric silently omitted.
+
+**Two things the spec states about its own shipped implementation, worth knowing before a figure
+looks wrong:**
+
+> **GMV is computed *after* discounts, contrary to its own definition above.** `order_line_items`
+> carries no pre-discount price column — the write path denormalizes the line's actual (post-discount)
+> unit price and nothing else. GMV as shipped is therefore identical in basis to Net Sales' value
+> field except for VAT.
+
+> **AOV and Median operate on a narrower cohort than the Number of Orders card.** AOV/Median only
+> include orders that are `stamped ∧ ¬cancelled`; the Number of Orders card renders the full placed
+> cohort, including orders not yet FX-stamped. An unstamped order carries a known count but an
+> **unknown** amount, so admitting it to AOV's denominator would divide a partial numerator by a
+> full denominator. This is disclosed on the card itself — the same gap mark that flags an
+> unstamped order elsewhere renders on the Order value card whenever any order in range is
+> unstamped.
 
 **Partially cancelled orders**: an order where some but not all line items were cancelled is *not*
 a cancelled order. It still counts once in Number of Orders, and its surviving lines count normally
@@ -140,7 +191,8 @@ the same cohort; a partially-cancelled line's value is reported nowhere else on 
 
 A small **dagger (†)** next to a figure or caption marks a value that a currently-open Data Coverage
 category is holding back from being fully counted — hover it for the reason, or click it where it's
-rendered as a button to jump straight to that category's detail modal.
+rendered as a button to jump straight to that category's detail modal. The channel table's
+**"Awaiting FX stamp"** badge on a connection row is the same signal at channel grain.
 
 ---
 
@@ -152,7 +204,9 @@ badge for a channel whose earliest ingested order is later than the range you're
 statement about *data availability*, not about that channel's real performance.
 
 The **Top products** table (toggle between **By Net Sales** and **By Units**) ranks products across
-every connected channel, with a per-channel breakdown per row and a live stock column.
+every connected channel: Product, SKU, GMV/Net sales, Units, then one column per connected channel.
+There's no stock column at this level — expand a row for its per-variant detail, which does carry a
+stock status badge alongside each channel's listing status.
 
 **Exclusion annotations**: a row whose own figures are under-counted by a currently-open Data
 Coverage category (see below) carries one small pill per affected category — for example *"3 orders
@@ -162,15 +216,23 @@ as complete. A row can carry more than one such pill if it's affected by more th
 once (for example some orders unstamped for currency *and* others missing a tax rate) — each gets
 its own pill rather than a single ambiguous note.
 
-A caption below both tables states plainly when some orders "on this page could not be resolved to
-a catalogue entry" — the product-matching coverage category, covered next.
+A caption below the products table states plainly when some products on that page "could not be
+resolved to a catalogue entry" — the product-matching coverage category, covered next. Note the
+units differ: this caption counts **products**, while the Data Coverage category itself counts
+**orders** affected by a product-matching error — a product with one bad match can appear on many
+orders.
 
 ---
 
 ## Needs attention and the sync/ingestion trust header
 
-At the top of the page, a **per-connection Synchronization panel** reports, for each connection:
-which date its data covers from, when it last synced, and a status badge:
+A **stalled** or **disconnected** connection surfaces a banner directly above the KPI strip
+(*"{connection} has not been polled since {date}. This is an ingestion gap, not a drop in sales."*)
+— stated explicitly so a real sales drop and a broken poll are never mistaken for each other.
+
+Further down the page — after the channel and product tables, below everything order-derived — a
+**per-connection Synchronization panel** reports, for each connection: which date its data covers
+from, when it last synced, and a status badge:
 
 | Badge | Meaning |
 |---|---|
@@ -180,16 +242,21 @@ which date its data covers from, when it last synced, and a status badge:
 | **Never ingested** | No order has ever been ingested through this connection. |
 | **Unknown** | The trust check itself failed to resolve — a degraded read, not a claim about your data. |
 
-A **stalled** or **disconnected** connection also surfaces a banner directly above the KPI strip
-(*"{connection} has not been polled since {date}. This is an ingestion gap, not a drop in sales."*)
-— stated explicitly so a real sales drop and a broken poll are never mistaken for each other.
+The **Needs attention** panel sits directly below the Synchronization panel and lists operational
+gaps that don't fit the Data Coverage categories below — **three** categories, each with its own
+remediation action:
 
-The **Needs attention** panel lists operational gaps that don't fit the Data Coverage categories
-below — today, products listed on one channel but not yet published on another, and orders that
-never reached one of their configured destinations. Each row carries a direct remediation action
-(**Publish now**, **Review orders**). When nothing is outstanding, the panel collapses to a single
-green **"Nothing needs attention"** line rather than an empty list — an empty array is never treated
-as a positive claim elsewhere on this page; only this explicit resolved state is.
+| Category | Remediation action |
+|---|---|
+| Coverage gaps — products listed on one channel but not yet published on another | **Publish now** |
+| Stock at risk | **Review stock** |
+| Orders stuck in a failed destination sync | **Review orders** |
+
+When nothing is outstanding, the panel collapses to a single green **"Nothing needs attention"**
+line rather than an empty list, still naming all three checks (*"3 checks · coverage, stock,
+destination syncs"*) — an empty array is never treated as a positive claim elsewhere on this page;
+only this explicit resolved state is. A **"checked {time}"** stamp next to the panel title always
+shows when the underlying read last completed, whether or not anything is outstanding.
 
 ---
 
@@ -197,14 +264,29 @@ as a positive claim elsewhere on this page; only this explicit resolved state is
 
 The **Data coverage** panel is the page's honesty mechanism: rather than silently including or
 excluding an order a figure can't fully account for, each of five categories reports exactly how
-many orders are affected and offers a real remediation action.
+many orders are affected — three of the five (currency, category A, category C) offer a real
+remediation action; the other two (category B, product-matching) are browse-only, for a reason
+that's OpenLinker's own admission rather than a limitation of this panel: there's nothing here for
+OpenLinker to fix (see each category below).
 
+<!-- screenshot: Data coverage panel with three open categories — outdated
+     currency, no tax rate at all, and a product-matching error, each with
+     its own remediation button. Current shipped copy for the row actions is
+     "Recalculate now" / "View products" / "View orders" (not
+     "Recalculate all N now", which is the modal footer's own label). -->
 ![Data coverage panel with three open categories — outdated currency, no tax rate at all, and a product-matching error, each with its own remediation button](./images/07-analytics-data-coverage.png)
 
-Each open row states its own affected count and offers a real action — **Recalculate now**,
-**View products**, **View orders** — rather than a vague warning. When every category is clear, the
-panel instead renders one line: **"All clear"** with a checked timestamp — never an absence, always
-a stated, timestamped fact.
+Each open row is itself a button — clicking anywhere on it (not just the labelled action text)
+opens that category's detail modal, one row per affected order, paginated, each linking straight to
+the order it names. The row's own label previews what you'll find there: **Recalculate now**,
+**Include anyway**, **View products**, **View orders**. Currency, category A, and category C carry
+a further *write* action inside the modal's own footer once you're looking at the real total
+(covered under each category below); category B and product-matching are browse-only — there's
+nothing to click beyond reviewing the list and following an order link. When every category is
+clear, the panel instead renders one line: **"Nothing to do"**, with a subline naming all five
+checks (*"5 checks · currency, tax rates, product matching"*) — no timestamp is shown here (that's
+the Needs Attention panel's signature, above). Still never a bare absence: the sub-line is what
+makes "nothing to do" a stated fact rather than an empty list.
 
 ### Currency mismatch
 
@@ -213,7 +295,7 @@ An order whose reporting-currency stamp doesn't match the deployment's *current*
 
 | State | What it looks like |
 |---|---|
-| **Open** | The row states the affected count and offers **Recalculate all N now**. |
+| **Open** | The row is labelled **Recalculate now** and, once opened, its detail modal offers **Recalculate all N now** in the modal's own footer — same action, restated with the real total once you're looking at the affected orders. |
 | **In progress** | A live, polling badge on the row; a **Cancel stuck run** action appears if the run stalls. |
 | **Fixed** | The row briefly shows **Fixed** before disappearing from the open list, and a dismissible green banner confirms the restatement. |
 | **Failed** | The row reports the failure plainly rather than silently retrying — an operator decides whether to retry. |
@@ -225,30 +307,38 @@ undone from this screen.
 ### Tax rate — category A (unconfirmed, found in the catalog)
 
 An order whose line items have no tax rate stamped on them at ingestion time, but for which a rate
-has since been found retroactively in the product catalog. This category is an **opt-in**: nothing
-is silently included until an operator turns on **"Use the rate found in the product catalog"** in
-Analytics Settings, and turning it off again removes those orders from Net Sales the very next time
-figures are read — the setting is a live filter, not a one-time backfill.
+has since been found retroactively in the product catalog. The row is labelled **Include anyway**;
+opening its detail modal (the same orders-list dialog category B and C share) reveals the real
+action in the modal's own footer, **"Turn on this setting ›"** — which closes the modal and opens
+the Analytics Settings dialog's tax-rates section rather than flipping the setting from here
+directly. This category is an **opt-in**: nothing is silently included until an operator turns on
+**"Use the rate found in the product catalog"** in Analytics Settings, and turning it off again
+removes those orders from Net Sales the very next time figures are read — the setting is a live
+filter, not a one-time backfill.
 
 ### Tax rate — category B (no rate at the source)
 
 An order whose line items report no tax rate at all, and none can be found — the gap is at the
 source (the master catalog or the platform itself), not something OpenLinker can resolve on its
-own. This category is purely informational; there is no action to take from this panel.
+own. The row is labelled **View products**, but its detail modal lists the same shape of orders
+category A and C do (not a product list) and carries **no footer action** — there's nothing to
+write here; the modal is for reviewing which orders are affected and following an order's link to
+fix the tax rate at the source.
 
 ### Tax rate — category C (product added after launch, rate unresolved)
 
 An order for a product added to the catalog after the tax-rate feature's own rollout, whose rate
-has not yet been resolved by the ordinary catalog sync. **"Sync the catalog for these N now"**
-triggers the existing catalog-rate resolution early, scoped to the orders on the currently open
-page — stated in the button's own label rather than implied.
+has not yet been resolved by the ordinary catalog sync. The row is labelled **View orders**;
+opening its detail modal exposes **"Sync the catalog for these N now"** in the modal's own footer,
+which triggers the existing catalog-rate resolution early, scoped to the orders on the currently
+open page — stated in the button's own label rather than implied.
 
 ### Product-matching errors
 
 An order whose line item(s) couldn't be resolved to a catalog entry at all — the products table's
 own "could not be resolved" caption traces back to this category. Its detail modal opens exactly
 like the other categories' — one row per affected order, paginated, each linking straight to the
-order it names.
+order it names — and, like category B, carries no footer write action.
 
 ---
 
@@ -265,7 +355,10 @@ Open **Analytics settings** (top-right of the page) for the full dialog:
   `?netGrossBasis=` URL override is present. Saved immediately on click; this is the save-as-default
   counterpart to the toolbar toggle above it, not a duplicate control.
 - **Currency — recalculation** — the same action as the Data Coverage panel's currency row, offered
-  here too, with the same permanent-write warning.
+  here too, with the same permanent-write warning. The section also shows a disabled checkbox for
+  **"Automatically recalculate outstanding orders when the reporting currency changes"**, labelled
+  **"Not available yet"** — a control the dialog shows deliberately disabled rather than omitted, so
+  an operator knows the capability is planned rather than missing by oversight.
 - **Tax rates** — the category-A opt-in toggle (**"Use the rate found in the product catalog"**),
   plus a live one-line summary of how many orders sit in each of the three tax categories.
 

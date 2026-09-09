@@ -171,6 +171,10 @@ If no orders have been processed yet, the page shows "No customer projections ha
 
 ## What's next
 
+→ **[Analytics](./07-analytics.md)** — the revenue dashboard built on top of the orders you've just
+seen: KPI definitions, channel/product breakdowns, and the Data Coverage panel that explains why a
+figure might not match a raw export.
+
 When something isn't working as expected, the Diagnostics surfaces help you investigate:
 
 → **[Diagnostics](./08-diagnostics.md)** — Jobs & Logs, Webhooks, Cursors
