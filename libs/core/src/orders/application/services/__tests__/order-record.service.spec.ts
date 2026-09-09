@@ -25,6 +25,7 @@ import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
+  ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
 } from '../../../orders.tokens';
 
 describe('OrderRecordService', () => {
@@ -130,6 +131,10 @@ describe('OrderRecordService', () => {
         {
           provide: REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN,
           useValue: reportingCurrencySettings,
+        },
+        {
+          provide: ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
+          useValue: cancellationSignalRepository,
         },
       ],
     }).compile();
