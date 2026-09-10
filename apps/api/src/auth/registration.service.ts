@@ -81,9 +81,14 @@ export class RegistrationService implements IRegistrationService {
     ]);
 
     if (existingByUsername) {
+      // The exception's client-facing message is deliberately generic
+      // (#3156) — log which field collided here, server-side only, for
+      // operator debuggability.
+      this.logger.warn(`Registration rejected: username already taken (${username})`);
       throw new UserAlreadyExistsException(username);
     }
     if (existingByEmail) {
+      this.logger.warn(`Registration rejected: email already taken (${email})`);
       throw new UserAlreadyExistsException(email);
     }
 
