@@ -78,9 +78,13 @@ describe('AnalyticsDateRangeToolbar', () => {
     const user = userEvent.setup();
     render(<AnalyticsDateRangeToolbar from="2026-07-16" to="2026-08-14" onApply={vi.fn()} />);
 
-    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/needs attention/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Order date\. /i }));
 
-    expect(screen.getByText(/coming soon/i)).toBeInTheDocument();
+    // #3032: the caveat now names the one section the range doesn't reach
+    // ("Needs attention" — coverage gaps / stock at risk / failed-sync
+    // value, which takes no date param) rather than claiming nothing is
+    // filtered.
+    expect(screen.getByText(/needs attention/i)).toBeInTheDocument();
   });
 });

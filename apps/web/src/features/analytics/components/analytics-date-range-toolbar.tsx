@@ -32,11 +32,16 @@ const PRESET_OPTIONS: readonly { value: DateRangeHighlight; label: string }[] = 
   { value: 'custom', label: 'Custom' },
 ];
 
-// Operator-facing: no schema jargon (no "placedAt", no "column"). The
-// underlying reason is that `placedAt` isn't yet a filterable read-model
-// column — tracked for #1990 — but that's a developer fact, not one an
-// operator can act on, so it stays out of the rendered copy/aria-label.
-const ORDER_DATE_CAVEAT = "This range doesn't filter results yet — coming soon";
+// Operator-facing: no schema jargon (no "placedAt", no "column"). #3032
+// found the previous copy stale — `from`/`to` are applied end to end for the
+// KPI strip, channel/product tables and trend (`getSalesAndChannelAnalytics`
+// -> `getDailyOrderAggregates`, grouped by `placedAt`) — but it also found a
+// real, still-open gap: `GET /analytics/needs-attention` (the section below,
+// coverage gaps / stock at risk / failed-sync value) takes no date param at
+// all and always reports the current snapshot. The caveat now names that
+// gap instead of claiming nothing is filtered.
+const ORDER_DATE_CAVEAT =
+  'Filters revenue, orders, and the tables above. "Needs attention" below always shows current status, not this range.';
 
 export function AnalyticsDateRangeToolbar({
   from,
