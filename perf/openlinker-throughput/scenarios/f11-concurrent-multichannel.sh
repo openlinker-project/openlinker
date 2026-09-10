@@ -303,7 +303,32 @@ f11_ensure_source_connection() {
   existing="$(ol_api GET "/v1/connections" | jq -r --arg n "$name" \
     'if type=="array" then . else (.items // []) end | map(select(.name==$n)) | .[0].id // empty')"
   if [ -n "$existing" ]; then
-    log "found connection '$name' ($existing)" >&2
+    # An EXISTING connection is almost always a DISABLED one, because this
+    # scenario's own teardown disables it - the API exposes no DELETE, so
+    # disabling is the closest available "leave it as I found it". Returning
+    # the id without re-enabling made arm 2 unrunnable on any stand F11 had
+    # already visited: every `marketplace.orders.poll` the arm enqueues is
+    # refused, and the run is discarded on a guard that names the symptom
+    # rather than the cause (#2840, 2026-09-10 - `post_guard_attempts` with 10
+    # burnt attempts before the deferral fix, `post_guard_deferrals` with 30
+    # deferred jobs after it; one self-poisoning, two different reports).
+    #
+    # Checked and repaired rather than assumed either way: the status is read
+    # first so an already-active connection is not needlessly written, and the
+    # enable is loud, because measuring an arm against a connection that
+    # cannot answer is the failure this whole campaign exists to catch.
+    local existing_status
+    existing_status="$(connection_json "$existing" | jq -r '.status // empty')"
+    log "found connection '$name' ($existing, status=${existing_status:-unknown})" >&2
+    if [ "$existing_status" != "active" ]; then
+      CONNECTIONS_TOUCHED=1
+      # `PATCH /:id` with an explicit status, NOT `/:id/enable` - the API is
+      # asymmetric here and there is no enable route (verified against
+      # connection.controller.ts, which declares `@Patch(':id/disable')` and no
+      # counterpart). `UpdateConnectionDto.status` is the supported way back.
+      ol_api PATCH "/v1/connections/$existing" '{"status":"active"}' >/dev/null
+      log "re-enabled '$name' ($existing) - it was '${existing_status:-unknown}', left that way by an earlier run's teardown" >&2
+    fi
     printf '%s' "$existing"
     return 0
   fi
