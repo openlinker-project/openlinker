@@ -477,6 +477,7 @@ export function AnalyticsSettingsDialog({
         onConfirm={handleConfirmTaxInclude}
         overlayClassName="dialog__overlay--elevated"
         className="dialog__content--elevated"
+        initialFocus="cancel"
       />
     </Dialog>
   );
