@@ -22,6 +22,7 @@ import type { LoggerPort } from '@openlinker/shared/logging';
 import {
   BuyerProfile,
   CURRENCY_REJECTION_MARKERS,
+  SALE_CLASSIFICATION_REJECTION_MARKERS,
   FractionalTaxRateNotationError,
   MissingTaxRateException,
   InvoiceRecord,
@@ -1884,6 +1885,76 @@ describe('InfaktInvoicingAdapter', () => {
       const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
       expect(invoiceCall?.body).toMatchObject({
         invoice: expect.objectContaining({ sale_type: 'service' }),
+      });
+    });
+
+    // #3031: detect Infakt's `errors.sale_type` 422 shape and surface a
+    // specific, actionable hint instead of the generic provider-rejected
+    // failure — for the connection that never configured `defaultSaleType`
+    // and whose buyer requires the field (the exact opaque-422 case #2177
+    // originally reported).
+    describe('missing-sale_type 422 detection (#3031)', () => {
+      it('should re-throw with a reason core routes to sale-classification-required for the errors.sale_type shape', async () => {
+        seedIssueFixtures();
+        // Live-verified body shape (#2177): a Rails-style field-level
+        // validation error, not the async task's {processing_code, ...}
+        // envelope — this shape is only reachable on the direct
+        // `invoices.json` POST issueInvoice makes.
+        http.seedError(
+          'POST',
+          'invoices.json',
+          new InfaktApiError('Infakt API POST invoices.json failed with status 422', 422, {
+            errors: { sale_type: ['Proszę określić rodzaj sprzedaży.'] },
+          }),
+        );
+
+        const error = await adapter
+          .issueInvoice(nonPlInvoiceCmd)
+          .then(() => null)
+          .catch((e: unknown) => e as InfaktApiError);
+
+        expect(error).toBeInstanceOf(InfaktApiError);
+        expect(error).toMatchObject({ statusCode: 422, failureMode: 'rejected' });
+        // Asserted against the published marker list rather than a copied
+        // string (the #2103 `invalid-currency` precedent) — a reword on
+        // either side breaks the build instead of silently losing the
+        // routing to the specific failure code.
+        const haystack = (error?.reason ?? '').toLowerCase();
+        expect(
+          SALE_CLASSIFICATION_REJECTION_MARKERS.some((marker: string) =>
+            haystack.includes(marker),
+          ),
+        ).toBe(true);
+      });
+
+      it('should propagate an unrelated 422 unchanged (no reason stamped)', async () => {
+        seedIssueFixtures();
+        const original = new InfaktApiError(
+          'Infakt API POST invoices.json failed with status 422',
+          422,
+          { errors: { client_id: ['jest wymagane'] } },
+        );
+        http.seedError('POST', 'invoices.json', original);
+
+        const error = await adapter
+          .issueInvoice(nonPlInvoiceCmd)
+          .then(() => null)
+          .catch((e: unknown) => e as InfaktApiError);
+
+        expect(error).toBe(original);
+        expect(error?.reason).toBeUndefined();
+      });
+
+      it('should propagate a 422 with a non-object body unchanged (defensive)', async () => {
+        seedIssueFixtures();
+        const original = new InfaktApiError(
+          'Infakt API POST invoices.json returned non-JSON (422)',
+          422,
+          'not json',
+        );
+        http.seedError('POST', 'invoices.json', original);
+
+        await expect(adapter.issueInvoice(nonPlInvoiceCmd)).rejects.toBe(original);
       });
     });
 

@@ -146,6 +146,46 @@ function toInfaktCurrency(currency: string | null | undefined, context: string):
 }
 
 /**
+ * The `reason` this adapter stamps on the re-thrown `InfaktApiError` when it
+ * recognises the `errors.sale_type` 422 shape (#3031). Matches one of core's
+ * published `SALE_CLASSIFICATION_REJECTION_MARKERS`
+ * (`@openlinker/core/invoicing`) by construction — spec-asserted below, so a
+ * reword on either side breaks the build rather than silently losing the
+ * routing to the specific `sale-classification-required` failure code.
+ */
+const SALE_TYPE_HINT_REASON =
+  'Infakt requires a sale classification to be configured for this connection';
+
+/**
+ * Detects Infakt's field-level validation shape for a missing/required
+ * `sale_type` on `POST invoices.json` — `{"errors":{"sale_type":[...]}}`,
+ * live-verified against the sandbox for a non-PL buyer with no
+ * `defaultSaleType` configured (#3031, #2177 review).
+ *
+ * Structural only: checks that `errors.sale_type` is PRESENT, never the array
+ * contents (Infakt's message text is Polish and locale-dependent, so matching
+ * on it would silently stop working under a locale change) and never the
+ * emptiness of the array (a present-but-empty array would still be Infakt
+ * naming the field as the cause). Any other 422 shape — a different field, a
+ * non-object body, no `errors` key — reports `false` so it keeps propagating
+ * as the generic provider rejection it is.
+ */
+function isMissingSaleTypeRejection(error: unknown): error is InfaktApiError {
+  if (!(error instanceof InfaktApiError) || error.statusCode !== 422) {
+    return false;
+  }
+  const body = error.responseBody;
+  if (typeof body !== 'object' || body === null) {
+    return false;
+  }
+  const errors = (body as { errors?: unknown }).errors;
+  if (typeof errors !== 'object' || errors === null) {
+    return false;
+  }
+  return 'sale_type' in errors;
+}
+
+/**
  * Maps Infakt ksef_data.status → neutral RegulatoryStatus.
  *
  * `success` is the TERMINAL accepted state — it must map to `accepted`, not
@@ -625,9 +665,10 @@ export class InfaktInvoicingAdapter
     };
 
     // InfaktApiError carries the neutral `failureMode` discriminator core's
-    // InvoiceService reads structurally (#1200) — propagate as-is rather
-    // than wrapping into a plain Error, which would erase that signal.
-    const invoice = await this.http.post<InfaktInvoice>('invoices.json', payload);
+    // InvoiceService reads structurally (#1200) — propagate as-is, EXCEPT for
+    // the specific `errors.sale_type` 422 shape (#3031), which is re-thrown
+    // with a `reason` core can route to a more actionable failure code.
+    const invoice = await this.postInvoiceWithSaleTypeHint(payload);
 
     this.logger.log(`Infakt invoice created: ${invoice.uuid} (${invoice.number ?? 'draft'})`);
 
@@ -685,6 +726,43 @@ export class InfaktInvoicingAdapter
     // leave the record disagreeing with the document by a grosz here and there,
     // with no way for a reader to tell which is right.
     return { record, documentLines: toDocumentLineAmounts(invoice.services) };
+  }
+
+  /**
+   * Wraps the `invoices.json` create call to detect Infakt's field-level
+   * validation shape for a missing `sale_type` (#3031) —
+   * `{"errors":{"sale_type":["Proszę określić rodzaj sprzedaży."]}}`, live-
+   * verified against the sandbox for a non-PL buyer with no `defaultSaleType`
+   * configured — and re-throw with a `reason` core's `InvoiceService` can
+   * route to the specific `sale-classification-required` failure code instead
+   * of the generic `provider-rejected` (#2177 review).
+   *
+   * Only the DIRECT `invoices.json` POST goes through this: a correction's
+   * failure surfaces through `awaitCorrectionTask`'s async-task envelope
+   * (`{processing_code, processing_description}`, live-verified #1763), which
+   * carries no field-level `errors` object at all — there is no
+   * `errors.sale_type` shape for a correction to be detected against.
+   *
+   * `isMissingSaleTypeRejection` reads only the STRUCTURE of the parsed body
+   * (key presence), never its text — the Polish message it carries is not
+   * matched against, since a locale change would silently stop the detection.
+   */
+  private async postInvoiceWithSaleTypeHint(
+    payload: InfaktInvoiceRequest,
+  ): Promise<InfaktInvoice> {
+    try {
+      return await this.http.post<InfaktInvoice>('invoices.json', payload);
+    } catch (err) {
+      if (isMissingSaleTypeRejection(err)) {
+        throw new InfaktApiError(
+          err.message,
+          err.statusCode,
+          err.responseBody,
+          SALE_TYPE_HINT_REASON,
+        );
+      }
+      throw err;
+    }
   }
 
   async getInvoice(query: GetInvoiceQuery): Promise<InvoiceRecord | null> {
