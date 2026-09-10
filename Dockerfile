@@ -38,8 +38,10 @@ COPY libs/integrations/fx/package.json ./libs/integrations/fx/
 COPY libs/integrations/infakt/package.json ./libs/integrations/infakt/
 COPY libs/integrations/invoicing-stub/package.json ./libs/integrations/invoicing-stub/
 COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
+COPY libs/integrations/invoicing-stub/package.json ./libs/integrations/invoicing-stub/
 COPY libs/integrations/ksef/package.json ./libs/integrations/ksef/
 COPY libs/integrations/prestashop/package.json ./libs/integrations/prestashop/
+COPY libs/integrations/shipping-stub/package.json ./libs/integrations/shipping-stub/
 COPY libs/integrations/subiekt/package.json ./libs/integrations/subiekt/
 COPY libs/integrations/woocommerce/package.json ./libs/integrations/woocommerce/
 COPY apps/worker/package.json ./apps/worker/
@@ -107,8 +109,10 @@ COPY libs/integrations/fx/package.json ./libs/integrations/fx/
 COPY libs/integrations/infakt/package.json ./libs/integrations/infakt/
 COPY libs/integrations/invoicing-stub/package.json ./libs/integrations/invoicing-stub/
 COPY libs/integrations/inpost/package.json ./libs/integrations/inpost/
+COPY libs/integrations/invoicing-stub/package.json ./libs/integrations/invoicing-stub/
 COPY libs/integrations/ksef/package.json ./libs/integrations/ksef/
 COPY libs/integrations/prestashop/package.json ./libs/integrations/prestashop/
+COPY libs/integrations/shipping-stub/package.json ./libs/integrations/shipping-stub/
 COPY libs/integrations/subiekt/package.json ./libs/integrations/subiekt/
 COPY libs/integrations/woocommerce/package.json ./libs/integrations/woocommerce/
 COPY apps/worker/package.json ./apps/worker/
@@ -144,8 +148,10 @@ COPY --from=base --chown=node:node /app/libs/integrations/fx/dist ./libs/integra
 COPY --from=base --chown=node:node /app/libs/integrations/infakt/dist ./libs/integrations/infakt/dist
 COPY --from=base --chown=node:node /app/libs/integrations/invoicing-stub/dist ./libs/integrations/invoicing-stub/dist
 COPY --from=base --chown=node:node /app/libs/integrations/inpost/dist ./libs/integrations/inpost/dist
+COPY --from=base --chown=node:node /app/libs/integrations/invoicing-stub/dist ./libs/integrations/invoicing-stub/dist
 COPY --from=base --chown=node:node /app/libs/integrations/ksef/dist ./libs/integrations/ksef/dist
 COPY --from=base --chown=node:node /app/libs/integrations/prestashop/dist ./libs/integrations/prestashop/dist
+COPY --from=base --chown=node:node /app/libs/integrations/shipping-stub/dist ./libs/integrations/shipping-stub/dist
 COPY --from=base --chown=node:node /app/libs/integrations/subiekt/dist ./libs/integrations/subiekt/dist
 COPY --from=base --chown=node:node /app/libs/integrations/woocommerce/dist ./libs/integrations/woocommerce/dist
 COPY --from=base --chown=node:node /app/node_modules ./node_modules

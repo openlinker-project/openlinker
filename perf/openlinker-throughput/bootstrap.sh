@@ -40,7 +40,15 @@ LIB_LOG_PREFIX="bootstrap"
 source "$SCRIPT_DIR/lib.sh"
 
 # Internal hostnames as seen from the api/worker containers on the compose network.
-PS_INTERNAL_URL="${PS_INTERNAL_URL:-http://prestashop}"
+# PS_INTERNAL_URL uses the DOTTED `prestashop.lab` alias (#3046), not the bare
+# `prestashop` service name - WordPress's wp_http_validate_url() refuses to
+# fetch a remote image (or any URL) from a dot-less host, so a shop-publish
+# scenario attaching a PrestaShop-hosted image to a WooCommerce product would
+# fail every item with woocommerce_product_image_upload_error against the
+# bare name. The bare name still resolves (docker-compose.lab.yml's alias is
+# additive), so an operator overriding this var to the old value loses only
+# the image-attach path, not connectivity.
+PS_INTERNAL_URL="${PS_INTERNAL_URL:-http://prestashop.lab}"
 WC_INTERNAL_URL="${WC_INTERNAL_URL:-https://wc-tls}"
 ALLEGRO_STUB_URL="${ALLEGRO_STUB_URL:-http://allegro-stub:8080}"
 
@@ -116,6 +124,26 @@ GAPS=()       # things missing that --verify-only reports
 found()   { FOUND+=("$1");   log "FOUND   $1"; }
 created() { CREATED+=("$1"); log "CREATED $1"; printf '%s\n' "$1" >> "$UNDO_FILE"; }
 gap()     { GAPS+=("$1");    warn "MISSING $1"; }
+
+# #3043 - the post-bootstrap capability assertion (see step_capability_assertion
+# below). Three parallel indexed arrays rather than an associative one: a
+# connection NAME is not a safe bash identifier/key in every bash this script
+# might run under, and indexed arrays sidestep that entirely.
+CAP_CHECK_NAMES=()
+CAP_CHECK_IDS=()
+CAP_CHECK_WANT=()   # comma-separated, matching the create/patch payload
+
+# Called right after every `ol_ensure_connection` / capability PATCH below so
+# the assertion step never has to re-derive "what was requested" - it reads
+# it back from what THIS run actually asked for, not from a second copy of
+# the same list.
+record_expected_caps() {
+  local name="$1" id="$2" want_csv="$3"
+  [ -n "$id" ] || return 0  # --dry-run / --verify-only mint no id to check
+  CAP_CHECK_NAMES+=("$name")
+  CAP_CHECK_IDS+=("$id")
+  CAP_CHECK_WANT+=("$want_csv")
+}
 
 would() {
   if [ "$DRY_RUN" = 1 ]; then log "DRY-RUN would: $*"; return 0; fi
@@ -318,6 +346,41 @@ step_tax_group() {
 # cleartext allows OAuth 1.0a only - query-string and Basic both require
 # is_ssl() - which is why the stand fronts it with the wc-tls proxy (#2854).
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Step 3b - lab-only WordPress mu-plugins (#2854, #3046).
+#
+# NOT bind-mounted (docker-compose.lab.yml's own comment on the woocommerce
+# service explains why: bind-mounting under wp-content/ before the Bitnami
+# entrypoint's first boot makes it take the "restore" branch against an
+# empty volume and fail with "wp-config.php not found", verified live) - so
+# they are docker-cp'd in after the container is healthy instead. Idempotent:
+# a re-run just overwrites the same file with itself.
+#
+#   force-https.php             - makes WP's is_ssl() true behind the wc-tls
+#                                  TLS-terminating proxy (#2854).
+#   allow-internal-image-fetch.php - disables wp_http_validate_url()'s
+#                                  private-IP block (#3046) so the shop-
+#                                  publish image-upload path can fetch a
+#                                  product image from a Docker-internal host.
+# ---------------------------------------------------------------------------
+step_woocommerce_mu_plugins() {
+  log "--- WooCommerce mu-plugins ---"
+  local src_dir="$SCRIPT_DIR/stand/wc-mu-plugins" f name
+  [ -d "$src_dir" ] || { warn "no $src_dir - skipping mu-plugin sync"; return 0; }
+  if [ "$VERIFY_ONLY" = 1 ]; then
+    gap "mu-plugin sync only verified by re-running (docker cp has no dry-run probe worth trusting)"
+    return 0
+  fi
+  would "docker cp every *.php in $src_dir into $WC_CONTAINER:/opt/bitnami/wordpress/wp-content/mu-plugins/" && return 0
+  docker exec "$WC_CONTAINER" mkdir -p /opt/bitnami/wordpress/wp-content/mu-plugins
+  for f in "$src_dir"/*.php; do
+    [ -f "$f" ] || continue
+    name="$(basename "$f")"
+    docker cp "$f" "$WC_CONTAINER:/opt/bitnami/wordpress/wp-content/mu-plugins/$name"
+  done
+  created "mu-plugins synced ($(ls "$src_dir"/*.php 2>/dev/null | wc -l | tr -d ' ') file(s))"
+}
+
 step_woocommerce() {
   log "--- WooCommerce REST key ---"
   local existing
@@ -434,14 +497,27 @@ step_connections() {
  "credentials":{"webserviceApiKey":"${PS_WS_KEY:-}"}}
 JSON
 )"
+  record_expected_caps 'perf-prestashop' "${PS_CONN_ID:-}" 'ProductMaster,InventoryMaster,OrderProcessorManager'
 
+  # #3046 (F16) needs ProductPublisher + CategoryProvisioner enabled here too -
+  # both are in WooCommerce's own manifest (woocommerce-plugin.ts). Included
+  # on CREATE directly; `ensure_woocommerce_publish_capabilities` below is the
+  # idempotent PATCH half for a connection created by an earlier bootstrap run
+  # (the `ensure_offer_manager` shape, generalised).
+  #
+  # `config.masterCatalogConnectionId` is likewise required for ProductPublisher
+  # to do anything at all - found live (#3046): a shop-publish submit with it
+  # absent fails every item with MASTER_CATALOG_NOT_CONFIGURED, since the
+  # publish builder has no master to read name/description/price from. Points
+  # at perf-prestashop, created immediately above.
   ol_ensure_connection WC_CONN_ID 'perf-woocommerce' "$(cat <<JSON
 {"name":"perf-woocommerce","platformType":"woocommerce",
- "enabledCapabilities":["OrderProcessorManager"],
- "config":{"siteUrl":"$WC_INTERNAL_URL"},
+ "enabledCapabilities":["OrderProcessorManager","ProductPublisher","CategoryProvisioner"],
+ "config":{"siteUrl":"$WC_INTERNAL_URL","masterCatalogConnectionId":"${PS_CONN_ID:-}"},
  "credentials":{"consumerKey":"${WC_CK:-}","consumerSecret":"${WC_CS:-}"}}
 JSON
 )"
+  record_expected_caps 'perf-woocommerce' "${WC_CONN_ID:-}" 'OrderProcessorManager,ProductPublisher,CategoryProvisioner'
 
   # Two Allegro tenants, differing only by accessToken. Credentials deliberately
   # carry accessToken ONLY - no expiresAt, no refreshToken, no clientId/secret -
@@ -482,6 +558,7 @@ JSON
  "credentials":{"accessToken":"stub-token-a"}}
 JSON
 )"
+  record_expected_caps 'perf-allegro-a' "${ALLEGRO_A_ID:-}" 'OrderSource,OfferManager'
 
   ol_ensure_connection ALLEGRO_B_ID 'perf-allegro-b' "$(cat <<JSON
 {"name":"perf-allegro-b","platformType":"allegro",
@@ -490,6 +567,7 @@ JSON
  "credentials":{"accessToken":"stub-token-b"}}
 JSON
 )"
+  record_expected_caps 'perf-allegro-b' "${ALLEGRO_B_ID:-}" 'OrderSource,OfferManager'
 
   # perf-webhook-ingress (#2842) - a connection whose ONLY job is to be a
   # legal target for a signed POST /webhooks/prestashop/:connectionId. It
@@ -515,6 +593,92 @@ JSON
  "credentials":{"webserviceApiKey":"${PS_WS_KEY:-}"}}
 JSON
 )"
+  record_expected_caps 'perf-webhook-ingress' "${WEBHOOK_CONN_ID:-}" 'OrderSource'
+
+  # ---------------------------------------------------------------------
+  # #3043 - the five connections the F14-F18 sibling scenarios need.
+  # ---------------------------------------------------------------------
+
+  # F14 (#3044) - invoice half. The already-shipped fixed-latency
+  # `InvoicingPort` stub (#3006), reachable at its INTERNAL container port
+  # 19082 (the published INVOICING_STUB_HOST_PORT is host-only and irrelevant
+  # here - service-to-service traffic never touches it). Requires
+  # OL_INVOICING_STUB_ENABLED=true on both api and worker
+  # (docker-compose.lab.yml default since #3043); step_verify_connections
+  # treats a failed test here as conditional, same as Allegro, since the
+  # plugin registering is an env-var precondition this script cannot itself
+  # confirm from outside the containers.
+  ol_ensure_connection INVOICING_CONN_ID 'perf-invoicing' "$(cat <<JSON
+{"name":"perf-invoicing","platformType":"invoicing-stub",
+ "enabledCapabilities":["Invoicing"],
+ "config":{"apiBaseUrl":"http://invoicing-stub:19082"}}
+JSON
+)"
+  record_expected_caps 'perf-invoicing' "${INVOICING_CONN_ID:-}" 'Invoicing'
+
+  # F14 (#3044) - fiscal half. The REAL eparagony.pl adapter
+  # (@openlinker/integrations-eparagony, always registered - no gate),
+  # pointed at both its documented test-mode overrides
+  # (config.apiBaseUrl/authBaseUrl, both `EparagonyHttpClient`-enforced
+  # https) at the TLS front's own hostname, `eparagony-stub-tls` -
+  # DELIBERATELY NOT the bare "eparagony-stub" the compose service's plain
+  # HTTP backend already answers to (container_name: lab-eparagony-stub):
+  # Docker's embedded DNS resolves "eparagony-stub" to THAT container, whose
+  # only listener is the plain-HTTP port 19084 - an https request there
+  # gets ECONNREFUSED on 443, found live. posId is mandatory per
+  # EparagonyAdapterFactory; clientId/clientSecret are dummy values the stub
+  # never validates.
+  ol_ensure_connection EPARAGONY_CONN_ID 'perf-eparagony' "$(cat <<JSON
+{"name":"perf-eparagony","platformType":"eparagony",
+ "enabledCapabilities":["Fiscalization"],
+ "config":{"environment":"sandbox","posId":"stub-pos-1",
+  "apiBaseUrl":"https://eparagony-stub-tls","authBaseUrl":"https://eparagony-stub-tls"},
+ "credentials":{"clientId":"stub-client-id","clientSecret":"stub-client-secret"}}
+JSON
+)"
+  record_expected_caps 'perf-eparagony' "${EPARAGONY_CONN_ID:-}" 'Fiscalization'
+
+  # F18 (#3048) - the REAL Erli adapter (@openlinker/integrations-erli,
+  # always registered), pointed at the network-aliased stub
+  # `erli-stub.erli.dev` - the one hostname shape `isAllowedErliBaseUrl`
+  # (an SSRF allowlist with no test-mode escape hatch) accepts. See
+  # stubs/erli/README.md for why an alias, not a bare service name.
+  ol_ensure_connection ERLI_CONN_ID 'perf-erli' "$(cat <<JSON
+{"name":"perf-erli","platformType":"erli",
+ "enabledCapabilities":["OrderSource","OfferManager"],
+ "config":{"baseUrl":"https://erli-stub.erli.dev"},
+ "credentials":{"apiKey":"stub-erli-api-key"}}
+JSON
+)"
+  record_expected_caps 'perf-erli' "${ERLI_CONN_ID:-}" 'OrderSource,OfferManager'
+
+  # F15 (#3045) - a DEDICATED lab-only ShippingProviderManager adapter
+  # (@openlinker/integrations-shipping-stub, #3043) rather than the real
+  # InPost/DPD Polska adapters, neither of which supports a base-URL
+  # override - see stubs/shipping/README.md. Plain HTTP, no TLS front
+  # needed (this adapter enforces no https/host policy of its own).
+  # Requires OL_SHIPPING_STUB_ENABLED=true (docker-compose.lab.yml default).
+  ol_ensure_connection SHIPPING_CONN_ID 'perf-shipping' "$(cat <<JSON
+{"name":"perf-shipping","platformType":"shipping-stub",
+ "enabledCapabilities":["ShippingProviderManager"],
+ "config":{"apiBaseUrl":"http://shipping-stub:19086"}}
+JSON
+)"
+  record_expected_caps 'perf-shipping' "${SHIPPING_CONN_ID:-}" 'ShippingProviderManager'
+
+  # #3043 AC - "record whether FulfillmentExecutor is reachable at all".
+  # `openlinker.oms.v1` (@openlinker/oms) has advertised it since #2409, so
+  # this connection PROVES reachability - `requiresCredentials: false`
+  # (ADR-055), no credentials block needed. No sibling F14-F18 scenario
+  # actually drives fulfilment through it; it exists so the finding below is
+  # demonstrated, not merely asserted from reading the manifest.
+  ol_ensure_connection OMS_CONN_ID 'perf-openlinker-oms' "$(cat <<JSON
+{"name":"perf-openlinker-oms","platformType":"openlinker",
+ "enabledCapabilities":["FulfillmentExecutor"],
+ "config":{}}
+JSON
+)"
+  record_expected_caps 'perf-openlinker-oms' "${OMS_CONN_ID:-}" 'FulfillmentExecutor'
 }
 
 # ---------------------------------------------------------------------------
@@ -547,6 +711,82 @@ step_allegro_offer_manager() {
   log "--- Allegro OfferManager capability ---"
   ensure_offer_manager "${ALLEGRO_A_ID:-}" 'perf-allegro-a'
   ensure_offer_manager "${ALLEGRO_B_ID:-}" 'perf-allegro-b'
+}
+
+# ---------------------------------------------------------------------------
+# Step 5c (#3043, F16) - ensure ProductPublisher + CategoryProvisioner on
+# perf-woocommerce created by an EARLIER bootstrap run, generalising
+# ensure_offer_manager above to a list of capability names rather than one.
+# ---------------------------------------------------------------------------
+ensure_capabilities_present() {
+  local conn_id="$1" tenant="$2" caps missing want
+  shift 2
+  [ -n "$conn_id" ] || { warn "no connection id for tenant $tenant - skipping capability check"; return 0; }
+  caps="$(ol_api GET "/v1/connections/$conn_id" | jq -r '(.enabledCapabilities // []) | join(",")')"
+  missing=()
+  for want in "$@"; do
+    if ! printf '%s' "$caps" | grep -q "\\b${want}\\b"; then
+      missing+=("$want")
+    fi
+  done
+  if [ "${#missing[@]}" -eq 0 ]; then found "$* on $tenant"; return 0; fi
+  if [ "$VERIFY_ONLY" = 1 ]; then gap "${missing[*]} not enabled on $tenant (has: ${caps:-<none>})"; return 0; fi
+  would "enable ${missing[*]} on $tenant (has: ${caps:-<none>})" && return 0
+  ol_api PATCH "/v1/connections/$conn_id" "$(jq -cn --arg caps "$caps" --argjson add "$(printf '%s\n' "${missing[@]}" | jq -R . | jq -s .)" \
+    '{enabledCapabilities: (($caps | split(",") | map(select(length > 0))) + $add)}')" >/dev/null
+  created "${missing[*]} enabled on $tenant"
+}
+
+step_woocommerce_publish_capabilities() {
+  log "--- WooCommerce ProductPublisher/CategoryProvisioner capability ---"
+  ensure_capabilities_present "${WC_CONN_ID:-}" 'perf-woocommerce' ProductPublisher CategoryProvisioner
+  ensure_woocommerce_master_catalog
+  ensure_prestashop_shop_url_alias
+}
+
+# Idempotent ps_shop_url row for the PS_INTERNAL_URL hostname (#3046).
+#
+# PrestaShop's webservice dispatcher redirects a single-resource GET
+# (`/api/products/25`) to the shop's CANONICAL registered domain
+# (`ps_shop_url.main=1`, PS_DOMAIN's `localhost:19080`) whenever the
+# request's Host header doesn't match ANY registered ps_shop_url.domain row -
+# even with valid Basic Auth. List-style queries (`?filter[...]`) do NOT
+# trigger this (verified live). `PS_INTERNAL_URL` (the dotted `prestashop.lab`
+# alias WordPress's own dot-less-host check requires, see the comment above
+# its declaration) is never registered by the image's own install - only
+# PS_DOMAIN's value is - so every single-resource read the WooCommerce
+# publish path makes (`getProduct`) 301-redirected to `localhost:19080`,
+# which no in-network container can reach. Registering it as an ADDITIONAL
+# (main=0) domain fixes the redirect without touching the canonical one.
+ensure_prestashop_shop_url_alias() {
+  local host existing
+  host="$(printf '%s' "$PS_INTERNAL_URL" | sed -E 's#^[a-z]+://##; s#/.*$##; s#:[0-9]+$##')"
+  [ -n "$host" ] || { warn "could not parse a hostname out of PS_INTERNAL_URL=$PS_INTERNAL_URL - skipping ps_shop_url alias check"; return 0; }
+  existing="$(ps_sql "SELECT COUNT(*) FROM ps_shop_url WHERE domain='$host' OR domain_ssl='$host'")"
+  if [ "${existing:-0}" -gt 0 ]; then found "ps_shop_url row for '$host' (webservice single-resource reads resolve without a redirect)"; return 0; fi
+  if [ "$VERIFY_ONLY" = 1 ]; then gap "no ps_shop_url row for '$host' - single-resource webservice GETs (e.g. /api/products/:id) 301-redirect to the canonical shop domain"; return 0; fi
+  would "register ps_shop_url domain='$host' (main=0, active=1) for shop 1" && return 0
+  ps_sql_write "INSERT INTO ps_shop_url (id_shop, domain, domain_ssl, physical_uri, virtual_uri, main, active) VALUES (1, '$host', '$host', '/', '', 0, 1)"
+  created "ps_shop_url alias registered for '$host'"
+}
+
+# Idempotent PATCH half for config.masterCatalogConnectionId (#3046), for a
+# perf-woocommerce created by an earlier bootstrap run that predates this
+# key. `ConnectionRepository.update` REPLACES `config` wholesale (never a
+# deep merge), so this reads the CURRENT config back and merges client-side -
+# a bare `{config: {masterCatalogConnectionId: ...}}` patch would silently
+# wipe `siteUrl`. Never overwrites an operator-set value that differs from
+# perf-prestashop's id - only fills the gap when the key is absent.
+ensure_woocommerce_master_catalog() {
+  local conn_id="${WC_CONN_ID:-}" current_config current
+  [ -n "$conn_id" ] || { warn "no connection id for perf-woocommerce - skipping masterCatalogConnectionId check"; return 0; }
+  current_config="$(ol_api GET "/v1/connections/$conn_id" | jq -c '.config // {}')"
+  current="$(printf '%s' "$current_config" | jq -r '.masterCatalogConnectionId // empty')"
+  if [ -n "$current" ]; then found "masterCatalogConnectionId on perf-woocommerce ($current)"; return 0; fi
+  if [ "$VERIFY_ONLY" = 1 ]; then gap "perf-woocommerce has no config.masterCatalogConnectionId"; return 0; fi
+  would "set config.masterCatalogConnectionId=${PS_CONN_ID:-} on perf-woocommerce" && return 0
+  ol_api PATCH "/v1/connections/$conn_id" "$(jq -cn --argjson cfg "$current_config" --arg ps "${PS_CONN_ID:-}" '{config: ($cfg + {masterCatalogConnectionId: $ps})}')" >/dev/null
+  created "masterCatalogConnectionId set on perf-woocommerce (${PS_CONN_ID:-})"
 }
 
 # ---------------------------------------------------------------------------
@@ -706,6 +946,55 @@ step_verify_connections() {
       warn "connection test failed for $name - $CONNECTION_TEST_MESSAGE (expected while the Allegro stub is not running)"
     fi
   done
+  # #3043's five new connections are likewise conditional: OL_INVOICING_STUB_
+  # ENABLED / OL_SHIPPING_STUB_ENABLED being false, one of the three new stub
+  # containers not up yet, or (perf-openlinker-oms) no connection tester ever
+  # registered for a credential-less plugin are all expected failure modes
+  # this script cannot distinguish from outside the containers - so, like
+  # Allegro above, a failed test here warns rather than gaps the run.
+  for pair in \
+    "perf-invoicing:${INVOICING_CONN_ID:-}" \
+    "perf-eparagony:${EPARAGONY_CONN_ID:-}" \
+    "perf-erli:${ERLI_CONN_ID:-}" \
+    "perf-shipping:${SHIPPING_CONN_ID:-}" \
+    "perf-openlinker-oms:${OMS_CONN_ID:-}"
+  do
+    name="${pair%%:*}"; id="${pair##*:}"
+    [ -n "$id" ] || continue
+    if connection_test "$id"; then
+      log "connection test ok: $name"
+    else
+      warn "connection test failed for $name - $CONNECTION_TEST_MESSAGE (expected while its stub/gate is not yet up)"
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Step 8 (#3043) - the post-bootstrap capability assertion the issue's own AC
+# requires: "fails loudly when any connection's enabledCapabilities differs
+# from what was requested". Reads every connection this run created OR
+# confirmed back via GET and compares its enabledCapabilities, AS A SET, to
+# what `record_expected_caps` recorded at create/patch time - never assuming
+# the create/patch payload was honoured verbatim (a stale cache, a partial
+# patch, or a capability the manifest silently refused would all otherwise
+# go unnoticed).
+# ---------------------------------------------------------------------------
+step_capability_assertion() {
+  log "--- capability assertion ---"
+  [ "$DRY_RUN" = 1 ] && { log "DRY-RUN - skipping capability assertion (nothing was written)"; return 0; }
+  local i name id want_csv have_csv want_sorted have_sorted
+  for i in "${!CAP_CHECK_IDS[@]}"; do
+    name="${CAP_CHECK_NAMES[$i]}"
+    id="${CAP_CHECK_IDS[$i]}"
+    want_csv="${CAP_CHECK_WANT[$i]}"
+    have_csv="$(ol_api GET "/v1/connections/$id" 2>/dev/null | jq -r '(.enabledCapabilities // []) | sort | join(",")' 2>/dev/null || printf '')"
+    want_sorted="$(printf '%s' "$want_csv" | tr ',' '\n' | sort | paste -sd, -)"
+    if [ "$have_csv" = "$want_sorted" ]; then
+      found "capabilities match on $name ($want_csv)"
+    else
+      gap "capability MISMATCH on $name ($id): requested [$want_csv], connection reports [${have_csv:-<unreadable>}]"
+    fi
+  done
 }
 
 step_emit() {
@@ -725,6 +1014,11 @@ WC_CONNECTION_ID=${WC_CONN_ID:-}
 ALLEGRO_A_CONNECTION_ID=${ALLEGRO_A_ID:-}
 ALLEGRO_B_CONNECTION_ID=${ALLEGRO_B_ID:-}
 WEBHOOK_CONNECTION_ID=${WEBHOOK_CONN_ID:-}
+INVOICING_CONNECTION_ID=${INVOICING_CONN_ID:-}
+EPARAGONY_CONNECTION_ID=${EPARAGONY_CONN_ID:-}
+ERLI_CONNECTION_ID=${ERLI_CONN_ID:-}
+SHIPPING_CONNECTION_ID=${SHIPPING_CONN_ID:-}
+OMS_CONNECTION_ID=${OMS_CONN_ID:-}
 PS_WEBSERVICE_KEY=${PS_WS_KEY:-}
 WC_CONSUMER_KEY=${WC_CK:-}
 WC_CONSUMER_SECRET=${WC_CS:-}
@@ -742,6 +1036,7 @@ main() {
   step_module
   step_webservice
   step_tax_group
+  step_woocommerce_mu_plugins
   step_woocommerce
   step_connections
   # After step_connections (the connection must exist to be patched) and
@@ -749,8 +1044,10 @@ main() {
   # stale credential fails) - #2847.
   step_woocommerce_credentials
   step_allegro_offer_manager
+  step_woocommerce_publish_capabilities
   step_offer_mappings
   step_verify_connections
+  step_capability_assertion
 
   log "--- summary ---"
   log "found:   ${#FOUND[@]}"

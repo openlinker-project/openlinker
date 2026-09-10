@@ -178,6 +178,19 @@ services:
   prestashop:
     image: prestashop/prestashop:9.0.2-2.0-classic-8.4
     container_name: lab-prestashop
+    # `prestashop.lab` network alias (#3046) - WordPress's own
+    # `wp_http_validate_url()` refuses to fetch a remote image (or any
+    # remote URL) from a bare, dot-less hostname ("A valid URL was not
+    # provided", found live the first time a shop-publish scenario tried to
+    # attach a PrestaShop-hosted product image to a WooCommerce product).
+    # The bare `prestashop` alias below is UNCHANGED and still resolves -
+    # every already-measured scenario's connections keep working unmodified -
+    # this only ADDS a second, dotted name for `PS_INTERNAL_URL` to prefer
+    # going forward.
+    networks:
+      default:
+        aliases:
+          - prestashop.lab
     environment:
       PS_DOMAIN: 'localhost:${PRESTASHOP_HOST_PORT:-19080}'
       PS_FOLDER_ADMIN: admin
@@ -379,6 +392,119 @@ services:
       retries: 5
       start_period: 2s
 
+  # eparagony.pl upstream stub (#3043, F14). Zero-dependency `node:http`
+  # build, same shape as `invoicing-stub` above. Speaks plain HTTP; fronted
+  # by `eparagony-stub-tls` below because `EparagonyHttpClient` refuses a
+  # non-https base URL. The connection's `config.apiBaseUrl`/`authBaseUrl`
+  # point at `https://eparagony-stub-tls` - the TLS FRONT's own name, never
+  # the bare "eparagony-stub" this backend already answers to (Docker's
+  # embedded DNS resolves that name to THIS container, whose only listener
+  # is plain HTTP on 19084 - an https request there is ECONNREFUSED on 443,
+  # found live). The REAL `@openlinker/integrations-eparagony` adapter,
+  # always registered (no gate), reaches the front, which proxies here.
+  eparagony-stub:
+    build:
+      context: ./perf/openlinker-throughput/stubs/eparagony
+      args:
+        STUB_GIT_SHA: '${STUB_GIT_SHA:-unknown}'
+    container_name: lab-eparagony-stub
+    environment:
+      STUB_PORT: '19084'
+      STUB_LATENCY_MS: '${EPARAGONY_STUB_LATENCY_MS:-0}'
+    ports:
+      - '127.0.0.1:${EPARAGONY_STUB_HOST_PORT:-19084}:19084'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '-', 'http://127.0.0.1:19084/__stub/health']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+
+  # TLS terminator for eparagony-stub (#3043) - the `wc-tls` precedent
+  # (#2854). See stand/lab-tls/generate-certs.sh, which must be run once
+  # before `up`, same as wc-tls/generate-certs.sh.
+  eparagony-stub-tls:
+    image: nginx:1.27-alpine
+    container_name: lab-eparagony-stub-tls
+    volumes:
+      - ./perf/openlinker-throughput/stand/lab-tls/eparagony-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./perf/openlinker-throughput/stand/lab-tls/certs/eparagony-stub-tls.crt:/etc/nginx/certs/eparagony-stub-tls.crt:ro
+      - ./perf/openlinker-throughput/stand/lab-tls/certs/eparagony-stub-tls.key:/etc/nginx/certs/eparagony-stub-tls.key:ro
+    depends_on:
+      eparagony-stub:
+        condition: service_healthy
+    # No published port - reachable only on the `lab` compose network, at
+    # https://eparagony-stub-tls (the perf-eparagony connection's
+    # apiBaseUrl / authBaseUrl).
+
+  # Erli Shop API upstream stub (#3043, provisioning for F18/#3048). Speaks
+  # plain HTTP; fronted by `erli-stub-tls` below.
+  erli-stub:
+    build:
+      context: ./perf/openlinker-throughput/stubs/erli
+      args:
+        STUB_GIT_SHA: '${STUB_GIT_SHA:-unknown}'
+    container_name: lab-erli-stub
+    environment:
+      STUB_PORT: '19085'
+      STUB_LATENCY_MS: '${ERLI_STUB_LATENCY_MS:-0}'
+    ports:
+      - '127.0.0.1:${ERLI_STUB_HOST_PORT:-19085}:19085'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '-', 'http://127.0.0.1:19085/__stub/health']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+
+  # TLS terminator for erli-stub (#3043), carrying the NETWORK ALIAS
+  # `erli-stub.erli.dev` - `isAllowedErliBaseUrl` (SSRF guard in
+  # `@openlinker/integrations-erli`) requires `config.baseUrl`'s hostname to
+  # resolve to erli.pl/erli.dev or a subdomain of one; Docker's embedded DNS
+  # resolves this alias to THIS container for every other container on the
+  # `lab` network only - it resolves to nothing outside it. See
+  # stubs/erli/README.md "Why a network alias, not a bare hostname".
+  erli-stub-tls:
+    image: nginx:1.27-alpine
+    container_name: lab-erli-stub-tls
+    networks:
+      default:
+        aliases:
+          - erli-stub.erli.dev
+    volumes:
+      - ./perf/openlinker-throughput/stand/lab-tls/erli-nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./perf/openlinker-throughput/stand/lab-tls/certs/erli-stub.crt:/etc/nginx/certs/erli-stub.crt:ro
+      - ./perf/openlinker-throughput/stand/lab-tls/certs/erli-stub.key:/etc/nginx/certs/erli-stub.key:ro
+    depends_on:
+      erli-stub:
+        condition: service_healthy
+    # No published port - reachable only on the `lab` network, at
+    # https://erli-stub.erli.dev (the perf-erli connection's config.baseUrl).
+
+  # Carrier upstream stub (#3043, provisioning for F15/#3045). Speaks plain
+  # HTTP - no TLS needed: it backs a DEDICATED lab-only
+  # `ShippingProviderManagerPort` adapter (`@openlinker/integrations-
+  # shipping-stub`) built for this stub, not a real carrier adapter with its
+  # own SSRF/https policy. See stubs/shipping/README.md for why a dedicated
+  # adapter rather than pointing InPost/DPD Polska at a stub.
+  shipping-stub:
+    build:
+      context: ./perf/openlinker-throughput/stubs/shipping
+      args:
+        STUB_GIT_SHA: '${STUB_GIT_SHA:-unknown}'
+    container_name: lab-shipping-stub
+    environment:
+      STUB_PORT: '19086'
+      STUB_LATENCY_MS: '${SHIPPING_STUB_LATENCY_MS:-0}'
+    ports:
+      - '127.0.0.1:${SHIPPING_STUB_HOST_PORT:-19086}:19086'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '-', 'http://127.0.0.1:19086/__stub/health']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+
   # One-shot schema bootstrap. Runs the SAME compiled data-source the api/
   # worker processes use (apps/api/dist/apps/api/src/database/data-source.js),
   # invoked directly through the typeorm CLI binary already in
@@ -447,15 +573,22 @@ services:
       OL_LOG_BODY_MAX_BYTES: '${OL_LOG_BODY_MAX_BYTES:-8192}'
       OL_REPORTING_CURRENCY: '${OL_REPORTING_CURRENCY:-PLN}'
       PRESTASHOP_BASE_URL: 'http://prestashop'
-      # Trust the wc-tls self-signed CA rather than disabling certificate
+      # Trust the lab's self-signed CAs rather than disabling certificate
       # validation stack-wide (the #2590 campaign's NODE_TLS_REJECT_UNAUTHORIZED=0,
       # which would also blind this process to a real MITM on every OTHER
-      # outbound HTTPS call it makes).
+      # outbound HTTPS call it makes). Since #3043 this is a BUNDLE - wc-tls's
+      # CA plus eparagony-stub's and erli-stub's, concatenated by
+      # stand/lab-tls/generate-certs.sh - NODE_EXTRA_CA_CERTS takes exactly
+      # one file path, which may itself hold several PEM certs.
       NODE_EXTRA_CA_CERTS: /etc/ssl/lab/wc-tls-ca.pem
+      OL_INVOICING_STUB_ENABLED: '${OL_INVOICING_STUB_ENABLED:-true}'
+      OL_SHIPPING_STUB_ENABLED: '${OL_SHIPPING_STUB_ENABLED:-true}'
     ports:
       - '127.0.0.1:${API_HOST_PORT:-19000}:3000'
     volumes:
-      - ./perf/openlinker-throughput/stand/wc-tls/certs/ca.pem:/etc/ssl/lab/wc-tls-ca.pem:ro
+      # Bundle, not wc-tls's own ca.pem alone (#3043) - see the
+      # NODE_EXTRA_CA_CERTS comment above.
+      - ./perf/openlinker-throughput/stand/lab-tls/certs/bundle.pem:/etc/ssl/lab/wc-tls-ca.pem:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -586,8 +719,23 @@ services:
       OL_LANE_FANOUT_SCOPE_CAP: '${OL_LANE_FANOUT_SCOPE_CAP:-}'
       OL_LOG_BODY_MAX_BYTES: '${OL_LOG_BODY_MAX_BYTES:-8192}'
       NODE_EXTRA_CA_CERTS: /etc/ssl/lab/wc-tls-ca.pem
+      # #3045 review: found live via `marketplace.shipment.statusSync` failing
+      # every row with "No default adapter registered for platformType:
+      # shipping-stub" - these two were set on `api` (above) but never on
+      # `worker`, which is the ONLY process that runs sync_jobs handlers.
+      # `invoicing-stub`'s equivalent job type (`invoicing.issue`) had
+      # happened to keep working on this stand only because an earlier
+      # scenario's own `env_file_set OL_INVOICING_STUB_ENABLED true` (see
+      # fiscal-lane-stub.sh) had written it into `.env.lab` at runtime - a
+      # per-scenario workaround masking the fact that the compose file itself
+      # never carried it for `worker`. Both belong here permanently, matching
+      # `api`'s defaults.
+      OL_INVOICING_STUB_ENABLED: '${OL_INVOICING_STUB_ENABLED:-true}'
+      OL_SHIPPING_STUB_ENABLED: '${OL_SHIPPING_STUB_ENABLED:-true}'
     volumes:
-      - ./perf/openlinker-throughput/stand/wc-tls/certs/ca.pem:/etc/ssl/lab/wc-tls-ca.pem:ro
+      # Bundle, not wc-tls's own ca.pem alone (#3043) - see the
+      # NODE_EXTRA_CA_CERTS comment above.
+      - ./perf/openlinker-throughput/stand/lab-tls/certs/bundle.pem:/etc/ssl/lab/wc-tls-ca.pem:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -71,6 +71,7 @@ runtime gate validates a connection's request against the adapter's
 | `ReturnsAuthority` | Decide the disposition of goods a customer sends back (A5, ADR-052). |
 | `AvailabilityAuthority` | Decide how much of each product is sellable (A1, ADR-052). |
 | `FulfillmentExecutor` | Hold a piece of fulfilment work and act on it (A3, ADR-052). |
+| `ShippingProviderManager` | Generate shipping labels and track parcels (InPost, DPD Polska). |
 
 <!-- core-capabilities:end -->
 
