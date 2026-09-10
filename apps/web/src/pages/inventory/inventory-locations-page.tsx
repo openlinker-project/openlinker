@@ -236,6 +236,7 @@ export function InventoryLocationsPage(): ReactElement {
           <label className="toolbar__checkbox-label">
             <input
               type="checkbox"
+              name="showRetired"
               checked={showRetired}
               onChange={(e) => { handleFilterChange('retired', e.target.checked ? '' : '0'); }}
             />
