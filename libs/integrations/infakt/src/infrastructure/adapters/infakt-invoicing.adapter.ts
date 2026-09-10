@@ -1066,6 +1066,12 @@ export class InfaktInvoicingAdapter
         // Per-connection setting (#2177) — see `this.saleType` doc. A
         // correction should not disagree with the original invoice's sale
         // classification, so the same conditional-spread pattern applies.
+        // NOTE (shared with bankAccountFields() above): this reads the LIVE
+        // connection config, not a snapshot of what was stamped on the
+        // original invoice — if an operator changes `defaultSaleType` between
+        // issuing and correcting, the correction can disagree with the
+        // original after all. Pre-existing adapter precedent, not a
+        // regression introduced here (#2995 review).
         ...(this.saleType ? { sale_type: this.saleType } : {}),
         corrected_invoice_number: original.number,
         corrected_invoice_date: original.invoice_date ?? new Date().toISOString().slice(0, 10),

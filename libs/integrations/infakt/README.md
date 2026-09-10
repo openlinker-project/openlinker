@@ -133,6 +133,13 @@ below).
   as before, unchanged). Picking the wrong value misstates the invoice's VAT
   sale-type classification, so this is an explicit, compliance-sensitive operator
   opt-in — OL cannot infer goods vs. services from a possibly-mixed catalog.
+  Setting it is a connection-wide toggle, not a per-catalog signal: a connection
+  that sells both goods and services to PL clients while also needing
+  `defaultSaleType: 'service'` set to unblock a single non-PL service client will
+  have that value stamped on **every** issued PL invoice too, overriding inFakt's
+  own server-side inference (which may have correctly inferred `goods` for those
+  PL sales). Deliberate given there is no per-catalog signal to route on — but
+  worth knowing before enabling it on a mixed catalog.
   Only `'service'` is confirmed against inFakt's sandbox (exact lowercase match).
   Several other spellings — `goods`, `product`, `towar`, `usluga`, `mixed`, case
   variants — were all live-tested and **rejected**, including `'goods'` itself;
@@ -140,8 +147,9 @@ below).
   therefore lists `'service'` alone (#2995 review) — a placeholder `'goods'` value
   would pass the save-time shape gate and then 422 at issuance, converting the
   guard into a trap for exactly the operator this fix is meant to help. **Finding
-  the confirmed goods-sale value remains open** — tracked as #3031, unresolved
-  pending live sandbox access; do not guess it in, per the rule above.
+  the confirmed goods-sale value remains open and untracked** — #3031 (below)
+  turned out to be the diagnosis-hint work, not this; do not guess the value in,
+  per the rule above, until it is confirmed against a live sandbox.
 - **Missing-`sale_type` diagnosis hint** (#3031): `issueInvoice` detects Infakt's
   field-level validation shape for the 422 above —
   `{"errors":{"sale_type":[...]}}`, checked structurally (key presence only,

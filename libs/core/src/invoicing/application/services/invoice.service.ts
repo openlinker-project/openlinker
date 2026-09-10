@@ -950,8 +950,10 @@ export class InvoiceService implements IInvoiceService {
    * throwable's `reason`/message — never value-importing an adapter error class.
    *
    *   - `rejected` (TERMINAL): a tax-identifier rejection → `buyer-tax-id-invalid`;
-   *     a settlement-currency rejection → `invalid-currency` (both operator-
-   *     fixable on the source order); anything else → `provider-rejected`.
+   *     a settlement-currency rejection → `invalid-currency`; a missing
+   *     sale-classification rejection → `sale-classification-required` (all
+   *     three operator-fixable on the source order / connection config);
+   *     anything else → `provider-rejected`.
    *   - `in-doubt` (transient/indeterminate transport): `transport-timeout`.
    *
    * Tax id is checked first purely for determinism — a message naming both is
