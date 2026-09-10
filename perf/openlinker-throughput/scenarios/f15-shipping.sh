@@ -93,9 +93,15 @@ ol_login
 
 RESULTS_DIR="$(results_dir_init f15-shipping "$([ "$SMOKE" = 1 ] && echo smoke || echo strict)")"
 
+# guard_build FIRST: without it the manifest records gitSha=unknown, so the
+# figures cannot be tied to the code that produced them - and nothing checks
+# that the running image is the tree under test. Both halves matter; the sha is
+# the record, the tree comparison is the verification (#2854).
+guard_build
 guard_stand_exclusive f15-shipping
 guard_scheduler_off
 guard_runner_state enabled
+guard_connection_endpoints "$SHIPPING_CONNECTION_ID"
 
 RUN_TAG="$(epoch)_$$"
 SOURCE_DELIVERY_METHOD_ID="f15-kurier-${RUN_TAG}"

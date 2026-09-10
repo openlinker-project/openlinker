@@ -1,0 +1,185 @@
+{
+  "scenario": "f3-webhook-burst",
+  "generatedAt": "2026-09-09T06:29:08Z",
+  "gitSha": "1f9a52d1b4d05916a131cc6efdf59d179da2ae1e",
+  "connectionIds": "'c9f4c835-0238-458d-b402-9089adab7950'",
+  "quick": false,
+  "runnerState": "disabled",
+  "laneCaps": "unknown",
+  "workerReplicas": 1,
+  "workerContainers": "lab-worker-1",
+  "laneCapEnforcement": "per-process - the laneCaps above bound ONE worker process, so effective deployment concurrency is laneCaps x workerReplicas (ADR-050 amendment #2594 / #2302)",
+  "pool": {
+    "maxConnections": "200",
+    "olDbPoolMax": "40",
+    "processCount": "2",
+    "budget": "80"
+  },
+  "schedulerCadenceRow": {},
+  "olLogBodyMaxBytes": "lab-api=8192 lab-worker-1=8192",
+  "syncJobsRowsAtStart": 164917,
+  "syncJobsRowsAtEnd": 164922,
+  "environment": {
+    "postgres": {
+      "shared_buffers": "128MB",
+      "work_mem": "4MB",
+      "shared_preload_libraries": "pg_stat_statements,auto_explain",
+      "installed_extensions": "pg_trgm,pg_stat_statements",
+      "nonDefaultSettings": {
+        "roleConfig": {
+          "postgres": [
+            "statement_timeout=30000ms"
+          ]
+        },
+        "databaseRoleConfig": [],
+        "liveSettingsSourceNotDefault": {
+          "lc_time": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "TimeZone": {
+            "source": "configuration file",
+            "setting": "UTC"
+          },
+          "hba_file": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data/pg_hba.conf"
+          },
+          "DateStyle": {
+            "source": "configuration file",
+            "setting": "ISO, MDY"
+          },
+          "ident_file": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data/pg_ident.conf"
+          },
+          "lc_numeric": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "config_file": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data/postgresql.conf"
+          },
+          "lc_messages": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "lc_monetary": {
+            "source": "configuration file",
+            "setting": "en_US.utf8"
+          },
+          "log_timezone": {
+            "source": "configuration file",
+            "setting": "UTC"
+          },
+          "max_wal_size": {
+            "source": "configuration file",
+            "setting": "1024"
+          },
+          "min_wal_size": {
+            "source": "configuration file",
+            "setting": "80"
+          },
+          "data_directory": {
+            "source": "override",
+            "setting": "/var/lib/postgresql/data"
+          },
+          "shared_buffers": {
+            "source": "configuration file",
+            "setting": "16384"
+          },
+          "max_connections": {
+            "source": "command line",
+            "setting": "200"
+          },
+          "application_name": {
+            "source": "client",
+            "setting": "psql"
+          },
+          "listen_addresses": {
+            "source": "configuration file",
+            "setting": "*"
+          },
+          "statement_timeout": {
+            "source": "user",
+            "setting": "30000"
+          },
+          "transaction_isolation": {
+            "source": "override",
+            "setting": "read committed"
+          },
+          "transaction_read_only": {
+            "source": "override",
+            "setting": "off"
+          },
+          "pg_stat_statements.max": {
+            "source": "command line",
+            "setting": "10000"
+          },
+          "transaction_deferrable": {
+            "source": "override",
+            "setting": "off"
+          },
+          "auto_explain.log_analyze": {
+            "source": "command line",
+            "setting": "on"
+          },
+          "auto_explain.log_buffers": {
+            "source": "command line",
+            "setting": "on"
+          },
+          "pg_stat_statements.track": {
+            "source": "command line",
+            "setting": "all"
+          },
+          "shared_preload_libraries": {
+            "source": "command line",
+            "setting": "pg_stat_statements,auto_explain"
+          },
+          "default_text_search_config": {
+            "source": "configuration file",
+            "setting": "pg_catalog.english"
+          },
+          "dynamic_shared_memory_type": {
+            "source": "configuration file",
+            "setting": "posix"
+          },
+          "auto_explain.log_min_duration": {
+            "source": "command line",
+            "setting": "2000"
+          }
+        }
+      }
+    },
+    "node_version": "v22.23.1",
+    "postgres_image_digest": "sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193",
+    "redis_image_digest": "sha256:bd4a0d37e7cd830117ffec9329052b4a1887afa060c265e1768f82b177ff6f43",
+    "redis_used_memory_bytes": "200219160",
+    "host": {
+      "cpu_count": "28",
+      "ram": "15912MB",
+      "load_average": "1.85, 2.06, 2.23"
+    }
+  },
+  "containerLimits": [
+    {
+      "container": "lab-api",
+      "cpu_nanocpus": "none",
+      "memory_bytes": "none"
+    },
+    {
+      "container": "lab-worker-1",
+      "cpu_nanocpus": "none",
+      "memory_bytes": "none"
+    }
+  ],
+  "excludedPgStatStatementsQueries": [
+    "GET /v1/connections/:id/sync-status (7-day connection-sync-status aggregate over sync_jobs) - issued by sample_queue itself, see README"
+  ],
+  "webhookDeliveriesRowsAtStart": 142987,
+  "webhookDeliveriesRowsAtEnd": 142992,
+  "webhookDeliveriesRowsAtRunStart": 135521,
+  "arm": "replay-concurrent",
+  "arrivalRatePerSec": 50
+}

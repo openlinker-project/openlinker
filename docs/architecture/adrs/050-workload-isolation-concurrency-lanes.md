@@ -283,7 +283,9 @@ The scope cap is what keeps that bounded in the meantime. Deferral is per-job an
 *Reversal gate (prose-only):* a lane whose queue depth is dominated by deferred jobs. That is the signal that deferral has become a pacing mechanism rather than an exception, and the destination in question needs a real rate-limit configuration rather than a retry policy.
 
 
-## Amendment (#2851 / #2867) - enforcement stays per-process, and three of the four caps stay illustrative
+## Amendment (#2851 / #2867) - enforcement stays per-process, and the cap provenance table
+
+> Superseded in part by § Amendment (#2840) below: `fiscal` left the illustrative column, so the heading's original "three of the four caps stay illustrative" now reads two.
 
 Decision 6 says a cap without a metric is a guess, and #2302 has carried two open
 questions ever since: set the cap values from measurement, and take an explicit decision on
@@ -347,7 +349,7 @@ candidate in `results-F4-2026-09-06.md`; this ADR's decision is unchanged.
 |---|---|---|---|
 | `realtime` | 4 / 2 | **Illustrative** | A saturation run: many concurrent `marketplace.order.sync` against one destination, finding the concurrency at which per-order latency degrades. F7 (#2852) probed this lane's *isolation*, not its size. |
 | `bulk` | 12 / 8 | **TOTAL measured** (#2594); **perScope derived** | Nothing for `total` - F4 (#2851) ran 600 `bulk` jobs on one connection and never reached it, because a single scope is bounded by `perScope` first. For `perScope`: a run with two bulk-capable connections, the only way to reach the lane's TOTAL and therefore the only way to test the fairness argument the 8 was chosen for. |
-| `fiscal` | 2 / 1 | **Illustrative** | A run against a real invoicing or fiscalization connection issuing real documents. F7's fiscal probe was rejected before any adapter was touched. |
+| `fiscal` | 8 / 4 | **perScope MEASURED** (#2840); **total derived** | Nothing for `perScope` - see § Amendment (#2840) below. For `total`: a run with two document-issuing connections, the only way to reach the lane's TOTAL, exactly as `bulk` still needs. |
 | `fan-out` | 8 / 4 | **Derived** (#2609) | A sustained stock-write load that isolates this lane. `results-D` measured the queue converging at 100 000 products (arrival 348/h against drain 380/h; net 0.0/h over an hour), but with `bulk` and `fan-out` in force together, so it attributes convergence to neither. |
 
 Two entries in that table are more precise than the prose they replace, and both matter.
@@ -399,6 +401,45 @@ the reversal gate above and precisely what F4 measured. So: the multiplication i
 absorbed by the limiter, and the day it is not is the day an operator's destination is taking
 three times the traffic they configured. Size per replica, and treat a degraded-limiter log
 line as an operational event rather than a curiosity.
+
+## Amendment (#2840) - `fiscal` leaves the illustrative column
+
+The provenance table above named the missing fiscal measurement as "a run against a real
+invoicing or fiscalization connection issuing real documents". #3006's fiscal-lane sweep is the
+adjacent, sufficient half of it: real `fiscalization.register` jobs through the real eparagony
+adapter, against a stub whose latency is declared rather than a rejection short-circuit like
+F7's. Six runs, per-scope 1 versus 4 crossed with three declared provider latencies, every one
+VALID with zero deaths and zero deferrals.
+
+| provider answers in | per-scope 1 | per-scope 4 | gain |
+|---|---|---|---|
+| 2 s | 58.0 s | 13.5 s | 4.3x |
+| 10 s | 100.9 s | 32.2 s | 3.1x |
+| 90 s | 543.3 s | 181.2 s | 3.0x |
+
+At per-scope 1 the elapsed time is the sum of the waits almost exactly - 543.3 s measured
+against 540 s predicted at a 90 s provider - which is the signature of a lane doing nothing but
+queueing behind one outstanding call to somebody else's server. Documents are I/O-bound on a
+third party, so a cap of 1 bought nothing and cost the whole multiple.
+
+**The old note's premise was right and its conclusion was wrong.** `apps/worker/.env.example`
+argued the cap "may matter less here than the number suggests" because `invoicing.issue` is
+serialised PER ORDER by its own lock (ADR-041 §3a). That is true, and it is about ONE sale. It
+says nothing about many different sales, which is the entire load a busy shop presents.
+Exactly-once issuance rests on the durable per-(connection, idempotencyKey) index plus the
+in-flight lease (ADR-042 decision 7), never on lane width - so widening the lane admits more
+DIFFERENT orders and cannot produce a second document for one of them.
+
+**Provenance discipline, unchanged from `bulk`.** `perScope: 4` is the measured figure.
+`total: 8` is not: it exists only so one connection cannot hold the whole lane, because
+decision 4 still ships no round-robin fairness, and it needs the same two-connection run
+`bulk`'s total needs. Decision 6 stands for `realtime` and `fan-out`.
+
+**One limit worth stating where it will be read.** The sweep's provider is a stub at a declared
+constant latency. It bounds what OpenLinker's own lane will admit; it says nothing about what a
+real provider's rate limit will accept. An operator whose provider publishes a tighter one
+lowers `OL_LANE_FISCAL_SCOPE_CAP` - that ceiling is a property of the provider, and § 3 below
+is the general form of the same point.
 
 ## Alternatives considered
 

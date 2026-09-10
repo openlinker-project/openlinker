@@ -25,6 +25,7 @@ import { getCurrentPriority, RateLimitTimeoutError } from '@openlinker/shared/ra
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import { ContendedWriteError, SyncJobExecutionError } from '@openlinker/core/sync';
+import { ConnectionDisabledException } from '@openlinker/core/identifier-mapping';
 import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
 // The runner's *production* code is now platform-neutral (#581 / #819) — it
@@ -889,6 +890,52 @@ describe('SyncJobRunner', () => {
       expect(jobRepository.markDead).not.toHaveBeenCalled();
     });
 
+    // #2840: an operator switching a connection off is not the job's failure.
+    // Measured consequence of the pre-#2840 behaviour: the perf stand filled a
+    // measurement window with `attempts>1` rows carrying one identical error,
+    // and DISCARDED two otherwise-clean F11 arms on `post_guard_attempts`.
+    it('defers a job whose connection is disabled instead of burning an attempt', async () => {
+      const job = createMockJob(1, 10);
+      const disabled = new ConnectionDisabledException(job.connectionId);
+      const wrapped = new SyncJobExecutionError(
+        `Marketplace orders poll failed: ${disabled.message}`,
+        job.id,
+        job.jobType,
+        job.connectionId,
+        disabled
+      );
+
+      await (runner as any).handleJobFailure(job, wrapped, ATTEMPT_MS);
+
+      expect(jobRepository.requeueWithoutPenalty).toHaveBeenCalledWith(
+        job.id,
+        expect.stringContaining('Connection is disabled'),
+        expect.any(Date),
+        { lastAttemptDurationMs: ATTEMPT_MS, deferredTotalMs: 300_000 }
+      );
+      expect(jobRepository.markFailed).not.toHaveBeenCalled();
+      expect(jobRepository.markDead).not.toHaveBeenCalled();
+    });
+
+    // The other half, and the reason this is a deferral rather than a terminal
+    // answer: the wait is BOUNDED. A connection left off past the cumulative
+    // budget rejoins the ordinary ladder and can still reach `dead`, so it
+    // surfaces instead of deferring silently for ever.
+    it('stops deferring a disabled connection once the deferral budget is spent', async () => {
+      const job = { ...createMockJob(1, 10), deferredTotalMs: 24 * 60 * 60 * 1000 } as SyncJob;
+      const disabled = new ConnectionDisabledException(job.connectionId);
+
+      await (runner as any).handleJobFailure(job, disabled, ATTEMPT_MS);
+
+      expect(jobRepository.requeueWithoutPenalty).not.toHaveBeenCalled();
+      expect(jobRepository.markFailed).toHaveBeenCalledWith(
+        job.id,
+        disabled.message,
+        expect.any(Date),
+        ATTEMPT_MS
+      );
+    });
+
     it('falls through to the ordinary backoff ladder when no classifier defers', async () => {
       registerDeferringClassifier(null);
       const job = createMockJob(2, 10);
@@ -1538,9 +1585,15 @@ describe('SyncJobRunner', () => {
         // jobs on one connection and never reached the total, because a
         // single scope is bounded by perScope first.
         expect(caps.bulk).toEqual({ total: 12, perScope: 8 });
-        // Buyer-facing and deadline-bearing lanes are deliberately unchanged.
+        // The buyer-facing lane is deliberately unchanged - moving the sweep
+        // child out of it is what removed the pressure, not a wider cap.
         expect(caps.realtime).toEqual({ total: 4, perScope: 2 });
-        expect(caps.fiscal).toEqual({ total: 2, perScope: 1 });
+        // fiscal raised from 2/1 in #2840 on #3006's measured sweep (4.3x /
+        // 3.1x / 3.0x at declared provider latencies of 2 s, 10 s, 90 s).
+        // Exactly-once issuance never depended on the narrow lane: it rests on
+        // the durable idempotency index plus the in-flight lease, and one
+        // order's two documents are serialised by their own per-order lock.
+        expect(caps.fiscal).toEqual({ total: 8, perScope: 4 });
       });
 
       it('should default fan-out above one slot so stock propagation is not serialised (#2609)', () => {

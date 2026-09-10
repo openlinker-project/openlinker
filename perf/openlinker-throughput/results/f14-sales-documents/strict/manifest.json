@@ -1,11 +1,11 @@
 {
   "scenario": "f14-sales-documents",
-  "generatedAt": "2026-09-10T01:01:00Z",
-  "gitSha": "unknown",
-  "connectionIds": "'41a14551-5d1e-4f72-a0f6-699d35522c4b','a008012f-5bea-49f8-869a-1f697ca1406c'",
+  "generatedAt": "2026-09-10T11:09:19Z",
+  "gitSha": "5897057ad3cc8983180215d1acda3511d8cdde5e",
+  "connectionIds": "'c5fdf528-54ac-4511-b112-a928e7caa7eb','289a227a-c0ef-41ac-add1-e45b908f06c8'",
   "quick": false,
   "runnerState": "enabled",
-  "laneCaps": "realtime=4/2 bulk=12/8 fiscal=2/1 fan-out=8/4",
+  "laneCaps": "realtime=4/2 bulk=12/8 fiscal=1/1 fan-out=8/4",
   "workerReplicas": 1,
   "workerContainers": "lab-worker-1",
   "laneCapEnforcement": "per-process - the laneCaps above bound ONE worker process, so effective deployment concurrency is laneCaps x workerReplicas (ADR-050 amendment #2594 / #2302)",
@@ -17,16 +17,20 @@
   },
   "schedulerCadenceRow": {},
   "olLogBodyMaxBytes": "unknown",
-  "syncJobsRowsAtStart": 49,
-  "syncJobsRowsAtEnd": 61,
+  "syncJobsRowsAtStart": 141929,
+  "syncJobsRowsAtEnd": 141941,
   "environment": {
     "postgres": {
       "shared_buffers": "128MB",
       "work_mem": "4MB",
       "shared_preload_libraries": "pg_stat_statements,auto_explain",
-      "installed_extensions": "pg_trgm",
+      "installed_extensions": "pg_trgm,pg_stat_statements",
       "nonDefaultSettings": {
-        "roleConfig": {},
+        "roleConfig": {
+          "postgres": [
+            "statement_timeout=30000ms"
+          ]
+        },
         "databaseRoleConfig": [],
         "liveSettingsSourceNotDefault": {
           "lc_time": {
@@ -98,7 +102,7 @@
             "setting": "*"
           },
           "statement_timeout": {
-            "source": "command line",
+            "source": "user",
             "setting": "30000"
           },
           "transaction_isolation": {
@@ -149,13 +153,13 @@
       }
     },
     "node_version": "v22.23.1",
-    "postgres_image_digest": "sha256:1bea307dfb3ee30541a7acf7de14b58bcd6948da98e5d31a04c627c4d35ec64b",
-    "redis_image_digest": "sha256:7ebbc18dec8fe54c06b66eb496df0094a2412445e510789b5fcdda3a7085469c",
-    "redis_used_memory_bytes": "1860152",
+    "postgres_image_digest": "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
+    "redis_image_digest": "sha256:12da49daa000c2be4d55118574f889c8cc298140ecf343d04f345c818f227823",
+    "redis_used_memory_bytes": "70270064",
     "host": {
-      "cpu_count": "22",
-      "ram": "15729MB",
-      "load_average": "0.57, 0.65, 0.52"
+      "cpu_count": "32",
+      "ram": "125786MB",
+      "load_average": "1.98, 2.19, 2.17"
     }
   },
   "containerLimits": [

@@ -37,7 +37,11 @@ import {
   resolveJobScope,
 } from '@openlinker/core/sync';
 import { OfferCreationInvariantException } from '@openlinker/core/listings';
-import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
+import {
+  ConnectionPort,
+  CONNECTION_PORT_TOKEN,
+  ConnectionDisabledException,
+} from '@openlinker/core/identifier-mapping';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
 import { runWithPriority, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
@@ -116,6 +120,16 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
   /** Fixed short deferral for a write refused because a peer held the lock (#2617). */
   private readonly CONTENDED_WRITE_DEFERRAL_SECONDS = 15;
+
+  /**
+   * Deferral for a job whose connection is currently `disabled` (#2840).
+   *
+   * Minutes rather than the contended write's seconds, because the thing being
+   * waited on is an OPERATOR, not a peer process holding a lock for the length
+   * of one HTTP call. Re-polling every fifteen seconds for a connection someone
+   * switched off would spend a day's worth of log lines saying the same thing.
+   */
+  private readonly CONNECTION_DISABLED_DEFERRAL_SECONDS = 5 * 60;
 
   private abortController: AbortController | null = null;
   private isRunning = false;
@@ -236,9 +250,40 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
         total: read('OL_LANE_BULK_CAP', 12),
         perScope: read('OL_LANE_BULK_SCOPE_CAP', 8),
       },
+      // Raised from 2/1 in #2840, and the SECOND lane whose caps are measured
+      // rather than illustrative. ADR-050 decision 6 named the missing evidence
+      // as "a run against a real invoicing connection"; #3006's fiscal-lane
+      // sweep supplies the adjacent, sufficient half - six runs, two per-scope
+      // settings crossed with three declared provider latencies, every one of
+      // them VALID with zero deaths and zero deferrals:
+      //
+      //   provider 2 s   58.0 s at perScope 1  ->  13.5 s at 4   (4.3x)
+      //   provider 10 s 100.9 s at perScope 1  ->  32.2 s at 4   (3.1x)
+      //   provider 90 s 543.3 s at perScope 1  -> 181.2 s at 4   (3.0x)
+      //
+      // At perScope 1 the elapsed time is almost exactly the sum of the waits
+      // (543 s measured against 540 s predicted at a 90 s provider), which is
+      // the shape of a lane that is doing nothing but queueing behind one
+      // outstanding call. Documents are I/O-bound on somebody else's server,
+      // so the cap of 1 was buying nothing and costing the whole multiple.
+      //
+      // Concurrency is safe here for a reason that predates this change and
+      // does not depend on it: exactly-once issuance is guaranteed by the
+      // durable per-(connection, idempotencyKey) unique index plus the
+      // in-flight lease (ADR-042 decision 7), and two documents for ONE order
+      // are serialised by the per-order `invoiceIssueLockKey` (#2047), never
+      // by lane width. Widening the lane lets DIFFERENT orders proceed at
+      // once; it cannot produce a second document for one sale.
+      //
+      // 4 is the measured figure. total is 8 rather than 4 so one connection
+      // cannot hold the entire lane - ADR-050 decision 4 ships no round-robin
+      // fairness between scopes - and is deliberately NOT itself a measured
+      // ceiling. An operator whose provider publishes a tighter rate limit
+      // lowers OL_LANE_FISCAL_SCOPE_CAP; that limit is a property of the
+      // provider, not of this lane.
       fiscal: {
-        total: read('OL_LANE_FISCAL_CAP', 2),
-        perScope: read('OL_LANE_FISCAL_SCOPE_CAP', 1),
+        total: read('OL_LANE_FISCAL_CAP', 8),
+        perScope: read('OL_LANE_FISCAL_SCOPE_CAP', 4),
       },
       // Raised from 1/1 in #2609. A cap of 1 was sized for the lane's
       // cron-paced members, one tick at a time. `inventory.propagateToMarketplaces`
@@ -727,6 +772,32 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       return {
         delaySeconds: this.CONTENDED_WRITE_DEFERRAL_SECONDS,
         reason: 'Write contended by a peer',
+      };
+    }
+    // A `disabled` connection is not this job's failure either (#2840). An
+    // operator switched the connection off, and no amount of retrying is going
+    // to switch it back on - but the job is not WRONG, it is waiting, which is
+    // precisely what the penalty-free path is for.
+    //
+    // Both alternatives are worse, and this was measured rather than argued.
+    // Retrying (the pre-#2840 behaviour) burns the whole ten-attempt ladder on
+    // a condition no attempt can change; on the perf stand it filled the window
+    // with `attempts>1` rows carrying an identical error and DISCARDED two
+    // otherwise-clean F11 arms on `post_guard_attempts`. Calling it terminal is
+    // worse in the opposite direction: today a connection re-enabled inside the
+    // ladder's ~2-day span recovers on its own, and dying on attempt 1 would
+    // silently take that away from every event-driven job - an order ingested
+    // nowhere because someone toggled a connection for ten minutes.
+    //
+    // Deferral keeps the recovery and drops the noise: no attempt is spent, the
+    // jobs page shows `deferred` with the reason, and the existing cumulative
+    // budget (OL_JOB_MAX_DEFERRED_WAIT_SECONDS, 24 h) still lets the job rejoin
+    // the ladder and reach `dead`, so a connection left off for a day surfaces
+    // rather than deferring for ever.
+    if (cause instanceof ConnectionDisabledException) {
+      return {
+        delaySeconds: this.CONNECTION_DISABLED_DEFERRAL_SECONDS,
+        reason: 'Connection is disabled',
       };
     }
     return this.retryClassifierRegistry.resolveRetryDeferral(cause);

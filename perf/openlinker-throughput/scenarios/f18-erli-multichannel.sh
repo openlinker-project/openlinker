@@ -99,9 +99,15 @@ ol_login
 
 RESULTS_DIR="$(results_dir_init f18-erli-multichannel "$([ "$SMOKE" = 1 ] && echo smoke || echo strict)")"
 
+# guard_build FIRST: without it the manifest records gitSha=unknown, so the
+# figures cannot be tied to the code that produced them - and nothing checks
+# that the running image is the tree under test. Both halves matter; the sha is
+# the record, the tree comparison is the verification (#2854).
+guard_build
 guard_stand_exclusive f18-erli-multichannel
 guard_scheduler_off
 guard_runner_state enabled
+guard_connection_endpoints "$ERLI_CONNECTION_ID" "$ALLEGRO_A_CONNECTION_ID" "$PS_CONNECTION_ID"
 
 RUN_TAG="$(epoch)_$$"
 
@@ -120,10 +126,22 @@ ARM_C_PRODUCT_ID="ol_product_251be481026f42aaac1e8a6d1c8f1128"
 ARM_C_INV_ID="f18_${RUN_TAG}_inv"
 ARM_C_FROZEN_KEY="erli:frozen-stock:${ERLI_CONNECTION_ID}:${ARM_C_VARIANT_ID}"
 
+# ONE EXIT handler for the whole scenario. Arm C used to register a second
+# `trap ... EXIT` of its own for its probe product rows, which SILENTLY
+# REPLACED this one - bash keeps a single handler per signal - so the offer
+# mapping was never deleted and, worse, `release_stand_exclusive` never ran.
+# The visible cost was a stale `perf:stand:exclusive` lock that blocked every
+# later scenario on the stand, and an arm C that died on a duplicate-key
+# violation the second time it was run (#2840 campaign, 2026-09-10). Arm C's
+# rows are folded in here instead; nothing in this scenario may call `trap`
+# for EXIT a second time.
 f18_cleanup() {
   redis_cli DEL "$ARM_C_FROZEN_KEY" >/dev/null 2>&1 || true
   pg_sql_write_besteffort "DELETE FROM identifier_mappings WHERE \"entityType\"='Offer' AND \"internalId\"='$ARM_C_VARIANT_ID' AND \"connectionId\"='$ERLI_CONNECTION_ID'"
   pg_sql_write_besteffort "DELETE FROM inventory_items WHERE id='$ARM_C_INV_ID'"
+  pg_sql_write_besteffort "DELETE FROM inventory_items WHERE \"productId\"='$ARM_C_PRODUCT_ID'"
+  pg_sql_write_besteffort "DELETE FROM product_variants WHERE \"productId\"='$ARM_C_PRODUCT_ID'"
+  pg_sql_write_besteffort "DELETE FROM products WHERE id='$ARM_C_PRODUCT_ID'"
   pg_sql_write_besteffort "DELETE FROM sync_jobs WHERE \"idempotencyKey\" LIKE 'f18:${RUN_TAG}:%'"
   release_stand_exclusive
 }
@@ -262,10 +280,23 @@ fi
 # ===========================================================================
 log "--- arm C: Erli frozen-stock skip on updateOfferQuantity ---"
 
+  # inventory_items.productId is a real FK to products
+  # (FK_4a1e232a660d7d51a13f20099b2), so arm C's synthetic position needs its
+  # product and variant rows to exist first. Without these the arm died on the
+  # constraint every run, so the frozen-stock skip has never been observed.
+  # NAME IT AS A PROBE AND REMOVE IT ON EXIT. A bare product row with no master
+  # identifier_mapping is selectable by other scenarios' product pickers, and
+  # then fails their publish with "Product not found at master" - F16 hit
+  # exactly that on this stand after an earlier run of this arm left the row
+  # behind. The teardown is registered before the insert so a mid-arm failure
+  # still cleans up.
+  pg_sql_write "INSERT INTO products (id,name) VALUES ('$ARM_C_PRODUCT_ID','f18 arm C frozen-stock probe') ON CONFLICT (id) DO NOTHING" >/dev/null
+  pg_sql_write "INSERT INTO product_variants (id,\"productId\") VALUES ('$ARM_C_VARIANT_ID','$ARM_C_PRODUCT_ID') ON CONFLICT (id) DO NOTHING" >/dev/null
 pg_sql_write "INSERT INTO inventory_items (id,\"productId\",\"productVariantId\",\"availableQuantity\",\"updatedAt\")
   VALUES ('$ARM_C_INV_ID','$ARM_C_PRODUCT_ID','$ARM_C_VARIANT_ID',5,now())" >/dev/null
 pg_sql_write "INSERT INTO identifier_mappings (id,\"entityType\",\"internalId\",\"externalId\",\"platformType\",\"connectionId\",\"createdAt\",\"updatedAt\")
-  VALUES (gen_random_uuid(),'Offer','$ARM_C_VARIANT_ID','$ARM_C_VARIANT_ID','erli','$ERLI_CONNECTION_ID'::uuid,now(),now())" >/dev/null
+  VALUES (gen_random_uuid(),'Offer','$ARM_C_VARIANT_ID','$ARM_C_VARIANT_ID','erli','$ERLI_CONNECTION_ID'::uuid,now(),now())
+  ON CONFLICT (\"entityType\",\"platformType\",\"connectionId\",\"externalId\") DO NOTHING" >/dev/null
 
 propagate_and_wait() {
   local suffix="$1" qty="$2" job_id waited status

@@ -60,24 +60,37 @@ require_connections
 # products/eleven variants were confirmed live, right now, against the
 # CURRENT PrestaShop catalogue (`ps_product` ids 20-25) via
 # `GET /v1/products/:id/variants`.
-SIMPLE_VARIANTS=(
-  "ol_variant_83688137e69c47a38c9e07dac10a3acc"  # product 25, 1 variant
-  "ol_variant_9d0d33c14811489abf1880ab9c80d556"  # product 20, 1 variant
-  "ol_variant_de295062e5eb4c39af8047619843173a"  # product 21, 1 variant
-)
+# RESOLVED FROM THIS STAND, NOT HARDCODED. The shipped list was captured from
+# the author's own stand ("confirmed live, right now"), but ol_variant_* ids are
+# minted per install - so every id in it was NOT_FOUND here and all four arms
+# failed while the publish jobs themselves succeeded. Resolving live keeps the
+# author's constraint (only variants whose product resolves at the PrestaShop
+# master) without pinning ids that cannot survive a second stand.
+mapfile -t SIMPLE_VARIANTS < <(pg_sql "SELECT v.id FROM product_variants v
+  JOIN identifier_mappings m ON m.\"internalId\"=v.\"productId\" AND m.\"entityType\"='Product'
+  JOIN connections c ON c.id=m.\"connectionId\" AND c.name='perf-prestashop'
+  WHERE (SELECT count(*) FROM product_variants x WHERE x.\"productId\"=v.\"productId\")=1
+  ORDER BY v.id LIMIT 3")
+[ "${#SIMPLE_VARIANTS[@]}" -eq 3 ] || die "f16: could not resolve 3 single-variant products mapped at the PrestaShop master"
 # Three variable products, siblings grouped - each inner array is ONE
 # product's full variant set (#1836: one parent + N variations per submit).
-VARIABLE_PRODUCT_1=("ol_variant_b763c95fcae6447db922c0c42b402200" "ol_variant_d96340f70b8846d2ab0d7461325dd491" "ol_variant_68ecd29073eb48b7a91e3e00b05e12f2")
-VARIABLE_PRODUCT_2=("ol_variant_0b98ee6308b94a1c80984a3742f38381" "ol_variant_007fea1a00734960b2abe98ec83fff69" "ol_variant_715cdfcd6e3c4f1ba0e954f2e4cbfd9e")
-VARIABLE_PRODUCT_3=("ol_variant_dc6f93952048463295df861910892beb" "ol_variant_9953be66e18643ecba2f62f0ec1cff08")
+mapfile -t VARIABLE_PRODUCT_1 < <(pg_sql "SELECT id FROM product_variants WHERE \"productId\"='ol_product_39956975656e4565b2096b7f1df41b8f' ORDER BY id")
+mapfile -t VARIABLE_PRODUCT_2 < <(pg_sql "SELECT id FROM product_variants WHERE \"productId\"='ol_product_d7e51c102e8744288c80bf8be2861935' ORDER BY id")
+mapfile -t VARIABLE_PRODUCT_3 < <(pg_sql "SELECT id FROM product_variants WHERE \"productId\"='ol_product_e8893939236c444083c514b1786a46b4' ORDER BY id")
 
 ol_login
 
 RESULTS_DIR="$(results_dir_init f16-shop-publish "$([ "$SMOKE" = 1 ] && echo smoke || echo strict)")"
 
+# guard_build FIRST: without it the manifest records gitSha=unknown, so the
+# figures cannot be tied to the code that produced them - and nothing checks
+# that the running image is the tree under test. Both halves matter; the sha is
+# the record, the tree comparison is the verification (#2854).
+guard_build
 guard_stand_exclusive f16-shop-publish
 guard_scheduler_off
 guard_runner_state enabled
+guard_connection_endpoints "$WC_CONNECTION_ID"
 
 CONN_IDS_CSV="'$WC_CONNECTION_ID'"
 window_start "$RESULTS_DIR" f16-shop-publish "$CONN_IDS_CSV" "$SMOKE" \

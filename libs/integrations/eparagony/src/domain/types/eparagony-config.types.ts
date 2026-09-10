@@ -115,6 +115,27 @@ export interface EparagonyConnectionConfig {
   statusPollTimeoutMs?: number;
 
   /**
+   * How long to wait BEFORE the first status re-read, and therefore the size of
+   * the whole backoff ladder's first rung.
+   *
+   * This exists because the poll is what a fiscal registration mostly costs.
+   * Measured on the #2840 stand against a 2 s device: 8 323 ms of job work per
+   * registration (n=12), of which roughly three quarters is status polling
+   * where every poll pays the device's full round trip. The loop issues its
+   * first read immediately after the create, so against any device slower than
+   * this delay that read is premature BY CONSTRUCTION - it costs a full round
+   * trip to be told the thing that had not finished still has not finished.
+   *
+   * An operator who knows their device typically confirms in about two seconds
+   * sets this to roughly that, and saves one whole round trip per receipt. It
+   * is a property of the seller's own hardware, which is why OL cannot pick it:
+   * setting it too high delays a receipt that was already done.
+   *
+   * Absent keeps the shipped default, so an existing connection is unchanged.
+   */
+  statusPollInitialDelayMs?: number;
+
+  /**
    * DIAGNOSTIC ONLY - the unique number of the fiscal device this connection
    * feeds, used by "Test connection" to also report whether the device has been
    * seen alive recently.

@@ -1,0 +1,10 @@
+status=VALID
+generatedAt=2026-09-09T05:32:51Z
+guard=post_guard_attempts:ok
+guard=post_guard_deferrals:ok
+guard=post_guard_requeues:ok
+guard=post_guard_destination_creates:ok
+guard=post_guard_limiter_degraded:ok
+guard=post_guard_containers_stable:ok
+guard=post_guard_generator_saturated:ok
+guard=post_guard_feed_starved:ok

@@ -673,6 +673,27 @@ services:
       # Empty is the default and means UNSET, so an untouched stand is
       # byte-identical to its pre-#2983 self.
       OL_JOB_INTAKE_DEDICATED_REDIS: '${OL_JOB_INTAKE_DEDICATED_REDIS:-}'
+      # Master-sweep enablement (#2840, the order-arrival-latency window).
+      # `master.product.syncAll` and `master.inventory.syncAll` parents share
+      # the `fan-out` lane with `marketplace.orders.poll` itself
+      # (handler-registration.service.ts, 8 total / 4 per scope), so a latency
+      # window that wants the scheduler ON but the catalogue co-tenancy OFF has
+      # to be able to turn these off - and could not, for the same reason
+      # OL_JOB_INTAKE_DEDICATED_REDIS above could not: compose substitutes
+      # `${VAR}` only for keys the service itself lists, so exporting these
+      # around `docker compose up` changed NOTHING before these lines existed.
+      #
+      # Empty is the default and means UNSET. The scheduler resolves enablement
+      # as `get(envVar, 'true') !== 'false'`, and an empty string is *defined*,
+      # so it returns '' and the task stays enabled - i.e. an untouched stand is
+      # byte-identical to its pre-#2840 self. Only the literal 'false' disables.
+      #
+      # Do not trust these either; read the worker's own
+      # `Registered scheduler task: ...` lines back, which is what the latency
+      # scenario's AC2 does.
+      OL_PRODUCT_SYNC_ENABLED: '${OL_PRODUCT_SYNC_ENABLED:-}'
+      OL_INVENTORY_SYNC_ENABLED: '${OL_INVENTORY_SYNC_ENABLED:-}'
+      OL_MASTER_PRODUCT_RECONCILE_ENABLED: '${OL_MASTER_PRODUCT_RECONCILE_ENABLED:-}'
       # Lane caps (ADR-050 decisions 2/6, #2867). Passed through so a scenario
       # can SWEEP a cap - which is the only way to measure one, and was not
       # possible before: compose substitutes `${VAR}` only for keys the service

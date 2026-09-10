@@ -81,10 +81,25 @@ const MIN_STATUS_POLL_TIMEOUT_MS = 5_000;
 /** Ceiling on an operator-configured poll timeout, so the deadline invariant cannot be configured away. */
 const MAX_STATUS_POLL_TIMEOUT_MS = 90_000;
 
-/** First gap before re-reading the status. The vendor asks for exponential backoff. */
+/**
+ * First gap before re-reading the status. The vendor asks for exponential
+ * backoff. Operator-overridable per connection via
+ * `config.statusPollInitialDelayMs` (#2840) - see that field for why, and note
+ * the default is unchanged, so an existing connection behaves exactly as before.
+ */
 const STATUS_POLL_INITIAL_DELAY_MS = 1_000;
 const STATUS_POLL_BACKOFF_MULTIPLIER = 1.6;
 const STATUS_POLL_MAX_DELAY_MS = 5_000;
+
+/**
+ * Floor and ceiling on an operator-configured first gap. The floor stops a
+ * mistyped `0` turning the ladder into a busy loop against somebody else's
+ * fiscal device. The ceiling is the ladder's own steady-state gap: a first rung
+ * longer than every later one is not a backoff, and would delay the common case
+ * (a device that confirmed while we waited) for no gain.
+ */
+const MIN_STATUS_POLL_INITIAL_DELAY_MS = 250;
+const MAX_STATUS_POLL_INITIAL_DELAY_MS = STATUS_POLL_MAX_DELAY_MS;
 
 // Fail loud at module load if the poll ceiling is ever raised past the whole-call
 // deadline, which would let one registration outlive core's in-flight lease.
@@ -266,7 +281,7 @@ export class EparagonyFiscalizationAdapter
     deadline: number,
     orderId: string,
   ): Promise<EparagonyDocumentStatusResponse> {
-    let delay = STATUS_POLL_INITIAL_DELAY_MS;
+    let delay = this.resolvePollInitialDelayMs();
     const pollUntil = Math.min(deadline, Date.now() + this.resolvePollTimeoutMs());
     let lastStatus: string | null = null;
 
@@ -376,6 +391,23 @@ export class EparagonyFiscalizationAdapter
       }
       throw error;
     }
+  }
+
+  /**
+   * Clamp the operator's first-rung delay. A non-numeric or non-finite value is
+   * IGNORED rather than honoured - `config` is JSONB, so the coercion has to
+   * live here, and a NaN delay would make `sleep` return immediately and turn
+   * the ladder into a hot loop against a fiscal device.
+   */
+  private resolvePollInitialDelayMs(): number {
+    const configured = this.config.statusPollInitialDelayMs;
+    if (typeof configured !== 'number' || !Number.isFinite(configured)) {
+      return STATUS_POLL_INITIAL_DELAY_MS;
+    }
+    return Math.min(
+      Math.max(configured, MIN_STATUS_POLL_INITIAL_DELAY_MS),
+      MAX_STATUS_POLL_INITIAL_DELAY_MS,
+    );
   }
 
   /** Clamp the operator's poll timeout into the range the deadline invariant allows. */

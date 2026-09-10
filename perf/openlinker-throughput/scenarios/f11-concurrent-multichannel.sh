@@ -290,7 +290,7 @@ f11_ensure_source_connection() {
   existing="$(ol_api GET "/v1/connections" | jq -r --arg n "$name" \
     'if type=="array" then . else (.items // []) end | map(select(.name==$n)) | .[0].id // empty')"
   if [ -n "$existing" ]; then
-    log "found connection '$name' ($existing)"
+    log "found connection '$name' ($existing)" >&2
     printf '%s' "$existing"
     return 0
   fi
@@ -307,7 +307,7 @@ f11_ensure_source_connection() {
       config:{baseUrl:$u, shopId:1},
       credentials:{webserviceApiKey:$k}}')" | jq -r '.id // empty')"
   [ -n "$id" ] || die "f11_ensure_source_connection: connection create returned no id"
-  log "created connection 'perf-prestashop-source' ($id)"
+  log "created connection 'perf-prestashop-source' ($id)" >&2
   printf '%s' "$id"
 }
 

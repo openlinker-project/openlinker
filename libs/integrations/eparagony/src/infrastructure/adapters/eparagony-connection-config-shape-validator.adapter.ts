@@ -94,6 +94,21 @@ export class EparagonyConnectionConfigShapeValidatorAdapter
       issues.push({ path: 'statusPollTimeoutMs', message: 'must be a positive number' });
     }
 
+    // Rejected at save time rather than silently ignored at registration time
+    // (#2840). The adapter clamps a value it cannot read back to the shipped
+    // default, which is the safe runtime behaviour and a poor operator
+    // experience on its own: a mistyped delay would take effect as "no change"
+    // with nothing said. The clamp stays; this is where the operator is told.
+    if (
+      config.statusPollInitialDelayMs !== undefined &&
+      config.statusPollInitialDelayMs !== null &&
+      (typeof config.statusPollInitialDelayMs !== 'number' ||
+        !Number.isFinite(config.statusPollInitialDelayMs) ||
+        config.statusPollInitialDelayMs <= 0)
+    ) {
+      issues.push({ path: 'statusPollInitialDelayMs', message: 'must be a positive number' });
+    }
+
     if (
       config.fiscalDeviceUniqueNumber !== undefined &&
       config.fiscalDeviceUniqueNumber !== null &&

@@ -1,0 +1,4 @@
+status=DISCARDED
+generatedAt=2026-09-08T13:15:26Z
+reason=DISCARDED post_guard_destination_creates: 900 order(s) carry a failed syncStatus entry, 900 lack syncedAt on the declared destination
+reason=DISCARDED post_guard_feed_starved: the system ran out of work inside the window (upstream supply and the due queue were BOTH empty on at least one tick), so it was idle for part of the measurement - the achieved rate is a floor on the OFFERED rate, not the system's ceiling. Push a deeper backlog (or a shorter window) and re-run
