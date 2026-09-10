@@ -389,6 +389,8 @@ export type {
 export type { PriceChangeEpisodeRepositoryPort } from './domain/ports/price-change-episode-repository.port';
 export { PriceChangeEpisodePersistenceError } from './domain/exceptions/price-change-episode-persistence.error';
 export { PriceChangeEpisodeSupersededError } from './domain/exceptions/price-change-episode-superseded.error';
+export { resolvePriceChangeBlockReason, readConnectionCurrency } from './domain/types/price-change-block.types';
+export type { IPriceChangeDetectionService } from './application/services/price-change-detection.service.interface';
 export { OfferCommercialSnapshot } from './domain/entities/offer-commercial-snapshot.entity';
 export type {
   OfferCommercialSnapshotProps,

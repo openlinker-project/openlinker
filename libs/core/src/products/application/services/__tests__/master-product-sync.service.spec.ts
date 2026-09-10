@@ -28,6 +28,7 @@ import type { ProductVariant } from '../../../domain/entities/product-variant.en
 import type { ProductMasterPort } from '../../../domain/ports/product-master.port';
 import type { StoredTaxRate, TaxRateResolution } from '../../../domain/types/tax-rate.types';
 import { effectiveTaxRate } from '../../../domain/types/tax-rate.types';
+import type { PriceChangeObserverPort } from '../../../domain/ports/price-change-observer.port';
 
 const connectionId = 'connection-1';
 const externalId = 'ext-9';
@@ -659,6 +660,90 @@ describe('MasterProductSyncService', () => {
 
       expect(result.failures).toEqual([]);
       expect(result.results.filter((one) => one.masterDeleted)).toHaveLength(1);
+    });
+  });
+
+  // #3143 — the optional price-change observer hook (ADR-072).
+  describe('price-change observer', () => {
+    let priceChangeObserver: jest.Mocked<PriceChangeObserverPort>;
+
+    beforeEach(() => {
+      priceChangeObserver = { onMasterPriceChanged: jest.fn().mockResolvedValue(undefined) };
+      service = new MasterProductSyncService(
+        integrationsService,
+        identifierMapping,
+        productsService as unknown as IProductsService,
+        eventPublisher,
+        entityClaims,
+        taxRateJournal,
+        priceChangeObserver
+      );
+      (productsService as unknown as { getVariantsByProductId: jest.Mock }).getVariantsByProductId =
+        jest.fn();
+    });
+
+    it('reports a variant whose price changed, with the product currency', async () => {
+      (
+        productsService as unknown as { getVariantsByProductId: jest.Mock }
+      ).getVariantsByProductId.mockResolvedValue([{ id: 'ol_variant_1', price: 350 }]);
+      adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 327, currency: 'PLN' });
+      adapter.getProductVariants.mockResolvedValue([
+        { ...makeVariant('ol_variant_1'), price: 327 },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(priceChangeObserver.onMasterPriceChanged).toHaveBeenCalledWith({
+        productVariantId: 'ol_variant_1',
+        sourceConnectionId: connectionId,
+        sourceOldAmount: 350,
+        sourceNewAmount: 327,
+        sourceCurrency: 'PLN',
+      });
+    });
+
+    it('does not report a variant whose price is unchanged', async () => {
+      (
+        productsService as unknown as { getVariantsByProductId: jest.Mock }
+      ).getVariantsByProductId.mockResolvedValue([{ id: 'ol_variant_1', price: 350 }]);
+      adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 350, currency: 'PLN' });
+      adapter.getProductVariants.mockResolvedValue([
+        { ...makeVariant('ol_variant_1'), price: 350 },
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(priceChangeObserver.onMasterPriceChanged).not.toHaveBeenCalled();
+    });
+
+    it('does not fail the sync when the observer throws', async () => {
+      priceChangeObserver.onMasterPriceChanged.mockRejectedValue(new Error('boom'));
+      (
+        productsService as unknown as { getVariantsByProductId: jest.Mock }
+      ).getVariantsByProductId.mockResolvedValue([{ id: 'ol_variant_1', price: 350 }]);
+      adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 327, currency: 'PLN' });
+      adapter.getProductVariants.mockResolvedValue([
+        { ...makeVariant('ol_variant_1'), price: 327 },
+      ]);
+
+      await expect(service.syncFromMasterByExternalId(connectionId, externalId)).resolves.toBeDefined();
+    });
+
+    it('never reads previous prices when no observer is wired (default construction)', async () => {
+      service = new MasterProductSyncService(
+        integrationsService,
+        identifierMapping,
+        productsService as unknown as IProductsService,
+        eventPublisher,
+        entityClaims,
+        taxRateJournal
+      );
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(
+        (productsService as unknown as { getVariantsByProductId: jest.Mock }).getVariantsByProductId
+      ).not.toHaveBeenCalled();
     });
   });
 });
