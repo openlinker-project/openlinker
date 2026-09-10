@@ -24158,3 +24158,198 @@ legend.analytics-settings-dialog__label {
     justify-items: start;
   }
 }
+
+/* ── PricingAndSyncSection (#3149, ADR-072) ──
+   Mirrors `docs/plans/mockups/price-changes-review-queue.html`'s
+   `#page-connection` `.settings-section` / `.mode-switch` / `.source-row` /
+   `.unsaved-bar` shapes — checked for name collisions against the real
+   app's existing CSS before adding (`.settings-section` etc. were only
+   ever referenced in a comment, never defined; see the #2473 note above). */
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-section:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.settings-section h2 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-section__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.settings-section__desc {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.settings-section__pending {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.settings-section__pending svg {
+  flex-shrink: 0;
+  color: var(--accent-primary);
+}
+
+.mode-switch {
+  display: inline-flex;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  padding: 2px;
+  gap: 2px;
+  width: fit-content;
+}
+
+.mode-switch__opt {
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-pill);
+  padding: 6px 14px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.mode-switch__opt.is-active {
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+}
+
+.mode-switch__opt:focus-visible {
+  box-shadow: var(--shadow-focus);
+}
+
+.mode-switch--sm .mode-switch__opt {
+  padding: 4px 10px;
+  font-size: 0.72rem;
+}
+
+.mode-switch__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.rule-editor-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.rule-editor-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 640px) {
+  .rule-editor-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.unsaved-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3);
+  background: var(--accent-primary-soft);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-md);
+}
+
+.unsaved-bar__text {
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+
+.unsaved-bar__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.source-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.source-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.source-row__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.source-row__name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.source-row__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.source-row__summary {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.source-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

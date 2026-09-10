@@ -124,7 +124,11 @@ export function PriceChangesQueueTable(): ReactElement {
   // Namespaced (#3164 review) so this table's own filters are shareable/
   // reload-durable and neither collide with nor silently inherit the "All
   // listings" tab's `?connectionId` channel selector — a channel chosen
-  // there must never pre-filter this queue.
+  // there must never pre-filter this queue. The connection settings page's
+  // "N changes waiting — review them" deep link (#3149) therefore writes
+  // this same `queueConn` param rather than a separate prop, so arriving
+  // here from that link pre-filters through the identical, already-shareable
+  // mechanism a manual chip click uses — no extra prop plumbing needed.
   const connectionFilter = searchParams.get('queueConn') ?? 'all';
   const directionFilter = parseDirectionParam(searchParams.get('dir'));
   const magnitudeOnly = searchParams.get('big') === '1';
