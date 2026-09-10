@@ -75,7 +75,13 @@ set -euo pipefail
 # host-vs-network-namespace split as order-feed.sh's OF_STUB_URL) - port
 # 19080, docker-compose.lab.yml's PRESTASHOP_HOST_PORT default.
 PSO_BASE_URL="${PSO_BASE_URL:-http://127.0.0.1:19080}"
-PSO_WS_KEY="${PSO_WS_KEY:-${PS_WS_KEY:-}}"
+# #3048 review: `stand-ids.env` exports `PS_WEBSERVICE_KEY` (bootstrap.sh's
+# own name), never `PS_WS_KEY` - the scenario caller
+# (f11-concurrent-multichannel.sh) already falls back to it for its own
+# connection setup, but this driver did not, so a fresh `source
+# stand-ids.env` alone left this die()'ing with a message pointing at a
+# var that was never going to be set. Matches the caller's own fallback.
+PSO_WS_KEY="${PSO_WS_KEY:-${PS_WS_KEY:-${PS_WEBSERVICE_KEY:-}}}"
 
 # The cursor key PrestaShop's OrderSourcePort uses for its date_upd-watermark
 # reconciliation poll (`prestashop-orders-poll` task /
@@ -108,7 +114,7 @@ PSO_CURSOR_KEY="${PSO_CURSOR_KEY:-prestashop.orders.dateUpd}"
 # ---------------------------------------------------------------------------
 pso_ws_curl() {
   local method="$1" path="$2" body="${3:-}" sep resp status resp_body
-  [ -n "$PSO_WS_KEY" ] || die "pso_ws_curl: PSO_WS_KEY is not set - export PS_WS_KEY from stand-ids.env"
+  [ -n "$PSO_WS_KEY" ] || die "pso_ws_curl: PSO_WS_KEY is not set - export PS_WS_KEY or PS_WEBSERVICE_KEY from stand-ids.env"
   case "$path" in *\?*) sep='&' ;; *) sep='?' ;; esac
   # -H 'Host: prestashop' works around a canonical-domain redirect: the shop's
   # ps_shop_url.domain is the docker-network alias "prestashop" (reachable
@@ -194,8 +200,26 @@ pso_resolve_refs() {
   # The seeded PERFBASE catalogue (seed-catalogue.sh), the same population
   # make-8line-order.sh draws from - already tax-grouped by bootstrap.sh's
   # step_tax_group, so its price/tax fields are internally consistent.
+  #
+  # #3048 review: `seed-catalogue.sh` (#2849) never actually creates this -
+  # it seeds OL's own Postgres (products/product_variants/inventory_items/
+  # identifier_mappings) only, and touches PrestaShop's MySQL nowhere at
+  # all, so no `ps_product` row named "PERFBASE-*" has ever existed on this
+  # stand - found live, the first time this driver's own smoke test ran.
+  # Rather than leave the die() pointing at a fix that does not fix
+  # anything, self-heal: alias the OL module's own fixture catalogue's
+  # oldest active, tax-grouped product by giving it a PERFBASE-prefixed
+  # reference (idempotent - a re-run finds it via the same query and
+  # changes nothing).
   PSO_PRODUCT_ID="$(as_count "$(ps_sql "SELECT id_product FROM ps_product WHERE reference LIKE 'PERFBASE-%' AND active=1 ORDER BY id_product LIMIT 1" 2>/dev/null | tr -d '[:space:]')")"
-  [ -n "$PSO_PRODUCT_ID" ] || die "pso_resolve_refs: no active PERFBASE product on the shop - run seed-catalogue.sh first"
+  if [ -z "$PSO_PRODUCT_ID" ]; then
+    local heal_id
+    heal_id="$(as_count "$(ps_sql "SELECT id_product FROM ps_product WHERE active=1 AND id_tax_rules_group>0 ORDER BY id_product LIMIT 1" 2>/dev/null | tr -d '[:space:]')")"
+    [ -n "$heal_id" ] || die "pso_resolve_refs: no active, tax-grouped product exists on the shop at all - run bootstrap.sh first"
+    ps_sql_write "UPDATE ps_product SET reference=CONCAT('PERFBASE-', id_product) WHERE id_product=$heal_id"
+    PSO_PRODUCT_ID="$heal_id"
+    log "pso_resolve_refs: no PERFBASE product existed - aliased product $heal_id (reference=PERFBASE-$heal_id)"
+  fi
   PSO_PRODUCT_PRICE="$(ps_sql "SELECT price FROM ps_product WHERE id_product=$PSO_PRODUCT_ID" 2>/dev/null | tr -d '[:space:]')"
   [ -n "$PSO_PRODUCT_PRICE" ] || die "pso_resolve_refs: product $PSO_PRODUCT_ID has no price"
   # 0 = the simple-product convention for a cart row with no combination.
