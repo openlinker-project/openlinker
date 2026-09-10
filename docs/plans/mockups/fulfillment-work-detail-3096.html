@@ -1,0 +1,312 @@
+<title>Fulfilment Work Detail</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root, [data-theme='light'] {
+  --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff; --bg-surface-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80); --text-disabled: oklch(70% 0.005 80); --text-on-primary: oklch(18% 0.012 50);
+  --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-soft: oklch(96% 0.04 60); --accent-primary-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
+  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
+  --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+  --space-2:.5rem; --space-3:.75rem; --space-4:1rem; --space-5:1.5rem;
+  --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:9999px;
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / .04), 0 6px 16px rgb(15 18 26 / .06);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
+    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+    --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
+    --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
+    --status-error-soft: oklch(28% 0.09 25); --status-error-border: oklch(42% 0.13 25); --status-error-fg: oklch(84% 0.14 25);
+    --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
+    --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+  }
+}
+:root[data-theme='dark'] {
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
+  --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
+  --status-error-soft: oklch(28% 0.09 25); --status-error-border: oklch(42% 0.13 25); --status-error-fg: oklch(84% 0.14 25);
+  --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
+  --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+}
+* { box-sizing: border-box; }
+body { margin:0; min-width:320px; background:var(--bg-canvas); color:var(--text-primary); font-family:var(--font-sans); font-size:.875rem; line-height:1.5; }
+h1,h2,h3,p { margin:0; }
+button:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-md); }
+
+.page{ max-width:1100px; margin:0 auto; padding:28px 24px 60px; }
+.eyebrow{ font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-primary-hover); }
+.title{ font-size:1.75rem; font-weight:600; letter-spacing:-.02em; margin-top:6px; }
+
+.compare{ display:grid; grid-template-columns:1fr 1fr; gap:0; margin-top:16px; border:1px solid var(--border-default); border-radius:var(--radius-lg); overflow:hidden; max-width:78ch; }
+@media (max-width:640px){ .compare{ grid-template-columns:1fr; } }
+.compare__col{ padding:14px 16px; }
+.compare__col:first-child{ border-right:1px solid var(--border-default); background:var(--bg-surface-muted); }
+@media (max-width:640px){ .compare__col:first-child{ border-right:none; border-bottom:1px solid var(--border-default); } }
+.compare__col--this{ background:var(--bg-surface); }
+.compare__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin-bottom:4px; }
+.compare__text{ font-size:.8125rem; color:var(--text-secondary); }
+.compare__text b{ color:var(--text-primary); }
+
+.example{ display:flex; gap:12px; align-items:flex-start; margin-top:14px; padding:14px 16px; border-radius:var(--radius-lg); background:var(--accent-primary-soft); border:1px solid var(--accent-primary-border); max-width:78ch; }
+.example__glyph{ font-family:var(--font-mono); font-size:.875rem; font-weight:700; color:var(--accent-primary-hover); flex-shrink:0; }
+.example__text{ font-size:.8125rem; color:var(--text-secondary); }
+.example__text b{ color:var(--text-primary); }
+
+.layout{ display:grid; grid-template-columns:340px 1fr; gap:20px; margin-top:24px; align-items:start; }
+@media (max-width:860px){ .layout{ grid-template-columns:1fr; } }
+
+.list{ border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); overflow:hidden; }
+.list__header{ padding:12px 14px; border-bottom:1px solid var(--border-subtle); font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); }
+.list-item{ display:block; width:100%; text-align:left; border:none; background:none; cursor:pointer; padding:13px 14px; border-bottom:1px solid var(--border-subtle); }
+.list-item:last-child{ border-bottom:none; }
+.list-item:hover{ background:var(--bg-surface-muted); }
+.list-item--selected{ background:var(--accent-primary-soft); box-shadow:inset 3px 0 0 var(--accent-primary); }
+.list-item__order{ font-weight:600; font-size:.875rem; }
+.list-item__where{ font-size:.75rem; color:var(--text-muted); margin-top:2px; }
+.list-item__pill{ display:inline-flex; align-items:center; gap:6px; margin-top:8px; padding:2px 8px; border-radius:var(--radius-md); font-family:var(--font-mono); font-size:.6875rem; font-weight:500; letter-spacing:.02em; text-transform:uppercase; border:1px solid var(--status-disabled-border); background:var(--status-disabled-soft); color:var(--status-disabled-fg); }
+.list-item__pill--attn{ border-color:var(--status-warning-border); background:var(--status-warning-soft); color:var(--status-warning-fg); }
+.list-item__pill-dot{ width:6px; height:6px; border-radius:999px; background:currentColor; opacity:.8; }
+
+.detail{ border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); min-height:420px; }
+.detail__hero{ padding:24px 26px 20px; border-bottom:1px solid var(--border-subtle); }
+.detail__hero-sub{ font-size:.8125rem; color:var(--text-muted); margin-bottom:10px; }
+.detail__hero-status{ font-size:1.375rem; font-weight:700; display:flex; align-items:center; gap:10px; }
+.detail__hero-status--attn{ color:var(--status-warning-fg); }
+.detail__hero-dot{ width:10px; height:10px; border-radius:999px; background:var(--text-disabled); flex-shrink:0; }
+.detail__hero-dot--attn{ background:var(--status-warning); }
+.detail__hero-detail{ font-size:.875rem; color:var(--text-secondary); margin-top:8px; }
+.detail__body{ padding:22px 26px; }
+.detail__section{ margin-bottom:24px; }
+.detail__section:last-child{ margin-bottom:0; }
+.detail__section-title{ font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); margin-bottom:10px; }
+
+.item-row{ display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--border-subtle); }
+.item-row:last-child{ border-bottom:none; }
+.item-row__name{ font-weight:500; font-size:.9375rem; }
+.item-row__qty{ font-size:.8125rem; color:var(--text-secondary); }
+.item-row__done{ color:var(--text-secondary); }
+.item-row__done-tick{ color:var(--status-success-fg); }
+
+.fact-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px 24px; }
+.fact{ display:grid; gap:2px; }
+.fact__label{ font-size:.75rem; color:var(--text-muted); }
+.fact__value{ font-size:.9375rem; font-weight:500; }
+
+.hold-banner{ display:flex; gap:10px; padding:13px 15px; border-radius:var(--radius-md); background:var(--status-warning-soft); border:1px solid var(--status-warning-border); }
+.hold-banner__title{ font-weight:600; font-size:.875rem; color:var(--status-warning-fg); }
+.hold-banner__desc{ font-size:.8125rem; color:var(--text-secondary); margin-top:3px; }
+
+.detail__actions{ padding:18px 26px; border-top:1px solid var(--border-subtle); display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.detail__actions-label{ font-size:.75rem; color:var(--text-muted); width:100%; margin-bottom:2px; }
+
+.button{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--accent-primary-border); border-radius:var(--radius-md); padding:0 18px; height:2.25rem; background:var(--accent-primary); color:var(--text-on-primary); font-family:inherit; font-size:.875rem; font-weight:600; cursor:pointer; box-shadow:var(--shadow-xs); }
+.button:hover{ background:var(--accent-primary-hover); }
+.button--secondary{ border-color:var(--border-default); background:var(--bg-surface); color:var(--text-primary); }
+.button--secondary:hover{ background:var(--bg-surface-muted); border-color:var(--border-strong); }
+.button--danger{ border-color:color-mix(in oklab, var(--status-error) 80%, black); background:var(--status-error); color:#fff; }
+.button:disabled{ cursor:not-allowed; opacity:.5; box-shadow:none; }
+
+.alert{ display:flex; gap:10px; padding:12px 14px; border-radius:var(--radius-md); border:1px solid; margin:0 26px 18px; }
+.alert--warning{ background:var(--status-warning-soft); border-color:var(--status-warning-border); }
+.alert--error{ background:var(--status-error-soft); border-color:var(--status-error-border); }
+.alert--success{ background:var(--status-success-soft); border-color:var(--status-success-border); }
+.alert__text{ font-size:.8125rem; color:var(--text-secondary); }
+.alert__text b{ color:var(--text-primary); }
+
+.done-empty{ padding:60px 26px; text-align:center; color:var(--text-muted); }
+
+.demo-toolbar{ display:flex; align-items:center; gap:10px; margin-top:22px; padding:10px 14px; background:var(--bg-surface-muted); border-radius:var(--radius-md); flex-wrap:wrap; }
+.demo-toolbar__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin-right:2px; }
+.chip{ display:inline-flex; align-items:center; gap:.25rem; height:1.5rem; padding:0 .6rem; border:1px solid var(--border-subtle); border-radius:var(--radius-pill); background:var(--bg-surface); color:var(--text-secondary); font-size:.75rem; font-weight:500; cursor:pointer; }
+.chip.chip--active{ background:var(--accent-primary-soft); border-color:var(--accent-primary-border); color:var(--accent-primary-hover); font-weight:600; }
+</style>
+
+<div class="page">
+  <p class="eyebrow">Fulfilment</p>
+  <h1 class="title">Who's packing it, right now</h1>
+
+  <div class="compare">
+    <div class="compare__col">
+      <div class="compare__label">Orders</div>
+      <p class="compare__text">What was sold, and its <b>overall</b> status — one row per order, always.</p>
+    </div>
+    <div class="compare__col compare__col--this">
+      <div class="compare__label">This page</div>
+      <p class="compare__text">The physical packing job. Only shows up when <b>OpenLinker itself</b> is coordinating who picks and ships — most orders skip this, because the shop or marketplace ships them directly.</p>
+    </div>
+  </div>
+
+  <div class="example">
+    <span class="example__glyph">e.g.</span>
+    <p class="example__text">Order <b>#9F2E1A</b> is one row in Orders. But its shoe box ships from Warsaw and its earbuds ship from Berlin — so it's <b>two separate tasks</b> here, one per warehouse. That split is the whole reason this page exists.</p>
+  </div>
+
+  <div class="layout">
+    <div class="list">
+      <div class="list__header">4 orders</div>
+      <div id="listBody"></div>
+    </div>
+    <div class="detail" id="detailPane"></div>
+  </div>
+
+  <div class="demo-toolbar" role="group" aria-label="Mockup — not part of the product">
+    <span class="demo-toolbar__label">Mockup · clicking an action</span>
+    <button class="chip chip--active" data-outcome="ok" onclick="setOutcome('ok')">Works</button>
+    <button class="chip" data-outcome="version_conflict" onclick="setOutcome('version_conflict')">Someone else changed it first</button>
+    <button class="chip" data-outcome="action_not_legal" onclick="setOutcome('action_not_legal')">No longer possible</button>
+  </div>
+</div>
+
+<script>
+// `attn: true` is the ONE thing that earns colour — an ordinary working
+// state (being packed, waiting for an answer, finished) stays plain ink.
+const SUMMARY = {
+  'in_progress|accepted':      { attn:false, label:'Being packed', detail:(w) => `${w.assignedConnectionId} is picking and packing this right now.` },
+  'on_hold|unsubmitted':       { attn:true,  label:'On hold — nobody is working this', detail:() => `See why below.` },
+  'open|submitted':            { attn:false, label:'Waiting for an answer', detail:(w) => `Asked ${w.assignedConnectionId} to take this. No answer yet.` },
+  'cancelled|cancellation_accepted': { attn:false, label:'Cancelled', detail:(w) => `${w.assignedConnectionId} gave this back.` },
+};
+const HOLD_LABEL = { 'stock-shortfall':'Out of stock here', 'payment-review':'Payment is being reviewed', 'operator':'Held by an operator', 'fraud-review':'Fraud review', 'address-invalid':'Address needs a fix', 'awaiting-amendment':'Waiting on an amendment', 'awaiting-customer-confirmation':'Waiting on the customer', 'external':'Held by an outside system' };
+const ACTION_LABEL = {
+  schedule:'Schedule', submit:'Send to warehouse', accept:'Accept', reject:'Turn down',
+  request_cancellation:'Ask to cancel', accept_cancellation:'Confirm cancel', reject_cancellation:'Keep it — refuse cancel',
+  hold:'Put on hold', release_hold:'Take off hold', mark_in_progress:'Mark as started', close:'Mark complete',
+  force_cancel:'Cancel this', expedite:'Bump to the front', release_expedite:'Undo bump',
+};
+const ACTION_DANGER = { force_cancel:true };
+const ACTION_SECONDARY = { reject:true, reject_cancellation:true, release_hold:true };
+
+const WORKS = [
+  { id:'ol_fwork_a91c', orderId:'#9F2E1A', locationId:'Warsaw — Main warehouse', assignedConnectionId:'DPD Polska (3PL)', status:'in_progress', requestStatus:'accepted', externalWorkId:'DPD-WRK-88213', createdAt:'2026-09-08T14:00:00Z', version:4,
+    lines:[{ name:'Running shoes — 42', totalQuantity:2, fulfilledQuantity:2 }, { name:'Wireless earbuds', totalQuantity:1, fulfilledQuantity:0 }],
+    activeHolds:[], supportedActions:['mark_in_progress','hold','request_cancellation','force_cancel'] },
+  { id:'ol_fwork_b204', orderId:'#C71A02', locationId:'Kraków — Overflow', assignedConnectionId:null, status:'on_hold', requestStatus:'unsubmitted', externalWorkId:null, createdAt:'2026-09-10T07:20:00Z', version:1,
+    lines:[{ name:'Phone case — clear', totalQuantity:1, fulfilledQuantity:0 }],
+    activeHolds:[{ reason:'stock-shortfall', note:'0 of 1 available at Kraków — Overflow', placedAt:'2026-09-10T07:20:00Z' }],
+    supportedActions:['release_hold','force_cancel'] },
+  { id:'ol_fwork_e337', orderId:'#5A1CD0', locationId:'Berlin — 3PL partner', assignedConnectionId:'DHL courier', status:'open', requestStatus:'submitted', externalWorkId:null, createdAt:'2026-09-10T07:55:00Z', version:2,
+    lines:[{ name:'Screen protector 2-pack', totalQuantity:3, fulfilledQuantity:0 }],
+    activeHolds:[], supportedActions:['accept','reject'] },
+  { id:'ol_fwork_9012', orderId:'#1102FE', locationId:'Warsaw — Main warehouse', assignedConnectionId:'DPD Polska (3PL)', status:'cancelled', requestStatus:'cancellation_accepted', externalWorkId:'DPD-WRK-87990', createdAt:'2026-09-04T10:00:00Z', version:6,
+    lines:[{ name:'Backpack — 24L', totalQuantity:1, fulfilledQuantity:0 }],
+    activeHolds:[], supportedActions:[] },
+];
+
+let selectedId = WORKS[0].id;
+let currentOutcome = 'ok';
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtTime(iso){ if(!iso) return null; const d = new Date(iso); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+function summaryFor(w){ return SUMMARY[w.status + '|' + w.requestStatus] || { attn:false, label:w.status.replace('_',' '), detail:() => '' }; }
+
+function renderList() {
+  document.getElementById('listBody').innerHTML = WORKS.map(w => {
+    const s = summaryFor(w);
+    return `<button class="list-item ${w.id===selectedId?'list-item--selected':''}" onclick="selectWork('${w.id}')">
+      <div class="list-item__order">Order ${w.orderId}</div>
+      <div class="list-item__where">${escapeHtml(w.locationId)}</div>
+      <span class="list-item__pill ${s.attn ? 'list-item__pill--attn' : ''}"><span class="list-item__pill-dot"></span>${s.label}</span>
+    </button>`;
+  }).join('');
+}
+
+function renderDetail() {
+  const w = WORKS.find(x => x.id === selectedId);
+  const pane = document.getElementById('detailPane');
+  if (!w) { pane.innerHTML = `<div class="done-empty">Pick an order on the left.</div>`; return; }
+  const s = summaryFor(w);
+
+  const linesHtml = w.lines.map(l => {
+    const done = l.fulfilledQuantity >= l.totalQuantity;
+    return `<div class="item-row"><span class="item-row__name">${escapeHtml(l.name)}</span><span class="item-row__qty ${done?'item-row__done':''}">${done ? '<span class="item-row__done-tick">✓</span> ' + l.totalQuantity + ' packed' : `${l.fulfilledQuantity} of ${l.totalQuantity} packed`}</span></div>`;
+  }).join('');
+
+  const holdHtml = w.activeHolds.map(h => `<div class="hold-banner"><span>⏸</span><div><div class="hold-banner__title">${HOLD_LABEL[h.reason] || h.reason}</div>${h.note?`<div class="hold-banner__desc">${escapeHtml(h.note)}</div>`:''}<div class="hold-banner__desc">since ${fmtTime(h.placedAt)}</div></div></div>`).join('');
+
+  const actionsHtml = w.supportedActions.length === 0
+    ? `<span style="font-size:.875rem; color:var(--text-muted);">Nothing left to do — this is finished.</span>`
+    : w.supportedActions.map(a => `<button class="button ${ACTION_DANGER[a]?'button--danger':(ACTION_SECONDARY[a]?'button--secondary':'')}" onclick="runAction('${a}')">${ACTION_LABEL[a]}</button>`).join('');
+
+  pane.innerHTML = `
+    <div class="detail__hero">
+      <div class="detail__hero-sub">Order ${w.orderId} · shipping from ${escapeHtml(w.locationId)}</div>
+      <div class="detail__hero-status ${s.attn ? 'detail__hero-status--attn' : ''}">
+        <span class="detail__hero-dot ${s.attn ? 'detail__hero-dot--attn' : ''}"></span>
+        ${s.label}
+      </div>
+      <div class="detail__hero-detail">${s.detail(w)}</div>
+    </div>
+    <div id="actionResultSlot"></div>
+    <div class="detail__body">
+      <div class="detail__section">
+        <p class="detail__section-title">What's in this order</p>
+        ${linesHtml}
+      </div>
+      ${w.activeHolds.length ? `<div class="detail__section"><p class="detail__section-title">Why it's stuck</p>${holdHtml}</div>` : ''}
+      <div class="detail__section">
+        <p class="detail__section-title">Details</p>
+        <div class="fact-grid">
+          <div class="fact"><span class="fact__label">Who's doing it</span><span class="fact__value">${w.assignedConnectionId ? escapeHtml(w.assignedConnectionId) : 'Nobody yet'}</span></div>
+          <div class="fact"><span class="fact__label">Their reference</span><span class="fact__value">${w.externalWorkId || '—'}</span></div>
+          <div class="fact"><span class="fact__label">Started</span><span class="fact__value">${fmtTime(w.createdAt)}</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="detail__actions">
+      <span class="detail__actions-label">What you can do</span>
+      ${actionsHtml}
+    </div>
+  `;
+}
+
+function selectWork(id) { selectedId = id; renderList(); renderDetail(); }
+
+function runAction(action) {
+  const slot = document.getElementById('actionResultSlot');
+  if (currentOutcome === 'version_conflict') {
+    slot.innerHTML = `<div class="alert alert--warning"><span>↻</span><div class="alert__text"><b>Someone else just changed this.</b> Nothing was lost — try again.</div></div>`;
+    return;
+  }
+  if (currentOutcome === 'action_not_legal') {
+    slot.innerHTML = `<div class="alert alert--error"><span>✕</span><div class="alert__text"><b>"${ACTION_LABEL[action]}" isn't possible anymore.</b> The situation changed — trying again won't help.</div></div>`;
+    return;
+  }
+  slot.innerHTML = `<div class="alert alert--success"><span>✓</span><div class="alert__text"><b>${ACTION_LABEL[action]} — done.</b></div></div>`;
+}
+
+function setOutcome(name) {
+  currentOutcome = name;
+  document.querySelectorAll('.demo-toolbar .chip[data-outcome]').forEach(c => c.classList.toggle('chip--active', c.dataset.outcome === name));
+}
+
+renderList();
+renderDetail();
+</script>
