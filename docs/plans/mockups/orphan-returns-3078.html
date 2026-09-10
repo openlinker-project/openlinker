@@ -1,0 +1,277 @@
+<title>Orphan Returns</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root, [data-theme='light'] {
+  --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff; --bg-surface-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80); --text-disabled: oklch(70% 0.005 80); --text-on-primary: oklch(18% 0.012 50);
+  --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-soft: oklch(96% 0.04 60); --accent-primary-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
+  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
+  --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+  --space-2:.5rem; --space-3:.75rem; --space-4:1rem; --space-5:1.5rem;
+  --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:9999px;
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / .04), 0 6px 16px rgb(15 18 26 / .06);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / .16), 0 8px 16px rgb(15 18 26 / .08);
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
+    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+    --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
+    --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
+    --status-error-soft: oklch(28% 0.09 25); --status-error-border: oklch(42% 0.13 25); --status-error-fg: oklch(84% 0.14 25);
+    --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
+    --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+  }
+}
+:root[data-theme='dark'] {
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
+  --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
+  --status-error-soft: oklch(28% 0.09 25); --status-error-border: oklch(42% 0.13 25); --status-error-fg: oklch(84% 0.14 25);
+  --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
+  --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+}
+* { box-sizing: border-box; }
+body { margin:0; min-width:320px; background:var(--bg-canvas); color:var(--text-primary); font-family:var(--font-sans); font-size:.875rem; line-height:1.55; }
+h1,h2,h3,p { margin:0; }
+button:focus-visible, input:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-md); }
+
+.page{ max-width:760px; margin:0 auto; padding:28px 24px 60px; }
+.eyebrow{ font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-primary-hover); }
+.title{ font-size:1.75rem; font-weight:600; letter-spacing:-.02em; margin-top:6px; }
+.lede{ color:var(--text-secondary); font-size:.9375rem; max-width:62ch; margin-top:8px; }
+
+.group{ margin-top:32px; }
+.group__header{ display:flex; align-items:baseline; gap:10px; margin-bottom:4px; }
+.group__title{ font-size:1.0625rem; font-weight:700; }
+.group__count{ font-family:var(--font-mono); font-size:.75rem; color:var(--text-muted); }
+.group__desc{ font-size:.8125rem; color:var(--text-muted); margin-bottom:14px; max-width:60ch; }
+
+.card{ display:flex; align-items:center; gap:16px; padding:16px 18px; border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); margin-bottom:10px; }
+.card__body{ flex:1; min-width:0; }
+.card__title{ font-weight:600; font-size:.9375rem; }
+.card__sub{ font-size:.8125rem; color:var(--text-muted); margin-top:3px; }
+.card__action{ flex-shrink:0; }
+
+.button{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--accent-primary-border); border-radius:var(--radius-md); padding:0 var(--space-4); height:2.125rem; background:var(--accent-primary); color:var(--text-on-primary); font-family:inherit; font-size:.8125rem; font-weight:600; cursor:pointer; box-shadow:var(--shadow-xs); white-space:nowrap; }
+.button:hover{ background:var(--accent-primary-hover); }
+.button--secondary{ border-color:var(--border-default); background:var(--bg-surface); color:var(--text-primary); }
+.button--secondary:hover{ background:var(--bg-surface-muted); border-color:var(--border-strong); }
+.button:disabled{ cursor:not-allowed; opacity:.5; box-shadow:none; }
+.button--sm{ height:1.875rem; padding:0 var(--space-3); font-size:.8125rem; }
+.button--block{ width:100%; }
+
+.record-card{ margin-top:32px; padding:18px; border:1.5px dashed var(--border-strong); border-radius:var(--radius-lg); text-align:center; }
+.record-card__title{ font-weight:600; font-size:.875rem; }
+.record-card__desc{ font-size:.8125rem; color:var(--text-muted); margin:4px 0 12px; }
+
+.dialog-backdrop{ position:fixed; inset:0; display:none; place-items:center; padding:24px; background:rgba(22,32,43,.45); z-index:40; }
+.dialog-backdrop.is-open{ display:grid; }
+.dialog{ width:min(100%, 26rem); border:1px solid var(--border-default); border-radius:var(--radius-xl); padding:22px; background:var(--bg-surface); box-shadow:var(--shadow-overlay); }
+.dialog__title{ font-size:1.125rem; font-weight:600; margin-bottom:4px; }
+.dialog__sub{ font-size:.8125rem; color:var(--text-muted); margin-bottom:16px; }
+.dialog__label{ font-size:.8125rem; font-weight:600; margin-bottom:6px; display:block; }
+input[type=text]{ width:100%; height:2.375rem; border:1px solid var(--border-default); border-radius:var(--radius-md); padding:0 12px; font-family:inherit; font-size:.9375rem; background:var(--bg-surface); color:var(--text-primary); }
+input[aria-invalid=true]{ border-color:var(--status-error); }
+.field-hint{ font-size:.75rem; color:var(--text-muted); margin-top:6px; }
+.field-hint--error{ color:var(--status-error-fg); }
+.dialog__warn{ display:flex; gap:8px; padding:10px 12px; border-radius:var(--radius-md); background:var(--status-warning-soft); border:1px solid var(--status-warning-border); font-size:.75rem; color:var(--status-warning-fg); margin-top:14px; }
+.dialog__actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+
+.toast{ display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border-radius:var(--radius-md); border:1px solid; margin-bottom:18px; }
+.toast--success{ background:var(--status-success-soft); border-color:var(--status-success-border); }
+.toast__text{ font-size:.8125rem; color:var(--text-secondary); }
+.toast__text b{ color:var(--text-primary); }
+
+.all-done{ text-align:center; padding:36px 20px; color:var(--text-muted); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--bg-surface-muted); }
+.all-done__icon{ font-size:1.75rem; margin-bottom:8px; }
+.all-done__title{ font-size:.9375rem; font-weight:600; color:var(--text-primary); }
+</style>
+
+<div class="page">
+  <p class="eyebrow">Returns</p>
+  <h1 class="title" id="pageTitle">Returns waiting on you</h1>
+  <p class="lede">Nothing happens with a return — no restock, no refund, no invoice fix — until it's linked to an order and you've said it's OK.</p>
+
+  <div id="toastSlot"></div>
+  <div id="groupsSlot"></div>
+
+  <div class="record-card">
+    <div class="record-card__title">Got a return with no record anywhere?</div>
+    <div class="record-card__desc">For when a customer sends something back and no system knows about it yet.</div>
+    <button class="button button--secondary button--sm" onclick="openRecord()">Record it by hand</button>
+  </div>
+</div>
+
+<!-- MATCH dialog -->
+<div class="dialog-backdrop" id="matchDialogBackdrop">
+  <div class="dialog" role="dialog" aria-modal="true">
+    <p class="dialog__title">Which order is this?</p>
+    <p class="dialog__sub" id="matchSub">Return —</p>
+    <label class="dialog__label" for="matchOrderId">Order number or ID</label>
+    <input type="text" id="matchOrderId" placeholder="e.g. #9F2E1A" />
+    <p class="field-hint" id="matchHint">Must be an order OpenLinker already has on file.</p>
+    <div class="dialog__warn">⚠ This can't be undone — double-check before confirming.</div>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('matchDialogBackdrop')">Cancel</button>
+      <button class="button" onclick="confirmMatch()">Confirm match</button>
+    </div>
+  </div>
+</div>
+
+<!-- AUTHORIZE -->
+<div class="dialog-backdrop" id="authorizeDialogBackdrop">
+  <div class="dialog" role="dialog" aria-modal="true">
+    <p class="dialog__title">Give this the OK?</p>
+    <p class="dialog__sub" style="margin-bottom:2px;">You recorded this return yourself. Approving it lets OpenLinker start processing it — restocking, refunding, whatever applies.</p>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('authorizeDialogBackdrop')">Not yet</button>
+      <button class="button" onclick="confirmAuthorize()">Approve</button>
+    </div>
+  </div>
+</div>
+
+<!-- RECORD -->
+<div class="dialog-backdrop" id="recordDialogBackdrop">
+  <div class="dialog" role="dialog" aria-modal="true">
+    <p class="dialog__title">Record a return by hand</p>
+    <label class="dialog__label" for="recOrderId" style="margin-top:14px;">Which order?</label>
+    <input type="text" id="recOrderId" placeholder="e.g. #9F2E1A" style="margin-bottom:14px;" />
+    <label class="dialog__label" for="recItem">What came back?</label>
+    <input type="text" id="recItem" placeholder="Item name" />
+    <p class="field-hint">You'll approve it separately before OpenLinker acts on it.</p>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('recordDialogBackdrop')">Cancel</button>
+      <button class="button" onclick="saveRecord()">Record it</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let ORPHANS = [
+  { id:'r1', label:'AL-RET-88213', sub:'From Allegro · 2 items · came in Sep 8' },
+  { id:'r2', label:'AL-RET-88250', sub:'From Allegro · 1 item · came in Sep 9' },
+];
+let PENDING_APPROVAL = [
+  { id:'r3', label:'PrestaShop return', sub:'1 item, recorded by you on Sep 10' },
+];
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function render() {
+  const total = ORPHANS.length + PENDING_APPROVAL.length;
+  document.getElementById('pageTitle').textContent = total === 0 ? 'Nothing waiting' : `${total} return${total===1?'':'s'} waiting on you`;
+
+  if (total === 0) {
+    document.getElementById('groupsSlot').innerHTML = `<div class="all-done"><div class="all-done__icon">✓</div><div class="all-done__title">All caught up</div></div>`;
+    return;
+  }
+
+  let html = '';
+  if (ORPHANS.length > 0) {
+    html += `<div class="group">
+      <div class="group__header"><span class="group__title">Needs an order</span><span class="group__count">${ORPHANS.length}</span></div>
+      <p class="group__desc">OpenLinker can't tell which order these belong to. Tell it once, and it's permanent.</p>
+      ${ORPHANS.map(r => `<div class="card">
+        <div class="card__body"><div class="card__title">${escapeHtml(r.label)}</div><div class="card__sub">${escapeHtml(r.sub)}</div></div>
+        <div class="card__action"><button class="button button--sm" onclick="openMatch('${r.id}', '${escapeHtml(r.label)}')">Match to an order</button></div>
+      </div>`).join('')}
+    </div>`;
+  }
+  if (PENDING_APPROVAL.length > 0) {
+    html += `<div class="group">
+      <div class="group__header"><span class="group__title">Waiting for your OK</span><span class="group__count">${PENDING_APPROVAL.length}</span></div>
+      <p class="group__desc">You recorded these yourself. OpenLinker won't act until you approve them.</p>
+      ${PENDING_APPROVAL.map(r => `<div class="card">
+        <div class="card__body"><div class="card__title">${escapeHtml(r.label)}</div><div class="card__sub">${escapeHtml(r.sub)}</div></div>
+        <div class="card__action"><button class="button button--secondary button--sm" onclick="openAuthorize('${r.id}')">Approve</button></div>
+      </div>`).join('')}
+    </div>`;
+  }
+  document.getElementById('groupsSlot').innerHTML = html;
+}
+
+function openDialog(id){ document.getElementById(id).classList.add('is-open'); }
+function closeDialog(id){ document.getElementById(id).classList.remove('is-open'); }
+document.querySelectorAll('.dialog-backdrop').forEach(bd => bd.addEventListener('click',(e)=>{ if(e.target===bd) bd.classList.remove('is-open'); }));
+document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') document.querySelectorAll('.dialog-backdrop.is-open').forEach(bd=>bd.classList.remove('is-open')); });
+
+let matchingId = null;
+function openMatch(id, label) {
+  matchingId = id;
+  document.getElementById('matchSub').textContent = 'Return · ' + label;
+  document.getElementById('matchOrderId').value = '';
+  document.getElementById('matchOrderId').setAttribute('aria-invalid', 'false');
+  document.getElementById('matchHint').textContent = 'Must be an order OpenLinker already has on file.';
+  document.getElementById('matchHint').className = 'field-hint';
+  openDialog('matchDialogBackdrop');
+}
+function confirmMatch() {
+  const val = document.getElementById('matchOrderId').value.trim();
+  const hint = document.getElementById('matchHint');
+  if (!val) {
+    document.getElementById('matchOrderId').setAttribute('aria-invalid', 'true');
+    hint.textContent = 'Enter an order number.'; hint.className = 'field-hint field-hint--error';
+    return;
+  }
+  if (val.toLowerCase() === '#zzz999') {
+    document.getElementById('matchOrderId').setAttribute('aria-invalid', 'true');
+    hint.textContent = "OpenLinker doesn't have an order with that number."; hint.className = 'field-hint field-hint--error';
+    return;
+  }
+  ORPHANS = ORPHANS.filter(r => r.id !== matchingId);
+  closeDialog('matchDialogBackdrop');
+  document.getElementById('toastSlot').innerHTML = `<div class="toast toast--success"><span>✓</span><div class="toast__text"><b>Matched to order ${escapeHtml(val)}.</b> OpenLinker can now restock, refund or correct the invoice for this return.</div></div>`;
+  render();
+}
+
+let authorizingId = null;
+function openAuthorize(id) { authorizingId = id; openDialog('authorizeDialogBackdrop'); }
+function confirmAuthorize() {
+  PENDING_APPROVAL = PENDING_APPROVAL.filter(r => r.id !== authorizingId);
+  closeDialog('authorizeDialogBackdrop');
+  document.getElementById('toastSlot').innerHTML = `<div class="toast toast--success"><span>✓</span><div class="toast__text"><b>Approved.</b> OpenLinker will process this return now.</div></div>`;
+  render();
+}
+
+function openRecord() {
+  document.getElementById('recOrderId').value = '';
+  document.getElementById('recItem').value = '';
+  openDialog('recordDialogBackdrop');
+}
+function saveRecord() {
+  const orderId = document.getElementById('recOrderId').value.trim() || 'this order';
+  closeDialog('recordDialogBackdrop');
+  document.getElementById('toastSlot').innerHTML = `<div class="toast toast--success"><span>✓</span><div class="toast__text"><b>Recorded.</b> It's now in "Waiting for your OK" below.</div></div>`;
+  PENDING_APPROVAL.push({ id:'r-' + Date.now(), label:'Return you just recorded', sub:`Against ${orderId} · recorded just now` });
+  render();
+}
+
+render();
+</script>
