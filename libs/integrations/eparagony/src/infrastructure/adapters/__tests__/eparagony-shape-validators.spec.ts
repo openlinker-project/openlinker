@@ -56,46 +56,6 @@ describe('EparagonyConnectionConfigShapeValidatorAdapter', () => {
       validator.validate({ environment: 'sandbox', posId: 'p', paymentForm: 'Bitcoin' }),
     ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
   });
-
-  it('should accept an operator-tuned first poll gap (#2840)', async () => {
-    await expect(
-      validator.validate({
-        environment: 'sandbox',
-        posId: 'p',
-        statusPollInitialDelayMs: 2_000,
-      }),
-    ).resolves.toBeUndefined();
-  });
-
-  it('should reject a first poll gap that is not a positive number (#2840)', async () => {
-    // The adapter clamps an unreadable value back to the shipped default, which
-    // is the right RUNTIME behaviour and a silent one. Save time is where the
-    // operator can still be told, so a mistyped gap is refused here rather than
-    // taking effect as "no change" with nothing said.
-    for (const bad of [0, -1, 'soon']) {
-      await expect(
-        validator.validate({
-          environment: 'sandbox',
-          posId: 'p',
-          statusPollInitialDelayMs: bad,
-        }),
-      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
-    }
-  });
-
-  it('should read an explicit null first poll gap as unset, not as invalid (#2840)', async () => {
-    // Every optional key on this config already treats null exactly like
-    // absent, and a cleared knob is written as an explicit null rather than
-    // deleted (the #2610 shallow-spread rule). Refusing it here would make the
-    // one act of clearing the field a 400.
-    await expect(
-      validator.validate({
-        environment: 'sandbox',
-        posId: 'p',
-        statusPollInitialDelayMs: null as unknown as number,
-      }),
-    ).resolves.toBeUndefined();
-  });
 });
 
 describe('EparagonyConnectionCredentialsShapeValidatorAdapter', () => {

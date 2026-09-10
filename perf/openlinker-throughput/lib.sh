@@ -1145,6 +1145,33 @@ LIB_ACTIVE_SAMPLER_DIR=""
 
 sampler_start() {
   local dir="$1" conn_ids="$2"
+
+  # REPLACE an existing sampler for this directory rather than shadowing it.
+  # `.sampler.pid` holds ONE pid per directory (see this section's header), so a
+  # second start silently overwrote the first pid and left that sampler
+  # unstoppable - and a leaked sampler is not inert, it keeps querying Postgres
+  # for as long as the host stays up, which is the peer-contamination class this
+  # library already warns about two functions down.
+  #
+  # F11 is the shape that exposed it: `window_start` starts a sampler over every
+  # connection, and the scenario then starts its own narrower one on the SAME
+  # directory to scope the samples to one channel. Legitimate intent, silent
+  # leak - 8 starts against 5 stops in one run (#2840, 2026-09-10), one orphan
+  # per arm, each polling through the windows that measured the other arms.
+  #
+  # Warned rather than fixed quietly: a scenario double-starting a sampler is
+  # usually a mistake, and the one case where it is not (deliberate re-scoping)
+  # still deserves a line in the log saying which scope won.
+  if [ -f "$dir/.sampler.pid" ]; then
+    local prior; prior="$(cat "$dir/.sampler.pid" 2>/dev/null || true)"
+    if [ -n "$prior" ]; then
+      kill "$prior" >/dev/null 2>&1 || true
+      wait "$prior" 2>/dev/null || true
+      warn "sampler_start: replaced an existing sampler (pid=$prior) for $(basename "$dir") - a second start would have leaked it"
+    fi
+    rm -f "$dir/.sampler.pid"
+  fi
+
   sample_queue_header "$dir/timeseries.csv"
   LIB_ACTIVE_SAMPLER_DIR="$dir"
   (

@@ -1,0 +1,20 @@
+samples in file: 25
+samples reaching a destination create: 25
+
+A  order pushed at stub -> poll enqueued       n=25   min=     21.8  p50=     32.8 (rank 13/25)  p95=     35.3 (rank 24/25)  max=     36.6  HARNESS-CHOSEN, see report
+B  poll enqueued -> poll claimed               n=25   min=    657.8  p50=    714.2 (rank 13/25)  p95=    775.7 (rank 24/25)  max=    789.3
+C  poll claimed -> child enqueued              n=25   min=    283.4  p50=    290.2 (rank 13/25)  p95=    295.6 (rank 24/25)  max=    315.3
+D  child enqueued -> child claimed             n=25   min=    693.4  p50=    720.8 (rank 13/25)  p95=    725.6 (rank 24/25)  max=    726.8
+E  child claimed -> order_records row written  n=25   min=   1131.0  p50=   1140.0 (rank 13/25)  p95=   1155.0 (rank 24/25)  max=   1158.0
+F  order_records written -> destination syncedAt n=25   min=   2792.0  p50=   2887.0 (rank 13/25)  p95=   2926.0 (rank 24/25)  max=   2931.0
+G  child claimed -> child terminal             n=25   min=   3944.9  p50=   4030.3 (rank 13/25)  p95=   4088.0 (rank 24/25)  max=   4090.7
+TOTAL  poll enqueued -> destination syncedAt   n=25   min=   5656.4  p50=   5756.0 (rank 13/25)  p95=   5828.4 (rank 24/25)  max=   5830.3  excludes hop A
+TOTAL  order pushed -> destination syncedAt    n=25   min=   5688.0  p50=   5788.0 (rank 13/25)  p95=   5862.0 (rank 24/25)  max=   5863.0  includes the harness-chosen hop A
+
+poll job claim-instant source: derived=25   (latched = observed while running; derived = updatedAt - lastAttemptDurationMs; missing/multi-attempt rows are EXCLUDED from every hop that needs a claim)
+child job claim-instant source: latched=25   (latched = observed while running; derived = updatedAt - lastAttemptDurationMs; missing/multi-attempt rows are EXCLUDED from every hop that needs a claim)
+
+D  child job duration (runner-measured)        n=25   min=   3939.0  p50=   4025.0 (rank 13/25)  p95=   4079.0 (rank 24/25)  max=   4084.0  sync_jobs.lastAttemptDurationMs
+
+heartbeat caveat: 0 of 25 child jobs ran >= 180s, so a LATCHED lockedAt for them could be a heartbeat rewrite rather than the claim instant (0 means the caveat does not bite on this run; the DERIVED source is immune to it either way)
+retry caveat:     0 of 25 child jobs took more than one attempt (lastAttemptDurationMs reports the LAST attempt only)

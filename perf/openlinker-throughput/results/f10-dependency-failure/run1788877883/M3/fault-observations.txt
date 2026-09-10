@@ -1,0 +1,5 @@
+DISCARDED post_guard_attempts: 12 job(s) in the window show attempts>1
+ok
+ok
+ok
+n/a offered_work: the quantity-write path enqueues its jobs directly and pushes nothing at the stub

@@ -67,6 +67,15 @@ export const eparagonyAdapterManifest: AdapterMetadata = {
 };
 
 export function createEparagonyPlugin(): AdapterPlugin {
+  // ONE factory for the descriptor's lifetime, not one per call (#2840). The
+  // factory holds the per-connection HTTP client, and the client holds the
+  // OAuth token - so constructing a factory per call, as this did, threw the
+  // token away before it could be reused and cost one full `/auth/token` round
+  // trip per fiscal document (measured: 22 token requests for 22 documents).
+  // The factory itself is stateless apart from that cache, so hoisting it
+  // changes nothing else. It must stay hoisted; see the factory's own header.
+  const factory = new EparagonyAdapterFactory();
+
   return {
     manifest: eparagonyAdapterManifest,
 
@@ -107,7 +116,6 @@ export function createEparagonyPlugin(): AdapterPlugin {
       host: HostServices,
     ): Promise<T> {
       const logger = host.logger(`Eparagony:${connection.id}`);
-      const factory = new EparagonyAdapterFactory();
       const fiscalizationAdapter = await factory.createFiscalizationAdapter(
         connection,
         host.credentialsResolver,

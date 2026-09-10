@@ -1,0 +1,15 @@
+=== arm throughput-destination-raised ===
+window elapsed:        296s
+orders completed:      290
+sustained rate:        0.980 orders/s = 3527 orders/hour
+oldest due-job age:    150s -> 295s over the window's second half (100% of ticks rising)
+queue growth:          YES - the system was offered more than it took, so the sustained rate above IS the service rate, and therefore the knee
+stub feed backlog:     min=0 max=900 (reaching 0 here is NORMAL and not starvation - the poll pump converts upstream events into queued child jobs faster than they drain, so the upstream empties while the system is busiest)
+available work:        min=610 max=901 (upstream + due queue + running; min 0 means the system was IDLE for part of the window, so the achieved rate is a floor on the offered load rather than the system's ceiling)
+due-queued peak:       818
+
+stub upstream requests over the window:
+{
+  "GET /order/checkout-forms/:id": 296,
+  "GET /order/events": 30
+}

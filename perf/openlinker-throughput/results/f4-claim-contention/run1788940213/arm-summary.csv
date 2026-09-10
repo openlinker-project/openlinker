@@ -1,0 +1,1 @@
+replicas,jobs,elapsed_secs,jobs_per_sec,peak_queued_due,peak_running,max_lock_waits,peak_pg_backends,distinct_lockedby,ps_requests,ps_requests_per_min,pool_timeouts,limiter_degraded,rate_limit_timeouts,max_deferred,claim_calls,claim_total_ms,claim_mean_ms,drain_result,verdict

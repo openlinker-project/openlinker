@@ -1,0 +1,2 @@
+fault  class                                     verdict  ps_orders  claimed_synced  claimed_missing  ps_carts  dead
+I3     infrastructure: the worker is killed mid  VALID    10         10              0                11        0

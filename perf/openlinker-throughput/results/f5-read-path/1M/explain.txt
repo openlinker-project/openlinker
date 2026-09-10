@@ -1,0 +1,77 @@
+=== orders health=needs_attention filter (order-record.repository.ts HAS_FAILED/NOT_MAPPING_OR_DELETED, non-sargable jsonb containment) ===
+                                                                                     QUERY PLAN                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.42..28.28 rows=20 width=1262) (actual time=0.054..0.159 rows=20 loops=1)
+   Buffers: shared hit=19
+   ->  Index Scan Backward using "IDX_order_records_createdAt" on order_records rec  (cost=0.42..349193.52 rows=250731 width=1262) (actual time=0.052..0.155 rows=20 loops=1)
+         Filter: ((("recordStatus")::text <> 'awaiting_mapping'::text) AND (("recordStatus")::text <> 'source_deleted'::text) AND ("syncStatus" @> '[{"status": "failed"}]'::jsonb))
+         Rows Removed by Filter: 1
+         Buffers: shared hit=19
+ Planning:
+   Buffers: shared hit=572 read=49
+ Planning Time: 7.669 ms
+ Execution Time: 0.297 ms
+(10 rows)
+
+
+=== identifier_mappings paged scan (identifier-mapping.repository.ts findByEntityTypeAndConnection - ordered by externalId, NOT indexed for this partition, #2219) ===
+                                                              QUERY PLAN                                                              
+--------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=3086.84..3088.09 rows=500 width=247) (actual time=25.319..25.414 rows=500 loops=1)
+   Buffers: shared hit=21 read=1762
+   ->  Sort  (cost=3086.84..3109.22 rows=8954 width=247) (actual time=25.317..25.351 rows=500 loops=1)
+         Sort Key: "externalId"
+         Sort Method: top-N heapsort  Memory: 104kB
+         Buffers: shared hit=21 read=1762
+         ->  Seq Scan on identifier_mappings  (cost=0.00..2640.67 rows=8954 width=247) (actual time=0.030..20.204 rows=10506 loops=1)
+               Filter: ((("entityType")::text = 'Product'::text) AND ("connectionId" = 'ccadaf52-2b65-4343-a3f7-830113fd2cf6'::uuid))
+               Rows Removed by Filter: 60326
+               Buffers: shared hit=18 read=1762
+ Planning:
+   Buffers: shared hit=205 read=9
+ Planning Time: 3.878 ms
+ Execution Time: 25.648 ms
+(14 rows)
+
+
+=== products list (products.controller.ts listProducts base query) ===
+                                                        QUERY PLAN                                                        
+--------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=606.62..606.67 rows=20 width=629) (actual time=3.485..3.489 rows=20 loops=1)
+   Buffers: shared hit=225
+   ->  Sort  (cost=606.62..632.89 rows=10506 width=629) (actual time=3.483..3.485 rows=20 loops=1)
+         Sort Key: "createdAt" DESC
+         Sort Method: top-N heapsort  Memory: 35kB
+         Buffers: shared hit=225
+         ->  Seq Scan on products  (cost=0.00..327.06 rows=10506 width=629) (actual time=0.015..1.540 rows=10506 loops=1)
+               Buffers: shared hit=222
+ Planning:
+   Buffers: shared hit=182 read=6
+ Planning Time: 2.626 ms
+ Execution Time: 3.637 ms
+(12 rows)
+
+
+=== sync_jobs dashboard list (status='dead' filter, the jobs dashboard's own probe shape) ===
+                                                                           QUERY PLAN                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=794.62..794.67 rows=20 width=442) (actual time=0.891..0.896 rows=20 loops=1)
+   Buffers: shared hit=220
+   ->  Sort  (cost=794.62..795.68 rows=424 width=442) (actual time=0.890..0.892 rows=20 loops=1)
+         Sort Key: "createdAt" DESC
+         Sort Method: top-N heapsort  Memory: 45kB
+         Buffers: shared hit=220
+         ->  Index Scan using "IDX_a2d0990898df9d69d7c3b53ca9" on sync_jobs  (cost=0.42..783.34 rows=424 width=442) (actual time=0.046..0.612 rows=407 loops=1)
+               Index Cond: ((status)::text = 'dead'::text)
+               Buffers: shared hit=217
+ Planning:
+   Buffers: shared hit=267 read=3
+ Planning Time: 3.387 ms
+ Execution Time: 1.013 ms
+(13 rows)
+
+
+=== DEFERRED (no data seeded this pass, named rather than silently skipped) ===
+offer_mappings ILIKE search (offer-mapping.repository.ts:429-438) - needs Offer/OfferMapping rows, not part of #2849's catalogue seed
+destination_categories trigram search (destination-category.repository.ts:146) - needs DestinationCategory rows, not part of #2849's catalogue seed
+inventory_items.findDuplicatePositions (:627) - EXCLUDED PER #2843's OWN TEXT: 'an operator-run diagnostic rather than a page on the operator read path'

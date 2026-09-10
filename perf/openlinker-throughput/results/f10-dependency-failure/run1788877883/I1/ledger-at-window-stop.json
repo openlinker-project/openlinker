@@ -1,0 +1,85 @@
+{
+  "syncJobs": [
+    {
+      "n": 1,
+      "status": "running",
+      "outcome": null,
+      "job_type": "marketplace.offerQuantity.update",
+      "attempts_max": 0,
+      "deferred_rows": 1,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 1,
+      "attempt_ms_total": 9,
+      "deferred_ms_total": 15000,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 11,
+      "status": "succeeded",
+      "outcome": "ok",
+      "job_type": "marketplace.offerQuantity.update",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 11,
+      "attempt_ms_total": 8101,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 12,
+      "status": "succeeded",
+      "outcome": "ok",
+      "job_type": "marketplace.order.sync",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 12,
+      "attempt_ms_total": 128753,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 8,
+      "status": "succeeded",
+      "outcome": "ok",
+      "job_type": "marketplace.orders.poll",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 8,
+      "attempt_ms_total": 4518,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    }
+  ],
+  "lastErrors": [
+    {
+      "n": 1,
+      "last_error": "Write contended by a peer (deferred 15s of 86400s budget): Offer quantity update failed for offer perf-allegro-a-offer-1: write_contended (Another quantity write for offer perf-allegro-a-offer-1 is in flight)"
+    }
+  ],
+  "orderRecords": {
+    "created": 12,
+    "recordStatus": {
+      "ready": 12
+    }
+  },
+  "destinationFanOut": {
+    "entriesOther": 0,
+    "entriesFailed": 0,
+    "entriesSynced": 12,
+    "ordersWithNoSyncStatus": 0
+  },
+  "groundTruth": {
+    "psOrdersCreated": 12,
+    "psCartsCreated": 12,
+    "claimedSyncedToPrestashop": 12,
+    "claimedButAbsentFromPsOrders": 0,
+    "note": "claimedButAbsentFromPsOrders > 0 is a success report over a failure: OpenLinker recorded syncStatus.status=synced with an externalOrderId that names no row in the shop.\nA nonzero psCartsCreated alongside a zero psOrdersCreated is an orphaned cart - work done at the destination that produced no order."
+  }
+}

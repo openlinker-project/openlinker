@@ -1,0 +1,76 @@
+lane,perScopeCap,totalCap,scopes,jobsEnqueued,succeeded,dead,stuck,businessFailure,spanSecs,throughputPerSec,execMeanMs,execP50Ms,execP95Ms,execN,e2eP50Secs,e2eP95Secs,deferredTotalMs,occMaxProxy,occMeanProxy,childrenEnqueued,windowSecs,drainResult,verdict
+realtime,1,1,1,240,240,0,0,0,244.147,0.983,136,135,140,240,119.302,226.005,0,1,0.13,0,204,[f8] drain_wait: waiting for connection(s) ['758eb04c-9847-42ba-a905-af62b0b37b39'] to go quiet (max 1800s)
+[f8]   inflight=168 deferred=0 quiet=0 waited=5s
+[f8]   inflight=163 deferred=0 quiet=0 waited=10s
+[f8]   inflight=158 deferred=0 quiet=0 waited=15s
+[f8]   inflight=153 deferred=0 quiet=0 waited=20s
+[f8]   inflight=148 deferred=0 quiet=0 waited=25s
+[f8]   inflight=143 deferred=0 quiet=0 waited=30s
+[f8]   inflight=138 deferred=0 quiet=0 waited=35s
+[f8]   inflight=132 deferred=0 quiet=0 waited=40s
+[f8]   inflight=127 deferred=0 quiet=0 waited=45s
+[f8]   inflight=122 deferred=0 quiet=0 waited=50s
+[f8]   inflight=117 deferred=0 quiet=0 waited=55s
+[f8]   inflight=112 deferred=0 quiet=0 waited=60s
+[f8]   inflight=107 deferred=0 quiet=0 waited=65s
+[f8]   inflight=102 deferred=0 quiet=0 waited=70s
+[f8]   inflight=97 deferred=0 quiet=0 waited=75s
+[f8]   inflight=91 deferred=0 quiet=0 waited=80s
+[f8]   inflight=86 deferred=0 quiet=0 waited=85s
+[f8]   inflight=81 deferred=0 quiet=0 waited=90s
+[f8]   inflight=76 deferred=0 quiet=0 waited=95s
+[f8]   inflight=71 deferred=0 quiet=0 waited=100s
+[f8]   inflight=66 deferred=0 quiet=0 waited=105s
+[f8]   inflight=61 deferred=0 quiet=0 waited=110s
+[f8]   inflight=56 deferred=0 quiet=0 waited=115s
+[f8]   inflight=50 deferred=0 quiet=0 waited=120s
+[f8]   inflight=45 deferred=0 quiet=0 waited=125s
+[f8]   inflight=40 deferred=0 quiet=0 waited=130s
+[f8]   inflight=35 deferred=0 quiet=0 waited=135s
+[f8]   inflight=30 deferred=0 quiet=0 waited=140s
+[f8]   inflight=25 deferred=0 quiet=0 waited=145s
+[f8]   inflight=20 deferred=0 quiet=0 waited=150s
+[f8]   inflight=15 deferred=0 quiet=0 waited=155s
+[f8]   inflight=9 deferred=0 quiet=0 waited=160s
+[f8]   inflight=4 deferred=0 quiet=0 waited=165s
+[f8]   inflight=0 deferred=0 quiet=1 waited=170s
+[f8]   inflight=0 deferred=0 quiet=2 waited=175s
+[f8]   inflight=0 deferred=0 quiet=3 waited=180s
+[f8]   inflight=0 deferred=0 quiet=4 waited=185s
+[f8]   inflight=0 deferred=0 quiet=5 waited=190s
+[f8]   inflight=0 deferred=0 quiet=6 waited=195s
+drained,VALID
+realtime,2,2,1,240,240,0,0,0,122.300,1.962,142,141,149,240,58.157,109.918,0,2,0.18,0,83,[f8] drain_wait: waiting for connection(s) ['758eb04c-9847-42ba-a905-af62b0b37b39'] to go quiet (max 1800s)
+[f8]   inflight=96 deferred=0 quiet=0 waited=5s
+[f8]   inflight=86 deferred=0 quiet=0 waited=10s
+[f8]   inflight=76 deferred=0 quiet=0 waited=15s
+[f8]   inflight=66 deferred=0 quiet=0 waited=20s
+[f8]   inflight=56 deferred=0 quiet=0 waited=25s
+[f8]   inflight=44 deferred=0 quiet=0 waited=30s
+[f8]   inflight=34 deferred=0 quiet=0 waited=35s
+[f8]   inflight=24 deferred=0 quiet=0 waited=40s
+[f8]   inflight=14 deferred=0 quiet=0 waited=45s
+[f8]   inflight=4 deferred=0 quiet=0 waited=50s
+[f8]   inflight=0 deferred=0 quiet=1 waited=55s
+[f8]   inflight=0 deferred=0 quiet=2 waited=60s
+[f8]   inflight=0 deferred=0 quiet=3 waited=65s
+[f8]   inflight=0 deferred=0 quiet=4 waited=70s
+[f8]   inflight=0 deferred=0 quiet=5 waited=75s
+[f8]   inflight=0 deferred=0 quiet=6 waited=80s
+drained,VALID
+realtime,4,4,1,240,240,0,0,0,55.362,4.335,128,150,165,240,21.331,46.246,0,0,0.00,0,32,[f8] drain_wait: waiting for connection(s) ['758eb04c-9847-42ba-a905-af62b0b37b39'] to go quiet (max 1800s)
+[f8]   inflight=0 deferred=0 quiet=1 waited=5s
+[f8]   inflight=0 deferred=0 quiet=2 waited=10s
+[f8]   inflight=0 deferred=0 quiet=3 waited=15s
+[f8]   inflight=0 deferred=0 quiet=4 waited=20s
+[f8]   inflight=0 deferred=0 quiet=5 waited=25s
+[f8]   inflight=0 deferred=0 quiet=6 waited=30s
+drained,VALID
+realtime,8,8,1,240,240,0,0,0,20.675,11.608,107,158,178,240,2.185,13.746,0,0,0.00,0,32,[f8] drain_wait: waiting for connection(s) ['758eb04c-9847-42ba-a905-af62b0b37b39'] to go quiet (max 1800s)
+[f8]   inflight=0 deferred=0 quiet=1 waited=5s
+[f8]   inflight=0 deferred=0 quiet=2 waited=10s
+[f8]   inflight=0 deferred=0 quiet=3 waited=15s
+[f8]   inflight=0 deferred=0 quiet=4 waited=20s
+[f8]   inflight=0 deferred=0 quiet=5 waited=25s
+[f8]   inflight=0 deferred=0 quiet=6 waited=30s
+drained,VALID

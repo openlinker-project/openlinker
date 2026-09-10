@@ -1,0 +1,24 @@
+{
+  "labelled": "measured",
+  "scopeCut": "two channels (Allegro stub + PrestaShop-as-source), not three - Erli/WooCommerce unreachable on this stand, see file header",
+  "baselines": {
+    "allegroSoloPerHour": "0.00",
+    "prestashopSourceSoloPerHour": "0.00"
+  },
+  "concurrent": {
+    "allegroPerHour": "0.00",
+    "prestashopSourcePerHour": "0.00",
+    "aggregatePerHour": "0.00"
+  },
+  "starvation": {
+    "allegro": "unknown",
+    "prestashopSource": "unknown",
+    "thresholdPct": 20
+  },
+  "bindingConstraintEvidence": {
+    "peakRunningAllegro": "unknown",
+    "peakRunningPrestashopSource": "unknown",
+    "realtimeLaneCaps": "total=4 perScope=2 (sync-job.runner.ts)",
+    "limiterDegradedLogSeen": "no (or logs unavailable to this scan)"
+  }
+}

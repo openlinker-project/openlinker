@@ -1,0 +1,5 @@
+mode,http_status,eventId,webhook_deliveries_status
+auth-fail,401,auth-fail-1788868755677,<none - auth-fail/decode-reject never reach webhook_deliveries>
+decode-reject,400,decode-reject-1788868755803,<none - auth-fail/decode-reject never reach webhook_deliveries>
+routable-product,202,routable-product-1788868755927,deadlettered
+routable-order,202,routable-order-1788868756054,job_enqueued

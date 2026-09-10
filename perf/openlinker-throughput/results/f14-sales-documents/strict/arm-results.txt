@@ -1,0 +1,4 @@
+armA-invoicing-throughput ok=10 total=10 meanMs=2060 perHour=1747.6 stubLatencyMs=2000
+armB-fiscalization-throughput ok=10 total=10 meanMs=8353 perHour=431.0 stubLatencyMs=2000
+armC-one-doc-per-order invoiceIssued=1 fiscalLive=0 totalLive=1 ok=1
+armD-in-doubt progress=in-doubt elapsedMs=7313 ok=1

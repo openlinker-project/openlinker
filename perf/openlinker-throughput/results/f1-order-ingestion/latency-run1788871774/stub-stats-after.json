@@ -1,0 +1,1 @@
+{"name":"perf-allegro-a","requestCounts":{"GET /order/events":26,"GET /order/checkout-forms/:id":27},"ordersPushed":27,"eventsEmitted":27,"faultsApplied":0,"currentCursor":"mtso1byf9dcd94-000027","fault":null}

@@ -1,0 +1,66 @@
+{
+  "syncJobs": [
+    {
+      "n": 7,
+      "status": "succeeded",
+      "outcome": "ok",
+      "job_type": "marketplace.offerQuantity.update",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 7,
+      "attempt_ms_total": 956,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 12,
+      "status": "succeeded",
+      "outcome": "ok",
+      "job_type": "marketplace.order.sync",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 12,
+      "attempt_ms_total": 220041,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 10,
+      "status": "succeeded",
+      "outcome": "ok",
+      "job_type": "marketplace.orders.poll",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 10,
+      "attempt_ms_total": 2968,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    }
+  ],
+  "lastErrors": [],
+  "orderRecords": {
+    "created": 12,
+    "recordStatus": {
+      "ready": 12
+    }
+  },
+  "destinationFanOut": {
+    "entriesOther": 0,
+    "entriesFailed": 5,
+    "entriesSynced": 7,
+    "ordersWithNoSyncStatus": 0
+  },
+  "groundTruth": {
+    "psOrdersCreated": 7,
+    "psCartsCreated": 10,
+    "claimedSyncedToPrestashop": 7,
+    "claimedButAbsentFromPsOrders": 0,
+    "note": "claimedButAbsentFromPsOrders > 0 is a success report over a failure: OpenLinker recorded syncStatus.status=synced with an externalOrderId that names no row in the shop.\nA nonzero psCartsCreated alongside a zero psOrdersCreated is an orphaned cart - work done at the destination that produced no order."
+  }
+}

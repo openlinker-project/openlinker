@@ -1,11 +1,11 @@
 {
   "scenario": "f17-returns",
-  "generatedAt": "2026-09-10T11:15:14Z",
-  "gitSha": "5897057ad3cc8983180215d1acda3511d8cdde5e",
+  "generatedAt": "2026-09-10T14:12:38Z",
+  "gitSha": "5b038ace9d2ce04f3aeeb0b5be2c6e9f5c18c367",
   "connectionIds": "'758eb04c-9847-42ba-a905-af62b0b37b39'",
   "quick": false,
   "runnerState": "enabled",
-  "laneCaps": "realtime=4/2 bulk=12/8 fiscal=1/1 fan-out=8/4",
+  "laneCaps": "realtime=4/2 bulk=12/8 fiscal=8/4 fan-out=8/4",
   "workerReplicas": 1,
   "workerContainers": "lab-worker-1",
   "laneCapEnforcement": "per-process - the laneCaps above bound ONE worker process, so effective deployment concurrency is laneCaps x workerReplicas (ADR-050 amendment #2594 / #2302)",
@@ -17,8 +17,8 @@
   },
   "schedulerCadenceRow": {},
   "olLogBodyMaxBytes": "unknown",
-  "syncJobsRowsAtStart": 141923,
-  "syncJobsRowsAtEnd": 141948,
+  "syncJobsRowsAtStart": 143107,
+  "syncJobsRowsAtEnd": 143132,
   "environment": {
     "postgres": {
       "shared_buffers": "128MB",
@@ -155,11 +155,11 @@
     "node_version": "v22.23.1",
     "postgres_image_digest": "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
     "redis_image_digest": "sha256:12da49daa000c2be4d55118574f889c8cc298140ecf343d04f345c818f227823",
-    "redis_used_memory_bytes": "70273584",
+    "redis_used_memory_bytes": "73548576",
     "host": {
       "cpu_count": "32",
       "ram": "125786MB",
-      "load_average": "2.19, 2.30, 2.25"
+      "load_average": "1.50, 5.11, 4.64"
     }
   },
   "containerLimits": [

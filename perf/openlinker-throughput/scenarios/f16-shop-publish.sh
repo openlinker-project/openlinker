@@ -150,12 +150,35 @@ else
   log "--- arm A: simple-product publish (${#SIMPLE_VARIANTS[@]} products) ---"
   items="$(printf '%s\n' "${SIMPLE_VARIANTS[@]}" | jq -R '{internalVariantId: ., stock: 5}' | jq -s '.')"
   result="$(submit_batch "$items" published false)"
+  read -r a_elapsed a_status a_total a_succ a_fail a_batch_id <<< "$result"
   printf 'armA-simple %s\n' "$result" >> "$ARM_RESULTS_FILE"
 
   log "--- arm B: variable-product publish (3 products, $(( ${#VARIABLE_PRODUCT_1[@]} + ${#VARIABLE_PRODUCT_2[@]} + ${#VARIABLE_PRODUCT_3[@]} )) variants total) ---"
   items="$(printf '%s\n' "${VARIABLE_PRODUCT_1[@]}" "${VARIABLE_PRODUCT_2[@]}" "${VARIABLE_PRODUCT_3[@]}" | jq -R '{internalVariantId: ., stock: 3}' | jq -s '.')"
   result="$(submit_batch "$items" published false)"
+  read -r b_elapsed b_status b_total b_succ b_fail b_batch_id <<< "$result"
   printf 'armB-variable %s\n' "$result" >> "$ARM_RESULTS_FILE"
+
+  # Arms A and B are the CLEAN-publish arms - arm C is the one that owns a
+  # partial failure by design, and reading a failure here as a result would
+  # make the two indistinguishable. A failure in A or B means the arm measured
+  # something other than a publish, so it discards.
+  #
+  # This is not hypothetical. Re-run against a stand whose WooCommerce still
+  # holds the previous run's products and every variation collides on
+  # `product_invalid_sku`; the run then reports 3 of 8 published and, before
+  # this check, still wrote status=VALID over it (#2840, 2026-09-10). The same
+  # shape F14's empty-arm rule closes, one arm along - see § re-runnability in
+  # this scenario's report before quoting a second run on one stand.
+  ARM_AB_CLEAN=1
+  if [ "${a_fail:-0}" != "0" ]; then
+    ARM_AB_CLEAN=0
+    warn "arm A DISCARDED: $a_fail of $a_total simple-product publishes failed (batch $a_batch_id) - arm A must publish cleanly; arm C is the partial-failure arm"
+  fi
+  if [ "${b_fail:-0}" != "0" ]; then
+    ARM_AB_CLEAN=0
+    warn "arm B DISCARDED: $b_fail of $b_total variable-product publishes failed (batch $b_batch_id) - a WooCommerce SKU collision here usually means this stand already holds a previous run's products"
+  fi
 
   # --- arm C: partial-submit failure ------------------------------------
   # One real variant + one syntactically-valid, non-existent one
@@ -199,6 +222,8 @@ window_stop "$RESULTS_DIR"
 # ---------------------------------------------------------------------------
 if [ "$SMOKE" = 1 ]; then
   log "smoke run - no verdict written (never produces a measurement, per this scenario's own header)"
+elif [ "${ARM_AB_CLEAN:-0}" != "1" ]; then
+  verdict_write "$RESULTS_DIR" DISCARDED "arm-a-or-b-publish-failed"
 elif [ "${ARM_C_OK:-0}" = "1" ]; then
   verdict_write "$RESULTS_DIR" VALID
 else
