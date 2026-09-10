@@ -25,10 +25,14 @@
  * below asks only for the Erli-allowed subset so a real completion needs no
  * `applyDescriptionFormat` rewriting to publish cleanly.
  *
- * Data-only seed — no schema change. Idempotent-by-uniqueness: the
- * `prompt_templates` partial unique indexes reject a duplicate
- * `(key, channel, version)`, so re-running against a DB that already carries
- * the row would fail; the `down` removes exactly this seeded row.
+ * Data-only seed — no schema change. The insert is `ON CONFLICT DO NOTHING`:
+ * `channel` is open-world (#580) and the admin UI at `/ai/prompt-templates`
+ * accepts an arbitrary channel string, so an Erli operator who hit this exact
+ * gap may already have hand-authored an `erli` template as a workaround —
+ * the bare `INSERT` this migration originally shipped would then abort
+ * `migration:run` on `ux_prompt_templates_kcv_channel` /
+ * `ux_prompt_templates_published_channel`. `down` still removes exactly this
+ * seeded row (harmless no-op if the conflict path skipped the insert).
  *
  * @module apps/api/src/migrations
  */
@@ -69,6 +73,7 @@ export class SeedErliPromptTemplate1878000000000 implements MigrationInterface {
         ("key", "channel", "version", "system_prompt", "user_prompt_template", "variables", "state", "published_at", "created_by")
       VALUES
         ($1, 'erli', 1, $2, $3, $4::jsonb, 'published', now(), NULL)
+      ON CONFLICT DO NOTHING
     `,
       ['offer.description.suggest', ERLI_SYSTEM_PROMPT, ERLI_USER_TEMPLATE, VARIABLES_JSON]
     );

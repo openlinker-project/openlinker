@@ -55,9 +55,10 @@ type SyncJob = SyncJobEntity;
  * channel from the connection's `platformType` because it serves every
  * marketplace. This handler carries the identical latent bug the moment it
  * serves a second `ProductPublisher` shop: a non-WooCommerce shop would still
- * render the `woocommerce` prompt (tracked separately). A missing template
- * surfaces as an AI failure and falls through to the master description (see
- * below).
+ * render the `woocommerce` prompt. No issue is filed for this yet — file one
+ * before adding a second `ProductPublisher` shop rather than rediscovering it
+ * live. A missing template surfaces as an AI failure and falls through to the
+ * master description (see below).
  */
 const SHOP_PUBLISH_AI_CHANNEL = 'woocommerce';
 
