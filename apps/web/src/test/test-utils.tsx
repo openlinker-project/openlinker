@@ -755,6 +755,16 @@ export function createMockApiClient(
       resolveCategoriesStream: vi.fn(() => emptyResolveCategoryStream()),
       ...overrides.listings,
     }) as ApiClient['listings'],
+    priceChanges: {
+      list: vi.fn().mockResolvedValue({ items: [], hiddenStaleCount: 0 }),
+      accept: vi.fn().mockResolvedValue(undefined),
+      ignore: vi.fn().mockResolvedValue(undefined),
+      unresolve: vi.fn().mockResolvedValue(undefined),
+      edit: vi.fn().mockResolvedValue(undefined),
+      bulkAccept: vi.fn().mockResolvedValue({ batchId: 'batch-1', totalCount: 0 }),
+      autoApplied: vi.fn().mockResolvedValue([]),
+      ...overrides.priceChanges,
+    } as ApiClient['priceChanges'],
     mailerSettings: {
       get: vi.fn().mockResolvedValue({
         transport: 'console',

@@ -60,6 +60,7 @@ import {
 } from '../../features/listings/lib/listing-connection-notices';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
+import { PriceChangesQueueTable, usePriceChangesQuery } from '../../features/price-changes';
 import type {
   ListingsFilters,
   OfferLifecycle,
@@ -436,6 +437,15 @@ export function ListingsListPage(): ReactElement {
   const tab: LifecycleTab = isLifecycleTab(rawTab) ? rawTab : DEFAULT_TAB;
   const activeTabDef = LIFECYCLE_TABS.find((def) => def.key === tab) ?? LIFECYCLE_TABS[0];
 
+  // Top-level view switch (#3147): "All listings" (everything below,
+  // unchanged) vs "Price changes" (the new review queue). A permanent tab on
+  // this page per the epic's placement decision — no promotion to a
+  // dedicated nav surface is planned.
+  const rawView = searchParams.get('view');
+  const view: 'all' | 'queue' = rawView === 'queue' ? 'queue' : 'all';
+  const priceChangesCountQuery = usePriceChangesQuery();
+  const priceChangesOpenCount = priceChangesCountQuery.data?.items.length ?? 0;
+
   const [searchInput, setSearchInput] = useState(urlSearch);
 
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
@@ -699,6 +709,29 @@ export function ListingsListPage(): ReactElement {
         ) : null
       }
     >
+      <Tabs
+        value={view}
+        onValueChange={(value) => {
+          setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            if (value === 'queue') next.set('view', 'queue');
+            else next.delete('view');
+            return next;
+          });
+        }}
+      >
+        <TabsList aria-label="Listings views">
+          <TabsTrigger value="all">All listings</TabsTrigger>
+          <TabsTrigger value="queue">
+            Price changes <span className="tabs__count">{priceChangesOpenCount}</span>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {view === 'queue' ? (
+        <PriceChangesQueueTable />
+      ) : (
+        <>
       <div className="toolbar toolbar--compact listings-toolbar">
         <div className="toolbar__group">
           <Input
@@ -1073,6 +1106,8 @@ export function ListingsListPage(): ReactElement {
       </Tabs>
 
       <OfferProductPickerModal isOpen={isWizardOpen} onClose={() => setIsWizardOpen(false)} />
+        </>
+      )}
     </PageLayout>
   );
 }
