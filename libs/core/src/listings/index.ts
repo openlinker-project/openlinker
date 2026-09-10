@@ -389,6 +389,9 @@ export type {
 export type { PriceChangeEpisodeRepositoryPort } from './domain/ports/price-change-episode-repository.port';
 export { resolvePriceChangeBlockReason, readConnectionCurrency } from './domain/types/price-change-block.types';
 export type { IPriceChangeDetectionService } from './application/services/price-change-detection.service.interface';
+export { PriceChangeAutoAppliedLogEntry } from './domain/entities/price-change-auto-applied-log-entry.entity';
+export type { RecordAutoAppliedPriceChangeInput } from './domain/types/price-change-auto-applied-log.types';
+export type { PriceChangeAutoAppliedLogRepositoryPort } from './domain/ports/price-change-auto-applied-log-repository.port';
 export { OfferCommercialSnapshot } from './domain/entities/offer-commercial-snapshot.entity';
 export type {
   OfferCommercialSnapshotProps,

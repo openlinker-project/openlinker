@@ -23,6 +23,7 @@ import { AnalyticsCurrencyRecalculateHandler } from './analytics-currency-recalc
 import { MarketplaceOfferQuantityUpdateHandler } from './marketplace-offer-quantity-update.handler';
 import { MarketplaceOfferQuantityReconcileHandler } from './marketplace-offer-quantity-reconcile.handler';
 import { MarketplaceOfferFieldUpdateHandler } from './marketplace-offer-field-update.handler';
+import { PriceChangeApplyHandler } from './price-change-apply.handler';
 import { MarketplaceOfferCreateHandler } from './marketplace-offer-create.handler';
 import { MarketplaceOfferPollCreationStatusHandler } from './marketplace-offer-poll-creation-status.handler';
 import { MarketplaceOffersSyncHandler } from './marketplace-offers-sync.handler';
@@ -88,6 +89,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOfferQuantityUpdateHandler: MarketplaceOfferQuantityUpdateHandler,
     private readonly marketplaceOfferQuantityReconcileHandler: MarketplaceOfferQuantityReconcileHandler,
     private readonly marketplaceOfferFieldUpdateHandler: MarketplaceOfferFieldUpdateHandler,
+    private readonly priceChangeApplyHandler: PriceChangeApplyHandler,
     private readonly marketplaceOfferCreateHandler: MarketplaceOfferCreateHandler,
     private readonly marketplaceOfferPollCreationStatusHandler: MarketplaceOfferPollCreationStatusHandler,
     private readonly marketplaceOffersSyncHandler: MarketplaceOffersSyncHandler,
@@ -240,6 +242,16 @@ export class HandlerRegistrationService implements OnModuleInit {
       'marketplace.offer.updateFields',
       this.marketplaceOfferFieldUpdateHandler,
       'realtime'
+    );
+    // #3144, ADR-072 decision 8/9. `bulk`, not `realtime`: like
+    // `marketplace.offer.create`, this is single-unit work that can arrive up
+    // to N wide from a bulk-accept wave (#3145/#3148) — the operator-wave
+    // shape ADR-050 decision 1 assigns to `bulk`, not the single-item
+    // "someone is waiting on this" shape `realtime` is for.
+    this.handlerRegistry.register(
+      'pricing.propagateToMarketplaces',
+      this.priceChangeApplyHandler,
+      'bulk'
     );
     // Operator-wave child: single-unit work, but arrives up to 1000 wide —
     // `bulk` is ADR-050 decision 1's most consequential assignment.
