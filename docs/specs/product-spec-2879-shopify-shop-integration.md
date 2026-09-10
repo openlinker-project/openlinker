@@ -50,7 +50,7 @@ drift between two copies; this spec should link to the issue rather than restate
 ## 8. Risks
 
 See `docs/plans/analysis/SPIKE-2879-shopify-admin-api.md § Open risks` for the live-verified list.
-Headline items as of Session 2, 2026-09-08:
+Headline items, in reconciled form:
 
 1. `read_all_orders` requires manual, non-SLA'd Shopify review — BLOCKED, tracked in the SPIKE doc.
 2. True concurrent-retry idempotency replay semantics for `inventoryAdjustQuantities` are unverified;
@@ -77,8 +77,8 @@ Headline items as of Session 2, 2026-09-08:
 
 **F6 upgraded finding**: live introspection shows Shopify's `FulfillmentOrderRequestStatus` /
 `FulfillmentOrderStatus` enums match OL's own ADR-054 vocabulary almost name-for-name (SPIKE E-F5),
-and Session 2 subsequently confirmed the negotiation axis working end to end (SPIKE E-F10), closing
-group F to 8/8. This strengthens (not weakens) the case for including F6 in a first slice.
+and the negotiation axis was subsequently confirmed working end to end (SPIKE E-F10), closing group F
+to 8/8. This strengthens (not weakens) the case for including F6 in a first slice.
 
 ## 9. Implementation breakdown
 
@@ -91,14 +91,14 @@ group F to 8/8. This strengthens (not weakens) the case for including F6 in a fi
 | 2026-09-04 | Sandbox built on a fresh development store (`{shop-domain}.myshopify.com`) rather than desk-research-only | Issue #2879 AC2 requires a real authenticated call with transcript, not just confirmation the API exists |
 | 2026-09-04 | Access token obtained via full OAuth authorization-code grant rather than the Dev Dashboard "App automation token" shortcut | The automation token (`atkn_` prefix) is scoped for CI/CD app-config deployment, not Admin API calls — confirmed empirically to fail with `Invalid API key or access token` |
 
-## 11. Session coverage summary (2026-09-08)
+## 11. Coverage summary
 
 **80 of the issue's ~90 stories verified live** against a real development store sandbox
 (`{shop-domain}.myshopify.com`) — see the SPIKE doc's `## Coverage tally` section for the exact
 per-group arithmetic behind this number (10+13+6+6+6+14+8+5+8+4 = 80); this is the single
 authoritative figure and supersedes any other count appearing elsewhere in this spec or the PR
 description. Includes M group at 13/13 (bulk operations confirmed end to end) and F group closed to
-8/8 in Session 2 (negotiation axis, SPIKE E-F10). C7/O16 (429/retry) is **not** a confirmed negative
+8/8 (negotiation axis, SPIKE E-F10). C7/O16 (429/retry) is **not** a confirmed negative
 result — the burst test used was insufficient to reach the platform's real throttling threshold, so
 retry-classification behaviour stays genuinely UNVERIFIED (see SPIKE E-C8 and the corrected coverage
 tally note). All three headline findings from the issue confirmed; F6 confirmed stronger than
