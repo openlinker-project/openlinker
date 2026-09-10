@@ -390,11 +390,13 @@ export class DestinationTaxonomyService implements IDestinationTaxonomyService {
         return null;
       }
 
-      // Anything else — chiefly `ConnectionNotFoundException` /
-      // `ConnectionDisabledException` — is NOT part of the kind probe: the
-      // probe never got far enough to answer "which kind". Rethrow so the
-      // global `ConnectionExceptionFilter` maps them to 404 / 409 instead of
-      // collapsing them into the capability-shaped 422 below (#2146).
+      // Anything else — `ConnectionNotFoundException` / `ConnectionDisabledException`,
+      // or any other unanticipated failure the registry/adapter-construction
+      // path can raise — is NOT part of the kind probe: the probe never got
+      // far enough to answer "which kind". Rethrow rather than swallow, so the
+      // two connection exceptions reach the global `ConnectionExceptionFilter`
+      // (404 / 409) instead of collapsing into the capability-shaped 422
+      // below, and anything else surfaces loudly instead of silently (#2146).
       //
       // Deliberate decision (#2146): a DISABLED connection is not granted a
       // read-only exception here, unlike a borrower with no catalogue
