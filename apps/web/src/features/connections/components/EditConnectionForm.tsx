@@ -18,7 +18,6 @@ import {
 } from './edit-connection.schema';
 import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
-import { PricingAndSyncSection } from './pricing-and-sync-section';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -824,13 +823,25 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         syncPricingRuleToJson={syncPricingRuleToJson}
       />
 
-      {/* #3149 — the opt-in recurring price propagation review queue's
-          per-connection settings. Gated the same way `needsMasterCatalog`
-          is: a viable destination is one that can either list marketplace
-          offers or publish shop products. Self-contained (its own fetch +
-          Save/Discard) rather than participating in this form — see the
-          component's own docblock for why. */}
-      {needsMasterCatalog ? <PricingAndSyncSection connectionId={connection.id} /> : null}
+      {/* #3149/#3150 — the opt-in recurring price propagation review
+          queue's per-connection settings live at their OWN dedicated route
+          rather than inside this form (the `SalesDocumentStatusSection`
+          shape above: one editable surface, linked to rather than
+          duplicated). #3148's Edit-dialog permalink and the queue table's
+          connection-tag links already targeted
+          `/connections/:id/pricing-sync` before this section existed, so
+          embedding a second, independently-fetched copy of the same
+          Save/Discard state here would both duplicate the surface and
+          create a second place that can go stale relative to the other. */}
+      {needsMasterCatalog ? (
+        <section className="rate-limit-section">
+          <h3 className="rate-limit-section__title">Pricing & sync</h3>
+          <p className="rate-limit-section__help">
+            Choose how this connection&apos;s price updates get reviewed and priced.{' '}
+            <Link to={`/connections/${connection.id}/pricing-sync`}>Manage pricing & sync</Link>
+          </p>
+        </section>
+      ) : null}
 
       <div className="config-panel__toggle">
         <Button

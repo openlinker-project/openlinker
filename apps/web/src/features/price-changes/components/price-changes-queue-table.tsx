@@ -33,6 +33,7 @@ import { AcceptPriceChangeDialog } from './accept-price-change-dialog';
 import { EditPriceChangeDialog } from './edit-price-change-dialog';
 import { BulkAcceptPriceChangesDialog } from './bulk-accept-price-changes-dialog';
 import { BulkPublishProgress } from './bulk-publish-progress';
+import { PricingRulesPickerDialog } from './pricing-rules-picker-dialog';
 import type { PriceChangeItem } from '../api/price-changes.types';
 import {
   STEEP_DELTA_TOOLTIP,
@@ -77,6 +78,12 @@ export function PriceChangesQueueTable({
   const offerManagerConnections = (connectionsQuery.data ?? []).filter((c) =>
     c.enabledCapabilities.includes('OfferManager'),
   );
+  // Rules live on any DESTINATION (OfferManager or ProductPublisher), which
+  // is wider than the marketplace-only filter chips above (#3150's picker).
+  const destinationConnections = (connectionsQuery.data ?? []).filter(
+    (c) => c.enabledCapabilities.includes('OfferManager') || c.enabledCapabilities.includes('ProductPublisher'),
+  );
+  const [pricingRulesPickerOpen, setPricingRulesPickerOpen] = useState(false);
 
   const query = usePriceChangesQuery({
     connectionId: connectionFilter === 'all' ? undefined : connectionFilter,
@@ -242,7 +249,21 @@ export function PriceChangesQueueTable({
           independently-reviewable change on every marketplace or shop it&apos;s published to. Prices
           include VAT.
         </p>
+        <Button
+          tone="secondary"
+          className="button--sm"
+          id="btn-pricing-rules"
+          onClick={() => setPricingRulesPickerOpen(true)}
+        >
+          Pricing rules
+        </Button>
       </div>
+
+      <PricingRulesPickerDialog
+        open={pricingRulesPickerOpen}
+        onOpenChange={setPricingRulesPickerOpen}
+        destinationConnections={destinationConnections}
+      />
 
       <div className="filter-bar" role="group" aria-label="Filter by connection">
         <span className="filter-bar__label">Connection</span>
@@ -431,7 +452,7 @@ export function PriceChangesQueueTable({
                           <Link
                             className="connection-tag"
                             data-testid="row-connection-tag"
-                            to={`/connections/${item.destinationConnectionId}`}
+                            to={`/connections/${item.destinationConnectionId}/pricing-sync`}
                           >
                             {item.destinationLabel}
                           </Link>

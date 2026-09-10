@@ -21,6 +21,8 @@ export type {
 } from './api/pricing-sync.types';
 export { useConnectionPricingSyncQuery } from './hooks/use-connection-pricing-sync-query';
 export { useUpdateConnectionPricingSyncMutation } from './hooks/use-update-connection-pricing-sync-mutation';
+export { useConnectionAsSourceQuery } from './hooks/use-connection-as-source-query';
+export type { ConnectionAsSourceEntry } from './api/pricing-sync.types';
 export { usePriceChangesQuery } from './hooks/use-price-changes-query';
 export { useAutoAppliedPriceChangesQuery } from './hooks/use-auto-applied-price-changes-query';
 export { useAcceptPriceChangeMutation } from './hooks/use-accept-price-change-mutation';

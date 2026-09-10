@@ -45,6 +45,16 @@ import { useToast } from '../../../shared/ui/toast-provider';
 
 export interface PricingAndSyncSectionProps {
   connectionId: string;
+  /**
+   * Pre-expands the named source's override editor on load — the "reuse the
+   * same expandSourceRow-equivalent mechanism" #3150 asks to share between
+   * the Edit-dialog's "Set a rule just for this source" permalink (#3148,
+   * `?source=`) and the source rollup page's "Manage" links. Enabling the
+   * override is what "expanded" means here: the row's body only renders
+   * for a custom source, so landing on an inherited one turns it on —
+   * exactly what a manual click of the checkbox already does.
+   */
+  initialExpandSourceId?: string;
 }
 
 const MODE_HINT: Record<PriceSyncMode, string> = {
@@ -73,7 +83,10 @@ function applyRulePatch(rule: PricingRule, patch: RulePatch): PricingRule {
   };
 }
 
-export function PricingAndSyncSection({ connectionId }: PricingAndSyncSectionProps): ReactElement {
+export function PricingAndSyncSection({
+  connectionId,
+  initialExpandSourceId,
+}: PricingAndSyncSectionProps): ReactElement {
   const query = useConnectionPricingSyncQuery(connectionId);
   const updateMutation = useUpdateConnectionPricingSyncMutation(connectionId);
   const { showToast } = useToast();
@@ -85,13 +98,29 @@ export function PricingAndSyncSection({ connectionId }: PricingAndSyncSectionPro
   useEffect(() => {
     if (query.data && draft === null) {
       setDraft(cloneView(query.data));
-      setCustomSources(
-        new Set(
-          query.data.sources.filter((s) => s.isCustomOverride).map((s) => s.sourceConnectionId)
-        )
-      );
+      const alreadyCustom = query.data.sources
+        .filter((s) => s.isCustomOverride)
+        .map((s) => s.sourceConnectionId);
+      const expandTarget =
+        initialExpandSourceId &&
+        query.data.sources.some((s) => s.sourceConnectionId === initialExpandSourceId) &&
+        !alreadyCustom.includes(initialExpandSourceId)
+          ? initialExpandSourceId
+          : null;
+      setCustomSources(new Set(expandTarget ? [...alreadyCustom, expandTarget] : alreadyCustom));
+      if (expandTarget) {
+        // Same effect a manual checkbox click has: copy the default rule in
+        // as the starting point for this source's override.
+        setDraft((prev) => {
+          if (!prev) return prev;
+          const next = cloneView(prev);
+          const source = next.sources.find((s) => s.sourceConnectionId === expandTarget);
+          if (source) source.effective = cloneSetting(next.default);
+          return next;
+        });
+      }
     }
-  }, [query.data, draft]);
+  }, [query.data, draft, initialExpandSourceId]);
 
   if (query.isLoading) {
     return <LoadingState title="Pricing & sync" message="Loading settings…" />;

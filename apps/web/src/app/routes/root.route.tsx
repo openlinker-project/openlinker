@@ -19,6 +19,7 @@ import { connectionDetailRoute } from './connection-detail.route';
 import { connectionCategoryMappingsRoute } from './connection-category-mappings.route';
 import { connectionMappingsRoute } from './connection-mappings.route';
 import { editConnectionRoute } from './edit-connection.route';
+import { pricingSyncRoute } from './pricing-sync.route';
 import { connectionsRoute } from './connections.route';
 import { cursorsRoute } from './cursors.route';
 import { customersRoute } from './customers.route';
@@ -78,6 +79,7 @@ export const coreChildren: RouteObject[] = [
   connectionCategoryMappingsRoute,
   connectionMappingsRoute,
   editConnectionRoute,
+  pricingSyncRoute,
   jobsLogsRoute,
   webhookDeliveriesRoute,
   settingsRoute,
