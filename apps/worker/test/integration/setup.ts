@@ -5,6 +5,11 @@
  * (Postgres + Redis), boots Nest application context (no HTTP server), runs migrations,
  * and provides utilities for test execution.
  *
+ * `resetTestHarness()` below is called from every int-spec's own `afterEach` AND, since
+ * #2999, from a root-level `beforeEach`/`afterEach` registered once via `setupFilesAfterEnv`
+ * — see `setup-each.ts` for the audit of what that global reset is safe to do across every
+ * worker int-spec, and `harness-isolation.int-spec.ts` for the regression guard.
+ *
  * @module apps/worker/test/integration
  */
 import { NestFactory } from '@nestjs/core';
@@ -72,29 +77,57 @@ export class WorkerIntegrationTestHarness {
   /**
    * Reset database and cache between tests
    *
-   * Truncates all tables and clears Redis cache.
+   * Truncates the tables listed below and clears the Redis database, but
+   * only the ones that actually hold state (#2999) — the pre-existing
+   * unconditional 7-statement `TRUNCATE` chain plus `flushDb()` cost a fixed
+   * amount of round-trip time on EVERY reset regardless of whether the
+   * previous test dirtied anything, and since #2999 wires this into a
+   * `beforeEach`/`afterEach` pair for every test case of every int-spec
+   * (`setup-each.ts`) rather than an occasional per-file `afterEach`, that
+   * fixed cost is now paid far more often. Mirrors the probe-then-truncate
+   * shape `truncateTables` uses in `libs/test-kit/src/harness.ts` for the api
+   * suite (that helper is intentionally not exported from the package barrel
+   * for reuse outside test-kit's own spec, so the probe is reproduced here
+   * rather than imported).
    */
   async reset(): Promise<void> {
     if (!this.dataSource) {
       throw new Error('Harness not initialized. Call setup() first.');
     }
 
-    // Truncate all tables (in correct order due to foreign keys)
-    // Note: Order matters - child tables first, then parent tables
-    await this.dataSource.query('TRUNCATE TABLE sync_jobs CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE inventory_items CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE product_variants CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE products CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE identifier_mappings CASCADE');
-    // #2219: the master sweeps persist a resume cursor here. Without this a
-    // spec inherits the previous one's cursor and silently resumes mid-cycle.
-    await this.dataSource.query('TRUNCATE TABLE connection_cursors CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE connections CASCADE');
+    // Order doesn't matter here — every statement below is `CASCADE`, and all
+    // seven names are combined into ONE `TRUNCATE` rather than one per table
+    // (#2219's connection_cursors note still applies: the master sweeps
+    // persist a resume cursor there, and without truncating it a spec
+    // inherits the previous one's cursor and silently resumes mid-cycle).
+    const tables = [
+      'sync_jobs',
+      'inventory_items',
+      'product_variants',
+      'products',
+      'identifier_mappings',
+      'connection_cursors',
+      'connections',
+    ];
+    const probe = tables
+      .map((table) => `SELECT '${table}' AS table_name WHERE EXISTS (SELECT 1 FROM "${table}")`)
+      .join(' UNION ALL ');
+    const dirty = (await this.dataSource.query(probe)) as ReadonlyArray<{ table_name: string }>;
 
-    // Clear Redis cache and streams
+    if (dirty.length > 0) {
+      const list = dirty.map((row) => `"${row.table_name}"`).join(', ');
+      await this.dataSource.query(`TRUNCATE TABLE ${list} CASCADE`);
+    }
+
+    // Clear Redis cache and streams — but only if there's anything to clear.
+    // `DBSIZE` is an O(1) server-side counter (unlike `KEYS`/`SCAN`), so this
+    // probe costs nothing material even on a database that never went empty.
     if (this.redisClient) {
       try {
-        await this.redisClient.flushDb();
+        const size = await this.redisClient.dbSize();
+        if (size > 0) {
+          await this.redisClient.flushDb();
+        }
       } catch (error) {
         console.warn('Failed to flush Redis:', error);
       }
