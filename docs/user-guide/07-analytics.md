@@ -40,12 +40,13 @@ specifically to surface the orders a figure is *not yet* counting.
   rather than silently truncating. The **Needs attention** panel is different: it takes no date
   range at all — coverage gaps, stock at risk, and stuck-sync value are reported across the whole
   install, independent of whatever range you're viewing.
-- **Order date** (the small pill next to Apply) currently opens with a caveat rather than a
-  confirmation: activating it reads *"This range doesn't filter results yet — coming soon."* Take
-  that at face value for now — it's the product's own stated position on the pill, not a claim this
-  guide is making. Separately, and unrelated to that pill: every metric definition below is bucketed
-  by an order's own **placement** date, never its sync or payment date — see the two rules under
-  [KPI strip metric definitions](#kpi-strip-metric-definitions).
+- **Order date** (the small pill next to Apply) now confirms what the range does rather than
+  disclaiming it: activating it reads **"Filters revenue, orders, and the tables above. 'Needs
+  attention' below always shows current status, not this range."** That's the same distinction the
+  400-day-limit bullet above already makes, restated at the point of use, so the two aren't
+  contradicting one another. Separately, and unrelated to that pill: every metric definition below
+  is bucketed by an order's own **placement** date, never its sync or payment date — see the two
+  rules under [KPI strip metric definitions](#kpi-strip-metric-definitions).
 - Changing the range re-runs the KPI strip, the channel/product tables, and the Data Coverage panel
   — all of which take the selected range, including the trend sparkline embedded in each KPI card
   and channel row: a week-long range renders a daily trend, a longer one resamples into up to seven
@@ -303,6 +304,12 @@ An order whose reporting-currency stamp doesn't match the deployment's *current*
 Recalculating is a **real, permanent write** — it saves the actual historical exchange rate from
 each affected order's own date to the database. It is not a preview and, once started, cannot be
 undone from this screen.
+
+> **TL;DR — the three tax-rate categories at a glance**: **A** is a rate OpenLinker already knows
+> about (found in the catalog after the order shipped) and just needs your opt-in to use; **B** is a
+> rate nobody has — the gap is at the source, and no button here can fix it; **C** is a rate that
+> exists but hasn't been synced yet, and the row's own action can force that sync early. If the row
+> offers a footer action beyond "review the list," it's A or C — B never does.
 
 ### Tax rate — category A (unconfirmed, found in the catalog)
 
