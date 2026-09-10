@@ -44,12 +44,46 @@ import {
   type LocationDialogTarget,
 } from '../../features/inventory';
 
+const PAGE_SIZE = 25;
+
 function isKnownKind(value: string): value is InventoryLocationKind {
   return (InventoryLocationKindValues as readonly string[]).includes(value);
 }
 
 function statusTone(status: InventoryLocation['status']): StatusBadgeTone {
   return status === 'active' ? 'success' : 'neutral';
+}
+
+// Guards against a malformed `?page=abc` producing NaN, which would
+// otherwise be sent straight through to the API as the `page` filter
+// (the `users-page.tsx` `readPageParam` precedent, adapted to this
+// endpoint's 1-based paging).
+function readPageParam(raw: string | null): number {
+  const parsed = Number(raw ?? '1');
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.trunc(parsed) : 1;
+}
+
+// The `users-page.tsx` pager, adapted to 1-based paging and a `total` that
+// arrives in the SAME response as the rows (#2316's `PaginatedInventoryLocations`
+// — no two-stage-total machinery needed here, unlike `products-list-page.tsx`).
+function renderPagination(page: number, setPage: (next: number) => void, total: number): ReactElement | null {
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (pageCount <= 1) return null;
+  return (
+    <div className="pagination">
+      <span className="text-muted">
+        Page {page} of {pageCount} · {total} location{total === 1 ? '' : 's'}
+      </span>
+      <div className="pagination__actions">
+        <Button disabled={page <= 1} onClick={() => setPage(page - 1)}>
+          Previous
+        </Button>
+        <Button disabled={page >= pageCount} onClick={() => setPage(page + 1)}>
+          Next
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export function InventoryLocationsPage(): ReactElement {
@@ -65,13 +99,14 @@ export function InventoryLocationsPage(): ReactElement {
   // Default true — soft retirement keeps a row visible by design (#2316), so
   // the toggle narrows to active-only rather than the other way round.
   const showRetired = searchParams.get('retired') !== '0';
+  const page = readPageParam(searchParams.get('page'));
 
   const filters: InventoryLocationFilters = {
     kind,
     status: showRetired ? undefined : 'active',
   };
 
-  const query = useInventoryLocationsQuery(filters);
+  const query = useInventoryLocationsQuery(filters, { page, limit: PAGE_SIZE });
   const connectionsQuery = useConnectionsQuery();
   const bootstrapMutation = useBootstrapLocationsMutation();
 
@@ -89,6 +124,10 @@ export function InventoryLocationsPage(): ReactElement {
       } else {
         next.delete(key);
       }
+      // A changed filter can shrink the result set out from under the
+      // current page, so land back on page 1 rather than risk a page
+      // number the new filter has no rows for.
+      next.delete('page');
       return next;
     });
   }
@@ -98,6 +137,19 @@ export function InventoryLocationsPage(): ReactElement {
       const next = new URLSearchParams(prev);
       next.delete('kind');
       next.delete('retired');
+      next.delete('page');
+      return next;
+    });
+  }
+
+  function setPage(nextPage: number): void {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (nextPage <= 1) {
+        next.delete('page');
+      } else {
+        next.set('page', String(nextPage));
+      }
       return next;
     });
   }
@@ -266,39 +318,46 @@ export function InventoryLocationsPage(): ReactElement {
               <Button onClick={clearFilters}>Clear filters</Button>
             ) : write.visible ? (
               <div className="table-actions">
-                <Button
-                  disabled={write.demoReadOnly || bootstrapMutation.isPending}
-                  onClick={() => bootstrapMutation.mutate()}
-                >
-                  Create first location
-                </Button>
-                <Button
-                  tone="secondary"
-                  disabled={write.demoReadOnly}
-                  onClick={() => setDialogTarget({ mode: 'create' })}
-                >
-                  + Add manually
-                </Button>
+                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <Button
+                    disabled={write.demoReadOnly || bootstrapMutation.isPending}
+                    onClick={() => bootstrapMutation.mutate()}
+                  >
+                    Create first location
+                  </Button>
+                </ReadOnlyLock>
+                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <Button
+                    tone="secondary"
+                    disabled={write.demoReadOnly}
+                    onClick={() => setDialogTarget({ mode: 'create' })}
+                  >
+                    + Add manually
+                  </Button>
+                </ReadOnlyLock>
               </div>
             ) : null
           }
         />
       ) : (
-        <DataTable
-          caption="Inventory locations"
-          columns={columns}
-          rowKey={(location) => location.id}
-          rows={[...(query.data?.items ?? [])]}
-          cardView={{
-            title: (location) => location.name,
-            subtitle: (location) => location.code,
-            meta: (location) => (
-              <StatusBadge tone={statusTone(location.status)} compact>
-                {location.status}
-              </StatusBadge>
-            ),
-          }}
-        />
+        <>
+          <DataTable
+            caption="Inventory locations"
+            columns={columns}
+            rowKey={(location) => location.id}
+            rows={[...(query.data?.items ?? [])]}
+            cardView={{
+              title: (location) => location.name,
+              subtitle: (location) => location.code,
+              meta: (location) => (
+                <StatusBadge tone={statusTone(location.status)} compact>
+                  {location.status}
+                </StatusBadge>
+              ),
+            }}
+          />
+          {renderPagination(page, setPage, query.data?.total ?? 0)}
+        </>
       )}
 
       <LocationDialog target={dialogTarget} onClose={() => setDialogTarget(null)} />

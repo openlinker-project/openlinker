@@ -26,8 +26,11 @@ const location: InventoryLocation = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
-function page(items: InventoryLocation[] = [location]): PaginatedInventoryLocations {
-  return { items, total: items.length, page: 1, limit: 25 };
+function page(
+  items: InventoryLocation[] = [location],
+  overrides: Partial<Pick<PaginatedInventoryLocations, 'total' | 'page' | 'limit'>> = {},
+): PaginatedInventoryLocations {
+  return { items, total: items.length, page: 1, limit: 25, ...overrides };
 }
 
 describe('InventoryLocationsPage', () => {
@@ -96,7 +99,7 @@ describe('InventoryLocationsPage', () => {
     await waitFor(() =>
       expect(listLocations).toHaveBeenLastCalledWith(
         expect.objectContaining({ status: 'active' }),
-        undefined,
+        { page: 1, limit: 25 },
       ),
     );
   });
@@ -112,9 +115,96 @@ describe('InventoryLocationsPage', () => {
     await waitFor(() =>
       expect(listLocations).toHaveBeenLastCalledWith(
         expect.objectContaining({ kind: 'warehouse' }),
-        undefined,
+        { page: 1, limit: 25 },
       ),
     );
+  });
+
+  // #3135 review — pagination was silently dropped: the query never received
+  // a `pagination` argument and `total` was never read anywhere on the page.
+  describe('pagination (tech-lead review fix)', () => {
+    it('does not render a pager when everything fits on one page', async () => {
+      const apiClient = createMockApiClient({
+        inventory: { listLocations: vi.fn().mockResolvedValue(page([location], { total: 1 })) },
+      });
+      renderWithProviders(<InventoryLocationsPage />, { apiClient });
+
+      await screen.findByText('Warsaw — Main warehouse');
+      expect(screen.queryByText(/page 1 of/i)).not.toBeInTheDocument();
+    });
+
+    it('renders the pager and disables Previous on the first page, when total exceeds one page', async () => {
+      const apiClient = createMockApiClient({
+        inventory: { listLocations: vi.fn().mockResolvedValue(page([location], { total: 30 })) },
+      });
+      renderWithProviders(<InventoryLocationsPage />, { apiClient });
+
+      await screen.findByText('Warsaw — Main warehouse');
+      expect(screen.getByText('Page 1 of 2 · 30 locations')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Next' })).toBeEnabled();
+    });
+
+    it('clicking Next requests page 2 and enables Previous', async () => {
+      const listLocations = vi.fn().mockResolvedValue(page([location], { total: 30 }));
+      const apiClient = createMockApiClient({ inventory: { listLocations } });
+      renderWithProviders(<InventoryLocationsPage />, { apiClient });
+
+      await screen.findByText('Warsaw — Main warehouse');
+      await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+      // `MemoryRouter` doesn't sync to `window.location`, so the URL isn't a
+      // reachable assertion here — the request args and the page's own
+      // rendered pager state are: both are downstream of the same
+      // `useSearchParams` change a real browser navigation would also drive.
+      await waitFor(() =>
+        expect(listLocations).toHaveBeenLastCalledWith(expect.anything(), { page: 2, limit: 25 }),
+      );
+      expect(await screen.findByText('Page 2 of 2 · 30 locations')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled();
+    });
+
+    it('changing a filter lands back on page 1', async () => {
+      const listLocations = vi.fn().mockResolvedValue(page([location], { total: 30 }));
+      const apiClient = createMockApiClient({ inventory: { listLocations } });
+      renderWithProviders(<InventoryLocationsPage />, { apiClient, route: '/inventory/locations?page=2' });
+
+      await screen.findByText('Warsaw — Main warehouse');
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Filter by kind' }), 'warehouse');
+
+      await waitFor(() =>
+        expect(listLocations).toHaveBeenLastCalledWith(
+          expect.objectContaining({ kind: 'warehouse' }),
+          { page: 1, limit: 25 },
+        ),
+      );
+      expect(await screen.findByText('Page 1 of 2 · 30 locations')).toBeInTheDocument();
+    });
+  });
+
+  // #3135 review — the empty-state's "Create first location" / "+ Add
+  // manually" buttons used the same `disabled={write.demoReadOnly}`
+  // condition as every other write affordance on the page but skipped the
+  // `ReadOnlyLock` wrapper, so a demo viewer got disabled buttons with no
+  // explanatory tooltip there and there alone.
+  it('wraps the empty-state write buttons in ReadOnlyLock for a demo read-only viewer', async () => {
+    const viewerSession = createAuthenticatedSessionAdapter({
+      id: 'u2',
+      username: 'viewer',
+      email: null,
+      role: 'viewer',
+      permissions: ['inventory:read'],
+    });
+    const apiClient = createMockApiClient({
+      inventory: { listLocations: vi.fn().mockResolvedValue(page([], { total: 0 })) },
+      system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+    });
+    renderWithProviders(<InventoryLocationsPage />, { apiClient, sessionAdapter: viewerSession });
+
+    const createFirst = await screen.findByRole('button', { name: 'Create first location' });
+    const addManually = screen.getByRole('button', { name: '+ Add manually' });
+    expect(createFirst.closest('.read-only-lock')).not.toBeNull();
+    expect(addManually.closest('.read-only-lock')).not.toBeNull();
   });
 
   it('hides Edit/Delete row actions and Add location for a session with no write permission', async () => {
