@@ -1685,3 +1685,98 @@ own ignorance into the artefact.
 setting globals.
 
 **Source**: #3004.
+
+---
+
+## One `trap ... EXIT` per script - a second one silently replaces the first
+
+**Context**: F18's arm C registered its own `trap ... EXIT` to delete the probe product rows it
+had just inserted, while the scenario had already registered `trap f18_cleanup EXIT` at the top.
+
+**Problem**: bash keeps exactly ONE handler per signal, so the later `trap` discarded the earlier
+one wholesale. Nothing warned. Two things then never ran: the deletion of the Erli frozen-stock
+cache key - which carries a 26-hour TTL, so the flag written by the FIRST run was still set on
+every run after it, and each later "not frozen" write was correctly skipped as frozen - and
+`release_stand_exclusive`, which left a stale lock that refused every subsequent scenario on the
+stand. The visible symptom was a measurement that looked like a product defect: a stock write
+reporting success with zero requests reaching the marketplace. It was published as a finding and
+had to be retracted.
+
+**Rule**: a script registers its EXIT handler once, in one function. A block needing its own
+teardown adds its statements to that function rather than calling `trap` again. If a second
+handler is genuinely unavoidable, compose explicitly (`trap 'first; second' EXIT`) - never
+register a bare second one. And when a scenario writes cache state with a long TTL, delete it at
+the START of the arm as well as in the teardown, so a previous run that died cannot poison this
+one.
+
+**Applies to**: `perf/openlinker-throughput/scenarios/*.sh`, any bash with a cleanup trap
+
+**Source**: #2840 campaign, 2026-09-10
+
+---
+
+## nginx caches a `proxy_pass` upstream address at startup - recreating the backend silently 502s everything
+
+**Context**: the perf stand fronts its Eparagony and Erli stubs with per-service nginx TLS
+terminators, because both HTTP clients refuse a non-https base URL.
+
+**Problem**: nginx resolves `proxy_pass http://name:port` ONCE at startup and caches that address
+for the life of the process unless a `resolver` directive is present. None was. Recreating the
+backing stub containers gave them new addresses, and both proxies answered 502 to every call from
+then on with nothing in either proxy's own logs to say so. Downstream that looked like two
+different product defects: a fiscal arm scoring 0/10 (whose scenario still wrote `status=VALID`),
+and an Erli stock write reporting success with zero requests observed at the stub.
+
+**Rule**: probe every configured base URL before measuring, from INSIDE the container that will
+make the calls, using the same runtime - `guard_connection_endpoints` uses node, because only
+node reads `NODE_EXTRA_CA_CERTS` and a host-side probe of a published port proves nothing about
+the container-to-container path. A gateway status is a failure; 401/403/404 are passes, because
+the question is whether the endpoint answers at all. An earlier wget-based check on this same
+stand returned a confident wrong answer for exactly the CA-store reason.
+
+**Applies to**: `perf/openlinker-throughput/lib.sh`, `docker-compose.lab.yml` TLS terminators
+
+**Source**: #2840 campaign, 2026-09-10
+
+---
+
+## A throughput arm may not gate a verdict on being SLOW, but it must gate on being EMPTY
+
+**Context**: F14's verdict rule read "arms A/B are throughput measurements and never gate the
+verdict" - deliberately, so a slow provider could not discard an otherwise-clean run.
+
+**Problem**: under a 502-ing TLS proxy, arm B registered zero of ten documents and the scenario
+wrote `status=VALID` over it. A slow number is a result; zero samples is not a number at all, and
+there is nothing to be slow about.
+
+**Rule**: a measurement arm discards when it asked for N and got zero. It still never discards on
+the value being unflattering. The two are different tests, and only the first one belongs in a
+verdict.
+
+**Applies to**: every `perf/openlinker-throughput/scenarios/*.sh` verdict block
+
+**Source**: #2840 campaign, 2026-09-10
+
+---
+
+## A job blocked by a persisted operator decision defers - it neither retries nor dies
+
+**Context**: `marketplace.orders.poll` against a connection an operator had disabled.
+
+**Problem**: `ConnectionDisabledException` was an ordinary retryable failure, so the job burned
+its full ten-attempt ladder on a condition no attempt can change. On the perf stand that filled a
+measurement window with `attempts>1` rows carrying one identical error and discarded two
+otherwise-clean F11 arms on `post_guard_attempts`. Note the evidence also erases itself:
+`markSucceeded` nulls `lastError`, so a job that failed twice and then succeeded reads
+`attempts: 3` with nothing recorded about why.
+
+**Rule**: classify a block that only a human can lift as a penalty-free DEFERRAL, not as a retry
+and not as terminal. Retrying spends the ladder for nothing; terminal removes the automatic
+recovery a job gets when the human acts inside the ladder's span. Deferral keeps the recovery,
+spends no attempt, is visible as `deferred` with its reason, and stays bounded by the cumulative
+budget so a condition left standing for a day still surfaces. Give it a gap sized to the actor -
+minutes for a person, seconds for a peer process holding a lock.
+
+**Applies to**: `apps/worker/src/sync/sync-job.runner.ts` (`resolveDeferral`), retry classifiers
+
+**Source**: #2840 campaign, 2026-09-10

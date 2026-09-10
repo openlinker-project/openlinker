@@ -37,7 +37,11 @@ import {
   resolveJobScope,
 } from '@openlinker/core/sync';
 import { OfferCreationInvariantException } from '@openlinker/core/listings';
-import { ConnectionPort, CONNECTION_PORT_TOKEN } from '@openlinker/core/identifier-mapping';
+import {
+  ConnectionPort,
+  CONNECTION_PORT_TOKEN,
+  ConnectionDisabledException,
+} from '@openlinker/core/identifier-mapping';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
 import { Logger } from '@openlinker/shared/logging';
 import { runWithPriority, RateLimitTimeoutError } from '@openlinker/shared/rate-limit';
@@ -116,6 +120,16 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
 
   /** Fixed short deferral for a write refused because a peer held the lock (#2617). */
   private readonly CONTENDED_WRITE_DEFERRAL_SECONDS = 15;
+
+  /**
+   * Deferral for a job whose connection is currently `disabled` (#2840).
+   *
+   * Minutes rather than the contended write's seconds, because the thing being
+   * waited on is an OPERATOR, not a peer process holding a lock for the length
+   * of one HTTP call. Re-polling every fifteen seconds for a connection someone
+   * switched off would spend a day's worth of log lines saying the same thing.
+   */
+  private readonly CONNECTION_DISABLED_DEFERRAL_SECONDS = 5 * 60;
 
   private abortController: AbortController | null = null;
   private isRunning = false;
@@ -758,6 +772,32 @@ export class SyncJobRunner implements OnModuleInit, OnModuleDestroy {
       return {
         delaySeconds: this.CONTENDED_WRITE_DEFERRAL_SECONDS,
         reason: 'Write contended by a peer',
+      };
+    }
+    // A `disabled` connection is not this job's failure either (#2840). An
+    // operator switched the connection off, and no amount of retrying is going
+    // to switch it back on - but the job is not WRONG, it is waiting, which is
+    // precisely what the penalty-free path is for.
+    //
+    // Both alternatives are worse, and this was measured rather than argued.
+    // Retrying (the pre-#2840 behaviour) burns the whole ten-attempt ladder on
+    // a condition no attempt can change; on the perf stand it filled the window
+    // with `attempts>1` rows carrying an identical error and DISCARDED two
+    // otherwise-clean F11 arms on `post_guard_attempts`. Calling it terminal is
+    // worse in the opposite direction: today a connection re-enabled inside the
+    // ladder's ~2-day span recovers on its own, and dying on attempt 1 would
+    // silently take that away from every event-driven job - an order ingested
+    // nowhere because someone toggled a connection for ten minutes.
+    //
+    // Deferral keeps the recovery and drops the noise: no attempt is spent, the
+    // jobs page shows `deferred` with the reason, and the existing cumulative
+    // budget (OL_JOB_MAX_DEFERRED_WAIT_SECONDS, 24 h) still lets the job rejoin
+    // the ladder and reach `dead`, so a connection left off for a day surfaces
+    // rather than deferring for ever.
+    if (cause instanceof ConnectionDisabledException) {
+      return {
+        delaySeconds: this.CONNECTION_DISABLED_DEFERRAL_SECONDS,
+        reason: 'Connection is disabled',
       };
     }
     return this.retryClassifierRegistry.resolveRetryDeferral(cause);
