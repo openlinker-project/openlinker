@@ -126,7 +126,7 @@ the reconciled count.
 |---|---|---|---|
 | E-T1 | T1 (open question) | `taxonomy { categories(first: 3) { ... } }` succeeded with the connection's existing product/order scope set — **no dedicated taxonomy scope appears to be required**, or it is silently covered by an existing scope. Not yet isolated to prove which scope specifically grants it | Live: query succeeded, returned real global category tree (`Animals & Pet Supplies`, `Apparel & Accessories`, `Arts & Entertainment`, ...) |
 | E-T1b | T2 | `TaxonomyCategory.fullName` gives the full breadcrumb path (`"Apparel & Accessories > Clothing"`), `ancestorIds` gives the ancestor id chain, `isLeaf`/`isRoot`/`level` all present — confirms category path/ancestor resolution is fully supported without a live-tree-walk workaround | Live — observed, no transcript retained |
-| E-T2 | T9 | `TaxonomyCategory.attributes` confirmed as a real per-category attribute schema (`Color, Pattern, Age group, Target gender, Care instructions` for Clothing; `Color, Pattern, Material, Age group, Accessory size` for Clothing Accessories) — it is a UNION type (`TaxonomyChoiceListAttribute` / `TaxonomyMeasurementAttribute`), requiring inline fragments to query, not a plain object list | Live transcript below |
+| E-T2 | T9 | `TaxonomyCategory.attributes` confirmed as a real per-category attribute schema (`Color, Pattern, Age group, Target gender, Care instructions` for Clothing; `Color, Pattern, Material, Age group, Accessory size` for Clothing Accessories) — it is a UNION type (`TaxonomyChoiceListAttribute` / `TaxonomyMeasurementAttribute`), requiring inline fragments to query, not a plain object list | Live — observed, no transcript retained |
 | E-T3 | T11 | 🚫 **NOT SUPPORTED, confirmed cleanly.** No mutation in the entire schema contains "taxonomy" or "category" in its name — Shopify's Standard Product Taxonomy is fully closed/read-only for a merchant app. There is no `CategoryProvisioner`-equivalent capability; OL products must map onto the existing fixed tree, never create a new node | Live: `__schema { mutationType { fields { name } } }` filtered for "taxonomy"/"category" → `[]` |
 | E-T4 | T12 | 🎯 **Full taxonomy sync fits comfortably in quota.** `taxonomy { categories(first:250) }` at root returned all 26 top-level categories for only 4 points; `descendantsOf` on one branch returned a full 250-node page for 14 points. Shopify's public Standard Product Taxonomy has ~10-13k total nodes across all levels — extrapolating from the measured per-page cost, a full one-time sync is roughly `~52 pages × 14 pts ≈ 728 points`, well under the 4000-point per-tick budget. Not an exhaustive walk (would need real pagination through the whole tree to be exact), but the per-page cost is real and the order-of-magnitude conclusion is solid | Live: root query (26 nodes, cost 4) + one `descendantsOf` page (250 nodes, cost 14) |
 | E-T5 | T (category vs productType vs Collections) | 🎯 **All three concepts confirmed genuinely distinct and independently settable.** Set `productType: "Snowboards"` (free text) and `category` (a real `TaxonomyCategory` id) on the same product simultaneously — both persisted independently. **`category` accepts ANY valid taxonomy node id with zero content-appropriateness validation**: a deliberately mismatched category (`"Bicycle Parts"` on a snowboard product) was accepted without error — the server checks the id is a real taxonomy node, nothing more. `collectionCreate` (merchandising) is a third, separate mechanism, and **collection membership is asynchronously indexed**: the mutation's own response reported `productsCount: 0` immediately after creation despite passing the product in the same call, while re-reading `product.collections` ~3s later correctly showed the new collection | Live — observed, no transcript retained |
@@ -552,23 +552,32 @@ verify" list should cite it directly rather than being written from memory.
 ## Coverage tally
 
 Live-verified (transcript exists above unless marked "no transcript retained" — see the individual
-evidence rows), by group: **C** 10/12 (C3 partial/behavioural; C4 gained a reusable
-`currentAppInstallation.accessScopes` health-check pattern; C7 = an unmet test condition, not a
-confirmed negative — see the paragraph below) · **M** 13/13 (M6/M10 bulk operations confirmed end to
+evidence rows), by group: **C** 9/12 (C3 partial/behavioural; C4 gained a reusable
+`currentAppInstallation.accessScopes` health-check pattern; C7 is EXCLUDED from this numerator — see
+"Attempted but inconclusive" below, it is an unmet test condition, not a confirmed result either way)
+· **M** 13/13 (M6/M10 bulk operations confirmed end to
 end via `bulkOperationRunQuery`) · **T** 6/12 (T1, T1b, T8-implicit via `fullName`/global tree, T9,
 T11-NOT-SUPPORTED, T12-quota-fits) · **P** 6/13 (P1, P3-implicit, P6, P7,
-P13-behaviourally-confirmed-as-PATCH) · **S** 6/13 (S1, S4, S6, S7, S10, S13) · **O** 14/16 (O1, O2,
-O3, O5-partial, O6, O7, O9, O10, O11, O12, O13-vocab-only, O14, O15-CONFIRMED-with-real-5/min-cap,
-O16-attempted-but-inconclusive) · **F** 8/8 (F1, F2, F3-implicit, F4, F6-flagship, F7-implicit,
+P13-behaviourally-confirmed-as-PATCH) · **S** 6/13 (S1, S4, S6, S7, S10, S13) · **O** 13/16 (O1, O2,
+O3, O5-partial, O6, O7, O9, O10, O11, O12, O13-vocab-only, O14, O15-CONFIRMED-with-real-5/min-cap;
+O16 is EXCLUDED from this numerator — see "Attempted but inconclusive" below) · **F** 8/8 (F1, F2, F3-implicit, F4, F6-flagship, F7-implicit,
 F8-vocab, F10-negotiation-axis-closes-group) · **D** 5/9 (D2, D4, D5, D8, D9) · **R** 8/9 (R1, R2,
 R3, R4, R5, R6, R7-CLOSED-by-R9, R9-corrected) · **X** 4/6 (X1-orderCreate-cap-confirmed, X2, X3, X5,
 plus X4's PII exemption confirmed and its diagnostic pattern via C4/E-C9).
 
-**Sum across groups: 80 of the ~90 stories in the issue's own checklist**
-(10+13+6+6+6+14+8+5+8+4 = 80). This is the single authoritative headline figure for this spike — the
-PR description and the product spec must both cite this number rather than a separately-eyeballed
-one; any other figure appearing elsewhere in either document as of this revision is stale and should
-be corrected to match.
+**Denominators sum to 111, not ~90** — the "~90" figure used in earlier revisions of this document
+(and echoed once in the PR description / product spec) undercounted the issue's own checklist and is
+corrected here: `12+13+12+13+13+16+8+9+9+6 = 111`. Any earlier reference to "~90" elsewhere in this
+epic is stale and should be read as 111.
+
+**Sum across groups: 78 of the 111 stories in the issue's own checklist, confirmed**
+(9+13+6+6+6+13+8+5+8+4 = 78). This is the single authoritative headline figure for this spike — the
+PR description and the product spec must both cite this number (and this denominator) rather than a
+separately-eyeballed one; any other figure appearing elsewhere in either document as of this revision
+is stale and should be corrected to match. It deliberately **excludes** the two
+attempted-but-inconclusive stories (O16, C7, both 429/retry-behaviour probes that could not reach the
+platform's real throttling threshold) — see the next section. Counting them as confirmed would report
+a negative result the underlying test never actually established.
 
 **X6 (multi-tenant quota) deliberately skipped** — see the closing note under the X-group table
 above.
