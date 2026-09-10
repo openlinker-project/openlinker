@@ -165,6 +165,18 @@ describe('resolveInfaktBaseUrl - /api/v3 normalization (#2176)', () => {
 
     expect(resolveInfaktBaseUrl(config)).toBe('https://proxy.example.com/not-api/v3');
   });
+
+  // #2994 review: a proxy override with its own path, a trailing slash on
+  // that path, AND a query string - the one combination the earlier tests
+  // didn't cover. The trailing-slash strip is a plain `/\/+$/` match against
+  // the WHOLE string, so it only fires when the slash is literally the last
+  // character; here the query string sits after it, so the slash inside the
+  // path must survive untouched rather than being silently stripped.
+  it('should leave the trailing slash in a proxy path untouched when a query string follows it', () => {
+    const config: InfaktConnectionConfig = { baseUrl: 'https://proxy.example.com/infakt/?probe=1' };
+
+    expect(resolveInfaktBaseUrl(config)).toBe('https://proxy.example.com/infakt/?probe=1');
+  });
 });
 
 describe('isAllowedInfaktBaseUrl', () => {
