@@ -1,6 +1,6 @@
 {
   "scenario": "f18-erli-multichannel",
-  "generatedAt": "2026-09-10T07:52:23Z",
+  "generatedAt": "2026-09-10T10:44:16Z",
   "gitSha": "unknown",
   "connectionIds": "'f58275d1-748b-4d72-97db-d8ce9285c80f','758eb04c-9847-42ba-a905-af62b0b37b39'",
   "quick": false,
@@ -17,8 +17,8 @@
   },
   "schedulerCadenceRow": {},
   "olLogBodyMaxBytes": "unknown",
-  "syncJobsRowsAtStart": 141741,
-  "syncJobsRowsAtEnd": 141746,
+  "syncJobsRowsAtStart": 141907,
+  "syncJobsRowsAtEnd": 141912,
   "environment": {
     "postgres": {
       "shared_buffers": "128MB",
@@ -155,11 +155,11 @@
     "node_version": "v22.23.1",
     "postgres_image_digest": "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
     "redis_image_digest": "sha256:12da49daa000c2be4d55118574f889c8cc298140ecf343d04f345c818f227823",
-    "redis_used_memory_bytes": "70149128",
+    "redis_used_memory_bytes": "70290264",
     "host": {
       "cpu_count": "32",
       "ram": "125786MB",
-      "load_average": "0.34, 0.97, 1.17"
+      "load_average": "2.23, 1.99, 1.89"
     }
   },
   "containerLimits": [
