@@ -93,15 +93,14 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
       title={isInUse ? `Can't delete "${location?.name ?? ''}"` : `Delete "${location?.name ?? ''}"?`}
       description={
         isInUse
-          ? "Stock positions still point here. Retire it instead — existing history keeps pointing at a row that exists, and it can be re-activated later."
+          ? 'Stock positions still point here.'
           : "This can't be undone. If stock still points here, the delete will be refused instead."
       }
       body={
         <>
           {isInUse ? (
-            <Alert tone="warning" title="Stock still points here">
-              The delete was refused. Retire the location instead — existing positions keep pointing at a
-              row that exists.
+            <Alert tone="warning" title="Retire instead">
+              Existing history keeps pointing at a row that exists, and it can be re-activated later.
             </Alert>
           ) : null}
           {genericError ? (

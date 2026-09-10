@@ -205,6 +205,30 @@ describe('InventoryLocationsPage', () => {
       );
       expect(await screen.findByText('Page 1 of 2 · 30 locations')).toBeInTheDocument();
     });
+
+    // Tech-review finding: an out-of-range page (emptied by a concurrent
+    // delete, or a hand-edited URL) used to render the pre-bootstrap "zero
+    // locations" empty state even though rows exist on another page.
+    it('shows a page-not-found empty state, not the bootstrap empty state, when the current page is empty but total > 0', async () => {
+      const listLocations = vi.fn().mockResolvedValue(page([], { total: 25, page: 3 }));
+      const apiClient = createMockApiClient({ inventory: { listLocations } });
+      renderWithProviders(<InventoryLocationsPage />, {
+        apiClient,
+        route: '/inventory/locations?page=3',
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      expect(await screen.findByText("This page doesn't exist anymore")).toBeInTheDocument();
+      expect(screen.getByText('There are 25 locations, but not on page 3.')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Routing has nowhere to source stock from' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Create first location' })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Back to page 1' }));
+
+      await waitFor(() =>
+        expect(listLocations).toHaveBeenLastCalledWith(expect.anything(), { page: 1, limit: 25 }),
+      );
+    });
   });
 
   // #3135 review — the empty-state's "Create first location" / "+ Add
@@ -344,7 +368,7 @@ describe('InventoryLocationsPage', () => {
       });
 
       await screen.findByText('Warsaw — Main warehouse');
-      expect(screen.getByText('active')).toBeInTheDocument();
+      expect(screen.getByText('Active')).toBeInTheDocument();
 
       await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
       await screen.findByText('Delete "Warsaw — Main warehouse"?');
@@ -352,7 +376,7 @@ describe('InventoryLocationsPage', () => {
       await screen.findByRole('button', { name: /retire instead/i });
       await userEvent.click(screen.getByRole('button', { name: /retire instead/i }));
 
-      await waitFor(() => expect(screen.getByText('inactive')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('Retired')).toBeInTheDocument());
       expect(listLocations).toHaveBeenCalledTimes(2);
     });
   });

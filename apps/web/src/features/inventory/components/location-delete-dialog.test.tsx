@@ -57,7 +57,7 @@ describe('LocationDeleteDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
     expect(await screen.findByText('Can\'t delete "Kraków — Overflow"')).toBeInTheDocument();
-    expect(screen.getByText('Stock still points here')).toBeInTheDocument();
+    expect(screen.getByText('Stock positions still point here.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /retire instead/i })).toBeInTheDocument();
     // A refused delete never renders the raw domain error as a second, generic alert.
     expect(

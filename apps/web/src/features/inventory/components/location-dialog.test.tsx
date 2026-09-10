@@ -1,7 +1,7 @@
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import { renderWithProviders, createMockApiClient, sampleConnection } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import { LocationDialog } from './location-dialog';
 import type { InventoryLocation } from '../api/inventory-locations.types';
@@ -124,5 +124,47 @@ describe('LocationDialog', () => {
     const [, patch] = updateLocation.mock.calls[0] as [string, Record<string, unknown>];
     expect('code' in patch).toBe(false);
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  // Tech-review finding: a disabled/needs_reauth connection "can't currently
+  // sync", so offering it as an owner under a field described as "whose
+  // sync may write stock here" is misleading.
+  it('excludes non-active connections from the owning-connection select', async () => {
+    const inactive = { ...sampleConnection, id: 'conn_inactive', name: 'Disabled store', status: 'disabled' as const };
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([sampleConnection, inactive]) },
+    });
+    renderWithProviders(<LocationDialog target={{ mode: 'create' }} onClose={() => undefined} />, { apiClient });
+    await screen.findByText('Add location');
+
+    const select = await screen.findByLabelText('Owning connection (optional)');
+    await waitFor(() => expect(select).toHaveTextContent(sampleConnection.name));
+    expect(select).not.toHaveTextContent('Disabled store');
+  });
+
+  // The row's CURRENT owner must survive even if it has since gone
+  // inactive - otherwise the select has no matching <option> for the
+  // loaded value and silently blanks it on open.
+  it('keeps the edited location\'s current owner in the select even when that connection is inactive', async () => {
+    const inactiveOwner = {
+      ...sampleConnection,
+      id: 'conn_inactive_owner',
+      name: 'Now-disabled owner',
+      status: 'disabled' as const,
+    };
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([inactiveOwner]) },
+    });
+    renderWithProviders(
+      <LocationDialog
+        target={{ mode: 'edit', location: { ...editTarget, ownerConnectionId: 'conn_inactive_owner' } }}
+        onClose={() => undefined}
+      />,
+      { apiClient },
+    );
+    await screen.findByText('Edit "Main warehouse"');
+
+    const select = await screen.findByLabelText('Owning connection (optional)');
+    await waitFor(() => expect(select).toHaveTextContent('Now-disabled owner'));
   });
 });

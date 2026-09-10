@@ -54,6 +54,14 @@ function statusTone(status: InventoryLocation['status']): StatusBadgeTone {
   return status === 'active' ? 'success' : 'neutral';
 }
 
+// #3135 review: the wire value `inactive` was rendered verbatim, while
+// every other badge surface in this app renders operator copy and the
+// "Show retired" toggle beside it already calls the same state "retired".
+const STATUS_LABEL: Record<InventoryLocation['status'], string> = {
+  active: 'Active',
+  inactive: 'Retired',
+};
+
 // Guards against a malformed `?page=abc` producing NaN, which would
 // otherwise be sent straight through to the API as the `page` filter
 // (the `users-page.tsx` `readPageParam` precedent, adapted to this
@@ -155,7 +163,19 @@ export function InventoryLocationsPage(): ReactElement {
   }
 
   const filtersActive = Boolean(kind) || !showRetired;
+  // Distinct from `filtersActive`: an empty current page with a non-zero
+  // total means the PAGE is wrong, not the filters (e.g. page 2 emptied by
+  // a delete elsewhere, or a hand-edited `?page=99`). Rendering the
+  // pre-bootstrap "zero locations" empty state there would falsely tell the
+  // operator nothing exists (tech-review finding).
+  const pageOutOfRange = page > 1 && (query.data?.total ?? 0) > 0 && (query.data?.items.length ?? 0) === 0;
 
+  // No column declares `sortable`/`accessor`: `ListLocationsQueryDto` has no
+  // sort param (the backend always orders by `code`), and this list is
+  // paginated. `DataTable` falls back to CLIENT sort with neither `sort` nor
+  // `onSortChange` supplied, which would only reorder the visible page —
+  // page 2's "sorted" rows wouldn't compose with page 1's, so the table
+  // would look globally sorted while lying about it (tech-review finding).
   const columns = useMemo<DataTableColumn<InventoryLocation>[]>(
     () => [
       {
@@ -170,22 +190,18 @@ export function InventoryLocationsPage(): ReactElement {
             </span>
           </div>
         ),
-        accessor: (location) => location.name,
-        sortable: true,
       },
       {
         id: 'kind',
         header: 'Kind',
         cell: (location) => KIND_LABEL[location.kind],
-        accessor: (location) => location.kind,
-        sortable: true,
       },
       {
         id: 'geo',
         header: 'Country / postcode',
         cell: (location): ReactElement => {
           const geo = [location.countryIso2, location.postcode].filter(Boolean).join(' · ');
-          return geo ? <span className="mono-text">{geo}</span> : <EmptyValue label="No location set" />;
+          return geo ? <span className="mono-text">{geo}</span> : <EmptyValue label="No country/postcode" />;
         },
         hideBelow: 1024,
       },
@@ -218,10 +234,8 @@ export function InventoryLocationsPage(): ReactElement {
         id: 'status',
         header: 'Status',
         cell: (location) => (
-          <StatusBadge tone={statusTone(location.status)}>{location.status}</StatusBadge>
+          <StatusBadge tone={statusTone(location.status)}>{STATUS_LABEL[location.status]}</StatusBadge>
         ),
-        accessor: (location) => location.status,
-        sortable: true,
       },
       {
         id: 'actions',
@@ -307,14 +321,29 @@ export function InventoryLocationsPage(): ReactElement {
         />
       ) : (query.data?.items ?? []).length === 0 ? (
         <EmptyState
-          title={filtersActive ? 'No locations match this filter' : 'Routing has nowhere to source stock from'}
+          title={
+            pageOutOfRange
+              ? "This page doesn't exist anymore"
+              : filtersActive
+                ? 'No locations match this filter'
+                : 'Routing has nowhere to source stock from'
+          }
           message={
-            filtersActive
-              ? 'No locations match the current filters.'
-              : 'Zero locations exist — every order is currently unfulfillable. Mint the first one, or add your own.'
+            pageOutOfRange
+              ? `There are ${query.data?.total ?? 0} locations, but not on page ${page}.`
+              : filtersActive
+                ? 'No locations match the current filters.'
+                // #3135 review: routing is opt-in (#2407) and ConnectionService
+                // refuses the false->true transition while zero locations
+                // exist, so a zero-location install either has routing off
+                // (orders fulfil fine today) or could never have enabled it —
+                // "every order is unfulfillable" was false in both directions.
+                : "Fulfilment routing has nowhere to source stock from yet, so it can't be enabled for any connection. Mint the first location, or add your own — either way it still needs stock assigned before routing can succeed."
           }
           action={
-            filtersActive ? (
+            pageOutOfRange ? (
+              <Button onClick={() => setPage(1)}>Back to page 1</Button>
+            ) : filtersActive ? (
               <Button onClick={clearFilters}>Clear filters</Button>
             ) : write.visible ? (
               <div className="table-actions">
@@ -351,7 +380,7 @@ export function InventoryLocationsPage(): ReactElement {
               subtitle: (location) => location.code,
               meta: (location) => (
                 <StatusBadge tone={statusTone(location.status)} compact>
-                  {location.status}
+                  {STATUS_LABEL[location.status]}
                 </StatusBadge>
               ),
             }}
