@@ -11,7 +11,7 @@
   --accent-primary-soft: oklch(96% 0.04 60); --accent-primary-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30);
   --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
   --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
-  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
+  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25); --status-error-strong: oklch(42% 0.16 25);
   --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
   --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
   --space-2:.5rem; --space-3:.75rem; --space-4:1rem; --space-5:1.5rem;
@@ -31,13 +31,13 @@
     --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
     --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
     --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
-    --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
-    --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
-    --status-error-soft: oklch(28% 0.09 25); --status-error-border: oklch(42% 0.13 25); --status-error-fg: oklch(84% 0.14 25);
-    --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
-    --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
-    --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
-    --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+    --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+    --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+    --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25); --status-error-strong: oklch(86% 0.14 25);
+    --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+    --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / .40), 0 8px 24px rgb(0 0 0 / .40);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / .40);
   }
 }
 :root[data-theme='dark'] {
@@ -48,18 +48,18 @@
   --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
   --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
   --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
-  --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
-  --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
-  --status-error-soft: oklch(28% 0.09 25); --status-error-border: oklch(42% 0.13 25); --status-error-fg: oklch(84% 0.14 25);
-  --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
-  --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
-  --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+  --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25); --status-error-strong: oklch(86% 0.14 25);
+  --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / .40), 0 8px 24px rgb(0 0 0 / .40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / .40);
 }
 * { box-sizing: border-box; }
 body { margin:0; min-width:320px; background:var(--bg-canvas); color:var(--text-primary); font-family:var(--font-sans); font-size:.875rem; line-height:1.5; }
 h1,h2,h3,p { margin:0; }
-button:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-md); }
+button:focus-visible, select:focus-visible, textarea:focus-visible { outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-md); }
 
 .page{ max-width:1100px; margin:0 auto; padding:28px 24px 60px; }
 .eyebrow{ font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-primary-hover); }
@@ -80,12 +80,23 @@ button:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radiu
 .example__text{ font-size:.8125rem; color:var(--text-secondary); }
 .example__text b{ color:var(--text-primary); }
 
-.layout{ display:grid; grid-template-columns:340px 1fr; gap:20px; margin-top:24px; align-items:start; }
+/* Mockup-only chrome (both toolbars below): a state switcher + an outcome
+   switcher, in the project's existing `data-outcome` idiom (per
+   docs/frontend-architecture.md § UX Mockups — every demonstrated state
+   needs a stable attribute AND a named button, never a free-text list-item
+   click as the only way to reach it). */
+.demo-toolbar{ display:flex; align-items:center; gap:8px; margin-top:16px; padding:10px 14px; background:var(--bg-surface-muted); border-radius:var(--radius-md); flex-wrap:wrap; }
+.demo-toolbar__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin-right:2px; width:100%; }
+@media (min-width:560px){ .demo-toolbar__label{ width:auto; } }
+.chip{ display:inline-flex; align-items:center; gap:.25rem; height:1.5rem; padding:0 .6rem; border:1px solid var(--border-subtle); border-radius:var(--radius-pill); background:var(--bg-surface); color:var(--text-secondary); font-size:.75rem; font-weight:500; cursor:pointer; font-family:inherit; }
+.chip.chip--active{ background:var(--accent-primary-soft); border-color:var(--accent-primary-border); color:var(--accent-primary-hover); font-weight:600; }
+
+.layout{ display:grid; grid-template-columns:340px 1fr; gap:20px; margin-top:20px; align-items:start; }
 @media (max-width:860px){ .layout{ grid-template-columns:1fr; } }
 
 .list{ border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); overflow:hidden; }
 .list__header{ padding:12px 14px; border-bottom:1px solid var(--border-subtle); font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); }
-.list-item{ display:block; width:100%; text-align:left; border:none; background:none; cursor:pointer; padding:13px 14px; border-bottom:1px solid var(--border-subtle); }
+.list-item{ display:block; width:100%; text-align:left; border:none; background:none; cursor:pointer; padding:13px 14px; border-bottom:1px solid var(--border-subtle); font-family:inherit; }
 .list-item:last-child{ border-bottom:none; }
 .list-item:hover{ background:var(--bg-surface-muted); }
 .list-item--selected{ background:var(--accent-primary-soft); box-shadow:inset 3px 0 0 var(--accent-primary); }
@@ -98,11 +109,13 @@ button:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radiu
 .detail{ border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); min-height:420px; }
 .detail__hero{ padding:24px 26px 20px; border-bottom:1px solid var(--border-subtle); }
 .detail__hero-sub{ font-size:.8125rem; color:var(--text-muted); margin-bottom:10px; }
+.detail__hero-status-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .detail__hero-status{ font-size:1.375rem; font-weight:700; display:flex; align-items:center; gap:10px; }
 .detail__hero-status--attn{ color:var(--status-warning-fg); }
 .detail__hero-dot{ width:10px; height:10px; border-radius:999px; background:var(--text-disabled); flex-shrink:0; }
 .detail__hero-dot--attn{ background:var(--status-warning); }
 .detail__hero-detail{ font-size:.875rem; color:var(--text-secondary); margin-top:8px; }
+.expedite-badge{ display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:var(--radius-pill); background:var(--accent-primary-soft); border:1px solid var(--accent-primary-border); color:var(--accent-primary-hover); font-size:.75rem; font-weight:600; }
 .detail__body{ padding:22px 26px; }
 .detail__section{ margin-bottom:24px; }
 .detail__section:last-child{ margin-bottom:0; }
@@ -121,6 +134,7 @@ button:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radiu
 .fact__value{ font-size:.9375rem; font-weight:500; }
 
 .hold-banner{ display:flex; gap:10px; padding:13px 15px; border-radius:var(--radius-md); background:var(--status-warning-soft); border:1px solid var(--status-warning-border); }
+.hold-banner:not(:last-child){ margin-bottom:8px; }
 .hold-banner__title{ font-weight:600; font-size:.875rem; color:var(--status-warning-fg); }
 .hold-banner__desc{ font-size:.8125rem; color:var(--text-secondary); margin-top:3px; }
 
@@ -131,7 +145,11 @@ button:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radiu
 .button:hover{ background:var(--accent-primary-hover); }
 .button--secondary{ border-color:var(--border-default); background:var(--bg-surface); color:var(--text-primary); }
 .button--secondary:hover{ background:var(--bg-surface-muted); border-color:var(--border-strong); }
-.button--danger{ border-color:color-mix(in oklab, var(--status-error) 80%, black); background:var(--status-error); color:#fff; }
+/* --status-error-strong replaces the previous color-mix() for the border —
+   it's the real token (Piotr's review, #3124). The filled #fff label text
+   is a genuine token gap: --text-inverse is dark text, not white, so there
+   is no existing token for "light text on a filled status colour" yet. */
+.button--danger{ border-color:var(--status-error-strong); background:var(--status-error); color:#fff; }
 .button:disabled{ cursor:not-allowed; opacity:.5; box-shadow:none; }
 
 .alert{ display:flex; gap:10px; padding:12px 14px; border-radius:var(--radius-md); border:1px solid; margin:0 26px 18px; }
@@ -140,13 +158,17 @@ button:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radiu
 .alert--success{ background:var(--status-success-soft); border-color:var(--status-success-border); }
 .alert__text{ font-size:.8125rem; color:var(--text-secondary); }
 .alert__text b{ color:var(--text-primary); }
+.alert__text code{ font-family:var(--font-mono); font-size:.75rem; background:var(--bg-surface-muted); padding:1px 5px; border-radius:4px; }
 
 .done-empty{ padding:60px 26px; text-align:center; color:var(--text-muted); }
 
-.demo-toolbar{ display:flex; align-items:center; gap:10px; margin-top:22px; padding:10px 14px; background:var(--bg-surface-muted); border-radius:var(--radius-md); flex-wrap:wrap; }
-.demo-toolbar__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin-right:2px; }
-.chip{ display:inline-flex; align-items:center; gap:.25rem; height:1.5rem; padding:0 .6rem; border:1px solid var(--border-subtle); border-radius:var(--radius-pill); background:var(--bg-surface); color:var(--text-secondary); font-size:.75rem; font-weight:500; cursor:pointer; }
-.chip.chip--active{ background:var(--accent-primary-soft); border-color:var(--accent-primary-border); color:var(--accent-primary-hover); font-weight:600; }
+.action-dialog{ margin:0 26px 18px; padding:16px; border-radius:var(--radius-md); border:1px solid var(--border-default); background:var(--bg-surface-muted); }
+.action-dialog__title{ font-weight:600; font-size:.875rem; margin-bottom:10px; }
+.action-dialog__field{ display:grid; gap:4px; margin-bottom:12px; }
+.action-dialog__field label{ font-size:.75rem; color:var(--text-muted); }
+.action-dialog select, .action-dialog textarea{ font-family:inherit; font-size:.875rem; color:var(--text-primary); background:var(--bg-surface); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:8px 10px; }
+.action-dialog textarea{ resize:vertical; min-height:52px; }
+.action-dialog__row{ display:flex; gap:8px; }
 </style>
 
 <div class="page">
@@ -169,15 +191,17 @@ button:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radiu
     <p class="example__text">Order <b>#9F2E1A</b> is one row in Orders. But its shoe box ships from Warsaw and its earbuds ship from Berlin — so it's <b>two separate tasks</b> here, one per warehouse. That split is the whole reason this page exists.</p>
   </div>
 
+  <div class="demo-toolbar" role="group" aria-label="Mockup — jump to a state" id="stateSwitcher"></div>
+
   <div class="layout">
     <div class="list">
-      <div class="list__header">4 orders</div>
+      <div class="list__header" id="listHeader"></div>
       <div id="listBody"></div>
     </div>
     <div class="detail" id="detailPane"></div>
   </div>
 
-  <div class="demo-toolbar" role="group" aria-label="Mockup — not part of the product">
+  <div class="demo-toolbar" role="group" aria-label="Mockup — what happens when you click an action">
     <span class="demo-toolbar__label">Mockup · clicking an action</span>
     <button class="chip chip--active" data-outcome="ok" onclick="setOutcome('ok')">Works</button>
     <button class="chip" data-outcome="version_conflict" onclick="setOutcome('version_conflict')">Someone else changed it first</button>
@@ -186,51 +210,142 @@ button:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radiu
 </div>
 
 <script>
-// `attn: true` is the ONE thing that earns colour — an ordinary working
-// state (being packed, waiting for an answer, finished) stays plain ink.
-const SUMMARY = {
-  'in_progress|accepted':      { attn:false, label:'Being packed', detail:(w) => `${w.assignedConnectionId} is picking and packing this right now.` },
-  'on_hold|unsubmitted':       { attn:true,  label:'On hold — nobody is working this', detail:() => `See why below.` },
-  'open|submitted':            { attn:false, label:'Waiting for an answer', detail:(w) => `Asked ${w.assignedConnectionId} to take this. No answer yet.` },
-  'cancelled|cancellation_accepted': { attn:false, label:'Cancelled', detail:(w) => `${w.assignedConnectionId} gave this back.` },
+// ── Vocabulary ──────────────────────────────────────────────────────────
+// Byte-matched to the real `HOLD_REASON_COPY` labels
+// (apps/web/src/features/orders/lib/order-hold.types.ts) — per Piotr's
+// review, this must never be a re-worded second copy of that table
+// (frontend-architecture.md forbids mirroring it, guarded by
+// scripts/check-hold-reason-mirror.mjs on the real feature).
+const HOLD_REASON_LABEL = {
+  'payment-review': 'Payment review',
+  'fraud-review': 'Fraud review',
+  operator: 'Held by operator',
+  'stock-shortfall': 'Stock shortfall',
+  'address-invalid': 'Address invalid',
+  'awaiting-amendment': 'Awaiting change',
+  'awaiting-customer-confirmation': 'Awaiting buyer',
+  external: 'Held by channel',
 };
-const HOLD_LABEL = { 'stock-shortfall':'Out of stock here', 'payment-review':'Payment is being reviewed', 'operator':'Held by an operator', 'fraud-review':'Fraud review', 'address-invalid':'Address needs a fix', 'awaiting-amendment':'Waiting on an amendment', 'awaiting-customer-confirmation':'Waiting on the customer', 'external':'Held by an outside system' };
-const ACTION_LABEL = {
-  schedule:'Schedule', submit:'Send to warehouse', accept:'Accept', reject:'Turn down',
-  request_cancellation:'Ask to cancel', accept_cancellation:'Confirm cancel', reject_cancellation:'Keep it — refuse cancel',
-  hold:'Put on hold', release_hold:'Take off hold', mark_in_progress:'Mark as started', close:'Mark complete',
-  force_cancel:'Cancel this', expedite:'Bump to the front', release_expedite:'Undo bump',
-};
-const ACTION_DANGER = { force_cancel:true };
-const ACTION_SECONDARY = { reject:true, reject_cancellation:true, release_hold:true };
+const HOLD_REASON_ORDER = ['stock-shortfall','payment-review','fraud-review','address-invalid','awaiting-amendment','awaiting-customer-confirmation','operator','external'];
 
+// Exactly the closed `OPERATOR_INVOCABLE_ACTIONS` set
+// (fulfillment-work-view.types.ts) — never accept/reject/accept_cancellation/
+// reject_cancellation (holder-only replies, recorded via #2399's
+// recordAcceptance/recordRejection — never an operator's act), and never
+// submit/request_cancellation (legal in the state machine but deliberately
+// withheld from the operator surface today: no resolved executor + no
+// PII-carrying RoutingShipTo on this read model yet).
+const ACTION_LABEL = {
+  schedule: 'Schedule',
+  hold: 'Put on hold',
+  release_hold: 'Take off hold',
+  mark_in_progress: 'Mark as started',
+  close: 'Mark complete',
+  force_cancel: 'Cancel this',
+  expedite: 'Bump to the front',
+  release_expedite: 'Undo bump',
+};
+const ACTION_DANGER = { force_cancel: true };
+const ACTION_SECONDARY = { release_hold: true };
+// Only `hold` truly requires a field to submit (backend 400s without
+// holdReason — MissingFulfillmentWorkActionFieldError). The others carry
+// optional reason/note fields on the DTO; we still confirm force_cancel
+// since it's the destructive exit, but nothing is required to submit it.
+const ACTION_DIALOG = { hold: true, force_cancel: true, release_hold: true };
+
+// `attn: true` is the ONE thing that earns colour — an ordinary working
+// state (scheduled, being packed, waiting for an answer, finished) stays
+// plain ink. Held is derived from `activeHolds`, never from `status`
+// (nothing in the tree ever writes status:'on_hold' — see summaryFor).
+const SUMMARY = {
+  'scheduled|accepted': { attn: false, label: 'Scheduled', detail: (w) => `${w.assignedConnectionId} will start picking this soon.` },
+  'in_progress|accepted': { attn: false, label: 'Being packed', detail: (w) => `${w.assignedConnectionId} is picking and packing this right now.` },
+  'open|submitted': { attn: false, label: 'Waiting for an answer', detail: (w) => `Asked ${w.assignedConnectionId} to take this. No answer yet.` },
+  'in_progress|cancellation_requested': { attn: true, label: 'Asked to cancel — no answer yet', detail: (w) => `Asked ${w.assignedConnectionId} to stop. They haven't answered — packing may still be happening.` },
+  'in_progress|cancellation_rejected': { attn: false, label: 'Cancel request refused', detail: (w) => `${w.assignedConnectionId} said no — this is going ahead.` },
+  'incomplete|accepted': { attn: true, label: "Couldn't finish — needs a look", detail: (w) => `${w.assignedConnectionId} could only pack part of this. Needs re-sourcing or a manual decision.` },
+  'cancelled|cancellation_accepted': { attn: false, label: 'Cancelled', detail: (w) => `${w.assignedConnectionId} gave this back.` },
+  'closed|accepted': { attn: false, label: 'Complete', detail: (w) => `${w.assignedConnectionId} finished packing this.` },
+};
+const HELD_SUMMARY = { attn: true, label: 'On hold', detail: () => 'See why below.' };
+
+// ── Demo data ───────────────────────────────────────────────────────────
+// Each work also carries a `state` slug — the mockup-only, human-named
+// selector for the switcher below (per frontend-architecture.md § UX
+// Mockups: every demonstrated state needs BOTH a stable attribute and a
+// button in a named switcher — the order-list click alone doesn't satisfy
+// "referenced by name, never a free-text description").
 const WORKS = [
-  { id:'ol_fwork_a91c', orderId:'#9F2E1A', locationId:'Warsaw — Main warehouse', assignedConnectionId:'DPD Polska (3PL)', status:'in_progress', requestStatus:'accepted', externalWorkId:'DPD-WRK-88213', createdAt:'2026-09-08T14:00:00Z', version:4,
-    lines:[{ name:'Running shoes — 42', totalQuantity:2, fulfilledQuantity:2 }, { name:'Wireless earbuds', totalQuantity:1, fulfilledQuantity:0 }],
-    activeHolds:[], supportedActions:['mark_in_progress','hold','request_cancellation','force_cancel'] },
-  { id:'ol_fwork_b204', orderId:'#C71A02', locationId:'Kraków — Overflow', assignedConnectionId:null, status:'on_hold', requestStatus:'unsubmitted', externalWorkId:null, createdAt:'2026-09-10T07:20:00Z', version:1,
-    lines:[{ name:'Phone case — clear', totalQuantity:1, fulfilledQuantity:0 }],
-    activeHolds:[{ reason:'stock-shortfall', note:'0 of 1 available at Kraków — Overflow', placedAt:'2026-09-10T07:20:00Z' }],
-    supportedActions:['release_hold','force_cancel'] },
-  { id:'ol_fwork_e337', orderId:'#5A1CD0', locationId:'Berlin — 3PL partner', assignedConnectionId:'DHL courier', status:'open', requestStatus:'submitted', externalWorkId:null, createdAt:'2026-09-10T07:55:00Z', version:2,
-    lines:[{ name:'Screen protector 2-pack', totalQuantity:3, fulfilledQuantity:0 }],
-    activeHolds:[], supportedActions:['accept','reject'] },
-  { id:'ol_fwork_9012', orderId:'#1102FE', locationId:'Warsaw — Main warehouse', assignedConnectionId:'DPD Polska (3PL)', status:'cancelled', requestStatus:'cancellation_accepted', externalWorkId:'DPD-WRK-87990', createdAt:'2026-09-04T10:00:00Z', version:6,
-    lines:[{ name:'Backpack — 24L', totalQuantity:1, fulfilledQuantity:0 }],
-    activeHolds:[], supportedActions:[] },
+  { id: 'ol_fwork_7a10', state: 'scheduled', orderId: '#88C412', locationId: 'Warsaw — Main warehouse', deliveryMethod: 'Courier', assignedConnectionId: 'DPD Polska (3PL)', status: 'scheduled', requestStatus: 'accepted', externalWorkId: 'DPD-WRK-88401', createdAt: '2026-09-10T06:10:00Z', expeditedAt: null, version: 1,
+    lines: [{ name: 'Desk lamp — black', totalQuantity: 1, fulfilledQuantity: 0 }],
+    activeHolds: [], supportedActions: ['mark_in_progress', 'hold', 'expedite', 'force_cancel'] },
+  { id: 'ol_fwork_a91c', state: 'in-progress', orderId: '#9F2E1A', locationId: 'Warsaw — Main warehouse', deliveryMethod: 'Courier', assignedConnectionId: 'DPD Polska (3PL)', status: 'in_progress', requestStatus: 'accepted', externalWorkId: 'DPD-WRK-88213', createdAt: '2026-09-08T14:00:00Z', expeditedAt: null, version: 4,
+    lines: [{ name: 'Running shoes — 42', totalQuantity: 2, fulfilledQuantity: 2 }, { name: 'Wireless earbuds', totalQuantity: 1, fulfilledQuantity: 0 }],
+    activeHolds: [], supportedActions: ['close', 'hold', 'expedite', 'force_cancel'] },
+  { id: 'ol_fwork_c5e8', state: 'in-progress-expedited', orderId: '#4C0091', locationId: 'Berlin — 3PL partner', deliveryMethod: 'Courier', assignedConnectionId: 'DHL courier', status: 'in_progress', requestStatus: 'accepted', externalWorkId: 'DHL-77213', createdAt: '2026-09-09T11:30:00Z', expeditedAt: '2026-09-10T08:05:00Z', version: 3,
+    lines: [{ name: 'Winter jacket — L', totalQuantity: 1, fulfilledQuantity: 0 }],
+    activeHolds: [], supportedActions: ['close', 'hold', 'release_expedite', 'force_cancel'] },
+  { id: 'ol_fwork_b204', state: 'held', orderId: '#C71A02', locationId: 'Kraków — Overflow', deliveryMethod: null, assignedConnectionId: null, status: 'open', requestStatus: 'unsubmitted', externalWorkId: null, createdAt: '2026-09-10T07:20:00Z', expeditedAt: null, version: 1,
+    lines: [{ name: 'Phone case — clear', totalQuantity: 1, fulfilledQuantity: 0 }],
+    activeHolds: [{ reason: 'stock-shortfall', note: '0 of 1 available at Kraków — Overflow', placedAt: '2026-09-10T07:20:00Z' }],
+    supportedActions: ['release_hold', 'hold', 'expedite', 'force_cancel'] },
+  { id: 'ol_fwork_e337', state: 'awaiting-answer', orderId: '#5A1CD0', locationId: 'Berlin — 3PL partner', deliveryMethod: 'Courier', assignedConnectionId: 'DHL courier', status: 'open', requestStatus: 'submitted', externalWorkId: null, createdAt: '2026-09-10T07:55:00Z', expeditedAt: null, version: 2,
+    lines: [{ name: 'Screen protector 2-pack', totalQuantity: 3, fulfilledQuantity: 0 }],
+    activeHolds: [], supportedActions: ['hold', 'expedite', 'force_cancel'] },
+  { id: 'ol_fwork_f612', state: 'cancel-requested', orderId: '#2210BB', locationId: 'Warsaw — Main warehouse', deliveryMethod: 'Courier', assignedConnectionId: 'DPD Polska (3PL)', status: 'in_progress', requestStatus: 'cancellation_requested', externalWorkId: 'DPD-WRK-88602', createdAt: '2026-09-09T16:40:00Z', expeditedAt: null, version: 5,
+    lines: [{ name: 'Coffee grinder', totalQuantity: 1, fulfilledQuantity: 1 }],
+    activeHolds: [], supportedActions: ['close', 'hold', 'force_cancel'] },
+  { id: 'ol_fwork_d873', state: 'cancel-rejected', orderId: '#77A4C3', locationId: 'Kraków — Overflow', deliveryMethod: 'Locker pickup', assignedConnectionId: 'InPost', status: 'in_progress', requestStatus: 'cancellation_rejected', externalWorkId: 'INP-90211', createdAt: '2026-09-09T09:00:00Z', expeditedAt: null, version: 6,
+    lines: [{ name: 'Yoga mat — teal', totalQuantity: 1, fulfilledQuantity: 0 }],
+    activeHolds: [], supportedActions: ['close', 'hold', 'expedite', 'force_cancel'] },
+  { id: 'ol_fwork_1ac0', state: 'incomplete', orderId: '#309CE1', locationId: 'Warsaw — Main warehouse', deliveryMethod: 'Courier', assignedConnectionId: 'DPD Polska (3PL)', status: 'incomplete', requestStatus: 'accepted', externalWorkId: 'DPD-WRK-87310', createdAt: '2026-09-07T10:15:00Z', expeditedAt: null, version: 3,
+    lines: [{ name: 'Board game — deluxe', totalQuantity: 2, fulfilledQuantity: 1 }],
+    activeHolds: [], supportedActions: [] },
+  { id: 'ol_fwork_9012', state: 'cancelled', orderId: '#1102FE', locationId: 'Warsaw — Main warehouse', deliveryMethod: 'Courier', assignedConnectionId: 'DPD Polska (3PL)', status: 'cancelled', requestStatus: 'cancellation_accepted', externalWorkId: 'DPD-WRK-87990', createdAt: '2026-09-04T10:00:00Z', expeditedAt: null, version: 6,
+    lines: [{ name: 'Backpack — 24L', totalQuantity: 1, fulfilledQuantity: 0 }],
+    activeHolds: [], supportedActions: [] },
 ];
+
+const STATE_LABEL = {
+  scheduled: 'Scheduled',
+  'in-progress': 'Being packed',
+  'in-progress-expedited': 'Being packed · bumped',
+  held: 'On hold',
+  'awaiting-answer': 'Awaiting answer',
+  'cancel-requested': 'Cancel requested',
+  'cancel-rejected': 'Cancel refused',
+  incomplete: 'Incomplete',
+  cancelled: 'Cancelled',
+};
 
 let selectedId = WORKS[0].id;
 let currentOutcome = 'ok';
+let openDialogAction = null;
 
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function fmtTime(iso){ if(!iso) return null; const d = new Date(iso); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
-function summaryFor(w){ return SUMMARY[w.status + '|' + w.requestStatus] || { attn:false, label:w.status.replace('_',' '), detail:() => '' }; }
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function fmtTime(iso) { if (!iso) return null; const d = new Date(iso); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); }
+
+// Heldness is decided by `activeHolds`, never by `status` — nothing in the
+// tree ever writes status:'on_hold'; a held work reads status:'open' (or
+// whatever it already was) with a non-empty activeHolds[]. This function
+// must check that FIRST, before falling into the status|requestStatus map,
+// or a held work with an unmapped pair silently renders as its raw status.
+function summaryFor(w) {
+  if (w.activeHolds.length > 0) return HELD_SUMMARY;
+  return SUMMARY[w.status + '|' + w.requestStatus] || { attn: false, label: w.status.replace(/_/g, ' '), detail: () => '' };
+}
+
+function renderStateSwitcher() {
+  document.getElementById('stateSwitcher').innerHTML =
+    `<span class="demo-toolbar__label">Mockup · jump to a state</span>` +
+    WORKS.map((w) => `<button class="chip ${w.id === selectedId ? 'chip--active' : ''}" data-state="${w.state}" onclick="selectWork('${w.id}')">${STATE_LABEL[w.state]}</button>`).join('');
+}
 
 function renderList() {
-  document.getElementById('listBody').innerHTML = WORKS.map(w => {
+  document.getElementById('listHeader').textContent = `${WORKS.length} tasks`;
+  document.getElementById('listBody').innerHTML = WORKS.map((w) => {
     const s = summaryFor(w);
-    return `<button class="list-item ${w.id===selectedId?'list-item--selected':''}" onclick="selectWork('${w.id}')">
+    return `<button class="list-item ${w.id === selectedId ? 'list-item--selected' : ''}" data-state="${w.state}" data-work-id="${w.id}" aria-current="${w.id === selectedId}" onclick="selectWork('${w.id}')">
       <div class="list-item__order">Order ${w.orderId}</div>
       <div class="list-item__where">${escapeHtml(w.locationId)}</div>
       <span class="list-item__pill ${s.attn ? 'list-item__pill--attn' : ''}"><span class="list-item__pill-dot"></span>${s.label}</span>
@@ -239,44 +354,50 @@ function renderList() {
 }
 
 function renderDetail() {
-  const w = WORKS.find(x => x.id === selectedId);
+  const w = WORKS.find((x) => x.id === selectedId);
   const pane = document.getElementById('detailPane');
-  if (!w) { pane.innerHTML = `<div class="done-empty">Pick an order on the left.</div>`; return; }
+  if (!w) { pane.removeAttribute('data-state'); pane.innerHTML = `<div class="done-empty">Pick a task on the left.</div>`; return; }
   const s = summaryFor(w);
+  pane.setAttribute('data-state', w.state);
 
-  const linesHtml = w.lines.map(l => {
+  const linesHtml = w.lines.map((l, i) => {
     const done = l.fulfilledQuantity >= l.totalQuantity;
-    return `<div class="item-row"><span class="item-row__name">${escapeHtml(l.name)}</span><span class="item-row__qty ${done?'item-row__done':''}">${done ? '<span class="item-row__done-tick">✓</span> ' + l.totalQuantity + ' packed' : `${l.fulfilledQuantity} of ${l.totalQuantity} packed`}</span></div>`;
+    return `<div class="item-row" data-testid="line-${i}"><span class="item-row__name">${escapeHtml(l.name)}</span><span class="item-row__qty ${done ? 'item-row__done' : ''}">${done ? '<span class="item-row__done-tick">✓</span> ' + l.totalQuantity + ' packed' : `${l.fulfilledQuantity} of ${l.totalQuantity} packed`}</span></div>`;
   }).join('');
 
-  const holdHtml = w.activeHolds.map(h => `<div class="hold-banner"><span>⏸</span><div><div class="hold-banner__title">${HOLD_LABEL[h.reason] || h.reason}</div>${h.note?`<div class="hold-banner__desc">${escapeHtml(h.note)}</div>`:''}<div class="hold-banner__desc">since ${fmtTime(h.placedAt)}</div></div></div>`).join('');
+  const holdHtml = w.activeHolds.map((h, i) => `<div class="hold-banner" data-testid="hold-${i}"><span aria-hidden="true">⏸</span><div><div class="hold-banner__title">${HOLD_REASON_LABEL[h.reason] || h.reason}</div>${h.note ? `<div class="hold-banner__desc">${escapeHtml(h.note)}</div>` : ''}<div class="hold-banner__desc">since ${fmtTime(h.placedAt)}</div></div></div>`).join('');
 
   const actionsHtml = w.supportedActions.length === 0
-    ? `<span style="font-size:.875rem; color:var(--text-muted);">Nothing left to do — this is finished.</span>`
-    : w.supportedActions.map(a => `<button class="button ${ACTION_DANGER[a]?'button--danger':(ACTION_SECONDARY[a]?'button--secondary':'')}" onclick="runAction('${a}')">${ACTION_LABEL[a]}</button>`).join('');
+    ? `<span style="font-size:.875rem; color:var(--text-muted);">Nothing left to do.</span>`
+    : w.supportedActions.map((a) => `<button class="button ${ACTION_DANGER[a] ? 'button--danger' : (ACTION_SECONDARY[a] ? 'button--secondary' : '')}" data-action="${a}" data-testid="action-${a}" onclick="handleActionClick('${a}')">${ACTION_LABEL[a]}</button>`).join('');
 
   pane.innerHTML = `
     <div class="detail__hero">
       <div class="detail__hero-sub">Order ${w.orderId} · shipping from ${escapeHtml(w.locationId)}</div>
-      <div class="detail__hero-status ${s.attn ? 'detail__hero-status--attn' : ''}">
-        <span class="detail__hero-dot ${s.attn ? 'detail__hero-dot--attn' : ''}"></span>
-        ${s.label}
+      <div class="detail__hero-status-row">
+        <div class="detail__hero-status ${s.attn ? 'detail__hero-status--attn' : ''}">
+          <span class="detail__hero-dot ${s.attn ? 'detail__hero-dot--attn' : ''}"></span>
+          ${s.label}
+        </div>
+        ${w.expeditedAt ? `<span class="expedite-badge" data-testid="expedited-badge">⚡ Bumped to the front · ${fmtTime(w.expeditedAt)}</span>` : ''}
       </div>
       <div class="detail__hero-detail">${s.detail(w)}</div>
     </div>
     <div id="actionResultSlot"></div>
+    <div id="actionDialogSlot"></div>
     <div class="detail__body">
       <div class="detail__section">
-        <p class="detail__section-title">What's in this order</p>
+        <p class="detail__section-title">What's in this task</p>
         ${linesHtml}
       </div>
       ${w.activeHolds.length ? `<div class="detail__section"><p class="detail__section-title">Why it's stuck</p>${holdHtml}</div>` : ''}
       <div class="detail__section">
         <p class="detail__section-title">Details</p>
         <div class="fact-grid">
-          <div class="fact"><span class="fact__label">Who's doing it</span><span class="fact__value">${w.assignedConnectionId ? escapeHtml(w.assignedConnectionId) : 'Nobody yet'}</span></div>
-          <div class="fact"><span class="fact__label">Their reference</span><span class="fact__value">${w.externalWorkId || '—'}</span></div>
-          <div class="fact"><span class="fact__label">Started</span><span class="fact__value">${fmtTime(w.createdAt)}</span></div>
+          <div class="fact" data-testid="fact-assigned-connection"><span class="fact__label">Who's doing it</span><span class="fact__value">${w.assignedConnectionId ? escapeHtml(w.assignedConnectionId) : 'Nobody yet'}</span></div>
+          <div class="fact" data-testid="fact-external-work-id"><span class="fact__label">Their reference</span><span class="fact__value">${w.externalWorkId || '—'}</span></div>
+          <div class="fact" data-testid="fact-delivery-method"><span class="fact__label">Delivery method</span><span class="fact__value">${w.deliveryMethod ? escapeHtml(w.deliveryMethod) : 'Not decided yet'}</span></div>
+          <div class="fact" data-testid="fact-created-at"><span class="fact__label">Started</span><span class="fact__value">${fmtTime(w.createdAt)}</span></div>
         </div>
       </div>
     </div>
@@ -287,26 +408,148 @@ function renderDetail() {
   `;
 }
 
-function selectWork(id) { selectedId = id; renderList(); renderDetail(); }
+function selectWork(id) {
+  selectedId = id;
+  openDialogAction = null;
+  renderStateSwitcher();
+  renderList();
+  renderDetail();
+}
 
-function runAction(action) {
-  const slot = document.getElementById('actionResultSlot');
+// `hold` truly requires a reason (backend 400s without it); `force_cancel`
+// and `release_hold` accept an optional note — we still confirm
+// force_cancel since it's the one irreversible exit shown here.
+function handleActionClick(action) {
+  if (ACTION_DIALOG[action]) { openDialogAction = action; renderActionDialog(); return; }
+  performAction(action, {});
+}
+
+function renderActionDialog() {
+  const slot = document.getElementById('actionDialogSlot');
+  if (!slot) return;
+  const w = WORKS.find((x) => x.id === selectedId);
+  const action = openDialogAction;
+  if (!action) { slot.innerHTML = ''; return; }
+
+  if (action === 'hold') {
+    slot.innerHTML = `<div class="action-dialog" data-testid="dialog-hold">
+      <div class="action-dialog__title">Put on hold</div>
+      <div class="action-dialog__field">
+        <label for="holdReasonSelect">Reason <span aria-hidden="true">*</span> — required</label>
+        <select id="holdReasonSelect" data-testid="hold-reason-select">
+          <option value="">Choose a reason…</option>
+          ${HOLD_REASON_ORDER.map((r) => `<option value="${r}">${HOLD_REASON_LABEL[r]}</option>`).join('')}
+        </select>
+      </div>
+      <div class="action-dialog__field">
+        <label for="holdNoteInput">Note — optional</label>
+        <textarea id="holdNoteInput" data-testid="hold-note-input" placeholder="Anything the next person should know"></textarea>
+      </div>
+      <div class="action-dialog__row">
+        <button class="button" data-testid="confirm-hold" onclick="confirmHold()">Put on hold</button>
+        <button class="button button--secondary" data-testid="cancel-action-dialog" onclick="cancelDialog()">Cancel</button>
+      </div>
+    </div>`;
+    return;
+  }
+
+  if (action === 'force_cancel') {
+    slot.innerHTML = `<div class="action-dialog" data-testid="dialog-force_cancel">
+      <div class="action-dialog__title">Cancel this task</div>
+      <p style="font-size:.8125rem; color:var(--text-secondary); margin-bottom:10px;">${escapeHtml(w.assignedConnectionId || 'Whoever picks this up')} will be told to stop. This can't be undone from here.</p>
+      <div class="action-dialog__field">
+        <label for="cancelReasonInput">Reason — optional</label>
+        <textarea id="cancelReasonInput" data-testid="cancellation-reason-input" placeholder="Why this is being cancelled"></textarea>
+      </div>
+      <div class="action-dialog__row">
+        <button class="button button--danger" data-testid="confirm-force_cancel" onclick="confirmForceCancel()">Cancel this task</button>
+        <button class="button button--secondary" data-testid="cancel-action-dialog" onclick="cancelDialog()">Keep it</button>
+      </div>
+    </div>`;
+    return;
+  }
+
+  if (action === 'release_hold') {
+    slot.innerHTML = `<div class="action-dialog" data-testid="dialog-release_hold">
+      <div class="action-dialog__title">Take off hold</div>
+      <div class="action-dialog__field">
+        <label for="releaseNoteInput">Note — optional</label>
+        <textarea id="releaseNoteInput" data-testid="release-note-input" placeholder="Why this is clear to release"></textarea>
+      </div>
+      <div class="action-dialog__row">
+        <button class="button" data-testid="confirm-release_hold" onclick="confirmReleaseHold()">Take off hold</button>
+        <button class="button button--secondary" data-testid="cancel-action-dialog" onclick="cancelDialog()">Cancel</button>
+      </div>
+    </div>`;
+  }
+}
+
+function cancelDialog() { openDialogAction = null; renderActionDialog(); }
+
+function confirmHold() {
+  const select = document.getElementById('holdReasonSelect');
+  if (!select.value) { select.style.borderColor = 'var(--status-error-strong)'; return; }
+  openDialogAction = null;
+  performAction('hold', { holdReason: select.value });
+}
+function confirmForceCancel() { openDialogAction = null; performAction('force_cancel', {}); }
+function confirmReleaseHold() { openDialogAction = null; performAction('release_hold', {}); }
+
+// The outcome toolbar is mockup-only chrome, but the RESPONSE it produces
+// is scoped to the exact work + action clicked, and mirrors the real 409
+// body shapes (`FulfillmentWorkConflictCodeValues`): `version_conflict`
+// carries expectedVersion/currentVersion, `action_not_legal` carries the
+// refused action. Per Piotr's review, a conflict must re-render the action
+// bar from the refreshed answer — never leave it stale, so both branches
+// below mutate local state and call renderDetail() before returning.
+function performAction(action, fields) {
+  const w = WORKS.find((x) => x.id === selectedId);
+  openDialogAction = null;
+
   if (currentOutcome === 'version_conflict') {
-    slot.innerHTML = `<div class="alert alert--warning"><span>↻</span><div class="alert__text"><b>Someone else just changed this.</b> Nothing was lost — try again.</div></div>`;
+    const expected = w.version;
+    w.version += 1;
+    const alertHtml = `<div class="alert alert--warning"><span aria-hidden="true">↻</span><div class="alert__text"><b>Someone else just changed this.</b> You had <code>v${expected}</code>, it's <code>v${w.version}</code> now. The buttons below just refreshed — try again.</div></div>`;
+    renderDetail();
+    document.getElementById('actionResultSlot').innerHTML = alertHtml;
     return;
   }
   if (currentOutcome === 'action_not_legal') {
-    slot.innerHTML = `<div class="alert alert--error"><span>✕</span><div class="alert__text"><b>"${ACTION_LABEL[action]}" isn't possible anymore.</b> The situation changed — trying again won't help.</div></div>`;
+    w.supportedActions = w.supportedActions.filter((a) => a !== action);
+    const alertHtml = `<div class="alert alert--error"><span aria-hidden="true">✕</span><div class="alert__text"><b>"${ACTION_LABEL[action]}" isn't possible anymore.</b> <code>action_not_legal</code> on ${w.id}. The situation changed — the buttons below just refreshed to show what you can still do.</div></div>`;
+    renderDetail();
+    document.getElementById('actionResultSlot').innerHTML = alertHtml;
     return;
   }
-  slot.innerHTML = `<div class="alert alert--success"><span>✓</span><div class="alert__text"><b>${ACTION_LABEL[action]} — done.</b></div></div>`;
+
+  // ok — apply the demo mutation so re-selecting the task shows a
+  // plausible result (e.g. a held task actually loses its hold banner).
+  if (action === 'hold') {
+    w.activeHolds = [...w.activeHolds, { reason: fields.holdReason, note: null, placedAt: new Date().toISOString() }];
+    w.supportedActions = w.supportedActions.filter((a) => a !== 'schedule' && a !== 'mark_in_progress');
+    if (!w.supportedActions.includes('release_hold')) w.supportedActions = ['release_hold', ...w.supportedActions];
+  }
+  if (action === 'release_hold') {
+    w.activeHolds = [];
+    w.supportedActions = w.supportedActions.filter((a) => a !== 'release_hold');
+    if (!w.supportedActions.includes('mark_in_progress') && w.status !== 'in_progress') w.supportedActions = [...w.supportedActions, 'mark_in_progress'];
+  }
+  if (action === 'force_cancel') { w.status = 'cancelled'; w.requestStatus = 'cancellation_accepted'; w.supportedActions = []; }
+  if (action === 'close') { w.status = 'closed'; w.supportedActions = []; }
+  if (action === 'mark_in_progress') { w.status = 'in_progress'; w.supportedActions = ['close', 'hold', 'expedite', 'force_cancel']; }
+  if (action === 'schedule') { w.status = 'scheduled'; }
+  if (action === 'expedite') { w.expeditedAt = new Date().toISOString(); w.supportedActions = w.supportedActions.map((a) => a === 'expedite' ? 'release_expedite' : a); }
+  if (action === 'release_expedite') { w.expeditedAt = null; w.supportedActions = w.supportedActions.map((a) => a === 'release_expedite' ? 'expedite' : a); }
+  renderDetail();
+  document.getElementById('actionResultSlot').innerHTML = `<div class="alert alert--success"><span aria-hidden="true">✓</span><div class="alert__text"><b>${ACTION_LABEL[action]} — done.</b></div></div>`;
 }
 
 function setOutcome(name) {
   currentOutcome = name;
-  document.querySelectorAll('.demo-toolbar .chip[data-outcome]').forEach(c => c.classList.toggle('chip--active', c.dataset.outcome === name));
+  document.querySelectorAll('[aria-label="Mockup — what happens when you click an action"] .chip[data-outcome]').forEach((c) => c.classList.toggle('chip--active', c.dataset.outcome === name));
 }
 
+renderStateSwitcher();
 renderList();
 renderDetail();
 </script>
