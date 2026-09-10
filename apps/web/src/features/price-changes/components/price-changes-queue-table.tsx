@@ -34,6 +34,7 @@ import { EditPriceChangeDialog } from './edit-price-change-dialog';
 import { BulkAcceptPriceChangesDialog } from './bulk-accept-price-changes-dialog';
 import { BulkPublishProgress } from './bulk-publish-progress';
 import { PricingRulesPickerDialog } from './pricing-rules-picker-dialog';
+import { AutoAppliedNote } from './auto-applied-note';
 import type { PriceChangeItem } from '../api/price-changes.types';
 import {
   STEEP_DELTA_TOOLTIP,
@@ -264,6 +265,8 @@ export function PriceChangesQueueTable({
         onOpenChange={setPricingRulesPickerOpen}
         destinationConnections={destinationConnections}
       />
+
+      <AutoAppliedNote />
 
       <div className="filter-bar" role="group" aria-label="Filter by connection">
         <span className="filter-bar__label">Connection</span>
