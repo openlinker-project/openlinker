@@ -1,11 +1,11 @@
 {
   "scenario": "f16-shop-publish",
-  "generatedAt": "2026-09-10T00:37:08Z",
+  "generatedAt": "2026-09-10T08:56:55Z",
   "gitSha": "unknown",
-  "connectionIds": "'5f368651-83bc-4a95-bdf4-71050129e6ab'",
+  "connectionIds": "'84c8fced-b5a9-4627-8ac0-0075663fec4c'",
   "quick": false,
   "runnerState": "enabled",
-  "laneCaps": "realtime=4/2 bulk=12/8 fiscal=2/1 fan-out=8/4",
+  "laneCaps": "realtime=4/2 bulk=12/8 fiscal=1/1 fan-out=8/4",
   "workerReplicas": 1,
   "workerContainers": "lab-worker-1",
   "laneCapEnforcement": "per-process - the laneCaps above bound ONE worker process, so effective deployment concurrency is laneCaps x workerReplicas (ADR-050 amendment #2594 / #2302)",
@@ -17,16 +17,20 @@
   },
   "schedulerCadenceRow": {},
   "olLogBodyMaxBytes": "unknown",
-  "syncJobsRowsAtStart": 33,
-  "syncJobsRowsAtEnd": 49,
+  "syncJobsRowsAtStart": 141891,
+  "syncJobsRowsAtEnd": 141907,
   "environment": {
     "postgres": {
       "shared_buffers": "128MB",
       "work_mem": "4MB",
       "shared_preload_libraries": "pg_stat_statements,auto_explain",
-      "installed_extensions": "pg_trgm",
+      "installed_extensions": "pg_trgm,pg_stat_statements",
       "nonDefaultSettings": {
-        "roleConfig": {},
+        "roleConfig": {
+          "postgres": [
+            "statement_timeout=30000ms"
+          ]
+        },
         "databaseRoleConfig": [],
         "liveSettingsSourceNotDefault": {
           "lc_time": {
@@ -98,7 +102,7 @@
             "setting": "*"
           },
           "statement_timeout": {
-            "source": "command line",
+            "source": "user",
             "setting": "30000"
           },
           "transaction_isolation": {
@@ -149,13 +153,13 @@
       }
     },
     "node_version": "v22.23.1",
-    "postgres_image_digest": "sha256:1bea307dfb3ee30541a7acf7de14b58bcd6948da98e5d31a04c627c4d35ec64b",
-    "redis_image_digest": "sha256:7ebbc18dec8fe54c06b66eb496df0094a2412445e510789b5fcdda3a7085469c",
-    "redis_used_memory_bytes": "1846568",
+    "postgres_image_digest": "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
+    "redis_image_digest": "sha256:12da49daa000c2be4d55118574f889c8cc298140ecf343d04f345c818f227823",
+    "redis_used_memory_bytes": "70260176",
     "host": {
-      "cpu_count": "22",
-      "ram": "15729MB",
-      "load_average": "0.40, 0.45, 0.34"
+      "cpu_count": "32",
+      "ram": "125786MB",
+      "load_average": "2.19, 2.23, 1.97"
     }
   },
   "containerLimits": [
@@ -173,6 +177,6 @@
   "excludedPgStatStatementsQueries": [
     "GET /v1/connections/:id/sync-status (7-day connection-sync-status aggregate over sync_jobs) - issued by sample_queue itself, see README"
   ],
-  "destinationConnectionId": "5f368651-83bc-4a95-bdf4-71050129e6ab",
+  "destinationConnectionId": "84c8fced-b5a9-4627-8ac0-0075663fec4c",
   "destinationCapabilities": "ProductPublisher,CategoryProvisioner"
 }

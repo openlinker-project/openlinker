@@ -262,6 +262,21 @@ fi
 # ===========================================================================
 log "--- arm C: Erli frozen-stock skip on updateOfferQuantity ---"
 
+  # inventory_items.productId is a real FK to products
+  # (FK_4a1e232a660d7d51a13f20099b2), so arm C's synthetic position needs its
+  # product and variant rows to exist first. Without these the arm died on the
+  # constraint every run, so the frozen-stock skip has never been observed.
+  # NAME IT AS A PROBE AND REMOVE IT ON EXIT. A bare product row with no master
+  # identifier_mapping is selectable by other scenarios' product pickers, and
+  # then fails their publish with "Product not found at master" - F16 hit
+  # exactly that on this stand after an earlier run of this arm left the row
+  # behind. The teardown is registered before the insert so a mid-arm failure
+  # still cleans up.
+  trap 'pg_sql_write "DELETE FROM inventory_items WHERE \"productId\"=\'"'"'$ARM_C_PRODUCT_ID\'"'"'" >/dev/null 2>&1
+        pg_sql_write "DELETE FROM product_variants WHERE \"productId\"=\'"'"'$ARM_C_PRODUCT_ID\'"'"'" >/dev/null 2>&1
+        pg_sql_write "DELETE FROM products WHERE id=\'"'"'$ARM_C_PRODUCT_ID\'"'"'" >/dev/null 2>&1' EXIT
+  pg_sql_write "INSERT INTO products (id,name) VALUES ('$ARM_C_PRODUCT_ID','f18 arm C frozen-stock probe') ON CONFLICT (id) DO NOTHING" >/dev/null
+  pg_sql_write "INSERT INTO product_variants (id,\"productId\") VALUES ('$ARM_C_VARIANT_ID','$ARM_C_PRODUCT_ID') ON CONFLICT (id) DO NOTHING" >/dev/null
 pg_sql_write "INSERT INTO inventory_items (id,\"productId\",\"productVariantId\",\"availableQuantity\",\"updatedAt\")
   VALUES ('$ARM_C_INV_ID','$ARM_C_PRODUCT_ID','$ARM_C_VARIANT_ID',5,now())" >/dev/null
 pg_sql_write "INSERT INTO identifier_mappings (id,\"entityType\",\"internalId\",\"externalId\",\"platformType\",\"connectionId\",\"createdAt\",\"updatedAt\")

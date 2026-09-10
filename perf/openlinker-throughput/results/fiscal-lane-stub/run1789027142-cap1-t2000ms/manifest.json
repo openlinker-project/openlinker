@@ -1,8 +1,8 @@
 {
-  "scenario": "f17-returns",
-  "generatedAt": "2026-09-10T07:42:05Z",
-  "gitSha": "unknown",
-  "connectionIds": "'758eb04c-9847-42ba-a905-af62b0b37b39'",
+  "scenario": "fiscal-lane-stub",
+  "generatedAt": "2026-09-10T07:59:49Z",
+  "gitSha": "5897057ad3cc8983180215d1acda3511d8cdde5e",
+  "connectionIds": "'9bfb35e7-8e0f-4b6f-a9b4-82a6e0366536'",
   "quick": false,
   "runnerState": "enabled",
   "laneCaps": "realtime=4/2 bulk=12/8 fiscal=1/1 fan-out=8/4",
@@ -10,15 +10,15 @@
   "workerContainers": "lab-worker-1",
   "laneCapEnforcement": "per-process - the laneCaps above bound ONE worker process, so effective deployment concurrency is laneCaps x workerReplicas (ADR-050 amendment #2594 / #2302)",
   "pool": {
-    "maxConnections": "unknown",
-    "olDbPoolMax": "unknown",
-    "processCount": "unknown",
-    "budget": "unknown"
+    "maxConnections": "200",
+    "olDbPoolMax": "40",
+    "processCount": "2",
+    "budget": "80"
   },
   "schedulerCadenceRow": {},
-  "olLogBodyMaxBytes": "unknown",
-  "syncJobsRowsAtStart": 141713,
-  "syncJobsRowsAtEnd": 141738,
+  "olLogBodyMaxBytes": "lab-api=8192 lab-worker-1=8192",
+  "syncJobsRowsAtStart": 141783,
+  "syncJobsRowsAtEnd": 141783,
   "environment": {
     "postgres": {
       "shared_buffers": "128MB",
@@ -155,11 +155,11 @@
     "node_version": "v22.23.1",
     "postgres_image_digest": "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
     "redis_image_digest": "sha256:12da49daa000c2be4d55118574f889c8cc298140ecf343d04f345c818f227823",
-    "redis_used_memory_bytes": "70122960",
+    "redis_used_memory_bytes": "70177240",
     "host": {
       "cpu_count": "32",
       "ram": "125786MB",
-      "load_average": "2.15, 1.47, 1.16"
+      "load_average": "0.78, 0.64, 0.91"
     }
   },
   "containerLimits": [
@@ -176,5 +176,19 @@
   ],
   "excludedPgStatStatementsQueries": [
     "GET /v1/connections/:id/sync-status (7-day connection-sync-status aggregate over sync_jobs) - issued by sample_queue itself, see README"
-  ]
+  ],
+  "fiscalLaneStub": {
+    "perScopeCap": 1,
+    "latencyMs": 2000,
+    "jobsEnqueued": 20,
+    "connectionId": "9bfb35e7-8e0f-4b6f-a9b4-82a6e0366536",
+    "stubConfigBeforeWindow": {
+      "gitSha": "unknown",
+      "latencyMs": 2000,
+      "requestsTotal": 1,
+      "issuedCount": 0,
+      "inFlight": 1,
+      "maxInFlightObserved": 1
+    }
+  }
 }
