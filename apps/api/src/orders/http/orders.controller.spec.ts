@@ -17,6 +17,7 @@ import {
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   OrderRecord,
   OrderRecordNotFoundException,
   OrderDestinationNotFoundException,
@@ -27,6 +28,7 @@ import {
   OrderAlreadyOnHoldError,
   HoldAlreadyReleasedError,
   HoldReleaseNoteRequiredError,
+  TestFixturesDisabledException,
 } from '@openlinker/core/orders';
 import type {
   OrderRecordRepositoryPort,
@@ -36,6 +38,7 @@ import type {
   IOrderProvisioningResumeService,
   OrderHold,
   ISalesDocumentViewService,
+  IOrderTestFixtureService,
 } from '@openlinker/core/orders';
 import type { SalesDocumentView } from '@openlinker/core/sales-documents';
 import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
@@ -62,6 +65,7 @@ describe('OrdersController', () => {
   let holdService: jest.Mocked<IOrderHoldService>;
   let provisioningResume: jest.Mocked<IOrderProvisioningResumeService>;
   let salesDocumentView: jest.Mocked<ISalesDocumentViewService>;
+  let testFixtureService: jest.Mocked<IOrderTestFixtureService>;
 
   const mockOrder = new OrderRecord(
     'ol_order_001',
@@ -127,6 +131,7 @@ describe('OrdersController', () => {
       findCurrencyMismatchOrderRefsAfter: jest.fn(),
       clearFxStampForRestatement: jest.fn(),
       countRemainingCurrencyMismatch: jest.fn(),
+      stampPreRolloutEraForTesting: jest.fn(),
     };
 
     const mockOrderRecordService = {
@@ -197,6 +202,9 @@ describe('OrdersController', () => {
       getForOrders: jest.fn().mockResolvedValue(new Map()),
       getForOrder: jest.fn().mockResolvedValue(null),
     };
+    const mockTestFixtureService: jest.Mocked<IOrderTestFixtureService> = {
+      markPreRolloutEraForTesting: jest.fn().mockResolvedValue(true),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OrdersController],
@@ -241,6 +249,10 @@ describe('OrdersController', () => {
           provide: SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
           useValue: mockSalesDocumentView,
         },
+        {
+          provide: ORDER_TEST_FIXTURE_SERVICE_TOKEN,
+          useValue: mockTestFixtureService,
+        },
       ],
     }).compile();
 
@@ -254,6 +266,7 @@ describe('OrdersController', () => {
     holdService = module.get(ORDER_HOLD_SERVICE_TOKEN);
     provisioningResume = module.get(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN);
     salesDocumentView = module.get(SALES_DOCUMENT_VIEW_SERVICE_TOKEN);
+    testFixtureService = module.get(ORDER_TEST_FIXTURE_SERVICE_TOKEN);
   });
 
   describe('listOrders', () => {
@@ -1511,4 +1524,42 @@ describe('OrdersController', () => {
     });
   });
 
+  describe('markPreRolloutEra (#2855, TEST-FIXTURE-ONLY)', () => {
+    it('404s without calling the service when the order does not exist', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(controller.markPreRolloutEra('ol_order_missing')).rejects.toBeInstanceOf(
+        NotFoundException
+      );
+      expect(testFixtureService.markPreRolloutEraForTesting).not.toHaveBeenCalled();
+    });
+
+    it('returns { applied } from the service when the order exists', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      testFixtureService.markPreRolloutEraForTesting.mockResolvedValue(true);
+
+      await expect(controller.markPreRolloutEra('ol_order_001')).resolves.toEqual({
+        applied: true,
+      });
+      expect(testFixtureService.markPreRolloutEraForTesting).toHaveBeenCalledWith('ol_order_001');
+    });
+
+    it('maps TestFixturesDisabledException to a 403 with a machine-readable code', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      testFixtureService.markPreRolloutEraForTesting.mockRejectedValue(
+        new TestFixturesDisabledException()
+      );
+
+      await expect(controller.markPreRolloutEra('ol_order_001')).rejects.toMatchObject({
+        response: expect.objectContaining({ error: 'TEST_FIXTURES_DISABLED' }),
+      });
+    });
+
+    it('re-throws an unmodelled error rather than swallowing it', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      testFixtureService.markPreRolloutEraForTesting.mockRejectedValue(new Error('boom'));
+
+      await expect(controller.markPreRolloutEra('ol_order_001')).rejects.toThrow('boom');
+    });
+  });
 });

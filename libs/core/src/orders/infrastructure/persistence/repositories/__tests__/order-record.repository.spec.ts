@@ -1265,6 +1265,40 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('stampPreRolloutEraForTesting (#2855, TEST-FIXTURE-ONLY)', () => {
+    const mockUpdateQueryBuilder = (affected: number) => {
+      const chain = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected }),
+      };
+      (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue(chain);
+      return chain;
+    };
+
+    it("stamps taxRateEra='pre-rollout' guarded on the row not already carrying it", async () => {
+      const chain = mockUpdateQueryBuilder(1);
+
+      await expect(repository.stampPreRolloutEraForTesting('ol_order_a')).resolves.toBe(true);
+
+      expect(chain.set).toHaveBeenCalledWith({ taxRateEra: 'pre-rollout' });
+      expect(chain.where).toHaveBeenCalledWith(expect.stringContaining('"internalOrderId"'), {
+        internalOrderId: 'ol_order_a',
+      });
+      expect(chain.andWhere).toHaveBeenCalledWith(
+        expect.stringContaining('"taxRateEra" IS DISTINCT FROM \'pre-rollout\'')
+      );
+    });
+
+    it('reports false when the row already carries pre-rollout, so a repeated call is idempotent', async () => {
+      mockUpdateQueryBuilder(0);
+
+      await expect(repository.stampPreRolloutEraForTesting('ol_order_a')).resolves.toBe(false);
+    });
+  });
+
   describe('findNetExcludedOrderCandidates (#2465)', () => {
     const baseFilters = {
       from: new Date('2026-08-01T00:00:00.000Z'),
