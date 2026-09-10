@@ -2153,6 +2153,336 @@ textarea,
   max-width: 220px;
 }
 
+/* ── Price change dialogs (#3148, ADR-072) ────────────────────────── */
+
+.price-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-md);
+  flex-wrap: wrap;
+}
+
+.price-hero__block {
+  text-align: center;
+}
+
+.price-hero__label {
+  font-size: 0.65rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.price-hero__value {
+  font-size: 1.25rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.price-hero__value--old {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  font-weight: 500;
+}
+
+.price-hero__value--new {
+  color: var(--status-success-fg);
+}
+
+.price-hero__arrow {
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+.rule-note {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin: 0;
+}
+
+.rule-note--muted {
+  color: var(--text-muted);
+  background: transparent;
+  border-style: dashed;
+}
+
+.opt-in-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: var(--space-3);
+  border: 1px solid var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.opt-in-check input {
+  margin-top: 2px;
+}
+
+.opt-in-check__title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: block;
+}
+
+.opt-in-check__desc {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  display: block;
+}
+
+.mini-list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.mini-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+}
+
+.mini-row__text {
+  min-width: 0;
+  flex: 1;
+}
+
+.mini-row__name {
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mini-row__meta {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.mini-row__price {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.mini-row__price s {
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+/* Initials-avatar chip inside a mini-row (#3148 review, finding 8) — was
+   entirely unstyled: the sizing comes from the inline `width`/`height`/
+   `fontSize` style props at the call site, but with no `display` rule an
+   inline `<span>` ignores both, and with no background/radius it rendered
+   as bare, uncentered text. */
+.mini-row .thumb {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface-muted);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.field__price-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  height: 36px;
+}
+
+.field__price-input:focus-within {
+  border-color: var(--accent-primary-border);
+}
+
+.field__price-input.has-error {
+  border-color: var(--status-error-border);
+}
+
+/* `.field span { color: var(--text-primary); font-weight: 600 }` below has
+   higher specificity (0,1,1) than `.field__currency` alone (0,1,0) and wins
+   regardless of source order, since `.field__currency` renders as a `<span>`
+   inside a `.field` container — so the currency prefix rendered bold and
+   primary-colored instead of the intended muted chip (#3148 review, finding
+   6). Scoped two levels deep (0,2,0) rather than reordered, so the fix
+   holds however the two rules end up ordered in the file. */
+.field__price-input .field__currency {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  flex-shrink: 0;
+}
+
+.field__price-input input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  width: 100%;
+  padding: 0;
+}
+
+.field__hint {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.field__hint button {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  color: var(--accent-primary);
+  font-size: 0.68rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.field__feedback {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  min-height: 15px;
+}
+
+.field__feedback--warn {
+  color: var(--status-warning-fg);
+  font-family: inherit;
+}
+
+.field__feedback--error {
+  color: var(--status-error-fg);
+  font-family: inherit;
+}
+
+.field__link-row {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.publish-progress {
+  position: sticky;
+  bottom: var(--space-4);
+  margin-top: var(--space-4);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-3) var(--space-4);
+}
+
+.publish-progress__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: 8px;
+}
+
+.publish-progress__title {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.publish-progress__count {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.publish-progress__track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.publish-progress__fill {
+  height: 100%;
+  background: var(--accent-primary);
+  border-radius: var(--radius-pill);
+  transition: width var(--duration-fast) var(--ease-out);
+}
+
+.publish-progress__lanes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.publish-progress__lane {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+}
+
+.publish-progress__lane b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.publish-progress__lane.is-done {
+  color: var(--status-success-fg);
+  border-color: var(--status-success-border);
+}
+
+/* A failed poll, and the terminal Dismiss action (#3148 review, findings
+   3/4) — this widget used to render `null` on either, which read as
+   "nothing is happening" rather than an actual signal. */
+.publish-progress--error {
+  border-color: var(--status-error-border);
+}
+
+.publish-progress--error .publish-progress__title {
+  color: var(--status-error-fg);
+  font-weight: 500;
+}
+
+.publish-progress__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
 
 /* ── Theme toggle ───────────────────────────────────────────────────
  * Three-option radiogroup rendered as a segmented button group. Sits
@@ -4264,12 +4594,32 @@ a.delivery-rider-banner__button:focus-visible {
   border-left-color: var(--status-error);
 }
 
+/* `.toast` is a flex row (`display: flex` above) — without this, the shared
+   `.toast__content { display: grid }` rule sizes to its own content and the
+   inline action button (#3148's "Undo") sits crushed up against it rather
+   than the dismiss button at the far end (#3148 review, finding 11). */
+.toast__content {
+  flex: 1;
+  min-width: 0;
+}
+
 .toast__dismiss {
   border: 0;
   padding: 0;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
+}
+
+/* Inline toast action, e.g. "Undo" (#3148). */
+.toast__action {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent-primary);
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .toast[data-state='open'] {
@@ -5099,6 +5449,19 @@ a.delivery-rider-banner__button:focus-visible {
   .gap-mark--clickable {
     padding: var(--space-1);
     margin: calc(var(--space-1) * -1);
+  }
+
+  /*
+   * Inline toast/status-note actions carved down the same way (#3148
+   * review, finding 11): `.toast__action` ("Undo" beside a toast
+   * description) and `.status-note .undo` sit inline beside running text,
+   * not as the toast/row's primary action — a 44px box here would blow out
+   * the toast's compact layout exactly like the marks above.
+   */
+  .toast__action,
+  .status-note .undo {
+    min-height: 0;
+    min-width: 0;
   }
 }
 

@@ -7,9 +7,14 @@ import {
   createAuthenticatedSessionAdapter,
   sampleConnection,
 } from '../../../test/test-utils';
+import { ApiError } from '../../../shared/api/api-error';
 import { PriceChangesQueueTable } from './price-changes-queue-table';
 import type { PriceChangeItem, PriceChangeListResponse } from '../api/price-changes.types';
 import type { SessionUser } from '../../../shared/auth/session.types';
+
+// The "also set to Automatic" opt-in is admin-only (#3148 review, finding
+// 2), so any test that needs to see/toggle it renders as an admin session.
+const ADMIN_SESSION = createAuthenticatedSessionAdapter();
 
 function buildItem(overrides: Partial<PriceChangeItem> = {}): PriceChangeItem {
   return {
@@ -77,7 +82,7 @@ describe('PriceChangesQueueTable', () => {
     expect(screen.getByTestId('row-ignore')).toBeInTheDocument();
   });
 
-  it('accepts a row via the confirm dialog and calls the API with the staleness token', async () => {
+  it('opens the accept dialog and calls the API with the staleness token on confirm (#3148)', async () => {
     const accept = vi.fn().mockResolvedValue(undefined);
     const apiClient = createMockApiClient({
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), accept },
@@ -92,16 +97,108 @@ describe('PriceChangesQueueTable', () => {
     // Accept no longer fires the API directly (#3164 review) — it opens a
     // confirm dialog first, since it publishes to a live marketplace.
     await userEvent.click(screen.getByTestId('row-accept'));
-    expect(accept).not.toHaveBeenCalled();
+    expect(await screen.findByText('Publish new price')).toBeInTheDocument();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Publish price' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Publish price' }));
 
     await waitFor(() => {
-      expect(accept).toHaveBeenCalledWith('ep-1', { expectedVersion: '2026-09-10T10:00:00.000Z' });
+      expect(accept).toHaveBeenCalledWith('ep-1', {
+        expectedVersion: '2026-09-10T10:00:00.000Z',
+        optInAutomatic: false,
+      });
     });
   });
 
-  it('edits a row through the dialog, validating the entered price', async () => {
+  it('shows clean, actionable copy instead of a raw backend message on a stale-version conflict (#3148 review, finding 9)', async () => {
+    const accept = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError(
+          'Price change episode ep-1 changed since it was last read (expected version …, current …)',
+          409,
+          null,
+        ),
+      );
+    const apiClient = createMockApiClient({
+      priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), accept },
+    });
+
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    await screen.findByText('Ergonomic Office Chair');
+
+    await userEvent.click(screen.getByTestId('row-accept'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Publish price' }));
+
+    expect(
+      await screen.findByText(/changed again while you were reviewing — refresh and take another look/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/expected version/)).not.toBeInTheDocument();
+  });
+
+  it('opts a source into automatic mode on accept and shows an Undo toast that reverts it (#3148)', async () => {
+    const accept = vi.fn().mockResolvedValue(undefined);
+    // A second, non-custom-override source (#3148 review, finding 1) — an
+    // undo built from every `effective` value regardless of
+    // `isCustomOverride` would stamp an explicit override onto this row too,
+    // even though it was only ever inheriting the destination default.
+    const get = vi.fn().mockResolvedValue({
+      default: { mode: 'manual', rule: { type: 'passthrough', percent: 0, rounding: 'none' } },
+      sources: [
+        {
+          sourceConnectionId: 'src-2',
+          sourceLabel: 'WooCommerce — EU',
+          isCustomOverride: false,
+          effective: { mode: 'automatic', rule: { type: 'markup', percent: 15, rounding: 'none' } },
+          openEpisodeCount: 0,
+        },
+      ],
+    });
+    const update = vi.fn().mockResolvedValue({});
+    const apiClient = createMockApiClient({
+      priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), accept },
+      pricingSync: { get, update },
+    });
+
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient, sessionAdapter: ADMIN_SESSION });
+    await screen.findByText('Ergonomic Office Chair');
+
+    await userEvent.click(screen.getByTestId('row-accept'));
+    await userEvent.click(await screen.findByRole('checkbox'));
+    await userEvent.click(screen.getByRole('button', { name: 'Publish price' }));
+
+    await waitFor(() => {
+      expect(accept).toHaveBeenCalledWith('ep-1', expect.objectContaining({ optInAutomatic: true }));
+    });
+
+    const undoButton = await screen.findByText('Undo');
+    await userEvent.click(undoButton);
+
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith(
+        'dest-1',
+        expect.objectContaining({
+          // ONLY `src-1` (the pair being changed) — `src-2`'s non-custom
+          // entry must never be re-sent as an explicit override.
+          sourceOverrides: { 'src-1': { mode: 'manual', rule: { type: 'passthrough', percent: 0, rounding: 'none' } } },
+        }),
+      );
+    });
+  });
+
+  it('never renders the "also set to Automatic" checkbox for a non-admin session (#3148 review, finding 2)', async () => {
+    const apiClient = createMockApiClient({
+      priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])) },
+    });
+
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    await screen.findByText('Ergonomic Office Chair');
+
+    await userEvent.click(screen.getByTestId('row-accept'));
+    await screen.findByText('Publish new price');
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('opens the edit dialog and publishes a manual override (#3148)', async () => {
     const edit = vi.fn().mockResolvedValue(undefined);
     const apiClient = createMockApiClient({
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), edit },
@@ -114,22 +211,16 @@ describe('PriceChangesQueueTable', () => {
     await screen.findByText('Ergonomic Office Chair');
 
     await userEvent.click(screen.getByTestId('row-edit'));
-    const input = await screen.findByLabelText(/New price/);
+    expect(await screen.findByText('Enter your own price')).toBeInTheDocument();
 
-    // An invalid value is refused inline and never reaches the API.
+    const input = screen.getByLabelText('Price to publish');
     await userEvent.clear(input);
-    await userEvent.type(input, '0');
-    await userEvent.click(screen.getByRole('button', { name: 'Publish price' }));
-    expect(await screen.findByText('Enter a price greater than 0.')).toBeInTheDocument();
-    expect(edit).not.toHaveBeenCalled();
-
-    await userEvent.clear(input);
-    await userEvent.type(input, '349.5');
-    await userEvent.click(screen.getByRole('button', { name: 'Publish price' }));
+    await userEvent.type(input, '420');
+    await userEvent.click(screen.getByRole('button', { name: 'Publish this price' }));
 
     await waitFor(() => {
       expect(edit).toHaveBeenCalledWith('ep-1', {
-        manualPriceOverride: 349.5,
+        manualPriceOverride: 420,
         expectedVersion: '2026-09-10T10:00:00.000Z',
       });
     });
@@ -251,6 +342,97 @@ describe('PriceChangesQueueTable', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Keep prices' }));
 
     expect(await screen.findByText(/Kept 1, but 1 failed/)).toBeInTheDocument();
+  });
+
+  it('opens the bulk accept dialog and mounts live publish progress on confirm', async () => {
+    const bulkAccept = vi.fn().mockResolvedValue({ batchId: 'batch-1' });
+    const items = [buildItem({ id: 'ep-1' }), buildItem({ id: 'ep-2', productName: 'Second Product' })];
+    const getBulkBatch = vi.fn().mockResolvedValue({
+      id: 'batch-1',
+      connectionId: 'dest-1',
+      status: 'completed',
+      totalCount: 2,
+      succeededCount: 2,
+      failedCount: 0,
+      createdAt: '2026-09-10T10:00:00.000Z',
+      updatedAt: '2026-09-10T10:05:00.000Z',
+      records: [],
+    });
+    const apiClient = createMockApiClient({
+      priceChanges: { list: vi.fn().mockResolvedValue(buildPage(items, 0, 2)), bulkAccept },
+      listings: { getBulkBatch },
+    });
+
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    await screen.findByText('Ergonomic Office Chair');
+
+    const checkboxes = screen.getAllByTestId('row-select');
+    await userEvent.click(checkboxes[0]);
+    await userEvent.click(checkboxes[1]);
+    await userEvent.click(screen.getByRole('button', { name: 'Accept selected' }));
+
+    expect(await screen.findByText(/Publish 2 price changes/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Publish prices' }));
+
+    await waitFor(() => {
+      expect(bulkAccept).toHaveBeenCalled();
+    });
+    expect(await screen.findByText(/Published 2 of 2 prices/)).toBeInTheDocument();
+  });
+
+  it('aggregates the automatic opt-in Undo into ONE toast for a bulk accept (#3148 review, finding 2)', async () => {
+    const bulkAccept = vi.fn().mockResolvedValue({ batchId: 'batch-1' });
+    const items = [
+      buildItem({ id: 'ep-1' }),
+      buildItem({
+        id: 'ep-2',
+        productName: 'Second Product',
+        sourceConnectionId: 'src-2',
+        sourceLabel: 'WooCommerce — EU',
+        destinationConnectionId: 'dest-2',
+        destinationLabel: 'Erli — PL',
+      }),
+    ];
+    const getBulkBatch = vi.fn().mockResolvedValue({
+      id: 'batch-1',
+      connectionId: 'dest-1',
+      status: 'running',
+      totalCount: 2,
+      succeededCount: 0,
+      failedCount: 0,
+      createdAt: '2026-09-10T10:00:00.000Z',
+      updatedAt: '2026-09-10T10:05:00.000Z',
+      records: [],
+    });
+    const apiClient = createMockApiClient({
+      priceChanges: { list: vi.fn().mockResolvedValue(buildPage(items, 0, 2)), bulkAccept },
+      listings: { getBulkBatch },
+    });
+
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient, sessionAdapter: ADMIN_SESSION });
+    await screen.findByText('Ergonomic Office Chair');
+
+    const checkboxes = screen.getAllByTestId('row-select');
+    await userEvent.click(checkboxes[0]);
+    await userEvent.click(checkboxes[1]);
+    await userEvent.click(screen.getByRole('button', { name: 'Accept selected' }));
+
+    await screen.findByText(/Publish 2 price changes/);
+    // Scoped to the opt-in label text — the underlying table's own
+    // select-all/row-select checkboxes are still in the DOM behind the
+    // dialog and would otherwise be picked up by an unscoped query.
+    const optInBoxes = screen.getAllByRole('checkbox', { name: /Also set/ });
+    await userEvent.click(optInBoxes[0]);
+    await userEvent.click(optInBoxes[1]);
+    await userEvent.click(screen.getByRole('button', { name: 'Publish prices' }));
+
+    await waitFor(() => {
+      expect(bulkAccept).toHaveBeenCalled();
+    });
+
+    // ONE toast naming both sources, not two independent ones.
+    expect(await screen.findByText('Turned on automatic pricing for 2 sources')).toBeInTheDocument();
+    expect(screen.getAllByText('Undo')).toHaveLength(1);
   });
 
   it('shows connection chips for both marketplace and shop-write-back destinations, counted from the unfiltered set', async () => {

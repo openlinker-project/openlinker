@@ -7,12 +7,11 @@
  * loading/empty/error states (real ones, not the mockup's design-review
  * preview switcher).
  *
- * Accept/Edit carry a MINIMAL confirmation step (a shared `ConfirmDialog`) —
- * the fuller confirm dialogs (price hero, rule sentence, "also set to
- * Automatic" opt-in with undo) are #3148's job. This issue's scope is the
- * table + real data + a safe minimum of "don't publish to a live
- * marketplace with zero confirmation"; #3148 replaces these two dialogs
- * with richer ones without changing this component's public shape.
+ * Accept/Edit open the #3148 confirm dialogs (price hero, rule sentence,
+ * live-validated manual price, an admin-only "also set to Automatic"
+ * opt-in with a real Undo). Bulk-accept opens its own dialog and, on
+ * confirm, mounts the live `BulkPublishProgress` widget polling the real
+ * batch-progress endpoint.
  *
  * #3164 review fixes rolled in here: URL-namespaced filters (`queueConn`/
  * `dir`/`big`), a select-all that can't desync from the visible page, a
@@ -22,6 +21,16 @@
  * shared primitives (`BulkActionBar`/`ProductThumbnail`/`Tooltip`) in place
  * of hand-rolled markup, and honest "queued" toast copy (accept/edit resolve
  * asynchronously in the worker, not on the 204 response).
+ *
+ * #3148 review fixes rolled in here: `BulkPublishProgress` is mounted as a
+ * SIBLING of the table's own loading/empty/error branch rather than nested
+ * inside it (finding 3 — nesting made it vanish the instant a fully-accepted
+ * batch drained the list to empty), the "also set to Automatic" Undo toast
+ * is aggregated into ONE toast for a bulk accept instead of one per pair
+ * (finding 2), and every accept/edit/bulk-accept failure is translated
+ * through `describePriceChangeActionError` rather than surfacing a raw
+ * backend exception string — a stale-version 409 is a ROUTINE outcome under
+ * the 30 s poll + per-dialog version snapshot, not an edge case (finding 9).
  *
  * @module apps/web/src/features/price-changes/components
  */
@@ -34,9 +43,6 @@ import { DataTableSkeleton } from '../../../shared/ui/data-table-skeleton';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { BulkActionBar } from '../../../shared/ui/bulk-action-bar';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
-import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
-import { Input } from '../../../shared/ui/input';
-import { FieldError } from '../../../shared/ui/field-error';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useWriteAccess, type WriteAccess } from '../../../shared/auth/use-permission';
@@ -51,10 +57,16 @@ import { useEditPriceChangeMutation } from '../hooks/use-edit-price-change-mutat
 import { useUnresolvePriceChangeMutation } from '../hooks/use-unresolve-price-change-mutation';
 import { useRefreshPriceChangeMutation } from '../hooks/use-refresh-price-change-mutation';
 import { useBulkAcceptPriceChangesMutation } from '../hooks/use-bulk-accept-price-changes-mutation';
+import { useSetSourceSyncModeMutation } from '../hooks/use-set-source-sync-mode-mutation';
+import { AcceptPriceChangeDialog } from './accept-price-change-dialog';
+import { EditPriceChangeDialog } from './edit-price-change-dialog';
+import { BulkAcceptPriceChangesDialog } from './bulk-accept-price-changes-dialog';
+import { BulkPublishProgress } from './bulk-publish-progress';
 import type { PriceChangeItem } from '../api/price-changes.types';
 import {
   STEEP_DELTA_TOOLTIP,
   deltaToneFor,
+  describePriceChangeActionError,
   formatDeltaLabel,
   roundingLabelFor,
 } from '../lib/price-change-copy';
@@ -118,10 +130,10 @@ export function PriceChangesQueueTable(): ReactElement {
   const magnitudeOnly = searchParams.get('big') === '1';
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [confirmAcceptItem, setConfirmAcceptItem] = useState<PriceChangeItem | null>(null);
-  const [editItem, setEditItem] = useState<PriceChangeItem | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const [editError, setEditError] = useState<string | null>(null);
+  const [acceptTarget, setAcceptTarget] = useState<PriceChangeItem | null>(null);
+  const [editTarget, setEditTarget] = useState<PriceChangeItem | null>(null);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [activeBatch, setActiveBatch] = useState<{ id: string; items: PriceChangeItem[] } | null>(null);
 
   const connectionsQuery = useConnectionsQuery();
   const destinationConnections = (connectionsQuery.data ?? []).filter((c) =>
@@ -187,6 +199,7 @@ export function PriceChangesQueueTable(): ReactElement {
   const unresolveMutation = useUnresolvePriceChangeMutation();
   const refreshMutation = useRefreshPriceChangeMutation();
   const bulkAcceptMutation = useBulkAcceptPriceChangesMutation();
+  const setSourceSyncModeMutation = useSetSourceSyncModeMutation();
   const { showToast } = useToast();
 
   const items = query.data?.items ?? [];
@@ -231,21 +244,87 @@ export function PriceChangesQueueTable(): ReactElement {
   const selectableIds = useMemo(() => items.filter(isSelectable).map((i) => i.id), [items]);
   const selectedIds = selectableIds.filter((id) => selected.has(id));
 
-  async function handleAccept(item: PriceChangeItem): Promise<void> {
+  /**
+   * The "also set to Automatic" opt-in's confirmation, with a real Undo
+   * (added `ShowToastOptions.action` to the shared toast provider for this —
+   * it previously had no action-button slot). Takes a LIST of pairs so a
+   * bulk accept renders ONE aggregated toast instead of one per pair
+   * (#3148 review, finding 2) — N independently-expiring 4s toasts stacking
+   * on a 12-pair bulk accept was unreadable and, worse, meant clicking one
+   * Undo dismissed only its own toast while the other 11 kept ticking down.
+   */
+  function offerAutomaticUndo(
+    pairs: Array<{ sourceConnectionId: string; destinationConnectionId: string; sourceLabel: string }>,
+  ): void {
+    if (pairs.length === 0) return;
+    const description =
+      pairs.length === 1
+        ? `Future price changes from ${pairs[0].sourceLabel} will publish without review.`
+        : `Future price changes from ${pairs.length} sources will publish without review.`;
+    showToast({
+      tone: 'success',
+      title: pairs.length === 1 ? 'Set to Automatic' : `Turned on automatic pricing for ${pairs.length} sources`,
+      description,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          for (const pair of pairs) {
+            setSourceSyncModeMutation.mutate(
+              {
+                destinationConnectionId: pair.destinationConnectionId,
+                sourceConnectionId: pair.sourceConnectionId,
+                mode: 'manual',
+              },
+              {
+                onSuccess: () => {
+                  showToast({
+                    tone: 'success',
+                    description: `Reverted ${pair.sourceLabel} back to manual review.`,
+                  });
+                },
+                onError: () => {
+                  showToast({
+                    tone: 'error',
+                    description: `Couldn't undo automatic pricing for ${pair.sourceLabel}. Try again from the connection's settings.`,
+                  });
+                },
+              },
+            );
+          }
+        },
+      },
+    });
+  }
+
+  async function handleAcceptConfirm(item: PriceChangeItem, optInAutomatic: boolean): Promise<void> {
     try {
-      await acceptMutation.mutateAsync({ id: item.id, input: { expectedVersion: item.version } });
+      await acceptMutation.mutateAsync({
+        id: item.id,
+        input: { expectedVersion: item.version, optInAutomatic },
+      });
       // Accept/edit only ENQUEUE the publish — the destination write and the
       // episode's resolution happen later in the worker (#3164 review), so
       // the toast must not claim the price already published.
-      showToast({
-        tone: 'success',
-        title: 'Price queued for publishing',
-        description: `${item.productName} will update on ${item.destinationLabel} shortly.`,
-      });
+      if (optInAutomatic) {
+        offerAutomaticUndo([
+          {
+            sourceConnectionId: item.sourceConnectionId,
+            destinationConnectionId: item.destinationConnectionId,
+            sourceLabel: item.sourceLabel,
+          },
+        ]);
+      } else {
+        showToast({
+          tone: 'success',
+          title: 'Price queued for publishing',
+          description: `${item.productName} will update on ${item.destinationLabel} shortly.`,
+        });
+      }
     } catch (error) {
-      showToast({ tone: 'error', description: error instanceof Error ? error.message : 'Failed to accept' });
+      console.error('Failed to accept price change', error);
+      showToast({ tone: 'error', description: describePriceChangeActionError(error) });
     } finally {
-      setConfirmAcceptItem(null);
+      setAcceptTarget(null);
     }
   }
 
@@ -253,7 +332,8 @@ export function PriceChangesQueueTable(): ReactElement {
     try {
       await ignoreMutation.mutateAsync(item.id);
     } catch (error) {
-      showToast({ tone: 'error', description: error instanceof Error ? error.message : 'Failed to ignore' });
+      console.error('Failed to ignore price change', error);
+      showToast({ tone: 'error', description: describePriceChangeActionError(error) });
     }
   }
 
@@ -261,7 +341,8 @@ export function PriceChangesQueueTable(): ReactElement {
     try {
       await unresolveMutation.mutateAsync(item.id);
     } catch (error) {
-      showToast({ tone: 'error', description: error instanceof Error ? error.message : 'Failed to undo' });
+      console.error('Failed to undo price change decision', error);
+      showToast({ tone: 'error', description: describePriceChangeActionError(error) });
     }
   }
 
@@ -273,61 +354,74 @@ export function PriceChangesQueueTable(): ReactElement {
         description: `Refreshed — showing the latest price for ${item.productName}.`,
       });
     } catch (error) {
-      showToast({ tone: 'error', description: error instanceof Error ? error.message : 'Failed to refresh' });
+      console.error('Failed to refresh price change', error);
+      showToast({ tone: 'error', description: describePriceChangeActionError(error) });
     }
   }
 
-  function openEditDialog(item: PriceChangeItem): void {
-    setEditItem(item);
-    setEditValue(String(item.manualPriceOverride ?? item.computedNewAmount));
-    setEditError(null);
-  }
-
-  function handleEditConfirm(): void {
-    if (!editItem) return;
-    const manualPriceOverride = Number(editValue);
-    if (!Number.isFinite(manualPriceOverride) || manualPriceOverride <= 0) {
-      setEditError('Enter a price greater than 0.');
-      return;
-    }
-    void submitEdit(editItem, manualPriceOverride);
-  }
-
-  async function submitEdit(item: PriceChangeItem, manualPriceOverride: number): Promise<void> {
+  async function handleEditConfirm(item: PriceChangeItem, manualPriceOverride: number): Promise<void> {
     try {
       await editMutation.mutateAsync({
         id: item.id,
         input: { manualPriceOverride, expectedVersion: item.version },
       });
+      setEditTarget(null);
+      // Same "queued, not published" honesty as the accept path above.
       showToast({
         tone: 'success',
         title: 'Price queued for publishing',
         description: `${item.productName} will update on ${item.destinationLabel} shortly.`,
       });
-      setEditItem(null);
     } catch (error) {
-      showToast({ tone: 'error', description: error instanceof Error ? error.message : 'Failed to publish' });
+      console.error('Failed to publish edited price change', error);
+      showToast({ tone: 'error', description: describePriceChangeActionError(error) });
     }
   }
 
-  async function handleBulkAccept(): Promise<void> {
+  const bulkDialogItems = items.filter((i) => selectedIds.includes(i.id));
+
+  async function handleBulkAcceptConfirm(optInPairs: Set<string>): Promise<void> {
     // Each item MUST carry the staleness token — the backend's
     // `BulkAcceptPriceChangeItemDto.expectedVersion` is required (#3145/
     // #3162), for the same reason the single-accept path's is: a bulk item
     // publishes `computedNewAmount`, which can move between this read and
-    // the submit. `items` (not `selectedIds` alone) is the source of the
-    // version, since the version lives on the row, not the id.
-    const byId = new Map(items.map((item) => [item.id, item]));
-    const acceptItems = selectedIds
-      .map((id) => byId.get(id))
-      .filter((item): item is PriceChangeItem => item !== undefined)
-      .map((item) => ({ id: item.id, expectedVersion: item.version }));
+    // the submit. `bulkDialogItems` (derived from `items`, not `selectedIds`
+    // alone) is the source of the version, since the version lives on the
+    // row, not the id (#3164 review, reconciled here with the #3148 dialog
+    // flow's opt-in-to-automatic pairing).
     try {
-      await bulkAcceptMutation.mutateAsync(acceptItems);
+      const result = await bulkAcceptMutation.mutateAsync(
+        bulkDialogItems.map((item) => ({
+          id: item.id,
+          optInAutomatic: optInPairs.has(`${item.sourceConnectionId}:${item.destinationConnectionId}`),
+          expectedVersion: item.version,
+        })),
+      );
+      setActiveBatch({ id: result.batchId, items: bulkDialogItems });
+      setBulkDialogOpen(false);
       setSelected(new Set());
-      showToast({ tone: 'success', title: 'Publishing selected prices…', description: 'Watch progress below.' });
+
+      if (optInPairs.size > 0) {
+        const byPairKey = new Map(
+          bulkDialogItems.map((item) => [
+            `${item.sourceConnectionId}:${item.destinationConnectionId}`,
+            item.sourceLabel,
+          ]),
+        );
+        offerAutomaticUndo(
+          Array.from(optInPairs, (pair) => {
+            const [sourceConnectionId, destinationConnectionId] = pair.split(':');
+            return {
+              sourceConnectionId,
+              destinationConnectionId,
+              sourceLabel: byPairKey.get(pair) ?? 'this source',
+            };
+          }),
+        );
+      }
     } catch (error) {
-      showToast({ tone: 'error', description: error instanceof Error ? error.message : 'Bulk accept failed' });
+      console.error('Bulk accept failed', error);
+      showToast({ tone: 'error', description: describePriceChangeActionError(error) });
     }
   }
 
@@ -608,8 +702,8 @@ export function PriceChangesQueueTable(): ReactElement {
                           <ActionCell
                             item={item}
                             write={write}
-                            onAccept={(i) => setConfirmAcceptItem(i)}
-                            onEdit={openEditDialog}
+                            onAccept={setAcceptTarget}
+                            onEdit={setEditTarget}
                             onIgnore={handleIgnore}
                             onUndo={handleUndo}
                             onRefresh={handleRefresh}
@@ -638,7 +732,7 @@ export function PriceChangesQueueTable(): ReactElement {
                   </Button>
                 </ReadOnlyLock>
                 <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-                  <Button disabled={write.demoReadOnly} onClick={() => void handleBulkAccept()}>
+                  <Button disabled={write.demoReadOnly} onClick={() => setBulkDialogOpen(true)}>
                     Accept selected
                   </Button>
                 </ReadOnlyLock>
@@ -648,79 +742,44 @@ export function PriceChangesQueueTable(): ReactElement {
         </div>
       )}
 
-      <ConfirmDialog
-        open={confirmAcceptItem !== null}
-        onOpenChange={(open) => {
-          if (!open) setConfirmAcceptItem(null);
-        }}
-        title="Publish this price?"
-        description={
-          confirmAcceptItem
-            ? `Publish the new price for ${confirmAcceptItem.productName} on ${confirmAcceptItem.destinationLabel}.`
-            : ''
-        }
-        body={
-          confirmAcceptItem ? (
-            <div className="price-compare">
-              <span className="price-compare__old">
-                {confirmAcceptItem.computedOldAmount === null
-                  ? '—'
-                  : formatAmount(confirmAcceptItem.computedOldAmount, confirmAcceptItem.destinationCurrency ?? undefined)}
-              </span>
-              <span>→</span>
-              <span className="price-compare__new">
-                {formatAmount(
-                  confirmAcceptItem.manualPriceOverride ?? confirmAcceptItem.computedNewAmount,
-                  confirmAcceptItem.destinationCurrency ?? undefined,
-                )}
-              </span>
-            </div>
-          ) : null
-        }
-        confirmLabel="Publish price"
+      {/* A sibling of the branch above, not nested inside it (#3148 review,
+          finding 3) — the widget must keep polling even once a successful
+          bulk publish has drained the queue to empty, or a failed refetch
+          has left `items` empty for an unrelated reason. */}
+      {activeBatch ? (
+        <BulkPublishProgress
+          batchId={activeBatch.id}
+          items={activeBatch.items}
+          onDismiss={() => setActiveBatch(null)}
+        />
+      ) : null}
+
+      <AcceptPriceChangeDialog
+        item={acceptTarget}
         isConfirming={acceptMutation.isPending}
-        onConfirm={() => {
-          if (confirmAcceptItem) void handleAccept(confirmAcceptItem);
+        onOpenChange={(open) => {
+          if (!open) setAcceptTarget(null);
+        }}
+        onConfirm={(optInAutomatic) => {
+          if (acceptTarget) void handleAcceptConfirm(acceptTarget, optInAutomatic);
         }}
       />
-
-      <ConfirmDialog
-        open={editItem !== null}
-        onOpenChange={(open) => {
-          if (!open) setEditItem(null);
-        }}
-        title={editItem ? `Edit price for ${editItem.productName}` : 'Edit price'}
-        description={
-          editItem
-            ? `Enter the price to publish on ${editItem.destinationLabel} (currently would publish ${formatAmount(editItem.computedNewAmount, editItem.destinationCurrency ?? undefined)}).`
-            : ''
-        }
-        body={
-          editItem ? (
-            <div className="form-field">
-              <label htmlFor="price-change-edit-amount">
-                New price{editItem.destinationCurrency ? ` (${editItem.destinationCurrency})` : ''}
-              </label>
-              <Input
-                id="price-change-edit-amount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={editValue}
-                invalid={!!editError}
-                aria-describedby={editError ? 'price-change-edit-error' : undefined}
-                onChange={(e) => {
-                  setEditValue(e.target.value);
-                  setEditError(null);
-                }}
-              />
-              <FieldError id="price-change-edit-error" message={editError ?? undefined} />
-            </div>
-          ) : null
-        }
-        confirmLabel="Publish price"
+      <EditPriceChangeDialog
+        item={editTarget}
         isConfirming={editMutation.isPending}
-        onConfirm={handleEditConfirm}
+        onOpenChange={(open) => {
+          if (!open) setEditTarget(null);
+        }}
+        onConfirm={(manualPriceOverride) => {
+          if (editTarget) void handleEditConfirm(editTarget, manualPriceOverride);
+        }}
+      />
+      <BulkAcceptPriceChangesDialog
+        items={bulkDialogItems}
+        open={bulkDialogOpen}
+        isConfirming={bulkAcceptMutation.isPending}
+        onOpenChange={setBulkDialogOpen}
+        onConfirm={(optInPairs) => void handleBulkAcceptConfirm(optInPairs)}
       />
     </div>
   );
