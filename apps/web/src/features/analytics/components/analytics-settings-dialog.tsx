@@ -467,9 +467,19 @@ export function AnalyticsSettingsDialog({
               These tax rates come from today&rsquo;s catalog, not the order date. If any of them
               changed since, Net Sales for those orders will be less accurate.
             </Alert>
-            <p className="analytics-settings-dialog__status" style={{ marginBottom: 0 }}>
-              Affects {taxA} order{taxA === 1 ? '' : 's'}.
-            </p>
+            {coverageQuery.isLoading ? (
+              <p className="analytics-settings-dialog__status" style={{ marginBottom: 0 }}>
+                Checking how many orders are affected…
+              </p>
+            ) : coverageQuery.isError ? (
+              <p className="analytics-settings-dialog__status" style={{ marginBottom: 0 }}>
+                Affects an unknown number of orders — we couldn&rsquo;t load the count.
+              </p>
+            ) : (
+              <p className="analytics-settings-dialog__status" style={{ marginBottom: 0 }}>
+                Affects {taxA} order{taxA === 1 ? '' : 's'}.
+              </p>
+            )}
           </>
         }
         confirmLabel="Turn on"

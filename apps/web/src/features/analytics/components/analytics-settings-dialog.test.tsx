@@ -247,6 +247,80 @@ describe('AnalyticsSettingsDialog', () => {
     expect(updateSettings).not.toHaveBeenCalled();
   });
 
+  it('should never render a false "Affects 0 orders" claim from an absent coverage read in the confirm dialog (#2993 review)', async () => {
+    let resolveCoverage: ((value: unknown) => void) | undefined;
+    const apiClient = createMockApiClient({
+      analytics: {
+        getCoverage: vi.fn().mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              resolveCoverage = resolve;
+            })
+        ),
+      },
+    });
+
+    renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const taxToggle = await screen.findByRole('checkbox', {
+      name: /Use the rate found in the product catalog/,
+    });
+    await userEvent.click(taxToggle);
+
+    const confirmDialog = await screen.findByRole('dialog', {
+      name: 'Turn on including orders with a guessed tax rate?',
+    });
+
+    // While the coverage read is still in flight, the dialog must not
+    // assert a positive "Affects 0 orders." claim — that would be a
+    // rendered fact built from an absent value.
+    expect(within(confirmDialog).queryByText(/Affects 0 order/)).not.toBeInTheDocument();
+    expect(within(confirmDialog).getByText(/Checking how many orders are affected/)).toBeInTheDocument();
+
+    resolveCoverage?.({
+      categories: [
+        { category: 'tax-a', status: 'open', affectedCount: 7, sampleOrderIds: [] },
+      ],
+    });
+
+    // Once the read settles successfully, the real count renders.
+    await waitFor(() => {
+      expect(within(confirmDialog).getByText('Affects 7 orders.')).toBeInTheDocument();
+    });
+  });
+
+  it('should say the count is unknown, never claim zero, when the confirm dialog\'s coverage read fails (#2993 review)', async () => {
+    const apiClient = createMockApiClient({
+      analytics: {
+        getCoverage: vi.fn().mockRejectedValue(new Error('network error')),
+      },
+    });
+
+    renderWithProviders(<AnalyticsSettingsDialog {...baseProps} />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const taxToggle = await screen.findByRole('checkbox', {
+      name: /Use the rate found in the product catalog/,
+    });
+    await userEvent.click(taxToggle);
+
+    const confirmDialog = await screen.findByRole('dialog', {
+      name: 'Turn on including orders with a guessed tax rate?',
+    });
+
+    await waitFor(() => {
+      expect(
+        within(confirmDialog).getByText(/Affects an unknown number of orders/)
+      ).toBeInTheDocument();
+    });
+    expect(within(confirmDialog).queryByText(/Affects 0 order/)).not.toBeInTheDocument();
+  });
+
   it('should turn the tax-rate setting OFF directly, with no confirm dialog (#2857, #2993 review)', async () => {
     const updateSettings = vi.fn().mockResolvedValue(undefined);
     const apiClient = createMockApiClient({
