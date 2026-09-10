@@ -10,11 +10,17 @@
  * @module apps/web/src/features/price-changes/api
  */
 import type { ApiRequest } from '../../../app/api/api-client';
-import type { ConnectionPricingSyncView, UpdatePricingSyncInput } from './pricing-sync.types';
+import type {
+  ConnectionAsSourceEntry,
+  ConnectionPricingSyncView,
+  UpdatePricingSyncInput,
+} from './pricing-sync.types';
 
 export interface PricingSyncApi {
   get(connectionId: string): Promise<ConnectionPricingSyncView>;
   update(connectionId: string, input: UpdatePricingSyncInput): Promise<ConnectionPricingSyncView>;
+  /** `GET /connections/:id/pricing-sync/as-source` (#3150) — the source-side rollup. */
+  asSource(connectionId: string): Promise<ConnectionAsSourceEntry[]>;
 }
 
 export function createPricingSyncApi(request: ApiRequest): PricingSyncApi {
@@ -28,6 +34,9 @@ export function createPricingSyncApi(request: ApiRequest): PricingSyncApi {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
       });
+    },
+    asSource(connectionId): Promise<ConnectionAsSourceEntry[]> {
+      return request<ConnectionAsSourceEntry[]>(`/connections/${connectionId}/pricing-sync/as-source`);
     },
   };
 }

@@ -55,8 +55,8 @@ const lazyRoutes = collectLazyRoutes([
  * route reverted to eager `element:` form, which is exactly the regression
  * the parameterized test below is meant to catch.
  *
- * Today's breakdown (62 total = 46 authenticated + 4 guest + 12 plugin):
- *   - 46 authenticated children (under `coreChildren`, counting per-children-node
+ * Today's breakdown (63 total = 47 authenticated + 4 guest + 12 plugin):
+ *   - 47 authenticated children (under `coreChildren`, counting per-children-node
  *     because grouped routes like orders/customers expose multiple
  *     lazy nodes — includes `/dev/ui` design-system page (#775), `/shipments` (#770),
  *     `/users` user-management page (#1125), `/invoices/:invoiceId` detail (#1240),
@@ -64,7 +64,10 @@ const lazyRoutes = collectLazyRoutes([
  *     `/dashboard` (#2740), `/settings/mcp-tokens` MCP token management
  *     (#1486/#1932), `/settings/sales-documents` (#2159), `/orders/dispatch-risk`
  *     (#2306), the two returns routes `/returns` (#2335) + `/returns/:returnId`
- *     (#2336), and `/settings/who-decides` (#2354), plus `/bench` — the pack-bench identity
+ *     (#2336), `/settings/who-decides` (#2354), and
+ *     `/connections/:connectionId/pricing-sync` (#3150 — the destination
+ *     Pricing & sync settings page and the source connection rollup, dual-mode
+ *     resolved by capability), plus `/bench` — the pack-bench identity
  *     surface (#2413), which carries no nav entry and is reached by URL at a
  *     terminal;
  *     the former `/inventory/:id` detail route was removed (#1305/#1609) once

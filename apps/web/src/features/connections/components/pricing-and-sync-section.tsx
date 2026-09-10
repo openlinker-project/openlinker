@@ -75,6 +75,16 @@ import { useToast } from '../../../shared/ui/toast-provider';
 
 export interface PricingAndSyncSectionProps {
   connectionId: string;
+  /**
+   * Pre-expands the named source's override editor on load — the "reuse the
+   * same expandSourceRow-equivalent mechanism" #3150 asks to share between
+   * the Edit-dialog's "Set a rule just for this source" permalink (#3148,
+   * `?source=`) and the source rollup page's "Manage" links. Enabling the
+   * override is what "expanded" means here: the row's body only renders
+   * for a custom source, so landing on an inherited one turns it on —
+   * exactly what a manual click of the checkbox already does.
+   */
+  initialExpandSourceId?: string;
 }
 
 const MODE_HINT: Record<PriceSyncMode, string> = {
@@ -201,7 +211,10 @@ function applyRulePatch(rule: DraftPricingRule, patch: RulePatch): DraftPricingR
   };
 }
 
-export function PricingAndSyncSection({ connectionId }: PricingAndSyncSectionProps): ReactElement {
+export function PricingAndSyncSection({
+  connectionId,
+  initialExpandSourceId,
+}: PricingAndSyncSectionProps): ReactElement {
   const query = useConnectionPricingSyncQuery(connectionId);
   const updateMutation = useUpdateConnectionPricingSyncMutation(connectionId);
   const { showToast } = useToast();
@@ -216,17 +229,55 @@ export function PricingAndSyncSection({ connectionId }: PricingAndSyncSectionPro
   const [dropOverrideConfirm, setDropOverrideConfirm] = useState<{
     droppedLabels: string[];
   } | null>(null);
+  // Deep-link pre-expand (#3150, mirrors `MappingPanel`'s #1794 pattern): a
+  // requested source not present among this connection's current sources
+  // (stale link, or a source removed since) is reported rather than
+  // resolving to `null` silently.
+  const [notFoundSourceId, setNotFoundSourceId] = useState<string | null>(null);
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<string | null>(null);
 
   useEffect(() => {
     if (query.data && draft === null) {
-      setDraft(toDraftView(query.data));
-      setCustomSources(
-        new Set(
-          query.data.sources.filter((s) => s.isCustomOverride).map((s) => s.sourceConnectionId)
-        )
+      const alreadyCustom = query.data.sources
+        .filter((s) => s.isCustomOverride)
+        .map((s) => s.sourceConnectionId);
+      const requestedFound = Boolean(
+        initialExpandSourceId &&
+          query.data.sources.some((s) => s.sourceConnectionId === initialExpandSourceId)
       );
+      if (initialExpandSourceId && !requestedFound) {
+        setNotFoundSourceId(initialExpandSourceId);
+      }
+      const expandTarget =
+        requestedFound && !alreadyCustom.includes(initialExpandSourceId as string)
+          ? (initialExpandSourceId as string)
+          : null;
+
+      setDraft(() => {
+        const next = toDraftView(query.data);
+        if (expandTarget) {
+          // Same effect a manual checkbox click has: copy the default rule
+          // in as the starting point for this source's override.
+          const source = next.sources.find((s) => s.sourceConnectionId === expandTarget);
+          if (source) source.effective = cloneDraftSetting(next.default);
+        }
+        return next;
+      });
+      setCustomSources(new Set(expandTarget ? [...alreadyCustom, expandTarget] : alreadyCustom));
+      if (expandTarget) setPendingScrollTarget(expandTarget);
     }
-  }, [query.data, draft]);
+  }, [query.data, draft, initialExpandSourceId]);
+
+  // Scroll the pre-expanded row into view once it has actually rendered —
+  // `draft` is a dependency so this retries on the render right after the
+  // effect above populates it (the `bulk-review-step.tsx` `pendingScroll`
+  // precedent).
+  useEffect(() => {
+    if (pendingScrollTarget === null) return;
+    const el = document.getElementById(`source-row-name-${pendingScrollTarget}`);
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setPendingScrollTarget(null);
+  }, [pendingScrollTarget, draft]);
 
   // Re-seed from a SUCCESSFUL save's own response (#3166 review, finding 3) —
   // not only at mount. The server recomputes `sources[].effective` /
@@ -485,6 +536,12 @@ export function PricingAndSyncSection({ connectionId }: PricingAndSyncSectionPro
           Use this when one supplier or warehouse should be priced differently — for example, a
           second warehouse with its own margin.
         </p>
+        {notFoundSourceId ? (
+          <p className="pricing-sync__field-error" id="conn-source-not-found" role="status">
+            The linked source isn&apos;t one of this connection&apos;s current sources, so nothing
+            was pre-selected below.
+          </p>
+        ) : null}
         <div className="pricing-sync__source-list" id="conn-source-list">
           {draft.sources.map((source) => {
             const isCustom = customSources.has(source.sourceConnectionId);

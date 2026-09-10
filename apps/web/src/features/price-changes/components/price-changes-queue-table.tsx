@@ -62,6 +62,7 @@ import { AcceptPriceChangeDialog } from './accept-price-change-dialog';
 import { EditPriceChangeDialog } from './edit-price-change-dialog';
 import { BulkAcceptPriceChangesDialog } from './bulk-accept-price-changes-dialog';
 import { BulkPublishProgress } from './bulk-publish-progress';
+import { PricingRulesPickerDialog } from './pricing-rules-picker-dialog';
 import type { PriceChangeItem } from '../api/price-changes.types';
 import {
   STEEP_DELTA_TOOLTIP,
@@ -140,9 +141,13 @@ export function PriceChangesQueueTable(): ReactElement {
   const [activeBatch, setActiveBatch] = useState<{ id: string; items: PriceChangeItem[] } | null>(null);
 
   const connectionsQuery = useConnectionsQuery();
+  // Also feeds the #3150 rules picker: rules live on any DESTINATION
+  // (OfferManager or ProductPublisher), the same predicate the connection
+  // filter chips above already use — one declaration, not a second copy.
   const destinationConnections = (connectionsQuery.data ?? []).filter((c) =>
     DESTINATION_CAPABILITIES.some((cap) => c.enabledCapabilities.includes(cap)),
   );
+  const [pricingRulesPickerOpen, setPricingRulesPickerOpen] = useState(false);
 
   function setConnectionFilter(next: string): void {
     setSelected(new Set());
@@ -494,12 +499,26 @@ export function PriceChangesQueueTable(): ReactElement {
           independently-reviewable change on every marketplace or shop it&apos;s published to. Prices
           include VAT.
         </p>
+        <Button
+          tone="secondary"
+          className="button--sm"
+          id="btn-pricing-rules"
+          onClick={() => setPricingRulesPickerOpen(true)}
+        >
+          Pricing rules
+        </Button>
         {hasQueueFilters ? (
           <Button tone="ghost" className="button--sm" onClick={clearQueueFilters}>
             Clear filters
           </Button>
         ) : null}
       </div>
+
+      <PricingRulesPickerDialog
+        open={pricingRulesPickerOpen}
+        onOpenChange={setPricingRulesPickerOpen}
+        destinationConnections={destinationConnections}
+      />
 
       <div className="filter-bar" role="group" aria-label="Filter by connection">
         <span className="filter-bar__label">Connection</span>
@@ -691,7 +710,7 @@ export function PriceChangesQueueTable(): ReactElement {
                           <Link
                             className="connection-tag"
                             data-testid="row-connection-tag"
-                            to={`/connections/${item.destinationConnectionId}`}
+                            to={`/connections/${item.destinationConnectionId}/pricing-sync`}
                           >
                             {item.destinationLabel}
                           </Link>
