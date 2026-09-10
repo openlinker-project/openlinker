@@ -56,8 +56,19 @@ function groupKeyFor(item: PriceChangeItem): string {
   return `${item.productVariantId}:${item.sourceConnectionId}:${item.sourceOldAmount}:${item.sourceNewAmount}`;
 }
 
-export function PriceChangesQueueTable(): ReactElement {
-  const [connectionFilter, setConnectionFilter] = useState<string>('all');
+export interface PriceChangesQueueTableProps {
+  /**
+   * Pre-selects the connection chip — used by the connection settings page's
+   * "N changes waiting — review them" deep link (#3149), which lands here
+   * with `?view=queue&connectionId=...` already pre-filtered.
+   */
+  initialConnectionId?: string;
+}
+
+export function PriceChangesQueueTable({
+  initialConnectionId,
+}: PriceChangesQueueTableProps = {}): ReactElement {
+  const [connectionFilter, setConnectionFilter] = useState<string>(initialConnectionId ?? 'all');
   const [directionFilter, setDirectionFilter] = useState<'all' | 'up' | 'down'>('all');
   const [magnitudeOnly, setMagnitudeOnly] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());

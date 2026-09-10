@@ -18,6 +18,7 @@ import {
 } from './edit-connection.schema';
 import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
+import { PricingAndSyncSection } from './pricing-and-sync-section';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -822,6 +823,14 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         syncStockPolicyToJson={syncStockPolicyToJson}
         syncPricingRuleToJson={syncPricingRuleToJson}
       />
+
+      {/* #3149 — the opt-in recurring price propagation review queue's
+          per-connection settings. Gated the same way `needsMasterCatalog`
+          is: a viable destination is one that can either list marketplace
+          offers or publish shop products. Self-contained (its own fetch +
+          Save/Discard) rather than participating in this form — see the
+          component's own docblock for why. */}
+      {needsMasterCatalog ? <PricingAndSyncSection connectionId={connection.id} /> : null}
 
       <div className="config-panel__toggle">
         <Button

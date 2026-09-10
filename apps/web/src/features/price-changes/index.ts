@@ -19,6 +19,8 @@ export type {
   UpdatePricingSyncInput,
   PricingRule,
 } from './api/pricing-sync.types';
+export { useConnectionPricingSyncQuery } from './hooks/use-connection-pricing-sync-query';
+export { useUpdateConnectionPricingSyncMutation } from './hooks/use-update-connection-pricing-sync-mutation';
 export { usePriceChangesQuery } from './hooks/use-price-changes-query';
 export { useAutoAppliedPriceChangesQuery } from './hooks/use-auto-applied-price-changes-query';
 export { useAcceptPriceChangeMutation } from './hooks/use-accept-price-change-mutation';
@@ -33,6 +35,9 @@ export type {
   PriceChangeListResponse,
   ListPriceChangesFilters,
   PriceChangeAutoAppliedItem,
+  PriceSyncMode,
+  PricingRuleType,
+  PriceRoundingMode,
 } from './api/price-changes.types';
 export { priceChangesQueryKeys } from './api/price-changes.query-keys';
 export {
