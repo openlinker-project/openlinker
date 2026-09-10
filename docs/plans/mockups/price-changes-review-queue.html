@@ -1,0 +1,1416 @@
+<title>Price Changes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+    --bg-surface-elevated: oklch(22% 0.008 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+    --bg-strong: oklch(28% 0.010 270);
+    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+    --border-focus: oklch(72% 0.18 50);
+    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(60% 0.012 270);
+    --text-disabled: oklch(42% 0.012 270); --text-inverse: oklch(20% 0.012 80); --text-on-primary: oklch(16% 0.012 50);
+    --text-link: oklch(76% 0.14 245);
+    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50); --accent-primary-active: oklch(84% 0.16 50);
+    --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55);
+    --accent-ring: oklch(72% 0.18 50 / 0.40);
+    --status-success: oklch(68% 0.15 150); --status-success-soft: oklch(28% 0.06 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(84% 0.12 150);
+    --status-warning: oklch(78% 0.15 85); --status-warning-soft: oklch(30% 0.06 85); --status-warning-border: oklch(45% 0.10 85); --status-warning-fg: oklch(86% 0.13 85);
+    --status-error: oklch(68% 0.19 25); --status-error-soft: oklch(30% 0.07 25); --status-error-border: oklch(45% 0.12 25); --status-error-fg: oklch(84% 0.15 25);
+    --status-info: oklch(68% 0.14 245); --status-info-soft: oklch(28% 0.05 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(84% 0.10 245);
+    --status-disabled: oklch(55% 0.008 270); --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(38% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40); --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+    --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36); --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+    --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40); --shadow-focus: 0 0 0 3px var(--accent-ring);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+    --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem; --space-5: 1.5rem; --space-6: 2rem; --space-7: 3rem;
+    --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-pill: 9999px;
+    --tracking-caps: 0.08em; --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  * { box-sizing: border-box; min-width: 0; }
+  body { margin: 0; background: var(--bg-canvas); color: var(--text-primary); font-family: var(--font-sans); font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  button { font-family: inherit; }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  a { color: var(--text-link); }
+
+  .shell { display: grid; grid-template-columns: 240px 1fr; grid-template-rows: 52px 1fr; grid-template-areas: "topbar topbar" "nav main"; min-height: 100dvh; }
+  @media (max-width: 860px) { .shell { grid-template-columns: 0 1fr; } }
+
+  .topbar { grid-area: topbar; display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-4); background: var(--bg-shell); border-bottom: 1px solid var(--border-subtle); position: relative; z-index: 20; overflow: hidden; }
+  .topbar__brand, .topbar__env, .topbar__icons, .user-chip, .hamburger-btn { flex-shrink: 0; }
+  .hamburger-btn { display: none; }
+  @media (max-width: 860px) { .hamburger-btn { display: grid; } }
+  .topbar__brand { display: flex; align-items: center; gap: var(--space-2); font-weight: 600; font-size: 13px; color: var(--text-primary); white-space: nowrap; }
+  .topbar__brand-mark { width: 20px; height: 20px; border-radius: var(--radius-sm); background: var(--accent-primary); display: grid; place-items: center; color: var(--text-on-primary); font-weight: 700; font-size: 11px; flex-shrink: 0; }
+  .topbar__env { font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 2px 6px; white-space: nowrap; }
+  @media (max-width: 640px) { .topbar__env { display: none; } }
+  .topbar__spacer { flex: 1 1 auto; min-width: var(--space-3); }
+  .topbar__search { display: none; }
+  @media (min-width: 760px) { .topbar__search { display: flex; align-items: center; gap: var(--space-2); width: 240px; flex-shrink: 1; min-width: 120px; background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 0 var(--space-3); height: 30px; color: var(--text-muted); font-size: 12px; overflow: hidden; } }
+  .topbar__search-icon { width: 14px; height: 14px; flex-shrink: 0; display: block; }
+  .topbar__search-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topbar__search-shortcut { margin-left: auto; flex-shrink: 0; font-family: var(--font-mono); font-size: 10px; border: 1px solid var(--border-default); border-radius: var(--radius-xs); padding: 1px 4px; color: var(--text-disabled); }
+  .topbar__icons { display: flex; align-items: center; gap: var(--space-2); position: relative; }
+  .icon-btn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--radius-md); border: 1px solid transparent; background: transparent; color: var(--text-secondary); cursor: pointer; position: relative; flex-shrink: 0; }
+  .icon-btn:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .icon-btn:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
+  .icon-btn svg { width: 16px; height: 16px; display: block; flex-shrink: 0; }
+  .icon-btn__badge { position: absolute; top: 2px; right: 2px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: var(--radius-pill); background: var(--accent-primary); color: var(--text-on-primary); font-family: var(--font-mono); font-size: 9px; font-weight: 700; display: grid; place-items: center; box-shadow: 0 0 0 2px var(--bg-shell); }
+  .user-chip { display: flex; align-items: center; gap: var(--space-2); padding: 4px 8px 4px 4px; border-radius: var(--radius-pill); border: 1px solid var(--border-default); background: var(--bg-surface); cursor: pointer; }
+  .user-chip__avatar { width: 22px; height: 22px; border-radius: 999px; background: var(--bg-strong); display: grid; place-items: center; font-size: 10px; font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
+  .user-chip__name { font-size: 12px; font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
+  @media (max-width: 640px) { .user-chip { padding: 0; border: none; background: transparent; } .user-chip__name { display: none; } }
+
+  .bell-panel { position: absolute; top: calc(100% + 8px); right: var(--space-3); width: 360px; max-width: calc(100vw - 24px); background: var(--bg-surface-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); z-index: 30; overflow: hidden; opacity: 0; transform: translateY(-4px) scale(0.98); pointer-events: none; transition: opacity 0.14s var(--ease-out), transform 0.14s var(--ease-out); }
+  .bell-panel.is-open { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+  .bell-panel__head { display: flex; align-items: center; justify-content: space-between; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+  .bell-panel__head h3 { margin: 0; font-size: 13px; font-weight: 600; }
+  .bell-panel__list { max-height: 280px; overflow-y: auto; }
+  .bell-item { display: flex; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); }
+  .bell-item:last-child { border-bottom: none; }
+  .bell-item__dot { width: 6px; height: 6px; border-radius: 999px; margin-top: 6px; flex-shrink: 0; background: var(--status-warning); }
+  .bell-item__body { display: grid; gap: 2px; min-width: 0; flex: 1; }
+  .bell-item__title { font-size: 12.5px; color: var(--text-primary); }
+  .bell-item__title b { font-weight: 600; }
+  .bell-item__meta { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); display: flex; align-items: center; gap: 6px; }
+  .bell-panel__foot { padding: var(--space-2) var(--space-4) var(--space-3); }
+  .bell-panel__foot .button { width: 100%; }
+
+  .nav { grid-area: nav; background: var(--bg-shell); border-right: 1px solid var(--border-subtle); padding: var(--space-4) var(--space-3); overflow-y: auto; }
+  @media (max-width: 860px) { .nav { position: fixed; top: 52px; left: 0; bottom: 0; width: min(260px, 78vw); z-index: 41; box-shadow: var(--shadow-overlay); transform: translateX(-100%); transition: transform 0.2s var(--ease-out); } .nav.is-open { transform: translateX(0); } }
+  .nav-scrim { display: none; }
+  @media (max-width: 860px) { .nav-scrim { display: block; position: fixed; inset: 52px 0 0 0; background: rgb(0 0 0 / 0.5); z-index: 40; opacity: 0; pointer-events: none; transition: opacity 0.2s var(--ease-out); } .nav-scrim.is-open { opacity: 1; pointer-events: auto; } }
+  .nav__group { margin-bottom: var(--space-5); }
+  .nav__group-label { font-size: 10px; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); padding: 0 var(--space-2); margin-bottom: var(--space-2); }
+  .nav__item { display: flex; align-items: center; gap: var(--space-3); padding: 7px var(--space-2); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 13px; font-weight: 500; text-decoration: none; cursor: pointer; position: relative; }
+  .nav__item svg { width: 15px; height: 15px; flex-shrink: 0; opacity: 0.85; }
+  .nav__item:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .nav__item.is-active { background: var(--bg-surface-muted); color: var(--text-primary); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent-primary); }
+  .nav__item-badge { margin-left: auto; font-family: var(--font-mono); font-size: 10px; font-weight: 700; background: var(--status-warning-soft); color: var(--status-warning-fg); border: 1px solid var(--status-warning-border); border-radius: var(--radius-pill); padding: 0 5px; line-height: 15px; }
+
+  .main { grid-area: main; overflow-y: auto; }
+  .page { max-width: 1200px; margin: 0 auto; padding: var(--space-5) var(--space-5) var(--space-7); }
+  @media (max-width: 700px) { .page { padding: var(--space-4) var(--space-3) var(--space-6); } }
+
+  .crumb { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); margin-bottom: var(--space-3); }
+  .crumb a { color: var(--text-muted); text-decoration: none; cursor: pointer; }
+  .crumb a:hover { color: var(--text-primary); }
+  .crumb__current { color: var(--text-secondary); }
+
+  .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
+  .page-header h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: -0.012em; }
+  .page-header p { margin: 0; font-size: 13px; color: var(--text-secondary); max-width: 62ch; }
+
+  .tabs-list { display: flex; gap: var(--space-5); border-bottom: 1px solid var(--border-default); margin-bottom: var(--space-4); overflow-x: auto; }
+  .tabs-trigger { border: none; background: transparent; padding: 0 0 10px; font-size: 13px; font-weight: 500; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 7px; position: relative; top: 1px; white-space: nowrap; }
+  .tabs-trigger:hover { color: var(--text-primary); }
+  .tabs-trigger.is-active { color: var(--text-primary); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent-primary); }
+  .tabs-trigger__count { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; background: var(--status-warning-soft); color: var(--status-warning-fg); border: 1px solid var(--status-warning-border); border-radius: var(--radius-pill); padding: 1px 6px; }
+
+  .tab-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
+  .tab-toolbar p { margin: 0; font-size: 12.5px; color: var(--text-secondary); max-width: 62ch; }
+  .tab-toolbar__actions { display: flex; gap: var(--space-2); flex-shrink: 0; flex-wrap: wrap; }
+  @media (max-width: 480px) { .tab-toolbar__actions { width: 100%; } .tab-toolbar__actions .button { flex: 1; } }
+
+  .preview-strip { display: flex; align-items: center; gap: var(--space-3); border: 1px dashed var(--border-strong); border-radius: var(--radius-md); padding: 7px var(--space-3); margin-bottom: var(--space-4); flex-wrap: wrap; }
+  .preview-strip__label { font-size: 10px; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-disabled); white-space: nowrap; }
+  .preview-strip__options { display: flex; gap: 2px; background: var(--bg-canvas); border-radius: var(--radius-sm); padding: 2px; flex-wrap: wrap; }
+  .preview-strip__opt { border: none; background: transparent; padding: 4px 10px; border-radius: 4px; font-size: 11.5px; font-weight: 500; color: var(--text-muted); cursor: pointer; }
+  .preview-strip__opt.is-active { background: var(--bg-surface-hover); color: var(--text-primary); }
+
+  .button { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: 32px; padding: 0 var(--space-4); border-radius: var(--radius-md); font-size: 12.5px; font-weight: 600; border: 1px solid transparent; cursor: pointer; white-space: nowrap; background: var(--accent-primary); color: var(--text-on-primary); box-shadow: var(--shadow-xs), var(--shadow-inset-top); }
+  .button:hover { background: var(--accent-primary-hover); }
+  .button:active { background: var(--accent-primary-active); }
+  .button:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
+  .button--secondary { background: var(--bg-surface); color: var(--text-primary); border-color: var(--border-default); box-shadow: var(--shadow-xs); }
+  .button--secondary:hover { background: var(--bg-surface-hover); border-color: var(--border-strong); }
+  .button--ghost { background: transparent; color: var(--text-secondary); border-color: transparent; box-shadow: none; }
+  .button--ghost:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .button--sm { height: 26px; padding: 0 var(--space-3); font-size: 12px; border-radius: var(--radius-sm); }
+  .button--xs { height: 24px; padding: 0 9px; font-size: 11.5px; border-radius: var(--radius-sm); gap: 4px; }
+  .button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .alert { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--status-info-border); background: var(--status-info-soft); box-shadow: inset 3px 0 0 var(--status-info); border-radius: var(--radius-md); margin-bottom: var(--space-4); flex-wrap: wrap; }
+  .alert__content { display: grid; gap: 2px; }
+  .alert__title { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+  .alert__body { font-size: 12.5px; color: var(--text-secondary); }
+
+  .filter-bar { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2); align-items: center; }
+  .filter-bar__label { font-size: 10.5px; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-disabled); margin-right: 2px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: var(--radius-pill); border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary); font-size: 12px; font-weight: 500; cursor: pointer; }
+  .chip:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+  .chip.chip--active { background: var(--accent-primary-soft); border-color: color-mix(in oklab, var(--accent-primary) 35%, transparent); color: var(--accent-primary-soft-strong); }
+  .chip__count { font-family: var(--font-mono); font-size: 10.5px; opacity: 0.85; }
+  .filter-note { font-size: 11.5px; color: var(--text-muted); margin-bottom: var(--space-3); }
+  .filter-note a { cursor: pointer; }
+
+  .table-wrap { border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface); overflow: hidden; }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 900px; }
+  thead th { text-align: left; font-size: 10.5px; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); padding: 10px var(--space-4); border-bottom: 1px solid var(--border-default); background: var(--bg-surface-muted); white-space: nowrap; }
+  th .th-sub { font-family: var(--font-mono); font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text-disabled); font-size: 10px; margin-left: 4px; }
+  th.col-num, td.col-num { text-align: right; }
+  tbody td { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--bg-surface-hover); }
+  tbody tr.is-resolved td { background: var(--bg-canvas); }
+  tbody tr.is-resolved { opacity: 0.55; }
+  tbody tr.is-group-start td { border-top: 1px solid var(--border-default); }
+  tbody tr.is-group-start:first-child td { border-top: none; }
+  tbody tr.is-grouped td:first-child { box-shadow: inset 3px 0 0 var(--accent-primary-border); }
+  tbody tr.is-flagged td { background: color-mix(in oklab, var(--status-warning-soft) 55%, transparent); }
+  tbody tr.is-publishing td { background: color-mix(in oklab, var(--accent-primary-soft) 60%, transparent); }
+
+  input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent-primary); cursor: pointer; }
+
+  .cell-product { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+  .thumb { width: 32px; height: 32px; border-radius: var(--radius-sm); background: var(--bg-strong); display: grid; place-items: center; color: var(--text-muted); flex-shrink: 0; font-size: 13px; }
+  .cell-product__text { min-width: 0; }
+  .cell-product__name { font-size: 12.5px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 24ch; }
+  .cell-product__sku { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+  .cell-product__source { font-size: 10.5px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 2px; white-space: nowrap; }
+  .cell-product__source b { color: var(--text-secondary); font-weight: 500; }
+
+  .cell-continuation { display: flex; align-items: center; gap: 8px; padding-left: 44px; color: var(--text-muted); font-size: 12px; }
+  .cell-continuation svg { width: 12px; height: 12px; flex-shrink: 0; opacity: 0.7; }
+  .cell-continuation__help {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px; border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    font-size: 10px; font-weight: 600; color: var(--text-disabled);
+    flex-shrink: 0;
+  }
+
+  .connection-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; color: var(--text-secondary); background: var(--bg-surface-muted); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 3px 8px; white-space: nowrap; cursor: pointer; }
+  .connection-tag:hover { border-color: var(--border-strong); color: var(--text-primary); }
+
+  .price-compare { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; flex-wrap: wrap; }
+  .price-compare__old { color: var(--text-muted); text-decoration: line-through; font-size: 12px; }
+  .price-compare__new { color: var(--text-primary); font-weight: 600; font-size: 13px; }
+  .price-compare__raw { color: var(--text-disabled); font-size: 10.5px; text-decoration: line-through; margin-left: 2px; }
+  .delta-chip { display: inline-flex; align-items: center; gap: 3px; font-family: var(--font-mono); font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: var(--radius-sm); margin-left: 2px; }
+  .delta-chip--down { background: var(--status-info-soft); color: var(--status-info-fg); border: 1px solid var(--status-info-border); }
+  .delta-chip--up { background: var(--status-info-soft); color: var(--status-info-fg); border: 1px solid var(--status-info-border); }
+  .delta-chip--steep { background: var(--status-warning-soft); color: var(--status-warning-fg); border: 1px solid var(--status-warning-border); }
+
+  .row-actions { display: flex; gap: 5px; justify-content: flex-end; flex-wrap: wrap; }
+
+  .status-note { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); white-space: normal; text-align: right; justify-content: flex-end; }
+  .status-note svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .status-note--accepted { color: var(--status-success-fg); }
+  .status-note--custom { color: var(--status-info-fg); }
+  .status-note .undo { color: var(--text-link); cursor: pointer; font-weight: 500; margin-left: 2px; border: none; background: none; padding: 0; font-family: inherit; font-size: inherit; }
+  .status-note__who { display: block; font-size: 10.5px; color: var(--text-muted); font-weight: 400; }
+  .status-note--publishing { color: var(--accent-primary-soft-strong); }
+
+  .refresh-note { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .refresh-note__text { font-size: 11.5px; color: var(--status-warning-fg); text-align: right; max-width: 220px; }
+
+  time { color: var(--text-muted); font-family: var(--font-mono); font-size: 11.5px; white-space: nowrap; }
+
+  .table-notice { padding: var(--space-6) var(--space-4); text-align: center; color: var(--text-muted); font-size: 12.5px; }
+  .table-notice a { cursor: pointer; }
+
+  .skeleton-bar { height: 10px; border-radius: var(--radius-xs); background: linear-gradient(90deg, var(--bg-surface-muted) 25%, var(--bg-surface-hover) 50%, var(--bg-surface-muted) 75%); background-size: 200% 100%; animation: skeleton-shimmer 1.4s ease-in-out infinite; }
+  @keyframes skeleton-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .skeleton-bar { animation: none; background: var(--bg-surface-muted); } }
+  .skeleton-thumb { width: 32px; height: 32px; border-radius: var(--radius-sm); flex-shrink: 0; background: var(--bg-surface-muted); }
+
+  .state-panel { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-3); padding: var(--space-7) var(--space-5); border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface); }
+  .state-panel__icon { width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; flex-shrink: 0; }
+  .state-panel__icon svg { width: 20px; height: 20px; }
+  .state-panel--empty .state-panel__icon { background: var(--status-success-soft); color: var(--status-success-fg); }
+  .state-panel--error .state-panel__icon { background: var(--status-error-soft); color: var(--status-error-fg); }
+  .state-panel h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  .state-panel p { margin: 0; font-size: 12.5px; color: var(--text-secondary); max-width: 40ch; }
+
+  .bulk-action-bar { position: sticky; bottom: var(--space-4); margin-top: var(--space-4); display: flex; align-items: center; gap: var(--space-4); background: var(--bg-surface-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); padding: var(--space-3) var(--space-4); opacity: 0; transform: translateY(4px); pointer-events: none; transition: opacity 0.16s var(--ease-out), transform 0.16s var(--ease-out); flex-wrap: wrap; }
+  .bulk-action-bar.is-visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .bulk-action-bar__count { font-size: 13px; }
+  .bulk-action-bar__count b { font-weight: 600; }
+  .bulk-action-bar__actions { margin-left: auto; display: flex; gap: var(--space-2); }
+  @media (max-width: 460px) { .bulk-action-bar { justify-content: center; } .bulk-action-bar__actions { margin-left: 0; width: 100%; } .bulk-action-bar__actions .button { flex: 1; } }
+
+  /* Publish-progress widget — decision: bulk accept shows a live queue, not a
+     silent background apply, so the operator can see a large batch working
+     through each connection's own rate limit. */
+  .publish-progress { position: sticky; bottom: var(--space-4); margin-top: var(--space-4); background: var(--bg-surface-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); padding: var(--space-3) var(--space-4); display: none; }
+  .publish-progress.is-active { display: block; }
+  .publish-progress__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: 8px; }
+  .publish-progress__title { font-size: 12.5px; font-weight: 600; }
+  .publish-progress__count { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); }
+  .publish-progress__track { height: 6px; border-radius: var(--radius-pill); background: var(--bg-strong); overflow: hidden; margin-bottom: 8px; }
+  .publish-progress__fill { height: 100%; background: var(--accent-primary); border-radius: var(--radius-pill); transition: width 0.25s var(--ease-out); width: 0%; }
+  .publish-progress__lanes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .publish-progress__lane { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary); background: var(--bg-surface-muted); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 3px 8px; }
+  .publish-progress__lane b { color: var(--text-primary); font-weight: 600; }
+  .publish-progress__lane.is-done { color: var(--status-success-fg); border-color: var(--status-success-border); }
+
+  .dialog__overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.55); z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.15s var(--ease-out); }
+  .dialog__overlay.is-open { opacity: 1; pointer-events: auto; }
+  .dialog__content { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -48%) scale(0.98); width: min(500px, calc(100vw - 32px)); max-height: calc(100dvh - 64px); display: flex; flex-direction: column; background: var(--bg-surface-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); z-index: 51; opacity: 0; pointer-events: none; transition: opacity 0.16s var(--ease-out), transform 0.16s var(--ease-out); }
+  .dialog__content.is-open { opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; }
+  .dialog__content--wide { width: min(640px, calc(100vw - 32px)); }
+  .dialog__head { padding: var(--space-4) var(--space-4) var(--space-3); border-bottom: 1px solid var(--border-subtle); }
+  .dialog__title { margin: 0; font-size: 15px; font-weight: 600; }
+  .dialog__desc { margin: 4px 0 0; font-size: 12.5px; color: var(--text-secondary); }
+  .dialog__body { padding: var(--space-4); overflow-y: auto; display: grid; gap: var(--space-4); }
+  .dialog__footer { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); flex-wrap: wrap; }
+  @media (max-width: 420px) { .dialog__footer { flex-direction: column-reverse; } .dialog__footer .button { width: 100%; } }
+
+  .price-hero { display: flex; align-items: center; justify-content: center; gap: var(--space-3); padding: var(--space-4); background: var(--bg-surface-muted); border-radius: var(--radius-md); flex-wrap: wrap; }
+  .price-hero__block { text-align: center; }
+  .price-hero__label { font-size: 10.5px; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; }
+  .price-hero__value { font-size: 20px; font-weight: 600; font-family: var(--font-mono); }
+  .price-hero__value--old { color: var(--text-muted); text-decoration: line-through; font-weight: 500; }
+  .price-hero__value--new { color: var(--status-success-fg); }
+  .price-hero__arrow { color: var(--text-muted); font-size: 16px; }
+
+  .rule-note { font-size: 12px; color: var(--text-secondary); background: var(--bg-surface-muted); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 8px 10px; }
+  .rule-note b { color: var(--text-primary); font-weight: 600; }
+  .rule-note--muted { color: var(--text-muted); background: transparent; border-style: dashed; }
+
+  .mini-list { display: grid; gap: 6px; max-height: 220px; overflow-y: auto; padding-right: 2px; }
+  .mini-row { display: flex; align-items: center; gap: var(--space-3); padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-surface-muted); }
+  .mini-row__text { min-width: 0; flex: 1; }
+  .mini-row__name { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini-row__meta { font-size: 11px; color: var(--text-muted); }
+  .mini-row__price { font-family: var(--font-mono); font-size: 11.5px; white-space: nowrap; }
+  .mini-row__price s { color: var(--text-muted); margin-right: 4px; }
+
+  .opt-in-check { display: flex; align-items: flex-start; gap: 10px; padding: var(--space-3); border: 1px solid var(--accent-primary-border); background: var(--accent-primary-soft); border-radius: var(--radius-md); }
+  .opt-in-check input { margin-top: 2px; }
+  .opt-in-check__title { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+  .opt-in-check__desc { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; }
+
+  .field { display: grid; gap: 5px; }
+  .field__label { font-size: 11.5px; font-weight: 600; color: var(--text-secondary); }
+  .field__price-input { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border-default); background: var(--bg-surface); border-radius: var(--radius-md); padding: 0 var(--space-3); height: 36px; }
+  .field__price-input:focus-within { box-shadow: var(--shadow-focus); border-color: var(--border-focus); }
+  .field__price-input.has-error { border-color: var(--status-error-border); }
+  .field__currency { font-size: 12px; color: var(--text-muted); flex-shrink: 0; }
+  .field__price-input input { border: none; background: transparent; outline: none; font-family: var(--font-mono); font-size: 15px; font-weight: 600; color: var(--text-primary); width: 100%; padding: 0; font-variant-numeric: tabular-nums; }
+  .field__hint { font-size: 11px; color: var(--text-muted); }
+  .field__hint button { border: none; background: none; padding: 0; margin: 0; color: var(--text-link); font-size: 11px; font-weight: 500; cursor: pointer; }
+  .field__feedback { font-size: 11.5px; font-family: var(--font-mono); color: var(--text-secondary); min-height: 15px; }
+  .field__feedback--warn { color: var(--status-warning-fg); font-family: var(--font-sans); }
+  .field__feedback--error { color: var(--status-error-fg); font-family: var(--font-sans); }
+  .field__link-row { font-size: 11.5px; color: var(--text-muted); }
+  .field__link-row a { cursor: pointer; }
+  select.field__select { height: 32px; border-radius: var(--radius-md); border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-primary); font-size: 12.5px; padding: 0 8px; }
+  select.field__select:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
+
+
+  .conn-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); }
+  .conn-head__icon { width: 40px; height: 40px; border-radius: var(--radius-md); background: var(--bg-surface-muted); border: 1px solid var(--border-default); display: grid; place-items: center; font-size: 15px; font-weight: 700; color: var(--text-secondary); flex-shrink: 0; }
+  .conn-head__name { font-size: 18px; font-weight: 600; }
+  .conn-head__platform { font-size: 11.5px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 1px; }
+
+  .settings-section { border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--bg-surface); padding: var(--space-4); margin-bottom: var(--space-4); position: relative; }
+  .settings-section__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-3); }
+  .settings-section h2 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+  .settings-section__desc { margin: 0; font-size: 12.5px; color: var(--text-secondary); max-width: 56ch; }
+
+  .mode-switch { display: inline-flex; gap: 2px; background: var(--bg-canvas); border-radius: var(--radius-md); padding: 3px; border: 1px solid var(--border-default); }
+  .mode-switch--sm { padding: 2px; }
+  .mode-switch__opt { border: none; background: transparent; padding: 6px 12px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 500; color: var(--text-secondary); cursor: pointer; }
+  .mode-switch--sm .mode-switch__opt { padding: 4px 9px; font-size: 11.5px; }
+  .mode-switch__opt.is-active { background: var(--bg-surface-hover); color: var(--text-primary); box-shadow: var(--shadow-xs); }
+  .mode-switch__hint { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+
+  .rule-editor-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-3); }
+  .rule-editor-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--space-3); margin-top: var(--space-3); padding: var(--space-3); background: var(--bg-surface-muted); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+
+  .settings-section__pending { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--status-warning-fg); margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border-subtle); flex-wrap: wrap; }
+  .settings-section__pending a { color: var(--status-warning-fg); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+  .settings-section__pending svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+  .unsaved-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-4); padding: var(--space-3); background: var(--accent-primary-soft); border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md); flex-wrap: wrap; }
+  .unsaved-bar__text { font-size: 12.5px; color: var(--text-primary); font-weight: 500; }
+  .unsaved-bar__actions { display: flex; gap: var(--space-2); }
+
+  .activity-list { display: grid; gap: 8px; }
+  .activity-row { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 12px; color: var(--text-secondary); }
+  .activity-row time { flex-shrink: 0; }
+  .activity-empty { font-size: 12px; color: var(--text-muted); }
+
+  /* Per-source override rows — the point of this pass: a destination
+     connection can receive prices from more than one source connection,
+     and each (source → destination) pair can carry its own rule. */
+  .source-list { display: grid; gap: var(--space-3); }
+  .source-row { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-3); background: var(--bg-surface-muted); }
+  .source-row__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+  .source-row__name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+  .source-row__toggle { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-secondary); cursor: pointer; }
+  .source-row__summary { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
+  .source-row__summary b { color: var(--text-secondary); font-weight: 500; }
+  .source-row__body { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border-subtle); display: grid; gap: var(--space-3); }
+  .source-row__body-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: var(--space-3); }
+
+  .switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; border-radius: var(--radius-pill); background: var(--bg-strong); border: 1px solid var(--border-strong); cursor: pointer; }
+  .switch__thumb { position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; border-radius: 999px; background: var(--text-secondary); transition: transform 0.14s var(--ease-out), background 0.14s var(--ease-out); }
+  .switch.is-on { background: var(--accent-primary-soft); border-color: var(--accent-primary-border); }
+  .switch.is-on .switch__thumb { transform: translateX(16px); background: var(--accent-primary); }
+  .switch:focus-visible { box-shadow: var(--shadow-focus); outline: none; }
+
+  .toast-stack { position: fixed; bottom: var(--space-5); right: var(--space-5); display: flex; flex-direction: column; gap: var(--space-2); z-index: 60; width: min(340px, calc(100vw - 32px)); }
+  @media (max-width: 480px) { .toast-stack { left: var(--space-3); right: var(--space-3); width: auto; bottom: var(--space-3); } }
+  .toast { background: var(--bg-surface-elevated); border: 1px solid var(--border-default); border-left: 3px solid var(--status-success); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); padding: 10px 12px; font-size: 12.5px; display: flex; align-items: center; gap: 10px; animation: toast-in 0.18s var(--ease-out); }
+  .toast__msg { flex: 1; }
+  .toast .undo { color: var(--text-link); font-weight: 600; cursor: pointer; flex-shrink: 0; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  .stub-panel { border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); padding: var(--space-6) var(--space-5); text-align: center; color: var(--text-muted); font-size: 12.5px; }
+
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="shell">
+  <header class="topbar">
+    <button class="icon-btn hamburger-btn" id="hamburger-btn" aria-label="Open navigation" aria-expanded="false">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 4.5h12M2 8h12M2 11.5h12"/></svg>
+    </button>
+    <div class="topbar__brand"><span class="topbar__brand-mark">OL</span>OpenLinker</div>
+    <span class="topbar__env">production</span>
+    <div class="topbar__spacer"></div>
+    <div class="topbar__search" aria-hidden="true">
+      <svg class="topbar__search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="5"/><line x1="11" y1="11" x2="14.5" y2="14.5"/></svg>
+      <span class="topbar__search-text">Search…</span>
+      <span class="topbar__search-shortcut">⌘K</span>
+    </div>
+    <div class="topbar__icons">
+      <button class="icon-btn" id="bell-btn" aria-haspopup="true" aria-expanded="false" aria-label="Notifications, unread price changes">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5a4 4 0 0 1 8 0c0 3 1 4 1 4H3s1-1 1-4Z"/><path d="M6.5 12.5a1.5 1.5 0 0 0 3 0"/></svg>
+        <span class="icon-btn__badge" id="bell-badge">8</span>
+      </button>
+      <div class="bell-panel" id="bell-panel" data-state="bell-panel" role="dialog" aria-label="Notifications">
+        <div class="bell-panel__head"><h3>Price changes</h3><span class="mono" id="bell-panel-count" style="font-size:11px;color:var(--text-muted)">8 waiting</span></div>
+        <div class="bell-panel__list" id="bell-panel-list"></div>
+        <div class="bell-panel__foot"><button class="button button--secondary button--sm" id="bell-view-all">View all in Listings</button></div>
+      </div>
+      <div class="user-chip"><span class="user-chip__avatar">NK</span><span class="user-chip__name">Norbert</span></div>
+    </div>
+  </header>
+
+  <div class="nav-scrim" id="nav-scrim"></div>
+  <nav class="nav" id="nav" aria-label="Primary">
+    <div class="nav__group">
+      <div class="nav__group-label">Operations</div>
+      <a class="nav__item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13V7M6.5 13V3M11 13V9M15 13v-4"/></svg>Analytics</a>
+      <a class="nav__item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8h4l1.5-4 3 8L12 8h2"/></svg>Insights</a>
+      <a class="nav__item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 6.5h12"/></svg>Orders</a>
+      <a class="nav__item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 5 8 2l6 3v6l-6 3-6-3Z"/><path d="M2 5l6 3 6-3M8 8v6"/></svg>Products</a>
+      <a class="nav__item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5.5" r="2.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/></svg>Customers</a>
+      <a class="nav__item" id="nav-listings"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2 2 5v6l6 3 6-3V5Z"/><path d="M2 5l6 3 6-3"/></svg>Listings<span class="nav__item-badge" id="nav-listings-badge">8</span></a>
+      <a class="nav__item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="12" height="7" rx="1"/><path d="M5 6V4.5A1.5 1.5 0 0 1 6.5 3h3A1.5 1.5 0 0 1 11 4.5V6"/></svg>Shipments</a>
+      <a class="nav__item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="2" width="10" height="12" rx="1"/><path d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3"/></svg>Invoices</a>
+    </div>
+    <div class="nav__group">
+      <div class="nav__group-label">Diagnostics</div>
+      <a class="nav__item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>Jobs &amp; Logs</a>
+      <a class="nav__item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8h4M10 8h4M6 4l2 4-2 4"/></svg>Webhooks</a>
+      <a class="nav__item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2Z"/><path d="M8 5v3l2 1.5"/></svg>Cursors</a>
+    </div>
+    <div class="nav__group">
+      <div class="nav__group-label">Platform</div>
+      <a class="nav__item" id="nav-connections"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="5.5" cy="5.5" r="2"/><circle cx="10.5" cy="10.5" r="2"/><path d="M7 7l2 2"/></svg>Connections</a>
+      <a class="nav__item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>Adapters</a>
+      <a class="nav__item"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2"/><path d="M8 2v1.5M8 12.5V14M14 8h-1.5M3.5 8H2M12.1 3.9l-1 1M4.9 11.1l-1 1M12.1 12.1l-1-1M4.9 4.9l-1-1"/></svg>Settings</a>
+    </div>
+  </nav>
+
+  <main class="main">
+    <div class="page">
+
+      <!-- Placement note (decision, 2026-09): stays as a Listings tab
+           permanently — no follow-up promotion issue is planned. If real
+           usage volume ever argues otherwise, that is a fresh design
+           conversation, not a scheduled step of this epic. -->
+      <div id="page-listings" data-state="page-listings">
+        <div class="page-header"><div><h1>Listings</h1><p>See your listings, and review any prices that changed since you last published them.</p></div></div>
+
+        <div class="tabs-list" role="tablist" aria-label="Listings views">
+          <button class="tabs-trigger" id="tab-all" role="tab" aria-selected="false">All listings</button>
+          <button class="tabs-trigger is-active" id="tab-queue" role="tab" aria-selected="true">Price changes <span class="tabs-trigger__count" id="tab-queue-count">8</span></button>
+        </div>
+
+        <section id="view-all" hidden><div class="stub-panel">The regular listings table lives here — unchanged by this proposal.</div></section>
+
+        <section id="view-queue">
+          <div class="tab-toolbar">
+            <p>When a price changes in your shop, each place you sell it gets its own row here — so you can decide separately for Allegro, Erli, or your webshop. Prices include <b style="color:var(--text-primary)">VAT</b>.</p>
+            <div class="tab-toolbar__actions">
+              <button class="button button--secondary" id="btn-pricing-rules" title="See how prices are worked out for each connection, or change the rule">Pricing rules</button>
+            </div>
+          </div>
+
+          <div class="preview-strip">
+            <span class="preview-strip__label">Preview a state (for review only)</span>
+            <div class="preview-strip__options" role="tablist" aria-label="Preview state">
+              <button class="preview-strip__opt is-active" id="preview-live" data-preview="live">Live</button>
+              <button class="preview-strip__opt" id="preview-readonly" data-preview="readonly">Read-only</button>
+              <button class="preview-strip__opt" id="preview-loading" data-preview="loading">Loading</button>
+              <button class="preview-strip__opt" id="preview-empty" data-preview="empty">All caught up</button>
+              <button class="preview-strip__opt" id="preview-error" data-preview="error">Error</button>
+            </div>
+          </div>
+
+          <div id="queue-live" data-state="queue-live">
+            <div class="alert alert--info">
+              <div class="alert__content">
+                <div class="alert__title">3 of your channels ask before publishing</div>
+                <div class="alert__body">Allegro — PL, Erli — PL and WooCommerce — EU Store all wait for your OK before a new price goes live. You can also give one supplier or warehouse its own rule — open Pricing rules to check.</div>
+              </div>
+            </div>
+
+            <!-- Lightweight stand-in for a connection set to Automatic: a
+                 link to a simple list, not a dedicated summary screen. If
+                 that's ever not enough, a real digest view is a follow-up
+                 on its own, not something to half-build here. -->
+            <div class="filter-note" id="auto-applied-note" hidden>
+              <span id="auto-applied-count"></span> price changes went live automatically today (<a id="auto-applied-link">see them</a>)
+            </div>
+
+            <div class="filter-bar"><span class="filter-bar__label">Connection</span>
+              <button class="chip chip--active" id="filter-conn-all" data-testid="filter-conn" data-filter="all">All <span class="chip__count">8</span></button>
+              <button class="chip" id="filter-conn-allegro" data-testid="filter-conn" data-filter="Allegro — PL">Allegro — PL <span class="chip__count">4</span></button>
+              <button class="chip" id="filter-conn-erli" data-testid="filter-conn" data-filter="Erli — PL">Erli — PL <span class="chip__count">3</span></button>
+              <button class="chip" id="filter-conn-woocommerce" data-testid="filter-conn" data-filter="WooCommerce — EU Store">WooCommerce — EU Store <span class="chip__count">1</span></button>
+            </div>
+            <div class="filter-bar"><span class="filter-bar__label">Price change</span>
+              <button class="chip chip--active" id="filter-direction-all" data-testid="filter-direction" data-direction="all">All</button>
+              <button class="chip" id="filter-direction-up" data-testid="filter-direction" data-direction="up">↑ Increases</button>
+              <button class="chip" id="filter-direction-down" data-testid="filter-direction" data-direction="down">↓ Decreases</button>
+              <button class="chip" id="filter-magnitude-large" data-testid="filter-magnitude" data-magnitude="large">Big changes (10% or more)</button>
+            </div>
+            <div class="filter-note" id="stale-note">1 more change isn't shown here because that listing is paused (<a id="stale-note-link">why?</a>)</div>
+
+            <div class="table-wrap"><div class="table-scroll">
+              <table>
+                <thead><tr>
+                  <th style="width:36px"><input type="checkbox" id="select-all" aria-label="Select all"></th>
+                  <th>Product</th><th>Changed in</th><th>Connection</th>
+                  <th>Price on this connection <span class="th-sub">incl. VAT</span></th><th>Detected</th><th class="col-num">Action</th>
+                </tr></thead>
+                <tbody id="queue-body"></tbody>
+              </table>
+            </div></div>
+
+            <div class="bulk-action-bar" id="bulk-bar" data-state="bulk-action-bar">
+              <div class="bulk-action-bar__count"><b id="bulk-count">0</b> selected</div>
+              <div class="bulk-action-bar__actions"><button class="button button--secondary button--sm" id="bulk-ignore">Keep prices</button><button class="button button--sm" id="bulk-accept">Accept selected</button></div>
+            </div>
+
+            <div class="publish-progress" id="publish-progress" data-state="bulk-publish-progress">
+              <div class="publish-progress__head"><span class="publish-progress__title">Sending your price changes…</span><span class="publish-progress__count" id="publish-progress-count">0 / 0</span></div>
+              <div class="publish-progress__track"><div class="publish-progress__fill" id="publish-progress-fill"></div></div>
+              <div class="publish-progress__lanes" id="publish-progress-lanes"></div>
+            </div>
+          </div>
+
+          <div id="queue-loading" hidden data-state="queue-loading"><div class="table-wrap"><div class="table-scroll"><table>
+            <thead><tr><th style="width:36px"></th><th>Product</th><th>Changed in</th><th>Connection</th><th>Price</th><th>Detected</th><th class="col-num">Action</th></tr></thead>
+            <tbody id="skeleton-body"></tbody>
+          </table></div></div></div>
+
+          <div id="queue-empty" class="state-panel state-panel--empty" hidden data-state="queue-empty">
+            <div class="state-panel__icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5 6.5 12 13 4.5"/></svg></div>
+            <h2>You're all caught up</h2><p>Nothing needs your attention right now. We'll show new price changes here as soon as one happens in your shop.</p>
+          </div>
+
+          <div id="queue-error" class="state-panel state-panel--error" hidden data-state="queue-error">
+            <div class="state-panel__icon"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="5" x2="8" y2="9"/><circle cx="8" cy="11.3" r="0.6" fill="currentColor" stroke="none"/></svg></div>
+            <h2>Couldn't load price changes</h2><p>Something went wrong loading this page. Check your internet connection and try again.</p>
+            <button class="button button--secondary button--sm" id="error-retry">Try again</button>
+          </div>
+        </section>
+      </div>
+
+      <div id="page-connection" hidden data-state="page-connection">
+        <div class="crumb"><a id="crumb-back">Connections</a><span aria-hidden="true">/</span><span class="crumb__current" id="crumb-current">Allegro — PL</span></div>
+        <div class="conn-head"><div class="conn-head__icon" id="conn-icon">A</div><div><div class="conn-head__name" id="conn-name">Allegro — PL</div><div class="conn-head__platform" id="conn-platform">allegro.publicapi.v1</div></div></div>
+
+        <div class="settings-section">
+          <div class="settings-section__head"><div><h2>Default pricing rule</h2><p class="settings-section__desc">Used for every source below, unless you give one its own rule.</p></div></div>
+          <div class="mode-switch" id="conn-mode-switch" role="radiogroup" aria-label="Default price sync mode">
+            <button class="mode-switch__opt" id="default-mode-manual" data-testid="default-mode-manual" data-mode="manual">Manual review</button>
+            <button class="mode-switch__opt" id="default-mode-automatic" data-testid="default-mode-automatic" data-mode="automatic">Automatic</button>
+          </div>
+          <div class="mode-switch__hint" id="conn-mode-hint"></div>
+          <div class="rule-editor-row">
+            <div class="settings-section__desc" id="conn-rule-note" style="max-width:none"></div>
+            <button class="button button--secondary button--xs" id="conn-edit-rule">Edit default rule</button>
+          </div>
+          <div class="rule-editor-form" id="conn-rule-form" hidden>
+            <div class="field"><label class="field__label" for="rule-type">Pricing rule</label><select class="field__select" id="rule-type"><option value="passthrough">Use shop price as-is</option><option value="markup">Add a percentage</option><option value="margin">Keep a percentage margin</option></select></div>
+            <div class="field"><label class="field__label" for="rule-pct">Percent</label><div class="field__price-input"><input type="text" inputmode="decimal" id="rule-pct"><span class="field__currency">%</span></div></div>
+            <div class="field"><label class="field__label" for="rule-rounding">Rounding</label><select class="field__select" id="rule-rounding"><option value="none">No rounding</option><option value="nearestWhole">Round to a whole number</option><option value="endingIn99">Round to end in .99</option></select></div>
+          </div>
+          <div class="unsaved-bar" id="conn-unsaved-bar" hidden>
+            <span class="unsaved-bar__text">You've changed something and haven't saved it yet.</span>
+            <div class="unsaved-bar__actions"><button class="button button--secondary button--sm" id="conn-discard">Discard</button><button class="button button--sm" id="conn-save">Save changes</button></div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h2>Give one source its own rule</h2>
+          <p class="settings-section__desc" style="margin-bottom:var(--space-3)">Use this when one supplier or warehouse should be priced differently — for example, a second warehouse with its own margin.</p>
+          <div class="source-list" id="conn-source-list"></div>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section__pending" id="conn-pending-row" style="border-top:none;padding-top:0;margin-top:0">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1.5"/></svg>
+            <span id="conn-pending-text"></span> — <a id="conn-pending-link">review them</a>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h2>Recent activity</h2>
+          <p class="settings-section__desc" style="margin-bottom:var(--space-3)">The last price decisions made on this connection.</p>
+          <div class="activity-list" id="conn-activity"></div>
+        </div>
+      </div>
+
+      <!-- SOURCE connection page — read-only view: a shop that FEEDS prices
+           out gets a summary of how each destination adjusts them, with a
+           link to actually change anything (which stays owned by the
+           destination, per the "where do marketplace fees live" decision). -->
+      <div id="page-source" hidden data-state="page-source">
+        <div class="crumb"><a id="crumb-back-source">Connections</a><span aria-hidden="true">/</span><span class="crumb__current" id="crumb-current-source"></span></div>
+        <div class="conn-head"><div class="conn-head__icon" id="source-page-icon">P</div><div><div class="conn-head__name" id="source-page-name"></div><div class="conn-head__platform" id="source-page-platform"></div></div></div>
+
+        <div class="settings-section">
+          <div class="settings-section__head"><div><h2>How your prices get adjusted</h2><p class="settings-section__desc">Each place you sell can mark up or round your price differently. Manage a rule from where it's used.</p></div></div>
+          <div class="source-list" id="source-page-list"></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="dialog__overlay" id="dialog-picker-overlay"></div>
+<div class="dialog__content" id="dialog-picker" data-state="dialog-connection-picker" role="dialog" aria-modal="true" aria-labelledby="dialog-picker-title">
+  <div class="dialog__head"><h2 class="dialog__title" id="dialog-picker-title">Pricing rules</h2><p class="dialog__desc">Choose a connection to see how it prices your products.</p></div>
+  <div class="dialog__body"><div class="mini-list" id="dialog-picker-list"></div></div>
+  <div class="dialog__footer"><button class="button button--secondary" id="dialog-picker-cancel">Close</button></div>
+</div>
+
+<div class="dialog__overlay" id="dialog-single-overlay"></div>
+<div class="dialog__content" id="dialog-single" data-state="dialog-single-accept" role="dialog" aria-modal="true" aria-labelledby="dialog-single-title">
+  <div class="dialog__head"><h2 class="dialog__title" id="dialog-single-title">Publish new price</h2><p class="dialog__desc" id="dialog-single-desc"></p></div>
+  <div class="dialog__body">
+    <div class="price-hero">
+      <div class="price-hero__block"><div class="price-hero__label">Live now</div><div class="price-hero__value price-hero__value--old" id="dialog-single-old"></div></div>
+      <div class="price-hero__arrow">→</div>
+      <div class="price-hero__block"><div class="price-hero__label">Will publish</div><div class="price-hero__value price-hero__value--new" id="dialog-single-new"></div></div>
+    </div>
+    <p class="rule-note" id="dialog-single-rule"></p>
+    <label class="opt-in-check"><input type="checkbox" id="dialog-single-optin"><span><span class="opt-in-check__title" id="dialog-single-optin-title"></span><span class="opt-in-check__desc">Next time this source's price changes, it'll go straight to this connection — no review needed.</span></span></label>
+    <p class="rule-note rule-note--muted">This changes the live listing's price only — orders already placed keep the price they were bought at.</p>
+  </div>
+  <div class="dialog__footer"><button class="button button--secondary" id="dialog-single-cancel">Cancel</button><button class="button" id="dialog-single-confirm">Publish price</button></div>
+</div>
+
+<div class="dialog__overlay" id="dialog-edit-overlay"></div>
+<div class="dialog__content" id="dialog-edit" data-state="dialog-edit-price" role="dialog" aria-modal="true" aria-labelledby="dialog-edit-title">
+  <div class="dialog__head"><h2 class="dialog__title" id="dialog-edit-title">Enter your own price</h2><p class="dialog__desc" id="dialog-edit-desc"></p></div>
+  <div class="dialog__body">
+    <p class="rule-note" id="dialog-edit-source"></p>
+    <div class="field">
+      <label class="field__label" for="dialog-edit-input">Price to publish</label>
+      <div class="field__price-input" id="dialog-edit-input-wrap"><span class="field__currency" id="dialog-edit-currency">zł</span><input type="text" inputmode="decimal" id="dialog-edit-input"></div>
+      <div class="field__feedback" id="dialog-edit-feedback"></div>
+      <div class="field__hint">Left alone, the usual rule would set this to <span id="dialog-edit-rule-value" class="mono"></span> (<span id="dialog-edit-rule-label"></span>). <button type="button" id="dialog-edit-reset">Use that price</button></div>
+    </div>
+    <p class="field__link-row">This only changes this one price. Want every future change from this source to use a different rule? <a id="dialog-edit-permalink">Set a rule just for this source</a>.</p>
+  </div>
+  <div class="dialog__footer"><button class="button button--secondary" id="dialog-edit-cancel">Cancel</button><button class="button" id="dialog-edit-confirm">Publish this price</button></div>
+</div>
+
+<div class="dialog__overlay" id="dialog-bulk-overlay"></div>
+<div class="dialog__content" id="dialog-bulk" data-state="dialog-bulk-accept" role="dialog" aria-modal="true" aria-labelledby="dialog-bulk-title">
+  <div class="dialog__head"><h2 class="dialog__title" id="dialog-bulk-title">Publish price changes</h2><p class="dialog__desc" id="dialog-bulk-desc"></p></div>
+  <div class="dialog__body">
+    <div class="mini-list" id="dialog-bulk-list"></div>
+    <div id="dialog-bulk-optins" style="display:grid;gap:8px;"></div>
+    <p class="rule-note rule-note--muted">We'll send these one at a time so we don't overwhelm any channel — you'll see progress once you confirm. This never touches the price of an order that's already been placed.</p>
+  </div>
+  <div class="dialog__footer"><button class="button button--secondary" id="dialog-bulk-cancel">Cancel</button><button class="button" id="dialog-bulk-confirm">Publish prices</button></div>
+</div>
+
+<div class="dialog__overlay" id="dialog-stale-overlay"></div>
+<div class="dialog__content" id="dialog-stale" data-state="dialog-stale-info" role="dialog" aria-modal="true" aria-labelledby="dialog-stale-title">
+  <div class="dialog__head"><h2 class="dialog__title" id="dialog-stale-title">Why is this hidden?</h2></div>
+  <div class="dialog__body"><p style="margin:0;font-size:12.5px;color:var(--text-secondary)">This listing is paused because its product looks like it was deleted or fell out of sync with your shop. There's no point pricing something that isn't for sale, so we hide it here until the listing is active again.</p></div>
+  <div class="dialog__footer"><button class="button button--secondary" id="dialog-stale-close">Got it</button></div>
+</div>
+
+<div class="dialog__overlay" id="dialog-auto-applied-overlay"></div>
+<div class="dialog__content" id="dialog-auto-applied" data-state="dialog-auto-applied" role="dialog" aria-modal="true" aria-labelledby="dialog-auto-applied-title">
+  <div class="dialog__head"><h2 class="dialog__title" id="dialog-auto-applied-title">Applied automatically today</h2><p class="dialog__desc">These connections publish without asking, so nothing here needs a decision from you.</p></div>
+  <div class="dialog__body"><div class="mini-list" id="dialog-auto-applied-list"></div></div>
+  <div class="dialog__footer"><button class="button button--secondary" id="dialog-auto-applied-close">Close</button></div>
+</div>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  function applyRule(base, rule) {
+    if (rule.type === 'passthrough') return base;
+    if (rule.type === 'markup') return base * (1 + rule.pct / 100);
+    if (rule.type === 'margin') return base / (1 - rule.pct / 100);
+    return base;
+  }
+  function round2(n) { return Math.round(n * 100) / 100; }
+  function applyRounding(n, mode) {
+    if (mode === 'nearestWhole') return Math.round(n);
+    if (mode === 'endingIn99') return Math.ceil(n) - 0.01;
+    return round2(n);
+  }
+  function fmt(n, currency) { var s = n.toFixed(2).replace('.', ','); return currency === '€' ? '€' + n.toFixed(2) : s + ' zł'; }
+  function ruleLabelFor(rule) { return rule.type === 'passthrough' ? 'no adjustment' : (rule.pct + '% ' + rule.type); }
+
+  var SOURCES = {
+    prestashop_main: { label: 'PrestaShop — Main Store', icon: 'P', platform: 'prestashop.webservice.v1' },
+    prestashop_b: { label: 'PrestaShop — Warehouse B', icon: 'P', platform: 'prestashop.webservice.v1' }
+  };
+
+  // The default + per-source override model: a destination connection has
+  // ONE default rule/mode, and any number of per-source overrides. An item
+  // detected from a given source uses its source's override when one
+  // exists, otherwise falls back to the connection's default.
+  var PRICING_CONFIG = {
+    allegro: {
+      default: { mode: 'manual', rule: { type: 'margin', pct: 22, rounding: 'endingIn99' } },
+      sources: { prestashop_main: { override: null }, prestashop_b: { override: { mode: 'manual', rule: { type: 'margin', pct: 30, rounding: 'endingIn99' } } } }
+    },
+    erli: { default: { mode: 'manual', rule: { type: 'markup', pct: 15, rounding: 'none' } }, sources: { prestashop_main: { override: null } } },
+    woocommerce: { default: { mode: 'manual', rule: { type: 'passthrough', pct: 0, rounding: 'none' } }, sources: { prestashop_main: { override: null } } }
+  };
+  function effectiveSetting(destKey, sourceKey) {
+    var cfg = PRICING_CONFIG[destKey], src = cfg.sources[sourceKey];
+    return (src && src.override) || cfg.default;
+  }
+
+  function buildItem(cfg) {
+    var setting = effectiveSetting(cfg.destKey, cfg.sourceKey);
+    var rule = setting.rule;
+    var currency = cfg.destKey === 'woocommerce' ? '€' : null;
+    var oldRaw = applyRule(cfg.sourceOldNum, rule), newRaw = applyRule(cfg.sourceNewNum, rule);
+    var oldRounded = currency ? round2(oldRaw) : applyRounding(oldRaw, rule.rounding);
+    var newRounded = currency ? round2(newRaw) : applyRounding(newRaw, rule.rounding);
+    var deltaPct = Math.round(((newRounded - oldRounded) / oldRounded) * 1000) / 10;
+    return Object.assign({}, cfg, {
+      ruleLabel: ruleLabelFor(rule), old: fmt(oldRounded, currency), neu: fmt(newRounded, currency),
+      oldRaw: Math.abs(oldRaw - oldRounded) > 0.005 ? fmt(oldRaw, currency) : null,
+      newRaw: Math.abs(newRaw - newRounded) > 0.005 ? fmt(newRaw, currency) : null,
+      roundingLabel: rule.rounding === 'endingIn99' ? 'ending in .99' : (rule.rounding === 'nearestWhole' ? 'nearest whole' : null),
+      deltaPct: deltaPct, delta: (deltaPct > 0 ? '+' : '') + Math.round(deltaPct) + '%',
+      direction: deltaPct > 0 ? 'up' : 'down',
+      deltaTone: Math.abs(deltaPct) >= 10 ? 'steep' : (deltaPct > 0 ? 'up' : 'down')
+    });
+  }
+
+  var RAW_ITEMS = [
+    { id: 'r1', sourceGroupId: 'g1', name: 'Ergonomic Office Chair', variant: 'Graphite / L', sku: 'OFC-GRA-L', sourceKey: 'prestashop_main', sourceLabel: 'PrestaShop — Main Store', sourceOld: '350,00 zł', sourceNew: '327,00 zł', sourceOldNum: 350, sourceNewNum: 327, connection: 'Allegro — PL', connKey: 'allegro', detected: '12 min ago' },
+    { id: 'r1b', sourceGroupId: 'g1', name: 'Ergonomic Office Chair', variant: 'Graphite / L', sku: 'OFC-GRA-L', sourceKey: 'prestashop_main', sourceLabel: 'PrestaShop — Main Store', sourceOld: '350,00 zł', sourceNew: '327,00 zł', sourceOldNum: 350, sourceNewNum: 327, connection: 'Erli — PL', connKey: 'erli', detected: '12 min ago' },
+    { id: 'r2', sourceGroupId: 'g2', name: 'Wireless Charging Pad', variant: '15 W', sku: 'WCP-15W', sourceKey: 'prestashop_main', sourceLabel: 'PrestaShop — Main Store', sourceOld: '78,00 zł', sourceNew: '84,30 zł', sourceOldNum: 78, sourceNewNum: 84.3, connection: 'Erli — PL', connKey: 'erli', detected: '12 min ago' },
+    { id: 'r3', sourceGroupId: 'g3', name: 'Organic Cotton Hoodie', variant: 'Navy / M', sku: 'OCH-NVY-M', sourceKey: 'prestashop_main', sourceLabel: 'PrestaShop — Main Store', sourceOld: '130,30 zł', sourceNew: '122,10 zł', sourceOldNum: 130.3, sourceNewNum: 122.1, connection: 'Allegro — PL', connKey: 'allegro', detected: '34 min ago' },
+    { id: 'r5', sourceGroupId: 'g5', name: 'Stainless Steel Water Bottle', variant: '750 ml', sku: 'SSW-750', sourceKey: 'prestashop_main', sourceLabel: 'PrestaShop — Main Store', sourceOld: '€18.50', sourceNew: '€15.90', sourceOldNum: 18.5, sourceNewNum: 15.9, connection: 'WooCommerce — EU Store', connKey: 'woocommerce', detected: '1 h ago', basisNote: "This connection already prices in EUR, so nothing needs converting - we use your shop price as-is." },
+    { id: 'r6', sourceGroupId: 'g6', name: 'Mechanical Keyboard', variant: 'Hot-swap / ISO', sku: 'MKB-HS-ISO', sourceKey: 'prestashop_main', sourceLabel: 'PrestaShop — Main Store', sourceOld: '390,40 zł', sourceNew: '416,50 zł', sourceOldNum: 390.4, sourceNewNum: 416.5, connection: 'Erli — PL', connKey: 'erli', detected: '2 h ago', needsRefresh: true, latestSourceNew: '424,00 zł', latestSourceNewNum: 424 },
+    { id: 'r7', sourceGroupId: 'g7', name: 'Bluetooth Sport Earbuds', variant: null, sku: 'BSE-01', sourceKey: 'prestashop_main', sourceLabel: 'PrestaShop — Main Store', sourceOld: '163,10 zł', sourceNew: '146,70 zł', sourceOldNum: 163.1, sourceNewNum: 146.7, connection: 'Allegro — PL', connKey: 'allegro', detected: '3 h ago' },
+    { id: 'r9', sourceGroupId: 'g9', name: 'Insulated Travel Mug', variant: '500 ml', sku: 'ITM-500', sourceKey: 'prestashop_b', sourceLabel: 'PrestaShop — Warehouse B', sourceOld: '45,00 zł', sourceNew: '52,00 zł', sourceOldNum: 45, sourceNewNum: 52, connection: 'Allegro — PL', connKey: 'allegro', detected: '20 min ago' }
+  ];
+  var ITEMS = RAW_ITEMS.map(function (raw) { return buildItem(Object.assign({ destKey: raw.connKey }, raw)); });
+
+  var CONNECTIONS = {
+    allegro: { label: 'Allegro — PL', icon: 'A', platform: 'allegro.publicapi.v1' },
+    erli: { label: 'Erli — PL', icon: 'E', platform: 'erli.shopapi.v1' },
+    woocommerce: { label: 'WooCommerce — EU Store', icon: 'W', platform: 'woocommerce.restapi.v3' }
+  };
+  // Only two sync modes ship in this epic: Manual review and Automatic.
+  // A "daily digest" middle-ground (auto-apply, but batched into one
+  // summary) has no existing notification/summary surface anywhere in the
+  // app to build on — that's real, separately-scoped work, not a checkbox.
+  // Automatic connections get a small "recently applied automatically"
+  // list instead (see AUTO_APPLIED_EXAMPLES below) — good enough to show
+  // what happened without a dedicated screen. If usage grows and a real
+  // daily-digest experience is needed, that's its own follow-up, not
+  // something to half-build here.
+  var MODE_LABEL = { manual: 'Manual review', automatic: 'Automatic' };
+  var MODE_HINT = {
+    manual: 'New prices wait for your OK on the Price changes page before they go live.',
+    automatic: 'New prices go live the moment they change in your shop — no review, no waiting.'
+  };
+
+  var state = {
+    resolved: {}, custom: {}, selected: {}, filter: 'all', directionFilter: 'all', magnitudeOnly: false,
+    preview: 'live', readOnly: false, activity: [], publishing: false
+  };
+
+  var qs = function (sel, ctx) { return (ctx || document).querySelector(sel); };
+  var qsa = function (sel, ctx) { return Array.prototype.slice.call((ctx || document).querySelectorAll(sel)); };
+  var ro = function () { return state.readOnly ? ' disabled title="You have read-only access"' : ''; };
+
+  var deltaIconDown = '<svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v9M4.5 8.5 8 12l3.5-3.5"/></svg>';
+  var deltaIconUp = '<svg viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V4M4.5 7.5 8 4l3.5 3.5"/></svg>';
+  var branchIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v6a3 3 0 0 0 3 3h5M9 8l3 3-3 3"/></svg>';
+  var pinIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3.5 12.5 4 10l7-7 2 2-7 7-2.5.5Z"/></svg>';
+  var checkIcon = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5 6.5 12 13 4.5"/></svg>';
+
+  function initials(name) { return name.split(' ').map(function (w) { return w[0]; }).slice(0, 2).join('').toUpperCase(); }
+  // The "steep" tone flags a LARGE change only — it says nothing about
+  // profit margin (we have no product cost data anywhere to check that
+  // against). Keep the copy strictly about size, never implying we
+  // checked whether the price is still profitable.
+  function deltaChip(it) {
+    var cls = it.deltaTone === 'steep' ? 'delta-chip--steep' : (it.deltaTone === 'up' ? 'delta-chip--up' : 'delta-chip--down');
+    var icon = it.direction === 'up' ? deltaIconUp : deltaIconDown;
+    var title = it.deltaTone === 'steep' ? ' title="Big price change - worth a second look"' : '';
+    return '<span class="delta-chip ' + cls + '"' + title + '>' + icon + it.delta + '</span>';
+  }
+
+  function buildSkeleton() {
+    var body = qs('#skeleton-body'), widths = [70, 55, 85, 60, 90], rows = '';
+    for (var i = 0; i < 5; i++) {
+      rows += '<tr><td></td>' +
+        '<td><div class="cell-product"><span class="skeleton-thumb"></span><div style="display:grid;gap:6px;flex:1"><span class="skeleton-bar" style="width:' + widths[i % widths.length] + '%"></span><span class="skeleton-bar" style="width:40%"></span></div></div></td>' +
+        '<td><span class="skeleton-bar" style="width:70px;display:inline-block"></span></td>' +
+        '<td><span class="skeleton-bar" style="width:80px;display:inline-block"></span></td>' +
+        '<td><span class="skeleton-bar" style="width:120px;display:inline-block"></span></td>' +
+        '<td><span class="skeleton-bar" style="width:60px;display:inline-block"></span></td>' +
+        '<td class="col-num"><span class="skeleton-bar" style="width:100px;display:inline-block"></span></td></tr>';
+    }
+    body.innerHTML = rows;
+  }
+  buildSkeleton();
+
+  function setPreview(mode) {
+    state.preview = mode; state.readOnly = mode === 'readonly';
+    qsa('.preview-strip__opt').forEach(function (btn) { btn.classList.toggle('is-active', btn.getAttribute('data-preview') === mode); });
+    qs('#queue-loading').hidden = mode !== 'loading';
+    qs('#queue-error').hidden = mode !== 'error';
+    qs('#queue-live').hidden = !(mode === 'live' || mode === 'empty' || mode === 'readonly');
+    renderRows();
+  }
+  qsa('.preview-strip__opt').forEach(function (btn) { btn.addEventListener('click', function () { setPreview(btn.getAttribute('data-preview')); }); });
+  qs('#error-retry').addEventListener('click', function () { setPreview('live'); toast('Reconnected. Price changes loaded.'); });
+
+  function logActivity(connKey, text) {
+    state.activity.unshift({ connKey: connKey, text: text, time: 'just now' });
+    if (qs('#page-connection') && !qs('#page-connection').hidden) renderActivity(qs('#page-connection').dataset.connection);
+  }
+  function renderActivity(key) {
+    var list = state.activity.filter(function (e) { return e.connKey === key; }).slice(0, 5);
+    qs('#conn-activity').innerHTML = list.length
+      ? list.map(function (e) { return '<div class="activity-row"><span>' + e.text + '</span><time>' + e.time + '</time></div>'; }).join('')
+      : '<div class="activity-empty">Nothing to show yet — decisions you make here will appear in this list.</div>';
+  }
+
+  function renderRows() {
+    var openCount = ITEMS.filter(function (it) { return !state.resolved[it.id]; }).length;
+    var forceEmpty = state.preview === 'empty';
+    var showEmpty = forceEmpty || (openCount === 0 && !state.publishing);
+    qs('#queue-empty').hidden = !showEmpty;
+    qs('#queue-body').closest('.table-wrap').hidden = showEmpty;
+    qs('#bulk-bar').style.display = showEmpty ? 'none' : '';
+    qsa('.alert', qs('#queue-live')).forEach(function (el) { el.hidden = showEmpty; });
+    qsa('.filter-bar, .filter-note', qs('#queue-live')).forEach(function (el) { el.hidden = showEmpty; });
+
+    var body = qs('#queue-body');
+    body.innerHTML = '';
+
+    if (!showEmpty) {
+      var groupCounts = {};
+      ITEMS.forEach(function (it) { groupCounts[it.sourceGroupId] = (groupCounts[it.sourceGroupId] || 0) + 1; });
+      var visible = ITEMS.filter(function (it) {
+        if (state.filter !== 'all' && it.connection !== state.filter) return false;
+        if (state.directionFilter !== 'all' && it.direction !== state.directionFilter) return false;
+        if (state.magnitudeOnly && Math.abs(it.deltaPct) < 10) return false;
+        return true;
+      });
+
+      if (visible.length === 0) {
+        body.innerHTML = '<tr><td colspan="7"><div class="table-notice">No pending changes match these filters. <a data-reset-filter="1">Clear filters</a></div></td></tr>';
+      } else {
+        var lastGroup = null;
+        visible.forEach(function (it) {
+          var tr = document.createElement('tr');
+          var resolvedState = state.resolved[it.id];
+          var classes = [];
+          if (resolvedState) classes.push('is-resolved');
+          if (it.publishing) classes.push('is-publishing');
+          var isGroupStart = it.sourceGroupId !== lastGroup;
+          if (isGroupStart) classes.push('is-group-start');
+          if (groupCounts[it.sourceGroupId] > 1) classes.push('is-grouped');
+          var needsRefresh = it.needsRefresh && !resolvedState;
+          if (needsRefresh) classes.push('is-flagged');
+          lastGroup = it.sourceGroupId;
+          tr.className = classes.join(' ');
+          tr.id = 'price-change-row-' + it.id;
+          tr.setAttribute('data-testid', 'price-change-row');
+          tr.setAttribute('data-row-id', it.id);
+          // Row-level state name for tasks/E2E to target by value, per the
+          // docs/frontend-architecture.md "UX Mockups" data-state convention.
+          var rowState = it.publishing ? 'row-publishing'
+            : resolvedState === 'accepted' ? (state.custom[it.id] ? 'row-accepted-custom' : 'row-accepted')
+            : resolvedState === 'ignored' ? 'row-ignored'
+            : needsRefresh ? 'row-needs-refresh'
+            : 'row-pending';
+          tr.setAttribute('data-state', rowState);
+
+          var displayNew = state.custom[it.id] || it.neu;
+          var actionCell;
+          if (it.publishing) {
+            actionCell = '<span class="status-note status-note--publishing" id="publishing-' + it.id + '">Sending…</span>';
+          } else if (resolvedState === 'accepted') {
+            var isCustom = !!state.custom[it.id];
+            actionCell = isCustom
+              ? '<span class="status-note status-note--custom" id="applied-' + it.id + '" data-testid="row-applied-custom" title="You set this price yourself - automatic updates will not touch it until you accept a new one.">' + pinIcon + '<span>Published · your price<span class="status-note__who">by Norbert · just now</span></span></span>'
+              : '<span class="status-note status-note--accepted" id="applied-' + it.id + '" data-testid="row-applied">' + checkIcon + '<span>Published<span class="status-note__who">by Norbert · just now</span></span></span>';
+          } else if (resolvedState === 'ignored') {
+            actionCell = '<span class="status-note" id="ignored-' + it.id + '" data-testid="row-ignored">Kept the old price — Norbert <button type="button" class="undo" id="undo-' + it.id + '" data-undo="' + it.id + '">Undo</button></span>';
+          } else if (needsRefresh) {
+            actionCell = '<div class="refresh-note" id="refresh-note-' + it.id + '"><span class="refresh-note__text">This price changed again while you were deciding — refresh to see the latest.</span><button class="button button--secondary button--xs" id="refresh-' + it.id + '" data-refresh="' + it.id + '"' + ro() + '>Refresh</button></div>';
+          } else {
+            actionCell = '<div class="row-actions" id="row-actions-' + it.id + '">' +
+              '<button class="button button--secondary button--xs" id="ignore-' + it.id + '" data-testid="row-ignore" data-ignore="' + it.id + '"' + ro() + '>Keep price</button>' +
+              '<button class="button button--secondary button--xs" id="edit-' + it.id + '" data-testid="row-edit" data-edit="' + it.id + '"' + ro() + '>Edit</button>' +
+              '<button class="button button--xs" id="accept-' + it.id + '" data-testid="row-accept" data-accept="' + it.id + '"' + ro() + '>Accept</button>' +
+              '</div>';
+          }
+
+          var sourceLine = it.sourceOld + ' → ' + it.sourceNew + (it.basisNote ? ' <span title="' + it.basisNote.replace(/"/g, '&quot;') + '" style="cursor:help">ⓘ</span>' : '');
+          var productCell = isGroupStart
+            ? '<div class="cell-product"><span class="thumb" aria-hidden="true">' + initials(it.name) + '</span><div class="cell-product__text">' +
+                '<div class="cell-product__name" title="' + it.name + (it.variant ? ' — ' + it.variant : '') + '">' + it.name + (it.variant ? ' <span style="color:var(--text-muted);font-weight:400">— ' + it.variant + '</span>' : '') + '</div>' +
+                '<div class="cell-product__sku">' + it.sku + '</div></div></div>'
+            : '<div class="cell-continuation">' + branchIcon + 'Also changes here <span class="cell-continuation__help" title="One price change, one more listing to update. You can accept, edit, or ignore each listing on its own." style="cursor:help">?</span></div>';
+
+          var sourceCell = '<div class="cell-product__source" style="margin-top:0"><span class="connection-tag" id="source-tag-' + it.id + '" data-testid="row-source-tag" data-open-source="' + it.sourceKey + '">' + it.sourceLabel + '</span></div><div class="cell-product__source">' + sourceLine + '</div>';
+
+          var priceCell = '<div class="price-compare"><span class="price-compare__old">' + it.old + '</span><span>→</span><span class="price-compare__new">' + displayNew + '</span>' + deltaChip(it) + '</div>' +
+            (it.newRaw && !resolvedState ? '<div class="cell-product__source">Before rounding: <span class="price-compare__raw">' + it.newRaw + '</span> — ' + (it.roundingLabel === 'ending in .99' ? 'we round up to end in .99' : (it.roundingLabel === 'nearest whole' ? 'we round to the nearest whole number' : '')) + '</div>' : '');
+
+          tr.innerHTML =
+            '<td><input type="checkbox" id="select-' + it.id + '" data-testid="row-select" data-select="' + it.id + '" aria-label="Select ' + it.name + ' on ' + it.connection + '"' + (resolvedState || needsRefresh || it.publishing ? ' disabled' : '') + (state.selected[it.id] ? ' checked' : '') + ro() + '></td>' +
+            '<td>' + productCell + '</td>' +
+            '<td>' + sourceCell + '</td>' +
+            '<td><span class="connection-tag" id="conn-tag-' + it.id + '" data-testid="row-connection-tag" data-open-connection="' + it.connKey + '">' + it.connection + '</span></td>' +
+            '<td>' + priceCell + '</td>' +
+            '<td><time>' + it.detected + '</time></td>' +
+            '<td class="col-num">' + actionCell + '</td>';
+          body.appendChild(tr);
+        });
+      }
+    }
+
+    updateFilterCounts(openCount);
+    updateBulkBar();
+    updateConnectionPendingCards();
+    renderBellPanel(openCount);
+    updateAutoAppliedNote();
+  }
+
+  // A handful of example rows standing in for "what a connection set to
+  // Automatic actually published today." Real data would come from the
+  // apply job's own log, not this static list — this is only here to
+  // show the shape of a lightweight, no-new-screen answer to "what did
+  // Automatic just do."
+  var AUTO_APPLIED_EXAMPLES = [
+    { name: 'Ceramic Coffee Mug', variant: '350 ml', connection: 'Erli — PL', old: '34,90 zł', neu: '36,90 zł', when: '2 h ago' },
+    { name: 'Bamboo Cutting Board', variant: null, connection: 'Erli — PL', old: '59,00 zł', neu: '54,00 zł', when: '5 h ago' }
+  ];
+  function anyConnectionAutomatic() {
+    return Object.keys(PRICING_CONFIG).some(function (destKey) {
+      var cfg = PRICING_CONFIG[destKey];
+      if (cfg.default.mode === 'automatic') return true;
+      return Object.keys(cfg.sources).some(function (srcKey) { var ov = cfg.sources[srcKey].override; return ov && ov.mode === 'automatic'; });
+    });
+  }
+  function updateAutoAppliedNote() {
+    var show = anyConnectionAutomatic();
+    qs('#auto-applied-note').hidden = !show;
+    if (show) qs('#auto-applied-count').textContent = AUTO_APPLIED_EXAMPLES.length;
+  }
+  qs('#auto-applied-link').addEventListener('click', function (e) {
+    e.preventDefault();
+    qs('#dialog-auto-applied-list').innerHTML = AUTO_APPLIED_EXAMPLES.map(function (it) {
+      return '<div class="mini-row"><span class="thumb" style="width:24px;height:24px;font-size:10px">' + initials(it.name) + '</span>' +
+        '<div class="mini-row__text"><div class="mini-row__name">' + it.name + (it.variant ? ' — ' + it.variant : '') + '</div><div class="mini-row__meta">' + it.connection + ' · ' + it.when + '</div></div>' +
+        '<div class="mini-row__price"><s>' + it.old + '</s>' + it.neu + '</div></div>';
+    }).join('');
+    openDialog('dialog-auto-applied');
+  });
+  qs('#dialog-auto-applied-close').addEventListener('click', function () { closeDialog('dialog-auto-applied'); });
+
+  function renderBellPanel(openCount) {
+    var pending = ITEMS.filter(function (it) { return !state.resolved[it.id]; }).sort(function (a, b) { return Math.abs(b.deltaPct) - Math.abs(a.deltaPct); }).slice(0, 3);
+    qs('#bell-panel-list').innerHTML = pending.map(function (it) {
+      return '<div class="bell-item"><span class="bell-item__dot" aria-hidden="true"></span><div class="bell-item__body">' +
+        '<div class="bell-item__title"><b>' + it.name + '</b>' + (it.variant ? ' — ' + it.variant : '') + '</div>' +
+        '<div class="bell-item__meta">' + it.connection + ' · ' + it.old + ' → ' + it.neu + deltaChip(it) + '</div></div></div>';
+    }).join('') || '<div class="bell-item">No price changes waiting.</div>';
+    qs('#bell-panel-count').textContent = openCount + ' waiting';
+  }
+
+  function updateFilterCounts(openCount) {
+    var counts = { all: 0 };
+    ITEMS.forEach(function (it) { if (state.resolved[it.id]) return; counts.all++; counts[it.connection] = (counts[it.connection] || 0) + 1; });
+    qsa('.chip[data-filter]').forEach(function (chip) { var el = qs('.chip__count', chip); if (el) el.textContent = counts[chip.getAttribute('data-filter')] || 0; });
+    qs('#bell-badge').textContent = openCount; qs('#bell-badge').style.display = openCount ? 'grid' : 'none';
+    qs('#nav-listings-badge').textContent = openCount; qs('#nav-listings-badge').style.display = openCount ? 'inline' : 'none';
+    qs('#tab-queue-count').textContent = openCount;
+  }
+  function updateBulkBar() {
+    var ids = Object.keys(state.selected).filter(function (id) { return state.selected[id] && !state.resolved[id]; });
+    qs('#bulk-count').textContent = ids.length;
+    qs('#bulk-bar').classList.toggle('is-visible', ids.length > 0 && !state.publishing);
+    qs('#bulk-ignore').disabled = state.readOnly; qs('#bulk-accept').disabled = state.readOnly;
+  }
+  function pendingCountFor(key) { var label = CONNECTIONS[key].label; return ITEMS.filter(function (it) { return it.connection === label && !state.resolved[it.id]; }).length; }
+  function updateConnectionPendingCards() {
+    var pc = qs('#page-connection'); if (!pc || pc.hidden) return;
+    var key = pc.dataset.connection; if (key) renderConnectionPending(key);
+  }
+  function renderConnectionPending(key) {
+    var n = pendingCountFor(key), row = qs('#conn-pending-row');
+    if (n === 0) { row.hidden = true; return; }
+    row.hidden = false; qs('#conn-pending-text').textContent = n + ' change' + (n === 1 ? '' : 's') + ' waiting';
+  }
+
+  function toast(msg, opts) {
+    opts = opts || {};
+    var stack = qs('#toast-stack'), el = document.createElement('div');
+    el.className = 'toast';
+    el.innerHTML = '<span class="toast__msg">' + msg + '</span>' + (opts.undo ? '<span class="undo" data-undo-action="1">Undo</span>' : '');
+    stack.appendChild(el);
+    if (opts.undo) qs('.undo', el).addEventListener('click', function () { opts.undo(); el.remove(); });
+    setTimeout(function () { el.style.transition = 'opacity .18s ease'; el.style.opacity = '0'; setTimeout(function () { el.remove(); }, 200); }, 5200);
+  }
+
+  qsa('.chip[data-filter]').forEach(function (chip) { chip.addEventListener('click', function () { qsa('.chip[data-filter]').forEach(function (c) { c.classList.remove('chip--active'); }); chip.classList.add('chip--active'); state.filter = chip.getAttribute('data-filter'); renderRows(); }); });
+  qsa('.chip[data-direction]').forEach(function (chip) { chip.addEventListener('click', function () { qsa('.chip[data-direction]').forEach(function (c) { c.classList.remove('chip--active'); }); chip.classList.add('chip--active'); state.directionFilter = chip.getAttribute('data-direction'); renderRows(); }); });
+  qs('[data-magnitude]').addEventListener('click', function () { state.magnitudeOnly = !state.magnitudeOnly; this.classList.toggle('chip--active', state.magnitudeOnly); renderRows(); });
+  qs('#btn-pricing-rules').addEventListener('click', function () {
+    qs('#dialog-picker-list').innerHTML = Object.keys(CONNECTIONS).map(function (key) {
+      var c = CONNECTIONS[key], def = PRICING_CONFIG[key].default;
+      var overrideCount = Object.keys(PRICING_CONFIG[key].sources).filter(function (s) { return !!PRICING_CONFIG[key].sources[s].override; }).length;
+      return '<div class="mini-row" id="picker-conn-' + key + '" data-open-connection="' + key + '" style="cursor:pointer">' +
+        '<span class="thumb" style="width:28px;height:28px;font-size:11px" aria-hidden="true">' + c.icon + '</span>' +
+        '<div class="mini-row__text"><div class="mini-row__name">' + c.label + '</div><div class="mini-row__meta">' + MODE_LABEL[def.mode] + ' · ' + ruleLabelFor(def.rule) + (overrideCount ? ' · ' + overrideCount + ' source' + (overrideCount === 1 ? '' : 's') + ' with a different rule' : '') + '</div></div>' +
+        '<button class="button button--secondary button--xs" id="picker-open-' + key + '" data-open-connection="' + key + '">Open</button>' +
+        '</div>';
+    }).join('');
+    openDialog('dialog-picker');
+  });
+  qs('#dialog-picker-list').addEventListener('click', function (e) {
+    var el = e.target.closest('[data-open-connection]');
+    if (el) { closeDialog('dialog-picker'); openConnection(el.getAttribute('data-open-connection')); }
+  });
+  qs('#dialog-picker-cancel').addEventListener('click', function () { closeDialog('dialog-picker'); });
+
+  qs('#stale-note-link').addEventListener('click', function (e) { e.preventDefault(); openDialog('dialog-stale'); });
+  qs('#dialog-stale-close').addEventListener('click', function () { closeDialog('dialog-stale'); });
+  qs('#dialog-stale-overlay').addEventListener('click', function () { closeDialog('dialog-stale'); });
+
+  qs('#queue-body').addEventListener('click', function (e) {
+    var el;
+    if ((el = e.target.closest('[data-ignore]'))) ignoreOne(el.getAttribute('data-ignore'));
+    if ((el = e.target.closest('[data-accept]'))) openSingle(el.getAttribute('data-accept'));
+    if ((el = e.target.closest('[data-edit]'))) openEdit(el.getAttribute('data-edit'));
+    if ((el = e.target.closest('[data-undo]'))) undoOne(el.getAttribute('data-undo'));
+    if ((el = e.target.closest('[data-refresh]'))) refreshOne(el.getAttribute('data-refresh'));
+    if ((el = e.target.closest('[data-open-connection]'))) openConnection(el.getAttribute('data-open-connection'));
+    if ((el = e.target.closest('[data-open-source]'))) openSource(el.getAttribute('data-open-source'));
+    if ((el = e.target.closest('[data-reset-filter]'))) {
+      e.preventDefault();
+      qsa('.chip[data-filter]').filter(function (c) { return c.getAttribute('data-filter') === 'all'; })[0].click();
+      qsa('.chip[data-direction]').filter(function (c) { return c.getAttribute('data-direction') === 'all'; })[0].click();
+      if (state.magnitudeOnly) qs('[data-magnitude]').click();
+    }
+  });
+  qs('#queue-body').addEventListener('change', function (e) { if (e.target.matches('[data-select]')) { state.selected[e.target.getAttribute('data-select')] = e.target.checked; updateBulkBar(); } });
+  qs('#select-all').addEventListener('change', function (e) { var checked = e.target.checked; ITEMS.forEach(function (it) { if (!state.resolved[it.id]) state.selected[it.id] = checked; }); renderRows(); });
+
+  function ignoreOne(id) {
+    var it = ITEMS.filter(function (x) { return x.id === id; })[0];
+    state.resolved[id] = 'ignored';
+    logActivity(it.connKey, 'Kept the old price for ' + it.name + ' (' + it.old + ')');
+    renderRows(); toast('Kept the old price for <b>' + it.name + '</b> on ' + it.connection + '.');
+  }
+  function undoOne(id) { delete state.resolved[id]; delete state.custom[id]; renderRows(); }
+  function refreshOne(id) {
+    var it = ITEMS.filter(function (x) { return x.id === id; })[0];
+    it.sourceNew = it.latestSourceNew; it.sourceNewNum = it.latestSourceNewNum; it.needsRefresh = false;
+    Object.assign(it, buildItem(Object.assign({ destKey: it.connKey }, it)));
+    renderRows(); toast('Refreshed — showing the latest price for <b>' + it.name + '</b>.');
+  }
+
+  var currentSingle = null;
+  function openSingle(id) {
+    currentSingle = id;
+    var it = ITEMS.filter(function (x) { return x.id === id; })[0];
+    qs('#dialog-single-desc').textContent = it.name + (it.variant ? ' — ' + it.variant : '') + ' · ' + it.connection + ' · from ' + it.sourceLabel;
+    qs('#dialog-single-old').textContent = it.old; qs('#dialog-single-new').textContent = it.neu;
+    var ruleSentence = it.ruleType === 'passthrough' ? 'uses your shop price as-is' : (it.ruleType === 'margin' ? 'prices it to keep a ' + it.ruleLabel + ' after selling' : 'adds a ' + it.ruleLabel + ' on top of your shop price');
+    var roundingSentence = it.roundingLabel === 'ending in .99' ? ', then rounds up so it ends in .99' : (it.roundingLabel === 'nearest whole' ? ', then rounds to the nearest whole number' : '');
+    qs('#dialog-single-rule').innerHTML = it.connection + ' ' + ruleSentence + roundingSentence + ' — that comes to <b>' + it.neu + '</b>, VAT included.';
+    var optin = qs('#dialog-single-optin'); optin.checked = false;
+    qs('#dialog-single-optin-title').textContent = 'Automatically publish future changes from ' + it.sourceLabel + ' to ' + it.connection;
+    openDialog('dialog-single');
+  }
+  qs('#dialog-single-confirm').addEventListener('click', function () {
+    var it = ITEMS.filter(function (x) { return x.id === currentSingle; })[0];
+    state.resolved[currentSingle] = 'accepted'; delete state.custom[currentSingle];
+    var optedIn = qs('#dialog-single-optin').checked;
+    closeDialog('dialog-single'); renderRows();
+    logActivity(it.connKey, 'Published ' + it.neu + ' for ' + it.name + ' (was ' + it.old + ', from ' + it.sourceLabel + ')');
+    toast('Published ' + it.neu + ' for <b>' + it.name + '</b> on ' + it.connection + '.');
+    if (optedIn) {
+      PRICING_CONFIG[it.connKey].sources[it.sourceKey].override = { mode: 'automatic', rule: effectiveSetting(it.connKey, it.sourceKey).rule };
+      if (!qs('#page-connection').hidden && qs('#page-connection').dataset.connection === it.connKey) openConnection(it.connKey);
+      toast(it.connection + ' will now price ' + it.sourceLabel + ' changes automatically.', { undo: function () { PRICING_CONFIG[it.connKey].sources[it.sourceKey].override = null; toast('Back to the default rule for ' + it.connection + '.'); } });
+    }
+  });
+  qs('#dialog-single-cancel').addEventListener('click', function () { closeDialog('dialog-single'); });
+
+  var currentEdit = null;
+  function openEdit(id) {
+    currentEdit = id;
+    var it = ITEMS.filter(function (x) { return x.id === id; })[0];
+    qs('#dialog-edit-desc').textContent = it.name + (it.variant ? ' — ' + it.variant : '') + ' · ' + it.connection + ' · from ' + it.sourceLabel;
+    qs('#dialog-edit-source').innerHTML = it.sourceLabel + ' price changed from <b>' + it.sourceOld + '</b> to <b>' + it.sourceNew + '</b>.';
+    qs('#dialog-edit-rule-label').textContent = it.ruleLabel; qs('#dialog-edit-rule-value').textContent = it.neu;
+    qs('#dialog-edit-currency').textContent = it.neu.indexOf('€') === 0 ? '€' : 'zł';
+    var input = qs('#dialog-edit-input'); input.value = numberOnly(state.custom[id] || it.neu);
+    updateEditFeedback(it); openDialog('dialog-edit'); setTimeout(function () { input.focus(); input.select(); }, 60);
+  }
+  function numberOnly(v) { return v.replace(/[^0-9,.\s]/g, '').trim(); }
+  function parsePrice(raw) { return parseFloat(String(raw).replace(',', '.')); }
+  function updateEditFeedback(it) {
+    var raw = qs('#dialog-edit-input').value, n = parsePrice(raw), fb = qs('#dialog-edit-feedback'), wrap = qs('#dialog-edit-input-wrap');
+    var rulePrice = parsePrice(numberOnly(it.neu));
+    wrap.classList.remove('has-error');
+    if (!raw.trim() || isNaN(n) || n <= 0) { fb.className = 'field__feedback field__feedback--error'; fb.textContent = 'Enter a price greater than 0.'; wrap.classList.add('has-error'); qs('#dialog-edit-confirm').disabled = true; return; }
+    qs('#dialog-edit-confirm').disabled = false;
+    var vsRule = Math.round(((n - rulePrice) / rulePrice) * 1000) / 10;
+    if (Math.abs(vsRule) > 30) { fb.className = 'field__feedback field__feedback--warn'; fb.textContent = (vsRule > 0 ? '+' : '') + vsRule + '% away from the usual price - worth double-checking.'; }
+    else { fb.className = 'field__feedback'; fb.textContent = (vsRule > 0 ? '+' : '') + vsRule + '% different from the usual price (' + it.neu + ')'; }
+  }
+  qs('#dialog-edit-input').addEventListener('input', function () { var it = ITEMS.filter(function (x) { return x.id === currentEdit; })[0]; updateEditFeedback(it); });
+  qs('#dialog-edit-reset').addEventListener('click', function () { var it = ITEMS.filter(function (x) { return x.id === currentEdit; })[0]; qs('#dialog-edit-input').value = numberOnly(it.neu); updateEditFeedback(it); });
+  qs('#dialog-edit-permalink').addEventListener('click', function () { var it = ITEMS.filter(function (x) { return x.id === currentEdit; })[0]; closeDialog('dialog-edit'); openConnection(it.connKey); expandSourceRow(it.sourceKey); });
+  qs('#dialog-edit-confirm').addEventListener('click', function () {
+    var it = ITEMS.filter(function (x) { return x.id === currentEdit; })[0];
+    var raw = qs('#dialog-edit-input').value.trim(); var currency = qs('#dialog-edit-currency').textContent;
+    var formatted = currency === '€' ? '€' + raw : raw + ' zł';
+    state.resolved[currentEdit] = 'accepted'; state.custom[currentEdit] = formatted;
+    closeDialog('dialog-edit'); renderRows();
+    logActivity(it.connKey, 'Published your price of ' + formatted + ' for ' + it.name);
+    toast('Published your price of ' + formatted + ' for <b>' + it.name + '</b> on ' + it.connection + '.');
+  });
+  qs('#dialog-edit-cancel').addEventListener('click', function () { closeDialog('dialog-edit'); });
+
+  // Bulk actions only ever act on what's checked — "Select all" plus
+  // "Accept selected"/"Keep prices" already covers accepting or ignoring
+  // everything at once, so there's no separate "Accept all" affordance.
+  function collectBulkTargets() {
+    return ITEMS.filter(function (it) { return state.selected[it.id] && !state.resolved[it.id]; });
+  }
+  var currentBulk = [];
+  function openBulk() {
+    currentBulk = collectBulkTargets();
+    if (!currentBulk.length) { toast('Nothing selected yet.'); return; }
+    var connections = uniq(currentBulk.map(function (it) { return it.connection; }));
+    qs('#dialog-bulk-title').textContent = 'Publish ' + currentBulk.length + ' price change' + (currentBulk.length === 1 ? '' : 's');
+    qs('#dialog-bulk-desc').textContent = 'Going out to ' + connections.length + ' connection' + (connections.length === 1 ? '' : 's') + '.';
+    qs('#dialog-bulk-list').innerHTML = currentBulk.map(function (it) {
+      return '<div class="mini-row"><span class="thumb" style="width:24px;height:24px;font-size:10px">' + initials(it.name) + '</span>' +
+        '<div class="mini-row__text"><div class="mini-row__name">' + it.name + (it.variant ? ' — ' + it.variant : '') + '</div><div class="mini-row__meta">' + it.connection + ' · ' + it.sourceLabel + '</div></div>' +
+        '<div class="mini-row__price"><s>' + it.old + '</s>' + it.neu + '</div></div>';
+    }).join('');
+    var pairs = uniq(currentBulk.map(function (it) { return it.connKey + '|' + it.sourceKey; }));
+    qs('#dialog-bulk-optins').innerHTML = pairs.map(function (p) {
+      var parts = p.split('|'), destKey = parts[0], srcKey = parts[1];
+      return '<label class="opt-in-check"><input type="checkbox" data-bulk-optin="' + p + '"><span><span class="opt-in-check__title">Automatically publish future changes from ' + SOURCES[srcKey].label + ' to ' + CONNECTIONS[destKey].label + '</span><span class="opt-in-check__desc">Next time this price changes, it will go out without asking you.</span></span></label>';
+    }).join('');
+    openDialog('dialog-bulk');
+  }
+  qs('#dialog-bulk-confirm').addEventListener('click', function () {
+    var optedInPairs = qsa('[data-bulk-optin]').filter(function (el) { return el.checked; }).map(function (el) { return el.getAttribute('data-bulk-optin'); });
+    var batch = currentBulk.slice();
+    closeDialog('dialog-bulk');
+    runPublishQueue(batch, function () {
+      optedInPairs.forEach(function (p) {
+        var parts = p.split('|');
+        PRICING_CONFIG[parts[0]].sources[parts[1]].override = { mode: 'automatic', rule: effectiveSetting(parts[0], parts[1]).rule };
+      });
+      if (optedInPairs.length) toast('Turned on automatic pricing for ' + optedInPairs.length + ' source' + (optedInPairs.length === 1 ? '' : 's') + '.');
+    });
+  });
+  qs('#dialog-bulk-cancel').addEventListener('click', function () { closeDialog('dialog-bulk'); });
+  qs('#bulk-accept').addEventListener('click', function () { openBulk(); });
+
+  // Live publish queue — decision: bulk accept shows real per-connection
+  // progress (rate-limit lanes), not a silent instant apply.
+  function runPublishQueue(items, onDone) {
+    if (!items.length) return;
+    state.publishing = true;
+    var byConn = {};
+    items.forEach(function (it) { (byConn[it.connKey] = byConn[it.connKey] || []).push(it); });
+    var lanesEl = qs('#publish-progress-lanes');
+    lanesEl.innerHTML = Object.keys(byConn).map(function (k) {
+      return '<span class="publish-progress__lane" data-lane="' + k + '"><b data-lane-done="' + k + '">0</b>/' + byConn[k].length + ' ' + CONNECTIONS[k].label + '</span>';
+    }).join('');
+    qs('#publish-progress').classList.add('is-active');
+    items.forEach(function (it) { it.publishing = true; });
+    renderRows();
+
+    var total = items.length, done = 0, i = 0;
+    var laneDone = {};
+    function step() {
+      if (i >= items.length) {
+        state.publishing = false;
+        qs('#publish-progress').classList.remove('is-active');
+        renderRows();
+        toast('Published new prices on <b>' + total + '</b> listing' + (total === 1 ? '' : 's') + '.');
+        if (onDone) onDone();
+        return;
+      }
+      var it = items[i++];
+      it.publishing = false;
+      state.resolved[it.id] = 'accepted'; delete state.custom[it.id];
+      logActivity(it.connKey, 'Published ' + it.neu + ' for ' + it.name + ' (was ' + it.old + ', bulk update)');
+      done++;
+      laneDone[it.connKey] = (laneDone[it.connKey] || 0) + 1;
+      var laneEl = qs('[data-lane-done="' + it.connKey + '"]');
+      if (laneEl) laneEl.textContent = laneDone[it.connKey];
+      if (laneDone[it.connKey] === byConn[it.connKey].length) { var lane = qs('[data-lane="' + it.connKey + '"]'); if (lane) lane.classList.add('is-done'); }
+      qs('#publish-progress-count').textContent = done + ' / ' + total;
+      qs('#publish-progress-fill').style.width = Math.round((done / total) * 100) + '%';
+      renderRows();
+      setTimeout(step, 380);
+    }
+    setTimeout(step, 250);
+  }
+
+  qs('#bulk-ignore').addEventListener('click', function () {
+    var ids = Object.keys(state.selected).filter(function (id) { return state.selected[id] && !state.resolved[id]; });
+    if (!ids.length) return;
+    ids.forEach(function (id) { var it = ITEMS.filter(function (x) { return x.id === id; })[0]; state.resolved[id] = 'ignored'; logActivity(it.connKey, 'Kept the old price for ' + it.name + ' (bulk)'); });
+    renderRows(); toast('Kept the current price on ' + ids.length + ' listing' + (ids.length === 1 ? '' : 's') + '.');
+  });
+
+  function openDialog(id) { qs('#' + id + '-overlay').classList.add('is-open'); qs('#' + id).classList.add('is-open'); }
+  function closeDialog(id) { qs('#' + id + '-overlay').classList.remove('is-open'); qs('#' + id).classList.remove('is-open'); }
+  ['dialog-single', 'dialog-edit', 'dialog-bulk', 'dialog-stale', 'dialog-picker', 'dialog-auto-applied'].forEach(function (id) { qs('#' + id + '-overlay').addEventListener('click', function () { closeDialog(id); }); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { ['dialog-single', 'dialog-edit', 'dialog-bulk', 'dialog-stale', 'dialog-picker', 'dialog-auto-applied'].forEach(closeDialog); closeNav(); } });
+
+  var bellBtn = qs('#bell-btn'), bellPanel = qs('#bell-panel');
+  bellBtn.addEventListener('click', function (e) { e.stopPropagation(); var open = bellPanel.classList.toggle('is-open'); bellBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); });
+  document.addEventListener('click', function (e) { if (!bellPanel.contains(e.target) && e.target !== bellBtn) { bellPanel.classList.remove('is-open'); bellBtn.setAttribute('aria-expanded', 'false'); } });
+  qs('#bell-view-all').addEventListener('click', function () { bellPanel.classList.remove('is-open'); showListings(); showListingsTab('queue'); });
+
+  var navEl = qs('#nav'), scrimEl = qs('#nav-scrim'), hamburger = qs('#hamburger-btn');
+  function openNav() { navEl.classList.add('is-open'); scrimEl.classList.add('is-open'); hamburger.setAttribute('aria-expanded', 'true'); }
+  function closeNav() { navEl.classList.remove('is-open'); scrimEl.classList.remove('is-open'); hamburger.setAttribute('aria-expanded', 'false'); }
+  hamburger.addEventListener('click', function () { navEl.classList.contains('is-open') ? closeNav() : openNav(); });
+  scrimEl.addEventListener('click', closeNav);
+  qsa('.nav__item', navEl).forEach(function (item) { item.addEventListener('click', closeNav); });
+
+  function showListingsTab(name) {
+    var isAll = name === 'all';
+    qs('#view-all').hidden = !isAll; qs('#view-queue').hidden = isAll;
+    qs('#tab-all').classList.toggle('is-active', isAll); qs('#tab-all').setAttribute('aria-selected', String(isAll));
+    qs('#tab-queue').classList.toggle('is-active', !isAll); qs('#tab-queue').setAttribute('aria-selected', String(!isAll));
+  }
+  qs('#tab-all').addEventListener('click', function () { showListingsTab('all'); });
+  qs('#tab-queue').addEventListener('click', function () { showListingsTab('queue'); });
+  function showListings() { qs('#page-listings').hidden = false; qs('#page-connection').hidden = true; qs('#page-source').hidden = true; qs('#nav-listings').classList.add('is-active'); qs('#nav-connections').classList.remove('is-active'); }
+
+  function openSource(key) {
+    var s = SOURCES[key];
+    qs('#page-listings').hidden = true; qs('#page-connection').hidden = true; qs('#page-source').hidden = false; qs('#page-source').dataset.source = key;
+    qs('#nav-listings').classList.remove('is-active'); qs('#nav-connections').classList.add('is-active');
+    qs('#crumb-current-source').textContent = s.label; qs('#source-page-icon').textContent = s.icon; qs('#source-page-name').textContent = s.label; qs('#source-page-platform').textContent = s.platform;
+
+    var rows = [];
+    Object.keys(PRICING_CONFIG).forEach(function (destKey) {
+      var cfg = PRICING_CONFIG[destKey];
+      if (!cfg.sources[key]) return;
+      var effective = cfg.sources[key].override || cfg.default;
+      var isCustom = !!cfg.sources[key].override;
+      rows.push('<div class="source-row"><div class="source-row__head"><span class="source-row__name">' + CONNECTIONS[destKey].label + '</span>' +
+        '<button class="button button--secondary button--xs" id="source-page-manage-' + destKey + '" data-manage-dest="' + destKey + '" data-manage-src="' + key + '">Manage</button></div>' +
+        '<div class="source-row__summary">' + MODE_LABEL[effective.mode] + ' · ' + ruleSummaryHtml(effective.rule) + (isCustom ? ' — a rule just for this source' : ' — using ' + CONNECTIONS[destKey].label + '’s default rule') + '</div></div>');
+    });
+    qs('#source-page-list').innerHTML = rows.join('') || '<p style="margin:0;font-size:12.5px;color:var(--text-muted)">This shop isn’t feeding prices to any connection yet.</p>';
+  }
+  qs('#crumb-back-source').addEventListener('click', function () { showListings(); });
+  qs('#source-page-list').addEventListener('click', function (e) {
+    var el = e.target.closest('[data-manage-dest]');
+    if (el) { var destKey = el.getAttribute('data-manage-dest'), srcKey = el.getAttribute('data-manage-src'); openConnection(destKey); expandSourceRow(srcKey); }
+  });
+
+  var connDirty = false, connSavedDefault = null, connSavedSources = null;
+  function openConnection(key) {
+    var c = CONNECTIONS[key];
+    qs('#page-listings').hidden = true; qs('#page-connection').hidden = false; qs('#page-source').hidden = true; qs('#page-connection').dataset.connection = key;
+    qs('#nav-listings').classList.remove('is-active'); qs('#nav-connections').classList.add('is-active');
+    qs('#crumb-current').textContent = c.label; qs('#conn-icon').textContent = c.icon; qs('#conn-name').textContent = c.label; qs('#conn-platform').textContent = c.platform;
+
+    connSavedDefault = JSON.parse(JSON.stringify(PRICING_CONFIG[key].default));
+    connSavedSources = JSON.parse(JSON.stringify(PRICING_CONFIG[key].sources));
+    connDirty = false; qs('#conn-unsaved-bar').hidden = true; qs('#conn-rule-form').hidden = true;
+    renderDefaultBlock(key); renderSourceList(key);
+    renderConnectionPending(key); renderActivity(key);
+  }
+  function renderDefaultBlock(key) {
+    var cfg = PRICING_CONFIG[key].default;
+    qsa('.mode-switch__opt', qs('#conn-mode-switch')).forEach(function (btn) {
+      btn.classList.toggle('is-active', btn.getAttribute('data-mode') === cfg.mode);
+      if (state.readOnly) btn.setAttribute('disabled', ''); else btn.removeAttribute('disabled');
+    });
+    qs('#conn-mode-hint').textContent = MODE_HINT[cfg.mode];
+    qs('#conn-rule-note').innerHTML = ruleSummaryHtml(cfg.rule);
+    qs('#rule-type').value = cfg.rule.type; qs('#rule-pct').value = cfg.rule.pct; qs('#rule-rounding').value = cfg.rule.rounding;
+  }
+  function ruleSummaryHtml(rule) {
+    var label = rule.type === 'passthrough'
+      ? 'Uses your shop price <b>as-is</b>'
+      : (rule.type === 'markup' ? 'Adds <b>' + rule.pct + '%</b> on top of your shop price' : 'Prices it so you keep a <b>' + rule.pct + '%</b> margin');
+    var roundingText = rule.rounding === 'endingIn99' ? ', then rounds up so it ends in <b>.99</b>' : (rule.rounding === 'nearestWhole' ? ', then rounds to the nearest whole number' : '');
+    return label + roundingText + '.';
+  }
+  qsa('.mode-switch__opt', qs('#conn-mode-switch')).forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (state.readOnly) return;
+      var key = qs('#page-connection').dataset.connection;
+      PRICING_CONFIG[key].default.mode = btn.getAttribute('data-mode');
+      renderDefaultBlock(key); markConnDirty();
+    });
+  });
+  qs('#conn-edit-rule').addEventListener('click', function () { if (state.readOnly) return; qs('#conn-rule-form').hidden = !qs('#conn-rule-form').hidden; });
+  ['rule-type', 'rule-pct', 'rule-rounding'].forEach(function (id) {
+    qs('#' + id).addEventListener('change', onDefaultRuleChange); qs('#' + id).addEventListener('input', onDefaultRuleChange);
+  });
+  function onDefaultRuleChange() {
+    var key = qs('#page-connection').dataset.connection;
+    PRICING_CONFIG[key].default.rule = { type: qs('#rule-type').value, pct: parseFloat(qs('#rule-pct').value) || 0, rounding: qs('#rule-rounding').value };
+    renderDefaultBlock(key); markConnDirty();
+  }
+
+  function renderSourceList(destKey) {
+    var cfg = PRICING_CONFIG[destKey];
+    var wrap = qs('#conn-source-list');
+    wrap.innerHTML = Object.keys(cfg.sources).map(function (srcKey) {
+      var entry = cfg.sources[srcKey];
+      var isCustom = !!entry.override;
+      var effective = entry.override || cfg.default;
+      var rid = destKey + '-' + srcKey;
+      return '<div class="source-row" id="source-row-' + rid + '" data-testid="source-row" data-src="' + srcKey + '">' +
+        '<div class="source-row__head"><span class="source-row__name" id="source-row-name-' + rid + '">' + SOURCES[srcKey].label + '</span>' +
+          '<label class="source-row__toggle"><input type="checkbox" id="src-custom-' + rid + '" data-testid="source-custom-toggle" data-src-custom="' + srcKey + '"' + (isCustom ? ' checked' : '') + (state.readOnly ? ' disabled' : '') + '> Use a different rule for this source</label></div>' +
+        '<div class="source-row__summary" id="source-row-summary-' + rid + '" data-src-summary="' + srcKey + '">' + MODE_LABEL[effective.mode] + ' · ' + ruleSummaryHtml(effective.rule) + (isCustom ? '' : ' <i>(using the default rule)</i>') + '</div>' +
+        '<div class="source-row__body" id="source-row-body-' + rid + '" data-src-body="' + srcKey + '"' + (isCustom ? '' : ' hidden') + '>' +
+          '<div class="mode-switch mode-switch--sm" id="source-mode-group-' + rid + '" data-src-mode-group="' + srcKey + '">' +
+            '<button class="mode-switch__opt' + (effective.mode === 'manual' ? ' is-active' : '') + '" id="source-mode-manual-' + rid + '" data-src-mode="manual">Manual review</button>' +
+            '<button class="mode-switch__opt' + (effective.mode === 'automatic' ? ' is-active' : '') + '" id="source-mode-automatic-' + rid + '" data-src-mode="automatic">Automatic</button>' +
+          '</div>' +
+          '<div class="source-row__body-grid">' +
+            '<div class="field"><label class="field__label" for="source-type-' + rid + '">Pricing rule</label><select class="field__select" id="source-type-' + rid + '" data-src-type="' + srcKey + '">' +
+              '<option value="passthrough"' + (effective.rule.type === 'passthrough' ? ' selected' : '') + '>Use shop price as-is</option>' +
+              '<option value="markup"' + (effective.rule.type === 'markup' ? ' selected' : '') + '>Add a percentage</option>' +
+              '<option value="margin"' + (effective.rule.type === 'margin' ? ' selected' : '') + '>Keep a percentage margin</option></select></div>' +
+            '<div class="field"><label class="field__label" for="source-pct-' + rid + '">Percent</label><div class="field__price-input"><input type="text" inputmode="decimal" id="source-pct-' + rid + '" data-src-pct="' + srcKey + '" value="' + effective.rule.pct + '"><span class="field__currency">%</span></div></div>' +
+            '<div class="field"><label class="field__label" for="source-rounding-' + rid + '">Rounding</label><select class="field__select" id="source-rounding-' + rid + '" data-src-rounding="' + srcKey + '">' +
+              '<option value="none"' + (effective.rule.rounding === 'none' ? ' selected' : '') + '>No rounding</option>' +
+              '<option value="nearestWhole"' + (effective.rule.rounding === 'nearestWhole' ? ' selected' : '') + '>Round to a whole number</option>' +
+              '<option value="endingIn99"' + (effective.rule.rounding === 'endingIn99' ? ' selected' : '') + '>Round to end in .99</option></select></div>' +
+          '</div></div></div>';
+    }).join('');
+  }
+  function expandSourceRow(srcKey) {
+    var cb = qs('[data-src-custom="' + srcKey + '"]');
+    if (cb && !cb.checked) cb.click();
+    var body = qs('[data-src-body="' + srcKey + '"]'); if (body) body.hidden = false;
+  }
+  qs('#conn-source-list').addEventListener('change', function (e) {
+    var destKey = qs('#page-connection').dataset.connection, t = e.target;
+    if (t.matches('[data-src-custom]')) {
+      var srcKey = t.getAttribute('data-src-custom');
+      var cfg = PRICING_CONFIG[destKey];
+      cfg.sources[srcKey].override = t.checked ? JSON.parse(JSON.stringify(cfg.default)) : null;
+      renderSourceList(destKey); markConnDirty();
+    } else if (t.matches('[data-src-type]') || t.matches('[data-src-rounding]')) {
+      updateSourceOverrideFromForm(destKey, t.getAttribute('data-src-type') || t.getAttribute('data-src-rounding'));
+    }
+  });
+  qs('#conn-source-list').addEventListener('input', function (e) {
+    if (e.target.matches('[data-src-pct]')) updateSourceOverrideFromForm(qs('#page-connection').dataset.connection, e.target.getAttribute('data-src-pct'));
+  });
+  qs('#conn-source-list').addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-src-mode]');
+    if (btn && !state.readOnly) {
+      var group = btn.closest('[data-src-mode-group]'), srcKey = group.getAttribute('data-src-mode-group');
+      var destKey = qs('#page-connection').dataset.connection;
+      var ov = PRICING_CONFIG[destKey].sources[srcKey].override;
+      if (ov) { ov.mode = btn.getAttribute('data-src-mode'); renderSourceList(destKey); markConnDirty(); }
+    }
+  });
+  function updateSourceOverrideFromForm(destKey, srcKey) {
+    var ov = PRICING_CONFIG[destKey].sources[srcKey].override; if (!ov) return;
+    ov.rule = {
+      type: qs('[data-src-type="' + srcKey + '"]').value,
+      pct: parseFloat(qs('[data-src-pct="' + srcKey + '"]').value) || 0,
+      rounding: qs('[data-src-rounding="' + srcKey + '"]').value
+    };
+    var summary = qs('[data-src-summary="' + srcKey + '"]');
+    summary.innerHTML = MODE_LABEL[ov.mode] + ' · ' + ruleSummaryHtml(ov.rule);
+    markConnDirty();
+  }
+
+  function markConnDirty() { connDirty = true; qs('#conn-unsaved-bar').hidden = state.readOnly; }
+  qs('#conn-discard').addEventListener('click', function () {
+    var key = qs('#page-connection').dataset.connection;
+    PRICING_CONFIG[key].default = JSON.parse(JSON.stringify(connSavedDefault));
+    PRICING_CONFIG[key].sources = JSON.parse(JSON.stringify(connSavedSources));
+    renderDefaultBlock(key); renderSourceList(key);
+    connDirty = false; qs('#conn-unsaved-bar').hidden = true; toast('Discarded unsaved changes.');
+  });
+  qs('#conn-save').addEventListener('click', function () {
+    var key = qs('#page-connection').dataset.connection;
+    connSavedDefault = JSON.parse(JSON.stringify(PRICING_CONFIG[key].default));
+    connSavedSources = JSON.parse(JSON.stringify(PRICING_CONFIG[key].sources));
+    connDirty = false; qs('#conn-unsaved-bar').hidden = true;
+    logActivity(key, 'Updated the pricing settings');
+    toast('Saved your pricing settings for ' + CONNECTIONS[key].label + '.');
+    ITEMS.forEach(function (it) { if (it.connKey === key) Object.assign(it, buildItem(Object.assign({ destKey: it.connKey }, it))); });
+    renderRows();
+  });
+
+  qs('#crumb-back').addEventListener('click', function () { showListings(); });
+  qs('#conn-pending-link').addEventListener('click', function (e) {
+    e.preventDefault();
+    var key = qs('#page-connection').dataset.connection;
+    showListings(); showListingsTab('queue'); setPreview('live');
+    var chip = qsa('.chip[data-filter]').filter(function (c) { return c.getAttribute('data-filter') === CONNECTIONS[key].label; })[0];
+    if (chip) chip.click();
+  });
+
+  function uniq(arr) { return arr.filter(function (v, i) { return arr.indexOf(v) === i; }); }
+
+  renderRows(); showListings(); showListingsTab('queue');
+})();
+</script>
