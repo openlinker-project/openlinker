@@ -89,3 +89,4 @@ export const PRICE_CHANGE_DETECTION_SERVICE_TOKEN = Symbol('IPriceChangeDetectio
 export const PRICE_CHANGE_AUTO_APPLIED_LOG_REPOSITORY_TOKEN = Symbol('PriceChangeAutoAppliedLogRepositoryPort');
 // Price-change apply orchestration (#3144, extracted per #3161 review)
 export const PRICE_CHANGE_APPLY_SERVICE_TOKEN = Symbol('IPriceChangeApplyService');
+export const PRICE_CHANGES_SERVICE_TOKEN = Symbol('IPriceChangesService');

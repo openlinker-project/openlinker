@@ -17,6 +17,7 @@ import { ShopPublishController } from './http/shop-publish.controller';
 import { BulkShopPublishController } from './http/bulk-shop-publish.controller';
 import { DescriptionFormatController } from './http/description-format.controller';
 import { TaxonomyController } from './http/taxonomy.controller';
+import { PriceChangesController } from './http/price-changes.controller';
 
 @Module({
   // CoreIntegrationsModule supplies INTEGRATIONS_SERVICE_TOKEN, which the
@@ -32,6 +33,7 @@ import { TaxonomyController } from './http/taxonomy.controller';
     BulkShopPublishController,
     TaxonomyController,
     DescriptionFormatController,
+    PriceChangesController,
   ],
 })
 export class ListingsApiModule {}

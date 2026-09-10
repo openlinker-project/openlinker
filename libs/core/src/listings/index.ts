@@ -412,6 +412,22 @@ export type {
   PriceChangeApplyResult,
 } from './domain/types/price-change-apply.types';
 export type { IPriceChangeApplyService } from './application/services/price-change-apply.service.interface';
+export { PriceChangeEpisodeNotFoundException } from './domain/exceptions/price-change-episode-not-found.exception';
+export { PriceChangeEpisodeAlreadyResolvedException } from './domain/exceptions/price-change-episode-already-resolved.exception';
+export { PriceChangeEpisodeStaleException } from './domain/exceptions/price-change-episode-stale.exception';
+export { PriceChangeEpisodeBlockedException } from './domain/exceptions/price-change-episode-blocked.exception';
+export type {
+  PriceChangeQueueItem,
+  PriceChangeQueueItemRuleSummary,
+  PriceChangeQueuePage,
+} from './application/types/price-change-queue-item.types';
+export type {
+  IPriceChangesService,
+  AcceptPriceChangeInput,
+  EditPriceChangeInput,
+  BulkAcceptItemInput,
+  BulkAcceptResult,
+} from './application/services/price-changes.service.interface';
 export { OfferCommercialSnapshot } from './domain/entities/offer-commercial-snapshot.entity';
 export type {
   OfferCommercialSnapshotProps,
