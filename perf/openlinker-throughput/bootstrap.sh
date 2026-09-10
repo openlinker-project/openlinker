@@ -40,7 +40,15 @@ LIB_LOG_PREFIX="bootstrap"
 source "$SCRIPT_DIR/lib.sh"
 
 # Internal hostnames as seen from the api/worker containers on the compose network.
-PS_INTERNAL_URL="${PS_INTERNAL_URL:-http://prestashop}"
+# PS_INTERNAL_URL uses the DOTTED `prestashop.lab` alias (#3046), not the bare
+# `prestashop` service name - WordPress's wp_http_validate_url() refuses to
+# fetch a remote image (or any URL) from a dot-less host, so a shop-publish
+# scenario attaching a PrestaShop-hosted image to a WooCommerce product would
+# fail every item with woocommerce_product_image_upload_error against the
+# bare name. The bare name still resolves (docker-compose.lab.yml's alias is
+# additive), so an operator overriding this var to the old value loses only
+# the image-attach path, not connectivity.
+PS_INTERNAL_URL="${PS_INTERNAL_URL:-http://prestashop.lab}"
 WC_INTERNAL_URL="${WC_INTERNAL_URL:-https://wc-tls}"
 ALLEGRO_STUB_URL="${ALLEGRO_STUB_URL:-http://allegro-stub:8080}"
 
@@ -338,6 +346,41 @@ step_tax_group() {
 # cleartext allows OAuth 1.0a only - query-string and Basic both require
 # is_ssl() - which is why the stand fronts it with the wc-tls proxy (#2854).
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Step 3b - lab-only WordPress mu-plugins (#2854, #3046).
+#
+# NOT bind-mounted (docker-compose.lab.yml's own comment on the woocommerce
+# service explains why: bind-mounting under wp-content/ before the Bitnami
+# entrypoint's first boot makes it take the "restore" branch against an
+# empty volume and fail with "wp-config.php not found", verified live) - so
+# they are docker-cp'd in after the container is healthy instead. Idempotent:
+# a re-run just overwrites the same file with itself.
+#
+#   force-https.php             - makes WP's is_ssl() true behind the wc-tls
+#                                  TLS-terminating proxy (#2854).
+#   allow-internal-image-fetch.php - disables wp_http_validate_url()'s
+#                                  private-IP block (#3046) so the shop-
+#                                  publish image-upload path can fetch a
+#                                  product image from a Docker-internal host.
+# ---------------------------------------------------------------------------
+step_woocommerce_mu_plugins() {
+  log "--- WooCommerce mu-plugins ---"
+  local src_dir="$SCRIPT_DIR/stand/wc-mu-plugins" f name
+  [ -d "$src_dir" ] || { warn "no $src_dir - skipping mu-plugin sync"; return 0; }
+  if [ "$VERIFY_ONLY" = 1 ]; then
+    gap "mu-plugin sync only verified by re-running (docker cp has no dry-run probe worth trusting)"
+    return 0
+  fi
+  would "docker cp every *.php in $src_dir into $WC_CONTAINER:/opt/bitnami/wordpress/wp-content/mu-plugins/" && return 0
+  docker exec "$WC_CONTAINER" mkdir -p /opt/bitnami/wordpress/wp-content/mu-plugins
+  for f in "$src_dir"/*.php; do
+    [ -f "$f" ] || continue
+    name="$(basename "$f")"
+    docker cp "$f" "$WC_CONTAINER:/opt/bitnami/wordpress/wp-content/mu-plugins/$name"
+  done
+  created "mu-plugins synced ($(ls "$src_dir"/*.php 2>/dev/null | wc -l | tr -d ' ') file(s))"
+}
+
 step_woocommerce() {
   log "--- WooCommerce REST key ---"
   local existing
@@ -461,10 +504,16 @@ JSON
   # on CREATE directly; `ensure_woocommerce_publish_capabilities` below is the
   # idempotent PATCH half for a connection created by an earlier bootstrap run
   # (the `ensure_offer_manager` shape, generalised).
+  #
+  # `config.masterCatalogConnectionId` is likewise required for ProductPublisher
+  # to do anything at all - found live (#3046): a shop-publish submit with it
+  # absent fails every item with MASTER_CATALOG_NOT_CONFIGURED, since the
+  # publish builder has no master to read name/description/price from. Points
+  # at perf-prestashop, created immediately above.
   ol_ensure_connection WC_CONN_ID 'perf-woocommerce' "$(cat <<JSON
 {"name":"perf-woocommerce","platformType":"woocommerce",
  "enabledCapabilities":["OrderProcessorManager","ProductPublisher","CategoryProvisioner"],
- "config":{"siteUrl":"$WC_INTERNAL_URL"},
+ "config":{"siteUrl":"$WC_INTERNAL_URL","masterCatalogConnectionId":"${PS_CONN_ID:-}"},
  "credentials":{"consumerKey":"${WC_CK:-}","consumerSecret":"${WC_CS:-}"}}
 JSON
 )"
@@ -691,6 +740,53 @@ ensure_capabilities_present() {
 step_woocommerce_publish_capabilities() {
   log "--- WooCommerce ProductPublisher/CategoryProvisioner capability ---"
   ensure_capabilities_present "${WC_CONN_ID:-}" 'perf-woocommerce' ProductPublisher CategoryProvisioner
+  ensure_woocommerce_master_catalog
+  ensure_prestashop_shop_url_alias
+}
+
+# Idempotent ps_shop_url row for the PS_INTERNAL_URL hostname (#3046).
+#
+# PrestaShop's webservice dispatcher redirects a single-resource GET
+# (`/api/products/25`) to the shop's CANONICAL registered domain
+# (`ps_shop_url.main=1`, PS_DOMAIN's `localhost:19080`) whenever the
+# request's Host header doesn't match ANY registered ps_shop_url.domain row -
+# even with valid Basic Auth. List-style queries (`?filter[...]`) do NOT
+# trigger this (verified live). `PS_INTERNAL_URL` (the dotted `prestashop.lab`
+# alias WordPress's own dot-less-host check requires, see the comment above
+# its declaration) is never registered by the image's own install - only
+# PS_DOMAIN's value is - so every single-resource read the WooCommerce
+# publish path makes (`getProduct`) 301-redirected to `localhost:19080`,
+# which no in-network container can reach. Registering it as an ADDITIONAL
+# (main=0) domain fixes the redirect without touching the canonical one.
+ensure_prestashop_shop_url_alias() {
+  local host existing
+  host="$(printf '%s' "$PS_INTERNAL_URL" | sed -E 's#^[a-z]+://##; s#/.*$##; s#:[0-9]+$##')"
+  [ -n "$host" ] || { warn "could not parse a hostname out of PS_INTERNAL_URL=$PS_INTERNAL_URL - skipping ps_shop_url alias check"; return 0; }
+  existing="$(ps_sql "SELECT COUNT(*) FROM ps_shop_url WHERE domain='$host' OR domain_ssl='$host'")"
+  if [ "${existing:-0}" -gt 0 ]; then found "ps_shop_url row for '$host' (webservice single-resource reads resolve without a redirect)"; return 0; fi
+  if [ "$VERIFY_ONLY" = 1 ]; then gap "no ps_shop_url row for '$host' - single-resource webservice GETs (e.g. /api/products/:id) 301-redirect to the canonical shop domain"; return 0; fi
+  would "register ps_shop_url domain='$host' (main=0, active=1) for shop 1" && return 0
+  ps_sql_write "INSERT INTO ps_shop_url (id_shop, domain, domain_ssl, physical_uri, virtual_uri, main, active) VALUES (1, '$host', '$host', '/', '', 0, 1)"
+  created "ps_shop_url alias registered for '$host'"
+}
+
+# Idempotent PATCH half for config.masterCatalogConnectionId (#3046), for a
+# perf-woocommerce created by an earlier bootstrap run that predates this
+# key. `ConnectionRepository.update` REPLACES `config` wholesale (never a
+# deep merge), so this reads the CURRENT config back and merges client-side -
+# a bare `{config: {masterCatalogConnectionId: ...}}` patch would silently
+# wipe `siteUrl`. Never overwrites an operator-set value that differs from
+# perf-prestashop's id - only fills the gap when the key is absent.
+ensure_woocommerce_master_catalog() {
+  local conn_id="${WC_CONN_ID:-}" current_config current
+  [ -n "$conn_id" ] || { warn "no connection id for perf-woocommerce - skipping masterCatalogConnectionId check"; return 0; }
+  current_config="$(ol_api GET "/v1/connections/$conn_id" | jq -c '.config // {}')"
+  current="$(printf '%s' "$current_config" | jq -r '.masterCatalogConnectionId // empty')"
+  if [ -n "$current" ]; then found "masterCatalogConnectionId on perf-woocommerce ($current)"; return 0; fi
+  if [ "$VERIFY_ONLY" = 1 ]; then gap "perf-woocommerce has no config.masterCatalogConnectionId"; return 0; fi
+  would "set config.masterCatalogConnectionId=${PS_CONN_ID:-} on perf-woocommerce" && return 0
+  ol_api PATCH "/v1/connections/$conn_id" "$(jq -cn --argjson cfg "$current_config" --arg ps "${PS_CONN_ID:-}" '{config: ($cfg + {masterCatalogConnectionId: $ps})}')" >/dev/null
+  created "masterCatalogConnectionId set on perf-woocommerce (${PS_CONN_ID:-})"
 }
 
 # ---------------------------------------------------------------------------
@@ -940,6 +1036,7 @@ main() {
   step_module
   step_webservice
   step_tax_group
+  step_woocommerce_mu_plugins
   step_woocommerce
   step_connections
   # After step_connections (the connection must exist to be patched) and

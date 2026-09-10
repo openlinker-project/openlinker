@@ -178,6 +178,19 @@ services:
   prestashop:
     image: prestashop/prestashop:9.0.2-2.0-classic-8.4
     container_name: lab-prestashop
+    # `prestashop.lab` network alias (#3046) - WordPress's own
+    # `wp_http_validate_url()` refuses to fetch a remote image (or any
+    # remote URL) from a bare, dot-less hostname ("A valid URL was not
+    # provided", found live the first time a shop-publish scenario tried to
+    # attach a PrestaShop-hosted product image to a WooCommerce product).
+    # The bare `prestashop` alias below is UNCHANGED and still resolves -
+    # every already-measured scenario's connections keep working unmodified -
+    # this only ADDS a second, dotted name for `PS_INTERNAL_URL` to prefer
+    # going forward.
+    networks:
+      default:
+        aliases:
+          - prestashop.lab
     environment:
       PS_DOMAIN: 'localhost:${PRESTASHOP_HOST_PORT:-19080}'
       PS_FOLDER_ADMIN: admin
