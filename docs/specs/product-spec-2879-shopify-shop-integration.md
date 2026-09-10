@@ -93,18 +93,20 @@ to 8/8. This strengthens (not weakens) the case for including F6 in a first slic
 
 ## 11. Coverage summary
 
-**80 of the issue's ~90 stories verified live** against a real development store sandbox
+**78 of the issue's 111 stories verified live** against a real development store sandbox
 (`{shop-domain}.myshopify.com`) — see the SPIKE doc's `## Coverage tally` section for the exact
-per-group arithmetic behind this number (10+13+6+6+6+14+8+5+8+4 = 80); this is the single
-authoritative figure and supersedes any other count appearing elsewhere in this spec or the PR
-description. Includes M group at 13/13 (bulk operations confirmed end to end) and F group closed to
-8/8 (negotiation axis, SPIKE E-F10). C7/O16 (429/retry) is **not** a confirmed negative
-result — the burst test used was insufficient to reach the platform's real throttling threshold, so
-retry-classification behaviour stays genuinely UNVERIFIED (see SPIKE E-C8 and the corrected coverage
-tally note). All three headline findings from the issue confirmed; F6 confirmed stronger than
-claimed. Six corrections found that change what a downstream implementation plan should assume — see
-SPIKE doc §Recommendation for the full list, plus P13 (`productSet` behaves as PATCH, not PUT,
-despite its name — confirmed behaviourally, not just by schema description).
+per-group arithmetic behind this number (9+13+6+6+6+13+8+5+8+4 = 78, against a denominator of
+12+13+12+13+13+16+8+9+9+6 = 111 — a prior "~90" estimate in this epic undercounted the checklist and
+is superseded); this is the single authoritative figure and denominator and supersedes any other
+count appearing elsewhere in this spec or the PR description. Includes M group at 13/13 (bulk
+operations confirmed end to end) and F group closed to 8/8 (negotiation axis, SPIKE E-F10).
+**C7/O16 (429/retry) are deliberately EXCLUDED from the 78** — they are attempted but inconclusive,
+not a confirmed negative result: the burst test used was insufficient to reach the platform's real
+throttling threshold, so retry-classification behaviour stays genuinely UNVERIFIED (see SPIKE E-C8
+and the corrected coverage tally note). All three headline findings from the issue confirmed; F6
+confirmed stronger than claimed. Six corrections found that change what a downstream implementation
+plan should assume — see SPIKE doc §Recommendation for the full list, plus P13 (`productSet` behaves
+as PATCH, not PUT, despite its name — confirmed behaviourally, not just by schema description).
 Remaining gaps are the ones genuinely outside API-testable scope (OL-side adapter/design code) or
 still blocked (`read_all_orders` manual review) — listed explicitly in the SPIKE doc's coverage tally
 rather than left implicit.
