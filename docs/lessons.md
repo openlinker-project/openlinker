@@ -1780,3 +1780,58 @@ minutes for a person, seconds for a peer process holding a lock.
 **Applies to**: `apps/worker/src/sync/sync-job.runner.ts` (`resolveDeferral`), retry classifiers
 
 **Source**: #2840 campaign, 2026-09-10
+
+---
+
+## A cache on a per-call object is not a cache - check what constructs it
+
+**Context**: `EparagonyHttpClient` caches its OAuth token, shares an in-flight fetch so a burst
+issues one round trip, and carries a header saying the vendor "explicitly tells integrators not
+to fetch a token per request". All of it correct, all of it useless.
+
+**Problem**: `getCapabilityAdapter` constructs a fresh adapter on every call - the property #2593
+already recorded for the catalogue sweep - and the plugin built a fresh factory and client under
+it each time, so the cache was discarded before it could be read twice. Counted at the stub: 22
+`/auth/token` requests for 22 documents, on a token issued with `expires_in: 3600`. That was
+2 000 ms of a 9 071 ms fiscal registration, and against a real provider it also spends the
+per-IP auth budget the client's own header warns about. Nothing failed; it was 22% slower and
+silent.
+
+**Rule**: when a class caches something, find out how long its INSTANCE lives before trusting the
+cache. Under `createCapabilityAdapter` the answer is one call. State that must outlive a job goes
+either in a hoisted dependency - which is what `AllegroTokenRefreshService` already is, injected
+once at module init, and why Allegro does not have this defect - or in an explicit per-connection
+memo on a factory that is itself hoisted. Key such a memo on everything that shapes the object,
+and remember `ConnectionService.updateCredentials` writes ONLY the credentials store: a key built
+from `connection.updatedAt` alone serves a client holding a rotated-away secret until the process
+restarts.
+
+**Applies to**: every `*-plugin.ts` `createCapabilityAdapter`, any per-connection HTTP client
+
+**Source**: #2840 campaign, 2026-09-10
+
+---
+
+## Verify a fix against a counter, not against a plausible reading of the code
+
+**Context**: two attempts at the same target - the ~9 s fiscal registration - on the same day.
+
+**Problem**: the first shipped an operator-settable first poll gap, reasoning that the loop's
+immediate first status read is premature against a slower device. The reasoning was wrong in a
+way the code shows plainly once read in the right order: the loop reads FIRST and sleeps after,
+so the gap sits between reads and can never remove the premature one. Measured, it cost
++1 016 ms and saved nothing, and it was reverted. The harness could not have validated it either
+way - the stub's readiness is poll-COUNT driven, so no amount of waiting makes a document ready
+sooner. The second attempt started from `tokenRequestsTotal: 22` against `createCount: 22` and
+was verifiable before a line was written.
+
+**Rule**: prefer a target that an existing counter already measures. Before acting on a
+decomposition derived from declared constants, check that the harness can express the condition
+you intend to change - a stub whose readiness is a poll count cannot measure a change to poll
+timing, and a green run against it means nothing. And when averaging a duration, check the
+population: the first published figure for this same flow (8 323 ms, n=12) had a refused
+registration in it that never crossed the provider boundary, which dragged the mean down ~750 ms.
+
+**Applies to**: `perf/openlinker-throughput/**`, any perf-driven code change
+
+**Source**: #2840 campaign, 2026-09-10
