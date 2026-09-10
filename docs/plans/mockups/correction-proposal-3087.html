@@ -1,0 +1,285 @@
+<title>Correction Proposal</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root, [data-theme='light'] {
+  --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff; --bg-surface-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80); --text-disabled: oklch(70% 0.005 80); --text-on-primary: oklch(18% 0.012 50);
+  --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-soft: oklch(96% 0.04 60); --accent-primary-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
+  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
+  --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+  --space-2:.5rem; --space-3:.75rem; --space-4:1rem; --space-5:1.5rem;
+  --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:9999px;
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / .04), 0 6px 16px rgb(15 18 26 / .06);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
+    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+    --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
+    --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
+    --status-error-soft: oklch(28% 0.09 25); --status-error-border: oklch(42% 0.13 25); --status-error-fg: oklch(84% 0.14 25);
+    --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
+    --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+  }
+}
+:root[data-theme='dark'] {
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
+  --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
+  --status-error-soft: oklch(28% 0.09 25); --status-error-border: oklch(42% 0.13 25); --status-error-fg: oklch(84% 0.14 25);
+  --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
+  --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+}
+* { box-sizing: border-box; }
+body { margin:0; min-width:320px; background:var(--bg-canvas); color:var(--text-primary); font-family:var(--font-sans); font-size:.875rem; line-height:1.55; }
+h1,h2,h3,p { margin:0; }
+a{ color:var(--accent-primary-hover); text-decoration:underline; text-underline-offset:.16em; }
+button:focus-visible, a:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-md); }
+
+.page{ max-width:700px; margin:0 auto; padding:28px 24px 60px; }
+.back-link{ display:inline-flex; align-items:center; gap:.375rem; font-size:.8125rem; color:var(--text-muted); text-decoration:none; margin-bottom:10px; }
+.eyebrow{ margin:0; font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-primary-hover); }
+.page-header{ display:grid; gap:.5rem; margin-bottom:22px; }
+.page-title{ font-size:1.75rem; font-weight:600; letter-spacing:-.02em; margin-top:6px; }
+.page-description{ color:var(--text-secondary); font-size:.9375rem; max-width:60ch; }
+
+.button{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--accent-primary-border); border-radius:var(--radius-md); padding:0 var(--space-4); height:2.25rem; background:var(--accent-primary); color:var(--text-on-primary); font-family:inherit; font-size:.875rem; font-weight:600; cursor:pointer; box-shadow:var(--shadow-xs); }
+.button:hover{ background:var(--accent-primary-hover); }
+.button--secondary{ border-color:var(--border-default); background:var(--bg-surface); color:var(--text-primary); }
+.button--secondary:hover{ background:var(--bg-surface-muted); border-color:var(--border-strong); }
+.button:disabled{ cursor:not-allowed; opacity:.5; box-shadow:none; }
+.button--sm{ height:1.875rem; padding:0 var(--space-3); font-size:.8125rem; }
+
+/* headline summary — the whole point, at a glance */
+.summary{ display:flex; align-items:center; gap:20px; padding:26px 26px; border-radius:var(--radius-xl); background:var(--bg-surface); border:1px solid var(--border-default); box-shadow:var(--shadow-soft); margin-bottom:26px; flex-wrap:wrap; border-left:5px solid var(--status-success); }
+.summary--empty{ border-left-color:var(--border-strong); }
+.summary__num{ font-size:2.75rem; font-weight:700; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
+.summary__num--credit{ color:var(--status-success-fg); }
+.summary__body{ flex:1; min-width:200px; }
+.summary__title{ font-size:1.125rem; font-weight:700; }
+.summary__desc{ font-size:.8125rem; color:var(--text-muted); margin-top:3px; }
+.summary__breakdown{ display:flex; gap:16px; font-size:.8125rem; color:var(--text-muted); margin-top:10px; flex-wrap:wrap; }
+.summary__breakdown b{ color:var(--text-primary); font-weight:700; }
+
+.line{ display:flex; align-items:center; gap:14px; padding:15px 18px; border-radius:var(--radius-lg); border:1px solid var(--border-subtle); background:var(--bg-surface); margin-bottom:10px; }
+.line--pick{ align-items:flex-start; border-color:var(--status-warning-border); background:var(--status-warning-soft); }
+.line--no{ opacity:.7; }
+.line__icon{ width:34px; height:34px; border-radius:999px; display:flex; align-items:center; justify-content:center; font-size:1rem; flex-shrink:0; }
+.line__icon--yes{ background:var(--status-success-soft); color:var(--status-success-fg); }
+.line__icon--pick{ background:var(--status-warning-border); color:var(--status-warning-fg); }
+.line__icon--no{ background:var(--status-disabled-soft); color:var(--text-disabled); }
+.line__body{ flex:1; min-width:0; }
+.line__name{ font-weight:600; font-size:.9375rem; }
+.line__sub{ font-size:.8125rem; color:var(--text-muted); margin-top:2px; }
+.line__amount{ font-family:var(--font-mono); font-size:.9375rem; font-weight:700; flex-shrink:0; }
+.line__amount--yes{ color:var(--status-success-fg); }
+.line__amount--no{ color:var(--text-disabled); font-family:var(--font-sans); font-weight:500; font-size:.8125rem; }
+
+/* ambiguous inline choice — two big obvious tap targets, no table */
+.choice-row{ display:flex; gap:10px; margin-top:12px; }
+.choice-btn{ flex:1; text-align:left; border:2px solid var(--border-default); border-radius:var(--radius-md); padding:12px 14px; background:var(--bg-surface); cursor:pointer; }
+.choice-btn:hover{ border-color:var(--border-strong); }
+.choice-btn--picked{ border-color:var(--status-success); background:var(--status-success-soft); }
+.choice-btn__label{ font-weight:700; font-size:.875rem; }
+.choice-btn__price{ font-family:var(--font-mono); font-size:.8125rem; color:var(--text-muted); margin-top:3px; }
+.choice-btn--picked .choice-btn__price{ color:var(--status-success-fg); }
+
+.section-title{ font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); margin:22px 0 8px; }
+
+.sticky-footer{ position:sticky; bottom:0; background:var(--bg-surface); border-top:1px solid var(--border-subtle); padding:16px 0 0; margin-top:20px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+.sticky-footer__note{ font-size:.75rem; color:var(--text-muted); max-width:34ch; }
+
+.callout{ display:flex; gap:10px; padding:12px 14px; border-radius:var(--radius-md); border:1px solid; margin-bottom:16px; }
+.callout--warning{ background:var(--status-warning-soft); border-color:var(--status-warning-border); }
+.callout--info{ background:var(--status-info-soft); border-color:var(--status-info-border); }
+.callout__text{ font-size:.8125rem; color:var(--text-secondary); }
+.callout__text b{ color:var(--text-primary); }
+
+.demo-toolbar{ display:flex; align-items:center; gap:8px; margin-bottom:18px; padding:8px 12px; background:var(--bg-surface-muted); border-radius:var(--radius-md); flex-wrap:wrap; }
+.demo-toolbar__label{ font-family:var(--font-mono); font-size:.625rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin-right:2px; }
+.chip{ display:inline-flex; align-items:center; gap:.25rem; height:1.375rem; padding:0 .55rem; border:1px solid var(--border-subtle); border-radius:var(--radius-pill); background:var(--bg-surface); color:var(--text-secondary); font-size:.6875rem; font-weight:500; cursor:pointer; }
+.chip.chip--active{ background:var(--accent-primary-soft); border-color:var(--accent-primary-border); color:var(--accent-primary-hover); font-weight:600; }
+.state-card{ border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-soft); padding:32px 28px; text-align:left; }
+.state-card__title{ font-size:1.0625rem; font-weight:600; margin-top:4px; }
+.state-card__message{ color:var(--text-secondary); font-size:.875rem; margin-top:6px; max-width:56ch; }
+</style>
+
+<div class="page">
+  <a class="back-link" href="#">&larr; Back to return AL-RET-88213</a>
+  <header class="page-header">
+    <p class="eyebrow">Credit note</p>
+    <h1 class="page-title">Crediting this return on the invoice</h1>
+    <p class="page-description">A preview only — nothing is sent to the tax office until you confirm.</p>
+  </header>
+
+  <div id="content"></div>
+
+  <div class="demo-toolbar" role="group" aria-label="Mockup — not part of the product">
+    <span class="demo-toolbar__label">Mockup</span>
+    <button class="chip chip--active" data-state="mixed" onclick="setState('mixed')">Mixed result</button>
+    <button class="chip" data-state="all-good" onclick="setState('all-good')">All creditable</button>
+    <button class="chip" data-state="none" onclick="setState('none')">Nothing creditable</button>
+    <button class="chip" data-state="no-invoice" onclick="setState('no-invoice')">No invoice yet</button>
+  </div>
+</div>
+
+<script>
+function money(n, cur){ return n.toLocaleString('pl-PL', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + cur; }
+
+const DATA = {
+  mixed: {
+    currency:'PLN', invoice:'FV/2026/09/0142',
+    lines:[
+      { id:'l1', name:'Running shoes — size 42', qty:1, status:'yes', amount:249.00 },
+      { id:'l2', name:'Wireless earbuds', qty:1, status:'pick',
+        options:[{ label:'Invoice line #3', price:189.00 }, { label:'Invoice line #5', price:179.00 }] },
+      { id:'l3', name:'Phone case — clear', qty:1, status:'no', reason:"We haven't confirmed the stock came back yet." },
+      { id:'l4', name:'Screen protector 2-pack', qty:2, status:'no', reason:"Nothing on the invoice matches this item's name." },
+    ],
+  },
+  'all-good': {
+    currency:'PLN', invoice:'FV/2026/09/0201',
+    lines:[
+      { id:'l1', name:'Running shoes — size 42', qty:1, status:'yes', amount:249.00 },
+      { id:'l2', name:'Water bottle', qty:2, status:'yes', amount:78.00 },
+    ],
+  },
+  none: {
+    currency:'PLN', invoice:'FV/2026/09/0055',
+    lines:[
+      { id:'l1', name:'Phone case — clear', qty:1, status:'no', reason:"We haven't confirmed the stock came back yet." },
+      { id:'l2', name:'Screen protector 2-pack', qty:2, status:'no', reason:"That quantity is more than the invoice ever billed for this line." },
+    ],
+  },
+};
+
+let currentState = 'mixed';
+let choices = {};
+let recorded = false;
+
+function creditable(l) { return l.status === 'yes' || (l.status === 'pick' && choices[l.id] !== undefined); }
+function amountFor(l) {
+  if (l.status === 'yes') return l.amount;
+  if (l.status === 'pick' && choices[l.id] !== undefined) return l.options[choices[l.id]].price;
+  return 0;
+}
+
+function renderLine(l) {
+  if (l.status === 'yes') {
+    return `<div class="line">
+      <div class="line__icon line__icon--yes">✓</div>
+      <div class="line__body"><div class="line__name">${l.name}</div><div class="line__sub">Credited automatically</div></div>
+      <div class="line__amount line__amount--yes">${money(l.amount, DATA[currentState].currency)}</div>
+    </div>`;
+  }
+  if (l.status === 'pick') {
+    const picked = choices[l.id];
+    return `<div class="line line--pick">
+      <div class="line__icon line__icon--pick">?</div>
+      <div class="line__body">
+        <div class="line__name">${l.name}</div>
+        <div class="line__sub">${picked !== undefined ? '✓ You picked which one — ready to credit' : 'This item is on the invoice twice. Which one was it?'}</div>
+        <div class="choice-row">
+          ${l.options.map((o, i) => `<button class="choice-btn ${picked===i?'choice-btn--picked':''}" onclick="pickOption('${l.id}', ${i})">
+            <div class="choice-btn__label">${picked===i?'✓ ':''}${o.label}</div>
+            <div class="choice-btn__price">${money(o.price, DATA[currentState].currency)}</div>
+          </button>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  }
+  return `<div class="line line--no">
+    <div class="line__icon line__icon--no">✕</div>
+    <div class="line__body"><div class="line__name">${l.name}</div><div class="line__sub">${l.reason}</div></div>
+    <div class="line__amount line__amount--no">Can't credit</div>
+  </div>`;
+}
+
+function render() {
+  const content = document.getElementById('content');
+
+  if (currentState === 'no-invoice') {
+    content.innerHTML = `<div class="state-card">
+      <p class="eyebrow">No invoice yet</p>
+      <h3 class="state-card__title">This order hasn't been invoiced</h3>
+      <p class="state-card__message">There's nothing to credit until an invoice exists for this order.</p>
+    </div>`;
+    return;
+  }
+
+  const d = DATA[currentState];
+  const total = d.lines.reduce((s, l) => s + amountFor(l), 0);
+  const creditableCount = d.lines.filter(creditable).length;
+  const pickCount = d.lines.filter(l => l.status === 'pick' && choices[l.id] === undefined).length;
+
+  const summaryHtml = creditableCount === 0
+    ? `<div class="summary summary--empty">
+        <div class="summary__body">
+          <div class="summary__title">Nothing here can be credited yet</div>
+          <div class="summary__desc">See why below — usually it's waiting on a stock confirmation or a name that doesn't match.</div>
+        </div>
+      </div>`
+    : `<div class="summary">
+        <div class="summary__num summary__num--credit">${money(total, d.currency)}</div>
+        <div class="summary__body">
+          <div class="summary__title">Ready to credit on invoice ${d.invoice}</div>
+          <div class="summary__breakdown">
+            <span><b>${d.lines.filter(l=>l.status==='yes').length}</b> automatic</span>
+            ${pickCount > 0 ? `<span><b>${pickCount}</b> need your pick</span>` : ''}
+            ${d.lines.filter(l=>l.status==='no').length > 0 ? `<span><b>${d.lines.filter(l=>l.status==='no').length}</b> can't credit</span>` : ''}
+          </div>
+        </div>
+      </div>`;
+
+  content.innerHTML = `
+    ${summaryHtml}
+    ${d.lines.map(renderLine).join('')}
+    <div class="sticky-footer">
+      <span class="sticky-footer__note">${recorded ? 'Recorded — an operator confirms and issues it from the invoice.' : (pickCount > 0 ? "Pick an invoice line above for every \"?\" item first." : "This only records a proposal for review. It doesn't send anything yet.")}</span>
+      ${recorded
+        ? `<button class="button button--secondary" disabled>✓ Recorded for review</button>`
+        : `<button class="button" ${(creditableCount === 0 || pickCount > 0) ? 'disabled' : ''} onclick="recordProposal()">Record for review</button>`}
+    </div>
+  `;
+}
+
+function pickOption(lineId, idx) {
+  choices[lineId] = idx;
+  render();
+}
+function recordProposal() { recorded = true; render(); }
+
+function setState(name) {
+  currentState = name; choices = {}; recorded = false;
+  document.querySelectorAll('.demo-toolbar .chip[data-state]').forEach(c => c.classList.toggle('chip--active', c.dataset.state === name));
+  render();
+}
+
+setState('mixed');
+</script>
