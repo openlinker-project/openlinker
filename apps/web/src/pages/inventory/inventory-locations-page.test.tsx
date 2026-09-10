@@ -88,6 +88,31 @@ describe('InventoryLocationsPage', () => {
     expect(screen.getByRole('button', { name: '+ Add manually' })).toBeInTheDocument();
   });
 
+  // Regression: useBootstrapLocationsMutation used to invalidate only
+  // activeLocations() (the #2407 readiness-panel key), so a successful
+  // bootstrap here left the list's own locations() query stale — the click
+  // visibly did nothing until a full page reload re-fetched it.
+  it('the newly-minted location appears without a page reload after Create first location', async () => {
+    const created = { ...location, id: 'ol_location_main' };
+    const listLocations = vi
+      .fn()
+      .mockResolvedValueOnce(page([]))
+      .mockResolvedValueOnce(page([created]));
+    const bootstrapLocations = vi
+      .fn()
+      .mockResolvedValue({ created: [created], existingCodes: [] });
+    const apiClient = createMockApiClient({ inventory: { listLocations, bootstrapLocations } });
+    renderWithProviders(<InventoryLocationsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Create first location' }));
+
+    expect(await screen.findByText('Warsaw — Main warehouse')).toBeInTheDocument();
+    expect(listLocations).toHaveBeenCalledTimes(2);
+  });
+
   it('turning the Show retired toggle off filters to status=active', async () => {
     const listLocations = vi.fn().mockResolvedValue(page());
     const apiClient = createMockApiClient({ inventory: { listLocations } });
