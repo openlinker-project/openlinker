@@ -228,7 +228,7 @@ describe('Order early-cancellation signal (#2069)', () => {
     // ingestion time — proving `consume()`'s returned timestamp actually
     // reached `markCancelled` rather than merely triggering it.
     expect(record!.cancelledAt).not.toBeNull();
-    expect(record!.cancelledAt.getTime()).toBe(signalAfterCancel!.cancelledAt.getTime());
+    expect(record!.cancelledAt!.getTime()).toBe(signalAfterCancel!.cancelledAt.getTime());
 
     const signalAfterSync = await signalRepo.findOne({
       where: { sourceConnectionId: sourceConnection.id, externalOrderId },
