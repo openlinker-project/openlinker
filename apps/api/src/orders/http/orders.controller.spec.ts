@@ -204,6 +204,7 @@ describe('OrdersController', () => {
     };
     const mockTestFixtureService: jest.Mocked<IOrderTestFixtureService> = {
       markPreRolloutEraForTesting: jest.fn().mockResolvedValue(true),
+      assertTestFixturesAllowed: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -1525,23 +1526,40 @@ describe('OrdersController', () => {
   });
 
   describe('markPreRolloutEra (#2855, TEST-FIXTURE-ONLY)', () => {
-    it('404s without calling the service when the order does not exist', async () => {
-      repository.findById.mockResolvedValue(null);
+    const USER = { id: 'user-1', username: 'op', role: 'admin' } as never;
 
-      await expect(controller.markPreRolloutEra('ol_order_missing')).rejects.toBeInstanceOf(
-        NotFoundException
-      );
+    it('checks the env gate BEFORE reading the order, and refuses fast when closed', async () => {
+      testFixtureService.assertTestFixturesAllowed.mockImplementation(() => {
+        throw new TestFixturesDisabledException();
+      });
+
+      await expect(controller.markPreRolloutEra('ol_order_001', USER)).rejects.toMatchObject({
+        response: expect.objectContaining({ error: 'TEST_FIXTURES_DISABLED' }),
+      });
+      expect(repository.findById).not.toHaveBeenCalled();
       expect(testFixtureService.markPreRolloutEraForTesting).not.toHaveBeenCalled();
     });
 
-    it('returns { applied } from the service when the order exists', async () => {
+    it('404s without calling the service when the order does not exist', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(
+        controller.markPreRolloutEra('ol_order_missing', USER)
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(testFixtureService.markPreRolloutEraForTesting).not.toHaveBeenCalled();
+    });
+
+    it('returns { applied } from the service when the order exists, threading the actor', async () => {
       repository.findById.mockResolvedValue(mockOrder);
       testFixtureService.markPreRolloutEraForTesting.mockResolvedValue(true);
 
-      await expect(controller.markPreRolloutEra('ol_order_001')).resolves.toEqual({
+      await expect(controller.markPreRolloutEra('ol_order_001', USER)).resolves.toEqual({
         applied: true,
       });
-      expect(testFixtureService.markPreRolloutEraForTesting).toHaveBeenCalledWith('ol_order_001');
+      expect(testFixtureService.markPreRolloutEraForTesting).toHaveBeenCalledWith(
+        'ol_order_001',
+        'user-1'
+      );
     });
 
     it('maps TestFixturesDisabledException to a 403 with a machine-readable code', async () => {
@@ -1550,7 +1568,7 @@ describe('OrdersController', () => {
         new TestFixturesDisabledException()
       );
 
-      await expect(controller.markPreRolloutEra('ol_order_001')).rejects.toMatchObject({
+      await expect(controller.markPreRolloutEra('ol_order_001', USER)).rejects.toMatchObject({
         response: expect.objectContaining({ error: 'TEST_FIXTURES_DISABLED' }),
       });
     });
@@ -1559,7 +1577,7 @@ describe('OrdersController', () => {
       repository.findById.mockResolvedValue(mockOrder);
       testFixtureService.markPreRolloutEraForTesting.mockRejectedValue(new Error('boom'));
 
-      await expect(controller.markPreRolloutEra('ol_order_001')).rejects.toThrow('boom');
+      await expect(controller.markPreRolloutEra('ol_order_001', USER)).rejects.toThrow('boom');
     });
   });
 });

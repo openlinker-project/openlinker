@@ -915,24 +915,45 @@ export class OrdersController {
       'Exists ONLY to let a non-production install reach the tax-a / tax-c analytics coverage ' +
       'states (#2482) with a fresh, flow-seeded order — no real ingestion path ever writes ' +
       'taxRateEra (it was set exactly once, by a historical backfill migration), so those states ' +
-      'are otherwise unreachable. Double-gated: @Roles(admin) here, plus OL_ALLOW_TEST_FIXTURES ' +
-      'must be true in the process env. MUST NEVER be called against real order data — it silently ' +
-      'excludes the order from Net Sales figures via the pre-rollout tax-rate-era rule.',
+      'are otherwise unreachable. Triple-gated: @Roles(admin) here, OL_ALLOW_TEST_FIXTURES must ' +
+      'be true in the process env, and NODE_ENV must not be production (refused unconditionally, ' +
+      'even with the env var set). The acting admin is recorded in the audit log. MUST NEVER be ' +
+      'called against real order data — it silently excludes the order from Net Sales figures via ' +
+      'the pre-rollout tax-rate-era rule.',
   })
   @ApiResponse({ status: 200, description: 'Stamp applied (or already present)', type: MarkPreRolloutEraResponseDto })
   @ApiResponse({ status: 403, description: 'Insufficient permissions, or TEST_FIXTURES_DISABLED' })
   @ApiResponse({ status: 404, description: 'Order not found' })
   async markPreRolloutEra(
-    @Param('internalOrderId') internalOrderId: string
+    @Param('internalOrderId') internalOrderId: string,
+    @CurrentUser() user: AuthenticatedUser
   ): Promise<MarkPreRolloutEraResponseDto> {
-    // Refuse before any side effect, same ordering rationale as `placeHold`.
+    // The feature-flag gate is checked BEFORE the DB pre-read: on a production
+    // deployment (the default — the flag defaults off) this route is entirely
+    // inert, and it should cost no read before that is established.
+    try {
+      this.testFixtureService.assertTestFixturesAllowed();
+    } catch (error) {
+      if (error instanceof TestFixturesDisabledException) {
+        throw new ForbiddenException({
+          statusCode: HttpStatus.FORBIDDEN,
+          error: 'TEST_FIXTURES_DISABLED',
+          message: error.message,
+        });
+      }
+      throw error;
+    }
+
     const order = await this.orderRecordRepository.findById(internalOrderId);
     if (!order) {
       throw new NotFoundException(`Order not found: ${internalOrderId}`);
     }
 
     try {
-      const applied = await this.testFixtureService.markPreRolloutEraForTesting(internalOrderId);
+      const applied = await this.testFixtureService.markPreRolloutEraForTesting(
+        internalOrderId,
+        user.id
+      );
       return { applied };
     } catch (error) {
       if (error instanceof TestFixturesDisabledException) {

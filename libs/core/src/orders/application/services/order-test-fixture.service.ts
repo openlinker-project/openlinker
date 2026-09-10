@@ -1,9 +1,9 @@
 /**
  * Order Test Fixture Service
  *
- * Implements {@link IOrderTestFixtureService} — the narrow, double-gated
- * (role + env) write seam for analytics states no real ingestion flow can
- * ever produce (#2855).
+ * Implements {@link IOrderTestFixtureService} — the narrow, triple-gated
+ * (role + env + NODE_ENV) write seam for analytics states no real ingestion
+ * flow can ever produce (#2855).
  *
  * @module libs/core/src/orders/application/services
  * @implements {IOrderTestFixtureService}
@@ -28,17 +28,29 @@ export class OrderTestFixtureService implements IOrderTestFixtureService {
     private readonly configService: ConfigService
   ) {}
 
-  async markPreRolloutEraForTesting(internalOrderId: string): Promise<boolean> {
+  async markPreRolloutEraForTesting(
+    internalOrderId: string,
+    actorUserId: string
+  ): Promise<boolean> {
     this.assertTestFixturesAllowed();
 
     const applied = await this.orderRecordRepository.stampPreRolloutEraForTesting(internalOrderId);
     this.logger.warn(
-      `Test fixture: stamped taxRateEra='pre-rollout' on order ${internalOrderId} (applied=${applied})`
+      `Test fixture: stamped taxRateEra='pre-rollout' on order ${internalOrderId} ` +
+        `(applied=${applied}, actor=${actorUserId})`
     );
     return applied;
   }
 
-  private assertTestFixturesAllowed(): void {
+  assertTestFixturesAllowed(): void {
+    // Fail-closed under NODE_ENV=production regardless of the env var, mirroring
+    // credentials-resolver.service.ts's dev/test-only gate (#709) — a copy-pasted
+    // .env that carries OL_ALLOW_TEST_FIXTURES=true into production must not be
+    // the only thing standing between a real order and this write.
+    if (process.env.NODE_ENV === 'production') {
+      throw new TestFixturesDisabledException();
+    }
+
     const raw = this.configService.get<string>(ALLOW_TEST_FIXTURES_ENV_VAR, 'false');
     if (raw.trim().toLowerCase() !== 'true') {
       throw new TestFixturesDisabledException();
