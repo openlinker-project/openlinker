@@ -6,6 +6,7 @@ import {
   createMockApiClient,
   renderWithProviders,
 } from '../../test/test-utils';
+import { ApiError } from '../../shared/api/api-error';
 import { InventoryLocationsPage } from './inventory-locations-page';
 import type { InventoryLocation, PaginatedInventoryLocations } from '../../features/inventory';
 
@@ -160,5 +161,84 @@ describe('InventoryLocationsPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
 
     expect(await screen.findByText('Delete "Warsaw — Main warehouse"?')).toBeInTheDocument();
+  });
+
+  // #3070 — end-to-end round trips through the real mutation hooks' cache
+  // invalidation, not just "the dialog opened": every hook/dialog test above
+  // stops at the request being made, so none of them prove the PAGE actually
+  // reflects a successful write.
+  describe('end-to-end CRUD round trips (#3070)', () => {
+    it('create: the new row appears in the table after a successful submit', async () => {
+      const created: InventoryLocation = { ...location, id: 'ol_location_2', code: 'WH2', name: 'Overflow' };
+      const listLocations = vi
+        .fn()
+        .mockResolvedValueOnce(page([location]))
+        .mockResolvedValueOnce(page([location, created]));
+      const createLocation = vi.fn().mockResolvedValue(created);
+      const apiClient = createMockApiClient({ inventory: { listLocations, createLocation } });
+      renderWithProviders(<InventoryLocationsPage />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      await screen.findByText('Warsaw — Main warehouse');
+      await userEvent.click(screen.getByRole('button', { name: '+ Add location' }));
+      await screen.findByText('Add location');
+      await userEvent.type(screen.getByLabelText('Code'), 'WH2');
+      await userEvent.type(screen.getByLabelText('Name'), 'Overflow');
+      await userEvent.click(screen.getByRole('button', { name: /save location/i }));
+
+      expect(await screen.findByText('Overflow')).toBeInTheDocument();
+      expect(listLocations).toHaveBeenCalledTimes(2);
+    });
+
+    it('delete: the row is gone from the table after a successful delete', async () => {
+      const listLocations = vi
+        .fn()
+        .mockResolvedValueOnce(page([location]))
+        .mockResolvedValueOnce(page([]));
+      const deleteLocation = vi.fn().mockResolvedValue(undefined);
+      const apiClient = createMockApiClient({ inventory: { listLocations, deleteLocation } });
+      renderWithProviders(<InventoryLocationsPage />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      await screen.findByText('Warsaw — Main warehouse');
+      await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      await screen.findByText('Delete "Warsaw — Main warehouse"?');
+      await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+      await waitFor(() => expect(screen.queryByText('Warsaw — Main warehouse')).not.toBeInTheDocument());
+      expect(listLocations).toHaveBeenCalledTimes(2);
+    });
+
+    it('retire: a 409-refused delete, retired instead, flips the row to Retired', async () => {
+      const listLocations = vi
+        .fn()
+        .mockResolvedValueOnce(page([location]))
+        .mockResolvedValueOnce(page([{ ...location, status: 'inactive' }]));
+      const deleteLocation = vi
+        .fn()
+        .mockRejectedValue(new ApiError('Inventory location ol_location_1 is referenced by 3 inventory position(s)', 409, {}));
+      const updateLocation = vi.fn().mockResolvedValue({ ...location, status: 'inactive' });
+      const apiClient = createMockApiClient({ inventory: { listLocations, deleteLocation, updateLocation } });
+      renderWithProviders(<InventoryLocationsPage />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      await screen.findByText('Warsaw — Main warehouse');
+      expect(screen.getByText('active')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+      await screen.findByText('Delete "Warsaw — Main warehouse"?');
+      await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+      await screen.findByRole('button', { name: /retire instead/i });
+      await userEvent.click(screen.getByRole('button', { name: /retire instead/i }));
+
+      await waitFor(() => expect(screen.getByText('inactive')).toBeInTheDocument());
+      expect(listLocations).toHaveBeenCalledTimes(2);
+    });
   });
 });
