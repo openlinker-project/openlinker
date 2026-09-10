@@ -257,6 +257,23 @@ describe('DestinationTaxonomyService', () => {
       );
     });
 
+    it('should swallow an adapter-construction failure and fall through to the capability-shaped 422, not rethrow it as an unmapped 500 (#2146)', async () => {
+      const { service } = buildService({
+        adaptersByConnection: {},
+        connectionErrorsByConnection: {
+          'conn-misconfigured': new Error('AllegroConfigException: missing OAuth credentials'),
+        },
+      });
+
+      // Neither ConnectionNotFoundException nor ConnectionDisabledException —
+      // an ordinary adapter-construction failure has no filter registered in
+      // apps/api, so rethrowing it would surface an unmapped 500 instead of
+      // the capability-shaped 422 this replaces.
+      await expect(service.resolveScope('conn-misconfigured')).rejects.toBeInstanceOf(
+        TaxonomySourceUnavailableException,
+      );
+    });
+
     it('should not probe the second capability once the first probe reports a connection-level failure (#2146)', async () => {
       const { service, getCapabilityAdapter } = buildService({
         adaptersByConnection: {},
