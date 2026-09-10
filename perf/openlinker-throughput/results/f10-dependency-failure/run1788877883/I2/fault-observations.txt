@@ -1,0 +1,6 @@
+EXPECTED-BY-FAULT DISCARDED post_guard_containers_stable: container(s) restarted or recreated inside the measurement window - lab-redis(was=2026-09-08T11:21:29.216515851Z now=2026-09-08T15:14:56.163685585Z)
+ok
+ok
+DISCARDED post_guard_destination_creates: 0 order(s) carry a failed syncStatus entry, 2 lack syncedAt on the declared destination
+ok
+ok offered_work: 12 child job(s) for 12 pushed order(s) - the intended load reached the queue

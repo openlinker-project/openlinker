@@ -1,0 +1,5 @@
+vus,n,p50,p95,p99,maxWaiters,anyWaiters,apiCpuAvgPct,apiCpuMaxPct,pgCpuAvgPct,pgCpuMaxPct,waitEvents,verdict
+2,7752,4.6,7.2,9.0,0,False,80.6,97.7,96.5,107.3,-,VALID
+8,12179,12.2,19.8,26.5,0,False,117.2,125.0,152.6,172.9,-,VALID
+32,12453,49.9,65.8,75.1,0,False,104.0,129.2,165.9,182.5,-,VALID
+128,12383,201.5,248.3,284.6,0,False,124.2,201.3,170.8,184.1,-,VALID

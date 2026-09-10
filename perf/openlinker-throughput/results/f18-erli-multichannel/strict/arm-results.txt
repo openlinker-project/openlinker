@@ -1,0 +1,3 @@
+armA-three-channel-concurrent allegroPollMs=2397 psWebserviceMs=52 erliResolveBurstMs=62
+armB-peer-limiter-contention soloMs=40 concurrentMs=55 erliBurstMs=60 erliBurstSize=10
+armC-frozen-stock-skip before=0 afterNotFrozen=1 afterFrozen=1 ok=1

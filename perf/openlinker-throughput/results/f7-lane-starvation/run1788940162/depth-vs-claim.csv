@@ -1,0 +1,7 @@
+lane,depth,execution_time_ms,planning_time_ms,rows_examined_heap_fetches
+realtime,0,0.380,2.671,NA
+fiscal,0,0.436,2.581,NA
+realtime,1000,0.374,1.417,NA
+fiscal,1000,0.822,1.290,NA
+realtime,10000,1.852,1.352,NA
+fiscal,10000,3.124,1.324,NA
