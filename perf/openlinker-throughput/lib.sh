@@ -797,6 +797,84 @@ guard_log_level() {
   log "guard_log_level ok ($MANIFEST_LOG_BODY_MAX_BYTES)"
 }
 
+# guard_connection_endpoints - every base URL the connections under test are
+# configured with must actually answer, PROBED FROM INSIDE THE WORKER.
+#
+# This exists because of a fault that cost two measurements and was invisible
+# in both of them (#2840 campaign, 2026-09-10). Several stand backends sit
+# behind a per-service nginx TLS terminator, because the Eparagony and Erli
+# HTTP clients refuse a non-https base URL. nginx resolves a `proxy_pass
+# http://name:port` upstream ONCE, at startup, and caches that address for the
+# life of the process unless a `resolver` directive is present - none is. So
+# recreating a backing stub container hands it a new address and every proxied
+# call 502s from then on, silently and for ever.
+#
+# What that looked like downstream is the reason this is a GUARD and not a
+# README note. F14 arm B scored 0/10 and still wrote status=VALID. F18 arm C
+# observed zero requests at the Erli stub while both its jobs reported
+# `succeeded|ok`, and that was very nearly published as a product finding
+# about a stock write that reports success without writing.
+#
+# Three properties are load-bearing.
+#
+#  1. The probe runs INSIDE the worker, through node, never from the host and
+#     never through wget/curl. Only node reads NODE_EXTRA_CA_CERTS, and the
+#     worker's own network namespace is the one that matters - a host-side
+#     probe of a published port proves nothing about the container-to-container
+#     path these connections actually use. An earlier wget-based check on this
+#     same stand returned a confident wrong answer for exactly that reason.
+#
+#  2. A gateway error is the FAILURE and any other status is a PASS. 401, 403
+#     and 404 all mean the endpoint terminated TLS and answered - which is the
+#     whole question. Requiring 2xx would refuse every credentialed backend and
+#     train people to skip the guard.
+#
+#  3. It fails closed on a config it cannot read. A connection whose config
+#     carries no URL at all is reported and skipped; a URL that cannot be
+#     parsed or probed is fatal. "No answer" must never read as "nothing to
+#     check", which is the shape guard_runner_state already refuses.
+#
+# Usage: guard_connection_endpoints "<uuid>" ["<uuid>" ...]
+guard_connection_endpoints() {
+  _ensure_worker_containers
+  local w ids id urls url out checked=0
+  w="$(printf '%s' "$WORKER_CONTAINERS" | awk '{print $1}')"
+  [ -n "$w" ] || die "guard_connection_endpoints: no worker container discovered"
+
+  ids="$*"
+  [ -n "$ids" ] || die "guard_connection_endpoints: called with no connection ids - an empty argument list would pass vacuously"
+
+  for id in $ids; do
+    urls="$(pg_sql "SELECT DISTINCT v FROM connections c, LATERAL jsonb_each_text(c.config) AS e(k,v) WHERE c.id='$id' AND v ~ '^https?://'")"
+    if [ -z "$urls" ]; then
+      log "guard_connection_endpoints: connection $id declares no http(s) base URL in its config - nothing to probe"
+      continue
+    fi
+    for url in $urls; do
+      out="$(docker exec "$w" node -e '
+const u = new URL(process.argv[1]);
+const lib = u.protocol === "https:" ? require("https") : require("http");
+const req = lib.request({hostname:u.hostname, port:u.port||(u.protocol==="https:"?443:80), path:"/", method:"GET", timeout:8000},
+  (res) => { console.log("status=" + res.statusCode); res.resume(); });
+req.on("timeout", () => { console.log("error=timeout"); req.destroy(); });
+req.on("error", (e) => console.log("error=" + (e.code || e.message)));
+req.end();
+' "$url" 2>&1 | tail -1)"
+      case "$out" in
+        status=502|status=503|status=504)
+          die "guard_connection_endpoints: connection $id -> $url answered $out from inside $w. A gateway error here almost always means a TLS terminator is holding a stale upstream address after its backend container was recreated - restart the terminator. Measuring past this produces arms that score zero while their jobs report success." ;;
+        status=*)
+          checked=$((checked + 1)) ;;
+        *)
+          die "guard_connection_endpoints: connection $id -> $url could not be probed from inside $w ($out) - refusing to measure against an endpoint whose reachability is unknown" ;;
+      esac
+    done
+  done
+
+  [ "$checked" -gt 0 ] || die "guard_connection_endpoints: probed nothing at all across [$ids] - a guard that checks zero endpoints has not run"
+  log "guard_connection_endpoints ok ($checked endpoint(s) answered from $w)"
+}
+
 # ---------------------------------------------------------------------------
 # manifest_* - written before any load, never hand-edited (#2841 AC).
 # One JSON object per run, assembled from the MANIFEST_* globals the guards

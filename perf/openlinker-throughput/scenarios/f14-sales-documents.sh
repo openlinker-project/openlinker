@@ -89,9 +89,15 @@ ol_login
 
 RESULTS_DIR="$(results_dir_init f14-sales-documents "$([ "$SMOKE" = 1 ] && echo smoke || echo strict)")"
 
+# guard_build FIRST: without it the manifest records gitSha=unknown, so the
+# figures cannot be tied to the code that produced them - and nothing checks
+# that the running image is the tree under test. Both halves matter; the sha is
+# the record, the tree comparison is the verification (#2854).
+guard_build
 guard_stand_exclusive f14-sales-documents
 guard_scheduler_off
 guard_runner_state enabled
+guard_connection_endpoints "$INVOICING_CONNECTION_ID" "$EPARAGONY_CONNECTION_ID"
 
 RUN_TAG="$(epoch)_$$"
 
@@ -340,11 +346,26 @@ window_stop "$RESULTS_DIR"
 # ---------------------------------------------------------------------------
 # Verdict - arm C (the cross-kind one-document-per-order guard) and arm D
 # (the in-doubt outcome) are this scenario's own correctness checks, per the
-# campaign's "verify every new guard in both directions" rule. Arms A/B are
-# throughput measurements and never gate the verdict.
+# campaign's "verify every new guard in both directions" rule.
+#
+# Arms A/B are throughput measurements, and they still never gate on being
+# SLOW - a slow number is a result. They now gate on being EMPTY, which is a
+# different thing entirely: an arm that asked for N documents and got zero has
+# produced no measurement at all, and there is nothing to be slow about.
+#
+# This is not hypothetical. On 2026-09-10 a TLS terminator in front of the
+# eparagony stub was holding a stale upstream address, so every fiscal call
+# 502'd, arm B scored 0/10 - and this scenario wrote status=VALID over it,
+# because the original rule read "arms A/B never gate the verdict". A verdict
+# that passes while an arm is dead is exactly the false instrument this
+# campaign exists to find, one level up from the code under test.
 # ---------------------------------------------------------------------------
 if [ "$SMOKE" = 1 ]; then
   log "smoke run - no verdict written (never produces a measurement, per this scenario's own header)"
+elif [ "$ARM_A_ORDERS" -gt 0 ] && [ "$ARM_A_OK" -eq 0 ]; then
+  verdict_write "$RESULTS_DIR" DISCARDED "arm-a-invoicing-produced-no-samples"
+elif [ "$ARM_B_ORDERS" -gt 0 ] && [ "$ARM_B_OK" -eq 0 ]; then
+  verdict_write "$RESULTS_DIR" DISCARDED "arm-b-fiscalization-produced-no-samples"
 elif [ "$ARM_C_OK" = "1" ] && [ "$ARM_D_OK" = "1" ]; then
   verdict_write "$RESULTS_DIR" VALID
 elif [ "$ARM_C_OK" != "1" ]; then

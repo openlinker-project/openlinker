@@ -1,7 +1,7 @@
 {
   "scenario": "f14-sales-documents",
-  "generatedAt": "2026-09-10T07:09:34Z",
-  "gitSha": "unknown",
+  "generatedAt": "2026-09-10T11:09:19Z",
+  "gitSha": "5897057ad3cc8983180215d1acda3511d8cdde5e",
   "connectionIds": "'c5fdf528-54ac-4511-b112-a928e7caa7eb','289a227a-c0ef-41ac-add1-e45b908f06c8'",
   "quick": false,
   "runnerState": "enabled",
@@ -17,8 +17,8 @@
   },
   "schedulerCadenceRow": {},
   "olLogBodyMaxBytes": "unknown",
-  "syncJobsRowsAtStart": 141679,
-  "syncJobsRowsAtEnd": 141691,
+  "syncJobsRowsAtStart": 141929,
+  "syncJobsRowsAtEnd": 141941,
   "environment": {
     "postgres": {
       "shared_buffers": "128MB",
@@ -155,11 +155,11 @@
     "node_version": "v22.23.1",
     "postgres_image_digest": "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73",
     "redis_image_digest": "sha256:12da49daa000c2be4d55118574f889c8cc298140ecf343d04f345c818f227823",
-    "redis_used_memory_bytes": "70103200",
+    "redis_used_memory_bytes": "70270064",
     "host": {
       "cpu_count": "32",
       "ram": "125786MB",
-      "load_average": "0.93, 1.22, 1.00"
+      "load_average": "1.98, 2.19, 2.17"
     }
   },
   "containerLimits": [
