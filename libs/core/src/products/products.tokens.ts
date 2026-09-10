@@ -16,4 +16,8 @@ export const MASTER_PRODUCT_SYNC_SERVICE_TOKEN = Symbol('IMasterProductSyncServi
 export const AUTO_MATCH_VARIANT_OFFERS_SERVICE_TOKEN = Symbol('IAutoMatchVariantOffersService');
 export const TAX_RATE_JOURNAL_REPOSITORY_TOKEN = Symbol('TaxRateJournalRepositoryPort');
 export const TAX_RATE_JOURNAL_SERVICE_TOKEN = Symbol('ITaxRateJournalService');
+// Recurring price propagation hook (#3143, ADR-072) — see the port's own
+// docblock for why this is optional and host-bound rather than a direct
+// products -> listings module import.
+export const PRICE_CHANGE_OBSERVER_TOKEN = Symbol('PriceChangeObserverPort');
 
