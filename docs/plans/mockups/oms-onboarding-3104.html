@@ -1,0 +1,311 @@
+<title>OMS Onboarding</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root, [data-theme='light'] {
+  --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff; --bg-surface-muted: oklch(96% 0.005 80);
+  --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80); --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50);
+  --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-soft: oklch(96% 0.04 60); --accent-primary-border: oklch(85% 0.10 55);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
+  --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+  --space-2:.5rem; --space-3:.75rem; --space-4:1rem; --space-5:1.5rem;
+  --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:9999px;
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / .04), 0 6px 16px rgb(15 18 26 / .06);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / .16), 0 8px 16px rgb(15 18 26 / .08);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270);
+    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
+    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+    --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
+    --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
+    --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
+    --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+  }
+}
+:root[data-theme='dark'] {
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
+  --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
+  --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
+  --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+}
+* { box-sizing: border-box; }
+body { margin:0; min-width:320px; background:var(--bg-canvas); color:var(--text-primary); font-family:var(--font-sans); font-size:.875rem; line-height:1.55; }
+h1,h2,h3,p { margin:0; }
+button:focus-visible, a:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-md); }
+.wrap{ max-width:760px; margin:0 auto; padding:40px 24px 80px; }
+.eyebrow{ font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-primary-hover); }
+.title{ font-size:2rem; font-weight:600; letter-spacing:-.02em; margin-top:6px; }
+.lede{ color:var(--text-secondary); font-size:1rem; max-width:60ch; margin-top:10px; }
+
+.progress{ display:flex; gap:6px; margin:24px 0 32px; }
+.progress__seg{ flex:1; height:4px; border-radius:2px; background:var(--border-default); }
+.progress__seg--done{ background:var(--status-success); }
+
+.step{ display:flex; gap:16px; padding-bottom:36px; position:relative; }
+.step:not(:last-child)::before{ content:''; position:absolute; left:17px; top:36px; bottom:0; width:2px; background:var(--border-default); }
+.step__num{ flex-shrink:0; width:36px; height:36px; border-radius:999px; background:var(--bg-surface-muted); border:2px solid var(--border-default); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.9375rem; color:var(--text-muted); z-index:1; }
+.step--done .step__num{ background:var(--status-success); border-color:var(--status-success); color:#fff; }
+.step__body{ flex:1; padding-top:4px; }
+.step__title{ font-size:1.125rem; font-weight:600; }
+.step__who{ display:inline-block; margin-left:8px; font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:4px; background:var(--status-info-soft); color:var(--status-info-fg); vertical-align:middle; }
+.step__desc{ color:var(--text-secondary); font-size:.875rem; margin-top:6px; max-width:56ch; }
+.step__do{ margin-top:12px; border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); padding:14px 16px; }
+.step__do-label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin-bottom:6px; }
+.step__do ol, .step__do ul{ margin:0; padding-left:18px; }
+.step__do li{ margin-bottom:4px; font-size:.875rem; }
+.step__do li:last-child{ margin-bottom:0; }
+.step__result{ margin-top:10px; font-size:.8125rem; color:var(--status-success-fg); display:flex; align-items:center; gap:6px; }
+.step__try{ margin-top:12px; }
+
+.button{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--accent-primary-border); border-radius:var(--radius-md); padding:0 18px; height:2.25rem; background:var(--accent-primary); color:var(--text-on-primary); font-family:inherit; font-size:.875rem; font-weight:600; cursor:pointer; box-shadow:var(--shadow-xs); }
+.button:hover{ background:var(--accent-primary-hover); }
+.button--secondary{ border-color:var(--border-default); background:var(--bg-surface); color:var(--text-primary); }
+.button--secondary:hover{ background:var(--bg-surface-muted); border-color:var(--border-strong); }
+.button:disabled{ cursor:not-allowed; opacity:.5; }
+.button--done{ background:var(--status-success); border-color:var(--status-success); color:#fff; cursor:default; }
+
+.callout{ display:flex; gap:12px; padding:14px 16px; border-radius:var(--radius-lg); border:1px solid; margin-top:12px; align-items:flex-start; }
+.callout--warning{ background:var(--status-warning-soft); border-color:var(--status-warning-border); }
+.callout--info{ background:var(--status-info-soft); border-color:var(--status-info-border); }
+.callout__glyph{ font-size:1.1rem; line-height:1.4; flex-shrink:0; }
+.callout__text{ font-size:.8125rem; color:var(--text-secondary); }
+.callout__text b{ color:var(--text-primary); }
+
+/* preview mock inside step (small, illustrative) */
+.mini-preview{ margin-top:12px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--bg-surface-muted); padding:10px 12px; font-size:.8125rem; }
+.mini-card{ display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--radius-md); background:var(--bg-surface); border:1px solid var(--border-default); }
+.mini-card__icon{ width:28px; height:28px; border-radius:6px; background:var(--accent-primary-soft); color:var(--accent-primary-hover); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.75rem; flex-shrink:0; }
+.mini-card__title{ font-weight:600; font-size:.8125rem; }
+.mini-card__desc{ font-size:.75rem; color:var(--text-muted); }
+.mini-nav-item{ display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:6px; font-size:.8125rem; font-weight:500; }
+.mini-nav-item--new{ background:var(--status-success-soft); color:var(--status-success-fg); }
+.mini-badge{ margin-left:auto; font-family:var(--font-mono); font-size:.5625rem; text-transform:uppercase; padding:1px 5px; border-radius:3px; background:var(--status-info-soft); color:var(--status-info-fg); }
+
+.status-badge{ display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border:1px solid var(--status-disabled-border); border-radius:6px; background:var(--status-disabled-soft); color:var(--status-disabled-fg); font-family:var(--font-mono); font-size:.6875rem; font-weight:500; text-transform:uppercase; }
+.status-badge__dot{ width:6px; height:6px; border-radius:999px; background:currentColor; }
+.status-badge--info{ border-color:var(--status-info-border); background:var(--status-info-soft); color:var(--status-info-fg); }
+.status-badge--neutral{ border-color:var(--status-disabled-border); background:var(--status-disabled-soft); color:var(--status-disabled-fg); }
+
+.wd-row{ display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--bg-surface); flex-wrap:wrap; }
+.wd-row__q{ font-weight:600; font-size:.8125rem; }
+.wd-row__why{ font-size:.75rem; color:var(--text-muted); }
+
+.finish-card{ margin-top:8px; text-align:center; padding:28px 20px; border:1px solid var(--status-success-border); border-radius:var(--radius-xl); background:var(--status-success-soft); }
+.finish-card__title{ font-size:1.25rem; font-weight:600; color:var(--status-success-fg); }
+.finish-card__desc{ font-size:.875rem; color:var(--text-secondary); margin-top:6px; max-width:48ch; margin-inline:auto; }
+
+.dialog-backdrop{ position:fixed; inset:0; display:none; place-items:center; padding:24px; background:rgba(22,32,43,.45); z-index:40; }
+.dialog-backdrop.is-open{ display:grid; }
+.dialog{ width:min(100%, 26rem); border:1px solid var(--border-default); border-radius:var(--radius-xl); padding:20px; background:var(--bg-surface); box-shadow:var(--shadow-overlay); }
+.dialog__title{ font-size:1.0625rem; font-weight:600; margin-bottom:12px; }
+.preset-tile{ border:1px solid var(--border-default); border-radius:var(--radius-md); padding:12px; margin-bottom:8px; cursor:pointer; }
+.preset-tile--selected{ border-color:var(--accent-primary); background:var(--accent-primary-soft); }
+.preset-tile__title{ font-weight:600; font-size:.8125rem; }
+.preset-tile__desc{ font-size:.75rem; color:var(--text-muted); margin-top:2px; }
+.dialog__actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">How-to · 4 steps · ~5 minutes</p>
+  <h1 class="title">Turn on the pack bench</h1>
+  <p class="lede">Right now nobody can reach OpenLinker's own fulfilment — not the connection, not the pack screen, not the setting that assigns it. Do these four things, in order, and a packer will have a working screen.</p>
+
+  <div class="progress" id="progress"></div>
+
+  <div id="steps"></div>
+</div>
+
+<!-- enable wizard -->
+<div class="dialog-backdrop" id="enableDialogBackdrop">
+  <div class="dialog" role="dialog" aria-modal="true">
+    <p class="dialog__title">Who should pick and ship orders?</p>
+    <div class="preset-tile" id="presetA" onclick="pickPreset('openlinker')">
+      <div class="preset-tile__title">OpenLinker decides</div>
+      <div class="preset-tile__desc">Route orders here to pick and pack.</div>
+    </div>
+    <div class="preset-tile" id="presetB" onclick="pickPreset('later')">
+      <div class="preset-tile__title">Decide later</div>
+      <div class="preset-tile__desc">Just enable the connection for now.</div>
+    </div>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog()">Cancel</button>
+      <button class="button" id="confirmEnableBtn" disabled onclick="finishEnable()">Turn on</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STEPS = [
+  {
+    who: 'Admin', title: 'Add the OpenLinker OMS connection',
+    desc: "It's a connection like any other — except there's nothing to type in. No API key, no password.",
+    doTitle: 'Do this',
+    doItems: ['Go to Connections → New connection', 'Find "OpenLinker OMS" in the list', 'Click it, then click "Turn on the OMS"'],
+    preview: 'card',
+  },
+  {
+    who: 'Admin', title: 'Decide who picks and ships orders',
+    desc: "Adding the connection alone changes nothing. Until you say so here, your shop keeps deciding this — same as before.",
+    doTitle: 'Do this',
+    doItems: ['In the same dialog, choose "OpenLinker decides"', "Or pick \"Decide later\" and come back to Settings → Who decides what whenever you're ready"],
+    preview: 'wd',
+  },
+  {
+    who: 'Admin', title: 'Give a packer access to the pack screen',
+    desc: "The pack screen only shows in the sidebar for someone with the packer role. Without this, even a fully set-up bench is invisible to the person who needs it.",
+    doTitle: 'Do this',
+    doItems: ['Go to Settings → Users', "Open the packer's account", 'Set their role to "Packer"'],
+    preview: 'nav',
+  },
+  {
+    who: 'Packer', title: "Open the pack bench and check it's working",
+    desc: 'Once an order routes to OpenLinker for picking, it shows up here automatically.',
+    doTitle: 'Do this',
+    doItems: ['Sign in as the packer', 'Click "Pack bench" in the sidebar', 'If it says "Nothing to pack yet" and you expected an order, go back to step 2 — packing may not be assigned yet'],
+    preview: null,
+  },
+];
+
+let completed = [false, false, false, false];
+let enableCtx = { preset: null };
+
+function renderProgress() {
+  document.getElementById('progress').innerHTML = STEPS.map((_, i) =>
+    `<div class="progress__seg ${completed[i] ? 'progress__seg--done' : ''}"></div>`
+  ).join('');
+}
+
+function previewHtml(kind, stepIndex) {
+  if (kind === 'card') {
+    return `<div class="mini-preview">
+      <div class="mini-card">
+        <div class="mini-card__icon">OL</div>
+        <div>
+          <div class="mini-card__title">OpenLinker OMS</div>
+          <div class="mini-card__desc">No credentials to enter</div>
+        </div>
+      </div>
+      <div class="step__try"><button class="button button--secondary" id="tryBtn0" onclick="openEnableDialog()">Try it: open the connection dialog</button></div>
+    </div>`;
+  }
+  if (kind === 'wd') {
+    return `<div class="mini-preview">
+      <div class="wd-row" id="wdRow">
+        <div><div class="wd-row__q">Who picks and ships?</div><div class="wd-row__why" id="wdWhy">Not decided yet — enable the connection in step 1 first.</div></div>
+        <span class="status-badge status-badge--neutral" id="wdBadge"><span class="status-badge__dot"></span>Your shop</span>
+      </div>
+    </div>`;
+  }
+  if (kind === 'nav') {
+    return `<div class="mini-preview">
+      <div style="font-size:.75rem; color:var(--text-muted); margin-bottom:6px;">Sidebar, as the packer will see it</div>
+      <div class="mini-nav-item" id="navPreview" style="background:var(--bg-surface); border:1px dashed var(--border-strong); color:var(--text-disabled);">Pack bench — not visible yet</div>
+      <div class="step__try"><button class="button button--secondary" onclick="grantPackerRole()">Try it: grant the packer role</button></div>
+    </div>`;
+  }
+  return '';
+}
+
+function renderSteps() {
+  document.getElementById('steps').innerHTML = STEPS.map((s, i) => `
+    <div class="step ${completed[i] ? 'step--done' : ''}" id="step${i}">
+      <div class="step__num">${completed[i] ? '✓' : i + 1}</div>
+      <div class="step__body">
+        <div class="step__title">${s.title}<span class="step__who">${s.who}</span></div>
+        <p class="step__desc">${s.desc}</p>
+        <div class="step__do">
+          <div class="step__do-label">${s.doTitle}</div>
+          <ol>${s.doItems.map(it => `<li>${it}</li>`).join('')}</ol>
+        </div>
+        ${s.preview ? previewHtml(s.preview, i) : ''}
+        <div class="step__result" id="result${i}" style="display:${completed[i] ? 'flex' : 'none'};">✓ Done</div>
+      </div>
+    </div>
+  `).join('') + `
+    <div class="finish-card" id="finishCard" style="display:${completed.every(Boolean) ? 'block' : 'none'};">
+      <div class="finish-card__title">🎉 The pack bench is live</div>
+      <div class="finish-card__desc">Orders routed to OpenLinker will show up for your packer automatically. Nothing else to configure.</div>
+    </div>
+  `;
+  renderProgress();
+}
+
+function markDone(i) {
+  completed[i] = true;
+  renderSteps();
+  const el = document.getElementById('step' + (i + 1));
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function openEnableDialog() {
+  enableCtx.preset = null;
+  document.getElementById('presetA').classList.remove('preset-tile--selected');
+  document.getElementById('presetB').classList.remove('preset-tile--selected');
+  document.getElementById('confirmEnableBtn').disabled = true;
+  document.getElementById('enableDialogBackdrop').classList.add('is-open');
+}
+function closeDialog() { document.getElementById('enableDialogBackdrop').classList.remove('is-open'); }
+document.getElementById('enableDialogBackdrop').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeDialog(); });
+
+function pickPreset(p) {
+  enableCtx.preset = p;
+  document.getElementById('presetA').classList.toggle('preset-tile--selected', p === 'openlinker');
+  document.getElementById('presetB').classList.toggle('preset-tile--selected', p === 'later');
+  document.getElementById('confirmEnableBtn').disabled = false;
+}
+function finishEnable() {
+  closeDialog();
+  markDone(0);
+  if (enableCtx.preset === 'openlinker') {
+    markDone(1);
+    const badge = document.getElementById('wdBadge');
+    const why = document.getElementById('wdWhy');
+    if (badge) { badge.className = 'status-badge status-badge--info'; badge.innerHTML = '<span class="status-badge__dot"></span>OpenLinker'; }
+    if (why) why.textContent = "Set in step 2 — nobody else has claimed it.";
+  }
+}
+
+function grantPackerRole() {
+  const nav = document.getElementById('navPreview');
+  if (nav) {
+    nav.style.background = 'var(--status-success-soft)'; nav.style.color = 'var(--status-success-fg)'; nav.style.border = 'none';
+    nav.innerHTML = 'Pack bench <span class="mini-badge">packer</span>';
+  }
+  markDone(2);
+  setTimeout(() => markDone(3), 400);
+}
+
+renderSteps();
+</script>
