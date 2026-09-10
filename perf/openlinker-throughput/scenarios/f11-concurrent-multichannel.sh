@@ -121,7 +121,20 @@ source "$SCRIPT_DIR/../drivers/ps-order-source.sh"
 # ---------------------------------------------------------------------------
 # Configuration (env-overridable, same convention as f1/lib.sh)
 # ---------------------------------------------------------------------------
-SOURCE_TENANT="${SOURCE_TENANT:-perf-f11-allegro}"
+# The stub tenant this scenario pushes its Allegro backlog into. It MUST be the
+# tenant the connection in ALLEGRO_SOURCE_CONNECTION_ID authenticates as, or the
+# backlog lands somewhere that connection cannot read and the arm measures an
+# empty feed.
+#
+# The previous default, `perf-f11-allegro`, was wrong in BOTH directions and
+# unrunnable (#2840, 2026-09-10): the lab stub is started with
+# `STUB_TENANTS: stub-token-a=perf-allegro-a,stub-token-b=perf-allegro-b` and
+# nothing anywhere provisions a third tenant, so arm 1 died on
+# `unknown tenant perf-f11-allegro` before the window opened - and had that
+# tenant existed, `perf-allegro-a`'s bearer token would still have read a
+# different tenant's feed. Any earlier run of this scenario must have had
+# SOURCE_TENANT exported by hand, which is why the defect survived.
+SOURCE_TENANT="${SOURCE_TENANT:-perf-allegro-a}"
 PSO_TAG="${PSO_TAG:-f11}"
 
 # Each arm's backlog must outlast its window at the highest offered rate, or

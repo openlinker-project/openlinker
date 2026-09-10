@@ -1835,3 +1835,29 @@ registration in it that never crossed the provider boundary, which dragged the m
 **Applies to**: `perf/openlinker-throughput/**`, any perf-driven code change
 
 **Source**: #2840 campaign, 2026-09-10
+
+---
+
+## A scenario's own teardown can discard the NEXT run's unrelated arm
+
+**Context**: F11 provisions a `perf-prestashop-source` connection and, at teardown, disables it -
+deliberately, because the API exposes no DELETE and a disabled connection is the closest
+available "leave it as I found it". The scenario says so in a comment.
+
+**Problem**: jobs already queued for that connection stay queued. On the next run they fail
+repeatedly with `Connection is disabled`, each failure burning a retry attempt, and
+`post_guard_attempts` then discards whatever arm happened to be measuring at the time. On the
+#2840 stand that discarded two otherwise-clean F11 arms - including the SOLO one, so it was not
+even a concurrency effect - and the evidence erases itself, because `markSucceeded` nulls
+`lastError`, leaving `attempts: 3` on a succeeded job with nothing recorded about why.
+
+**Rule**: when a teardown leaves a resource in a state that makes queued work permanently
+unrunnable, either drain that work in the same teardown or make the failure non-attempt-consuming
+(#2840 classified `ConnectionDisabledException` as a penalty-free deferral for exactly this
+shape). And when a guard fires on a cross-cutting counter like `attempts`, check whether the
+offending rows belong to the arm at all before believing the arm is at fault - here they belonged
+to a connection the measurement never touched.
+
+**Applies to**: `perf/openlinker-throughput/scenarios/*.sh` teardowns, `post_guard_attempts`
+
+**Source**: #2840 campaign, 2026-09-10
