@@ -24,10 +24,18 @@ export type {
 } from './api/inventory.types';
 
 export type {
+  CreateInventoryLocationInput,
+  InventoryLocation,
+  InventoryLocationFilters,
+  InventoryLocationKind,
+  InventoryLocationListPagination,
+  InventoryLocationStatus,
   InventoryLocationSummary,
   LocationBootstrapResult,
   PaginatedInventoryLocations,
+  UpdateInventoryLocationInput,
 } from './api/inventory-locations.types';
+export { InventoryLocationKindValues, InventoryLocationStatusValues } from './api/inventory-locations.types';
 
 // #2407 — consumed by the connection detail page's routing-readiness panel,
 // which lives in `features/connections` and so must reach these through the
