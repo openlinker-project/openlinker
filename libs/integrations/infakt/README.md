@@ -133,11 +133,25 @@ below).
   the correct value for a physical-goods sale was not found. `InfaktSaleTypeValues`
   therefore lists `'service'` alone (#2995 review) — a placeholder `'goods'` value
   would pass the save-time shape gate and then 422 at issuance, converting the
-  guard into a trap for exactly the operator this fix is meant to help. Finding
-  the real goods-sale value (and, separately, detecting `errors.sale_type` in a
-  422 body to give an un-configured connection a specific hint instead of the
-  generic "The invoicing provider rejected the request.") is tracked as a
-  follow-up: #3031.
+  guard into a trap for exactly the operator this fix is meant to help. **Finding
+  the confirmed goods-sale value remains open** — tracked as #3031, unresolved
+  pending live sandbox access; do not guess it in, per the rule above.
+- **Missing-`sale_type` diagnosis hint** (#3031): `issueInvoice` detects Infakt's
+  field-level validation shape for the 422 above —
+  `{"errors":{"sale_type":[...]}}`, checked structurally (key presence only,
+  never the Polish message text or the array's contents, so a locale change
+  can't silently break it) — and re-throws with a `reason` matching core's
+  published `SALE_CLASSIFICATION_REJECTION_MARKERS`
+  (`@openlinker/core/invoicing`). `InvoiceService.classifyFailureCode` (#1200/W1)
+  routes that to the `sale-classification-required` failure code instead of the
+  generic `provider-rejected`, so a non-PL connection with no `defaultSaleType`
+  configured gets an operator-facing hint naming the config field to set, rather
+  than the uninformative "The invoicing provider rejected the request." Only the
+  direct `invoices.json` create path can carry this shape — a correction's
+  failure surfaces through the async task's `{processing_code,
+  processing_description}` envelope (#1763), which carries no field-level
+  `errors` object at all, so the same detection cannot apply to
+  `issueCorrection`.
 - **Rendered-PDF download** (#1321): `RegulatoryDocumentReader.getRegulatoryDocument
   (record, 'rendered')` fetches the invoice PDF as rendered by inFakt - this backs
   the **Download PDF** button on the accepted invoice detail page.
