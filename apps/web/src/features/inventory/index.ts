@@ -43,6 +43,18 @@ export { InventoryLocationKindValues, InventoryLocationStatusValues } from './ap
 export { useActiveLocationCountQuery } from './hooks/use-active-location-count-query';
 export { useBootstrapLocationsMutation } from './hooks/use-bootstrap-locations-mutation';
 
+// #2316 / #3065 — the full CRUD surface, consumed by the (upcoming) locations
+// list page in `pages/inventory/`, which is a page rather than a feature and
+// so must reach these through the barrel per the dependency rule.
+export { useInventoryLocationsQuery } from './hooks/use-inventory-locations-query';
+export { useInventoryLocationQuery } from './hooks/use-inventory-location-query';
+export { useCreateInventoryLocationMutation } from './hooks/use-create-inventory-location-mutation';
+export {
+  useUpdateInventoryLocationMutation,
+  type UpdateInventoryLocationMutationInput,
+} from './hooks/use-update-inventory-location-mutation';
+export { useDeleteInventoryLocationMutation } from './hooks/use-delete-inventory-location-mutation';
+
 export { useInventoryAvailabilityBatchQuery } from './hooks/use-inventory-availability-batch-query';
 // Query-key factory re-exported so the bulk wizard's chunked per-variant
 // availability fan-out (#1741) shares cache entries with the batch hook above.
