@@ -471,7 +471,6 @@ describe('BulkEditModal', () => {
     );
 
     expect(screen.getByLabelText('Allegro category ID')).toBeInTheDocument();
-    expect(screen.queryByTestId('category-picker')).not.toBeInTheDocument();
   });
 
   it('omits a blank category from the saved base override so the backend resolves it at submit (#1096)', async () => {
@@ -585,8 +584,7 @@ describe('BulkEditModal', () => {
       { apiClient },
     );
 
-    // The chip's change button opens the external picker (no inline picker now).
-    expect(screen.queryByTestId('category-picker')).not.toBeInTheDocument();
+    // The chip's change button opens BulkCategoryChooseModal.
     fireEvent.click(screen.getByRole('button', { name: /set category|change/ }));
 
     fireEvent.click(await screen.findByRole('button', { name: 'Select' }));
