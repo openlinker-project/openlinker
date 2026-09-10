@@ -8,7 +8,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { sanitizeStoredHtml } from '@openlinker/shared/html';
 import {
@@ -19,7 +19,8 @@ import {
 } from '@openlinker/core/integrations';
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
-import { PRODUCTS_SERVICE_TOKEN, TAX_RATE_JOURNAL_SERVICE_TOKEN } from '../../products.tokens';
+import { PRODUCTS_SERVICE_TOKEN, TAX_RATE_JOURNAL_SERVICE_TOKEN, PRICE_CHANGE_OBSERVER_TOKEN } from '../../products.tokens';
+import { PriceChangeObserverPort } from '../../domain/ports/price-change-observer.port';
 import { ITaxRateJournalService } from './tax-rate-journal.service.interface';
 import { IProductsService } from './products.service.interface';
 import type { ProductMasterPort } from '../../domain/ports/product-master.port';
@@ -65,7 +66,14 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     // #2250: provenance for every rate this sync observes. Append-only and
     // change-only, so an unchanged catalogue writes nothing.
     @Inject(TAX_RATE_JOURNAL_SERVICE_TOKEN)
-    private readonly taxRateJournal: ITaxRateJournalService
+    private readonly taxRateJournal: ITaxRateJournalService,
+    // Recurring price propagation (#3143, ADR-072). Optional: a host that
+    // never wires an implementation (via a `@Global()` binding module —
+    // see the port's docblock) degrades to "no price-change detection",
+    // never a boot failure.
+    @Optional()
+    @Inject(PRICE_CHANGE_OBSERVER_TOKEN)
+    private readonly priceChangeObserver?: PriceChangeObserverPort
   ) {}
 
   async syncFromMasterByExternalId(
@@ -190,11 +198,29 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     }
     const variants = variantsFromAdapter.map((v) => this.toDomainVariant(v, internalProductId));
 
+    // Read prices BEFORE the upsert overwrites them — the only way to know
+    // whether the master's price actually CHANGED (#3143, ADR-072). Best-effort
+    // and skipped entirely when no observer is wired (the common case today),
+    // so this never costs a query on a host that hasn't opted into recurring
+    // price propagation.
+    const previousPricesByVariantId = this.priceChangeObserver
+      ? new Map(
+          (await this.productsService.getVariantsByProductId(internalProductId)).map((v) => [
+            v.id,
+            v.price ?? null,
+          ])
+        )
+      : null;
+
     // Upsert into canonical storage (upsert clears any prior staleness on the
     // reappearing variants — see repository toOrmEntity).
     await this.productsService.upsertProduct(product);
     if (variants.length > 0) {
       await this.productsService.upsertVariants(internalProductId, variants);
+    }
+
+    if (previousPricesByVariantId && product.currency) {
+      await this.notifyPriceChanges(connectionId, product.currency, variants, previousPricesByVariantId);
     }
 
     // Pull the tax rate onto the catalogue projection (#2054, ADR-063 § 4), in
@@ -624,6 +650,48 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       `products_prune_skipped_rival_master_connections - internal product id is claimed by more than one ProductMaster connection, so the staleness prune cannot be attributed and was withheld (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, rivals=${rivals.join(',')})`
     );
     return true;
+  }
+
+  /**
+   * Reports every variant whose price CHANGED in this pass to the optional
+   * observer (#3143, ADR-072). Best-effort — a failure here must never fail
+   * the catalogue sync it rides along, so every call is individually caught
+   * and logged.
+   *
+   * "Changed" excludes a variant seen for the first time (`previousAmount`
+   * absent from the map — no row existed to have a price at all) and a
+   * variant whose price is unset either before or after (nothing to compare).
+   */
+  private async notifyPriceChanges(
+    sourceConnectionId: string,
+    sourceCurrency: string,
+    variants: ProductVariant[],
+    previousPricesByVariantId: Map<string, number | null>
+  ): Promise<void> {
+    for (const variant of variants) {
+      const newAmount = variant.price ?? null;
+      if (newAmount === null) {
+        continue;
+      }
+      const hadPriorRow = previousPricesByVariantId.has(variant.id);
+      const oldAmount = previousPricesByVariantId.get(variant.id) ?? null;
+      if (hadPriorRow && oldAmount === newAmount) {
+        continue; // unchanged — nothing to report
+      }
+      try {
+        await this.priceChangeObserver?.onMasterPriceChanged({
+          productVariantId: variant.id,
+          sourceConnectionId,
+          sourceOldAmount: hadPriorRow ? oldAmount : null,
+          sourceNewAmount: newAmount,
+          sourceCurrency,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `[master-sync] price-change observer failed for variant=${variant.id} connectionId=${sourceConnectionId}: ${(error as Error).message}`
+        );
+      }
+    }
   }
 
   /**

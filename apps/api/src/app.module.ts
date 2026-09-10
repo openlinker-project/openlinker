@@ -37,6 +37,7 @@ import { OrdersModule } from './orders/orders.module';
 import { ProductsApiModule } from './products/products.module';
 import { CustomersApiModule } from './customers/customers.module';
 import { ListingsApiModule } from './listings/listings.module';
+import { PriceChangeObserverBindingModule } from './listings/price-change-observer-binding.module';
 import { CursorsModule } from './cursors/cursors.module';
 import { MappingsApiModule } from './mappings/mappings.module';
 import { AiApiModule } from './ai/ai.module';
@@ -105,6 +106,11 @@ import { RequestPriorityModule } from './http/request-priority.module';
     ProductsApiModule,
     CustomersApiModule,
     ListingsApiModule,
+    // #3143 — binds PRICE_CHANGE_OBSERVER_TOKEN (owned by @openlinker/core/products)
+    // to ListingsApiModule's PriceChangeDetectionService. @Global(), so a
+    // manually-triggered master-product-sync from the API surface (not just
+    // the worker) also detects a price change.
+    PriceChangeObserverBindingModule,
     CursorsModule,
     MappingsApiModule,
     ContentModule, // Product content draft buffer + reconcile + publish (#338)
