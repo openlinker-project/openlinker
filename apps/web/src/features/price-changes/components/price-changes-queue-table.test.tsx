@@ -65,7 +65,7 @@ describe('PriceChangesQueueTable', () => {
     expect(screen.getByTestId('row-ignore')).toBeInTheDocument();
   });
 
-  it('accepts a row and calls the API with the staleness token', async () => {
+  it('opens the accept dialog and calls the API with the staleness token on confirm (#3148)', async () => {
     const accept = vi.fn().mockResolvedValue(undefined);
     const apiClient = createMockApiClient({
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), accept },
@@ -75,9 +75,76 @@ describe('PriceChangesQueueTable', () => {
     await screen.findByText('Ergonomic Office Chair');
 
     await userEvent.click(screen.getByTestId('row-accept'));
+    expect(await screen.findByText('Publish new price')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Publish price' }));
 
     await waitFor(() => {
-      expect(accept).toHaveBeenCalledWith('ep-1', { expectedVersion: '2026-09-10T10:00:00.000Z' });
+      expect(accept).toHaveBeenCalledWith('ep-1', {
+        expectedVersion: '2026-09-10T10:00:00.000Z',
+        optInAutomatic: false,
+      });
+    });
+  });
+
+  it('opts a source into automatic mode on accept and shows an Undo toast that reverts it (#3148)', async () => {
+    const accept = vi.fn().mockResolvedValue(undefined);
+    const get = vi.fn().mockResolvedValue({
+      default: { mode: 'manual', rule: { type: 'passthrough', percent: 0, rounding: 'none' } },
+      sources: [],
+    });
+    const update = vi.fn().mockResolvedValue({});
+    const apiClient = createMockApiClient({
+      priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), accept },
+      pricingSync: { get, update },
+    });
+
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    await screen.findByText('Ergonomic Office Chair');
+
+    await userEvent.click(screen.getByTestId('row-accept'));
+    await userEvent.click(screen.getByRole('checkbox'));
+    await userEvent.click(screen.getByRole('button', { name: 'Publish price' }));
+
+    await waitFor(() => {
+      expect(accept).toHaveBeenCalledWith('ep-1', expect.objectContaining({ optInAutomatic: true }));
+    });
+
+    const undoButton = await screen.findByText('Undo');
+    await userEvent.click(undoButton);
+
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledWith(
+        'dest-1',
+        expect.objectContaining({
+          sourceOverrides: { 'src-1': { mode: 'manual', rule: { type: 'passthrough', percent: 0, rounding: 'none' } } },
+        }),
+      );
+    });
+  });
+
+  it('opens the edit dialog and publishes a manual override (#3148)', async () => {
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const apiClient = createMockApiClient({
+      priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), edit },
+    });
+
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    await screen.findByText('Ergonomic Office Chair');
+
+    await userEvent.click(screen.getByTestId('row-edit'));
+    expect(await screen.findByText('Enter your own price')).toBeInTheDocument();
+
+    const input = screen.getByLabelText('Price to publish');
+    await userEvent.clear(input);
+    await userEvent.type(input, '420');
+    await userEvent.click(screen.getByRole('button', { name: 'Publish this price' }));
+
+    await waitFor(() => {
+      expect(edit).toHaveBeenCalledWith('ep-1', {
+        manualPriceOverride: 420,
+        expectedVersion: '2026-09-10T10:00:00.000Z',
+      });
     });
   });
 
