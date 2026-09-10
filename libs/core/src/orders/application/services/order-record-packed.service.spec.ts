@@ -84,7 +84,10 @@ describe('OrderRecordService — packed fact (#2287)', () => {
     // #2069 collaborator: this suite exercises only the packed-fact path,
     // which never touches the early-cancellation signal, so an inert stub
     // keeps the constructor honest without implying participation.
-    const cancellationSignalRepository = {} as unknown as OrderCancellationSignalRepositoryPort;
+    const cancellationSignalRepository: jest.Mocked<OrderCancellationSignalRepositoryPort> = {
+      record: jest.fn(),
+      consume: jest.fn().mockResolvedValue(null),
+    };
 
     service = new OrderRecordService(
       repository as unknown as OrderRecordRepositoryPort,

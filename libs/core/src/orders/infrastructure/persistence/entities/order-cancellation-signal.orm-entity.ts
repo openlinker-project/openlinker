@@ -35,7 +35,7 @@ export class OrderCancellationSignalOrmEntity {
   @Column({ type: 'uuid' })
   sourceConnectionId!: string;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'text' })
   externalOrderId!: string;
 
   @Column({ type: 'timestamptz' })

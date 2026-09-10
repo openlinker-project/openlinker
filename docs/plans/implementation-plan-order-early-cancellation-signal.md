@@ -1,7 +1,7 @@
 # Implementation Plan: Durable Early-Cancellation Signal (#2069)
 
 **Date**: 2026-09-09
-**Status**: Draft
+**Status**: Implemented
 **Estimated Effort**: 0.75–1.5 days
 
 ---

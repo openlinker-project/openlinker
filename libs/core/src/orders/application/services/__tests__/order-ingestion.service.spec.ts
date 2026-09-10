@@ -140,7 +140,11 @@ describe('OrderIngestionService', () => {
 
     orderRecordService = {
       persistOrder: jest.fn().mockResolvedValue({}),
-      persistIncomingSnapshot: jest.fn().mockResolvedValue({}),
+      // `cancelledAt: null` by default so a mock that doesn't override this
+      // return value isn't mistaken for an early-cancellation signal (#2069) —
+      // an omitted field would read as `undefined`, which the service treats
+      // as "no signal" via `!= null`, but making it explicit here pins that.
+      persistIncomingSnapshot: jest.fn().mockResolvedValue({ cancelledAt: null }),
       updateSyncStatus: jest.fn().mockResolvedValue(undefined),
       getOrderRecord: jest.fn(),
       findMany: jest.fn(),
@@ -428,6 +432,28 @@ describe('OrderIngestionService', () => {
       await service.syncOrderFromSource(connectionId, externalOrderId);
 
       expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+    });
+
+    // #2069 review — the exact race the early-cancellation signal exists for:
+    // the source's order RESOURCE still reports the pre-cancel status when
+    // `getOrder` runs (the event journal that produced the signal leads the
+    // resource), so `incoming.status` alone must not be trusted once
+    // `persistIncomingSnapshot` reports a consumed signal via `cancelledAt`.
+    it('should not reserve, and should enqueue stock-restore, when the incoming status still lags a consumed early-cancellation signal', async () => {
+      orderSource.getOrder.mockResolvedValue(reservableIncoming); // status still 'BOUGHT'
+      orderRecordService.persistIncomingSnapshot.mockResolvedValue({
+        cancelledAt: new Date('2026-08-01T10:00:00.000Z'),
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'marketplace.offer.stockRestore',
+          payload: expect.objectContaining({ internalOrderId: 'ol_order_res' }),
+        })
+      );
     });
   });
 

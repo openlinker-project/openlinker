@@ -401,13 +401,27 @@ export class OrderIngestionService implements IOrderIngestionService {
     );
 
     // Step 2: persist raw snapshot immediately — operator can see the order even if item resolution fails
-    await this.orderRecordService.persistIncomingSnapshot(
+    const snapshotRecord = await this.orderRecordService.persistIncomingSnapshot(
       incoming,
       internalOrderId,
       internalCustomerId ?? null,
       connectionId,
       sourceEventId ?? null
     );
+
+    // #2069: `persistIncomingSnapshot` may have consumed an early-cancellation
+    // signal recorded before this order was ever ingested — the exact race this
+    // fix exists to close is one where the source's order RESOURCE still
+    // reports the pre-cancel status here (the event journal that produced the
+    // signal leads the resource read), so `incoming.status` alone is not a
+    // reliable "is this order cancelled" answer once a signal exists. Every
+    // downstream gate that used to test `incoming.status`/`order.status` alone
+    // must also honour this, or OL reserves inventory and skips the stock
+    // restore for an order it already knows is dead (#2628's shape: a
+    // permanent ATP subtraction naming a cancelled order). `cancelledAt`, once
+    // written, is never cleared on this path, so capturing it here is valid
+    // for every gate below.
+    const cancelledFromEarlySignal = snapshotRecord.cancelledAt != null;
 
     // Early-fire cancellation hook (#1146): enqueue the stock-restore job
     // immediately after the raw snapshot is persisted and BEFORE item resolution
@@ -420,7 +434,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     // will carry variantIds; if items never resolve, OfferStockRestoreService
     // will no-op (no variantIds in the raw snapshot) and the job stays visible
     // in the dead-letter queue for operator inspection.
-    if (incoming.status === 'cancelled' && priorStatus !== 'cancelled') {
+    if ((incoming.status === 'cancelled' || cancelledFromEarlySignal) && priorStatus !== 'cancelled') {
       try {
         await this.jobQueue.enqueue({
           type: 'marketplace.offer.stockRestore',
@@ -522,8 +536,10 @@ export class OrderIngestionService implements IOrderIngestionService {
     );
 
     // #2344: record OL's own advisory holds. Placed after `persistOrder` so the
-    // order row exists, and before destination provisioning.
-    await this.reserveOrderInventory(order, connectionId);
+    // order row exists, and before destination provisioning. `cancelledFromEarlySignal`
+    // (#2069) is threaded through so an order already known-cancelled via the
+    // signal is never held, even while `order.status` still lags.
+    await this.reserveOrderInventory(order, connectionId, cancelledFromEarlySignal);
 
     // Cancellation-observe hook (#1146): on the `→ cancelled` transition, enqueue
     // a marketplace.offer.stockRestore job so the destination marketplace's
@@ -532,8 +548,9 @@ export class OrderIngestionService implements IOrderIngestionService {
     // 'cancelled') so a re-poll within the watermark window doesn't re-fire;
     // the dedupeKey makes any re-enqueue safe. Marketplace-agnostic — the worker
     // handler narrows the source connection's adapter to OfferStockRestorer and
-    // no-ops if the capability is absent.
-    if (order.status === 'cancelled' && priorStatus !== 'cancelled') {
+    // no-ops if the capability is absent. `cancelledFromEarlySignal` (#2069)
+    // covers the race where `order.status` still lags the signal.
+    if ((order.status === 'cancelled' || cancelledFromEarlySignal) && priorStatus !== 'cancelled') {
       try {
         await this.jobQueue.enqueue({
           type: 'marketplace.offer.stockRestore',
@@ -1250,6 +1267,15 @@ export class OrderIngestionService implements IOrderIngestionService {
       // retry the job rather than be silently swallowed — unlike the
       // known-order branch below, where a relay to already-resolved
       // destinations must proceed regardless.
+      //
+      // Sits above the ADR-017 destination-echo guard further down (which
+      // needs an existing record to compare `sourceConnectionId` against): a
+      // cancel arriving on a *destination* connection whose `Order` mapping
+      // is not yet written records a signal keyed to that destination
+      // connection's id — permanently unconsumable, since the echo guard
+      // would early-return before `persistIncomingSnapshot` ever runs for
+      // that connection. Narrow and self-limiting (the signal never affects
+      // provisioning, it just sits there), not worth a second lookup here.
       await this.orderRecordService.recordEarlyCancellationSignal(
         connectionId,
         externalOrderId,
@@ -1553,8 +1579,20 @@ export class OrderIngestionService implements IOrderIngestionService {
    * would burn the whole retry ladder against a condition retrying cannot change.
    * Surfacing a shortfall as a named fact ON the order is #2349's work; until
    * then the signal is this error-level log.
+   *
+   * `alreadyCancelled` (#2069) covers the race where an early-cancellation
+   * signal was already consumed onto this order's `cancelledAt` while
+   * `order.status` — built from the same source read that raced the signal —
+   * still reports the pre-cancel status. Holding stock for an order OL already
+   * knows is dead would be a hold nothing then releases (#2346's expiry sweep
+   * does not release while `UnavailableOrderHoldReader` is bound), so this must
+   * be checked independently of `order.status`.
    */
-  private async reserveOrderInventory(order: Order, connectionId: string): Promise<void> {
+  private async reserveOrderInventory(
+    order: Order,
+    connectionId: string,
+    alreadyCancelled = false
+  ): Promise<void> {
     try {
       // A kill switch, default ON (#2344 review). The ledger is additive and
       // nothing subtracts from it until #2345, but this is new unconditional
@@ -1566,7 +1604,7 @@ export class OrderIngestionService implements IOrderIngestionService {
       if (!getEnvBoolean('OL_RESERVATIONS_ENABLED', true)) return;
 
       // Holding stock for an order that arrived already dead is pure noise.
-      if (order.status === 'cancelled') return;
+      if (order.status === 'cancelled' || alreadyCancelled) return;
 
       const lines: ReserveOrderLineInput[] = order.items
         .filter((item) => Boolean(item.productId) && item.quantity > 0)

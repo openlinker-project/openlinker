@@ -43,6 +43,17 @@ export interface OrderCancellationSignalRepositoryPort {
    * interleave: a signal that misses this call's `consume()` is picked up by
    * the very next poll/webhook for the same order, rather than lost forever.
    *
+   * That unconditionality has a real, accepted cost: an extra `DELETE`
+   * statement on every order ingestion — `persistIncomingSnapshot` runs on
+   * what `OrderIngestionService.reserveOrderInventory`'s own kill-switch
+   * comment calls "the hottest path in the system". Short-circuiting on a
+   * cheap read first (e.g. an existence check) was rejected — it would
+   * forfeit the atomicity of the read-and-clear and reopen the very race this
+   * method exists to close. A zero-row `DELETE` against a two-column unique
+   * index is cheap; there is no escape hatch here (unlike the reservation
+   * kill switch) because the write is unconditional by design, not optional
+   * work.
+   *
    * @returns the recorded cancellation instant, or `null` when no signal
    *   exists for this pair.
    */
