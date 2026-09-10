@@ -837,7 +837,7 @@ guard_log_level() {
 # Usage: guard_connection_endpoints "<uuid>" ["<uuid>" ...]
 guard_connection_endpoints() {
   _ensure_worker_containers
-  local w ids id urls url out checked=0
+  local w ids id urls url out checked=0 resolved=0
   w="$(printf '%s' "$WORKER_CONTAINERS" | awk '{print $1}')"
   [ -n "$w" ] || die "guard_connection_endpoints: no worker container discovered"
 
@@ -845,6 +845,15 @@ guard_connection_endpoints() {
   [ -n "$ids" ] || die "guard_connection_endpoints: called with no connection ids - an empty argument list would pass vacuously"
 
   for id in $ids; do
+    # Existence is checked SEPARATELY from URL count, because the two absences
+    # mean opposite things. A connection that exists and declares no URL is
+    # legitimate - the OMS plugin is credential-less and in-process (ADR-055) -
+    # while an id matching no row at all is a typo or a stale stand-ids.env, and
+    # passing on that would be the vacuous green this guard exists to refuse.
+    if [ "$(pg_sql "SELECT count(*) FROM connections WHERE id='$id'")" != "1" ]; then
+      die "guard_connection_endpoints: no connection row for $id - refusing to report a clean probe for an id that does not exist (stale stand-ids.env, or a typo in the scenario's argument list)"
+    fi
+    resolved=$((resolved + 1))
     urls="$(pg_sql "SELECT DISTINCT v FROM connections c, LATERAL jsonb_each_text(c.config) AS e(k,v) WHERE c.id='$id' AND v ~ '^https?://'")"
     if [ -z "$urls" ]; then
       log "guard_connection_endpoints: connection $id declares no http(s) base URL in its config - nothing to probe"
@@ -871,8 +880,11 @@ req.end();
     done
   done
 
-  [ "$checked" -gt 0 ] || die "guard_connection_endpoints: probed nothing at all across [$ids] - a guard that checks zero endpoints has not run"
-  log "guard_connection_endpoints ok ($checked endpoint(s) answered from $w)"
+  # The gate is on connections RESOLVED, not on endpoints probed. Every id
+  # naming a real connection that happens to declare no URL is a pass, and it
+  # says so; an argument list that resolved nothing has already died above.
+  [ "$resolved" -gt 0 ] || die "guard_connection_endpoints: resolved no connections at all across [$ids] - a guard that checks nothing has not run"
+  log "guard_connection_endpoints ok ($checked endpoint(s) answered from $w across $resolved connection(s))"
 }
 
 # ---------------------------------------------------------------------------
