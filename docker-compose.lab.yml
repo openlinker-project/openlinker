@@ -698,6 +698,19 @@ services:
       OL_LANE_FANOUT_SCOPE_CAP: '${OL_LANE_FANOUT_SCOPE_CAP:-}'
       OL_LOG_BODY_MAX_BYTES: '${OL_LOG_BODY_MAX_BYTES:-8192}'
       NODE_EXTRA_CA_CERTS: /etc/ssl/lab/wc-tls-ca.pem
+      # #3045 review: found live via `marketplace.shipment.statusSync` failing
+      # every row with "No default adapter registered for platformType:
+      # shipping-stub" - these two were set on `api` (above) but never on
+      # `worker`, which is the ONLY process that runs sync_jobs handlers.
+      # `invoicing-stub`'s equivalent job type (`invoicing.issue`) had
+      # happened to keep working on this stand only because an earlier
+      # scenario's own `env_file_set OL_INVOICING_STUB_ENABLED true` (see
+      # fiscal-lane-stub.sh) had written it into `.env.lab` at runtime - a
+      # per-scenario workaround masking the fact that the compose file itself
+      # never carried it for `worker`. Both belong here permanently, matching
+      # `api`'s defaults.
+      OL_INVOICING_STUB_ENABLED: '${OL_INVOICING_STUB_ENABLED:-true}'
+      OL_SHIPPING_STUB_ENABLED: '${OL_SHIPPING_STUB_ENABLED:-true}'
     volumes:
       # Bundle, not wc-tls's own ca.pem alone (#3043) - see the
       # NODE_EXTRA_CA_CERTS comment above.
