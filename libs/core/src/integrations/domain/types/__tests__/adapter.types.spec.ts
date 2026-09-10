@@ -37,6 +37,14 @@ describe('adapter.types', () => {
         'AvailabilityAuthority',
         // Fulfilment execution authority — ADR-052 A3 (#2403)
         'FulfillmentExecutor',
+        // Shipping label issuance / tracking (#3043). Admitted by this array's
+        // own rule — `ShipmentDispatchService.dispatch()` has always resolved it
+        // BY CONNECTION ID through `getCapabilityAdapter`, so the name was in
+        // use before it was declared. Until #3043 it was absent, and because
+        // both connection DTOs `@IsIn`-validate `enabledCapabilities` against
+        // this array, that made shipment dispatch unassignable through the API
+        // on any installation.
+        'ShippingProviderManager',
         // NOTE: 'FulfillmentRouter' (A2) is deliberately absent while A2 is
         // `config-only` — see the declaration's own comment for why.
       ]);

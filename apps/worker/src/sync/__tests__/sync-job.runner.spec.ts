@@ -1538,9 +1538,15 @@ describe('SyncJobRunner', () => {
         // jobs on one connection and never reached the total, because a
         // single scope is bounded by perScope first.
         expect(caps.bulk).toEqual({ total: 12, perScope: 8 });
-        // Buyer-facing and deadline-bearing lanes are deliberately unchanged.
+        // The buyer-facing lane is deliberately unchanged - moving the sweep
+        // child out of it is what removed the pressure, not a wider cap.
         expect(caps.realtime).toEqual({ total: 4, perScope: 2 });
-        expect(caps.fiscal).toEqual({ total: 2, perScope: 1 });
+        // fiscal raised from 2/1 in #2840 on #3006's measured sweep (4.3x /
+        // 3.1x / 3.0x at declared provider latencies of 2 s, 10 s, 90 s).
+        // Exactly-once issuance never depended on the narrow lane: it rests on
+        // the durable idempotency index plus the in-flight lease, and one
+        // order's two documents are serialised by their own per-order lock.
+        expect(caps.fiscal).toEqual({ total: 8, perScope: 4 });
       });
 
       it('should default fan-out above one slot so stock propagation is not serialised (#2609)', () => {
