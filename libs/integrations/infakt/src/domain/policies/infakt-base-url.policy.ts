@@ -34,6 +34,15 @@
  *   3. `INFAKT_DEFAULT_BASE_URL` (production) - the default when neither is
  *      set, matching the pre-#2174 behaviour for existing connections.
  *
+ * This module does NOT rewrite an override that omits `/api/v3` — it is
+ * returned to the caller verbatim, so what is persisted on `config.baseUrl`
+ * and what a connection actually calls never silently diverge (#3030). The
+ * save-time refusal that keeps a *new* bare-host override from ever reaching
+ * this point lives in {@link isRootPathInfaktBaseUrlOverride}, consumed by
+ * `InfaktConnectionConfigShapeValidatorAdapter`; an existing pre-#3030 row
+ * saved before that check existed can still carry a bare-host override and
+ * is left as-is until its next save.
+ *
  * @module libs/integrations/infakt/src/domain/policies
  */
 import { InfaktConfigException } from '../exceptions/infakt-config.exception';
@@ -112,6 +121,46 @@ function normalizeInfaktBaseUrl(value: string, parsed: URL): string {
     return withoutTrailingSlash;
   }
   return `${withoutTrailingSlash}${INFAKT_API_VERSION_PATH}`;
+}
+
+/**
+ * The path segment every inFakt REST call is mounted under (both the
+ * production and sandbox hosts share it, e.g. `api.infakt.pl/api/v3/...`).
+ * Exported so the save-time config-shape validator's rejection message and
+ * this policy's own root-path check cite the identical literal (#3030).
+ */
+export const INFAKT_API_VERSION_PATH = '/api/v3';
+
+/**
+ * True when `value` is a **bare-host** (or bare root-path, `/`) override —
+ * the shape this package's own README historically documented
+ * (`https://api.infakt.pl`, with no `/api/v3` suffix) and that
+ * `InfaktHttpClient` would otherwise send every request against verbatim,
+ * 404ing on a host that carries no API surface at its root (#3030).
+ *
+ * An override that already carries a **distinct** path of its own — even one
+ * that doesn't literally end in `/api/v3` — is deliberately NOT flagged here:
+ * {@link isAllowedInfaktBaseUrl}'s own docblock declines a host allowlist
+ * because this override "may legitimately point at an operator-run proxy",
+ * and a proxy mounting the v3 surface under its own prefix (e.g.
+ * `https://proxy.example.com/infakt`) is exactly such a case. Refusing that
+ * shape at save time would block a working configuration on the strength of
+ * a check this package cannot actually verify (it doesn't know the proxy's
+ * internal routing) — narrowing to "bare host only" is what keeps the refusal
+ * honest.
+ *
+ * Assumes `value` has already passed {@link isAllowedInfaktBaseUrl} (so the
+ * `URL` parse cannot throw); guarded defensively anyway since this is
+ * exported and callable standalone.
+ */
+export function isRootPathInfaktBaseUrlOverride(value: string): boolean {
+  let pathname: string;
+  try {
+    ({ pathname } = new URL(value));
+  } catch {
+    return false;
+  }
+  return pathname === '' || pathname === '/';
 }
 
 /**

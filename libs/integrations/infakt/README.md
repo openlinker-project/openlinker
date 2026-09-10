@@ -55,11 +55,14 @@ Authentication uses a **static API key** (no OAuth).
 `baseUrl` is optional and is a **legacy** override kept for backward
 compatibility — prefer `"environment": "sandbox"` / `"environment":
 "production"` instead, which need no URL at all. If you do set `baseUrl`, it
-**must include the `/api/v3` path** (inFakt's sandbox and production APIs
-share the same `/api/v3` path convention, e.g. `api.infakt.pl/api/v3/...` and
-`api.sandbox-infakt.pl/api/v3/...`) — `resolveInfaktBaseUrl` normalizes a
-missing suffix onto the override automatically, but the corrected example
-above should be preferred over relying on that normalization.
+**must include the `/api/v3` path** shown above (inFakt's sandbox and
+production APIs share the same `/api/v3` path convention, e.g.
+`api.infakt.pl/api/v3/...` and `api.sandbox-infakt.pl/api/v3/...`) — a
+bare-host override with no path (e.g. `https://api.infakt.pl` alone) is
+refused at save time (#3030), since `resolveInfaktBaseUrl` uses whatever is
+persisted verbatim and a bare host resolves to a URL with no API surface at
+its root. An override that carries its own distinct path (e.g. an
+operator-run proxy) is honoured as-is.
 `defaultPaymentMethod` and `bankAccount` are optional (see #1309/#1310 below) -
 omit both to fall back to `cash` with no stamped account.
 `defaultSaleType` is optional (see #2177 below) - omit it to leave `sale_type`
