@@ -23,12 +23,6 @@ specifically to surface the orders a figure is *not yet* counting.
 
 ## The date-range toolbar
 
-<!-- screenshot: full analytics page — date-range toolbar with the corrected
-     "No conversion · {code}" default currency option (not "Current rate ·"),
-     KPI strip, channel table, top products table uncropped (no horizontal
-     clipping), Needs attention, Data coverage, and Synchronization panels.
-     Split into two or three captures if one image can't show the products
-     table's rightmost channel columns in full. -->
 ![Analytics page — date-range toolbar, KPI strip, channel table, top products, Needs attention, Data coverage, and Synchronization panels](./images/07-analytics-full-page.png)
 
 - **7d / 30d / 90d** — quick preset ranges, always ending today.
@@ -40,13 +34,17 @@ specifically to surface the orders a figure is *not yet* counting.
   rather than silently truncating. The **Needs attention** panel is different: it takes no date
   range at all — coverage gaps, stock at risk, and stuck-sync value are reported across the whole
   install, independent of whatever range you're viewing.
-- **Order date** (the small pill next to Apply) now confirms what the range does rather than
-  disclaiming it: activating it reads **"Filters revenue, orders, and the tables above. 'Needs
-  attention' below always shows current status, not this range."** That's the same distinction the
-  400-day-limit bullet above already makes, restated at the point of use, so the two aren't
-  contradicting one another. Separately, and unrelated to that pill: every metric definition below
-  is bucketed by an order's own **placement** date, never its sync or payment date — see the two
-  rules under [KPI strip metric definitions](#kpi-strip-metric-definitions).
+- **Order date** (the small pill next to Apply, marked with a dagger) currently carries a
+  **disclaimer**, not a confirmation: hovering or focusing it today reads **"This range doesn't
+  filter results yet — coming soon."** That reads as stale against the sales/coverage reads
+  actually being range-scoped end to end — a real product inconsistency, filed as
+  [#3032](https://github.com/openlinker-project/openlinker/issues/3032) with a fix proposed in
+  [#3130](https://github.com/openlinker-project/openlinker/pull/3130) (not yet merged at the time of
+  writing). This page quotes the pill's **actual, currently-shipped** text rather than the intended
+  future one, per this file's own rule of tracking what's really live. Once #3130 merges, this
+  paragraph should be updated to match. Separately, and unrelated to that pill: every metric
+  definition below is bucketed by an order's own **placement** date, never its sync or payment date
+  — see the two rules under [KPI strip metric definitions](#kpi-strip-metric-definitions).
 - Changing the range re-runs the KPI strip, the channel/product tables, and the Data Coverage panel
   — all of which take the selected range, including the trend sparkline embedded in each KPI card
   and channel row: a week-long range renders a daily trend, a longer one resamples into up to seven
@@ -109,7 +107,9 @@ in Analytics Settings.
 
 | | Gross | Net |
 |---|---|---|
-| Headline figure | GMV: **PLN 28,454.10** | Net Sales: **PLN 26,270.58** |
+| Revenue card | GMV: **PLN 2,531.40** | Net Sales: **PLN 2,058.05** |
+| Order value — Average | **PLN 158.21** | **PLN 128.63** |
+| Order value — Median | **PLN 44.00** | **PLN 35.77** |
 
 The gap between the two headline figures is exactly the VAT the gross figure includes and the net
 one excludes — plus, for Net Sales specifically, the value of any returns in the same period. The
@@ -207,7 +207,10 @@ statement about *data availability*, not about that channel's real performance.
 The **Top products** table (toggle between **By Net Sales** and **By Units**) ranks products across
 every connected channel: Product, SKU, GMV/Net sales, Units, then one column per connected channel.
 There's no stock column at this level — expand a row for its per-variant detail, which does carry a
-stock status badge alongside each channel's listing status.
+stock status badge (e.g. **IN STOCK**) alongside each channel's listing status (e.g. **NOT
+LISTED**), plus quick links to the product's own detail and content-edit pages:
+
+![An expanded Top products row — per-variant, per-channel net sales, a stock status badge, and each connected channel's listing status](./images/07-analytics-product-stock-badge.png)
 
 **Exclusion annotations**: a row whose own figures are under-counted by a currently-open Data
 Coverage category (see below) carries one small pill per affected category — for example *"3 orders
@@ -270,12 +273,14 @@ remediation action; the other two (category B, product-matching) are browse-only
 that's OpenLinker's own admission rather than a limitation of this panel: there's nothing here for
 OpenLinker to fix (see each category below).
 
-<!-- screenshot: Data coverage panel with three open categories — outdated
-     currency, no tax rate at all, and a product-matching error, each with
-     its own remediation button. Current shipped copy for the row actions is
-     "Recalculate now" / "View products" / "View orders" (not
-     "Recalculate all N now", which is the modal footer's own label). -->
-![Data coverage panel with three open categories — outdated currency, no tax rate at all, and a product-matching error, each with its own remediation button](./images/07-analytics-data-coverage.png)
+![Needs attention and Data coverage panels — a Needs attention row carrying the orange ACTION badge, and a clear Data coverage panel carrying the green CLEAR badge](./images/07-analytics-data-coverage.png)
+
+Both panels prefix their rows with a small colored badge naming the severity: **ACTION** (orange)
+on a Needs attention row that has something for you to do, and **CLEAR** (green) on either panel's
+resolved, nothing-outstanding state (*"Nothing needs attention"* / *"Nothing to do"*). An open Data
+coverage category (currency mismatch, tax categories A/B/C, product matching) would carry its own
+ACTION badge the same way — the screenshot above happens to be captured on an install with every
+Data coverage category clear, which is itself the honest common case rather than a staged one.
 
 Each open row is itself a button — clicking anywhere on it (not just the labelled action text)
 opens that category's detail modal, one row per affected order, paginated, each linking straight to
