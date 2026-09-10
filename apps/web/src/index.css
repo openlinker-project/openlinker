@@ -1843,6 +1843,311 @@ textarea,
   color: var(--status-review-strong);
 }
 
+.chip__count {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  opacity: 0.85;
+}
+
+/* ── Price changes review queue (#3147, ADR-072) ──────────────────────
+ * The queue table's filter bar, grouped-row treatment, and price/action
+ * cells — a new pattern this feature introduces, mirroring
+ * docs/plans/mockups/price-changes-review-queue.html 1:1.
+ */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  align-items: center;
+}
+
+.filter-bar__label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-right: 2px;
+}
+
+.filter-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+
+.table-wrap {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+
+.table-wrap thead th {
+  text-align: left;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 10px var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-surface-muted);
+  white-space: nowrap;
+}
+
+.table-wrap th.col-num,
+.table-wrap td.col-num {
+  text-align: right;
+}
+
+.table-wrap .th-sub {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  margin-left: 4px;
+}
+
+.table-wrap tbody td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+  vertical-align: middle;
+}
+
+.table-wrap tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table-wrap tbody tr.is-resolved td {
+  background: var(--bg-surface-muted);
+}
+
+.table-wrap tbody tr.is-resolved {
+  opacity: 0.6;
+}
+
+.table-wrap tbody tr.is-group-start td {
+  border-top: 1px solid var(--border-default);
+}
+
+.table-wrap tbody tr.is-group-start:first-child td {
+  border-top: none;
+}
+
+/* The persistent left-border accent tying a fanned-out price change's rows
+   together (#3147 AC: "exactly as in the mockup"). */
+.table-wrap tbody tr.is-grouped td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent-primary-border);
+}
+
+.table-wrap tbody tr.is-flagged td {
+  background: color-mix(in oklab, var(--status-warning-soft) 55%, transparent);
+}
+
+.cell-product {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.cell-product .thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.cell-product__text {
+  min-width: 0;
+}
+
+.cell-product__name {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 24ch;
+}
+
+.cell-product__sku {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.cell-product__source {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+.cell-continuation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 44px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.cell-continuation__help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  cursor: help;
+}
+
+.connection-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.connection-tag:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.price-compare {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+  flex-wrap: wrap;
+}
+
+.price-compare__old {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  font-size: 0.72rem;
+}
+
+.price-compare__new {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.delta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  margin-left: 2px;
+}
+
+.delta-chip--up,
+.delta-chip--down {
+  background: var(--status-info-soft);
+  color: var(--status-info-fg);
+  border: 1px solid var(--status-info-border);
+}
+
+.delta-chip--steep {
+  background: var(--status-warning-soft);
+  color: var(--status-warning-fg);
+  border: 1px solid var(--status-warning-border);
+}
+
+.row-actions {
+  display: flex;
+  gap: 5px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.status-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: normal;
+  text-align: right;
+  justify-content: flex-end;
+}
+
+.status-note--accepted {
+  color: var(--status-success-fg);
+}
+
+.status-note--custom {
+  color: var(--status-info-fg);
+}
+
+.status-note .undo {
+  color: var(--accent-primary);
+  cursor: pointer;
+  font-weight: 500;
+  margin-left: 2px;
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.refresh-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.refresh-note__text {
+  font-size: 0.68rem;
+  color: var(--status-warning-fg);
+  text-align: right;
+  max-width: 220px;
+}
+
 
 /* ── Theme toggle ───────────────────────────────────────────────────
  * Three-option radiogroup rendered as a segmented button group. Sits
