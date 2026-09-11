@@ -27,6 +27,8 @@ import { OrderRefundService } from './application/services/order-refund.service'
 import { RefundRecordRepository } from './infrastructure/persistence/repositories/refund-record.repository';
 import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
+import { OrderCancellationSignalRepository } from './infrastructure/persistence/repositories/order-cancellation-signal.repository';
+import { OrderCancellationSignalOrmEntity } from './infrastructure/persistence/entities/order-cancellation-signal.orm-entity';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
 import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
 import { DisplayCurrencyConversionService } from './application/services/display-currency-conversion.service';
@@ -50,6 +52,7 @@ import {
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
   TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
   DISPLAY_CURRENCY_CONVERSION_SERVICE_TOKEN,
+  ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
 } from './orders.tokens';
 import { OrderHoldsModule } from './order-holds.module';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -81,7 +84,12 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([OrderRecordOrmEntity, RefundRecordOrmEntity, OrderLineItemOrmEntity]),
+    TypeOrmModule.forFeature([
+      OrderRecordOrmEntity,
+      RefundRecordOrmEntity,
+      OrderLineItemOrmEntity,
+      OrderCancellationSignalOrmEntity,
+    ]),
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
     SyncModule, // Required for cursor repository, job queue, and locks
@@ -143,6 +151,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     TaxRateBackfillService,
     TaxCoverageDetectionService,
     DisplayCurrencyConversionService,
+    OrderCancellationSignalRepository,
     // Then provide token bindings using useExisting
     {
       provide: ORDER_SYNC_SERVICE_TOKEN,
@@ -195,6 +204,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     {
       provide: ORDER_REFUND_RECORD_REPOSITORY_TOKEN,
       useExisting: RefundRecordRepository,
+    },
+    {
+      provide: ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
+      useExisting: OrderCancellationSignalRepository,
     },
     {
       provide: ORDER_REFUND_SERVICE_TOKEN,
