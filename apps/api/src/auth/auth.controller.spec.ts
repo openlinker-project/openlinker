@@ -10,7 +10,13 @@
  */
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import type { HttpException } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthController } from './auth.controller';
 import { AUTH_SERVICE_TOKEN } from './auth.service.interface';
@@ -24,7 +30,9 @@ import {
   InvalidPasswordResetTokenException,
   RefreshTokenReuseDetectedException,
   User,
+  UserAlreadyExistsException,
 } from '@openlinker/core/users';
+import { RegisterDto } from './dto/register.dto';
 import type { IPasswordResetService } from './password-reset.service.interface';
 import { PASSWORD_RESET_SERVICE_TOKEN } from './password-reset.service.interface';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -63,6 +71,7 @@ describe('AuthController', () => {
   let passwordResetService: jest.Mocked<IPasswordResetService>;
   let refreshTokenService: jest.Mocked<IRefreshTokenService>;
   let emailConfirmationService: jest.Mocked<IEmailConfirmationService>;
+  let registrationService: jest.Mocked<IRegistrationService>;
 
   beforeEach(async () => {
     const mockAuthService: jest.Mocked<IAuthService> = {
@@ -105,6 +114,7 @@ describe('AuthController', () => {
     passwordResetService = module.get(PASSWORD_RESET_SERVICE_TOKEN);
     refreshTokenService = module.get(REFRESH_TOKEN_SERVICE_TOKEN);
     emailConfirmationService = module.get(EMAIL_CONFIRMATION_SERVICE_TOKEN);
+    registrationService = module.get(REGISTRATION_SERVICE_TOKEN);
   });
 
   describe('refresh cookie path drift guard (#1327)', () => {
@@ -308,6 +318,70 @@ describe('AuthController', () => {
 
       expect(refreshTokenService.revoke).not.toHaveBeenCalled();
       expect(res.clearCookie).toHaveBeenCalledTimes(4);
+    });
+  });
+
+  describe('POST /auth/register', () => {
+    const makeDto = (username: string, email: string): RegisterDto =>
+      Object.assign(new RegisterDto(), { username, email, password: 'password123' });
+
+    const req = { ip: '203.0.113.1' } as unknown as Request;
+
+    const captureHttpError = async (dto: RegisterDto): Promise<HttpException> => {
+      try {
+        await controller.register(dto, req);
+      } catch (error) {
+        return error as HttpException;
+      }
+      throw new Error('expected controller.register to reject');
+    };
+
+    it('should return a byte-identical status AND body for a username collision and an email collision (#3156)', async () => {
+      // The service-level spec asserts the two exceptions carry the same
+      // MESSAGE. That is not the same claim: what an unauthenticated caller
+      // actually observes is the HTTP response, so the assertion has to be
+      // made where the response is shaped. A future change that started
+      // mapping one branch to a different status or body would leave the
+      // service spec green and reopen the oracle.
+      registrationService.register.mockRejectedValueOnce(
+        new UserAlreadyExistsException('alice'),
+      );
+      const usernameCollision = await captureHttpError(makeDto('alice', 'free@test.com'));
+
+      registrationService.register.mockRejectedValueOnce(
+        new UserAlreadyExistsException('bob@test.com'),
+      );
+      const emailCollision = await captureHttpError(makeDto('unique-username', 'bob@test.com'));
+
+      expect(usernameCollision).toBeInstanceOf(ConflictException);
+      expect(emailCollision).toBeInstanceOf(ConflictException);
+      expect(usernameCollision.getStatus()).toBe(emailCollision.getStatus());
+      expect(usernameCollision.getResponse()).toEqual(emailCollision.getResponse());
+      expect(JSON.stringify(usernameCollision.getResponse())).not.toMatch(
+        /alice|bob@test\.com|unique-username/,
+      );
+    });
+
+    it('should still answer 409 for a taken identifier and 201 for a free one — the surviving enumeration channel (#3156)', async () => {
+      // Characterisation, not an endorsement. Genericising the message did
+      // NOT close user enumeration: the attacker controls both fields, so
+      // POSTing a random unique username with the victim's email reads
+      // "taken" from the 409 and "free" from the 201, without the message
+      // ever naming a field. Closing it means always answering 201 and
+      // notifying by email (the forgotPassword shape) plus hashing
+      // unconditionally to kill the timing side-channel — tracked on #3156
+      // and deliberately out of scope here. This test is what a future fix
+      // flips, so the gap cannot be closed silently or reopened unnoticed.
+      registrationService.register.mockResolvedValueOnce(undefined);
+      await expect(controller.register(makeDto('fresh', 'free@test.com'), req)).resolves.toEqual({
+        ok: true,
+      });
+
+      registrationService.register.mockRejectedValueOnce(
+        new UserAlreadyExistsException('taken@test.com'),
+      );
+      const collision = await captureHttpError(makeDto('fresh2', 'taken@test.com'));
+      expect(collision.getStatus()).toBe(409);
     });
   });
 

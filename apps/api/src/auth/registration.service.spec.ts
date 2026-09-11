@@ -89,6 +89,56 @@ describe('RegistrationService', () => {
     expect(repo.save).not.toHaveBeenCalled();
   });
 
+  it('should throw a byte-identical, non-identifying message for a username collision and an email collision (#3156)', async () => {
+    // A registration endpoint that echoes back which specific username or
+    // email collided is a user-enumeration oracle — both branches must throw
+    // the exact same generic message, naming neither the field nor the
+    // submitted value.
+    const usernameCollisionRepo = makeRepo();
+    usernameCollisionRepo.findByUsername.mockResolvedValue(makeUser('alice'));
+    usernameCollisionRepo.findByEmail.mockResolvedValue(null);
+    const usernameCollisionService = new RegistrationService(
+      usernameCollisionRepo,
+      makeConfig({ OL_REGISTRATION_ENABLED: 'true' }),
+      makeDemoService(false),
+      new InMemoryCacheAdapter(),
+      makeEmailConfirmationService()
+    );
+
+    const emailCollisionRepo = makeRepo();
+    emailCollisionRepo.findByUsername.mockResolvedValue(null);
+    emailCollisionRepo.findByEmail.mockResolvedValue(makeUser('bob'));
+    const emailCollisionService = new RegistrationService(
+      emailCollisionRepo,
+      makeConfig({ OL_REGISTRATION_ENABLED: 'true' }),
+      makeDemoService(false),
+      new InMemoryCacheAdapter(),
+      makeEmailConfirmationService()
+    );
+
+    let usernameCollisionError: unknown;
+    try {
+      await usernameCollisionService.register('alice', 'guessed@test.com', 'pass123');
+    } catch (error) {
+      usernameCollisionError = error;
+    }
+
+    let emailCollisionError: unknown;
+    try {
+      await emailCollisionService.register('unique-username', 'bob@test.com', 'pass123');
+    } catch (error) {
+      emailCollisionError = error;
+    }
+
+    expect(usernameCollisionError).toBeInstanceOf(UserAlreadyExistsException);
+    expect(emailCollisionError).toBeInstanceOf(UserAlreadyExistsException);
+    expect((usernameCollisionError as Error).message).toBe((emailCollisionError as Error).message);
+    expect((usernameCollisionError as Error).message).not.toContain('alice');
+    expect((usernameCollisionError as Error).message).not.toContain('guessed@test.com');
+    expect((emailCollisionError as Error).message).not.toContain('bob@test.com');
+    expect((emailCollisionError as Error).message).not.toContain('unique-username');
+  });
+
   it('should throw UserAlreadyExistsException for a case-variant duplicate email (#1625)', async () => {
     // Mirrors what the real UserRepository.findByEmail does — it normalizes
     // the lookup internally, so a caller passing a mixed-case email still
