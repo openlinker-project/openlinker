@@ -251,7 +251,7 @@ input:read-only{ background:var(--bg-surface-muted); color:var(--text-secondary)
       <div class="shell-nav__group">
         <p class="shell-nav__label">Platform</p>
         <ul class="shell-nav__list">
-          <li><a class="shell-nav__link shell-nav__link--active" href="#">Connections</a></li>
+          <li><a class="shell-nav__link" href="#">Connections</a></li>
           <li><a class="shell-nav__link" href="#">Adapters</a></li>
           <li><a class="shell-nav__link" href="#">Settings</a></li>
         </ul>
@@ -260,7 +260,11 @@ input:read-only{ background:var(--bg-surface-muted); color:var(--text-secondary)
   </aside>
 
   <div class="shell-main">
-    <div class="shell-topbar"><div class="shell-crumbs">Connections / OpenLinker OMS / <b>Inventory locations</b></div></div>
+    <!-- No sidebar item points here — the only entry point is the "Inventory locations"
+         tile on /settings (mirroring WhoDecidesTile's shape), so nothing in the
+         Platform group is active and the crumb is 2-level: {group:'Platform',
+         title:'Inventory locations'}, unchanged from the sidebar-nav-item era. -->
+    <div class="shell-topbar"><div class="shell-crumbs">Platform / <b>Inventory locations</b></div></div>
 
     <div class="demo-toolbar" role="group" aria-label="Mockup state switcher — not part of the product">
       <span class="demo-toolbar__label">Mockup · view state</span>
@@ -279,7 +283,7 @@ input:read-only{ background:var(--bg-surface-muted); color:var(--text-secondary)
     </div>
 
     <div class="shell-content">
-      <a class="back-link" href="#">&larr; OpenLinker OMS</a>
+      <a class="back-link" href="#">&larr; Settings</a>
       <header class="page-header">
         <div class="page-header__row">
           <div>
@@ -499,6 +503,18 @@ input:read-only{ background:var(--bg-surface-muted); color:var(--text-secondary)
             <input type="text" value="WH1" aria-invalid="true" readonly />
             <p class="form-field__error">✕ A location with code "WH1" already exists.</p>
           </div>
+        </div>
+      </div>
+      <div class="gallery-card">
+        <p class="gallery-card__label">Entry point — the /settings tile (not part of this screen)</p>
+        <div class="gallery-card__body">
+          <div style="border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); padding:16px; max-width:320px;">
+            <p class="eyebrow" style="margin-bottom:2px;">Fulfilment routing</p>
+            <h3 style="margin:0 0 8px; font-size:.9375rem; font-weight:600;">Inventory locations</h3>
+            <p style="margin:0 0 12px; font-size:.8125rem; color:var(--text-secondary);">The warehouses, stores and third-party sites OpenLinker can source stock from.</p>
+            <button class="button button--secondary button--sm" disabled>Open</button>
+          </div>
+          <p style="margin-top:10px; font-size:.75rem; color:var(--text-muted); max-width:56ch;">This is the only way in — there's no sidebar item for this screen, only a link-out card on <code>/settings</code> (mirroring the "Who decides what" tile's shape). Not admin-gated: the page's own reads are admin/operator/viewer, so the tile must be at least as reachable as the page it links to. The back-link above ("← Settings") and the two-level breadcrumb ("Platform / Inventory locations") both point back here.</p>
         </div>
       </div>
     </div>
