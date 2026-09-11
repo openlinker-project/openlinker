@@ -28,6 +28,7 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '../../../shared/ui/button';
+import { Chip } from '../../../shared/ui/chip';
 import { ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../../shared/ui/data-table-skeleton';
 import { TimeDisplay } from '../../../shared/ui/time-display';
@@ -37,8 +38,12 @@ import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { Input } from '../../../shared/ui/input';
 import { FieldError } from '../../../shared/ui/field-error';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../../shared/ui/tooltip';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import { useWriteAccess, type WriteAccess } from '../../../shared/auth/use-permission';
+import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { useConnectionsQuery } from '../../connections';
+import { useDemoMode } from '../../system';
 import { usePriceChangesQuery } from '../hooks/use-price-changes-query';
 import { useAcceptPriceChangeMutation } from '../hooks/use-accept-price-change-mutation';
 import { useIgnorePriceChangeMutation } from '../hooks/use-ignore-price-change-mutation';
@@ -91,6 +96,18 @@ function parseDirectionParam(value: string | null): DirectionFilter {
 
 export function PriceChangesQueueTable(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Every action in this table publishes a price to a live marketplace/shop
+  // (or mutates a connection's sync mode) and the backend guards every write
+  // `@Roles('admin', 'operator')` — a `viewer` session holds `listings:read`
+  // only. Gated the same way the rest of Listings gates its write
+  // affordances (`useWriteAccess` + `ReadOnlyLock`, #1615): `visible` hides
+  // the control entirely for a genuinely unauthorized (non-demo) session, and
+  // `demoReadOnly` renders it disabled-with-a-tooltip for a public demo
+  // viewer instead of leaving it enabled against an endpoint that would 403
+  // (#3164 review, BLOCKING).
+  const demoMode = useDemoMode();
+  const write = useWriteAccess('listings:write', demoMode);
 
   // Namespaced (#3164 review) so this table's own filters are shareable/
   // reload-durable and neither collide with nor silently inherit the "All
@@ -294,8 +311,19 @@ export function PriceChangesQueueTable(): ReactElement {
   }
 
   async function handleBulkAccept(): Promise<void> {
+    // Each item MUST carry the staleness token — the backend's
+    // `BulkAcceptPriceChangeItemDto.expectedVersion` is required (#3145/
+    // #3162), for the same reason the single-accept path's is: a bulk item
+    // publishes `computedNewAmount`, which can move between this read and
+    // the submit. `items` (not `selectedIds` alone) is the source of the
+    // version, since the version lives on the row, not the id.
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const acceptItems = selectedIds
+      .map((id) => byId.get(id))
+      .filter((item): item is PriceChangeItem => item !== undefined)
+      .map((item) => ({ id: item.id, expectedVersion: item.version }));
     try {
-      await bulkAcceptMutation.mutateAsync(selectedIds.map((id) => ({ id })));
+      await bulkAcceptMutation.mutateAsync(acceptItems);
       setSelected(new Set());
       showToast({ tone: 'success', title: 'Publishing selected prices…', description: 'Watch progress below.' });
     } catch (error) {
@@ -377,54 +405,33 @@ export function PriceChangesQueueTable(): ReactElement {
 
       <div className="filter-bar" role="group" aria-label="Filter by connection">
         <span className="filter-bar__label">Connection</span>
-        <button
-          type="button"
-          className={`chip ${connectionFilter === 'all' ? 'chip--active' : ''}`}
-          onClick={() => setConnectionFilter('all')}
-        >
+        <Chip active={connectionFilter === 'all'} onClick={() => setConnectionFilter('all')}>
           All <span className="chip__count">{unfilteredQuery.data?.total ?? 0}</span>
-        </button>
+        </Chip>
         {destinationConnections.map((connection) => (
-          <button
+          <Chip
             key={connection.id}
-            type="button"
-            className={`chip ${connectionFilter === connection.id ? 'chip--active' : ''}`}
+            active={connectionFilter === connection.id}
             onClick={() => setConnectionFilter(connection.id)}
           >
             {connection.name} <span className="chip__count">{connectionCounts.get(connection.id) ?? 0}</span>
-          </button>
+          </Chip>
         ))}
       </div>
       <div className="filter-bar" role="group" aria-label="Filter by price direction">
         <span className="filter-bar__label">Price change</span>
-        <button
-          type="button"
-          className={`chip ${directionFilter === 'all' ? 'chip--active' : ''}`}
-          onClick={() => setDirectionFilter('all')}
-        >
+        <Chip active={directionFilter === 'all'} onClick={() => setDirectionFilter('all')}>
           All
-        </button>
-        <button
-          type="button"
-          className={`chip ${directionFilter === 'up' ? 'chip--active' : ''}`}
-          onClick={() => setDirectionFilter('up')}
-        >
+        </Chip>
+        <Chip active={directionFilter === 'up'} onClick={() => setDirectionFilter('up')}>
           ↑ Increases
-        </button>
-        <button
-          type="button"
-          className={`chip ${directionFilter === 'down' ? 'chip--active' : ''}`}
-          onClick={() => setDirectionFilter('down')}
-        >
+        </Chip>
+        <Chip active={directionFilter === 'down'} onClick={() => setDirectionFilter('down')}>
           ↓ Decreases
-        </button>
-        <button
-          type="button"
-          className={`chip ${magnitudeOnly ? 'chip--active' : ''}`}
-          onClick={toggleMagnitudeOnly}
-        >
+        </Chip>
+        <Chip active={magnitudeOnly} onClick={toggleMagnitudeOnly}>
           Big changes (10% or more)
-        </button>
+        </Chip>
       </div>
 
       {query.data && query.data.hiddenStaleCount > 0 ? (
@@ -436,36 +443,51 @@ export function PriceChangesQueueTable(): ReactElement {
       ) : null}
 
       {query.isPending ? (
-        <DataTableSkeleton columns={7} label="Loading price changes…" />
+        // The four `queue-*` container states are the mockup's own vocabulary
+        // (`docs/plans/mockups/price-changes-review-queue.html` — `#queue-live`
+        // / `#queue-loading` / `#queue-empty` / `#queue-error`), so an E2E spec
+        // can bind to them by name per `§ UX Mockups` — they were declared but
+        // never emitted here (#3164 review). Distinct from and additive to the
+        // finer per-row `data-state` values below, which answer a different
+        // question ("what is THIS row's resolution") on a different element.
+        <div data-state="queue-loading">
+          <DataTableSkeleton columns={7} label="Loading price changes…" />
+        </div>
       ) : query.error ? (
-        <ErrorState
-          title="Couldn't load price changes"
-          message={query.error.message}
-          action={
-            <Button tone="secondary" onClick={() => void query.refetch()}>
-              Try again
-            </Button>
-          }
-        />
+        <div data-state="queue-error">
+          <ErrorState
+            title="Couldn't load price changes"
+            message={query.error.message}
+            action={
+              <Button tone="secondary" onClick={() => void query.refetch()}>
+                Try again
+              </Button>
+            }
+          />
+        </div>
       ) : items.length === 0 ? (
-        <EmptyState
-          title="You're all caught up"
-          message="Nothing needs your attention right now. We'll show new price changes here as soon as one happens in your shop."
-        />
+        <div data-state="queue-empty">
+          <EmptyState
+            title="You're all caught up"
+            message="Nothing needs your attention right now. We'll show new price changes here as soon as one happens in your shop."
+          />
+        </div>
       ) : (
-        <>
+        <div data-state="queue-live">
           <div className="table-wrap">
             <div className="table-scroll">
               <table>
                 <thead>
                   <tr>
                     <th style={{ width: 36 }}>
-                      <input
-                        type="checkbox"
-                        aria-label="Select all"
-                        checked={allSelected}
-                        onChange={toggleSelectAll}
-                      />
+                      {write.visible ? (
+                        <input
+                          type="checkbox"
+                          aria-label="Select all"
+                          checked={allSelected}
+                          onChange={toggleSelectAll}
+                        />
+                      ) : null}
                     </th>
                     <th>Product</th>
                     <th>Changed in</th>
@@ -502,14 +524,16 @@ export function PriceChangesQueueTable(): ReactElement {
                         className={rowClasses || undefined}
                       >
                         <td>
-                          <input
-                            type="checkbox"
-                            data-testid="row-select"
-                            aria-label={`Select ${item.productName} on ${item.destinationLabel}`}
-                            checked={selected.has(item.id)}
-                            disabled={!isSelectable(item)}
-                            onChange={() => toggleSelected(item.id)}
-                          />
+                          {write.visible ? (
+                            <input
+                              type="checkbox"
+                              data-testid="row-select"
+                              aria-label={`Select ${item.productName} on ${item.destinationLabel}`}
+                              checked={selected.has(item.id)}
+                              disabled={!isSelectable(item)}
+                              onChange={() => toggleSelected(item.id)}
+                            />
+                          ) : null}
                         </td>
                         <td>
                           {isGroupStart ? (
@@ -583,6 +607,7 @@ export function PriceChangesQueueTable(): ReactElement {
                         <td className="col-num">
                           <ActionCell
                             item={item}
+                            write={write}
                             onAccept={(i) => setConfirmAcceptItem(i)}
                             onEdit={openEditDialog}
                             onIgnore={handleIgnore}
@@ -603,14 +628,24 @@ export function PriceChangesQueueTable(): ReactElement {
             itemNoun="price change"
             actions={
               <>
-                <Button tone="secondary" onClick={() => void handleBulkIgnore()}>
-                  Keep prices
-                </Button>
-                <Button onClick={() => void handleBulkAccept()}>Accept selected</Button>
+                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <Button
+                    tone="secondary"
+                    disabled={write.demoReadOnly}
+                    onClick={() => void handleBulkIgnore()}
+                  >
+                    Keep prices
+                  </Button>
+                </ReadOnlyLock>
+                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <Button disabled={write.demoReadOnly} onClick={() => void handleBulkAccept()}>
+                    Accept selected
+                  </Button>
+                </ReadOnlyLock>
               </>
             }
           />
-        </>
+        </div>
       )}
 
       <ConfirmDialog
@@ -705,9 +740,30 @@ function PriceCell({ item }: { item: PriceChangeItem }): ReactElement {
   const roundingLabel = roundingLabelFor(item.ruleSummary.rounding);
   const currency = item.destinationCurrency ?? undefined;
   const oldLabel = item.computedOldAmount === null ? '—' : formatAmount(item.computedOldAmount, currency);
+  // `.delta-chip--up`/`.delta-chip--down` render byte-identical colors,
+  // matching the mockup's own choice (it distinguishes the two with an SVG
+  // arrow, not color) — the mockup was verified to make the SAME choice
+  // (#3164 review). A decorative arrow closes the gap without touching the
+  // queried label text: it lives in its own sibling span, so
+  // `screen.getByText('-15%')` keeps matching the label alone.
+  // Only up/down get the icon — flat/steep keep the label as a bare text
+  // child (unchanged from before this fix), so an existing query for the
+  // rendered label (`getByText('0%')`) still returns the classed chip span
+  // itself rather than a newly-introduced text wrapper.
+  const directionIcon = tone === 'up' ? '▲' : tone === 'down' ? '▼' : null;
+  const label = formatDeltaLabel(item.deltaPct);
   const deltaChip = (
     <span className={`delta-chip delta-chip--${tone}`} tabIndex={tone === 'steep' ? 0 : undefined}>
-      {formatDeltaLabel(item.deltaPct)}
+      {directionIcon ? (
+        <>
+          <span aria-hidden="true" className="delta-chip__icon">
+            {directionIcon}
+          </span>
+          <span>{label}</span>
+        </>
+      ) : (
+        label
+      )}
     </span>
   );
 
@@ -735,6 +791,7 @@ function PriceCell({ item }: { item: PriceChangeItem }): ReactElement {
 
 function ActionCell({
   item,
+  write,
   onAccept,
   onEdit,
   onIgnore,
@@ -742,6 +799,7 @@ function ActionCell({
   onRefresh,
 }: {
   item: PriceChangeItem;
+  write: WriteAccess;
   onAccept: (item: PriceChangeItem) => void;
   onEdit: (item: PriceChangeItem) => void;
   onIgnore: (item: PriceChangeItem) => Promise<void>;
@@ -762,9 +820,19 @@ function ActionCell({
     return (
       <span className="status-note" data-testid="row-ignored">
         Kept the old price{' '}
-        <button type="button" className="undo" data-undo={item.id} onClick={() => void onUndo(item)}>
-          Undo
-        </button>
+        {write.visible ? (
+          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <button
+              type="button"
+              className="undo"
+              data-undo={item.id}
+              disabled={write.demoReadOnly}
+              onClick={() => void onUndo(item)}
+            >
+              Undo
+            </button>
+          </ReadOnlyLock>
+        ) : null}
       </span>
     );
   }
@@ -774,28 +842,59 @@ function ActionCell({
         <span className="refresh-note__text">
           This price changed again while you were deciding — refresh to see the latest.
         </span>
-        <Button
-          tone="secondary"
-          className="button--xs"
-          data-testid="row-refresh"
-          onClick={() => void onRefresh(item)}
-        >
-          Refresh
-        </Button>
+        {write.visible ? (
+          <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+            <Button
+              tone="secondary"
+              className="button--xs"
+              data-testid="row-refresh"
+              disabled={write.demoReadOnly}
+              onClick={() => void onRefresh(item)}
+            >
+              Refresh
+            </Button>
+          </ReadOnlyLock>
+        ) : null}
       </div>
     );
   }
+  if (!write.visible) {
+    return <></>;
+  }
   return (
     <div className="row-actions">
-      <Button tone="secondary" className="button--xs" data-testid="row-ignore" onClick={() => void onIgnore(item)}>
-        Keep price
-      </Button>
-      <Button tone="secondary" className="button--xs" data-testid="row-edit" onClick={() => onEdit(item)}>
-        Edit
-      </Button>
-      <Button className="button--xs" data-testid="row-accept" onClick={() => onAccept(item)}>
-        Accept
-      </Button>
+      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <Button
+          tone="secondary"
+          className="button--xs"
+          data-testid="row-ignore"
+          disabled={write.demoReadOnly}
+          onClick={() => void onIgnore(item)}
+        >
+          Keep price
+        </Button>
+      </ReadOnlyLock>
+      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <Button
+          tone="secondary"
+          className="button--xs"
+          data-testid="row-edit"
+          disabled={write.demoReadOnly}
+          onClick={() => onEdit(item)}
+        >
+          Edit
+        </Button>
+      </ReadOnlyLock>
+      <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+        <Button
+          className="button--xs"
+          data-testid="row-accept"
+          disabled={write.demoReadOnly}
+          onClick={() => onAccept(item)}
+        >
+          Accept
+        </Button>
+      </ReadOnlyLock>
     </div>
   );
 }

@@ -13,6 +13,7 @@ import type {
   PriceChangeAutoAppliedItem,
   PriceChangeItem,
   PriceChangeListResponse,
+  PriceChangeResolutionResult,
 } from './price-changes.types';
 
 function buildQuery(filters?: ListPriceChangesFilters): string {
@@ -29,12 +30,14 @@ function buildQuery(filters?: ListPriceChangesFilters): string {
 
 export interface PriceChangesApi {
   list(filters?: ListPriceChangesFilters): Promise<PriceChangeListResponse>;
-  accept(id: string, input: AcceptPriceChangeInput): Promise<void>;
+  /** Returns the `{ optInApplied? }` body — `accept` answers `200` now, not a bare `204` (#3145/#3162). */
+  accept(id: string, input: AcceptPriceChangeInput): Promise<PriceChangeResolutionResult>;
   ignore(id: string): Promise<void>;
   unresolve(id: string): Promise<void>;
   /** Acknowledge a re-detection — clears `needsRefresh` and returns the row as it now stands (#3162). */
   refresh(id: string): Promise<PriceChangeItem>;
-  edit(id: string, input: EditPriceChangeInput): Promise<void>;
+  /** Returns the `{ optInApplied? }` body — `edit` answers `200` now, not a bare `204` (#3145/#3162). */
+  edit(id: string, input: EditPriceChangeInput): Promise<PriceChangeResolutionResult>;
   bulkAccept(items: BulkAcceptPriceChangeItem[]): Promise<BulkAcceptPriceChangesResponse>;
   autoApplied(): Promise<PriceChangeAutoAppliedItem[]>;
 }
@@ -44,8 +47,8 @@ export function createPriceChangesApi(request: ApiRequest): PriceChangesApi {
     list(filters): Promise<PriceChangeListResponse> {
       return request<PriceChangeListResponse>(`/listings/price-changes${buildQuery(filters)}`);
     },
-    accept(id, input): Promise<void> {
-      return request<void>(`/listings/price-changes/${id}/accept`, {
+    accept(id, input): Promise<PriceChangeResolutionResult> {
+      return request<PriceChangeResolutionResult>(`/listings/price-changes/${id}/accept`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
@@ -60,8 +63,8 @@ export function createPriceChangesApi(request: ApiRequest): PriceChangesApi {
     refresh(id): Promise<PriceChangeItem> {
       return request<PriceChangeItem>(`/listings/price-changes/${id}/refresh`, { method: 'POST' });
     },
-    edit(id, input): Promise<void> {
-      return request<void>(`/listings/price-changes/${id}/edit`, {
+    edit(id, input): Promise<PriceChangeResolutionResult> {
+      return request<PriceChangeResolutionResult>(`/listings/price-changes/${id}/edit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
