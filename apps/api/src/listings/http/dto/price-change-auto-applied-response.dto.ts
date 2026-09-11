@@ -4,11 +4,14 @@
  * @module apps/api/src/listings/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { PriceChangeAutoAppliedLogEntry } from '@openlinker/core/listings';
+import type { PriceChangeAutoAppliedView } from '@openlinker/core/listings';
 
 export class PriceChangeAutoAppliedItemResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() productVariantId!: string;
+  @ApiProperty() productName!: string;
+  @ApiProperty({ type: String, nullable: true }) variantLabel!: string | null;
+  @ApiProperty({ type: String, nullable: true }) sku!: string | null;
   @ApiProperty() destinationConnectionId!: string;
   @ApiProperty() sourceConnectionId!: string;
   @ApiPropertyOptional({
@@ -20,10 +23,13 @@ export class PriceChangeAutoAppliedItemResponseDto {
   @ApiProperty() currency!: string;
   @ApiProperty() appliedAt!: string;
 
-  static fromDomain(entry: PriceChangeAutoAppliedLogEntry): PriceChangeAutoAppliedItemResponseDto {
+  static fromView(entry: PriceChangeAutoAppliedView): PriceChangeAutoAppliedItemResponseDto {
     const dto = new PriceChangeAutoAppliedItemResponseDto();
     dto.id = entry.id;
     dto.productVariantId = entry.productVariantId;
+    dto.productName = entry.productName;
+    dto.variantLabel = entry.variantLabel;
+    dto.sku = entry.sku;
     dto.destinationConnectionId = entry.destinationConnectionId;
     dto.sourceConnectionId = entry.sourceConnectionId;
     dto.oldAmount = entry.oldAmount;

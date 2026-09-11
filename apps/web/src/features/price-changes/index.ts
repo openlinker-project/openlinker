@@ -9,8 +9,6 @@ export { EditPriceChangeDialog } from './components/edit-price-change-dialog';
 export { BulkAcceptPriceChangesDialog } from './components/bulk-accept-price-changes-dialog';
 export { BulkPublishProgress } from './components/bulk-publish-progress';
 export { AutoAppliedNote } from './components/auto-applied-note';
-export { AutoAppliedDialog } from './components/auto-applied-dialog';
-export type { AutoAppliedRow } from './components/auto-applied-dialog';
 export { useSetSourceSyncModeMutation } from './hooks/use-set-source-sync-mode-mutation';
 export type { SetSourceSyncModeInput } from './hooks/use-set-source-sync-mode-mutation';
 export { createPricingSyncApi } from './api/pricing-sync.api';

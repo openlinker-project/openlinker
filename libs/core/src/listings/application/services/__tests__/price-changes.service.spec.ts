@@ -437,4 +437,67 @@ describe('PriceChangesService', () => {
       expect(connections.get).not.toHaveBeenCalled();
     });
   });
+
+  describe('listAutoApplied', () => {
+    it('enriches each log entry with the product name, variant label, and SKU', async () => {
+      autoAppliedLog.findRecent.mockResolvedValue([
+        {
+          id: 'log-1',
+          productVariantId: 'v1',
+          destinationConnectionId: 'dest-1',
+          sourceConnectionId: 'src-1',
+          oldAmount: 34.9,
+          newAmount: 36.9,
+          currency: 'PLN',
+          appliedAt: new Date('2026-09-10T10:00:00.000Z'),
+        },
+      ]);
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'v1', productId: 'p1', sku: 'MUG-350', attributes: { size: '350 ml' }, isStale: false },
+      ]);
+      productsService.getProductsByIds.mockResolvedValue([{ id: 'p1', name: 'Ceramic Coffee Mug' }]);
+
+      const [view] = await service.listAutoApplied(20);
+
+      expect(productsService.getVariantsByIds).toHaveBeenCalledWith(['v1']);
+      expect(productsService.getProductsByIds).toHaveBeenCalledWith(['p1']);
+      expect(view).toMatchObject({
+        id: 'log-1',
+        productVariantId: 'v1',
+        productName: 'Ceramic Coffee Mug',
+        variantLabel: '350 ml',
+        sku: 'MUG-350',
+      });
+    });
+
+    it('short-circuits with no product lookups when the log is empty', async () => {
+      autoAppliedLog.findRecent.mockResolvedValue([]);
+
+      const views = await service.listAutoApplied(20);
+
+      expect(views).toEqual([]);
+      expect(productsService.getVariantsByIds).not.toHaveBeenCalled();
+    });
+
+    it('falls back to "Unknown product" and null label/sku when the variant cannot be resolved', async () => {
+      autoAppliedLog.findRecent.mockResolvedValue([
+        {
+          id: 'log-1',
+          productVariantId: 'v-deleted',
+          destinationConnectionId: 'dest-1',
+          sourceConnectionId: 'src-1',
+          oldAmount: 10,
+          newAmount: 12,
+          currency: 'PLN',
+          appliedAt: new Date('2026-09-10T10:00:00.000Z'),
+        },
+      ]);
+      productsService.getVariantsByIds.mockResolvedValue([]);
+      productsService.getProductsByIds.mockResolvedValue([]);
+
+      const [view] = await service.listAutoApplied(20);
+
+      expect(view).toMatchObject({ productName: 'Unknown product', variantLabel: null, sku: null });
+    });
+  });
 });

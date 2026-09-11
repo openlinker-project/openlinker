@@ -1,7 +1,7 @@
 /**
  * AutoAppliedDialog (#3151, ADR-072 decision 3)
  *
- * "Applied automatically today" — mirrors
+ * "Applied automatically recently" — mirrors
  * `docs/plans/mockups/price-changes-review-queue.html`'s
  * `#dialog-auto-applied`. Reuses the same `.mini-list`/`.mini-row` shape the
  * bulk-accept dialog (#3148) already renders — not a new list component.
@@ -10,6 +10,10 @@
  * entire scope of the "Daily digest" mode ADR-072 decision 3 cut. If a real
  * need for more surfaces later, that is new design work, not an extension
  * of this component.
+ *
+ * Not re-exported from the feature barrel — used only within
+ * `features/price-changes` (`AutoAppliedNote`), per `§ Feature Public
+ * Surface`: start narrow, widen later if a real external consumer appears.
  *
  * @module apps/web/src/features/price-changes/components
  */
@@ -22,8 +26,8 @@ import type { PriceChangeAutoAppliedItem } from '../api/price-changes.types';
 
 export interface AutoAppliedRow {
   item: PriceChangeAutoAppliedItem;
-  /** The variant/product label — falls back to the SKU or the bare id when a variant lookup fails or is still loading. */
-  label: string;
+  productName: string;
+  variantLabel: string | null;
   destinationLabel: string;
 }
 
@@ -47,18 +51,23 @@ export function AutoAppliedDialog({ open, onOpenChange, rows }: AutoAppliedDialo
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogTitle>Applied automatically today</DialogTitle>
+        <DialogTitle>Applied automatically recently</DialogTitle>
         <DialogDescription>
           These connections publish without asking, so nothing here needs a decision from you.
         </DialogDescription>
         <div className="mini-list" id="dialog-auto-applied-list">
-          {rows.map(({ item, label, destinationLabel }) => (
+          {rows.map(({ item, productName, variantLabel, destinationLabel }) => (
             <div className="mini-row" key={item.id}>
-              <span className="thumb" style={{ width: 24, height: 24, fontSize: 10 }} aria-hidden="true">
-                {initials(label)}
+              <span className="thumb" aria-hidden="true">
+                {initials(productName)}
               </span>
               <div className="mini-row__text">
-                <div className="mini-row__name">{label}</div>
+                <div className="mini-row__name">
+                  {productName}
+                  {variantLabel ? (
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> — {variantLabel}</span>
+                  ) : null}
+                </div>
                 <div className="mini-row__meta">
                   {destinationLabel} · <TimeDisplay iso={item.appliedAt} format="relative" />
                 </div>

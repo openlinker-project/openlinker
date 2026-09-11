@@ -1877,6 +1877,27 @@ textarea,
   margin-bottom: var(--space-3);
 }
 
+/* A real <button> styled to read as inline text (#3151 review fix) — a link
+   look for an action that opens a dialog rather than navigating. */
+.filter-note__action {
+  display: inline;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  font: inherit;
+  color: var(--accent-primary-hover);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+  cursor: pointer;
+}
+
+.filter-note__action:hover {
+  color: var(--accent-primary);
+  background: none;
+}
+
 .table-wrap {
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
@@ -2260,6 +2281,23 @@ textarea,
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   background: var(--bg-surface-muted);
+}
+
+/* `.thumb` was previously declared only as `.cell-product .thumb` (#3151
+   review) — inside a `.mini-row` it rendered as bare, unstyled text, and the
+   inline width/height on the two callers did nothing because a <span> is
+   `display: inline` by default. */
+.mini-row .thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  font-weight: 600;
 }
 
 .mini-row__text {

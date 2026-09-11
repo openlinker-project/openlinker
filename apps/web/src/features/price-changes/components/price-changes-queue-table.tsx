@@ -521,7 +521,7 @@ export function PriceChangesQueueTable(): ReactElement {
         destinationConnections={destinationConnections}
       />
 
-      <AutoAppliedNote />
+      <AutoAppliedNote destinationConnections={destinationConnections} />
 
       <div className="filter-bar" role="group" aria-label="Filter by connection">
         <span className="filter-bar__label">Connection</span>

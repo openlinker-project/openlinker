@@ -105,7 +105,7 @@ export class PriceChangesController {
   @ApiResponse({ status: 200, type: [PriceChangeAutoAppliedItemResponseDto] })
   async autoApplied(): Promise<PriceChangeAutoAppliedItemResponseDto[]> {
     const entries = await this.priceChanges.listAutoApplied(DEFAULT_AUTO_APPLIED_LIMIT);
-    return entries.map((entry) => PriceChangeAutoAppliedItemResponseDto.fromDomain(entry));
+    return entries.map((entry) => PriceChangeAutoAppliedItemResponseDto.fromView(entry));
   }
 
   @Post(':id/accept')

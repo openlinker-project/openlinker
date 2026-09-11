@@ -137,6 +137,9 @@ export interface BulkAcceptPriceChangesResponse {
 export interface PriceChangeAutoAppliedItem {
   id: string;
   productVariantId: string;
+  productName: string;
+  variantLabel: string | null;
+  sku: string | null;
   destinationConnectionId: string;
   sourceConnectionId: string;
   /** `null` for a first-ever detection with no recorded baseline (#3159). */

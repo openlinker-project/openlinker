@@ -408,6 +408,7 @@ export type {
   PriceChangeQueueItemRuleSummary,
   PriceChangeQueuePage,
 } from './application/types/price-change-queue-item.types';
+export type { PriceChangeAutoAppliedView } from './application/types/price-change-auto-applied-view.types';
 export type {
   IPriceChangesService,
   AcceptPriceChangeInput,

@@ -4,8 +4,8 @@
  * @module libs/core/src/listings/application/services
  */
 import type { PriceChangeEpisodeFilters } from '../../domain/types/price-change-episode.types';
-import type { PriceChangeAutoAppliedLogEntry } from '../../domain/entities/price-change-auto-applied-log-entry.entity';
 import type { PriceChangeQueueItem, PriceChangeQueuePage } from '../types/price-change-queue-item.types';
+import type { PriceChangeAutoAppliedView } from '../types/price-change-auto-applied-view.types';
 
 export interface AcceptPriceChangeInput {
   /** The version token last read by the caller (staleness guard). */
@@ -96,5 +96,5 @@ export interface IPriceChangesService {
    */
   refresh(episodeId: string): Promise<PriceChangeQueueItem>;
 
-  listAutoApplied(limit: number): Promise<readonly PriceChangeAutoAppliedLogEntry[]>;
+  listAutoApplied(limit: number): Promise<readonly PriceChangeAutoAppliedView[]>;
 }
