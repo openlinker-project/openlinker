@@ -125,7 +125,7 @@ export function EditPriceChangeDialog({
               </div>
               <div className="field__hint">
                 Left alone, the usual rule would set this to{' '}
-                <span className="mono">{formatAmount(item.computedNewAmount, item.destinationCurrency)}</span>.{' '}
+                <span className="mono">{formatAmount(item.computedNewAmount, item.destinationCurrency ?? undefined)}</span>.{' '}
                 <button type="button" onClick={() => setRawValue(String(item.computedNewAmount))}>
                   Use that price
                 </button>

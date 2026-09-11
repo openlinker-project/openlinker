@@ -77,8 +77,10 @@ export function BulkAcceptPriceChangesDialog({
                 </div>
               </div>
               <div className="mini-row__price">
-                <s>{formatAmount(item.computedOldAmount, item.destinationCurrency)}</s>
-                {formatAmount(item.computedNewAmount, item.destinationCurrency)}
+                {item.computedOldAmount === null ? null : (
+                  <s>{formatAmount(item.computedOldAmount, item.destinationCurrency ?? undefined)}</s>
+                )}
+                {formatAmount(item.computedNewAmount, item.destinationCurrency ?? undefined)}
               </div>
             </div>
           ))}

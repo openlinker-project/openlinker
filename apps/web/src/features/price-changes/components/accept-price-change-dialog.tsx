@@ -73,7 +73,9 @@ export function AcceptPriceChangeDialog({
               <div className="price-hero__block">
                 <div className="price-hero__label">Live now</div>
                 <div className="price-hero__value price-hero__value--old">
-                  {formatAmount(item.computedOldAmount, item.destinationCurrency)}
+                  {item.computedOldAmount === null
+                    ? '—'
+                    : formatAmount(item.computedOldAmount, item.destinationCurrency ?? undefined)}
                 </div>
               </div>
               <div className="price-hero__arrow" aria-hidden="true">
@@ -82,14 +84,19 @@ export function AcceptPriceChangeDialog({
               <div className="price-hero__block">
                 <div className="price-hero__label">Will publish</div>
                 <div className="price-hero__value price-hero__value--new">
-                  {formatAmount(item.computedNewAmount, item.destinationCurrency)}
+                  {formatAmount(item.computedNewAmount, item.destinationCurrency ?? undefined)}
                 </div>
               </div>
             </div>
             <p className="rule-note">
               {ruleSentenceFor(item.ruleSummary)} That comes to{' '}
-              <b>{formatAmount(item.manualPriceOverride ?? item.computedNewAmount, item.destinationCurrency)}</b>,
-              VAT included.
+              <b>
+                {formatAmount(
+                  item.manualPriceOverride ?? item.computedNewAmount,
+                  item.destinationCurrency ?? undefined,
+                )}
+              </b>
+              , VAT included.
             </p>
             {isAdmin ? (
               <label className="opt-in-check">
