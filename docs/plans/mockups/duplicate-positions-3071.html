@@ -195,6 +195,26 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{ outline:none; b
 .maxgroups-form input{ width:4.5rem; height:1.625rem; border:1px solid var(--border-default); border-radius:var(--radius-sm); background:var(--bg-surface); color:var(--text-primary); font-family:var(--font-mono); font-size:.75rem; padding:0 6px; }
 .maxgroups-form__note{ font-family:var(--font-mono); font-size:.6875rem; }
 
+.modal-overlay{ position:fixed; inset:0; background:oklch(20% 0.01 80 / .5); display:flex; align-items:center; justify-content:center; padding:20px; z-index:50; }
+.modal-overlay[hidden]{ display:none; }
+.modal{ background:var(--bg-surface); border:1px solid var(--border-default); border-radius:var(--radius-lg); box-shadow:var(--shadow-soft); max-width:580px; width:100%; max-height:min(640px,88vh); overflow-y:auto; padding:20px 24px 22px; }
+.modal__header{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:4px; }
+.modal__title{ font-size:1.0625rem; font-weight:600; letter-spacing:-.01em; }
+.modal__close{ border:none; background:transparent; color:var(--text-muted); font-size:1.125rem; line-height:1; cursor:pointer; padding:3px 7px; border-radius:var(--radius-sm); flex-shrink:0; }
+.modal__close:hover{ background:var(--bg-surface-muted); color:var(--text-primary); }
+.modal__subject{ font-size:.75rem; color:var(--text-muted); font-family:var(--font-mono); margin:0 0 14px; }
+.modal__steps{ margin:0 0 12px; padding-left:1.15rem; display:grid; gap:7px; font-size:.8125rem; color:var(--text-secondary); }
+.modal__steps li strong{ color:var(--text-primary); }
+.modal__steps code, .modal__body code{ font-family:var(--font-mono); background:var(--bg-surface-muted); padding:0 4px; border-radius:3px; font-size:.75rem; }
+.modal__warn{ font-size:.75rem; padding:8px 10px; border-radius:var(--radius-sm); background:var(--status-warning-soft); border:1px solid var(--status-warning-border); color:var(--status-warning-fg); margin:0 0 4px; }
+.modal__sql-label{ font-size:.6875rem; font-family:var(--font-mono); text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin:14px 0 5px; }
+.modal__sql{ width:100%; box-sizing:border-box; font-family:var(--font-mono); font-size:.75rem; background:var(--bg-surface-muted); border:1px solid var(--border-default); border-radius:var(--radius-sm); padding:8px 10px; resize:vertical; min-height:58px; color:var(--text-primary); }
+.modal__sql-actions{ display:flex; gap:8px; align-items:center; margin-top:7px; flex-wrap:wrap; }
+.modal__copy-note{ font-size:.6875rem; color:var(--status-success-fg); font-weight:500; }
+.modal__footer{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:16px; padding-top:14px; border-top:1px solid var(--border-subtle); flex-wrap:wrap; }
+.modal__footer-hint{ font-size:.6875rem; color:var(--text-muted); }
+.modal__footer-actions{ display:flex; gap:8px; }
+
 .demo-toolbar{ position:sticky; top:52px; z-index:9; display:flex; align-items:center; gap:10px; padding:10px 32px; background:var(--bg-surface-elevated); border-bottom:1px solid var(--border-subtle); flex-wrap:wrap; }
 .demo-toolbar__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin-right:4px; }
 .chip{ display:inline-flex; align-items:center; gap:.25rem; height:1.375rem; padding:0 .5rem; border:1px solid var(--border-subtle); border-radius:var(--radius-pill); background:var(--bg-surface-muted); color:var(--text-secondary); font-size:.75rem; font-weight:500; cursor:pointer; }
@@ -261,6 +281,23 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{ outline:none; b
       </header>
 
       <div id="content"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="remediationModalOverlay" hidden onclick="if(event.target===this) closeRemediationModal();">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="remediationModalTitle">
+    <div class="modal__header">
+      <h2 class="modal__title" id="remediationModalTitle">Remediation guide (condensed)</h2>
+      <button class="modal__close" aria-label="Close" onclick="closeRemediationModal()">✕</button>
+    </div>
+    <div id="remediationModalBody"></div>
+    <div class="modal__footer">
+      <span class="modal__footer-hint">This is an excerpt. The committed doc has the full ordering dependency, the stale-group fallback and the SQL caveats.</span>
+      <div class="modal__footer-actions">
+        <button class="button button--secondary button--sm" onclick="closeRemediationModal()">Close</button>
+        <a class="button button--sm" id="remediationFullDocLink" href="#" target="_blank" rel="noopener" style="text-decoration:none;">Open full runbook →</a>
+      </div>
     </div>
   </div>
 </div>
@@ -385,8 +422,98 @@ function findSurvivorId(group) {
   return liveRow ? liveRow.id : null;
 }
 
-function remediationLinkHtml(extra) {
-  return `<p class="alert__link"><a href="${REMEDIATION_LINK}" target="_blank" rel="noopener">Remediation guide: how to pick the survivor and delete the rest →</a>${extra ? ' ' + extra : ''}</p>`;
+// Every "Remediation guide" link opens the condensed in-product modal first
+// (a competitor-comparison review flagged a bare markdown-file link as the
+// only help affordance a real OMS never ships) — the full doc is one click
+// further, from inside the modal, never bypassed on a left click. The plain
+// href to the real doc stays as the accessible/no-JS fallback and is what a
+// middle-click or "open in new tab" honours.
+function remediationLinkHtml(extra, groupIndex) {
+  const openCall = typeof groupIndex === 'number' ? `openRemediationModal(${groupIndex})` : 'openRemediationModal()';
+  return `<p class="alert__link"><a href="${REMEDIATION_LINK}" target="_blank" rel="noopener" onclick="${openCall}; return false;">Remediation guide: how to pick the survivor and delete the rest →</a>${extra ? ' ' + extra : ''}</p>`;
+}
+
+let lastFocusedBeforeModal = null;
+
+function openRemediationModal(groupIndex) {
+  const overlay = document.getElementById('remediationModalOverlay');
+  const body = document.getElementById('remediationModalBody');
+  const group = (typeof groupIndex === 'number' && window.__groupsForModal) ? window.__groupsForModal[groupIndex] : null;
+  body.innerHTML = buildRemediationModalBody(group);
+  lastFocusedBeforeModal = document.activeElement;
+  overlay.hidden = false;
+  document.body.dataset.remediationModal = 'open';
+  document.addEventListener('keydown', onRemediationModalKeydown);
+  const closeBtn = overlay.querySelector('.modal__close');
+  if (closeBtn) closeBtn.focus();
+}
+
+function closeRemediationModal() {
+  const overlay = document.getElementById('remediationModalOverlay');
+  overlay.hidden = true;
+  document.body.dataset.remediationModal = 'closed';
+  document.removeEventListener('keydown', onRemediationModalKeydown);
+  if (lastFocusedBeforeModal && typeof lastFocusedBeforeModal.focus === 'function') lastFocusedBeforeModal.focus();
+}
+
+function onRemediationModalKeydown(e) {
+  if (e.key === 'Escape') closeRemediationModal();
+}
+
+function copySqlSnippet() {
+  const ta = document.getElementById('remediationSqlSnippet');
+  const note = document.getElementById('remediationCopyNote');
+  if (!ta) return;
+  const announce = () => { if (note) { note.textContent = '✓ Copied'; setTimeout(() => { note.textContent = ''; }, 2000); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(ta.value).then(announce).catch(() => { ta.select(); announce(); });
+  } else {
+    ta.select();
+    announce();
+  }
+}
+
+// The 5-step version of the runbook's "Manual remediation" section — always
+// shown. A group-scoped open additionally resolves the survivor (same rule
+// findSurvivorId uses, generalized to the all-stale fallback in step 2) and
+// renders a ready-to-review DELETE for its losers. Nothing here executes
+// anything — copy-and-run-yourself, matching "it detects, it never writes."
+function buildRemediationModalBody(group) {
+  const stepsHtml = `
+    <ol class="modal__steps">
+      <li><strong>Pick the survivor.</strong> The live row (not stale) with the highest <code>updatedAt</code> — normally <code>rows[0]</code>, since rows are newest-first.</li>
+      <li><strong>Every row stale?</strong> Keep the newest and delete the rest, or delete the whole group if the product is genuinely gone at the master.</li>
+      <li><strong>Reconcile the survivor's quantity from the master</strong>, not from the other rows — the next sync overwrites it anyway.</li>
+      <li><strong>Delete the losers by primary key only.</strong> A <code>DELETE</code> keyed on the position columns can't express "all but one" and empties the whole group.</li>
+      <li><strong>Re-run this report</strong> until <code>groupCount</code> reads 0, then proceed to the migration.</li>
+    </ol>
+    <p class="modal__warn">⚠ Never sum the duplicated quantities when reconciling — that recreates, by hand, the exact over-count this report exists to catch, and the next sync won't correct it because it will look like a real master figure.</p>
+  `;
+
+  if (!group) {
+    return stepsHtml + `<p style="font-size:.75rem; color:var(--text-muted); margin:0;">Open this from a specific group's row instead to get a ready-to-review <code>DELETE</code> for that group's losers.</p>`;
+  }
+
+  const survivor = group.rows.find(r => !r.isStale) || group.rows[0];
+  const losers = group.rows.filter(r => r.id !== survivor.id);
+  const idList = losers.map(r => `'${escapeHtml(r.id)}'`).join(', ');
+  const sql = `DELETE FROM "inventory_items"\n WHERE "id" IN (${idList});`;
+  const survivorNote = group.liveRowCount > 0
+    ? `Survivor (live, newest): <code>${escapeHtml(survivor.id)}</code>`
+    : `No live row in this group — keeping the newest overall per step 2: <code>${escapeHtml(survivor.id)}</code>`;
+
+  return `
+    <p class="modal__subject">${escapeHtml(group.productName)} (${escapeHtml(group.sku)}) · ${escapeHtml(group.productVariantId)}</p>
+    ${stepsHtml}
+    <p style="font-size:.8125rem; margin:0 0 4px;">${survivorNote}</p>
+    <p class="modal__sql-label">DELETE for the ${losers.length} loser row${losers.length === 1 ? '' : 's'} in this group</p>
+    <textarea class="modal__sql" id="remediationSqlSnippet" readonly rows="3">${escapeHtml(sql)}</textarea>
+    <div class="modal__sql-actions">
+      <button class="button button--secondary button--sm" onclick="copySqlSnippet()">Copy</button>
+      <span class="modal__copy-note" id="remediationCopyNote"></span>
+      <span style="font-size:.6875rem; color:var(--text-muted);">Nothing on this page runs this — re-confirm these ids are still current (re-run the scan), then run it yourself.</span>
+    </div>
+  `;
 }
 
 function exportCsv() {
@@ -397,6 +524,7 @@ function exportCsv() {
 }
 
 function renderGroupsTable(groups, truncated) {
+  window.__groupsForModal = groups; // indexed by the same `i` used below, for openRemediationModal(i)
   const rowsHtml = groups.map((g, i) => {
     const key = `g${i}`;
     const isOpen = expandedKey === key;
@@ -455,7 +583,7 @@ function renderGroupsTable(groups, truncated) {
                 </tr>`).join('')}
               </tbody>
             </table>
-            ${remediationLinkHtml()}
+            ${remediationLinkHtml(null, i)}
           </div>
         </td>
       </tr>
@@ -578,5 +706,6 @@ function setState(name) {
   render();
 }
 
+document.getElementById('remediationFullDocLink').href = REMEDIATION_LINK;
 setState('duplicates');
 </script>
