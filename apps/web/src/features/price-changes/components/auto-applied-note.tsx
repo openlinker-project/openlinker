@@ -34,7 +34,15 @@ import type { Connection } from '../../connections';
 import { AutoAppliedDialog, type AutoAppliedRow } from './auto-applied-dialog';
 
 export interface AutoAppliedNoteProps {
-  /** Same set `PricingRulesPickerDialog` reads — sharing it means this note costs zero extra requests. */
+  /**
+   * Same set `PricingRulesPickerDialog` reads. That dialog's own read is
+   * gated on `open` (#3167 review), so it no longer fires unconditionally —
+   * this note therefore issues its own batched `useDestinationPricingSyncSummaries`
+   * call (still one request per connection via `useQueries`, never a
+   * per-log-entry fan-out) rather than riding an always-on sibling fetch.
+   * The two share a query key, so mounting both with the picker open costs
+   * nothing extra; with it closed, this is the request.
+   */
   destinationConnections: readonly Connection[];
 }
 

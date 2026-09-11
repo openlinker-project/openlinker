@@ -73,7 +73,7 @@ export function AutoAppliedDialog({ open, onOpenChange, rows }: AutoAppliedDialo
                 </div>
               </div>
               <div className="mini-row__price">
-                <s>{formatAmount(item.oldAmount, item.currency)}</s>
+                {item.oldAmount === null ? null : <s>{formatAmount(item.oldAmount, item.currency)}</s>}
                 {formatAmount(item.newAmount, item.currency)}
               </div>
             </div>

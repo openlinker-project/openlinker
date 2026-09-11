@@ -2283,23 +2283,6 @@ textarea,
   background: var(--bg-surface-muted);
 }
 
-/* `.thumb` was previously declared only as `.cell-product .thumb` (#3151
-   review) — inside a `.mini-row` it rendered as bare, unstyled text, and the
-   inline width/height on the two callers did nothing because a <span> is
-   `display: inline` by default. */
-.mini-row .thumb {
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  display: grid;
-  place-items: center;
-  color: var(--text-muted);
-  flex-shrink: 0;
-  font-size: 0.62rem;
-  font-weight: 600;
-}
-
 .mini-row__text {
   min-width: 0;
   flex: 1;
@@ -2329,22 +2312,27 @@ textarea,
   margin-right: 4px;
 }
 
-/* Initials-avatar chip inside a mini-row (#3148 review, finding 8) — was
-   entirely unstyled: the sizing comes from the inline `width`/`height`/
-   `fontSize` style props at the call site, but with no `display` rule an
-   inline `<span>` ignores both, and with no background/radius it rendered
-   as bare, uncentered text. */
+/* Initials-avatar chip inside a mini-row (#3148 review, finding 8; sizing
+   folded in here rather than left on a caller's inline style, #3151 review)
+   — was entirely unstyled: with no `display` rule an inline `<span>`
+   ignored width/height, and with no background/radius it rendered as bare,
+   uncentered text. Shared by BulkAcceptPriceChangesDialog and
+   AutoAppliedDialog — one rule, so neither caller carries an inline
+   width/height/fontSize style. */
 .mini-row .thumb {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
+  width: 24px;
+  height: 24px;
   border-radius: 999px;
   border: 1px solid var(--border-default);
   background: var(--bg-surface-muted);
   color: var(--text-secondary);
   font-weight: 600;
   font-family: var(--font-mono);
+  font-size: 0.62rem;
 }
 
 .field__price-input {
