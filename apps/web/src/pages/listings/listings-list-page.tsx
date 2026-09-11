@@ -729,7 +729,7 @@ export function ListingsListPage(): ReactElement {
       </Tabs>
 
       {view === 'queue' ? (
-        <PriceChangesQueueTable />
+        <PriceChangesQueueTable initialConnectionId={urlConnectionId || undefined} />
       ) : (
         <>
       <div className="toolbar toolbar--compact listings-toolbar">

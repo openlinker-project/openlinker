@@ -8,8 +8,8 @@ import type { PriceRoundingMode, PriceSyncMode, PricingRuleType } from './price-
 
 export interface PricingRule {
   type: PricingRuleType;
-  percent?: number;
-  rounding?: PriceRoundingMode;
+  percent: number;
+  rounding: PriceRoundingMode;
 }
 
 export interface PricingSyncSetting {
