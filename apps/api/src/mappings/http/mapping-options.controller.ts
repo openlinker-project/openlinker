@@ -223,6 +223,17 @@ export class MappingOptionsController {
     description: 'Parent category ID (omit for root)',
   })
   @ApiResponse({ status: 200, type: [AllegroCategoryResponseDto] })
+  // Resolves through the same DestinationTaxonomyService.resolveScope chain as
+  // TaxonomyController (#2146 fixed the shared capability probe there) — a
+  // nonexistent/disabled connection now reaches these codes here too, for
+  // free, even though this route wasn't in #2146's file list.
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'No taxonomy source could be resolved — the connection exists and is active, but exposes no category browser',
+  })
   async getSourceCategories(
     @Param('connectionId') connectionId: string,
     @Query('parentId') parentId?: string
@@ -249,6 +260,15 @@ export class MappingOptionsController {
   @ApiParam({ name: 'connectionId', type: String })
   @ApiParam({ name: 'categoryId', type: String })
   @ApiResponse({ status: 200, type: [CategoryPathNodeResponseDto] })
+  // See the note on `getSourceCategories` above — same shared resolution
+  // chain, same restored codes (#2146).
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'No taxonomy source could be resolved — the connection exists and is active, but exposes no category browser',
+  })
   async getSourceCategoryPath(
     @Param('connectionId') connectionId: string,
     @Param('categoryId') categoryId: string

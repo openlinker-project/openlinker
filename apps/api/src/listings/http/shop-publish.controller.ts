@@ -117,15 +117,16 @@ export class ShopPublishController {
     description: 'Parent category id; omit for root-level categories.',
   })
   @ApiResponse({ status: 200, description: 'Category nodes', type: [ShopCategoryResponseDto] })
-  // 404 / 409 were declared here until #2085 and are now unreachable: scope
-  // resolution probes the destination kind through a swallowing try/catch, so
-  // an unknown connection, a disabled one, and a missing browse capability all
-  // arrive as the same 422. Declaring them would document a contract the route
-  // cannot honour.
+  // Restored in #2146: 404 / 409 were removed here in #2085 because scope
+  // resolution swallowed every failure from its capability probe, including
+  // connection-level ones. It now rethrows ConnectionNotFoundException /
+  // ConnectionDisabledException, so those are distinguishable again.
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
   @ApiResponse({
     status: 422,
     description:
-      'No taxonomy source could be resolved for the connection — it does not exist, is disabled, or exposes no category browser (TaxonomySourceUnavailableException). The body shape also changed in #2085: `error` now carries the domain exception name rather than the generic "Unprocessable Entity".',
+      'No taxonomy source could be resolved for the connection — it exists and is active, but exposes no ShopCategoryBrowser capability (TaxonomySourceUnavailableException). The body shape changed in #2085: `error` carries the domain exception name rather than the generic "Unprocessable Entity".',
   })
   async browseCategories(
     @Param('connectionId') connectionId: string,
