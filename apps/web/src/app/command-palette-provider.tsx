@@ -36,7 +36,7 @@ import type { PaletteGroup, PaletteItem } from '../shared/ui/command-palette';
 import { useSession } from '../shared/auth/use-session';
 import { useDemoMode } from '../features/system';
 import { captureDemoEvent } from '../features/demo';
-import { BASE_NAV_GROUPS } from './nav-registry';
+import { BASE_NAV_GROUPS, isNavItemVisible } from './nav-registry';
 import type { LiveNavGroup } from './nav-registry.types';
 
 // ── Recents ──────────────────────────────────────────────────────────
@@ -193,11 +193,15 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
       // Admins keep full access in every mode (#1379).
       if (demoMode && !isAdmin && liveGroup.requiresRole !== undefined) continue;
       for (const item of liveGroup.items) {
-        // Same per-item permission gate the sidebar applies (#2358 review I5):
-        // otherwise ⌘K is a way around it into a page that 403s.
+        // Same per-item permission AND role gates the sidebar applies
+        // (#2358 review I5, #3108) via the shared `isNavItemVisible` — two
+        // independent implementations of this check is how ⌘K became a way
+        // around whichever one drifted.
         if (
-          item.requiresPermission !== undefined &&
-          !(session.user?.permissions ?? []).includes(item.requiresPermission)
+          !isNavItemVisible(item, {
+            permissions: session.user?.permissions,
+            role: session.status === 'authenticated' ? session.user?.role : undefined,
+          })
         ) {
           continue;
         }
@@ -217,7 +221,7 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
       }
     }
     return items;
-  }, [searchTerm, handleSelect, demoMode, isAdmin, session.user?.permissions]);
+  }, [searchTerm, handleSelect, demoMode, isAdmin, session.status, session.user?.permissions, session.user?.role]);
 
   // ── Connection source ─────────────────────────────────────────────
 

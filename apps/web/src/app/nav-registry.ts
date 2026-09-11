@@ -20,7 +20,7 @@ import { mergePluginNavContributions } from '../plugins/merge-nav-contributions'
 import { plugins } from '../plugins';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
 import type { Permission } from '../shared/auth/session.types';
-import type { NavGroup, NavRegistryGroup } from './nav-registry.types';
+import type { LiveNavItem, NavGroup, NavRegistryGroup } from './nav-registry.types';
 
 /**
  * Canonical sidebar composition. The shell consumes whatever this builder
@@ -55,6 +55,11 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // is held by exactly admin + operator in `ROLE_PERMISSIONS`.
       { to: '/automations', label: 'Automations', requiresPermission: 'automations:read' },
       { to: '/invoices', label: 'Invoices' },
+      // Role-gated (#3108): the bench's own API is
+      // `@Roles('admin', 'operator', 'packer')` on every route
+      // (`BenchWorkController` et al.) — everyone except `viewer` — so the
+      // item admits all three rather than naming `packer` alone.
+      { to: '/bench', label: 'Pack bench', requiresRole: ['admin', 'operator', 'packer'] },
     ],
   },
   {
@@ -97,6 +102,32 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
   // fixture — so neither is dead code.
 ];
 
+export interface NavItemVisibilityInput {
+  permissions?: readonly Permission[];
+  role?: string;
+}
+
+/**
+ * Shared per-item visibility rule (#3108) — a single source of truth for
+ * "does this session see this item", consumed by both the sidebar
+ * (`buildNavGroups`) and the command palette (`command-palette-provider.tsx`).
+ * Before this, each caller re-implemented the permission check inline and
+ * ⌘K had no role check at all, so a `requiresRole`-gated item would have been
+ * reachable via the palette even when hidden from the sidebar.
+ *
+ * An item declaring neither gate is visible to everyone (pre-existing
+ * behaviour); one declaring both must satisfy both.
+ */
+export function isNavItemVisible(item: LiveNavItem, { permissions = [], role }: NavItemVisibilityInput): boolean {
+  if (item.requiresPermission !== undefined && !permissions.includes(item.requiresPermission)) {
+    return false;
+  }
+  if (item.requiresRole !== undefined && (role === undefined || !(item.requiresRole as readonly string[]).includes(role))) {
+    return false;
+  }
+  return true;
+}
+
 export interface BuildNavGroupsInput {
   isAdmin: boolean;
   demoMode: boolean;
@@ -107,6 +138,16 @@ export interface BuildNavGroupsInput {
    * than every one of them.
    */
   permissions?: readonly Permission[];
+  /**
+   * The session's own role string (`SessionUser.role`, untyped as `string` on
+   * the backend — it may be a role the FE chrome's own `Role` union doesn't
+   * name, e.g. `viewer`). Items declaring `requiresRole` (#3108) are dropped
+   * unless this matches one of the item's allowed roles. Left untyped against
+   * `Role` deliberately: a raw string comparison degrades safely for a role
+   * this union doesn't know about, whereas casting an unrecognised value to
+   * `Role` would claim a type guarantee that isn't true.
+   */
+  role?: string;
 }
 
 /**
@@ -128,6 +169,7 @@ export function buildNavGroups({
   isAdmin,
   demoMode,
   permissions = [],
+  role,
 }: BuildNavGroupsInput): NavGroup[] {
   // `mergePluginNavContributions` deep-clones each live group before mutating,
   // so pushing the readonly BASE group objects by reference is safe.
@@ -146,12 +188,10 @@ export function buildNavGroups({
       continue;
     }
     if (group.kind === 'live') {
-      // Per-ITEM permission gate. A live group whose every item is gated away
-      // is dropped entirely — an empty group heading advertises a section the
-      // session cannot reach.
-      const items = group.items.filter(
-        (item) => item.requiresPermission === undefined || permissions.includes(item.requiresPermission),
-      );
+      // Per-ITEM gates: permission (#2358 review I5) and role (#3108). A live
+      // group whose every item is gated away is dropped entirely — an empty
+      // group heading advertises a section the session cannot reach.
+      const items = group.items.filter((item) => isNavItemVisible(item, { permissions, role }));
       if (items.length === 0) continue;
       baseGroups.push(items.length === group.items.length ? group : { ...group, items });
       continue;

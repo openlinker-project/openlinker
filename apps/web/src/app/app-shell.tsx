@@ -260,9 +260,14 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   // Permission-gated nav items (#2358 review I5) need the session's permission
   // list, not just the admin flag — `/automations` is admin + operator.
   const permissions = session.user?.permissions;
+  // Role-gated nav items (#3108) — e.g. "Pack bench" — need the raw role
+  // string, since `packer`'s ROLE_PERMISSIONS grant is deliberately empty
+  // (ADR-071) and so carries no permission a `requiresPermission` gate could
+  // check instead.
+  const role = isReady && session.status === 'authenticated' ? session.user?.role : undefined;
   const groups = useMemo(
-    () => buildNavGroups({ isAdmin, demoMode, permissions }),
-    [isAdmin, demoMode, permissions],
+    () => buildNavGroups({ isAdmin, demoMode, permissions, role }),
+    [isAdmin, demoMode, permissions, role],
   );
   const matches = useMatches();
 
