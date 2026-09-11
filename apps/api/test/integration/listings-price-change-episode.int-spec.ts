@@ -317,5 +317,49 @@ describe('Price Change Episode Repository Integration', () => {
       await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'down' })
     ).toEqual([]);
     expect(await repository.findOpenForConnection(DEST_CONNECTION_ID)).toHaveLength(1);
+
+    // The `direction: 'unknown'` filter (#3159 review, stack note) DOES match
+    // it — the three-valued behaviour is now a three-valued type.
+    expect(
+      await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'unknown' })
+    ).toHaveLength(1);
+  });
+
+  it('round-trips a null sourceOldAmount (no prior source price at all) instead of fabricating old = new (#3159 review, BLOCKING)', async () => {
+    const { episode } = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: null,
+      sourceNewAmount: 430.5,
+      computedOldAmount: null,
+      computedNewAmount: 430.5,
+    });
+
+    expect(episode.sourceOldAmount).toBeNull();
+
+    const read = await repository.findById(episode.id);
+    expect(read?.sourceOldAmount).toBeNull();
+  });
+
+  it('classifies a real zero baseline as an increase, not "down" (#3159 review)', async () => {
+    // A previously-free product (`computedOldAmount: 0`) that now carries a
+    // price. `deltaPct()` returns `0` here to avoid a `NaN`/`Infinity`
+    // percentage, but the DIRECTION must still read as an increase.
+    const { episode } = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 0,
+      sourceNewAmount: 100,
+      computedOldAmount: 0,
+      computedNewAmount: 100,
+    });
+
+    expect(episode.direction()).toBe('up');
+    expect(episode.deltaPct()).toBe(0);
+
+    expect(
+      await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'up' })
+    ).toHaveLength(1);
+    expect(
+      await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'down' })
+    ).toEqual([]);
   });
 });

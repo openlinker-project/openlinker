@@ -201,14 +201,15 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
     let episodes = rows.map((row) => this.toDomain(row));
 
     if (filters?.direction) {
-      // A `null` deltaPct (no baseline recorded yet — a brand-new mapping's
-      // first detection) is an UNKNOWN direction, matched by neither 'up'
-      // nor 'down' (#3159 review) — never defaulted to 'down' by treating
-      // `null > 0` as false.
-      episodes = episodes.filter((e) => {
-        const delta = e.deltaPct();
-        return delta !== null && (delta > 0 ? 'up' : 'down') === filters.direction;
-      });
+      // Delegated to `PriceChangeEpisode.direction()` rather than re-derived
+      // from `deltaPct() > 0` here (#3159 review): `deltaPct` returns `0` for
+      // a real zero baseline to avoid a `NaN`/`Infinity` percentage, and
+      // `0 > 0` is false — which used to misclassify a genuine `0 -> 100`
+      // increase as `'down'`. `direction()` also reports `'unknown'` rather
+      // than defaulting an unresolved baseline into `'down'`, so a caller can
+      // explicitly filter for those (the #3159 "three-valued in behaviour"
+      // stack note) rather than have them silently vanish from both arms.
+      episodes = episodes.filter((e) => e.direction() === filters.direction);
     }
     if (filters?.magnitudeLargeOnly) {
       episodes = episodes.filter((e) => e.isSteep());
@@ -362,7 +363,7 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
       row.destinationConnectionId,
       row.sourceConnectionId,
       row.sourceCurrency,
-      Number(row.sourceOldAmount),
+      row.sourceOldAmount === null ? null : Number(row.sourceOldAmount),
       Number(row.sourceNewAmount),
       row.computedOldAmount === null ? null : Number(row.computedOldAmount),
       Number(row.computedNewAmount),

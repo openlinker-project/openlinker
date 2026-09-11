@@ -71,7 +71,14 @@ export interface UpsertOpenPriceChangeEpisodeInput {
   destinationConnectionId: string;
   sourceConnectionId: string;
   sourceCurrency: string;
-  sourceOldAmount: number;
+  /**
+   * `null` means "no prior source price was ever recorded" — a variant that
+   * previously had no price at all, or a brand-new mapping (#3159 review,
+   * BLOCKING). The caller must NEVER fall back to `sourceNewAmount` here: an
+   * absent baseline fabricated as "old = new" reads on the operator surface
+   * as a genuine, no-op price change that never happened.
+   */
+  sourceOldAmount: number | null;
   sourceNewAmount: number;
   /**
    * `null` means "no prior computed value to compare" — a brand-new mapping
@@ -102,8 +109,15 @@ export interface UpsertOpenPriceChangeEpisodeInput {
 export interface PriceChangeEpisodeFilters {
   destinationConnectionId?: string;
   sourceConnectionId?: string;
-  /** `undefined` = both directions. */
-  direction?: 'up' | 'down';
+  /**
+   * `undefined` = every direction, including unknown. `'unknown'` asks for
+   * exactly the episodes `PriceChangeEpisode.deltaPct()` returns `null` for
+   * (no recorded baseline — a brand-new mapping's first detection, #3159
+   * review): those rows are counted in the unfiltered total but were
+   * previously unreachable under either `'up'` or `'down'`, which would make
+   * an operator's per-direction counts silently undercount the whole.
+   */
+  direction?: 'up' | 'down' | 'unknown';
   /** When `true`, only episodes with `|deltaPct| >= 10` (mockup's "Big changes"). */
   magnitudeLargeOnly?: boolean;
 }
