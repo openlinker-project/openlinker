@@ -37,19 +37,40 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import {
   CONNECTION_PORT_TOKEN,
+  CORE_ENTITY_TYPE,
+  IDENTIFIER_MAPPING_SERVICE_TOKEN,
   type ConnectionPort,
+  type IIdentifierMappingService,
 } from '@openlinker/core/identifier-mapping';
 import { IIntegrationsService, INTEGRATIONS_SERVICE_TOKEN } from '@openlinker/core/integrations';
 import {
   IInventoryQueryService,
   INVENTORY_QUERY_SERVICE_TOKEN,
+  OFFER_QUANTITY_WRITE_LOCK_TTL_MS,
+  isWritableQuantityObservation,
+  offerQuantityObservationCursorKey,
+  offerQuantityWriteLockKey,
 } from '@openlinker/core/inventory';
-import type {
-  OfferFieldUpdater,
-  OfferManagerPort,
-  UpdateOfferFieldsReport,
-} from '@openlinker/core/listings';
-import { isOfferFieldUpdater } from '@openlinker/core/listings';
+import {
+  ISyncCursorsService,
+  SYNC_CURSORS_SERVICE_TOKEN,
+  SYNC_LOCK_TOKEN,
+  SyncLockPort,
+  ContendedWriteError,
+} from '@openlinker/core/sync';
+import { minorUnitExponentFor } from '@openlinker/core/sales-documents';
+// `OfferManagerPort` / `OfferFieldUpdater` / `isOfferFieldUpdater` /
+// `UpdateOfferFieldsReport` are this SAME context's own published contract
+// (#3161 re-review, SUGGESTION) — a same-context cross-layer relative import
+// (`../..`) rather than a value-import of the main barrel, which is the exact
+// runtime-cycle shape #337/#359 split `@openlinker/core/listings/services`
+// off the main barrel to prevent (see that subpath's own docblock).
+import type { OfferManagerPort } from '../../domain/ports/offer-manager.port';
+import {
+  isOfferFieldUpdater,
+  type OfferFieldUpdater,
+} from '../../domain/ports/capabilities/offer-field-updater.capability';
+import type { UpdateOfferFieldsReport } from '../../domain/types/offer-fields-update.types';
 import { AvailabilityUnknownError } from '../../domain/exceptions/availability-unknown.error';
 import type { PriceChangeEpisode } from '../../domain/entities/price-change-episode.entity';
 // Not `import type` (#3161 review / eslint `consistent-type-imports`): each of
@@ -75,6 +96,7 @@ import type {
   PriceChangeApplyInput,
   PriceChangeApplyResult,
 } from '../../domain/types/price-change-apply.types';
+import type { ShopPublishRequestSnapshot } from '../../domain/types/listing-creation-record.types';
 import type { IPriceChangeApplyService } from './price-change-apply.service.interface';
 
 /**
@@ -108,7 +130,13 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
     @Inject(BULK_LISTING_PROGRESS_SERVICE_TOKEN)
     private readonly bulkProgress: IBulkListingProgressService,
     @Inject(LISTING_CREATION_RECORD_REPOSITORY_TOKEN)
-    private readonly listingRecords: ListingCreationRecordRepositoryPort
+    private readonly listingRecords: ListingCreationRecordRepositoryPort,
+    @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
+    private readonly identifierMapping: IIdentifierMappingService,
+    @Inject(SYNC_LOCK_TOKEN)
+    private readonly syncLock: SyncLockPort,
+    @Inject(SYNC_CURSORS_SERVICE_TOKEN)
+    private readonly syncCursors: ISyncCursorsService
   ) {}
 
   async applyPriceChange(input: PriceChangeApplyInput): Promise<PriceChangeApplyResult> {
@@ -301,14 +329,36 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
       );
     }
 
-    const publishedAtIso = new Date().toISOString();
+    // #3161 re-review, IMPORTANT — `toFixed(2)` hardcoded two minor units.
+    // False for every zero-decimal currency (JPY, KRW, ...) and every
+    // three/four-decimal one — the same defect `splitShippingAcrossRates`
+    // (ADR-063 §5) exists to avoid, so this reads the identical shared table
+    // rather than a second hardcoded assumption.
+    const minorUnitExponent = minorUnitExponentFor(input.currency);
+    const priceAmount = input.amount.toFixed(minorUnitExponent);
+
     const externalOfferIds = new Set(page.items.map((item) => item.externalId));
     const frozenOffers: string[] = [];
+    const succeededOffers: string[] = [];
     for (const externalOfferId of externalOfferIds) {
+      // #3161 re-review, SUGGESTION — the key must be stable across a RETRY
+      // of the same apply (so adapter-side dedup can fire) and DISTINCT from
+      // any earlier or later apply for the same offer. `episodeId` is that
+      // identity for the overwhelming majority of applies (present on every
+      // automatic-mode apply since #3159, and on every review-queue
+      // accept/edit); the `amount:currency` fallback exists only for the
+      // type's residual `episodeId?:` case and still varies with the actual
+      // price rather than with wall-clock time. Namespaced `pricing:apply:`
+      // — distinct from `PriceChangeDetectionService`'s own
+      // `pricing:episode:{id}:auto` SYNC-JOB dedup key (a different layer,
+      // but kept textually unambiguous rather than merely non-colliding).
+      const applyKeyPart = input.episodeId
+        ? `episode:${input.episodeId}`
+        : `amount:${input.amount}:${input.currency}`;
       const report = await adapter.updateOfferFields({
         externalOfferId,
-        fields: { price: { amount: input.amount.toFixed(2), currency: input.currency } },
-        idempotencyKey: `pricing:${input.productVariantId}:${input.destinationConnectionId}:${externalOfferId}:${publishedAtIso}`,
+        fields: { price: { amount: priceAmount, currency: input.currency } },
+        idempotencyKey: `pricing:apply:${input.productVariantId}:${input.destinationConnectionId}:${externalOfferId}:${applyKeyPart}`,
       });
       // #3161 review, IMPORTANT — a destination that DROPS the field it was
       // asked to change (a seller-frozen price, #988 / ADR-025 §4b) reports
@@ -319,16 +369,41 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
       // never happened.
       if (this.findFrozenPriceField(report)) {
         frozenOffers.push(externalOfferId);
+      } else {
+        succeededOffers.push(externalOfferId);
       }
     }
 
-    if (frozenOffers.length > 0) {
+    if (frozenOffers.length === 0) {
+      return;
+    }
+
+    if (succeededOffers.length === 0) {
+      // Every mapped offer refused the write — nothing changed on the
+      // channel, so this is a genuine total failure exactly as before.
       throw new PriceChangeApplyPermanentError(
         `Price frozen by the seller on the destination for offer(s) ` +
           `${frozenOffers.join(', ')} on connection=${input.destinationConnectionId} — the ` +
           `destination reported the price field as frozen and did not apply it`
       );
     }
+
+    // #3161 re-review, IMPORTANT — a PARTIAL write is not a total failure
+    // (the #2593 "a failed product does not fail the page" rule, applied one
+    // grain down): at least one mapped offer's price genuinely changed on
+    // the channel, so resolving the whole episode as `business_failure`
+    // would discard that real progress and send an operator to retry a
+    // write that already partly landed — sequentially retrying an already-
+    // applied idempotency key is a no-op, but the frozen offer(s) would fail
+    // identically every time, so the episode would never resolve at all.
+    // There is no per-offer slot on the episode or the auto-applied-log to
+    // persist the frozen subset against today (out of scope for this pass);
+    // a warning is the honest limit of what this call can report.
+    this.logger.warn(
+      `[price-change-apply] partial price write for variant=${input.productVariantId} on ` +
+        `connection=${input.destinationConnectionId}: applied on ${succeededOffers.join(', ')}; ` +
+        `seller-frozen (not applied) on ${frozenOffers.join(', ')}`
+    );
   }
 
   private findFrozenPriceField(report: UpdateOfferFieldsReport | void): boolean {
@@ -339,25 +414,6 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
   }
 
   private async publishToShop(input: PriceChangeApplyInput): Promise<void> {
-    // #3161 review (BLOCKING): `availableToPromise` — NEVER `totalAvailable`
-    // — and never defaulted to `0` on `null`. `totalAvailable` is not net of
-    // OL's own published reservations (over-publishes); a `null` ATP means
-    // "OpenLinker does not know", which must suppress the write, never
-    // stand in for a real zero — writing `0` as an ABSOLUTE quantity is the
-    // #1689 pause primitive and would silently deactivate a live listing.
-    // `AvailabilityUnknownError` is the exact exception both shipped
-    // publishing consumers (`ProductPublishBuilderService`,
-    // `OfferBuilderService`) throw for this state — it is explicitly
-    // RETRYABLE (its own docblock), so it propagates uncaught here and the
-    // runner retries once availability resolves.
-    const [availability] = await this.inventoryQuery.getAvailabilityByVariantIds([
-      input.productVariantId,
-    ]);
-    if (!availability || availability.availableToPromise === null) {
-      throw new AvailabilityUnknownError(input.destinationConnectionId, input.productVariantId);
-    }
-    const stock = availability.availableToPromise;
-
     // #3161 review: passing only `{stock, status, price}` would leave
     // `destinationCategoryIds` / `parameters` / `content` all re-DERIVED by
     // the builder on every price-only change — re-provisioning the shop's
@@ -374,6 +430,153 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
     );
     const snapshot = previous?.request;
 
+    // #3161 re-review, IMPORTANT — this call carries an ABSOLUTE stock
+    // quantity on a PRICE-only apply, and `executePublish` -> `publishProduct`
+    // does not go through `InventorySyncService.updateOfferQuantities`, where
+    // ADR-067/#2617's per-(connection, offer) lock and
+    // `inventory.offerQuantity.observedAt` freshness mark live — so an
+    // unguarded read-here/write-there race against a CONCURRENT
+    // `inventory.propagateToMarketplaces` quantity write-back for the SAME
+    // ShopProduct target could land an older quantity last (the exact
+    // oversell ADR-067 exists to prevent). `ShopProductManagerPort` has no
+    // partial-update primitive that would let this write carry price WITHOUT
+    // also carrying stock (`ExecutePublishProductInput.stock` is required) —
+    // that remains a genuine port-level gap, tracked separately rather than
+    // invented around here.
+    //
+    // What IS reachable without a port change: `InventorySyncService`'s shop
+    // write-back branch keys its lock/cursor by the `ShopProduct` EXTERNAL
+    // id under this same connection (its own docblock: "`offerId` also
+    // carries a `ShopProduct` external id on the shop write-back branch").
+    // Resolving that same external id here and taking the SAME lock +
+    // cursor around a fresh read-then-write correctly serialises this
+    // write against THAT specific writer — the concrete race this finding
+    // names — even though it cannot (and does not claim to) guard against
+    // every other `executePublish` caller (`shop.product.publish`, bulk
+    // shop-publish), none of which touch this cursor either; that remains
+    // the documented, wider, out-of-scope gap.
+    const externalOfferId = await this.resolveShopProductExternalId(input);
+    if (externalOfferId === null) {
+      // No prior mapping to key a lock on — nothing has written this target
+      // via the guarded path either, so there is nothing to race against
+      // yet. Publish unguarded rather than block on a lock that protects
+      // nothing.
+      await this.executeShopPublish(input, snapshot, await this.resolveShopStock(input));
+      return;
+    }
+
+    await this.publishToShopGuarded(input, snapshot, externalOfferId);
+  }
+
+  private async publishToShopGuarded(
+    input: PriceChangeApplyInput,
+    snapshot: ShopPublishRequestSnapshot | null | undefined,
+    externalOfferId: string
+  ): Promise<void> {
+    const lockKey = offerQuantityWriteLockKey(input.destinationConnectionId, externalOfferId);
+    const token = await this.syncLock.acquire(lockKey, OFFER_QUANTITY_WRITE_LOCK_TTL_MS);
+    if (token === null) {
+      // A peer (the ordinary inventory quantity write-back, or a concurrent
+      // apply of this same episode) holds the lock. Report contention —
+      // never silently proceed unguarded, which is exactly the race this
+      // guard exists to close — and let the runner defer this job
+      // penalty-free (#2617 review): contention is the guard working, not
+      // this job failing.
+      throw new ContendedWriteError(
+        `Another stock write for ShopProduct ${externalOfferId} on connection=` +
+          `${input.destinationConnectionId} is in flight`,
+        lockKey
+      );
+    }
+
+    try {
+      const stock = await this.resolveShopStock(input);
+      const cursorKey = offerQuantityObservationCursorKey(externalOfferId);
+      const observedAt = stock.observedAt;
+
+      if (observedAt !== null) {
+        const lastWritten = await this.syncCursors.getCursor(
+          input.destinationConnectionId,
+          cursorKey
+        );
+        if (!isWritableQuantityObservation(observedAt, lastWritten)) {
+          // Reachable only under clock skew or an unparseable mark — this
+          // read happened INSIDE the lock, so under the ordinary case it is
+          // already at least as fresh as anything the guard could compare it
+          // against. Logged rather than acted on: refusing here would drop
+          // the PRICE change too, and there is no partial-field write to
+          // fall back to.
+          this.logger.warn(
+            `[price-change-apply] stock observation for ShopProduct ${externalOfferId} on ` +
+              `connection=${input.destinationConnectionId} is not newer than the last mark ` +
+              `(observed=${observedAt} lastWritten=${lastWritten ?? 'none'}); publishing anyway`
+          );
+        }
+      }
+
+      await this.executeShopPublish(input, snapshot, stock);
+
+      if (observedAt !== null) {
+        const advanced = await this.syncCursors.advanceCursorIfNewer(
+          input.destinationConnectionId,
+          cursorKey,
+          observedAt
+        );
+        if (!advanced) {
+          this.logger.warn(
+            `[price-change-apply] stock mark for ShopProduct ${externalOfferId} on connection=` +
+              `${input.destinationConnectionId} was not moved (observed=${observedAt}): a newer ` +
+              `observation is already marked`
+          );
+        }
+      }
+    } finally {
+      await this.syncLock.release(lockKey, token);
+    }
+  }
+
+  /**
+   * `availableToPromise` — NEVER `totalAvailable` — and never defaulted to
+   * `0` on `null` (#3161 review, BLOCKING). `totalAvailable` is not net of
+   * OL's own published reservations (over-publishes); a `null` ATP means
+   * "OpenLinker does not know", which must suppress the write, never stand
+   * in for a real zero — writing `0` as an ABSOLUTE quantity is the #1689
+   * pause primitive and would silently deactivate a live listing.
+   * `AvailabilityUnknownError` is the exact exception both shipped
+   * publishing consumers (`ProductPublishBuilderService`,
+   * `OfferBuilderService`) throw for this state — it is explicitly
+   * RETRYABLE (its own docblock), so it propagates uncaught here and the
+   * runner retries once availability resolves.
+   */
+  private async resolveShopStock(
+    input: PriceChangeApplyInput
+  ): Promise<{ quantity: number; observedAt: string | null }> {
+    const [availability] = await this.inventoryQuery.getAvailabilityByVariantIds([
+      input.productVariantId,
+    ]);
+    if (!availability || availability.availableToPromise === null) {
+      throw new AvailabilityUnknownError(input.destinationConnectionId, input.productVariantId);
+    }
+    return {
+      quantity: availability.availableToPromise,
+      observedAt: availability.stockUpdatedAt ? availability.stockUpdatedAt.toISOString() : null,
+    };
+  }
+
+  private async resolveShopProductExternalId(input: PriceChangeApplyInput): Promise<string | null> {
+    const mappings = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.ShopProduct,
+      input.productVariantId
+    );
+    const forConnection = mappings.find((m) => m.connectionId === input.destinationConnectionId);
+    return forConnection?.externalId ?? null;
+  }
+
+  private async executeShopPublish(
+    input: PriceChangeApplyInput,
+    snapshot: ShopPublishRequestSnapshot | null | undefined,
+    stock: { quantity: number; observedAt: string | null }
+  ): Promise<void> {
     // A price-change episode/automatic-apply only ever exists for an
     // ALREADY-mapped, already-live listing (the detection service walks
     // existing ShopProduct mappings) — so `status: 'published'` is the
@@ -381,7 +584,7 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
     const result = await this.productPublishExecution.executePublish({
       internalVariantId: input.productVariantId,
       connectionId: input.destinationConnectionId,
-      stock,
+      stock: stock.quantity,
       status: 'published',
       price: { amount: input.amount, currency: input.currency },
       destinationCategoryIds: snapshot?.destinationCategoryIds,
