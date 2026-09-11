@@ -66,6 +66,24 @@ export interface LiveNavItem {
    * is the pre-existing behaviour of all other items.
    */
   requiresPermission?: Permission;
+  /**
+   * Declarative ROLE gate for a single item (#3108) — item visible only to a
+   * session whose role is one of these. Distinct from `requiresPermission`:
+   * `packer` (#3107, ADR-071/#2413) carries a deliberately EMPTY
+   * `ROLE_PERMISSIONS` grant on the backend, so no `Permission` exists to gate
+   * on — the only axis a packer-only (or packer-inclusive) item can be gated
+   * by is the role itself.
+   *
+   * An array, not a single `Role`, because "Pack bench" needs to admit every
+   * role the bench API itself accepts (`@Roles('admin', 'operator', 'packer')`
+   * on `BenchWorkController` et al.) — i.e. everyone except `viewer` — and a
+   * single-value gate can't express "any of these".
+   *
+   * An item declaring nothing is visible to every authenticated session
+   * (unchanged pre-existing behaviour); an item declaring both
+   * `requiresPermission` and `requiresRole` must satisfy both.
+   */
+  requiresRole?: readonly Role[];
   to: string;
 }
 
