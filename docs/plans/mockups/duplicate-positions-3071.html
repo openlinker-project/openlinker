@@ -266,7 +266,15 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{ outline:none; b
 </div>
 
 <script>
-const REMEDIATION_LINK = '../../operations/inventory-duplicate-positions.md';
+// Absolute, not repo-relative: a repo-relative path (../../operations/…)
+// only resolves when this file is served from inside a checkout of the
+// real docs tree. It 404s from the published Artifact preview (a
+// different origin entirely) and from any other standalone hosting of
+// this file, which is otherwise most of how this mockup gets looked at.
+// The absolute GitHub URL is the one link shape that works everywhere —
+// matching the existing #NNN-issue-link precedent already used across
+// this repo's other committed mockups.
+const REMEDIATION_LINK = 'https://github.com/openlinker-project/openlinker/blob/main/docs/operations/inventory-duplicate-positions.md';
 
 // NOTE — mockup enrichment beyond the documented GET /inventory/duplicate-positions
 // contract: `productName`, `sku`, `connectionName` and `locationName` are NOT in
@@ -378,7 +386,7 @@ function findSurvivorId(group) {
 }
 
 function remediationLinkHtml(extra) {
-  return `<p class="alert__link"><a href="${REMEDIATION_LINK}">Remediation guide: how to pick the survivor and delete the rest →</a>${extra ? ' ' + extra : ''}</p>`;
+  return `<p class="alert__link"><a href="${REMEDIATION_LINK}" target="_blank" rel="noopener">Remediation guide: how to pick the survivor and delete the rest →</a>${extra ? ' ' + extra : ''}</p>`;
 }
 
 function exportCsv() {
