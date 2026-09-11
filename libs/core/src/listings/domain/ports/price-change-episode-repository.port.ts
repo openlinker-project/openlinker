@@ -7,6 +7,7 @@
  */
 import type { PriceChangeEpisode } from '../entities/price-change-episode.entity';
 import type {
+  PriceChangeEpisodeClaimOutcome,
   PriceChangeEpisodeFilters,
   PriceChangeResolution,
   UpsertOpenPriceChangeEpisodeInput,
@@ -134,6 +135,31 @@ export interface PriceChangeEpisodeRepositoryPort {
 
   /** Count of open episodes matching the filters, for badge/tab counters. */
   countOpen(filters?: PriceChangeEpisodeFilters): Promise<number>;
+
+  /**
+   * Claim exclusive resolution rights over an OPEN episode (#3162 review,
+   * IMPORTANT — "nothing claims the episode at accept time"). Guarded
+   * `WHERE "resolvedAt" IS NULL AND "claimedAt" IS NULL`, the
+   * `claimWaybillRelay`/`claimDispatchAttempt` idiom applied here: a
+   * concurrent second accept/edit/bulk-item on the SAME episode sees
+   * `'in-flight'` rather than silently enqueueing a second publish job for
+   * the same price change. `claimedAt` also doubles as the idempotency
+   * key's generation marker (never the raw amount or a wall-clock bucket,
+   * per #2285/#3159's "episode id + a generation the row itself owns"
+   * rule) — a released-then-reclaimed episode mints a fresh, distinct key.
+   */
+  claimForResolution(id: string, claimedAt: Date): Promise<PriceChangeEpisodeClaimOutcome>;
+
+  /**
+   * Release a claim taken by {@link claimForResolution} WITHOUT resolving
+   * the episode — a failed enqueue, or a bulk submit that aborted
+   * mid-validation/mid-fan-out (#3162 review). Idempotent: releasing an
+   * unclaimed or already-resolved episode is a silent no-op — `resolve`'s
+   * own `WHERE resolvedAt IS NULL` guard already makes a resolved row
+   * unreachable via `claimForResolution` again, so there is nothing left to
+   * protect once it resolves.
+   */
+  releaseClaim(id: string): Promise<void>;
 
   /**
    * Open-episode count per source connection, for a single destination — one

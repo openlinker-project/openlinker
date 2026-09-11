@@ -8,8 +8,19 @@ import type { PriceChangeAutoAppliedLogEntry } from '../../domain/entities/price
 import type { PriceChangeQueueItem, PriceChangeQueuePage } from '../types/price-change-queue-item.types';
 
 export interface AcceptPriceChangeInput {
-  /** The version token last read by the caller (staleness guard). */
-  expectedVersion?: string;
+  /**
+   * The version token last read by the caller (staleness guard) —
+   * REQUIRED (#3162 re-review, BLOCKING): `accept` publishes
+   * `episode.computedNewAmount`, a value that MOVES on re-detection, so a
+   * caller that omitted this could publish a price the operator never
+   * actually saw, stamped with THAT operator's `resolvedByUserId`. #2610's
+   * rule is that the refusal must be server-side, never only in a form —
+   * enforced here at the DTO (`AcceptPriceChangeDto.expectedVersion` is no
+   * longer `@IsOptional()`), which is what makes this field genuinely
+   * mandatory by the time it reaches this interface rather than merely
+   * documented as such.
+   */
+  expectedVersion: string;
   /** Also set this (destination, source) pair to `automatic` (ADR-072 decision 3). */
   optInAutomatic?: boolean;
   resolvedByUserId: string | null;
@@ -17,6 +28,15 @@ export interface AcceptPriceChangeInput {
 
 export interface EditPriceChangeInput {
   manualPriceOverride: number;
+  /**
+   * Deliberately OPTIONAL, unlike `AcceptPriceChangeInput.expectedVersion`
+   * (#3162 re-review, BLOCKING finding's stated exception): `edit` publishes
+   * `manualPriceOverride`, an ABSOLUTE number the OPERATOR typed, not a
+   * value that can silently drift out from under them the way `accept`'s
+   * `computedNewAmount` can — so omitting the staleness check here cannot
+   * publish a price the operator never intended. The `isOpen`/`blockReason`
+   * checks in `assertActionable` still apply unconditionally either way.
+   */
   expectedVersion?: string;
   optInAutomatic?: boolean;
   resolvedByUserId: string | null;
@@ -49,8 +69,13 @@ export interface PriceChangeResolutionResult {
 export interface BulkAcceptItemInput {
   id: string;
   optInAutomatic?: boolean;
-  /** The version token last read by the caller (staleness guard) — mirrors the single-accept path (#3162 review: bulk previously skipped this entirely). */
-  expectedVersion?: string;
+  /**
+   * The version token last read by the caller (staleness guard) — mirrors
+   * `AcceptPriceChangeInput.expectedVersion` and is REQUIRED for the same
+   * reason (#3162 re-review, BLOCKING): every bulk item publishes its
+   * episode's `computedNewAmount`, never an operator-typed absolute number.
+   */
+  expectedVersion: string;
 }
 
 export interface BulkAcceptResult {

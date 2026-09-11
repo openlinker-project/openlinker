@@ -385,6 +385,7 @@ export type {
   PriceChangeBlockReason,
   UpsertOpenPriceChangeEpisodeInput,
   PriceChangeEpisodeFilters,
+  PriceChangeEpisodeClaimOutcome,
 } from './domain/types/price-change-episode.types';
 // `PriceChangeEpisodeRepositoryPort` stays on the main barrel — the SAME
 // sanctioned round-trip exception `OfferMappingRepositoryPort` /
@@ -416,6 +417,7 @@ export { PriceChangeEpisodeNotFoundException } from './domain/exceptions/price-c
 export { PriceChangeEpisodeAlreadyResolvedException } from './domain/exceptions/price-change-episode-already-resolved.exception';
 export { PriceChangeEpisodeStaleException } from './domain/exceptions/price-change-episode-stale.exception';
 export { PriceChangeEpisodeBlockedException } from './domain/exceptions/price-change-episode-blocked.exception';
+export { PriceChangeEpisodeInFlightException } from './domain/exceptions/price-change-episode-in-flight.exception';
 export type {
   PriceChangeQueueItem,
   PriceChangeQueueItemRuleSummary,
