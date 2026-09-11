@@ -181,6 +181,14 @@ export class PriceChangesService implements IPriceChangesService {
     return this.episodes.countOpen(filters);
   }
 
+  async countOpenBySource(destinationConnectionId: string): Promise<ReadonlyMap<string, number>> {
+    return this.episodes.countOpenBySource(destinationConnectionId);
+  }
+
+  async listOpenDestinationConnectionIds(sourceConnectionId: string): Promise<readonly string[]> {
+    return this.episodes.listOpenDestinationConnectionIds(sourceConnectionId);
+  }
+
   async accept(
     episodeId: string,
     input: AcceptPriceChangeInput
