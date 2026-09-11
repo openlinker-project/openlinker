@@ -241,10 +241,11 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
-   * Core-owned bounds check for the three platform-neutral stock and pricing
-   * keys (#2610): `config.stockSafetyBuffer`, `config.stockZeroThreshold` and
-   * `config.pricingRule`. Neutral, like `validateRateLimitConfig` - every
-   * adapter shares it, so no per-plugin config-shape validator knows about it.
+   * Core-owned bounds check for the four platform-neutral stock, pricing and
+   * price-sync keys (#2610, widened by #3142/ADR-072): `config.stockSafetyBuffer`,
+   * `config.stockZeroThreshold`, `config.pricingRule` and `config.priceSyncMode`.
+   * Neutral, like `validateRateLimitConfig` - every adapter shares it, so no
+   * per-plugin config-shape validator knows about it.
    *
    * The connection form refuses a bad value already, but the form is not the
    * only way in: the raw JSON editor sits on the same page and bypasses the
@@ -252,6 +253,27 @@ export class ConnectionService implements IConnectionService {
    * margin bound matters most - core degrades a margin of 100% or more back to
    * the catalogue price, so without this the operator saves happily and then
    * quietly publishes an unchanged price.
+   *
+   * `config.pricingRule` accepts BOTH shapes `readPricingRuleConfig`
+   * (`@openlinker/core/identifier-mapping`) reads: the pre-#3142 flat
+   * `{type, percent, rounding}` rule, and the #3142
+   * `{default, sourceOverrides}` per-source shape. Validating only the flat
+   * shape here (as before #3142) would leave every field of the nested shape
+   * unchecked and every one of the checks below silently short-circuiting on
+   * `undefined` - which is exactly the margin-refusal gap this method exists
+   * to close, reopened by the widened type. `validateOnePricingRule` is
+   * applied to `default` and to every `sourceOverrides` entry so neither can
+   * drift from the flat-shape rule.
+   *
+   * `config.priceSyncMode` has no legacy flat shape to accept - it is a new
+   * key (#3142) - so a malformed value (including the flat string an operator
+   * might reasonably type, e.g. `"priceSyncMode": "automatic"`) is refused
+   * rather than silently read back as the safe default by
+   * `readPriceSyncModeConfig`. Read-time already fails CLOSED (an unreadable
+   * config coerces to `manual` everywhere), which is the right direction, but
+   * failing closed with no operator feedback is the reported-≠-enforced gap
+   * #2610's docblock is about - the operator believes automatic sync is on
+   * and it silently never is.
    *
    * Never defaults a value in; an absent key stays absent.
    */
@@ -264,36 +286,110 @@ export class ConnectionService implements IConnectionService {
       }
     }
 
-    const pricingRule = config.pricingRule;
+    this.validatePricingRuleConfig(config.pricingRule);
+    this.validatePriceSyncModeConfig(config.priceSyncMode);
+  }
+
+  private validatePricingRuleConfig(pricingRule: unknown): void {
     if (pricingRule === undefined || pricingRule === null) return;
     if (typeof pricingRule !== 'object' || Array.isArray(pricingRule)) {
       throw new BadRequestException('config.pricingRule must be an object');
     }
 
-    const { type, percent, rounding } = pricingRule as Record<string, unknown>;
+    const candidate = pricingRule as Record<string, unknown>;
+
+    // The #3142 nested shape: `{ default, sourceOverrides }`. Validate the
+    // default rule plus every per-source override with the identical rule the
+    // legacy flat shape uses below - `readPricingRuleConfig` treats
+    // `'default' in candidate` as the discriminator between the two shapes,
+    // and this mirrors that exactly so validation can never disagree with
+    // what gets read back.
+    if ('default' in candidate) {
+      if (candidate['default'] !== undefined && candidate['default'] !== null) {
+        this.validateOnePricingRule(candidate['default'], 'config.pricingRule.default');
+      }
+      const sourceOverrides = candidate['sourceOverrides'];
+      if (sourceOverrides !== undefined && sourceOverrides !== null) {
+        if (typeof sourceOverrides !== 'object' || Array.isArray(sourceOverrides)) {
+          throw new BadRequestException('config.pricingRule.sourceOverrides must be an object');
+        }
+        for (const [sourceConnectionId, rule] of Object.entries(
+          sourceOverrides as Record<string, unknown>
+        )) {
+          this.validateOnePricingRule(
+            rule,
+            `config.pricingRule.sourceOverrides.${sourceConnectionId}`
+          );
+        }
+      }
+      return;
+    }
+
+    // Legacy flat shape (pre-#3142) — the whole value IS the rule.
+    this.validateOnePricingRule(candidate, 'config.pricingRule');
+  }
+
+  private validateOnePricingRule(rule: unknown, path: string): void {
+    if (typeof rule !== 'object' || rule === null || Array.isArray(rule)) {
+      throw new BadRequestException(`${path} must be an object`);
+    }
+
+    const { type, percent, rounding } = rule as Record<string, unknown>;
     const types = ['passthrough', 'markup', 'margin'];
     if (type !== undefined && (typeof type !== 'string' || !types.includes(type))) {
-      throw new BadRequestException(
-        `config.pricingRule.type must be one of ${types.join(', ')}`
-      );
+      throw new BadRequestException(`${path}.type must be one of ${types.join(', ')}`);
     }
     const roundings = ['none', 'nearestWhole', 'endingIn99'];
     if (
       rounding !== undefined &&
       (typeof rounding !== 'string' || !roundings.includes(rounding))
     ) {
-      throw new BadRequestException(
-        `config.pricingRule.rounding must be one of ${roundings.join(', ')}`
-      );
+      throw new BadRequestException(`${path}.rounding must be one of ${roundings.join(', ')}`);
     }
     if (percent !== undefined && percent !== null) {
       if (typeof percent !== 'number' || !Number.isFinite(percent) || percent < 0) {
-        throw new BadRequestException('config.pricingRule.percent must be a number of 0 or more');
+        throw new BadRequestException(`${path}.percent must be a number of 0 or more`);
       }
       if (type === 'margin' && percent >= 100) {
         throw new BadRequestException(
-          'config.pricingRule.percent must be below 100 for a margin rule. To add more than ' +
-            'the catalogue price, use a markup instead.'
+          `${path}.percent must be below 100 for a margin rule. To add more than the catalogue ` +
+            'price, use a markup instead.'
+        );
+      }
+    }
+  }
+
+  private validatePriceSyncModeConfig(priceSyncMode: unknown): void {
+    if (priceSyncMode === undefined || priceSyncMode === null) return;
+    if (typeof priceSyncMode !== 'object' || Array.isArray(priceSyncMode)) {
+      throw new BadRequestException(
+        'config.priceSyncMode must be an object of the shape { default, sourceOverrides }'
+      );
+    }
+
+    const candidate = priceSyncMode as Record<string, unknown>;
+    const modes = ['manual', 'automatic'];
+
+    if (
+      candidate['default'] !== undefined &&
+      (typeof candidate['default'] !== 'string' || !modes.includes(candidate['default']))
+    ) {
+      throw new BadRequestException(
+        `config.priceSyncMode.default must be one of ${modes.join(', ')}`
+      );
+    }
+
+    const sourceOverrides = candidate['sourceOverrides'];
+    if (sourceOverrides === undefined || sourceOverrides === null) return;
+    if (typeof sourceOverrides !== 'object' || Array.isArray(sourceOverrides)) {
+      throw new BadRequestException('config.priceSyncMode.sourceOverrides must be an object');
+    }
+    for (const [sourceConnectionId, mode] of Object.entries(
+      sourceOverrides as Record<string, unknown>
+    )) {
+      if (typeof mode !== 'string' || !modes.includes(mode)) {
+        throw new BadRequestException(
+          `config.priceSyncMode.sourceOverrides.${sourceConnectionId} must be one of ${modes.join(', ')}`
         );
       }
     }

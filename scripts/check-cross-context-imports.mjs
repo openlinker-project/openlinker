@@ -507,6 +507,17 @@ const ALLOW_LIST = new Map([
     new Set(['OfferStatusSnapshotRepositoryPort']),
   ],
 
+  // apps → listings.PriceChangeEpisodeRepositoryPort (#3142, ADR-072) — the vertical
+  // slice asserts the episode-pattern conflict-arm write (`upsertOpen`'s
+  // `ON CONFLICT DO UPDATE` against the partial `UQ_price_change_episodes_open`
+  // index) and the reopen-vs-rival-episode race, both of which only the repository
+  // can drive against a real Postgres. Rewire via a read/application service once
+  // #3162's `PriceChangesService` lands (#722).
+  [
+    'apps/api/test/integration/listings-price-change-episode.int-spec.ts',
+    new Set(['PriceChangeEpisodeRepositoryPort']),
+  ],
+
   // apps → webhooks.WebhookDeliveryRepositoryPort (#1916) - the status
   // non-regression guard is a SQL CASE inside the upsert's ON CONFLICT clause,
   // so the int-spec drives the repository directly to force both writer
