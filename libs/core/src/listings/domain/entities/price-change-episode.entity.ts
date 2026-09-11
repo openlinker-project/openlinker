@@ -36,7 +36,8 @@ export class PriceChangeEpisode {
     public readonly sourceCurrency: string,
     public readonly sourceOldAmount: number,
     public readonly sourceNewAmount: number,
-    public readonly computedOldAmount: number,
+    /** `null` = no baseline was ever recorded (a brand-new mapping's first detection). See `deltaPct`. */
+    public readonly computedOldAmount: number | null,
     public readonly computedNewAmount: number,
     public readonly manualPriceOverride: number | null,
     public readonly manualPriceOverrideSetAt: Date | null,
@@ -68,8 +69,22 @@ export class PriceChangeEpisode {
     return this.manualPriceOverride ?? this.computedNewAmount;
   }
 
-  /** `deltaPct` between the computed old and new amount, matching the mockup's `buildItem`. */
-  deltaPct(): number {
+  /**
+   * `deltaPct` between the computed old and new amount, matching the
+   * mockup's `buildItem`.
+   *
+   * `null` means the DIRECTION is unknown, never "down" (#3159 review): a
+   * brand-new mapping's first detection carries `computedOldAmount: null` —
+   * there is no prior value to diff against, so no direction can be derived.
+   * A real recorded baseline of `0` (e.g. a previously-free product now
+   * carrying a price) is a different case — division by zero, not an
+   * unknown baseline — and is guarded separately, returning `0` rather than
+   * `null` or `Infinity`.
+   */
+  deltaPct(): number | null {
+    if (this.computedOldAmount === null) {
+      return null;
+    }
     if (this.computedOldAmount === 0) {
       return 0;
     }
@@ -80,8 +95,12 @@ export class PriceChangeEpisode {
     );
   }
 
-  /** `|deltaPct| >= 10` — the mockup's "steep" delta-chip / "Big changes" magnitude threshold. */
+  /**
+   * `|deltaPct| >= 10` — the mockup's "steep" delta-chip / "Big changes"
+   * magnitude threshold. An unknown `deltaPct` (no baseline) is never steep.
+   */
   isSteep(): boolean {
-    return Math.abs(this.deltaPct()) >= 10;
+    const delta = this.deltaPct();
+    return delta !== null && Math.abs(delta) >= 10;
   }
 }

@@ -144,6 +144,7 @@ describe('MasterProductSyncService', () => {
       pruneSkipped: false,
       pruneSkippedReason: null,
       taxRateChanges: [],
+      priceChangeObserverFailures: 0,
     });
   });
 
@@ -205,6 +206,7 @@ describe('MasterProductSyncService', () => {
       pruneSkipped: false,
       pruneSkippedReason: 'empty-response',
       taxRateChanges: [],
+      priceChangeObserverFailures: 0,
     });
   });
 
@@ -238,6 +240,7 @@ describe('MasterProductSyncService', () => {
       pruneSkipped: false,
       pruneSkippedReason: null,
       taxRateChanges: [],
+      priceChangeObserverFailures: 0,
     });
   });
 
@@ -287,6 +290,7 @@ describe('MasterProductSyncService', () => {
         pruneSkipped: true,
         pruneSkippedReason: 'rival',
         taxRateChanges: [],
+        priceChangeObserverFailures: 0,
       });
     });
 
@@ -307,6 +311,7 @@ describe('MasterProductSyncService', () => {
         pruneSkipped: true,
         pruneSkippedReason: 'rival',
         taxRateChanges: [],
+        priceChangeObserverFailures: 0,
       });
     });
   });
@@ -678,14 +683,18 @@ describe('MasterProductSyncService', () => {
         taxRateJournal,
         priceChangeObserver
       );
-      (productsService as unknown as { getVariantsByProductId: jest.Mock }).getVariantsByProductId =
-        jest.fn();
+      // #3159 review — the previous-price baseline read is now
+      // `getVariantsByProductIds` (plural, batched), not one
+      // `getVariantsByProductId` call per product.
+      (
+        productsService as unknown as { getVariantsByProductIds: jest.Mock }
+      ).getVariantsByProductIds = jest.fn();
     });
 
     it('reports a variant whose price changed, with the product currency', async () => {
       (
-        productsService as unknown as { getVariantsByProductId: jest.Mock }
-      ).getVariantsByProductId.mockResolvedValue([{ id: 'ol_variant_1', price: 350 }]);
+        productsService as unknown as { getVariantsByProductIds: jest.Mock }
+      ).getVariantsByProductIds.mockResolvedValue([{ id: 'ol_variant_1', price: 350 }]);
       adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 327, currency: 'PLN' });
       adapter.getProductVariants.mockResolvedValue([
         { ...makeVariant('ol_variant_1'), price: 327 },
@@ -693,6 +702,10 @@ describe('MasterProductSyncService', () => {
 
       await service.syncFromMasterByExternalId(connectionId, externalId);
 
+      expect(
+        (productsService as unknown as { getVariantsByProductIds: jest.Mock })
+          .getVariantsByProductIds
+      ).toHaveBeenCalledWith([internalProductId]);
       expect(priceChangeObserver.onMasterPriceChanged).toHaveBeenCalledWith({
         productVariantId: 'ol_variant_1',
         sourceConnectionId: connectionId,
@@ -704,8 +717,8 @@ describe('MasterProductSyncService', () => {
 
     it('does not report a variant whose price is unchanged', async () => {
       (
-        productsService as unknown as { getVariantsByProductId: jest.Mock }
-      ).getVariantsByProductId.mockResolvedValue([{ id: 'ol_variant_1', price: 350 }]);
+        productsService as unknown as { getVariantsByProductIds: jest.Mock }
+      ).getVariantsByProductIds.mockResolvedValue([{ id: 'ol_variant_1', price: 350 }]);
       adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 350, currency: 'PLN' });
       adapter.getProductVariants.mockResolvedValue([
         { ...makeVariant('ol_variant_1'), price: 350 },
@@ -716,17 +729,21 @@ describe('MasterProductSyncService', () => {
       expect(priceChangeObserver.onMasterPriceChanged).not.toHaveBeenCalled();
     });
 
-    it('does not fail the sync when the observer throws', async () => {
+    it('does not fail the sync when the observer throws, logs at error and counts the miss (#3159 review)', async () => {
       priceChangeObserver.onMasterPriceChanged.mockRejectedValue(new Error('boom'));
       (
-        productsService as unknown as { getVariantsByProductId: jest.Mock }
-      ).getVariantsByProductId.mockResolvedValue([{ id: 'ol_variant_1', price: 350 }]);
+        productsService as unknown as { getVariantsByProductIds: jest.Mock }
+      ).getVariantsByProductIds.mockResolvedValue([{ id: 'ol_variant_1', price: 350 }]);
       adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 327, currency: 'PLN' });
       adapter.getProductVariants.mockResolvedValue([
         { ...makeVariant('ol_variant_1'), price: 327 },
       ]);
+      const errorSpy = jest.spyOn(service['logger'], 'error');
 
-      await expect(service.syncFromMasterByExternalId(connectionId, externalId)).resolves.toBeDefined();
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(result.priceChangeObserverFailures).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('price_change_observer_failed'));
     });
 
     it('never reads previous prices when no observer is wired (default construction)', async () => {
@@ -739,11 +756,46 @@ describe('MasterProductSyncService', () => {
         taxRateJournal
       );
 
-      await service.syncFromMasterByExternalId(connectionId, externalId);
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
 
       expect(
-        (productsService as unknown as { getVariantsByProductId: jest.Mock }).getVariantsByProductId
+        (productsService as unknown as { getVariantsByProductIds: jest.Mock })
+          .getVariantsByProductIds
       ).not.toHaveBeenCalled();
+      expect(result.priceChangeObserverFailures).toBe(0);
+    });
+
+    it('reads previous prices for the WHOLE page in one call, not once per product (#3159 review)', async () => {
+      (
+        productsService as unknown as { getVariantsByProductIds: jest.Mock }
+      ).getVariantsByProductIds.mockResolvedValue([
+        { id: 'ol_variant_1', price: 350 },
+        { id: 'ol_variant_2', price: 100 },
+      ]);
+      identifierMapping.getOrCreateInternalId
+        .mockResolvedValueOnce('ol_product_1')
+        .mockResolvedValueOnce('ol_product_2');
+      adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 327, currency: 'PLN' });
+      adapter.getProductVariants.mockImplementation((productId: string) =>
+        Promise.resolve([
+          productId === 'ol_product_1'
+            ? { ...makeVariant('ol_variant_1'), price: 327 }
+            : { ...makeVariant('ol_variant_2'), price: 90 },
+        ])
+      );
+
+      await service.syncFromMasterByExternalIds(connectionId, ['1', '2']);
+
+      // ONE call for the whole page — never once per product.
+      expect(
+        (productsService as unknown as { getVariantsByProductIds: jest.Mock })
+          .getVariantsByProductIds
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        (productsService as unknown as { getVariantsByProductIds: jest.Mock })
+          .getVariantsByProductIds
+      ).toHaveBeenCalledWith(['ol_product_1', 'ol_product_2']);
+      expect(priceChangeObserver.onMasterPriceChanged).toHaveBeenCalledTimes(2);
     });
   });
 });

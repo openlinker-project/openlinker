@@ -201,7 +201,14 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
     let episodes = rows.map((row) => this.toDomain(row));
 
     if (filters?.direction) {
-      episodes = episodes.filter((e) => (e.deltaPct() > 0 ? 'up' : 'down') === filters.direction);
+      // A `null` deltaPct (no baseline recorded yet — a brand-new mapping's
+      // first detection) is an UNKNOWN direction, matched by neither 'up'
+      // nor 'down' (#3159 review) — never defaulted to 'down' by treating
+      // `null > 0` as false.
+      episodes = episodes.filter((e) => {
+        const delta = e.deltaPct();
+        return delta !== null && (delta > 0 ? 'up' : 'down') === filters.direction;
+      });
     }
     if (filters?.magnitudeLargeOnly) {
       episodes = episodes.filter((e) => e.isSteep());
@@ -357,7 +364,7 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
       row.sourceCurrency,
       Number(row.sourceOldAmount),
       Number(row.sourceNewAmount),
-      Number(row.computedOldAmount),
+      row.computedOldAmount === null ? null : Number(row.computedOldAmount),
       Number(row.computedNewAmount),
       row.manualPriceOverride === null ? null : Number(row.manualPriceOverride),
       row.manualPriceOverrideSetAt === null ? null : new Date(row.manualPriceOverrideSetAt),

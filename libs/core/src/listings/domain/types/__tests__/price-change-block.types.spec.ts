@@ -6,8 +6,11 @@
 import { readConnectionCurrency, resolvePriceChangeBlockReason } from '../price-change-block.types';
 
 describe('resolvePriceChangeBlockReason', () => {
-  it('returns null when the destination has no configured currency', () => {
-    expect(resolvePriceChangeBlockReason('PLN', null)).toBeNull();
+  it('returns destination-currency-unknown (never null) when the destination has no configured currency', () => {
+    // #3159 review: an unknown currency must never collapse into "known to
+    // match" — it blocks the automatic bypass while the episode still opens
+    // for manual review.
+    expect(resolvePriceChangeBlockReason('PLN', null)).toBe('destination-currency-unknown');
   });
 
   it('returns null when both currencies match', () => {

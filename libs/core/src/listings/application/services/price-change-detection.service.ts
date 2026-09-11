@@ -14,9 +14,16 @@
  *   (ADR-072 decision 4) — a pure function, re-decided on every pass.
  * - `readPricingRuleForSource` / `applyPricingRule` compute the destination
  *   price.
- * - `readPriceSyncModeForSource` decides `manual` (open/refresh a reviewable
- *   episode) vs `automatic` (bypass the review queue and enqueue the apply
- *   job directly, ADR-072 decision 3).
+ * - `readPriceSyncModeForSource` decides whether an ALREADY-opened episode
+ *   (see below) is also, additionally, enqueued for automatic apply
+ *   (ADR-072 decision 3).
+ *
+ * The episode is opened or refreshed via `upsertOpen` in EVERY mode,
+ * including automatic (#3159 review) — an automatic-mode pair is never a
+ * silent bypass with no persisted trace; the apply job's idempotency key is
+ * keyed on the resulting episode's own id (`pricing:episode:{id}:auto`),
+ * which is what lets a price that reverts to an earlier value re-enqueue
+ * instead of colliding with a stale key from an earlier promotion.
  *
  * @module libs/core/src/listings/application/services
  * @implements {IPriceChangeDetectionService}
@@ -106,7 +113,7 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
       observation.sourceConnectionId
     );
 
-    let computedOldAmount: number;
+    let computedOldAmount: number | null;
     if (openEpisode) {
       // The conflict-arm write never touches the "old" amounts (see
       // `PriceChangeEpisodeRepository.upsertOpen`) — the operator should still
@@ -124,19 +131,17 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
       }
     }
 
-    // Automatic mode bypasses the review queue entirely (ADR-072 decision 3)
-    // — but only for a FRESH detection; an episode already open (e.g. a rare
-    // mode-flip mid-review) is left for the operator rather than silently
-    // discarded.
-    if (!openEpisode && !blockReason) {
-      const mode = readPriceSyncModeForSource(connection.config, observation.sourceConnectionId);
-      if (mode === 'automatic') {
-        await this.enqueueAutomaticApply(destinationConnectionId, observation, computedNewAmount);
-        return;
-      }
-    }
-
-    await this.episodes.upsertOpen({
+    // The episode is opened/refreshed FIRST, in every mode — including
+    // automatic (#3159 review, BLOCKING). Keying the automatic-apply job's
+    // idempotency on the raw `sourceNewAmount` alone let a price that
+    // REVERTED to an earlier value collide with a stale key forever
+    // (`sync_jobs.idempotencyKey` is UNIQUE, with no TTL and no retention
+    // sweep in the tree): 350 -> 327 -> 350 -> 327 mints an identical key on
+    // the third step and is silently dropped. The episode's own id is what
+    // the key names below, and a genuinely new detection always mints a
+    // fresh (or freshly-refreshed) episode. This also gives the automatic
+    // path the audit row it never had.
+    const { episode } = await this.episodes.upsertOpen({
       productVariantId: observation.productVariantId,
       destinationConnectionId,
       sourceConnectionId: observation.sourceConnectionId,
@@ -148,6 +153,17 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
       blockReason,
       detectedAt: new Date(),
     });
+
+    // Automatic mode bypasses the review queue entirely (ADR-072 decision 3)
+    // — but only for a FRESH detection; an episode already open (e.g. a rare
+    // mode-flip mid-review) is left for the operator rather than silently
+    // discarded.
+    if (!openEpisode && !blockReason) {
+      const mode = readPriceSyncModeForSource(connection.config, observation.sourceConnectionId);
+      if (mode === 'automatic') {
+        await this.enqueueAutomaticApply(destinationConnectionId, observation, computedNewAmount, episode.id);
+      }
+    }
   }
 
   /**
@@ -155,15 +171,21 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
    * recently RESOLVED episode's effective (pinned-or-computed) amount, or —
    * when no episode has ever existed for this key — the rule applied to the
    * source's OLD amount. When there is no old amount either (a brand-new
-   * mapping), there is no baseline at all: return a value that can never
-   * equal the new computed amount, so the change is unconditionally treated
-   * as "changed" on first sight, exactly like a newly-mapped listing.
+   * mapping), there is no baseline at all: `null` (#3159 review) — never
+   * `0` overloaded as that sentinel, which made a first-ever detection
+   * indistinguishable from a real zero baseline and had `deltaPct()`
+   * misreport its direction as "down" (`0 -> N` reads as a positive delta,
+   * but `computedOldAmount === 0` short-circuited to `0`). `null` compares
+   * unequal to any real `computedNewAmount`, so the caller's "unchanged"
+   * guard still cannot short-circuit on it — the change is unconditionally
+   * treated as "changed" on first sight, exactly like a newly-mapped
+   * listing, and the direction is reported as unknown rather than guessed.
    */
   private async resolveBaselineAmount(
     destinationConnectionId: string,
     observation: MasterPriceChangeObservation,
     rule: Parameters<typeof applyPricingRule>[1]
-  ): Promise<number> {
+  ): Promise<number | null> {
     const lastResolved = await this.episodes.findLastResolvedByKey(
       observation.productVariantId,
       destinationConnectionId,
@@ -175,24 +197,29 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
     if (observation.sourceOldAmount !== null) {
       return applyPricingRule(observation.sourceOldAmount, rule);
     }
-    // No baseline at all (a brand-new mapping with no recorded prior price):
-    // `0` is never a real resolved price, so this unconditionally reads as
-    // "changed" — matching how a newly-mapped listing would naturally
-    // surface. Using `0` rather than `NaN` also keeps the value persistable
-    // (the episode's non-negative amounts CHECK constraint).
-    return 0;
+    // No baseline at all (a brand-new mapping with no recorded prior price).
+    return null;
   }
 
+  /**
+   * Enqueues the automatic-apply job for an episode that already exists
+   * (opened or refreshed by the caller's `upsertOpen` call, #3159 review).
+   * Keying on the episode's own id — rather than the raw `sourceNewAmount`
+   * — is what makes a reverted price re-enqueue instead of silently
+   * colliding with a stale idempotency key from an earlier promotion.
+   */
   private async enqueueAutomaticApply(
     destinationConnectionId: string,
     observation: MasterPriceChangeObservation,
-    computedAmount: number
+    computedAmount: number,
+    episodeId: string
   ): Promise<void> {
-    const idempotencyKey = `pricing:${destinationConnectionId}:${observation.sourceConnectionId}:${observation.productVariantId}:${observation.sourceNewAmount}`;
-    await this.jobEnqueue.enqueueJob({
+    const idempotencyKey = `pricing:episode:${episodeId}:auto`;
+    const result = await this.jobEnqueue.enqueueJob({
       jobType: 'pricing.propagateToMarketplaces',
       connectionId: destinationConnectionId,
       payload: {
+        episodeId,
         productVariantId: observation.productVariantId,
         destinationConnectionId,
         sourceConnectionId: observation.sourceConnectionId,
@@ -202,5 +229,15 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
       },
       idempotencyKey,
     });
+    if (result.isExisting) {
+      // Not the reversion case above (that mints a fresh episode id, hence a
+      // fresh key) — this means the SAME episode was re-detected before its
+      // automatic-apply job ran. Logged rather than silently discarded
+      // (#3159 review: `EnqueueJobResult` was previously dropped entirely).
+      this.logger.warn(
+        `[price-change-detection] automatic-apply job already enqueued for episode=${episodeId} ` +
+          `destination=${destinationConnectionId} — skipping duplicate (idempotencyKey=${idempotencyKey})`
+      );
+    }
   }
 }
