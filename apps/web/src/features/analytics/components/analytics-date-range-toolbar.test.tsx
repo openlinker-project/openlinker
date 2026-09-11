@@ -78,13 +78,15 @@ describe('AnalyticsDateRangeToolbar', () => {
     const user = userEvent.setup();
     render(<AnalyticsDateRangeToolbar from="2026-07-16" to="2026-08-14" onApply={vi.fn()} />);
 
-    expect(screen.queryByText(/needs attention/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/always shows current status/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Order date\. /i }));
 
-    // #3032: the caveat now names the one section the range doesn't reach
+    // #3032: the caveat now names the sections the range doesn't reach
     // ("Needs attention" — coverage gaps / stock at risk / failed-sync
-    // value, which takes no date param) rather than claiming nothing is
-    // filtered.
-    expect(screen.getByText(/needs attention/i)).toBeInTheDocument();
+    // value — and the trust header's sync status, neither of which takes a
+    // date param) rather than claiming nothing is filtered. Asserted on a
+    // distinctive fragment rather than "needs attention" alone, which could
+    // plausibly appear elsewhere in this toolbar later.
+    expect(screen.getByText(/always shows current status/i)).toBeInTheDocument();
   });
 });

@@ -35,13 +35,16 @@ const PRESET_OPTIONS: readonly { value: DateRangeHighlight; label: string }[] = 
 // Operator-facing: no schema jargon (no "placedAt", no "column"). #3032
 // found the previous copy stale — `from`/`to` are applied end to end for the
 // KPI strip, channel/product tables and trend (`getSalesAndChannelAnalytics`
-// -> `getDailyOrderAggregates`, grouped by `placedAt`) — but it also found a
-// real, still-open gap: `GET /analytics/needs-attention` (the section below,
-// coverage gaps / stock at risk / failed-sync value) takes no date param at
-// all and always reports the current snapshot. The caveat now names that
-// gap instead of claiming nothing is filtered.
+// -> `getDailyOrderAggregates`, grouped by `placedAt`) — but it also found
+// two real, still-open gaps: `GET /analytics/needs-attention` (coverage
+// gaps / stock at risk / failed-sync value) and the trust header's ingestion
+// status (`useAnalyticsTrustQuery`) both take no date param at all and
+// always report the current snapshot. The caveat names both instead of
+// claiming nothing is filtered, and deliberately avoids "above"/"below" —
+// this string also stands alone as the aria-label, with no layout for a
+// screen-reader user to resolve a direction against.
 const ORDER_DATE_CAVEAT =
-  'Filters revenue, orders, and the tables above. "Needs attention" below always shows current status, not this range.';
+  'Filters revenue, orders, and the tables on this page. "Needs attention" and the sync status always show current status, not this range.';
 
 export function AnalyticsDateRangeToolbar({
   from,
