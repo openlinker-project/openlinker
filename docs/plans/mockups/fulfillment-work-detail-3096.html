@@ -175,12 +175,19 @@ code.k{ font-family:var(--font-mono); font-size:.8em; }
 .button--danger{ border-color:var(--status-error-strong); background:var(--status-error); color:#fff; }
 .button:disabled{ cursor:not-allowed; opacity:.5; box-shadow:none; }
 
-.alert{ display:flex; gap:10px; padding:11px 14px; border-radius:var(--radius-md); border:1px solid; margin-top:14px; }
-.alert--warning{ background:var(--status-warning-soft); border-color:var(--status-warning-border); }
-.alert--error{ background:var(--status-error-soft); border-color:var(--status-error-border); }
-.alert--success{ background:var(--status-success-soft); border-color:var(--status-success-border); }
-.alert__text{ font-size:.8125rem; color:var(--text-secondary); }
-.alert__text b{ color:var(--text-primary); }
+/* One global toast STACK shared by both views — the real app answers every
+   action outcome through one `useToast()`, never a per-page inline result
+   slot, which is what makes "the worklist has no result surface" a defect
+   rather than a smaller surface than the detail page's. */
+.toast-stack{ position:fixed; right:20px; bottom:20px; z-index:60; display:flex; flex-direction:column; gap:8px; width:min(360px, calc(100vw - 40px)); }
+.toast{ display:flex; gap:10px; align-items:flex-start; padding:11px 14px; border-radius:var(--radius-md); border:1px solid; box-shadow:var(--shadow-soft); background:var(--bg-surface); }
+.toast--success{ background:var(--status-success-soft); border-color:var(--status-success-border); }
+.toast--warning{ background:var(--status-warning-soft); border-color:var(--status-warning-border); }
+.toast--error{ background:var(--status-error-soft); border-color:var(--status-error-border); }
+.toast__text{ flex:1; font-size:.8125rem; color:var(--text-secondary); }
+.toast__text b{ color:var(--text-primary); }
+.toast__dismiss{ background:none; border:none; padding:0; margin:0; cursor:pointer; color:var(--text-muted); font-size:1rem; line-height:1; flex-shrink:0; font-family:inherit; }
+.toast__dismiss:hover{ color:var(--text-primary); }
 
 .dialog-overlay{ position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; padding:20px; }
 .dialog-overlay[hidden]{ display:none; }
@@ -246,7 +253,7 @@ code.k{ font-family:var(--font-mono); font-size:.8em; }
       <span class="callout__glyph" aria-hidden="true">🔍</span>
       <div>
         <div class="callout__title">Validation note — not part of the product</div>
-        <p class="callout__text">Cross-checking against the real <code class="k">/fulfillment</code> page found one gap: the backend's <code class="k">expeditedAt</code> field is on the wire but <b>nothing in <code class="k">apps/web</code> renders it</b> — an operator can't tell a task was bumped except noticing the button flip. The badge below is this mockup's proposed fix.</p>
+        <p class="callout__text">Cross-checking against the real code: <code class="k">features/fulfillment</code> does <b>not</b> render <code class="k">expeditedAt</code> anywhere — an operator here can't tell a task was moved to the front except noticing the button flip. The pack bench already solves this (<code class="k">bench-work-row.tsx</code>, badge text "Moved to the front") — the badge below borrows that exact wording rather than inventing a second one.</p>
       </div>
     </div>
 
@@ -326,10 +333,17 @@ code.k{ font-family:var(--font-mono); font-size:.8em; }
   </div>
 
   <div id="dialogOverlay" class="dialog-overlay" hidden></div>
+  <!-- One shared result surface for BOTH views — see the toast-stack CSS
+       comment. Neither view gets its own inline slot. -->
+  <div id="toastStack" class="toast-stack" role="status" aria-live="polite"></div>
 </div>
 
 <script>
 // ── Real copy, ported verbatim from apps/web/src/features/fulfillment/lib ──
+// (fulfillment-task.copy.ts + fulfillment-worklist.copy.ts). Kept byte-for-byte
+// so this mockup cannot silently drift from the vocabulary gate those files
+// are named to satisfy — a mockup that says something different than the
+// shipped copy is a mockup that specifies the wrong thing.
 const STATUS_COPY = { open:'Open', scheduled:'Scheduled', on_hold:'On hold', in_progress:'In progress', closed:'Closed', cancelled:'Cancelled', incomplete:'Incomplete' };
 const REQUEST_STATUS_COPY = { unsubmitted:'Not offered yet', submitted:'Offered, awaiting reply', accepted:'Accepted', rejected:'Refused', cancellation_requested:'Cancellation requested', cancellation_accepted:'Cancellation accepted', cancellation_rejected:'Cancellation refused' };
 
@@ -344,6 +358,29 @@ const FULFILLMENT_ACTION_COPY = {
   release_expedite: { label:'Back to deadline order', tone:'secondary', hint:'Stop moving this ahead of the queue. It returns to its place by dispatch deadline.' },
 };
 
+// The shipped table is deliberately a loose `Record<string, …>`, not
+// `satisfies Record<Action, …>` — `apps/web` may not declare the action
+// union at all (`scripts/check-no-supported-actions-mirror.mjs`), and a value
+// the server declares legal must stay invokable even when this build's copy
+// hasn't caught up. `humanise()` + these three lookups are the real fallback
+// chain (`fulfillmentActionLabel` / `Tone` / `Hint`) — every render call below
+// goes through them rather than indexing `FULFILLMENT_ACTION_COPY` directly,
+// so an action this table doesn't know about gets a readable button instead
+// of a thrown `TypeError`.
+function humanise(raw) {
+  const spaced = String(raw).replace(/[_-]+/g, ' ').trim();
+  if (spaced.length === 0) return raw;
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+function actionLabel(action) { return FULFILLMENT_ACTION_COPY[action]?.label ?? humanise(action); }
+function actionTone(action) { return FULFILLMENT_ACTION_COPY[action]?.tone ?? 'secondary'; }
+function actionHint(action) { return FULFILLMENT_ACTION_COPY[action]?.hint ?? null; }
+// Same fallback shape as `fulfillmentStatusLabel` / `fulfillmentRequestStatusLabel`
+// — display-only vocabularies fall back to a humanised raw value rather than
+// `undefined`, for the identical reason the action lookups do.
+function statusLabel(status) { return STATUS_COPY[status] ?? humanise(status); }
+function requestStatusLabel(requestStatus) { return REQUEST_STATUS_COPY[requestStatus] ?? humanise(requestStatus); }
+
 const FULFILLMENT_ACTION_MODE_COPY = {
   hold: { title:'Put this fulfilment task on hold', desc:'The task stops moving until someone releases the hold. The rest of the order is unaffected.', confirm:'Put on hold' },
   release_hold: { title:'Release this hold', desc:'The fulfilment task can move again. Any other hold on it stays in place.', confirm:'Release hold' },
@@ -357,9 +394,35 @@ const HOLD_REASON_LABEL = {
 };
 const HOLD_REASON_ORDER = ['stock-shortfall','payment-review','fraud-review','address-invalid','awaiting-amendment','awaiting-customer-confirmation','operator','external'];
 
+// CONFLICT_COPY + the `applied.` success line are byte-identical to
+// `readFulfillmentConflict()` / the worklist page's `showToast()` call — the
+// real app answers BOTH surfaces (worklist and detail) through one global
+// toast, never a per-view inline banner, which is why this mockup's result
+// surface below is a toast stack shared by both views rather than two.
 const CONFLICT_COPY = {
   version_conflict: 'Somebody moved this fulfilment task while you were looking at it. It has been refreshed — check it and try again.',
   action_not_legal: 'That is no longer possible for this fulfilment task. The available actions have been refreshed.',
+};
+
+// fulfillment-worklist.copy.ts, ported in full — not cherry-picked — so
+// nothing here can silently diverge from what the shipped page says.
+const WORKLIST_COPY = {
+  row: {
+    taskLabel: 'Fulfilment task', stateLabel: 'State', handshakeLabel: 'Handshake',
+    linesLabel: 'Lines', actionsLabel: 'Actions',
+    lineCount: (f, t) => `${f} of ${t}`, noLines: 'No lines',
+    countersCaveat: 'Picked counts are reported by whoever is working the task and can be a little behind.',
+  },
+  lane: { noLocation: 'No location yet', noDeliveryMethod: 'No delivery method yet', pageScopeNote: 'Grouped from the tasks on this page only.' },
+  filter: { orderLabel: 'Order', orderPlaceholder: 'Filter by order id', locationLabel: 'Location', locationPlaceholder: 'Filter by location id', clear: 'Clear filters', groupLabel: 'Fulfilment task filters' },
+  loading: { message: 'Loading fulfilment tasks…' },
+  error: { title: 'Could not load the fulfilment worklist', message: 'The worklist could not be read just now. Nothing has been changed.', retry: 'Retry' },
+  empty: {
+    filtered: { title: 'No fulfilment tasks match these filters', message: 'Nothing on this page matches what you filtered for. Clear the filters to see everything.' },
+    none: { title: 'Nothing to work right now', message: 'No fulfilment tasks are waiting. That is normal unless fulfilment routing is switched on.' },
+    pastEnd: { title: 'Nothing on this page', message: 'There are fulfilment tasks, but none this far down the list.', action: 'Back to the first page' },
+  },
+  pagination: { previous: 'Previous', next: 'Next', range: (from, to, total) => `Showing ${from}–${to} of ${total}` },
 };
 
 // ── Demo data — 10 tasks across 3 lanes ─────────────────────────────────
@@ -412,10 +475,35 @@ const TASKS = [
 
 const LOCATION_LABEL = { ol_location_warsaw01: 'Warsaw — Main warehouse', ol_location_berlin01: 'Berlin — 3PL partner' };
 const TASK_SWITCH_LABEL = {
-  ol_fwork_7a10: 'Scheduled', ol_fwork_a91c: 'Being packed', ol_fwork_c5e8: 'Being packed · bumped',
+  ol_fwork_7a10: 'Scheduled', ol_fwork_a91c: 'Being packed', ol_fwork_c5e8: 'Being packed · moved',
   ol_fwork_f612: 'Cancel requested', ol_fwork_d873: 'Cancel refused', ol_fwork_1ac0: 'Incomplete',
   ol_fwork_9012: 'Cancelled', ol_fwork_e337: 'Awaiting answer', ol_fwork_b204: 'On hold', ol_fwork_z001: 'Unassigned',
 };
+
+// A stable, named handle for every distinct work STATE this page demonstrates
+// — never the opaque `ol_fwork_*` hash, which is what a task/E2E spec would
+// otherwise be reduced to referencing. DERIVED from the task's own fields
+// rather than a hand-typed id→slug table, so a demo action (put on hold, mark
+// in progress, …) that changes what a task IS also changes what it is named —
+// a static map would drift from the row the moment the mockup's own buttons
+// mutated it. Order matters: it is the same precedence
+// `fulfillment-supported-actions.types.ts` documents — heldness and the
+// negotiation axis both outrank the bare orchestration status, because
+// `status` alone can't say "on hold" (nothing ever writes `on_hold`) or
+// "a cancellation is in flight" on its own.
+function computeWorkStateSlug(task) {
+  if (task.status === 'cancelled') return 'cancelled';
+  if (task.status === 'incomplete') return 'incomplete';
+  if (task.activeHolds.length > 0) return 'on-hold';
+  if (task.requestStatus === 'cancellation_requested') return 'cancellation-requested';
+  if (task.requestStatus === 'cancellation_rejected') return 'cancellation-rejected';
+  if (task.requestStatus === 'submitted') return 'awaiting-answer';
+  if (!task.locationId) return 'unassigned';
+  if (task.status === 'scheduled') return 'scheduled';
+  if (task.status === 'in_progress') return task.expeditedAt ? 'in-progress-expedited' : 'in-progress';
+  return task.status.replace(/_/g, '-');
+}
+const NOT_FOUND_HASH = '#/works/does-not-exist';
 
 let currentOutcome = 'ok';
 let pageState = 'data';
@@ -474,9 +562,18 @@ function refreshCurrentView() {
 }
 
 // ── Worklist page states ─────────────────────────────────────────────────
+// Five slugs — one per distinct rendering this page can be in — plus the
+// third empty state (`empty-pastend`) the shipped copy table also carries.
+// `pageState` alone decides which branch renders; the live filter inputs
+// below only ever put the page into 'data' or 'empty-filtered', never into a
+// state whose slug they don't also own — which is what keeps a demo click on
+// "Empty — nothing to work" from being undone by a filter value the LAST demo
+// click left behind (a real bug in the previous pass: switching state never
+// cleared the input, so "empty-none" kept reading as "empty-filtered").
 const PAGE_STATES = [
   { slug: 'data', label: 'Data' }, { slug: 'loading', label: 'Loading' }, { slug: 'error', label: 'Error' },
   { slug: 'empty-none', label: 'Empty — nothing to work' }, { slug: 'empty-filtered', label: 'Empty — filtered' },
+  { slug: 'empty-pastend', label: 'Empty — past the last page' },
 ];
 function renderStateSwitcher() {
   document.getElementById('pageStateSwitcher').innerHTML = '<span class="demo-toolbar__label">Mockup · jump to a page state</span>' +
@@ -484,42 +581,48 @@ function renderStateSwitcher() {
 }
 function setPageState(slug) {
   pageState = slug;
-  if (slug === 'empty-filtered') { orderFilter = 'zzz-no-match'; document.getElementById('orderFilter').value = orderFilter; }
-  else if (slug === 'data') { orderFilter = ''; locationFilter = ''; document.getElementById('orderFilter').value = ''; document.getElementById('locationFilter').value = ''; }
+  // Every slug OTHER than 'empty-filtered' clears the live filters — a demo
+  // state must not be an accidental composite of whatever the operator (or
+  // the previous demo click) typed into the filter boxes a moment ago.
+  if (slug === 'empty-filtered') { orderFilter = 'zzz-no-match'; locationFilter = ''; }
+  else { orderFilter = ''; locationFilter = ''; }
+  document.getElementById('orderFilter').value = orderFilter;
+  document.getElementById('locationFilter').value = locationFilter;
   renderStateSwitcher(); render();
 }
 function clearFilters() {
   orderFilter = ''; locationFilter = ''; document.getElementById('orderFilter').value = ''; document.getElementById('locationFilter').value = '';
   pageState = 'data'; renderStateSwitcher(); render();
 }
-document.getElementById('orderFilter').addEventListener('input', (e) => { orderFilter = e.target.value; pageState = 'data'; render(); });
-document.getElementById('locationFilter').addEventListener('input', (e) => { locationFilter = e.target.value; pageState = 'data'; render(); });
+document.getElementById('orderFilter').addEventListener('input', (e) => { orderFilter = e.target.value; pageState = 'data'; renderStateSwitcher(); render(); });
+document.getElementById('locationFilter').addEventListener('input', (e) => { locationFilter = e.target.value; pageState = 'data'; renderStateSwitcher(); render(); });
 
 // ── Shared rendering: badges, actions, holds, lines ─────────────────────
 function renderActionButton(task, action, extraLabel) {
-  const copy = FULFILLMENT_ACTION_COPY[action];
-  const tone = copy.tone === 'danger' ? 'button--danger' : (copy.tone === 'secondary' ? 'button--secondary' : '');
-  return `<button class="button ${tone}" title="${escapeHtml(copy.hint)}" data-action="${action}" data-testid="action-${action}" onclick="event.stopPropagation(); handleActionClick('${task.id}','${action}')">${extraLabel || copy.label}</button>`;
+  const tone = actionTone(action) === 'danger' ? 'button--danger' : (actionTone(action) === 'secondary' ? 'button--secondary' : '');
+  const hint = actionHint(action);
+  return `<button class="button ${tone}" ${hint ? `title="${escapeHtml(hint)}"` : ''} data-action="${action}" data-testid="action-${action}" onclick="event.stopPropagation(); handleActionClick('${task.id}','${action}')">${extraLabel || actionLabel(action)}</button>`;
 }
 function renderActions(task) {
   if (task.supportedActions.length === 0) return '';
   return task.supportedActions.map((a) => {
     if (a === 'release_hold') {
-      return task.activeHolds.map((h) => `<button class="button" title="${escapeHtml(FULFILLMENT_ACTION_COPY.release_hold.hint)}" data-action="release_hold" data-hold-id="${h.id}" data-testid="action-release_hold-${h.id}" onclick="event.stopPropagation(); handleActionClick('${task.id}','release_hold','${h.id}')">${releaseHoldLabel(task, h)}</button>`).join('');
+      const hint = actionHint('release_hold');
+      return task.activeHolds.map((h) => `<button class="button" ${hint ? `title="${escapeHtml(hint)}"` : ''} data-action="release_hold" data-hold-id="${h.id}" data-testid="action-release_hold-${h.id}" onclick="event.stopPropagation(); handleActionClick('${task.id}','release_hold','${h.id}')">${releaseHoldLabel(task, h)}</button>`).join('');
     }
     return renderActionButton(task, a);
   }).join('');
 }
 function renderBadges(task) {
   if (task.activeHolds.length > 0) return task.activeHolds.map((h) => `<span class="badge badge--warning"><span class="badge__dot"></span>On hold — ${HOLD_REASON_LABEL[h.reason] || h.reason}</span>`).join('');
-  return `<span class="badge badge--info">${STATUS_COPY[task.status]}</span>`;
+  return `<span class="badge badge--info">${statusLabel(task.status)}</span>`;
 }
 function renderHoldList(task) {
   if (task.activeHolds.length === 0) return '';
   return `<ul class="task-card__holds">${task.activeHolds.map((h) => `<li>${HOLD_REASON_LABEL[h.reason] || h.reason} · since ${fmtRelative(h.placedAt)}${h.note ? ' — ' + escapeHtml(h.note) : ''}</li>`).join('')}</ul>`;
 }
 function renderFactsRows(task) {
-  const rows = [['State', STATUS_COPY[task.status]], ['Handshake', REQUEST_STATUS_COPY[task.requestStatus]]];
+  const rows = [['State', statusLabel(task.status)], ['Handshake', requestStatusLabel(task.requestStatus)]];
   if (task.locationId) rows.push(['Location', LOCATION_LABEL[task.locationId] || task.locationId]);
   if (task.deliveryMethod) rows.push(['Delivery', task.deliveryMethod]);
   if (task.externalWorkId) rows.push(['External reference', task.externalWorkId]);
@@ -531,10 +634,15 @@ function renderLinesList(task) {
 }
 
 // ── Worklist: card + row + lane ──────────────────────────────────────────
+// `data-work-id` names the row; `data-state` names the STATE it is in
+// (`computeWorkStateSlug`) — the second is the finding this pass closes: a
+// task/E2E spec pointed at "the on-hold state" previously had nothing to
+// select except an opaque hash or the free-text switcher-chip label.
 function taskCardHtml(task) {
-  return `<li class="task-card" data-work-id="${task.id}" data-testid="task-card-${task.id}" onclick="location.hash = '#/works/${task.id}'">
+  const slug = computeWorkStateSlug(task);
+  return `<li class="task-card" data-work-id="${task.id}" data-state="${slug}" data-testid="task-card-${task.id}" onclick="location.hash = '#/works/${task.id}'">
     <div class="task-card__head">
-      <div class="task-card__badges">${renderBadges(task)}${task.expeditedAt ? `<span class="expedite-badge" data-testid="expedited-badge" title="Proposed — see validation note above">⚡ Bumped to the front</span>` : ''}</div>
+      <div class="task-card__badges">${renderBadges(task)}${task.expeditedAt ? `<span class="expedite-badge" data-testid="expedited-badge" title="Proposed — see validation note above">⚡ Moved to the front</span>` : ''}</div>
       <span class="task-card__id" title="${task.id}">${task.id}</span>
     </div>
     ${renderHoldList(task)}
@@ -546,15 +654,20 @@ function taskCardHtml(task) {
 function taskRowHtml(task) {
   const fulfilled = task.lines.reduce((s, l) => s + l.fulfilledQuantity, 0);
   const total = task.lines.reduce((s, l) => s + l.totalQuantity, 0);
-  return `<div class="wrow" data-work-id="${task.id}" data-testid="task-row-${task.id}" onclick="location.hash = '#/works/${task.id}'">
+  const slug = computeWorkStateSlug(task);
+  return `<div class="wrow" data-work-id="${task.id}" data-state="${slug}" data-testid="task-row-${task.id}" onclick="location.hash = '#/works/${task.id}'">
     <div class="wrow__main">
       <div class="wrow__identity"><span class="wrow__id">${task.id}</span><span class="wrow__order">${task.orderId}</span></div>
-      <div class="wrow__state">${renderBadges(task)}${task.expeditedAt ? `<span class="expedite-badge" title="Proposed — see validation note above">⚡ Bumped</span>` : ''}<span class="wrow__substate">${STATUS_COPY[task.status]} · ${REQUEST_STATUS_COPY[task.requestStatus]}</span></div>
-      <div class="wrow__lines">${task.lines.length > 0 ? `${fulfilled} of ${total}` : 'No lines'}</div>
+      <div class="wrow__state">${renderBadges(task)}${task.expeditedAt ? `<span class="expedite-badge" title="Proposed — see validation note above">⚡ Moved</span>` : ''}<span class="wrow__substate">${statusLabel(task.status)} · ${requestStatusLabel(task.requestStatus)}</span></div>
+      <div class="wrow__lines">${task.lines.length > 0 ? WORKLIST_COPY.row.lineCount(fulfilled, total) : WORKLIST_COPY.row.noLines}</div>
     </div>
     ${task.supportedActions.length ? `<div class="wrow__actions">${renderActions(task)}</div>` : ''}
   </div>`;
 }
+// Said ONCE per lane, and it is BOTH sentences — the shipped
+// FulfillmentLaneSection renders pageScopeNote and countersCaveat together,
+// here, not scattered one-per-row (the defect this pass fixes: a previous
+// version dropped the lane-level sentence and kept only the per-card one).
 function laneHtml(lane) {
   const fulfilled = lane.tasks.reduce((s, t) => s + t.lines.reduce((ss, l) => ss + l.fulfilledQuantity, 0), 0);
   const total = lane.tasks.reduce((s, t) => s + t.lines.reduce((ss, l) => ss + l.totalQuantity, 0), 0);
@@ -562,11 +675,11 @@ function laneHtml(lane) {
     <div class="lane__head">
       <h3 class="lane__title">${escapeHtml(lane.locationLabel)}</h3>
       <span class="lane__method">${escapeHtml(lane.deliveryMethodLabel)}</span>
-      <span class="lane__count">${fulfilled} of ${total}</span>
+      <span class="lane__count">${WORKLIST_COPY.row.lineCount(fulfilled, total)}</span>
     </div>
-    <p class="lane__scope">Grouped from the tasks on this page only.</p>
+    <p class="lane__scope">${WORKLIST_COPY.lane.pageScopeNote} ${WORKLIST_COPY.row.countersCaveat}</p>
     <div class="worklist-desktop">
-      <div class="worklist-head"><span>Task</span><span>State</span><span>Lines</span><span>Actions</span></div>
+      <div class="worklist-head"><span>${WORKLIST_COPY.row.taskLabel}</span><span>${WORKLIST_COPY.row.stateLabel}</span><span>${WORKLIST_COPY.row.linesLabel}</span><span>${WORKLIST_COPY.row.actionsLabel}</span></div>
       ${lane.tasks.map(taskRowHtml).join('')}
     </div>
     <ul class="worklist-cards">${lane.tasks.map(taskCardHtml).join('')}</ul>
@@ -576,25 +689,38 @@ function laneHtml(lane) {
 function render() {
   const target = document.getElementById('pageBody');
   document.getElementById('clearFiltersBtn').style.display = (orderFilter || locationFilter) ? '' : 'none';
+  // `data-state` on the RENDERED SURFACE, not only on the switcher button that
+  // requested it — a task/E2E spec selects `#pageBody[data-state="…"]`, never
+  // "whichever chip currently carries `chip--active`".
+  target.dataset.state = pageState;
 
-  if (pageState === 'loading') { target.innerHTML = `<p style="margin-top:20px; color:var(--text-muted);">Loading fulfilment tasks…</p>`; return; }
+  if (pageState === 'loading') { target.innerHTML = `<p style="margin-top:20px; color:var(--text-muted);">${WORKLIST_COPY.loading.message}</p>`; return; }
   if (pageState === 'error') {
-    target.innerHTML = `<div class="empty-state"><div class="empty-state__title">Could not load the fulfilment worklist</div><p class="empty-state__message">Something went wrong reading the worklist.</p><button class="button" onclick="setPageState('data')">Retry</button></div>`;
+    target.innerHTML = `<div class="empty-state"><div class="empty-state__title">${WORKLIST_COPY.error.title}</div><p class="empty-state__message">${WORKLIST_COPY.error.message}</p><button class="button" onclick="setPageState('data')">${WORKLIST_COPY.error.retry}</button></div>`;
     return;
   }
-  const tasks = pageState === 'empty-none' ? [] : filteredTasks();
+  if (pageState === 'empty-pastend') {
+    target.innerHTML = `<div class="empty-state"><div class="empty-state__title">${WORKLIST_COPY.empty.pastEnd.title}</div><p class="empty-state__message">${WORKLIST_COPY.empty.pastEnd.message}</p><button class="button button--secondary" onclick="setPageState('data')">${WORKLIST_COPY.empty.pastEnd.action}</button></div>`;
+    return;
+  }
+  if (pageState === 'empty-none') {
+    target.innerHTML = `<div class="empty-state"><div class="empty-state__title">${WORKLIST_COPY.empty.none.title}</div><p class="empty-state__message">${WORKLIST_COPY.empty.none.message}</p></div>`;
+    return;
+  }
+  // pageState === 'data' from here — but the LIVE filters can still produce an
+  // empty, filtered result (typing into the boxes), which is the ordinary
+  // 'empty-filtered' rendering rather than a distinct pageState of its own.
+  const tasks = filteredTasks();
   if (tasks.length === 0) {
-    const filtered = orderFilter || locationFilter;
-    target.innerHTML = filtered
-      ? `<div class="empty-state"><div class="empty-state__title">No fulfilment tasks match these filters</div><p class="empty-state__message">Try a different order or location id.</p><button class="button button--secondary" onclick="clearFilters()">Clear filters</button></div>`
-      : `<div class="empty-state"><div class="empty-state__title">Nothing to work right now</div><p class="empty-state__message">Every fulfilment task is either finished or hasn't been created yet.</p></div>`;
+    target.dataset.state = 'empty-filtered';
+    target.innerHTML = `<div class="empty-state"><div class="empty-state__title">${WORKLIST_COPY.empty.filtered.title}</div><p class="empty-state__message">${WORKLIST_COPY.empty.filtered.message}</p><button class="button button--secondary" onclick="clearFilters()">${WORKLIST_COPY.filter.clear}</button></div>`;
     return;
   }
   const lanes = groupIntoLanes(tasks);
   target.innerHTML = lanes.map(laneHtml).join('') + `
     <div class="pagination">
-      <span style="font-variant-numeric:tabular-nums; color:var(--text-muted);">Showing 1–${tasks.length} of ${tasks.length}</span>
-      <div class="pagination__actions"><button class="button button--secondary" disabled>Previous</button><button class="button button--secondary" disabled>Next</button></div>
+      <span style="font-variant-numeric:tabular-nums; color:var(--text-muted);">${WORKLIST_COPY.pagination.range(1, tasks.length, tasks.length)}</span>
+      <div class="pagination__actions"><button class="button button--secondary" disabled>${WORKLIST_COPY.pagination.previous}</button><button class="button button--secondary" disabled>${WORKLIST_COPY.pagination.next}</button></div>
     </div>`;
 }
 
@@ -604,34 +730,43 @@ function renderOrderPanelDemo() {
 }
 
 // ── Detail view ───────────────────────────────────────────────────────────
-function renderTaskSwitcher(activeId) {
-  document.getElementById('taskSwitcher').innerHTML = '<span class="demo-toolbar__label">Mockup · view a different task</span>' +
-    TASKS.map((t) => `<button class="chip ${t.id === activeId ? 'chip--active' : ''}" onclick="location.hash = '#/works/${t.id}'">${TASK_SWITCH_LABEL[t.id]}</button>`).join('');
+// `activeSlug` is 'not-found' when the current hash names no real task — the
+// missing branch the previous pass left with no switcher entry at all.
+function renderTaskSwitcher(activeSlug) {
+  const taskChips = TASKS.map((t) => {
+    const slug = computeWorkStateSlug(t);
+    return `<button class="chip ${slug === activeSlug ? 'chip--active' : ''}" data-state="${slug}" onclick="location.hash = '#/works/${t.id}'">${TASK_SWITCH_LABEL[t.id]}</button>`;
+  }).join('');
+  const notFoundChip = `<button class="chip ${activeSlug === 'not-found' ? 'chip--active' : ''}" data-state="not-found" onclick="location.hash = '${NOT_FOUND_HASH}'">Not found</button>`;
+  document.getElementById('taskSwitcher').innerHTML = '<span class="demo-toolbar__label">Mockup · view a different task</span>' + taskChips + notFoundChip;
 }
 
 function renderDetailView(taskId) {
   const task = findTask(taskId);
+  const detailViewEl = document.getElementById('detailView');
   if (!task) {
+    detailViewEl.dataset.state = 'not-found';
     document.getElementById('detailTitle').textContent = 'Task not found';
     document.getElementById('detailHero').innerHTML = `<p>No fulfilment task matches <code class="k">${escapeHtml(taskId)}</code>.</p>`;
     document.getElementById('detailHoldsSection').innerHTML = '';
     document.getElementById('detailLines').innerHTML = '';
     document.getElementById('detailFacts').innerHTML = '';
     document.getElementById('detailActionsBody').innerHTML = '';
-    document.getElementById('taskSwitcher').innerHTML = '';
+    renderTaskSwitcher('not-found');
     return;
   }
-  renderTaskSwitcher(taskId);
+  const slug = computeWorkStateSlug(task);
+  detailViewEl.dataset.state = slug;
+  renderTaskSwitcher(slug);
   document.getElementById('detailTitle').textContent = `Order ${task.orderId.replace('ol_order_', '#').toUpperCase()}`;
 
   document.getElementById('detailHero').innerHTML = `
     <div class="detail-hero__sub">${task.id} · ${task.locationId ? escapeHtml(LOCATION_LABEL[task.locationId] || task.locationId) : 'No location yet'}</div>
     <div class="detail-hero__row">
-      <span class="detail-hero__status">${STATUS_COPY[task.status]} · ${REQUEST_STATUS_COPY[task.requestStatus]}</span>
-      ${task.expeditedAt ? `<span class="expedite-badge" data-testid="expedited-badge">⚡ Bumped to the front · ${fmtTime(task.expeditedAt)}</span>` : ''}
+      <span class="detail-hero__status">${statusLabel(task.status)} · ${requestStatusLabel(task.requestStatus)}</span>
+      ${task.expeditedAt ? `<span class="expedite-badge" data-testid="expedited-badge">⚡ Moved to the front · ${fmtTime(task.expeditedAt)}</span>` : ''}
     </div>
     <p class="detail-hero__detail">${escapeHtml(task.detail)}</p>
-    <div id="detailResultSlot"></div>
   `;
 
   document.getElementById('detailHoldsSection').innerHTML = task.activeHolds.length
@@ -692,23 +827,38 @@ function confirmDialog() {
   openDialog = null; performAction(taskId, 'force_cancel');
 }
 
-function alertHtmlFor(tone, glyph, html) { return `<div class="alert alert--${tone}"><span aria-hidden="true">${glyph}</span><div class="alert__text">${html}</div></div>`; }
-function resultSlotFor(taskId) { return document.getElementById('detailView').hidden ? null : document.getElementById('detailResultSlot'); }
+const TOAST_GLYPH = { success: '✓', warning: '↻', error: '✕' };
+/**
+ * The one result surface both views share (see the `.toast-stack` CSS
+ * comment) — a plain `Record<action, …>` fallback like the vocabulary
+ * lookups above, never a thrown error over an unrecognised tone.
+ */
+function showToast(tone, html) {
+  const stack = document.getElementById('toastStack');
+  const id = 'toast_' + Math.random().toString(36).slice(2, 8);
+  stack.insertAdjacentHTML('beforeend', `<div class="toast toast--${tone}" data-testid="toast-${tone}" id="${id}"><span aria-hidden="true">${TOAST_GLYPH[tone] || 'ℹ'}</span><div class="toast__text">${html}</div><button class="toast__dismiss" aria-label="Dismiss" onclick="document.getElementById('${id}').remove()">✕</button></div>`);
+}
 
 function performAction(taskId, action, holdId, fields) {
   const task = findTask(taskId);
   openDialog = null;
+  // Found while validating this pass, not one of the review's findings: a
+  // form-backed action (hold/release_hold/force_cancel) confirmed through the
+  // dialog left the scrim up forever, since only `cancelDialog()` used to call
+  // `renderDialog()` to close it. `confirmDialog()` sets `openDialog = null`
+  // and calls straight into here, so THIS is where the close has to happen.
+  renderDialog();
 
   if (currentOutcome === 'version_conflict') {
     task.version += 1;
     refreshCurrentView();
-    resultSlotFor(taskId)?.insertAdjacentHTML('beforeend', alertHtmlFor('warning', '↻', `<b>${escapeHtml(CONFLICT_COPY.version_conflict)}</b>`));
+    showToast('warning', `<b>${escapeHtml(CONFLICT_COPY.version_conflict)}</b>`);
     return;
   }
   if (currentOutcome === 'action_not_legal') {
     task.supportedActions = task.supportedActions.filter((a) => a !== action);
     refreshCurrentView();
-    resultSlotFor(taskId)?.insertAdjacentHTML('beforeend', alertHtmlFor('error', '✕', `<b>${escapeHtml(CONFLICT_COPY.action_not_legal)}</b>`));
+    showToast('error', `<b>${escapeHtml(CONFLICT_COPY.action_not_legal)}</b>`);
     return;
   }
 
@@ -729,7 +879,7 @@ function performAction(taskId, action, holdId, fields) {
   if (action === 'release_expedite') { task.expeditedAt = null; task.supportedActions = task.supportedActions.map((a) => a === 'release_expedite' ? 'expedite' : a); }
 
   refreshCurrentView();
-  resultSlotFor(taskId)?.insertAdjacentHTML('beforeend', alertHtmlFor('success', '✓', `<b>${escapeHtml(FULFILLMENT_ACTION_COPY[action].label)} applied.</b>`));
+  showToast('success', `<b>${escapeHtml(actionLabel(action))} applied.</b>`);
 }
 
 function setOutcome(name) {
