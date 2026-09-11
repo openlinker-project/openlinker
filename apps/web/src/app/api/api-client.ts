@@ -74,6 +74,10 @@ import { createInventoryApi, type InventoryApi } from '../../features/inventory/
 import { createInvoicingApi, type InvoicingApi } from '../../features/invoicing/api/invoicing.api';
 import { createListingsApi, type ListingsApi } from '../../features/listings/api/listings.api';
 import {
+  createPriceChangesApi,
+  type PriceChangesApi,
+} from '../../features/price-changes/api/price-changes.api';
+import {
   createMailerSettingsApi,
   type MailerSettingsApi,
 } from '../../features/mailer-settings/api/mailer-settings.api';
@@ -214,6 +218,7 @@ export interface CoreApiClient {
   inventory: InventoryApi;
   invoicing: InvoicingApi;
   listings: ListingsApi;
+  priceChanges: PriceChangesApi;
   mailerSettings: MailerSettingsApi;
   automations: AutomationsApi;
   mcpTokens: McpTokensApi;
@@ -448,6 +453,7 @@ export function createApiClient({
     inventory: createInventoryApi(request),
     invoicing: createInvoicingApi(request, requestBlob),
     listings: createListingsApi(request, requestStream),
+    priceChanges: createPriceChangesApi(request),
     mailerSettings: createMailerSettingsApi(request),
     mcpTokens: createMcpTokensApi(request),
     mappings: createMappingsApi(request),
