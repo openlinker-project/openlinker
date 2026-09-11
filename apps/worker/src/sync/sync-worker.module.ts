@@ -42,6 +42,7 @@ import { MarketplaceOffersSyncHandler } from './handlers/marketplace-offers-sync
 import { MarketplaceOfferStatusSyncHandler } from './handlers/marketplace-offer-status-sync.handler';
 import { MarketplaceReturnsPollHandler } from './handlers/marketplace-returns-poll.handler';
 import { MarketplaceReturnSyncHandler } from './handlers/marketplace-return-sync.handler';
+import { ReturnOrderLineResolverService } from './return-order-line-resolver.service';
 import { MarketplaceReturnsStatusSyncHandler } from './handlers/marketplace-returns-status-sync.handler';
 import { ReturnsOrphanReconcileHandler } from './handlers/returns-orphan-reconcile.handler';
 import { MarketplaceOfferRefreshSnapshotHandler } from './handlers/marketplace-offer-refresh-snapshot.handler';
@@ -129,6 +130,9 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOfferStatusSyncHandler,
     MarketplaceReturnsPollHandler,
     MarketplaceReturnSyncHandler,
+    // #3171 — the worker-side order read the returns context deliberately does
+    // not take; the rule and the write live in core.
+    ReturnOrderLineResolverService,
     MarketplaceReturnsStatusSyncHandler,
     ReturnsOrphanReconcileHandler,
     MarketplaceOfferRefreshSnapshotHandler,

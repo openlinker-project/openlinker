@@ -144,6 +144,50 @@ describe('OrderRecord.dispatchByEstimated (#1776)', () => {
   });
 });
 
+describe('OrderRecord.orderItems (#3171)', () => {
+  const item = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    id: 'oi_1',
+    productId: 'ol_product_1',
+    quantity: 2,
+    price: 189,
+    sku: 'EARB-01',
+    ...over,
+  });
+
+  it('returns the snapshot lines in the document order a correction addresses', () => {
+    const record = makeRecord({
+      items: [item({ id: 'oi_1' }), item({ id: 'oi_2', price: 179 })],
+    });
+
+    expect(record.orderItems.map((line) => line.id)).toEqual(['oi_1', 'oi_2']);
+  });
+
+  it('returns an empty array when the snapshot carries no items', () => {
+    expect(makeRecord({}).orderItems).toEqual([]);
+  });
+
+  it('returns an empty array when items is not an array', () => {
+    expect(makeRecord({ items: { id: 'oi_1' } }).orderItems).toEqual([]);
+  });
+
+  it.each([
+    ['a missing id', item({ id: undefined })],
+    ['a blank id', item({ id: '' })],
+    ['a missing productId', item({ productId: undefined })],
+    ['a non-numeric quantity', item({ quantity: '2' })],
+    ['a null price', item({ price: null })],
+    ['a non-finite price', item({ price: Number.NaN })],
+    ['a non-object entry', 'oi_1'],
+  ])('drops a line with %s rather than coercing it', (_label, malformed) => {
+    // A partial line is worse than a missing one: consumers join on `id` and do
+    // arithmetic on `quantity` / `price`, so `undefined` in either would resolve
+    // or compute wrong rather than not at all.
+    const record = makeRecord({ items: [item({ id: 'oi_ok' }), malformed] });
+
+    expect(record.orderItems.map((line) => line.id)).toEqual(['oi_ok']);
+  });
+});
+
 describe('OrderRecord.isCancelled (#1984)', () => {
   function makeRecordWithCancelledAt(cancelledAt: Date | null): OrderRecord {
     return new OrderRecord(

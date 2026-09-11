@@ -25,6 +25,10 @@ import type {
 } from '../../domain/types/return-query.types';
 import type { ReturnSegmentCounts } from '../../domain/types/return-segment.types';
 import type { ReturnTimelineForOrder } from '../../domain/types/return-timeline-entry.types';
+import type {
+  ResolvableOrderLine,
+  ReturnOrderLineUnresolvedReason,
+} from '../../domain/domain-services/return-order-line-resolution.domain-service';
 
 /**
  * What one ingested observation did.
@@ -89,6 +93,24 @@ export interface MatchOrphanToOrderInput {
   returnId: string;
   internalOrderId: string;
   actorUserId: string | null;
+}
+
+/**
+ * What one resolution pass did (#3171). Returned rather than logged-and-dropped
+ * so the CALLER can report it: under Option B the worker composes this step, and
+ * a summary that never reaches the job result would make a missing call look
+ * identical to a return whose lines genuinely could not be resolved.
+ */
+export interface ReturnOrderLineResolutionSummary {
+  /** Lines this pass newly resolved. */
+  resolved: number;
+  /**
+   * Lines a concurrent pass (or an earlier run) had already resolved. Not a
+   * failure — the desired end state was reached either way.
+   */
+  alreadyResolved: number;
+  /** Lines left `null`, keyed by why. Reported, never defaulted. */
+  unresolved: Partial<Record<ReturnOrderLineUnresolvedReason, number>>;
 }
 
 export interface IReturnsService {
@@ -340,4 +362,28 @@ export interface IReturnsService {
    *   named connection.
    */
   recordReturn(input: RecordReturnInput): Promise<ReturnRecord>;
+
+  /**
+   * Resolve each of this return's lines to the order line it came from (#3171),
+   * persisting `ReturnLine.resolvedOrderLineId` — the value
+   * `reservations.orderLineId` and `shipment_lines.lineId` already key on.
+   *
+   * The order's lines arrive as an **argument**, never read from here: `returns`
+   * takes no `orders` service, so the caller that already holds the order
+   * composes this step. `OrderRecord.orderItems` is the intended source and is
+   * structurally assignable to `ResolvableOrderLine[]`.
+   *
+   * Idempotent and safe to re-run: every write is a fill-in-when-NULL claim, so
+   * a second pass reports `alreadyResolved` and changes nothing. An unresolved
+   * line is left `null` and counted by reason — the matcher's `ambiguous` path
+   * must stay reachable for a line this rule honestly cannot settle.
+   *
+   * Returns a zero summary for an unknown return id rather than throwing: this
+   * runs after ingestion on a best-effort footing, and failing a sync job over
+   * an attribution nicety would trade a missing field for a lost return.
+   */
+  resolveOrderLinesForReturn(
+    returnId: string,
+    orderLines: readonly ResolvableOrderLine[]
+  ): Promise<ReturnOrderLineResolutionSummary>;
 }

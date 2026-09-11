@@ -1043,6 +1043,27 @@ export class ReturnRepository implements ReturnRepositoryPort {
     }
   }
 
+  /**
+   * See the port. Same shape as `claimAttribution` above: the `IS NULL`
+   * conjunct is the whole guarantee, so two concurrent resolves cannot both
+   * win and a re-ingestion can never move an answer that already stands.
+   */
+  async claimOrderLineResolution(returnLineId: string, orderLineId: string): Promise<boolean> {
+    try {
+      const result = await this.lines
+        .createQueryBuilder()
+        .update(ReturnLineOrmEntity)
+        .set({ resolvedOrderLineId: orderLineId, updatedAt: () => 'now()' })
+        .where('"id" = :id', { id: returnLineId })
+        .andWhere('"resolvedOrderLineId" IS NULL')
+        .execute();
+
+      return (result.affected ?? 0) > 0;
+    } catch (error) {
+      throw new ReturnPersistenceError('claimOrderLineResolution', error);
+    }
+  }
+
   async claimAuthorizedAt(id: string, at: Date): Promise<boolean> {
     // The `claimDeclinedAt` shape, and the same reasoning: `IsNull()` in the WHERE
     // is the at-most-once guarantee, not the ADR-044 proposal slot and not a lock.
