@@ -878,9 +878,17 @@ export function mergeStructuredIntoConfig(
       typeof base.pricingRule === 'object' && base.pricingRule !== null
         ? (base.pricingRule as Record<string, unknown>)
         : null;
+    // `readPricingRuleConfig` (core) recognises the nested shape by
+    // `'default' in candidate || 'sourceOverrides' in candidate` - a legacy
+    // flat rule can never carry either key. Testing only `'default' in
+    // existingContainer` here missed a headless `{ sourceOverrides: {...} }`
+    // container (no `default` key): `existingSourceOverrides` resolved to
+    // `null` even though real overrides were present, so this clause -
+    // written specifically to preserve per-source overrides - destroyed them
+    // the moment such a connection saved any unrelated field on this page.
     const existingSourceOverrides =
       existingContainer &&
-      'default' in existingContainer &&
+      ('default' in existingContainer || 'sourceOverrides' in existingContainer) &&
       typeof existingContainer.sourceOverrides === 'object' &&
       existingContainer.sourceOverrides !== null &&
       Object.keys(existingContainer.sourceOverrides as Record<string, unknown>).length > 0

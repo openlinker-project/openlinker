@@ -98,11 +98,18 @@ export interface ConnectionConfig {
    * shapes are read through `readPricingRuleConfig` /
    * `readPricingRuleForSource`, which coerce a legacy flat `PricingRule` into
    * `{ default: <that rule>, sourceOverrides: {} }` at read time — no
-   * backfill migration.
+   * backfill migration. `default` is optional in the nested shape (rather
+   * than required) so a HEADLESS `{ sourceOverrides }` container — one
+   * carrying per-source overrides but no destination-level default — round-
+   * trips: `readPricingRuleConfig` recognises the shape by `'default' in
+   * candidate || 'sourceOverrides' in candidate`, so this type must admit
+   * the same set the reader (and its validator counterpart in
+   * `ConnectionService`) actually accept, or a legitimate config value fails
+   * to type-check (PR #3158 review, BLOCKING fix).
    */
   pricingRule?:
     | PricingRule
-    | { default: PricingRule; sourceOverrides?: Record<string, PricingRule> };
+    | { default?: PricingRule | null; sourceOverrides?: Record<string, PricingRule> };
   /**
    * Per-(destination connection, feeding source connection) price-sync mode
    * (#3142, ADR-072 decision 3) — whether a detected price change waits for

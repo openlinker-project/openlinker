@@ -301,10 +301,17 @@ export class ConnectionService implements IConnectionService {
     // The #3142 nested shape: `{ default, sourceOverrides }`. Validate the
     // default rule plus every per-source override with the identical rule the
     // legacy flat shape uses below - `readPricingRuleConfig` treats
-    // `'default' in candidate` as the discriminator between the two shapes,
-    // and this mirrors that exactly so validation can never disagree with
-    // what gets read back.
-    if ('default' in candidate) {
+    // `'default' in candidate || 'sourceOverrides' in candidate` as the
+    // discriminator between the two shapes (a legacy flat rule can never
+    // carry either key), and this mirrors that exactly so validation can
+    // never disagree with what gets read back. Testing `'default' in
+    // candidate` alone let a headless `{ sourceOverrides: {...} }` container
+    // (no `default` key) fall through to the legacy branch below, which
+    // validates the *container* object as if it were a flat rule - every
+    // field on it is `undefined`, so every check short-circuited and a 150%
+    // margin override was accepted with a 200 while being silently discarded
+    // on read.
+    if ('default' in candidate || 'sourceOverrides' in candidate) {
       if (candidate['default'] !== undefined && candidate['default'] !== null) {
         this.validateOnePricingRule(candidate['default'], 'config.pricingRule.default');
       }
@@ -338,6 +345,19 @@ export class ConnectionService implements IConnectionService {
     const types = ['passthrough', 'markup', 'margin'];
     if (type !== undefined && (typeof type !== 'string' || !types.includes(type))) {
       throw new BadRequestException(`${path}.type must be one of ${types.join(', ')}`);
+    }
+    // A rule carrying `percent`/`rounding` but no `type` is accepted here and
+    // then silently dropped by `coercePricingRule` on read (it requires a
+    // recognised `type` before returning anything) — so "accepted" would stop
+    // implying "will actually take effect" for exactly the shape an operator
+    // is most likely to type by hand (a percent with the type field omitted
+    // or mistyped past the `type` check above). Refuse it instead (PR #3158
+    // review, SUGGESTION 1); an entirely empty `{}` is left alone — it
+    // configures nothing either way and isn't the shape this guards against.
+    if (type === undefined && (percent !== undefined || rounding !== undefined)) {
+      throw new BadRequestException(
+        `${path}.type is required (one of ${types.join(', ')}) when percent or rounding is set`
+      );
     }
     const roundings = ['none', 'nearestWhole', 'endingIn99'];
     if (

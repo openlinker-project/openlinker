@@ -79,11 +79,12 @@ export interface PricingRuleConfig {
  * overrides) from a connection config.
  *
  * Backward-compatible with the pre-#3142 flat shape: `config.pricingRule`
- * holding a bare `{type, percent, rounding}` object (no `default` key) is
- * read as `{ default: <that rule>, sourceOverrides: {} }` — resolved at read
- * time, matching the `readStockSafetyBuffer` config-coercion precedent
- * (#1844). No backfill migration is required; an existing connection's
- * behaviour is unchanged until an operator explicitly edits it.
+ * holding a bare `{type, percent, rounding}` object (no `default` AND no
+ * `sourceOverrides` key) is read as `{ default: <that rule>,
+ * sourceOverrides: {} }` — resolved at read time, matching the
+ * `readStockSafetyBuffer` config-coercion precedent (#1844). No backfill
+ * migration is required; an existing connection's behaviour is unchanged
+ * until an operator explicitly edits it.
  */
 export function readPricingRuleConfig(
   config: ConnectionConfig | null | undefined
@@ -98,8 +99,15 @@ export function readPricingRuleConfig(
   }
   const candidate = raw as unknown as Record<string, unknown>;
 
-  // New shape: `{ default: PricingRule, sourceOverrides?: {...} }`.
-  if ('default' in candidate) {
+  // New shape: `{ default: PricingRule, sourceOverrides?: {...} }`. A legacy
+  // flat rule (`PricingRule = {type, percent, rounding}`) can never carry
+  // either `default` or `sourceOverrides` as a key, so testing for BOTH
+  // (rather than only `'default' in candidate`) cannot misclassify one — and
+  // it is what makes a headless `{ sourceOverrides: {...} }` container (no
+  // `default` key) resolve through this branch instead of silently falling
+  // through to the legacy branch below, where `coercePricingRule` would see
+  // no valid `type` on the container itself and discard every override.
+  if ('default' in candidate || 'sourceOverrides' in candidate) {
     const defaultRule = coercePricingRule(candidate['default']);
     const overridesRaw = candidate['sourceOverrides'];
     const sourceOverrides: Record<string, PricingRule> = {};
