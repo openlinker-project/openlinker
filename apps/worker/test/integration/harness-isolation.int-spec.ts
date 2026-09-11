@@ -19,12 +19,24 @@
  * ## What it proves, and what it does not
  *
  * Proves: the harness really is reset BETWEEN the test cases of a spec that
- * resets nothing itself, i.e. `setup-each.ts` is registered and running.
+ * resets nothing itself, i.e. `setup-each.ts` is registered and running - AND
+ * that the `beforeEach` half specifically is (#3126 review). The second is a
+ * separate claim and needs its own case: an earlier revision of this file
+ * could not tell the two hooks apart, so deleting ONLY the `beforeEach` line
+ * left it green while removing the half `setup-each.ts` itself calls "the
+ * load-bearing one". That is the plausible edit, precisely because
+ * `afterEach` looks sufficient.
  *
- * Does not prove: which of the two hooks did it (indistinguishable from
- * inside one file), nor that the previous FILE's rows were cleared - that
- * would need a fixture spanning two files, which Jest's default ordering on
- * this config does not guarantee, and an order-dependent guard against an
+ * The distinguishing case writes a row in `beforeAll` and asserts it is gone
+ * in the FIRST `it()`. No `afterEach` can have removed it - nothing has
+ * finished yet when that assertion runs - so only the root `beforeEach` can
+ * have. Hook order is what makes it sound: Jest runs `beforeAll`, then every
+ * `beforeEach` outermost-first (the `setupFilesAfterEnv` one is outermost),
+ * then the test body.
+ *
+ * Does not prove: that the previous FILE's rows were cleared - that would
+ * need a fixture spanning two files, which Jest's default ordering on this
+ * config does not guarantee, and an order-dependent guard against an
  * order-dependence bug is not a guard.
  *
  * Counts are taken RELATIVE to a baseline rather than against a literal zero.
@@ -48,9 +60,16 @@ async function countConnections(dataSource: DataSource): Promise<number> {
 describe('Global integration-harness isolation (#2999)', () => {
   let harness: WorkerIntegrationTestHarness;
   let baseline = -1;
+  let countAfterBeforeAllWrite = -1;
 
   beforeAll(async () => {
     harness = await getTestHarness();
+
+    // Written BEFORE any test case runs, so only the root `beforeEach` can
+    // clear it. See the docblock - this is the half that was unguarded.
+    const dataSource = harness.getDataSource();
+    await createTestConnection(dataSource, { name: 'harness-isolation beforeAll probe' });
+    countAfterBeforeAllWrite = await countConnections(dataSource);
   });
 
   afterAll(async () => {
@@ -58,6 +77,19 @@ describe('Global integration-harness isolation (#2999)', () => {
   });
 
   // NO beforeEach/afterEach reset here, on purpose. See the docblock.
+
+  it('should not see the row written in beforeAll — only the root beforeEach can have cleared it (#3126 review)', async () => {
+    // Non-vacuity: if `beforeAll` never actually wrote, "the row is gone" is
+    // trivially true and this case would pass with both hooks deleted.
+    expect(countAfterBeforeAllWrite).toBeGreaterThan(0);
+
+    // Strictly fewer than the post-write count. Deliberately not `toBe(0)`:
+    // that would additionally assert AppModule seeds no connection row, a
+    // claim this file has no business making (see the docblock).
+    expect(await countConnections(harness.getDataSource())).toBeLessThan(
+      countAfterBeforeAllWrite
+    );
+  });
 
   it('should record a row that this file never cleans up', async () => {
     const dataSource = harness.getDataSource();

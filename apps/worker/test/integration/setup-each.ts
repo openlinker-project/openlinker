@@ -87,9 +87,25 @@
  *   this directory at all.
  * - **`MasterDeletionToJobHandler`'s live consume loop** (see above) already
  *   runs against a `flushDb()`'d Redis in every one of the 21
- *   already-resetting specs today — this file does not change that exposure,
- *   only extends the SAME reset to the other six and to `beforeEach` as well
- *   as `afterEach`. #2164's stream-consumer-recovery primitives
+ *   already-resetting specs today. An earlier revision of this audit added
+ *   that "this change doesn't alter that exposure, only extends the same
+ *   reset uniformly" — **that was wrong** (#3126 review), and wrong precisely
+ *   in the six files this change exists for. `initializeConsumerGroup()` runs
+ *   ONCE, at `onModuleInit`, with `MKSTREAM: true`; `consumeLoop()` catches
+ *   every read error, logs at **error** level, sleeps 1 s and retries — it
+ *   never recreates the group. So the first `flushDb()` destroys
+ *   `events.master.deletion` and the `master-deletion-offer-pause` group for
+ *   the rest of that file's run, and the six boot specs, which previously
+ *   flushed NEVER, would emit an error-level line per second — in exactly the
+ *   specs whose purpose is diagnosing boot wiring.
+ *
+ *   No assertion breaks (`master-inventory-deletion-e2e.int-spec.ts` reads
+ *   the stream via `xRange`, not through the consumer group), so this is
+ *   diagnosability rather than correctness — which is why it needed catching
+ *   by a reviewer rather than by a red test. `reset()` now recreates the
+ *   stream and group immediately after the flush
+ *   (`restoreMasterDeletionConsumerGroup`, `setup.ts`), best-effort, so the
+ *   loop's next read succeeds. #2164's stream-consumer-recovery primitives
  *   (`resolveConsumerName`, `readOwnPending`, `reclaimOrphans`) are what make
  *   a wiped-then-recreated group and PEL survivable for a real consumer; this
  *   harness does not re-verify that property, `stream-consumer-recovery.int-
@@ -115,6 +131,23 @@
  * neighbours, and a run inspected afterwards is not showing the last file's
  * leftovers.
  *
+ * **The load-bearing half was, until #3126's review, guarded by nothing.**
+ * `harness-isolation.int-spec.ts` originally could not tell the two hooks
+ * apart, so deleting ONLY the `beforeEach` line left it green — and that is
+ * the plausible edit, because `afterEach` looks sufficient. It now carries a
+ * case that distinguishes them: a row written in `beforeAll` is asserted gone
+ * in the FIRST `it()`, which no `afterEach` can have removed (nothing has
+ * finished yet). Removing either half turns that file red.
+ *
+ * ## The 21 specs' own `resetTestHarness()` calls are deliberately kept
+ *
+ * They are idempotent and, since `reset()` probes first, nearly free once
+ * this hook has already run — so removing them is cosmetic, touches 21 files,
+ * and would make every one of them conflict with anything else in flight.
+ * They are redundant, not required: a new spec needs no reset call of its
+ * own, and `docs/testing-guide.md` says so for the worker suite. Deleting
+ * them is a follow-up worth doing on its own, not a prerequisite for this.
+ *
  * ## Why here rather than in `setup.ts`
  *
  * Same two reasons as the api precedent. `setup.ts` is an ordinary module
@@ -127,12 +160,12 @@
  *
  * ## Cost
  *
- * `reset()` (`setup.ts`) now probes before truncating (one combined `UNION
- * ALL ... WHERE EXISTS` round-trip covering the 7 tables) and before
- * flushing Redis (`DBSIZE`, an O(1) server-side counter) — mirroring
- * `truncateTables` in `libs/test-kit/src/harness.ts`, which is not exported
- * from that package's barrel for reuse outside its own spec, hence
- * reproduced here rather than imported. A reset immediately following
+ * `reset()` (`setup.ts`) now probes before truncating and before flushing
+ * Redis (`DBSIZE`, an O(1) server-side counter). The probe is `truncateTables`
+ * from `@openlinker/test-kit/harness` ITSELF, not a copy of it (#3126 review)
+ * — a copy dropped the helper's `pg_constraint` CASCADE-closure expansion,
+ * which is the one mechanism that makes probe-then-truncate equivalent to the
+ * unconditional truncate it replaces. A reset immediately following
  * another reset (the common case once this hook runs `beforeEach` AND
  * `afterEach` back to back) now costs two cheap probe round-trips and no
  * `TRUNCATE`/`flushDb()` at all, rather than 7 unconditional `TRUNCATE`
