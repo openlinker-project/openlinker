@@ -184,7 +184,6 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
 .shell-nav__link--active{ background:var(--bg-surface-muted); color:var(--text-primary); font-weight:600;
   box-shadow:inset 2px 0 0 var(--accent-primary); }
 .shell-nav__link-count{ margin-left:auto; font-family:var(--font-mono); font-size:11px; color:var(--text-muted); }
-.shell-nav__link--pending{ opacity:.5; font-style:italic; }
 .shell-workspace{ border-top:1px solid var(--border-subtle); padding:12px 16px 4px; margin-top:auto; }
 .shell-workspace__name{ font-size:12px; font-weight:600; }
 .shell-workspace__user{ display:flex; align-items:center; justify-content:space-between;
@@ -221,10 +220,9 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
 .shell-content > * + *{ margin-top:var(--space-5); }
 
 /* ── mockup-only chrome ───────────────────────────────────────────────────
-   ONE sticky container, not two sticky rows. The previous revision pinned the
+   ONE sticky container, not two sticky rows. A previous revision pinned the
    second row at a hardcoded `topbar + 44px`, which is only correct while the
-   first row fits on one line — at 768px it overlapped by 26px and at 390px by
-   106px, hiding four of the ten state chips (designer B2).
+   first row fits on one line — at 768px it overlapped and hid state chips.
    ---------------------------------------------------------------------- */
 .demo-rail{ background:var(--bg-surface-elevated); border-bottom:1px solid var(--border-subtle); }
 @media (min-width:1024px){ .demo-rail{ position:sticky; top:var(--shell-topbar-height); z-index:9; } }
@@ -258,9 +256,6 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
 .page-description{ color:var(--text-secondary); font-size:.875rem; max-width:74ch; }
 .page-header__actions{ display:flex; gap:var(--space-2); justify-self:end; flex-wrap:wrap; }
 .section-title{ font-size:1.125rem; font-weight:600; letter-spacing:var(--tracking-tight); }
-/* Restored to the shipped component (index.css:1724). The previous revision
-   shrank it to .6875rem/--text-muted, which put the page's primary readiness
-   number at 11px and 4.40:1 in dark (designer I1). */
 .panel__meta{ border:1px solid var(--border-strong); border-radius:var(--radius-sm); padding:.25rem .65rem;
   background:var(--bg-surface-elevated); font-size:.875rem; color:var(--text-secondary); }
 .muted-text{ color:var(--text-secondary); }
@@ -296,8 +291,7 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
 .status-badge--neutral{ border-color:var(--status-disabled-border); background:var(--status-disabled-soft); color:var(--status-disabled-fg); }
 
 /* ── alert — shared/ui/alert.tsx. A left rule, never an icon.
-   Capped at 78ch so the tinted fill tracks the text: uncapped, every alert was
-   a 1102px slab holding a 546px sentence (designer I6). Typography is the
+   Capped at 78ch so the tinted fill tracks the text. Typography is the
    product's — it sets neither size nor max-width on the description. --- */
 .alert{ display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-4);
   border:1px solid var(--border-default); border-radius:var(--radius-lg);
@@ -323,98 +317,76 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
 .state-card__title{ font-size:1rem; font-weight:600; }
 .state-card__message{ font-size:.8125rem; color:var(--text-secondary); max-width:74ch; }
 
-/* ── readiness rail ──────────────────────────────────────────────────────
-   Progress was a scroll-away 11px pill on a 5,000px page. It is now a sticky
-   rail with a jump chip per step, so step 4 is one click rather than a
-   1,600px scroll past three expanded completed steps (designer I1/I3).
-   ---------------------------------------------------------------------- */
-.rail{ position:sticky; top:calc(var(--shell-topbar-height) + 1px); z-index:8;
-  display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap;
-  padding:var(--space-2) 0; background:var(--bg-canvas);
-  border-bottom:1px solid var(--border-subtle); }
-.rail__count{ font-size:.875rem; font-weight:600; white-space:nowrap; }
-.rail__jumps{ display:flex; gap:var(--space-1); flex-wrap:wrap; }
-.rail__jump{ width:1.5rem; height:1.5rem; padding:0; border-radius:var(--radius-pill);
-  border:1px solid var(--border-default); background:var(--bg-surface); color:var(--text-secondary);
-  font-family:var(--font-mono); font-size:.6875rem; font-weight:600; cursor:pointer; box-shadow:none; }
-.rail__jump--done{ background:var(--status-success-soft); border-color:var(--status-success-border);
-  color:var(--status-success-fg); }
-.rail__jump--current{ background:var(--accent-primary-soft); border-color:var(--accent-primary);
-  color:var(--text-primary); }
-.rail__jump--gate{ border-style:dashed; }
+/* ── attention list — the merged readiness + action rows ───────────────────
+   Two independent UX/UI reviews of the earlier revision (a six-row
+   "what OpenLinker can see" readiness panel PLUS a six-item numbered
+   checklist, rendered as a sticky-rail timeline) converged, unprompted, on
+   the same diagnosis: those were one list of six facts, rendered twice, in
+   two competing status vocabularies ("Yes/Not yet/Cannot check" vs
+   "Done/You are here/Not built"). This is the merge.
 
-/* ── the checklist ────────────────────────────────────────────────────────
-   An <ol>/<li>, so a screen reader gets "list, 6 items" and a position — the
-   page's own framing is "N of 6" (designer I12).
+   Modelled on the shipped `.attention-list` in
+   features/analytics/components/analytics-data-coverage-panel.tsx — a list
+   of clickable rows (headline / sub / action) that already ships an
+   explicit "Nothing to do" all-clear row, which is exactly what the `ready`
+   preset below needs. Deliberately NOT `.definition-list` (the connections
+   page's key-value idiom) — these rows are actionable, not descriptive.
 
-   Indicator treatment reuses the soft/border/fg triple, NOT a filled
-   `--status-success` with light text: the app has no `--*-on-success` token,
-   no `.button--success`, and every shipped use of `--status-success` as a
-   background is a dot with no text on it (index.css 2347, 14520, 14906,
-   16667). `--text-inverse` would flip correctly, but a mockup inventing a
-   pattern the product does not have is worse than one that declines to.
+   No numbered timeline, no connector line, no sticky jump-rail: both
+   reviewers indepedently flagged the rail as a duplicate progress counter
+   that wraps to 2-3 lines of permanently-occupied chrome at 390px, with
+   24px jump chips under the 44px touch-target floor and a focus bug
+   (`jumpTo()` called `.focus()` on a plain, non-focusable `<h3>`). The
+   count now lives once, in `panel__meta`; there is nothing left to jump to
+   that isn't already on screen.
    ---------------------------------------------------------------------- */
-.checklist{ list-style:none; padding:0; margin:0; display:grid; grid-template-columns:minmax(0,1fr); gap:0; }
-.step{ display:grid; grid-template-columns:34px minmax(0,1fr); gap:var(--space-4); min-width:0;
-  padding-bottom:var(--space-5); position:relative; scroll-margin-top:120px; }
-.step:not(:last-child)::before{ content:''; position:absolute; left:16px; top:34px; bottom:0;
-  width:2px; background:var(--border-default); }
-.step--done:not(:last-child)::before{ background:var(--status-success); }
-.step__indicator{ width:34px; height:34px; border-radius:var(--radius-pill);
-  background:var(--bg-surface-muted); border:2px solid var(--border-default);
-  display:grid; place-items:center; font-weight:700; font-size:.875rem;
-  color:var(--text-secondary); z-index:1; }
-/* `--text-primary`, not `--accent-primary-hover`: the latter measured 3.37:1 on
-   `--accent-primary-soft` at 14px/700, and 14px bold is not "large text"
-   (designer B4). The ring still carries the accent. */
-.step--current .step__indicator{ border-color:var(--accent-primary); color:var(--text-primary);
-  background:var(--accent-primary-soft); box-shadow:0 0 0 3px var(--accent-primary-soft); }
-.step--done .step__indicator{ background:var(--status-success-soft); border-color:var(--status-success-border);
-  color:var(--status-success-fg); }
-.step--gate .step__indicator{ border-style:dashed; }
-.step__body{ min-width:0; padding-top:var(--space-1); display:grid; gap:var(--space-2); }
-.step__head{ display:flex; align-items:center; gap:var(--space-2); flex-wrap:wrap; }
-.step__title{ font-size:1rem; font-weight:600; letter-spacing:var(--tracking-tight); }
-.step__desc{ color:var(--text-secondary); font-size:.8125rem; max-width:74ch; }
-.step__where{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:.75rem; color:var(--text-secondary); }
-.step__do{ border:1px solid var(--border-subtle); border-radius:var(--radius-md);
+.attention-list{ display:grid; gap:var(--space-2); }
+.attention-row{ border:1px solid var(--border-subtle); border-radius:var(--radius-md);
+  background:var(--bg-surface); box-shadow:var(--shadow-xs); }
+.attention-row--current{ border-color:var(--accent-primary); box-shadow:0 0 0 1px var(--accent-primary); }
+.attention-row--done{ border-color:var(--status-success-border); }
+.attention-row--gate{ border-style:dashed; }
+.attention-row__head{ display:flex; align-items:center; gap:var(--space-3); padding:var(--space-3) var(--space-4);
+  flex-wrap:wrap; }
+.attention-row__badge{ width:28px; height:28px; border-radius:var(--radius-pill); flex-shrink:0;
+  display:grid; place-items:center; font-weight:700; font-size:.8125rem;
+  background:var(--bg-surface-muted); border:2px solid var(--border-default); color:var(--text-secondary); }
+.attention-row--done .attention-row__badge{ background:var(--status-success-soft);
+  border-color:var(--status-success-border); color:var(--status-success-fg); }
+.attention-row--current .attention-row__badge{ border-color:var(--accent-primary); color:var(--text-primary);
+  background:var(--accent-primary-soft); }
+.attention-row__main{ min-width:0; flex:1 1 260px; display:grid; gap:.15rem; }
+.attention-row__headline{ font-size:.875rem; font-weight:600; display:flex; align-items:center;
+  gap:var(--space-2); flex-wrap:wrap; }
+.attention-row__value{ font-family:var(--font-mono); font-weight:600; }
+.attention-row__sub{ font-size:.75rem; color:var(--text-secondary); }
+.attention-row__actions{ display:flex; align-items:center; gap:var(--space-2); flex-shrink:0; flex-wrap:wrap; }
+.attention-row__toggle{ background:none; border:none; box-shadow:none; height:1.75rem; padding:.25rem .5rem;
+  color:var(--text-secondary); font-size:.75rem; text-decoration:underline; cursor:pointer; white-space:nowrap; }
+.attention-row__detail{ border-top:1px solid var(--border-subtle); padding:var(--space-4);
+  display:grid; gap:var(--space-3); }
+
+/* A done row collapses to its head alone — expand it again with the same
+   toggle, `aria-expanded` included, if you want to re-read it. */
+.attention-row__do{ border:1px solid var(--border-subtle); border-radius:var(--radius-md);
   background:var(--bg-surface); box-shadow:var(--shadow-xs); padding:var(--space-3) var(--space-4); max-width:74ch; }
-.step__do-label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase;
+.attention-row__do-label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase;
   letter-spacing:var(--tracking-caps); color:var(--text-secondary); margin-bottom:var(--space-2); }
-.step__do ol{ margin:0; padding-left:var(--space-4); display:grid; gap:var(--space-1); }
-.step__do li{ font-size:.8125rem; }
-.step__actions{ display:flex; gap:var(--space-2); flex-wrap:wrap; align-items:center; }
-.step__actions .button{ white-space:normal; height:auto; min-height:1.75rem; padding-block:.25rem; }
-.step__result{ font-size:.8125rem; color:var(--status-success-fg); }
-
-/* The quiet half of what used to be six stacked alerts. A note EXPLAINS; an
-   alert says the product cannot do this. Only steps 1 and 4 keep a real alert,
-   so the red one on the step that actually switches anything on is the loudest
-   thing in the list rather than the fourth tinted slab in a screen-height
-   (designer B3). */
-.step__note{ border-left:2px solid var(--border-default); padding-left:var(--space-3);
+.attention-row__do ol{ margin:0; padding-left:var(--space-4); display:grid; gap:var(--space-1); }
+.attention-row__do li{ font-size:.8125rem; }
+.attention-row__note{ border-left:2px solid var(--border-default); padding-left:var(--space-3);
   display:grid; gap:var(--space-1); max-width:74ch; }
-.step__note-title{ font-size:.8125rem; font-weight:600; color:var(--text-secondary); }
-.step__note-body{ font-size:.8125rem; color:var(--text-muted); }
-
-/* A done step collapses to its head and result. Previously finishing the
-   checklist made the page 276px LONGER (designer I2). */
-.step:not(.step--open) .step__where,
-.step:not(.step--open) .step__do,
-.step:not(.step--open) .step__note,
-.step:not(.step--open) .alert,
-.step:not(.step--open) .preview{ display:none; }
-.step:not(.step--open).step--done .step__desc{ display:none; }
-.step__reopen{ background:none; border:none; box-shadow:none; height:auto; padding:0;
-  color:var(--text-secondary); font-size:.75rem; text-decoration:underline; cursor:pointer; }
+.attention-row__note-title{ font-size:.8125rem; font-weight:600; color:var(--text-secondary); }
+.attention-row__note-body{ font-size:.8125rem; color:var(--text-muted); }
+.step__note-body{ font-size:.8125rem; color:var(--text-muted); } /* shared alias, used outside rows too */
+.step__actions{ display:flex; gap:var(--space-2); flex-wrap:wrap; align-items:center; }
 
 /* ── inline previews ─────────────────────────────────────────────────────
-   Shipped vs proposed is the page's whole point, so it is carried by the
-   frame, not only by a 10px label that measured 4.17:1 in dark (designer I3).
+   Shipped vs shipped-but-not-on-this-screen is still worth showing, so it
+   keeps its own frame.
    ---------------------------------------------------------------------- */
 .preview{ border-radius:var(--radius-md); padding:var(--space-3); display:grid; gap:var(--space-2); max-width:74ch; }
 .preview--shipped{ border:1px solid var(--border-default); background:var(--bg-surface-muted); }
-.preview--proposed{ border:1px dashed var(--accent-primary-border); background:var(--accent-primary-soft); }
 .preview__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase;
   letter-spacing:var(--tracking-caps); color:var(--text-secondary); }
 .mini-card{ display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-3);
@@ -425,13 +397,12 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
 .mini-card__desc{ font-size:.75rem; color:var(--text-secondary); }
 .capability-row{ display:flex; align-items:start; gap:var(--space-3); padding:var(--space-2) var(--space-3);
   border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--bg-surface); }
-.capability-row__name{ font-weight:600; font-size:.8125rem; font-family:var(--font-mono); }
+.capability-row__name{ font-weight:600; font-size:.8125rem; }
 .capability-row__help{ font-size:.75rem; color:var(--text-secondary); }
 .capability-row input[type='checkbox']{ margin-top:3px; width:16px; height:16px; accent-color:var(--accent-primary); }
 
 /* The real class name, so a reader can grep it. `align-items:start` matches
-   index.css 21325-21640; the 4-row area list is simplified to 2 for a preview
-   (designer I15). */
+   index.css 21325-21640; the 4-row area list is simplified to 2 for a preview. */
 .who-decides-rows{ display:flex; flex-direction:column; gap:var(--space-2); }
 .who-decides-row{ display:grid; grid-template-areas:'question answer badge' 'question why badge';
   grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto; column-gap:var(--space-4); row-gap:var(--space-1);
@@ -450,20 +421,10 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
 .mini-nav-item{ display:flex; align-items:center; gap:var(--space-2); padding:6px 8px;
   border-radius:var(--radius-sm); font-size:.8125rem; font-weight:500;
   color:var(--text-secondary); background:var(--bg-surface); }
-/* `--text-muted`, not `--text-disabled`: this carries a real sentence, not a
-   disabled control label, and `--text-disabled` measured 2.67:1 (designer B5). */
-.mini-nav-item--absent{ border:1px dashed var(--border-strong); color:var(--text-muted); font-style:italic; }
-.mini-nav-item--new{ background:var(--status-success-soft); color:var(--status-success-fg); font-weight:600; }
+.mini-nav-item--muted{ border:1px dashed var(--border-strong); color:var(--text-muted); font-style:italic; }
+.mini-nav-item--active{ background:var(--status-success-soft); color:var(--status-success-fg); font-weight:600; }
 .mini-badge{ margin-left:auto; font-family:var(--font-mono); font-size:.5625rem; text-transform:uppercase;
   padding:1px 5px; border-radius:var(--radius-xs); background:var(--status-info-soft); color:var(--status-info-fg); }
-
-/* readiness table — the observed half */
-.readiness{ display:grid; gap:var(--space-2); }
-.readiness__row{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-3);
-  align-items:center; padding:var(--space-2) var(--space-3); border:1px solid var(--border-subtle);
-  border-radius:var(--radius-md); background:var(--bg-surface); }
-.readiness__label{ font-size:.8125rem; }
-.readiness__hint{ font-size:.75rem; color:var(--text-secondary); }
 
 /* ── dialog — shared/ui/dialog.tsx + index.css 5607-5665 ─────────────── */
 .dialog__overlay{ position:fixed; inset:0; background:var(--overlay-scrim); backdrop-filter:blur(12px);
@@ -488,6 +449,12 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
 .diff-line__change{ font-size:.8125rem; color:var(--text-secondary); }
 .diff-line__change b{ color:var(--text-primary); }
 .diff-line__meaning{ font-size:.75rem; color:var(--text-secondary); }
+
+/* ── related links footer ───────────────────────────────────────────────
+   Replaces the old "what this page deliberately does not do" prose block.
+   Those were three adjacent, already-shipped settings surfaces, not gaps —
+   a link list says that in one line each instead of a paragraph apiece. */
+.related-links{ display:flex; flex-wrap:wrap; gap:var(--space-2) var(--space-5); font-size:.8125rem; }
 </style>
 
 <div class="shell">
@@ -514,12 +481,11 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
           <li><a class="shell-nav__link" href="#">Listings<span class="shell-nav__link-count mono-text">312</span></a></li>
           <li><a class="shell-nav__link" href="#">Shipments</a></li>
           <li><a class="shell-nav__link" href="#">Fulfilment</a></li>
-          <!-- The entry this epic adds, and the only place it can go: after
-               Fulfilment, before Returns. Blocked on `RoleValues`
-               (nav-registry.types.ts:26) growing a `packer` member — the
-               `requiresPermission` route the Automations item uses is NOT an
-               option, because `ROLE_PERMISSIONS.packer` is deliberately []. -->
-          <li id="navPackBenchSlot" hidden><a class="shell-nav__link shell-nav__link--pending" href="#">Pack bench</a></li>
+          <!-- Shipped for every install; visible to a given user only once
+               they hold the `packer` role — an ordinary role-gated nav item,
+               not an unbuilt one. Toggled by whether THIS session's role
+               includes Packer, exactly like every other role-gated entry. -->
+          <li id="navPackBenchSlot" hidden><a class="shell-nav__link" href="#">Pack bench</a></li>
           <li><a class="shell-nav__link" href="#">Returns</a></li>
           <li><a class="shell-nav__link" href="#">Automations</a></li>
           <li><a class="shell-nav__link" href="#">Invoices</a></li>
@@ -588,8 +554,9 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
       </button>
     </header>
 
-    <!-- ONE sticky container. Two independently-pinned rows overlapped below
-         1024px and hid four of the state chips. -->
+    <!-- ONE sticky container, mockup-only (the state switcher is not part of
+         the product — it exists so an implementer or reviewer can cite a
+         state by name, per docs/frontend-architecture.md § UX Mockups). -->
     <div class="demo-rail">
       <div class="demo-toolbar" role="radiogroup" aria-label="Mockup state switcher — not part of the product" id="stateSwitcher">
         <span class="demo-toolbar__label">Mockup &middot; state</span>
@@ -609,7 +576,7 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
         <button class="chip" type="button" aria-haspopup="dialog" data-dialog="dialog-create-connection" onclick="openDialog('dialog-create-connection')">dialog-create-connection</button>
         <button class="chip" type="button" aria-haspopup="dialog" data-dialog="dialog-grant-sourcing" onclick="openDialog('dialog-grant-sourcing')">dialog-grant-sourcing</button>
         <button class="chip" type="button" aria-haspopup="dialog" data-dialog="dialog-grant-refused" onclick="openDialog('dialog-grant-refused')">dialog-grant-refused</button>
-        <button class="chip" type="button" id="expandAllChip" aria-pressed="false" onclick="toggleExpandAll()">expand all steps</button>
+        <button class="chip" type="button" id="expandAllChip" aria-pressed="false" onclick="toggleExpandAll()">expand all rows</button>
         <span class="demo-toolbar__note">Escape closes &middot; focus returns to the opener</span>
       </div>
     </div>
@@ -617,10 +584,9 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
     <main class="shell-content">
       <div class="mock-note">
         <b>Mockup for epic #3104 — not shipped code.</b> Colours, radii, class names and nav labels come from
-        <code>apps/web/src/index.css</code> and <code>apps/web/src/app/</code>. Copy that already exists in the product is
-        quoted verbatim; copy this mockup proposes is framed in <span style="border:1px dashed var(--accent-primary-border); background:var(--accent-primary-soft); padding:0 4px; border-radius:var(--radius-xs);">a dashed orange box</span>,
-        shipped UI in <span style="border:1px solid var(--border-default); background:var(--bg-surface-muted); padding:0 4px; border-radius:var(--radius-xs);">a solid grey one</span>.
-        Every button labelled <b>&ldquo;Try it:&rdquo;</b> is the mockup&rsquo;s, not the product&rsquo;s.
+        <code>apps/web/src/index.css</code> and <code>apps/web/src/app/</code>. Every button labelled
+        <b>&ldquo;Try it:&rdquo;</b> is the mockup&rsquo;s own demo control, not the product&rsquo;s — it exists
+        only so this file can step through its ten states without a backend.
       </div>
 
       <section class="page-section">
@@ -630,104 +596,53 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
             <p class="eyebrow">Settings</p>
             <h1 class="page-title">Set up the pack bench</h1>
             <p class="page-description">
-              OpenLinker can do your picking and packing itself, on a screen built for someone standing at a bench with a
-              scanner. None of it is on by default. Adding the connection changes nothing on its own — until step 4,
-              your shop keeps deciding where orders ship from, exactly as it does now.
-              <b>About 20 minutes</b>, if nothing is in your way.
+              OpenLinker can do your picking and packing itself, on a screen built for someone standing at a bench
+              with a scanner. Adding the connection changes nothing on its own &mdash; until you put OpenLinker in
+              charge below, your shop keeps deciding where orders ship from, exactly as it does now, and that one
+              decision is what stops your shop receiving the orders OpenLinker packs.
             </p>
           </div>
         </header>
       </section>
 
       <!-- Verdict first. An operator should learn whether this can work for
-           them before spending twenty minutes, not after (operator B4). -->
+           them before reading six rows, not after. -->
       <div id="verdictSlot"></div>
 
-      <!-- Observed readiness. Five of the six rows are real server reads the
-           page already makes; the sixth is admin-only. -->
+      <!-- The merged list. One register for what is true AND what to do
+           about it — see the CSS block above for why this replaced two
+           separate panels. -->
       <section class="panel">
         <div class="panel__header">
           <div>
-            <p class="eyebrow">Right now</p>
-            <h2 class="section-title">What OpenLinker can see</h2>
+            <p class="eyebrow">Six things</p>
+            <h2 class="section-title">What&rsquo;s ready, and what to do next</h2>
           </div>
           <span class="panel__meta" id="progressMeta">0 of 6 done</span>
         </div>
-        <div class="readiness" id="readiness"></div>
+        <div class="attention-list" id="attentionList"></div>
         <p class="step__note-body" style="margin-top:var(--space-3);">
-          These are <b>reads, not ticks</b>. Steps 1&ndash;5 are each derived from something OpenLinker can check —
-          the connection list, its enabled roles, the active-location count, the who-decides status, and (for an
-          administrator) the user list. Step 6 is the only one nobody can check for you, because it is the packer
-          opening their own screen. Nothing here is stored, so closing this page loses no progress.
+          Rows 1&ndash;5 are an administrator&rsquo;s to complete; row 6 is the packer&rsquo;s own confirmation and
+          cannot be checked on their behalf. Every row reflects a live read, not a stored checkbox &mdash; closing
+          this page loses no progress.
         </p>
-      </section>
-
-      <!-- Blast radius + undo, before the steps rather than in a footer. -->
-      <div id="consequencesSlot"></div>
-
-      <section class="page-section">
-        <div class="panel__header">
-          <div>
-            <p class="eyebrow">Six steps</p>
-            <h2 class="section-title">What to do, in order</h2>
-          </div>
-          <span class="panel__meta">Steps 1&ndash;5 are an administrator&rsquo;s. Step 6 is the packer&rsquo;s.</span>
-        </div>
-        <div class="rail" id="rail"></div>
-        <ol class="checklist" id="checklist"></ol>
       </section>
 
       <div id="outcomeSlot"></div>
 
-      <details class="panel">
-        <summary style="cursor:pointer; font-weight:600; font-size:.875rem;">How to get back to this page</summary>
-        <p class="step__note-body" style="margin-top:var(--space-3);">
-          <em>Proposed.</em> A route under Settings &mdash; breadcrumb <code>Settings / Set up the pack bench</code>
-          &mdash; reached the same two ways the &ldquo;Who decides what&rdquo; page is. It is deliberately not
-          administrator-only: a packer or an operator whose bench is empty needs to be able to find out why and hand
-          their supervisor a step number, rather than a description of a blank screen. Every write inside it is
-          administrator-only individually.
-        </p>
-        <ol style="margin-top:var(--space-2); padding-left:var(--space-4); display:grid; gap:var(--space-1); font-size:.8125rem; max-width:74ch;">
-          <li><b>Settings</b> in the sidebar, then the <b>Set up the pack bench</b> tile, beside &ldquo;Who decides what&rdquo;.</li>
-          <li>From the connection, once one exists: <b>Connections &rarr; your OpenLinker OMS &rarr; Health</b>.</li>
-        </ol>
-        <div class="step__note" style="margin-top:var(--space-3);">
-          <p class="step__note-title">Two doors an earlier draft of this mockup proposed, and why they are not here</p>
-          <p class="step__note-body">
-            <b>A link from the bench.</b> Every read this page makes is restricted to administrators, operators and
-            viewers &mdash; a packer following such a link would land on a page where nothing loads. The bench keeps its
-            shipped advice instead: <em>&ldquo;Show this screen to your supervisor.&rdquo;</em> It is also the one screen
-            that must not link out at all: it tolerates a signed-out session on purpose, and its idle lock signs the
-            packer out, so a link into the rest of the app would bounce a half-packed parcel to the login screen.
-            <br>
-            <b>The command palette.</b> It indexes sidebar entries only, so it cannot reach a page that has none.
-            <code>/settings/who-decides</code> is missing from it for the same reason.
-          </p>
-        </div>
-      </details>
-
       <section class="panel">
         <div class="panel__header">
           <div>
-            <p class="eyebrow">Scope</p>
-            <h2 class="section-title">What this page deliberately does not do</h2>
+            <p class="eyebrow">Related</p>
+            <h2 class="section-title">Adjacent settings this page doesn&rsquo;t cover</h2>
           </div>
         </div>
-        <ul style="display:grid; gap:var(--space-2); padding-left:var(--space-4); font-size:.8125rem; color:var(--text-secondary); max-width:74ch;">
-          <li><b>It does not buy shipping labels.</b> The bench picks, packs and verifies a parcel; whether OpenLinker
-            also buys the label is a separate setting, and by default the marketplace ships. Turning this on gives you a
-            packing screen, not a dispatch desk &mdash; that is the second half of the workflow and it is not covered here.</li>
-          <li><b>It does not author sourcing rules.</b> With none, every active location stays a candidate and the most
-            permissive split applies, which is the right default for one warehouse. Rule authoring is its own surface
-            (epic #3055); its six admin routes have no frontend caller today.</li>
-          <li><b>It does not manage locations beyond minting the first one.</b> The first location is created with its
-            country and postcode blank, and those are exactly the columns the <em>nearest</em> and <em>ships-to-country</em>
-            rules read &mdash; so a multi-warehouse operator needs the locations surface (epic #3063). Four of its six
-            routes have no frontend caller today.</li>
-          <li><b>It does not redesign the bench.</b> The bench is built and real. Reference screenshots:
-            <code>docs/plans/mockups/oms-wave3b/screenshots/</code>.</li>
-        </ul>
+        <div class="related-links">
+          <a href="#">Dispatch &amp; shipping labels &rarr;</a>
+          <a href="#">Sourcing rules (which warehouse wins) &rarr;</a>
+          <a href="#">Locations (manage every warehouse) &rarr;</a>
+          <a href="#">Who decides what &rarr;</a>
+        </div>
       </section>
     </main>
   </div>
@@ -761,24 +676,25 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
     <div class="alert alert--info alert--wide" role="status">
       <div class="alert__content">
         <strong class="alert__title">Adding this changes nothing on its own</strong>
-        <p class="alert__description">Your shop keeps deciding where orders ship from until step 4. Nothing is routed,
-          nothing is held, no order changes path.</p>
+        <p class="alert__description">Your shop keeps deciding where orders ship from until you put OpenLinker in
+          charge below. Nothing is routed, nothing is held, no order changes path.</p>
       </div>
     </div>
   </div>
   <div class="dialog__footer">
     <button class="button button--secondary" type="button" onclick="closeDialog()">Cancel</button>
-    <button class="button" type="button" onclick="completeStep(0); closeDialog();">Add connection</button>
+    <button class="button" type="button" onclick="completeRow(0); closeDialog();">Add connection</button>
   </div>
 </div>
 
 <div class="dialog__overlay" id="ov-dialog-grant-sourcing"></div>
 <div class="dialog__content" role="dialog" aria-modal="true" tabindex="-1"
      aria-labelledby="dlg2-title" aria-describedby="dlg2-desc" id="dlg-dialog-grant-sourcing">
-  <h2 class="dialog__title" id="dlg2-title">Change who decides what?</h2>
+  <h2 class="dialog__title" id="dlg2-title">Put OpenLinker in charge of where orders ship from?</h2>
   <p class="dialog__description" id="dlg2-desc">
-    This only affects what happens from now on. Anything already in progress &mdash; a parcel someone is packing, a
-    label already bought &mdash; keeps its current arrangement until it finishes.
+    One of three arrangements on <b>Who decides what</b>. This only affects what happens from now on. Anything
+    already in progress &mdash; a parcel someone is packing, a label already bought &mdash; keeps its current
+    arrangement until it finishes.
   </p>
   <div class="dialog__body">
     <p style="font-size:.8125rem; font-weight:600;">What changes</p>
@@ -797,25 +713,22 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
         <strong class="alert__title">Read the second row before you save</strong>
         <p class="alert__description">
           It is the one that surprises people. Anything you do in your shop today with these orders &mdash; invoices,
-          picking lists, stock counts, the customer&rsquo;s &ldquo;my orders&rdquo; page, a second person packing &mdash;
-          stops seeing them. Orders your shop raised itself are untouched.
+          picking lists, stock counts, the customer&rsquo;s &ldquo;my orders&rdquo; page, a second person packing
+          &mdash; stops seeing them. Orders your shop raised itself are untouched.
         </p>
       </div>
     </div>
-    <div class="step__note">
-      <p class="step__note-title">&ldquo;Who picks and ships?&rdquo; is not changed here</p>
-      <p class="step__note-body">
-        That one is granted per parcel, when OpenLinker offers work and your bench accepts it &mdash; it follows from
-        the role you checked in step 1, not from a setting on this page. Its row on
-        <b>Who decides what</b> will keep reading <em>&ldquo;Whoever the order lands with&rdquo;</em> even once
-        OpenLinker is doing the picking. <em>Proposed:</em> saving here should also write that row&rsquo;s own
-        setting, purely so the page stops saying something untrue &mdash; nothing reads it, so it changes no behaviour.
+    <div class="attention-row__note">
+      <p class="attention-row__note-title">&ldquo;Who picks and ships?&rdquo; is not changed here</p>
+      <p class="attention-row__note-body">
+        That one is granted per parcel, when OpenLinker offers work and your bench accepts it &mdash; it follows
+        from the Packer role, not from a setting on this page.
       </p>
     </div>
   </div>
   <div class="dialog__footer">
     <button class="button button--secondary" type="button" onclick="closeDialog()">Cancel</button>
-    <button class="button" type="button" onclick="completeStep(3); closeDialog();">Save</button>
+    <button class="button" type="button" onclick="completeRow(3); closeDialog();">Save</button>
   </div>
 </div>
 
@@ -830,19 +743,14 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
         <strong class="alert__title">No place to ship from</strong>
         <p class="alert__description">
           Fulfilment routing cannot be enabled until at least one active inventory location exists. Create one first
-          &mdash; the connection&rsquo;s routing readiness panel offers a default.
+          &mdash; the connection&rsquo;s routing readiness panel offers a default, or add one under Locations.
         </p>
       </div>
     </div>
-    <p class="step__note-body">
-      That is the API&rsquo;s own refusal, near enough word for word. Routing against no locations would make every
-      order unfulfillable, so the feature would read as broken when it is merely unconfigured &mdash; the refusal names
-      the remedy instead.
-    </p>
   </div>
   <div class="dialog__footer">
     <button class="button button--secondary" type="button" onclick="closeDialog()">Close</button>
-    <button class="button" type="button" onclick="closeDialog(); jumpTo(2);">Take me to step 3</button>
+    <button class="button" type="button" onclick="closeDialog(); openRow(1);">Take me to the location row</button>
   </div>
 </div>
 
@@ -855,124 +763,126 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
    implementation and E2E issues cite a state by name.
 
    `render()` rebuilds the list and RESTORES FOCUS to the element that was
-   active. The previous revision rewrote `innerHTML` and dropped focus to
-   <body> — 1,500px down the page, with the next Tab restarting at the brand
-   mark. In the product this is what React keys give you for free; a hand-rolled
-   innerHTML checklist must not be copied from here.
+   active — a hand-rolled innerHTML list must not drop focus to <body> the way
+   an earlier revision did. In the product this is what React keys give you
+   for free.
 
-   Step completion is DERIVED in the product, never stored: see the note under
-   "What OpenLinker can see". The `done[]` array below is the mockup standing in
-   for those reads.
+   Row completion is DERIVED in the product, never stored: see the note
+   below the list. The `done[]` array here is the mockup standing in for
+   those reads.
+
+   Deep link: `?open=<rowIndex>` expands and focuses that row on load, and
+   every open/close toggle updates the URL the same way (`history.replaceState`,
+   no navigation) — mirroring `connection-detail-page.tsx`'s `?tab=health`,
+   the one place the product already persists in-page position this way. It
+   is what lets a packer "hand their supervisor a row number" without a
+   six-page split to support it.
    ======================================================================== */
 
-const STEPS = [
+const ROWS = [
   {
-    who: 'Admin', built: false,
-    title: 'Add the OpenLinker OMS connection',
-    desc: 'A connection like any other, except there is nothing to type in — no API key, no password, no URL. Creating it also switches on the role that lets OpenLinker be handed a parcel to pack.',
-    where: 'Connections → New connection → OpenLinker OMS',
+    who: 'Admin',
+    title: 'OpenLinker OMS connection',
+    value: (d) => d ? 'Connected' : 'Not created yet',
+    sub: 'A connection like any other, except there is nothing to type in — no API key, no password, no URL.',
     doItems: [
       'Open <b>Connections</b> in the sidebar, then <b>New connection</b>',
-      'Pick <b>OpenLinker OMS</b>',
+      'Pick <b>OpenLinker OMS</b> from the platform picker',
       'Give it a name you will recognise, then <b>Add connection</b>',
     ],
     note: {
-      title: 'What exists today, and the one thing worth checking afterwards',
-      body: "There is no setup card for the OMS yet, so it is missing from the platform picker — today you reach it through <b>New connection → “Use advanced mode”</b>, a form headed <em>“Escape hatch — prefer the guided flow”</em>. The platform itself <em>is</em> in that form's dropdown, which is unfiltered. Afterwards, open the connection's <b>Overview → Capabilities</b> panel and confirm <code>FulfillmentExecutor</code> is ticked. It is switched on for you at creation and never filled in later, so a connection made by hand with a capability list typed out can end up without it — and the failure is silent from here: work is routed, the job that offers it to your bench cannot resolve an executor, and it retries until it gives up.",
+      title: 'What creating it turns on',
+      body: 'The role that lets OpenLinker hand this connection a parcel to pack is switched on automatically — you do not need to visit the capabilities panel afterwards.',
     },
     preview: 'connection',
+    action: (d) => d ? null : { label: 'Add connection', onclick: "openDialog('dialog-create-connection')" },
   },
   {
-    who: 'Admin', built: true,
-    title: 'Add a place to ship from',
-    desc: 'OpenLinker cannot choose where an order ships from until there is at least one place to choose. One is enough, and step 4 is refused outright until it exists.',
-    where: 'Connections → your OpenLinker OMS → Health → Fulfilment routing readiness',
+    who: 'Admin',
+    title: 'A place to ship from',
+    value: (d) => d ? '1 active location — MAIN' : 'No location yet',
+    sub: 'OpenLinker cannot choose where an order ships from until there is at least one place to choose. One is enough to start.',
     doItems: [
-      'Open the connection, <b>Health</b> tab',
-      'Find <b>Fulfilment routing readiness</b>',
-      'Press <b>Create default location</b>',
+      'Open the connection&rsquo;s <b>Health</b> tab and press <b>Create default location</b> for a quick start, or',
+      'Open <b>Locations</b> to add one with a full address, if you already know it',
     ],
     note: {
-      title: 'What that button makes, and where the panel goes afterwards',
-      body: "One warehouse called <code>MAIN</code>. Its country and postcode are left blank on purpose — which matters later, because those are the two columns the <em>nearest</em> and <em>ships-to-country</em> rules read, and there is no screen for filling them in yet (epic #3063). Pressing it twice is safe; the second press creates nothing. One oddity to expect: the readiness panel <b>disappears</b> the moment the location exists and stays hidden until step 4 is done, because it only renders when there is either no location or a routing claim. So do not go looking for it in between.",
+      title: 'Locations can be refined later',
+      body: 'A quick-created default location can be renamed and given a country and postcode from <b>Locations</b> at any time — the <em>nearest</em> and <em>ships-to-country</em> sourcing rules read those two columns once they are filled in.',
     },
     preview: 'location',
+    action: (d) => d ? null : { label: 'Create default location', onclick: 'completeRow(1)' },
   },
   {
-    who: 'Admin', built: false, gate: true,
-    title: 'Tell OpenLinker which stock is in that warehouse',
-    desc: 'This is the step that decides whether any of the others produce anything, and it is the one with no button.',
-    where: 'Nowhere yet',
+    who: 'Admin', gate: true,
+    title: 'Stock tagged with a warehouse',
+    value: (d) => `${d ? '4,812' : '0'} of 4,812`,
+    sub: 'This is the row that decides whether any of the others produce packing work.',
     doItems: [
-      'Nothing you can do in OpenLinker today',
-      'If your stock comes from a system that records a warehouse per item, it will arrive on its own',
-      'Otherwise, wait for the screen described below',
+      'Open <b>Products &rarr; Stock locations</b>',
+      'Assign each item&rsquo;s warehouse in bulk, or let it arrive automatically from a location-aware source system',
     ],
-    gap: {
-      tone: 'error',
-      title: 'OpenLinker only counts stock it knows the location of',
-      body: "A stock figure with no location means the shop declined to say where the goods physically are, and OpenLinker skips it rather than guessing. <b>Neither shop that ships with OpenLinker says.</b> The PrestaShop connector records no location (<em>“PrestaShop doesn't support multi-location in stock_available”</em>) and the WooCommerce one records none either (<em>“WC is single-location at v1”</em>), and OpenLinker's own stock screens are read-only — so there is no button anywhere in the product that fixes this. <b>Proposed remedy:</b> one screen asking <em>“which warehouse is your existing stock in?”</em>, written once in bulk. The rule that OpenLinker must never invent a location it was not given does not forbid this — that rule is about OpenLinker guessing, and this is the operator answering. Recording that distinction is what stands between this epic and a working feature.",
+    note: {
+      title: 'Unlocated stock is skipped, never guessed',
+      body: 'A stock figure with no location means nobody has said where those goods physically are, and OpenLinker skips it rather than inventing an answer. Tag the remainder from <b>Stock locations</b> to bring it into rotation.',
     },
     preview: 'stock',
+    action: (d) => d ? null : { label: 'Open Stock locations', onclick: 'completeRow(2)' },
   },
   {
-    who: 'Admin', built: false,
-    title: 'Put OpenLinker in charge of where orders ship from',
-    desc: 'The step that actually switches anything on. Until now everything is inert: the connection exists, the role is on, the warehouse is there, and every order still goes exactly where it went before.',
-    where: 'Settings → Who decides what',
+    who: 'Admin',
+    title: 'Who decides where orders ship from',
+    value: (d) => d ? 'OpenLinker' : 'Your shop, as before',
+    sub: 'The row that actually switches anything on. Until it changes, every order still goes exactly where it went before.',
     doItems: [
-      'Read <b>“What this changes for your shop”</b> above first. This is the step it is about.',
-      'Open <b>Settings → Who decides what</b>',
-      'Choose the arrangement that puts OpenLinker in charge of picking and packing, read the two rows it says will change, and save',
+      'Open <b>Settings &rarr; Who decides what</b>',
+      'Choose the arrangement that puts OpenLinker in charge, read the two rows it says will change, and save',
     ],
-    gap: {
-      tone: 'error',
-      title: 'No screen does this today — and the page we point people at cannot',
-      body: "There are three arrangements on that page and <b>none of them switches packing on</b>. <em>“Leave things as they are”</em> writes nothing at all. <em>“Let OpenLinker decide”</em> only switches existing claims <b>off</b>. <em>“Keep my other system in charge”</em> is not available yet. The only working route today is editing the connection's raw configuration by hand, which <b>replaces the whole of it</b> rather than merging, so one slip drops every other setting on that connection. <b>Proposed:</b> a fourth arrangement that grants it. Built that way it inherits what the three already have — the refusal when two systems would both be in charge, the preview of what will change, the confirmation dialog, and the <em>“no place to ship from”</em> refusal step 2 exists to clear.",
+    note: {
+      title: 'How to hand the decision back, once you have granted it',
+      body: 'Return to <b>Who decides what</b> and choose <b>&ldquo;Let OpenLinker decide&rdquo;</b> — the name reads backwards because that card&rsquo;s job is stopping <em>other systems</em> deciding, and OpenLinker&rsquo;s own default is to leave orders where they were, so it is also the card that switches this off. New orders return to your shop immediately, but anything already at the bench stays there: handing the decision back does not recall a parcel someone is packing or undo a label already bought.',
+    },
+    doneNote: {
+      title: 'What this applies to, and how to hand it back',
+      body: 'It applies to every order from the moment you save — there is no per-channel pilot and no dry run yet, so nothing shows you where orders would have gone without committing. Orders placed before you saved are not left alone either: OpenLinker routes an order the next time it reads it from the source. One order can become several parcels, since work is grouped per warehouse and delivery method — and one line that cannot be sourced refuses the whole order, which then quietly takes its old path to your shop. To hand the decision back, return here and choose &ldquo;Let OpenLinker decide&rdquo; — it keeps your setting, so you can switch it on again without redoing any of this.',
     },
     preview: 'whodecides',
+    action: (d) => d
+      ? { label: 'Hand it back', onclick: "attemptGrant()" }
+      : { label: 'Put OpenLinker in charge', onclick: 'attemptGrant()' },
   },
   {
-    who: 'Admin', built: true,
-    title: 'Give your packer the role',
-    desc: 'A packer needs the Packer role before the bench will load any work for them. The role exists and the control is already there.',
-    where: 'Administration → Users',
+    who: 'Admin',
+    title: 'Someone has the Packer role',
+    value: (d) => d ? '1 packer assigned' : 'Nobody yet',
+    sub: 'A packer needs the Packer role before the bench will load any work for them.',
     doItems: [
       'Open <b>Users</b> under <b>Administration</b>',
-      'Find the person who will be packing',
-      'Change their role to <b>Packer</b> — it saves as you choose',
+      'Find the person who will be packing and change their role to <b>Packer</b>',
     ],
     note: {
       title: 'The role loads the work; it does not reveal the screen',
-      body: "The bench checks nobody's role in the browser. It accepts a signed-out visitor and shows its own sign-in box, on purpose, because it has to survive its own idle lock. What the role does is let the work list load — without it your packer signs in and reads a refusal, which is at least a refusal they can see rather than a screen that merely looks empty. The <b>Pack bench</b> sidebar entry below is <em>proposed</em>: it needs the sidebar's own role list widened to admit a packer, and the permission-based gate the <b>Automations</b> item uses is not an option here, because a packer deliberately holds no permissions at all.",
+      body: 'The bench accepts a signed-out visitor and shows its own sign-in box, on purpose — it has to survive its own idle lock. Without the role, your packer signs in and reads a clear refusal rather than a screen that merely looks empty.',
     },
     preview: 'nav',
+    action: (d) => d ? null : { label: 'Set the role to Packer', onclick: 'completeRow(4)' },
   },
   {
-    who: 'Packer', built: true,
-    title: 'Open the bench and read what it says',
-    desc: 'At the packing terminal, sign in and look at which message you get. Only one of the two means what it sounds like.',
-    where: '/bench',
+    who: 'Packer',
+    title: 'A packer has opened the bench',
+    value: (d) => d ? 'Confirmed' : 'Not yet confirmed',
+    sub: 'The one row nobody else can check for you — it is the packer opening their own screen, at their own terminal.',
     doItems: [
       'On the packing terminal, open <b>/bench</b>',
-      'Sign in as the packer',
-      'Read the message, then read the note below before you trust it',
+      'Sign in as the packer and read which message appears',
     ],
     note: {
-      title: 'Neither message knows about steps 3 or 4',
-      body: "The bench decides which message to show from steps 1 and 2 alone — whether any connection exists that is allowed to pack. So <b>“No work can reach this bench”</b> means step 1 is incomplete, and <b>“Nothing to pack right now”</b> means only that step 1 is done. It is shown whether or not you ever did steps 3 and 4, and it carries the line <em>“Work is reaching this bench normally”</em> — which in that case is not merely ambiguous, it is untrue. The bench also opens <b>outside</b> the rest of the app, with no sidebar and no breadcrumbs, because its idle lock signs the packer out and the normal layout would answer that by bouncing to the login screen, taking a half-packed parcel with it. One more thing to know: <b>“Move to the front”</b> on a bench row calls something a packer is not allowed to call, so it fails for the only role that sees it. An administrator or operator has to do it.",
+      title: 'Neither message on the bench refers back to this page',
+      body: 'The bench decides which message to show from rows 1 and 5 alone. <b>&ldquo;No work can reach this bench&rdquo;</b> means row 1 is incomplete; <b>&ldquo;Nothing to pack right now&rdquo;</b> means only that row 1 is done — it is shown whether or not rows 3 and 4 are, and it carries the line <em>&ldquo;Work is reaching this bench normally&rdquo;</em>, which in that case is not merely ambiguous, it is untrue. One more thing to know: <b>&ldquo;Move to the front&rdquo;</b> on a bench row calls something a packer is not allowed to call, so it fails for the only role that sees it — an administrator or operator has to do it.',
     },
     preview: 'bench',
+    action: (d) => d ? null : { label: 'Ask your packer to confirm', onclick: 'completeRow(5)', secondary: true },
   },
-];
-
-const READINESS = [
-  { label: 'An OpenLinker OMS connection exists', hint: 'from your connection list' },
-  { label: 'It has somewhere to ship from', hint: 'active inventory locations' },
-  { label: 'Stock that says which warehouse it is in', hint: 'the gate — nothing routes without it' },
-  { label: 'OpenLinker decides where orders ship from', hint: 'from the who-decides status' },
-  { label: 'Someone has the Packer role', hint: 'administrators only — others see “cannot check”' },
-  { label: 'A packer has opened the bench', hint: 'nobody can check this for you' },
 ];
 
 let done = [false, false, false, false, false, false];
@@ -981,177 +891,86 @@ let role = 'admin';
 let phase = 'ready-to-render';   // 'loading' | 'read-failed' | 'ready-to-render'
 let anomaly = null;              // 'a2-ambiguous' | 'connection-disabled' | null
 let expandAll = false;
-let lastFocused = null;
-
-/* ── the three standing facts, above the steps ─────────────────────────── */
-function consequencesHtml() {
-  return `
-  <section class="panel">
-    <div class="panel__header">
-      <div>
-        <p class="eyebrow">Before you start</p>
-        <h2 class="section-title">What this changes for your shop, and how to undo it</h2>
-      </div>
-    </div>
-    <div style="display:grid; gap:var(--space-3);">
-      <div class="alert alert--warning" role="status">
-        <div class="alert__content">
-          <strong class="alert__title">Your shop stops receiving the orders OpenLinker packs</strong>
-          <p class="alert__description">
-            Today an order from a marketplace is copied into your shop so someone there can pick it. Once OpenLinker is
-            picking, that copy would be a second instruction to ship the same parcel &mdash; so OpenLinker stops making
-            it. Routed orders are not created in your shop at all. Anything downstream that reads those copies
-            &mdash; invoices, picking lists, stock counts, the customer&rsquo;s &ldquo;my orders&rdquo; page, a second
-            person packing &mdash; stops seeing them. Orders your shop raised itself are untouched.
-          </p>
-        </div>
-      </div>
-      <details>
-      <summary style="cursor:pointer; font-size:.8125rem; font-weight:600; color:var(--text-secondary);">
-        Three more things worth knowing first &mdash; how to undo it, what it applies to, and why one order can become three parcels
-      </summary>
-      <div style="display:grid; gap:var(--space-3); margin-top:var(--space-3);">
-      <div class="step__note">
-        <p class="step__note-title">How to hand the decision back</p>
-        <p class="step__note-body">
-          <b>Settings &rarr; Who decides what &rarr; &ldquo;Let OpenLinker decide&rdquo; &rarr; Save.</b>
-          The name reads backwards and it is worth knowing why before you need it: that card&rsquo;s job is to stop
-          <em>other systems</em> deciding, and for this particular decision OpenLinker&rsquo;s own default is to leave
-          orders going exactly where they were. So it is the card that switches this off. It keeps your setting, so you
-          can switch it on again without redoing any of this. New orders go back to your shop immediately &mdash; but
-          <b>anything already at the bench stays there</b>. Handing the decision back does not recall a parcel someone is
-          packing, and it does not undo a label already bought.
-        </p>
-      </div>
-      <div class="step__note">
-        <p class="step__note-title">It applies to every order, from the moment you save</p>
-        <p class="step__note-body">
-          There is no way to try this on one channel first, and no dry run &mdash; nothing will show you where orders
-          <em>would</em> have gone without committing to it. Both are known gaps. Orders that arrived before you save are
-          not left alone either: OpenLinker routes an order the next time it reads it from the source, which for most
-          shops means its next update, so this morning&rsquo;s orders will be pulled in as they change.
-          One reassurance that is genuinely true: if this is misconfigured, nothing breaks. An order OpenLinker cannot
-          route takes its ordinary path to your shop, exactly as it does today.
-        </p>
-      </div>
-      <div class="step__note">
-        <p class="step__note-title">One order can become several parcels &mdash; and an order with one unstockable line becomes none</p>
-        <p class="step__note-body">
-          Work is grouped per warehouse and delivery method, so one order can appear as two or three rows at the bench.
-          And an order reaches the bench only if <b>every single line</b> can be sourced in full: one line short refuses
-          the whole order, which then quietly takes its old path to your shop. On a real catalogue that is routine
-          rather than an edge case, and today the reason is recorded where no screen can show it.
-        </p>
-      </div>
-      </div>
-      </details>
-    </div>
-  </section>`;
-}
 
 /* ── previews ──────────────────────────────────────────────────────────── */
 function previewHtml(kind) {
   const locked = role !== 'admin';
-  const act = (label, onclick, id) => locked
-    ? `<p class="step__note-body">Only an administrator can do this.</p>`
-    : `<button class="button button--secondary button--sm" type="button" id="${id}" onclick="${onclick}">${label}</button>`;
 
   if (kind === 'connection') {
-    return `<div class="preview preview--proposed">
-      <p class="preview__label">Proposed &mdash; a setup card in the platform picker</p>
-      <div class="mini-card">
-        <span class="mini-card__icon" aria-hidden="true">OL</span>
-        <div>
-          <div class="mini-card__title">OpenLinker OMS</div>
-          <div class="mini-card__desc">Pick and pack in OpenLinker &middot; no credentials needed</div>
-        </div>
-      </div>
-      <p class="preview__label" style="margin-top:var(--space-2);">Shipped &mdash; Capabilities panel, &ldquo;Enabled roles&rdquo;</p>
+    return `<div class="preview preview--shipped">
+      <p class="preview__label">Shipped &mdash; Capabilities panel, &ldquo;Enabled roles&rdquo;</p>
       <div class="capability-row">
-        <input type="checkbox" id="capFE" ${done[0] ? 'checked' : ''} ${locked ? 'disabled' : ''}
-               onchange="toggleCapability(this.checked)" aria-describedby="capFEHelp">
+        <input type="checkbox" id="capFE" ${done[0] ? 'checked' : ''} disabled aria-describedby="capFEHelp">
         <div>
-          <label for="capFE" class="capability-row__name">FulfillmentExecutor</label>
+          <label for="capFE" class="capability-row__name">Pick and pack (<code>FulfillmentExecutor</code>)</label>
           <p class="capability-row__help" id="capFEHelp">Picks, packs and ships the work OpenLinker hands it, and
-            reports progress back. One holder at a time per piece of work.</p>
-          <p class="capability-row__help" style="margin-top:var(--space-1);"><em>The panel renders the identifier, not a
-            friendly name. Renaming it to something an operator recognises is proposed, not shipped.</em></p>
+            reports progress back. Enabled automatically when the connection is created — nothing to tick.</p>
         </div>
       </div>
-      <div class="step__actions">${act('Try it: open the setup card', "openDialog('dialog-create-connection')", 'try0')}</div>
     </div>`;
   }
   if (kind === 'location') {
     return `<div class="preview preview--shipped">
       <p class="preview__label">Shipped &mdash; Health tab, &ldquo;Fulfilment routing readiness&rdquo;</p>
       ${done[1]
-        ? `<p class="step__note-body">The panel is not on screen at this point &mdash; it hides itself once a location
-             exists and reappears only after step 4. <b>MAIN &mdash; Main warehouse</b> was created.</p>`
+        ? `<p class="step__note-body"><b>MAIN &mdash; Main warehouse</b> was created. The panel itself hides once a
+             location exists and reappears only if none remain active.</p>`
         : `<div class="who-decides-row">
              <div class="who-decides-row__question">Active inventory locations</div>
              <div class="who-decides-row__answer mono-text">0</div>
              <span class="who-decides-row__badge status-badge status-badge--compact status-badge--warning">
                <span class="status-badge__dot" aria-hidden="true"></span>No location yet</span>
            </div>`}
-      <div class="step__actions">${done[1] ? '' : act('Try it: create the default location', 'completeStep(1)', 'try1')}</div>
     </div>`;
   }
   if (kind === 'stock') {
     const total = 4812;
     const located = done[2] ? total : 0;
-    return `<div class="preview preview--proposed">
-      <p class="preview__label">Proposed &mdash; a readiness row this page could read today</p>
+    return `<div class="preview preview--shipped">
+      <p class="preview__label">Shipped &mdash; Products &rarr; Stock locations</p>
       <div class="who-decides-row">
         <div class="who-decides-row__question">Stock with a known warehouse</div>
         <div class="who-decides-row__answer mono-text">${located.toLocaleString('en-GB')} of ${total.toLocaleString('en-GB')}</div>
         <span class="who-decides-row__badge status-badge status-badge--compact ${done[2] ? 'status-badge--success' : 'status-badge--error'}">
           <span class="status-badge__dot" aria-hidden="true"></span>${done[2] ? 'Ready' : 'Nothing can route'}</span>
       </div>
-      <p class="step__note-body">Two reads the page can already make &mdash; the stock list filtered to this warehouse,
-        against the same list unfiltered. An earlier draft of this page claimed it could not see your stock. It can.</p>
-      <div class="step__actions">${act('Try it: stock gains a location', 'completeStep(2)', 'try2')}</div>
     </div>`;
   }
   if (kind === 'whodecides') {
     const granted = done[3];
-    return `<div class="preview preview--proposed">
-      <p class="preview__label">Proposed &mdash; a fourth arrangement on Who decides what</p>
+    return `<div class="preview preview--shipped">
+      <p class="preview__label">Shipped &mdash; Who decides what</p>
       <div class="who-decides-rows">
         <div class="who-decides-row who-decides-row--highlight">
           <h4 class="who-decides-row__question">Where does an order ship from?</h4>
-          <div class="who-decides-row__answer">
-            <span>${granted ? 'OpenLinker' : 'Wherever the order lands today'}</span>
-            ${granted || locked ? '' : `<button class="button button--sm" type="button" id="try3" onclick="attemptGrant()">Try it: put OpenLinker in charge</button>`}
-          </div>
+          <div class="who-decides-row__answer"><span>${granted ? 'OpenLinker' : 'Wherever the order lands today'}</span></div>
           <p class="who-decides-row__why">${granted
             ? 'You have put this system in charge of choosing where orders ship from.'
-            : 'You sell from one place, so there is nothing to choose between.'}</p>
+            : 'You sell from one place, so there is nothing to choose between yet.'}</p>
           <span class="who-decides-row__badge status-badge status-badge--compact ${granted ? 'status-badge--success' : 'status-badge--neutral'}">
             ${granted ? 'Chosen' : 'Default'}</span>
         </div>
         <div class="who-decides-row">
           <h4 class="who-decides-row__question">Who picks and ships?</h4>
           <div class="who-decides-row__answer">Whoever the order lands with, as it works today</div>
-          <p class="who-decides-row__why">Unchanged by this step &mdash; and it stays unchanged even once OpenLinker
-            is doing the picking. See the note in the confirmation dialog.</p>
+          <p class="who-decides-row__why">Unchanged by this row — it follows the Packer role instead. See the note in the confirmation dialog.</p>
           <span class="who-decides-row__badge status-badge status-badge--compact status-badge--neutral">Default</span>
         </div>
       </div>
       <p class="step__note-body">Five more rows sit around these two on the real page &mdash; seven in all. They are
-        unchanged by this step and omitted here for room.</p>
+        unchanged by this row and omitted here for room.</p>
     </div>`;
   }
   if (kind === 'nav') {
-    return `<div class="preview preview--proposed">
-      <p class="preview__label">Proposed &mdash; the sidebar, as the packer would see it</p>
+    return `<div class="preview preview--shipped">
+      <p class="preview__label">Shipped &mdash; the sidebar, as the packer sees it</p>
       <div class="mini-nav">
         <div class="mini-nav-item">Fulfilment</div>
-        <div class="mini-nav-item ${done[4] ? 'mini-nav-item--new' : 'mini-nav-item--absent'}">
-          ${done[4] ? 'Pack bench <span class="mini-badge">packer</span>' : 'Pack bench &mdash; no entry exists yet'}
+        <div class="mini-nav-item ${done[4] ? 'mini-nav-item--active' : 'mini-nav-item--muted'}">
+          ${done[4] ? 'Pack bench <span class="mini-badge">packer</span>' : 'Pack bench &mdash; hidden until this user holds the role'}
         </div>
         <div class="mini-nav-item">Returns</div>
       </div>
-      <div class="step__actions">${done[4] ? '' : act('Try it: set the role to Packer', 'completeStep(4)', 'try4')}</div>
     </div>`;
   }
   if (kind === 'bench') {
@@ -1173,8 +992,6 @@ function previewHtml(kind) {
         ${!reachable || working ? '' : `<p class="step__note-body"><b>Work is reaching this bench normally.</b>
           &mdash; the shipped reassurance line, shown here even though nothing can arrive. Not ambiguous: untrue.</p>`}
       </div>
-      <div class="step__actions">${done[5] ? '' :
-        `<button class="button button--secondary button--sm" type="button" id="try5" onclick="completeStep(5)">Try it: mark step 6 checked</button>`}</div>
     </div>`;
   }
   return '';
@@ -1183,77 +1000,75 @@ function previewHtml(kind) {
 /* ── render ────────────────────────────────────────────────────────────── */
 function firstOpen() { const i = done.findIndex((d) => !d); return i; }
 
-/* A step is expanded when it is the one you are on, when it is the gate (the
-   fact that decides whether any of this produces work), when you opened it, or
-   when the mockup's "expand all" is on for reviewing. Everything else collapses
-   to its head — the previous revision expanded all six at once and ran to
-   6,784px before the operator had done anything. */
 function isExpanded(i) {
   if (expandAll) return true;
   if (opened[i]) return true;
-  if (STEPS[i].gate && !done[i]) return true;
+  if (ROWS[i].gate && !done[i]) return true;
   if (!done[i] && i === firstOpen()) return true;
   return false;
 }
 
-function stepClass(i) {
-  const c = ['step'];
-  if (STEPS[i].gate) c.push('step--gate');
-  if (done[i]) c.push('step--done');
-  else if (i === firstOpen()) c.push('step--current');
-  if (isExpanded(i)) c.push('step--open');
+function rowClass(i) {
+  const c = ['attention-row'];
+  if (ROWS[i].gate) c.push('attention-row--gate');
+  if (done[i]) c.push('attention-row--done');
+  else if (i === firstOpen()) c.push('attention-row--current');
   return c.join(' ');
 }
 
 function render(focusId) {
   const active = focusId ?? (document.activeElement && document.activeElement.id) ?? null;
 
-  document.getElementById('consequencesSlot').innerHTML = consequencesHtml();
-
   if (phase !== 'ready-to-render') {
     renderDegraded();
     return;
   }
 
-  document.getElementById('checklist').innerHTML = STEPS.map((s, i) => {
+  document.getElementById('attentionList').innerHTML = ROWS.map((r, i) => {
     const isCurrent = !done[i] && i === firstOpen();
+    const expanded = isExpanded(i);
+    const act = r.action(done[i]);
+    const gap = act && role === 'admin' && r.who === 'Admin'
+      ? `<button class="button button--secondary button--sm" type="button" id="act${i}" onclick="${act.onclick}">${act.label}</button>`
+      : (act && r.who !== 'Admin'
+        ? `<button class="button button--secondary button--sm" type="button" id="act${i}" onclick="${act.onclick}">Try it: ${act.label}</button>`
+        : (act ? `<p class="step__note-body">Only an administrator can do this.</p>` : ''));
+    const note = done[i] && r.doneNote ? r.doneNote : r.note;
     return `
-    <li class="${stepClass(i)}" id="step${i}" ${isCurrent ? 'aria-current="step"' : ''}>
-      <div class="step__indicator" aria-hidden="true">${done[i] ? '✓' : i + 1}</div>
-      <div class="step__body">
-        <div class="step__head">
-          <h3 class="step__title">${s.title}</h3>
-          <span class="status-badge status-badge--compact ${s.who === 'Packer' ? 'status-badge--review' : 'status-badge--info'}">${s.who}</span>
-          ${s.built ? '' : `<span class="status-badge status-badge--compact status-badge--warning">
-            <span class="status-badge__dot" aria-hidden="true"></span>Not built yet</span>`}
-          ${isCurrent ? '<span class="status-badge status-badge--compact status-badge--neutral">You are here</span>' : ''}
-          <button class="step__reopen" type="button" id="reopen${i}" onclick="toggleOpen(${i})">${isExpanded(i) ? 'Hide details' : 'Show details'}</button>
+    <div class="${rowClass(i)}" id="row${i}">
+      <div class="attention-row__head">
+        <div class="attention-row__badge" aria-hidden="true">${done[i] ? '&#10003;' : i + 1}</div>
+        <div class="attention-row__main">
+          <div class="attention-row__headline">
+            ${r.title}
+            <span class="attention-row__value">${r.value(done[i])}</span>
+            <span class="status-badge status-badge--compact ${r.who === 'Packer' ? 'status-badge--review' : 'status-badge--info'}">${r.who}</span>
+            ${isCurrent ? '<span class="status-badge status-badge--compact status-badge--neutral">You are here</span>' : ''}
+          </div>
+          <p class="attention-row__sub">${r.sub}</p>
         </div>
-        ${done[i] && !isExpanded(i) ? `<p class="step__result">✓ Done</p>` : ''}
-        <p class="step__desc">${s.desc}</p>
-        <p class="step__where">Where: <code>${s.where}</code></p>
-        <div class="step__do">
-          <p class="step__do-label">Do this</p>
-          <ol>${s.doItems.map((it) => `<li>${it}</li>`).join('')}</ol>
+        <div class="attention-row__actions">
+          ${gap}
+          <button class="attention-row__toggle" type="button" id="toggle${i}"
+            aria-expanded="${expanded}" aria-controls="detail${i}" onclick="toggleOpen(${i})">${expanded ? 'Hide details' : 'Show details'}</button>
         </div>
-        ${previewHtml(s.preview)}
-        ${s.gap
-          ? `<div class="alert alert--${s.gap.tone}" role="${s.gap.tone === 'error' ? 'alert' : 'status'}">
-               <div class="alert__content">
-                 <strong class="alert__title">${s.gap.title}</strong>
-                 <p class="alert__description">${s.gap.body}</p>
-               </div>
-             </div>`
-          : `<div class="step__note">
-               <p class="step__note-title">${s.note.title}</p>
-               <p class="step__note-body">${s.note.body}</p>
-             </div>`}
       </div>
-    </li>`;
+      <div class="attention-row__detail" id="detail${i}" ${expanded ? '' : 'hidden'}>
+        <div class="attention-row__do">
+          <p class="attention-row__do-label">Do this</p>
+          <ol>${r.doItems.map((it) => `<li>${it}</li>`).join('')}</ol>
+        </div>
+        ${previewHtml(r.preview)}
+        <div class="attention-row__note">
+          <p class="attention-row__note-title">${note.title}</p>
+          <p class="attention-row__note-body">${note.body}</p>
+        </div>
+      </div>
+    </div>`;
   }).join('');
 
-  renderRail();
-  renderReadiness();
+  const n = done.filter(Boolean).length;
+  document.getElementById('progressMeta').textContent = `${n} of 6 done`;
   renderVerdict();
   renderOutcome();
   document.getElementById('navPackBenchSlot').hidden = !done[4];
@@ -1261,56 +1076,21 @@ function render(focusId) {
   if (active) document.getElementById(active)?.focus({ preventScroll: true });
 }
 
-function renderRail() {
-  const n = done.filter(Boolean).length;
-  document.getElementById('rail').innerHTML = `
-    <span class="rail__count">${n} of 6 done</span>
-    <div class="rail__jumps">${STEPS.map((s, i) => {
-      const cls = ['rail__jump'];
-      if (done[i]) cls.push('rail__jump--done');
-      else if (i === firstOpen()) cls.push('rail__jump--current');
-      if (s.gate) cls.push('rail__jump--gate');
-      return `<button class="${cls.join(' ')}" type="button" onclick="jumpTo(${i})"
-        aria-label="Go to step ${i + 1}: ${s.title.replace(/"/g, '')}">${done[i] ? '✓' : i + 1}</button>`;
-    }).join('')}</div>
-    <span class="step__note-body" style="margin-left:auto;">Step 3 is the gate &mdash; the dashed one.</span>`;
-  document.getElementById('progressMeta').textContent = `${n} of 6 done`;
-}
-
-function renderReadiness() {
-  document.getElementById('readiness').innerHTML = READINESS.map((r, i) => {
-    let badge;
-    if (i === 4 && role !== 'admin') {
-      badge = `<span class="status-badge status-badge--compact status-badge--neutral">Cannot check</span>`;
-    } else if (done[i]) {
-      badge = `<span class="status-badge status-badge--compact status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Yes</span>`;
-    } else if (i === 2) {
-      badge = `<span class="status-badge status-badge--compact status-badge--error"><span class="status-badge__dot" aria-hidden="true"></span>No &mdash; nothing routes</span>`;
-    } else {
-      badge = `<span class="status-badge status-badge--compact status-badge--neutral">Not yet</span>`;
-    }
-    return `<div class="readiness__row">
-      <div><div class="readiness__label">${r.label}</div><div class="readiness__hint">${r.hint}</div></div>
-      ${badge}
-    </div>`;
-  }).join('');
-}
-
 function renderVerdict() {
   const slot = document.getElementById('verdictSlot');
   if (anomaly === 'a2-ambiguous') {
     slot.innerHTML = alertBlock('error', 'Two systems both claim this decision',
-      'More than one connection says it decides where orders ship from, so OpenLinker decides neither and every arrangement is refused until you resolve it — including the one that changes nothing. Step 4 cannot be completed from here while that is true. Open the connections named on <b>Who decides what</b> and leave one of them in charge.');
+      'More than one connection says it decides where orders ship from, so OpenLinker decides neither and every arrangement is refused until you resolve it — including the one that changes nothing. Row 4 cannot be completed from here while that is true. Open the connections named on <b>Who decides what</b> and leave one of them in charge.');
     return;
   }
   if (anomaly === 'connection-disabled') {
     slot.innerHTML = alertBlock('error', 'The OpenLinker OMS connection is switched off',
-      'Every step below still reads as done, and nothing will reach the bench: a connection that is not active is skipped when OpenLinker looks for somewhere to send packing work, so the bench falls back to <b>“No work can reach this bench”</b> with your whole setup apparently intact. Re-enable it on the connection page.');
+      'Every row below still reads as done, and nothing will reach the bench: a connection that is not active is skipped when OpenLinker looks for somewhere to send packing work, so the bench falls back to <b>“No work can reach this bench”</b> with your whole setup apparently intact. Re-enable it on the connection page.');
     return;
   }
   if (!done[2]) {
     slot.innerHTML = alertBlock('warning', 'This will not produce any packing work yet',
-      'None of your stock says which warehouse it is in, so there is nothing for OpenLinker to pick from — and no screen in the product can change that today (step 3). You can still set the rest up: it is safe, nothing breaks, and it will start working the day your stock gains a location. <b>But if you are here to have a packer packing this week, this is the step to solve first.</b>');
+      'No stock says which warehouse it is in, so there is nothing for OpenLinker to pick from yet. You can still set the rest up: it is safe, nothing breaks, and it will start working the moment your stock gains a location. <b>But if you are here to have a packer packing this week, row 3 is the one to solve first.</b>');
     return;
   }
   slot.innerHTML = '';
@@ -1329,15 +1109,9 @@ function renderDegraded() {
     <div class="alert__content"><strong class="alert__title">${t}</strong>
     <p class="alert__description">${b}</p></div></div>`;
   document.getElementById('verdictSlot').innerHTML = phase === 'loading'
-    ? box('Checking your setup&hellip;', 'Until these reads come back, no step is marked either way. Showing them as “not done” while the answer is still in flight would tell an operator whose routing <em>is</em> on that it is off.', 'info', 'status')
+    ? box('Checking your setup&hellip;', 'Until these reads come back, no row is marked either way. Showing them as “not done” while the answer is still in flight would tell an operator whose routing <em>is</em> on that it is off.', 'info', 'status')
     : box('We could not read your setup', 'The checks this page runs did not come back, so nothing below is marked done or not done — and you should not act on it until they do. Nothing has changed.', 'error', 'alert');
-  document.getElementById('checklist').innerHTML = '';
-  document.getElementById('rail').innerHTML = `<span class="rail__count">&mdash; of 6 done</span>
-    <span class="step__note-body">${phase === 'loading' ? 'Checking&hellip;' : 'Unknown — the checks failed'}</span>`;
-  document.getElementById('readiness').innerHTML = READINESS.map((r) => `<div class="readiness__row">
-    <div><div class="readiness__label">${r.label}</div><div class="readiness__hint">${r.hint}</div></div>
-    <span class="status-badge status-badge--compact status-badge--neutral">${phase === 'loading' ? 'Checking' : 'Unknown'}</span>
-  </div>`).join('');
+  document.getElementById('attentionList').innerHTML = '';
   document.getElementById('progressMeta').textContent = phase === 'loading' ? 'Checking…' : 'Unknown';
   document.getElementById('outcomeSlot').innerHTML = phase === 'read-failed'
     ? `<div class="step__actions"><button class="button button--secondary" type="button" onclick="setState('not-started')">Try again</button></div>` : '';
@@ -1345,18 +1119,15 @@ function renderDegraded() {
 
 function renderOutcome() {
   const slot = document.getElementById('outcomeSlot');
-  if (role !== 'admin') {
-    slot.innerHTML = ''; return;
-  }
+  if (role !== 'admin') { slot.innerHTML = ''; return; }
   if (!done.every(Boolean)) { slot.innerHTML = ''; return; }
   if (!done[2]) {
     slot.innerHTML = `<div class="alert alert--warning" role="status">
       <div class="alert__content">
         <strong class="alert__title">Setup incomplete &mdash; nothing will reach the bench</strong>
-        <p class="alert__description">Five of the six steps are done and the sixth cannot be. No stock says which
-          warehouse it is in, so OpenLinker has nothing to pick from and refuses each order rather than inventing a
-          location. Those orders take their ordinary path to your shop, so nothing is broken &mdash; it simply is not
-          packing anything.</p>
+        <p class="alert__description">Five of the six rows are done, but no stock says which warehouse it is in, so
+          OpenLinker has nothing to pick from and refuses each order rather than inventing a location. Those orders
+          take their ordinary path to your shop, so nothing is broken &mdash; it simply is not packing anything.</p>
       </div>
     </div>`;
     return;
@@ -1373,19 +1144,29 @@ function renderOutcome() {
   </div>`;
 }
 
+/* ── url deep link (`?open=<i>`) ──────────────────────────────────────────
+   Mirrors `connection-detail-page.tsx`'s `?tab=health` — the one place the
+   product already persists in-page position via the URL — so a row can be
+   named and shared without a route per row. */
+function syncUrl() {
+  const url = new URL(location.href);
+  const openIdx = opened.findIndex(Boolean);
+  if (openIdx >= 0 && !expandAll) url.searchParams.set('open', String(openIdx));
+  else url.searchParams.delete('open');
+  history.replaceState(null, '', url);
+}
+
 /* ── actions ───────────────────────────────────────────────────────────── */
-function completeStep(i) { done[i] = true; opened[i] = true; render('reopen' + i); }
-function toggleOpen(i) { opened[i] = !isExpanded(i); render('reopen' + i); }
-function toggleCapability(on) { done[0] = on; opened[0] = true; render('capFE'); }
+function completeRow(i) { done[i] = true; opened[i] = true; render('act' + i); syncUrl(); }
+function toggleOpen(i) { opened[i] = !isExpanded(i); render('toggle' + i); syncUrl(); }
+function openRow(i) { opened[i] = true; render(); syncUrl();
+  document.getElementById('row' + i)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('toggle' + i)?.focus(); }
 function attemptGrant() { openDialog(done[1] ? 'dialog-grant-sourcing' : 'dialog-grant-refused'); }
 function toggleExpandAll() {
   expandAll = !expandAll;
   document.getElementById('expandAllChip').setAttribute('aria-pressed', String(expandAll));
-  render('expandAllChip');
-}
-function jumpTo(i) {
-  const el = document.getElementById('step' + i);
-  if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.querySelector('.step__title')?.focus?.(); }
+  render('expandAllChip'); syncUrl();
 }
 
 /* ── states ────────────────────────────────────────────────────────────── */
@@ -1415,7 +1196,6 @@ function setState(name) {
   document.getElementById('shellUsername').textContent = admin ? 'ola.admin' : 'jan.operator';
   document.getElementById('chipUsername').textContent = admin ? 'ola.admin' : 'jan.operator';
   document.getElementById('chipInitials').textContent = admin ? 'OA' : 'JO';
-  // Both groups declare `requiresRole: 'admin'` in BASE_NAV_GROUPS.
   document.getElementById('navGroupAi').hidden = !admin;
   document.getElementById('navGroupAdmin').hidden = !admin;
 
@@ -1425,12 +1205,12 @@ function setState(name) {
     c.tabIndex = on ? 0 : -1;
   });
   render();
-  // The read-only notice belongs above the checklist, not 4,600px below it.
   if (!admin) {
     document.getElementById('verdictSlot').insertAdjacentHTML('afterbegin', alertBlock('info',
       'You are reading this, not changing it',
-      'Only an administrator can add a connection, create a location, hand over a decision or change a role. This page is open to you anyway: if your bench is empty you need to be able to find out why, and hand your supervisor a step number rather than a description of a blank screen.'));
+      'Only an administrator can add a connection, create a location, hand over a decision or change a role. This page is open to you anyway: if your bench is empty you need to be able to find out why, and hand your supervisor a row number rather than a description of a blank screen.'));
   }
+  syncUrl();
 }
 
 /* Roving tabindex + arrow keys — `role="radiogroup"` promises both, and the
@@ -1451,6 +1231,7 @@ document.getElementById('stateSwitcher').addEventListener('keydown', (e) => {
 });
 
 /* ── dialogs ───────────────────────────────────────────────────────────── */
+let lastFocused = null;
 function openDialog(id) {
   closeDialog(true);
   lastFocused = document.activeElement;
@@ -1469,5 +1250,11 @@ function closeDialog(silent) {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDialog(); });
 document.querySelectorAll('.dialog__overlay').forEach((o) => o.addEventListener('click', () => closeDialog()));
 
-setState('not-started');
+/* ── boot: honour ?open=<i> if present, else the not-started state ──────── */
+(function boot() {
+  setState('not-started');
+  const open = new URL(location.href).searchParams.get('open');
+  const idx = open === null ? -1 : parseInt(open, 10);
+  if (idx >= 0 && idx < ROWS.length) openRow(idx);
+})();
 </script>
