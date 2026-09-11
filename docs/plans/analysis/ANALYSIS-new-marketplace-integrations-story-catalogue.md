@@ -29,11 +29,19 @@ into the spec doc.
   1.2 MB shell with no content. Primary evidence is TikTok Newsroom + the `EcomPHP/tiktokshop-php` SDK source
   (which *is* the wire format) + CData's generated field reference. Treat doc-page citations as second-hand.
 
-**OL side of record:** `libs/core/src/sync/domain/types/sync-job.types.ts` (55 job types),
-`apps/worker/src/sync/handlers/handler-registration.service.ts` (lanes),
-`apps/worker/src/scheduler/scheduler.service.ts` + `libs/integrations/*/src/infrastructure/scheduler/*` (34 tasks),
-`libs/core/src/sync/application/services/inbound-routing-policy.service.ts` (8 inbound domains),
-`libs/plugin-sdk/src/{adapter-plugin,host-services}.ts` (15 registration seams), `docs/capabilities.md`.
+**OL side of record**, counted at `main` **93432c806** (2026-09-11) — these are a snapshot and will drift, so
+re-count rather than quote them:
+
+- `libs/core/src/sync/domain/types/sync-job.types.ts` — **57** members of `JobTypeValues`.
+- `apps/worker/src/sync/handlers/handler-registration.service.ts` — lanes (ADR-050).
+- `apps/worker/src/scheduler/scheduler.service.ts` + `libs/integrations/*/src/infrastructure/scheduler/*` —
+  **36** distinct `taskId` literals.
+- `libs/core/src/integrations/domain/types/canonical-inbound-event.types.ts` — **8** members of
+  `InboundEventDomainValues`; routed by
+  `libs/core/src/sync/application/services/inbound-routing-policy.service.ts`.
+- `libs/plugin-sdk/src/{adapter-plugin,host-services}.ts` — **14** registration seams on `HostServices`
+  (13 `*Registry` services plus `factoryResolver`).
+- `docs/capabilities.md` — the full sub-capability inventory.
 
 ---
 
@@ -76,8 +84,23 @@ Arguments for **N connections** (one per marketplace):
 - eBay business policies are per-marketplace and mandatory before publish.
 - `DestinationCategory` is keyed `taxonomyOwner | connectionId`, and `TaxonomyIdentityProvider.getTaxonomyIdentity()`
   returns **one** value — a single connection cannot declare three trees.
-- ADR-037 already ruled that Amazon and eBay must onboard as `'amazon:<marketplaceId>'` / `'ebay:EBAY_GB'`,
-  never bare, precisely because the tree differs per marketplace.
+- ADR-037's rule — **one `taxonomyOwner` value per distinct tree**, "whatever the platform itself uses to
+  identify that tree" — implies a per-marketplace owner *wherever the trees actually differ*. The ADR states
+  plainly that `taxonomyOwner: 'ebay'` "would be wrong on its face", records that Amazon's browse nodes are
+  grouped by `marketplaceId` and that "trees differ per marketplace", and names eBay's own `categoryTreeId` as
+  the model for what an owner value is.
+
+  **It prescribes no literal spelling, and it carries a clause that cuts the other way**: "several regions
+  sharing a tree legitimately resolve to one value." So the rule alone does not settle eBay — the *evidence*
+  does. #2976 probed all four target markets and found **four distinct trees** (`EBAY_GB`=3, `EBAY_DE`=77,
+  `EBAY_FR`=71, `EBAY_PL`=212), correcting its own prior assumption that some EU sites share one. That is what
+  makes a per-marketplace owner correct here, and it is an argument that would collapse if a future market pair
+  turned out to share a tree.
+
+  Note the consequence for the spelling: because ADR-037's model is the **tree's own identity**, the eBay owner
+  value should key on the `categoryTreeId` the Taxonomy API returns, not on a marketplace literal like
+  `'ebay:EBAY_GB'`. Amazon has no category tree at all (see below), so the ADR-037 argument does not reach it —
+  its grain has to be decided on the other three bullets.
 
 Argument for **1 connection**: one OAuth token, one refresh lifecycle, one re-auth event.
 
@@ -91,6 +114,13 @@ does not bite there and the product-type schema is fetched per `marketplaceIds` 
 ---
 
 ## 3. Story catalogue
+
+**115 story rows across 10 groups** — C 15, M 13, T 12, P 13, S 13, O 16, F 8, D 9, R 10, X 6. That is the count
+of rows in the tables below, and it is the only story count this document asserts. **Do not confuse it with a
+per-platform checklist total**: a row is one capability question asked of up to four columns, so the number of
+*stories a single platform owes evidence for* is a different, smaller denominator, counted per issue (#2879's
+Shopify checklist is 111, of which #2888 verified 78). An earlier "~90" figure circulated in issue and PR text
+and undercounted this table; it is superseded by the count above.
 
 Legend: ✅ supported · ⚠️ degraded/qualified · ❌ not possible · 🔒 gated on vendor approval · **?** unproven, needs the probe
 
