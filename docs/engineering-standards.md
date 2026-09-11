@@ -802,6 +802,58 @@ export class ProductService {
 }
 ```
 
+### When A Paginated Total Is Expensive (#2950)
+
+**A paged read stops after its `LIMIT`. The `COUNT` beside it cannot stop at all.**
+
+That is the whole rule, and everything below follows from it. `getManyAndCount()` is the obvious call, it is what a paged read reaches for by default, and for most reads it is right — so the question is not whether to use it but when it stops being free.
+
+**When the filter is sargable — an indexed equality — the total is nearly free, and `getManyAndCount()` is correct.** The index answers both the page and the count.
+
+**When it is not, the count scans the table however small the page is.** Check your own `WHERE` for these shapes:
+
+| Shape | Example |
+|---|---|
+| jsonb containment | `rec."syncStatus" @> :filter::jsonb` |
+| jsonb field extraction | `rec."orderSnapshot" ->> 'currency' = :c` |
+| `ILIKE` / `LIKE` | `product.name ILIKE :search` |
+| a function-wrapped column | `LOWER(customer.email) = :email` |
+
+The measured evidence, from #2843 against a seeded `order_records`: under one identical predicate, the paged `SELECT ... LIMIT 20` averaged **0.256 ms** and the `COUNT(*)` beside it **39.6 ms** — **155x** — and at a million rows that count was **142 ms of a 149 ms request**, reading about 540 MB through the buffer pool per execution, so the cost lands application-wide rather than on one page.
+
+**The remedy depends on which shape it is.**
+
+For `ILIKE`, the count can be made sargable: a trigram index. This repository already does exactly that for `DestinationCategory.searchText` — a GIN `gin_trgm_ops` index on `DestinationCategory.searchText`, declared in a migration, with the search text diacritic-folded in application code and matched with `LIKE` rather than the `%` similarity operator, so correctness never depends on `pg_trgm` being installed.
+
+For a jsonb containment there is no such trick at this scale, so the total moves to a **second stage** instead (#2944): the caller asks for the page and the total separately, and the page no longer waits.
+
+**The shape a repository takes for that split**, from the five that have it (`order-record`, `offer-mapping`, `product`, `product-variant`, `customer-projection`):
+
+```ts
+private buildFilteredQuery(filters): SelectQueryBuilder<X>   // the predicate, once
+async findMany(filters, pagination)      // rows AND total
+async findManyRows(filters, pagination)  // the page alone
+async countMany(filters)                 // the total alone - takes NO pagination
+```
+
+Where a repository layers a **second** builder over that base predicate, all three
+methods start from the OUTER one. `offer-mapping` is the worked example: its
+`buildFilteredQuery` deliberately omits the lifecycle narrowing so
+`countByLifecycle` can partition the un-narrowed set, and `buildListQuery` adds it
+back — so `countMany` starting from the inner builder would silently ignore a
+filter the page applied, which is the first property below, broken.
+
+Four properties are not negotiable.
+
+- **The predicate is built once and shared.** Rows and total must select the same set, or the number describes something the page does not.
+- **`countMany` takes no pagination, and no sort.** Neither can change a count, and an answer that depends on the filters alone is what makes it cacheable per filter combination — so paging through a result set never recomputes it.
+- **`findMany` keeps whatever shape it already had.** Three of the five end in a single `getManyAndCount()` and still do, so `?withTotal=true` — the default, and every caller not yet migrated — emits exactly the statements it emitted before the split, on the one query runner it emitted them on. Recomposing a shipped read is a second, unmeasured change riding inside the first. Where a list never used `getManyAndCount` there is nothing to preserve and it may compose freely: `product` does, under `Promise.all`, because a joined alias in its `ORDER BY` makes TypeORM's `skip`/`take` miscount and it pages with raw `offset`/`limit`.
+
+  Note what this does **not** claim. Read against the pinned `typeorm@0.3.17` rather than assumed: `getManyAndCount` awaits `executeEntitiesAndRawResults` and then `executeCountQuery`, unconditionally and sequentially — there is no short-page branch, and no `lazyCount` (the identifier does not exist in that version). **The count always runs.** That is the argument for moving it off the page's critical path, not against.
+- **A caller that asks for rows only gets no total field — not `0`.** Over HTTP that is `?withTotal=false` omitting the key entirely; see `apps/api/src/common/dto/paginated-read-query.dto.ts`. Absence and "none matched" are different claims.
+
+Rendering a total that arrives late is the frontend's half of this rule — see `docs/frontend-architecture.md` § Paginated Totals As A Second Stage, which covers the debounce, the cancellation, the delayed loader and the never-render-zero rule that make it an improvement rather than a regression.
+
 ### Symbol DI Token Re-export Convention
 
 **Symbol tokens are used for every kind of DI binding** — repository ports, service interfaces, port interfaces, message-bus producers. The token-layout rule applies uniformly across all of them, not just repository ports.

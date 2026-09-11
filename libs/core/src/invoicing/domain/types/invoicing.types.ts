@@ -87,6 +87,18 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
  *     accurately, since the provider did reject it. Operator-fixable on the
  *     source order either way. Currency and ISO 4217 are country-agnostic
  *     vocabulary, so this stays ADR-026-clean.
+ *   - `sale-classification-required`: a TERMINAL `rejected` failure caused by a
+ *     missing per-connection sale classification (goods vs. services) — a
+ *     required-but-unconfigured PLUGIN SETTING, not an order-data problem
+ *     (#3031). Unlike `invalid-currency` this genuinely IS a provider-side
+ *     rejection (the adapter has no signal to refuse the call pre-emptively —
+ *     #2177/#2995 deliberately did not add a goods/service field to
+ *     `InvoiceLine`), so it can only be detected reactively, by an adapter
+ *     recognising its own provider's shape for "you must configure this" and
+ *     re-throwing with a `reason` one of {@link SALE_CLASSIFICATION_REJECTION_MARKERS}
+ *     matches. The operator-fixable remedy is a one-field connection config
+ *     change, which is why this must not collapse into `provider-rejected` —
+ *     that copy gives no clue there is a config knob to set at all.
  *   - `provider-rejected`: any other TERMINAL `rejected` failure (safe to
  *     re-attempt once the underlying input is corrected).
  *   - `transport-timeout`: an `in-doubt` transport failure — the document MAY
@@ -97,6 +109,7 @@ export type InvoiceFailureMode = (typeof InvoiceFailureModeValues)[number];
 export const InvoiceFailureCodeValues = [
   'buyer-tax-id-invalid',
   'invalid-currency',
+  'sale-classification-required',
   'provider-rejected',
   'transport-timeout',
   'provider-error',
@@ -129,6 +142,34 @@ export const CURRENCY_REJECTION_MARKERS = [
   'currency is required',
   'currency code',
 ] as const;
+
+/**
+ * Substrings (case-insensitive) that mark a `rejected` failure as a missing
+ * per-connection sale-classification (goods vs. services) setting, so
+ * `classifyFailureCode` can resolve `sale-classification-required` instead of
+ * the generic `provider-rejected` (#3031, follow-up to #2177/#2995).
+ *
+ * Unlike the currency markers this is a genuine POST-CALL provider rejection —
+ * core cannot know ahead of time whether the buyer's country needs the field,
+ * and #2995 deliberately declined to add a goods/service signal to
+ * `InvoiceLine` (a national VAT-classification concept ADR-026 keeps out of
+ * `libs/core`). An adapter that recognises its own provider's "you must
+ * configure a sale classification" response re-throws with a `reason`
+ * matching one of these markers instead of propagating the provider's raw
+ * (possibly buyer-PII-echoing) message.
+ *
+ * PUBLISHED for the same reason {@link CURRENCY_REJECTION_MARKERS} is: both
+ * ends of the structural read live in this repo (the reason text an adapter
+ * throws is OL-authored, never a verbatim provider string), so an adapter
+ * spec can assert its own message still matches one of these markers and a
+ * reword breaks the build rather than silently degrading the operator's
+ * failure reason. Neutral vocabulary only — "sale classification" names no
+ * country or tax system (ADR-026); it deliberately avoids inFakt's own wire
+ * field name (`sale_type`) so the marker itself never leaks one provider's
+ * naming into a cross-provider vocabulary, even though inFakt is the only
+ * shipped adapter that triggers it today.
+ */
+export const SALE_CLASSIFICATION_REJECTION_MARKERS = ['sale classification'] as const;
 
 /**
  * Neutral Continuous-Transaction-Controls clearance lifecycle. The adapter maps

@@ -149,6 +149,8 @@ describe('ListingsController', () => {
     repository = {
       findById: jest.fn(),
       findMany: jest.fn(),
+      findManyRows: jest.fn(),
+      countMany: jest.fn(),
       findMappingPage: jest.fn(),
       countByLifecycle: jest.fn().mockResolvedValue(emptyOfferLifecycleCounts()),
       countByConnectionAndVariants: jest.fn().mockResolvedValue(new Map<string, number>()),
@@ -199,6 +201,8 @@ describe('ListingsController', () => {
       upsert: jest.fn(),
       upsertMany: jest.fn(),
       findMany: jest.fn(),
+      findManyRows: jest.fn(),
+      countMany: jest.fn(),
       markStaleExceptVariants: jest.fn(),
     recordTaxRate: jest.fn(),
     findTaxRate: jest.fn(),
@@ -319,9 +323,14 @@ describe('ListingsController', () => {
       // thread 3) - the counts aggregate is now OFF by default, since three
       // other callers (product drawer, nav badge probe) share this endpoint
       // and never render a tab bar to pay the second full scan for.
+      //
+      // They mock `findManyRows`, not `findMany` (#2944). This branch reads
+      // the page ALONE and derives `total` from the buckets, so there is no
+      // longer a `skipTotal` option and no `total: -1` sentinel for a caller
+      // to forget to substitute.
 
       it('should carry a per-bucket count alongside the page', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.findManyRows.mockResolvedValue([]);
         repository.countByLifecycle.mockResolvedValue({
           Active: 4,
           Invalid: 1,
@@ -362,7 +371,7 @@ describe('ListingsController', () => {
       // `apps/api/test/integration/listings/offer-lifecycle-counts.int-spec.ts`.
 
       it('should apply the same search and connection filters to the counts as to the list', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.findManyRows.mockResolvedValue([]);
 
         await controller.listOfferMappings({
           connectionId: 'conn-1',
@@ -378,7 +387,7 @@ describe('ListingsController', () => {
       });
 
       it('should narrow only the list by the selected tab, never the counts', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.findManyRows.mockResolvedValue([]);
         repository.countByLifecycle.mockResolvedValue({
           ...emptyOfferLifecycleCounts(),
           Ended: 300,
@@ -390,13 +399,14 @@ describe('ListingsController', () => {
           includeLifecycleCounts: true,
         });
 
-        // The third arg tells `findMany` to skip its own now-redundant
-        // `getCount()` - `total` is derived from `countByLifecycle` instead.
-        expect(repository.findMany).toHaveBeenCalledWith(
+        // `findManyRows`, not `findMany` (#2944): this branch reads the page
+        // alone and derives `total` from `countByLifecycle`, so there is no
+        // now-redundant `getCount()` to opt out of and no third argument.
+        expect(repository.findManyRows).toHaveBeenCalledWith(
           expect.objectContaining({ lifecycle: 'Ended' }),
-          { limit: 20, offset: 0 },
-          { skipTotal: true }
+          { limit: 20, offset: 0 }
         );
+        expect(repository.findMany).not.toHaveBeenCalled();
         // Forwarding it here would zero every other tab the moment one is clicked.
         expect(repository.countByLifecycle).toHaveBeenCalledWith(
           expect.not.objectContaining({ lifecycle: expect.anything() as unknown })
@@ -404,7 +414,7 @@ describe('ListingsController', () => {
       });
 
       it('should report the selected bucket size as total so paging inside a tab works', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.findManyRows.mockResolvedValue([]);
         repository.countByLifecycle.mockResolvedValue({
           ...emptyOfferLifecycleCounts(),
           Ended: 300,
@@ -422,7 +432,7 @@ describe('ListingsController', () => {
       });
 
       it('should report the sum across every bucket as total when no tab is selected', async () => {
-        repository.findMany.mockResolvedValue({ items: [], total: -1 });
+        repository.findManyRows.mockResolvedValue([]);
         repository.countByLifecycle.mockResolvedValue({
           Active: 4,
           Invalid: 1,
@@ -438,10 +448,10 @@ describe('ListingsController', () => {
 
       it('should issue the list and the counts concurrently rather than back to back', async () => {
         let listSettled = false;
-        repository.findMany.mockImplementation(async () => {
+        repository.findManyRows.mockImplementation(async () => {
           await Promise.resolve();
           listSettled = true;
-          return { items: [], total: -1 };
+          return [];
         });
         repository.countByLifecycle.mockImplementation(() => {
           // Reached before the list resolved: the two are not chained.
@@ -1288,7 +1298,6 @@ describe('ListingsController', () => {
     });
   });
 
-
   // ─── NDJSON category-resolution stream (#2209, epic #2205) ──────────────────
   //
   // Framing is the controller's whole job here, so these tests read the bytes
@@ -1399,7 +1408,8 @@ describe('ListingsController', () => {
           kind: 'done',
           resolvedCount: 1,
           unresolvedCount: 1,
-          completion: 'complete', catalogueLookupPerformed: true
+          completion: 'complete',
+          catalogueLookupPerformed: true,
         })
       );
       const res = makeRes();
@@ -1514,7 +1524,8 @@ describe('ListingsController', () => {
         kind: 'done',
         resolvedCount: 1,
         unresolvedCount: 0,
-        completion: 'failed', catalogueLookupPerformed: true
+        completion: 'failed',
+        catalogueLookupPerformed: true,
       });
       expect(res.writableEnded).toBe(true);
     });
@@ -1538,7 +1549,8 @@ describe('ListingsController', () => {
         kind: 'done',
         resolvedCount: 1,
         unresolvedCount: 1,
-        completion: 'failed', catalogueLookupPerformed: true
+        completion: 'failed',
+        catalogueLookupPerformed: true,
       });
     });
 
@@ -1570,7 +1582,8 @@ describe('ListingsController', () => {
         kind: 'done',
         resolvedCount: 1,
         unresolvedCount: 0,
-        completion: 'complete', catalogueLookupPerformed: true
+        completion: 'complete',
+        catalogueLookupPerformed: true,
       });
       expect(jest.getTimerCount()).toBe(0);
     });
@@ -1625,7 +1638,8 @@ describe('ListingsController', () => {
         kind: 'done',
         resolvedCount: 1,
         unresolvedCount: 0,
-        completion: 'aborted', catalogueLookupPerformed: true
+        completion: 'aborted',
+        catalogueLookupPerformed: true,
       });
       // The close listener is detached, so a reused socket cannot abort a later
       // request through this handler's controller.
@@ -1721,7 +1735,8 @@ describe('ListingsController', () => {
           kind: 'done',
           resolvedCount: 0,
           unresolvedCount: 0,
-          completion: 'complete', catalogueLookupPerformed: true
+          completion: 'complete',
+          catalogueLookupPerformed: true,
         })();
       });
       const res = makeRes();
@@ -2016,9 +2031,155 @@ describe('ListingsController', () => {
     it('throws 404 when live status is unavailable', async () => {
       offerStatusSync.refreshOne.mockResolvedValue(null);
 
-      await expect(controller.refreshOfferStatus('conn-1', '7781896308', body)).rejects.toBeInstanceOf(
-        NotFoundException
-      );
+      await expect(
+        controller.refreshOfferStatus('conn-1', '7781896308', body)
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+  describe('the two-stage read (#2944)', () => {
+    const BUCKETS = { Active: 4, Invalid: 1, Draft: 2, Ended: 0, Unsynced: 90 };
+
+    it('reads the page ALONE and omits total when withTotal=false', async () => {
+      repository.findManyRows.mockResolvedValue([mockListItem]);
+
+      const result = await controller.listOfferMappings({
+        withTotal: false,
+        limit: 5,
+        offset: 40,
+      });
+
+      expect(repository.findManyRows).toHaveBeenCalledTimes(1);
+      // The page WINDOW too - see the orders sibling (#2957 review round 6, I5).
+      expect(repository.findManyRows.mock.calls[0][1]).toStrictEqual({ limit: 5, offset: 40 });
+      expect(repository.findMany).not.toHaveBeenCalled();
+      expect(repository.countByLifecycle).not.toHaveBeenCalled();
+      // `in`, not truthiness: `total: 0` passes the latter and is the exact
+      // failure the omission exists to prevent.
+      expect('total' in result).toBe(false);
+    });
+
+    it('windows the buckets branch at the offset it was given', async () => {
+      // The `includeLifecycleCounts` arm is a SECOND rows-only read, rewritten
+      // by this change from `findMany(..., {skipTotal:true})` to
+      // `findManyRows(filters, {limit, offset})` - and it carried no window
+      // assertion at all, so `offset` -> `0` passed all 102 tests (#2957 review
+      // round 7, I3). That is page 2 showing page 1's rows beneath a correct
+      // tab bar, indefinitely.
+      repository.findManyRows.mockResolvedValue([]);
+
+      await controller.listOfferMappings({
+        includeLifecycleCounts: true,
+        limit: 5,
+        offset: 40,
+      });
+
+      expect(repository.findManyRows.mock.calls[0][1]).toStrictEqual({ limit: 5, offset: 40 });
+    });
+
+    it('DECLINES includeLifecycleCounts under withTotal=false, as the route description says', async () => {
+      // Both aggregates moved to `/listings/count`. Answering one of them here
+      // would put the second full scan back on the rows-only path.
+      repository.findManyRows.mockResolvedValue([]);
+
+      const result = await controller.listOfferMappings({
+        withTotal: false,
+        includeLifecycleCounts: true,
+      });
+
+      expect(repository.countByLifecycle).not.toHaveBeenCalled();
+      expect(result.lifecycleCounts).toBeUndefined();
+      expect('total' in result).toBe(false);
+    });
+
+    it('counts a SELECTED tab through the buckets, exactly as the list route does', async () => {
+      // `deriveTotal` is shared by both routes on purpose. If the count route
+      // derived its own answer, a tab's size could differ between the pager and
+      // the tab badge for the same filters, one request apart.
+      repository.findManyRows.mockResolvedValue([]);
+      repository.countByLifecycle.mockResolvedValue(BUCKETS);
+
+      const listed = await controller.listOfferMappings({
+        lifecycle: 'Draft',
+        includeLifecycleCounts: true,
+      });
+      const counted = await controller.countOfferMappings({
+        lifecycle: 'Draft',
+        includeLifecycleCounts: true,
+      });
+
+      expect(listed.total).toBe(2);
+      expect(counted.total).toBe(2);
+      expect(counted.lifecycleCounts).toEqual(BUCKETS);
+      // The buckets are never narrowed by the selected tab - #2029's rule.
+      expect(repository.countByLifecycle).toHaveBeenLastCalledWith({
+        connectionId: undefined,
+        internalId: undefined,
+        search: undefined,
+      });
+    });
+
+    it('maps the DTO to filters with ONE function, so list and count cannot drift', async () => {
+      // The assertion `orders` and `products` already had, and `listings` did
+      // not (#2957 review round 4, I2) - this controller wrote its filter
+      // literal FOUR times across two handlers, so a fifth membership filter
+      // added to the list would have been silently dropped from the count.
+      repository.findManyRows.mockResolvedValue([]);
+      repository.countMany.mockResolvedValue(9);
+      const query = {
+        connectionId: 'conn-1',
+        internalId: 'ol_variant_1',
+        search: 'terra',
+        lifecycle: 'Draft' as const,
+      };
+
+      await controller.listOfferMappings({ ...query, withTotal: false, limit: 20, offset: 0 });
+      await controller.countOfferMappings({ ...query });
+
+      const [listFilters] = repository.findManyRows.mock.calls[0];
+      const [countFilters] = repository.countMany.mock.calls[0];
+      expect(countFilters).toEqual(listFilters);
+      // `toStrictEqual`, not `toEqual` (#2957 review round 5, I3). `toEqual`
+      // treats a received key holding `undefined` as absent, so a new filter
+      // read from an unset query field would produce `{..., newFilter:
+      // undefined}` and satisfy a literal that omits it - which is the exact
+      // scenario this assertion is written for, and the likely one, since
+      // whoever adds a filter is unlikely to also extend the query above.
+      // `toStrictEqual` fails on that extra key, which is the property claimed.
+      //
+      // `lifecycle` is set rather than left undefined for the same reason: with
+      // it undefined, deleting `lifecycle: query.lifecycle` from the mapper
+      // passed both assertions.
+      expect(countFilters).toStrictEqual({
+        connectionId: 'conn-1',
+        internalId: 'ol_variant_1',
+        search: 'terra',
+        lifecycle: 'Draft',
+      });
+    });
+
+    it('sums the buckets when NO tab is selected', async () => {
+      repository.countByLifecycle.mockResolvedValue(BUCKETS);
+
+      const counted = await controller.countOfferMappings({ includeLifecycleCounts: true });
+
+      expect(counted.total).toBe(97);
+    });
+
+    it('asks countMany, not the buckets, when the buckets were not requested', async () => {
+      // The cheaper path: one narrowed count instead of five bucket counts, for
+      // a caller that renders no tab bar.
+      repository.countMany.mockResolvedValue(11);
+
+      const counted = await controller.countOfferMappings({ lifecycle: 'Active', search: 'terra' });
+
+      expect(counted).toEqual({ total: 11 });
+      expect(repository.countMany).toHaveBeenCalledWith({
+        connectionId: undefined,
+        internalId: undefined,
+        search: 'terra',
+        lifecycle: 'Active',
+      });
+      expect(repository.countByLifecycle).not.toHaveBeenCalled();
     });
   });
 });

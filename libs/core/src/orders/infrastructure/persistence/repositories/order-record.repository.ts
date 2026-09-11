@@ -223,14 +223,23 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return rows.map((row) => ({ country: row.country, orderCount: Number(row.order_count) }));
   }
 
-  async findMany(
-    filters: OrderRecordFilters,
-    pagination: OrderRecordPagination
-  ): Promise<PaginatedOrderRecords> {
-    const qb: SelectQueryBuilder<OrderRecordOrmEntity> = this.repository
-      .createQueryBuilder('rec')
-      .take(pagination.limit)
-      .skip(pagination.offset);
+  /**
+   * The WHERE clause shared by every read of this list (#2944).
+   *
+   * `findMany`, `findManyRows` and `countMany` all start here, so the total can
+   * never describe a different set than the page: there is one predicate, and
+   * the three methods differ only in what they do after it. This is the list
+   * #2843 measured - `COUNT(*)` under `syncStatus @> ...` ran 155x slower than
+   * the `LIMIT 20` beside it, because a paged read stops after twenty matches
+   * and a count cannot stop at all.
+   *
+   * Carries no ordering and no page window: {@link buildPagedQuery} adds those,
+   * and a count must have neither.
+   */
+  private buildFilteredQuery(
+    filters: OrderRecordFilters
+  ): SelectQueryBuilder<OrderRecordOrmEntity> {
+    const qb: SelectQueryBuilder<OrderRecordOrmEntity> = this.repository.createQueryBuilder('rec');
 
     if (filters.sourceConnectionId) {
       qb.andWhere('rec.sourceConnectionId = :sourceConnectionId', {
@@ -318,7 +327,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       qb.andWhere(
         filters.salesDocumentBlocked
           ? OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED
-          : `NOT (${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`,
+          : `NOT (${OrderRecordRepository.IS_SALES_DOCUMENT_BLOCKED})`
       );
     }
 
@@ -336,7 +345,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       qb.andWhere(
         filters.taxRateConflict
           ? OrderRecordRepository.HAS_TAX_RATE_CONFLICT
-          : `NOT (${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`,
+          : `NOT (${OrderRecordRepository.HAS_TAX_RATE_CONFLICT})`
       );
     }
 
@@ -349,7 +358,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       qb.andWhere(
         filters.omsAttention
           ? OrderRecordRepository.HAS_OMS_ATTENTION
-          : `NOT (${OrderRecordRepository.HAS_OMS_ATTENTION})`,
+          : `NOT (${OrderRecordRepository.HAS_OMS_ATTENTION})`
       );
     }
 
@@ -367,14 +376,52 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       });
     }
 
-    this.applySort(qb, filters.sort, filters.dir);
+    return qb;
+  }
 
-    const [entities, total] = await qb.getManyAndCount();
+  /** {@link buildFilteredQuery} plus this list's ordering and page window. */
+  private buildPagedQuery(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination
+  ): SelectQueryBuilder<OrderRecordOrmEntity> {
+    const qb = this.buildFilteredQuery(filters);
+    this.applySort(qb, filters.sort, filters.dir);
+    return qb.take(pagination.limit).skip(pagination.offset);
+  }
+
+  async findMany(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination
+  ): Promise<PaginatedOrderRecords> {
+    // Deliberately still ONE `getManyAndCount()` rather than `findManyRows()` +
+    // `countMany()`, so `?withTotal=true` - the default - emits exactly the two
+    // statements it emitted before #2944, on the one query runner it emitted
+    // them on. Composing would be an unmeasured second change (two pool
+    // connections per list request) inside a change about something else.
+    //
+    // It is NOT because the count is skipped for a short page. Read against
+    // typeorm@0.3.17: `getManyAndCount` awaits `executeEntitiesAndRawResults`
+    // and then `executeCountQuery`, unconditionally and sequentially, with no
+    // short-page branch. The count always runs - which is the argument for
+    // splitting it out, not against.
+    const [entities, total] = await this.buildPagedQuery(filters, pagination).getManyAndCount();
 
     return {
       items: entities.map((e) => this.toDomain(e)),
       total,
     };
+  }
+
+  async findManyRows(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination
+  ): Promise<OrderRecord[]> {
+    const entities = await this.buildPagedQuery(filters, pagination).getMany();
+    return entities.map((e) => this.toDomain(e));
+  }
+
+  async countMany(filters: OrderRecordFilters): Promise<number> {
+    return this.buildFilteredQuery(filters).getCount();
   }
 
   /**
@@ -1346,7 +1393,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   private static readonly HAS_TAX_RATE_CONFLICT = `jsonb_path_exists(rec."orderSnapshot", '$.items[*].taxRateChannel')`;
 
   private static readonly IS_SALES_DOCUMENT_BLOCKED = `COALESCE(rec."salesDocumentBlockReason", '') IN (${SalesDocumentAttentionReasonValues.map(
-    (reason) => `'${reason}'`,
+    (reason) => `'${reason}'`
   ).join(', ')})`;
 
   /**
@@ -1384,7 +1431,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       : `jsonb_path_exists(
     COALESCE(rec."omsAttention", '[]'::jsonb),
     '$[*].reason ? (${AuthorityAttentionCountedReasonValues.map(
-      (reason) => `@ == "${reason}"`,
+      (reason) => `@ == "${reason}"`
     ).join(' || ')})'
   )`;
 

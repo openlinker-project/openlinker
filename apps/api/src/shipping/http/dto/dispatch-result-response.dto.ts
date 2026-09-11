@@ -11,6 +11,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { ShipmentDispatchResult } from '@openlinker/core/shipping';
 import { ShipmentResponseDto } from './shipment-response.dto';
+import { resolveWaybillRelayThresholdFromEnv } from '../waybill-relay-threshold';
 
 export class DispatchResultResponseDto {
   @ApiProperty({ enum: ['dispatched', 'omp_fulfilled'] })
@@ -29,7 +30,13 @@ export class DispatchResultResponseDto {
       // `canWrite: true` — POST /shipments/generate-label is `@Roles('admin',
       // 'operator')`-gated, so a caller who reached this projection already
       // holds `shipments:write` and there is nothing to redact (#1826).
-      dto.shipment = ShipmentResponseDto.fromDomain(result.shipment, null, true, null);
+      dto.shipment = ShipmentResponseDto.fromDomain(
+        result.shipment,
+        null,
+        true,
+        null,
+        resolveWaybillRelayThresholdFromEnv(),
+      );
     }
     return dto;
   }

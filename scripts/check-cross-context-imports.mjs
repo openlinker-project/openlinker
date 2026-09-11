@@ -305,19 +305,11 @@ const ALLOW_LIST = new Map([
 
   // apps → webhooks.WebhookDeliveryRepositoryPort — rewire via IWebhooksService
   //
-  // `webhook-to-job.handler.ts` was deleted by #2280 (routing moved to ingress).
-  // Its coupling transferred verbatim to the one-shot upgrade drain that
-  // replaced it — same repository, same `upsert` call, and the file is itself
-  // scheduled for deletion a release later, so it inherits the entry rather
-  // than justifying a new service seam.
-  [
-    'apps/api/src/webhooks/application/handlers/legacy-inbound-webhook-drain.ts',
-    new Set(['WebhookDeliveryRepositoryPort']),
-  ],
-  [
-    'apps/api/src/webhooks/application/handlers/legacy-inbound-webhook-drain.spec.ts',
-    new Set(['WebhookDeliveryRepositoryPort']),
-  ],
+  // `webhook-to-job.handler.ts` was deleted by #2280 (routing moved to ingress)
+  // and its coupling transferred to the one-shot upgrade drain that replaced
+  // it. #2300 deleted that drain too, so both of those rows are gone — the
+  // remaining pair below is the delivery-query read surface, which is a real
+  // rewire target rather than a scheduled deletion.
   [
     'apps/api/src/webhooks/application/services/webhook-delivery-query.service.ts',
     new Set(['WebhookDeliveryRepositoryPort']),
@@ -427,6 +419,22 @@ const ALLOW_LIST = new Map([
   [
     'libs/integrations/prestashop/src/infrastructure/provisioners/__tests__/prestashop-address-provisioner.spec.ts',
     new Set(['CustomerProjectionRepositoryPort']),
+  ],
+
+  // #2944 — ONE int-spec asserts, for all five split reads, that `countMany`
+  // and `findManyRows` describe the same set as `findMany`. It reaches the
+  // repository ports on purpose: the claim IS about repository behaviour under
+  // real SQL, so unlike the rewire debt below this entry has no rewire target
+  // and must NOT be dropped when #722 lands.
+  [
+    'apps/api/test/integration/paginated-total-split.int-spec.ts',
+    new Set([
+      'OrderRecordRepositoryPort',
+      'CustomerProjectionRepositoryPort',
+      'ProductRepositoryPort',
+      'ProductVariantRepositoryPort',
+      'OfferMappingRepositoryPort',
+    ]),
   ],
 
   // apps → orders.OrderRecordRepositoryPort — rewire via IOrdersService

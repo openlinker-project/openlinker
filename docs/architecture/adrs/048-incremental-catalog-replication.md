@@ -1,6 +1,8 @@
 # ADR-048: Incremental catalog replication — a master capability ladder, two cadences, budget-bounded runs
 
-- **Status**: Proposed
+- **Status**: Accepted (implemented across #2218/#2219, #2220/#2221 and #2222,
+  then amended inline by #2258, #2593/#2648 and #2647; decision 6 —
+  back-pressure shrinking the next run's budget — is not built)
 - **Date**: 2026-08-20
 - **Authors**: @piotrswierzy
 

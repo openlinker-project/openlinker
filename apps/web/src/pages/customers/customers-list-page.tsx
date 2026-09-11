@@ -36,6 +36,7 @@ import { useTableSort } from '../../shared/ui/use-table-sort';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Button } from '../../shared/ui/button';
+import { ListPagination } from '../../shared/ui/list-pagination';
 import { CopyableId } from '../../shared/ui/copyable-id';
 import { EmptyValue } from '../../shared/ui/empty-value';
 import { shortenId } from '../../shared/ui/entity-label';
@@ -44,7 +45,8 @@ import { TimeDisplay } from '../../shared/ui/time-display';
 import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import { ConnectionCell, useConnectionsQuery } from '../../features/connections';
 import type { ConnectionCellFacts } from '../../features/connections';
-import { useCustomersQuery } from '../../features/customers/hooks/use-customers-query';
+import { useCustomerRowsQuery } from '../../features/customers/hooks/use-customers-query';
+import { useCustomersTotal } from '../../features/customers/hooks/use-customers-total';
 import type { CustomerFilters, CustomerProjection } from '../../features/customers/api/customers.types';
 
 const PAGE_SIZE = 20;
@@ -100,7 +102,10 @@ export function CustomersListPage(): ReactElement {
   };
   const pagination = { limit: PAGE_SIZE, offset };
 
-  const query = useCustomersQuery(filters, pagination);
+  // Two-stage read (#2947): the rows do not wait for a count that cannot stop
+  // early under this list's four-column `ILIKE` search.
+  const query = useCustomerRowsQuery(filters, pagination);
+  const totalStage = useCustomersTotal(filters, query.data);
 
   // ONE batched read for the whole page (#1996): the `Last connection source`
   // column resolves every row out of this map. Deliberately unfiltered — a
@@ -258,9 +263,6 @@ export function CustomersListPage(): ReactElement {
   }
 
   const filtersActive = Boolean(debouncedSearch || debouncedConnectionId);
-  const total = query.data?.total ?? 0;
-  const hasPrev = offset > 0;
-  const hasNext = offset + PAGE_SIZE < total;
 
   return (
     <PageLayout
@@ -377,19 +379,15 @@ export function CustomersListPage(): ReactElement {
             }}
           />
 
-          <div className="pagination">
-            <span className="text-muted">
-              Showing {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
-            </span>
-            <div className="pagination__actions">
-              <Button disabled={!hasPrev} onClick={() => { setOffset(offset - PAGE_SIZE); }}>
-                Previous
-              </Button>
-              <Button disabled={!hasNext} onClick={() => { setOffset(offset + PAGE_SIZE); }}>
-                Next
-              </Button>
-            </div>
-          </div>
+          <ListPagination
+            offset={offset}
+            limit={PAGE_SIZE}
+            rowCount={query.data?.items.length ?? 0}
+            total={totalStage.total}
+            totalState={totalStage.state}
+            showTotalLoader={totalStage.showLoader}
+            onOffsetChange={setOffset}
+          />
         </>
       )}
     </PageLayout>

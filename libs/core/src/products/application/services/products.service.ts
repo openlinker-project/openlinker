@@ -160,6 +160,18 @@ export class ProductsService implements IProductsService {
     return this.productRepository.findMany(filters, pagination, sort);
   }
 
+  async listProductRows(
+    filters: ProductListFilters,
+    pagination: ProductPagination,
+    sort?: ProductListSort
+  ): Promise<Product[]> {
+    return this.productRepository.findManyRows(filters, pagination, sort);
+  }
+
+  async countProducts(filters: ProductListFilters): Promise<number> {
+    return this.productRepository.countMany(filters);
+  }
+
   async getVariantCountsByProductIds(productIds: readonly string[]): Promise<Map<string, number>> {
     if (productIds.length === 0) return new Map();
     return this.variantRepository.countByProductIds(productIds);
@@ -177,6 +189,17 @@ export class ProductsService implements IProductsService {
     pagination: ProductPagination
   ): Promise<PaginatedProductVariants> {
     return this.variantRepository.findMany(filters, pagination);
+  }
+
+  async listVariantRows(
+    filters: ProductVariantListFilters,
+    pagination: ProductPagination
+  ): Promise<ProductVariant[]> {
+    return this.variantRepository.findManyRows(filters, pagination);
+  }
+
+  async countVariants(filters: ProductVariantListFilters): Promise<number> {
+    return this.variantRepository.countMany(filters);
   }
 
   async markVariantsStaleExcept(

@@ -94,6 +94,18 @@ const harness = createIntegrationTestHarness({
     // unlisted, a rule leaks into the next case and collides on
     // UQ_oms_routing_rules_live_name.
     'oms_routing_rules',
+    // customer_projections and its two satellites (#2957 review round 3). None
+    // of the three carries an ORM foreign key the CASCADE-closure walk can
+    // reach - `customer_address_projections` and `destination_address_mappings`
+    // hold indexed text references by value, the same choice as
+    // invoice_records / refund_records - so nothing removes them and a prior
+    // case's customers leak into the next one's aggregate. That went unnoticed
+    // until a spec asserted an EXACT count over them; it passed only because
+    // each int-spec file gets its own container and the seed re-upserts three
+    // fixed ids. Children first.
+    'customer_address_projections',
+    'destination_address_mappings',
+    'customer_projections',
     'order_records',
     // order_line_items (#1985) — the per-line analytics projection. No
     // ORM/migration FK to order_records (plain indexed text column, same
@@ -255,6 +267,14 @@ const harness = createIntegrationTestHarness({
     // migration-only, so the closure walk cannot reach it. Found the hard way —
     // a verification written by one case was still counted by the next.
     'fulfillment_work_verifications',
+    // fulfillment_work_rejections (#2399) — the append-only exclusion ledger.
+    // Same migration-only FK as every neighbour above, so the closure walk
+    // cannot reach it either. Listed with #2712, whose timeout sweep is the
+    // first thing to write rejection rows from a pass over the WHOLE table:
+    // until then only a per-work read existed, so leftovers were invisible.
+    // A future spec counting rejections unscoped would otherwise see another
+    // case's rows — the way `fulfillment_work_verifications` was found.
+    'fulfillment_work_rejections',
     'fulfillment_works',
     // routing_decisions (#2394) — the routing INTENT row. Carries no FK at all
     // (both its references are cross-aggregate by value), so nothing cascades

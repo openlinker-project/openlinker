@@ -600,6 +600,34 @@ describe('InvoiceService', () => {
       );
     });
 
+    it("(d5b) failureCode: a 'rejected' throwable naming a missing sale classification maps to 'sale-classification-required' (#3031)", async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      // Structural `reason` field — mirrors how an adapter recognises its own
+      // provider's "you must configure this" 422 shape and re-throws with a
+      // reason matching SALE_CLASSIFICATION_REJECTION_MARKERS (#3031, inFakt's
+      // `errors.sale_type` detection), rather than propagating the provider's
+      // raw (possibly buyer-PII-echoing) message.
+      const rejection = Object.assign(new Error('rejected'), {
+        failureMode: 'rejected' as const,
+        reason: 'Infakt requires a sale classification to be configured for this connection',
+      });
+      adapter.issueInvoice.mockRejectedValue(rejection);
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'failed' }));
+
+      await expect(service.issueInvoice(makeCmd())).rejects.toBe(rejection);
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({
+          status: 'failed',
+          failureMode: 'rejected',
+          failureCode: 'sale-classification-required',
+          failureReason:
+            "This connection requires a sale classification (goods vs. services) to be configured before it can issue invoices. Set the connection's `defaultSaleType` and re-issue.",
+        }),
+      );
+    });
+
     it("(d5) failureCode: a tax-id rejection that also mentions a currency stays 'buyer-tax-id-invalid'", async () => {
       repo.findByIdempotencyKey.mockResolvedValue(null);
       repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));

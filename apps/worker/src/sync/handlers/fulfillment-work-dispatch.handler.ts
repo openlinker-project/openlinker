@@ -44,10 +44,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import {
+  FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN,
   FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
   FulfillmentWorkUnassignedError,
   buildRoutingShipTo,
   type FulfillmentExecutorPort,
+  type IFulfillmentDispatchTimeoutService,
   type IFulfillmentHandshakeService,
   type RoutingShipTo,
 } from '@openlinker/core/fulfillment';
@@ -81,7 +83,9 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrations: IIntegrationsService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
-    private readonly orderRecords: IOrderRecordService
+    private readonly orderRecords: IOrderRecordService,
+    @Inject(FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN)
+    private readonly timeouts: IFulfillmentDispatchTimeoutService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -98,6 +102,14 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
         shipTo,
         executor,
       });
+
+      // #2712: re-answer A3-X for the order from ALL its work objects, whatever
+      // the outcome was. An ACCEPTANCE is what CLEARS a state the timeout sweep
+      // raised, and a holder's own REJECTION raises the same state — A3-X reads
+      // "every candidate rejected or timed out", so both causes are one
+      // operator-facing fact. Without this the flag would be sticky, which
+      // #2100's level-triggered rule forbids.
+      await this.refreshAcceptanceAttention(payload.orderId);
 
       if (result.outcome === 'rejected') {
         this.logger.warn(
@@ -124,6 +136,33 @@ export class FulfillmentWorkDispatchHandler implements SyncJobHandler {
         );
       }
       throw error;
+    }
+  }
+
+  /**
+   * Recompute and persist the order's A3-X (`fulfillment-unaccepted`) state.
+   *
+   * BEST-EFFORT, and never allowed to change the job's outcome: the handshake
+   * answer is already durable by the time this runs, so failing the job here
+   * would re-cross the executor boundary (or, on the rejected arm, convert a
+   * correct terminal `business_failure` into a retry) purely because a display
+   * fact could not be written. The next dispatch or the hourly timeout sweep
+   * recomputes the same verdict, which is what level-triggering buys.
+   *
+   * The verdict itself is computed in CORE, from every work object on the
+   * order — this handler only writes it, because `libs/core/src/fulfillment` is
+   * a zero-sibling-edge leaf that may not reach an `orders` service (ADR-053).
+   */
+  private async refreshAcceptanceAttention(orderId: string): Promise<void> {
+    try {
+      const outcome = await this.timeouts.recomputeAcceptanceAttention(orderId);
+      await this.orderRecords.markOmsAttention(orderId, 'acceptance', outcome);
+    } catch (error) {
+      this.logger.error(
+        `Could not refresh the acceptance attention state for order ${orderId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
     }
   }
 

@@ -41,20 +41,38 @@ Authentication uses a **static API key** (no OAuth).
 **Config** (`InfaktConnectionConfig`, non-secret, persisted on the connection row):
 ```json
 {
-  "baseUrl": "https://api.infakt.pl",
+  "baseUrl": "https://api.infakt.pl/api/v3",
   "defaultPaymentMethod": "transfer",
   "bankAccount": {
     "id": "12345",
     "accountNumber": "PL00 0000 0000 0000 0000 0000 0000",
     "bankName": "mBank"
-  }
+  },
+  "defaultSaleType": "service"
 }
 ```
 
-`baseUrl` is optional — omit it to use inFakt's production API
-(`INFAKT_DEFAULT_BASE_URL`); override it to point at a sandbox host.
+`baseUrl` is optional and is a **legacy** override kept for backward
+compatibility — prefer `"environment": "sandbox"` / `"environment":
+"production"` instead, which need no URL at all. If you do set `baseUrl`, it
+**must include the `/api/v3` path** (inFakt's sandbox and production APIs
+share the same `/api/v3` path convention, e.g. `api.infakt.pl/api/v3/...` and
+`api.sandbox-infakt.pl/api/v3/...`) — `resolveInfaktBaseUrl` normalizes a
+missing suffix onto the override automatically, but the corrected example
+above should be preferred over relying on that normalization.
 `defaultPaymentMethod` and `bankAccount` are optional (see #1309/#1310 below) -
 omit both to fall back to `cash` with no stamped account.
+`defaultSaleType` is optional (see #2177 below) - omit it to leave `sale_type`
+off the payload entirely, matching pre-#2177 behavior. **Set through the raw
+config JSON editor only** — deliberately not surfaced by either the setup
+wizard or the structured edit-form section, unlike `defaultPaymentMethod`
+right above it. Two reasons, both intentional (#2995 review): the field's
+only confirmed value today is `'service'` (see below), so a `<select>` with
+one usable option buys little discoverability over the raw-JSON path; and the
+value is compliance-sensitive per-catalog VAT classification, which is not a
+knob to expose broadly until there's a real goods/services choice to offer.
+Revisit once a confirmed `'goods'` value lands (see the follow-up referenced
+below).
 
 ## Notable implementation details
 
@@ -103,6 +121,51 @@ omit both to fall back to `cash` with no stamped account.
   picker; the picked account is snapshotted into `config.bankAccount` and pushed back
   as the inFakt default via `BankAccountDefaultSetter.setDefaultBankAccount()`.
   `transfer` invoices carry the snapshot's `bank_account` / `bank_name` fields.
+- **Per-connection sale type for non-PL clients** (#2177): `config.defaultSaleType`
+  (today only `'service'` — see below) is stamped as `sale_type` on every issued
+  invoice/correction when configured. inFakt silently defaults `sale_type` for a
+  PL-country client, so issuance without this field has always worked for PL
+  buyers; for any other country inFakt rejects the request with 422
+  (`{"errors":{"sale_type":["Proszę określić rodzaj sprzedaży."]}}`) unless it is
+  present. There is **no safe universal default** — the field is left unset unless
+  the operator configures it, and unset means `sale_type` is omitted from the
+  payload entirely (PL issuance keeps working; non-PL issuance still 422s exactly
+  as before, unchanged). Picking the wrong value misstates the invoice's VAT
+  sale-type classification, so this is an explicit, compliance-sensitive operator
+  opt-in — OL cannot infer goods vs. services from a possibly-mixed catalog.
+  Setting it is a connection-wide toggle, not a per-catalog signal: a connection
+  that sells both goods and services to PL clients while also needing
+  `defaultSaleType: 'service'` set to unblock a single non-PL service client will
+  have that value stamped on **every** issued PL invoice too, overriding inFakt's
+  own server-side inference (which may have correctly inferred `goods` for those
+  PL sales). Deliberate given there is no per-catalog signal to route on — but
+  worth knowing before enabling it on a mixed catalog.
+  Only `'service'` is confirmed against inFakt's sandbox (exact lowercase match).
+  Several other spellings — `goods`, `product`, `towar`, `usluga`, `mixed`, case
+  variants — were all live-tested and **rejected**, including `'goods'` itself;
+  the correct value for a physical-goods sale was not found. `InfaktSaleTypeValues`
+  therefore lists `'service'` alone (#2995 review) — a placeholder `'goods'` value
+  would pass the save-time shape gate and then 422 at issuance, converting the
+  guard into a trap for exactly the operator this fix is meant to help. **Finding
+  the confirmed goods-sale value remains open and untracked** — #3031 (below)
+  turned out to be the diagnosis-hint work, not this; do not guess the value in,
+  per the rule above, until it is confirmed against a live sandbox.
+- **Missing-`sale_type` diagnosis hint** (#3031): `issueInvoice` detects Infakt's
+  field-level validation shape for the 422 above —
+  `{"errors":{"sale_type":[...]}}`, checked structurally (key presence only,
+  never the Polish message text or the array's contents, so a locale change
+  can't silently break it) — and re-throws with a `reason` matching core's
+  published `SALE_CLASSIFICATION_REJECTION_MARKERS`
+  (`@openlinker/core/invoicing`). `InvoiceService.classifyFailureCode` (#1200/W1)
+  routes that to the `sale-classification-required` failure code instead of the
+  generic `provider-rejected`, so a non-PL connection with no `defaultSaleType`
+  configured gets an operator-facing hint naming the config field to set, rather
+  than the uninformative "The invoicing provider rejected the request." Only the
+  direct `invoices.json` create path can carry this shape — a correction's
+  failure surfaces through the async task's `{processing_code,
+  processing_description}` envelope (#1763), which carries no field-level
+  `errors` object at all, so the same detection cannot apply to
+  `issueCorrection`.
 - **Rendered-PDF download** (#1321): `RegulatoryDocumentReader.getRegulatoryDocument
   (record, 'rendered')` fetches the invoice PDF as rendered by inFakt - this backs
   the **Download PDF** button on the accepted invoice detail page.
