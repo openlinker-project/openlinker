@@ -7,6 +7,7 @@
  * @module libs/core/src/orders
  */
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrderSyncService } from './application/services/order-sync.service';
 import { OrderIngestionService } from './application/services/order-ingestion.service';
@@ -28,6 +29,7 @@ import { RefundRecordRepository } from './infrastructure/persistence/repositorie
 import { RefundRecordOrmEntity } from './infrastructure/persistence/entities/refund-record.orm-entity';
 import { OrderLineItemOrmEntity } from './infrastructure/persistence/entities/order-line-item.orm-entity';
 import { TaxRateBackfillService } from './application/services/tax-rate-backfill.service';
+import { OrderTestFixtureService } from './application/services/order-test-fixture.service';
 import { TaxCoverageDetectionService } from './application/services/tax-coverage-detection.service';
 import { DisplayCurrencyConversionService } from './application/services/display-currency-conversion.service';
 import {
@@ -46,6 +48,7 @@ import {
   ORDER_FX_READ_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   TAX_RATE_BACKFILL_SERVICE_TOKEN,
+  ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   FULFILLMENT_DISPATCH_RELAY_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
   TAX_COVERAGE_DETECTION_SERVICE_TOKEN,
@@ -81,6 +84,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
 
 @Module({
   imports: [
+    ConfigModule, // Required for OrderTestFixtureService's OL_ALLOW_TEST_FIXTURES read (#2855)
     TypeOrmModule.forFeature([OrderRecordOrmEntity, RefundRecordOrmEntity, OrderLineItemOrmEntity]),
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN and ADAPTER_FACTORY_RESOLVER_TOKEN
     IdentifierMappingModule, // Required for IDENTIFIER_MAPPING_SERVICE_TOKEN
@@ -141,6 +145,7 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     RefundRecordRepository,
     OrderLineItemRepository,
     TaxRateBackfillService,
+    OrderTestFixtureService,
     TaxCoverageDetectionService,
     DisplayCurrencyConversionService,
     // Then provide token bindings using useExisting
@@ -213,6 +218,10 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
       useExisting: TaxRateBackfillService,
     },
     {
+      provide: ORDER_TEST_FIXTURE_SERVICE_TOKEN,
+      useExisting: OrderTestFixtureService,
+    },
+    {
       provide: SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
       useExisting: SalesDocumentViewService,
     },
@@ -245,6 +254,9 @@ export { ORDER_SYNC_SERVICE_TOKEN } from './orders.tokens';
     // Exported so the worker's `orders.taxRate.backfill` handler can inject
     // the backfill seam (#2440).
     TAX_RATE_BACKFILL_SERVICE_TOKEN,
+    // Exported so the API's orders controller can inject the test-fixture
+    // seam (#2855).
+    ORDER_TEST_FIXTURE_SERVICE_TOKEN,
     // Re-exported so a consumer of `OrdersModule` reaches the hold repository
     // without also importing `OrderHoldsModule` (#2338). It is the MODULE that
     // is re-exported, not the token: Nest refuses to export a provider it does

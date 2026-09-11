@@ -56,7 +56,13 @@ import {
   Inject,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiExcludeEndpoint,
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
@@ -81,7 +87,10 @@ import {
   HoldReleaseNotPermittedError,
   deriveSlaState,
   IOrderHoldService,
-  IOrderProvisioningResumeService} from '@openlinker/core/orders';
+  IOrderProvisioningResumeService,
+  ORDER_TEST_FIXTURE_SERVICE_TOKEN,
+  IOrderTestFixtureService,
+  TestFixturesDisabledException} from '@openlinker/core/orders';
 import type {
   OrderRecord,
   OrderRecordFilters,
@@ -135,6 +144,7 @@ import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 import { PlaceOrderHoldRequestDto } from './dto/place-order-hold-request.dto';
+import { MarkPreRolloutEraResponseDto } from './dto/mark-pre-rollout-era-response.dto';
 import { ReleaseOrderHoldRequestDto } from './dto/release-order-hold-request.dto';
 import type {
   OrderHoldDto,
@@ -258,7 +268,10 @@ export class OrdersController {
     @Inject(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN)
     private readonly provisioningResume: IOrderProvisioningResumeService,
     @Inject(SALES_DOCUMENT_VIEW_SERVICE_TOKEN)
-    private readonly salesDocumentView: ISalesDocumentViewService
+    private readonly salesDocumentView: ISalesDocumentViewService,
+    // #2855 — test-fixture-only writes, never called against real order data.
+    @Inject(ORDER_TEST_FIXTURE_SERVICE_TOKEN)
+    private readonly testFixtureService: IOrderTestFixtureService
   ) {}
 
   @Roles('admin', 'operator', 'viewer')
@@ -897,6 +910,75 @@ export class OrdersController {
       hold: this.toHoldDto(released),
       provisioningResume: this.toProvisioningResumeDto(resume),
     };
+  }
+
+  @Roles('admin')
+  @Post(':internalOrderId/test-fixtures/mark-pre-rollout-era')
+  @HttpCode(HttpStatus.OK)
+  // Kept out of the published OpenAPI document (#3127 review). The route is
+  // inert on any production install — it refuses unconditionally under
+  // NODE_ENV=production — so advertising a "MUST NEVER be called against real
+  // order data" endpoint that always 403s there is disclosure with no reader
+  // it could serve. The @ApiOperation below is retained deliberately: it is
+  // the description a developer reads in source, and it comes back the moment
+  // this line is removed for a local Swagger run.
+  @ApiExcludeEndpoint()
+  @ApiOperation({
+    summary: 'TEST-FIXTURE-ONLY: stamp taxRateEra=pre-rollout on an order',
+    description:
+      'Exists ONLY to let a non-production install reach the tax-a / tax-c analytics coverage ' +
+      'states (#2482) with a fresh, flow-seeded order — no real ingestion path ever writes ' +
+      'taxRateEra (it was set exactly once, by a historical backfill migration), so those states ' +
+      'are otherwise unreachable. Triple-gated: @Roles(admin) here, OL_ALLOW_TEST_FIXTURES must ' +
+      'be true in the process env, and NODE_ENV must not be production (refused unconditionally, ' +
+      'even with the env var set). The acting admin is recorded in the audit log. MUST NEVER be ' +
+      'called against real order data — it silently excludes the order from Net Sales figures via ' +
+      'the pre-rollout tax-rate-era rule.',
+  })
+  @ApiResponse({ status: 200, description: 'Stamp applied (or already present)', type: MarkPreRolloutEraResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions, or TEST_FIXTURES_DISABLED' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async markPreRolloutEra(
+    @Param('internalOrderId') internalOrderId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<MarkPreRolloutEraResponseDto> {
+    // The feature-flag gate is checked BEFORE the DB pre-read: on a production
+    // deployment (the default — the flag defaults off) this route is entirely
+    // inert, and it should cost no read before that is established.
+    try {
+      this.testFixtureService.assertTestFixturesAllowed();
+    } catch (error) {
+      if (error instanceof TestFixturesDisabledException) {
+        throw new ForbiddenException({
+          statusCode: HttpStatus.FORBIDDEN,
+          error: 'TEST_FIXTURES_DISABLED',
+          message: error.message,
+        });
+      }
+      throw error;
+    }
+
+    const order = await this.orderRecordRepository.findById(internalOrderId);
+    if (!order) {
+      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+    }
+
+    try {
+      const applied = await this.testFixtureService.markPreRolloutEraForTesting(
+        internalOrderId,
+        user.id
+      );
+      return { applied };
+    } catch (error) {
+      if (error instanceof TestFixturesDisabledException) {
+        throw new ForbiddenException({
+          statusCode: HttpStatus.FORBIDDEN,
+          error: 'TEST_FIXTURES_DISABLED',
+          message: error.message,
+        });
+      }
+      throw error;
+    }
   }
 
   /** TypeORM may hand back a string for a timestamptz; `toDto` guards the same way. */

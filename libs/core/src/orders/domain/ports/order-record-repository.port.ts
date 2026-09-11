@@ -892,6 +892,25 @@ export interface OrderRecordRepositoryPort {
   clearFxStampForRestatement(internalOrderId: string): Promise<boolean>;
 
   /**
+   * TEST-FIXTURE-ONLY (#2855). Stamps `taxRateEra = 'pre-rollout'` on one
+   * order so a non-production install can reach the `tax-a` / `tax-c`
+   * analytics coverage states with a fresh, flow-seeded order — no ingestion
+   * path writes this column going forward (it was set exactly once, by a
+   * historical backfill migration), so without this seam those states are
+   * structurally unreachable by any real order.
+   *
+   * Guarded on `"taxRateEra" IS DISTINCT FROM 'pre-rollout'`, the same
+   * idempotency shape {@link clearFxStampForRestatement} uses: a row already
+   * in the target state matches nothing and reports `false`, so a repeated
+   * call is a no-op rather than a second, redundant write.
+   *
+   * Deliberately NOT role/env-aware — this is a dumb, narrow conditional
+   * writer, same as its precedent. The `@Roles('admin')` + `OL_ALLOW_TEST_FIXTURES`
+   * double gate lives in `OrderTestFixtureService`, one layer up.
+   */
+  stampPreRolloutEraForTesting(internalOrderId: string): Promise<boolean>;
+
+  /**
    * The mismatched population still remaining in `filters`' scope,
    * partitioned by whether the FX pipeline already reached a terminal answer
    * (#2468) — what a restatement run's completion poll reads to decide

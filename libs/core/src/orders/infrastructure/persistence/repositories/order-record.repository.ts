@@ -974,6 +974,18 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     return (result.affected ?? 0) > 0;
   }
 
+  /** See the port's JSDoc — TEST-FIXTURE-ONLY (#2855). */
+  async stampPreRolloutEraForTesting(internalOrderId: string): Promise<boolean> {
+    const result = await this.repository
+      .createQueryBuilder()
+      .update(OrderRecordOrmEntity)
+      .set({ taxRateEra: 'pre-rollout' })
+      .where('"internalOrderId" = :internalOrderId', { internalOrderId })
+      .andWhere('"taxRateEra" IS DISTINCT FROM \'pre-rollout\'')
+      .execute();
+    return (result.affected ?? 0) > 0;
+  }
+
   /**
    * Remaining mismatched population in scope, split by terminal marker
    * (#2468) — see the port's JSDoc for why the marker is the only evidence
