@@ -98,13 +98,21 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
     // fields — is the right dependency for "the dialog just opened".
   }, [target, resetForm, resetCreate, resetUpdate]);
 
+  // Active connections only — "whose sync may write stock here" (the
+  // field's own description) is misleading for a connection that currently
+  // can't sync (tech-review finding). The row's CURRENT owner, if any, is
+  // kept even when inactive so editing doesn't silently blank a value the
+  // select would otherwise have no matching <option> for.
+  const currentOwnerId = target?.mode === 'edit' ? target.location.ownerConnectionId : null;
   const connectionOptions = useMemo(
     () =>
-      (connectionsQuery.data ?? []).map((connection) => ({
-        id: connection.id,
-        label: `${resolvePlatformLabel(platforms, connection.platformType)} — ${connection.name}`,
-      })),
-    [connectionsQuery.data, platforms],
+      (connectionsQuery.data ?? [])
+        .filter((connection) => connection.status === 'active' || connection.id === currentOwnerId)
+        .map((connection) => ({
+          id: connection.id,
+          label: `${resolvePlatformLabel(platforms, connection.platformType)} — ${connection.name}`,
+        })),
+    [connectionsQuery.data, platforms, currentOwnerId],
   );
 
   const onSubmit = form.handleSubmit(async (values) => {

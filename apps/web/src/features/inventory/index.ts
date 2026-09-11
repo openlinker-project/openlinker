@@ -59,6 +59,7 @@ export { useDeleteInventoryLocationMutation } from './hooks/use-delete-inventory
 // (upcoming) locations list page in `pages/inventory/`.
 export { LocationDialog, type LocationDialogTarget } from './components/location-dialog';
 export { LocationDeleteDialog } from './components/location-delete-dialog';
+export { KIND_LABEL } from './components/location-dialog.schema';
 
 export { useInventoryAvailabilityBatchQuery } from './hooks/use-inventory-availability-batch-query';
 // Query-key factory re-exported so the bulk wizard's chunked per-variant

@@ -83,7 +83,7 @@ const lazyRoutes = collectLazyRoutes([
  *   - prompt-templates-legacy-redirects (inline `<Navigate>` element)
  *   - `/analytics` legacy alias (inline `<Navigate>` to `/`, #2740)
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 63;
+const EXPECTED_LAZY_ROUTE_COUNT = 64;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

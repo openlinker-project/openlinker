@@ -20,7 +20,7 @@ import type {
   InventoryLocationKind,
   UpdateInventoryLocationInput,
 } from '../api/inventory-locations.types';
-import { InventoryLocationKindValues } from '../api/inventory-locations.types';
+import { InventoryLocationKindValues, normalizeCountryIso2 } from '../api/inventory-locations.types';
 
 const latLngField = z.union([
   z.literal(''),
@@ -82,7 +82,7 @@ export function toCreateInput(values: LocationDialogFormSubmission): CreateInven
     kind: values.kind,
     ownerConnectionId: values.ownerConnectionId === '' ? null : values.ownerConnectionId,
     externalRef: values.externalRef === '' ? null : values.externalRef,
-    countryIso2: values.countryIso2 === '' ? null : values.countryIso2.toUpperCase(),
+    countryIso2: values.countryIso2 === '' ? null : normalizeCountryIso2(values.countryIso2),
     postcode: values.postcode === '' ? null : values.postcode,
     latitude: values.latitude === '' ? null : values.latitude,
     longitude: values.longitude === '' ? null : values.longitude,
@@ -96,7 +96,7 @@ export function toUpdateInput(values: LocationDialogFormSubmission): UpdateInven
     kind: values.kind,
     ownerConnectionId: values.ownerConnectionId === '' ? null : values.ownerConnectionId,
     externalRef: values.externalRef === '' ? null : values.externalRef,
-    countryIso2: values.countryIso2 === '' ? null : values.countryIso2.toUpperCase(),
+    countryIso2: values.countryIso2 === '' ? null : normalizeCountryIso2(values.countryIso2),
     postcode: values.postcode === '' ? null : values.postcode,
     latitude: values.latitude === '' ? null : values.latitude,
     longitude: values.longitude === '' ? null : values.longitude,
