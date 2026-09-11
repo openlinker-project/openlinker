@@ -1476,8 +1476,14 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * the same field `toSalesDocumentOrderFacts` reads. `NULLIF(btrim(...), '')`
    * makes a blank indistinguishable from absent, so both are excluded rather
    * than one of them becoming a market with an empty name.
+   *
+   * Wrapped in `upper(...)` (#3176): a source's own country code is stored
+   * verbatim in the snapshot and is never rewritten, so a lowercase `pl`
+   * alongside `PL` would otherwise group as a SECOND market here - the same
+   * scope `SalesDocumentRulesService.normaliseCountry` applies on the
+   * configured side, so the two stay comparable without touching stored data.
    */
-  private static readonly ROUTING_COUNTRY_EXPR = `NULLIF(btrim(rec."orderSnapshot"#>>'{shippingAddress,country}'), '')`;
+  private static readonly ROUTING_COUNTRY_EXPR = `NULLIF(upper(btrim(rec."orderSnapshot"#>>'{shippingAddress,country}')), '')`;
 
   private static readonly CUSTOMER_EXPR = `lower(rec."orderSnapshot"#>>'{shippingAddress,lastName}')`;
   // Guarded so a malformed (non-array) `items` value sorts as NULL rather than
