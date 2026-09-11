@@ -55,7 +55,11 @@ const lazyRoutes = collectLazyRoutes([
  * route reverted to eager `element:` form, which is exactly the regression
  * the parameterized test below is meant to catch.
  *
- * Today's breakdown (63 total = 47 authenticated + 4 guest + 12 plugin):
+ * Today's breakdown (64 total = 47 authenticated + 4 guest + 1 standalone +
+ * 12 plugin — the arithmetic below previously didn't sum to the constant
+ * because `/bench` was described inline as part of the 47 while actually
+ * living in the separate `standaloneRoutes` array; it now gets its own
+ * bucket):
  *   - 47 authenticated children (under `coreChildren`, counting per-children-node
  *     because grouped routes like orders/customers expose multiple
  *     lazy nodes — includes `/dev/ui` design-system page (#775), `/shipments` (#770),
@@ -67,15 +71,17 @@ const lazyRoutes = collectLazyRoutes([
  *     (#2336), `/settings/who-decides` (#2354), and
  *     `/connections/:connectionId/pricing-sync` (#3150 — the destination
  *     Pricing & sync settings page and the source connection rollup, dual-mode
- *     resolved by capability), plus `/bench` — the pack-bench identity
- *     surface (#2413), which carries no nav entry and is reached by URL at a
- *     terminal;
+ *     resolved by capability);
  *     the former `/inventory/:id` detail route was removed (#1305/#1609) once
  *     `product-detail-page.tsx` subsumed per-item stock detail, and the
  *     `/inventory` list route was removed (#1720) when the products cockpit
  *     absorbed cross-catalog stock browsing)
  *   - 4 guest routes (forgot-password, reset-password, register, confirm-email (#1624)
  *     — login stays eager)
+ *   - 1 standalone route: `/bench` — the pack-bench identity surface
+ *     (#2413), which carries no nav entry and is reached by URL at a
+ *     terminal, and renders outside `AuthenticatedAppLayout` (see the
+ *     `standaloneRoutes` comment above)
  *   - 12 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
  *     woocommerce setup, erli setup, subiekt setup (#1199), ksef setup, ksef
  *     invoice numbering (#1577), inpost setup, infakt setup (#1282), eparagony

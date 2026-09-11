@@ -340,4 +340,61 @@ describe('PricingAndSyncSection', () => {
     expect(await screen.findByText(/keep a 22% margin/, { selector: '#conn-rule-note' })).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  describe('initialExpandSourceId deep-link pre-expand (#3167 review, finding 1)', () => {
+    it('pre-checks the named source and copies the default rule in as its starting point', async () => {
+      const apiClient = createMockApiClient({
+        pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
+      });
+
+      renderWithProviders(
+        <PricingAndSyncSection connectionId="dest-1" initialExpandSourceId="src-1" />,
+        { apiClient, sessionAdapter: ADMIN_SESSION },
+      );
+
+      const checkbox = await screen.findByTestId('source-custom-toggle');
+      expect(checkbox).toBeChecked();
+      // Enabling the override is precisely the state change a manual
+      // checkbox click makes, so it correctly leaves Save enabled — the
+      // finding 1 regression was that NEITHER this pre-expand NOR a manual
+      // click could ever enable Save (`isDirty` ignored `customSources`
+      // entirely). That the button is enabled here proves the fix, not a
+      // no-unsaved-changes claim.
+      expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+    });
+
+    it('scrolls the pre-expanded row into view once it renders', async () => {
+      const apiClient = createMockApiClient({
+        pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
+      });
+      const scrollIntoViewMock = vi.fn();
+      // jsdom doesn't implement `scrollIntoView` at all.
+      window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+
+      renderWithProviders(
+        <PricingAndSyncSection connectionId="dest-1" initialExpandSourceId="src-1" />,
+        { apiClient, sessionAdapter: ADMIN_SESSION },
+      );
+
+      await screen.findByTestId('source-custom-toggle');
+      await waitFor(() => {
+        expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+      });
+    });
+
+    it('reports rather than silently dropping a source id absent from the data', async () => {
+      const apiClient = createMockApiClient({
+        pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
+      });
+
+      renderWithProviders(
+        <PricingAndSyncSection connectionId="dest-1" initialExpandSourceId="src-does-not-exist" />,
+        { apiClient, sessionAdapter: ADMIN_SESSION },
+      );
+
+      expect(await screen.findByText(/isn't one of this connection's current sources/)).toBeInTheDocument();
+      // And nothing was spuriously pre-selected.
+      expect(screen.getByTestId('source-custom-toggle')).not.toBeChecked();
+    });
+  });
 });
