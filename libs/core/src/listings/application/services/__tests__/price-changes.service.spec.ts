@@ -479,7 +479,7 @@ describe('PriceChangesService', () => {
       expect(productsService.getVariantsByIds).not.toHaveBeenCalled();
     });
 
-    it('falls back to "Unknown product" and null label/sku when the variant cannot be resolved', async () => {
+    it('reports null (never a fallback sentence) product/label/sku when the variant cannot be resolved', async () => {
       autoAppliedLog.findRecent.mockResolvedValue([
         {
           id: 'log-1',
@@ -497,7 +497,30 @@ describe('PriceChangesService', () => {
 
       const [view] = await service.listAutoApplied(20);
 
-      expect(view).toMatchObject({ productName: 'Unknown product', variantLabel: null, sku: null });
+      expect(view).toMatchObject({ productName: null, variantLabel: null, sku: null });
+    });
+
+    it('reports a null product name (never asserting the variant name) when the variant resolves but its product does not', async () => {
+      autoAppliedLog.findRecent.mockResolvedValue([
+        {
+          id: 'log-1',
+          productVariantId: 'v1',
+          destinationConnectionId: 'dest-1',
+          sourceConnectionId: 'src-1',
+          oldAmount: 10,
+          newAmount: 12,
+          currency: 'PLN',
+          appliedAt: new Date('2026-09-10T10:00:00.000Z'),
+        },
+      ]);
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'v1', productId: 'p-deleted', sku: 'MUG-350', attributes: { size: '350 ml' }, isStale: false },
+      ]);
+      productsService.getProductsByIds.mockResolvedValue([]);
+
+      const [view] = await service.listAutoApplied(20);
+
+      expect(view).toMatchObject({ productName: null, variantLabel: '350 ml', sku: 'MUG-350' });
     });
   });
 });

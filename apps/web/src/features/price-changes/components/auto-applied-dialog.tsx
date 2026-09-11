@@ -21,12 +21,14 @@ import type { ReactElement } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '../../../shared/ui/dialog';
 import { Button } from '../../../shared/ui/button';
 import { TimeDisplay } from '../../../shared/ui/time-display';
+import { AbsentValue } from '../../../shared/ui/absent-value';
 import { formatAmount } from '../../../shared/format/format-amount';
 import type { PriceChangeAutoAppliedItem } from '../api/price-changes.types';
 
 export interface AutoAppliedRow {
   item: PriceChangeAutoAppliedItem;
-  productName: string;
+  /** `null` when the variant or its product could not be resolved (#3168 review). */
+  productName: string | null;
   variantLabel: string | null;
   destinationLabel: string;
 }
@@ -37,7 +39,8 @@ export interface AutoAppliedDialogProps {
   rows: readonly AutoAppliedRow[];
 }
 
-function initials(name: string): string {
+function initials(name: string | null): string {
+  if (!name) return '?';
   return name
     .split(' ')
     .map((w) => w[0])
@@ -63,7 +66,7 @@ export function AutoAppliedDialog({ open, onOpenChange, rows }: AutoAppliedDialo
               </span>
               <div className="mini-row__text">
                 <div className="mini-row__name">
-                  {productName}
+                  {productName === null ? <AbsentValue label="Product not found" /> : productName}
                   {variantLabel ? (
                     <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> — {variantLabel}</span>
                   ) : null}

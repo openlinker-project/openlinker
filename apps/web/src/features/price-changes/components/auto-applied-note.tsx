@@ -30,18 +30,23 @@ import { useState, type ReactElement } from 'react';
 import { useAutoAppliedPriceChangesQuery } from '../hooks/use-auto-applied-price-changes-query';
 import { useDestinationPricingSyncSummaries } from '../hooks/use-destination-pricing-sync-summaries';
 import { anyConnectionAutomatic } from '../lib/pricing-sync-mode';
+import { formatAutoAppliedCount } from '../lib/auto-applied-count-label';
 import type { Connection } from '../../connections';
 import { AutoAppliedDialog, type AutoAppliedRow } from './auto-applied-dialog';
 
 export interface AutoAppliedNoteProps {
   /**
    * Same set `PricingRulesPickerDialog` reads. That dialog's own read is
-   * gated on `open` (#3167 review), so it no longer fires unconditionally —
-   * this note therefore issues its own batched `useDestinationPricingSyncSummaries`
-   * call (still one request per connection via `useQueries`, never a
-   * per-log-entry fan-out) rather than riding an always-on sibling fetch.
-   * The two share a query key, so mounting both with the picker open costs
-   * nothing extra; with it closed, this is the request.
+   * gated on `open` (#3167 review), so it no longer fires unconditionally.
+   * This note's own `useDestinationPricingSyncSummaries` call is in turn
+   * gated on the (cheap, single-request) auto-applied log read having any
+   * entries at all (#3168 review): the config fan-out is one request PER
+   * destination connection, so firing it on every mount regardless of
+   * whether the log has anything to show would spend N requests deciding
+   * whether to render a banner that, on an empty log, is `null` no matter
+   * what the config says. With the log empty this note now costs exactly
+   * one request; with entries present, it costs 1 + N, same as before, and
+   * shares its query key with the picker so the two never double-fetch.
    */
   destinationConnections: readonly Connection[];
 }
@@ -49,10 +54,11 @@ export interface AutoAppliedNoteProps {
 export function AutoAppliedNote({ destinationConnections }: AutoAppliedNoteProps): ReactElement | null {
   const [dialogOpen, setDialogOpen] = useState(false);
   const query = useAutoAppliedPriceChangesQuery();
-  const connectionIds = destinationConnections.map((c) => c.id);
-  const summaries = useDestinationPricingSyncSummaries(connectionIds);
-
   const items = query.data ?? [];
+
+  const connectionIds = destinationConnections.map((c) => c.id);
+  const summaries = useDestinationPricingSyncSummaries(connectionIds, { enabled: items.length > 0 });
+
   const show = items.length > 0 && anyConnectionAutomatic(summaries.map((s) => s.data));
 
   if (!show) return null;
@@ -66,10 +72,12 @@ export function AutoAppliedNote({ destinationConnections }: AutoAppliedNoteProps
     destinationLabel: connectionLabelById.get(item.destinationConnectionId) ?? item.destinationConnectionId,
   }));
 
+  const count = formatAutoAppliedCount(items.length);
+
   return (
     <>
       <div className="filter-note" id="auto-applied-note" role="status">
-        <span id="auto-applied-count">{items.length}</span> price change{items.length === 1 ? '' : 's'} went live
+        <span id="auto-applied-count">{count.label}</span> price change{count.plural ? 's' : ''} went live
         automatically recently (
         <button
           type="button"

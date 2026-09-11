@@ -137,7 +137,8 @@ export interface BulkAcceptPriceChangesResponse {
 export interface PriceChangeAutoAppliedItem {
   id: string;
   productVariantId: string;
-  productName: string;
+  /** `null` when the variant or its product could not be resolved (#3168 review). */
+  productName: string | null;
   variantLabel: string | null;
   sku: string | null;
   destinationConnectionId: string;

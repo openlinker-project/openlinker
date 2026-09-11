@@ -9,7 +9,12 @@ import type { PriceChangeAutoAppliedView } from '@openlinker/core/listings';
 export class PriceChangeAutoAppliedItemResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() productVariantId!: string;
-  @ApiProperty() productName!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Null when the variant or its product could not be resolved (#3168 review).',
+  })
+  productName!: string | null;
   @ApiProperty({ type: String, nullable: true }) variantLabel!: string | null;
   @ApiProperty({ type: String, nullable: true }) sku!: string | null;
   @ApiProperty() destinationConnectionId!: string;

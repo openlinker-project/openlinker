@@ -10,13 +10,18 @@
  * is deliberately anemic (ADR-011) — a bare log fact with no identity
  * resolution of its own.
  *
+ * `productName` is `null`, never a fallback sentence, when the variant or
+ * its product could not be resolved (#3168 review) - a backend string is
+ * operator-facing copy that belongs to the frontend and must clear
+ * `check-ui-vocabulary`, which no `libs/core` string can.
+ *
  * @module libs/core/src/listings/application/types
  */
 
 export interface PriceChangeAutoAppliedView {
   id: string;
   productVariantId: string;
-  productName: string;
+  productName: string | null;
   variantLabel: string | null;
   sku: string | null;
   destinationConnectionId: string;

@@ -376,7 +376,14 @@ export class PriceChangesService implements IPriceChangesService {
       return {
         id: entry.id,
         productVariantId: entry.productVariantId,
-        productName: product?.name ?? 'Unknown product',
+        // Absence is a fact for the FE to render, not a core-owned sentence
+        // (#3168 review — operator copy belongs to the frontend and must
+        // pass `check-ui-vocabulary`, which a backend string never enters).
+        // `null` covers both "the variant was never found" (variant and
+        // product both unresolved) and "the variant resolved but its
+        // product did not" — the FE can tell the two apart itself by
+        // checking `variantLabel`/`sku` alongside `productName`.
+        productName: product?.name ?? null,
         variantLabel: this.variantLabel(variant),
         sku: variant?.sku ?? null,
         destinationConnectionId: entry.destinationConnectionId,
