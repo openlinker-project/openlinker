@@ -17,8 +17,18 @@
  * Precedence:
  *   1. Explicit `config.baseUrl` - a legacy override, honoured for backward
  *      compatibility with connections created before the environment select
- *      existed. Trimmed, and required to be https (see
- *      {@link isAllowedInfaktBaseUrl}).
+ *      existed. Trimmed, required to be https (see
+ *      {@link isAllowedInfaktBaseUrl}), and - only when it carries no path of
+ *      its own - normalized to carry the `/api/v3` suffix (#2176) - a bare-host
+ *      override (e.g. the README's own historical example,
+ *      `https://api.infakt.pl`) would otherwise build a URL that 404s /
+ *      redirects to a garbage host, with Node's `fetch` throwing a raw
+ *      transport `TypeError` rather than an `InfaktApiError`. Idempotent: an
+ *      override that already ends in `/api/v3` is left alone. An override that
+ *      carries a *different* path is left alone too - see
+ *      {@link normalizeInfaktBaseUrl} for why: it is read as an operator-run
+ *      proxy, not a broken README-example shape, and must be honoured
+ *      verbatim.
  *   2. `config.environment === 'sandbox'` - the neutral choice both FE forms
  *      persist today.
  *   3. `INFAKT_DEFAULT_BASE_URL` (production) - the default when neither is
@@ -53,13 +63,55 @@ export const INFAKT_SANDBOX_BASE_URL = 'https://api.sandbox-infakt.pl/api/v3';
  * is the property that actually protects the credential.
  */
 export function isAllowedInfaktBaseUrl(value: string): boolean {
-  let url: URL;
+  const url = tryParseInfaktBaseUrl(value);
+  return url !== null && url.protocol === 'https:';
+}
+
+/**
+ * Shared parse step behind {@link isAllowedInfaktBaseUrl} and
+ * {@link resolveInfaktBaseUrl}. `resolveInfaktBaseUrl` parses the override
+ * exactly once and threads the result into {@link normalizeInfaktBaseUrl}
+ * rather than calling `isAllowedInfaktBaseUrl` and re-parsing inside
+ * `normalizeInfaktBaseUrl` (#2179/#2994 review, Minor) - harmless either way
+ * since a malformed override is rejected before either call, but a second
+ * `new URL()` on the same string is pure waste.
+ */
+function tryParseInfaktBaseUrl(value: string): URL | null {
   try {
-    url = new URL(value);
+    return new URL(value);
   } catch {
-    return false;
+    return null;
   }
-  return url.protocol === 'https:';
+}
+
+const INFAKT_API_VERSION_PATH = '/api/v3';
+
+/**
+ * Normalizes a legacy `config.baseUrl` override so a bare-host override (the
+ * README's own historical example, `https://api.infakt.pl`) always carries the
+ * `/api/v3` suffix (#2176 review, Important #1).
+ *
+ * Only a **root-path** override (no path, or bare `/`) is rewritten. An
+ * override that already carries its own path is left completely untouched -
+ * including one whose path does not end in `/api/v3` - because
+ * {@link isAllowedInfaktBaseUrl}'s own docblock declines a host allowlist on
+ * the grounds that this override "may legitimately point at an operator-run
+ * proxy": a proxy mounting the v3 surface under its own prefix (e.g.
+ * `https://proxy.example.com/infakt`) is exactly such a case, and rewriting it
+ * would silently 404 a working connection at read time with no save event and
+ * no log line. Parsing via `URL` (rather than an `endsWith` string test) also
+ * sidesteps two misreads a string test falls for: a query string appended
+ * after `/api/v3` (`https://host/api/v3?probe=1`, previously seen as
+ * "not yet suffixed" and given a second suffix) and a path that merely
+ * contains the substring in a different segment (`https://host/not-api/v3`,
+ * previously seen as "already suffixed" and left broken).
+ */
+function normalizeInfaktBaseUrl(value: string, parsed: URL): string {
+  const withoutTrailingSlash = value.replace(/\/+$/, '');
+  if (parsed.pathname !== '' && parsed.pathname !== '/') {
+    return withoutTrailingSlash;
+  }
+  return `${withoutTrailingSlash}${INFAKT_API_VERSION_PATH}`;
 }
 
 /**
@@ -80,13 +132,20 @@ export function resolveInfaktBaseUrl(
     // externally-written row could carry a plain-http override - which would
     // send the API key over cleartext to an arbitrary host. Re-check here so
     // the property does not rest solely on create-time validation.
-    if (!isAllowedInfaktBaseUrl(override)) {
+    //
+    // Parsed once and threaded into `normalizeInfaktBaseUrl` rather than
+    // calling `isAllowedInfaktBaseUrl` (which parses internally) and letting
+    // `normalizeInfaktBaseUrl` parse a second time.
+    const parsed = tryParseInfaktBaseUrl(override);
+    if (parsed === null || parsed.protocol !== 'https:') {
       throw new InfaktConfigException(
         `Infakt connection ${connectionId ?? '(unknown)'} has a disallowed baseUrl override (must use https)`,
         connectionId,
       );
     }
-    return override;
+    // #2176: normalize so an override supplied without `/api/v3` (the
+    // README's own historical example) still builds a working URL.
+    return normalizeInfaktBaseUrl(override, parsed);
   }
   return config.environment === 'sandbox' ? INFAKT_SANDBOX_BASE_URL : INFAKT_DEFAULT_BASE_URL;
 }

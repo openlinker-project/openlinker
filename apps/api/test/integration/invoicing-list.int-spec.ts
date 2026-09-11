@@ -79,6 +79,19 @@ describe('Invoicing list (integration)', () => {
     await resetTestHarness();
   });
 
+  // The FIRST test asserts `total: 0` against a Postgres instance shared with
+  // every other int-spec file in this suite (single worker, no
+  // testSequencer) — an `afterEach`-only reset is a courtesy to the next
+  // file, not isolation for this one, so this file's first assertion can
+  // read whatever the previous file left behind.
+  // `invoice-record-offline-recovery-query.int-spec.ts`'s own
+  // `beforeEach`-only reset leaves its last test's rows in `invoice_records`
+  // after that file finishes, which is exactly what was observed failing
+  // this test in CI (#2986).
+  beforeEach(async () => {
+    await resetTestHarness();
+  });
+
   afterEach(async () => {
     await resetTestHarness();
   });
