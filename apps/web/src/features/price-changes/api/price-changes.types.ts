@@ -35,11 +35,14 @@ export interface PriceChangeItem {
 
   destinationConnectionId: string;
   destinationLabel: string;
-  destinationCurrency: string;
+  /** `null` when unresolvable (mirrors `blockReason: 'destination-currency-unknown'`, #3163). */
+  destinationCurrency: string | null;
 
-  computedOldAmount: number;
+  /** `null` when this episode has no recorded baseline (a brand-new mapping's first detection, #3159/#3162). */
+  computedOldAmount: number | null;
   computedNewAmount: number;
-  deltaPct: number;
+  /** `null` exactly when `computedOldAmount` is `null` — there is no baseline to compute a delta against. */
+  deltaPct: number | null;
   isSteep: boolean;
 
   ruleSummary: PriceChangeRuleSummary;
@@ -58,12 +61,18 @@ export interface PriceChangeItem {
 export interface PriceChangeListResponse {
   items: PriceChangeItem[];
   hiddenStaleCount: number;
+  /** Total open episodes matching the same filters — the real count behind pagination (#3162). */
+  total: number;
 }
 
 export interface ListPriceChangesFilters {
   connectionId?: string;
   direction?: 'up' | 'down';
   magnitudeLarge?: boolean;
+  /** Page size (server default 50, max 200 — #3162). */
+  limit?: number;
+  /** Rows to skip (#3162). */
+  offset?: number;
 }
 
 export interface AcceptPriceChangeInput {
@@ -92,7 +101,8 @@ export interface PriceChangeAutoAppliedItem {
   productVariantId: string;
   destinationConnectionId: string;
   sourceConnectionId: string;
-  oldAmount: number;
+  /** `null` for a first-ever detection with no recorded baseline (#3159). */
+  oldAmount: number | null;
   newAmount: number;
   currency: string;
   appliedAt: string;

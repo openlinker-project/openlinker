@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
+import { renderWithProviders, createMockApiClient, sampleConnection } from '../../../test/test-utils';
 import { PriceChangesQueueTable } from './price-changes-queue-table';
 import type { PriceChangeItem, PriceChangeListResponse } from '../api/price-changes.types';
 
@@ -37,8 +37,8 @@ function buildItem(overrides: Partial<PriceChangeItem> = {}): PriceChangeItem {
   };
 }
 
-function buildPage(items: PriceChangeItem[], hiddenStaleCount = 0): PriceChangeListResponse {
-  return { items, hiddenStaleCount };
+function buildPage(items: PriceChangeItem[], hiddenStaleCount = 0, total?: number): PriceChangeListResponse {
+  return { items, hiddenStaleCount, total: total ?? items.length };
 }
 
 describe('PriceChangesQueueTable', () => {
@@ -65,7 +65,7 @@ describe('PriceChangesQueueTable', () => {
     expect(screen.getByTestId('row-ignore')).toBeInTheDocument();
   });
 
-  it('accepts a row and calls the API with the staleness token', async () => {
+  it('accepts a row via the confirm dialog and calls the API with the staleness token', async () => {
     const accept = vi.fn().mockResolvedValue(undefined);
     const apiClient = createMockApiClient({
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), accept },
@@ -74,17 +74,55 @@ describe('PriceChangesQueueTable', () => {
     renderWithProviders(<PriceChangesQueueTable />, { apiClient });
     await screen.findByText('Ergonomic Office Chair');
 
+    // Accept no longer fires the API directly (#3164 review) — it opens a
+    // confirm dialog first, since it publishes to a live marketplace.
     await userEvent.click(screen.getByTestId('row-accept'));
+    expect(accept).not.toHaveBeenCalled();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Publish price' }));
 
     await waitFor(() => {
       expect(accept).toHaveBeenCalledWith('ep-1', { expectedVersion: '2026-09-10T10:00:00.000Z' });
     });
   });
 
-  it('renders the needs-refresh state with no action buttons', async () => {
+  it('edits a row through the dialog, validating the entered price', async () => {
+    const edit = vi.fn().mockResolvedValue(undefined);
+    const apiClient = createMockApiClient({
+      priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), edit },
+    });
+
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    await screen.findByText('Ergonomic Office Chair');
+
+    await userEvent.click(screen.getByTestId('row-edit'));
+    const input = await screen.findByLabelText(/New price/);
+
+    // An invalid value is refused inline and never reaches the API.
+    await userEvent.clear(input);
+    await userEvent.type(input, '0');
+    await userEvent.click(screen.getByRole('button', { name: 'Publish price' }));
+    expect(await screen.findByText('Enter a price greater than 0.')).toBeInTheDocument();
+    expect(edit).not.toHaveBeenCalled();
+
+    await userEvent.clear(input);
+    await userEvent.type(input, '349.5');
+    await userEvent.click(screen.getByRole('button', { name: 'Publish price' }));
+
+    await waitFor(() => {
+      expect(edit).toHaveBeenCalledWith('ep-1', {
+        manualPriceOverride: 349.5,
+        expectedVersion: '2026-09-10T10:00:00.000Z',
+      });
+    });
+  });
+
+  it('renders the needs-refresh state with a working Refresh action', async () => {
+    const refresh = vi.fn().mockResolvedValue(buildItem({ needsRefresh: false }));
     const apiClient = createMockApiClient({
       priceChanges: {
         list: vi.fn().mockResolvedValue(buildPage([buildItem({ needsRefresh: true })])),
+        refresh,
       },
     });
 
@@ -92,6 +130,13 @@ describe('PriceChangesQueueTable', () => {
 
     await screen.findByText(/changed again while you were deciding/);
     expect(screen.queryByTestId('row-accept')).not.toBeInTheDocument();
+
+    // #3162 gives this row a real remedy — Refresh must not be copy with
+    // nothing behind it (#3164 review).
+    await userEvent.click(screen.getByTestId('row-refresh'));
+    await waitFor(() => {
+      expect(refresh).toHaveBeenCalledWith('ep-1');
+    });
   });
 
   it('renders an ignored row with an Undo affordance', async () => {
@@ -120,7 +165,25 @@ describe('PriceChangesQueueTable', () => {
     await screen.findByText('Ergonomic Office Chair');
 
     const chip = screen.getByText('-15%');
-    expect(chip).toHaveAttribute('title', 'Big price change - worth a second look');
+    await userEvent.hover(chip);
+    // Radix renders the tooltip content twice (the visible popper content plus
+    // a visually-hidden accessible copy) - `findByText` throws on multiple
+    // matches, so assert via `findAllByText` instead (the primitive's own
+    // `tooltip.test.tsx` does the same).
+    const matches = await screen.findAllByText('Big price change - worth a second look');
+    expect(matches.length).toBeGreaterThan(0);
+  });
+
+  it('treats a rounded-to-zero delta as flat, never "down"', async () => {
+    const apiClient = createMockApiClient({
+      priceChanges: {
+        list: vi.fn().mockResolvedValue(buildPage([buildItem({ deltaPct: -0.4, isSteep: false })])),
+      },
+    });
+
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    const chip = await screen.findByText('0%');
+    expect(chip).toHaveClass('delta-chip--flat');
   });
 
   it('shows the stale-hidden note when hiddenStaleCount is positive', async () => {
@@ -142,5 +205,53 @@ describe('PriceChangesQueueTable', () => {
 
     expect(await screen.findByText("Couldn't load price changes")).toBeInTheDocument();
     expect(screen.getByText('Try again')).toBeInTheDocument();
+  });
+
+  it('reports a partially-failed bulk ignore instead of swallowing it', async () => {
+    const ignore = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('nope'));
+    const items = [buildItem({ id: 'ep-1' }), buildItem({ id: 'ep-2', productName: 'Second Product' })];
+    const apiClient = createMockApiClient({
+      priceChanges: { list: vi.fn().mockResolvedValue(buildPage(items, 0, 2)), ignore },
+    });
+
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    await screen.findByText('Ergonomic Office Chair');
+
+    const checkboxes = screen.getAllByTestId('row-select');
+    await userEvent.click(checkboxes[0]);
+    await userEvent.click(checkboxes[1]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Keep prices' }));
+
+    expect(await screen.findByText(/Kept 1, but 1 failed/)).toBeInTheDocument();
+  });
+
+  it('shows connection chips for both marketplace and shop-write-back destinations, counted from the unfiltered set', async () => {
+    const marketplaceConnection = {
+      ...sampleConnection,
+      id: 'dest-1',
+      name: 'Allegro — PL',
+      enabledCapabilities: ['OfferManager'],
+    };
+    const shopConnection = {
+      ...sampleConnection,
+      id: 'dest-2',
+      name: 'WooCommerce — EU Store',
+      enabledCapabilities: ['ProductPublisher'],
+    };
+    const items = [
+      buildItem({ id: 'ep-1', destinationConnectionId: 'dest-1', destinationLabel: 'Allegro — PL' }),
+      buildItem({ id: 'ep-2', destinationConnectionId: 'dest-2', destinationLabel: 'WooCommerce — EU Store' }),
+    ];
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([marketplaceConnection, shopConnection]) },
+      priceChanges: { list: vi.fn().mockResolvedValue(buildPage(items, 0, 2)) },
+    });
+
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    await screen.findByText('Ergonomic Office Chair');
+
+    expect(screen.getByRole('button', { name: /Allegro — PL/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /WooCommerce — EU Store/ })).toBeInTheDocument();
   });
 });

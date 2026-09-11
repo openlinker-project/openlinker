@@ -443,8 +443,22 @@ export function ListingsListPage(): ReactElement {
   // dedicated nav surface is planned.
   const rawView = searchParams.get('view');
   const view: 'all' | 'queue' = rawView === 'queue' ? 'queue' : 'all';
-  const priceChangesCountQuery = usePriceChangesQuery();
-  const priceChangesOpenCount = priceChangesCountQuery.data?.items.length ?? 0;
+  // The badge needs a real count on every visit (including the default "all
+  // listings" tab), so the read itself stays enabled — but the standing 30s
+  // BACKGROUND POLL only runs while the "Price changes" tab is actually on
+  // screen (#3164 review): unconditionally passing the default interval here
+  // meant every visit to `/listings` polled an unbounded, opt-in,
+  // default-off feature's endpoint every 30s regardless of which tab was
+  // showing.
+  const priceChangesCountQuery = usePriceChangesQuery(undefined, {
+    refetchIntervalMs: view === 'queue' ? undefined : false,
+  });
+  // `total` (from `countOpen`) is the strictly-open count a badge should
+  // show — `items.length` also carries recently-ignored rows within their
+  // 15-minute Undo window (#3162), which would overcount "needs your
+  // attention" work.
+  const priceChangesOpenCount = priceChangesCountQuery.data?.total ?? null;
+  const priceChangesCountUnavailable = priceChangesCountQuery.isError;
 
   const [searchInput, setSearchInput] = useState(urlSearch);
 
@@ -723,7 +737,25 @@ export function ListingsListPage(): ReactElement {
         <TabsList aria-label="Listings views">
           <TabsTrigger value="all">All listings</TabsTrigger>
           <TabsTrigger value="queue">
-            Price changes <span className="tabs__count">{priceChangesOpenCount}</span>
+            Price changes{' '}
+            <span className="tabs__count">
+              {/* Same 3-state treatment as the lifecycle tab counts below
+                  (#3164 review) — a count that snaps from a placeholder `0`
+                  to its real value reads as a bug, and a FAILED read must
+                  never render `0` either (absence and "none matched" are
+                  different claims, `docs/frontend-architecture.md § Paginated
+                  Totals As A Second Stage`). While the query is disabled
+                  (browsing "all listings" and never yet visited "Price
+                  changes" this session) `data` is `undefined` and this reads
+                  the same as "still loading". */}
+              {priceChangesCountUnavailable ? (
+                '—'
+              ) : priceChangesOpenCount === null ? (
+                <span className="tabs__count-skeleton" aria-hidden="true" />
+              ) : (
+                priceChangesOpenCount
+              )}
+            </span>
           </TabsTrigger>
         </TabsList>
       </Tabs>

@@ -1965,19 +1965,6 @@ textarea,
   min-width: 0;
 }
 
-.cell-product .thumb {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface-muted);
-  display: grid;
-  place-items: center;
-  color: var(--text-muted);
-  flex-shrink: 0;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
 .cell-product__text {
   min-width: 0;
 }
@@ -2084,7 +2071,8 @@ textarea,
 }
 
 .delta-chip--up,
-.delta-chip--down {
+.delta-chip--down,
+.delta-chip--flat {
   background: var(--status-info-soft);
   color: var(--status-info-fg);
   border: 1px solid var(--status-info-border);

@@ -5,10 +5,12 @@
  */
 export { PriceChangesQueueTable } from './components/price-changes-queue-table';
 export { usePriceChangesQuery } from './hooks/use-price-changes-query';
+export type { UsePriceChangesQueryOptions } from './hooks/use-price-changes-query';
 export { useAutoAppliedPriceChangesQuery } from './hooks/use-auto-applied-price-changes-query';
 export { useAcceptPriceChangeMutation } from './hooks/use-accept-price-change-mutation';
 export { useIgnorePriceChangeMutation } from './hooks/use-ignore-price-change-mutation';
 export { useUnresolvePriceChangeMutation } from './hooks/use-unresolve-price-change-mutation';
+export { useRefreshPriceChangeMutation } from './hooks/use-refresh-price-change-mutation';
 export { useEditPriceChangeMutation } from './hooks/use-edit-price-change-mutation';
 export { useBulkAcceptPriceChangesMutation } from './hooks/use-bulk-accept-price-changes-mutation';
 export { createPriceChangesApi } from './api/price-changes.api';

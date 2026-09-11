@@ -14,6 +14,8 @@ export const priceChangesQueryKeys = {
       filters?.connectionId ?? 'all',
       filters?.direction ?? 'all',
       filters?.magnitudeLarge ?? false,
+      filters?.limit ?? 'default-limit',
+      filters?.offset ?? 0,
     ] as const,
   autoApplied: () => ['price-changes', 'auto-applied'] as const,
 };

@@ -11,6 +11,7 @@ import type {
   EditPriceChangeInput,
   ListPriceChangesFilters,
   PriceChangeAutoAppliedItem,
+  PriceChangeItem,
   PriceChangeListResponse,
 } from './price-changes.types';
 
@@ -20,6 +21,8 @@ function buildQuery(filters?: ListPriceChangesFilters): string {
   if (filters.connectionId) params.set('connectionId', filters.connectionId);
   if (filters.direction) params.set('direction', filters.direction);
   if (filters.magnitudeLarge) params.set('magnitudeLarge', 'true');
+  if (filters.limit !== undefined) params.set('limit', String(filters.limit));
+  if (filters.offset !== undefined) params.set('offset', String(filters.offset));
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 }
@@ -29,6 +32,8 @@ export interface PriceChangesApi {
   accept(id: string, input: AcceptPriceChangeInput): Promise<void>;
   ignore(id: string): Promise<void>;
   unresolve(id: string): Promise<void>;
+  /** Acknowledge a re-detection — clears `needsRefresh` and returns the row as it now stands (#3162). */
+  refresh(id: string): Promise<PriceChangeItem>;
   edit(id: string, input: EditPriceChangeInput): Promise<void>;
   bulkAccept(items: BulkAcceptPriceChangeItem[]): Promise<BulkAcceptPriceChangesResponse>;
   autoApplied(): Promise<PriceChangeAutoAppliedItem[]>;
@@ -51,6 +56,9 @@ export function createPriceChangesApi(request: ApiRequest): PriceChangesApi {
     },
     unresolve(id): Promise<void> {
       return request<void>(`/listings/price-changes/${id}/unresolve`, { method: 'POST' });
+    },
+    refresh(id): Promise<PriceChangeItem> {
+      return request<PriceChangeItem>(`/listings/price-changes/${id}/refresh`, { method: 'POST' });
     },
     edit(id, input): Promise<void> {
       return request<void>(`/listings/price-changes/${id}/edit`, {
