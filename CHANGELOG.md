@@ -12,6 +12,28 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.11.0](https://github.com/openlinker-project/openlinker/compare/v0.10.0...v0.11.0) (2026-09-11)
+
+
+### Features
+
+* **dx:** enforce unique ADR numbers via check:invariants ([#3036](https://github.com/openlinker-project/openlinker/issues/3036)) ([93432c8](https://github.com/openlinker-project/openlinker/commit/93432c80641cc0d9bc131016e17c9e8c7e6844b2))
+* **fulfillment:** reap dispatches whose holder never answered ([#2712](https://github.com/openlinker-project/openlinker/issues/2712)) ([#3012](https://github.com/openlinker-project/openlinker/issues/3012)) ([6e0f8f0](https://github.com/openlinker-project/openlinker/commit/6e0f8f0c693e657204f80cc5174d35a9924b3aa9))
+* **fulfillment:** reconcile a shipped work whose dispatch relay never landed ([#2728](https://github.com/openlinker-project/openlinker/issues/2728)) ([#3018](https://github.com/openlinker-project/openlinker/issues/3018)) ([42cc86d](https://github.com/openlinker-project/openlinker/commit/42cc86dded9e75d0edec4a1340cba11356c805c8))
+* **infakt:** add per-connection defaultSaleType for non-PL invoice issuance, with a diagnosis hint for the missing-config case ([#2995](https://github.com/openlinker-project/openlinker/issues/2995)) ([a5a6ef4](https://github.com/openlinker-project/openlinker/commit/a5a6ef4047f4a98f2835a92dad221283f4ec3f89))
+* **shipping:** surface a repeatedly-failing waybill relay instead of logging it forever ([#3013](https://github.com/openlinker-project/openlinker/issues/3013)) ([3af5833](https://github.com/openlinker-project/openlinker/commit/3af583340f861c636c598641652ffe972cea62f3)), closes [#2073](https://github.com/openlinker-project/openlinker/issues/2073)
+
+
+### Bug Fixes
+
+* **infakt:** normalize baseUrl override to include /api/v3 and log probe failures ([#2994](https://github.com/openlinker-project/openlinker/issues/2994)) ([2f2875e](https://github.com/openlinker-project/openlinker/commit/2f2875e4aaaf678a15a585e56886d63ceda778de))
+* **web/analytics:** confirm before turning on tax-rate-inclusion toggle ([#2993](https://github.com/openlinker-project/openlinker/issues/2993)) ([84300dd](https://github.com/openlinker-project/openlinker/commit/84300dd4573274c4218ff6ef12dae56ae0eabb67))
+
+
+### Performance Improvements
+
+* the paginated total becomes a second stage ([#2943](https://github.com/openlinker-project/openlinker/issues/2943)) ([#2957](https://github.com/openlinker-project/openlinker/issues/2957)) ([9c6440f](https://github.com/openlinker-project/openlinker/commit/9c6440f1ba2b88ce4ffd726ac46e161a066d2c21))
+
 ## [0.10.0](https://github.com/openlinker-project/openlinker/compare/v0.9.0...v0.10.0) (2026-09-07)
 
 
