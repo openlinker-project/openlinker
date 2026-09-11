@@ -250,17 +250,17 @@ The **Needs attention** panel sits directly below the Synchronization panel and 
 gaps that don't fit the Data Coverage categories below — **three** categories, each with its own
 remediation action:
 
-| Category | Remediation action |
-|---|---|
-| Coverage gaps — products listed on one channel but not yet published on another | **Publish now** |
-| Stock at risk | **Review stock** |
-| Orders stuck in a failed destination sync | **Review orders** |
+| Category | Badge | Remediation action |
+|---|---|---|
+| Coverage gaps — products listed on one channel but not yet published on another | **ACTION** | **Publish now** |
+| Stock at risk | **ACTION** | **Review stock** |
+| Orders stuck in a failed destination sync | **STUCK** | **Review orders** |
 
-When nothing is outstanding, the panel collapses to a single green **"Nothing needs attention"**
-line rather than an empty list, still naming all three checks (*"3 checks · coverage, stock,
-destination syncs"*) — an empty array is never treated as a positive claim elsewhere on this page;
-only this explicit resolved state is. A **"checked {time}"** stamp next to the panel title always
-shows when the underlying read last completed, whether or not anything is outstanding.
+When nothing is outstanding, the panel collapses to a single neutral (grey) **"Nothing needs
+attention"** line rather than an empty list, still naming all three checks (*"3 checks · coverage,
+stock, destination syncs"*) — an empty array is never treated as a positive claim elsewhere on this
+page; only this explicit resolved state is. A **"checked {time}"** stamp next to the panel title
+always shows when the underlying read last completed, whether or not anything is outstanding.
 
 ---
 
@@ -275,12 +275,20 @@ OpenLinker to fix (see each category below).
 
 ![Needs attention and Data coverage panels — a Needs attention row carrying the orange ACTION badge, and a clear Data coverage panel carrying the green CLEAR badge](./images/07-analytics-data-coverage.png)
 
-Both panels prefix their rows with a small colored badge naming the severity: **ACTION** (orange)
-on a Needs attention row that has something for you to do, and **CLEAR** (green) on either panel's
-resolved, nothing-outstanding state (*"Nothing needs attention"* / *"Nothing to do"*). An open Data
-coverage category (currency mismatch, tax categories A/B/C, product matching) would carry its own
-ACTION badge the same way — the screenshot above happens to be captured on an install with every
-Data coverage category clear, which is itself the honest common case rather than a staged one.
+Both panels prefix their open rows with a small colored badge naming the severity: **ACTION**
+(orange) on a Needs attention row that has something for you to do, and **CLEAR** (green) on the
+Data Coverage panel's own resolved, nothing-outstanding state (*"Nothing to do"*). The Needs
+Attention panel's equivalent resolved state (*"Nothing needs attention"*) is styled neutral (grey),
+not green — a smaller visual distinction than the two panels otherwise share, worth knowing so you
+don't go looking for a green badge that isn't there. On the Data Coverage panel the **ACTION**
+badge appears only on an open currency-mismatch or category-A row — the two categories with a real
+fix to apply. An open category B, category C, or product-matching row instead carries an **INFO**
+badge: OpenLinker isn't withholding a fix behind a different color, there genuinely isn't one to
+offer (category B and product-matching are browse-only for that reason; category C still opens a
+modal with its own **Sync the catalog for these N now** action, but starts out informational
+because nothing is wrong yet — the catalog simply hasn't answered these products' tax rates yet).
+The screenshot above happens to be captured on an install with every Data coverage category clear,
+which is itself the honest common case rather than a staged one.
 
 Each open row is itself a button — clicking anywhere on it (not just the labelled action text)
 opens that category's detail modal, one row per affected order, paginated, each linking straight to
