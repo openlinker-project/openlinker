@@ -24,6 +24,12 @@ export interface ITaxCoverageDetectionService {
    * the candidate population — their combined length always equals
    * `netExcludedCount` for the same filters/currency.
    *
+   * The base population is fetched in BOUNDED PAGES internally (#2834), not
+   * one unbounded read — no single SQL statement this method issues can
+   * return more than one page's worth of rows. This is an implementation
+   * detail invisible to callers: the returned classification is identical
+   * to what a single unbounded read would have produced.
+   *
    * `includeBackfilledPreRollout` (#2469) must be the SAME value the caller
    * passes to the net-sales reads. It shrinks the candidate population rather
    * than reclassifying it: with the operator's opt-in ON, a backfilled

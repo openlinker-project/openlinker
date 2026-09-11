@@ -219,7 +219,7 @@ export interface PaginatedTaxCoverageOrders {
 
 /**
  * A `netExcludedCount` candidate order awaiting A/B/C classification — the
- * minimal shape `OrderRecordRepositoryPort.findNetExcludedOrderCandidates`
+ * minimal shape `OrderRecordRepositoryPort.findNetExcludedOrderCandidatesPage`
  * returns per row, before `TaxCoverageDetectionService` resolves each one's
  * category (a per-line, live-catalogue check that cannot be pushed into
  * SQL, so it happens in the application layer instead).
@@ -237,6 +237,32 @@ export interface NetExcludedOrderCandidate {
    * literal `'pre-rollout'` string as "not pre-rollout".
    */
   taxRateEra: string | null;
+}
+
+/**
+ * Keyset-pagination cursor for
+ * {@link OrderRecordRepositoryPort.findNetExcludedOrderCandidatesPage}
+ * (#2834) — resumes strictly after the given `(placedAt, internalOrderId)`
+ * pair, matching the query's own `ORDER BY placedAt DESC, internalOrderId
+ * DESC`. `placedAt` is guaranteed non-null within `SalesAnalyticsFilters`
+ * scope (`applySalesAnalyticsScope` enforces `placedAt IS NOT NULL`), so the
+ * cursor never has to special-case a null sort key.
+ */
+export interface NetExcludedOrderCandidateCursor {
+  placedAt: Date;
+  internalOrderId: string;
+}
+
+/**
+ * One bounded page of {@link NetExcludedOrderCandidate} rows (#2834) —
+ * replaces the pre-#2834 unbounded `findNetExcludedOrderCandidates`, whose
+ * single `getRawMany()` call scaled linearly with total net-excluded order
+ * history for the filter window. `nextCursor` is `null` when this page was
+ * the last one (fewer rows came back than were requested).
+ */
+export interface NetExcludedOrderCandidatePage {
+  items: NetExcludedOrderCandidate[];
+  nextCursor: NetExcludedOrderCandidateCursor | null;
 }
 
 /**
