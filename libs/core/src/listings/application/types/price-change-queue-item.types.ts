@@ -35,7 +35,15 @@ export interface PriceChangeQueueItem {
 
   sourceConnectionId: string;
   sourceLabel: string;
-  sourceOldAmount: number;
+  /**
+   * `null` mirrors `PriceChangeEpisode.sourceOldAmount` (widened onto the
+   * entity by the parent stack's #3159 re-review, `de951c9e8`, picked up by
+   * this rebase — the same "no prior source price was ever recorded" case
+   * `computedOldAmount`/`deltaPct` already account for below): a variant
+   * that previously carried no price at all, or a brand-new mapping's first
+   * detection.
+   */
+  sourceOldAmount: number | null;
   sourceNewAmount: number;
   sourceCurrency: string;
 
@@ -80,14 +88,28 @@ export interface PriceChangeQueueItem {
 
 export interface PriceChangeQueuePage {
   items: readonly PriceChangeQueueItem[];
-  /** Episodes excluded because their variant's offer mapping is stale (#1689). */
+  /**
+   * Episodes excluded from THIS PAGE because their variant's offer mapping
+   * is stale (#1689) — a PER-PAGE count, not a global one (#3162 re-review,
+   * IMPORTANT). Stale-exclusion is deliberately not pushed into the
+   * repository's SQL predicate (`PriceChangeEpisodeFilters`'s own docblock:
+   * a cross-context join against `product_variants.isStale` does not belong
+   * at this layer), so `total` below may legitimately include stale
+   * episodes this page — or any page — never renders, the same accepted
+   * page-scoped approximation `direction`/`magnitudeLargeOnly` used to be
+   * before #3162's SQL-predicate fix (those two are now exact; this one is
+   * not, and is documented as such rather than silently read as global).
+   */
   hiddenStaleCount: number;
   /**
-   * The total count of open episodes matching the same filters (#3162
-   * review — the list read is now paginated; `total` is what lets a caller
-   * render "N of M" / drive further pages without hydrating the whole set).
-   * A real SQL `COUNT`, from `PriceChangeEpisodeRepositoryPort.countOpen`
-   * with the SAME filters as the page — never derived from `items.length`.
+   * The total count of open (+recently-ignored, when
+   * `PriceChangeEpisodeFilters.includeRecentlyResolved` was set) episodes
+   * matching the SAME filter set the page was read with (#3162 review —
+   * the list read is now paginated; `total` is what lets a caller render "N
+   * of M" / drive further pages without hydrating the whole set). A real
+   * SQL `COUNT`, from `PriceChangeEpisodeRepositoryPort.countOpen` — never
+   * derived from `items.length`. Does NOT subtract `hiddenStaleCount` (see
+   * that field's own docblock for why).
    */
   total: number;
 }

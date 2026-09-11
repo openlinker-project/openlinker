@@ -13,13 +13,13 @@ export class PriceChangeListResponseDto {
 
   @ApiProperty({
     description:
-      "Episodes excluded because their variant's offer mapping is paused/stale (#1689) — mirrors the mockup's `#stale-note`.",
+      "Episodes excluded from THIS PAGE because their variant's offer mapping is paused/stale (#1689) — mirrors the mockup's `#stale-note`. A per-page count, not a global one: `total` below may include stale episodes no page ever renders.",
   })
   hiddenStaleCount!: number;
 
   @ApiProperty({
     description:
-      'Total open episodes matching the same filters (#3162 review — the read is now paginated).',
+      'Total episodes matching the SAME filters the page was read with (#3162 review — the read is now paginated), before stale-exclusion.',
   })
   total!: number;
 

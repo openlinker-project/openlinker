@@ -46,6 +46,7 @@ import {
   PRICE_CHANGES_SERVICE_TOKEN,
   PriceChangeEpisodeAlreadyResolvedException,
   PriceChangeEpisodeBlockedException,
+  PriceChangeEpisodeInFlightException,
   PriceChangeEpisodeNotFoundException,
   PriceChangeEpisodeStaleException,
   PriceChangeEpisodeSupersededError,
@@ -58,13 +59,14 @@ import { AuthenticatedUser } from '../../auth/auth.types';
 import {
   PRICE_SYNC_MODE_OVERRIDE_SERVICE_TOKEN,
   type IPriceSyncModeOverrideService,
-} from '../application/services/price-sync-mode-override.service';
+} from '../application/services/price-sync-mode-override.service.interface';
 import { ListPriceChangesQueryDto } from './dto/list-price-changes-query.dto';
 import { AcceptPriceChangeDto } from './dto/accept-price-change.dto';
 import { EditPriceChangeDto } from './dto/edit-price-change.dto';
 import { BulkAcceptPriceChangesDto } from './dto/bulk-accept-price-changes.dto';
 import { PriceChangeListResponseDto } from './dto/price-change-list-response.dto';
 import { PriceChangeItemResponseDto } from './dto/price-change-item-response.dto';
+import { PriceChangeResolutionResponseDto } from './dto/price-change-resolution-response.dto';
 import { BulkAcceptPriceChangesResponseDto } from './dto/bulk-accept-price-changes-response.dto';
 import { PriceChangeAutoAppliedItemResponseDto } from './dto/price-change-auto-applied-response.dto';
 
@@ -109,18 +111,18 @@ export class PriceChangesController {
   }
 
   @Post(':id/accept')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @Roles('admin', 'operator')
   @ApiOperation({ summary: 'Accept the rule-computed price and publish it.' })
-  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 200, type: PriceChangeResolutionResponseDto })
   @ApiResponse({ status: 404, description: 'Episode not found' })
-  @ApiResponse({ status: 409, description: 'Already resolved, blocked, or stale (re-detected since last read)' })
+  @ApiResponse({ status: 409, description: 'Already resolved, blocked, stale (re-detected since last read), or already claimed by another in-flight request' })
   @ApiResponse({ status: 403, description: 'optInAutomatic requires the admin role' })
   async accept(
     @Param('id') id: string,
     @Body() dto: AcceptPriceChangeDto,
     @CurrentUser() user: AuthenticatedUser
-  ): Promise<void> {
+  ): Promise<PriceChangeResolutionResponseDto> {
     this.assertOptInAllowed(dto.optInAutomatic, user);
     const result = await this.wrapDomainErrors(() =>
       this.priceChanges.accept(id, {
@@ -129,7 +131,8 @@ export class PriceChangesController {
         resolvedByUserId: user.id,
       })
     );
-    await this.applyOptIn(result);
+    const optInApplied = await this.applyOptIn(result);
+    return PriceChangeResolutionResponseDto.from(optInApplied);
   }
 
   @Post(':id/ignore')
@@ -174,18 +177,18 @@ export class PriceChangesController {
   }
 
   @Post(':id/edit')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @Roles('admin', 'operator')
   @ApiOperation({ summary: 'Publish an operator-pinned price instead of the rule-computed one.' })
-  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 200, type: PriceChangeResolutionResponseDto })
   @ApiResponse({ status: 404, description: 'Episode not found' })
-  @ApiResponse({ status: 409, description: 'Already resolved, blocked, or stale' })
+  @ApiResponse({ status: 409, description: 'Already resolved, blocked, stale, or already claimed by another in-flight request' })
   @ApiResponse({ status: 403, description: 'optInAutomatic requires the admin role' })
   async edit(
     @Param('id') id: string,
     @Body() dto: EditPriceChangeDto,
     @CurrentUser() user: AuthenticatedUser
-  ): Promise<void> {
+  ): Promise<PriceChangeResolutionResponseDto> {
     this.assertOptInAllowed(dto.optInAutomatic, user);
     const result = await this.wrapDomainErrors(() =>
       this.priceChanges.edit(id, {
@@ -195,7 +198,8 @@ export class PriceChangesController {
         resolvedByUserId: user.id,
       })
     );
-    await this.applyOptIn(result);
+    const optInApplied = await this.applyOptIn(result);
+    return PriceChangeResolutionResponseDto.from(optInApplied);
   }
 
   @Post('bulk')
@@ -216,22 +220,41 @@ export class PriceChangesController {
     const result = await this.wrapDomainErrors(() =>
       this.priceChanges.bulkAccept(dto.items, user.id)
     );
-    await this.priceSyncModeOverride.setSourceOverridesAutomatic(result.optInPairs);
-    return BulkAcceptPriceChangesResponseDto.fromDomain(result);
+    const optInResults = await this.priceSyncModeOverride.setSourceOverridesAutomatic(
+      result.optInPairs
+    );
+    return BulkAcceptPriceChangesResponseDto.fromDomain(result, optInResults);
   }
 
-  /** Reject `optInAutomatic` from a non-admin caller rather than silently applying it (see class docblock). */
+  /**
+   * Reject `optInAutomatic` from a non-admin caller rather than silently
+   * applying it (see class docblock). The required role is factored into
+   * {@link assertRole} (#3162 re-review, SUGGESTION) so the "which role" and
+   * "when is it required" questions are answered in two different places —
+   * the comparison itself is not duplicated per call site, which is what
+   * would let a future copy-paste drift into failing open.
+   */
   private assertOptInAllowed(optInAutomatic: boolean | undefined, user: AuthenticatedUser): void {
-    if (optInAutomatic && user.role !== 'admin') {
-      throw new ForbiddenException(
-        'Setting a source to automatic sync mode requires the admin role.'
-      );
+    if (optInAutomatic) {
+      this.assertRole(user, 'admin', 'Setting a source to automatic sync mode requires the admin role.');
     }
   }
 
-  private async applyOptIn(result: PriceChangeResolutionResult): Promise<void> {
-    if (!result.optInPair) return;
-    await this.priceSyncModeOverride.setSourceOverrideAutomatic(result.optInPair);
+  /** Throws `ForbiddenException` unless `user.role` is exactly `requiredRole`. */
+  private assertRole(
+    user: AuthenticatedUser,
+    requiredRole: AuthenticatedUser['role'],
+    message: string
+  ): void {
+    if (user.role !== requiredRole) {
+      throw new ForbiddenException(message);
+    }
+  }
+
+  /** Returns the applied outcome, or `undefined` when `optInAutomatic` was not requested on this call. */
+  private async applyOptIn(result: PriceChangeResolutionResult): Promise<boolean | undefined> {
+    if (!result.optInPair) return undefined;
+    return this.priceSyncModeOverride.setSourceOverrideAutomatic(result.optInPair);
   }
 
   private async wrapDomainErrors<T>(fn: () => Promise<T>): Promise<T> {
@@ -244,7 +267,8 @@ export class PriceChangesController {
       if (
         error instanceof PriceChangeEpisodeAlreadyResolvedException ||
         error instanceof PriceChangeEpisodeStaleException ||
-        error instanceof PriceChangeEpisodeSupersededError
+        error instanceof PriceChangeEpisodeSupersededError ||
+        error instanceof PriceChangeEpisodeInFlightException
       ) {
         throw new ConflictException(error.message);
       }

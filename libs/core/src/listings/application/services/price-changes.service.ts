@@ -52,6 +52,7 @@ import { PriceChangeEpisodeNotFoundException } from '../../domain/exceptions/pri
 import { PriceChangeEpisodeAlreadyResolvedException } from '../../domain/exceptions/price-change-episode-already-resolved.exception';
 import { PriceChangeEpisodeStaleException } from '../../domain/exceptions/price-change-episode-stale.exception';
 import { PriceChangeEpisodeBlockedException } from '../../domain/exceptions/price-change-episode-blocked.exception';
+import { PriceChangeEpisodeInFlightException } from '../../domain/exceptions/price-change-episode-in-flight.exception';
 import {
   PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
   PRICE_CHANGE_AUTO_APPLIED_LOG_REPOSITORY_TOKEN,
@@ -77,20 +78,23 @@ const JOB_TYPE = 'pricing.propagateToMarketplaces';
 const DEFAULT_PRICE_CHANGE_PAGE_SIZE = 50;
 const MAX_PRICE_CHANGE_PAGE_SIZE = 200;
 
-/**
- * The idempotency key's time bucket (#3162 review — a dead-lettered episode
- * could never be re-accepted at the same price: `sync_jobs.idempotencyKey`
- * is globally unique and TTL-less, so once a job exhausts the retry ladder
- * the identical key is minted forever after and every retry silently no-ops
- * via `isExisting: true`). Folding in an hourly bucket keeps a rapid
- * double-click deduped within the SAME bucket (the genuine double-submit
- * protection #2621's design note is about) while giving a genuinely stuck
- * episode a fresh key within at most an hour — without a schema change or a
- * client-supplied nonce. This does not make the key amount-derived in the
- * sense #2285 forbids (a DIFFERENT price already got a different key); it
- * only bounds how long the SAME price can be wedged behind one dead job.
- */
-const IDEMPOTENCY_KEY_BUCKET_MS = 60 * 60 * 1000;
+// A prior revision folded an hourly wall-clock bucket into the idempotency
+// key specifically so a dead-lettered job's identical, amount-derived key
+// would eventually become retryable again (#3162 review). That bucket is
+// GONE (#3162 re-review, IMPORTANT): the key is now
+// `episode-id + this claim's generation` (see `enqueuePublish`), which is
+// what #2285/#3159 already require of the automatic-apply path's own key —
+// never the raw amount, never a wall-clock bucket. The residual, ACCEPTED
+// limitation this trades in: an episode whose publish job is permanently
+// dead-lettered (rather than merely retrying) stays `claimedAt`-set — and
+// therefore refuses a fresh accept/edit/bulk-item as `'in-flight'` — until
+// an operator (or a future reconcile pass, not built here) explicitly
+// releases it. This is the SAME class of tradeoff `docs/architecture-
+// overview.md` records for the returns/reservation claim idioms this
+// mirrors (`claimWaybillRelay`, `claimDispatchAttempt`): a claim held past
+// its intended window is a named operational gap, not a silent one — never
+// a race reopened by guessing a "safe" staleness window against a retry
+// ladder whose worst-case duration this service does not control.
 
 @Injectable()
 export class PriceChangesService implements IPriceChangesService {
@@ -129,11 +133,17 @@ export class PriceChangesService implements IPriceChangesService {
       ? await this.episodes.findOpenForConnection(filters.destinationConnectionId, boundedFilters)
       : await this.episodes.findOpenAll(boundedFilters);
 
-    // The accurate total for the SAME filters (never derived from
-    // `episodes.length`, which is one bounded page) — countOpen stays
-    // strictly "open" (never includes a recently-ignored row), which is the
-    // correct semantics for a badge/tab counter.
-    const total = await this.episodes.countOpen(filters);
+    // The accurate total for the SAME filter set `episodes` was read with —
+    // `boundedFilters`, NOT the caller's raw `filters` (#3162 re-review,
+    // IMPORTANT: passing `filters` here counted strictly-open episodes only,
+    // while the page above legitimately also renders a recently-ignored row
+    // via `includeRecentlyResolved: true` — so a page could render a row the
+    // total did not count). `countOpen` reads that same flag off
+    // `boundedFilters` and counts over the identical predicate `findOpen`
+    // paged from. `limit`/`offset` on `boundedFilters` are inert here — a
+    // `COUNT` never applies them — never derived from `episodes.length`,
+    // which is one bounded page.
+    const total = await this.episodes.countOpen(boundedFilters);
 
     const variantIds = Array.from(new Set(episodes.map((e) => e.productVariantId)));
     const variants = await this.productsService.getVariantsByIds(variantIds);
@@ -175,8 +185,8 @@ export class PriceChangesService implements IPriceChangesService {
     episodeId: string,
     input: AcceptPriceChangeInput
   ): Promise<PriceChangeResolutionResult> {
-    const episode = await this.loadActionable(episodeId, input.expectedVersion);
-    await this.enqueuePublish(episode, {
+    const { episode, claimedAt } = await this.loadActionable(episodeId, input.expectedVersion);
+    await this.enqueueOrReleaseClaim(episode, claimedAt, {
       amount: episode.computedNewAmount,
       manualPriceOverride: false,
       resolvedByUserId: input.resolvedByUserId,
@@ -188,8 +198,8 @@ export class PriceChangesService implements IPriceChangesService {
     episodeId: string,
     input: EditPriceChangeInput
   ): Promise<PriceChangeResolutionResult> {
-    const episode = await this.loadActionable(episodeId, input.expectedVersion);
-    await this.enqueuePublish(episode, {
+    const { episode, claimedAt } = await this.loadActionable(episodeId, input.expectedVersion);
+    await this.enqueueOrReleaseClaim(episode, claimedAt, {
       amount: input.manualPriceOverride,
       manualPriceOverride: true,
       resolvedByUserId: input.resolvedByUserId,
@@ -264,14 +274,32 @@ export class PriceChangesService implements IPriceChangesService {
     const found = await this.episodes.findByIds(uniqueIds);
     const foundById = new Map(found.map((episode) => [episode.id, episode]));
 
-    const episodesToApply: { episode: PriceChangeEpisode; item: BulkAcceptItemInput }[] = [];
-    for (const item of items) {
-      const episode = foundById.get(item.id);
-      if (!episode) {
-        throw new PriceChangeEpisodeNotFoundException(item.id);
+    // Claiming happens IN this validation pass, right after the static
+    // checks pass for each item (#3162 re-review, IMPORTANT — "nothing
+    // claims the episode at accept time"): every claimed episode is
+    // exclusively this batch's to resolve from this point on. A failure
+    // partway through this loop (a later item not-found/already-resolved/
+    // in-flight) releases every claim already taken above it — otherwise an
+    // aborted bulk submit would permanently strand the episodes it DID
+    // manage to claim as "someone is doing this right now".
+    const episodesToApply: {
+      episode: PriceChangeEpisode;
+      item: BulkAcceptItemInput;
+      claimedAt: Date;
+    }[] = [];
+    try {
+      for (const item of items) {
+        const episode = foundById.get(item.id);
+        if (!episode) {
+          throw new PriceChangeEpisodeNotFoundException(item.id);
+        }
+        this.assertActionable(episode, item.expectedVersion);
+        const claimedAt = await this.claimOrThrow(episode.id);
+        episodesToApply.push({ episode, item, claimedAt });
       }
-      this.assertActionable(episode, item.expectedVersion);
-      episodesToApply.push({ episode, item });
+    } catch (error) {
+      await this.releaseClaims(episodesToApply.map(({ episode }) => episode.id));
+      throw error;
     }
 
     // `connectionId` on the reused batch row is the FIRST item's destination —
@@ -295,16 +323,18 @@ export class PriceChangesService implements IPriceChangesService {
     // (`succeededCount + failedCount === totalCount`) and lingers in
     // `pending`/`running` forever.
     const jobIds: string[] = [];
+    const enqueuedEpisodeIds = new Set<string>();
     const optInPairs = new Map<string, PriceChangeConnectionPair>();
     try {
-      for (const { episode, item } of episodesToApply) {
-        const result = await this.enqueuePublish(episode, {
+      for (const { episode, item, claimedAt } of episodesToApply) {
+        const result = await this.enqueuePublish(episode, claimedAt, {
           amount: episode.computedNewAmount,
           manualPriceOverride: false,
           resolvedByUserId,
           batchId: batch.id,
         });
         jobIds.push(result.jobId);
+        enqueuedEpisodeIds.add(episode.id);
         if (item.optInAutomatic) {
           this.addOptInPair(optInPairs, episode);
         }
@@ -314,6 +344,16 @@ export class PriceChangesService implements IPriceChangesService {
       this.logger.error(
         `Price-change bulk batch ${batch.id} enqueue failed after ${enqueued}/${episodesToApply.length} jobs: ${(error as Error).message}`,
         (error as Error).stack
+      );
+      // Release the claim on every episode this batch did NOT manage to
+      // enqueue (#3162 re-review, IMPORTANT) — a successfully-enqueued
+      // episode stays claimed until the worker's `applyPriceChange`
+      // resolves it; one that never reached the stream must not stay stuck
+      // as "someone is doing this right now" forever.
+      await this.releaseClaims(
+        episodesToApply
+          .map(({ episode }) => episode.id)
+          .filter((id) => !enqueuedEpisodeIds.has(id))
       );
       try {
         if (enqueued > 0) {
@@ -352,17 +392,77 @@ export class PriceChangesService implements IPriceChangesService {
     return this.autoAppliedLog.findRecent(limit);
   }
 
-  /** Loads an episode and applies the shared not-found/already-resolved/blocked/stale checks. */
+  /**
+   * Loads an episode, applies the shared not-found/already-resolved/
+   * blocked/stale checks, then claims exclusive resolution rights over it
+   * (#3162 re-review, IMPORTANT — "nothing claims the episode at accept
+   * time"). Returns the `claimedAt` instant so the caller can thread it
+   * into `enqueuePublish` as the idempotency key's generation marker.
+   */
   private async loadActionable(
     episodeId: string,
     expectedVersion?: string
-  ): Promise<PriceChangeEpisode> {
+  ): Promise<{ episode: PriceChangeEpisode; claimedAt: Date }> {
     const episode = await this.episodes.findById(episodeId);
     if (!episode) {
       throw new PriceChangeEpisodeNotFoundException(episodeId);
     }
     this.assertActionable(episode, expectedVersion);
-    return episode;
+    const claimedAt = await this.claimOrThrow(episode.id);
+    return { episode, claimedAt };
+  }
+
+  /**
+   * Claim exclusive resolution rights over an open episode via
+   * `PriceChangeEpisodeRepositoryPort.claimForResolution`, translating every
+   * non-`'claimed'` outcome into the SAME domain exception a caller would
+   * see reading the episode fresh — so a race lost here reports exactly as
+   * it would if the caller's own read had simply arrived a moment later.
+   */
+  private async claimOrThrow(episodeId: string): Promise<Date> {
+    const claimedAt = new Date();
+    const outcome = await this.episodes.claimForResolution(episodeId, claimedAt);
+    switch (outcome) {
+      case 'claimed':
+        return claimedAt;
+      case 'in-flight':
+        throw new PriceChangeEpisodeInFlightException(episodeId);
+      case 'resolved':
+        throw new PriceChangeEpisodeAlreadyResolvedException(episodeId);
+      case 'not-found':
+        throw new PriceChangeEpisodeNotFoundException(episodeId);
+    }
+  }
+
+  /** Releases every claim in `episodeIds`, logging (never throwing) on failure — a release is best-effort cleanup, not itself a gate. */
+  private async releaseClaims(episodeIds: readonly string[]): Promise<void> {
+    await Promise.all(
+      episodeIds.map((id) =>
+        this.episodes.releaseClaim(id).catch((releaseError: unknown) => {
+          this.logger.warn(
+            `[price-changes] failed to release claim for episode ${id} after an aborted resolution: ${(releaseError as Error).message}`
+          );
+        })
+      )
+    );
+  }
+
+  /** `accept`/`edit`'s single-item enqueue: releases the claim on a failed enqueue so a retry is not permanently blocked. */
+  private async enqueueOrReleaseClaim(
+    episode: PriceChangeEpisode,
+    claimedAt: Date,
+    options: {
+      amount: number;
+      manualPriceOverride: boolean;
+      resolvedByUserId: string | null;
+    }
+  ): Promise<void> {
+    try {
+      await this.enqueuePublish(episode, claimedAt, options);
+    } catch (error) {
+      await this.releaseClaims([episode.id]);
+      throw error;
+    }
   }
 
   /** The not-found-independent half of `loadActionable`, reused by the batched bulk path. */
@@ -441,6 +541,7 @@ export class PriceChangesService implements IPriceChangesService {
 
   private async enqueuePublish(
     episode: PriceChangeEpisode,
+    claimedAt: Date,
     options: {
       amount: number;
       manualPriceOverride: boolean;
@@ -448,14 +549,25 @@ export class PriceChangesService implements IPriceChangesService {
       batchId?: string;
     }
   ): Promise<{ jobId: string; isExisting: boolean }> {
-    // See `IDEMPOTENCY_KEY_BUCKET_MS` — an hourly bucket keeps a rapid
-    // double-click deduped while letting a genuinely dead-lettered episode
-    // become retryable within an hour rather than being wedged forever.
-    const bucket = Math.floor(Date.now() / IDEMPOTENCY_KEY_BUCKET_MS);
+    // Keyed on the episode id + this CLAIM's own generation (#3162
+    // re-review, IMPORTANT — the key was previously both value- and
+    // clock-derived: `...{amount}:{hourBucket}`, so a corrective edit after
+    // an accept minted a DIFFERENT key for the SAME episode — since the
+    // amount differs — and both jobs ran, racing each other with price not
+    // covered by ADR-067's freshness guard; the hour bucket separately made
+    // the same accept re-publishable after 60 minutes). `claimedAt` is the
+    // "generation the episode row itself owns" #2285/#3159 already
+    // establish for the automatic-apply path's own key
+    // (`enqueueAutomaticApply`'s `refreshedAt`-suffixed key) — it changes
+    // only when this episode is released and reclaimed, never on the
+    // passage of wall-clock time and never on the published amount, so a
+    // released-then-retried accept mints a fresh, distinct key while a
+    // genuine duplicate submit within the SAME claim collapses onto the
+    // one job already enqueued for it.
     const result = await this.jobEnqueue.enqueueJob({
       jobType: JOB_TYPE,
       connectionId: episode.destinationConnectionId,
-      idempotencyKey: `pricing:episode:${episode.id}:${options.batchId ?? 'single'}:${options.amount}:${bucket}`,
+      idempotencyKey: `pricing:episode:${episode.id}:${options.batchId ?? 'single'}:${claimedAt.getTime()}`,
       payload: {
         productVariantId: episode.productVariantId,
         destinationConnectionId: episode.destinationConnectionId,
@@ -471,7 +583,7 @@ export class PriceChangesService implements IPriceChangesService {
     });
     if (result.isExisting) {
       this.logger.warn(
-        `[price-changes] enqueue for episode ${episode.id} matched an already-queued job within the current hour bucket (jobId=${result.jobId}) — treated as an idempotent no-op`
+        `[price-changes] enqueue for episode ${episode.id} matched an already-queued job for the current claim (jobId=${result.jobId}) — treated as an idempotent no-op`
       );
     }
     return result;

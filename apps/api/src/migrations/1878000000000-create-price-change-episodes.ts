@@ -26,6 +26,15 @@
  * N" fact the source never asserted. `CHK_price_change_episodes_amounts_non_negative`
  * is unaffected — a Postgres CHECK evaluates to "not violated" on a NULL
  * operand.
+ *
+ * `claimedAt` (#3162 review, IMPORTANT — "nothing claims the episode at
+ * accept time") is the exclusive-resolution-rights marker
+ * `PriceChangeEpisodeRepositoryPort.claimForResolution` stamps: without it,
+ * two operators could both accept the same episode, and a stuck job's
+ * amount-and-clock-derived idempotency key could re-publish the same accept
+ * hours later. It carries no index of its own — every read that matters
+ * (`claimForResolution`'s own guarded `UPDATE`) already filters on the
+ * primary key.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
@@ -52,6 +61,7 @@ export class CreatePriceChangeEpisodes1878000000000 implements MigrationInterfac
         "detectedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
         "refreshedAt" TIMESTAMP WITH TIME ZONE,
         "resolvedAt" TIMESTAMP WITH TIME ZONE,
+        "claimedAt" TIMESTAMP WITH TIME ZONE,
         "resolution" character varying(32),
         "resolvedByUserId" text,
         "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),

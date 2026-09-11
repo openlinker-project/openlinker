@@ -131,8 +131,25 @@ describe('PriceSyncModeOverrideService', () => {
     });
 
     it('is a no-op for an empty list', async () => {
-      await service.setSourceOverridesAutomatic([]);
+      const outcomes = await service.setSourceOverridesAutomatic([]);
       expect(connections.get).not.toHaveBeenCalled();
+      expect(outcomes).toEqual([]);
+    });
+
+    it('reports each pair\'s own outcome rather than discarding it (#3162 re-review, IMPORTANT)', async () => {
+      connections.update
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('config.priceSyncMode is malformed'));
+
+      const outcomes = await service.setSourceOverridesAutomatic([
+        { destinationConnectionId: DEST_ID, sourceConnectionId: SRC_ID },
+        { destinationConnectionId: 'dest-2', sourceConnectionId: 'src-2' },
+      ]);
+
+      expect(outcomes).toEqual([
+        { destinationConnectionId: DEST_ID, sourceConnectionId: SRC_ID, applied: true },
+        { destinationConnectionId: 'dest-2', sourceConnectionId: 'src-2', applied: false },
+      ]);
     });
   });
 });

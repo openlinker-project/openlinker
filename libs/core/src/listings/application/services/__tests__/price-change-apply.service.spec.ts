@@ -90,7 +90,7 @@ describe('PriceChangeApplyService', () => {
   let offerMappings: { findForVariant: jest.Mock };
   let inventoryQuery: { getAvailabilityByVariantIds: jest.Mock };
   let productPublishExecution: { executePublish: jest.Mock };
-  let episodes: { findById: jest.Mock; resolve: jest.Mock };
+  let episodes: { findById: jest.Mock; resolve: jest.Mock; releaseClaim: jest.Mock };
   let autoAppliedLog: { record: jest.Mock };
   let bulkProgress: { advanceBatchStatus: jest.Mock };
   let listingRecords: { findLatestByVariantAndConnection: jest.Mock };
@@ -128,6 +128,7 @@ describe('PriceChangeApplyService', () => {
     episodes = {
       findById: jest.fn().mockResolvedValue(null),
       resolve: jest.fn().mockResolvedValue(true),
+      releaseClaim: jest.fn().mockResolvedValue(undefined),
     };
     autoAppliedLog = { record: jest.fn().mockResolvedValue(undefined) };
     bulkProgress = { advanceBatchStatus: jest.fn().mockResolvedValue(null) };
@@ -612,6 +613,18 @@ describe('PriceChangeApplyService', () => {
 
       expect(result.outcome).toBe('business_failure');
       expect(marketplaceAdapter.updateOfferFields).not.toHaveBeenCalled();
+    });
+
+    it('releases the accept/edit/bulk-item claim on a terminal business failure (#3162 re-review, IMPORTANT)', async () => {
+      episodes.findById.mockResolvedValue(buildEpisode({ blockReason: 'currency-mismatch' }));
+
+      await service.applyPriceChange({ ...validInput, episodeId: 'ep-1' });
+
+      // Without this, the episode would stay claimed forever — every future
+      // accept/edit/bulk-item on it would refuse as 'in-flight', since
+      // `resolve()` (the OTHER thing that would make the claim moot) is
+      // never reached on a terminal business-failure path.
+      expect(episodes.releaseClaim).toHaveBeenCalledWith('ep-1');
     });
 
     it('does not fail the apply when resolve() reports a lost race (already resolved concurrently)', async () => {

@@ -50,7 +50,19 @@ export class PriceChangeEpisode {
     public readonly resolution: PriceChangeResolution | null,
     public readonly resolvedByUserId: string | null,
     public readonly createdAt: Date,
-    public readonly updatedAt: Date
+    public readonly updatedAt: Date,
+    /**
+     * Non-null while an accept/edit/bulk-accept call has claimed exclusive
+     * resolution rights over this OPEN episode (#3162 review, IMPORTANT —
+     * "nothing claims the episode at accept time"). Set by
+     * `PriceChangeEpisodeRepositoryPort.claimForResolution`, cleared by
+     * either `releaseClaim` (a failed enqueue) or implicitly once
+     * `resolve()` sets `resolvedAt` (the claim becomes moot — `resolve`'s
+     * own guard already excludes a resolved row from ever being reclaimed).
+     * `null` on a never-claimed episode, including every automatic-mode row
+     * (the detection service enqueues directly and never claims).
+     */
+    public readonly claimedAt: Date | null = null
   ) {}
 
   isOpen(): boolean {

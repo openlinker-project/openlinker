@@ -10,9 +10,12 @@ import { PriceChangeEpisodeNotFoundException } from '../../../domain/exceptions/
 import { PriceChangeEpisodeAlreadyResolvedException } from '../../../domain/exceptions/price-change-episode-already-resolved.exception';
 import { PriceChangeEpisodeStaleException } from '../../../domain/exceptions/price-change-episode-stale.exception';
 import { PriceChangeEpisodeBlockedException } from '../../../domain/exceptions/price-change-episode-blocked.exception';
+import { PriceChangeEpisodeInFlightException } from '../../../domain/exceptions/price-change-episode-in-flight.exception';
 
 const DEST_ID = 'dest-1';
 const SRC_ID = 'src-1';
+/** Matches `buildEpisode()`'s default `detectedAt` — a valid `expectedVersion` for the happy path. */
+const VALID_VERSION = '2026-09-10T10:00:00.000Z';
 
 function buildConnection(config: Record<string, unknown> = {}): Connection {
   return new Connection(
@@ -101,6 +104,8 @@ describe('PriceChangesService', () => {
     resolve: jest.Mock;
     reopenIgnored: jest.Mock;
     acknowledgeRefresh: jest.Mock;
+    claimForResolution: jest.Mock;
+    releaseClaim: jest.Mock;
   };
   let autoAppliedLog: { findRecent: jest.Mock };
   let bulkBatches: {
@@ -125,6 +130,8 @@ describe('PriceChangesService', () => {
       resolve: jest.fn().mockResolvedValue(true),
       reopenIgnored: jest.fn().mockResolvedValue(true),
       acknowledgeRefresh: jest.fn().mockResolvedValue(buildEpisode({ refreshedAt: null })),
+      claimForResolution: jest.fn().mockResolvedValue('claimed'),
+      releaseClaim: jest.fn().mockResolvedValue(undefined),
     };
     autoAppliedLog = { findRecent: jest.fn().mockResolvedValue([]) };
     bulkBatches = {
@@ -159,7 +166,7 @@ describe('PriceChangesService', () => {
 
   describe('accept', () => {
     it('enqueues the apply job with the computed amount', async () => {
-      await service.accept('ep-1', { resolvedByUserId: 'user-1' });
+      await service.accept('ep-1', { resolvedByUserId: 'user-1', expectedVersion: VALID_VERSION });
 
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -175,10 +182,56 @@ describe('PriceChangesService', () => {
       );
     });
 
+    it('claims exclusive resolution rights before enqueueing (#3162 re-review, IMPORTANT)', async () => {
+      await service.accept('ep-1', { resolvedByUserId: 'user-1', expectedVersion: VALID_VERSION });
+
+      expect(episodes.claimForResolution).toHaveBeenCalledWith('ep-1', expect.any(Date));
+      // The claim call happens BEFORE the enqueue — asserted via call order.
+      const claimOrder = episodes.claimForResolution.mock.invocationCallOrder[0];
+      const enqueueOrder = jobEnqueue.enqueueJob.mock.invocationCallOrder[0];
+      expect(claimOrder).toBeLessThan(enqueueOrder);
+    });
+
+    it('keys the idempotency on the episode id + claim generation, never the raw amount or a wall-clock bucket', async () => {
+      const claimedAt = new Date('2026-09-10T11:00:00.000Z');
+      jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] }).setSystemTime(claimedAt);
+      try {
+        await service.accept('ep-1', { resolvedByUserId: 'user-1', expectedVersion: VALID_VERSION });
+
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+          expect.objectContaining({
+            idempotencyKey: `pricing:episode:ep-1:single:${claimedAt.getTime()}`,
+          })
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('refuses with PriceChangeEpisodeInFlightException when a peer already holds the claim', async () => {
+      episodes.claimForResolution.mockResolvedValue('in-flight');
+
+      await expect(
+        service.accept('ep-1', { resolvedByUserId: 'user-1', expectedVersion: VALID_VERSION })
+      ).rejects.toBeInstanceOf(PriceChangeEpisodeInFlightException);
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+    });
+
+    it('releases the claim when the enqueue itself fails, so a retry is not permanently blocked', async () => {
+      jobEnqueue.enqueueJob.mockRejectedValue(new Error('stream unavailable'));
+
+      await expect(
+        service.accept('ep-1', { resolvedByUserId: 'user-1', expectedVersion: VALID_VERSION })
+      ).rejects.toThrow('stream unavailable');
+
+      expect(episodes.releaseClaim).toHaveBeenCalledWith('ep-1');
+    });
+
     it('never writes Connection.config itself — reports the opt-in pair instead', async () => {
       const result = await service.accept('ep-1', {
         resolvedByUserId: 'user-1',
         optInAutomatic: true,
+        expectedVersion: VALID_VERSION,
       });
 
       expect(connections.update).not.toHaveBeenCalled();
@@ -188,29 +241,32 @@ describe('PriceChangesService', () => {
     });
 
     it('reports no opt-in pair when optInAutomatic was not requested', async () => {
-      const result = await service.accept('ep-1', { resolvedByUserId: 'user-1' });
+      const result = await service.accept('ep-1', {
+        resolvedByUserId: 'user-1',
+        expectedVersion: VALID_VERSION,
+      });
       expect(result).toEqual({});
     });
 
     it('throws NotFound for an unknown episode', async () => {
       episodes.findById.mockResolvedValue(null);
-      await expect(service.accept('missing', { resolvedByUserId: 'u' })).rejects.toBeInstanceOf(
-        PriceChangeEpisodeNotFoundException
-      );
+      await expect(
+        service.accept('missing', { resolvedByUserId: 'u', expectedVersion: VALID_VERSION })
+      ).rejects.toBeInstanceOf(PriceChangeEpisodeNotFoundException);
     });
 
     it('throws AlreadyResolved for a resolved episode', async () => {
       episodes.findById.mockResolvedValue(buildEpisode({ resolvedAt: new Date() }));
-      await expect(service.accept('ep-1', { resolvedByUserId: 'u' })).rejects.toBeInstanceOf(
-        PriceChangeEpisodeAlreadyResolvedException
-      );
+      await expect(
+        service.accept('ep-1', { resolvedByUserId: 'u', expectedVersion: VALID_VERSION })
+      ).rejects.toBeInstanceOf(PriceChangeEpisodeAlreadyResolvedException);
     });
 
     it('throws Blocked for a blocked episode', async () => {
       episodes.findById.mockResolvedValue(buildEpisode({ blockReason: 'currency-mismatch' }));
-      await expect(service.accept('ep-1', { resolvedByUserId: 'u' })).rejects.toBeInstanceOf(
-        PriceChangeEpisodeBlockedException
-      );
+      await expect(
+        service.accept('ep-1', { resolvedByUserId: 'u', expectedVersion: VALID_VERSION })
+      ).rejects.toBeInstanceOf(PriceChangeEpisodeBlockedException);
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
     });
 
@@ -222,6 +278,7 @@ describe('PriceChangesService', () => {
         service.accept('ep-1', { resolvedByUserId: 'u', expectedVersion: '2020-01-01T00:00:00.000Z' })
       ).rejects.toBeInstanceOf(PriceChangeEpisodeStaleException);
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      expect(episodes.claimForResolution).not.toHaveBeenCalled();
     });
 
     it('accepts a matching expectedVersion', async () => {
@@ -245,6 +302,11 @@ describe('PriceChangesService', () => {
           payload: expect.objectContaining({ amount: 420, manualPriceOverride: true }),
         })
       );
+    });
+
+    it('still claims exclusive resolution rights, even without an expectedVersion (it is optional here, not un-guarded)', async () => {
+      await service.edit('ep-1', { manualPriceOverride: 420, resolvedByUserId: 'user-1' });
+      expect(episodes.claimForResolution).toHaveBeenCalledWith('ep-1', expect.any(Date));
     });
   });
 
@@ -299,7 +361,13 @@ describe('PriceChangesService', () => {
 
   describe('bulkAccept', () => {
     it('creates one batch, enqueues one job per item carrying the batchId, and reaches running', async () => {
-      const result = await service.bulkAccept([{ id: 'ep-1' }, { id: 'ep-2' }], 'user-1');
+      const result = await service.bulkAccept(
+        [
+          { id: 'ep-1', expectedVersion: VALID_VERSION },
+          { id: 'ep-2', expectedVersion: VALID_VERSION },
+        ],
+        'user-1'
+      );
 
       expect(episodes.findByIds).toHaveBeenCalledWith(['ep-1', 'ep-2']);
       expect(result.batchId).toBe('batch-1');
@@ -311,6 +379,8 @@ describe('PriceChangesService', () => {
       expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
         expect.objectContaining({ payload: expect.objectContaining({ batchId: 'batch-1' }) })
       );
+      // Each item is claimed before it is enqueued (#3162 re-review, IMPORTANT).
+      expect(episodes.claimForResolution).toHaveBeenCalledTimes(2);
       // #3162 review — the batch previously never left `pending`.
       expect(bulkBatches.updateStatus).toHaveBeenCalledWith('batch-1', 'running');
     });
@@ -323,8 +393,8 @@ describe('PriceChangesService', () => {
 
       const result = await service.bulkAccept(
         [
-          { id: 'ep-1', optInAutomatic: true },
-          { id: 'ep-2', optInAutomatic: true },
+          { id: 'ep-1', optInAutomatic: true, expectedVersion: VALID_VERSION },
+          { id: 'ep-2', optInAutomatic: true, expectedVersion: VALID_VERSION },
         ],
         'user-1'
       );
@@ -345,13 +415,46 @@ describe('PriceChangesService', () => {
         )
       ).rejects.toBeInstanceOf(PriceChangeEpisodeStaleException);
       expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+      expect(episodes.claimForResolution).not.toHaveBeenCalled();
     });
 
     it('throws NotFound for an id absent from the batched read', async () => {
       episodes.findByIds.mockResolvedValue([]);
-      await expect(service.bulkAccept([{ id: 'missing' }], 'user-1')).rejects.toBeInstanceOf(
-        PriceChangeEpisodeNotFoundException
-      );
+      await expect(
+        service.bulkAccept([{ id: 'missing', expectedVersion: VALID_VERSION }], 'user-1')
+      ).rejects.toBeInstanceOf(PriceChangeEpisodeNotFoundException);
+    });
+
+    it('releases every claim already taken when a LATER item in the validation pass fails', async () => {
+      episodes.findByIds.mockResolvedValue([
+        buildEpisode({ id: 'ep-1' }),
+        buildEpisode({ id: 'ep-2', resolvedAt: new Date() }),
+      ]);
+
+      await expect(
+        service.bulkAccept(
+          [
+            { id: 'ep-1', expectedVersion: VALID_VERSION },
+            { id: 'ep-2', expectedVersion: VALID_VERSION },
+          ],
+          'user-1'
+        )
+      ).rejects.toBeInstanceOf(PriceChangeEpisodeAlreadyResolvedException);
+
+      // ep-1 was claimed before ep-2 was found to be already resolved — its
+      // claim must be released, or it would be permanently stuck in-flight.
+      expect(episodes.claimForResolution).toHaveBeenCalledWith('ep-1', expect.any(Date));
+      expect(episodes.releaseClaim).toHaveBeenCalledWith('ep-1');
+    });
+
+    it('refuses an item another caller already claimed as in-flight, never silently double-enqueueing', async () => {
+      episodes.findByIds.mockResolvedValue([buildEpisode({ id: 'ep-1' })]);
+      episodes.claimForResolution.mockResolvedValue('in-flight');
+
+      await expect(
+        service.bulkAccept([{ id: 'ep-1', expectedVersion: VALID_VERSION }], 'user-1')
+      ).rejects.toBeInstanceOf(PriceChangeEpisodeInFlightException);
+      expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
     });
 
     it('reconciles totalCount and derives a terminal status on a mid-fan-out enqueue failure', async () => {
@@ -364,7 +467,13 @@ describe('PriceChangesService', () => {
         .mockRejectedValueOnce(new Error('stream unavailable'));
 
       await expect(
-        service.bulkAccept([{ id: 'ep-1' }, { id: 'ep-2' }], 'user-1')
+        service.bulkAccept(
+          [
+            { id: 'ep-1', expectedVersion: VALID_VERSION },
+            { id: 'ep-2', expectedVersion: VALID_VERSION },
+          ],
+          'user-1'
+        )
       ).rejects.toThrow('stream unavailable');
 
       expect(bulkBatches.updateTotalCount).toHaveBeenCalledWith('batch-1', 1);
@@ -372,18 +481,23 @@ describe('PriceChangesService', () => {
       // finished, so the reconcile path advances to 'running' rather than a
       // terminal status — the #737 counter gate finishes it later.
       expect(bulkBatches.updateStatus).toHaveBeenCalledWith('batch-1', 'running');
+      // ep-1's job DID reach the stream — it stays claimed for the worker to
+      // resolve. ep-2 never reached the stream and must be released.
+      expect(episodes.releaseClaim).toHaveBeenCalledWith('ep-2');
+      expect(episodes.releaseClaim).not.toHaveBeenCalledWith('ep-1');
     });
 
     it('flips the batch straight to failed when nothing reached the stream', async () => {
       episodes.findByIds.mockResolvedValue([buildEpisode({ id: 'ep-1' })]);
       jobEnqueue.enqueueJob.mockRejectedValue(new Error('stream unavailable'));
 
-      await expect(service.bulkAccept([{ id: 'ep-1' }], 'user-1')).rejects.toThrow(
-        'stream unavailable'
-      );
+      await expect(
+        service.bulkAccept([{ id: 'ep-1', expectedVersion: VALID_VERSION }], 'user-1')
+      ).rejects.toThrow('stream unavailable');
 
       expect(bulkBatches.updateTotalCount).not.toHaveBeenCalled();
       expect(bulkBatches.updateStatus).toHaveBeenCalledWith('batch-1', 'failed');
+      expect(episodes.releaseClaim).toHaveBeenCalledWith('ep-1');
     });
   });
 
@@ -413,6 +527,18 @@ describe('PriceChangesService', () => {
 
       expect(episodes.findOpenAll).toHaveBeenCalledWith(
         expect.objectContaining({ limit: 50, offset: 0, includeRecentlyResolved: true })
+      );
+    });
+
+    it('computes total over the SAME filter set the page was read with, includeRecentlyResolved included (#3162 re-review, IMPORTANT)', async () => {
+      await service.listOpen({ destinationConnectionId: DEST_ID, direction: 'up' });
+
+      expect(episodes.countOpen).toHaveBeenCalledWith(
+        expect.objectContaining({
+          destinationConnectionId: DEST_ID,
+          direction: 'up',
+          includeRecentlyResolved: true,
+        })
       );
     });
 
