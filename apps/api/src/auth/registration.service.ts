@@ -81,14 +81,19 @@ export class RegistrationService implements IRegistrationService {
     ]);
 
     if (existingByUsername) {
-      // The exception's client-facing message is deliberately generic
-      // (#3156) — log which field collided here, server-side only, for
-      // operator debuggability.
-      this.logger.warn(`Registration rejected: username already taken (${username})`);
+      // Which FIELD collided, never the submitted value, and at `debug`
+      // rather than `warn` (#3156 review). `register` is `@Public()` and,
+      // outside demo mode, entirely unthrottled — so an attacker-supplied
+      // username or email written verbatim is both PII-into-logs and a
+      // log-flooding vector an unauthenticated caller controls. This
+      // matches `PasswordResetService.requestReset`, which deliberately
+      // logs `'Password reset requested for unknown email'` without the
+      // address. The exception's client-facing message stays generic.
+      this.logger.debug('Registration rejected: username already taken');
       throw new UserAlreadyExistsException(username);
     }
     if (existingByEmail) {
-      this.logger.warn(`Registration rejected: email already taken (${email})`);
+      this.logger.debug('Registration rejected: email already taken');
       throw new UserAlreadyExistsException(email);
     }
 
