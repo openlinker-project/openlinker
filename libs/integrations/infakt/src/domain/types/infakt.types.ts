@@ -7,6 +7,7 @@
  *
  * @module libs/integrations/infakt/src/domain/types
  */
+import type { InfaktSaleType } from './infakt-connection.types';
 
 /** Infakt KSeF status values as returned in `ksef_data.status`. */
 export const InfaktKsefStatusValues = [
@@ -242,6 +243,15 @@ export interface InfaktInvoiceRequest {
     services: InfaktInvoiceServiceRequest[];
     bank_account?: string;
     bank_name?: string;
+    /**
+     * inFakt's sale-type classification (#2177) — required by inFakt for a
+     * non-PL client, silently defaulted for a PL one. Sent only when the
+     * connection has `defaultSaleType` configured; see
+     * `InfaktConnectionConfig.defaultSaleType`. Narrowed to the same closed
+     * union as the config field (#2995 review) — nothing here may stamp an
+     * unvalidated string onto a fiscal payload.
+     */
+    sale_type?: InfaktSaleType;
     external_id?: string;
   };
 }
@@ -297,6 +307,13 @@ export interface InfaktCorrectiveInvoiceRequest {
     client_id: number | null;
     bank_account?: string;
     bank_name?: string;
+    /**
+     * inFakt's sale-type classification (#2177) — see the matching field on
+     * {@link InfaktInvoiceRequest}. A correction should not disagree with the
+     * original invoice's sale classification. Narrowed to the same closed
+     * union (#2995 review).
+     */
+    sale_type?: InfaktSaleType;
     corrected_invoice_number: string | null;
     corrected_invoice_date: string;
     corrected_invoice_uuid: string;
