@@ -55,6 +55,12 @@ export class OrderTestFixtureService implements IOrderTestFixtureService {
     // resolves from `load:` factories, which are not type-constrained, so a
     // non-string value would make a bare `raw.trim()` throw and turn the
     // modelled 403 into a 500. Coercing keeps the refusal the documented one.
+    //
+    // One value coerces the other way and it is intended: a real boolean
+    // `true` renders as `'true'` and OPENS the gate, because a factory
+    // returning it is an operator saying the fixtures are on. Refusing it
+    // would be fail-closed in the pedantic sense only — the unconditional
+    // NODE_ENV check above is what makes this unreachable in production.
     const raw = String(this.configService.get(ALLOW_TEST_FIXTURES_ENV_VAR) ?? 'false');
     if (raw.trim().toLowerCase() !== 'true') {
       throw new TestFixturesDisabledException();

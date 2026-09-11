@@ -56,7 +56,7 @@ describe('OrderTestFixtureService', () => {
 
     it.each([
       ['a number', 1],
-      ['a boolean', true],
+      ['the boolean false', false],
       ['an object', { enabled: true }],
       ['undefined', undefined],
       ['null', null],
@@ -77,6 +77,23 @@ describe('OrderTestFixtureService', () => {
         expect(repository.stampPreRolloutEraForTesting).not.toHaveBeenCalled();
       }
     );
+
+    it('opens the gate for the boolean true, which is the one non-string that means "enabled"', async () => {
+      // The deliberate asymmetry with the case above, and the reason the
+      // coercion is `String(...)` rather than a `typeof raw === 'string'`
+      // rejection: a `load:` factory returning a real boolean `true` is an
+      // operator saying the fixtures are on, and refusing it would be fail-
+      // closed in the pedantic sense while doing nothing for safety — the
+      // NODE_ENV gate above it is what keeps this unreachable in production.
+      // Asserted so the behaviour is a decision rather than a side effect of
+      // how `String` happens to render a boolean.
+      configService.get.mockReturnValue(true);
+      const service = buildService();
+
+      await expect(service.markPreRolloutEraForTesting('ol_order_a', 'ol_user_a')).resolves.toBe(
+        true
+      );
+    });
 
     it('is case/whitespace tolerant on the gate value', async () => {
       configService.get.mockReturnValue('  TRUE  ');
