@@ -7,19 +7,21 @@
  * `GET /connections/:id/pricing-sync/as-source` (ADR-072 decision 2 — no
  * PATCH variant exists for that route, by design).
  *
+ * `sourceOverrides` validation is declarative (`@ValidateSourceOverrides` on
+ * `UpdatePricingSyncDto`, reached through the ordinary global `ValidationPipe`)
+ * rather than a manual per-entry loop in this controller (#3163 review,
+ * finding 8) — see `validate-source-overrides.decorator.ts`.
+ *
  * @module apps/api/src/integrations/http
  */
-import { BadRequestException, Body, Controller, Get, Inject, Param, Patch } from '@nestjs/common';
+import { Controller, Get, Inject, Param, Patch, Body } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { plainToInstance } from 'class-transformer';
-import { validate } from 'class-validator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
   CONNECTION_PRICING_SYNC_SERVICE_TOKEN,
   type IConnectionPricingSyncService,
 } from '../application/interfaces/connection-pricing-sync.service.interface';
 import { UpdatePricingSyncDto } from './dto/update-pricing-sync.dto';
-import { PricingSyncSettingDto } from './dto/pricing-sync-setting.dto';
 import {
   ConnectionAsSourceEntryResponseDto,
   ConnectionPricingSyncResponseDto,
@@ -47,15 +49,16 @@ export class ConnectionPricingSyncController {
   @Roles('admin')
   @ApiOperation({ summary: 'Save the default + per-source pricing rule and sync mode (explicit-Save, no partial patch).' })
   @ApiResponse({ status: 200, type: ConnectionPricingSyncResponseDto })
-  @ApiResponse({ status: 400, description: 'A rule/mode entry does not match the accepted shapes.' })
+  @ApiResponse({ status: 400, description: 'A rule/mode entry does not match the accepted shapes, or the connection cannot be a pricing destination.' })
+  @ApiResponse({ status: 409, description: 'A concurrent write was detected (lock contention, or a stale `expectedUpdatedAt`).' })
   async update(
     @Param('connectionId') connectionId: string,
     @Body() dto: UpdatePricingSyncDto
   ): Promise<ConnectionPricingSyncResponseDto> {
-    const sourceOverrides = await this.validateSourceOverrides(dto.sourceOverrides ?? {});
     const view = await this.pricingSync.updatePricingSync(connectionId, {
       default: dto.default,
-      sourceOverrides,
+      sourceOverrides: dto.sourceOverrides ?? {},
+      expectedUpdatedAt: dto.expectedUpdatedAt,
     });
     return ConnectionPricingSyncResponseDto.fromDomain(view);
   }
@@ -72,30 +75,5 @@ export class ConnectionPricingSyncController {
   ): Promise<ConnectionAsSourceEntryResponseDto[]> {
     const entries = await this.pricingSync.getAsSource(connectionId);
     return entries.map((entry) => ConnectionAsSourceEntryResponseDto.fromDomain(entry));
-  }
-
-  /**
-   * `sourceOverrides` is a `Record<string, T>` — class-validator has no
-   * first-class nested decorator for that shape, so each entry is validated
-   * the same way `plainToInstance` + `validate()` would under `@ValidateNested`,
-   * naming the OFFENDING SOURCE ID in the 400 rather than a generic error.
-   */
-  private async validateSourceOverrides(
-    raw: Record<string, PricingSyncSettingDto>
-  ): Promise<Record<string, PricingSyncSettingDto>> {
-    const result: Record<string, PricingSyncSettingDto> = {};
-    for (const [sourceId, value] of Object.entries(raw)) {
-      const instance = plainToInstance(PricingSyncSettingDto, value);
-      const errors = await validate(instance);
-      if (errors.length > 0) {
-        throw new BadRequestException(
-          `Invalid pricing/sync setting for source ${sourceId}: ${errors
-            .map((e) => Object.values(e.constraints ?? {}).join(', '))
-            .join('; ')}`
-        );
-      }
-      result[sourceId] = instance;
-    }
-    return result;
   }
 }

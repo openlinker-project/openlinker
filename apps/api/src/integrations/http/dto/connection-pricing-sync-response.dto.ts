@@ -14,7 +14,10 @@ import { PricingRuleDto, PricingSyncSettingDto } from './pricing-sync-setting.dt
 export class ConnectionPricingSyncSourceEntryDto {
   @ApiProperty() sourceConnectionId!: string;
   @ApiProperty() sourceLabel!: string;
-  @ApiProperty() isCustomOverride!: boolean;
+  @ApiProperty({ description: 'True when this source has its own sync-mode override.' })
+  modeOverridden!: boolean;
+  @ApiProperty({ description: 'True when this source has its own pricing-rule override.' })
+  ruleOverridden!: boolean;
   @ApiProperty({ type: PricingSyncSettingDto }) effective!: PricingSyncSettingDto;
   @ApiProperty() openEpisodeCount!: number;
 
@@ -41,8 +44,11 @@ export class ConnectionAsSourceEntryResponseDto {
   @ApiProperty() destinationConnectionId!: string;
   @ApiProperty() destinationLabel!: string;
   @ApiProperty() effectiveMode!: string;
-  @ApiProperty({ type: PricingRuleDto }) effectiveRuleSummary!: PricingRuleDto;
-  @ApiProperty() isCustomOverride!: boolean;
+  @ApiProperty({ type: PricingRuleDto, nullable: true }) effectiveRuleSummary!: PricingRuleDto | null;
+  @ApiProperty({ description: 'True when this connection has its own sync-mode override on the destination.' })
+  modeOverridden!: boolean;
+  @ApiProperty({ description: 'True when this connection has its own pricing-rule override on the destination.' })
+  ruleOverridden!: boolean;
 
   static fromDomain(entry: ConnectionAsSourceEntry): ConnectionAsSourceEntryResponseDto {
     const dto = new ConnectionAsSourceEntryResponseDto();
