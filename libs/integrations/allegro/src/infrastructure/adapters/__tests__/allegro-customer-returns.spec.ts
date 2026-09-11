@@ -28,11 +28,18 @@ import {
   ALLEGRO_CUSTOMER_RETURN_MEDIA_TYPE,
   ALLEGRO_CUSTOMER_RETURN_TERMINAL_STATUSES,
 } from '../../../domain/types/allegro-customer-return.types';
-import type { AllegroCustomerReturnWire } from '../../../domain/types/allegro-customer-return.types';
+import type {
+  AllegroCustomerReturnItemWire,
+  AllegroCustomerReturnWire,
+} from '../../../domain/types/allegro-customer-return.types';
 import type { IAllegroHttpClient } from '../../http/allegro-http-client.interface';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { isReturnDecliner, isReturnSourceReader } from '@openlinker/core/orders';
-import { ReturnDeclineInvalidRequestError } from '@openlinker/core/returns';
+import {
+  ReturnDeclineInvalidRequestError,
+  resolveReturnLineOrderLine,
+} from '@openlinker/core/returns';
+import type { ResolvableOrderLine } from '@openlinker/core/returns';
 import { AllegroApiException } from '../../../domain/exceptions/allegro-api.exception';
 
 const connectionId = 'connection-returns';
@@ -170,6 +177,74 @@ describe('Allegro customer-return mapper (#2330)', () => {
 
     it('should report an absent quantity as 0 rather than guessing 1', () => {
       expect(toIncomingReturnLine({ offerId: 'offer-1' }).quantity).toBe(0);
+    });
+  });
+
+  describe('return-order-line resolution against REAL mapper output (#3171 review)', () => {
+    // This return payload carries NO `sku` — Allegro's return items key on
+    // `offerId` alone (`toIncomingReturnLine` above), so the SKU axis of
+    // `resolveReturnLineOrderLine` is unreachable on this source. An order
+    // line's `sku`, however, IS the offer id here — `AllegroOrderSourceAdapter`
+    // maps `sku: lineItem.offer.id` — so the two sides share one identifier
+    // under two field names. These specs prove the `offerId` axis is what
+    // actually resolves an Allegro return, over the mapper's real output
+    // rather than a hand-built fixture that could carry a `sku` no adapter
+    // produces.
+    const offerId = '3e895572-9297-4d80-b151-353deb95bff6';
+
+    function orderLine(over: Partial<ResolvableOrderLine> & { id: string }): ResolvableOrderLine {
+      return { quantity: 1, price: 123.45, ...over };
+    }
+
+    /** The one item `wireReturn()` always carries — `items` is optional on the wire type. */
+    function firstReturnItem(): AllegroCustomerReturnItemWire {
+      const items = wireReturn().items;
+      if (items === undefined || items.length === 0) {
+        throw new Error('wireReturn() fixture must carry at least one item');
+      }
+      return items[0];
+    }
+
+    it('should resolve on offerId when the source reports no SKU at all', () => {
+      const line = toIncomingReturnLine(firstReturnItem());
+      expect(line.sku).toBeUndefined();
+      expect(line.offerId).toBe(offerId);
+
+      const resolution = resolveReturnLineOrderLine(
+        { sku: null, offerId: line.offerId ?? null, unitPrice: line.unitPrice ?? null },
+        [orderLine({ id: 'oi_1', sku: offerId }), orderLine({ id: 'oi_2', sku: 'other-offer' })]
+      );
+
+      expect(resolution).toEqual({ status: 'resolved', orderLineId: 'oi_1', matchedOn: 'offerId' });
+    });
+
+    it('should break a same-offerId tie on the reported unit price — the duplicate-line case the picker existed for', () => {
+      const line = toIncomingReturnLine(firstReturnItem());
+
+      const resolution = resolveReturnLineOrderLine(
+        { sku: null, offerId: line.offerId ?? null, unitPrice: line.unitPrice ?? null },
+        [
+          orderLine({ id: 'oi_1', sku: offerId, price: 100 }),
+          orderLine({ id: 'oi_2', sku: offerId, price: 123.45 }),
+        ]
+      );
+
+      expect(resolution).toEqual({
+        status: 'resolved',
+        orderLineId: 'oi_2',
+        matchedOn: 'offerId+price',
+      });
+    });
+
+    it('should refuse rather than guess when the offerId matches nothing on the order', () => {
+      const line = toIncomingReturnLine(firstReturnItem());
+
+      const resolution = resolveReturnLineOrderLine(
+        { sku: null, offerId: line.offerId ?? null, unitPrice: line.unitPrice ?? null },
+        [orderLine({ id: 'oi_1', sku: 'a-different-offer' })]
+      );
+
+      expect(resolution).toEqual({ status: 'unresolved', reason: 'no-candidate' });
     });
   });
 

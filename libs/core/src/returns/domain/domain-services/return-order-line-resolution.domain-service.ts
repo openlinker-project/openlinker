@@ -36,6 +36,12 @@
  * how the order's data reaches this context without `returns` importing an
  * orders service — ADR-053's "order data enters as arguments" discipline,
  * applied to a context that would otherwise take a 14-module edge for one read.
+ *
+ * `sku` is the ONE identity field an order line carries, and it is
+ * source-shape-dependent: a shop order line holds a genuine catalogue SKU,
+ * while `AllegroOrderSourceAdapter` populates it from the offer id
+ * (`sku: lineItem.offer.id`). The `offerId` axis below compares against this
+ * SAME field for exactly that reason — on Allegro it IS the offer id.
  */
 export interface ResolvableOrderLine {
   /** `orderSnapshot.items[].id` — the value that gets persisted. */
@@ -49,6 +55,20 @@ export interface ResolvableOrderLine {
 export interface ResolvableReturnLine {
   sku: string | null;
   /**
+   * The source's own product/offer identifier for this line — on Allegro,
+   * `AllegroCustomerReturnItemWire.offerId` (the return payload carries no
+   * SKU at all). Compared against the SAME `ResolvableOrderLine.sku` field
+   * the `sku` axis reads, because on that source the order line's `sku` IS
+   * the offer id: the two sides are reporting one identifier under two
+   * names, not two different identifiers.
+   *
+   * A distinct field from `sku` rather than folded into it, because a
+   * `matchedOn: 'sku'` result would otherwise claim the source reported a
+   * SKU it did not — the resolution stays auditable about which axis
+   * actually settled it.
+   */
+  offerId: string | null;
+  /**
    * Per-unit price as the source reported it. The tie-breaker, and the field
    * `returns.service.ts` already persists into `rawPayload` and never reads.
    */
@@ -58,9 +78,15 @@ export interface ResolvableReturnLine {
 /**
  * Why a line could not be resolved. A closed vocabulary, because the caller
  * reports these and a free-form string cannot be counted or acted on.
+ *
+ * No `assertNever` reads this union today — `resolveOrderLinesForReturn`
+ * folds every reason into a `Record<string, number>` and only counts and
+ * logs it (#3171 review, SUGGESTION 3). That is fine while nothing branches
+ * on a specific reason; the day something does, add the exhaustiveness check
+ * there rather than assuming a fourth member here would be caught.
  */
 export const ReturnOrderLineUnresolvedReasonValues = [
-  /** The return line carries neither a SKU nor a unit price — nothing to match on. */
+  /** The return line carries neither an identity axis nor a unit price — nothing to match on. */
   'no-axis',
   /** Matched nothing on any available axis. */
   'no-candidate',
@@ -72,7 +98,13 @@ export type ReturnOrderLineUnresolvedReason =
   (typeof ReturnOrderLineUnresolvedReasonValues)[number];
 
 /** Which axis settled it — carried so the resolution is auditable, not just correct. */
-export const ReturnOrderLineMatchAxisValues = ['sku', 'sku+price', 'price'] as const;
+export const ReturnOrderLineMatchAxisValues = [
+  'sku',
+  'sku+price',
+  'offerId',
+  'offerId+price',
+  'price',
+] as const;
 export type ReturnOrderLineMatchAxis = (typeof ReturnOrderLineMatchAxisValues)[number];
 
 export type ReturnOrderLineResolution =
@@ -80,13 +112,15 @@ export type ReturnOrderLineResolution =
   | { status: 'unresolved'; reason: ReturnOrderLineUnresolvedReason };
 
 /**
- * SKUs are operator-authored identifiers, not prose: trimmed, but NOT
+ * Identifiers are operator- or platform-authored, not prose: trimmed, but NOT
  * case-folded and NOT diacritic-folded. The folding argument that applies to a
- * product name (`normalizeCorrectionLineName`) is about display text; a SKU
- * that differs in case is a different SKU in every catalogue this platform
- * reads.
+ * product name (`normalizeCorrectionLineName`) is about display text; a SKU or
+ * offer id that differs in case is a different identifier in every catalogue
+ * this platform reads. Shared by the `sku` and `offerId` axes, which is
+ * exactly why both compare against `ResolvableOrderLine.sku` — see that
+ * field's docblock.
  */
-function normalizeSku(value: string | null | undefined): string | null {
+function normalizeIdentifier(value: string | null | undefined): string | null {
   if (typeof value !== 'string') {
     return null;
   }
@@ -100,16 +134,59 @@ function samePrice(a: number, b: number): boolean {
 }
 
 /**
+ * Narrow `orderLines` to the ones whose `sku` field equals `identity`
+ * (order lines carry only one identity field, `sku`), and break a multi-way
+ * tie on the reported unit price. Shared by the `sku` and `offerId` axes,
+ * which differ only in which return-line field supplies `identity` and which
+ * `ReturnOrderLineMatchAxis` value the answer is stamped with.
+ *
+ * Falling through to price when NOTHING matches would resolve a line this
+ * identity positively excluded — a wrong answer rather than a missing one —
+ * so a `no-candidate` here is final for this axis, never a retry onto price.
+ */
+function resolveByIdentity(
+  identity: string,
+  orderLines: readonly ResolvableOrderLine[],
+  unitPrice: number | null,
+  axis: ReturnOrderLineMatchAxis,
+  tieBreakAxis: ReturnOrderLineMatchAxis
+): ReturnOrderLineResolution {
+  const matches = orderLines.filter(
+    (candidate) => normalizeIdentifier(candidate.sku) === identity
+  );
+
+  if (matches.length === 1) {
+    return { status: 'resolved', orderLineId: matches[0].id, matchedOn: axis };
+  }
+
+  if (matches.length > 1) {
+    if (unitPrice === null) {
+      return { status: 'unresolved', reason: 'ambiguous' };
+    }
+    const byPrice = matches.filter((candidate) => samePrice(candidate.price, unitPrice));
+    return byPrice.length === 1
+      ? { status: 'resolved', orderLineId: byPrice[0].id, matchedOn: tieBreakAxis }
+      : { status: 'unresolved', reason: byPrice.length === 0 ? 'no-candidate' : 'ambiguous' };
+  }
+
+  return { status: 'unresolved', reason: 'no-candidate' };
+}
+
+/**
  * Resolve one returned line to at most one order line.
  *
  * Axis order is strongest-first, and each axis only ever NARROWS the survivors
- * from the previous one — so a price match can settle a SKU tie without ever
- * being able to select a line the SKU already excluded.
+ * from the previous one — so a price match can settle a same-identity tie
+ * without ever being able to select a line that identity already excluded.
  *
  * 1. **SKU**, exact after trim. One survivor ⇒ resolved.
  * 2. **Unit price**, as the tie-break among same-SKU survivors. This is exactly
  *    the duplicate-line case the picker existed for.
- * 3. Price alone, when the return line carries no SKU at all.
+ * 3. **Offer id** (only when the line carries no SKU), matched against the
+ *    same `ResolvableOrderLine.sku` field — the identifier Allegro's return
+ *    payload actually reports (see `ResolvableReturnLine.offerId`).
+ * 4. **Offer-id + unit price**, the offer-id tie-break, mirroring (2).
+ * 5. Price alone, when the return line carries neither a SKU nor an offer id.
  *
  * Product NAME is deliberately not an axis: its collisions are what this rule
  * exists to remove, and reintroducing it as a fallback would reintroduce the
@@ -119,35 +196,22 @@ export function resolveReturnLineOrderLine(
   line: ResolvableReturnLine,
   orderLines: readonly ResolvableOrderLine[]
 ): ReturnOrderLineResolution {
-  const sku = normalizeSku(line.sku);
+  const sku = normalizeIdentifier(line.sku);
+  const offerId = normalizeIdentifier(line.offerId);
   const unitPrice =
     typeof line.unitPrice === 'number' && Number.isFinite(line.unitPrice) ? line.unitPrice : null;
 
   if (sku !== null) {
-    const bySku = orderLines.filter((candidate) => normalizeSku(candidate.sku) === sku);
-
-    if (bySku.length === 1) {
-      return { status: 'resolved', orderLineId: bySku[0].id, matchedOn: 'sku' };
-    }
-
-    if (bySku.length > 1) {
-      if (unitPrice === null) {
-        return { status: 'unresolved', reason: 'ambiguous' };
-      }
-      const byPrice = bySku.filter((candidate) => samePrice(candidate.price, unitPrice));
-      return byPrice.length === 1
-        ? { status: 'resolved', orderLineId: byPrice[0].id, matchedOn: 'sku+price' }
-        : { status: 'unresolved', reason: byPrice.length === 0 ? 'no-candidate' : 'ambiguous' };
-    }
-
-    // The SKU matched nothing. Falling back to price here would resolve a line
-    // the SKU positively excluded, which is a wrong answer rather than a
-    // missing one — so the axis order is a narrowing, never a retry.
-    return { status: 'unresolved', reason: 'no-candidate' };
+    return resolveByIdentity(sku, orderLines, unitPrice, 'sku', 'sku+price');
   }
 
-  // No SKU. Without a price either there is no axis at all — narrowing here
-  // rather than up front is what keeps the price branch cast-free.
+  if (offerId !== null) {
+    return resolveByIdentity(offerId, orderLines, unitPrice, 'offerId', 'offerId+price');
+  }
+
+  // Neither identity axis is present. Without a price either there is no
+  // axis at all — narrowing here rather than up front is what keeps the
+  // price branch cast-free.
   if (unitPrice === null) {
     return { status: 'unresolved', reason: 'no-axis' };
   }

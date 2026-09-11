@@ -41,6 +41,7 @@ describe('ReturnsService', () => {
     listReturns: jest.Mock;
     countReturnsByBucket: jest.Mock;
     claimAttribution: jest.Mock;
+    claimOrderLineResolution: jest.Mock;
   };
   let identifierMapping: {
     getInternalId: jest.Mock;
@@ -71,6 +72,7 @@ describe('ReturnsService', () => {
       listReturns: jest.fn().mockResolvedValue([]),
       countReturnsByBucket: jest.fn().mockResolvedValue({ total: 0, orphan: 0, attributed: 0 }),
       claimAttribution: jest.fn().mockResolvedValue(true),
+      claimOrderLineResolution: jest.fn().mockResolvedValue(true),
     };
     identifierMapping = {
       getInternalId: jest.fn().mockResolvedValue('ol_order_abc'),
@@ -622,6 +624,73 @@ describe('ReturnsService', () => {
         expect(persisted.offerId).toBeNull();
         expect(persisted.resolvedOrderLineId).toBeNull();
       }
+    });
+  });
+
+  describe('resolveOrderLinesForReturn (#3171 review — offerId axis threading)', () => {
+    const returnLine = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+      id: 'ol_return_line_1',
+      lineIndex: 0,
+      sku: null,
+      offerId: 'offer-abc',
+      resolvedOrderLineId: null,
+      ...over,
+    });
+
+    // Allegro's return payload carries no SKU, only `offerId` — so a service
+    // that only forwarded `line.sku` into the resolver would leave every
+    // Allegro return line on the price-alone branch. This pins that
+    // `ReturnLine.offerId` is threaded through.
+    it('should thread the persisted offerId into the resolver, not just sku', async () => {
+      const record = {
+        id: 'ol_return_1',
+        lines: [returnLine()],
+        rawPayload: null,
+      };
+      repository.findById.mockResolvedValue(record);
+
+      const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+        { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+      ]);
+
+      expect(summary.resolved).toBe(1);
+      expect(repository.claimOrderLineResolution).toHaveBeenCalledWith(
+        'ol_return_line_1',
+        'oi_1'
+      );
+    });
+
+    it('should skip a line whose resolvedOrderLineId is already set, without touching the row', async () => {
+      const record = {
+        id: 'ol_return_1',
+        lines: [returnLine({ resolvedOrderLineId: 'oi_already' })],
+        rawPayload: null,
+      };
+      repository.findById.mockResolvedValue(record);
+
+      const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+        { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+      ]);
+
+      expect(summary.alreadyResolved).toBe(1);
+      expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+    });
+
+    it('should report ambiguous rather than pick when two order lines share the offerId and price', async () => {
+      const record = {
+        id: 'ol_return_1',
+        lines: [returnLine()],
+        rawPayload: null,
+      };
+      repository.findById.mockResolvedValue(record);
+
+      const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+        { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+        { id: 'oi_2', quantity: 1, price: 100, sku: 'offer-abc' },
+      ]);
+
+      expect(summary.unresolved).toEqual({ ambiguous: 1 });
+      expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
     });
   });
 });

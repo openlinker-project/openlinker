@@ -167,7 +167,11 @@ export class ReturnsService implements IReturnsService {
       }
 
       const resolution = resolveReturnLineOrderLine(
-        { sku: line.sku, unitPrice: this.readReportedUnitPrice(record, line.lineIndex) },
+        {
+          sku: line.sku,
+          offerId: line.offerId,
+          unitPrice: this.readReportedUnitPrice(record, line.lineIndex),
+        },
         orderLines
       );
 

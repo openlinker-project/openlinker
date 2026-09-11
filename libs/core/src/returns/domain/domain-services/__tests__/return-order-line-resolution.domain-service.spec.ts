@@ -11,6 +11,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  ReturnOrderLineMatchAxisValues,
   ReturnOrderLineUnresolvedReasonValues,
   resolveReturnLineOrderLine,
 } from '../return-order-line-resolution.domain-service';
@@ -21,6 +22,7 @@ import type {
 
 const line = (over: Partial<ResolvableReturnLine> = {}): ResolvableReturnLine => ({
   sku: 'EARB-01',
+  offerId: null,
   unitPrice: null,
   ...over,
 });
@@ -69,7 +71,7 @@ describe('resolveReturnLineOrderLine', () => {
       expect(result).toEqual({ status: 'resolved', orderLineId: 'oi_1', matchedOn: 'sku' });
     });
 
-    it('should resolve on price alone when the return line carries no sku', () => {
+    it('should resolve on price alone when the return line carries no sku and no offerId', () => {
       const result = resolveReturnLineOrderLine(line({ sku: null, unitPrice: 179 }), [
         order({ id: 'oi_1', price: 189 }),
         order({ id: 'oi_2', price: 179 }),
@@ -77,10 +79,40 @@ describe('resolveReturnLineOrderLine', () => {
 
       expect(result).toEqual({ status: 'resolved', orderLineId: 'oi_2', matchedOn: 'price' });
     });
+
+    // The reachable path on the only shipped `ReturnSourceReader` (Allegro):
+    // its return payload carries no `sku` at all, only `offerId`, so this axis
+    // — not `sku` — is what actually resolves an Allegro return line. See
+    // `allegro-customer-returns.spec.ts` for the end-to-end version driven
+    // through the real mapper output.
+    it('should resolve on offerId alone when the return line carries no sku', () => {
+      const result = resolveReturnLineOrderLine(
+        line({ sku: null, offerId: 'offer-abc', unitPrice: null }),
+        [order({ id: 'oi_1', sku: 'offer-abc' }), order({ id: 'oi_2', sku: 'offer-xyz' })]
+      );
+
+      expect(result).toEqual({ status: 'resolved', orderLineId: 'oi_1', matchedOn: 'offerId' });
+    });
+
+    it('should resolve a same-offerId tie on the reported unit price', () => {
+      const result = resolveReturnLineOrderLine(
+        line({ sku: null, offerId: 'offer-abc', unitPrice: 179 }),
+        [
+          order({ id: 'oi_1', sku: 'offer-abc', price: 189 }),
+          order({ id: 'oi_2', sku: 'offer-abc', price: 179 }),
+        ]
+      );
+
+      expect(result).toEqual({
+        status: 'resolved',
+        orderLineId: 'oi_2',
+        matchedOn: 'offerId+price',
+      });
+    });
   });
 
   describe('refusing', () => {
-    it('should refuse when the return line carries neither a sku nor a unit price', () => {
+    it('should refuse when the return line carries neither a sku, an offerId, nor a unit price', () => {
       const result = resolveReturnLineOrderLine(line({ sku: null, unitPrice: null }), [
         order({ id: 'oi_1' }),
       ]);
@@ -121,6 +153,35 @@ describe('resolveReturnLineOrderLine', () => {
       ]);
 
       expect(result).toEqual({ status: 'unresolved', reason: 'no-candidate' });
+    });
+
+    it('should NOT fall back to offerId or price when the sku positively excluded every line, even carrying a matching offerId', () => {
+      // sku is the stronger axis: its presence decides the outcome and a
+      // co-reported offerId is never consulted once sku has spoken.
+      const result = resolveReturnLineOrderLine(
+        line({ sku: 'GHOST-1', offerId: 'offer-abc', unitPrice: 189 }),
+        [order({ id: 'oi_1', sku: 'offer-abc', price: 189 })]
+      );
+
+      expect(result).toEqual({ status: 'unresolved', reason: 'no-candidate' });
+    });
+
+    it('should NOT fall back to price when the offerId positively excluded every line', () => {
+      const result = resolveReturnLineOrderLine(
+        line({ sku: null, offerId: 'GHOST-OFFER', unitPrice: 189 }),
+        [order({ id: 'oi_1', sku: 'offer-abc', price: 189 })]
+      );
+
+      expect(result).toEqual({ status: 'unresolved', reason: 'no-candidate' });
+    });
+
+    it('should refuse a same-offerId tie when no unit price was reported', () => {
+      const result = resolveReturnLineOrderLine(line({ sku: null, offerId: 'offer-abc' }), [
+        order({ id: 'oi_1', sku: 'offer-abc', price: 189 }),
+        order({ id: 'oi_2', sku: 'offer-abc', price: 179 }),
+      ]);
+
+      expect(result).toEqual({ status: 'unresolved', reason: 'ambiguous' });
     });
 
     it('should treat a sku differing only in case as a different sku', () => {
@@ -172,6 +233,16 @@ describe('resolveReturnLineOrderLine', () => {
         'ambiguous',
         'no-axis',
         'no-candidate',
+      ]);
+    });
+
+    it('should expose every match axis the rule can actually stamp', () => {
+      expect([...ReturnOrderLineMatchAxisValues]).toEqual([
+        'sku',
+        'sku+price',
+        'offerId',
+        'offerId+price',
+        'price',
       ]);
     });
 
