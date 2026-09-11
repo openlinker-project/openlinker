@@ -92,14 +92,16 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{ outline:none; b
 .shell-nav__group{ margin-bottom:16px; }
 .shell-nav__label{ margin:0 0 4px; padding:0 8px; font-size:10px; font-weight:600; letter-spacing:.11em; text-transform:uppercase; color:var(--text-muted); }
 .shell-nav__list{ list-style:none; padding:0; margin:0; display:grid; gap:1px; }
-.shell-nav__link{ display:flex; align-items:center; padding:6px 8px; border-radius:6px; color:var(--text-secondary); font-size:13px; font-weight:500; text-decoration:none; }
+.shell-nav__link{ display:flex; align-items:center; gap:6px; padding:6px 8px; border-radius:6px; color:var(--text-secondary); font-size:13px; font-weight:500; text-decoration:none; }
 .shell-nav__link:hover{ background:var(--bg-surface-muted); color:var(--text-primary); }
 .shell-nav__link--active{ background:var(--bg-surface-muted); color:var(--text-primary); font-weight:600; box-shadow:inset 2px 0 0 var(--accent-primary); }
+.shell-nav__admin-tag{ margin-left:auto; font-family:var(--font-mono); font-size:.5625rem; font-weight:600; letter-spacing:.04em; color:var(--text-muted); border:1px solid var(--border-default); border-radius:var(--radius-xs); padding:0 4px; text-transform:uppercase; }
 .shell-topbar{ position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:12px; height:52px; padding:0 16px; background:var(--bg-shell); border-bottom:1px solid var(--border-subtle); }
 .shell-crumbs{ font-size:13px; color:var(--text-secondary); }
 .shell-crumbs b{ color:var(--text-primary); font-weight:500; }
 .shell-content{ padding:20px 32px 48px; max-width:1180px; }
 
+.eyebrow-row{ display:flex; align-items:center; gap:8px; }
 .eyebrow{ margin:0; font-size:.76rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-primary-hover); }
 .page-header{ display:grid; gap:.45rem; margin-bottom:20px; }
 .page-header__row{ display:flex; align-items:start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
@@ -107,6 +109,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{ outline:none; b
 .page-description{ color:var(--text-secondary); font-size:.875rem; max-width:64ch; }
 .page-header__actions{ display:flex; gap:8px; flex-shrink:0; align-items:center; }
 .page-header__meta{ font-size:.6875rem; color:var(--text-muted); font-family:var(--font-mono); }
+.page-header__caution{ font-size:.75rem; color:var(--text-muted); max-width:64ch; }
 
 .button{ display:inline-flex; align-items:center; justify-content:center; gap:var(--space-2); border:1px solid var(--accent-primary-border); border-radius:var(--radius-md); padding:0 var(--space-4); height:2rem; background:var(--accent-primary); color:var(--text-on-primary); font-family:inherit; font-size:.8125rem; font-weight:500; cursor:pointer; box-shadow:var(--shadow-xs), var(--shadow-inset-top); }
 .button--secondary{ border-color:var(--border-default); background:var(--bg-surface); color:var(--text-primary); }
@@ -130,14 +133,20 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{ outline:none; b
 .alert--warning{ background:var(--status-warning-soft); border-color:var(--status-warning-border); color:var(--status-warning-fg); }
 .alert--success{ background:var(--status-success-soft); border-color:var(--status-success-border); color:var(--status-success-fg); }
 .alert__glyph{ flex-shrink:0; font-size:1rem; line-height:1.4; }
-.alert__content{ display:grid; gap:2px; }
+.alert__content{ display:grid; gap:2px; flex:1; }
 .alert__title{ font-weight:600; color:var(--text-primary); font-size:.8125rem; }
 .alert__description{ font-size:.8125rem; color:var(--text-secondary); }
+.alert__checklist{ list-style:none; margin:6px 0 0; padding:0; display:grid; gap:3px; }
+.alert__checklist li{ display:flex; align-items:baseline; gap:6px; font-size:.8125rem; color:var(--text-secondary); }
+.alert__checklist .check-yes{ color:var(--status-success-fg); font-weight:700; }
+.alert__checklist .check-pending{ color:var(--status-warning-fg); font-weight:700; }
+.alert__link{ margin-top:6px; font-size:.8125rem; font-weight:500; }
 
 .status-badge{ display:inline-flex; align-items:center; gap:var(--space-2); padding:2px var(--space-2); border:1px solid var(--status-disabled-border); border-radius:var(--radius-sm); background:var(--status-disabled-soft); color:var(--status-disabled-fg); font-family:var(--font-mono); font-size:.6875rem; font-weight:500; text-transform:uppercase; white-space:nowrap; }
 .status-badge__dot{ width:.375rem; height:.375rem; border-radius:999px; background:currentColor; opacity:.75; }
 .status-badge--warning{ border-color:var(--status-warning-border); background:var(--status-warning-soft); color:var(--status-warning-fg); }
 .status-badge--neutral{ border-color:var(--status-disabled-border); background:var(--status-disabled-soft); color:var(--status-disabled-fg); }
+.status-badge--success{ border-color:var(--status-success-border); background:var(--status-success-soft); color:var(--status-success-fg); }
 .status-badge--compact{ padding:1px var(--space-2); font-size:.625rem; }
 
 .data-table__container{ overflow-x:auto; border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); }
@@ -151,22 +160,40 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{ outline:none; b
 .mono{ font-family:var(--font-mono); font-size:.75rem; color:var(--text-secondary); }
 .expander{ display:inline-block; width:14px; text-align:center; color:var(--text-muted); font-size:10px; transition:transform .12s var(--ease-out, ease); margin-right:6px; }
 .expander--open{ transform:rotate(90deg); }
+.provenance-flag{ font-family:var(--font-mono); font-size:.75rem; color:var(--text-muted); border-bottom:1px dotted var(--border-strong); cursor:help; }
 
 .detail-row td{ padding:0; border-top:none; }
-.detail-panel{ padding:0 var(--space-4) var(--space-4) 34px; }
+.detail-panel{ padding:0 var(--space-4) var(--space-4) 34px; display:grid; gap:8px; }
+.detail-panel__hint{ font-size:.75rem; color:var(--text-muted); }
 .detail-panel table{ width:100%; border-collapse:collapse; font-size:.75rem; background:var(--bg-surface-muted); border-radius:var(--radius-md); overflow:hidden; }
 .detail-panel th{ text-align:left; padding:6px 10px; font-family:var(--font-mono); font-size:.625rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); border-bottom:1px solid var(--border-subtle); }
 .detail-panel td{ padding:6px 10px; border-top:1px solid var(--border-subtle); font-family:var(--font-mono); font-size:.75rem; }
 .detail-panel tr.stale-row{ opacity:.55; }
+.survivor-badge{ display:inline-flex; align-items:center; gap:3px; margin-left:8px; padding:0 5px; border-radius:var(--radius-xs); background:var(--status-success-soft); border:1px solid var(--status-success-border); color:var(--status-success-fg); font-family:var(--font-mono); font-size:.5625rem; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+.reserved-badge{ display:inline-flex; align-items:center; gap:3px; margin-left:8px; padding:0 5px; border-radius:var(--radius-xs); background:var(--status-error-soft); border:1px solid var(--status-error-border); color:var(--status-error-fg); font-family:var(--font-mono); font-size:.5625rem; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+.detail-panel__identity{ font-size:.8125rem; color:var(--text-primary); font-weight:600; }
+.detail-panel__identity span{ font-weight:400; color:var(--text-muted); font-family:var(--font-mono); font-size:.75rem; }
+.cell-primary{ font-weight:500; color:var(--text-primary); }
+.cell-secondary{ display:block; font-size:.6875rem; color:var(--text-muted); margin-top:1px; }
 
 .state-card{ border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:0 1px 2px rgb(15 18 26/.04); padding:32px 28px; text-align:left; }
 .state-card--error{ border-color:var(--status-error-border); }
 .state-card__title{ font-size:1.0625rem; font-weight:600; margin-top:4px; }
 .state-card__message{ color:var(--text-secondary); font-size:.8125rem; margin-top:6px; max-width:56ch; }
-.state-card__actions{ margin-top:14px; display:flex; gap:8px; }
+.state-card__actions{ margin-top:14px; display:flex; gap:8px; align-items:center; }
 .skeleton-line{ height:12px; border-radius:4px; background:linear-gradient(90deg, var(--bg-surface-muted) 25%, var(--bg-surface-hover) 37%, var(--bg-surface-muted) 63%); background-size:400% 100%; animation:skeleton 1.4s ease infinite; }
 @keyframes skeleton{ 0%{background-position:100% 50%;} 100%{background-position:0 50%;} }
 @media (prefers-reduced-motion:reduce){ .skeleton-line{ animation:none; } }
+
+.detail-alert{ display:flex; gap:8px; padding:8px 10px; border-radius:var(--radius-sm); border:1px solid; font-size:.75rem; align-items:flex-start; }
+.detail-alert--danger{ background:var(--status-error-soft); border-color:var(--status-error-border); color:var(--status-error-fg); }
+.detail-alert--info{ background:var(--status-info-soft); border-color:var(--status-info-border); color:var(--status-info-fg); }
+.detail-alert--neutral{ background:var(--bg-shell); border-color:var(--border-default); color:var(--text-secondary); }
+.detail-alert strong{ color:var(--text-primary); }
+
+.maxgroups-form{ display:flex; align-items:center; gap:6px; margin-top:8px; font-size:.75rem; color:var(--text-muted); }
+.maxgroups-form input{ width:4.5rem; height:1.625rem; border:1px solid var(--border-default); border-radius:var(--radius-sm); background:var(--bg-surface); color:var(--text-primary); font-family:var(--font-mono); font-size:.75rem; padding:0 6px; }
+.maxgroups-form__note{ font-family:var(--font-mono); font-size:.6875rem; }
 
 .demo-toolbar{ position:sticky; top:52px; z-index:9; display:flex; align-items:center; gap:10px; padding:10px 32px; background:var(--bg-surface-elevated); border-bottom:1px solid var(--border-subtle); flex-wrap:wrap; }
 .demo-toolbar__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin-right:4px; }
@@ -185,7 +212,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{ outline:none; b
           <li><a class="shell-nav__link" href="#">Jobs &amp; Logs</a></li>
           <li><a class="shell-nav__link" href="#">Webhooks</a></li>
           <li><a class="shell-nav__link" href="#">Cursors</a></li>
-          <li><a class="shell-nav__link shell-nav__link--active" href="#">Duplicate positions</a></li>
+          <li><a class="shell-nav__link shell-nav__link--active" href="#">Duplicate positions<span class="shell-nav__admin-tag">Admin</span></a></li>
         </ul>
       </div>
       <div class="shell-nav__group">
@@ -204,26 +231,33 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{ outline:none; b
     <div class="demo-toolbar" role="group" aria-label="Mockup state switcher — not part of the product">
       <span class="demo-toolbar__label">Mockup · view state</span>
       <button class="chip chip--active" data-state="duplicates" onclick="setState('duplicates')">Duplicates found</button>
-      <button class="chip" data-state="clean" onclick="setState('clean')">Clean (ready for the unique index)</button>
+      <button class="chip" data-state="clean-pending" onclick="setState('clean-pending')">Clean · backfill pending</button>
+      <button class="chip" data-state="clean-ready" onclick="setState('clean-ready')">Clean · ready to migrate</button>
       <button class="chip" data-state="truncated" onclick="setState('truncated')">Truncated report</button>
       <button class="chip" data-state="loading" onclick="setState('loading')">Loading</button>
       <button class="chip" data-state="error" onclick="setState('error')">Error</button>
-      <span style="margin-left:auto; font-size:.6875rem; color:var(--text-muted); font-family:var(--font-mono);">click a group row to expand its individual rows</span>
+      <span style="margin-left:auto; font-size:.6875rem; color:var(--text-muted); font-family:var(--font-mono);">click a group row (or focus + Enter) to expand its individual rows</span>
     </div>
 
     <div class="shell-content">
       <header class="page-header">
         <div class="page-header__row">
           <div>
-            <p class="eyebrow">Inventory · read-only diagnostic</p>
+            <div class="eyebrow-row">
+              <p class="eyebrow">Inventory · read-only diagnostic</p>
+              <span class="status-badge status-badge--neutral status-badge--compact">Admin only</span>
+            </div>
             <h1 class="page-title">Duplicate positions</h1>
             <p class="page-description">Stock rows that collide on the same product, variant, location and source. This is a report, not a repair tool — it detects, it never writes. It's the gate before a stricter uniqueness rule can be turned on for the whole install.</p>
           </div>
           <div class="page-header__actions">
             <span class="page-header__meta" id="generatedAtMeta">Generated 2026-09-10 14:02 UTC</span>
+            <button class="button button--secondary button--sm" onclick="exportCsv()">⬇ Export CSV</button>
             <button class="button button--secondary button--sm" onclick="setState(currentState)">↻ Refresh</button>
           </div>
         </div>
+        <p class="page-header__caution">Positions can change between this scan and a manual fix performed elsewhere — re-run the report immediately before acting on it, never from a page you loaded a while ago.</p>
+        <p class="page-header__meta" id="exportNote"></p>
       </header>
 
       <div id="content"></div>
@@ -232,9 +266,22 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible{ outline:none; b
 </div>
 
 <script>
+const REMEDIATION_LINK = '../../operations/inventory-duplicate-positions.md';
+
+// NOTE — mockup enrichment beyond the documented GET /inventory/duplicate-positions
+// contract: `productName`, `sku`, `connectionName` and `locationName` are NOT in
+// the shipped response shape (see docs/operations/inventory-duplicate-positions.md).
+// They're modeled here because a raw ol_product_a1c9 id tells an operator nothing
+// about which SKU is at risk — implementers should confirm the real endpoint can
+// join these in (products + connections are already first-class entities) before
+// wiring the real page 1:1 against this mock. `liveRowCount` carries the same
+// caveat and was already accepted as reasonable enrichment in the prior review pass.
 const GROUPS = [
   {
-    productId:'ol_product_a1c9', productVariantId:'ol_variant_77fe', locationId:'ol_location_main', sourceConnectionId:'ol_conn_c1',
+    productId:'ol_product_a1c9', productName:'Merino Wool Beanie', sku:'BEA-MER-001',
+    productVariantId:'ol_variant_77fe',
+    locationId:'ol_location_main', locationName:'Main Warehouse',
+    sourceConnectionId:'ol_conn_c1', connectionName:'Allegro — Primary Shop',
     rowCount:3, liveRowCount:2,
     rows:[
       { id:'ol_invitem_9a01', availableQuantity:14, reservedQuantity:2, isStale:false, updatedAt:'2026-09-10T11:42:00Z' },
@@ -243,7 +290,10 @@ const GROUPS = [
     ],
   },
   {
-    productId:'ol_product_a1c9', productVariantId:'ol_variant_bd41', locationId:null, sourceConnectionId:null,
+    productId:'ol_product_a1c9', productName:'Merino Wool Beanie', sku:'BEA-MER-001-XL',
+    productVariantId:'ol_variant_bd41',
+    locationId:null, locationName:null,
+    sourceConnectionId:null, connectionName:null,
     rowCount:2, liveRowCount:2,
     rows:[
       { id:'ol_invitem_2c88', availableQuantity:5, reservedQuantity:0, isStale:false, updatedAt:'2026-09-10T06:00:00Z' },
@@ -251,7 +301,10 @@ const GROUPS = [
     ],
   },
   {
-    productId:'ol_product_c72f', productVariantId:'ol_variant_0091', locationId:'ol_location_krk', sourceConnectionId:'legacy',
+    productId:'ol_product_c72f', productName:'Recycled Canvas Tote (discontinued at master)', sku:'TOT-CAN-014',
+    productVariantId:'ol_variant_0091',
+    locationId:'ol_location_krk', locationName:'Kraków DC',
+    sourceConnectionId:'legacy', connectionName:null,
     rowCount:2, liveRowCount:0,
     rows:[
       { id:'ol_invitem_8811', availableQuantity:0, reservedQuantity:0, isStale:true, updatedAt:'2026-04-02T10:00:00Z' },
@@ -260,37 +313,133 @@ const GROUPS = [
   },
 ];
 
+// "Largest" for triage purposes means highest live-stock exposure, not row
+// count — a group with 5 stale rows and 0 live ones is cosmetic cleanup for
+// the #2325 gate, not an active oversell risk. Both domain-review passes
+// flagged the un-ranked list as a real triage gap.
+function liveExposureQty(group) {
+  return group.rows.filter(r => !r.isStale).reduce((s, r) => s + r.availableQuantity, 0);
+}
+const GROUPS_RANKED = [...GROUPS].sort((a, b) => liveExposureQty(b) - liveExposureQty(a));
+
 let currentState = 'duplicates';
 let expandedKey = null;
+let maxGroupsInput = 100;
 
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// productId is never null in practice; productVariantId can be for a
+// product-level (no-variant) row — that's a distinct, self-explanatory
+// absence from the provenance gap below, so it keeps the plain dash.
 function fmtNull(v){ return v === null ? '<span style="color:var(--text-disabled);">— none —</span>' : `<span class="mono">${escapeHtml(v)}</span>`; }
+
+// productId is always present; productName/sku are the "which SKU is this"
+// answer a bare internal id can't give an operator triaging urgency.
+function fmtProduct(g){
+  return `<span class="cell-primary">${escapeHtml(g.productName)}</span><span class="cell-secondary">${escapeHtml(g.sku)} · ${escapeHtml(g.productId)}</span>`;
+}
+
+// locationId === null means "the master declined to report a location for
+// this stock" (ADR-058 decision 2) — a real, permanent fact, not missing data.
+function fmtLocation(v, name){
+  if (v === null) {
+    return `<span class="provenance-flag" title="Master does not report a location for this stock (ADR-058 decision 2). Not missing data — treat as a real 'unlocated' value.">— unlocated —</span>`;
+  }
+  return name
+    ? `<span class="cell-primary">${escapeHtml(name)}</span><span class="cell-secondary mono">${escapeHtml(v)}</span>`
+    : `<span class="mono">${escapeHtml(v)}</span>`;
+}
+
+// sourceConnectionId === null and === 'legacy' are ONE class: rows the
+// #2317 provenance backfill has not (null) or has just (legacy) touched.
+// Rendering them identically to a real connection id would look like
+// missing data or a connection literally named "legacy".
+function fmtProvenance(v, name){
+  if (v === null) {
+    return `<span class="provenance-flag" title="No source connection recorded yet — this row predates the #2317 backfill. Grouped together with 'legacy' rows; both mean the same thing.">— not backfilled —</span>`;
+  }
+  if (v === 'legacy') {
+    return `<span class="provenance-flag" title="Sentinel the #2317 backfill writes for a row whose owning connection is unknown. Grouped together with NULL rows — both mean the same thing.">legacy</span>`;
+  }
+  return name
+    ? `<span class="cell-primary">${escapeHtml(name)}</span><span class="cell-secondary mono">${escapeHtml(v)} · <a href="#">Connections →</a></span>`
+    : `<span class="mono">${escapeHtml(v)}</span>`;
+}
+
 function fmtTime(iso){ return iso.replace('T',' ').replace('Z',' UTC').slice(0,19) + ' UTC'; }
+function fmtQty(n){ return n.toLocaleString('en-US'); }
+
+// Default remediation rule (see the runbook): the newest *live* row wins.
+// `rows` is already ordered newest-first, so this is the first non-stale
+// row; if every row in the group is stale, nothing survives automatically.
+function findSurvivorId(group) {
+  const liveRow = group.rows.find(r => !r.isStale);
+  return liveRow ? liveRow.id : null;
+}
+
+function remediationLinkHtml(extra) {
+  return `<p class="alert__link"><a href="${REMEDIATION_LINK}">Remediation guide: how to pick the survivor and delete the rest →</a>${extra ? ' ' + extra : ''}</p>`;
+}
+
+function exportCsv() {
+  const note = document.getElementById('exportNote');
+  if (!note) return;
+  const ts = new Date().toISOString().slice(0,10);
+  note.textContent = `Would download duplicate-positions-${ts}.csv — every group in the table (uncapped), one row per inventory_items.id, for offline triage or a support ticket.`;
+}
 
 function renderGroupsTable(groups, truncated) {
   const rowsHtml = groups.map((g, i) => {
     const key = `g${i}`;
     const isOpen = expandedKey === key;
+    const survivorId = findSurvivorId(g);
+    const exposure = liveExposureQty(g);
+    // The row(s) the survivor badge does NOT point at, but that still carry
+    // an open reservation — deleting one of these orphans a live order's
+    // hold. The survivor rule (newest live row) never looks at this.
+    const riskyRows = g.rows.filter(r => r.id !== survivorId && r.reservedQuantity > 0);
+    const oldest = g.rows[g.rows.length - 1];
     return `
-      <tr class="group-row ${isOpen ? 'group-row--expanded':''}" onclick="toggleGroup('${key}')">
-        <td><span class="expander ${isOpen?'expander--open':''}">▸</span>${fmtNull(g.productId)}</td>
+      <tr class="group-row ${isOpen ? 'group-row--expanded':''}" tabindex="0" role="button" aria-expanded="${isOpen}" aria-controls="detail-${key}" onclick="toggleGroup('${key}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleGroup('${key}');}">
+        <td><span class="expander ${isOpen?'expander--open':''}">▸</span>${fmtProduct(g)}</td>
         <td>${fmtNull(g.productVariantId)}</td>
-        <td>${fmtNull(g.locationId)}</td>
-        <td>${fmtNull(g.sourceConnectionId)}</td>
+        <td>${fmtLocation(g.locationId, g.locationName)}</td>
+        <td>${fmtProvenance(g.sourceConnectionId, g.connectionName)}</td>
         <td class="mono" style="text-align:right;">${g.rowCount}</td>
+        <td class="mono" style="text-align:right;" title="Sum of availableQuantity across this group's LIVE (non-stale) rows — what's currently over-counted for this position.">${exposure > 0 ? fmtQty(exposure) : '—'}</td>
         <td>${g.liveRowCount > 0
             ? `<span class="status-badge status-badge--warning status-badge--compact"><span class="status-badge__dot"></span>${g.liveRowCount} live</span>`
             : `<span class="status-badge status-badge--neutral status-badge--compact"><span class="status-badge__dot"></span>all stale</span>`}
         </td>
       </tr>
-      <tr class="detail-row" ${isOpen ? '' : 'hidden'}>
-        <td colspan="6">
+      <tr class="detail-row" id="detail-${key}" ${isOpen ? '' : 'hidden'}>
+        <td colspan="7">
           <div class="detail-panel">
+            <p class="detail-panel__hint">Default survivor rule: newest live row (marked below), colliding since ${fmtTime(oldest.updatedAt)}. ${survivorId ? '' : 'No live row in this group — see step 2 of the remediation guide.'}</p>
+
+            ${g.liveRowCount > 0 ? `
+              <div class="detail-alert detail-alert--info">
+                <span>⚠</span>
+                <div><strong>Currently distorting available-to-promise.</strong> This position's live rows sum to <strong>${fmtQty(exposure)}</strong> available — the availability read has no way to know only one row is real, so it publishes ${fmtQty(exposure)} where the true figure is whichever row survives. Never sum the duplicated quantities when reconciling; re-read the survivor's figure from the master after cleanup (runbook step 3).</div>
+              </div>
+            ` : `
+              <div class="detail-alert detail-alert--neutral">
+                <span>ℹ</span>
+                <div><strong>No live rows — no oversell risk today.</strong> Every row here is already <code>isStale</code>, so the normal availability read already excludes this position. This group only blocks the #2325 migration; it is not an active stock-accuracy problem.</div>
+              </div>
+            `}
+            ${riskyRows.length ? `
+              <div class="detail-alert detail-alert--danger">
+                <span>⛔</span>
+                <div><strong>Reservation risk — do not blindly follow the survivor badge.</strong> ${riskyRows.map(r => `<code>${escapeHtml(r.id)}</code> holds ${r.reservedQuantity} reserved unit${r.reservedQuantity===1?'':'s'}`).join(', ')}, but the default survivor rule picks the newest row regardless of reservations. Confirm no open order depends on this stock before deleting it — check Orders for this variant first.</div>
+              </div>
+            ` : ''}
+
             <table>
               <thead><tr><th>inventory_items.id</th><th>Available</th><th>Reserved</th><th>Stale</th><th>Updated</th></tr></thead>
               <tbody>
                 ${g.rows.map(r => `<tr class="${r.isStale ? 'stale-row':''}">
-                  <td>${escapeHtml(r.id)}</td>
+                  <td>${escapeHtml(r.id)}${r.id === survivorId ? '<span class="survivor-badge">✓ likely survivor</span>' : ''}${r.id !== survivorId && r.reservedQuantity > 0 ? '<span class="reserved-badge">⛔ reserved</span>' : ''}</td>
                   <td style="text-align:right;">${r.availableQuantity}</td>
                   <td style="text-align:right;">${r.reservedQuantity}</td>
                   <td>${r.isStale ? 'yes' : 'no'}</td>
@@ -298,6 +447,7 @@ function renderGroupsTable(groups, truncated) {
                 </tr>`).join('')}
               </tbody>
             </table>
+            ${remediationLinkHtml()}
           </div>
         </td>
       </tr>
@@ -310,19 +460,38 @@ function renderGroupsTable(groups, truncated) {
         <thead>
           <tr>
             <th>Product</th><th>Variant</th><th>Location</th><th>Source connection</th>
-            <th style="text-align:right;">Rows</th><th>Live rows</th>
+            <th style="text-align:right;">Rows</th><th style="text-align:right;">Live qty at risk</th><th>Live rows</th>
           </tr>
         </thead>
-        <tbody>${rowsHtml || `<tr><td colspan="6" class="data-table__empty-cell">No duplicate groups.</td></tr>`}</tbody>
+        <tbody>${rowsHtml || `<tr><td colspan="7" class="data-table__empty-cell">No duplicate groups.</td></tr>`}</tbody>
       </table>
     </div>
-    ${truncated ? `<p style="font-size:.75rem; color:var(--text-muted); margin-top:10px;">Showing the ${groups.length} largest groups. Totals above cover every group in the table — this list is capped for readability only.</p>` : ''}
+    ${truncated ? `
+      <p style="font-size:.75rem; color:var(--text-muted); margin-top:10px;">Showing the ${groups.length} highest-exposure groups of 47, ranked by live stock quantity currently at risk of overselling — not row count. Totals above cover every group in the table; this list is capped for readability only.</p>
+      <div class="maxgroups-form">
+        <label for="maxGroupsInput">maxGroups</label>
+        <input id="maxGroupsInput" type="number" min="1" max="500" value="${maxGroupsInput}" onchange="setMaxGroups(this.value)">
+        <button class="button button--secondary button--sm" onclick="applyMaxGroups()">Apply</button>
+        <span class="maxgroups-form__note" id="maxGroupsNote"></span>
+      </div>
+    ` : ''}
   `;
 }
 
 function toggleGroup(key) {
   expandedKey = expandedKey === key ? null : key;
+  document.body.dataset.expandedGroup = expandedKey || '';
   render();
+}
+
+function setMaxGroups(v) {
+  const n = Math.max(1, Math.min(500, Number(v) || 100));
+  maxGroupsInput = n;
+}
+
+function applyMaxGroups() {
+  const note = document.getElementById('maxGroupsNote');
+  if (note) note.textContent = `Would re-run GET /inventory/duplicate-positions?maxGroups=${maxGroupsInput} — this only changes how many groups load into the table below. It never removes, fixes, or hides a group; groupCount/rowCount/excessRowCount above are already uncapped and won't change.`;
 }
 
 function render() {
@@ -339,22 +508,28 @@ function render() {
     content.innerHTML = `<div class="state-card state-card--error">
       <p class="eyebrow" style="color:var(--status-error-fg);">Error</p>
       <h3 class="state-card__title">Couldn't run the scan</h3>
-      <p class="state-card__message">The request failed: 504 Gateway Timeout. On a very large catalogue this scan can be slow — try again, or narrow the group cap.</p>
+      <p class="state-card__message">The request failed: 504 Gateway Timeout. This is two unindexed sequential scans of <code>inventory_items</code> — on a very large catalogue it can be slow. Try again, or retry against a lower <code>maxGroups</code> (default 100, capped at 500) — that bounds only the returned detail, not the scan itself, so it won't speed up a timeout on the totals.</p>
       <div class="state-card__actions"><button class="button button--secondary button--sm" onclick="setState('duplicates')">Retry</button></div>
     </div>`;
     return;
   }
-  if (currentState === 'clean') {
+  if (currentState === 'clean-pending' || currentState === 'clean-ready') {
+    const backfillDone = currentState === 'clean-ready';
     content.innerHTML = `
       <div class="status-strip">
-        <div class="kpi-card kpi-card--success"><p class="kpi-card__label">Duplicate groups</p><p class="kpi-card__value">0</p><p class="kpi-card__hint">Every position key is unique</p></div>
-        <div class="kpi-card kpi-card--success"><p class="kpi-card__label">Excess rows</p><p class="kpi-card__value">0</p><p class="kpi-card__hint">Nothing to remove</p></div>
+        <div class="kpi-card kpi-card--success"><p class="kpi-card__label">Duplicate groups</p><p class="kpi-card__value">0</p><p class="kpi-card__hint">Every position key in this scan is unique</p></div>
+        <div class="kpi-card kpi-card--success"><p class="kpi-card__label">Excess rows</p><p class="kpi-card__value">0</p><p class="kpi-card__hint">Nothing to remove today</p></div>
       </div>
-      <div class="alert alert--success">
-        <span class="alert__glyph">✓</span>
+      <div class="alert ${backfillDone ? 'alert--success' : 'alert--warning'}">
+        <span class="alert__glyph">${backfillDone ? '✓' : '⚠'}</span>
         <div class="alert__content">
-          <p class="alert__title">Ready for the stricter uniqueness rule</p>
-          <p class="alert__description">Zero duplicate position groups exist. This install can now safely take the four-column unique index (product, variant, location, source) that permanently prevents this class of row from reappearing.</p>
+          <p class="alert__title">${backfillDone ? 'Ready for the stricter uniqueness rule' : 'Zero duplicates now — one more check before you migrate'}</p>
+          <p class="alert__description">Readiness for the #2325 unique index is two conditions, not one number. A <code>groupCount: 0</code> read taken while the #2317 provenance backfill is still draining can flip non-zero afterwards, once NULL rows collapse to <code>'legacy'</code> and reveal a collision this scan couldn't see yet.</p>
+          <ul class="alert__checklist">
+            <li><span class="check-yes">✓</span> Zero duplicate position groups (this scan, just now)</li>
+            <li><span class="${backfillDone ? 'check-yes' : 'check-pending'}">${backfillDone ? '✓' : '⚠'}</span> #2317 provenance backfill complete — ${backfillDone ? 'confirmed complete' : 'check the Cursors page, or re-run this scan after confirming'}</li>
+          </ul>
+          ${backfillDone ? '' : remediationLinkHtml('(covers the ordering dependency between the backfill and this gate)')}
         </div>
       </div>
       <div class="data-table__container"><table class="data-table"><tbody><tr><td class="data-table__empty-cell">No duplicate positions found.</td></tr></tbody></table></div>
@@ -363,7 +538,7 @@ function render() {
   }
 
   const truncated = currentState === 'truncated';
-  const groups = GROUPS;
+  const groups = GROUPS_RANKED;
   const groupCount = truncated ? 47 : groups.length;
   const rowCount = truncated ? 121 : groups.reduce((s,g) => s + g.rowCount, 0);
   const excess = rowCount - groupCount;
@@ -379,6 +554,7 @@ function render() {
       <div class="alert__content">
         <p class="alert__title">Not ready for the stricter uniqueness rule yet</p>
         <p class="alert__description">${groupCount} position${groupCount===1?'':'s'} still hold more than one row. Provenance is part of the key — two rows differing only by source connection are legitimate coexisting mirrors, not duplicates, and are already excluded from this count.</p>
+        ${remediationLinkHtml()}
       </div>
     </div>
     ${renderGroupsTable(groups, truncated)}
@@ -387,8 +563,10 @@ function render() {
 
 function setState(name) {
   currentState = name;
+  document.body.dataset.state = name;
   document.querySelectorAll('.demo-toolbar .chip[data-state]').forEach(c => c.classList.toggle('chip--active', c.dataset.state === name));
   expandedKey = null;
+  document.body.dataset.expandedGroup = '';
   render();
 }
 
