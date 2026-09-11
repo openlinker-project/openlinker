@@ -198,7 +198,13 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
               label="Owning connection (optional)"
               name="ownerConnectionId"
               error={form.formState.errors.ownerConnectionId?.message}
-              description="Whose sync may write stock here. Not authority over the location."
+              description={
+                connectionsQuery.isError
+                  ? "Couldn't load connections — try again, or leave unset."
+                  : connectionsQuery.isLoading
+                    ? 'Loading connections…'
+                    : 'Whose sync may write stock here. Not authority over the location.'
+              }
             >
               <Select {...form.register('ownerConnectionId')}>
                 <option value="">— none —</option>

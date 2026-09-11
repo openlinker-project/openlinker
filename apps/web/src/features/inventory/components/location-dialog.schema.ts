@@ -24,12 +24,22 @@ import { InventoryLocationKindValues, normalizeCountryIso2 } from '../api/invent
 
 const latLngField = z.union([
   z.literal(''),
-  z.coerce.number().min(-90, 'Must be between -90 and 90').max(90, 'Must be between -90 and 90'),
+  z.coerce
+    .number()
+    // A non-numeric input coerces to `NaN`, which the plain min/max chain
+    // would then fail with a misleading "must be between -90 and 90" — this
+    // named check runs first so a non-number gets a message about being a
+    // number (tech-review finding).
+    .refine(Number.isFinite, 'Must be a number')
+    .refine((value) => value >= -90 && value <= 90, 'Must be between -90 and 90'),
 ]);
 
 const lngField = z.union([
   z.literal(''),
-  z.coerce.number().min(-180, 'Must be between -180 and 180').max(180, 'Must be between -180 and 180'),
+  z.coerce
+    .number()
+    .refine(Number.isFinite, 'Must be a number')
+    .refine((value) => value >= -180 && value <= 180, 'Must be between -180 and 180'),
 ]);
 
 export const locationDialogSchema = z.object({
