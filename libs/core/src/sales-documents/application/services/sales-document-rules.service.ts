@@ -85,11 +85,25 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     private readonly acknowledgmentRepository: SalesDocumentCountryAcknowledgmentRepositoryPort,
   ) {}
 
-  async listRules(country: string): Promise<SalesDocumentRule[]> {
-    return this.ruleRepository.findByCountry(country);
+  /**
+   * ISO-3166-1 alpha-2 is uppercase by definition, and `'*'` (`★ Rest of
+   * world`) is unaffected by either operation — the single normalisation
+   * point for every country string this service reads or writes (#3176).
+   * Without it, a rule authored as `PL` and an order whose delivery address
+   * carries `pl` never compare equal: two markets exist for one country, one
+   * of them permanently unconfigured and silently holding every order that
+   * lands there. Mirrors `LocationService.normaliseCountry`.
+   */
+  private normaliseCountry(country: string): string {
+    return country.trim().toUpperCase();
   }
 
-  async createRule(input: SalesDocumentRuleInput): Promise<SalesDocumentRule> {
+  async listRules(country: string): Promise<SalesDocumentRule[]> {
+    return this.ruleRepository.findByCountry(this.normaliseCountry(country));
+  }
+
+  async createRule(rawInput: SalesDocumentRuleInput): Promise<SalesDocumentRule> {
+    const input = { ...rawInput, country: this.normaliseCountry(rawInput.country) };
     this.assertConditionsWellFormed(input.conditions);
     await this.assertThresholdRefsResolve(input);
 
@@ -115,12 +129,13 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   }
 
   async listCountryDefaults(country: string): Promise<SalesDocumentCountryDefault[]> {
-    return this.countryDefaultRepository.findByCountry(country);
+    return this.countryDefaultRepository.findByCountry(this.normaliseCountry(country));
   }
 
   async upsertCountryDefault(
-    input: SalesDocumentCountryDefaultInput,
+    rawInput: SalesDocumentCountryDefaultInput,
   ): Promise<SalesDocumentCountryDefault> {
+    const input = { ...rawInput, country: this.normaliseCountry(rawInput.country) };
     const countryDefault = await this.countryDefaultRepository.upsert(input);
     // Same auto-clear rule as `createRule` (#2186) — see its own comment.
     await this.clearAcknowledgment(input.country);
@@ -139,7 +154,14 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     return this.thresholdRepository.findAll();
   }
 
-  async resolveRouting(order: SalesDocumentOrderFacts, now: Date = new Date()): Promise<SalesDocumentDecision> {
+  async resolveRouting(rawOrder: SalesDocumentOrderFacts, now: Date = new Date()): Promise<SalesDocumentDecision> {
+    // Normalised once, here, and threaded through both the lookup and the
+    // evaluator (#3176) — `order.country` otherwise reaches a case-sensitive
+    // `country = :country` match against rows written under a normalised
+    // scope (`createRule` / `upsertCountryDefault`, above), and a lowercase
+    // delivery-address country from the source would silently resolve to
+    // "no configuration for this country" instead of the real market.
+    const order = { ...rawOrder, country: this.normaliseCountry(rawOrder.country) };
     const [countryRules, countryDefaults, restOfWorldRules, restOfWorldDefaults, thresholds] =
       await Promise.all([
         this.ruleRepository.findByCountry(order.country),
@@ -171,13 +193,16 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
    * round trip per row.
    */
   async resolveRoutingBatch(
-    orders: readonly SalesDocumentOrderFacts[],
+    rawOrders: readonly SalesDocumentOrderFacts[],
     now: Date = new Date(),
   ): Promise<SalesDocumentDecision[]> {
-    if (orders.length === 0) {
+    if (rawOrders.length === 0) {
       return [];
     }
 
+    // Same normalisation `resolveRouting` applies, and for the same reason
+    // (#3176) — done once per order here rather than at each lookup site.
+    const orders = rawOrders.map((order) => ({ ...order, country: this.normaliseCountry(order.country) }));
     const countries = new Set<string>(orders.map((order) => order.country));
     // `★ Rest of world` is always loaded: tier 3 applies to every order whose
     // own country carries no configuration, so leaving it out would answer
@@ -260,16 +285,17 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   }
 
   async acknowledgeNoDocument(country: string): Promise<SalesDocumentCountryAcknowledgment> {
+    const normalisedCountry = this.normaliseCountry(country);
     // Mirror-image of the `createRule` / `upsertCountryDefault` auto-clear
     // (#2186): a real configuration and an acknowledgment can never coexist,
     // so this write is rejected outright rather than silently producing that
     // contradictory state when the acknowledgment lands SECOND.
-    await this.assertCountryUnconfigured(country);
-    return this.acknowledgmentRepository.upsert(country);
+    await this.assertCountryUnconfigured(normalisedCountry);
+    return this.acknowledgmentRepository.upsert(normalisedCountry);
   }
 
   async clearAcknowledgment(country: string): Promise<void> {
-    await this.acknowledgmentRepository.delete(country);
+    await this.acknowledgmentRepository.delete(this.normaliseCountry(country));
   }
 
   /**
@@ -277,6 +303,9 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
    * already carries any active rule or country default — the guard that
    * keeps `acknowledgeNoDocument` from ever coexisting with a real
    * configuration (#2186).
+   *
+   * `country` is expected already-normalised (#3176) — every public caller
+   * normalises before reaching here.
    */
   private async assertCountryUnconfigured(country: string): Promise<void> {
     const [rules, defaults] = await Promise.all([
