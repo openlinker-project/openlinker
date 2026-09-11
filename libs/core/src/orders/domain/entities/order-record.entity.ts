@@ -16,7 +16,7 @@ import type { CodToCollect } from '../types/cod-to-collect.types';
 import { decodeBuyerTaxIdColumn } from '../types/buyer-tax-id.types';
 import type { BuyerTaxId } from '../types/buyer-tax-id.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
-import type { OrderDispatchWindow, PriceTaxTreatment } from '../types/order.types';
+import type { OrderDispatchWindow, OrderItem, PriceTaxTreatment } from '../types/order.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
 import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
 import type {
@@ -545,5 +545,49 @@ export class OrderRecord {
     return typeof total === 'number' && Number.isFinite(total) && typeof currency === 'string'
       ? { amount: total, currency }
       : undefined;
+  }
+
+  /**
+   * Typed, fail-safe read of the order's own lines (#3171) from the snapshot.
+   * Pure derivation of an already-loaded field (ADR-011): no I/O, no mutation.
+   * Mirrors {@link codToCollect} / {@link nativeTotals} - centralises the
+   * `orderSnapshot.items` key + narrowing in the owning context, so a
+   * cross-context consumer binds to a typed contract rather than the snapshot's
+   * JSON layout.
+   *
+   * `id` is the address the rest of the platform already keys on: it is the
+   * value `reservations.orderLineId`, `shipment_lines.lineId`,
+   * `FulfillmentWorkLine.orderLineId` and `ReturnLine.resolvedOrderLineId` all
+   * hold - un-FK-able by construction, because `order_records` has no lines
+   * table.
+   *
+   * An element missing any REQUIRED member of {@link OrderItem} is dropped
+   * rather than coerced, and a malformed or absent `items` yields `[]`. A
+   * partial line is worse than a missing one for every consumer: they join on
+   * `id` and arithmetic on `quantity` / `price`, so a line carrying `undefined`
+   * in either would silently resolve or compute wrong. `[]` therefore means
+   * "no usable lines", never "the order has none" - a caller that must tell
+   * those apart reads `orderSnapshot.items` itself.
+   */
+  get orderItems(): OrderItem[] {
+    const value = this.orderSnapshot.items;
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value.filter((item): item is OrderItem => {
+      if (typeof item !== 'object' || item === null) {
+        return false;
+      }
+      const { id, productId, quantity, price } = item as Record<string, unknown>;
+      return (
+        typeof id === 'string' &&
+        id.length > 0 &&
+        typeof productId === 'string' &&
+        typeof quantity === 'number' &&
+        Number.isFinite(quantity) &&
+        typeof price === 'number' &&
+        Number.isFinite(price)
+      );
+    });
   }
 }
