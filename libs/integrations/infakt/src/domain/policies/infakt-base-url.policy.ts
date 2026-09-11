@@ -34,14 +34,16 @@
  *   3. `INFAKT_DEFAULT_BASE_URL` (production) - the default when neither is
  *      set, matching the pre-#2174 behaviour for existing connections.
  *
- * This module does NOT rewrite an override that omits `/api/v3` — it is
- * returned to the caller verbatim, so what is persisted on `config.baseUrl`
- * and what a connection actually calls never silently diverge (#3030). The
- * save-time refusal that keeps a *new* bare-host override from ever reaching
- * this point lives in {@link isRootPathInfaktBaseUrlOverride}, consumed by
- * `InfaktConnectionConfigShapeValidatorAdapter`; an existing pre-#3030 row
- * saved before that check existed can still carry a bare-host override and
- * is left as-is until its next save.
+ * Since #3030, a NEW bare-host override is refused outright at save time by
+ * `InfaktConnectionConfigShapeValidatorAdapter` (via
+ * {@link isRootPathInfaktBaseUrlOverride}), so the read-time normalization
+ * above is now defense-in-depth for a row that persisted a bare host
+ * *before* that check existed - it keeps such a legacy row working until its
+ * next save, rather than resolving to a URL with no API surface at its root.
+ * The two mechanisms share one rule: {@link normalizeInfaktBaseUrl} decides
+ * what to rewrite by calling {@link isRootPathInfaktBaseUrlOverride} rather
+ * than re-testing the pathname itself, so the save-time refusal and the
+ * read-time normalization can never disagree about which shape is "bare".
  *
  * @module libs/integrations/infakt/src/domain/policies
  */
@@ -77,13 +79,13 @@ export function isAllowedInfaktBaseUrl(value: string): boolean {
 }
 
 /**
- * Shared parse step behind {@link isAllowedInfaktBaseUrl} and
- * {@link resolveInfaktBaseUrl}. `resolveInfaktBaseUrl` parses the override
- * exactly once and threads the result into {@link normalizeInfaktBaseUrl}
- * rather than calling `isAllowedInfaktBaseUrl` and re-parsing inside
- * `normalizeInfaktBaseUrl` (#2179/#2994 review, Minor) - harmless either way
- * since a malformed override is rejected before either call, but a second
- * `new URL()` on the same string is pure waste.
+ * Shared parse step behind {@link isAllowedInfaktBaseUrl},
+ * {@link resolveInfaktBaseUrl} and (transitively, via
+ * {@link isRootPathInfaktBaseUrlOverride}) {@link normalizeInfaktBaseUrl}.
+ * Each call re-parses rather than threading a shared `URL` instance through -
+ * harmless, since a malformed override is rejected before any of these run,
+ * and correctness (one rule, one definition of "bare") is worth more here
+ * than avoiding a second `new URL()` on the same short string.
  */
 function tryParseInfaktBaseUrl(value: string): URL | null {
   try {
@@ -91,36 +93,6 @@ function tryParseInfaktBaseUrl(value: string): URL | null {
   } catch {
     return null;
   }
-}
-
-const INFAKT_API_VERSION_PATH = '/api/v3';
-
-/**
- * Normalizes a legacy `config.baseUrl` override so a bare-host override (the
- * README's own historical example, `https://api.infakt.pl`) always carries the
- * `/api/v3` suffix (#2176 review, Important #1).
- *
- * Only a **root-path** override (no path, or bare `/`) is rewritten. An
- * override that already carries its own path is left completely untouched -
- * including one whose path does not end in `/api/v3` - because
- * {@link isAllowedInfaktBaseUrl}'s own docblock declines a host allowlist on
- * the grounds that this override "may legitimately point at an operator-run
- * proxy": a proxy mounting the v3 surface under its own prefix (e.g.
- * `https://proxy.example.com/infakt`) is exactly such a case, and rewriting it
- * would silently 404 a working connection at read time with no save event and
- * no log line. Parsing via `URL` (rather than an `endsWith` string test) also
- * sidesteps two misreads a string test falls for: a query string appended
- * after `/api/v3` (`https://host/api/v3?probe=1`, previously seen as
- * "not yet suffixed" and given a second suffix) and a path that merely
- * contains the substring in a different segment (`https://host/not-api/v3`,
- * previously seen as "already suffixed" and left broken).
- */
-function normalizeInfaktBaseUrl(value: string, parsed: URL): string {
-  const withoutTrailingSlash = value.replace(/\/+$/, '');
-  if (parsed.pathname !== '' && parsed.pathname !== '/') {
-    return withoutTrailingSlash;
-  }
-  return `${withoutTrailingSlash}${INFAKT_API_VERSION_PATH}`;
 }
 
 /**
@@ -136,7 +108,11 @@ export const INFAKT_API_VERSION_PATH = '/api/v3';
  * the shape this package's own README historically documented
  * (`https://api.infakt.pl`, with no `/api/v3` suffix) and that
  * `InfaktHttpClient` would otherwise send every request against verbatim,
- * 404ing on a host that carries no API surface at its root (#3030).
+ * 404ing on a host that carries no API surface at its root (#3030). This is
+ * the ONE definition of "bare" for this policy - {@link normalizeInfaktBaseUrl}
+ * calls it rather than re-testing the pathname itself, so the read-time
+ * normalization and the save-time refusal can never disagree about which
+ * shape qualifies.
  *
  * An override that already carries a **distinct** path of its own — even one
  * that doesn't literally end in `/api/v3` — is deliberately NOT flagged here:
@@ -164,6 +140,32 @@ export function isRootPathInfaktBaseUrlOverride(value: string): boolean {
 }
 
 /**
+ * Normalizes a legacy `config.baseUrl` override so a bare-host override (the
+ * README's own historical example, `https://api.infakt.pl`) always carries the
+ * `/api/v3` suffix (#2176 review, Important #1).
+ *
+ * Only a **root-path** override (no path, or bare `/`) is rewritten - decided
+ * by delegating to {@link isRootPathInfaktBaseUrlOverride} rather than
+ * re-testing `parsed.pathname` here (#3030 review, Important #2): one rule,
+ * one definition, so the read-time normalization and the save-time refusal
+ * cannot silently drift apart. An override that already carries its own path
+ * is left completely untouched - including one whose path does not end in
+ * `/api/v3` - because {@link isAllowedInfaktBaseUrl}'s own docblock declines a
+ * host allowlist on the grounds that this override "may legitimately point at
+ * an operator-run proxy": a proxy mounting the v3 surface under its own prefix
+ * (e.g. `https://proxy.example.com/infakt`) is exactly such a case, and
+ * rewriting it would silently 404 a working connection at read time with no
+ * save event and no log line.
+ */
+function normalizeInfaktBaseUrl(value: string): string {
+  const withoutTrailingSlash = value.replace(/\/+$/, '');
+  if (!isRootPathInfaktBaseUrlOverride(value)) {
+    return withoutTrailingSlash;
+  }
+  return `${withoutTrailingSlash}${INFAKT_API_VERSION_PATH}`;
+}
+
+/**
  * Resolve the base URL for one connection. `connectionId` is optional so pure
  * precedence tests stay terse; both production call sites pass it so the
  * thrown exception names the offending connection.
@@ -181,10 +183,6 @@ export function resolveInfaktBaseUrl(
     // externally-written row could carry a plain-http override - which would
     // send the API key over cleartext to an arbitrary host. Re-check here so
     // the property does not rest solely on create-time validation.
-    //
-    // Parsed once and threaded into `normalizeInfaktBaseUrl` rather than
-    // calling `isAllowedInfaktBaseUrl` (which parses internally) and letting
-    // `normalizeInfaktBaseUrl` parse a second time.
     const parsed = tryParseInfaktBaseUrl(override);
     if (parsed === null || parsed.protocol !== 'https:') {
       throw new InfaktConfigException(
@@ -194,7 +192,7 @@ export function resolveInfaktBaseUrl(
     }
     // #2176: normalize so an override supplied without `/api/v3` (the
     // README's own historical example) still builds a working URL.
-    return normalizeInfaktBaseUrl(override, parsed);
+    return normalizeInfaktBaseUrl(override);
   }
   return config.environment === 'sandbox' ? INFAKT_SANDBOX_BASE_URL : INFAKT_DEFAULT_BASE_URL;
 }

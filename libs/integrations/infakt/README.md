@@ -57,11 +57,15 @@ compatibility — prefer `"environment": "sandbox"` / `"environment":
 "production"` instead, which need no URL at all. If you do set `baseUrl`, it
 **must include the `/api/v3` path** shown above (inFakt's sandbox and
 production APIs share the same `/api/v3` path convention, e.g.
-`api.infakt.pl/api/v3/...` and `api.sandbox-infakt.pl/api/v3/...`) — a
+`api.infakt.pl/api/v3/...` and `api.sandbox-infakt.pl/api/v3/...`). A NEW
 bare-host override with no path (e.g. `https://api.infakt.pl` alone) is
-refused at save time (#3030), since `resolveInfaktBaseUrl` uses whatever is
-persisted verbatim and a bare host resolves to a URL with no API surface at
-its root. An override that carries its own distinct path (e.g. an
+refused outright at save time (#3030) rather than silently rewritten, since
+that guard is the only channel available for an operator to notice a
+misconfiguration. `resolveInfaktBaseUrl` separately normalizes a bare-host
+override at read time (#2176/#2994), but that is defense-in-depth for a row
+persisted **before** the #3030 save-time check existed — not a substitute
+for setting the path correctly, and not something a new override should
+rely on. An override that carries its own distinct path (e.g. an
 operator-run proxy) is honoured as-is.
 `defaultPaymentMethod` and `bankAccount` are optional (see #1309/#1310 below) -
 omit both to fall back to `cash` with no stamped account.
