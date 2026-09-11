@@ -421,7 +421,20 @@ export class OrderIngestionService implements IOrderIngestionService {
     // permanent ATP subtraction naming a cancelled order). `cancelledAt`, once
     // written, is never cleared on this path, so capturing it here is valid
     // for every gate below.
-    const cancelledFromEarlySignal = snapshotRecord.cancelledAt != null;
+    //
+    // `snapshotRecord.cancelledAt` alone is NOT enough: `persistIncomingSnapshot`
+    // only returns a freshly-`findById`'d record when IT wrote the cancellation
+    // on THIS call (`cancellationWrote`); on every other invocation it returns
+    // `upsert()`'s own return value, whose `fromRawRow(row, writeSet)` resets
+    // every column outside the write set — and `cancelledAt` is deliberately
+    // outside it (#2100) — so `cancelledAt` reads back as `null` there even
+    // though the row itself is cancelled. Without the `existing` fallback, the
+    // very NEXT poll after the one that consumed the signal (source still
+    // lagging, signal already deleted) would silently regress to the original
+    // defect: advisory holds reserved, no stock-restore enqueued, for an order
+    // OL already recorded as cancelled.
+    const cancelledFromEarlySignal =
+      snapshotRecord.cancelledAt != null || existing?.cancelledAt != null;
 
     // Early-fire cancellation hook (#1146): enqueue the stock-restore job
     // immediately after the raw snapshot is persisted and BEFORE item resolution

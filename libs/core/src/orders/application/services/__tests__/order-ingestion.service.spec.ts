@@ -455,6 +455,34 @@ describe('OrderIngestionService', () => {
         })
       );
     });
+
+    // #2069 re-review — the residue found in the fix above: on the poll AFTER
+    // the one that consumed the signal, `persistIncomingSnapshot` no longer
+    // has anything to consume, so it returns `upsert()`'s own return value
+    // (`fromRawRow` resets every column outside its write set, and
+    // `cancelledAt` is deliberately outside it) — `cancelledAt: null` here,
+    // even though the row IS cancelled. Without also reading the
+    // pre-persist `existing` record loaded via `getOrderRecord`, this poll
+    // would silently regress to the original defect.
+    it('should not reserve, and should enqueue stock-restore, on a poll AFTER the signal was already consumed', async () => {
+      orderSource.getOrder.mockResolvedValue(reservableIncoming); // status still 'BOUGHT'
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        cancelledAt: new Date('2026-08-01T10:00:00.000Z'),
+      } as unknown as OrderRecord);
+      orderRecordService.persistIncomingSnapshot.mockResolvedValue({
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'marketplace.offer.stockRestore',
+          payload: expect.objectContaining({ internalOrderId: 'ol_order_res' }),
+        })
+      );
+    });
   });
 
   describe('auto-issue trigger (OL #1120)', () => {

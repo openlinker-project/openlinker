@@ -41,6 +41,6 @@ export class OrderCancellationSignalOrmEntity {
   @Column({ type: 'timestamptz' })
   cancelledAt!: Date;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 }

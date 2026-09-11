@@ -234,6 +234,33 @@ describe('Order early-cancellation signal (#2069)', () => {
       where: { sourceConnectionId: sourceConnection.id, externalOrderId },
     });
     expect(signalAfterSync).toBeNull();
+
+    // Act 3: a THIRD poll, after the signal has already been consumed and the
+    // source's order resource is still lagging (`incoming.status: 'pending'`
+    // from `makeIncomingOrder`, unchanged). `persistIncomingSnapshot` no longer
+    // has a signal to consume, so `snapshotRecord.cancelledAt` alone would read
+    // `null` here (`upsert()`'s `fromRawRow` excludes `cancelledAt` from its
+    // write set on this non-writing path) — this is the exact regression the
+    // #2069 re-review found: without the `existing.cancelledAt` fallback in
+    // `OrderIngestionService`, this poll would silently re-provision an order
+    // OL already recorded as cancelled.
+    const thirdPoll = await ingestion.syncOrderFromSource(
+      sourceConnection.id,
+      externalOrderId,
+      'create-evt-2'
+    );
+
+    expect(thirdPoll).toHaveLength(1);
+    expect(thirdPoll[0].status).toBe('skipped_cancelled');
+    expect(createOrderCalls).toHaveLength(0);
+
+    const recordAfterThirdPoll = await recordRepo.findOne({
+      where: { internalOrderId: mappingAfterSync!.internalId },
+    });
+    expect(recordAfterThirdPoll!.cancelledAt).not.toBeNull();
+    expect(recordAfterThirdPoll!.cancelledAt!.getTime()).toBe(
+      signalAfterCancel!.cancelledAt.getTime()
+    );
   });
 
   // #2069 review — the exact race the signal exists for: the source's order
@@ -322,6 +349,13 @@ describe('Order early-cancellation signal (#2069)', () => {
       where: { sourceConnectionId: sourceConnection.id, externalOrderId },
     });
     expect(signalAfterFirst).not.toBeNull();
+
+    // Force the two calls' `new Date()` stamps onto DISTINCT milliseconds —
+    // without this, two `ingestion.syncOrderFromSource` calls back-to-back can
+    // land in the same millisecond, and the equality assertion below would
+    // pass trivially (by timestamp coincidence) even against a `DO UPDATE`
+    // that overwrote the row with the second cancel's instant.
+    await new Promise((resolve) => setTimeout(resolve, 5));
 
     // A second, later-arriving cancel event for the SAME
     // (sourceConnectionId, externalOrderId) — e.g. a duplicate delivery or a

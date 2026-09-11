@@ -41,8 +41,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateOrderCancellationSignals1878000000000 implements MigrationInterface {
-  name = 'CreateOrderCancellationSignals1878000000000';
+export class CreateOrderCancellationSignals1879000000000 implements MigrationInterface {
+  name = 'CreateOrderCancellationSignals1879000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // `id` defaults to uuid_generate_v4() — the same guard 1846/1847/1850 use.
