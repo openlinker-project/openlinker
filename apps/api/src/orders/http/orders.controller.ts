@@ -56,7 +56,13 @@ import {
   Inject,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiExcludeEndpoint,
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
@@ -909,6 +915,14 @@ export class OrdersController {
   @Roles('admin')
   @Post(':internalOrderId/test-fixtures/mark-pre-rollout-era')
   @HttpCode(HttpStatus.OK)
+  // Kept out of the published OpenAPI document (#3127 review). The route is
+  // inert on any production install — it refuses unconditionally under
+  // NODE_ENV=production — so advertising a "MUST NEVER be called against real
+  // order data" endpoint that always 403s there is disclosure with no reader
+  // it could serve. The @ApiOperation below is retained deliberately: it is
+  // the description a developer reads in source, and it comes back the moment
+  // this line is removed for a local Swagger run.
+  @ApiExcludeEndpoint()
   @ApiOperation({
     summary: 'TEST-FIXTURE-ONLY: stamp taxRateEra=pre-rollout on an order',
     description:

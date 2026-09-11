@@ -54,6 +54,30 @@ describe('OrderTestFixtureService', () => {
       ).rejects.toBeInstanceOf(TestFixturesDisabledException);
     });
 
+    it.each([
+      ['a number', 1],
+      ['a boolean', true],
+      ['an object', { enabled: true }],
+      ['undefined', undefined],
+      ['null', null],
+    ])(
+      'refuses with the MODELLED 403 rather than a 500 when the config value is %s (#3127 review)',
+      async (_label, raw) => {
+        // `configService.get<string>()` is a type assertion, not a guarantee —
+        // ConfigService also resolves from `load:` factories, which are not
+        // type-constrained. A bare `raw.trim()` would throw a TypeError and
+        // turn the documented TestFixturesDisabledException (403) into a 500.
+        // Fail-closed either way, but the response must stay the documented one.
+        configService.get.mockReturnValue(raw);
+        const service = buildService();
+
+        await expect(
+          service.markPreRolloutEraForTesting('ol_order_a', 'ol_user_a')
+        ).rejects.toBeInstanceOf(TestFixturesDisabledException);
+        expect(repository.stampPreRolloutEraForTesting).not.toHaveBeenCalled();
+      }
+    );
+
     it('is case/whitespace tolerant on the gate value', async () => {
       configService.get.mockReturnValue('  TRUE  ');
       const service = buildService();

@@ -33,6 +33,20 @@ export interface IOrderTestFixtureService {
    * the same controller: an endpoint whose own docblock says "MUST NEVER be
    * called against real order data" must record WHO invoked it.
    *
+   * **Why a log line and not a ledger row, when #2468 needed one.** The
+   * comparison is the obvious one to make and the answer is deliberate rather
+   * than an oversight: #2468 justified the single exception to FX-stamp
+   * immutability with a persisted `analytics_remediation_runs` row because
+   * that write moves a financial figure of record, and a figure that moves
+   * with no traceable cause is what ADR-040 forbids. This write moves the
+   * same KIND of figure — a pre-rollout stamp silently drops the order out of
+   * Net Sales — but it is structurally impossible where a figure of record
+   * exists: the `NODE_ENV === 'production'` gate is unconditional and is
+   * checked first, so there is no production install in which this row can be
+   * written and therefore no audit trail for a production reader to need. The
+   * log line exists for the developer standing in front of the seeded stand,
+   * which is the only place it can run.
+   *
    * Returns `true` if the row was changed by this call, `false` if it already
    * carried `'pre-rollout'` (idempotent — a repeated call is a no-op).
    */

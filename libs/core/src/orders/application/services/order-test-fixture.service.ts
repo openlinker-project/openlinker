@@ -51,7 +51,11 @@ export class OrderTestFixtureService implements IOrderTestFixtureService {
       throw new TestFixturesDisabledException();
     }
 
-    const raw = this.configService.get<string>(ALLOW_TEST_FIXTURES_ENV_VAR, 'false');
+    // `get<string>` is a type ASSERTION, not a guarantee: ConfigService also
+    // resolves from `load:` factories, which are not type-constrained, so a
+    // non-string value would make a bare `raw.trim()` throw and turn the
+    // modelled 403 into a 500. Coercing keeps the refusal the documented one.
+    const raw = String(this.configService.get(ALLOW_TEST_FIXTURES_ENV_VAR) ?? 'false');
     if (raw.trim().toLowerCase() !== 'true') {
       throw new TestFixturesDisabledException();
     }
