@@ -257,6 +257,21 @@ Three consequences follow, and they are testable rather than aspirational.
 
 **Scope.** The invariant binds three surfaces: `/settings/sales-documents`, the `/orders` row, and the order-detail sales-document panel. It is a UI contract; the write-path guard in decision 3a remains the enforcement of record, and no surface may rely on being the only thing preventing a second document.
 
+## Amendment (#3189, 2026-09-11): the threshold becomes an inline amount, and decision 5's indirection is retired
+
+Decision 5 above specifies the threshold as a **`thresholdRef`** — "a named amount resolved from a versioned regime pack rather than an inline literal, so the legal matrix versions independently of the rules". That property was real and is deliberately given up.
+
+**What forced it.** The indirection was never reachable by an operator. The composer offers a threshold **picker**, not an amount field, so a market whose legal figure is not already seeded cannot be configured at all — and Poland's own rule names two figures, 450 PLN *or* 100 EUR, of which only the first is seeded. The control also renders truncated (`Selec…`), so the one available option cannot be read without opening it. An indirection whose only consumer is seed data is not versioning a legal matrix; it is hiding the amount from the person responsible for it.
+
+**What replaces it.** `orderTotalGross` carries an inline amount plus an ISO-4217 currency, alongside the comparison operator and the mismatch rule decision 5 already specifies. The amount is a **decimal string**, never a JSON number — the automation condition types are the precedent, and a `jsonb`-stored IEEE double loses precision on exactly the figures this compares. The currency is a standards value, not country knowledge; `BuyerAddress.countryIso2` and `orderCountry` already sit in core on the same footing.
+
+**What is given up, stated plainly.** A legal amount that changes now requires editing every rule citing it, rather than one row in a threshold table. That is the honest cost. It is accepted because no shipped install can cite a threshold it was never able to pick, and because the alternative — keeping an indirection the operator cannot see — makes template-born rules the only ones they cannot read or correct.
+
+**The migration is the load-bearing part.** `isSalesDocumentCondition` returns `null` on a shape mismatch and callers read that as *"never matches"*. Shipping the new shape without migrating persisted `sales_document_rules.conditions` (and their `conditions_hash`) therefore makes every existing rule **silently stop matching**, with orders held and nothing logged. The model change and the data migration ship in one release, never two. The starter-template catalogue is a separate, additional migration — it is not a substitute for migrating operator-authored rules.
+
+**Unchanged by this amendment:** the gross-amount evaluation and the `exclusive`-resolves-`unresolved` rule, the currency-mismatch rule, and decision 6's treatment of two matches as a conflict rather than a tie-break.
+
+
 ## References
 
 - Related PRs: #2055 (this ADR)
