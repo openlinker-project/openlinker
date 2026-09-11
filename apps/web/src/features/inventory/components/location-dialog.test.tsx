@@ -31,9 +31,13 @@ describe('LocationDialog', () => {
     expect(await screen.findByText('Add location')).toBeInTheDocument();
     expect(screen.getByLabelText('Code')).toHaveValue('');
     expect(screen.getByLabelText('Name')).toHaveValue('');
+    // Mockup: `locStatusRow` ships `hidden` and is only revealed by `openEdit`
+    // — a freshly created location is always active, so create offers no
+    // Status field to set.
+    expect(screen.queryByLabelText('Status')).not.toBeInTheDocument();
   });
 
-  it('should render the edit form pre-filled and without a Code field', async () => {
+  it('should render the edit form pre-filled and without a Code field, and show Status', async () => {
     renderWithProviders(
       <LocationDialog target={{ mode: 'edit', location: editTarget }} onClose={() => undefined} />,
     );
@@ -42,6 +46,19 @@ describe('LocationDialog', () => {
     expect(screen.getByLabelText('Name')).toHaveValue('Main warehouse');
     // UpdateLocationDto has no `code` — the edit form must not offer it.
     expect(screen.queryByLabelText('Code')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Status')).toHaveValue('active');
+  });
+
+  it('should pre-fill Status as Retired for a retired location', async () => {
+    renderWithProviders(
+      <LocationDialog
+        target={{ mode: 'edit', location: { ...editTarget, status: 'inactive' } }}
+        onClose={() => undefined}
+      />,
+    );
+
+    await screen.findByText('Edit "Main warehouse"');
+    expect(screen.getByLabelText('Status')).toHaveValue('inactive');
   });
 
   it('should show validation errors after an empty create submit', async () => {
@@ -124,6 +141,29 @@ describe('LocationDialog', () => {
     const [, patch] = updateLocation.mock.calls[0] as [string, Record<string, unknown>];
     expect('code' in patch).toBe(false);
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('should send a changed Status in the update patch', async () => {
+    const updateLocation = vi.fn().mockResolvedValue({ ...editTarget, status: 'inactive' });
+    const apiClient = createMockApiClient({
+      inventory: { updateLocation },
+      connections: { list: vi.fn().mockResolvedValue([]) },
+    });
+    renderWithProviders(
+      <LocationDialog target={{ mode: 'edit', location: editTarget }} onClose={() => undefined} />,
+      { apiClient },
+    );
+    await screen.findByText('Edit "Main warehouse"');
+
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'inactive');
+    await userEvent.click(screen.getByRole('button', { name: /save location/i }));
+
+    await waitFor(() =>
+      expect(updateLocation).toHaveBeenCalledWith(
+        'ol_location_1',
+        expect.objectContaining({ status: 'inactive' }),
+      ),
+    );
   });
 
   // Tech-review finding: a disabled/needs_reauth connection "can't currently

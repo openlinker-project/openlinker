@@ -38,11 +38,12 @@ import { useConnectionsQuery } from '../../connections';
 import { useCreateInventoryLocationMutation } from '../hooks/use-create-inventory-location-mutation';
 import { useUpdateInventoryLocationMutation } from '../hooks/use-update-inventory-location-mutation';
 import type { InventoryLocation } from '../api/inventory-locations.types';
-import { InventoryLocationKindValues } from '../api/inventory-locations.types';
+import { InventoryLocationKindValues, InventoryLocationStatusValues } from '../api/inventory-locations.types';
 import {
   KIND_LABEL,
   LOCATION_DIALOG_DEFAULT_VALUES,
   locationDialogSchema,
+  STATUS_OPTION_LABEL,
   toCreateInput,
   toUpdateInput,
   type LocationDialogFormSubmission,
@@ -61,6 +62,7 @@ function toFormValues(location: InventoryLocation): LocationDialogFormValues {
     code: location.code,
     name: location.name,
     kind: location.kind,
+    status: location.status,
     ownerConnectionId: location.ownerConnectionId ?? '',
     externalRef: location.externalRef ?? '',
     countryIso2: location.countryIso2 ?? '',
@@ -216,6 +218,26 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
               </Select>
             </FormField>
           </div>
+
+          {isEdit ? (
+            <div className="form-field-row">
+              <FormField
+                label="Status"
+                name="status"
+                error={form.formState.errors.status?.message}
+                description="Retiring stops new stock from targeting it; existing history keeps pointing at the row. Flip back to Active to re-activate."
+              >
+                <Select {...form.register('status')}>
+                  {InventoryLocationStatusValues.map((status) => (
+                    <option key={status} value={status}>
+                      {STATUS_OPTION_LABEL[status]}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+              <div />
+            </div>
+          ) : null}
 
           <div className="form-field-row">
             <FormField

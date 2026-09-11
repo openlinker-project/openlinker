@@ -256,12 +256,13 @@ describe('InventoryLocationsPage', () => {
     expect(addManually.closest('.read-only-lock')).not.toBeNull();
   });
 
-  it('hides Edit/Delete row actions and Add location for a session with no write permission', async () => {
+  it('hides Edit/Retire/Delete row actions and Add location for a session with no write permission', async () => {
     const apiClient = createMockApiClient({ inventory: { listLocations: vi.fn().mockResolvedValue(page()) } });
     renderWithProviders(<InventoryLocationsPage />, { apiClient });
 
     await screen.findByText('Warsaw — Main warehouse');
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retire' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '+ Add location' })).not.toBeInTheDocument();
   });
@@ -300,6 +301,34 @@ describe('InventoryLocationsPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
 
     expect(await screen.findByText('Delete "Warsaw — Main warehouse"?')).toBeInTheDocument();
+  });
+
+  // Mockup: https://claude.ai/code/artifact/fbb5f9e1-52a3-4b7b-8136-ad59dcf4f318
+  // renders a direct Retire/Reactivate row action per row (⏸/↻, toggling on
+  // status) rather than only surfacing Retire as a 409 fallback inside the
+  // Delete dialog — before this, status could only ever move active ->
+  // inactive via that fallback, and never the other way at all.
+  it('shows Retire for an active row and Reactivate for a retired row, for a session with write access', async () => {
+    const rows = [location, { ...location, id: 'ol_location_2', name: 'Kraków — Overflow', status: 'inactive' as const }];
+    const apiClient = createMockApiClient({ inventory: { listLocations: vi.fn().mockResolvedValue(page(rows)) } });
+    renderWithProviders(<InventoryLocationsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('Kraków — Overflow');
+    expect(screen.getAllByRole('button', { name: 'Retire' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Reactivate' })).toHaveLength(1);
+  });
+
+  it('hides Retire and Reactivate for a session with no write permission', async () => {
+    const rows = [location, { ...location, id: 'ol_location_2', name: 'Kraków — Overflow', status: 'inactive' as const }];
+    const apiClient = createMockApiClient({ inventory: { listLocations: vi.fn().mockResolvedValue(page(rows)) } });
+    renderWithProviders(<InventoryLocationsPage />, { apiClient });
+
+    await screen.findByText('Kraków — Overflow');
+    expect(screen.queryByRole('button', { name: 'Retire' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reactivate' })).not.toBeInTheDocument();
   });
 
   // #3070 — end-to-end round trips through the real mutation hooks' cache
@@ -377,6 +406,51 @@ describe('InventoryLocationsPage', () => {
       await userEvent.click(screen.getByRole('button', { name: /retire instead/i }));
 
       await waitFor(() => expect(screen.getByText('Retired')).toBeInTheDocument());
+      expect(listLocations).toHaveBeenCalledTimes(2);
+    });
+
+    it('retire: clicking Retire directly flips an active row to Retired with no confirm dialog', async () => {
+      const listLocations = vi
+        .fn()
+        .mockResolvedValueOnce(page([location]))
+        .mockResolvedValueOnce(page([{ ...location, status: 'inactive' }]));
+      const updateLocation = vi.fn().mockResolvedValue({ ...location, status: 'inactive' });
+      const apiClient = createMockApiClient({ inventory: { listLocations, updateLocation } });
+      renderWithProviders(<InventoryLocationsPage />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      await screen.findByText('Active');
+      await userEvent.click(screen.getByRole('button', { name: 'Retire' }));
+
+      await waitFor(() =>
+        expect(updateLocation).toHaveBeenCalledWith('ol_location_1', { status: 'inactive' }),
+      );
+      await waitFor(() => expect(screen.getByText('Retired')).toBeInTheDocument());
+      expect(listLocations).toHaveBeenCalledTimes(2);
+    });
+
+    it('reactivate: clicking Reactivate flips a retired row back to Active with no confirm dialog', async () => {
+      const retired = { ...location, status: 'inactive' as const };
+      const listLocations = vi
+        .fn()
+        .mockResolvedValueOnce(page([retired]))
+        .mockResolvedValueOnce(page([location]));
+      const updateLocation = vi.fn().mockResolvedValue(location);
+      const apiClient = createMockApiClient({ inventory: { listLocations, updateLocation } });
+      renderWithProviders(<InventoryLocationsPage />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+
+      await screen.findByText('Retired');
+      await userEvent.click(screen.getByRole('button', { name: 'Reactivate' }));
+
+      await waitFor(() =>
+        expect(updateLocation).toHaveBeenCalledWith('ol_location_1', { status: 'active' }),
+      );
+      await waitFor(() => expect(screen.getByText('Active')).toBeInTheDocument());
       expect(listLocations).toHaveBeenCalledTimes(2);
     });
   });

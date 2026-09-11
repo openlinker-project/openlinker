@@ -25,6 +25,7 @@ import { Button } from '../../shared/ui/button';
 import { Select } from '../../shared/ui/select';
 import { EmptyValue } from '../../shared/ui/empty-value';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
+import { useToast } from '../../shared/ui/toast-provider';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../shared/config/demo-mode';
 import { useDemoMode } from '../../features/system';
@@ -38,6 +39,7 @@ import {
   LocationDeleteDialog,
   useInventoryLocationsQuery,
   useBootstrapLocationsMutation,
+  useUpdateInventoryLocationMutation,
   type InventoryLocation,
   type InventoryLocationFilters,
   type InventoryLocationKind,
@@ -98,6 +100,7 @@ export function InventoryLocationsPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const demoMode = useDemoMode();
   const platforms = usePlatforms();
+  const { showToast } = useToast();
   const write = useWriteAccess('inventory-locations:write', demoMode);
   const [dialogTarget, setDialogTarget] = useState<LocationDialogTarget | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InventoryLocation | null>(null);
@@ -117,12 +120,48 @@ export function InventoryLocationsPage(): ReactElement {
   const query = useInventoryLocationsQuery(filters, { page, limit: PAGE_SIZE });
   const connectionsQuery = useConnectionsQuery();
   const bootstrapMutation = useBootstrapLocationsMutation();
+  const reactivateMutation = useUpdateInventoryLocationMutation();
+  const retireMutation = useUpdateInventoryLocationMutation();
 
   const connectionById = useMemo(() => {
     const map = new Map<string, Connection>();
     (connectionsQuery.data ?? []).forEach((c) => map.set(c.id, c));
     return map;
   }, [connectionsQuery.data]);
+
+  // Mirrors `users-page.tsx`'s handleReactivate — a direct, single-click
+  // action with no confirm dialog (the mockup's `reactivateLocation`):
+  // reactivating is reversible and non-destructive, unlike delete.
+  async function handleReactivate(location: InventoryLocation): Promise<void> {
+    try {
+      await reactivateMutation.mutateAsync({ id: location.id, patch: { status: 'active' } });
+      showToast({
+        tone: 'success',
+        title: `"${location.name}" reactivated`,
+        description: 'New stock can target it again.',
+      });
+    } catch {
+      showToast({ tone: 'error', title: 'Reactivation failed', description: 'Try again.' });
+    }
+  }
+
+  // Direct row-level counterpart to handleReactivate (the mockup's
+  // `retireLocation`) — no confirm dialog, because retiring never deletes
+  // anything and Reactivate undoes it in one click. The delete-confirm
+  // dialog's own "Retire instead" 409 fallback stays as a defensive path for
+  // an operator who reaches for Delete first; this is the direct one.
+  async function handleRetire(location: InventoryLocation): Promise<void> {
+    try {
+      await retireMutation.mutateAsync({ id: location.id, patch: { status: 'inactive' } });
+      showToast({
+        tone: 'success',
+        title: `"${location.name}" retired`,
+        description: 'Existing positions keep pointing at it.',
+      });
+    } catch {
+      showToast({ tone: 'error', title: 'Retire failed', description: 'Try again.' });
+    }
+  }
 
   function handleFilterChange(key: string, value: string): void {
     setSearchParams((prev) => {
@@ -234,7 +273,9 @@ export function InventoryLocationsPage(): ReactElement {
         id: 'status',
         header: 'Status',
         cell: (location) => (
-          <StatusBadge tone={statusTone(location.status)}>{STATUS_LABEL[location.status]}</StatusBadge>
+          <StatusBadge tone={statusTone(location.status)} className="loc-status-badge">
+            {STATUS_LABEL[location.status]}
+          </StatusBadge>
         ),
       },
       {
@@ -253,6 +294,29 @@ export function InventoryLocationsPage(): ReactElement {
                   Edit
                 </Button>
               </ReadOnlyLock>
+              {location.status === 'active' ? (
+                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <Button
+                    className="button--sm loc-status-action"
+                    tone="secondary"
+                    disabled={write.demoReadOnly || retireMutation.isPending}
+                    onClick={() => { void handleRetire(location); }}
+                  >
+                    Retire
+                  </Button>
+                </ReadOnlyLock>
+              ) : (
+                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                  <Button
+                    className="button--sm loc-status-action"
+                    tone="secondary"
+                    disabled={write.demoReadOnly || reactivateMutation.isPending}
+                    onClick={() => { void handleReactivate(location); }}
+                  >
+                    Reactivate
+                  </Button>
+                </ReadOnlyLock>
+              )}
               <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
                 <Button
                   className="button--sm"
@@ -267,7 +331,15 @@ export function InventoryLocationsPage(): ReactElement {
           ) : null,
       },
     ],
-    [connectionById, connectionsQuery.isLoading, platforms, write.visible, write.demoReadOnly],
+    [
+      connectionById,
+      connectionsQuery.isLoading,
+      platforms,
+      write.visible,
+      write.demoReadOnly,
+      reactivateMutation.isPending,
+      retireMutation.isPending,
+    ],
   );
 
   return (

@@ -3007,6 +3007,34 @@ a.delivery-rider-banner__button:focus-visible {
   flex-wrap: wrap;
 }
 
+/* ── Fixed-width status-toggle action (#3066 follow-up) — Retire/Reactivate
+   render the same slot with different label lengths ("Retire" vs
+   "Reactivate"); without a fixed width the table's auto column layout
+   re-sizes the whole actions column — and with it the whole table — every
+   time a row's status flips. `min-width` alone is not enough: `.button` is
+   `inline-flex` with content-driven width, so the wider "Reactivate" label
+   still grows past a mere floor. `width` fixes the box regardless of
+   content; `.button`'s own `justify-content: center` keeps the shorter
+   "Retire" label centered inside it rather than left-aligned. */
+.loc-status-action {
+  width: 90px;
+  flex-shrink: 0;
+}
+
+/* ── Fixed-width status badge, desktop table cell only (#3066 follow-up) —
+   the SAME auto-table-layout mechanism as `.loc-status-action` above: with
+   `table-layout: auto` (the default, and `.data-table` sets none), EVERY
+   column's width is recomputed from the widest cell across ALL rows, so
+   "Active" (6 chars) vs "Retired" (7 chars) alone reflows the whole table on
+   toggle even with the action button already fixed — verified in an
+   isolated repro against the real stylesheet before landing this. Not
+   applied to the mobile card `meta` badge, which isn't inside a `<table>`
+   and has no column-width coupling to fix. */
+.loc-status-badge {
+  justify-content: center;
+  width: 72px;
+}
+
 /* ── Filter-bar inline checkbox toggle (#3066) — e.g. "show retired" ── */
 .toolbar__checkbox-label {
   display: inline-flex;

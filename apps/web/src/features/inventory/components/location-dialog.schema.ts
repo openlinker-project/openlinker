@@ -18,9 +18,14 @@ import { z } from 'zod';
 import type {
   CreateInventoryLocationInput,
   InventoryLocationKind,
+  InventoryLocationStatus,
   UpdateInventoryLocationInput,
 } from '../api/inventory-locations.types';
-import { InventoryLocationKindValues, normalizeCountryIso2 } from '../api/inventory-locations.types';
+import {
+  InventoryLocationKindValues,
+  InventoryLocationStatusValues,
+  normalizeCountryIso2,
+} from '../api/inventory-locations.types';
 
 const latLngField = z.union([
   z.literal(''),
@@ -46,6 +51,11 @@ export const locationDialogSchema = z.object({
   code: z.string().trim().min(1, 'Code is required').max(64, 'Code must be 64 characters or fewer'),
   name: z.string().trim().min(1, 'Name is required').max(255, 'Name must be 255 characters or fewer'),
   kind: z.enum(InventoryLocationKindValues),
+  // Present in form state on both create and edit, but only ever RENDERED on
+  // edit (mockup: `locStatusRow` ships `hidden` and is revealed only by
+  // `openEdit`) — a freshly created location is always active, so the field
+  // stays at its default and `toCreateInput` never sends it.
+  status: z.enum(InventoryLocationStatusValues),
   // '' = none. A real select value is a connection id, never validated as a
   // UUID here — the backend's own @IsUUID / LocationOwnerConnectionNotFoundError
   // (422) is the source of truth for whether it names a real connection.
@@ -70,6 +80,7 @@ export const LOCATION_DIALOG_DEFAULT_VALUES: LocationDialogFormValues = {
   code: '',
   name: '',
   kind: 'warehouse',
+  status: 'active',
   ownerConnectionId: '',
   externalRef: '',
   countryIso2: '',
@@ -85,6 +96,15 @@ export const KIND_LABEL: Record<InventoryLocationKind, string> = {
   virtual: 'Virtual',
 };
 
+/** Mockup's `locStatus` `<select>` option labels — Edit-only field. */
+export const STATUS_OPTION_LABEL: Record<InventoryLocationStatus, string> = {
+  active: 'Active',
+  inactive: 'Retired',
+};
+
+// `status` is deliberately OMITTED — the field is invisible on create (the
+// mockup ships `locStatusRow` `hidden` there), so a freshly created location
+// is always the backend's own default, never a value this form asserted.
 export function toCreateInput(values: LocationDialogFormSubmission): CreateInventoryLocationInput {
   return {
     code: values.code.toUpperCase(),
@@ -104,6 +124,7 @@ export function toUpdateInput(values: LocationDialogFormSubmission): UpdateInven
   return {
     name: values.name,
     kind: values.kind,
+    status: values.status,
     ownerConnectionId: values.ownerConnectionId === '' ? null : values.ownerConnectionId,
     externalRef: values.externalRef === '' ? null : values.externalRef,
     countryIso2: values.countryIso2 === '' ? null : normalizeCountryIso2(values.countryIso2),
