@@ -41,7 +41,7 @@ Authentication uses a **static API key** (no OAuth).
 **Config** (`InfaktConnectionConfig`, non-secret, persisted on the connection row):
 ```json
 {
-  "baseUrl": "https://api.infakt.pl",
+  "baseUrl": "https://api.infakt.pl/api/v3",
   "defaultPaymentMethod": "transfer",
   "bankAccount": {
     "id": "12345",
@@ -51,8 +51,14 @@ Authentication uses a **static API key** (no OAuth).
 }
 ```
 
-`baseUrl` is optional — omit it to use inFakt's production API
-(`INFAKT_DEFAULT_BASE_URL`); override it to point at a sandbox host.
+`baseUrl` is optional and is a **legacy** override kept for backward
+compatibility — prefer `"environment": "sandbox"` / `"environment":
+"production"` instead, which need no URL at all. If you do set `baseUrl`, it
+**must include the `/api/v3` path** (inFakt's sandbox and production APIs
+share the same `/api/v3` path convention, e.g. `api.infakt.pl/api/v3/...` and
+`api.sandbox-infakt.pl/api/v3/...`) — `resolveInfaktBaseUrl` normalizes a
+missing suffix onto the override automatically, but the corrected example
+above should be preferred over relying on that normalization.
 `defaultPaymentMethod` and `bankAccount` are optional (see #1309/#1310 below) -
 omit both to fall back to `cash` with no stamped account.
 
