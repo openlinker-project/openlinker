@@ -1,0 +1,868 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* ── Document chrome ───────────────────────────────────────────── */
+:root {
+  --ink:        oklch(16% 0.008 80);
+  --ink-2:      oklch(21% 0.009 80);
+  --ink-3:      oklch(26% 0.010 80);
+  --rule:       oklch(33% 0.010 80);
+  --rule-soft:  oklch(27% 0.009 80);
+  --fg:         oklch(92% 0.006 80);
+  --fg-2:       oklch(74% 0.008 80);
+  --fg-3:       oklch(58% 0.008 80);
+  --amber:      oklch(72% 0.17 55);
+  --amber-soft: oklch(30% 0.07 55);
+  --green:      oklch(72% 0.14 150);
+  --red:        oklch(70% 0.17 25);
+  --blue:       oklch(72% 0.11 245);
+
+  --doc:  "Newsreader", ui-serif, Georgia, serif;
+  --ui:   "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding-block: 0;
+  background: var(--ink);
+  color: var(--fg);
+  font-family: var(--ui);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 24px; }
+
+/* ── Masthead ──────────────────────────────────────────────────── */
+.masthead { padding-block: 64px 40px; border-bottom: 1px solid var(--rule); }
+.kicker {
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--amber); margin: 0 0 18px;
+}
+.masthead h1 {
+  font-family: var(--doc); font-weight: 600; font-size: clamp(34px, 6vw, 58px);
+  line-height: 1.02; letter-spacing: -0.02em; margin: 0 0 18px; text-wrap: balance;
+  color: #fff;
+}
+.masthead .lede {
+  font-family: var(--doc); font-size: clamp(17px, 2.2vw, 21px); line-height: 1.5;
+  color: var(--fg-2); margin: 0; max-width: 62ch;
+}
+.meta {
+  display: flex; flex-wrap: wrap; gap: 10px 26px; margin-top: 28px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--fg-3);
+}
+.meta b { color: var(--fg-2); font-weight: 500; }
+
+/* ── Legend ────────────────────────────────────────────────────── */
+.legend {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px;
+  padding: 14px 16px; border: 1px solid var(--rule-soft); border-radius: 10px;
+  background: var(--ink-2);
+}
+.legend div { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--fg-2); }
+.swatch { width: 26px; height: 16px; border-radius: 3px; flex: none; }
+.swatch--real { border: 2px solid var(--fg-2); background: #fff; }
+.swatch--prop { border: 2px dashed var(--amber); background: var(--amber-soft); }
+.swatch--bug  { border: 2px solid var(--red); background: color-mix(in oklch, var(--red) 22%, transparent); }
+
+/* ── Step spine ────────────────────────────────────────────────── */
+.step { display: grid; grid-template-columns: 64px 1fr; gap: 0 28px; position: relative; }
+.step::before {
+  content: ""; position: absolute; left: 31px; top: 0; bottom: 0;
+  width: 1px; background: var(--rule-soft);
+}
+.step:last-of-type::before { bottom: auto; height: 54px; }
+.spine { position: relative; padding-top: 46px; }
+.num {
+  position: relative; z-index: 1; display: grid; place-items: center;
+  width: 44px; height: 44px; margin-left: 10px; border-radius: 50%;
+  background: var(--ink); border: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 13px; color: var(--amber);
+}
+.step--end .num { border-color: var(--amber); background: var(--amber-soft); }
+.body { padding-block: 38px 20px; min-width: 0; }
+.step h2 {
+  font-family: var(--doc); font-weight: 600; font-size: clamp(24px, 3.4vw, 33px);
+  line-height: 1.12; letter-spacing: -0.015em; margin: 0 0 12px; color: #fff; text-wrap: balance;
+}
+.step p { margin: 0 0 16px; max-width: 68ch; color: var(--fg-2); }
+.step p strong { color: var(--fg); font-weight: 600; }
+.step p code, .step li code, .note code, td code {
+  font-family: var(--mono); font-size: .88em; color: var(--amber);
+  background: var(--ink-3); padding: 1px 5px; border-radius: 4px;
+}
+
+/* ── Plates (screenshots + proposals) ──────────────────────────── */
+.plate { margin: 0 0 20px; }
+.plate-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 9px; font-family: var(--mono); font-size: 11px;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.tag {
+  padding: 3px 8px; border-radius: 4px; font-weight: 500; flex: none;
+}
+.tag--real { background: var(--fg-2); color: var(--ink); }
+.tag--prop { background: var(--amber); color: oklch(18% .012 50); }
+.tag--bug  { background: var(--red); color: oklch(16% .012 25); }
+.plate-head .where { color: var(--fg-3); letter-spacing: .06em; text-transform: none; font-size: 11.5px; }
+
+.shot {
+  border-radius: 10px; overflow: hidden; background: #fff;
+  border: 2px solid var(--fg-3); box-shadow: 0 18px 40px rgba(0,0,0,.4);
+}
+.shot img { display: block; width: 100%; height: auto; }
+.shot--narrow { max-width: 520px; }
+.shot--mid { max-width: 720px; }
+
+.prop {
+  border: 2px dashed var(--amber); border-radius: 10px; padding: 14px;
+  background: var(--amber-soft);
+}
+.prop--plain { background: transparent; }
+.prop--fit { width: fit-content; max-width: 100%; }
+
+.cap { margin-top: 9px; font-size: 12.5px; color: var(--fg-3); max-width: 66ch; }
+.cap b { color: var(--fg-2); font-weight: 500; }
+
+/* ── Notes ─────────────────────────────────────────────────────── */
+.note {
+  border-left: 3px solid var(--rule); padding: 12px 0 12px 16px;
+  margin: 0 0 18px; color: var(--fg-2); font-size: 14px; max-width: 68ch;
+}
+.note b { color: #fff; font-weight: 600; }
+.note--bug { border-left-color: var(--red); }
+.note--gap { border-left-color: var(--amber); }
+.note--ok  { border-left-color: var(--green); }
+.note .lbl {
+  display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--fg-3); margin-bottom: 5px;
+}
+.note--bug .lbl { color: var(--red); }
+.note--gap .lbl { color: var(--amber); }
+.note--ok  .lbl { color: var(--green); }
+
+/* ── Branches ──────────────────────────────────────────────────── */
+.branches { display: grid; gap: 18px; margin: 4px 0 20px; }
+@media (min-width: 820px) { .branches--3 { grid-template-columns: repeat(3, 1fr); } .branches--2 { grid-template-columns: repeat(2, 1fr); } }
+.branch {
+  border: 1px solid var(--rule-soft); border-radius: 10px; padding: 16px;
+  background: var(--ink-2); min-width: 0;
+}
+.branch h3 {
+  font-family: var(--ui); font-size: 13px; font-weight: 600; margin: 0 0 4px; color: #fff;
+}
+.branch .when {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--fg-3); margin: 0 0 10px;
+}
+.branch p { font-size: 13.5px; margin: 0 0 10px; color: var(--fg-2); }
+.branch .plate { margin-bottom: 12px; }
+
+/* ── Tables ────────────────────────────────────────────────────── */
+.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 0 0 18px; }
+.tbl th {
+  text-align: left; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--fg-3); font-weight: 500;
+  padding: 0 14px 9px 0; border-bottom: 1px solid var(--rule);
+}
+.tbl td { padding: 11px 14px 11px 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; color: var(--fg-2); }
+.tbl td:first-child { color: var(--fg); font-weight: 500; white-space: nowrap; }
+.tbl-scroll { overflow-x: auto; }
+
+/* ── Closing ───────────────────────────────────────────────────── */
+.closing { padding-block: 44px 80px; border-top: 1px solid var(--rule); margin-top: 40px; }
+.closing h2 { font-family: var(--doc); font-size: 28px; margin: 0 0 14px; color: #fff; font-weight: 600; }
+.closing ul { margin: 0; padding-left: 20px; color: var(--fg-2); max-width: 68ch; }
+.closing li { margin-bottom: 9px; }
+
+/* ── App-faithful replicas (real OpenLinker tokens) ────────────── */
+.app {
+  --bg-surface: #fff;
+  --bg-canvas: oklch(99% .003 80);
+  --bg-muted: oklch(96% .005 80);
+  --border-subtle: oklch(93.5% .006 80);
+  --border-default: oklch(88% .008 80);
+  --text-primary: oklch(20% .012 80);
+  --text-secondary: oklch(38% .01 80);
+  --text-muted: oklch(52% .008 80);
+  --accent: oklch(68% .18 50);
+  --accent-soft: oklch(96% .04 60);
+  --accent-border: oklch(85% .1 55);
+  --accent-fg: oklch(40% .16 50);
+  --ok-soft: oklch(96% .04 150); --ok-border: oklch(85% .08 150); --ok-fg: oklch(36% .12 150);
+  --warn-soft: oklch(96% .05 85); --warn-border: oklch(85% .1 85); --warn-fg: oklch(42% .12 80);
+  --err-soft: oklch(96% .04 25); --err-border: oklch(85% .1 25); --err-fg: oklch(42% .16 25);
+  --info-soft: oklch(96% .03 245); --info-border: oklch(85% .08 245); --info-fg: oklch(40% .12 245);
+
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--ui);
+  font-size: 14px;
+  line-height: 1.5;
+  border-radius: 8px;
+  padding: 18px;
+}
+.app * { box-sizing: border-box; }
+.app .eyebrow {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); margin: 0 0 6px; font-weight: 500;
+}
+.app h4 { font-size: 15px; font-weight: 600; margin: 0 0 4px; color: var(--text-primary); }
+.app .sub { font-size: 12.5px; color: var(--text-muted); margin: 0 0 14px; }
+.app .card {
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: 8px; padding: 14px;
+}
+.app .kv { display: grid; grid-template-columns: minmax(120px, 42%) 1fr; }
+.app .kv > div {
+  padding: 9px 12px; border-bottom: 1px solid var(--border-subtle); min-width: 0; word-break: break-word;
+}
+.app .kv > div:nth-child(odd) {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted); background: var(--bg-muted);
+}
+.app .kv > div:nth-child(even) { font-size: 13px; color: var(--text-primary); }
+.app .kv .m { font-family: var(--mono); font-size: 12.5px; color: var(--text-secondary); }
+.app .kv .dim { color: var(--text-muted); }
+.app .kv > div:nth-last-child(-n+2) { border-bottom: 0; }
+.app .pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 9999px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase;
+  border: 1px solid var(--border-default); background: var(--bg-muted); color: var(--text-secondary);
+}
+.app .pill--ok { background: var(--ok-soft); border-color: var(--ok-border); color: var(--ok-fg); }
+.app .pill--warn { background: var(--warn-soft); border-color: var(--warn-border); color: var(--warn-fg); }
+.app .pill--err { background: var(--err-soft); border-color: var(--err-border); color: var(--err-fg); }
+.app .pill--info { background: var(--info-soft); border-color: var(--info-border); color: var(--info-fg); }
+.app .pill--muted { color: var(--text-muted); }
+.app .alert {
+  border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.5;
+  border: 1px solid var(--warn-border); border-left: 3px solid var(--warn-fg);
+  background: var(--warn-soft); color: var(--warn-fg);
+}
+.app .alert b { display: block; margin-bottom: 3px; color: var(--text-primary); }
+.app .alert--info { border-color: var(--info-border); border-left-color: var(--info-fg); background: var(--info-soft); color: var(--info-fg); }
+.app .alert--err { border-color: var(--err-border); border-left-color: var(--err-fg); background: var(--err-soft); color: var(--err-fg); }
+.app .btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 7px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-primary);
+}
+.app .btn--primary { background: var(--accent); border-color: var(--accent); color: oklch(18% .012 50); }
+.app .btn--ghost { background: transparent; }
+.app .field { display: block; margin-bottom: 12px; }
+.app .field > span {
+  display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 5px; font-weight: 500;
+}
+.app .control {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 11px; border: 1px solid var(--border-default); border-radius: 6px;
+  background: var(--bg-surface); font-size: 13.5px; color: var(--text-primary);
+}
+.app .control .chev { color: var(--text-muted); font-size: 11px; }
+.app .control--disabled { background: var(--bg-muted); color: var(--text-muted); }
+.app .row { display: flex; gap: 10px; flex-wrap: wrap; }
+.app .row > * { min-width: 0; }
+.app .grow { flex: 1 1 140px; }
+.app .hint { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; }
+.app .mono { font-family: var(--mono); }
+.app hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 14px 0; }
+.app table.t { width: 100%; border-collapse: collapse; font-size: 12.5px; background: var(--bg-surface); }
+.app table.t th {
+  text-align: left; font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-muted); font-weight: 500;
+  padding: 9px 10px; background: var(--bg-muted); border-bottom: 1px solid var(--border-subtle);
+}
+.app table.t td { padding: 10px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+.app table.t tr:last-child td { border-bottom: 0; }
+.app table.t .new { background: var(--accent-soft); }
+.app .disclosure {
+  font-size: 12.5px; color: var(--text-link, oklch(50% .14 250)); text-decoration: underline;
+  text-underline-offset: 3px; cursor: default;
+}
+.app .reveal {
+  font-size: 12.5px; color: var(--text-secondary); margin: 6px 0 0; padding-left: 0;
+}
+
+/* Collapsed-by-default disclosure, as the shipped panel renders it. */
+.app details.disc { border-top: 1px solid var(--border-subtle); padding: 9px 0 0; }
+.app details.disc:first-of-type { border-top: 0; padding-top: 0; }
+.app details.disc + details.disc { margin-top: 9px; }
+.app details.disc > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: oklch(50% .14 250); text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.app details.disc > summary::-webkit-details-marker { display: none; }
+.app details.disc > summary::before {
+  content: "▸"; font-size: 9px; text-decoration: none; flex: none;
+  color: var(--text-muted); transition: transform .12s ease;
+}
+.app details.disc[open] > summary::before { transform: rotate(90deg); }
+.app details.disc[open] > summary { margin-bottom: 2px; }
+
+/* Inside a narrow branch column a two-column kv shreds its own values. */
+.branch .app .kv { grid-template-columns: 1fr; }
+.branch .app .kv > div:nth-child(odd) { border-bottom: 0; padding-bottom: 3px; background: transparent; }
+.branch .app .kv > div:nth-child(even) { padding-top: 0; }
+.branch .app .pill { white-space: nowrap; }
+
+/* ── Target-screen frames ──────────────────────────────────────── */
+.screen { margin: 0 0 26px; }
+.screen-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.screen-head .n {
+  font-family: var(--mono); font-size: 11px; color: var(--amber);
+  border: 1px solid var(--amber); border-radius: 4px; padding: 1px 6px; flex: none;
+}
+.screen-head h3 { font-family: var(--ui); font-size: 15px; font-weight: 600; margin: 0; color: #fff; }
+.screen-head .route { font-family: var(--mono); font-size: 11.5px; color: var(--fg-3); }
+.screen-frame {
+  border: 2px dashed var(--amber); border-radius: 12px; padding: 16px;
+  background: var(--amber-soft);
+}
+.screen-frame--fit { width: fit-content; max-width: 100%; }
+.states { display: grid; gap: 16px; }
+@media (min-width: 860px) { .states--2 { grid-template-columns: 1fr 1fr; } .states--3 { grid-template-columns: repeat(3, 1fr); } }
+.state-label {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--fg-3); margin: 0 0 7px;
+}
+
+/* ── Test-hook overlay ─────────────────────────────────────────── */
+.hooks-bar {
+  position: sticky; top: 0; z-index: 40; margin: 0 0 28px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 11px 14px; border: 1px solid var(--rule); border-radius: 10px;
+  background: color-mix(in oklch, var(--ink-2) 92%, transparent);
+  backdrop-filter: blur(6px);
+}
+.hooks-bar label { display: flex; align-items: center; gap: 9px; font-size: 13.5px; cursor: pointer; }
+.hooks-bar input { width: 16px; height: 16px; accent-color: oklch(72% .11 245); cursor: pointer; }
+.hooks-bar .muted { font-size: 12.5px; color: var(--fg-3); }
+
+.app [data-testid] { position: relative; }
+body.show-hooks .app [data-testid] { outline: 1px dashed oklch(72% .11 245); outline-offset: 1px; }
+body.show-hooks .app [data-testid]::after {
+  content: attr(data-testid);
+  position: absolute; left: 0; top: 0; transform: translateY(-104%);
+  font-family: var(--mono); font-size: 8.5px; line-height: 1.5; font-weight: 500;
+  background: oklch(46% .13 245); color: #fff; padding: 0 4px; border-radius: 3px;
+  white-space: nowrap; pointer-events: none; z-index: 6; letter-spacing: 0;
+}
+
+/* ── App components used by the target screens ─────────────────── */
+.app .modal { background: var(--bg-surface); border-radius: 12px; padding: 20px; box-shadow: 0 24px 48px rgba(15,18,26,.16); }
+.app .modal h3 { font-size: 17px; font-weight: 600; margin: 0 0 3px; }
+.app .modal .modal-sub { font-size: 12.5px; color: var(--text-muted); margin: 0 0 16px; }
+.app .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.app .group { border: 1px solid var(--border-subtle); border-radius: 8px; padding: 13px; margin-bottom: 12px; background: var(--bg-canvas); }
+.app .group > .eyebrow { margin-bottom: 8px; }
+.app .cond {
+  border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-surface);
+  padding: 9px; margin-bottom: 7px;
+}
+.app .cond-line { display: flex; gap: 7px; align-items: center; }
+.app .cond-line + .cond-line { margin-top: 7px; }
+.app .and {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em; color: var(--text-muted);
+  text-align: center; margin: 0 0 7px;
+}
+.app .iconbtn {
+  flex: none; width: 30px; height: 32px; border: 1px solid var(--border-default); border-radius: 6px;
+  background: var(--bg-surface); color: var(--text-muted); display: grid; place-items: center; font-size: 13px;
+}
+.app .seg { display: inline-flex; border: 1px solid var(--border-default); border-radius: 7px; overflow: hidden; }
+.app .seg > span { padding: 7px 15px; font-size: 13px; color: var(--text-secondary); background: var(--bg-surface); }
+.app .seg > span + span { border-left: 1px solid var(--border-default); }
+.app .seg > span.on { background: var(--accent); color: oklch(18% .012 50); font-weight: 500; }
+.app .readback {
+  border: 1px solid var(--info-border); border-left: 3px solid var(--info-fg);
+  background: var(--info-soft); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--info-fg);
+}
+.app .readback b { color: var(--text-primary); }
+.app .readback .eyebrow { color: var(--info-fg); margin-bottom: 4px; }
+.app .amt { font-family: var(--mono); }
+.app .btn[aria-disabled="true"], .app .btn--off {
+  background: var(--accent-soft); border-color: var(--accent-border);
+  color: oklch(62% .06 50);
+}
+.app .rulecard {
+  border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-surface);
+  padding: 12px; margin-bottom: 8px;
+}
+.app .rulecard .out { font-weight: 600; font-size: 13.5px; }
+.app .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.app .stepno {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent-soft); border: 1px solid var(--accent-border); color: var(--accent-fg);
+  font-family: var(--mono); font-size: 10.5px; flex: none;
+}
+
+/* ── Flaw list ─────────────────────────────────────────────────── */
+.flaws { list-style: none; margin: 0 0 18px; padding: 0; }
+.flaws li {
+  display: grid; grid-template-columns: 26px 1fr; gap: 13px; align-items: start;
+  margin-bottom: 13px; font-size: 14px; color: var(--fg-2); max-width: 68ch;
+}
+.flaws .x {
+  display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  border: 1px solid var(--red); color: var(--red); font-family: var(--mono); font-size: 11px;
+}
+.flaws b { color: #fff; font-weight: 600; }
+
+/* ── Step-shaped modal sections (sentence-case, no shouting) ───── */
+.app .steptitle { font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0 0 3px; }
+.app .stephint { font-size: 12.5px; color: var(--text-muted); margin: 0 0 11px; }
+.app .cond-head {
+  display: grid; grid-template-columns: 1fr 1fr 1.15fr 32px; gap: 7px;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 6px;
+}
+.app .cond-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1.15fr 32px; gap: 7px;
+  align-items: center; margin-bottom: 7px;
+}
+.app .pair { display: flex; gap: 6px; }
+.app .pair > :first-child { flex: 1 1 auto; min-width: 0; }
+.app .pair > :last-child { flex: 0 0 84px; }
+@media (max-width: 620px) {
+  .app .cond-head { display: none; }
+  .app .cond-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Status ladder ─────────────────────────────────────────────── */
+.app .ladder { display: flex; align-items: flex-start; margin: 4px 0 14px; }
+.app .ladder .node { flex: 1 1 0; text-align: center; position: relative; min-width: 0; padding: 0 2px; }
+.app .ladder .node + .node::before {
+  content: ""; position: absolute; top: 8px; left: -50%; width: 100%; height: 2px;
+  background: var(--border-default);
+}
+.app .ladder .node.done + .node.done::before,
+.app .ladder .node.done + .node.now::before { background: var(--ok-fg); }
+.app .ladder .dot {
+  display: block; position: relative; z-index: 1; width: 18px; height: 18px; border-radius: 50%;
+  margin: 0 auto 7px; background: var(--bg-surface); border: 2px solid var(--border-default);
+}
+.app .ladder .node.done .dot { background: var(--ok-fg); border-color: var(--ok-fg); }
+.app .ladder .node.now .dot { border-color: var(--warn-fg); background: var(--warn-soft); }
+.app .ladder .node.fail .dot { background: var(--err-fg); border-color: var(--err-fg); }
+.app .ladder .lbl2 { font-size: 11.5px; font-weight: 500; color: var(--text-primary); display: block; }
+.app .ladder .node:not(.done):not(.now):not(.fail) .lbl2 { color: var(--text-muted); font-weight: 400; }
+.app .ladder .when2 { font-family: var(--mono); font-size: 9.5px; color: var(--text-muted); display: block; margin-top: 2px; }
+
+/* ── Hook reference table ──────────────────────────────────────── */
+.hooks-tbl td:first-child { font-family: var(--mono); font-size: 12px; color: var(--blue); white-space: nowrap; }
+
+@media (max-width: 700px) {
+  .step { grid-template-columns: 1fr; gap: 0; }
+  .step::before { display: none; }
+  .spine { padding-top: 30px; }
+  .num { margin-left: 0; }
+  .body { padding-block: 12px 16px; }
+  .app .kv { grid-template-columns: 1fr; }
+  .app .kv > div:nth-child(odd) { border-bottom: 0; }
+}
+
+</style>
+<title>Tax Number on a Receipt</title>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="kicker">Epic 1 · Fiscalization</p>
+  <h1>Tax Number on a Receipt</h1>
+  <p class="lede">A receipt carrying the buyer's tax number is, under a threshold, already an invoice. OpenLinker stores that number, routes on it, and then never sends it — so the document the buyer needs is never actually produced. This epic sends it, and shows it.</p>
+  <div class="meta">
+    <span><b>Capability</b> Fiscalization — unchanged</span>
+    <span><b>Provider field</b> <code>eReceipt.metadata.consumerTIN</code></span>
+    <span><b>Depends on</b> nothing — ships standalone</span>
+    <span><b>Screens</b> 4 · <b>tasks</b> 11</span>
+  </div>
+</header>
+
+<div class="hooks-bar">
+  <label><input type="checkbox" id="hooks-toggle"> <span>Show test hooks</span></label>
+  <span class="muted">Every mockup element carries a real <code>data-testid</code> — <b id="hooks-count">0</b> of them on this page, readable straight from this artifact's DOM.</span>
+</div>
+
+<!-- 00 -->
+<section class="step">
+  <div class="spine"><span class="num">·</span></div>
+  <div class="body">
+    <h2>Why this is not a new document kind</h2>
+    <p>A simplified invoice is not a third thing beside a receipt and an invoice. It <em>is</em> a fiscal receipt — same document, same device, same finality — that happens to carry the buyer's tax number and fall under a threshold. Nothing extra is issued, so nothing extra is built: this epic stays entirely inside the <strong>Fiscalization</strong> capability.</p>
+
+    <div class="tbl-scroll">
+    <table class="tbl">
+      <thead><tr><th>Sale</th><th>Document</th><th>Capability</th><th>Provider request</th></tr></thead>
+      <tbody>
+        <tr><td>No tax number</td><td>Fiscal receipt</td><td>Fiscalization</td><td><code>eReceipt</code>, no <code>consumerTIN</code></td></tr>
+        <tr><td>Tax number, under threshold</td><td>Fiscal receipt <b>= simplified invoice</b></td><td>Fiscalization</td><td><code>eReceipt</code> + <code>consumerTIN</code></td></tr>
+        <tr><td>Tax number, at or over</td><td>Invoice</td><td>Invoicing — <b>Epic 3</b></td><td><code>eInvoice</code></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="note note--ok">
+      <span class="lbl">The separation costs nothing to maintain</span>
+      The two paths are <b>different request bodies at the provider, with different validation</b>. A receipt's number lives in <code>ReceiptMetadata.consumerTIN</code>; an invoice's in <code>CommonInvoiceMetadata.consumerTIN</code>, checksum-verified. Nothing in this epic goes near the second one.
+    </div>
+
+    <div class="note note--bug">
+      <span class="lbl">Evidence the gap is real</span>
+      On the demo instance <code>/invoices?taxId=with</code> returns <b>"No invoices found"</b> and <code>?taxId=without</code> returns <b>26 of 26</b>. And <code>libs/integrations/eparagony/src</code> contains <b>zero</b> occurrences of <code>consumerTIN</code>.
+    </div>
+  </div>
+</section>
+
+<!-- 01 -->
+<section class="step">
+  <div class="spine"><span class="num">01</span></div>
+  <div class="body">
+    <h2>The number, on the order</h2>
+    <p>One row appended to the existing <b>Summary</b> block, in the same <code>kv</code> component every other row uses. It renders unconditionally, because the column carries three answers and two of them are easy to confuse.</p>
+
+    <div class="screen">
+      <div class="screen-head"><span class="n">S1</span><h3>Order summary</h3><span class="route">/orders/:internalOrderId</span></div>
+      <div class="screen-frame screen-frame--fit">
+        <div class="app" style="max-width:520px">
+          <h4 style="margin-bottom:10px">Summary</h4>
+          <div class="card" style="padding:0" data-testid="order-summary">
+            <div class="kv">
+              <div>Source</div><div>Allegro Demo</div>
+              <div>Placed</div><div>Jul 22, 2026, 12:20 PM</div>
+              <div>Ship by</div><div>Jul 23, 2026, 11:59 PM</div>
+              <div>Buyer tax ID</div><div data-testid="order-buyer-tax-id"><span class="amt">5213796333</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap">Shown exactly as the source gave it — no reformatting, no country prefix bolted on. OpenLinker is not the authority on what a valid tax number looks like in any market; the provider is.</p>
+    </div>
+
+    <div class="states states--2">
+      <div>
+        <p class="state-label">State — the buyer has none</p>
+        <div class="screen-frame">
+          <div class="app">
+            <div class="card" style="padding:0">
+              <div class="kv">
+                <div>Ship by</div><div>Jul 23, 2026, 11:59 PM</div>
+                <div>Buyer tax ID</div><div data-testid="order-buyer-tax-id-none"><span class="pill">None — asserted</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="cap">A positive fact, not a hole. The "no tax ID" rule matched precisely this.</p>
+      </div>
+      <div>
+        <p class="state-label">State — the source said nothing</p>
+        <div class="screen-frame">
+          <div class="app">
+            <div class="card" style="padding:0">
+              <div class="kv">
+                <div>Ship by</div><div>Jul 23, 2026, 11:59 PM</div>
+                <div>Buyer tax ID</div><div data-testid="order-buyer-tax-id-unknown"><span class="dim">Not asserted by the source</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="cap">Muted, because nothing is wrong — but present, because it explains why every tax-ID rule failed to match and the order is held.</p>
+      </div>
+    </div>
+
+    <div class="note note--gap">
+      <span class="lbl">Why three and not two</span>
+      <b>"Has none" and "we don't know" route to different documents.</b> One badge over both erases the distinction the threshold rules stand on — and a query written <code>IS NOT NULL</code> reads the middle state backwards. Read it through <code>decodeBuyerTaxIdColumn</code>, never directly.
+    </div>
+
+    <div class="note note--bug">
+      <span class="lbl">The state no shipped source can produce</span>
+      <code>readSourceBuyerTaxId</code> never returns <code>null</code>, and both Allegro and Erli route through it — so <b>"None — asserted" is unreachable from a real order today</b> and the end-to-end test needs a fixture. Worth knowing before someone spends a day trying to reproduce it against the sandbox.
+    </div>
+  </div>
+</section>
+
+<!-- 02 -->
+<section class="step">
+  <div class="spine"><span class="num">02</span></div>
+  <div class="body">
+    <h2>On the document, and why it got that kind</h2>
+    <p>The sales-document panel already carries a disclosure called <b>"Why this document?"</b>, which answers a question about the <em>connection</em>. A second disclosure answers the one an operator asks first — <em>why a receipt and not an invoice?</em> — and that is where the tax number belongs: as the evidence behind a decision, not as decoration.</p>
+
+    <div class="screen">
+      <div class="screen-head"><span class="n">S2</span><h3>Sales document — receipt with a tax number</h3><span class="route">/orders/:internalOrderId → Sales document</span></div>
+      <div class="screen-frame screen-frame--fit">
+        <div class="app" style="max-width:470px">
+          <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:12px">
+            <h4>Sales document</h4>
+            <span class="pill pill--ok" data-testid="sales-document-status">Fiscal receipt · Registered</span>
+          </div>
+          <div class="card" data-testid="sales-document-panel">
+            <div class="card" style="padding:0">
+              <div class="kv">
+                <div>Receipt no.</div><div class="m">210</div>
+                <div>Buyer tax ID</div><div data-testid="sales-document-buyer-tax-id"><span class="amt">5213796333</span></div>
+                <div>Signing identity</div><div class="m">ZBN1901007833</div>
+              </div>
+            </div>
+            <hr>
+            <details class="disc" data-testid="sales-document-why-connection">
+              <summary>Why this document?</summary>
+              <p class="reveal">This order is registered here. Every further action on it goes to this connection.</p>
+            </details>
+            <details class="disc" data-testid="sales-document-why-kind">
+              <summary>Why this kind?</summary>
+              <p class="reveal" data-testid="sales-document-matched-rule">Matched the PL rule <b>has a tax ID · total under 450.00 PLN</b>, which registers a <b>Receipt</b> through <b>e-paragony Sandbox</b>.</p>
+            </details>
+            <p class="hint" data-testid="registration-final">This registration is final and cannot be corrected here.</p>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>Both disclosures are closed by default</b>, exactly as the shipped panel renders them — click either one here to open it. The tax-ID row appears <b>only when the matched rule actually read that field</b>: a rule that decided on country or amount alone gets the sentence and no row, so the panel never implies a fact took part in a decision it had no part in.</p>
+    </div>
+
+    <div class="note">
+      <span class="lbl">Cut from an earlier draft</span>
+      An operator-authored <b>name</b> on the rule, rendered here as a badge. Nobody asked for it, it needed its own migration, and it was the only thing coupling this epic to Epic 2. The matched-rule sentence carries the same meaning without any of that.
+    </div>
+  </div>
+</section>
+
+<!-- 03 -->
+<section class="step">
+  <div class="spine"><span class="num">03</span></div>
+  <div class="body">
+    <h2>When the provider will not take the number</h2>
+    <p>OpenLinker sends the number and reports what comes back. It does not pre-judge which numbers a provider will accept — <strong>it has no basis to, and acquiring one would mean holding a list of countries in code that must never hold one.</strong></p>
+    <p>So there is one question on this screen, not two: <em>did the provider refuse, and do we know what happened to the sale?</em> That is the existing <code>failureMode</code> split, and it is the only distinction that changes what an operator should do next.</p>
+
+    <div class="states states--2">
+      <div>
+        <p class="state-label">State — refused, nothing registered</p>
+        <div class="screen-frame">
+          <div class="app">
+            <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:10px">
+              <h4>Sales document</h4>
+              <span class="pill pill--err">Fiscal receipt · Failed</span>
+            </div>
+            <div class="card">
+              <div class="alert alert--err" data-testid="registration-rejected">
+                <b>The provider refused this registration</b>
+                <span class="amt">5213796ZZZ</span> was not accepted. Nothing was registered, so it is safe to retry once the value is corrected at the source.
+              </div>
+              <div class="card" style="margin-top:10px;padding:0">
+                <div class="kv">
+                  <div>Provider code</div><div data-testid="provider-failure-code"><span class="m">INVALID_CONSUMER_TIN</span></div>
+                  <div>Provider said</div><div data-testid="provider-failure-message">Value does not match any accepted form for this field.</div>
+                </div>
+              </div>
+              <div class="row" style="justify-content:flex-end;margin-top:12px">
+                <div class="btn" data-testid="register-without-tax-id">Register without it</div>
+                <div class="btn btn--primary" data-testid="sales-document-retry">Retry</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="cap">The code is the provider's own, verbatim and untranslated; the sentence is theirs too. We add the operational consequence — <b>nothing was registered</b> — because that is a fact about our own attempt, not about their rules.</p>
+      </div>
+
+      <div>
+        <p class="state-label">State — refused, outcome unknown</p>
+        <div class="screen-frame">
+          <div class="app">
+            <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:10px">
+              <h4>Sales document</h4>
+              <span class="pill pill--warn">Fiscal receipt · In doubt</span>
+            </div>
+            <div class="card">
+              <div class="alert" data-testid="registration-in-doubt">
+                <b>We do not know whether this registered</b>
+                The provider did not answer in time. A retry could register the sale twice. Check with the provider before doing anything here.
+              </div>
+              <div class="row" style="justify-content:flex-end;margin-top:12px">
+                <div class="btn" data-testid="check-with-provider">Check with the provider</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="cap">No retry button. A fiscal registration is a legal event, and the one thing worse than not having one is silently having two.</p>
+      </div>
+    </div>
+
+    <div class="note note--bug">
+      <span class="lbl">Cut after audit — and the example was wrong too</span>
+      An earlier draft had a state reading <b>"This provider only carries EU tax numbers — 29ABCDE1234F1Z5 looks valid but is outside what e-paragony accepts."</b> Three faults: <b>EU</b> is a regional category as system vocabulary; <b>"looks valid"</b> is a judgement about a foreign tax regime we cannot make; and <b>"route this market elsewhere"</b> is regional routing advice. The value was wrong as well — it begins with digits, so it fails the provider's pattern outright and was never the "valid but unsupported" case the screen claimed.
+    </div>
+
+    <div class="note note--gap">
+      <span class="lbl">Why the judgement has no home anywhere</span>
+      The provider's field is a three-branch <code>oneOf</code> whose third branch is a <b>structural</b> pattern with a disclaimer — "no validation guarantee" — <b>not a rejection rule</b>. Telling EU from non-EU would need a member-state list, which exists nowhere in this tree and must not. So neither core nor the adapter can make that call: <b>send it, and report what the provider says.</b>
+    </div>
+
+    <div class="note note--ok">
+      <span class="lbl">The shape already exists</span>
+      This follows <code>OfferValidationProblem</code>, whose own docs say a platform's <b>code is its own value, verbatim and untranslated, never invented</b>, and that scope is set by the adapter because "only the adapter knows its own taxonomy, and a core-side code list would put marketplace vocabulary in <code>libs/core</code>". Fiscalization already has the carriers: <code>failureReason</code> and <code>failureMode</code>. Nothing new is needed.
+    </div>
+  </div>
+</section>
+
+<!-- 04 -->
+<section class="step step--end">
+  <div class="spine"><span class="num">04</span></div>
+  <div class="body">
+    <h2>On the invoice list</h2>
+    <p>The list already filters by tax identity and shows no column for it, so the filter answers a yes/no question and hides the answer.</p>
+
+    <div class="screen">
+      <div class="screen-head"><span class="n">S4</span><h3>Invoice list</h3><span class="route">/invoices</span></div>
+      <div class="screen-frame">
+        <div class="app" style="padding:0">
+          <div style="padding:12px 12px 0">
+            <div class="control" style="max-width:200px" data-testid="invoices-filter-tax-id"><span>All buyer tax IDs</span><span class="chev">▾</span></div>
+          </div>
+          <div style="overflow-x:auto;margin-top:12px">
+            <table class="t" data-testid="invoices-table">
+              <thead><tr><th>Document</th><th>Type</th><th>Status</th><th>Buyer tax ID</th><th>Connection</th></tr></thead>
+              <tbody>
+                <tr data-testid="invoice-row-0">
+                  <td class="amt">P/22/09/2026</td><td>Receipt</td>
+                  <td><span class="pill pill--ok">Registered</span></td>
+                  <td data-testid="invoice-row-tax-id-0"><span class="amt">5213796333</span></td>
+                  <td>e-paragony Sandbox</td>
+                </tr>
+                <tr data-testid="invoice-row-1">
+                  <td class="amt">P/21/09/2026</td><td>Receipt</td>
+                  <td><span class="pill pill--ok">Registered</span></td>
+                  <td data-testid="invoice-row-tax-id-1"><span class="pill">None — asserted</span></td>
+                  <td>e-paragony Sandbox</td>
+                </tr>
+                <tr data-testid="invoice-row-2">
+                  <td class="amt">P/20/09/2026</td><td>Receipt</td>
+                  <td><span class="pill pill--ok">Registered</span></td>
+                  <td data-testid="invoice-row-tax-id-2"><span class="dim">Not asserted</span></td>
+                  <td>e-paragony Sandbox</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <p class="cap">Same three renderings as the order detail, same vocabulary.</p>
+    </div>
+
+    <div class="note note--bug">
+      <span class="lbl">This one is more expensive than it looks</span>
+      The invoice projection stores only a <b>boolean</b>, <code>hasBuyerTaxId</code> — which is what serves the existing filter. Showing the value needs <b>a new projection column, a migration and a write-path change</b>. Budget it as backend work, not a table tweak.
+    </div>
+
+    <div class="note note--bug">
+      <span class="lbl">And the whole epic is inert on one configuration</span>
+      <code>order_records.buyerTaxId</code> is PII-gated at persistence: with <code>OL_STORE_PII=false</code> nothing is stored, the value reads back as "not asserted", and <b>a simplified invoice can never issue</b>. Today nothing says so. One of the tasks below is simply to tell the operator.
+    </div>
+  </div>
+</section>
+
+<!-- Hooks -->
+<section class="step">
+  <div class="spine"><span class="num">⌘</span></div>
+  <div class="body">
+    <h2>Test hooks</h2>
+
+    <div class="tbl-scroll">
+    <table class="tbl hooks-tbl">
+      <thead><tr><th>data-testid</th><th>Element</th><th>Assertion</th></tr></thead>
+      <tbody>
+        <tr><td>order-buyer-tax-id</td><td>Summary row, value present</td><td>Renders the value verbatim</td></tr>
+        <tr><td>order-buyer-tax-id-none</td><td>Asserted-none variant</td><td>A pill — distinguishable from unknown <b>by hook, not by text</b></td></tr>
+        <tr><td>order-buyer-tax-id-unknown</td><td>Not-asserted variant</td><td>Muted text; no pill; no value</td></tr>
+        <tr><td>sales-document-buyer-tax-id</td><td>Panel evidence row</td><td>Present only when the matched rule read the field</td></tr>
+        <tr><td>sales-document-why-kind</td><td>Second disclosure</td><td>Present when a rule decided; absent on a manual registration</td></tr>
+        <tr><td>sales-document-matched-rule</td><td>Rule sentence</td><td>Names market, conditions, kind and connection</td></tr>
+        <tr><td>registration-rejected</td><td>Definitive refusal</td><td>Nothing registered; coexists with <code>sales-document-retry</code></td></tr>
+        <tr><td>registration-in-doubt</td><td>Unknown outcome</td><td><b>Never</b> coexists with a retry control</td></tr>
+        <tr><td>provider-failure-code</td><td>Provider's own code</td><td>Verbatim, untranslated, never invented</td></tr>
+        <tr><td>invoice-row-tax-id-{i}</td><td>List cell</td><td>Same three renderings as the order detail</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="note">
+      <span class="lbl">The assertion that matters</span>
+      <b><code>registration-in-doubt</code> must never appear beside a retry button.</b> A fiscal registration is a legal event; retrying one we cannot account for is how a sale gets registered twice.
+    </div>
+  </div>
+</section>
+
+<!-- Tasks -->
+<section class="step">
+  <div class="spine"><span class="num">≡</span></div>
+  <div class="body">
+    <h2>Tasks</h2>
+    <p>Eleven. Nothing outside this epic blocks any of them.</p>
+
+    <div class="tbl-scroll">
+    <table class="tbl">
+      <thead><tr><th>#</th><th>Task</th><th>Blocked by</th></tr></thead>
+      <tbody>
+        <tr><td>E1-1</td><td>Commit this mockup to <code>docs/plans/mockups/</code> as the design of record</td><td>—</td></tr>
+        <tr><td>E1-2</td><td><code>RegisterTransactionCommand</code> gains an optional <b>bare tax-number value</b>, read from the order through <code>decodeBuyerTaxIdColumn</code>. <b>Not a <code>TaxIdentifier</code></b> — see the note below. Precedent for an additive optional field: <code>taxRateEra</code></td><td>—</td></tr>
+        <tr><td>E1-3</td><td>eparagony mapper writes <code>eReceipt.metadata.consumerTIN</code> and surfaces a provider refusal through <code>failureReason</code> + <code>failureMode</code>, carrying the provider's own code verbatim. <b>No pre-judging which values it will accept</b></td><td>E1-2</td></tr>
+        <tr><td>E1-4</td><td>Pinning test: the provider drops unknown fields silently, so the silence is deliberate rather than accidental</td><td>E1-3</td></tr>
+        <tr><td>E1-5</td><td>FE: Summary row, three states, three distinct hooks</td><td>E1-2</td></tr>
+        <tr><td>E1-6</td><td>FE + backend: value column on <code>/invoices</code> — new projection column, migration, write path</td><td>E1-2</td></tr>
+        <tr><td>E1-7</td><td>FE: panel evidence row and the "Why this kind?" disclosure</td><td>E1-2</td></tr>
+        <tr><td>E1-8</td><td>Operator-facing statement that the feature is inert under <code>OL_STORE_PII=false</code></td><td>E1-2</td></tr>
+        <tr><td>E1-9</td><td>Docs: correct the stale "PrestaShop is the only source" claim in <code>architecture-overview.md</code></td><td>—</td></tr>
+        <tr><td>E1-10</td><td>E2E: three renderings, plus a receipt issued with a tax number end to end. <b>Needs a fixture</b> for the asserted-none state</td><td>E1-3, E1-5</td></tr>
+        <tr><td>E1-11</td><td>Operator tutorial</td><td>E1-7</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="note note--bug">
+      <span class="lbl">Corrected twice — the second correction was wrong</span>
+      I first said the value travels <b>untagged</b>. An audit told me that was false, because <code>TaxIdentifier { scheme, value }</code> exists and both the inFakt adapter and the FA(3) mapper switch on <code>scheme</code>. So I changed it. <b>That change was the mistake.</b> Those are all true statements about the invoicing command — but every <code>scheme</code> value in the tree is produced by an adapter or by an HTTP caller, never by core, and the type's own documentation says <i>"core never names a country's identifier system"</i>. The order stores a bare string, so building a <code>TaxIdentifier</code> from it would force core to <b>invent</b> a scheme. The command carries the value; if an adapter needs it tagged, the adapter tags it, or the operator supplies a default per connection.
+    </div>
+
+    <div class="note note--gap">
+      <span class="lbl">A guard that will actually fire</span>
+      <code>libs/core/src/fiscalization</code> has a <b>build-failing vocabulary sweep</b> over every file in the context, banning <code>paragon</code>, <code>kasa</code>, <code>printer</code>, <code>eparagony</code> and <code>ksef</code> — <b>in prose as well as identifiers</b>. Any wording about a specific provider or regime must stay out of that directory entirely, comments included. Invoicing and <code>sales-documents</code> have no such guard; the second claims a grep verification that no longer runs anywhere.
+    </div>
+  </div>
+</section>
+
+<footer class="closing">
+  <h2>What this epic deliberately does not do</h2>
+  <ul>
+    <li><b>No new capability, no manifest change, no new adapter.</b> A receipt carrying a tax number is fiscalisation work, and stays there.</li>
+    <li><b>No switch to include the tax number.</b> If the order has one it goes to the adapter; the adapter decides what to do with it. A per-rule toggle would let one market's receipt silently drop a number another market's law requires.</li>
+    <li><b>No threshold logic in core.</b> Which sale qualifies is a routing rule the operator writes — Epic 2 — never a rule OpenLinker knows.</li>
+    <li><b>No rule naming.</b> Cut after the audit: invented scope, its own migration, and the only coupling between this epic and the next.</li>
+  </ul>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var box = document.getElementById('hooks-toggle');
+  if (!box) return;
+  var apply = function () { document.body.classList.toggle('show-hooks', box.checked); };
+  box.addEventListener('change', apply);
+  apply();
+  var n = document.querySelectorAll('.app [data-testid]').length;
+  var c = document.getElementById('hooks-count');
+  if (c) c.textContent = String(n);
+})();
+</script>
