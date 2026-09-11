@@ -262,6 +262,88 @@ describe('PriceChangeDetectionService', () => {
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('ep-auto-2'));
   });
 
+  it('re-enqueues for a STILL-OPEN episode that genuinely refreshed in automatic mode (#3159 review, IMPORTANT)', async () => {
+    connections.get.mockResolvedValue(
+      buildConnection({
+        currency: 'PLN',
+        priceSyncMode: { default: 'automatic', sourceOverrides: {} },
+      })
+    );
+    // The episode was ALREADY open (from an earlier automatic-mode detection
+    // whose apply job may already be enqueued/run) with no prior refresh.
+    episodes.findOpenByKey.mockResolvedValue(buildEpisode({ id: 'ep-auto-3', refreshedAt: null }));
+    const refreshedAt = new Date('2026-09-11T12:00:00.000Z');
+    episodes.upsertOpen.mockResolvedValueOnce({
+      episode: buildEpisode({ id: 'ep-auto-3', refreshedAt }),
+      wasRefresh: true,
+    });
+
+    await service.onMasterPriceChanged({
+      productVariantId: VARIANT_ID,
+      sourceConnectionId: SRC_ID,
+      sourceOldAmount: 327,
+      sourceNewAmount: 310,
+      sourceCurrency: 'PLN',
+    });
+
+    // A DISTINCT key from the bare `pricing:episode:{id}:auto` — colliding
+    // with it would either silently drop this enqueue (a stale key from the
+    // first promotion) or, worse, be indistinguishable from it to a reader.
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: `pricing:episode:ep-auto-3:auto:${refreshedAt.getTime()}`,
+      })
+    );
+  });
+
+  it('does NOT re-enqueue for a still-open episode that was not genuinely refreshed (a repeat of an already-stored price) in automatic mode', async () => {
+    connections.get.mockResolvedValue(
+      buildConnection({
+        currency: 'PLN',
+        priceSyncMode: { default: 'automatic', sourceOverrides: {} },
+      })
+    );
+    // The episode is open and `refreshedAt` stays exactly what it was before
+    // this call — the SQL conflict arm only stamps it when the incoming
+    // `sourceNewAmount` genuinely differs from what was already stored.
+    episodes.findOpenByKey.mockResolvedValue(buildEpisode({ id: 'ep-auto-4', refreshedAt: null }));
+    episodes.upsertOpen.mockResolvedValueOnce({
+      episode: buildEpisode({ id: 'ep-auto-4', refreshedAt: null }),
+      wasRefresh: true,
+    });
+
+    await service.onMasterPriceChanged({
+      productVariantId: VARIANT_ID,
+      sourceConnectionId: SRC_ID,
+      sourceOldAmount: 327,
+      sourceNewAmount: 310,
+      sourceCurrency: 'PLN',
+    });
+
+    expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+  });
+
+  it('caches a destination connection lookup across calls, rather than re-fetching per variant (#3159 review, IMPORTANT)', async () => {
+    connections.get.mockResolvedValue(buildConnection({ currency: 'PLN' }));
+
+    await service.onMasterPriceChanged({
+      productVariantId: VARIANT_ID,
+      sourceConnectionId: SRC_ID,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      sourceCurrency: 'PLN',
+    });
+    await service.onMasterPriceChanged({
+      productVariantId: 'ol_variant_2',
+      sourceConnectionId: SRC_ID,
+      sourceOldAmount: 350,
+      sourceNewAmount: 300,
+      sourceCurrency: 'PLN',
+    });
+
+    expect(connections.get).toHaveBeenCalledTimes(1);
+  });
+
   it('blocks the automatic bypass (but still opens a reviewable episode) when the destination currency is unknown', async () => {
     // No `currency` configured — the common real-world case (#3159 review):
     // `readConnectionCurrency` resolves `null` here.
@@ -351,6 +433,26 @@ describe('PriceChangeDetectionService', () => {
 
     expect(episodes.upsertOpen).toHaveBeenCalledWith(
       expect.objectContaining({ computedOldAmount: null, computedNewAmount: 430.5 })
+    );
+  });
+
+  it('never fabricates sourceOldAmount as old = new when the source reports no prior price (#3159 review, BLOCKING)', async () => {
+    connections.get.mockResolvedValue(buildConnection({ currency: 'PLN' }));
+    episodes.findLastResolvedByKey.mockResolvedValue(null);
+
+    await service.onMasterPriceChanged({
+      productVariantId: VARIANT_ID,
+      sourceConnectionId: SRC_ID,
+      sourceOldAmount: null,
+      sourceNewAmount: 430.5,
+      sourceCurrency: 'PLN',
+    });
+
+    // The exact defect: `?? observation.sourceNewAmount` would have written
+    // `sourceOldAmount: 430.5` here, persisting a fabricated "changed from
+    // 430.50 to 430.50" fact the source never asserted.
+    expect(episodes.upsertOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceOldAmount: null, sourceNewAmount: 430.5 })
     );
   });
 });

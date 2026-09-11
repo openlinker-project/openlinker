@@ -18,11 +18,14 @@
  * of a past detection and must survive a re-mapped variant or a deleted
  * connection rather than cascade away with it.
  *
- * `computedOldAmount` is nullable (#3159 review): a brand-new mapping's
- * first detection has no recorded baseline at all, which is a different fact
- * from a real recorded `0` (e.g. a previously-free product now carrying a
- * price). `CHK_price_change_episodes_amounts_non_negative` is unaffected — a
- * Postgres CHECK evaluates to "not violated" on a NULL operand.
+ * `computedOldAmount` AND `sourceOldAmount` are both nullable (#3159 review,
+ * the second amended in after the first): a brand-new mapping's first
+ * detection, or a variant that previously carried NO source price at all,
+ * has no recorded baseline to report — writing `sourceNewAmount` into a
+ * `NOT NULL` `sourceOldAmount` column would fabricate a "changed from N to
+ * N" fact the source never asserted. `CHK_price_change_episodes_amounts_non_negative`
+ * is unaffected — a Postgres CHECK evaluates to "not violated" on a NULL
+ * operand.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
@@ -39,7 +42,7 @@ export class CreatePriceChangeEpisodes1878000000000 implements MigrationInterfac
         "destinationConnectionId" uuid NOT NULL,
         "sourceConnectionId" uuid NOT NULL,
         "sourceCurrency" character varying(8) NOT NULL,
-        "sourceOldAmount" numeric(14,4) NOT NULL,
+        "sourceOldAmount" numeric(14,4),
         "sourceNewAmount" numeric(14,4) NOT NULL,
         "computedOldAmount" numeric(14,4),
         "computedNewAmount" numeric(14,4) NOT NULL,

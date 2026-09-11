@@ -59,9 +59,12 @@ export function resolvePriceChangeBlockReason(
  * `null`, resolving to `'destination-currency-unknown'` rather than a
  * verified match. Resolving a destination's REAL currency (its marketplace
  * account, or an adapter-declared value) is a larger follow-up this
- * function does not attempt; until it ships, every destination effectively
- * behaves as unverified-currency, which is the conservative posture the
- * caller's block reason is built to express rather than to hide.
+ * function does not attempt — tracked as
+ * https://github.com/openlinker-project/openlinker/issues/3203, so this
+ * docblock doesn't read as an unowned gap three PRs later; until it ships,
+ * every destination effectively behaves as unverified-currency, which is
+ * the conservative posture the caller's block reason is built to express
+ * rather than to hide.
  */
 export function readConnectionCurrency(
   config: Record<string, unknown> | null | undefined

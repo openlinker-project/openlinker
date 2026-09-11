@@ -152,6 +152,15 @@ export const JobTypeValues = [
   // `marketplace.`) matches `inventory.propagateToMarketplaces`: this is a
   // core-owned orchestration job that may target a shop OR a marketplace
   // destination, not a marketplace-specific one.
+  //
+  // MERGE-ORDER NOTE (#3159 review, BLOCKING): this entry has NO registered
+  // handler/lane until #3144's stack registers it, so `assertFullLaneCoverage()`
+  // throws at worker boot on #3143's branch alone — the whole `apps/worker`
+  // integration suite is red until #3144 merges alongside or immediately
+  // after it. This is expected and by design for the stack, NOT weakened
+  // guard behavior to route around: #3144's branch already registers the
+  // handler (`handler-registration.service.ts`), so the two must merge as
+  // one unit or in immediate sequence.
   'pricing.propagateToMarketplaces',
   // Connection-provenance backfill (#2317, ADR-058 ladder step (ii)). Stamps the
   // `'legacy'` sentinel onto pre-#2314 `inventory_items` rows, one bounded page

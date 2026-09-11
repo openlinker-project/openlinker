@@ -287,13 +287,28 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     }
 
     let priceChangeObserverFailures = 0;
-    if (previousPricesByVariantId && product.currency) {
-      priceChangeObserverFailures = await this.notifyPriceChanges(
-        connectionId,
-        product.currency,
-        variants,
-        previousPricesByVariantId
-      );
+    if (previousPricesByVariantId) {
+      if (product.currency) {
+        priceChangeObserverFailures = await this.notifyPriceChanges(
+          connectionId,
+          product.currency,
+          variants,
+          previousPricesByVariantId
+        );
+      } else {
+        // An observer IS wired (`previousPricesByVariantId` non-null) but this
+        // master product carries no currency (`Product.currency` is nullable),
+        // so every price change on it goes unreported with no trace — logged
+        // here rather than silently swallowed (#3159 review): counting it
+        // into `priceChangeObserverFailures` would conflate "the observer call
+        // itself failed" with "we never attempted it", a different fact with
+        // a different remedy (fix the master's currency, not retry a call).
+        this.logger.warn(
+          `price_change_observer_skipped_no_currency - internalProductId=${internalProductId} ` +
+            `connectionId=${connectionId} has no currency recorded, so ${variants.length} ` +
+            `variant(s)' price changes could not be checked against the price-change observer this pass`
+        );
+      }
     }
 
     // Pull the tax rate onto the catalogue projection (#2054, ADR-063 § 4), in
@@ -735,9 +750,17 @@ export class MasterProductSyncService implements IMasterProductSyncService {
    * the catalogue sync it rides along, so every call is individually caught
    * and logged.
    *
-   * "Changed" excludes a variant seen for the first time (`previousAmount`
-   * absent from the map — no row existed to have a price at all) and a
-   * variant whose price is unset either before or after (nothing to compare).
+   * "Changed" excludes ONLY a variant whose price is unset AFTER
+   * (`newAmount === null` — nothing to publish) and a variant with a
+   * previously-recorded price that is UNCHANGED (`hadPriorRow &&
+   * oldAmount === newAmount`). A variant seen for the first time
+   * (`previousAmount` absent from the map — no row existed to have a price at
+   * all) and a variant whose previously-recorded price was itself `null` are
+   * NOT excluded: both report through, with `sourceOldAmount: null` — a value
+   * appearing where none existed before is a real change, and the observer
+   * must report the missing baseline honestly rather than have this pass hide
+   * it (#3159 review, BLOCKING: the caller must never fabricate `old = new`
+   * from that `null`).
    *
    * A failure is logged at ERROR (never `warn`) with a greppable token, and
    * COUNTED in the returned total (#3159 review): there is no reconcile pass

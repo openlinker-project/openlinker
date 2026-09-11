@@ -746,6 +746,30 @@ describe('MasterProductSyncService', () => {
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('price_change_observer_failed'));
     });
 
+    it('logs a warning and skips the observer entirely when the master product has no currency (#3159 review, IMPORTANT)', async () => {
+      (
+        productsService as unknown as { getVariantsByProductIds: jest.Mock }
+      ).getVariantsByProductIds.mockResolvedValue([{ id: 'ol_variant_1', price: 350 }]);
+      // No `currency` on the adapter's product — `Product.currency` is
+      // nullable and this IS reachable.
+      adapter.getProduct.mockResolvedValue({ ...makeProduct(), price: 327 });
+      adapter.getProductVariants.mockResolvedValue([
+        { ...makeVariant('ol_variant_1'), price: 327 },
+      ]);
+      const warnSpy = jest.spyOn(service['logger'], 'warn');
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(priceChangeObserver.onMasterPriceChanged).not.toHaveBeenCalled();
+      // Never counted as an observer FAILURE — the call was never attempted,
+      // a different fact with a different remedy (fix the missing currency,
+      // not retry a call that never happened).
+      expect(result.priceChangeObserverFailures).toBe(0);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('price_change_observer_skipped_no_currency')
+      );
+    });
+
     it('never reads previous prices when no observer is wired (default construction)', async () => {
       service = new MasterProductSyncService(
         integrationsService,

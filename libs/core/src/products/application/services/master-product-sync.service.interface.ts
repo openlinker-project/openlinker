@@ -66,7 +66,13 @@ export interface MasterProductSyncResult {
    * permanently lost notification, since the catalogue upsert this sync
    * already ran has overwritten the prior price the miss would have been
    * detected against. `0` on every path that never reads a price at all
-   * (a master-side deletion, no observer wired).
+   * (a master-side deletion, no observer wired) — INCLUDING a wired observer
+   * that could not be consulted because this master product carries no
+   * currency (`Product.currency` is nullable). That last case is logged at
+   * `warn` with the `price_change_observer_skipped_no_currency` token rather
+   * than counted here: it is a different fact from an observer call that was
+   * attempted and failed (fix the master's missing currency, not retry a
+   * call that never happened).
    */
   priceChangeObserverFailures: number;
 }

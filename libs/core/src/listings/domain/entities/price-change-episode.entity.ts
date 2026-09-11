@@ -34,7 +34,8 @@ export class PriceChangeEpisode {
     public readonly destinationConnectionId: string,
     public readonly sourceConnectionId: string,
     public readonly sourceCurrency: string,
-    public readonly sourceOldAmount: number,
+    /** `null` = no prior source price was ever recorded (#3159 review). See `computedOldAmount`/`deltaPct`. */
+    public readonly sourceOldAmount: number | null,
     public readonly sourceNewAmount: number,
     /** `null` = no baseline was ever recorded (a brand-new mapping's first detection). See `deltaPct`. */
     public readonly computedOldAmount: number | null,
@@ -102,5 +103,24 @@ export class PriceChangeEpisode {
   isSteep(): boolean {
     const delta = this.deltaPct();
     return delta !== null && Math.abs(delta) >= 10;
+  }
+
+  /**
+   * The episode's direction — `'unknown'` when there's no baseline to
+   * compare against (`computedOldAmount === null`, matching `deltaPct`'s own
+   * `null`), otherwise `'up'` or `'down'`.
+   *
+   * Deliberately NOT derived from `deltaPct() > 0` (#3159 review): `deltaPct`
+   * returns `0` for a real zero baseline specifically to avoid a `NaN`/
+   * `Infinity` percentage, and `0 > 0` is false — which silently misclassified
+   * a genuine `0 -> 100` increase (a price appearing where there was none) as
+   * `'down'`. This compares the raw amounts instead, so a zero baseline with
+   * ANY positive new amount is unambiguously `'up'`.
+   */
+  direction(): 'up' | 'down' | 'unknown' {
+    if (this.computedOldAmount === null) {
+      return 'unknown';
+    }
+    return this.computedNewAmount >= this.computedOldAmount ? 'up' : 'down';
   }
 }
