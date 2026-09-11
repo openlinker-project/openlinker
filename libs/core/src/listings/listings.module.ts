@@ -79,6 +79,8 @@ import { OfferCommercialSnapshotRepository } from './infrastructure/persistence/
 import { StaleOfferPauseService } from './application/services/stale-offer-pause.service';
 import { CoverageGapReadService } from './application/services/coverage-gap-read.service';
 import { StockAtRiskReadService } from './application/services/stock-at-risk-read.service';
+import { PriceChangeEpisodeOrmEntity } from './infrastructure/persistence/entities/price-change-episode.orm-entity';
+import { PriceChangeEpisodeRepository } from './infrastructure/persistence/repositories/price-change-episode.repository';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -126,6 +128,7 @@ import {
   STOCK_AT_RISK_READ_SERVICE_TOKEN,
   DESTINATION_TAXONOMY_SERVICE_TOKEN,
   DESTINATION_CATEGORY_REPOSITORY_TOKEN,
+  PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -188,6 +191,7 @@ export {
       OfferCommercialSnapshotOrmEntity,
       ShopProductStatusSnapshotOrmEntity,
       DestinationCategoryOrmEntity,
+      PriceChangeEpisodeOrmEntity,
     ]),
     IntegrationsModule,
     IdentifierMappingModule,
@@ -252,6 +256,11 @@ export {
     StaleOfferPauseService,
     CoverageGapReadService,
     StockAtRiskReadService,
+    PriceChangeEpisodeRepository,
+    {
+      provide: PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
+      useExisting: PriceChangeEpisodeRepository,
+    },
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
       useExisting: OfferLinkingService,
@@ -485,6 +494,7 @@ export {
     STOCK_AT_RISK_READ_SERVICE_TOKEN,
     DESTINATION_TAXONOMY_SERVICE_TOKEN,
     DESTINATION_CATEGORY_REPOSITORY_TOKEN,
+    PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
   ],
 })
 export class ListingsModule {}

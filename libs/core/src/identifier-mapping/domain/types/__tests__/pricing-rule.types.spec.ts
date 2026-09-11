@@ -3,7 +3,12 @@
  *
  * @module libs/core/src/identifier-mapping/domain/types/__tests__
  */
-import { applyPricingRule, readPricingRule } from '../pricing-rule.types';
+import {
+  applyPricingRule,
+  readPricingRule,
+  readPricingRuleConfig,
+  readPricingRuleForSource,
+} from '../pricing-rule.types';
 
 describe('pricing-rule', () => {
   describe('readPricingRule', () => {
@@ -100,6 +105,67 @@ describe('pricing-rule', () => {
 
     it('should never return a negative price', () => {
       expect(applyPricingRule(0.001, { type: 'passthrough', rounding: 'endingIn99' })).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  // #3142 — default + per-source-override shape (ADR-072 decision 2).
+  describe('readPricingRuleForSource', () => {
+    const MARKUP_DEFAULT = { type: 'markup' as const, percent: 20 };
+    const MARGIN_OVERRIDE = { type: 'margin' as const, percent: 30, rounding: 'endingIn99' as const };
+
+    it('should resolve the source override when one is configured', () => {
+      const config = {
+        pricingRule: {
+          default: MARKUP_DEFAULT,
+          sourceOverrides: { 'src-1': MARGIN_OVERRIDE },
+        },
+      };
+      expect(readPricingRuleForSource(config, 'src-1')).toEqual({
+        type: 'margin',
+        percent: 30,
+        rounding: 'endingIn99',
+      });
+    });
+
+    it('should fall back to the default when no override exists for the source', () => {
+      const config = {
+        pricingRule: { default: MARKUP_DEFAULT, sourceOverrides: { 'src-1': MARGIN_OVERRIDE } },
+      };
+      expect(readPricingRuleForSource(config, 'src-2')).toEqual({
+        type: 'markup',
+        percent: 20,
+        rounding: 'none',
+      });
+    });
+
+    it('should read a legacy flat-shape config as the default with no overrides', () => {
+      const config = { pricingRule: { type: 'markup' as const, percent: 15 } };
+      expect(readPricingRuleForSource(config, 'any-source')).toEqual({
+        type: 'markup',
+        percent: 15,
+        rounding: 'none',
+      });
+      expect(readPricingRule(config)).toEqual({ type: 'markup', percent: 15, rounding: 'none' });
+      expect(readPricingRuleConfig(config).sourceOverrides).toEqual({});
+    });
+
+    it('should return null for both default and any source when nothing is configured', () => {
+      expect(readPricingRuleForSource({}, 'src-1')).toBeNull();
+      expect(readPricingRuleForSource(null, 'src-1')).toBeNull();
+    });
+
+    it('should ignore an unrecognized override value rather than throwing', () => {
+      const config = {
+        pricingRule: {
+          default: MARKUP_DEFAULT,
+          sourceOverrides: { 'src-1': { type: 'bogus' } as unknown as never },
+        },
+      };
+      expect(readPricingRuleForSource(config, 'src-1')).toEqual({
+        type: 'markup',
+        percent: 20,
+        rounding: 'none',
+      });
     });
   });
 });

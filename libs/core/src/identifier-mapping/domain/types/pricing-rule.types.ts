@@ -59,23 +59,100 @@ export interface PricingRule {
 export const PRICING_RULE_CONFIG_KEY = 'pricingRule';
 
 /**
- * Read the per-connection pricing rule from a connection config.
+ * The default + per-source-override shape of `Connection.config.pricingRule`
+ * (#3142, ADR-072 decision 2). Recurring price propagation (#3139) needs a
+ * rule per (destination connection, feeding source connection) pair, not one
+ * flat rule per connection — a destination is fed by several sources in the
+ * common case, and each source may need its own margin (e.g. a second
+ * warehouse with different unit economics).
  *
- * Returns `null` when the key is absent, not an object, or carries an
- * unrecognized `type` — the caller then treats it as pure passthrough
- * (identical to the pre-#1843 behaviour). A recognized rule with a
- * non-numeric/non-finite `percent` coerces `percent` to `0`; an unrecognized
- * `rounding` coerces to `'none'`.
+ * `sourceOverrides` is keyed by `sourceConnectionId`. A source absent from the
+ * map simply uses `default`.
  */
-export function readPricingRule(config: ConnectionConfig | null | undefined): PricingRule | null {
+export interface PricingRuleConfig {
+  default: PricingRule | null;
+  sourceOverrides: Record<string, PricingRule>;
+}
+
+/**
+ * Read the per-connection pricing rule CONFIG (default + per-source
+ * overrides) from a connection config.
+ *
+ * Backward-compatible with the pre-#3142 flat shape: `config.pricingRule`
+ * holding a bare `{type, percent, rounding}` object (no `default` key) is
+ * read as `{ default: <that rule>, sourceOverrides: {} }` — resolved at read
+ * time, matching the `readStockSafetyBuffer` config-coercion precedent
+ * (#1844). No backfill migration is required; an existing connection's
+ * behaviour is unchanged until an operator explicitly edits it.
+ */
+export function readPricingRuleConfig(
+  config: ConnectionConfig | null | undefined
+): PricingRuleConfig {
+  const empty: PricingRuleConfig = { default: null, sourceOverrides: {} };
   if (!config) {
-    return null;
+    return empty;
   }
   const raw = config[PRICING_RULE_CONFIG_KEY];
   if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
-    return null;
+    return empty;
   }
   const candidate = raw as unknown as Record<string, unknown>;
+
+  // New shape: `{ default: PricingRule, sourceOverrides?: {...} }`.
+  if ('default' in candidate) {
+    const defaultRule = coercePricingRule(candidate['default']);
+    const overridesRaw = candidate['sourceOverrides'];
+    const sourceOverrides: Record<string, PricingRule> = {};
+    if (overridesRaw != null && typeof overridesRaw === 'object' && !Array.isArray(overridesRaw)) {
+      for (const [sourceConnectionId, value] of Object.entries(
+        overridesRaw as Record<string, unknown>
+      )) {
+        const rule = coercePricingRule(value);
+        if (rule) {
+          sourceOverrides[sourceConnectionId] = rule;
+        }
+      }
+    }
+    return { default: defaultRule, sourceOverrides };
+  }
+
+  // Legacy flat shape — the whole value IS the default rule.
+  return { default: coercePricingRule(candidate), sourceOverrides: {} };
+}
+
+/**
+ * Read the per-connection DEFAULT pricing rule from a connection config.
+ *
+ * Returns `null` when no default rule is configured — the caller then treats
+ * it as pure passthrough (identical to the pre-#1843 behaviour). Unchanged
+ * behaviour for every existing call site (`OfferBuilderService`,
+ * `ProductPublishBuilderService`): both predate the per-source dimension and
+ * have no source-connection context to resolve against, so they keep
+ * resolving the connection's default rule exactly as before #3142.
+ */
+export function readPricingRule(config: ConnectionConfig | null | undefined): PricingRule | null {
+  return readPricingRuleConfig(config).default;
+}
+
+/**
+ * Read the EFFECTIVE pricing rule for a specific feeding source connection
+ * (#3142): the source's override when one is configured, otherwise the
+ * connection's default rule. Used by the price-change detection service
+ * (#3143), which always knows which source connection produced the change.
+ */
+export function readPricingRuleForSource(
+  config: ConnectionConfig | null | undefined,
+  sourceConnectionId: string
+): PricingRule | null {
+  const { default: defaultRule, sourceOverrides } = readPricingRuleConfig(config);
+  return sourceOverrides[sourceConnectionId] ?? defaultRule;
+}
+
+function coercePricingRule(value: unknown): PricingRule | null {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
   const type = candidate['type'];
   if (!isPricingRuleType(type)) {
     return null;

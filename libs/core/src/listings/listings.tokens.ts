@@ -83,3 +83,5 @@ export const STALE_OFFER_PAUSE_SERVICE_TOKEN = Symbol('IStaleOfferPauseService')
 export const COVERAGE_GAP_READ_SERVICE_TOKEN = Symbol('ICoverageGapReadService');
 // Needs-attention aggregates — stock at risk (#1983)
 export const STOCK_AT_RISK_READ_SERVICE_TOKEN = Symbol('IStockAtRiskReadService');
+// Recurring price propagation (#3142, ADR-072)
+export const PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN = Symbol('PriceChangeEpisodeRepositoryPort');
