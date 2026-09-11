@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { buildNavGroups } from './nav-registry';
+import { RoleValues } from './nav-registry.types';
 import type { NavGroup } from './nav-registry.types';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
 
@@ -56,6 +57,23 @@ describe('buildNavGroups', () => {
 
     it('keeps the always-live Operations group live in demo mode', () => {
       const groups = buildNavGroups({ isAdmin: false, demoMode: true });
+      expect(byLabel(groups, 'Operations')?.kind).toBe('live');
+    });
+  });
+
+  // #3107 — the FE chrome's own role union widened to include `packer`
+  // (narrower than `operator`, ADR-071/#2413). No behavioural change is
+  // expected from the widening alone (#3108 adds the first actual consumer,
+  // the "Pack bench" item-level `requiresRole` gate) — this just pins that
+  // the value exists and that an unrecognised/absent role doesn't crash the
+  // builder.
+  describe('packer role (#3107)', () => {
+    it('is a member of RoleValues', () => {
+      expect(RoleValues).toContain('packer');
+    });
+
+    it('does not crash buildNavGroups when no role is passed', () => {
+      const groups = buildNavGroups({ isAdmin: false, demoMode: false });
       expect(byLabel(groups, 'Operations')?.kind).toBe('live');
     });
   });

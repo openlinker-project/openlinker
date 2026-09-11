@@ -22,8 +22,22 @@ import type { NavCounts } from './hooks/use-nav-counts';
  *
  * `'operator'` is included so nav groups can declare `requiresRole: 'operator'`
  * for operator-only sections without any further type changes.
+ *
+ * `'packer'` (#3107, ADR-071/#2413) is narrower still than `'operator'` and
+ * deliberately carries an EMPTY `ROLE_PERMISSIONS` grant on the backend — a
+ * packer's access is enforced purely route-by-route via `@Roles(...)`, not
+ * via any `Permission`. That is exactly why the item-level
+ * `LiveNavItem.requiresRole` gate exists (#3108): `requiresPermission` has
+ * nothing to check a packer session against, so "packer may see this item"
+ * can only be expressed as a role check.
+ *
+ * The backend's `UserRoleValues` also carries `'viewer'`, deliberately absent
+ * here — nothing in the FE chrome's nav gating needs to name a viewer
+ * specifically today (viewer-only UI behaviour is resolved elsewhere, e.g.
+ * `app-shell.tsx`'s own `isViewerOnly` check against `session.user.role`
+ * directly). Add it here only when a nav gate actually needs to name it.
  */
-export const RoleValues = ['admin', 'operator'] as const;
+export const RoleValues = ['admin', 'operator', 'packer'] as const;
 export type Role = (typeof RoleValues)[number];
 
 export type NavCountKey = keyof NavCounts;
