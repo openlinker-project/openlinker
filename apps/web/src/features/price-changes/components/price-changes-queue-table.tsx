@@ -7,11 +7,10 @@
  * loading/empty/error states (real ones, not the mockup's design-review
  * preview switcher).
  *
- * Accept/Edit here are MINIMAL, direct actions — the confirm dialogs (price
- * hero, rule sentence, "also set to Automatic" opt-in with undo) are #3148's
- * job. This issue's scope is the table + real data; #3148 replaces these two
- * handlers with dialog-driven ones without changing this component's public
- * shape (`onAccept`/`onEdit` stay callback props).
+ * Accept/Edit open the #3148 confirm dialogs (price hero, rule sentence,
+ * live-validated manual price, "also set to Automatic" opt-in with a real
+ * Undo). Bulk-accept opens its own dialog and, on confirm, mounts the live
+ * `BulkPublishProgress` widget polling the real batch-progress endpoint.
  *
  * @module apps/web/src/features/price-changes/components
  */
@@ -29,6 +28,11 @@ import { useIgnorePriceChangeMutation } from '../hooks/use-ignore-price-change-m
 import { useEditPriceChangeMutation } from '../hooks/use-edit-price-change-mutation';
 import { useUnresolvePriceChangeMutation } from '../hooks/use-unresolve-price-change-mutation';
 import { useBulkAcceptPriceChangesMutation } from '../hooks/use-bulk-accept-price-changes-mutation';
+import { useSetSourceSyncModeMutation } from '../hooks/use-set-source-sync-mode-mutation';
+import { AcceptPriceChangeDialog } from './accept-price-change-dialog';
+import { EditPriceChangeDialog } from './edit-price-change-dialog';
+import { BulkAcceptPriceChangesDialog } from './bulk-accept-price-changes-dialog';
+import { BulkPublishProgress } from './bulk-publish-progress';
 import type { PriceChangeItem } from '../api/price-changes.types';
 import {
   STEEP_DELTA_TOOLTIP,
@@ -97,10 +101,50 @@ export function PriceChangesQueueTable(): ReactElement {
 
   const selectedIds = Array.from(selected).filter((id) => items.some((i) => i.id === id));
 
-  async function handleAccept(item: PriceChangeItem): Promise<void> {
+  const [acceptTarget, setAcceptTarget] = useState<PriceChangeItem | null>(null);
+  const [editTarget, setEditTarget] = useState<PriceChangeItem | null>(null);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [activeBatch, setActiveBatch] = useState<{ id: string; items: PriceChangeItem[] } | null>(null);
+
+  const setSourceSyncModeMutation = useSetSourceSyncModeMutation();
+
+  /**
+   * The "also set to Automatic" opt-in's confirmation, with a real Undo
+   * (added `ShowToastOptions.action` to the shared toast provider for this —
+   * it previously had no action-button slot).
+   */
+  function offerAutomaticUndo(destinationConnectionId: string, sourceConnectionId: string): void {
+    const sourceLabel =
+      items.find((i) => i.sourceConnectionId === sourceConnectionId)?.sourceLabel ?? 'this source';
+    showToast({
+      tone: 'success',
+      title: 'Set to Automatic',
+      description: `Future price changes from ${sourceLabel} will publish without review.`,
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          setSourceSyncModeMutation.mutate({
+            destinationConnectionId,
+            sourceConnectionId,
+            mode: 'manual',
+          });
+        },
+      },
+    });
+  }
+
+  async function handleAcceptConfirm(item: PriceChangeItem, optInAutomatic: boolean): Promise<void> {
     try {
-      await acceptMutation.mutateAsync({ id: item.id, input: { expectedVersion: item.version } });
-      showToast({ tone: 'success', title: 'Price published', description: item.productName });
+      await acceptMutation.mutateAsync({
+        id: item.id,
+        input: { expectedVersion: item.version, optInAutomatic },
+      });
+      setAcceptTarget(null);
+      if (optInAutomatic) {
+        offerAutomaticUndo(item.destinationConnectionId, item.sourceConnectionId);
+      } else {
+        showToast({ tone: 'success', title: 'Price published', description: item.productName });
+      }
     } catch (error) {
       showToast({ tone: 'error', description: error instanceof Error ? error.message : 'Failed to accept' });
     }
@@ -122,35 +166,36 @@ export function PriceChangesQueueTable(): ReactElement {
     }
   }
 
-  async function handleEdit(item: PriceChangeItem): Promise<void> {
-    // Minimal placeholder — the real edit dialog (validation, "use rule
-    // price" reset, per-source-rule permalink) is #3148's.
-    const raw = window.prompt(
-      `Enter the price to publish for ${item.productName} (currently would publish ${item.computedNewAmount}):`,
-      String(item.computedNewAmount),
-    );
-    if (raw === null) return;
-    const manualPriceOverride = Number(raw);
-    if (!Number.isFinite(manualPriceOverride) || manualPriceOverride <= 0) {
-      showToast({ tone: 'error', description: 'Enter a price greater than 0.' });
-      return;
-    }
+  async function handleEditConfirm(item: PriceChangeItem, manualPriceOverride: number): Promise<void> {
     try {
       await editMutation.mutateAsync({
         id: item.id,
         input: { manualPriceOverride, expectedVersion: item.version },
       });
+      setEditTarget(null);
       showToast({ tone: 'success', title: 'Price published', description: item.productName });
     } catch (error) {
       showToast({ tone: 'error', description: error instanceof Error ? error.message : 'Failed to publish' });
     }
   }
 
-  async function handleBulkAccept(): Promise<void> {
+  const bulkDialogItems = items.filter((i) => selectedIds.includes(i.id));
+
+  async function handleBulkAcceptConfirm(optInPairs: Set<string>): Promise<void> {
     try {
-      await bulkAcceptMutation.mutateAsync(selectedIds.map((id) => ({ id })));
+      const result = await bulkAcceptMutation.mutateAsync(
+        bulkDialogItems.map((item) => ({
+          id: item.id,
+          optInAutomatic: optInPairs.has(`${item.sourceConnectionId}:${item.destinationConnectionId}`),
+        })),
+      );
+      setActiveBatch({ id: result.batchId, items: bulkDialogItems });
+      setBulkDialogOpen(false);
       setSelected(new Set());
-      showToast({ tone: 'success', title: 'Publishing selected prices…', description: 'Watch progress below.' });
+      for (const pair of optInPairs) {
+        const [sourceConnectionId, destinationConnectionId] = pair.split(':');
+        offerAutomaticUndo(destinationConnectionId, sourceConnectionId);
+      }
     } catch (error) {
       showToast({ tone: 'error', description: error instanceof Error ? error.message : 'Bulk accept failed' });
     }
@@ -389,8 +434,8 @@ export function PriceChangesQueueTable(): ReactElement {
                         <td className="col-num">
                           <ActionCell
                             item={item}
-                            onAccept={handleAccept}
-                            onEdit={handleEdit}
+                            onAccept={setAcceptTarget}
+                            onEdit={setEditTarget}
                             onIgnore={handleIgnore}
                             onUndo={handleUndo}
                           />
@@ -412,12 +457,44 @@ export function PriceChangesQueueTable(): ReactElement {
                 <Button tone="secondary" onClick={() => void handleBulkIgnore()}>
                   Keep prices
                 </Button>
-                <Button onClick={() => void handleBulkAccept()}>Accept selected</Button>
+                <Button onClick={() => setBulkDialogOpen(true)}>Accept selected</Button>
               </div>
             </div>
           ) : null}
+
+          {activeBatch ? (
+            <BulkPublishProgress batchId={activeBatch.id} items={activeBatch.items} />
+          ) : null}
         </>
       )}
+
+      <AcceptPriceChangeDialog
+        item={acceptTarget}
+        isConfirming={acceptMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setAcceptTarget(null);
+        }}
+        onConfirm={(optInAutomatic) => {
+          if (acceptTarget) void handleAcceptConfirm(acceptTarget, optInAutomatic);
+        }}
+      />
+      <EditPriceChangeDialog
+        item={editTarget}
+        isConfirming={editMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) setEditTarget(null);
+        }}
+        onConfirm={(manualPriceOverride) => {
+          if (editTarget) void handleEditConfirm(editTarget, manualPriceOverride);
+        }}
+      />
+      <BulkAcceptPriceChangesDialog
+        items={bulkDialogItems}
+        open={bulkDialogOpen}
+        isConfirming={bulkAcceptMutation.isPending}
+        onOpenChange={setBulkDialogOpen}
+        onConfirm={(optInPairs) => void handleBulkAcceptConfirm(optInPairs)}
+      />
     </div>
   );
 }
@@ -463,8 +540,8 @@ function ActionCell({
   onUndo,
 }: {
   item: PriceChangeItem;
-  onAccept: (item: PriceChangeItem) => Promise<void>;
-  onEdit: (item: PriceChangeItem) => Promise<void>;
+  onAccept: (item: PriceChangeItem) => void;
+  onEdit: (item: PriceChangeItem) => void;
   onIgnore: (item: PriceChangeItem) => Promise<void>;
   onUndo: (item: PriceChangeItem) => Promise<void>;
 }): ReactElement {
@@ -502,10 +579,10 @@ function ActionCell({
       <Button tone="secondary" className="button--xs" data-testid="row-ignore" onClick={() => void onIgnore(item)}>
         Keep price
       </Button>
-      <Button tone="secondary" className="button--xs" data-testid="row-edit" onClick={() => void onEdit(item)}>
+      <Button tone="secondary" className="button--xs" data-testid="row-edit" onClick={() => onEdit(item)}>
         Edit
       </Button>
-      <Button className="button--xs" data-testid="row-accept" onClick={() => void onAccept(item)}>
+      <Button className="button--xs" data-testid="row-accept" onClick={() => onAccept(item)}>
         Accept
       </Button>
     </div>

@@ -765,6 +765,17 @@ export function createMockApiClient(
       autoApplied: vi.fn().mockResolvedValue([]),
       ...overrides.priceChanges,
     } as ApiClient['priceChanges'],
+    pricingSync: {
+      get: vi.fn().mockResolvedValue({
+        default: { mode: 'manual', rule: { type: 'passthrough', percent: 0, rounding: 'none' } },
+        sources: [],
+      }),
+      update: vi.fn().mockResolvedValue({
+        default: { mode: 'manual', rule: { type: 'passthrough', percent: 0, rounding: 'none' } },
+        sources: [],
+      }),
+      ...overrides.pricingSync,
+    } as ApiClient['pricingSync'],
     mailerSettings: {
       get: vi.fn().mockResolvedValue({
         transport: 'console',
