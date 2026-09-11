@@ -11,11 +11,17 @@
 
 ## 1. Problem
 
-**CARRIED FROM ISSUE.** Amazon is a marketplace-only destination for FR, DE and PL — the highest strategic
-value of the four platforms in epic #2878, and the highest cost. The cost drivers are architectural rather than
-adapter-shaped: no HTTP webhooks (SQS/EventBridge only — SPIKE Evidence #9, still blocked), a 30-day PII
-deletion obligation nothing in the tree currently satisfies, and no browsable category tree (product-type JSON
-Schema instead of `CategoryParameter`).
+**CARRIED FROM ISSUE, partially RESOLVED.** Amazon is a marketplace-only destination for FR, DE and PL — the
+highest strategic value of the four platforms in epic #2878, and the highest cost. The cost drivers are
+architectural rather than adapter-shaped: no HTTP webhooks (SQS/EventBridge only), a 30-day PII deletion
+obligation nothing in the tree currently satisfies, and no browsable category tree (product-type JSON Schema
+instead of `CategoryParameter`). **The SQS/EventBridge finding is no longer blocked on an unexplained
+`invalid_scope` error** — SPIKE Evidence #31/#32 verifies the Notifications subscription contract live
+(subscribe/read/enumerate all answer 200) and identifies the earlier `invalid_scope` as a registration-**tier**
+limit (the current app is `Sandbox`-status, not a full Private/Public registration), not a missing scope or
+role. What remains genuinely open is narrower: the inbound **transport** (delivery of a notification to a real
+SQS queue) cannot be exercised in the static sandbox under any app tier, so it stays a live-account
+prerequisite rather than a sandbox blocker.
 
 ## 2. Affected persona
 
@@ -80,14 +86,23 @@ just its implementation.
 
 ## 8. Risks
 
-Carried directly from the SPIKE's Open Risks section (see `SPIKE-2881-amazon-sp-api.md`):
-- v2026-01-01 Orders sandbox coverage may not be wired up (Evidence #6) — could force live-account-first
-  development for order ingestion specifically, ahead of what the epic's other three platforms required.
-- C13 (Notifications/SQS ingress) is blocked on an unresolved `invalid_scope` error with no further automated
-  path — this is the architecturally riskiest single piece of the whole integration and cannot be estimated
-  with confidence yet.
+Carried directly from the SPIKE's Open Risks section (see `SPIKE-2881-amazon-sp-api.md`), current as of the
+spike's 2026-09-08 session:
+- v2026-01-01 `searchOrders` sandbox coverage is confirmed broken while `getOrder` (single, by known id) is
+  confirmed working (Evidence #6, narrowed by #38) — the risk is scoped to the enumeration operation only, and
+  could still force a live-account-first or v0-first approach for order **discovery** specifically, ahead of
+  what the epic's other three platforms required.
+- **C13 (Notifications/SQS ingress) is no longer blocked on `invalid_scope`** — Evidence #31/#32 verifies the
+  subscription contract live and identifies the blocker as a registration-tier limit, resolvable by registering
+  a full Private app. What remains open — and is still the architecturally riskiest single piece of the whole
+  integration — is that the inbound **transport** cannot be exercised in the static sandbox under any app
+  tier (`sendTestNotification` has no sandbox block at all), so it needs a live account plus a real SQS queue
+  before it can be estimated with confidence, not a support-channel escalation.
 - The 30-day PII deletion obligation (X4) has no existing mechanism anywhere in the OpenLinker tree — sizing
   this is itself a prerequisite epic (AC5), not an implementation detail of this one.
+- T5/P6/P8/P10 (conditional required attributes, description format, multi-variant grouping, GPSR fields) share
+  one root cause per Evidence #45: the static sandbox never delivers an actual JSON Schema document for any
+  product type, only a placeholder link. All four need a live account against the real host.
 
 ## 9. Implementation breakdown
 
@@ -101,3 +116,5 @@ dressed as a plan.
 | 2026-09-04 | Confirmed `sellingpartnerapi::notifications` is the correct grantless scope string (via community SDK cross-check) — narrows C13's blocker to an account/app-level restriction, not a parameter typo | Informational, does not unblock C13 |
 | 2026-09-04 | Confirmed Amazon order lines carry no tax rate in either Orders API version (v0 or v2026-01-01), from the sandbox model's own documented response body | Resolves O10/D4 definitively |
 | 2026-09-04 | This product-spec intentionally left as a scaffold rather than populated with placeholder decisions | Deliberate — avoids false confidence ahead of spike completion |
+| 2026-09-08 | Root-caused the C13 `invalid_scope` error to a registration-tier limit (`Sandbox`-status app has no grantless grant), not a missing scope or Notifications role; verified the subscription contract live | Narrows C13 from "blocked, unknown" to "transport unverifiable in sandbox by construction" — see §1/§8 |
+| 2026-09-08 | Confirmed `searchOrders` (v2026-01-01) is broken in isolation while `getOrder` on the same version works — narrows the earlier "v2026-01-01 sandbox may not be wired up" risk to the enumeration operation only | See §8 |

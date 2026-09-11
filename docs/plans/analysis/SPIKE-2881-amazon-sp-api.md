@@ -9,6 +9,28 @@
 > the endpoint + one line on *why that endpoint*, or an explicit NOT SUPPORTED") unless explicitly marked
 > ✅ VERIFIED LIVE below. Everything else is either the original desk claim (unverified) or a live probe that
 > came back inconclusive.
+>
+> **What "tested" means here, and what it does not.** Every endpoint identified as relevant to this issue was
+> exercised live at least once against Amazon's SP-API **static sandbox** — see [Amazon's own documentation of
+> the static sandbox](https://developer-docs.amazon.com/sp-api/docs/sp-api-sandbox#sample-ai-sandbox-for-sp-api)
+> for what that environment is and how it behaves. The static sandbox answers most operations from **fixed,
+> pre-baked fixtures keyed to specific documented request patterns** (e.g. a specific ASIN, a specific
+> `orderId`, specific query parameters) rather than running real business logic — so a `200` there proves the
+> *operation and its request/response shape are reachable and well-formed*, not that Amazon's production
+> behaviour for an arbitrary OL-supplied value matches it. Concretely, this means the static sandbox **cannot**
+> answer several classes of question this integration needs answered, no matter how many endpoints are called
+> against it: whether a write is idempotent under a real repeat (canned responses pattern-match on request
+> *shape*, not content — see Evidence #46), whether a real product-type schema imposes conditional-required
+> attributes (the sandbox returns only a placeholder schema *link* that resolves to nothing — Evidence #45),
+> whether multi-marketplace (FR/DE/PL) behaviour actually differs per region for calls that are canned
+> per-host rather than per-marketplace (Evidence #1), and whether the SQS/EventBridge notification transport
+> can be exercised at all (`sendTestNotification` has no sandbox fixture regardless of app tier — Evidence #32).
+> Those gaps are not a testing oversight; they are what "static sandbox" structurally cannot provide, and each
+> one is called out at the specific evidence item where it was hit rather than only here.
+>
+> Cross-references to `#2879` (Shopify), `#2880` (eBay) and `#2882` (TikTok Shop) throughout this document
+> point at sibling spikes/specs in the same epic (#2878) that are **not yet merged to `main`** as of this
+> writing — treat them as comparative context from parallel work-in-progress, not as citable prior art.
 
 ## Verdict — provisional, leaning 4A-shaped (marketplace-only, high cost, high strategic value)
 
@@ -16,9 +38,10 @@ Confirms the issue's own framing: Amazon is a **marketplace-only** destination (
 `InventoryMaster` — this spike did not find evidence to overturn either exclusion; see Evidence #1). Cost
 drivers are structural (ingestion transport, PII retention, no browsable taxonomy) rather than adapter-shaped,
 exactly as the issue predicted. One structural finding **not** in the original issue meaningfully changes the
-risk picture: **the newer Orders API version (v2026-01-01) appears to have incomplete static-sandbox coverage**
-as of this session (Evidence #6) — this was not anticipated and affects how AC2 can be satisfied for Orders
-specifically.
+risk picture: **the newer Orders API version's (v2026-01-01) `searchOrders` operation appears to have
+incomplete static-sandbox coverage**, while `getOrder` on the same version is confirmed working (Evidence #6,
+narrowed by #38) — this was not anticipated and affects how AC2's Orders discovery/enumeration path specifically
+can be satisfied.
 
 No adopt/don't-adopt recommendation is made yet — AC7 (public vs private app), AC8 (commercial sanity check)
 and full FR/DE/PL parity (AC2) are all still open.
@@ -135,7 +158,7 @@ over from the issue (marked accordingly).
       SellerSKU"* — this is a `CategoryPathReader`-shaped lookup (needs an existing product to resolve its
       ancestor path), **not** a `CategoryBrowser`-shaped one (walk from root with no product needed).
     **This is a stronger, primary-source-confirmed version of the original issue's "no operation... was
-    found" claim** — every path in every version was enumerated and checked, not just searched for. `T1's
+    found" claim** — every path in every version was enumerated and checked, not just searched for. T1's
     consequence stands as the issue predicted: `DestinationCategory` (#1979) does not transfer to Amazon.
     The likely replacement entry point is `searchDefinitionsProductTypes` (keyword search), since product
     type is Amazon's actual organizing unit — this needs its own UX design pass, not a port of the existing
@@ -369,6 +392,10 @@ over from the issue (marked accordingly).
     Amazon at all, so labels come from OL's existing carrier adapters (InPost/DPD) and Amazon receives only
     `confirmShipment` + tracking (F2, ✅ verified live). No Amazon Buy-Shipping path is needed for FR/DE/PL.
 
+*(Note: numbering jumps 34 → 36 deliberately — there is no #35. An earlier draft of this entry was
+discarded and rewritten in place as #36 rather than renumbered, per this document's own discipline of
+correcting in place rather than silently resequencing.)*
+
 36. **🔧 CORRECTION to #33/#34 — `channelDetails.channelType` is a load-bearing axis, and the `AMAZON` channel
     is STUBBED in the sandbox, so F5 is MORE open than #34 claimed, not less.** #33/#34 tested only
     `channelType: EXTERNAL`. Re-tested across both channels, both directions and four currencies:
@@ -410,7 +437,7 @@ over from the issue (marked accordingly).
 |---|---|---|---|
 | C | C4 (connection test probe) | ✅ verified live | #1 |
 | C | C13 (Notifications, SQS/EventBridge) | ⚠️ subscription contract ✅ verified live; destinations 403 / transport unverifiable in sandbox | #9, **#31, #32** |
-| T | T7 (catalogue product card) | ✅ confirmed unsupported in static sandbox | #8 |
+| T | T7 (catalogue product card, single-ASIN read) | ✅ CORRECTED — is supported, not unsupported (see #20) | #8 → #20 |
 | O | O1/O2 (order feed, v0) | ✅ verified live | #2 |
 | O | O8/O10 (line resolve, tax rate) | ✅ resolved — no rate, ever | #3, #4 |
 | O | searchOrders v2026-01-01 | 🔴 sandbox pattern not reproducible | #6 |
@@ -429,7 +456,6 @@ over from the issue (marked accordingly).
 | T | T7 (catalogue product card, search variant) | ✅ verified live, richer than expected | #14 |
 | T | T5 (conditional required attrs) | ⚠️ still blocked — sandbox only returns a schema link, not the schema | #15 |
 | P | P2 (GTIN exemption field name) | ⚠️ real field name found, differs from issue's citation — needs confirmation | #15 |
-
 | P | P1/P4 (Feeds async flow) | ✅ verified live, end to end | #18 |
 | S | S5 (patchListingsItem) | ✅ verified live | #16/#17 |
 | F | F2 (confirmShipment) | ✅ verified live | #17 |
@@ -437,7 +463,6 @@ over from the issue (marked accordingly).
 | T | T7 (single-ASIN catalogue read) | ✅ CORRECTED — is supported, not unsupported | #20 |
 | S | S10 (enumerate → reconcile) | ✅ verified live | #22 |
 | — | Regulated Order Verification | 🆕 new capability class, not in original issue | #21 |
-
 | O | O5 (masked email) | ✅ confidence upgraded (official model samples) | #23 |
 | O/D | O7/D3 (buyer tax id / facilitator VAT) | ✅ resolved — one shared field family | #24 |
 | P | P9 (tax rate at publish) | ⚠️ reframed — may be a facilitator-tax model, not a gap | #25 |
@@ -446,7 +471,6 @@ over from the issue (marked accordingly).
 | D | D8 / R4–R7 (refund/return writes) | ✅ confirmed NOT SUPPORTED, three independent checks | #28 |
 | P/D | P9/D3 (facilitator tax model) | 🎯 confirmed with a named schema field, was hypothesis | #29 |
 | D | D5 (shipping tax split) | 🎯 resolved — Amazon does this natively | #30 |
-
 | C | C13 (Notifications subscriptions) | ✅ verified live — subscribe/read/enumerate all 200 | #31 |
 | C | C13 (Notifications destinations + delivery) | 🔴 403 + no `sendTestNotification` sandbox — needs live account | #31, #32 |
 | — | grantless grant availability | 🎯 resolved — refused app-wide, a registration-TIER limit | #32 |
@@ -456,29 +480,6 @@ F1/F4/F7, D1/D2/D6/D9, R2/R3/R8–R10, X3–X7) remains at its **original desk-r
 issue left it) — not re-verified in this session. F3 (order status writeback) is effectively answered by
 Evidence #17/#28's operation enumeration: only shipment-specific and verification-specific narrow writes
 exist, no generic order-status writeback operation.
-
-## Open risks — flagged, not guessed
-
-- **v2026-01-01 sandbox coverage (Evidence #6) is the single highest-priority open risk.** If it genuinely
-  isn't wired up yet, AC2 cannot be satisfied for the mandated API version via sandbox alone, and the spike's
-  timeline assumption ("sandbox first, live account later") may need to invert for Orders specifically.
-- **~~C13 blocked on an unresolved `invalid_scope` (Evidence #9)~~ — SUPERSEDED by Evidence #31/#32.** The
-  `invalid_scope` is now explained (the `client_credentials` grant is refused for this app *tier*, not for a
-  scope or a role), and the subscription half is verified live. What remains open is narrower but structural:
-  **the inbound transport cannot be exercised in the static sandbox at all** — not under a better app tier
-  either, because `sendTestNotification` has no sandbox block. So the epic's #1 cost driver stays unscoped by
-  *evidence*, but the reason has changed from "unknown external blocker" to "requires a live account + a real
-  SQS queue". Plan the estimate accordingly rather than waiting on a sandbox answer that cannot come.
-- **AC7 (public vs private app) is not resolved by this session.** Confirmed from `application-authorization-limits`
-  docs: Private apps are capped at **10 self-authorizations, no OAuth**; Public (unlisted) gets up to 25 OAuth +
-  10 self-auth; Public (Appstore-listed) is unlimited. Given OpenLinker's multi-operator model, Private is very
-  likely a non-starter for production — but the annual pentest / Appstore obligation cost for Public is still
-  unverified from primary sources (only present in the original issue's desk text).
-- **Static sandbox does not vary marketplace data by host region for at least `marketplaceParticipations`**
-  (Evidence #1) — a naive multi-marketplace sandbox test suite could pass while proving nothing about FR/DE/PL
-  specifically. Any future automated test harness for this connection must account for this.
-- Region-validation inconsistency (Evidence #5) is undocumented in the official docs read so far — worth an
-  explicit callout so a future adapter implementer doesn't assume it's uniform.
 
 38. **🔧 CORRECTION to Evidence #6 — `searchOrders` is broken, not the whole v2026-01-01 API.**
     `getOrder` (single, by known `orderId`) was never tested in isolation. Tested now against all three
@@ -551,10 +552,12 @@ exist, no generic order-status writeback operation.
 
 43. **✅ T6, F1, D2 formalized — each already answered by evidence recorded elsewhere in this document, restated
     here because the issue's checklist names them as separate stories.**
-    **T6** (parameter restrictions, `checkParameterRestrictions`) — answered by Evidence's `VALIDATION_PREVIEW`
-    finding (§ P section / Listings): a live `INVALID` response carries `code`, `message`, `severity`,
-    `attributeNames`, `categories`, `enforcements` — JSON-Schema-shaped and machine-validatable, richer than
-    Allegro's category-parameter restrictions.
+    **T6** (parameter restrictions, `checkParameterRestrictions`) — answered by Evidence #7's `issues[]` finding
+    (a live `getListingsItem` response carries `code`, `message`, `severity`, `attributeNames`, `categories`,
+    `enforcements` per issue) — JSON-Schema-shaped and machine-validatable, richer than Allegro's
+    category-parameter restrictions. (Corrected: an earlier draft of this entry cited a nonexistent
+    `VALIDATION_PREVIEW` finding that exists only in the raw session log, not in this document — Evidence #7 is
+    the actual primary source.)
     **F1** (read fulfillment status) — answered by the `getOrder` v2026-01-01 payload itself (Evidence #38):
     `fulfillment.fulfillmentStatus` (`UNSHIPPED` / `SHIPPED` observed live across the BR and TR samples) —
     there is no separate fulfillment-status operation; it rides on the order read.
@@ -585,8 +588,12 @@ exist, no generic order-status writeback operation.
     it. Resolving any of them requires a live account against the real
     `https://sellingpartnerapi-eu.amazon.com` host.
 
-46. **🔴 P11/F4 confirmed structurally undecidable — same class as P7/P13 (Evidence #40's genuinely-out-of-reach
-    list), now demonstrated rather than inferred.** **P11** (duplicate-listing guard): two `PUT` calls against
+46. **🔴 P11/F4 confirmed structurally undecidable — the same class of gap as P7/P13, which remain at the
+    issue's original desk-research status and are not otherwise touched by this session — now demonstrated
+    rather than inferred.** (Corrected: an earlier draft of this entry attributed a "genuinely-out-of-reach
+    list" to Evidence #40, which is about `externalFulfillment` returns and contains no such list; there is no
+    primary-source citation for P7/P13 in this session, and none is claimed here.) **P11** (duplicate-listing
+    guard): two `PUT` calls against
     the identical SKU with *different* `item_name` values both returned the **byte-identical** canned response
     (`{"sku":"GM-ZDPI-9B4E","status":"ACCEPTED",...}`) — proof the static sandbox pattern-matches the request
     shape and ignores content, so it cannot answer "does a second create upsert, reject, or duplicate."
@@ -612,8 +619,11 @@ exist, no generic order-status writeback operation.
     sandbox regardless, so the architectural conclusion doesn't change with more testing.
     **O16** (rate-limit ceiling forbids polling-first design): the cited numbers (`0.0167 req/s` v0,
     `0.0056 req/s` v2026) are **stated in Amazon's own documentation**, not discoverable via a sandbox call —
-    the sandbox's own throttle (5 req/s, burst 15, Evidence #26) is a *different, unrelated* number and testing
-    against it would answer nothing about the real production ceiling.
+    the sandbox's own throttle is a *different, unrelated* number and testing against it would answer nothing
+    about the real production ceiling. (Corrected: an earlier draft of this entry attributed a specific figure
+    — "5 req/s, burst 15" — to Evidence #26, which is about the *absence* of a rate-limit-query API and states
+    no throttle figure of any kind. No sandbox-side throttle number is claimed here; the point stands without
+    one.)
 
     **Genuinely still untouched after this pass: F7 (source options discovery) — no evidence either way,
     simply not attempted.**
@@ -628,6 +638,33 @@ exist, no generic order-status writeback operation.
     exists on this platform. The correct implementation is to copy these enums directly from the model into
     OL's status mapper, the same way a closed vocabulary is handled anywhere else in the tree; there is no
     "confirm this at runtime" step to design for.
+
+## Open risks — flagged, not guessed
+
+- **v2026-01-01 sandbox coverage (Evidence #6, narrowed by #38) is the single highest-priority open risk.**
+  `searchOrders` is confirmed broken in the static sandbox while `getOrder` is confirmed working (Evidence
+  #38), so the risk is scoped to the enumeration operation only — AC2 cannot be fully satisfied for the
+  mandated API version via sandbox alone until that is resolved or worked around.
+- **~~C13 blocked on an unresolved `invalid_scope` (Evidence #9)~~ — SUPERSEDED by Evidence #31/#32.** The
+  `invalid_scope` is now explained (the `client_credentials` grant is refused for this app *tier*, not for a
+  scope or a role), and the subscription half is verified live. What remains open is narrower but structural:
+  **the inbound transport cannot be exercised in the static sandbox at all** — not under a better app tier
+  either, because `sendTestNotification` has no sandbox block. So the epic's #1 cost driver stays unscoped by
+  *evidence*, but the reason has changed from "unknown external blocker" to "requires a live account + a real
+  SQS queue". Plan the estimate accordingly rather than waiting on a sandbox answer that cannot come.
+- **AC7 (public vs private app) is not resolved by this session.** Confirmed from `application-authorization-limits`
+  docs: Private apps are capped at **10 self-authorizations, no OAuth**; Public (unlisted) gets up to 25 OAuth +
+  10 self-auth; Public (Appstore-listed) is unlimited. Given OpenLinker's multi-operator model, Private is very
+  likely a non-starter for production — but the annual pentest / Appstore obligation cost for Public is still
+  unverified from primary sources (only present in the original issue's desk text).
+- **Static sandbox does not vary marketplace data by host region for at least `marketplaceParticipations`**
+  (Evidence #1) — a naive multi-marketplace sandbox test suite could pass while proving nothing about FR/DE/PL
+  specifically. Any future automated test harness for this connection must account for this.
+- Region-validation inconsistency (Evidence #5) is undocumented in the official docs read so far — worth an
+  explicit callout so a future adapter implementer doesn't assume it's uniform.
+- **T5/P6/P8/P10 (Evidence #45) and P11/F4 (Evidence #46) are structurally unresolvable via sandbox** — both
+  need either a real product-type schema fetch or a write-then-observe loop, neither of which the static
+  sandbox can supply. Deferred to the live-account phase alongside AC2/AC7.
 
 ## Recommendation
 
