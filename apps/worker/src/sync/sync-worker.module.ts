@@ -24,6 +24,7 @@ import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { WorkerContentModule } from '../content/worker-content.module';
+import { PriceChangeObserverBindingModule } from './price-change-observer-binding.module';
 import { JobIntakeConsumer } from './job-intake.consumer';
 import { SyncJobRunner } from './sync-job.runner';
 import { SyncJobHandlerRegistry } from './handlers/sync-job-handler.registry';
@@ -94,6 +95,10 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     OperationalSettingsModule, // #2651 — operator-settable sweep budgets, read per tick by the sweep handlers
     OrdersModule, // Import OrdersModule to access ORDER_SYNC_SERVICE_TOKEN
     ListingsModule, // Import ListingsModule to access OFFER_MAPPING_SYNC_SERVICE_TOKEN
+    // #3143 — binds PRICE_CHANGE_OBSERVER_TOKEN (owned by ProductsModule) to
+    // ListingsModule's PriceChangeDetectionService, so MasterProductSyncService's
+    // @Optional() injection resolves under this role.
+    PriceChangeObserverBindingModule,
     ReturnsModule, // #2330 — exposes RETURN_INGESTION_SERVICE_TOKEN + RETURN_STATUS_SYNC_SERVICE_TOKEN
     ShippingModule, // Import ShippingModule to access SHIPMENT_STATUS_SYNC_SERVICE_TOKEN (#838)
     // #2399 — exposes FULFILLMENT_HANDSHAKE_SERVICE_TOKEN. A leaf module: it

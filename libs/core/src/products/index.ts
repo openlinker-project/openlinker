@@ -141,6 +141,10 @@ export {
   isNewTaxRateObservation,
 } from './domain/types/tax-rate-journal.types';
 export type { TaxRateJournalRepositoryPort } from './domain/ports/tax-rate-journal-repository.port';
+export type {
+  PriceChangeObserverPort,
+  MasterPriceChangeObservation,
+} from './domain/ports/price-change-observer.port';
 export type { ITaxRateJournalService } from './application/services/tax-rate-journal.service.interface';
 
 // ORM entities are exposed on the host-only `@openlinker/core/products/orm-entities`
