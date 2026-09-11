@@ -20,6 +20,8 @@
   --shadow-soft: 0 1px 2px rgb(15 18 26 / .04), 0 6px 16px rgb(15 18 26 / .06);
   --shadow-focus: 0 0 0 3px var(--accent-ring);
   --shadow-overlay: 0 24px 48px rgb(15 18 26 / .16), 0 8px 16px rgb(15 18 26 / .08);
+  /* Faithful to index.css:319 — used for every dialog-backdrop scrim so it responds to theme. */
+  --overlay-scrim: rgb(15 18 26 / 0.55);
   --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -32,13 +34,15 @@
     --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
     --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
     --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
-    --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
-    --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
-    --status-error-soft: oklch(28% 0.09 25); --status-error-border: oklch(42% 0.13 25); --status-error-fg: oklch(84% 0.14 25);
-    --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
-    --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
+    --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+    --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+    --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+    --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+    --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
     --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
     --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+    --shadow-overlay: 0 24px 48px rgb(0 0 0 / .60), 0 8px 16px rgb(0 0 0 / .40);
+    --overlay-scrim: rgb(0 0 0 / 0.72);
   }
 }
 :root[data-theme='dark'] {
@@ -49,18 +53,20 @@
   --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
   --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
   --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
-  --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
-  --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
-  --status-error-soft: oklch(28% 0.09 25); --status-error-border: oklch(42% 0.13 25); --status-error-fg: oklch(84% 0.14 25);
-  --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
-  --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
   --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
   --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / .60), 0 8px 16px rgb(0 0 0 / .40);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
 }
 * { box-sizing: border-box; }
 body { margin:0; min-width:320px; background:var(--bg-canvas); color:var(--text-primary); font-family:var(--font-sans); font-size:.875rem; line-height:1.55; }
 h1,h2,h3,p { margin:0; }
-button:focus-visible, input:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-md); }
+button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-md); }
 
 .page{ max-width:760px; margin:0 auto; padding:28px 24px 60px; }
 .eyebrow{ font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-primary-hover); }
@@ -77,6 +83,11 @@ button:focus-visible, input:focus-visible{ outline:none; box-shadow:var(--shadow
 .card__body{ flex:1; min-width:0; }
 .card__title{ font-weight:600; font-size:.9375rem; }
 .card__sub{ font-size:.8125rem; color:var(--text-muted); margin-top:3px; }
+.card__cause{ font-size:.75rem; color:var(--text-muted); margin-top:3px; }
+.card__meta{ display:flex; align-items:center; gap:8px; margin-top:8px; flex-wrap:wrap; }
+.age-badge{ display:inline-flex; align-items:center; gap:4px; font-size:.6875rem; font-weight:600; line-height:1; padding:3px 9px; border-radius:var(--radius-pill); background:var(--bg-surface-muted); color:var(--text-muted); border:1px solid var(--border-subtle); }
+/* Color marks the exception (a return that's been waiting a while), never the normal case — #2507. */
+.age-badge--stale{ background:var(--status-warning-soft); border-color:var(--status-warning-border); color:var(--status-warning-fg); }
 .card__action{ flex-shrink:0; }
 
 .button{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--accent-primary-border); border-radius:var(--radius-md); padding:0 var(--space-4); height:2.125rem; background:var(--accent-primary); color:var(--text-on-primary); font-family:inherit; font-size:.8125rem; font-weight:600; cursor:pointer; box-shadow:var(--shadow-xs); white-space:nowrap; }
@@ -91,33 +102,62 @@ button:focus-visible, input:focus-visible{ outline:none; box-shadow:var(--shadow
 .record-card__title{ font-weight:600; font-size:.875rem; }
 .record-card__desc{ font-size:.8125rem; color:var(--text-muted); margin:4px 0 12px; }
 
-.dialog-backdrop{ position:fixed; inset:0; display:none; place-items:center; padding:24px; background:rgba(22,32,43,.45); z-index:40; }
+.dialog-backdrop{ position:fixed; inset:0; display:none; place-items:center; padding:24px; background:var(--overlay-scrim); z-index:40; overflow-y:auto; }
 .dialog-backdrop.is-open{ display:grid; }
-.dialog{ width:min(100%, 26rem); border:1px solid var(--border-default); border-radius:var(--radius-xl); padding:22px; background:var(--bg-surface); box-shadow:var(--shadow-overlay); }
+.dialog{ width:min(100%, 27rem); border:1px solid var(--border-default); border-radius:var(--radius-xl); padding:22px; background:var(--bg-surface); box-shadow:var(--shadow-overlay); margin:auto; }
 .dialog__title{ font-size:1.125rem; font-weight:600; margin-bottom:4px; }
 .dialog__sub{ font-size:.8125rem; color:var(--text-muted); margin-bottom:16px; }
 .dialog__label{ font-size:.8125rem; font-weight:600; margin-bottom:6px; display:block; }
-input[type=text]{ width:100%; height:2.375rem; border:1px solid var(--border-default); border-radius:var(--radius-md); padding:0 12px; font-family:inherit; font-size:.9375rem; background:var(--bg-surface); color:var(--text-primary); }
-input[aria-invalid=true]{ border-color:var(--status-error); }
+.dialog__field{ margin-bottom:14px; }
+.dialog__field:last-of-type{ margin-bottom:0; }
+.dialog__row{ display:flex; gap:10px; }
+.dialog__row .dialog__field{ flex:1; }
+input[type=text], input[type=number], select{ width:100%; height:2.375rem; border:1px solid var(--border-default); border-radius:var(--radius-md); padding:0 12px; font-family:inherit; font-size:.9375rem; background:var(--bg-surface); color:var(--text-primary); }
+select{ appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%2352606b' stroke-width='1.5' fill='none'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; padding-right:30px; }
+input[aria-invalid=true], select[aria-invalid=true]{ border-color:var(--status-error); }
 .field-hint{ font-size:.75rem; color:var(--text-muted); margin-top:6px; }
 .field-hint--error{ color:var(--status-error-fg); }
 .dialog__warn{ display:flex; gap:8px; padding:10px 12px; border-radius:var(--radius-md); background:var(--status-warning-soft); border:1px solid var(--status-warning-border); font-size:.75rem; color:var(--status-warning-fg); margin-top:14px; }
+.dialog__note{ display:flex; gap:8px; padding:10px 12px; border-radius:var(--radius-md); background:var(--status-info-soft); border:1px solid var(--status-info-border); font-size:.75rem; color:var(--status-info-fg); margin-top:14px; }
 .dialog__actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+
+/* order search — resolves what an operator types to an internal order id (matchOrphanToOrder / recordReturn both take one, never a typed order number) */
+.order-search{ position:relative; }
+.order-search__results{ position:absolute; left:0; right:0; top:calc(100% + 4px); background:var(--bg-surface); border:1px solid var(--border-default); border-radius:var(--radius-md); box-shadow:var(--shadow-soft); max-height:13rem; overflow-y:auto; z-index:5; display:none; }
+.order-search__results.is-open{ display:block; }
+.order-search__result{ display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%; text-align:left; padding:9px 12px; border:none; background:none; font-family:inherit; font-size:.8125rem; color:var(--text-primary); cursor:pointer; }
+.order-search__result:hover, .order-search__result:focus-visible{ background:var(--bg-surface-muted); }
+.order-search__result-buyer{ color:var(--text-muted); }
+.order-search__empty{ padding:10px 12px; font-size:.8125rem; color:var(--text-muted); }
+.order-search__resolved{ display:flex; align-items:center; justify-content:space-between; gap:10px; height:2.375rem; border:1px solid var(--status-success-border); border-radius:var(--radius-md); padding:0 12px; background:var(--status-success-soft); }
+.order-search__resolved-label{ font-size:.875rem; font-weight:600; color:var(--status-success-fg); }
+.order-search__clear{ background:none; border:none; color:var(--text-muted); font-size:.75rem; cursor:pointer; text-decoration:underline; padding:0; }
 
 .toast{ display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border-radius:var(--radius-md); border:1px solid; margin-bottom:18px; }
 .toast--success{ background:var(--status-success-soft); border-color:var(--status-success-border); }
+.toast--success .toast__text b{ color:var(--status-success-fg); }
+.toast--info{ background:var(--status-info-soft); border-color:var(--status-info-border); }
+.toast--info .toast__text b{ color:var(--status-info-fg); }
 .toast__text{ font-size:.8125rem; color:var(--text-secondary); }
 .toast__text b{ color:var(--text-primary); }
 
 .all-done{ text-align:center; padding:36px 20px; color:var(--text-muted); border:1px solid var(--border-subtle); border-radius:var(--radius-lg); background:var(--bg-surface-muted); }
 .all-done__icon{ font-size:1.75rem; margin-bottom:8px; }
 .all-done__title{ font-size:.9375rem; font-weight:600; color:var(--text-primary); }
+
+/* Fixed + above the dialog backdrop (z-index 40) so a reviewer can always
+   jump to another state without dismissing whatever dialog is open first. */
+.demo-toolbar{ position:fixed; left:0; right:0; bottom:0; z-index:50; display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--bg-surface-muted); border-top:1px solid var(--border-default); flex-wrap:wrap; box-shadow:0 -2px 8px rgb(15 18 26 / .08); }
+.page{ padding-bottom:96px; }
+.demo-toolbar__label{ font-family:var(--font-mono); font-size:.625rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin-right:2px; flex-basis:100%; }
+.chip{ display:inline-flex; align-items:center; gap:.25rem; height:1.375rem; padding:0 .55rem; border:1px solid var(--border-subtle); border-radius:var(--radius-pill); background:var(--bg-surface); color:var(--text-secondary); font-size:.6875rem; font-weight:500; cursor:pointer; }
+.chip.chip--active{ background:var(--accent-primary-soft); border-color:var(--accent-primary-border); color:var(--accent-primary-hover); font-weight:600; }
 </style>
 
 <div class="page">
   <p class="eyebrow">Returns</p>
   <h1 class="title" id="pageTitle">Returns waiting on you</h1>
-  <p class="lede">Nothing happens with a return — no restock, no refund, no invoice fix — until it's linked to an order and you've said it's OK.</p>
+  <p class="lede">An unlinked return blocks every downstream action — restock, refund, invoice fix — until it's tied to an order. One you recorded yourself just needs your OK on record.</p>
 
   <div id="toastSlot"></div>
   <div id="groupsSlot"></div>
@@ -125,35 +165,36 @@ input[aria-invalid=true]{ border-color:var(--status-error); }
   <div class="record-card">
     <div class="record-card__title">Got a return with no record anywhere?</div>
     <div class="record-card__desc">For when a customer sends something back and no system knows about it yet.</div>
-    <button class="button button--secondary button--sm" onclick="openRecord()">Record it by hand</button>
+    <button class="button button--secondary button--sm" onclick="setState('record-open')">Record it by hand</button>
+  </div>
+
+  <div class="demo-toolbar" role="group" aria-label="Mockup — not part of the product">
+    <span class="demo-toolbar__label">Mockup — jump to a state</span>
+    <button class="chip chip--active" data-chip="both-groups" onclick="setState('both-groups')">Both groups</button>
+    <button class="chip" data-chip="orphans-only" onclick="setState('orphans-only')">Needs-an-order only</button>
+    <button class="chip" data-chip="pending-only" onclick="setState('pending-only')">Waiting-for-OK only</button>
+    <button class="chip" data-chip="all-done" onclick="setState('all-done')">All caught up</button>
+    <button class="chip" data-chip="toast-matched" onclick="setState('toast-matched')">Post-match toast</button>
+    <button class="chip" data-chip="match-open" onclick="setState('match-open')">Match dialog</button>
+    <button class="chip" data-chip="match-error" onclick="setState('match-error')">Match: unknown order (400)</button>
+    <button class="chip" data-chip="match-conflict" onclick="setState('match-conflict')">Match: already linked (409)</button>
+    <button class="chip" data-chip="authorize-open" onclick="setState('authorize-open')">Authorize dialog</button>
+    <button class="chip" data-chip="authorize-refused" onclick="setState('authorize-refused')">Authorize: refused (409)</button>
+    <button class="chip" data-chip="record-open" onclick="setState('record-open')">Record dialog</button>
   </div>
 </div>
 
 <!-- MATCH dialog -->
 <div class="dialog-backdrop" id="matchDialogBackdrop">
   <div class="dialog" role="dialog" aria-modal="true">
-    <p class="dialog__title">Which order is this?</p>
-    <p class="dialog__sub" id="matchSub">Return —</p>
-    <label class="dialog__label" for="matchOrderId">Order number or ID</label>
-    <input type="text" id="matchOrderId" placeholder="e.g. #9F2E1A" />
-    <p class="field-hint" id="matchHint">Must be an order OpenLinker already has on file.</p>
-    <div class="dialog__warn">⚠ This can't be undone — double-check before confirming.</div>
-    <div class="dialog__actions">
-      <button class="button button--secondary" onclick="closeDialog('matchDialogBackdrop')">Cancel</button>
-      <button class="button" onclick="confirmMatch()">Confirm match</button>
-    </div>
+    <div id="matchDialogBody"></div>
   </div>
 </div>
 
 <!-- AUTHORIZE -->
 <div class="dialog-backdrop" id="authorizeDialogBackdrop">
   <div class="dialog" role="dialog" aria-modal="true">
-    <p class="dialog__title">Give this the OK?</p>
-    <p class="dialog__sub" style="margin-bottom:2px;">You recorded this return yourself. Approving it lets OpenLinker start processing it — restocking, refunding, whatever applies.</p>
-    <div class="dialog__actions">
-      <button class="button button--secondary" onclick="closeDialog('authorizeDialogBackdrop')">Not yet</button>
-      <button class="button" onclick="confirmAuthorize()">Approve</button>
-    </div>
+    <div id="authorizeDialogBody"></div>
   </div>
 </div>
 
@@ -161,11 +202,47 @@ input[aria-invalid=true]{ border-color:var(--status-error); }
 <div class="dialog-backdrop" id="recordDialogBackdrop">
   <div class="dialog" role="dialog" aria-modal="true">
     <p class="dialog__title">Record a return by hand</p>
-    <label class="dialog__label" for="recOrderId" style="margin-top:14px;">Which order?</label>
-    <input type="text" id="recOrderId" placeholder="e.g. #9F2E1A" style="margin-bottom:14px;" />
-    <label class="dialog__label" for="recItem">What came back?</label>
-    <input type="text" id="recItem" placeholder="Item name" />
-    <p class="field-hint">You'll approve it separately before OpenLinker acts on it.</p>
+    <p class="dialog__sub">Every field here is required — OpenLinker can't open a return without knowing which channel and how many units.</p>
+
+    <div class="dialog__field">
+      <label class="dialog__label" for="recOrderSearch">Which order?</label>
+      <div class="order-search" id="recOrderSearchWrap">
+        <input type="text" id="recOrderSearch" placeholder="Order number, or the buyer's name" autocomplete="off" oninput="onOrderSearchInput('rec')" onfocus="onOrderSearchInput('rec')" />
+        <div class="order-search__results" id="recOrderResults"></div>
+      </div>
+      <p class="field-hint" id="recOrderHint">Can't find it by number? Try the buyer's name instead.</p>
+    </div>
+
+    <div class="dialog__field">
+      <label class="dialog__label" for="recConnection">From which connection?</label>
+      <select id="recConnection" onchange="updateRecordConnectionMismatch()">
+        <option value="">Select the channel this return came in on</option>
+      </select>
+      <p class="field-hint">OpenLinker uses this to work out where the item is actually mapped.</p>
+      <div id="recMismatchSlot"></div>
+    </div>
+
+    <div class="dialog__field">
+      <label class="dialog__label" for="recItem">What came back?</label>
+      <input type="text" id="recItem" placeholder="Item name" />
+    </div>
+
+    <div class="dialog__row">
+      <div class="dialog__field">
+        <label class="dialog__label" for="recReason">Why?</label>
+        <select id="recReason">
+          <option value="">Select a reason</option>
+        </select>
+      </div>
+      <div class="dialog__field" style="max-width:7rem;">
+        <label class="dialog__label" for="recQty">Quantity</label>
+        <input type="number" id="recQty" min="1" value="1" />
+      </div>
+    </div>
+
+    <div class="dialog__note">Each submit opens a new return. If you're not sure this one's already recorded, check the lists above first.</div>
+    <p class="field-hint field-hint--error" id="recFormError" style="display:none;">Fill in every field above before recording.</p>
+
     <div class="dialog__actions">
       <button class="button button--secondary" onclick="closeDialog('recordDialogBackdrop')">Cancel</button>
       <button class="button" onclick="saveRecord()">Record it</button>
@@ -174,19 +251,87 @@ input[aria-invalid=true]{ border-color:var(--status-error); }
 </div>
 
 <script>
+/* ── Fixtures ──────────────────────────────────────────────────────────── */
+const AGE_WARN_DAYS = 7;
+
+const CONNECTIONS = [
+  { id: 'conn-allegro-main', label: 'Allegro — Main Shop', channel: 'Allegro' },
+  { id: 'conn-prestashop-eu', label: 'PrestaShop — EU Store', channel: 'PrestaShop' },
+];
+
+// Mirrors RefundReasonValues (libs/core/src/orders/domain/types/refund-record.types.ts).
+const REASONS = [
+  { value: 'withdrawal', label: 'Withdrawal — buyer changed their mind' },
+  { value: 'defective', label: 'Defective or damaged' },
+  { value: 'not_as_described', label: 'Not as described' },
+  { value: 'wrong_item', label: 'Wrong item sent' },
+  { value: 'other', label: 'Other' },
+];
+
+// Stands in for an order-search endpoint. matchOrphanToOrder / recordReturn both
+// take an internalOrderId, never the number an operator would type — so every
+// path here resolves through this list rather than accepting free text.
+// `total` + `placed` are shown next to a candidate so the operator has
+// something to eyeball the return against, beyond "it looked right in search" —
+// an irreversible write needs more evidence than a name match.
+const ORDER_INDEX = [
+  { id: 'ol_order_9f2e1a4b7c3d', number: '#9F2E1A', buyer: 'Anna Kowalska', channel: 'Allegro', total: '268,00 PLN', placed: 'Sep 5' },
+  { id: 'ol_order_5c810fd2e611', number: '#5C810F', buyer: 'Jan Zieliński', channel: 'PrestaShop', total: '129,00 PLN', placed: 'Aug 29' },
+  { id: 'ol_order_2b774e91aa02', number: '#2B774E', buyer: 'Marta Nowak', channel: 'Allegro', total: '249,00 PLN', placed: 'Sep 2' },
+];
+// Selecting + confirming this one simulates the lost-race 409: someone else
+// (an operator, or the returns.orphan.reconcile sweep) attributed it first.
+const ALREADY_ATTRIBUTED_ORDER_ID = 'ol_order_5c810fd2e611';
+
 let ORPHANS = [
-  { id:'r1', label:'AL-RET-88213', sub:'From Allegro · 2 items · came in Sep 8' },
-  { id:'r2', label:'AL-RET-88250', sub:'From Allegro · 1 item · came in Sep 9' },
+  { id:'r1', label:'AL-RET-88213', channel:'Allegro', itemsLabel:'Wireless earbuds, phone case', value:'268,00 PLN', daysAgo:3, since:'Sep 8',
+    cause:"OpenLinker hasn't ingested that order yet" },
+  { id:'r2', label:'AL-RET-88250', channel:'Allegro', itemsLabel:'Running shoes — size 42', value:'249,00 PLN', daysAgo:9, since:'Sep 2',
+    cause:"No order with that number here — might be under a different connection" },
 ];
 let PENDING_APPROVAL = [
-  { id:'r3', label:'PrestaShop return', sub:'1 item, recorded by you on Sep 10' },
+  { id:'r3', label:'PrestaShop return', sub:'1 item, recorded by you on Sep 10', daysAgo:1 },
 ];
 
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-function render() {
-  const total = ORPHANS.length + PENDING_APPROVAL.length;
-  document.getElementById('pageTitle').textContent = total === 0 ? 'Nothing waiting' : `${total} return${total===1?'':'s'} waiting on you`;
+/* ── Page render ───────────────────────────────────────────────────────── */
+function ageBadge(daysAgo, since) {
+  const stale = daysAgo >= AGE_WARN_DAYS;
+  const label = daysAgo === 0 ? 'today' : daysAgo === 1 ? '1 day waiting' : `${daysAgo} days waiting`;
+  const title = since ? ` title="Arrived ${escapeHtml(since)}"` : '';
+  return `<span class="age-badge${stale ? ' age-badge--stale' : ''}"${title}>${stale ? '⏱ ' : ''}${label}</span>`;
+}
+
+function renderOrphanCard(r) {
+  return `<div class="card">
+    <div class="card__body">
+      <div class="card__title">${escapeHtml(r.label)}</div>
+      <div class="card__sub">From ${escapeHtml(r.channel)} · ${escapeHtml(r.itemsLabel)} · ${escapeHtml(r.value)}</div>
+      <div class="card__cause">${escapeHtml(r.cause)}</div>
+      <div class="card__meta">${ageBadge(r.daysAgo, r.since)}</div>
+    </div>
+    <div class="card__action"><button class="button button--sm" data-action="match" data-id="${r.id}" data-label="${escapeHtml(r.label)}" data-channel="${escapeHtml(r.channel)}" data-cause="${escapeHtml(r.cause)}" data-items="${escapeHtml(r.itemsLabel)}" data-value="${escapeHtml(r.value)}">Match to an order</button></div>
+  </div>`;
+}
+
+function renderPendingCard(r) {
+  return `<div class="card">
+    <div class="card__body">
+      <div class="card__title">${escapeHtml(r.label)}</div>
+      <div class="card__sub">${escapeHtml(r.sub)}</div>
+      <div class="card__meta">${ageBadge(r.daysAgo)}</div>
+    </div>
+    <div class="card__action"><button class="button button--secondary button--sm" data-action="authorize" data-id="${r.id}">Approve</button></div>
+  </div>`;
+}
+
+function renderGroups(mode) {
+  const showOrphans = mode !== 'pending-only' && ORPHANS.length > 0;
+  const showPending = mode !== 'orphans-only' && PENDING_APPROVAL.length > 0;
+  const total = (mode === 'orphans-only' ? ORPHANS.length : mode === 'pending-only' ? PENDING_APPROVAL.length : ORPHANS.length + PENDING_APPROVAL.length);
+
+  document.getElementById('pageTitle').textContent = total === 0 ? 'Nothing waiting' : `${total} return${total === 1 ? '' : 's'} waiting on you`;
 
   if (total === 0) {
     document.getElementById('groupsSlot').innerHTML = `<div class="all-done"><div class="all-done__icon">✓</div><div class="all-done__title">All caught up</div></div>`;
@@ -194,84 +339,358 @@ function render() {
   }
 
   let html = '';
-  if (ORPHANS.length > 0) {
+  if (showOrphans) {
     html += `<div class="group">
       <div class="group__header"><span class="group__title">Needs an order</span><span class="group__count">${ORPHANS.length}</span></div>
-      <p class="group__desc">OpenLinker can't tell which order these belong to. Tell it once, and it's permanent.</p>
-      ${ORPHANS.map(r => `<div class="card">
-        <div class="card__body"><div class="card__title">${escapeHtml(r.label)}</div><div class="card__sub">${escapeHtml(r.sub)}</div></div>
-        <div class="card__action"><button class="button button--sm" onclick="openMatch('${r.id}', '${escapeHtml(r.label)}')">Match to an order</button></div>
-      </div>`).join('')}
+      <p class="group__desc">OpenLinker can't tell which order these belong to. Tell it once, and it's permanent — there's no undo.</p>
+      ${ORPHANS.map(renderOrphanCard).join('')}
     </div>`;
   }
-  if (PENDING_APPROVAL.length > 0) {
+  if (showPending) {
     html += `<div class="group">
       <div class="group__header"><span class="group__title">Waiting for your OK</span><span class="group__count">${PENDING_APPROVAL.length}</span></div>
-      <p class="group__desc">You recorded these yourself. OpenLinker won't act until you approve them.</p>
-      ${PENDING_APPROVAL.map(r => `<div class="card">
-        <div class="card__body"><div class="card__title">${escapeHtml(r.label)}</div><div class="card__sub">${escapeHtml(r.sub)}</div></div>
-        <div class="card__action"><button class="button button--secondary button--sm" onclick="openAuthorize('${r.id}')">Approve</button></div>
-      </div>`).join('')}
+      <p class="group__desc">You recorded these yourself. Approving is your OK that it really happened — OpenLinker doesn't wait on it before restocking or refunding; those already follow the return's own state.</p>
+      ${PENDING_APPROVAL.map(renderPendingCard).join('')}
     </div>`;
   }
   document.getElementById('groupsSlot').innerHTML = html;
 }
 
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  if (btn.dataset.action === 'match') {
+    openMatch(btn.dataset.id, {
+      label: btn.dataset.label, channel: btn.dataset.channel,
+      cause: btn.dataset.cause, itemsLabel: btn.dataset.items, value: btn.dataset.value,
+    });
+  }
+  if (btn.dataset.action === 'authorize') openAuthorize(btn.dataset.id, { refused: false });
+});
+
+/* ── Dialog plumbing ──────────────────────────────────────────────────── */
 function openDialog(id){ document.getElementById(id).classList.add('is-open'); }
 function closeDialog(id){ document.getElementById(id).classList.remove('is-open'); }
-document.querySelectorAll('.dialog-backdrop').forEach(bd => bd.addEventListener('click',(e)=>{ if(e.target===bd) bd.classList.remove('is-open'); }));
-document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') document.querySelectorAll('.dialog-backdrop.is-open').forEach(bd=>bd.classList.remove('is-open')); });
+function closeAllDialogs(){ document.querySelectorAll('.dialog-backdrop.is-open').forEach(bd => bd.classList.remove('is-open')); }
+document.querySelectorAll('.dialog-backdrop').forEach(bd => bd.addEventListener('click', (e) => { if (e.target === bd) bd.classList.remove('is-open'); }));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAllDialogs(); });
 
-let matchingId = null;
-function openMatch(id, label) {
-  matchingId = id;
-  document.getElementById('matchSub').textContent = 'Return · ' + label;
-  document.getElementById('matchOrderId').value = '';
-  document.getElementById('matchOrderId').setAttribute('aria-invalid', 'false');
-  document.getElementById('matchHint').textContent = 'Must be an order OpenLinker already has on file.';
-  document.getElementById('matchHint').className = 'field-hint';
-  openDialog('matchDialogBackdrop');
+/* ── Order search (shared by match + record dialogs) ─────────────────── */
+let matchResolved = null; // { id, number, buyer, channel } once an order is picked
+let recResolved = null;
+
+function searchOrders(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  return ORDER_INDEX.filter(o =>
+    o.number.toLowerCase().includes(q.replace(/^#/, '')) ||
+    o.buyer.toLowerCase().includes(q) ||
+    o.channel.toLowerCase().includes(q)
+  );
 }
-function confirmMatch() {
-  const val = document.getElementById('matchOrderId').value.trim();
-  const hint = document.getElementById('matchHint');
-  if (!val) {
-    document.getElementById('matchOrderId').setAttribute('aria-invalid', 'true');
-    hint.textContent = 'Enter an order number.'; hint.className = 'field-hint field-hint--error';
+
+function renderOrderResults(scope, query) {
+  const results = searchOrders(query);
+  const box = document.getElementById(scope + 'OrderResults');
+  if (!query.trim()) { box.classList.remove('is-open'); box.innerHTML = ''; return; }
+  box.innerHTML = results.length
+    ? results.map(o => `<button type="button" class="order-search__result" data-scope="${scope}" data-order-id="${o.id}">
+        <span>${escapeHtml(o.number)} <span class="order-search__result-buyer">— ${escapeHtml(o.buyer)}</span></span>
+        <span class="order-search__result-buyer">${escapeHtml(o.channel)}</span>
+      </button>`).join('')
+    : `<div class="order-search__empty">No orders match &ldquo;${escapeHtml(query)}&rdquo; — check the number, or try the buyer's name.</div>`;
+  box.classList.add('is-open');
+}
+
+function onOrderSearchInput(scope) {
+  const input = document.getElementById(scope + 'OrderSearch');
+  renderOrderResults(scope, input.value);
+}
+
+document.addEventListener('click', (e) => {
+  const result = e.target.closest('.order-search__result');
+  if (result) {
+    resolveOrder(result.dataset.scope, result.dataset.orderId);
     return;
   }
-  if (val.toLowerCase() === '#zzz999') {
-    document.getElementById('matchOrderId').setAttribute('aria-invalid', 'true');
-    hint.textContent = "OpenLinker doesn't have an order with that number."; hint.className = 'field-hint field-hint--error';
+  if (!e.target.closest('.order-search')) {
+    document.querySelectorAll('.order-search__results').forEach(b => b.classList.remove('is-open'));
+  }
+});
+
+// A channel mismatch isn't refused outright (a return can legitimately be
+// re-homed under a different connection — that's one of the two orphan
+// causes above) but it's exactly the kind of fat-finger a permanent write
+// deserves a second look before, so it's surfaced rather than silent.
+function channelMismatchWarning(returnChannel, order) {
+  if (!returnChannel || order.channel === returnChannel) return '';
+  return `<div class="dialog__warn" style="margin-top:8px;">⚠ This order came in via ${escapeHtml(order.channel)}, but the return arrived via ${escapeHtml(returnChannel)} — double-check that's intentional.</div>`;
+}
+
+function resolveOrder(scope, orderId) {
+  const order = ORDER_INDEX.find(o => o.id === orderId);
+  if (!order) return;
+  if (scope === 'match') matchResolved = order; else recResolved = order;
+  const wrap = document.getElementById(scope + 'OrderSearchWrap');
+  wrap.innerHTML = `<div class="order-search__resolved">
+    <span class="order-search__resolved-label">✓ ${escapeHtml(order.number)} — ${escapeHtml(order.buyer)} (${escapeHtml(order.channel)})</span>
+    <button type="button" class="order-search__clear" onclick="clearResolvedOrder('${scope}')">Change</button>
+  </div>
+  <div class="field-hint">Order total ${escapeHtml(order.total)} · placed ${escapeHtml(order.placed)}</div>
+  ${scope === 'match' ? channelMismatchWarning(matchingReturnChannel, order) : ''}`;
+  if (scope === 'match') updateMatchConfirmState();
+  if (scope === 'rec') updateRecordConnectionMismatch();
+}
+
+function clearResolvedOrder(scope) {
+  if (scope === 'match') matchResolved = null; else recResolved = null;
+  const wrap = document.getElementById(scope + 'OrderSearchWrap');
+  wrap.innerHTML = `<input type="text" id="${scope}OrderSearch" placeholder="Order number, or the buyer's name" autocomplete="off" oninput="onOrderSearchInput('${scope}')" onfocus="onOrderSearchInput('${scope}')" />
+    <div class="order-search__results" id="${scope}OrderResults"></div>`;
+  document.getElementById(scope + 'OrderSearch').focus();
+  if (scope === 'match') updateMatchConfirmState();
+  if (scope === 'rec') updateRecordConnectionMismatch();
+}
+
+/* ── Match dialog ─────────────────────────────────────────────────────── */
+let matchingId = null;
+let matchingReturnChannel = null;
+
+// Evidence to check the candidate order against, plus — when the orphan's
+// own cause says OpenLinker just hasn't ingested the order yet — a reminder
+// that the background returns.orphan.reconcile sweep (every 30 min) tries
+// this same attribution automatically, so there's no need to act *right now*
+// on that particular cause.
+function matchFormHtml(ctx) {
+  const reconcileNote = /hasn't ingested/i.test(ctx.cause || '')
+    ? `<div class="dialog__note">OpenLinker also re-checks this automatically every 30 minutes. If the order shows up on file soon, this card may clear on its own — no need to act right now.</div>`
+    : '';
+  return `<p class="dialog__title">Which order is this?</p>
+    <p class="dialog__sub">Return · ${escapeHtml(ctx.label)} · ${escapeHtml(ctx.itemsLabel)} · ${escapeHtml(ctx.value)}</p>
+    <div class="dialog__field">
+      <label class="dialog__label" for="matchOrderSearch">Order number or buyer name</label>
+      <div class="order-search" id="matchOrderSearchWrap">
+        <input type="text" id="matchOrderSearch" placeholder="e.g. #9F2E1A, or “Kowalska”" autocomplete="off" oninput="onOrderSearchInput('match')" onfocus="onOrderSearchInput('match')" />
+        <div class="order-search__results" id="matchOrderResults"></div>
+      </div>
+      <p class="field-hint">Must be an order OpenLinker already has on file. Can't find it by number? Try the buyer's name.</p>
+    </div>
+    ${reconcileNote}
+    <div class="dialog__warn">⚠ This can't be undone — double-check the order total and channel above before confirming.</div>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('matchDialogBackdrop')">Cancel</button>
+      <button class="button" id="matchConfirmBtn" disabled onclick="confirmMatch()">Confirm match</button>
+    </div>`;
+}
+
+function updateMatchConfirmState() {
+  const btn = document.getElementById('matchConfirmBtn');
+  if (btn) btn.disabled = !matchResolved;
+}
+
+function openMatch(id, ctx) {
+  matchingId = id;
+  matchingReturnChannel = ctx.channel || null;
+  matchResolved = null;
+  document.getElementById('matchDialogBody').innerHTML = matchFormHtml(ctx);
+  openDialog('matchDialogBackdrop');
+}
+
+function confirmMatch() {
+  if (!matchResolved) return;
+  if (matchResolved.id === ALREADY_ATTRIBUTED_ORDER_ID) {
+    renderMatchConflict();
     return;
   }
   ORPHANS = ORPHANS.filter(r => r.id !== matchingId);
   closeDialog('matchDialogBackdrop');
-  document.getElementById('toastSlot').innerHTML = `<div class="toast toast--success"><span>✓</span><div class="toast__text"><b>Matched to order ${escapeHtml(val)}.</b> OpenLinker can now restock, refund or correct the invoice for this return.</div></div>`;
-  render();
+  showToast('success', `<b>Matched to order ${escapeHtml(matchResolved.number)}.</b> OpenLinker can now restock, refund or correct the invoice for this return.`);
+  renderGroups(currentGroupMode);
 }
 
+// BLOCKING (Piotr, #3122): the 400 unknown-order refusal, shown directly —
+// jumped to from the toolbar so it doesn't depend on typing a specific string.
+function renderMatchError() {
+  document.getElementById('matchDialogBody').innerHTML = `<p class="dialog__title">Which order is this?</p>
+    <p class="dialog__sub">Return · AL-RET-88213 · Wireless earbuds, phone case · 268,00 PLN</p>
+    <div class="dialog__field">
+      <label class="dialog__label" for="matchOrderSearch">Order number or buyer name</label>
+      <div class="order-search">
+        <input type="text" id="matchOrderSearch" value="#ZZZ999" aria-invalid="true" oninput="onOrderSearchInput('match')" />
+      </div>
+      <p class="field-hint field-hint--error">OpenLinker doesn't have an order with that number — double-check it, or try the buyer's name instead.</p>
+    </div>
+    <div class="dialog__warn">⚠ This can't be undone — double-check before confirming.</div>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('matchDialogBackdrop')">Cancel</button>
+      <button class="button" disabled>Confirm match</button>
+    </div>`;
+}
+
+// BLOCKING (Piotr, #3122): the 409 already-attributed outcome — a normal,
+// non-alarming state (a peer operator or the reconcile sweep won the race),
+// so it reads as informational rather than an error.
+function renderMatchConflict() {
+  document.getElementById('matchDialogBody').innerHTML = `<p class="dialog__title">Already linked</p>
+    <p class="dialog__sub">Return · AL-RET-88213 · Wireless earbuds, phone case · 268,00 PLN</p>
+    <div class="dialog__note">Someone else — another operator, or OpenLinker's own background check — matched this return to an order a moment ago. There's nothing left for you to do here.</div>
+    <div class="dialog__actions">
+      <button class="button" onclick="acknowledgeMatchConflict()">OK, got it</button>
+    </div>`;
+}
+
+function acknowledgeMatchConflict() {
+  ORPHANS = ORPHANS.filter(r => r.id !== matchingId);
+  closeDialog('matchDialogBackdrop');
+  showToast('info', `<b>Already linked.</b> No action needed — someone else got there first.`);
+  renderGroups(currentGroupMode);
+}
+
+/* ── Authorize dialog ─────────────────────────────────────────────────── */
 let authorizingId = null;
-function openAuthorize(id) { authorizingId = id; openDialog('authorizeDialogBackdrop'); }
+
+function authorizeConfirmHtml() {
+  return `<p class="dialog__title">Give this the OK?</p>
+    <p class="dialog__sub" style="margin-bottom:2px;">You recorded this return yourself. Approving it is an audit stamp, not a gate on the parts of OpenLinker that already act on it — it just lets you say "yes, this really happened."</p>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('authorizeDialogBackdrop')">Not yet</button>
+      <button class="button" onclick="confirmAuthorize()">Approve</button>
+    </div>`;
+}
+
+// BLOCKING (Piotr, #3122): return.authorize refuses a source_ingested return
+// (ReturnAuthorizeRefusedError, reason 'source-ingested') with a 409 — the
+// marketplace already decided it, so OpenLinker won't pretend otherwise. This
+// state can't be reached by clicking a card today (only operator-authored
+// returns get an Approve button), so it's reachable from the toolbar only —
+// it exists in case a future surface lets an operator approve across mixed
+// selections, and so the refusal isn't undepictable in the meantime.
+function authorizeRefusedHtml() {
+  return `<p class="dialog__title">Can't approve this one</p>
+    <p class="dialog__sub" style="margin-bottom:2px;">This return came in from Allegro — the marketplace already decided it. OpenLinker only approves returns you recorded yourself here.</p>
+    <div class="dialog__actions">
+      <button class="button button--secondary" onclick="closeDialog('authorizeDialogBackdrop')">Got it</button>
+    </div>`;
+}
+
+function openAuthorize(id, opts) {
+  authorizingId = id;
+  document.getElementById('authorizeDialogBody').innerHTML = (opts && opts.refused) ? authorizeRefusedHtml() : authorizeConfirmHtml();
+  openDialog('authorizeDialogBackdrop');
+}
+
 function confirmAuthorize() {
   PENDING_APPROVAL = PENDING_APPROVAL.filter(r => r.id !== authorizingId);
   closeDialog('authorizeDialogBackdrop');
-  document.getElementById('toastSlot').innerHTML = `<div class="toast toast--success"><span>✓</span><div class="toast__text"><b>Approved.</b> OpenLinker will process this return now.</div></div>`;
-  render();
+  showToast('success', `<b>Approved.</b> It's on the record as confirmed by you.`);
+  renderGroups(currentGroupMode);
 }
 
-function openRecord() {
-  document.getElementById('recOrderId').value = '';
+/* ── Record dialog ────────────────────────────────────────────────────── */
+function populateRecordSelects() {
+  const connSel = document.getElementById('recConnection');
+  const reasonSel = document.getElementById('recReason');
+  if (connSel.options.length === 1) CONNECTIONS.forEach(c => connSel.add(new Option(c.label, c.id)));
+  if (reasonSel.options.length === 1) REASONS.forEach(r => reasonSel.add(new Option(r.label, r.value)));
+}
+
+// The connection picked here is what OpenLinker uses to find where to
+// restock — if it doesn't match the resolved order's own channel, that's a
+// plausible fat-finger with real inventory consequences, so it's flagged
+// rather than silently accepted.
+function updateRecordConnectionMismatch() {
+  const slot = document.getElementById('recMismatchSlot');
+  const connId = document.getElementById('recConnection').value;
+  const connection = CONNECTIONS.find(c => c.id === connId);
+  if (!connection || !recResolved || connection.channel === recResolved.channel) {
+    slot.innerHTML = '';
+    return;
+  }
+  slot.innerHTML = `<div class="dialog__warn" style="margin-top:8px;">⚠ This order came in via ${escapeHtml(recResolved.channel)}, but you picked ${escapeHtml(connection.channel)} as the return's channel — double-check that's intentional.</div>`;
+}
+
+function openRecordFresh() {
+  populateRecordSelects();
+  recResolved = null;
+  clearResolvedOrder('rec');
+  document.getElementById('recConnection').value = '';
   document.getElementById('recItem').value = '';
+  document.getElementById('recReason').value = '';
+  document.getElementById('recQty').value = '1';
+  document.getElementById('recFormError').style.display = 'none';
   openDialog('recordDialogBackdrop');
 }
+
 function saveRecord() {
-  const orderId = document.getElementById('recOrderId').value.trim() || 'this order';
+  const connection = document.getElementById('recConnection').value;
+  const item = document.getElementById('recItem').value.trim();
+  const reason = document.getElementById('recReason').value;
+  const qty = parseInt(document.getElementById('recQty').value, 10);
+  const errorEl = document.getElementById('recFormError');
+
+  // recordReturn requires internalOrderId (resolved, never typed), a real
+  // sourceConnectionId, a closed-enum reason, and a positive quantityAdvised.
+  if (!recResolved || !connection || !item || !reason || !(qty > 0)) {
+    errorEl.style.display = 'block';
+    return;
+  }
+  errorEl.style.display = 'none';
+
   closeDialog('recordDialogBackdrop');
-  document.getElementById('toastSlot').innerHTML = `<div class="toast toast--success"><span>✓</span><div class="toast__text"><b>Recorded.</b> It's now in "Waiting for your OK" below.</div></div>`;
-  PENDING_APPROVAL.push({ id:'r-' + Date.now(), label:'Return you just recorded', sub:`Against ${orderId} · recorded just now` });
-  render();
+  showToast('success', `<b>Recorded.</b> ${escapeHtml(item)} × ${qty} is now in "Waiting for your OK" below.`);
+  PENDING_APPROVAL.push({ id: 'r-' + Date.now(), label: item, sub: `Against ${escapeHtml(recResolved.number)} · recorded just now`, daysAgo: 0 });
+  renderGroups(currentGroupMode);
 }
 
-render();
+/* ── Toast ────────────────────────────────────────────────────────────── */
+function showToast(kind, html) {
+  document.getElementById('toastSlot').innerHTML = `<div class="toast toast--${kind}"><span>${kind === 'success' ? '✓' : 'ℹ'}</span><div class="toast__text">${html}</div></div>`;
+}
+
+/* ── Demo state switcher ──────────────────────────────────────────────── */
+let currentGroupMode = 'both-groups';
+
+function setState(name) {
+  document.body.dataset.state = name;
+  document.querySelectorAll('.demo-toolbar .chip[data-chip]').forEach(c => c.classList.toggle('chip--active', c.dataset.chip === name));
+  closeAllDialogs();
+  document.getElementById('toastSlot').innerHTML = '';
+
+  if (['both-groups', 'orphans-only', 'pending-only', 'all-done'].includes(name)) {
+    currentGroupMode = name;
+    renderGroups(name);
+    return;
+  }
+  renderGroups(currentGroupMode);
+
+  switch (name) {
+    case 'toast-matched':
+      showToast('success', `<b>Matched to order #9F2E1A.</b> OpenLinker can now restock, refund or correct the invoice for this return.`);
+      break;
+    case 'match-open':
+      openMatch('r1', { label: 'AL-RET-88213', channel: 'Allegro', cause: "OpenLinker hasn't ingested that order yet", itemsLabel: 'Wireless earbuds, phone case', value: '268,00 PLN' });
+      break;
+    case 'match-error':
+      openDialog('matchDialogBackdrop');
+      renderMatchError();
+      break;
+    case 'match-conflict':
+      matchingId = 'r1';
+      matchingReturnChannel = 'Allegro';
+      openDialog('matchDialogBackdrop');
+      renderMatchConflict();
+      break;
+    case 'authorize-open':
+      openAuthorize('r3', { refused: false });
+      break;
+    case 'authorize-refused':
+      openAuthorize('demo-source-ingested', { refused: true });
+      break;
+    case 'record-open':
+      openRecordFresh();
+      break;
+  }
+}
+
+setState('both-groups');
 </script>
