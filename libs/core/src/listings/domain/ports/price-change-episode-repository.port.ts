@@ -39,22 +39,37 @@ export interface PriceChangeEpisodeRepositoryPort {
    * `ReservationShortfallRepositoryPort.openEpisode`'s `ON CONFLICT DO UPDATE`
    * shape against the partial unique index).
    *
-   * Returns the resulting row plus whether this call REFRESHED an
-   * already-open episode (as opposed to opening a fresh one) — the caller
-   * uses that to decide whether to stamp `refreshedAt` (#3143's staleness
-   * marker), which only makes sense on the refresh path.
+   * **The conflict arm's write set IS the contract** (the
+   * `ReturnRepositoryPort.upsertFromSource` precedent): it updates
+   * `sourceNewAmount`, `computedNewAmount`, `sourceCurrency`, `blockReason`
+   * and `updatedAt` — and DELIBERATELY never touches `sourceOldAmount`,
+   * `computedOldAmount`, or `detectedAt`, which stay pinned to the episode's
+   * ORIGINAL detection for the life of the row (#3159 depends on this by
+   * name: those three describe when/at-what-price the condition first
+   * arose, not its current state).
+   *
+   * Returns the resulting row plus whether this call's WRITE was the conflict
+   * arm (an existing open row was updated) rather than a fresh INSERT —
+   * `wasRefresh: true` does **not** by itself mean `episode.refreshedAt` was
+   * (re-)stamped. `refreshedAt` is stamped by this SAME write, and only when
+   * the conflict arm's incoming `sourceNewAmount` genuinely differs from what
+   * was already stored — i.e. the price changed again while the episode
+   * stood open, unreviewed (#3143's staleness marker). A conflict-arm write
+   * that repeats an already-stored `sourceNewAmount` (e.g. the same source
+   * price re-observed on the next poll) reports `wasRefresh: true` but leaves
+   * `refreshedAt` exactly as it was.
    */
   upsertOpen(
     input: UpsertOpenPriceChangeEpisodeInput
   ): Promise<{ episode: PriceChangeEpisode; wasRefresh: boolean }>;
 
-  /** Every open episode for a destination connection, paged + filtered for the review queue. */
+  /** Every open episode for a destination connection, filtered for the review queue. Unbounded — see `countOpen` / `countOpenBySource` for the operator-facing counts; pagination is not yet implemented on this read (tracked for the #3162 HTTP surface). */
   findOpenForConnection(
     destinationConnectionId: string,
     filters?: PriceChangeEpisodeFilters
   ): Promise<readonly PriceChangeEpisode[]>;
 
-  /** Every open episode across the install (no destination scope) for the review queue's "All" filter. */
+  /** Every open episode across the install (no destination scope) for the review queue's "All" filter. Unbounded, same caveat as `findOpenForConnection`. */
   findOpenAll(filters?: PriceChangeEpisodeFilters): Promise<readonly PriceChangeEpisode[]>;
 
   /**
@@ -74,9 +89,26 @@ export interface PriceChangeEpisodeRepositoryPort {
    * Re-open a previously-`ignored` episode (the review queue's row-level
    * Undo, #3147/#3145). Guarded to only reverse an `'ignored'` resolution —
    * an already-published price is never un-published by this call.
+   *
+   * `false` means the row was not an ignored, resolved episode (already
+   * accepted, still open, or unknown). A rival episode already open for the
+   * same key — an operator ignoring E, then a later detection opening a
+   * fresh F for the same key, then the operator clicking Undo on E — raises
+   * `PriceChangeEpisodeSupersededError` rather than either returning `true`
+   * (which would leave two open episodes for one key) or letting a raw
+   * unique-violation escape the port.
    */
   reopenIgnored(id: string): Promise<boolean>;
 
   /** Count of open episodes matching the filters, for badge/tab counters. */
   countOpen(filters?: PriceChangeEpisodeFilters): Promise<number>;
+
+  /**
+   * Open-episode count per source connection, for a single destination — one
+   * `GROUP BY` read rather than one `countOpen` call per source in a loop
+   * (`docs/engineering-standards.md § When A Paginated Total Is Expensive`;
+   * the #2083 batched-read rule). Sources with zero open episodes are absent
+   * from the map, never present with `0`.
+   */
+  countOpenBySource(destinationConnectionId: string): Promise<ReadonlyMap<string, number>>;
 }

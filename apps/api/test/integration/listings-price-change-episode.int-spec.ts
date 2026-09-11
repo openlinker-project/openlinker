@@ -180,4 +180,115 @@ describe('Price Change Episode Repository Integration', () => {
     const reopenAcceptedAttempt = await repository.reopenIgnored(episode.id);
     expect(reopenAcceptedAttempt).toBe(false);
   });
+
+  it('reopenIgnored() refuses (returns false, never throws) when a newer episode already claims the key — ignore → detect → unresolve', async () => {
+    // Operator ignores episode E.
+    const { episode: e } = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      computedOldAmount: 427,
+      computedNewAmount: 399,
+    });
+    await repository.resolve(e.id, 'ignored', 'user-1', null, new Date('2026-09-10T11:00:00.000Z'));
+
+    // E leaves the open index, so a later detection opens a FRESH episode F
+    // for the same key rather than refreshing E (this PR's own earlier test
+    // proves a resolved row frees the key).
+    const { episode: f, wasRefresh } = await repository.upsertOpen({
+      ...baseInput,
+      detectedAt: new Date('2026-09-10T12:00:00.000Z'),
+      sourceOldAmount: 327,
+      sourceNewAmount: 300,
+      computedOldAmount: 399,
+      computedNewAmount: 365,
+    });
+    expect(wasRefresh).toBe(false);
+    expect(f.id).not.toBe(e.id);
+
+    // The operator only now clicks Undo on E — refused, not a raw 23505.
+    const reopenResult = await repository.reopenIgnored(e.id);
+    expect(reopenResult).toBe(false);
+
+    // E stays resolved; F stays the one open episode for the key.
+    const readE = await repository.findById(e.id);
+    expect(readE?.isOpen()).toBe(false);
+    const openForKey = await repository.findOpenByKey(
+      VARIANT_ID,
+      DEST_CONNECTION_ID,
+      SRC_CONNECTION_ID
+    );
+    expect(openForKey?.id).toBe(f.id);
+  });
+
+  it('upsertOpen() only stamps refreshedAt when the re-detected sourceNewAmount actually differs', async () => {
+    const first = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      computedOldAmount: 427,
+      computedNewAmount: 399,
+    });
+    expect(first.episode.refreshedAt).toBeNull();
+
+    // A re-detection reporting the SAME sourceNewAmount (e.g. the same source
+    // price re-observed on the next poll) is a conflict-arm write
+    // (wasRefresh: true) but must NOT stamp refreshedAt — nothing changed.
+    const repeated = await repository.upsertOpen({
+      ...baseInput,
+      detectedAt: new Date('2026-09-10T11:00:00.000Z'),
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      computedOldAmount: 427,
+      computedNewAmount: 399,
+    });
+    expect(repeated.wasRefresh).toBe(true);
+    expect(repeated.episode.refreshedAt).toBeNull();
+
+    // A re-detection reporting a genuinely DIFFERENT sourceNewAmount stamps it.
+    const changed = await repository.upsertOpen({
+      ...baseInput,
+      detectedAt: new Date('2026-09-10T12:00:00.000Z'),
+      sourceOldAmount: 350,
+      sourceNewAmount: 310,
+      computedOldAmount: 427,
+      computedNewAmount: 378,
+    });
+    expect(changed.wasRefresh).toBe(true);
+    expect(changed.episode.refreshedAt).not.toBeNull();
+  });
+
+  it('countOpen() / countOpenBySource() report real counts without materialising every row', async () => {
+    const otherSourceId = '66666666-6666-4666-8666-666666666666';
+    await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      computedOldAmount: 427,
+      computedNewAmount: 399,
+    });
+    await repository.upsertOpen({
+      ...baseInput,
+      productVariantId: 'ol_variant_price_change_2',
+      sourceConnectionId: otherSourceId,
+      sourceOldAmount: 100,
+      sourceNewAmount: 90,
+      computedOldAmount: 120,
+      computedNewAmount: 108,
+    });
+
+    expect(await repository.countOpen()).toBe(2);
+    expect(await repository.countOpen({ destinationConnectionId: DEST_CONNECTION_ID })).toBe(2);
+    expect(
+      await repository.countOpen({
+        destinationConnectionId: DEST_CONNECTION_ID,
+        sourceConnectionId: otherSourceId,
+      })
+    ).toBe(1);
+
+    const bySource = await repository.countOpenBySource(DEST_CONNECTION_ID);
+    expect(bySource.get(SRC_CONNECTION_ID)).toBe(1);
+    expect(bySource.get(otherSourceId)).toBe(1);
+    expect(bySource.has('no-such-source')).toBe(false);
+  });
 });
