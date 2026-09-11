@@ -26,13 +26,19 @@
  * hydrated episode rows — the same call also closes the read-cost finding
  * below, since neither read needs a second per-source query in a loop.
  *
+ * **One connection dependency, not two (#3163 review, suggestion).** An
+ * earlier revision injected both the core `ConnectionPort` (for reads) and
+ * `IConnectionService` (for the write, to reach its re-validation). Every
+ * read this service needs (`get`/`list`) is also on `IConnectionService` —
+ * it wraps `ConnectionPort` with exactly that surface — so the second
+ * dependency bought nothing and only widened what a test double has to
+ * satisfy. `IConnectionService` is kept as the sole dependency throughout.
+ *
  * @module apps/api/src/integrations/application/services
  * @implements {IConnectionPricingSyncService}
  */
 import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import {
-  CONNECTION_PORT_TOKEN,
-  type ConnectionPort,
   type Connection,
   type ConnectionConfig,
   type PriceSyncMode,
@@ -42,16 +48,16 @@ import {
   readPricingRuleForSource,
   readPriceSyncModeForSource,
 } from '@openlinker/core/identifier-mapping';
-import {
-  PRICE_CHANGES_SERVICE_TOKEN,
-  type IPriceChangesService,
-} from '@openlinker/core/listings';
+import { PRICE_CHANGES_SERVICE_TOKEN, type IPriceChangesService } from '@openlinker/core/listings';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
 import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
-import { CONNECTION_SERVICE_TOKEN, type IConnectionService } from '../interfaces/connection.service.interface';
+import {
+  CONNECTION_SERVICE_TOKEN,
+  type IConnectionService,
+} from '../interfaces/connection.service.interface';
 import type { IConnectionPricingSyncService } from '../interfaces/connection-pricing-sync.service.interface';
 import type {
   ConnectionAsSourceEntry,
@@ -84,8 +90,6 @@ const PRICING_SYNC_LOCK_TTL_MS = 15_000;
 @Injectable()
 export class ConnectionPricingSyncService implements IConnectionPricingSyncService {
   constructor(
-    @Inject(CONNECTION_PORT_TOKEN)
-    private readonly connections: ConnectionPort,
     @Inject(CONNECTION_SERVICE_TOKEN)
     private readonly connectionService: IConnectionService,
     @Inject(PRICE_CHANGES_SERVICE_TOKEN)
@@ -97,7 +101,7 @@ export class ConnectionPricingSyncService implements IConnectionPricingSyncServi
   ) {}
 
   async getPricingSync(connectionId: string): Promise<ConnectionPricingSyncView> {
-    const connection = await this.connections.get(connectionId);
+    const connection = await this.connectionService.get(connectionId);
     return this.buildView(connection);
   }
 
@@ -115,7 +119,7 @@ export class ConnectionPricingSyncService implements IConnectionPricingSyncServi
     }
 
     try {
-      const connection = await this.connections.get(connectionId);
+      const connection = await this.connectionService.get(connectionId);
 
       if (
         input.expectedUpdatedAt !== undefined &&
@@ -169,10 +173,9 @@ export class ConnectionPricingSyncService implements IConnectionPricingSyncServi
   }
 
   async getAsSource(connectionId: string): Promise<ConnectionAsSourceEntry[]> {
-    const allConnections = await this.connections.list();
-    const destinationIdsFromEpisodes = await this.priceChanges.listOpenDestinationConnectionIds(
-      connectionId
-    );
+    const allConnections = await this.connectionService.list();
+    const destinationIdsFromEpisodes =
+      await this.priceChanges.listOpenDestinationConnectionIds(connectionId);
     const destinationIdSet = new Set(destinationIdsFromEpisodes);
 
     const entries: ConnectionAsSourceEntry[] = [];
@@ -184,7 +187,8 @@ export class ConnectionPricingSyncService implements IConnectionPricingSyncServi
       const syncConfig = readPriceSyncModeConfig(destination.config);
       const modeOverridden = connectionId in syncConfig.sourceOverrides;
       const ruleOverridden = connectionId in pricingConfig.sourceOverrides;
-      const knownAsSource = modeOverridden || ruleOverridden || destinationIdSet.has(destination.id);
+      const knownAsSource =
+        modeOverridden || ruleOverridden || destinationIdSet.has(destination.id);
       if (!knownAsSource) {
         continue;
       }
@@ -224,7 +228,7 @@ export class ConnectionPricingSyncService implements IConnectionPricingSyncServi
         `Connection ${connection.id} (adapter ${metadata.adapterKey}) cannot receive a pricing ` +
           'rule: its adapter supports neither OfferManager nor ProductPublisher, so ADR-072 ' +
           'decision 2 reserves the default rule + per-source overrides to a viable destination ' +
-          "connection. Configure pricing on the destination connection that publishes this " +
+          'connection. Configure pricing on the destination connection that publishes this ' +
           'catalog instead.'
       );
     }
@@ -244,7 +248,7 @@ export class ConnectionPricingSyncService implements IConnectionPricingSyncServi
 
     // One batched read rather than one `connections.get()` per source
     // (#3163 review, finding 6 — the #2083 rule).
-    const allConnections = await this.connections.list();
+    const allConnections = await this.connectionService.list();
     const connectionsById = new Map(allConnections.map((c) => [c.id, c] as const));
 
     const sources = [...sourceIds].map((sourceId) => {

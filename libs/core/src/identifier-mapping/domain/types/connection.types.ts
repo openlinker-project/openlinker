@@ -227,6 +227,3 @@ export interface ConnectionFilters {
   platformType?: PlatformType;
   status?: ConnectionStatus;
 }
-
-
-

@@ -14,7 +14,7 @@
  *
  * @module apps/api/src/integrations/http
  */
-import { Controller, Get, Inject, Param, Patch, Body } from '@nestjs/common';
+import { Controller, Get, Inject, Param, ParseUUIDPipe, Patch, Body } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
@@ -38,21 +38,36 @@ export class ConnectionPricingSyncController {
 
   @Get()
   @Roles('admin', 'operator', 'viewer')
-  @ApiOperation({ summary: "A destination connection's default + per-source pricing rule and sync mode." })
+  @ApiOperation({
+    summary: "A destination connection's default + per-source pricing rule and sync mode.",
+  })
   @ApiResponse({ status: 200, type: ConnectionPricingSyncResponseDto })
-  async get(@Param('connectionId') connectionId: string): Promise<ConnectionPricingSyncResponseDto> {
+  async get(
+    @Param('connectionId', ParseUUIDPipe) connectionId: string
+  ): Promise<ConnectionPricingSyncResponseDto> {
     const view = await this.pricingSync.getPricingSync(connectionId);
     return ConnectionPricingSyncResponseDto.fromDomain(view);
   }
 
   @Patch()
   @Roles('admin')
-  @ApiOperation({ summary: 'Save the default + per-source pricing rule and sync mode (explicit-Save, no partial patch).' })
+  @ApiOperation({
+    summary:
+      'Save the default + per-source pricing rule and sync mode (explicit-Save, no partial patch).',
+  })
   @ApiResponse({ status: 200, type: ConnectionPricingSyncResponseDto })
-  @ApiResponse({ status: 400, description: 'A rule/mode entry does not match the accepted shapes, or the connection cannot be a pricing destination.' })
-  @ApiResponse({ status: 409, description: 'A concurrent write was detected (lock contention, or a stale `expectedUpdatedAt`).' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'A rule/mode entry does not match the accepted shapes, or the connection cannot be a pricing destination.',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'A concurrent write was detected (lock contention, or a stale `expectedUpdatedAt`).',
+  })
   async update(
-    @Param('connectionId') connectionId: string,
+    @Param('connectionId', ParseUUIDPipe) connectionId: string,
     @Body() dto: UpdatePricingSyncDto
   ): Promise<ConnectionPricingSyncResponseDto> {
     const view = await this.pricingSync.updatePricingSync(connectionId, {
@@ -71,7 +86,7 @@ export class ConnectionPricingSyncController {
   })
   @ApiResponse({ status: 200, type: [ConnectionAsSourceEntryResponseDto] })
   async asSource(
-    @Param('connectionId') connectionId: string
+    @Param('connectionId', ParseUUIDPipe) connectionId: string
   ): Promise<ConnectionAsSourceEntryResponseDto[]> {
     const entries = await this.pricingSync.getAsSource(connectionId);
     return entries.map((entry) => ConnectionAsSourceEntryResponseDto.fromDomain(entry));
