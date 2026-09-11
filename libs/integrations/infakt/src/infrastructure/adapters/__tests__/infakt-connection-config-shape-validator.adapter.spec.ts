@@ -76,6 +76,57 @@ describe('InfaktConnectionConfigShapeValidatorAdapter', () => {
     );
   });
 
+  describe('bare-host baseUrl override missing /api/v3 (#3030)', () => {
+    it('should reject a bare-host override with no path at all', async () => {
+      await expect(validator.validate({ baseUrl: 'https://api.infakt.pl' })).rejects.toMatchObject(
+        {
+          pluginName: 'Infakt',
+          errors: [{ path: 'baseUrl', message: expect.stringContaining('/api/v3') }],
+        },
+      );
+    });
+
+    it('should reject a bare-host override with only a trailing slash', async () => {
+      await expect(
+        validator.validate({ baseUrl: 'https://api.infakt.pl/' }),
+      ).rejects.toMatchObject({
+        errors: [{ path: 'baseUrl', message: expect.stringContaining('/api/v3') }],
+      });
+    });
+
+    it('should resolve when baseUrl already carries the /api/v3 path', async () => {
+      await expect(
+        validator.validate({ baseUrl: 'https://api.infakt.pl/api/v3' }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should resolve when baseUrl is the sandbox host with /api/v3', async () => {
+      await expect(
+        validator.validate({ baseUrl: 'https://api.sandbox-infakt.pl/api/v3' }),
+      ).resolves.toBeUndefined();
+    });
+
+    // An operator-run proxy mounted under its own path must not be refused
+    // just because that path isn't literally /api/v3 — see
+    // `isRootPathInfaktBaseUrlOverride`'s own docblock for why this package
+    // cannot verify a proxy's internal routing.
+    it('should resolve when baseUrl carries a distinct, non-/api/v3 path (operator proxy)', async () => {
+      await expect(
+        validator.validate({ baseUrl: 'https://proxy.internal.example/infakt' }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should still surface the https rejection first for a plain-http bare host', async () => {
+      // Guards against the two checks racing / re-ordering: a plain-http
+      // bare host must fail on "must use https", not "must include /api/v3".
+      await expect(
+        validator.validate({ baseUrl: 'http://api.infakt.pl' }),
+      ).rejects.toMatchObject({
+        errors: [{ path: 'baseUrl', message: 'must use https' }],
+      });
+    });
+  });
+
   it('should carry a flat { path, message } issue for baseUrl', async () => {
     await expect(validator.validate({ baseUrl: 'not-a-url' })).rejects.toMatchObject({
       pluginName: 'Infakt',
