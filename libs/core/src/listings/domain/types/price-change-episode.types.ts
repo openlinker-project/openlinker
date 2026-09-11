@@ -28,10 +28,25 @@ export type PriceChangeResolution = (typeof PriceChangeResolutionValues)[number]
  * a pure function decides the reason, the owning service persists it, and it is
  * re-decided on every relevant detection pass — never inferred client-side.
  *
- * `'currency-mismatch'` is the only reason in v1 (ADR-072 decision 4): a
- * source/destination currency mismatch is never silently converted.
+ * `'currency-mismatch'` (ADR-072 decision 4): a source/destination currency
+ * mismatch is never silently converted.
+ *
+ * `'destination-currency-unknown'` (#3159 review): an UNKNOWN destination
+ * currency is never treated as "known to match" — the ADR-061 /
+ * `buyerHasTaxId` (#2599) precedent applied here. It blocks the AUTOMATIC
+ * bypass specifically (a currency OL cannot verify must never be published
+ * without review) while still opening a reviewable episode, so the operator
+ * is told OL cannot verify the currency rather than having it assumed away.
+ * On the repo's current topology `Connection.config.currency` is written by
+ * exactly one surface (a PrestaShop SOURCE setup form) and never by a
+ * destination form, so this reason is expected to fire for most real
+ * installs until a destination-currency-resolution follow-up ships (see
+ * `readConnectionCurrency`'s docblock).
  */
-export const PriceChangeBlockReasonValues = ['currency-mismatch'] as const;
+export const PriceChangeBlockReasonValues = [
+  'currency-mismatch',
+  'destination-currency-unknown',
+] as const;
 export type PriceChangeBlockReason = (typeof PriceChangeBlockReasonValues)[number];
 
 export function isPriceChangeResolution(value: unknown): value is PriceChangeResolution {
@@ -58,7 +73,14 @@ export interface UpsertOpenPriceChangeEpisodeInput {
   sourceCurrency: string;
   sourceOldAmount: number;
   sourceNewAmount: number;
-  computedOldAmount: number;
+  /**
+   * `null` means "no prior computed value to compare" — a brand-new mapping
+   * with no recorded baseline (#3159 review). Never `0` overloaded as that
+   * sentinel: `0` is a real (if edge-case) baseline — e.g. a previously-free
+   * product now carrying a price — and `PriceChangeEpisode.deltaPct()` must
+   * tell the two apart rather than reporting a fabricated "down" direction.
+   */
+  computedOldAmount: number | null;
   computedNewAmount: number;
   blockReason: PriceChangeBlockReason | null;
   detectedAt: Date;
