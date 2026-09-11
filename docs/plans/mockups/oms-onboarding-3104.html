@@ -1,311 +1,1473 @@
-<title>OMS Onboarding</title>
+<title>Pack bench setup</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
+/* ============================================================================
+   Tokens — copied VERBATIM from apps/web/src/index.css (:root 185-386,
+   html[data-theme='dark'] 395-505). Do not hand-tune: the mockup is only
+   useful if a colour here is the colour that ships.
+
+   The app selects dark with the `data-theme` attribute ALONE (the FOUC guard
+   in index.html resolves `system` to a literal light|dark before paint, so the
+   attribute is never absent). A standalone mockup has no such guard, so the
+   `prefers-color-scheme` block below exists only to make this file readable in
+   a browser with no theme chosen. Both blocks carry identical values.
+   ========================================================================= */
 :root, [data-theme='light'] {
   --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80);
-  --bg-surface: #ffffff; --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface: #ffffff; --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80); --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80); --bg-strong: oklch(93% 0.006 80);
   --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80);
-  --border-strong: oklch(78% 0.010 80);
+  --border-strong: oklch(78% 0.010 80); --border-focus: oklch(68% 0.18 50);
   --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80);
   --text-muted: oklch(52% 0.008 80); --text-disabled: oklch(70% 0.005 80);
-  --text-on-primary: oklch(18% 0.012 50);
+  --text-on-primary: oklch(18% 0.012 50); --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
   --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50);
-  --accent-primary-soft: oklch(96% 0.04 60); --accent-primary-border: oklch(85% 0.10 55);
+  --accent-primary-active: oklch(56% 0.20 50); --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-border: oklch(85% 0.10 55); --accent-focus: oklch(68% 0.18 50);
   --accent-ring: oklch(68% 0.18 50 / 0.30);
   --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150);
   --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
   --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85);
   --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
   --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245);
   --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
-  --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
-  --space-2:.5rem; --space-3:.75rem; --space-4:1rem; --space-5:1.5rem;
-  --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:9999px;
+  --status-info-strong: oklch(40% 0.12 245);
+  --status-review: oklch(58% 0.16 290); --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290); --status-review-fg: oklch(42% 0.14 290);
+  --status-disabled: oklch(55% 0.008 80); --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
   --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
-  --shadow-soft: 0 1px 2px rgb(15 18 26 / .04), 0 6px 16px rgb(15 18 26 / .06);
-  --shadow-overlay: 0 24px 48px rgb(15 18 26 / .16), 0 8px 16px rgb(15 18 26 / .08);
   --shadow-focus: 0 0 0 3px var(--accent-ring);
-  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+  --button-primary-bg-hover: oklch(62% 0.19 50);
+  --shell-topbar-height: 52px;
+  --space-1:.25rem; --space-2:.5rem; --space-3:.75rem; --space-4:1rem;
+  --space-5:1.5rem; --space-6:2rem; --space-7:3rem;
+  --radius-xs:4px; --radius-sm:6px; --radius-md:8px; --radius-lg:10px;
+  --radius-xl:14px; --radius-pill:9999px;
+  --duration-fast:120ms; --duration-normal:180ms; --ease-out:cubic-bezier(.16,1,.3,1);
+  --tracking-tight:-.012em; --tracking-wide:.02em; --tracking-caps:.08em;
+  --font-sans:'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
-    --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270);
-    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
-    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
-    --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
-    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
-    --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
-    --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
-    --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
-    --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
-    --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
-    --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
-    --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
-  }
-}
-:root[data-theme='dark'] {
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) {
+  color-scheme: dark;
   --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
-  --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270);
-  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --bg-surface: oklch(19% 0.007 270); --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270); --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270); --bg-strong: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270); --border-focus: oklch(72% 0.18 50);
   --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
-  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
+  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
   --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
-  --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
-  --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
-  --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
-  --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
-  --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
-  --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+  --accent-primary-active: oklch(84% 0.16 50); --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-border: oklch(40% 0.14 55); --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+  --status-review: oklch(74% 0.14 290); --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+  --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / .40), 0 8px 24px rgb(0 0 0 / .40);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / .60), 0 8px 16px rgb(0 0 0 / .40);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / .40);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / .04);
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+} }
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270); --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270); --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270); --bg-strong: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270); --border-focus: oklch(72% 0.18 50);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50); --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-border: oklch(40% 0.14 55); --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+  --status-review: oklch(74% 0.14 290); --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+  --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / .40), 0 8px 24px rgb(0 0 0 / .40);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / .60), 0 8px 16px rgb(0 0 0 / .40);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / .40);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / .04);
+  --button-primary-bg-hover: oklch(78% 0.18 50);
 }
+
+/* ── base ─────────────────────────────────────────────────────────────── */
 * { box-sizing: border-box; }
-body { margin:0; min-width:320px; background:var(--bg-canvas); color:var(--text-primary); font-family:var(--font-sans); font-size:.875rem; line-height:1.55; }
-h1,h2,h3,p { margin:0; }
-button:focus-visible, a:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-md); }
-.wrap{ max-width:760px; margin:0 auto; padding:40px 24px 80px; }
-.eyebrow{ font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-primary-hover); }
-.title{ font-size:2rem; font-weight:600; letter-spacing:-.02em; margin-top:6px; }
-.lede{ color:var(--text-secondary); font-size:1rem; max-width:60ch; margin-top:10px; }
+[hidden] { display: none !important; }
+body { margin:0; min-width:320px; background:var(--bg-canvas); color:var(--text-primary);
+  font-family:var(--font-sans); font-size:.8125rem; line-height:1.5;
+  -webkit-font-smoothing:antialiased; font-feature-settings:'cv11','ss01'; }
+h1,h2,h3,p,ul,ol,dl { margin:0; }
+a { color:var(--accent-primary-hover); text-decoration:underline; text-underline-offset:.16em; }
+button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-sm); }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+.mono-text { font-family:var(--font-mono); }
+code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface-muted);
+  padding:1px 4px; border-radius:var(--radius-xs); }
 
-.progress{ display:flex; gap:6px; margin:24px 0 32px; }
-.progress__seg{ flex:1; height:4px; border-radius:2px; background:var(--border-default); }
-.progress__seg--done{ background:var(--status-success); }
+/* ── app shell — apps/web/src/app/app-shell.tsx + index.css 1122-1675 ──
+   The shell's own CSS uses raw px on the 4px grid's edges (`.shell-content`
+   padding 20/24/32, `.shell-nav__link` padding 6px 8px). Reproduced as shipped
+   rather than "corrected" onto tokens — a mockup whose shell differs from the
+   app is a mockup that lies about the thing it is quoting.
+   -------------------------------------------------------------------- */
+.shell { min-height:100vh; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto 1fr; }
+@media (min-width:1024px){ .shell{ grid-template-columns:240px minmax(0,1fr); } }
+.shell-sidebar{ display:none; }
+@media (min-width:1024px){ .shell-sidebar{ display:flex; flex-direction:column; background:var(--bg-shell);
+  border-right:1px solid var(--border-subtle); padding:12px 0; position:sticky; top:0; height:100vh; overflow:hidden; } }
+.shell-brand{ display:flex; align-items:center; gap:8px; padding:4px 16px 16px; }
+.shell-brand__mark{ width:26px; height:26px; border-radius:var(--radius-sm); background:var(--accent-primary);
+  display:grid; place-items:center; color:var(--text-on-primary); font-weight:700; font-size:13px; flex-shrink:0; }
+.shell-brand__name{ font-weight:600; font-size:14px; letter-spacing:var(--tracking-tight); }
+.context-chip{ border:1px solid var(--border-strong); border-radius:var(--radius-pill); padding:1px 7px;
+  background:var(--bg-surface-elevated); font-size:.625rem; font-weight:600;
+  color:var(--text-secondary); margin-left:auto; }
+.shell-nav{ flex:1; overflow-y:auto; padding:0 12px; }
+.shell-nav__group{ margin-bottom:16px; }
+.shell-nav__label{ margin:0 0 4px; padding:0 8px; font-size:10px; font-weight:600;
+  letter-spacing:.11em; text-transform:uppercase; color:var(--text-muted); }
+.shell-nav__list{ list-style:none; padding:0; margin:0; display:grid; gap:1px; }
+.shell-nav__link{ display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:var(--radius-sm);
+  color:var(--text-secondary); font-size:13px; font-weight:500; text-decoration:none; }
+.shell-nav__link:hover{ background:var(--bg-surface-muted); color:var(--text-primary); }
+.shell-nav__link--active{ background:var(--bg-surface-muted); color:var(--text-primary); font-weight:600;
+  box-shadow:inset 2px 0 0 var(--accent-primary); }
+.shell-nav__link-count{ margin-left:auto; font-family:var(--font-mono); font-size:11px; color:var(--text-muted); }
+.shell-nav__link--pending{ opacity:.5; font-style:italic; }
+.shell-workspace{ border-top:1px solid var(--border-subtle); padding:12px 16px 4px; margin-top:auto; }
+.shell-workspace__name{ font-size:12px; font-weight:600; }
+.shell-workspace__user{ display:flex; align-items:center; justify-content:space-between;
+  gap:8px; margin-top:6px; font-size:12px; color:var(--text-muted); }
 
-.step{ display:flex; gap:16px; padding-bottom:36px; position:relative; }
-.step:not(:last-child)::before{ content:''; position:absolute; left:17px; top:36px; bottom:0; width:2px; background:var(--border-default); }
-.step__num{ flex-shrink:0; width:36px; height:36px; border-radius:999px; background:var(--bg-surface-muted); border:2px solid var(--border-default); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.9375rem; color:var(--text-muted); z-index:1; }
-.step--done .step__num{ background:var(--status-success); border-color:var(--status-success); color:#fff; }
-.step__body{ flex:1; padding-top:4px; }
-.step__title{ font-size:1.125rem; font-weight:600; }
-.step__who{ display:inline-block; margin-left:8px; font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:4px; background:var(--status-info-soft); color:var(--status-info-fg); vertical-align:middle; }
-.step__desc{ color:var(--text-secondary); font-size:.875rem; margin-top:6px; max-width:56ch; }
-.step__do{ margin-top:12px; border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); padding:14px 16px; }
-.step__do-label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin-bottom:6px; }
-.step__do ol, .step__do ul{ margin:0; padding-left:18px; }
-.step__do li{ margin-bottom:4px; font-size:.875rem; }
-.step__do li:last-child{ margin-bottom:0; }
-.step__result{ margin-top:10px; font-size:.8125rem; color:var(--status-success-fg); display:flex; align-items:center; gap:6px; }
-.step__try{ margin-top:12px; }
+.shell-main{ min-width:0; display:flex; flex-direction:column; }
+.shell-topbar{ position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:12px;
+  height:var(--shell-topbar-height); padding:0 16px; background:var(--bg-shell);
+  border-bottom:1px solid var(--border-subtle); }
+.shell-topbar__hamburger{ background:none; border:none; color:var(--text-secondary); font-size:16px;
+  cursor:pointer; padding:4px 6px; height:auto; box-shadow:none; }
+@media (min-width:1024px){ .shell-topbar__hamburger{ display:none; } }
+.shell-crumbs{ font-size:13px; color:var(--text-secondary); display:flex; align-items:center; gap:8px;
+  min-width:0; white-space:nowrap; }
+.shell-crumbs__sep{ color:var(--border-strong); }
+.shell-crumbs__current{ color:var(--text-primary); font-weight:500; text-overflow:ellipsis; overflow:hidden; }
+.shell-topbar__search{ display:none; }
+@media (min-width:1024px){ .shell-topbar__search{ display:inline-flex; align-items:center; gap:8px;
+  height:32px; flex:1; min-width:280px; max-width:420px; padding:0 10px;
+  border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--bg-surface);
+  color:var(--text-muted); font-size:12.5px; cursor:pointer; box-shadow:none; font-weight:400; } }
+.shell-topbar__search-kbd{ margin-left:auto; font-family:var(--font-mono); font-size:10px;
+  border:1px solid var(--border-default); border-radius:var(--radius-xs); padding:1px 4px; color:var(--text-muted); }
+.shell-topbar__spacer{ flex:1; }
+.shell-user-chip{ display:inline-flex; align-items:center; gap:8px; background:none; border:none;
+  box-shadow:none; height:auto; padding:2px 4px; color:var(--text-primary); font-size:12.5px; cursor:pointer; }
+.shell-user-chip__avatar{ width:26px; height:26px; border-radius:50%; display:grid; place-items:center;
+  background:linear-gradient(135deg, var(--accent-primary), var(--status-review));
+  color:var(--text-inverse); font-size:10.5px; font-weight:600; }
+.shell-content{ padding:20px 16px 32px; flex:1; }
+@media (min-width:768px){ .shell-content{ padding:20px 24px 40px; } }
+@media (min-width:1024px){ .shell-content{ padding:20px 32px 48px; } }
+/* One rhythm rule instead of 19 inline `margin-top`s (designer S2). */
+.shell-content > * + *{ margin-top:var(--space-5); }
 
-.button{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--accent-primary-border); border-radius:var(--radius-md); padding:0 18px; height:2.25rem; background:var(--accent-primary); color:var(--text-on-primary); font-family:inherit; font-size:.875rem; font-weight:600; cursor:pointer; box-shadow:var(--shadow-xs); }
-.button:hover{ background:var(--accent-primary-hover); }
+/* ── mockup-only chrome ───────────────────────────────────────────────────
+   ONE sticky container, not two sticky rows. The previous revision pinned the
+   second row at a hardcoded `topbar + 44px`, which is only correct while the
+   first row fits on one line — at 768px it overlapped by 26px and at 390px by
+   106px, hiding four of the ten state chips (designer B2).
+   ---------------------------------------------------------------------- */
+.demo-rail{ background:var(--bg-surface-elevated); border-bottom:1px solid var(--border-subtle); }
+@media (min-width:1024px){ .demo-rail{ position:sticky; top:var(--shell-topbar-height); z-index:9; } }
+.demo-toolbar{ display:flex; align-items:center; gap:10px; padding:8px 16px; flex-wrap:wrap; }
+@media (min-width:1024px){ .demo-toolbar{ padding:8px 32px; } }
+.demo-toolbar + .demo-toolbar{ border-top:1px dashed var(--border-subtle); }
+.demo-toolbar__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase;
+  letter-spacing:var(--tracking-caps); color:var(--text-secondary); margin-right:4px; }
+.demo-toolbar__note{ margin-left:auto; font-size:.6875rem; color:var(--text-secondary); font-family:var(--font-mono); }
+.chip{ display:inline-flex; align-items:center; gap:.25rem; height:1.375rem; padding:0 .5rem;
+  border:1px solid var(--border-subtle); border-radius:var(--radius-pill); background:var(--bg-surface-muted);
+  color:var(--text-secondary); font-size:.75rem; font-weight:500; cursor:pointer; box-shadow:none;
+  font-family:var(--font-mono); }
+.chip[aria-checked='true']{ background:var(--accent-primary-soft); border-color:var(--accent-primary-border);
+  color:var(--accent-primary-hover); font-weight:600; }
+.mock-note{ border:1px solid var(--status-review-border); background:var(--status-review-soft);
+  border-radius:var(--radius-lg); padding:12px 14px; font-size:.8125rem;
+  color:var(--text-secondary); box-shadow:inset 3px 0 0 var(--status-review); max-width:78ch; }
+.mock-note b{ color:var(--text-primary); }
+
+/* ── page header — shared/ui/page-layout.tsx ─────────────────────────── */
+.back-link{ display:inline-flex; align-items:center; gap:.375rem; font-size:.8125rem;
+  color:var(--text-muted); text-decoration:none; justify-self:start; padding:.25rem 0; line-height:1.2; }
+.back-link:hover{ color:var(--text-primary); }
+.eyebrow{ font-size:.76rem; font-weight:700; letter-spacing:var(--tracking-caps);
+  text-transform:uppercase; color:var(--accent-primary-hover); }
+.page-section{ display:grid; gap:var(--space-3); }
+.page-header{ display:grid; gap:.45rem; }
+.page-header--split{ grid-template-columns:minmax(0,1fr) auto; align-items:start; column-gap:var(--space-4); }
+.page-title{ font-size:1.75rem; font-weight:600; letter-spacing:var(--tracking-tight); }
+.page-description{ color:var(--text-secondary); font-size:.875rem; max-width:74ch; }
+.page-header__actions{ display:flex; gap:var(--space-2); justify-self:end; flex-wrap:wrap; }
+.section-title{ font-size:1.125rem; font-weight:600; letter-spacing:var(--tracking-tight); }
+/* Restored to the shipped component (index.css:1724). The previous revision
+   shrank it to .6875rem/--text-muted, which put the page's primary readiness
+   number at 11px and 4.40:1 in dark (designer I1). */
+.panel__meta{ border:1px solid var(--border-strong); border-radius:var(--radius-sm); padding:.25rem .65rem;
+  background:var(--bg-surface-elevated); font-size:.875rem; color:var(--text-secondary); }
+.muted-text{ color:var(--text-secondary); }
+
+/* ── buttons — shared/ui/button.tsx ──────────────────────────────────── */
+.button{ display:inline-flex; align-items:center; justify-content:center; gap:var(--space-2);
+  border:1px solid var(--accent-primary-border); border-radius:var(--radius-md); padding:0 var(--space-4);
+  height:2rem; background:var(--accent-primary); color:var(--text-on-primary); font-family:inherit;
+  font-size:.8125rem; font-weight:500; cursor:pointer; text-decoration:none; white-space:nowrap;
+  box-shadow:var(--shadow-xs), var(--shadow-inset-top); }
+.button:hover{ background:var(--button-primary-bg-hover); }
 .button--secondary{ border-color:var(--border-default); background:var(--bg-surface); color:var(--text-primary); }
 .button--secondary:hover{ background:var(--bg-surface-muted); border-color:var(--border-strong); }
-.button:disabled{ cursor:not-allowed; opacity:.5; }
-.button--done{ background:var(--status-success); border-color:var(--status-success); color:#fff; cursor:default; }
+.button--ghost{ border-color:transparent; background:transparent; color:var(--text-secondary); box-shadow:none; }
+.button--ghost:hover{ background:var(--bg-surface-muted); color:var(--text-primary); }
+.button--sm{ height:1.75rem; padding:0 var(--space-3); font-size:.75rem; }
+.button:disabled{ opacity:.55; box-shadow:none; cursor:not-allowed; }
 
-.callout{ display:flex; gap:12px; padding:14px 16px; border-radius:var(--radius-lg); border:1px solid; margin-top:12px; align-items:flex-start; }
-.callout--warning{ background:var(--status-warning-soft); border-color:var(--status-warning-border); }
-.callout--info{ background:var(--status-info-soft); border-color:var(--status-info-border); }
-.callout__glyph{ font-size:1.1rem; line-height:1.4; flex-shrink:0; }
-.callout__text{ font-size:.8125rem; color:var(--text-secondary); }
-.callout__text b{ color:var(--text-primary); }
-
-/* preview mock inside step (small, illustrative) */
-.mini-preview{ margin-top:12px; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--bg-surface-muted); padding:10px 12px; font-size:.8125rem; }
-.mini-card{ display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:var(--radius-md); background:var(--bg-surface); border:1px solid var(--border-default); }
-.mini-card__icon{ width:28px; height:28px; border-radius:6px; background:var(--accent-primary-soft); color:var(--accent-primary-hover); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.75rem; flex-shrink:0; }
-.mini-card__title{ font-weight:600; font-size:.8125rem; }
-.mini-card__desc{ font-size:.75rem; color:var(--text-muted); }
-.mini-nav-item{ display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:6px; font-size:.8125rem; font-weight:500; }
-.mini-nav-item--new{ background:var(--status-success-soft); color:var(--status-success-fg); }
-.mini-badge{ margin-left:auto; font-family:var(--font-mono); font-size:.5625rem; text-transform:uppercase; padding:1px 5px; border-radius:3px; background:var(--status-info-soft); color:var(--status-info-fg); }
-
-.status-badge{ display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border:1px solid var(--status-disabled-border); border-radius:6px; background:var(--status-disabled-soft); color:var(--status-disabled-fg); font-family:var(--font-mono); font-size:.6875rem; font-weight:500; text-transform:uppercase; }
-.status-badge__dot{ width:6px; height:6px; border-radius:999px; background:currentColor; }
+/* ── status badge — shared/ui/status-badge.tsx ───────────────────────── */
+.status-badge{ display:inline-flex; align-items:center; gap:var(--space-2); padding:2px var(--space-2);
+  border:1px solid var(--status-disabled-border); border-radius:var(--radius-sm);
+  background:var(--status-disabled-soft); color:var(--status-disabled-fg);
+  font-family:var(--font-mono); font-size:.6875rem; font-weight:500;
+  letter-spacing:var(--tracking-wide); text-transform:uppercase; white-space:nowrap; }
+.status-badge--compact{ padding:1px var(--space-2); font-size:.625rem; }
+.status-badge__dot{ width:.375rem; height:.375rem; border-radius:var(--radius-pill);
+  background:currentColor; opacity:.75; flex-shrink:0; }
+.status-badge--success{ border-color:var(--status-success-border); background:var(--status-success-soft); color:var(--status-success-fg); }
+.status-badge--warning{ border-color:var(--status-warning-border); background:var(--status-warning-soft); color:var(--status-warning-fg); }
+.status-badge--error{ border-color:var(--status-error-border); background:var(--status-error-soft); color:var(--status-error-fg); }
 .status-badge--info{ border-color:var(--status-info-border); background:var(--status-info-soft); color:var(--status-info-fg); }
+.status-badge--review{ border-color:var(--status-review-border); background:var(--status-review-soft); color:var(--status-review-fg); }
 .status-badge--neutral{ border-color:var(--status-disabled-border); background:var(--status-disabled-soft); color:var(--status-disabled-fg); }
 
-.wd-row{ display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--bg-surface); flex-wrap:wrap; }
-.wd-row__q{ font-weight:600; font-size:.8125rem; }
-.wd-row__why{ font-size:.75rem; color:var(--text-muted); }
+/* ── alert — shared/ui/alert.tsx. A left rule, never an icon.
+   Capped at 78ch so the tinted fill tracks the text: uncapped, every alert was
+   a 1102px slab holding a 546px sentence (designer I6). Typography is the
+   product's — it sets neither size nor max-width on the description. --- */
+.alert{ display:flex; align-items:flex-start; justify-content:space-between; gap:var(--space-4);
+  border:1px solid var(--border-default); border-radius:var(--radius-lg);
+  padding:.875rem 1rem .875rem 1.125rem; background:var(--bg-surface);
+  box-shadow:inset 3px 0 0 var(--border-default); max-width:78ch; }
+.alert__content{ display:grid; gap:.35rem; }
+.alert__title{ font-size:.8125rem; font-weight:600; color:var(--text-primary); }
+.alert__description{ font-size:.8125rem; color:var(--text-secondary); }
+.alert__actions{ display:flex; gap:var(--space-2); flex-shrink:0; }
+.alert--info{ border-color:var(--status-info-border); background:var(--status-info-soft); box-shadow:inset 3px 0 0 var(--status-info); }
+.alert--success{ border-color:var(--status-success-border); background:var(--status-success-soft); box-shadow:inset 3px 0 0 var(--status-success); }
+.alert--warning{ border-color:var(--status-warning-border); background:var(--status-warning-soft); box-shadow:inset 3px 0 0 var(--status-warning); }
+.alert--error{ border-color:var(--status-error-border); background:var(--status-error-soft); box-shadow:inset 3px 0 0 var(--status-error); }
+.alert--wide{ max-width:none; }
 
-.finish-card{ margin-top:8px; text-align:center; padding:28px 20px; border:1px solid var(--status-success-border); border-radius:var(--radius-xl); background:var(--status-success-soft); }
-.finish-card__title{ font-size:1.25rem; font-weight:600; color:var(--status-success-fg); }
-.finish-card__desc{ font-size:.875rem; color:var(--text-secondary); margin-top:6px; max-width:48ch; margin-inline:auto; }
+/* ── panels ──────────────────────────────────────────────────────────── */
+.panel{ border:1px solid var(--border-subtle); border-radius:var(--radius-lg);
+  background:var(--bg-surface); padding:var(--space-4); box-shadow:var(--shadow-xs); }
+.panel__header{ display:flex; align-items:start; justify-content:space-between; gap:var(--space-3);
+  margin-bottom:var(--space-3); flex-wrap:wrap; }
+.state-card{ display:grid; gap:var(--space-3); padding:var(--space-4); border:1px solid var(--border-default);
+  border-radius:var(--radius-md); background:var(--bg-surface); box-shadow:var(--shadow-soft); }
+.state-card__title{ font-size:1rem; font-weight:600; }
+.state-card__message{ font-size:.8125rem; color:var(--text-secondary); max-width:74ch; }
 
-.dialog-backdrop{ position:fixed; inset:0; display:none; place-items:center; padding:24px; background:rgba(22,32,43,.45); z-index:40; }
-.dialog-backdrop.is-open{ display:grid; }
-.dialog{ width:min(100%, 26rem); border:1px solid var(--border-default); border-radius:var(--radius-xl); padding:20px; background:var(--bg-surface); box-shadow:var(--shadow-overlay); }
-.dialog__title{ font-size:1.0625rem; font-weight:600; margin-bottom:12px; }
-.preset-tile{ border:1px solid var(--border-default); border-radius:var(--radius-md); padding:12px; margin-bottom:8px; cursor:pointer; }
-.preset-tile--selected{ border-color:var(--accent-primary); background:var(--accent-primary-soft); }
-.preset-tile__title{ font-weight:600; font-size:.8125rem; }
-.preset-tile__desc{ font-size:.75rem; color:var(--text-muted); margin-top:2px; }
-.dialog__actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+/* ── readiness rail ──────────────────────────────────────────────────────
+   Progress was a scroll-away 11px pill on a 5,000px page. It is now a sticky
+   rail with a jump chip per step, so step 4 is one click rather than a
+   1,600px scroll past three expanded completed steps (designer I1/I3).
+   ---------------------------------------------------------------------- */
+.rail{ position:sticky; top:calc(var(--shell-topbar-height) + 1px); z-index:8;
+  display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap;
+  padding:var(--space-2) 0; background:var(--bg-canvas);
+  border-bottom:1px solid var(--border-subtle); }
+.rail__count{ font-size:.875rem; font-weight:600; white-space:nowrap; }
+.rail__jumps{ display:flex; gap:var(--space-1); flex-wrap:wrap; }
+.rail__jump{ width:1.5rem; height:1.5rem; padding:0; border-radius:var(--radius-pill);
+  border:1px solid var(--border-default); background:var(--bg-surface); color:var(--text-secondary);
+  font-family:var(--font-mono); font-size:.6875rem; font-weight:600; cursor:pointer; box-shadow:none; }
+.rail__jump--done{ background:var(--status-success-soft); border-color:var(--status-success-border);
+  color:var(--status-success-fg); }
+.rail__jump--current{ background:var(--accent-primary-soft); border-color:var(--accent-primary);
+  color:var(--text-primary); }
+.rail__jump--gate{ border-style:dashed; }
+
+/* ── the checklist ────────────────────────────────────────────────────────
+   An <ol>/<li>, so a screen reader gets "list, 6 items" and a position — the
+   page's own framing is "N of 6" (designer I12).
+
+   Indicator treatment reuses the soft/border/fg triple, NOT a filled
+   `--status-success` with light text: the app has no `--*-on-success` token,
+   no `.button--success`, and every shipped use of `--status-success` as a
+   background is a dot with no text on it (index.css 2347, 14520, 14906,
+   16667). `--text-inverse` would flip correctly, but a mockup inventing a
+   pattern the product does not have is worse than one that declines to.
+   ---------------------------------------------------------------------- */
+.checklist{ list-style:none; padding:0; margin:0; display:grid; grid-template-columns:minmax(0,1fr); gap:0; }
+.step{ display:grid; grid-template-columns:34px minmax(0,1fr); gap:var(--space-4); min-width:0;
+  padding-bottom:var(--space-5); position:relative; scroll-margin-top:120px; }
+.step:not(:last-child)::before{ content:''; position:absolute; left:16px; top:34px; bottom:0;
+  width:2px; background:var(--border-default); }
+.step--done:not(:last-child)::before{ background:var(--status-success); }
+.step__indicator{ width:34px; height:34px; border-radius:var(--radius-pill);
+  background:var(--bg-surface-muted); border:2px solid var(--border-default);
+  display:grid; place-items:center; font-weight:700; font-size:.875rem;
+  color:var(--text-secondary); z-index:1; }
+/* `--text-primary`, not `--accent-primary-hover`: the latter measured 3.37:1 on
+   `--accent-primary-soft` at 14px/700, and 14px bold is not "large text"
+   (designer B4). The ring still carries the accent. */
+.step--current .step__indicator{ border-color:var(--accent-primary); color:var(--text-primary);
+  background:var(--accent-primary-soft); box-shadow:0 0 0 3px var(--accent-primary-soft); }
+.step--done .step__indicator{ background:var(--status-success-soft); border-color:var(--status-success-border);
+  color:var(--status-success-fg); }
+.step--gate .step__indicator{ border-style:dashed; }
+.step__body{ min-width:0; padding-top:var(--space-1); display:grid; gap:var(--space-2); }
+.step__head{ display:flex; align-items:center; gap:var(--space-2); flex-wrap:wrap; }
+.step__title{ font-size:1rem; font-weight:600; letter-spacing:var(--tracking-tight); }
+.step__desc{ color:var(--text-secondary); font-size:.8125rem; max-width:74ch; }
+.step__where{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:.75rem; color:var(--text-secondary); }
+.step__do{ border:1px solid var(--border-subtle); border-radius:var(--radius-md);
+  background:var(--bg-surface); box-shadow:var(--shadow-xs); padding:var(--space-3) var(--space-4); max-width:74ch; }
+.step__do-label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase;
+  letter-spacing:var(--tracking-caps); color:var(--text-secondary); margin-bottom:var(--space-2); }
+.step__do ol{ margin:0; padding-left:var(--space-4); display:grid; gap:var(--space-1); }
+.step__do li{ font-size:.8125rem; }
+.step__actions{ display:flex; gap:var(--space-2); flex-wrap:wrap; align-items:center; }
+.step__actions .button{ white-space:normal; height:auto; min-height:1.75rem; padding-block:.25rem; }
+.step__result{ font-size:.8125rem; color:var(--status-success-fg); }
+
+/* The quiet half of what used to be six stacked alerts. A note EXPLAINS; an
+   alert says the product cannot do this. Only steps 1 and 4 keep a real alert,
+   so the red one on the step that actually switches anything on is the loudest
+   thing in the list rather than the fourth tinted slab in a screen-height
+   (designer B3). */
+.step__note{ border-left:2px solid var(--border-default); padding-left:var(--space-3);
+  display:grid; gap:var(--space-1); max-width:74ch; }
+.step__note-title{ font-size:.8125rem; font-weight:600; color:var(--text-secondary); }
+.step__note-body{ font-size:.8125rem; color:var(--text-muted); }
+
+/* A done step collapses to its head and result. Previously finishing the
+   checklist made the page 276px LONGER (designer I2). */
+.step:not(.step--open) .step__where,
+.step:not(.step--open) .step__do,
+.step:not(.step--open) .step__note,
+.step:not(.step--open) .alert,
+.step:not(.step--open) .preview{ display:none; }
+.step:not(.step--open).step--done .step__desc{ display:none; }
+.step__reopen{ background:none; border:none; box-shadow:none; height:auto; padding:0;
+  color:var(--text-secondary); font-size:.75rem; text-decoration:underline; cursor:pointer; }
+
+/* ── inline previews ─────────────────────────────────────────────────────
+   Shipped vs proposed is the page's whole point, so it is carried by the
+   frame, not only by a 10px label that measured 4.17:1 in dark (designer I3).
+   ---------------------------------------------------------------------- */
+.preview{ border-radius:var(--radius-md); padding:var(--space-3); display:grid; gap:var(--space-2); max-width:74ch; }
+.preview--shipped{ border:1px solid var(--border-default); background:var(--bg-surface-muted); }
+.preview--proposed{ border:1px dashed var(--accent-primary-border); background:var(--accent-primary-soft); }
+.preview__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase;
+  letter-spacing:var(--tracking-caps); color:var(--text-secondary); }
+.mini-card{ display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-3);
+  border-radius:var(--radius-md); background:var(--bg-surface); border:1px solid var(--border-default); }
+.mini-card__icon{ width:28px; height:28px; border-radius:var(--radius-sm); background:var(--accent-primary);
+  color:var(--text-on-primary); display:grid; place-items:center; font-weight:700; font-size:.7rem; flex-shrink:0; }
+.mini-card__title{ font-weight:600; font-size:.8125rem; }
+.mini-card__desc{ font-size:.75rem; color:var(--text-secondary); }
+.capability-row{ display:flex; align-items:start; gap:var(--space-3); padding:var(--space-2) var(--space-3);
+  border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--bg-surface); }
+.capability-row__name{ font-weight:600; font-size:.8125rem; font-family:var(--font-mono); }
+.capability-row__help{ font-size:.75rem; color:var(--text-secondary); }
+.capability-row input[type='checkbox']{ margin-top:3px; width:16px; height:16px; accent-color:var(--accent-primary); }
+
+/* The real class name, so a reader can grep it. `align-items:start` matches
+   index.css 21325-21640; the 4-row area list is simplified to 2 for a preview
+   (designer I15). */
+.who-decides-rows{ display:flex; flex-direction:column; gap:var(--space-2); }
+.who-decides-row{ display:grid; grid-template-areas:'question answer badge' 'question why badge';
+  grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto; column-gap:var(--space-4); row-gap:var(--space-1);
+  padding:var(--space-3) var(--space-4); border:1px solid var(--border-subtle);
+  border-radius:var(--radius-md); background:var(--bg-surface); align-items:start; }
+@media (max-width:767.98px){ .who-decides-row{ grid-template-areas:'question' 'answer' 'why' 'badge';
+  grid-template-columns:minmax(0,1fr); } }
+.who-decides-row--highlight{ border-color:var(--accent-primary); box-shadow:0 0 0 1px var(--accent-primary); }
+.who-decides-row__question{ grid-area:question; font-size:.875rem; font-weight:600; }
+.who-decides-row__answer{ grid-area:answer; font-size:.8125rem; display:flex; gap:var(--space-2);
+  align-items:center; flex-wrap:wrap; }
+.who-decides-row__why{ grid-area:why; font-size:.75rem; color:var(--text-secondary); }
+.who-decides-row__badge{ grid-area:badge; align-self:start; }
+
+.mini-nav{ display:grid; gap:1px; }
+.mini-nav-item{ display:flex; align-items:center; gap:var(--space-2); padding:6px 8px;
+  border-radius:var(--radius-sm); font-size:.8125rem; font-weight:500;
+  color:var(--text-secondary); background:var(--bg-surface); }
+/* `--text-muted`, not `--text-disabled`: this carries a real sentence, not a
+   disabled control label, and `--text-disabled` measured 2.67:1 (designer B5). */
+.mini-nav-item--absent{ border:1px dashed var(--border-strong); color:var(--text-muted); font-style:italic; }
+.mini-nav-item--new{ background:var(--status-success-soft); color:var(--status-success-fg); font-weight:600; }
+.mini-badge{ margin-left:auto; font-family:var(--font-mono); font-size:.5625rem; text-transform:uppercase;
+  padding:1px 5px; border-radius:var(--radius-xs); background:var(--status-info-soft); color:var(--status-info-fg); }
+
+/* readiness table — the observed half */
+.readiness{ display:grid; gap:var(--space-2); }
+.readiness__row{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-3);
+  align-items:center; padding:var(--space-2) var(--space-3); border:1px solid var(--border-subtle);
+  border-radius:var(--radius-md); background:var(--bg-surface); }
+.readiness__label{ font-size:.8125rem; }
+.readiness__hint{ font-size:.75rem; color:var(--text-secondary); }
+
+/* ── dialog — shared/ui/dialog.tsx + index.css 5607-5665 ─────────────── */
+.dialog__overlay{ position:fixed; inset:0; background:var(--overlay-scrim); backdrop-filter:blur(12px);
+  z-index:40; display:none; }
+.dialog__overlay.is-open{ display:block; }
+.dialog__content{ position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:min(520px, 92vw); max-height:min(90vh, 720px); overflow-y:auto;
+  background:var(--bg-surface-elevated); border:1px solid var(--border-subtle);
+  border-radius:var(--radius-xl); box-shadow:var(--shadow-overlay);
+  padding:var(--space-5) var(--space-6); z-index:50; display:none; }
+.dialog__overlay.is-open + .dialog__content{ display:block; }
+.dialog__title{ margin:0 0 var(--space-1); font-size:1.0625rem; font-weight:600; letter-spacing:var(--tracking-tight); }
+.dialog__description{ margin:0 0 var(--space-4); font-size:.8125rem; color:var(--text-secondary); }
+.dialog__body{ display:grid; gap:var(--space-3); }
+.dialog__footer{ display:flex; justify-content:flex-end; gap:var(--space-2);
+  margin:var(--space-5) calc(var(--space-6) * -1) calc(var(--space-5) * -1);
+  padding:var(--space-4) var(--space-6); background:var(--bg-shell);
+  border-top:1px solid var(--border-subtle); border-radius:0 0 var(--radius-xl) var(--radius-xl); }
+.diff-line{ display:grid; gap:var(--space-1); padding:var(--space-3);
+  border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:var(--bg-surface); }
+.diff-line__q{ font-size:.8125rem; font-weight:600; }
+.diff-line__change{ font-size:.8125rem; color:var(--text-secondary); }
+.diff-line__change b{ color:var(--text-primary); }
+.diff-line__meaning{ font-size:.75rem; color:var(--text-secondary); }
 </style>
 
-<div class="wrap">
-  <p class="eyebrow">How-to · 4 steps · ~5 minutes</p>
-  <h1 class="title">Turn on the pack bench</h1>
-  <p class="lede">Right now nobody can reach OpenLinker's own fulfilment — not the connection, not the pack screen, not the setting that assigns it. Do these four things, in order, and a packer will have a working screen.</p>
+<div class="shell">
+  <!-- Sidebar: the composition from apps/web/src/app/nav-registry.ts
+       (BASE_NAV_GROUPS, 30-98). Labels verbatim, including the British
+       "Fulfilment". There is no icon library in apps/web — items are text-only.
+       The AI and Administration groups declare `requiresRole: 'admin'` and are
+       hidden for the operator session in `read-only`. -->
+  <aside class="shell-sidebar" aria-label="Sidebar">
+    <div class="shell-brand">
+      <span class="shell-brand__mark" aria-hidden="true">OL</span>
+      <span class="shell-brand__name">OpenLinker</span>
+      <span class="context-chip">Dev</span>
+    </div>
+    <nav class="shell-nav" aria-label="Primary">
+      <div class="shell-nav__group">
+        <p class="shell-nav__label">Operations</p>
+        <ul class="shell-nav__list">
+          <li><a class="shell-nav__link" href="#">Analytics</a></li>
+          <li><a class="shell-nav__link" href="#">Insights</a></li>
+          <li><a class="shell-nav__link" href="#">Orders<span class="shell-nav__link-count mono-text">128</span></a></li>
+          <li><a class="shell-nav__link" href="#">Products</a></li>
+          <li><a class="shell-nav__link" href="#">Customers<span class="shell-nav__link-count mono-text">94</span></a></li>
+          <li><a class="shell-nav__link" href="#">Listings<span class="shell-nav__link-count mono-text">312</span></a></li>
+          <li><a class="shell-nav__link" href="#">Shipments</a></li>
+          <li><a class="shell-nav__link" href="#">Fulfilment</a></li>
+          <!-- The entry this epic adds, and the only place it can go: after
+               Fulfilment, before Returns. Blocked on `RoleValues`
+               (nav-registry.types.ts:26) growing a `packer` member — the
+               `requiresPermission` route the Automations item uses is NOT an
+               option, because `ROLE_PERMISSIONS.packer` is deliberately []. -->
+          <li id="navPackBenchSlot" hidden><a class="shell-nav__link shell-nav__link--pending" href="#">Pack bench</a></li>
+          <li><a class="shell-nav__link" href="#">Returns</a></li>
+          <li><a class="shell-nav__link" href="#">Automations</a></li>
+          <li><a class="shell-nav__link" href="#">Invoices</a></li>
+        </ul>
+      </div>
+      <div class="shell-nav__group">
+        <p class="shell-nav__label">Diagnostics</p>
+        <ul class="shell-nav__list">
+          <li><a class="shell-nav__link" href="#">Jobs &amp; Logs</a></li>
+          <li><a class="shell-nav__link" href="#">Webhooks</a></li>
+          <li><a class="shell-nav__link" href="#">Cursors</a></li>
+        </ul>
+      </div>
+      <div class="shell-nav__group">
+        <p class="shell-nav__label">Platform</p>
+        <ul class="shell-nav__list">
+          <li><a class="shell-nav__link" href="#">Connections<span class="shell-nav__link-count mono-text">4</span></a></li>
+          <li><a class="shell-nav__link" href="#">Adapters</a></li>
+          <li><a class="shell-nav__link shell-nav__link--active" href="#" aria-current="page">Settings</a></li>
+        </ul>
+      </div>
+      <div class="shell-nav__group" id="navGroupAi">
+        <p class="shell-nav__label">AI</p>
+        <ul class="shell-nav__list">
+          <li><a class="shell-nav__link" href="#">Prompt templates</a></li>
+          <li><a class="shell-nav__link" href="#">Provider settings</a></li>
+        </ul>
+      </div>
+      <div class="shell-nav__group" id="navGroupAdmin">
+        <p class="shell-nav__label">Administration</p>
+        <ul class="shell-nav__list">
+          <li><a class="shell-nav__link" href="#">Users</a></li>
+        </ul>
+      </div>
+    </nav>
+    <div class="shell-workspace">
+      <strong class="shell-workspace__name">Default organization</strong>
+      <div class="shell-workspace__user">
+        <span id="shellUsername">ola.admin</span>
+        <button class="button button--ghost button--sm" type="button">Sign out</button>
+      </div>
+    </div>
+  </aside>
 
-  <div class="progress" id="progress"></div>
+  <div class="shell-main">
+    <!-- Topbar, verbatim from app-shell.tsx:352-387. The theme toggle is NOT
+         here — it lives in the user-chip dropdown — and "Alerts 0" is a
+         hardcoded ghost button, not a live count. -->
+    <header class="shell-topbar">
+      <button type="button" class="shell-topbar__hamburger" aria-label="Open menu"><span aria-hidden="true">&#9776;</span></button>
+      <nav aria-label="Breadcrumb" class="shell-crumbs">
+        <span class="shell-crumbs__group">Settings</span>
+        <span class="shell-crumbs__sep" aria-hidden="true">/</span>
+        <span class="shell-crumbs__current">Set up the pack bench</span>
+      </nav>
+      <button type="button" class="shell-topbar__search" aria-label="Open command palette (Ctrl+K)">
+        <span aria-hidden="true">&#8981;</span>
+        <span>Search orders, products, connections&#8230;</span>
+        <kbd class="shell-topbar__search-kbd" aria-hidden="true">&#8984;K</kbd>
+      </button>
+      <div class="shell-topbar__spacer"></div>
+      <button class="button button--ghost" type="button">Alerts <span aria-hidden="true">0</span><span class="sr-only">(0 new)</span></button>
+      <button type="button" class="shell-user-chip" aria-label="Account menu">
+        <span class="shell-user-chip__avatar" aria-hidden="true" id="chipInitials">OA</span>
+        <span id="chipUsername">ola.admin</span>
+      </button>
+    </header>
 
-  <div id="steps"></div>
+    <!-- ONE sticky container. Two independently-pinned rows overlapped below
+         1024px and hid four of the state chips. -->
+    <div class="demo-rail">
+      <div class="demo-toolbar" role="radiogroup" aria-label="Mockup state switcher — not part of the product" id="stateSwitcher">
+        <span class="demo-toolbar__label">Mockup &middot; state</span>
+        <button class="chip" type="button" role="radio" aria-checked="true"  data-state="not-started" onclick="setState('not-started')">not-started</button>
+        <button class="chip" type="button" role="radio" aria-checked="false" data-state="loading" onclick="setState('loading')">loading</button>
+        <button class="chip" type="button" role="radio" aria-checked="false" data-state="read-failed" onclick="setState('read-failed')">read-failed</button>
+        <button class="chip" type="button" role="radio" aria-checked="false" data-state="in-progress" onclick="setState('in-progress')">in-progress</button>
+        <button class="chip" type="button" role="radio" aria-checked="false" data-state="blocked-no-location" onclick="setState('blocked-no-location')">blocked-no-location</button>
+        <button class="chip" type="button" role="radio" aria-checked="false" data-state="awaiting-located-stock" onclick="setState('awaiting-located-stock')">awaiting-located-stock</button>
+        <button class="chip" type="button" role="radio" aria-checked="false" data-state="ready" onclick="setState('ready')">ready</button>
+        <button class="chip" type="button" role="radio" aria-checked="false" data-state="a2-ambiguous" onclick="setState('a2-ambiguous')">a2-ambiguous</button>
+        <button class="chip" type="button" role="radio" aria-checked="false" data-state="connection-disabled" onclick="setState('connection-disabled')">connection-disabled</button>
+        <button class="chip" type="button" role="radio" aria-checked="false" data-state="read-only" onclick="setState('read-only')">read-only</button>
+      </div>
+      <div class="demo-toolbar">
+        <span class="demo-toolbar__label">Mockup &middot; dialogs</span>
+        <button class="chip" type="button" aria-haspopup="dialog" data-dialog="dialog-create-connection" onclick="openDialog('dialog-create-connection')">dialog-create-connection</button>
+        <button class="chip" type="button" aria-haspopup="dialog" data-dialog="dialog-grant-sourcing" onclick="openDialog('dialog-grant-sourcing')">dialog-grant-sourcing</button>
+        <button class="chip" type="button" aria-haspopup="dialog" data-dialog="dialog-grant-refused" onclick="openDialog('dialog-grant-refused')">dialog-grant-refused</button>
+        <button class="chip" type="button" id="expandAllChip" aria-pressed="false" onclick="toggleExpandAll()">expand all steps</button>
+        <span class="demo-toolbar__note">Escape closes &middot; focus returns to the opener</span>
+      </div>
+    </div>
+
+    <main class="shell-content">
+      <div class="mock-note">
+        <b>Mockup for epic #3104 — not shipped code.</b> Colours, radii, class names and nav labels come from
+        <code>apps/web/src/index.css</code> and <code>apps/web/src/app/</code>. Copy that already exists in the product is
+        quoted verbatim; copy this mockup proposes is framed in <span style="border:1px dashed var(--accent-primary-border); background:var(--accent-primary-soft); padding:0 4px; border-radius:var(--radius-xs);">a dashed orange box</span>,
+        shipped UI in <span style="border:1px solid var(--border-default); background:var(--bg-surface-muted); padding:0 4px; border-radius:var(--radius-xs);">a solid grey one</span>.
+        Every button labelled <b>&ldquo;Try it:&rdquo;</b> is the mockup&rsquo;s, not the product&rsquo;s.
+      </div>
+
+      <section class="page-section">
+        <header class="page-header page-header--split">
+          <div>
+            <a class="back-link" href="#">&larr; Settings</a>
+            <p class="eyebrow">Settings</p>
+            <h1 class="page-title">Set up the pack bench</h1>
+            <p class="page-description">
+              OpenLinker can do your picking and packing itself, on a screen built for someone standing at a bench with a
+              scanner. None of it is on by default. Adding the connection changes nothing on its own — until step 4,
+              your shop keeps deciding where orders ship from, exactly as it does now.
+              <b>About 20 minutes</b>, if nothing is in your way.
+            </p>
+          </div>
+        </header>
+      </section>
+
+      <!-- Verdict first. An operator should learn whether this can work for
+           them before spending twenty minutes, not after (operator B4). -->
+      <div id="verdictSlot"></div>
+
+      <!-- Observed readiness. Five of the six rows are real server reads the
+           page already makes; the sixth is admin-only. -->
+      <section class="panel">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Right now</p>
+            <h2 class="section-title">What OpenLinker can see</h2>
+          </div>
+          <span class="panel__meta" id="progressMeta">0 of 6 done</span>
+        </div>
+        <div class="readiness" id="readiness"></div>
+        <p class="step__note-body" style="margin-top:var(--space-3);">
+          These are <b>reads, not ticks</b>. Steps 1&ndash;5 are each derived from something OpenLinker can check —
+          the connection list, its enabled roles, the active-location count, the who-decides status, and (for an
+          administrator) the user list. Step 6 is the only one nobody can check for you, because it is the packer
+          opening their own screen. Nothing here is stored, so closing this page loses no progress.
+        </p>
+      </section>
+
+      <!-- Blast radius + undo, before the steps rather than in a footer. -->
+      <div id="consequencesSlot"></div>
+
+      <section class="page-section">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Six steps</p>
+            <h2 class="section-title">What to do, in order</h2>
+          </div>
+          <span class="panel__meta">Steps 1&ndash;5 are an administrator&rsquo;s. Step 6 is the packer&rsquo;s.</span>
+        </div>
+        <div class="rail" id="rail"></div>
+        <ol class="checklist" id="checklist"></ol>
+      </section>
+
+      <div id="outcomeSlot"></div>
+
+      <details class="panel">
+        <summary style="cursor:pointer; font-weight:600; font-size:.875rem;">How to get back to this page</summary>
+        <p class="step__note-body" style="margin-top:var(--space-3);">
+          <em>Proposed.</em> A route under Settings &mdash; breadcrumb <code>Settings / Set up the pack bench</code>
+          &mdash; reached the same two ways the &ldquo;Who decides what&rdquo; page is. It is deliberately not
+          administrator-only: a packer or an operator whose bench is empty needs to be able to find out why and hand
+          their supervisor a step number, rather than a description of a blank screen. Every write inside it is
+          administrator-only individually.
+        </p>
+        <ol style="margin-top:var(--space-2); padding-left:var(--space-4); display:grid; gap:var(--space-1); font-size:.8125rem; max-width:74ch;">
+          <li><b>Settings</b> in the sidebar, then the <b>Set up the pack bench</b> tile, beside &ldquo;Who decides what&rdquo;.</li>
+          <li>From the connection, once one exists: <b>Connections &rarr; your OpenLinker OMS &rarr; Health</b>.</li>
+        </ol>
+        <div class="step__note" style="margin-top:var(--space-3);">
+          <p class="step__note-title">Two doors an earlier draft of this mockup proposed, and why they are not here</p>
+          <p class="step__note-body">
+            <b>A link from the bench.</b> Every read this page makes is restricted to administrators, operators and
+            viewers &mdash; a packer following such a link would land on a page where nothing loads. The bench keeps its
+            shipped advice instead: <em>&ldquo;Show this screen to your supervisor.&rdquo;</em> It is also the one screen
+            that must not link out at all: it tolerates a signed-out session on purpose, and its idle lock signs the
+            packer out, so a link into the rest of the app would bounce a half-packed parcel to the login screen.
+            <br>
+            <b>The command palette.</b> It indexes sidebar entries only, so it cannot reach a page that has none.
+            <code>/settings/who-decides</code> is missing from it for the same reason.
+          </p>
+        </div>
+      </details>
+
+      <section class="panel">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Scope</p>
+            <h2 class="section-title">What this page deliberately does not do</h2>
+          </div>
+        </div>
+        <ul style="display:grid; gap:var(--space-2); padding-left:var(--space-4); font-size:.8125rem; color:var(--text-secondary); max-width:74ch;">
+          <li><b>It does not buy shipping labels.</b> The bench picks, packs and verifies a parcel; whether OpenLinker
+            also buys the label is a separate setting, and by default the marketplace ships. Turning this on gives you a
+            packing screen, not a dispatch desk &mdash; that is the second half of the workflow and it is not covered here.</li>
+          <li><b>It does not author sourcing rules.</b> With none, every active location stays a candidate and the most
+            permissive split applies, which is the right default for one warehouse. Rule authoring is its own surface
+            (epic #3055); its six admin routes have no frontend caller today.</li>
+          <li><b>It does not manage locations beyond minting the first one.</b> The first location is created with its
+            country and postcode blank, and those are exactly the columns the <em>nearest</em> and <em>ships-to-country</em>
+            rules read &mdash; so a multi-warehouse operator needs the locations surface (epic #3063). Four of its six
+            routes have no frontend caller today.</li>
+          <li><b>It does not redesign the bench.</b> The bench is built and real. Reference screenshots:
+            <code>docs/plans/mockups/oms-wave3b/screenshots/</code>.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
 </div>
 
-<!-- enable wizard -->
-<div class="dialog-backdrop" id="enableDialogBackdrop">
-  <div class="dialog" role="dialog" aria-modal="true">
-    <p class="dialog__title">Who should pick and ship orders?</p>
-    <div class="preset-tile" id="presetA" onclick="pickPreset('openlinker')">
-      <div class="preset-tile__title">OpenLinker decides</div>
-      <div class="preset-tile__desc">Route orders here to pick and pack.</div>
+<!-- ══ Dialogs ════════════════════════════════════════════════════════════
+     Shape from shared/ui/dialog.tsx (Radix) + index.css 5607-5665.
+     Escape, backdrop dismissal, focus return and `aria-describedby` are wired
+     below. THREE things Radix supplies that this file does NOT: a focus trap,
+     `inert` on the background, and a scroll lock. Tab out of a dialog here and
+     you reach the sidebar behind the scrim. The implementation gets all three
+     from the component — do not hand-roll them from this file.
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div class="dialog__overlay" id="ov-dialog-create-connection"></div>
+<div class="dialog__content" role="dialog" aria-modal="true" tabindex="-1"
+     aria-labelledby="dlg1-title" aria-describedby="dlg1-desc" id="dlg-dialog-create-connection">
+  <h2 class="dialog__title" id="dlg1-title">Add the OpenLinker OMS</h2>
+  <p class="dialog__description" id="dlg1-desc">This is the whole form. There is nothing to type in beyond a name.</p>
+  <div class="dialog__body">
+    <div class="mini-card">
+      <span class="mini-card__icon" aria-hidden="true">OL</span>
+      <div>
+        <div class="mini-card__title">OpenLinker OMS</div>
+        <div class="mini-card__desc">No API key, no password, no URL. OpenLinker is already talking to itself.</div>
+      </div>
     </div>
-    <div class="preset-tile" id="presetB" onclick="pickPreset('later')">
-      <div class="preset-tile__title">Decide later</div>
-      <div class="preset-tile__desc">Just enable the connection for now.</div>
+    <label style="display:grid; gap:var(--space-1);">
+      <span style="font-size:.75rem; font-weight:600;">Name</span>
+      <input value="Our warehouse" style="height:2rem; padding:0 10px; border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--bg-surface); color:var(--text-primary); font:inherit; font-size:.8125rem;">
+    </label>
+    <div class="alert alert--info alert--wide" role="status">
+      <div class="alert__content">
+        <strong class="alert__title">Adding this changes nothing on its own</strong>
+        <p class="alert__description">Your shop keeps deciding where orders ship from until step 4. Nothing is routed,
+          nothing is held, no order changes path.</p>
+      </div>
     </div>
-    <div class="dialog__actions">
-      <button class="button button--secondary" onclick="closeDialog()">Cancel</button>
-      <button class="button" id="confirmEnableBtn" disabled onclick="finishEnable()">Turn on</button>
+  </div>
+  <div class="dialog__footer">
+    <button class="button button--secondary" type="button" onclick="closeDialog()">Cancel</button>
+    <button class="button" type="button" onclick="completeStep(0); closeDialog();">Add connection</button>
+  </div>
+</div>
+
+<div class="dialog__overlay" id="ov-dialog-grant-sourcing"></div>
+<div class="dialog__content" role="dialog" aria-modal="true" tabindex="-1"
+     aria-labelledby="dlg2-title" aria-describedby="dlg2-desc" id="dlg-dialog-grant-sourcing">
+  <h2 class="dialog__title" id="dlg2-title">Change who decides what?</h2>
+  <p class="dialog__description" id="dlg2-desc">
+    This only affects what happens from now on. Anything already in progress &mdash; a parcel someone is packing, a
+    label already bought &mdash; keeps its current arrangement until it finishes.
+  </p>
+  <div class="dialog__body">
+    <p style="font-size:.8125rem; font-weight:600;">What changes</p>
+    <div class="diff-line">
+      <div class="diff-line__q">Where does an order ship from?</div>
+      <div class="diff-line__change"><b>Wherever the order lands today</b> becomes <b>OpenLinker</b></div>
+      <div class="diff-line__meaning">OpenLinker will decide this from now on.</div>
     </div>
+    <div class="diff-line">
+      <div class="diff-line__q">Where does the order get created?</div>
+      <div class="diff-line__change"><b>Your shop, as it does now</b> becomes <b>OpenLinker only</b></div>
+      <div class="diff-line__meaning">Orders OpenLinker routes are no longer copied into your shop at all.</div>
+    </div>
+    <div class="alert alert--warning alert--wide" role="status">
+      <div class="alert__content">
+        <strong class="alert__title">Read the second row before you save</strong>
+        <p class="alert__description">
+          It is the one that surprises people. Anything you do in your shop today with these orders &mdash; invoices,
+          picking lists, stock counts, the customer&rsquo;s &ldquo;my orders&rdquo; page, a second person packing &mdash;
+          stops seeing them. Orders your shop raised itself are untouched.
+        </p>
+      </div>
+    </div>
+    <div class="step__note">
+      <p class="step__note-title">&ldquo;Who picks and ships?&rdquo; is not changed here</p>
+      <p class="step__note-body">
+        That one is granted per parcel, when OpenLinker offers work and your bench accepts it &mdash; it follows from
+        the role you checked in step 1, not from a setting on this page. Its row on
+        <b>Who decides what</b> will keep reading <em>&ldquo;Whoever the order lands with&rdquo;</em> even once
+        OpenLinker is doing the picking. <em>Proposed:</em> saving here should also write that row&rsquo;s own
+        setting, purely so the page stops saying something untrue &mdash; nothing reads it, so it changes no behaviour.
+      </p>
+    </div>
+  </div>
+  <div class="dialog__footer">
+    <button class="button button--secondary" type="button" onclick="closeDialog()">Cancel</button>
+    <button class="button" type="button" onclick="completeStep(3); closeDialog();">Save</button>
+  </div>
+</div>
+
+<div class="dialog__overlay" id="ov-dialog-grant-refused"></div>
+<div class="dialog__content" role="dialog" aria-modal="true" tabindex="-1"
+     aria-labelledby="dlg3-title" aria-describedby="dlg3-desc" id="dlg-dialog-grant-refused">
+  <h2 class="dialog__title" id="dlg3-title">This cannot be saved yet</h2>
+  <p class="dialog__description" id="dlg3-desc">OpenLinker refused the change and wrote nothing.</p>
+  <div class="dialog__body">
+    <div class="alert alert--error alert--wide" role="alert">
+      <div class="alert__content">
+        <strong class="alert__title">No place to ship from</strong>
+        <p class="alert__description">
+          Fulfilment routing cannot be enabled until at least one active inventory location exists. Create one first
+          &mdash; the connection&rsquo;s routing readiness panel offers a default.
+        </p>
+      </div>
+    </div>
+    <p class="step__note-body">
+      That is the API&rsquo;s own refusal, near enough word for word. Routing against no locations would make every
+      order unfulfillable, so the feature would read as broken when it is merely unconfigured &mdash; the refusal names
+      the remedy instead.
+    </p>
+  </div>
+  <div class="dialog__footer">
+    <button class="button button--secondary" type="button" onclick="closeDialog()">Close</button>
+    <button class="button" type="button" onclick="closeDialog(); jumpTo(2);">Take me to step 3</button>
   </div>
 </div>
 
 <script>
+/* ===========================================================================
+   Mockup harness. Not product code.
+
+   Every distinct UI state carries a stable `data-state` value on <body> and a
+   radio in the switcher (docs/frontend-architecture.md § UX Mockups), so
+   implementation and E2E issues cite a state by name.
+
+   `render()` rebuilds the list and RESTORES FOCUS to the element that was
+   active. The previous revision rewrote `innerHTML` and dropped focus to
+   <body> — 1,500px down the page, with the next Tab restarting at the brand
+   mark. In the product this is what React keys give you for free; a hand-rolled
+   innerHTML checklist must not be copied from here.
+
+   Step completion is DERIVED in the product, never stored: see the note under
+   "What OpenLinker can see". The `done[]` array below is the mockup standing in
+   for those reads.
+   ======================================================================== */
+
 const STEPS = [
   {
-    who: 'Admin', title: 'Add the OpenLinker OMS connection',
-    desc: "It's a connection like any other — except there's nothing to type in. No API key, no password.",
-    doTitle: 'Do this',
-    doItems: ['Go to Connections → New connection', 'Find "OpenLinker OMS" in the list', 'Click it, then click "Turn on the OMS"'],
-    preview: 'card',
+    who: 'Admin', built: false,
+    title: 'Add the OpenLinker OMS connection',
+    desc: 'A connection like any other, except there is nothing to type in — no API key, no password, no URL. Creating it also switches on the role that lets OpenLinker be handed a parcel to pack.',
+    where: 'Connections → New connection → OpenLinker OMS',
+    doItems: [
+      'Open <b>Connections</b> in the sidebar, then <b>New connection</b>',
+      'Pick <b>OpenLinker OMS</b>',
+      'Give it a name you will recognise, then <b>Add connection</b>',
+    ],
+    note: {
+      title: 'What exists today, and the one thing worth checking afterwards',
+      body: "There is no setup card for the OMS yet, so it is missing from the platform picker — today you reach it through <b>New connection → “Use advanced mode”</b>, a form headed <em>“Escape hatch — prefer the guided flow”</em>. The platform itself <em>is</em> in that form's dropdown, which is unfiltered. Afterwards, open the connection's <b>Overview → Capabilities</b> panel and confirm <code>FulfillmentExecutor</code> is ticked. It is switched on for you at creation and never filled in later, so a connection made by hand with a capability list typed out can end up without it — and the failure is silent from here: work is routed, the job that offers it to your bench cannot resolve an executor, and it retries until it gives up.",
+    },
+    preview: 'connection',
   },
   {
-    who: 'Admin', title: 'Decide who picks and ships orders',
-    desc: "Adding the connection alone changes nothing. Until you say so here, your shop keeps deciding this — same as before.",
-    doTitle: 'Do this',
-    doItems: ['In the same dialog, choose "OpenLinker decides"', "Or pick \"Decide later\" and come back to Settings → Who decides what whenever you're ready"],
-    preview: 'wd',
+    who: 'Admin', built: true,
+    title: 'Add a place to ship from',
+    desc: 'OpenLinker cannot choose where an order ships from until there is at least one place to choose. One is enough, and step 4 is refused outright until it exists.',
+    where: 'Connections → your OpenLinker OMS → Health → Fulfilment routing readiness',
+    doItems: [
+      'Open the connection, <b>Health</b> tab',
+      'Find <b>Fulfilment routing readiness</b>',
+      'Press <b>Create default location</b>',
+    ],
+    note: {
+      title: 'What that button makes, and where the panel goes afterwards',
+      body: "One warehouse called <code>MAIN</code>. Its country and postcode are left blank on purpose — which matters later, because those are the two columns the <em>nearest</em> and <em>ships-to-country</em> rules read, and there is no screen for filling them in yet (epic #3063). Pressing it twice is safe; the second press creates nothing. One oddity to expect: the readiness panel <b>disappears</b> the moment the location exists and stays hidden until step 4 is done, because it only renders when there is either no location or a routing claim. So do not go looking for it in between.",
+    },
+    preview: 'location',
   },
   {
-    who: 'Admin', title: 'Give a packer access to the pack screen',
-    desc: "The pack screen only shows in the sidebar for someone with the packer role. Without this, even a fully set-up bench is invisible to the person who needs it.",
-    doTitle: 'Do this',
-    doItems: ['Go to Settings → Users', "Open the packer's account", 'Set their role to "Packer"'],
+    who: 'Admin', built: false, gate: true,
+    title: 'Tell OpenLinker which stock is in that warehouse',
+    desc: 'This is the step that decides whether any of the others produce anything, and it is the one with no button.',
+    where: 'Nowhere yet',
+    doItems: [
+      'Nothing you can do in OpenLinker today',
+      'If your stock comes from a system that records a warehouse per item, it will arrive on its own',
+      'Otherwise, wait for the screen described below',
+    ],
+    gap: {
+      tone: 'error',
+      title: 'OpenLinker only counts stock it knows the location of',
+      body: "A stock figure with no location means the shop declined to say where the goods physically are, and OpenLinker skips it rather than guessing. <b>Neither shop that ships with OpenLinker says.</b> The PrestaShop connector records no location (<em>“PrestaShop doesn't support multi-location in stock_available”</em>) and the WooCommerce one records none either (<em>“WC is single-location at v1”</em>), and OpenLinker's own stock screens are read-only — so there is no button anywhere in the product that fixes this. <b>Proposed remedy:</b> one screen asking <em>“which warehouse is your existing stock in?”</em>, written once in bulk. The rule that OpenLinker must never invent a location it was not given does not forbid this — that rule is about OpenLinker guessing, and this is the operator answering. Recording that distinction is what stands between this epic and a working feature.",
+    },
+    preview: 'stock',
+  },
+  {
+    who: 'Admin', built: false,
+    title: 'Put OpenLinker in charge of where orders ship from',
+    desc: 'The step that actually switches anything on. Until now everything is inert: the connection exists, the role is on, the warehouse is there, and every order still goes exactly where it went before.',
+    where: 'Settings → Who decides what',
+    doItems: [
+      'Read <b>“What this changes for your shop”</b> above first. This is the step it is about.',
+      'Open <b>Settings → Who decides what</b>',
+      'Choose the arrangement that puts OpenLinker in charge of picking and packing, read the two rows it says will change, and save',
+    ],
+    gap: {
+      tone: 'error',
+      title: 'No screen does this today — and the page we point people at cannot',
+      body: "There are three arrangements on that page and <b>none of them switches packing on</b>. <em>“Leave things as they are”</em> writes nothing at all. <em>“Let OpenLinker decide”</em> only switches existing claims <b>off</b>. <em>“Keep my other system in charge”</em> is not available yet. The only working route today is editing the connection's raw configuration by hand, which <b>replaces the whole of it</b> rather than merging, so one slip drops every other setting on that connection. <b>Proposed:</b> a fourth arrangement that grants it. Built that way it inherits what the three already have — the refusal when two systems would both be in charge, the preview of what will change, the confirmation dialog, and the <em>“no place to ship from”</em> refusal step 2 exists to clear.",
+    },
+    preview: 'whodecides',
+  },
+  {
+    who: 'Admin', built: true,
+    title: 'Give your packer the role',
+    desc: 'A packer needs the Packer role before the bench will load any work for them. The role exists and the control is already there.',
+    where: 'Administration → Users',
+    doItems: [
+      'Open <b>Users</b> under <b>Administration</b>',
+      'Find the person who will be packing',
+      'Change their role to <b>Packer</b> — it saves as you choose',
+    ],
+    note: {
+      title: 'The role loads the work; it does not reveal the screen',
+      body: "The bench checks nobody's role in the browser. It accepts a signed-out visitor and shows its own sign-in box, on purpose, because it has to survive its own idle lock. What the role does is let the work list load — without it your packer signs in and reads a refusal, which is at least a refusal they can see rather than a screen that merely looks empty. The <b>Pack bench</b> sidebar entry below is <em>proposed</em>: it needs the sidebar's own role list widened to admit a packer, and the permission-based gate the <b>Automations</b> item uses is not an option here, because a packer deliberately holds no permissions at all.",
+    },
     preview: 'nav',
   },
   {
-    who: 'Packer', title: "Open the pack bench and check it's working",
-    desc: 'Once an order routes to OpenLinker for picking, it shows up here automatically.',
-    doTitle: 'Do this',
-    doItems: ['Sign in as the packer', 'Click "Pack bench" in the sidebar', 'If it says "Nothing to pack yet" and you expected an order, go back to step 2 — packing may not be assigned yet'],
-    preview: null,
+    who: 'Packer', built: true,
+    title: 'Open the bench and read what it says',
+    desc: 'At the packing terminal, sign in and look at which message you get. Only one of the two means what it sounds like.',
+    where: '/bench',
+    doItems: [
+      'On the packing terminal, open <b>/bench</b>',
+      'Sign in as the packer',
+      'Read the message, then read the note below before you trust it',
+    ],
+    note: {
+      title: 'Neither message knows about steps 3 or 4',
+      body: "The bench decides which message to show from steps 1 and 2 alone — whether any connection exists that is allowed to pack. So <b>“No work can reach this bench”</b> means step 1 is incomplete, and <b>“Nothing to pack right now”</b> means only that step 1 is done. It is shown whether or not you ever did steps 3 and 4, and it carries the line <em>“Work is reaching this bench normally”</em> — which in that case is not merely ambiguous, it is untrue. The bench also opens <b>outside</b> the rest of the app, with no sidebar and no breadcrumbs, because its idle lock signs the packer out and the normal layout would answer that by bouncing to the login screen, taking a half-packed parcel with it. One more thing to know: <b>“Move to the front”</b> on a bench row calls something a packer is not allowed to call, so it fails for the only role that sees it. An administrator or operator has to do it.",
+    },
+    preview: 'bench',
   },
 ];
 
-let completed = [false, false, false, false];
-let enableCtx = { preset: null };
+const READINESS = [
+  { label: 'An OpenLinker OMS connection exists', hint: 'from your connection list' },
+  { label: 'It has somewhere to ship from', hint: 'active inventory locations' },
+  { label: 'Stock that says which warehouse it is in', hint: 'the gate — nothing routes without it' },
+  { label: 'OpenLinker decides where orders ship from', hint: 'from the who-decides status' },
+  { label: 'Someone has the Packer role', hint: 'administrators only — others see “cannot check”' },
+  { label: 'A packer has opened the bench', hint: 'nobody can check this for you' },
+];
 
-function renderProgress() {
-  document.getElementById('progress').innerHTML = STEPS.map((_, i) =>
-    `<div class="progress__seg ${completed[i] ? 'progress__seg--done' : ''}"></div>`
-  ).join('');
-}
+let done = [false, false, false, false, false, false];
+let opened = [false, false, false, false, false, false];
+let role = 'admin';
+let phase = 'ready-to-render';   // 'loading' | 'read-failed' | 'ready-to-render'
+let anomaly = null;              // 'a2-ambiguous' | 'connection-disabled' | null
+let expandAll = false;
+let lastFocused = null;
 
-function previewHtml(kind, stepIndex) {
-  if (kind === 'card') {
-    return `<div class="mini-preview">
-      <div class="mini-card">
-        <div class="mini-card__icon">OL</div>
-        <div>
-          <div class="mini-card__title">OpenLinker OMS</div>
-          <div class="mini-card__desc">No credentials to enter</div>
+/* ── the three standing facts, above the steps ─────────────────────────── */
+function consequencesHtml() {
+  return `
+  <section class="panel">
+    <div class="panel__header">
+      <div>
+        <p class="eyebrow">Before you start</p>
+        <h2 class="section-title">What this changes for your shop, and how to undo it</h2>
+      </div>
+    </div>
+    <div style="display:grid; gap:var(--space-3);">
+      <div class="alert alert--warning" role="status">
+        <div class="alert__content">
+          <strong class="alert__title">Your shop stops receiving the orders OpenLinker packs</strong>
+          <p class="alert__description">
+            Today an order from a marketplace is copied into your shop so someone there can pick it. Once OpenLinker is
+            picking, that copy would be a second instruction to ship the same parcel &mdash; so OpenLinker stops making
+            it. Routed orders are not created in your shop at all. Anything downstream that reads those copies
+            &mdash; invoices, picking lists, stock counts, the customer&rsquo;s &ldquo;my orders&rdquo; page, a second
+            person packing &mdash; stops seeing them. Orders your shop raised itself are untouched.
+          </p>
         </div>
       </div>
-      <div class="step__try"><button class="button button--secondary" id="tryBtn0" onclick="openEnableDialog()">Try it: open the connection dialog</button></div>
+      <details>
+      <summary style="cursor:pointer; font-size:.8125rem; font-weight:600; color:var(--text-secondary);">
+        Three more things worth knowing first &mdash; how to undo it, what it applies to, and why one order can become three parcels
+      </summary>
+      <div style="display:grid; gap:var(--space-3); margin-top:var(--space-3);">
+      <div class="step__note">
+        <p class="step__note-title">How to hand the decision back</p>
+        <p class="step__note-body">
+          <b>Settings &rarr; Who decides what &rarr; &ldquo;Let OpenLinker decide&rdquo; &rarr; Save.</b>
+          The name reads backwards and it is worth knowing why before you need it: that card&rsquo;s job is to stop
+          <em>other systems</em> deciding, and for this particular decision OpenLinker&rsquo;s own default is to leave
+          orders going exactly where they were. So it is the card that switches this off. It keeps your setting, so you
+          can switch it on again without redoing any of this. New orders go back to your shop immediately &mdash; but
+          <b>anything already at the bench stays there</b>. Handing the decision back does not recall a parcel someone is
+          packing, and it does not undo a label already bought.
+        </p>
+      </div>
+      <div class="step__note">
+        <p class="step__note-title">It applies to every order, from the moment you save</p>
+        <p class="step__note-body">
+          There is no way to try this on one channel first, and no dry run &mdash; nothing will show you where orders
+          <em>would</em> have gone without committing to it. Both are known gaps. Orders that arrived before you save are
+          not left alone either: OpenLinker routes an order the next time it reads it from the source, which for most
+          shops means its next update, so this morning&rsquo;s orders will be pulled in as they change.
+          One reassurance that is genuinely true: if this is misconfigured, nothing breaks. An order OpenLinker cannot
+          route takes its ordinary path to your shop, exactly as it does today.
+        </p>
+      </div>
+      <div class="step__note">
+        <p class="step__note-title">One order can become several parcels &mdash; and an order with one unstockable line becomes none</p>
+        <p class="step__note-body">
+          Work is grouped per warehouse and delivery method, so one order can appear as two or three rows at the bench.
+          And an order reaches the bench only if <b>every single line</b> can be sourced in full: one line short refuses
+          the whole order, which then quietly takes its old path to your shop. On a real catalogue that is routine
+          rather than an edge case, and today the reason is recorded where no screen can show it.
+        </p>
+      </div>
+      </div>
+      </details>
+    </div>
+  </section>`;
+}
+
+/* ── previews ──────────────────────────────────────────────────────────── */
+function previewHtml(kind) {
+  const locked = role !== 'admin';
+  const act = (label, onclick, id) => locked
+    ? `<p class="step__note-body">Only an administrator can do this.</p>`
+    : `<button class="button button--secondary button--sm" type="button" id="${id}" onclick="${onclick}">${label}</button>`;
+
+  if (kind === 'connection') {
+    return `<div class="preview preview--proposed">
+      <p class="preview__label">Proposed &mdash; a setup card in the platform picker</p>
+      <div class="mini-card">
+        <span class="mini-card__icon" aria-hidden="true">OL</span>
+        <div>
+          <div class="mini-card__title">OpenLinker OMS</div>
+          <div class="mini-card__desc">Pick and pack in OpenLinker &middot; no credentials needed</div>
+        </div>
+      </div>
+      <p class="preview__label" style="margin-top:var(--space-2);">Shipped &mdash; Capabilities panel, &ldquo;Enabled roles&rdquo;</p>
+      <div class="capability-row">
+        <input type="checkbox" id="capFE" ${done[0] ? 'checked' : ''} ${locked ? 'disabled' : ''}
+               onchange="toggleCapability(this.checked)" aria-describedby="capFEHelp">
+        <div>
+          <label for="capFE" class="capability-row__name">FulfillmentExecutor</label>
+          <p class="capability-row__help" id="capFEHelp">Picks, packs and ships the work OpenLinker hands it, and
+            reports progress back. One holder at a time per piece of work.</p>
+          <p class="capability-row__help" style="margin-top:var(--space-1);"><em>The panel renders the identifier, not a
+            friendly name. Renaming it to something an operator recognises is proposed, not shipped.</em></p>
+        </div>
+      </div>
+      <div class="step__actions">${act('Try it: open the setup card', "openDialog('dialog-create-connection')", 'try0')}</div>
     </div>`;
   }
-  if (kind === 'wd') {
-    return `<div class="mini-preview">
-      <div class="wd-row" id="wdRow">
-        <div><div class="wd-row__q">Who picks and ships?</div><div class="wd-row__why" id="wdWhy">Not decided yet — enable the connection in step 1 first.</div></div>
-        <span class="status-badge status-badge--neutral" id="wdBadge"><span class="status-badge__dot"></span>Your shop</span>
+  if (kind === 'location') {
+    return `<div class="preview preview--shipped">
+      <p class="preview__label">Shipped &mdash; Health tab, &ldquo;Fulfilment routing readiness&rdquo;</p>
+      ${done[1]
+        ? `<p class="step__note-body">The panel is not on screen at this point &mdash; it hides itself once a location
+             exists and reappears only after step 4. <b>MAIN &mdash; Main warehouse</b> was created.</p>`
+        : `<div class="who-decides-row">
+             <div class="who-decides-row__question">Active inventory locations</div>
+             <div class="who-decides-row__answer mono-text">0</div>
+             <span class="who-decides-row__badge status-badge status-badge--compact status-badge--warning">
+               <span class="status-badge__dot" aria-hidden="true"></span>No location yet</span>
+           </div>`}
+      <div class="step__actions">${done[1] ? '' : act('Try it: create the default location', 'completeStep(1)', 'try1')}</div>
+    </div>`;
+  }
+  if (kind === 'stock') {
+    const total = 4812;
+    const located = done[2] ? total : 0;
+    return `<div class="preview preview--proposed">
+      <p class="preview__label">Proposed &mdash; a readiness row this page could read today</p>
+      <div class="who-decides-row">
+        <div class="who-decides-row__question">Stock with a known warehouse</div>
+        <div class="who-decides-row__answer mono-text">${located.toLocaleString('en-GB')} of ${total.toLocaleString('en-GB')}</div>
+        <span class="who-decides-row__badge status-badge status-badge--compact ${done[2] ? 'status-badge--success' : 'status-badge--error'}">
+          <span class="status-badge__dot" aria-hidden="true"></span>${done[2] ? 'Ready' : 'Nothing can route'}</span>
       </div>
+      <p class="step__note-body">Two reads the page can already make &mdash; the stock list filtered to this warehouse,
+        against the same list unfiltered. An earlier draft of this page claimed it could not see your stock. It can.</p>
+      <div class="step__actions">${act('Try it: stock gains a location', 'completeStep(2)', 'try2')}</div>
+    </div>`;
+  }
+  if (kind === 'whodecides') {
+    const granted = done[3];
+    return `<div class="preview preview--proposed">
+      <p class="preview__label">Proposed &mdash; a fourth arrangement on Who decides what</p>
+      <div class="who-decides-rows">
+        <div class="who-decides-row who-decides-row--highlight">
+          <h4 class="who-decides-row__question">Where does an order ship from?</h4>
+          <div class="who-decides-row__answer">
+            <span>${granted ? 'OpenLinker' : 'Wherever the order lands today'}</span>
+            ${granted || locked ? '' : `<button class="button button--sm" type="button" id="try3" onclick="attemptGrant()">Try it: put OpenLinker in charge</button>`}
+          </div>
+          <p class="who-decides-row__why">${granted
+            ? 'You have put this system in charge of choosing where orders ship from.'
+            : 'You sell from one place, so there is nothing to choose between.'}</p>
+          <span class="who-decides-row__badge status-badge status-badge--compact ${granted ? 'status-badge--success' : 'status-badge--neutral'}">
+            ${granted ? 'Chosen' : 'Default'}</span>
+        </div>
+        <div class="who-decides-row">
+          <h4 class="who-decides-row__question">Who picks and ships?</h4>
+          <div class="who-decides-row__answer">Whoever the order lands with, as it works today</div>
+          <p class="who-decides-row__why">Unchanged by this step &mdash; and it stays unchanged even once OpenLinker
+            is doing the picking. See the note in the confirmation dialog.</p>
+          <span class="who-decides-row__badge status-badge status-badge--compact status-badge--neutral">Default</span>
+        </div>
+      </div>
+      <p class="step__note-body">Five more rows sit around these two on the real page &mdash; seven in all. They are
+        unchanged by this step and omitted here for room.</p>
     </div>`;
   }
   if (kind === 'nav') {
-    return `<div class="mini-preview">
-      <div style="font-size:.75rem; color:var(--text-muted); margin-bottom:6px;">Sidebar, as the packer will see it</div>
-      <div class="mini-nav-item" id="navPreview" style="background:var(--bg-surface); border:1px dashed var(--border-strong); color:var(--text-disabled);">Pack bench — not visible yet</div>
-      <div class="step__try"><button class="button button--secondary" onclick="grantPackerRole()">Try it: grant the packer role</button></div>
+    return `<div class="preview preview--proposed">
+      <p class="preview__label">Proposed &mdash; the sidebar, as the packer would see it</p>
+      <div class="mini-nav">
+        <div class="mini-nav-item">Fulfilment</div>
+        <div class="mini-nav-item ${done[4] ? 'mini-nav-item--new' : 'mini-nav-item--absent'}">
+          ${done[4] ? 'Pack bench <span class="mini-badge">packer</span>' : 'Pack bench &mdash; no entry exists yet'}
+        </div>
+        <div class="mini-nav-item">Returns</div>
+      </div>
+      <div class="step__actions">${done[4] ? '' : act('Try it: set the role to Packer', 'completeStep(4)', 'try4')}</div>
+    </div>`;
+  }
+  if (kind === 'bench') {
+    const reachable = done[0];
+    const working = done[2] && done[3];
+    return `<div class="preview preview--shipped">
+      <p class="preview__label">Shipped &mdash; /bench, its own screen, outside the app</p>
+      <div class="state-card">
+        <div>
+          <p class="eyebrow">Packing work</p>
+          <h4 class="state-card__title">${!reachable ? 'No work can reach this bench'
+            : (working ? 'Packing work at this bench' : 'Nothing to pack right now')}</h4>
+        </div>
+        <p class="state-card__message">${!reachable
+          ? 'OpenLinker is not sending packing work here, so nothing will appear however long you keep this screen open. Nothing is broken at the bench, and this is not the same as having nothing to pack.'
+          : (working
+            ? 'Parcel 1 of 3 &middot; 4 lines, 9 units to verify'
+            : 'Every parcel routed to this bench has been packed. New work turns up here on its own — you do not need to refresh, and you can stay signed in.')}</p>
+        ${!reachable || working ? '' : `<p class="step__note-body"><b>Work is reaching this bench normally.</b>
+          &mdash; the shipped reassurance line, shown here even though nothing can arrive. Not ambiguous: untrue.</p>`}
+      </div>
+      <div class="step__actions">${done[5] ? '' :
+        `<button class="button button--secondary button--sm" type="button" id="try5" onclick="completeStep(5)">Try it: mark step 6 checked</button>`}</div>
     </div>`;
   }
   return '';
 }
 
-function renderSteps() {
-  document.getElementById('steps').innerHTML = STEPS.map((s, i) => `
-    <div class="step ${completed[i] ? 'step--done' : ''}" id="step${i}">
-      <div class="step__num">${completed[i] ? '✓' : i + 1}</div>
+/* ── render ────────────────────────────────────────────────────────────── */
+function firstOpen() { const i = done.findIndex((d) => !d); return i; }
+
+/* A step is expanded when it is the one you are on, when it is the gate (the
+   fact that decides whether any of this produces work), when you opened it, or
+   when the mockup's "expand all" is on for reviewing. Everything else collapses
+   to its head — the previous revision expanded all six at once and ran to
+   6,784px before the operator had done anything. */
+function isExpanded(i) {
+  if (expandAll) return true;
+  if (opened[i]) return true;
+  if (STEPS[i].gate && !done[i]) return true;
+  if (!done[i] && i === firstOpen()) return true;
+  return false;
+}
+
+function stepClass(i) {
+  const c = ['step'];
+  if (STEPS[i].gate) c.push('step--gate');
+  if (done[i]) c.push('step--done');
+  else if (i === firstOpen()) c.push('step--current');
+  if (isExpanded(i)) c.push('step--open');
+  return c.join(' ');
+}
+
+function render(focusId) {
+  const active = focusId ?? (document.activeElement && document.activeElement.id) ?? null;
+
+  document.getElementById('consequencesSlot').innerHTML = consequencesHtml();
+
+  if (phase !== 'ready-to-render') {
+    renderDegraded();
+    return;
+  }
+
+  document.getElementById('checklist').innerHTML = STEPS.map((s, i) => {
+    const isCurrent = !done[i] && i === firstOpen();
+    return `
+    <li class="${stepClass(i)}" id="step${i}" ${isCurrent ? 'aria-current="step"' : ''}>
+      <div class="step__indicator" aria-hidden="true">${done[i] ? '✓' : i + 1}</div>
       <div class="step__body">
-        <div class="step__title">${s.title}<span class="step__who">${s.who}</span></div>
-        <p class="step__desc">${s.desc}</p>
-        <div class="step__do">
-          <div class="step__do-label">${s.doTitle}</div>
-          <ol>${s.doItems.map(it => `<li>${it}</li>`).join('')}</ol>
+        <div class="step__head">
+          <h3 class="step__title">${s.title}</h3>
+          <span class="status-badge status-badge--compact ${s.who === 'Packer' ? 'status-badge--review' : 'status-badge--info'}">${s.who}</span>
+          ${s.built ? '' : `<span class="status-badge status-badge--compact status-badge--warning">
+            <span class="status-badge__dot" aria-hidden="true"></span>Not built yet</span>`}
+          ${isCurrent ? '<span class="status-badge status-badge--compact status-badge--neutral">You are here</span>' : ''}
+          <button class="step__reopen" type="button" id="reopen${i}" onclick="toggleOpen(${i})">${isExpanded(i) ? 'Hide details' : 'Show details'}</button>
         </div>
-        ${s.preview ? previewHtml(s.preview, i) : ''}
-        <div class="step__result" id="result${i}" style="display:${completed[i] ? 'flex' : 'none'};">✓ Done</div>
+        ${done[i] && !isExpanded(i) ? `<p class="step__result">✓ Done</p>` : ''}
+        <p class="step__desc">${s.desc}</p>
+        <p class="step__where">Where: <code>${s.where}</code></p>
+        <div class="step__do">
+          <p class="step__do-label">Do this</p>
+          <ol>${s.doItems.map((it) => `<li>${it}</li>`).join('')}</ol>
+        </div>
+        ${previewHtml(s.preview)}
+        ${s.gap
+          ? `<div class="alert alert--${s.gap.tone}" role="${s.gap.tone === 'error' ? 'alert' : 'status'}">
+               <div class="alert__content">
+                 <strong class="alert__title">${s.gap.title}</strong>
+                 <p class="alert__description">${s.gap.body}</p>
+               </div>
+             </div>`
+          : `<div class="step__note">
+               <p class="step__note-title">${s.note.title}</p>
+               <p class="step__note-body">${s.note.body}</p>
+             </div>`}
       </div>
+    </li>`;
+  }).join('');
+
+  renderRail();
+  renderReadiness();
+  renderVerdict();
+  renderOutcome();
+  document.getElementById('navPackBenchSlot').hidden = !done[4];
+
+  if (active) document.getElementById(active)?.focus({ preventScroll: true });
+}
+
+function renderRail() {
+  const n = done.filter(Boolean).length;
+  document.getElementById('rail').innerHTML = `
+    <span class="rail__count">${n} of 6 done</span>
+    <div class="rail__jumps">${STEPS.map((s, i) => {
+      const cls = ['rail__jump'];
+      if (done[i]) cls.push('rail__jump--done');
+      else if (i === firstOpen()) cls.push('rail__jump--current');
+      if (s.gate) cls.push('rail__jump--gate');
+      return `<button class="${cls.join(' ')}" type="button" onclick="jumpTo(${i})"
+        aria-label="Go to step ${i + 1}: ${s.title.replace(/"/g, '')}">${done[i] ? '✓' : i + 1}</button>`;
+    }).join('')}</div>
+    <span class="step__note-body" style="margin-left:auto;">Step 3 is the gate &mdash; the dashed one.</span>`;
+  document.getElementById('progressMeta').textContent = `${n} of 6 done`;
+}
+
+function renderReadiness() {
+  document.getElementById('readiness').innerHTML = READINESS.map((r, i) => {
+    let badge;
+    if (i === 4 && role !== 'admin') {
+      badge = `<span class="status-badge status-badge--compact status-badge--neutral">Cannot check</span>`;
+    } else if (done[i]) {
+      badge = `<span class="status-badge status-badge--compact status-badge--success"><span class="status-badge__dot" aria-hidden="true"></span>Yes</span>`;
+    } else if (i === 2) {
+      badge = `<span class="status-badge status-badge--compact status-badge--error"><span class="status-badge__dot" aria-hidden="true"></span>No &mdash; nothing routes</span>`;
+    } else {
+      badge = `<span class="status-badge status-badge--compact status-badge--neutral">Not yet</span>`;
+    }
+    return `<div class="readiness__row">
+      <div><div class="readiness__label">${r.label}</div><div class="readiness__hint">${r.hint}</div></div>
+      ${badge}
+    </div>`;
+  }).join('');
+}
+
+function renderVerdict() {
+  const slot = document.getElementById('verdictSlot');
+  if (anomaly === 'a2-ambiguous') {
+    slot.innerHTML = alertBlock('error', 'Two systems both claim this decision',
+      'More than one connection says it decides where orders ship from, so OpenLinker decides neither and every arrangement is refused until you resolve it — including the one that changes nothing. Step 4 cannot be completed from here while that is true. Open the connections named on <b>Who decides what</b> and leave one of them in charge.');
+    return;
+  }
+  if (anomaly === 'connection-disabled') {
+    slot.innerHTML = alertBlock('error', 'The OpenLinker OMS connection is switched off',
+      'Every step below still reads as done, and nothing will reach the bench: a connection that is not active is skipped when OpenLinker looks for somewhere to send packing work, so the bench falls back to <b>“No work can reach this bench”</b> with your whole setup apparently intact. Re-enable it on the connection page.');
+    return;
+  }
+  if (!done[2]) {
+    slot.innerHTML = alertBlock('warning', 'This will not produce any packing work yet',
+      'None of your stock says which warehouse it is in, so there is nothing for OpenLinker to pick from — and no screen in the product can change that today (step 3). You can still set the rest up: it is safe, nothing breaks, and it will start working the day your stock gains a location. <b>But if you are here to have a packer packing this week, this is the step to solve first.</b>');
+    return;
+  }
+  slot.innerHTML = '';
+}
+
+function alertBlock(tone, title, body) {
+  return `<div class="alert alert--${tone}" role="${tone === 'error' ? 'alert' : 'status'}">
+    <div class="alert__content">
+      <strong class="alert__title">${title}</strong>
+      <p class="alert__description">${body}</p>
+    </div></div>`;
+}
+
+function renderDegraded() {
+  const box = (t, b, tone, role_) => `<div class="alert alert--${tone}" role="${role_}">
+    <div class="alert__content"><strong class="alert__title">${t}</strong>
+    <p class="alert__description">${b}</p></div></div>`;
+  document.getElementById('verdictSlot').innerHTML = phase === 'loading'
+    ? box('Checking your setup&hellip;', 'Until these reads come back, no step is marked either way. Showing them as “not done” while the answer is still in flight would tell an operator whose routing <em>is</em> on that it is off.', 'info', 'status')
+    : box('We could not read your setup', 'The checks this page runs did not come back, so nothing below is marked done or not done — and you should not act on it until they do. Nothing has changed.', 'error', 'alert');
+  document.getElementById('checklist').innerHTML = '';
+  document.getElementById('rail').innerHTML = `<span class="rail__count">&mdash; of 6 done</span>
+    <span class="step__note-body">${phase === 'loading' ? 'Checking&hellip;' : 'Unknown — the checks failed'}</span>`;
+  document.getElementById('readiness').innerHTML = READINESS.map((r) => `<div class="readiness__row">
+    <div><div class="readiness__label">${r.label}</div><div class="readiness__hint">${r.hint}</div></div>
+    <span class="status-badge status-badge--compact status-badge--neutral">${phase === 'loading' ? 'Checking' : 'Unknown'}</span>
+  </div>`).join('');
+  document.getElementById('progressMeta').textContent = phase === 'loading' ? 'Checking…' : 'Unknown';
+  document.getElementById('outcomeSlot').innerHTML = phase === 'read-failed'
+    ? `<div class="step__actions"><button class="button button--secondary" type="button" onclick="setState('not-started')">Try again</button></div>` : '';
+}
+
+function renderOutcome() {
+  const slot = document.getElementById('outcomeSlot');
+  if (role !== 'admin') {
+    slot.innerHTML = ''; return;
+  }
+  if (!done.every(Boolean)) { slot.innerHTML = ''; return; }
+  if (!done[2]) {
+    slot.innerHTML = `<div class="alert alert--warning" role="status">
+      <div class="alert__content">
+        <strong class="alert__title">Setup incomplete &mdash; nothing will reach the bench</strong>
+        <p class="alert__description">Five of the six steps are done and the sixth cannot be. No stock says which
+          warehouse it is in, so OpenLinker has nothing to pick from and refuses each order rather than inventing a
+          location. Those orders take their ordinary path to your shop, so nothing is broken &mdash; it simply is not
+          packing anything.</p>
+      </div>
+    </div>`;
+    return;
+  }
+  slot.innerHTML = `<div class="alert alert--success" role="status">
+    <div class="alert__content">
+      <strong class="alert__title" style="color:var(--status-success-fg);">Work is reaching the bench</strong>
+      <p class="alert__description">Orders are routed as OpenLinker reads them and offered to your bench, which accepts
+        them automatically. Watch it on <b>Fulfilment</b>, where you can also hold or cancel a parcel.</p>
     </div>
-  `).join('') + `
-    <div class="finish-card" id="finishCard" style="display:${completed.every(Boolean) ? 'block' : 'none'};">
-      <div class="finish-card__title">🎉 The pack bench is live</div>
-      <div class="finish-card__desc">Orders routed to OpenLinker will show up for your packer automatically. Nothing else to configure.</div>
+    <div class="alert__actions">
+      <a class="button button--secondary button--sm" href="#">Open Fulfilment</a>
     </div>
-  `;
-  renderProgress();
+  </div>`;
 }
 
-function markDone(i) {
-  completed[i] = true;
-  renderSteps();
-  const el = document.getElementById('step' + (i + 1));
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+/* ── actions ───────────────────────────────────────────────────────────── */
+function completeStep(i) { done[i] = true; opened[i] = true; render('reopen' + i); }
+function toggleOpen(i) { opened[i] = !isExpanded(i); render('reopen' + i); }
+function toggleCapability(on) { done[0] = on; opened[0] = true; render('capFE'); }
+function attemptGrant() { openDialog(done[1] ? 'dialog-grant-sourcing' : 'dialog-grant-refused'); }
+function toggleExpandAll() {
+  expandAll = !expandAll;
+  document.getElementById('expandAllChip').setAttribute('aria-pressed', String(expandAll));
+  render('expandAllChip');
+}
+function jumpTo(i) {
+  const el = document.getElementById('step' + i);
+  if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); el.querySelector('.step__title')?.focus?.(); }
 }
 
-function openEnableDialog() {
-  enableCtx.preset = null;
-  document.getElementById('presetA').classList.remove('preset-tile--selected');
-  document.getElementById('presetB').classList.remove('preset-tile--selected');
-  document.getElementById('confirmEnableBtn').disabled = true;
-  document.getElementById('enableDialogBackdrop').classList.add('is-open');
-}
-function closeDialog() { document.getElementById('enableDialogBackdrop').classList.remove('is-open'); }
-document.getElementById('enableDialogBackdrop').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeDialog(); });
+/* ── states ────────────────────────────────────────────────────────────── */
+const PRESETS = {
+  'not-started':            { done: [0,0,0,0,0,0], role: 'admin',    phase: 'ready-to-render', anomaly: null },
+  'loading':                { done: [0,0,0,0,0,0], role: 'admin',    phase: 'loading',         anomaly: null },
+  'read-failed':            { done: [0,0,0,0,0,0], role: 'admin',    phase: 'read-failed',     anomaly: null },
+  'in-progress':            { done: [1,1,0,0,0,0], role: 'admin',    phase: 'ready-to-render', anomaly: null },
+  'blocked-no-location':    { done: [1,0,0,0,0,0], role: 'admin',    phase: 'ready-to-render', anomaly: null },
+  'awaiting-located-stock': { done: [1,1,0,1,1,1], role: 'admin',    phase: 'ready-to-render', anomaly: null },
+  'ready':                  { done: [1,1,1,1,1,1], role: 'admin',    phase: 'ready-to-render', anomaly: null },
+  'a2-ambiguous':           { done: [1,1,1,0,0,0], role: 'admin',    phase: 'ready-to-render', anomaly: 'a2-ambiguous' },
+  'connection-disabled':    { done: [1,1,1,1,1,1], role: 'admin',    phase: 'ready-to-render', anomaly: 'connection-disabled' },
+  'read-only':              { done: [1,1,0,0,0,0], role: 'operator', phase: 'ready-to-render', anomaly: null },
+};
 
-function pickPreset(p) {
-  enableCtx.preset = p;
-  document.getElementById('presetA').classList.toggle('preset-tile--selected', p === 'openlinker');
-  document.getElementById('presetB').classList.toggle('preset-tile--selected', p === 'later');
-  document.getElementById('confirmEnableBtn').disabled = false;
-}
-function finishEnable() {
-  closeDialog();
-  markDone(0);
-  if (enableCtx.preset === 'openlinker') {
-    markDone(1);
-    const badge = document.getElementById('wdBadge');
-    const why = document.getElementById('wdWhy');
-    if (badge) { badge.className = 'status-badge status-badge--info'; badge.innerHTML = '<span class="status-badge__dot"></span>OpenLinker'; }
-    if (why) why.textContent = "Set in step 2 — nobody else has claimed it.";
+function setState(name) {
+  const p = PRESETS[name];
+  if (!p) return;
+  document.body.dataset.state = name;
+  done = p.done.map(Boolean);
+  opened = [false, false, false, false, false, false];
+  expandAll = false;
+  role = p.role; phase = p.phase; anomaly = p.anomaly;
+
+  const admin = role === 'admin';
+  document.getElementById('shellUsername').textContent = admin ? 'ola.admin' : 'jan.operator';
+  document.getElementById('chipUsername').textContent = admin ? 'ola.admin' : 'jan.operator';
+  document.getElementById('chipInitials').textContent = admin ? 'OA' : 'JO';
+  // Both groups declare `requiresRole: 'admin'` in BASE_NAV_GROUPS.
+  document.getElementById('navGroupAi').hidden = !admin;
+  document.getElementById('navGroupAdmin').hidden = !admin;
+
+  document.querySelectorAll('#stateSwitcher .chip[data-state]').forEach((c) => {
+    const on = c.dataset.state === name;
+    c.setAttribute('aria-checked', String(on));
+    c.tabIndex = on ? 0 : -1;
+  });
+  render();
+  // The read-only notice belongs above the checklist, not 4,600px below it.
+  if (!admin) {
+    document.getElementById('verdictSlot').insertAdjacentHTML('afterbegin', alertBlock('info',
+      'You are reading this, not changing it',
+      'Only an administrator can add a connection, create a location, hand over a decision or change a role. This page is open to you anyway: if your bench is empty you need to be able to find out why, and hand your supervisor a step number rather than a description of a blank screen.'));
   }
 }
 
-function grantPackerRole() {
-  const nav = document.getElementById('navPreview');
-  if (nav) {
-    nav.style.background = 'var(--status-success-soft)'; nav.style.color = 'var(--status-success-fg)'; nav.style.border = 'none';
-    nav.innerHTML = 'Pack bench <span class="mini-badge">packer</span>';
-  }
-  markDone(2);
-  setTimeout(() => markDone(3), 400);
-}
+/* Roving tabindex + arrow keys — `role="radiogroup"` promises both, and the
+   state chips are mutually exclusive, which `aria-pressed` cannot express. */
+document.getElementById('stateSwitcher').addEventListener('keydown', (e) => {
+  const chips = [...document.querySelectorAll('#stateSwitcher .chip[data-state]')];
+  const at = chips.indexOf(document.activeElement);
+  if (at < 0) return;
+  let next = null;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (at + 1) % chips.length;
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (at - 1 + chips.length) % chips.length;
+  if (e.key === 'Home') next = 0;
+  if (e.key === 'End') next = chips.length - 1;
+  if (next === null) return;
+  e.preventDefault();
+  setState(chips[next].dataset.state);
+  chips[next].focus();
+});
 
-renderSteps();
+/* ── dialogs ───────────────────────────────────────────────────────────── */
+function openDialog(id) {
+  closeDialog(true);
+  lastFocused = document.activeElement;
+  document.body.dataset.dialog = id;
+  document.getElementById('ov-' + id).classList.add('is-open');
+  // Focus the content, not the first button: focusing "Cancel" announces
+  // "Cancel, button" with neither the title nor the description read out.
+  document.getElementById('dlg-' + id).focus();
+}
+function closeDialog(silent) {
+  document.querySelectorAll('.dialog__overlay.is-open').forEach((o) => o.classList.remove('is-open'));
+  delete document.body.dataset.dialog;
+  if (!silent && lastFocused && typeof lastFocused.focus === 'function') lastFocused.focus();
+  if (!silent) lastFocused = null;
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDialog(); });
+document.querySelectorAll('.dialog__overlay').forEach((o) => o.addEventListener('click', () => closeDialog()));
+
+setState('not-started');
 </script>
