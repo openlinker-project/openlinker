@@ -16,6 +16,20 @@ import type { SessionUser } from '../../../shared/auth/session.types';
 // 2), so any test that needs to see/toggle it renders as an admin session.
 const ADMIN_SESSION = createAuthenticatedSessionAdapter();
 
+// Write-capable but NOT admin (#3164 review's write-access gating, reconciled
+// here with the #3148 dialog tests during the #3147 rebase): `listings:write`
+// is what makes row actions/checkboxes render at all, while the admin-only
+// "also set to Automatic" checkbox is gated on role alone (`useIsAdmin`), not
+// on this permission — this fixture is what lets a test exercise the former
+// while asserting the absence of the latter.
+const OPERATOR_SESSION = createAuthenticatedSessionAdapter({
+  id: 'user_operator',
+  username: 'operator',
+  email: 'operator@example.com',
+  role: 'operator',
+  permissions: ['connections:read', 'listings:read', 'listings:write'],
+});
+
 function buildItem(overrides: Partial<PriceChangeItem> = {}): PriceChangeItem {
   return {
     id: 'ep-1',
@@ -123,7 +137,7 @@ describe('PriceChangesQueueTable', () => {
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), accept },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient, sessionAdapter: ADMIN_SESSION });
     await screen.findByText('Ergonomic Office Chair');
 
     await userEvent.click(screen.getByTestId('row-accept'));
@@ -190,7 +204,15 @@ describe('PriceChangesQueueTable', () => {
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])) },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    // Write-capable (so the row's Accept button renders at all — #3164
+    // review's write-access gating, reconciled here during the #3147
+    // rebase), but deliberately NOT admin, since that is the exact
+    // distinction this test asserts (`useIsAdmin()`, independent of the
+    // `listings:write` permission).
+    renderWithProviders(<PriceChangesQueueTable />, {
+      apiClient,
+      sessionAdapter: OPERATOR_SESSION,
+    });
     await screen.findByText('Ergonomic Office Chair');
 
     await userEvent.click(screen.getByTestId('row-accept'));
@@ -363,7 +385,7 @@ describe('PriceChangesQueueTable', () => {
       listings: { getBulkBatch },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    renderWithProviders(<PriceChangesQueueTable />, { apiClient, sessionAdapter: ADMIN_SESSION });
     await screen.findByText('Ergonomic Office Chair');
 
     const checkboxes = screen.getAllByTestId('row-select');
