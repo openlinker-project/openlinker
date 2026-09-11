@@ -24161,11 +24161,19 @@ legend.analytics-settings-dialog__label {
 
 /* ── PricingAndSyncSection (#3149, ADR-072) ──
    Mirrors `docs/plans/mockups/price-changes-review-queue.html`'s
-   `#page-connection` `.settings-section` / `.mode-switch` / `.source-row` /
-   `.unsaved-bar` shapes — checked for name collisions against the real
-   app's existing CSS before adding (`.settings-section` etc. were only
-   ever referenced in a comment, never defined; see the #2473 note above). */
-.settings-section {
+   `#page-connection` `.settings-section` / `.source-row` / `.unsaved-bar`
+   shapes, under a `.pricing-sync__` prefix (#3166 review, finding 7) — an
+   earlier revision claimed every mockup class name was "only ever
+   referenced in a comment, never defined", which was true for
+   `.settings-section` but FALSE for `.activity-list`, already defined above
+   (search this file for `.activity-list`) with its own `__item` rules. The
+   #2473 precedent this cites namespaced the mockup's names for exactly
+   this reason (`.settings-field` → `.analytics-settings-dialog__field`);
+   this block now does the same rather than claiming them globally.
+   `.mode-switch*` is gone — the mode toggle is `SegmentedControl`
+   (`shared/ui/segmented-control.tsx`), which ships its own styling and
+   conveys selection through more than colour alone. */
+.pricing-sync__section {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -24173,33 +24181,39 @@ legend.analytics-settings-dialog__label {
   border-top: 1px solid var(--border-subtle);
 }
 
-.settings-section:first-of-type {
+/* An explicit modifier rather than `:first-of-type` (#3166 review, finding
+   7) — `:first-of-type` matches the first element of its TAG among
+   siblings, not the first of this CLASS, so a sibling `<div>` rendered
+   before the first `.pricing-sync__section` (e.g. `PageLayout`'s own
+   `.page-header`) silently defeated the intended "no top border on the
+   first section" rule. */
+.pricing-sync__section--first {
   border-top: none;
   padding-top: 0;
 }
 
-.settings-section h2 {
+.pricing-sync__section-title {
   margin: 0;
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.settings-section__head {
+.pricing-sync__section-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
 }
 
-.settings-section__desc {
+.pricing-sync__section-desc {
   margin: 0;
   max-width: 60ch;
   font-size: 0.8125rem;
   color: var(--text-secondary);
 }
 
-.settings-section__pending {
+.pricing-sync__pending {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -24207,51 +24221,12 @@ legend.analytics-settings-dialog__label {
   color: var(--text-secondary);
 }
 
-.settings-section__pending svg {
-  flex-shrink: 0;
-  color: var(--accent-primary);
-}
-
-.mode-switch {
-  display: inline-flex;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-pill);
-  padding: 2px;
-  gap: 2px;
-  width: fit-content;
-}
-
-.mode-switch__opt {
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-pill);
-  padding: 6px 14px;
-  font-size: 0.78rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.mode-switch__opt.is-active {
-  background: var(--accent-primary);
-  color: var(--text-on-primary);
-}
-
-.mode-switch__opt:focus-visible {
-  box-shadow: var(--shadow-focus);
-}
-
-.mode-switch--sm .mode-switch__opt {
-  padding: 4px 10px;
-  font-size: 0.72rem;
-}
-
-.mode-switch__hint {
+.pricing-sync__mode-hint {
   font-size: 0.75rem;
   color: var(--text-muted);
 }
 
-.rule-editor-row {
+.pricing-sync__rule-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -24259,7 +24234,7 @@ legend.analytics-settings-dialog__label {
   flex-wrap: wrap;
 }
 
-.rule-editor-form {
+.pricing-sync__rule-form {
   display: grid;
   grid-template-columns: repeat(3, minmax(120px, 1fr));
   gap: var(--space-3);
@@ -24269,12 +24244,18 @@ legend.analytics-settings-dialog__label {
 }
 
 @media (max-width: 640px) {
-  .rule-editor-form {
+  .pricing-sync__rule-form {
     grid-template-columns: 1fr;
   }
 }
 
-.unsaved-bar {
+.pricing-sync__field-error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--status-error-strong);
+}
+
+.pricing-sync__unsaved-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -24286,24 +24267,24 @@ legend.analytics-settings-dialog__label {
   border-radius: var(--radius-md);
 }
 
-.unsaved-bar__text {
+.pricing-sync__unsaved-bar-text {
   font-size: 0.8125rem;
   color: var(--text-primary);
 }
 
-.unsaved-bar__actions {
+.pricing-sync__unsaved-bar-actions {
   display: flex;
   gap: var(--space-2);
   flex-shrink: 0;
 }
 
-.source-list {
+.pricing-sync__source-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
 }
 
-.source-row {
+.pricing-sync__source-row {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -24312,7 +24293,7 @@ legend.analytics-settings-dialog__label {
   border-radius: var(--radius-md);
 }
 
-.source-row__head {
+.pricing-sync__source-row-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -24320,13 +24301,13 @@ legend.analytics-settings-dialog__label {
   flex-wrap: wrap;
 }
 
-.source-row__name {
+.pricing-sync__source-row-name {
   font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.source-row__toggle {
+.pricing-sync__source-row-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -24335,12 +24316,12 @@ legend.analytics-settings-dialog__label {
   cursor: pointer;
 }
 
-.source-row__summary {
+.pricing-sync__source-row-summary {
   font-size: 0.78rem;
   color: var(--text-secondary);
 }
 
-.source-row__body {
+.pricing-sync__source-row-body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -24348,7 +24329,7 @@ legend.analytics-settings-dialog__label {
   border-top: 1px dashed var(--border-subtle);
 }
 
-.activity-list {
+.pricing-sync__activity-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);

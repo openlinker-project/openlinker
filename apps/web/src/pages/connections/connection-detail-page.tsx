@@ -247,6 +247,18 @@ export function ConnectionDetailPage(): ReactElement {
                 Category Mappings
               </Link>
             ) : null}
+            {/* #3149/#3166 review — a viable pricing destination is one
+                that can either list marketplace offers or publish shop
+                products, mirroring `ConnectionPricingSyncPage`'s own gate. */}
+            {connection.enabledCapabilities.includes('OfferManager') ||
+            connection.enabledCapabilities.includes('ProductPublisher') ? (
+              <Link
+                className="button button--secondary"
+                to={`/connections/${connectionId}/pricing-sync`}
+              >
+                Pricing &amp; sync
+              </Link>
+            ) : null}
           </div>
         ) : undefined
       }

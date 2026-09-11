@@ -18,6 +18,7 @@ import { analyticsIndexRoute, analyticsLegacyRedirectRoute } from './analytics.r
 import { connectionDetailRoute } from './connection-detail.route';
 import { connectionCategoryMappingsRoute } from './connection-category-mappings.route';
 import { connectionMappingsRoute } from './connection-mappings.route';
+import { connectionPricingSyncRoute } from './connection-pricing-sync.route';
 import { editConnectionRoute } from './edit-connection.route';
 import { connectionsRoute } from './connections.route';
 import { cursorsRoute } from './cursors.route';
@@ -77,6 +78,7 @@ export const coreChildren: RouteObject[] = [
   connectionDetailRoute,
   connectionCategoryMappingsRoute,
   connectionMappingsRoute,
+  connectionPricingSyncRoute,
   editConnectionRoute,
   jobsLogsRoute,
   webhookDeliveriesRoute,

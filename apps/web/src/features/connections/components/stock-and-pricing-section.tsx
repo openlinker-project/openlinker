@@ -24,10 +24,20 @@
  * silently degraded. The server falls back to the catalogue price there, so an
  * operator who typed 120 would save happily and publish an unchanged price.
  *
+ * **Pricing-rule half retired for a viable pricing DESTINATION (#3149/#3166
+ * review, ADR-072).** That population's `config.pricingRule` moved to the
+ * nested `{default, sourceOverrides}` shape owned by the dedicated
+ * `PricingAndSyncSection` page, and this section's own editable fields for
+ * that same key are hidden behind `pricingRuleManagedElsewhere` — replaced by
+ * a read-only pointer there — so the two can never disagree about the same
+ * config key on one form. The stock-publish-policy half above is unaffected;
+ * it has no rival editor.
+ *
  * @module features/connections/components
  */
 import { useState, type ReactElement } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
+import { Link } from 'react-router-dom';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
@@ -51,6 +61,23 @@ export interface StockAndPricingSectionProps {
   syncStockPolicyToJson: () => void;
   /** Host whole-object serializer for `config.pricingRule`. */
   syncPricingRuleToJson: () => void;
+  /**
+   * True for a viable pricing DESTINATION (#3149/#3166 review) — that
+   * population's `config.pricingRule` is now owned exclusively by the
+   * dedicated `PricingAndSyncSection` page (nested `{default,
+   * sourceOverrides}` shape, PATCHed through its own admin-gated,
+   * lock-guarded endpoint). Two independent editors of the same key on one
+   * mega-form produced a contradiction on first paint (this section's
+   * checkbox reading the wrong sub-object), a destructive checkbox toggle
+   * (unticking wrote `pricingRule: null`, dropping every per-source
+   * override on save), and a stale-merge hazard on this form's own submit.
+   * When true, the editable pricing-rule fields below are replaced by a
+   * read-only pointer to that page instead — the stock-publish-policy half
+   * is untouched, since it has no rival editor.
+   */
+  pricingRuleManagedElsewhere?: boolean;
+  /** Where the read-only pointer above links to. Required when the flag is set. */
+  pricingRuleManagedElsewhereHref?: string;
 }
 
 /**
@@ -72,6 +99,8 @@ export function StockAndPricingSection({
   configIsParseable,
   syncStockPolicyToJson,
   syncPricingRuleToJson,
+  pricingRuleManagedElsewhere = false,
+  pricingRuleManagedElsewhereHref,
 }: StockAndPricingSectionProps): ReactElement {
   const stockErrors = form.formState.errors.stockPolicy;
   const priceErrors = form.formState.errors.pricingRule;
@@ -210,98 +239,115 @@ export function StockAndPricingSection({
         </>
       ) : null}
 
-      <label className="rate-limit-section__toggle">
-        <input
-          type="checkbox"
-          checked={priceOpen}
-          disabled={!configIsParseable}
-          onChange={(event) => handlePriceOpenChange(event.target.checked)}
-        />
-        <span>Publish a different price than your catalogue</span>
-      </label>
-
-      {priceOpen ? (
+      {pricingRuleManagedElsewhere ? (
+        <p className="rate-limit-section__help" id="pricing-rule-managed-elsewhere">
+          The price published to this destination — a default rule plus any per-source overrides
+          — is managed on its own page.{' '}
+          {pricingRuleManagedElsewhereHref ? (
+            <Link to={pricingRuleManagedElsewhereHref}>Manage pricing &amp; sync</Link>
+          ) : (
+            'Manage pricing & sync'
+          )}
+          .
+        </p>
+      ) : (
         <>
-          <p className="rate-limit-section__help">
-            A catalogue price of <strong>{formatPrice(EXAMPLE_PRICE)}</strong> is published as{' '}
-            <strong>{formatPrice(examplePublishedPrice)}</strong>. A price set on an individual
-            item always wins and is never adjusted here.
-          </p>
-
-          <FormField
-            label="How to set the price"
-            name="pricingRule.type"
-            error={priceErrors?.type?.message}
-            description="A markup adds a percentage on top of your price. A margin sets the price so that the percentage you enter is the share of the final price you keep."
-          >
-            <Select
-              value={ruleType}
+          <label className="rate-limit-section__toggle">
+            <input
+              type="checkbox"
+              checked={priceOpen}
               disabled={!configIsParseable}
-              invalid={Boolean(priceErrors?.type)}
-              onChange={(event) => {
-                form.setValue(
-                  'pricingRule.type',
-                  event.target.value as '' | 'passthrough' | 'markup' | 'margin',
-                  { shouldDirty: true },
-                );
-                syncPricingRuleToJson();
-              }}
-            >
-              <option value="passthrough">Use my catalogue price</option>
-              <option value="markup">Add a markup</option>
-              <option value="margin">Target a margin</option>
-            </Select>
-          </FormField>
+              onChange={(event) => handlePriceOpenChange(event.target.checked)}
+            />
+            <span>Publish a different price than your catalogue</span>
+          </label>
 
-          {ruleType === 'markup' || ruleType === 'margin' ? (
-            <FormField
-              label="Percentage"
-              name="pricingRule.percent"
-              error={priceErrors?.percent?.message}
-              description={
-                ruleType === 'margin'
-                  ? 'Must be below 100. A margin of 100 or more has no answer, so it would be ignored and your catalogue price published instead.'
-                  : 'Added on top of your catalogue price.'
-              }
-            >
-              <Input
-                value={percent}
-                onChange={(event) => {
-                  form.setValue('pricingRule.percent', event.target.value, { shouldDirty: true });
-                  syncPricingRuleToJson();
-                }}
-                disabled={!configIsParseable}
-                placeholder="0"
-                inputMode="decimal"
-                invalid={Boolean(priceErrors?.percent)}
-              />
-            </FormField>
+          {priceOpen ? (
+            <>
+              <p className="rate-limit-section__help">
+                A catalogue price of <strong>{formatPrice(EXAMPLE_PRICE)}</strong> is published as{' '}
+                <strong>{formatPrice(examplePublishedPrice)}</strong>. A price set on an individual
+                item always wins and is never adjusted here.
+              </p>
+
+              <FormField
+                label="How to set the price"
+                name="pricingRule.type"
+                error={priceErrors?.type?.message}
+                description="A markup adds a percentage on top of your price. A margin sets the price so that the percentage you enter is the share of the final price you keep."
+              >
+                <Select
+                  value={ruleType}
+                  disabled={!configIsParseable}
+                  invalid={Boolean(priceErrors?.type)}
+                  onChange={(event) => {
+                    form.setValue(
+                      'pricingRule.type',
+                      event.target.value as '' | 'passthrough' | 'markup' | 'margin',
+                      { shouldDirty: true },
+                    );
+                    syncPricingRuleToJson();
+                  }}
+                >
+                  <option value="passthrough">Use my catalogue price</option>
+                  <option value="markup">Add a markup</option>
+                  <option value="margin">Target a margin</option>
+                </Select>
+              </FormField>
+
+              {ruleType === 'markup' || ruleType === 'margin' ? (
+                <FormField
+                  label="Percentage"
+                  name="pricingRule.percent"
+                  error={priceErrors?.percent?.message}
+                  description={
+                    ruleType === 'margin'
+                      ? 'Must be below 100. A margin of 100 or more has no answer, so it would be ignored and your catalogue price published instead.'
+                      : 'Added on top of your catalogue price.'
+                  }
+                >
+                  <Input
+                    value={percent}
+                    onChange={(event) => {
+                      form.setValue('pricingRule.percent', event.target.value, {
+                        shouldDirty: true,
+                      });
+                      syncPricingRuleToJson();
+                    }}
+                    disabled={!configIsParseable}
+                    placeholder="0"
+                    inputMode="decimal"
+                    invalid={Boolean(priceErrors?.percent)}
+                  />
+                </FormField>
+              ) : null}
+
+              <FormField
+                label="Rounding"
+                name="pricingRule.rounding"
+                error={priceErrors?.rounding?.message}
+                description="Applied after the percentage."
+              >
+                <Select
+                  value={rounding === '' ? 'none' : rounding}
+                  disabled={!configIsParseable}
+                  invalid={Boolean(priceErrors?.rounding)}
+                  onChange={(event) => {
+                    form.setValue('pricingRule.rounding', event.target.value as PriceRoundingMode, {
+                      shouldDirty: true,
+                    });
+                    syncPricingRuleToJson();
+                  }}
+                >
+                  <option value="none">Keep two decimal places</option>
+                  <option value="nearestWhole">Round to a whole number</option>
+                  <option value="endingIn99">End in .99</option>
+                </Select>
+              </FormField>
+            </>
           ) : null}
-
-          <FormField
-            label="Rounding"
-            name="pricingRule.rounding"
-            error={priceErrors?.rounding?.message}
-            description="Applied after the percentage."
-          >
-            <Select
-              value={rounding === '' ? 'none' : rounding}
-              disabled={!configIsParseable}
-              invalid={Boolean(priceErrors?.rounding)}
-              onChange={(event) => {
-                form.setValue('pricingRule.rounding', event.target.value as PriceRoundingMode, {
-                  shouldDirty: true,
-                });
-                syncPricingRuleToJson();
-              }}
-            >
-              <option value="none">Keep two decimal places</option>
-              <option value="nearestWhole">Round to a whole number</option>
-              <option value="endingIn99">End in .99</option>
-            </Select>
-          </FormField>
         </>
-      ) : null}
+      )}
     </section>
   );
 }

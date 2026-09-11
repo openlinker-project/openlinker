@@ -18,7 +18,6 @@ import {
 } from './edit-connection.schema';
 import { RateLimitSection } from './rate-limit-section';
 import { StockAndPricingSection } from './stock-and-pricing-section';
-import { PricingAndSyncSection } from './pricing-and-sync-section';
 import { SalesDocumentStatusSection } from './sales-document-status-section';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -692,9 +691,24 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // the operator never touched survives a concurrent sibling write, while
       // anything the operator actually edited in the raw JSON still wins.
       const fresh = await apiClient.connections.getById(connection.id);
+      const mergedConfig: Record<string, unknown> = { ...fresh.config, ...input.config };
+      // #3149/#3166 review — for a viable pricing DESTINATION,
+      // `config.pricingRule` is owned exclusively by the dedicated
+      // `PricingAndSyncSection` page (nested `{default, sourceOverrides}`,
+      // PATCHed through its own lock-guarded endpoint). This form's
+      // `input.config.pricingRule` is derived from `configText`, whose
+      // snapshot predates this submit and can never see a save made there
+      // concurrently — spreading it over `fresh.config.pricingRule` would
+      // silently roll that save back (and, via the legacy flat-shape
+      // `StockAndPricingSection`, could drop every per-source override too).
+      // Deleting the key here means `fresh.config.pricingRule` — whatever it
+      // currently holds — always survives this form's own submit.
+      if (needsMasterCatalog) {
+        delete mergedConfig.pricingRule;
+      }
       await updateConnection.mutateAsync({
         connectionId: connection.id,
-        input: { ...input, config: { ...fresh.config, ...input.config } },
+        input: { ...input, config: mergedConfig },
       });
       showToast({
         tone: 'success',
@@ -831,21 +845,26 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         defaultRateLimit={connection.defaultRateLimit ?? null}
       />
 
-      {/* #2610 — generic, platform-neutral: rendered for every connection. */}
+      {/* #2610 — generic, platform-neutral: rendered for every connection.
+          `pricingRuleManagedElsewhere` (#3149/#3166 review) is true for a
+          viable pricing DESTINATION (`needsMasterCatalog`) — that population
+          now owns `config.pricingRule` exclusively through the dedicated
+          `PricingAndSyncSection` page (nested `{default, sourceOverrides}`
+          shape), so this section renders a read-only pointer there instead
+          of its own editable flat-shape fields for the same key. Two
+          independent editors of one config key on one mega-form produced a
+          contradiction on first paint, a destructive checkbox interaction,
+          and a stale-merge-on-submit hazard; this is the structural fix
+          rather than a UI-only patch, since `onSubmit` below also excludes
+          `pricingRule` from what this form ever writes for that population. */}
       <StockAndPricingSection
         form={form}
         configIsParseable={configIsParseable}
         syncStockPolicyToJson={syncStockPolicyToJson}
         syncPricingRuleToJson={syncPricingRuleToJson}
+        pricingRuleManagedElsewhere={needsMasterCatalog}
+        pricingRuleManagedElsewhereHref={`/connections/${connection.id}/pricing-sync`}
       />
-
-      {/* #3149 — the opt-in recurring price propagation review queue's
-          per-connection settings. Gated the same way `needsMasterCatalog`
-          is: a viable destination is one that can either list marketplace
-          offers or publish shop products. Self-contained (its own fetch +
-          Save/Discard) rather than participating in this form — see the
-          component's own docblock for why. */}
-      {needsMasterCatalog ? <PricingAndSyncSection connectionId={connection.id} /> : null}
 
       <div className="config-panel__toggle">
         <Button
