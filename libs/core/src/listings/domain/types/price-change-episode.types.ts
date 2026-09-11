@@ -120,4 +120,35 @@ export interface PriceChangeEpisodeFilters {
   direction?: 'up' | 'down' | 'unknown';
   /** When `true`, only episodes with `|deltaPct| >= 10` (mockup's "Big changes"). */
   magnitudeLargeOnly?: boolean;
+  /**
+   * When `true`, also surface a recently-`ignored` episode (the review
+   * queue's row-level Undo affordance, #3162 review) — see
+   * `PriceChangeEpisodeRepository`'s `RECENTLY_IGNORED_WINDOW_MS`. Excluded
+   * from `countOpen`/`countOpenBySource`, which stay strictly "open".
+   */
+  includeRecentlyResolved?: boolean;
+  /**
+   * Page bounds for the review-queue read (#3162 review — the previously
+   * unbounded `findOpenForConnection`/`findOpenAll` reads and hydrates the
+   * WHOLE open set on every call, which is a real defect at catalogue scale:
+   * one supplier price-file import across a 20k-SKU catalogue with two
+   * destinations opens on the order of tens of thousands of episodes.
+   *
+   * Applied as a real SQL `LIMIT`/`OFFSET` over the SARGABLE predicates
+   * (`resolvedAt IS NULL` + the optional connection filters), ordered by
+   * `detectedAt DESC` — the same page every caller already sees. `direction`
+   * / `magnitudeLargeOnly` remain application-code post-filters (they are
+   * derived from `deltaPct`, not a stored column, per this file's repository
+   * counterpart), so a page may legitimately return FEWER than `limit`
+   * visible rows when either is active — the same approximation
+   * `countOpen` already accepts for those two filters. `undefined` `limit`
+   * means "no page requested" (a bare `getMany()`), kept only for callers
+   * that have not yet adopted pagination (none remain in this tree after
+   * #3162, but the port stays permissive rather than silently defaulting a
+   * caller who forgot to pass one — see `DEFAULT_PRICE_CHANGE_PAGE_SIZE` /
+   * `MAX_PRICE_CHANGE_PAGE_SIZE` at the one call site that resolves the
+   * default, `PriceChangesService.listOpen`).
+   */
+  limit?: number;
+  offset?: number;
 }

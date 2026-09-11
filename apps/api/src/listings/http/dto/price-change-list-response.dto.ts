@@ -17,10 +17,17 @@ export class PriceChangeListResponseDto {
   })
   hiddenStaleCount!: number;
 
+  @ApiProperty({
+    description:
+      'Total open episodes matching the same filters (#3162 review — the read is now paginated).',
+  })
+  total!: number;
+
   static fromDomain(page: PriceChangeQueuePage): PriceChangeListResponseDto {
     const dto = new PriceChangeListResponseDto();
     dto.items = page.items.map((item) => PriceChangeItemResponseDto.fromDomain(item));
     dto.hiddenStaleCount = page.hiddenStaleCount;
+    dto.total = page.total;
     return dto;
   }
 }

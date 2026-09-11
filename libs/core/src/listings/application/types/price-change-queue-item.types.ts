@@ -41,11 +41,26 @@ export interface PriceChangeQueueItem {
 
   destinationConnectionId: string;
   destinationLabel: string;
-  destinationCurrency: string;
+  /**
+   * The DESTINATION's own currency (`readConnectionCurrency`), never the
+   * source's (#3162 review — this field previously always fabricated the
+   * source's currency, which is wrong exactly on the one row where it
+   * matters: a `'currency-mismatch'` `blockReason` is true *because* the two
+   * differ). `null` mirrors `'destination-currency-unknown'` — the
+   * destination's currency is not configured/resolvable at all.
+   */
+  destinationCurrency: string | null;
 
-  computedOldAmount: number;
+  /**
+   * `null` mirrors `PriceChangeEpisode.computedOldAmount` (#3159 — widened
+   * onto the entity by a sibling in this stack after this type was first
+   * written): a brand-new mapping's first detection has no recorded
+   * baseline to diff against.
+   */
+  computedOldAmount: number | null;
   computedNewAmount: number;
-  deltaPct: number;
+  /** `null` when `computedOldAmount` is `null` — see `PriceChangeEpisode.deltaPct()`. */
+  deltaPct: number | null;
   isSteep: boolean;
 
   ruleSummary: PriceChangeQueueItemRuleSummary;
@@ -67,4 +82,12 @@ export interface PriceChangeQueuePage {
   items: readonly PriceChangeQueueItem[];
   /** Episodes excluded because their variant's offer mapping is stale (#1689). */
   hiddenStaleCount: number;
+  /**
+   * The total count of open episodes matching the same filters (#3162
+   * review — the list read is now paginated; `total` is what lets a caller
+   * render "N of M" / drive further pages without hydrating the whole set).
+   * A real SQL `COUNT`, from `PriceChangeEpisodeRepositoryPort.countOpen`
+   * with the SAME filters as the page — never derived from `items.length`.
+   */
+  total: number;
 }
