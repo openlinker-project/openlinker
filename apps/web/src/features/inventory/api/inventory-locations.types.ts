@@ -7,6 +7,16 @@
  * @module apps/web/src/features/inventory/api
  */
 
+/**
+ * `countryIso2` is normalised to uppercase in exactly one place — the API's
+ * own `ListLocationsQueryDto` does the same server-side, so this mirrors that
+ * rule rather than inventing a second one. #3135 review: was duplicated
+ * inline in `inventory.api.ts` and `location-dialog.schema.ts`.
+ */
+export function normalizeCountryIso2(value: string): string {
+  return value.toUpperCase();
+}
+
 /** What a location physically is (#2316). Operator-declared, never derived. */
 export const InventoryLocationKindValues = ['warehouse', 'store', 'third-party', 'virtual'] as const;
 export type InventoryLocationKind = (typeof InventoryLocationKindValues)[number];

@@ -17,6 +17,7 @@ import {
   LocationInUseError,
   type ILocationService,
 } from '@openlinker/core/inventory';
+import { ROLE_PERMISSIONS, UserRoleValues } from '@openlinker/core/users';
 import { InventoryLocationsController } from './inventory-locations.controller';
 
 function makeLocation(
@@ -221,5 +222,19 @@ describe('InventoryLocationsController', () => {
       expect(result.created).toEqual([]);
       expect(result.existingCodes).toEqual(['MAIN']);
     });
+  });
+});
+
+describe('inventory-locations:write permission lockstep', () => {
+  it('should be granted to exactly the roles this controller @Roles(admin) on every write route', () => {
+    // `inventory-locations:write` is a display predicate only (no permission
+    // guard exists) - if this drifts from the controller's actual @Roles,
+    // either add a permission-based guard or revert the grant, the
+    // `shipments:write` / `automations:write` discipline.
+    const rolesWithPermission = UserRoleValues.filter((role) =>
+      ROLE_PERMISSIONS[role].includes('inventory-locations:write')
+    );
+
+    expect(rolesWithPermission).toEqual(['admin']);
   });
 });

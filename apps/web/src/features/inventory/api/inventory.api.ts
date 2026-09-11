@@ -12,6 +12,7 @@ import type {
   PaginatedInventory,
   InventoryAvailabilityResponse,
 } from './inventory.types';
+import { normalizeCountryIso2 } from './inventory-locations.types';
 import type {
   CreateInventoryLocationInput,
   InventoryLocation,
@@ -94,7 +95,7 @@ function buildLocationsQuery(
   const params = new URLSearchParams();
   if (filters?.kind) params.set('kind', filters.kind);
   if (filters?.status) params.set('status', filters.status);
-  if (filters?.countryIso2) params.set('countryIso2', filters.countryIso2.toUpperCase());
+  if (filters?.countryIso2) params.set('countryIso2', normalizeCountryIso2(filters.countryIso2));
   if (filters?.codePrefix) params.set('codePrefix', filters.codePrefix);
   if (pagination?.page !== undefined) params.set('page', String(pagination.page));
   if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));

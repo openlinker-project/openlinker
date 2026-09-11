@@ -71,6 +71,11 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
     label: 'Platform',
     items: [
       { to: '/connections', label: 'Connections', countKey: 'connections' },
+      // Reads are `admin`/`operator`/`viewer` (InventoryLocationsController)
+      // - gated on `inventory:read` rather than `inventory-locations:write`,
+      // so a `packer` (which holds no permissions at all) is the only role
+      // that never sees the entry.
+      { to: '/inventory/locations', label: 'Inventory locations', requiresPermission: 'inventory:read' },
       { to: '/adapters', label: 'Adapters' },
       { to: '/settings', label: 'Settings' },
     ],

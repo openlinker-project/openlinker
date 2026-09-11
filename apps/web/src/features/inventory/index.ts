@@ -55,9 +55,11 @@ export {
 } from './hooks/use-update-inventory-location-mutation';
 export { useDeleteInventoryLocationMutation } from './hooks/use-delete-inventory-location-mutation';
 
-// #3067 — the create/edit dialog, consumed by the (upcoming) locations list
-// page in `pages/inventory/`.
+// #3067 / #3068 — the create/edit and delete/retire dialogs, consumed by the
+// (upcoming) locations list page in `pages/inventory/`.
 export { LocationDialog, type LocationDialogTarget } from './components/location-dialog';
+export { LocationDeleteDialog } from './components/location-delete-dialog';
+export { KIND_LABEL } from './components/location-dialog.schema';
 
 export { useInventoryAvailabilityBatchQuery } from './hooks/use-inventory-availability-batch-query';
 // Query-key factory re-exported so the bulk wizard's chunked per-variant
