@@ -283,15 +283,25 @@ const ORDER_INDEX = [
 // (an operator, or the returns.orphan.reconcile sweep) attributed it first.
 const ALREADY_ATTRIBUTED_ORDER_ID = 'ol_order_5c810fd2e611';
 
-let ORPHANS = [
+// The FROZEN baseline. `ORPHANS` / `PENDING_APPROVAL` below are the live,
+// mutable working copies an organic interaction (matching a card, approving
+// one) is allowed to change — but every toolbar jump resets from THESE, so
+// which state you land on never depends on what you clicked before (a
+// mockup-QA requirement: exactly one way to reach a named state).
+const INITIAL_ORPHANS = [
   { id:'r1', label:'AL-RET-88213', channel:'Allegro', itemsLabel:'Wireless earbuds, phone case', value:'268,00 PLN', daysAgo:3, since:'Sep 8',
     cause:"OpenLinker hasn't ingested that order yet" },
   { id:'r2', label:'AL-RET-88250', channel:'Allegro', itemsLabel:'Running shoes — size 42', value:'249,00 PLN', daysAgo:9, since:'Sep 2',
     cause:"No order with that number here — might be under a different connection" },
 ];
-let PENDING_APPROVAL = [
+const INITIAL_PENDING_APPROVAL = [
   { id:'r3', label:'PrestaShop return', sub:'1 item, recorded by you on Sep 10', daysAgo:1 },
 ];
+
+function cloneFixture(list) { return list.map((r) => ({ ...r })); }
+
+let ORPHANS = cloneFixture(INITIAL_ORPHANS);
+let PENDING_APPROVAL = cloneFixture(INITIAL_PENDING_APPROVAL);
 
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -655,6 +665,18 @@ function setState(name) {
   document.querySelectorAll('.demo-toolbar .chip[data-chip]').forEach(c => c.classList.toggle('chip--active', c.dataset.chip === name));
   closeAllDialogs();
   document.getElementById('toastSlot').innerHTML = '';
+
+  // Reset the working fixtures from the frozen baseline on EVERY jump, so a
+  // named state is reachable exactly one way, regardless of what an earlier
+  // dialog/organic interaction (matching, approving) mutated. `all-done`
+  // additionally empties both — it's the one state whose whole point is
+  // "nothing left", so it must not depend on having cleared rows by hand.
+  // The background group mode resets to the full default too, unless this
+  // jump IS a group-mode chip — otherwise "match-open" could render a
+  // different background list depending on which chip was clicked earlier.
+  ORPHANS = name === 'all-done' ? [] : cloneFixture(INITIAL_ORPHANS);
+  PENDING_APPROVAL = name === 'all-done' ? [] : cloneFixture(INITIAL_PENDING_APPROVAL);
+  currentGroupMode = 'both-groups';
 
   if (['both-groups', 'orphans-only', 'pending-only', 'all-done'].includes(name)) {
     currentGroupMode = name;
