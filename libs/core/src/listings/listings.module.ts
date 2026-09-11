@@ -82,6 +82,9 @@ import { StockAtRiskReadService } from './application/services/stock-at-risk-rea
 import { PriceChangeEpisodeOrmEntity } from './infrastructure/persistence/entities/price-change-episode.orm-entity';
 import { PriceChangeEpisodeRepository } from './infrastructure/persistence/repositories/price-change-episode.repository';
 import { PriceChangeDetectionService } from './application/services/price-change-detection.service';
+import { PriceChangeAutoAppliedLogOrmEntity } from './infrastructure/persistence/entities/price-change-auto-applied-log.orm-entity';
+import { PriceChangeAutoAppliedLogRepository } from './infrastructure/persistence/repositories/price-change-auto-applied-log.repository';
+import { PriceChangeApplyService } from './application/services/price-change-apply.service';
 import {
   OFFER_LINKING_SERVICE_TOKEN,
   OFFER_MAPPING_SYNC_SERVICE_TOKEN,
@@ -131,6 +134,8 @@ import {
   DESTINATION_CATEGORY_REPOSITORY_TOKEN,
   PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
   PRICE_CHANGE_DETECTION_SERVICE_TOKEN,
+  PRICE_CHANGE_AUTO_APPLIED_LOG_REPOSITORY_TOKEN,
+  PRICE_CHANGE_APPLY_SERVICE_TOKEN,
 } from './listings.tokens';
 
 // Re-export tokens for convenience
@@ -194,6 +199,7 @@ export {
       ShopProductStatusSnapshotOrmEntity,
       DestinationCategoryOrmEntity,
       PriceChangeEpisodeOrmEntity,
+      PriceChangeAutoAppliedLogOrmEntity,
     ]),
     IntegrationsModule,
     IdentifierMappingModule,
@@ -267,6 +273,16 @@ export {
     {
       provide: PRICE_CHANGE_DETECTION_SERVICE_TOKEN,
       useExisting: PriceChangeDetectionService,
+    },
+    PriceChangeAutoAppliedLogRepository,
+    {
+      provide: PRICE_CHANGE_AUTO_APPLIED_LOG_REPOSITORY_TOKEN,
+      useExisting: PriceChangeAutoAppliedLogRepository,
+    },
+    PriceChangeApplyService,
+    {
+      provide: PRICE_CHANGE_APPLY_SERVICE_TOKEN,
+      useExisting: PriceChangeApplyService,
     },
     {
       provide: OFFER_LINKING_SERVICE_TOKEN,
@@ -503,6 +519,8 @@ export {
     DESTINATION_CATEGORY_REPOSITORY_TOKEN,
     PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
     PRICE_CHANGE_DETECTION_SERVICE_TOKEN,
+    PRICE_CHANGE_AUTO_APPLIED_LOG_REPOSITORY_TOKEN,
+    PRICE_CHANGE_APPLY_SERVICE_TOKEN,
   ],
 })
 export class ListingsModule {}
