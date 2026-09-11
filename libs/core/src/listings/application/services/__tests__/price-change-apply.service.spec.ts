@@ -94,6 +94,9 @@ describe('PriceChangeApplyService', () => {
   let autoAppliedLog: { record: jest.Mock };
   let bulkProgress: { advanceBatchStatus: jest.Mock };
   let listingRecords: { findLatestByVariantAndConnection: jest.Mock };
+  let identifierMapping: { getExternalIds: jest.Mock };
+  let syncLock: { acquire: jest.Mock; release: jest.Mock };
+  let syncCursors: { getCursor: jest.Mock; advanceCursorIfNewer: jest.Mock };
   let marketplaceAdapter: { updateOfferFields: jest.Mock };
   let service: PriceChangeApplyService;
 
@@ -129,6 +132,18 @@ describe('PriceChangeApplyService', () => {
     autoAppliedLog = { record: jest.fn().mockResolvedValue(undefined) };
     bulkProgress = { advanceBatchStatus: jest.fn().mockResolvedValue(null) };
     listingRecords = { findLatestByVariantAndConnection: jest.fn().mockResolvedValue(null) };
+    // Default: no prior `ShopProduct` mapping resolvable, so the shop-publish
+    // guard (#3161 re-review, IMPORTANT) takes the unguarded fallback and
+    // every pre-existing shop-publish test below is unaffected.
+    identifierMapping = { getExternalIds: jest.fn().mockResolvedValue([]) };
+    syncLock = {
+      acquire: jest.fn().mockResolvedValue('lock-token'),
+      release: jest.fn().mockResolvedValue(true),
+    };
+    syncCursors = {
+      getCursor: jest.fn().mockResolvedValue(null),
+      advanceCursorIfNewer: jest.fn().mockResolvedValue(true),
+    };
 
     service = new PriceChangeApplyService(
       connections as never,
@@ -139,7 +154,10 @@ describe('PriceChangeApplyService', () => {
       episodes as never,
       autoAppliedLog as never,
       bulkProgress as never,
-      listingRecords as never
+      listingRecords as never,
+      identifierMapping as never,
+      syncLock as never,
+      syncCursors as never
     );
   });
 
@@ -258,6 +276,67 @@ describe('PriceChangeApplyService', () => {
 
       await expect(service.applyPriceChange(validInput)).rejects.toBe(cause);
     });
+
+    it('does NOT fail the whole episode when only SOME mapped offers are seller-frozen (#3161 re-review, IMPORTANT — a partial write is not a total failure)', async () => {
+      offerMappings.findForVariant.mockResolvedValue({
+        items: [{ externalId: 'ext-1' }, { externalId: 'ext-2' }],
+        total: 2,
+      });
+      marketplaceAdapter.updateOfferFields.mockImplementation(
+        ({ externalOfferId }: { externalOfferId: string }) =>
+          Promise.resolve(
+            externalOfferId === 'ext-2'
+              ? { frozenFields: [{ field: 'price', currentValue: '350.00' }] }
+              : undefined
+          )
+      );
+
+      const result = await service.applyPriceChange(validInput);
+
+      expect(result).toEqual({ outcome: 'ok' });
+      expect(marketplaceAdapter.updateOfferFields).toHaveBeenCalledTimes(2);
+      // The successful offer's price change is still recorded as applied —
+      // the whole point of the fix — via the ordinary success path.
+      expect(episodes.resolve).not.toHaveBeenCalled(); // no episodeId on this input
+    });
+
+    it('still returns business_failure when EVERY mapped offer is seller-frozen', async () => {
+      offerMappings.findForVariant.mockResolvedValue({
+        items: [{ externalId: 'ext-1' }, { externalId: 'ext-2' }],
+        total: 2,
+      });
+      marketplaceAdapter.updateOfferFields.mockResolvedValue({
+        frozenFields: [{ field: 'price', currentValue: '350.00' }],
+      });
+
+      const result = await service.applyPriceChange(validInput);
+
+      expect(result.outcome).toBe('business_failure');
+    });
+
+    it('rounds the price to the currency\'s own minor-unit exponent rather than hardcoding two decimals (#3161 re-review, IMPORTANT)', async () => {
+      await service.applyPriceChange({ ...validInput, amount: 500, currency: 'JPY' });
+
+      expect(marketplaceAdapter.updateOfferFields).toHaveBeenCalledWith(
+        expect.objectContaining({ fields: { price: { amount: '500', currency: 'JPY' } } })
+      );
+    });
+
+    it('derives the adapter idempotency key from the episode id, never from wall-clock time (#3161 re-review, SUGGESTION)', async () => {
+      episodes.findById.mockResolvedValue(buildEpisode({ id: 'ep-42' }));
+
+      await service.applyPriceChange({ ...validInput, episodeId: 'ep-42' });
+
+      expect(marketplaceAdapter.updateOfferFields).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idempotencyKey: expect.stringContaining('episode:ep-42'),
+        })
+      );
+      const [[call]] = marketplaceAdapter.updateOfferFields.mock.calls as [
+        { idempotencyKey: string },
+      ][];
+      expect(call.idempotencyKey).not.toMatch(/\d{4}-\d{2}-\d{2}T/); // no ISO timestamp
+    });
   });
 
   describe('shop publish', () => {
@@ -359,6 +438,99 @@ describe('PriceChangeApplyService', () => {
       const result = await service.applyPriceChange(validInput);
 
       expect(result.outcome).toBe('business_failure');
+    });
+
+    describe('ADR-067/#2617 stock write-order guard (#3161 re-review, IMPORTANT)', () => {
+      beforeEach(() => {
+        inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
+          {
+            productVariantId: 'ol_variant_1',
+            totalAvailable: 12,
+            locationCount: 1,
+            availableToPromise: 9,
+            stockUpdatedAt: new Date('2026-01-01T00:00:00.000Z'),
+          },
+        ]);
+        identifierMapping.getExternalIds.mockResolvedValue([
+          { externalId: 'ext-shop-1', platformType: 'woocommerce', connectionId: 'dest-1', entityType: 'ShopProduct' },
+        ]);
+        productPublishExecution.executePublish.mockResolvedValue({
+          outcome: 'ok',
+          listingCreationRecord: new ListingCreationRecord(
+            'rec-1',
+            'ol_variant_1',
+            'dest-1',
+            'ext-shop-1',
+            'published',
+            null,
+            new Date(),
+            new Date()
+          ),
+        });
+      });
+
+      it('takes the same per-(connection, offer) lock InventorySyncService uses, keyed by the ShopProduct external id, and releases it after a successful write', async () => {
+        await service.applyPriceChange(validInput);
+
+        expect(syncLock.acquire).toHaveBeenCalledWith(
+          expect.stringContaining('ext-shop-1'),
+          expect.any(Number)
+        );
+        expect(syncLock.release).toHaveBeenCalledWith(
+          expect.stringContaining('ext-shop-1'),
+          'lock-token'
+        );
+      });
+
+      it('advances the shared observation cursor after a successful write, so a slower/earlier InventorySyncService write-back correctly refuses to overwrite it with a stale quantity', async () => {
+        await service.applyPriceChange(validInput);
+
+        expect(syncCursors.advanceCursorIfNewer).toHaveBeenCalledWith(
+          'dest-1',
+          expect.stringContaining('ext-shop-1'),
+          '2026-01-01T00:00:00.000Z'
+        );
+      });
+
+      it('releases the lock even when the publish rejects, and never advances the cursor on a rejection', async () => {
+        productPublishExecution.executePublish.mockResolvedValue({
+          outcome: 'business_failure',
+          listingCreationRecord: new ListingCreationRecord(
+            'rec-1',
+            'ol_variant_1',
+            'dest-1',
+            null,
+            'failed',
+            [{ code: 'REJECTED', message: 'shop rejected the price' }],
+            new Date(),
+            new Date()
+          ),
+        });
+
+        const result = await service.applyPriceChange(validInput);
+
+        expect(result.outcome).toBe('business_failure');
+        expect(syncLock.release).toHaveBeenCalled();
+        expect(syncCursors.advanceCursorIfNewer).not.toHaveBeenCalled();
+      });
+
+      it('throws a retryable ContendedWriteError rather than proceeding unguarded when a peer holds the lock', async () => {
+        syncLock.acquire.mockResolvedValue(null);
+
+        await expect(service.applyPriceChange(validInput)).rejects.toMatchObject({
+          name: 'ContendedWriteError',
+        });
+        expect(productPublishExecution.executePublish).not.toHaveBeenCalled();
+      });
+
+      it('publishes unguarded (no lock taken) when no prior ShopProduct mapping is resolvable', async () => {
+        identifierMapping.getExternalIds.mockResolvedValue([]);
+
+        const result = await service.applyPriceChange(validInput);
+
+        expect(result).toEqual({ outcome: 'ok' });
+        expect(syncLock.acquire).not.toHaveBeenCalled();
+      });
     });
   });
 
