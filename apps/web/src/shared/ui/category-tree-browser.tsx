@@ -23,10 +23,13 @@
  * <CategoryTreeBrowser key={connectionId} ... />
  * ```
  *
- * Today's two consumers (CategoryPicker in listings, AllegroCategorySearch
- * in mappings) both live inside modals that unmount+remount per open, so
- * they don't hit this in practice — but the contract is explicit so a
- * future third consumer doesn't silently trip on it.
+ * Today's one consumer (AllegroCategorySearch in mappings) lives inside a
+ * modal that unmounts+remounts per open, so it doesn't hit this in practice
+ * — but the contract is explicit so a future second consumer doesn't
+ * silently trip on it. (The listings bulk-edit flow's category picker,
+ * `BulkCategoryChooseModal`, has its own tree rendering and does not use
+ * this primitive — it superseded an earlier `CategoryPicker` component that
+ * did, deleted in #2130.)
  *
  * @module apps/web/src/shared/ui
  */
