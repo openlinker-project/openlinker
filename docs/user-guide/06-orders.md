@@ -9,7 +9,7 @@ OpenLinker ingests orders from every connected marketplace and shop automaticall
 Orders are ingested in two ways:
 
 - **Webhooks (primary path)** — when a buyer places an order on Allegro, Allegro sends a webhook to OpenLinker in near-real-time. OpenLinker validates the signature, deduplicates the event, and enqueues a `marketplace.order.sync` job.
-- **Polling (reconciliation fallback)** — every 10 minutes OpenLinker polls each connected source for orders changed since the last run (using a cursor — see [Diagnostics](./07-diagnostics.md)). This heals any orders that were dropped or missed by the webhook path.
+- **Polling (reconciliation fallback)** — every 10 minutes OpenLinker polls each connected source for orders changed since the last run (using a cursor — see [Diagnostics](./08-diagnostics.md)). This heals any orders that were dropped or missed by the webhook path.
 
 Both paths converge on the same idempotent ingestion logic — an order arriving twice is processed once.
 
@@ -137,7 +137,7 @@ If an order you expect to see hasn't appeared:
 
 1. **Check Jobs & Logs** — search for `marketplace.order.sync` jobs around the time the order was placed. A `dead` status means the job exhausted its retries; click the job for the error detail.
 2. **Check the Webhooks log** — if the order arrived via webhook, it will appear in the **Webhooks** delivery log. A missing entry means the webhook was never delivered to OpenLinker (check the Allegro developer console for delivery failures).
-3. **Check Cursors** — if the poll cursor is stuck, orders after a certain timestamp won't be re-fetched. See [Diagnostics → Cursors](./07-diagnostics.md#cursors) for how to inspect and reset.
+3. **Check Cursors** — if the poll cursor is stuck, orders after a certain timestamp won't be re-fetched. See [Diagnostics → Cursors](./08-diagnostics.md#cursors) for how to inspect and reset.
 
 ---
 
@@ -171,6 +171,10 @@ If no orders have been processed yet, the page shows "No customer projections ha
 
 ## What's next
 
+→ **[Analytics](./07-analytics.md)** — the revenue dashboard built on top of the orders you've just
+seen: KPI definitions, channel/product breakdowns, and the Data Coverage panel that explains why a
+figure might not match a raw export.
+
 When something isn't working as expected, the Diagnostics surfaces help you investigate:
 
-→ **[Diagnostics](./07-diagnostics.md)** — Jobs & Logs, Webhooks, Cursors
+→ **[Diagnostics](./08-diagnostics.md)** — Jobs & Logs, Webhooks, Cursors

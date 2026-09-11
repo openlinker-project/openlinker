@@ -19,7 +19,8 @@ Enter your admin credentials. On first boot the API prints a one-time default pa
 
 If you've lost your password, click **Forgot password?** — the API logs the reset link to its console output.
 
-After a successful login you land on **Analytics**.
+After a successful login you land on **Analytics** — the revenue dashboard covered in full in
+[Analytics](./07-analytics.md), further down this guide.
 
 ---
 

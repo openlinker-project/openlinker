@@ -1229,6 +1229,41 @@ first draft of the plan).
 
 ---
 
+## Format only the touched files with the workspace's own pinned prettier binary — never `npx prettier`
+
+**Context**: #3031 touched ten files. A convenience pass over all of them with `npx prettier
+--write` (intending to just clean up the new hunks) reformatted every one **in full** — hundreds of
+unrelated lines, stripping trailing commas from every multi-line call/array/constructor across
+files nobody was asked to touch.
+
+**Problem**: `npx prettier` resolves (and may fetch) a prettier build outside this pnpm workspace's
+`node_modules`, so it does not reliably pick up the repo's pinned `prettier@3.2.5` or apply
+`.prettierrc` (`trailingComma: "es5"`) the way the workspace's own tooling does. The result reads
+like an intentional whole-file reformat and is easy to miss in a large diff — `git diff --stat`
+before-and-after is the tell (a 12-line intended change became 700+ lines across 5 files). Re-running
+the SAME command with the LOCAL binary (`node_modules/.bin/prettier` / `pnpm exec prettier`)
+reproduced the identical mass-reformat, which ruled out a version mismatch and confirmed the
+project's own quality gate (`pnpm lint` → `.eslintrc.js`'s `extends: ['prettier']` is
+`eslint-config-prettier`, which only *disables* conflicting stylistic ESLint rules — it does **not**
+run `eslint-plugin-prettier`) never enforces prettier formatting as a lint error, and CI has no
+separate `format:check` step either. So running prettier at all here bought nothing the gate needed
+and cost a large, unreviewable diff.
+
+**Rule**: don't run prettier as a formatting pass on a diff unless the task is specifically a
+formatting task. When touching a handful of files, format by hand to match the surrounding style
+(the existing lines are the spec) and verify with `git diff --stat` that only the intended lines
+changed. If prettier must run, target the exact files with the local pinned binary
+(`node_modules/.bin/prettier --config .prettierrc --write <files>`), never `npx prettier`, and
+`git diff --stat` immediately after to catch a whole-file reformat before it's mixed into a commit.
+
+**Applies to**: any edit to existing `*.ts`/`*.tsx` files in this repo, especially a small,
+surgical change to a large pre-existing file.
+
+**Source**: #3031 (caught before commit by comparing `git diff --stat` line counts against the
+size of the intended change).
+
+---
+
 ## A more destructive reset needs its own audit before it is made global — do not just copy the sibling suite's fix
 
 **Context**: #2999, the worker-side twin of #2986/PR #2996. `apps/worker/test/integration`
