@@ -68,6 +68,20 @@ export interface IPriceChangesService {
   listOpen(filters: PriceChangeEpisodeFilters): Promise<PriceChangeQueuePage>;
   countOpen(filters: PriceChangeEpisodeFilters): Promise<number>;
 
+  /**
+   * Open-episode count per source connection, for a single destination
+   * (#3163 review — the connection Pricing & Sync page's `sources[]` read).
+   * One `GROUP BY`, never one `countOpen` call per source in a loop.
+   */
+  countOpenBySource(destinationConnectionId: string): Promise<ReadonlyMap<string, number>>;
+
+  /**
+   * Distinct destination connection ids with an open episode sourced from
+   * `sourceConnectionId` (#3163 review — the "as source" read-only rollup,
+   * ADR-072 decision 2). Ids only, never hydrated episode rows.
+   */
+  listOpenDestinationConnectionIds(sourceConnectionId: string): Promise<readonly string[]>;
+
   accept(episodeId: string, input: AcceptPriceChangeInput): Promise<PriceChangeResolutionResult>;
   ignore(episodeId: string, resolvedByUserId: string | null): Promise<void>;
   /** Re-opens a previously-`ignored` episode (the review queue's row Undo). */

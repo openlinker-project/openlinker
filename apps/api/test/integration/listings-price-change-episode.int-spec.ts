@@ -292,6 +292,40 @@ describe('Price Change Episode Repository Integration', () => {
     expect(bySource.has('no-such-source')).toBe(false);
   });
 
+  it('listOpenDestinationConnectionIds() reports distinct destination ids for a source, deduplicated across variants (#3163 review)', async () => {
+    const otherDestId = '77777777-7777-4777-8777-777777777777';
+    await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      computedOldAmount: 427,
+      computedNewAmount: 399,
+    });
+    await repository.upsertOpen({
+      ...baseInput,
+      productVariantId: 'ol_variant_price_change_2',
+      destinationConnectionId: otherDestId,
+      sourceOldAmount: 100,
+      sourceNewAmount: 90,
+      computedOldAmount: 120,
+      computedNewAmount: 108,
+    });
+    // A second variant against the SAME destination must not duplicate the id.
+    await repository.upsertOpen({
+      ...baseInput,
+      productVariantId: 'ol_variant_price_change_3',
+      sourceOldAmount: 50,
+      sourceNewAmount: 45,
+      computedOldAmount: 60,
+      computedNewAmount: 54,
+    });
+
+    const destinationIds = await repository.listOpenDestinationConnectionIds(SRC_CONNECTION_ID);
+    expect([...destinationIds].sort()).toEqual([DEST_CONNECTION_ID, otherDestId].sort());
+
+    expect(await repository.listOpenDestinationConnectionIds('no-such-source')).toEqual([]);
+  });
+
   it('round-trips a null computedOldAmount (a brand-new mapping with no baseline) and excludes it from direction filtering (#3159 review)', async () => {
     const { episode } = await repository.upsertOpen({
       ...baseInput,

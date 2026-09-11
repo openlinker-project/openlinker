@@ -410,6 +410,21 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
     }
   }
 
+  async listOpenDestinationConnectionIds(sourceConnectionId: string): Promise<readonly string[]> {
+    try {
+      const rows = await this.episodes
+        .createQueryBuilder('e')
+        .select('DISTINCT e.destinationConnectionId', 'destinationConnectionId')
+        .where('e.resolvedAt IS NULL')
+        .andWhere('e.sourceConnectionId = :sourceConnectionId', { sourceConnectionId })
+        .getRawMany<{ destinationConnectionId: string }>();
+
+      return rows.map((row) => row.destinationConnectionId);
+    } catch (error) {
+      throw new PriceChangeEpisodePersistenceError('listOpenDestinationConnectionIds', error);
+    }
+  }
+
   /**
    * Matches the SQLSTATE **and** the constraint name — copied from
    * `RoutingDecisionRepository.isUniqueViolationOn` (#2392's rule): this

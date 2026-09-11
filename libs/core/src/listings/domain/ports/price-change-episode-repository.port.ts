@@ -143,4 +143,13 @@ export interface PriceChangeEpisodeRepositoryPort {
    * from the map, never present with `0`.
    */
   countOpenBySource(destinationConnectionId: string): Promise<ReadonlyMap<string, number>>;
+
+  /**
+   * Distinct destination connection ids with at least one OPEN episode
+   * sourced from `sourceConnectionId` — a connection's "which destinations
+   * do I feed" read (#3146's `getAsSource`) needs only the id set, never
+   * hydrated rows (the #2083 rule again — `findOpenAll` would fetch and map
+   * every column of every open episode purely to throw the rows away).
+   */
+  listOpenDestinationConnectionIds(sourceConnectionId: string): Promise<readonly string[]>;
 }
