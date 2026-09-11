@@ -18,7 +18,13 @@ export class PriceChangeAutoAppliedLogEntry {
     public readonly productVariantId: string,
     public readonly destinationConnectionId: string,
     public readonly sourceConnectionId: string,
-    public readonly oldAmount: number,
+    /**
+     * The price this key carried immediately before this change, or `null`
+     * for a first-ever detection with no recorded baseline (#3159's
+     * `computedOldAmount === null` state, #3161 review) — never fabricated
+     * as equal to `newAmount`.
+     */
+    public readonly oldAmount: number | null,
     public readonly newAmount: number,
     public readonly currency: string,
     public readonly appliedAt: Date

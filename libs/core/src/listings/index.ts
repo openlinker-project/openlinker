@@ -394,6 +394,11 @@ export type { IPriceChangeDetectionService } from './application/services/price-
 export { PriceChangeAutoAppliedLogEntry } from './domain/entities/price-change-auto-applied-log-entry.entity';
 export type { RecordAutoAppliedPriceChangeInput } from './domain/types/price-change-auto-applied-log.types';
 export type { PriceChangeAutoAppliedLogRepositoryPort } from './domain/ports/price-change-auto-applied-log-repository.port';
+export type {
+  PriceChangeApplyInput,
+  PriceChangeApplyResult,
+} from './domain/types/price-change-apply.types';
+export type { IPriceChangeApplyService } from './application/services/price-change-apply.service.interface';
 export { OfferCommercialSnapshot } from './domain/entities/offer-commercial-snapshot.entity';
 export type {
   OfferCommercialSnapshotProps,

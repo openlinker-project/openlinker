@@ -6,6 +6,14 @@
  * set to `automatic`. Deliberately no foreign keys — same reference-by-value
  * posture as `price_change_episodes` (a log entry must outlive a deleted
  * connection or a re-mapped variant).
+ *
+ * `oldAmount` is NULLABLE (#3161 review): the first-ever detection for a
+ * (variant, destination, source) key carries no baseline
+ * (`PriceChangeEpisode.computedOldAmount === null`, #3159) — a brand-new
+ * mapping with nothing to compare against. Forcing a NOT NULL column here
+ * would require fabricating a number (the shipped bug this migration fixes
+ * was `oldAmount === newAmount`); `NULL` is the honest "first observation,
+ * no prior price" state and is rendered as such by the FE (#3168).
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
@@ -21,7 +29,7 @@ export class CreatePriceChangeAutoAppliedLog1879000000000 implements MigrationIn
         "productVariantId" text NOT NULL,
         "destinationConnectionId" uuid NOT NULL,
         "sourceConnectionId" uuid NOT NULL,
-        "oldAmount" numeric(14,4) NOT NULL,
+        "oldAmount" numeric(14,4),
         "newAmount" numeric(14,4) NOT NULL,
         "currency" character varying(8) NOT NULL,
         "appliedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
