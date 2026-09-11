@@ -3,7 +3,7 @@
  *
  * @module apps/api/src/listings/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { PriceChangeAutoAppliedLogEntry } from '@openlinker/core/listings';
 
 export class PriceChangeAutoAppliedItemResponseDto {
@@ -11,7 +11,11 @@ export class PriceChangeAutoAppliedItemResponseDto {
   @ApiProperty() productVariantId!: string;
   @ApiProperty() destinationConnectionId!: string;
   @ApiProperty() sourceConnectionId!: string;
-  @ApiProperty() oldAmount!: number;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Null for a first-ever detection with no recorded baseline (#3159).',
+  })
+  oldAmount!: number | null;
   @ApiProperty() newAmount!: number;
   @ApiProperty() currency!: string;
   @ApiProperty() appliedAt!: string;

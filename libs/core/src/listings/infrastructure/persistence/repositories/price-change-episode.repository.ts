@@ -32,7 +32,7 @@
  */
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Not, QueryFailedError, Repository, type SelectQueryBuilder } from 'typeorm';
+import { In, IsNull, Not, QueryFailedError, Repository, type SelectQueryBuilder } from 'typeorm';
 import { PriceChangeEpisodeOrmEntity } from '../entities/price-change-episode.orm-entity';
 import { PriceChangeEpisode } from '../../../domain/entities/price-change-episode.entity';
 import { PriceChangeEpisodePersistenceError } from '../../../domain/exceptions/price-change-episode-persistence.error';
@@ -50,6 +50,19 @@ const PG_UNIQUE_VIOLATION = '23505';
 /** The partial index `reopenIgnored` can collide with. */
 const OPEN_EPISODE_CONSTRAINT = 'UQ_price_change_episodes_open';
 
+/**
+ * How long an `ignored` episode stays visible to the review-queue list read
+ * after resolution, so the operator-facing Undo affordance is reachable
+ * (#3162 review — `findOpen`'s previous `WHERE resolvedAt IS NULL` meant a
+ * listed item's `resolution` was ALWAYS `null`, so a client could never
+ * render/trigger Undo at all; the mockup shows the just-ignored row
+ * "greyed, on screen" with an Undo action). Deliberately short: this is a
+ * recent-action affordance, not a resolved-episode history browser — a
+ * `PriceChangeEpisodeSupersededError` (a rival episode reopened for the same
+ * key since) becomes steadily more likely for an older row.
+ */
+const RECENTLY_IGNORED_WINDOW_MS = 15 * 60 * 1000;
+
 @Injectable()
 export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositoryPort {
   constructor(
@@ -60,6 +73,12 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
   async findById(id: string): Promise<PriceChangeEpisode | null> {
     const row = await this.episodes.findOne({ where: { id } });
     return row ? this.toDomain(row) : null;
+  }
+
+  async findByIds(ids: readonly string[]): Promise<readonly PriceChangeEpisode[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.episodes.find({ where: { id: In([...ids]) } });
+    return rows.map((row) => this.toDomain(row));
   }
 
   async findOpenByKey(
@@ -192,10 +211,62 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
     return qb;
   }
 
+  /**
+   * The review-queue LIST base query — distinct from `buildOpenQuery` (used
+   * by `countOpen`/`countOpenBySource`/`resolve`, which must stay strictly
+   * "open" — a badge counter including a resolved row would over-report).
+   *
+   * When `includeRecentlyResolved` is set, widens the predicate to also
+   * surface a recently-`ignored` episode so Undo is reachable (see
+   * `RECENTLY_IGNORED_WINDOW_MS`).
+   */
+  private buildListQuery(
+    filters?: PriceChangeEpisodeFilters
+  ): SelectQueryBuilder<PriceChangeEpisodeOrmEntity> {
+    const qb = this.episodes.createQueryBuilder('e');
+
+    if (filters?.includeRecentlyResolved) {
+      qb.where(
+        '(e.resolvedAt IS NULL OR (e.resolution = :ignoredResolution AND e.resolvedAt >= :recentlyResolvedSince))',
+        {
+          ignoredResolution: 'ignored',
+          recentlyResolvedSince: new Date(Date.now() - RECENTLY_IGNORED_WINDOW_MS),
+        }
+      );
+    } else {
+      qb.where('e.resolvedAt IS NULL');
+    }
+
+    if (filters?.destinationConnectionId) {
+      qb.andWhere('e.destinationConnectionId = :destinationConnectionId', {
+        destinationConnectionId: filters.destinationConnectionId,
+      });
+    }
+    if (filters?.sourceConnectionId) {
+      qb.andWhere('e.sourceConnectionId = :sourceConnectionId', {
+        sourceConnectionId: filters.sourceConnectionId,
+      });
+    }
+
+    return qb;
+  }
+
   private async findOpen(
     filters?: PriceChangeEpisodeFilters
   ): Promise<readonly PriceChangeEpisode[]> {
-    const qb = this.buildOpenQuery(filters).orderBy('e.detectedAt', 'DESC');
+    const qb = this.buildListQuery(filters).orderBy('e.detectedAt', 'DESC');
+
+    // Bounded SQL page (#3162 review — this read previously hydrated the
+    // WHOLE open set on every call, which is unbounded at catalogue scale).
+    // `direction`/`magnitudeLargeOnly` are non-sargable (derived from
+    // `deltaPct`, not a stored column) and stay APPLICATION-CODE post-filters
+    // over this page — a page may therefore legitimately come back with
+    // fewer than `limit` visible rows when either is active, the same
+    // approximation `countOpen` already accepts for these two filters.
+    if (filters?.limit !== undefined) {
+      qb.take(filters.limit);
+      qb.skip(filters.offset ?? 0);
+    }
 
     const rows = await qb.getMany();
     let episodes = rows.map((row) => this.toDomain(row));
@@ -282,6 +353,22 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
         throw new PriceChangeEpisodeSupersededError(id);
       }
       throw new PriceChangeEpisodePersistenceError('reopenIgnored', error);
+    }
+  }
+
+  async acknowledgeRefresh(id: string): Promise<PriceChangeEpisode | null> {
+    try {
+      const rows = await this.raw<PriceChangeEpisodeOrmEntity>(
+        `UPDATE "price_change_episodes"
+            SET "refreshedAt" = NULL, "updatedAt" = now()
+          WHERE "id" = $1
+            AND "resolvedAt" IS NULL
+          RETURNING *`,
+        [id]
+      );
+      return rows.length > 0 ? this.toDomain(rows[0]) : null;
+    } catch (error) {
+      throw new PriceChangeEpisodePersistenceError('acknowledgeRefresh', error);
     }
   }
 

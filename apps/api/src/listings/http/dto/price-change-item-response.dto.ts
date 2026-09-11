@@ -27,11 +27,21 @@ export class PriceChangeItemResponseDto {
 
   @ApiProperty() destinationConnectionId!: string;
   @ApiProperty() destinationLabel!: string;
-  @ApiProperty() destinationCurrency!: string;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "The destination's own currency — `null` when unresolvable (mirrors `blockReason: 'destination-currency-unknown'`).",
+  })
+  destinationCurrency!: string | null;
 
-  @ApiProperty() computedOldAmount!: number;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "`null` when this episode has no recorded baseline (a brand-new mapping's first detection).",
+  })
+  computedOldAmount!: number | null;
   @ApiProperty() computedNewAmount!: number;
-  @ApiProperty() deltaPct!: number;
+  @ApiPropertyOptional({ nullable: true, description: '`null` when `computedOldAmount` is `null`.' })
+  deltaPct!: number | null;
   @ApiProperty() isSteep!: boolean;
 
   @ApiProperty({ type: PriceChangeRuleSummaryDto }) ruleSummary!: PriceChangeRuleSummaryDto;

@@ -362,4 +362,127 @@ describe('Price Change Episode Repository Integration', () => {
       await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'down' })
     ).toEqual([]);
   });
+
+  it('findByIds() batches lookups and omits ids with no matching row (#3162 review)', async () => {
+    const first = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      computedOldAmount: 427,
+      computedNewAmount: 399,
+    });
+    const second = await repository.upsertOpen({
+      ...baseInput,
+      productVariantId: 'ol_variant_price_change_2',
+      sourceOldAmount: 100,
+      sourceNewAmount: 90,
+      computedOldAmount: 120,
+      computedNewAmount: 108,
+    });
+
+    const found = await repository.findByIds([first.episode.id, second.episode.id, 'no-such-id']);
+    expect(found.map((e) => e.id).sort()).toEqual(
+      [first.episode.id, second.episode.id].sort()
+    );
+
+    expect(await repository.findByIds([])).toEqual([]);
+  });
+
+  it('findOpenForConnection()/findOpenAll() apply limit/offset as a real SQL page (#3162 review)', async () => {
+    for (let i = 0; i < 5; i++) {
+      await repository.upsertOpen({
+        ...baseInput,
+        productVariantId: `ol_variant_price_change_page_${i}`,
+        detectedAt: new Date(`2026-09-10T${10 + i}:00:00.000Z`),
+        sourceOldAmount: 100,
+        sourceNewAmount: 90,
+        computedOldAmount: 120,
+        computedNewAmount: 108,
+      });
+    }
+
+    const firstPage = await repository.findOpenForConnection(DEST_CONNECTION_ID, { limit: 2 });
+    expect(firstPage).toHaveLength(2);
+
+    const secondPage = await repository.findOpenForConnection(DEST_CONNECTION_ID, {
+      limit: 2,
+      offset: 2,
+    });
+    expect(secondPage).toHaveLength(2);
+    expect(secondPage.map((e) => e.id)).not.toEqual(firstPage.map((e) => e.id));
+
+    // ORDER BY detectedAt DESC (most recently detected first) — the last
+    // upserted row (i=4) is the newest and must lead the first page.
+    expect(firstPage[0].productVariantId).toBe('ol_variant_price_change_page_4');
+
+    expect(await repository.findOpenAll({ limit: 100 })).toHaveLength(5);
+  });
+
+  it('includeRecentlyResolved surfaces a just-ignored episode so Undo is reachable (#3162 review)', async () => {
+    const { episode } = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      computedOldAmount: 427,
+      computedNewAmount: 399,
+    });
+    await repository.resolve(episode.id, 'ignored', 'user-1', null, new Date());
+
+    // Without the flag, an ignored episode is invisible to the list read —
+    // this is the previously-shipped, still-correct behaviour for a badge
+    // count and for a caller that only wants ACTIONABLE rows.
+    expect(await repository.findOpenForConnection(DEST_CONNECTION_ID)).toEqual([]);
+
+    // With it, the just-ignored row is surfaced, `resolution` intact —
+    // giving a caller (`PriceChangesService.listOpen`) something to render
+    // an Undo affordance against at all.
+    const withRecent = await repository.findOpenForConnection(DEST_CONNECTION_ID, {
+      includeRecentlyResolved: true,
+    });
+    expect(withRecent).toHaveLength(1);
+    expect(withRecent[0].id).toBe(episode.id);
+    expect(withRecent[0].resolution).toBe('ignored');
+
+    // countOpen must stay strictly "open" — a badge counter must never
+    // include a resolved row.
+    expect(
+      await repository.countOpen({
+        destinationConnectionId: DEST_CONNECTION_ID,
+        includeRecentlyResolved: true,
+      })
+    ).toBe(0);
+  });
+
+  it('acknowledgeRefresh() clears refreshedAt on an OPEN episode and no-ops on a resolved one (#3162 review)', async () => {
+    const first = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      computedOldAmount: 427,
+      computedNewAmount: 399,
+    });
+    const refreshed = await repository.upsertOpen({
+      ...baseInput,
+      detectedAt: new Date('2026-09-10T11:00:00.000Z'),
+      sourceOldAmount: 350,
+      sourceNewAmount: 310,
+      computedOldAmount: 427,
+      computedNewAmount: 378,
+    });
+    expect(refreshed.episode.refreshedAt).not.toBeNull();
+
+    const acknowledged = await repository.acknowledgeRefresh(first.episode.id);
+    expect(acknowledged?.refreshedAt).toBeNull();
+
+    const read = await repository.findById(first.episode.id);
+    expect(read?.refreshedAt).toBeNull();
+
+    // A resolved episode's `refreshedAt` is historical, not actionable —
+    // acknowledgeRefresh must not touch it and must report `null`.
+    await repository.resolve(first.episode.id, 'ignored', 'user-1', null, new Date());
+    const onResolved = await repository.acknowledgeRefresh(first.episode.id);
+    expect(onResolved).toBeNull();
+
+    expect(await repository.acknowledgeRefresh('no-such-id')).toBeNull();
+  });
 });

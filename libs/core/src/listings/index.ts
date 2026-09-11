@@ -427,6 +427,8 @@ export type {
   EditPriceChangeInput,
   BulkAcceptItemInput,
   BulkAcceptResult,
+  PriceChangeConnectionPair,
+  PriceChangeResolutionResult,
 } from './application/services/price-changes.service.interface';
 export { OfferCommercialSnapshot } from './domain/entities/offer-commercial-snapshot.entity';
 export type {
