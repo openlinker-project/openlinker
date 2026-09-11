@@ -36,6 +36,9 @@
   --duration-fast: 120ms; --ease-out: cubic-bezier(.16,1,.3,1);
   --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Channel brand hues (#1752) — identical in light/dark, brand identity not status */
+  --channel-prestashop: oklch(60% 0.18 250);
+  --channel-woocommerce: oklch(64% 0.16 150);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
@@ -172,6 +175,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .loc-kind-badge{ font-family:var(--font-mono); font-size:.625rem; text-transform:uppercase; letter-spacing:.06em; padding:1px 6px; border-radius:var(--radius-xs); background:var(--bg-surface-muted); color:var(--text-secondary); border:1px solid var(--border-subtle); }
 .loc-actions{ display:flex; gap:4px; justify-content:flex-end; }
 
+/* Owning-connection cell — same composition as the products-list Source
+   column: a channel-pill (platform identity) beside the connection name,
+   the whole thing a link to /connections/:id. */
+.channel-pill{ display:inline-flex; align-items:center; gap:var(--space-1); padding:2px var(--space-2); border:1px solid var(--border-subtle); border-radius:var(--radius-pill); background:var(--bg-surface-muted); color:var(--text-secondary); font-family:var(--font-mono); font-size:.6875rem; white-space:nowrap; flex-shrink:0; }
+.channel-pill::before{ content:''; width:6px; height:6px; border-radius:50%; background:var(--text-muted); flex-shrink:0; }
+.channel-pill[data-channel='prestashop']::before{ background:var(--channel-prestashop); }
+.channel-pill[data-channel='woocommerce']::before{ background:var(--channel-woocommerce); }
+.loc-owner-link{ display:inline-flex; align-items:center; gap:6px; min-width:0; max-width:100%; color:var(--text-primary); text-decoration:none; }
+.loc-owner-link:hover .loc-owner-link__name{ text-decoration:underline; }
+.loc-owner-link__name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; }
+
 .state-card{ border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-soft); padding:32px 28px; text-align:left; }
 .state-card--error{ border-color:var(--status-error-border); }
 .state-card__title{ font-size:1.0625rem; font-weight:600; margin-top:4px; }
@@ -298,7 +312,7 @@ input:read-only{ background:var(--bg-surface-muted); color:var(--text-secondary)
                 <th>Location</th>
                 <th style="width:130px;">Kind</th>
                 <th style="width:140px;">Country / postcode</th>
-                <th style="width:170px;">Owning connection</th>
+                <th style="width:200px;">Owning connection</th>
                 <th style="width:100px;">Status</th>
                 <th style="width:128px;"><span class="sr-only">Actions</span></th>
               </tr>
@@ -483,7 +497,11 @@ input:read-only{ background:var(--bg-surface-muted); color:var(--text-secondary)
 </div>
 
 <script>
-const CONNECTIONS = { c1: 'PrestaShop — Main store', c2: 'WooCommerce — EU store' };
+const CONNECTIONS = {
+  c1: { platformType:'prestashop', platformLabel:'PrestaShop', name:'Main store' },
+  c2: { platformType:'woocommerce', platformLabel:'WooCommerce', name:'EU store' },
+};
+function connectionDisplayName(id){ const c = CONNECTIONS[id]; return c ? `${c.platformLabel} — ${c.name}` : id; }
 const KIND_LABEL = { warehouse:'Warehouse', store:'Store', 'third-party':'Third-party', virtual:'Virtual' };
 
 const LOCATIONS_SEED = [
@@ -526,7 +544,14 @@ function renderLocations() {
     const tr = document.createElement('tr');
     tr.className = l.status === 'inactive' ? 'loc-row--inactive' : '';
     const geo = [l.countryIso2, l.postcode].filter(Boolean).join(' · ') || '—';
-    const owner = l.ownerConnectionId ? escapeHtml(CONNECTIONS[l.ownerConnectionId]) : '<span style="color:var(--text-muted);">— none —</span>';
+    let owner = '<span style="color:var(--text-muted);">— none —</span>';
+    if (l.ownerConnectionId) {
+      const c = CONNECTIONS[l.ownerConnectionId];
+      owner = `<a href="#" class="loc-owner-link" title="Open connection ${escapeHtml(connectionDisplayName(l.ownerConnectionId))}" onclick="event.preventDefault();">
+        <span class="channel-pill" data-channel="${c.platformType}">${escapeHtml(c.platformLabel)}</span>
+        <span class="loc-owner-link__name">${escapeHtml(c.name)}</span>
+      </a>`;
+    }
     tr.innerHTML = `
       <td>
         <div class="loc-cell__name">${escapeHtml(l.name)}</div>
@@ -562,7 +587,7 @@ function setState(name) {
     locations = JSON.parse(JSON.stringify(LOCATIONS_SEED));
     section.innerHTML = `<div class="data-table__container">
       <table class="data-table" aria-label="Inventory locations">
-        <thead><tr><th>Location</th><th style="width:130px;">Kind</th><th style="width:140px;">Country / postcode</th><th style="width:170px;">Owning connection</th><th style="width:100px;">Status</th><th style="width:128px;"><span class="sr-only">Actions</span></th></tr></thead>
+        <thead><tr><th>Location</th><th style="width:130px;">Kind</th><th style="width:140px;">Country / postcode</th><th style="width:200px;">Owning connection</th><th style="width:100px;">Status</th><th style="width:128px;"><span class="sr-only">Actions</span></th></tr></thead>
         <tbody id="locBody"></tbody>
       </table></div>
       <nav class="pagination" aria-label="Locations pagination">
