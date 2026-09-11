@@ -8,7 +8,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 import { sanitizeStoredHtml } from '@openlinker/shared/html';
 import {
@@ -19,7 +19,8 @@ import {
 } from '@openlinker/core/integrations';
 import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { EventPublisherPort, EVENT_PUBLISHER_TOKEN } from '@openlinker/core/events';
-import { PRODUCTS_SERVICE_TOKEN, TAX_RATE_JOURNAL_SERVICE_TOKEN } from '../../products.tokens';
+import { PRODUCTS_SERVICE_TOKEN, TAX_RATE_JOURNAL_SERVICE_TOKEN, PRICE_CHANGE_OBSERVER_TOKEN } from '../../products.tokens';
+import { PriceChangeObserverPort } from '../../domain/ports/price-change-observer.port';
 import { ITaxRateJournalService } from './tax-rate-journal.service.interface';
 import { IProductsService } from './products.service.interface';
 import type { ProductMasterPort } from '../../domain/ports/product-master.port';
@@ -65,7 +66,14 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     // #2250: provenance for every rate this sync observes. Append-only and
     // change-only, so an unchanged catalogue writes nothing.
     @Inject(TAX_RATE_JOURNAL_SERVICE_TOKEN)
-    private readonly taxRateJournal: ITaxRateJournalService
+    private readonly taxRateJournal: ITaxRateJournalService,
+    // Recurring price propagation (#3143, ADR-072). Optional: a host that
+    // never wires an implementation (via a `@Global()` binding module —
+    // see the port's docblock) degrades to "no price-change detection",
+    // never a boot failure.
+    @Optional()
+    @Inject(PRICE_CHANGE_OBSERVER_TOKEN)
+    private readonly priceChangeObserver?: PriceChangeObserverPort
   ) {}
 
   async syncFromMasterByExternalId(
@@ -76,7 +84,21 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       connectionId,
       'ProductMaster'
     );
-    return this.syncOneFromMaster(connectionId, externalId, productAdapter);
+    const internalProductId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.Product,
+      externalId,
+      connectionId
+    );
+    const previousPricesByVariantId = this.priceChangeObserver
+      ? await this.fetchPreviousPrices([internalProductId])
+      : null;
+    return this.syncOneFromMaster(
+      connectionId,
+      externalId,
+      productAdapter,
+      internalProductId,
+      previousPricesByVariantId
+    );
   }
 
   /**
@@ -92,6 +114,17 @@ export class MasterProductSyncService implements IMasterProductSyncService {
    * is skipped, and one whose prefetch throws is logged and then treated as if
    * it declared nothing. Neither can change the outcome of a single product,
    * only the number of requests spent on it.
+   *
+   * The price-change baseline read is batched the same way (#3159 review):
+   * `internalProductId`s are resolved for the WHOLE page first, and — when a
+   * price-change observer is wired — `IProductsService.getVariantsByProductIds`
+   * reads every resolved product's current variant prices in ONE query,
+   * rather than the per-product `getVariantsByProductId` a naive per-item loop
+   * would pay for (N round trips for N products). That read happens BEFORE
+   * any product in the page is upserted, which satisfies the same "read
+   * before the upsert overwrites it" requirement `syncOneFromMaster` states
+   * for the single-product path — no product in this page has been touched
+   * yet at that point.
    */
   async syncFromMasterByExternalIds(
     connectionId: string,
@@ -118,11 +151,47 @@ export class MasterProductSyncService implements IMasterProductSyncService {
 
     const results: MasterProductSyncResult[] = [];
     const failures: MasterProductBatchSyncFailure[] = [];
+
+    // Resolve internal ids for the whole page up front — a resolution
+    // failure is isolated to its own product exactly as it always was,
+    // since it happened inside the per-product try/catch below before this
+    // change too.
+    const internalIdByExternalId = new Map<string, string>();
     for (const externalId of externalIds) {
+      try {
+        internalIdByExternalId.set(
+          externalId,
+          await this.identifierMapping.getOrCreateInternalId(
+            CORE_ENTITY_TYPE.Product,
+            externalId,
+            connectionId
+          )
+        );
+      } catch (error) {
+        failures.push({
+          externalId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    const previousPricesByVariantId = this.priceChangeObserver
+      ? await this.fetchPreviousPrices([...internalIdByExternalId.values()])
+      : null;
+
+    for (const [externalId, internalProductId] of internalIdByExternalId) {
       // Per product, so one failure costs one product rather than the page. The
       // caller re-enqueues what failed as an ordinary per-product job.
       try {
-        results.push(await this.syncOneFromMaster(connectionId, externalId, productAdapter));
+        results.push(
+          await this.syncOneFromMaster(
+            connectionId,
+            externalId,
+            productAdapter,
+            internalProductId,
+            previousPricesByVariantId
+          )
+        );
       } catch (error) {
         failures.push({
           externalId,
@@ -134,21 +203,33 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     return { results, failures, prefetched };
   }
 
+  /**
+   * The batched "current variant prices" read a price-change baseline needs
+   * (#3159 review): one query for however many product ids are given, rather
+   * than `getVariantsByProductId` called once per product. Used identically
+   * by the single-product and the page-batched sync paths — the single path
+   * simply passes an array of one.
+   */
+  private async fetchPreviousPrices(
+    internalProductIds: readonly string[]
+  ): Promise<Map<string, number | null>> {
+    const variants = await this.productsService.getVariantsByProductIds(internalProductIds);
+    return new Map(variants.map((v) => [v.id, v.price ?? null]));
+  }
+
   private async syncOneFromMaster(
     connectionId: string,
     externalId: string,
-    productAdapter: ProductMasterPort
+    productAdapter: ProductMasterPort,
+    internalProductId: string,
+    previousPricesByVariantId: ReadonlyMap<string, number | null> | null
   ): Promise<MasterProductSyncResult> {
     // One correlation id per sync run — ties log lines, the deletion event,
     // and (downstream, #1689) the stale-offer-pause job together.
     const correlationId = randomUUID();
 
-    // Resolve internal product ID
-    const internalProductId = await this.identifierMapping.getOrCreateInternalId(
-      CORE_ENTITY_TYPE.Product,
-      externalId,
-      connectionId
-    );
+    // `internalProductId` is resolved by the caller now (#3159 review), so a
+    // page-batched sync resolves it once per product rather than twice.
 
     // Pull product and variants from adapter. A master-side deletion surfaces
     // as the neutral MasterProductNotFoundError (adapters translate their 404 at
@@ -190,11 +271,29 @@ export class MasterProductSyncService implements IMasterProductSyncService {
     }
     const variants = variantsFromAdapter.map((v) => this.toDomainVariant(v, internalProductId));
 
+    // The caller already read prices BEFORE any product in the page was
+    // upserted (#3159 review — batched via `fetchPreviousPrices`, one query
+    // for the whole page rather than one per product) — the only way to
+    // know whether the master's price actually CHANGED (#3143, ADR-072).
+    // `previousPricesByVariantId` is `null` when no observer is wired (the
+    // common case today), so this never cost a query on a host that hasn't
+    // opted into recurring price propagation.
+
     // Upsert into canonical storage (upsert clears any prior staleness on the
     // reappearing variants — see repository toOrmEntity).
     await this.productsService.upsertProduct(product);
     if (variants.length > 0) {
       await this.productsService.upsertVariants(internalProductId, variants);
+    }
+
+    let priceChangeObserverFailures = 0;
+    if (previousPricesByVariantId && product.currency) {
+      priceChangeObserverFailures = await this.notifyPriceChanges(
+        connectionId,
+        product.currency,
+        variants,
+        previousPricesByVariantId
+      );
     }
 
     // Pull the tax rate onto the catalogue projection (#2054, ADR-063 § 4), in
@@ -275,6 +374,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       // no longer states - the propagation is idempotent and harmless, whereas
       // a silently-skipped rate is invisible.
       taxRateChanges,
+      priceChangeObserverFailures,
     };
   }
 
@@ -568,6 +668,8 @@ export class MasterProductSyncService implements IMasterProductSyncService {
         // A deletion read no rate, so it changed none. Never an empty array
         // standing in for "we did not look" - this path did not look.
         taxRateChanges: [],
+        // A deletion never reads a price either — nothing to fail.
+        priceChangeObserverFailures: 0,
       };
     }
 
@@ -591,6 +693,7 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       pruneSkipped: false,
       pruneSkippedReason: null,
       taxRateChanges: [],
+      priceChangeObserverFailures: 0,
     };
   }
 
@@ -624,6 +727,63 @@ export class MasterProductSyncService implements IMasterProductSyncService {
       `products_prune_skipped_rival_master_connections - internal product id is claimed by more than one ProductMaster connection, so the staleness prune cannot be attributed and was withheld (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, rivals=${rivals.join(',')})`
     );
     return true;
+  }
+
+  /**
+   * Reports every variant whose price CHANGED in this pass to the optional
+   * observer (#3143, ADR-072). Best-effort — a failure here must never fail
+   * the catalogue sync it rides along, so every call is individually caught
+   * and logged.
+   *
+   * "Changed" excludes a variant seen for the first time (`previousAmount`
+   * absent from the map — no row existed to have a price at all) and a
+   * variant whose price is unset either before or after (nothing to compare).
+   *
+   * A failure is logged at ERROR (never `warn`) with a greppable token, and
+   * COUNTED in the returned total (#3159 review): there is no reconcile pass
+   * for a missed price-change notification anywhere in the tree, and the
+   * upsert this call rides along with has already overwritten the "changed"
+   * signal by the time this runs — a `TypeError` (a programming error) is
+   * therefore just as permanently lost as a transient failure, and swallowing
+   * it at `warn` with nothing counted made a permanently-failing detector
+   * indistinguishable from a healthy one with no price changes to report.
+   */
+  private async notifyPriceChanges(
+    sourceConnectionId: string,
+    sourceCurrency: string,
+    variants: ProductVariant[],
+    previousPricesByVariantId: ReadonlyMap<string, number | null>
+  ): Promise<number> {
+    let failures = 0;
+    for (const variant of variants) {
+      const newAmount = variant.price ?? null;
+      if (newAmount === null) {
+        continue;
+      }
+      const hadPriorRow = previousPricesByVariantId.has(variant.id);
+      const oldAmount = previousPricesByVariantId.get(variant.id) ?? null;
+      if (hadPriorRow && oldAmount === newAmount) {
+        continue; // unchanged — nothing to report
+      }
+      try {
+        await this.priceChangeObserver?.onMasterPriceChanged({
+          productVariantId: variant.id,
+          sourceConnectionId,
+          sourceOldAmount: hadPriorRow ? oldAmount : null,
+          sourceNewAmount: newAmount,
+          sourceCurrency,
+        });
+      } catch (error) {
+        failures++;
+        this.logger.error(
+          `price_change_observer_failed - a detected price change for variant=${variant.id} ` +
+            `connectionId=${sourceConnectionId} was NOT reported to the price-change observer and ` +
+            `is now unrecoverable (no reconcile pass exists for this yet, and the catalogue upsert ` +
+            `already overwrote the prior price this pass compared against): ${(error as Error).message}`
+        );
+      }
+    }
+    return failures;
   }
 
   /**

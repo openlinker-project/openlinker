@@ -145,6 +145,14 @@ export const JobTypeValues = [
 
   // Internal orchestration (core-owned policies; executed by worker)
   'inventory.propagateToMarketplaces',
+  // Recurring price propagation (#3143/#3144, ADR-072). One accepted/automatic
+  // price change per job — enqueued either directly by the detection service
+  // (an `automatic`-mode connection/source pair) or by the price-changes API's
+  // accept/bulk-accept endpoints (#3145). The `pricing.` namespace (not
+  // `marketplace.`) matches `inventory.propagateToMarketplaces`: this is a
+  // core-owned orchestration job that may target a shop OR a marketplace
+  // destination, not a marketplace-specific one.
+  'pricing.propagateToMarketplaces',
   // Connection-provenance backfill (#2317, ADR-058 ladder step (ii)). Stamps the
   // `'legacy'` sentinel onto pre-#2314 `inventory_items` rows, one bounded page
   // per tick, until none remain. Deliberately NOT named `master.*`: it makes zero
