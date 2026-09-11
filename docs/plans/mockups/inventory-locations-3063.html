@@ -172,6 +172,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .loc-cell__name{ font-weight:600; color:var(--text-primary); }
 .loc-cell__code{ font-family:var(--font-mono); font-size:.6875rem; color:var(--text-muted); margin-top:2px; }
+.loc-positions-link{ font-family:var(--font-mono); color:var(--text-link); }
 .loc-kind-badge{ font-family:var(--font-mono); font-size:.625rem; text-transform:uppercase; letter-spacing:.06em; padding:1px 6px; border-radius:var(--radius-xs); background:var(--bg-surface-muted); color:var(--text-secondary); border:1px solid var(--border-subtle); }
 .loc-actions{ display:flex; gap:4px; justify-content:flex-end; }
 
@@ -269,6 +270,13 @@ input:read-only{ background:var(--bg-surface-muted); color:var(--text-secondary)
       <button class="chip" data-state="error" onclick="setState('error')">Error</button>
       <span style="margin-left:auto; font-size:.6875rem; color:var(--text-muted); font-family:var(--font-mono);">try: filter by kind, edit, retire, delete a used location</span>
     </div>
+    <div class="demo-toolbar" role="group" aria-label="Mockup role switcher — not part of the product" style="top:96px;">
+      <span class="demo-toolbar__label">Mockup · viewing as</span>
+      <button class="chip chip--active" data-role="admin" onclick="setRole('admin')">Admin</button>
+      <button class="chip" data-role="operator" onclick="setRole('operator')">Operator</button>
+      <button class="chip" data-role="viewer" onclick="setRole('viewer')">Viewer</button>
+      <span style="margin-left:auto; font-size:.6875rem; color:var(--text-muted); font-family:var(--font-mono);">writes are admin-only (LocationsController @Roles('admin')); operator/viewer get a read-only page</span>
+    </div>
 
     <div class="shell-content">
       <a class="back-link" href="#">&larr; OpenLinker OMS</a>
@@ -280,7 +288,7 @@ input:read-only{ background:var(--bg-surface-muted); color:var(--text-secondary)
             <p class="page-description">The warehouses, stores and third-party sites OpenLinker can source stock from. A location isn't authority over stock — it's the place sourcing rules pick between. Delete is refused while any stock still points here; retire it instead.</p>
           </div>
           <div class="page-header__actions">
-            <button class="button button--sm" onclick="openCreate()">+ Add location</button>
+            <button class="button button--sm" id="addLocationBtn" onclick="openCreate()">+ Add location</button>
           </div>
         </div>
       </header>
@@ -384,6 +392,7 @@ input:read-only{ background:var(--bg-surface-muted); color:var(--text-secondary)
         <div class="form-field">
           <label class="form-field__label" for="locCountry">Country <span style="color:var(--text-muted); font-weight:400;">(optional)</span></label>
           <input type="text" id="locCountry" placeholder="PL" maxlength="2" style="text-transform:uppercase;" />
+          <p class="form-field__error" id="locCountryError" hidden>✕ Exactly 2 letters (ISO 3166-1 alpha-2), or leave blank.</p>
         </div>
         <div class="form-field">
           <label class="form-field__label" for="locPostcode">Postcode <span style="color:var(--text-muted); font-weight:400;">(optional)</span></label>
@@ -453,7 +462,7 @@ input:read-only{ background:var(--bg-surface-muted); color:var(--text-secondary)
             <span class="alert__glyph">✕</span>
             <div class="alert__content">
               <p class="alert__title">Can't delete "Kraków — Overflow"</p>
-              <p class="alert__description">Stock positions still point here. Retire it instead — existing history keeps pointing at a row that exists, and it can be re-activated later.</p>
+              <p class="alert__description">42 inventory positions still point here. Retire it instead — existing history keeps pointing at a row that exists, and it can be re-activated later.</p>
             </div>
           </div>
         </div>
@@ -505,23 +514,49 @@ function connectionDisplayName(id){ const c = CONNECTIONS[id]; return c ? `${c.p
 const KIND_LABEL = { warehouse:'Warehouse', store:'Store', 'third-party':'Third-party', virtual:'Virtual' };
 
 const LOCATIONS_SEED = [
-  { id:'l1', code:'MAIN', name:'Warsaw — Main warehouse', kind:'warehouse', status:'active', countryIso2:'PL', postcode:'02-677', latitude:52.2297, longitude:21.0122, ownerConnectionId:'c1', externalRef:null, inUse:true },
-  { id:'l2', code:'KRK-OVF', name:'Kraków — Overflow', kind:'warehouse', status:'active', countryIso2:'PL', postcode:'30-001', latitude:null, longitude:null, ownerConnectionId:null, externalRef:'internal ref 4471', inUse:true },
-  { id:'l3', code:'SHOP-01', name:'Gdańsk — Flagship store', kind:'store', status:'active', countryIso2:'PL', postcode:'80-001', latitude:null, longitude:null, ownerConnectionId:null, externalRef:null, inUse:false },
-  { id:'l4', code:'3PL-DE', name:'Berlin — 3PL partner', kind:'third-party', status:'active', countryIso2:'DE', postcode:'10115', latitude:52.5200, longitude:13.4050, ownerConnectionId:'c2', externalRef:null, inUse:true },
-  { id:'l5', code:'CONSIGN-01', name:'Consignment site — Silesia distributor', kind:'virtual', status:'inactive', countryIso2:'PL', postcode:null, latitude:null, longitude:null, ownerConnectionId:null, externalRef:null, inUse:true },
+  { id:'l1', code:'MAIN', name:'Warsaw — Main warehouse', kind:'warehouse', status:'active', countryIso2:'PL', postcode:'02-677', latitude:52.2297, longitude:21.0122, ownerConnectionId:'c1', externalRef:null, positionCount:128 },
+  { id:'l2', code:'KRK-OVF', name:'Kraków — Overflow', kind:'warehouse', status:'active', countryIso2:'PL', postcode:'30-001', latitude:null, longitude:null, ownerConnectionId:null, externalRef:'internal ref 4471', positionCount:42 },
+  { id:'l3', code:'SHOP-01', name:'Gdańsk — Flagship store', kind:'store', status:'active', countryIso2:'PL', postcode:'80-001', latitude:null, longitude:null, ownerConnectionId:null, externalRef:null, positionCount:0 },
+  { id:'l4', code:'3PL-DE', name:'Berlin — 3PL partner', kind:'third-party', status:'active', countryIso2:'DE', postcode:'10115', latitude:52.5200, longitude:13.4050, ownerConnectionId:'c2', externalRef:null, positionCount:15 },
+  { id:'l5', code:'CONSIGN-01', name:'Consignment site — Silesia distributor', kind:'virtual', status:'inactive', countryIso2:'PL', postcode:null, latitude:null, longitude:null, ownerConnectionId:null, externalRef:null, positionCount:6 },
 ];
 
 let locations = JSON.parse(JSON.stringify(LOCATIONS_SEED));
 let kindFilter = '';
 let editingId = null;
 let pendingDeleteId = null;
+// LocationsController: reads are @Roles('admin','operator','viewer'), writes @Roles('admin')
+// only — an operator/viewer can open this page but every mutating action must be disabled.
+let currentRole = 'admin';
+function canWrite(){ return currentRole === 'admin'; }
+function setRole(role) {
+  currentRole = role;
+  document.querySelectorAll('.demo-toolbar .chip[data-role]').forEach(c => c.classList.toggle('chip--active', c.dataset.role === role));
+  document.getElementById('addLocationBtn').disabled = !canWrite();
+  document.getElementById('addLocationBtn').title = canWrite() ? '' : "Requires the admin role — you're viewing read-only";
+  renderLocations();
+}
 // The list read is server-side paginated (ListLocationsQueryDto: page/limit); this mockup's
 // 5-row demo dataset fits on one page, so pagination is shown as a static affordance rather
 // than wired to real paging state. countryIso2 / codePrefix query filters are likewise a
 // scoped-out choice for this pass, not an oversight — Kind + status are the ones drawn.
+//
+// `positionCount` is drawn here as if the list read already exposed it, which today it does
+// not: LocationResponseDto/toDto carries no positions-count field, and the only place the
+// count exists server-side (countPositionsAtLocation) surfaces solely as free text inside
+// LocationInUseError's 409 message. Rendering "in use" without a number is what the pre-fix
+// version of this mockup did — reviewers flagged that an operator managing several locations
+// needs the count (both to gauge blast radius before retiring, and because right now the real
+// page has nowhere to get one without either a new bulk/per-id count endpoint or fragile
+// 409-message parsing). This is a backend-contract decision #3063's implementation needs to
+// make, not something this mockup can resolve on its own — flagging it here so it isn't lost.
 
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function writeDisabledAttrs(label, title) {
+  const disabled = !canWrite();
+  const t = disabled ? "Requires the admin role — you're viewing read-only" : (title || '');
+  return `<button class="button button--ghost button--icon button--sm" aria-label="${escapeHtml(label)}"${disabled ? ' disabled' : ''}${t ? ` title="${escapeHtml(t)}"` : ''}`;
+}
 
 function setKindFilter(kind) {
   kindFilter = kind;
@@ -552,10 +587,13 @@ function renderLocations() {
         <span class="loc-owner-link__name">${escapeHtml(c.name)}</span>
       </a>`;
     }
+    const positions = l.positionCount > 0
+      ? `<a href="#" class="loc-positions-link" onclick="event.preventDefault(); alert('Would open /inventory filtered to this location.');">${l.positionCount} position${l.positionCount === 1 ? '' : 's'}</a>`
+      : '<span style="color:var(--text-muted);">no positions</span>';
     tr.innerHTML = `
       <td>
         <div class="loc-cell__name">${escapeHtml(l.name)}</div>
-        <div class="loc-cell__code">${escapeHtml(l.code)}${l.externalRef ? ' · ' + escapeHtml(l.externalRef) : ''}</div>
+        <div class="loc-cell__code">${escapeHtml(l.code)}${l.externalRef ? ' · ' + escapeHtml(l.externalRef) : ''} · ${positions}</div>
       </td>
       <td><span class="loc-kind-badge">${KIND_LABEL[l.kind]}</span></td>
       <td class="mono">${geo}</td>
@@ -565,11 +603,11 @@ function renderLocations() {
         : '<span class="status-badge status-badge--neutral"><span class="status-badge__dot"></span>Retired</span>'}</td>
       <td>
         <div class="loc-actions">
-          <button class="button button--ghost button--icon button--sm" aria-label="Edit ${escapeHtml(l.name)}" onclick="openEdit('${l.id}')">✎</button>
+          ${writeDisabledAttrs(`Edit ${escapeHtml(l.name)}`)} onclick="openEdit('${l.id}')">✎</button>
           ${l.status === 'active'
-            ? `<button class="button button--ghost button--icon button--sm" aria-label="Retire ${escapeHtml(l.name)}" title="Retire" onclick="retireLocation('${l.id}')">⏸</button>`
-            : `<button class="button button--ghost button--icon button--sm" aria-label="Reactivate ${escapeHtml(l.name)}" title="Reactivate" onclick="reactivateLocation('${l.id}')">↻</button>`}
-          <button class="button button--ghost button--icon button--sm" aria-label="Delete ${escapeHtml(l.name)}" onclick="requestDelete('${l.id}')">🗑</button>
+            ? `${writeDisabledAttrs(`Retire ${escapeHtml(l.name)}`, 'Retire')} onclick="retireLocation('${l.id}')">⏸</button>`
+            : `${writeDisabledAttrs(`Reactivate ${escapeHtml(l.name)}`, 'Reactivate')} onclick="reactivateLocation('${l.id}')">↻</button>`}
+          ${writeDisabledAttrs(`Delete ${escapeHtml(l.name)}`)} onclick="requestDelete('${l.id}')">🗑</button>
         </div>
       </td>
     `;
@@ -646,6 +684,7 @@ function openCreate() {
   document.getElementById('locCodeHint').textContent = 'Unique across the install. Normalised to uppercase on save.';
   document.getElementById('locStatusRow').hidden = true;
   document.getElementById('locErrorField').hidden = true;
+  document.getElementById('locCountryError').hidden = true;
   openDialog('locDialogBackdrop');
 }
 function openEdit(id) {
@@ -669,6 +708,7 @@ function openEdit(id) {
   document.getElementById('locLng').value = l.longitude ?? '';
   document.getElementById('locExternalRef').value = l.externalRef || '';
   document.getElementById('locErrorField').hidden = true;
+  document.getElementById('locCountryError').hidden = true;
   openDialog('locDialogBackdrop');
 }
 function saveLocation() {
@@ -676,6 +716,14 @@ function saveLocation() {
   const dup = locations.find(l => l.code === code && l.id !== editingId);
   if (dup) { document.getElementById('locErrorField').hidden = false; return; }
   document.getElementById('locErrorField').hidden = true;
+
+  // Real DTO: @Length(2,2) — must be exactly 2 letters when present, never 1.
+  const countryRaw = document.getElementById('locCountry').value.trim();
+  if (countryRaw && countryRaw.length !== 2) {
+    document.getElementById('locCountryError').hidden = false;
+    return;
+  }
+  document.getElementById('locCountryError').hidden = true;
 
   const lat = document.getElementById('locLat').value.trim();
   const lng = document.getElementById('locLng').value.trim();
@@ -695,7 +743,7 @@ function saveLocation() {
     payload.status = document.getElementById('locStatus').value;
     locations[idx] = { ...locations[idx], ...payload, code: locations[idx].code };
   } else {
-    locations.push({ id:'l-' + Date.now(), status:'active', inUse:false, ...payload });
+    locations.push({ id:'l-' + Date.now(), status:'active', positionCount:0, ...payload });
   }
   renderLocations();
   closeDialog('locDialogBackdrop');
@@ -706,12 +754,13 @@ function requestDelete(id) {
   const l = locations.find(x => x.id === id);
   document.getElementById('deleteDialogTitle').textContent = `Delete "${l.name}"?`;
   const body = document.getElementById('deleteDialogBody');
-  if (l.inUse) {
+  if (l.positionCount > 0) {
     body.innerHTML = `<div class="alert alert--warning" style="margin:0;">
       <span class="alert__glyph">⚠</span>
       <div class="alert__content">
-        <p class="alert__title">Stock still points here</p>
-        <p class="alert__description">The delete will be refused. Retire the location instead — existing positions keep pointing at a row that exists.</p>
+        <p class="alert__title">${l.positionCount} inventory position${l.positionCount === 1 ? '' : 's'} still point here</p>
+        <p class="alert__description">The delete will be refused. Retire the location instead — existing positions keep pointing at a row that exists.
+          <a href="#" onclick="event.preventDefault(); alert('Would open /inventory filtered to this location.');">View referencing positions</a></p>
       </div>
     </div>`;
   } else {
@@ -721,13 +770,13 @@ function requestDelete(id) {
 }
 function confirmDelete() {
   const l = locations.find(x => x.id === pendingDeleteId);
-  if (l && l.inUse) {
+  if (l && l.positionCount > 0) {
     closeDialog('deleteDialogBackdrop');
     document.getElementById('alertSlot').innerHTML = `<div class="alert alert--error">
       <span class="alert__glyph">✕</span>
       <div class="alert__content">
         <p class="alert__title">Can't delete "${escapeHtml(l.name)}"</p>
-        <p class="alert__description">Stock positions still point here. Retire it instead — existing history keeps pointing at a row that exists, and it can be re-activated later.</p>
+        <p class="alert__description">${l.positionCount} inventory position${l.positionCount === 1 ? '' : 's'} still point here. Retire it instead — existing history keeps pointing at a row that exists, and it can be re-activated later.</p>
       </div>
       <div class="alert__actions">
         <button class="button button--sm button--secondary" onclick="retireLocation('${l.id}'); this.closest('.alert').remove();">Retire instead</button>
