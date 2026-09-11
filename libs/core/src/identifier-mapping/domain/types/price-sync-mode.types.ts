@@ -8,12 +8,17 @@
  * summary) was considered and cut: no notification/summary surface exists
  * anywhere in the app to build one on (see the ADR's Alternatives section).
  *
- * Stored as its own config key, `config.priceSyncMode`, on the DESTINATION
- * connection — same default + per-source-override shape as
+ * Stored as its own key on the operator-authored, untrusted
+ * `Connection.config` jsonb — `Connection.config.priceSyncMode` — on the
+ * DESTINATION connection: same default + per-source-override shape as
  * `pricing-rule.types.ts`, but kept as a separate key rather than folded into
  * `PricingRule` because "how to compute the price" and "whether to ask before
  * publishing it" are independent axes an operator sets independently on the
  * connection's Pricing & sync settings page (#3149).
+ *
+ * This is the `parseTriggerModel` config-coercion pattern, registered in
+ * `scripts/check-architecture-gates.mjs`'s `KNOWN_CONFIG_KNOBS` — see that
+ * file for the #1032 threshold this knob counts toward.
  *
  * @module libs/core/src/identifier-mapping/domain/types
  */

@@ -856,28 +856,55 @@ export function mergeStructuredIntoConfig(
         threshold === undefined || threshold === '' ? null : Number.parseInt(threshold, 10);
     }
   }
-  // Pricing rule (#2610). Whole-object key; an empty `type` means the operator
-  // wants the catalogue price untouched, which is an explicit `null` (see the
-  // rateLimit clause for why not a delete). `percent` is omitted for
-  // `passthrough` - the core helper ignores it there, and writing a stale
-  // percentage into a passthrough rule invites a later misreading.
+  // Pricing rule (#2610, widened by #3142 ADR-072 decision 2). An empty
+  // `type` means the operator wants the catalogue price untouched, which is
+  // an explicit `null` for the DEFAULT rule (see the rateLimit clause for why
+  // not a delete). `percent` is omitted for `passthrough` - the core helper
+  // ignores it there, and writing a stale percentage into a passthrough rule
+  // invites a later misreading.
+  //
+  // This form edits only the destination-level DEFAULT rule -
+  // `structured.pricingRule` never carries `sourceOverrides` (a separate
+  // per-source picker, #3149). `base.pricingRule` may already hold the #3142
+  // nested `{ default, sourceOverrides }` shape with real overrides in it, so
+  // writing the flat legacy shape back unconditionally would SILENTLY DESTROY
+  // every per-source override the first time an operator saved an unrelated
+  // field on this page. When overrides exist they are preserved by re-nesting
+  // the edited default underneath them; only when there is nothing to
+  // preserve does this write the flat legacy shape, matching the pre-#3142
+  // wire format byte-for-byte for every connection that never used overrides.
   if (structured.pricingRule !== undefined) {
-    if (structured.pricingRule === null || !structured.pricingRule.type) {
-      next.pricingRule = null;
-    } else {
-      const rule: Record<string, unknown> = { type: structured.pricingRule.type };
+    const existingContainer =
+      typeof base.pricingRule === 'object' && base.pricingRule !== null
+        ? (base.pricingRule as Record<string, unknown>)
+        : null;
+    const existingSourceOverrides =
+      existingContainer &&
+      'default' in existingContainer &&
+      typeof existingContainer.sourceOverrides === 'object' &&
+      existingContainer.sourceOverrides !== null &&
+      Object.keys(existingContainer.sourceOverrides as Record<string, unknown>).length > 0
+        ? (existingContainer.sourceOverrides as Record<string, unknown>)
+        : null;
+
+    let defaultRule: Record<string, unknown> | null = null;
+    if (structured.pricingRule !== null && structured.pricingRule.type) {
+      defaultRule = { type: structured.pricingRule.type };
       if (
         structured.pricingRule.type !== 'passthrough' &&
         structured.pricingRule.percent !== undefined &&
         structured.pricingRule.percent !== ''
       ) {
-        rule.percent = Number(structured.pricingRule.percent);
+        defaultRule.percent = Number(structured.pricingRule.percent);
       }
       if (structured.pricingRule.rounding) {
-        rule.rounding = structured.pricingRule.rounding;
+        defaultRule.rounding = structured.pricingRule.rounding;
       }
-      next.pricingRule = rule;
     }
+
+    next.pricingRule = existingSourceOverrides
+      ? { default: defaultRule, sourceOverrides: existingSourceOverrides }
+      : defaultRule;
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are
   // assembled by the platform contribution with the same partial-patch
