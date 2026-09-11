@@ -17,6 +17,10 @@ export const PermissionValues = [
   'products:write',
   'inventory:read',
   'inventory:write',
+  // DISPLAY-ONLY (#3066): gates the locations-list Add/Edit/Delete/Retire
+  // affordances. Deliberately not `inventory:write` — see that constant's
+  // docblock on the backend for why.
+  'inventory-locations:write',
   'listings:read',
   'listings:write',
   'users:read',
