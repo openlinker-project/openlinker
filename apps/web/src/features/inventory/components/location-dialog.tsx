@@ -32,7 +32,7 @@ import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 import { usePlatforms } from '../../../shared/plugins';
-import { ApiError } from '../../../shared/api/api-error';
+import { ApiError, isUnmappedApiError } from '../../../shared/api/api-error';
 import { resolvePlatformLabel } from '../../mappings';
 import { useConnectionsQuery } from '../../connections';
 import { useCreateInventoryLocationMutation } from '../hooks/use-create-inventory-location-mutation';
@@ -159,7 +159,7 @@ export function LocationDialog({ target, onClose }: LocationDialogProps): ReactE
           The warehouses, stores and third-party sites OpenLinker can source stock from.
         </DialogDescription>
 
-        {mutation.error && !(mutation.error instanceof ApiError && (mutation.error.isConflict() || mutation.error.status === 422)) ? (
+        {mutation.error && isUnmappedApiError(mutation.error, (e) => e.isConflict() || e.status === 422) ? (
           <Alert tone="error" title="Could not save the location">
             {mutation.error.message}
           </Alert>

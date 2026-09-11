@@ -20,7 +20,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
 import { ConfirmDialog } from '../../../shared/ui/confirm-dialog';
 import { useToast } from '../../../shared/ui/toast-provider';
-import { ApiError } from '../../../shared/api/api-error';
+import { ApiError, isUnmappedApiError } from '../../../shared/api/api-error';
 import { useDeleteInventoryLocationMutation } from '../hooks/use-delete-inventory-location-mutation';
 import { useUpdateInventoryLocationMutation } from '../hooks/use-update-inventory-location-mutation';
 import type { InventoryLocation } from '../api/inventory-locations.types';
@@ -38,12 +38,20 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
 
   const { reset: resetDelete } = deleteMutation;
   const { reset: resetRetire } = retireMutation;
+  const locationId = location?.id ?? null;
   useEffect(() => {
-    if (location === null) return;
+    if (locationId === null) return;
     setPhase('confirm');
     resetDelete();
     resetRetire();
-  }, [location, resetDelete, resetRetire]);
+    // Keyed on the id, not the `location` object's identity: unlike
+    // `LocationDialog`'s `target` (a fresh wrapper minted at open-time),
+    // `location` here is the row itself. A future caller that derives it
+    // reactively off refetched query data (`locations.find(...)`) would
+    // otherwise hand this effect a new-but-equal object on every refetch and
+    // silently reset an in-flight `in-use`/retire decision back to plain
+    // "Delete?" mid-flow. #3068 tech-review.
+  }, [locationId, resetDelete, resetRetire]);
 
   async function handleDelete(): Promise<void> {
     if (location === null) return;
@@ -71,7 +79,12 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
       showToast({
         tone: 'success',
         title: `"${location.name}" retired`,
-        description: 'Existing positions keep pointing at it; it can be re-activated later.',
+        // Not "can be re-activated later" — nothing in the product exposes
+        // that yet (#3068 tech-review: `toUpdateInput` never sends `status`
+        // back to `'active'`, and the list renders no Reactivate action), so
+        // stating only what actually happened rather than a capability the
+        // UI doesn't offer.
+        description: 'Existing positions keep pointing at it.',
       });
       onClose();
     } catch {
@@ -82,7 +95,7 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
   const open = location !== null;
   const isInUse = phase === 'in-use';
   const genericError =
-    deleteMutation.error && !(deleteMutation.error instanceof ApiError && deleteMutation.error.isConflict())
+    deleteMutation.error && isUnmappedApiError(deleteMutation.error, (e) => e.isConflict())
       ? deleteMutation.error
       : (retireMutation.error ?? null);
 
@@ -93,14 +106,19 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
       title={isInUse ? `Can't delete "${location?.name ?? ''}"` : `Delete "${location?.name ?? ''}"?`}
       description={
         isInUse
-          ? 'Stock positions still point here.'
+          ? 'Stock positions still point here, so the delete was refused.'
           : "This can't be undone. If stock still points here, the delete will be refused instead."
       }
       body={
         <>
+          {/* Distinct from `description` above on purpose — the description
+              says WHY delete was refused, this says what retiring actually
+              does, so the two don't restate the same fact (#3068
+              tech-review). No "can be re-activated later" — see the
+              matching note on the retire success toast. */}
           {isInUse ? (
             <Alert tone="warning" title="Retire instead">
-              Existing history keeps pointing at a row that exists, and it can be re-activated later.
+              Retiring keeps the row and its history intact — nothing is deleted.
             </Alert>
           ) : null}
           {genericError ? (
