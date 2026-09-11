@@ -158,15 +158,30 @@ function readWholeUnits(raw: unknown): string {
 }
 
 /**
- * Read the pricing rule out of `config.pricingRule` (#2610). An absent or
- * unrecognised `type` reads as `''` (no rule), mirroring `readPricingRule`'s
- * own coercion in `@openlinker/core/identifier-mapping`.
+ * Read the pricing rule out of `config.pricingRule` (#2610, widened by #3142
+ * ADR-072 decision 2). This form edits only the DESTINATION-level default
+ * rule — not `sourceOverrides` (a separate per-source picker, #3149) — so it
+ * must read the `default` sub-object out of the nested
+ * `{ default, sourceOverrides }` shape rather than the whole `pricingRule`
+ * value, or every widened connection would render as unconfigured
+ * (`raw.type` reading `undefined` off the wrapper object). The discriminator
+ * mirrors `readPricingRuleConfig`'s own `'default' in candidate` check
+ * (`@openlinker/core/identifier-mapping`) exactly, so this reader can never
+ * disagree with what the backend actually resolves. The legacy flat shape
+ * (pre-#3142, no `default` key) is read as before. An absent or unrecognised
+ * `type` reads as `''` (no rule).
  */
 function readPricingRuleForm(config: Record<string, unknown>): PricingRuleFormValues {
-  const raw =
+  const container =
     typeof config.pricingRule === 'object' && config.pricingRule !== null
       ? (config.pricingRule as Record<string, unknown>)
       : {};
+  const raw =
+    'default' in container
+      ? typeof container.default === 'object' && container.default !== null
+        ? (container.default as Record<string, unknown>)
+        : {}
+      : container;
   const type =
     raw.type === 'passthrough' || raw.type === 'markup' || raw.type === 'margin' ? raw.type : '';
   const rounding =
