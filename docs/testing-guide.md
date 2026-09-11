@@ -710,7 +710,7 @@ at runtime). The trade-off belongs in the helper's file header.
      });
 
      afterEach(async () => {
-       await resetTestHarness(); // Clean database between tests
+       await resetTestHarness(); // Clean database between tests — apps/api only
      });
 
      afterAll(async () => {
@@ -718,6 +718,24 @@ at runtime). The trade-off belongs in the helper's file header.
      });
    });
    ```
+
+   **In `apps/worker`, drop the `afterEach` — it is already registered for
+   you.** Since #2999 the
+   worker's `jest-integration.cjs` registers a root `beforeEach` + `afterEach`
+   calling `resetTestHarness()` through `setupFilesAfterEnv`, so isolation
+   applies **by omission** rather than by each author remembering — see
+   `apps/worker/test/integration/setup-each.ts` for the audit of what that
+   reset (including its `flushDb()`) is safe to do between every test case,
+   and `harness-isolation.int-spec.ts` for the guard that goes red if the
+   registration is deleted. A per-file `resetTestHarness()` there is now a
+   third reset per test: harmless (it is idempotent, and `reset()` probes
+   before truncating) but redundant. The 21 specs that predate #2999 still
+   carry theirs; removing them is a follow-up, not a requirement.
+
+   **`apps/api` is NOT there yet** — its `jest-integration.cjs` declares no
+   `setupFilesAfterEnv`, so an api int-spec still owns its `afterEach` reset.
+   The api-side twin is #2986 / PR #2996. Keep writing the hook there until
+   that lands.
 
 2. **Test Vertical Slices**
    - Focus on complete user workflows
@@ -757,7 +775,8 @@ at runtime). The trade-off belongs in the helper's file header.
 
 5. **Keep Tests Independent**
    - Each test should work in isolation
-   - Use `resetTestHarness()` between tests
+   - `apps/api`: call `resetTestHarness()` between tests yourself
+   - `apps/worker`: already done for you (#2999) — see the note under item 1
    - Don't rely on test execution order
 
 ---

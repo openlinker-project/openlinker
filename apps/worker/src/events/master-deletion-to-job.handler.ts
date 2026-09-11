@@ -55,15 +55,29 @@ import { MASTER_DELETION_REDIS_CLIENT_BLOCKING_TOKEN } from './events.tokens';
  */
 const SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
 
+/**
+ * The consumer group this handler reads `events.master.deletion` through.
+ *
+ * Exported because the group is created exactly ONCE, in `onModuleInit`, and
+ * `consumeLoop` never recreates it — so anything that can destroy it while
+ * the loop is running has to be able to put it back under the same name. The
+ * worker integration harness's `reset()` is that anything: it calls
+ * `flushDb()`, which removes the stream and the group together (#3126
+ * review). A second literal there would drift from this one silently, and the
+ * symptom is a once-per-second error log for the rest of a test file rather
+ * than a failure.
+ */
+export const MASTER_DELETION_CONSUMER_GROUP = 'master-deletion-offer-pause';
+
 @Injectable()
 export class MasterDeletionToJobHandler implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MasterDeletionToJobHandler.name);
   private readonly STREAM_NAME = MASTER_DELETION_EVENT_STREAM;
   private readonly DLQ_STREAM_NAME = REDIS_STREAM_NAMES.masterDeletionDead;
-  private readonly CONSUMER_GROUP = 'master-deletion-offer-pause';
+  private readonly CONSUMER_GROUP = MASTER_DELETION_CONSUMER_GROUP;
   // Stable across restarts of the same logical worker and distinct across
   // replicas, so this process can reach its own pending history (#2164).
-  private readonly CONSUMER_NAME = resolveConsumerName('master-deletion-offer-pause');
+  private readonly CONSUMER_NAME = resolveConsumerName(MASTER_DELETION_CONSUMER_GROUP);
   private readonly RECLAIM_IDLE_MS = MIN_RECLAIM_IDLE_MS;
 
   private lastReclaimAt = 0;
