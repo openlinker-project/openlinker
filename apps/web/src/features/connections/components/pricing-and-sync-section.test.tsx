@@ -341,8 +341,8 @@ describe('PricingAndSyncSection', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  describe('initialExpandSourceId deep-link pre-expand (#3167 review, finding 1)', () => {
-    it('pre-checks the named source and copies the default rule in as its starting point', async () => {
+  describe('initialExpandSourceId deep-link pre-expand (#3167 review)', () => {
+    it('pre-checks the named source and copies the default rule in, without claiming an unsaved change', async () => {
       const apiClient = createMockApiClient({
         pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
       });
@@ -354,13 +354,60 @@ describe('PricingAndSyncSection', () => {
 
       const checkbox = await screen.findByTestId('source-custom-toggle');
       expect(checkbox).toBeChecked();
-      // Enabling the override is precisely the state change a manual
-      // checkbox click makes, so it correctly leaves Save enabled — the
-      // finding 1 regression was that NEITHER this pre-expand NOR a manual
-      // click could ever enable Save (`isDirty` ignored `customSources`
-      // entirely). That the button is enabled here proves the fix, not a
-      // no-unsaved-changes claim.
-      expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+      // Bare navigation is not an operator act (#3167 review, blocking):
+      // arriving here pre-expands the row so the operator can SEE and edit
+      // it, exactly like a manual checkbox click would render, but it must
+      // not itself count as "you changed something" — the unsaved bar (and
+      // the Save/Discard pair it wraps) stays absent until they actually do.
+      expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+      expect(screen.queryByText(/haven.t saved it yet/)).not.toBeInTheDocument();
+    });
+
+    it('does show the unsaved bar once the operator edits the pre-expanded row', async () => {
+      const user = userEvent.setup();
+      const apiClient = createMockApiClient({
+        pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
+      });
+
+      renderWithProviders(
+        <PricingAndSyncSection connectionId="dest-1" initialExpandSourceId="src-1" />,
+        { apiClient, sessionAdapter: ADMIN_SESSION },
+      );
+
+      await screen.findByTestId('source-custom-toggle');
+      expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+
+      // Un-checking the pre-expanded override is a real operator act (it
+      // diverges from the baseline the deep link seeded), so it must now
+      // surface the unsaved bar rather than staying silent.
+      await user.click(screen.getByTestId('source-custom-toggle'));
+
+      expect(await screen.findByRole('button', { name: 'Save changes' })).toBeEnabled();
+    });
+
+    it('Discard reverts to the pre-expanded baseline, not to the raw un-expanded server read', async () => {
+      const user = userEvent.setup();
+      const apiClient = createMockApiClient({
+        pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
+      });
+
+      renderWithProviders(
+        <PricingAndSyncSection connectionId="dest-1" initialExpandSourceId="src-1" />,
+        { apiClient, sessionAdapter: ADMIN_SESSION },
+      );
+
+      const checkbox = await screen.findByTestId('source-custom-toggle');
+      expect(checkbox).toBeChecked();
+
+      await user.click(checkbox); // unchecks — diverges from baseline
+      await user.click(await screen.findByRole('button', { name: 'Discard' }));
+
+      // Back to the deep-link's own baseline: still checked, still no
+      // unsaved bar — not the un-expanded state the raw server read would
+      // produce, which would silently discard the reason the operator
+      // followed the link in the first place.
+      expect(screen.getByTestId('source-custom-toggle')).toBeChecked();
+      expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
     });
 
     it('scrolls the pre-expanded row into view once it renders', async () => {

@@ -72,14 +72,6 @@ export function SourceConnectionPricingRollup({
   // every destination whose `masterCatalogConnectionId` names this source
   // is a follow-up, not this component's fix.
   const entries = query.data ?? [];
-  if (entries.length === 0) {
-    return (
-      <EmptyState
-        title="Nothing to show yet"
-        message="No destinations are adjusting your prices right now. A destination appears here once it has its own rule for this source, or a price change from it is waiting for review."
-      />
-    );
-  }
 
   return (
     <div className="settings-section">
@@ -92,23 +84,30 @@ export function SourceConnectionPricingRollup({
           </p>
         </div>
       </div>
-      <div className="source-list" id="source-page-list">
-        {entries.map((entry) => (
-          <div className="source-row" key={entry.destinationConnectionId}>
-            <div className="source-row__head">
-              <span className="source-row__name">{entry.destinationLabel}</span>
-              <Link
-                className="button button--secondary button--xs"
-                id={`source-page-manage-${entry.destinationConnectionId}`}
-                to={`/connections/${entry.destinationConnectionId}/pricing-sync?source=${connectionId}`}
-              >
-                Manage
-              </Link>
+      {entries.length === 0 ? (
+        <EmptyState
+          title="Nothing to show yet"
+          message="No destinations are adjusting your prices right now. A destination appears here once it has its own rule for this source, or a price change from it is waiting for review."
+        />
+      ) : (
+        <div className="source-list" id="source-page-list">
+          {entries.map((entry) => (
+            <div className="source-row" key={entry.destinationConnectionId}>
+              <div className="source-row__head">
+                <span className="source-row__name">{entry.destinationLabel}</span>
+                <Link
+                  className="button button--secondary button--xs"
+                  id={`source-page-manage-${entry.destinationConnectionId}`}
+                  to={`/connections/${entry.destinationConnectionId}/pricing-sync?source=${connectionId}`}
+                >
+                  Manage
+                </Link>
+              </div>
+              <div className="source-row__summary">{summaryFor(entry)}</div>
             </div>
-            <div className="source-row__summary">{summaryFor(entry)}</div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

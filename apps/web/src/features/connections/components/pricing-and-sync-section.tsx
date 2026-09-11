@@ -129,6 +129,23 @@ interface DraftView {
   sources: DraftSourceEntry[];
 }
 
+/**
+ * The "nothing changed yet" reference point for the dirty check — NOT the
+ * same thing as the last server read. A deep-link arrival (`?source=`)
+ * pre-populates `draft`/`customSources` exactly as a manual checkbox click
+ * would, so an operator lands on the row already expanded and ready to
+ * edit; diffing straight against server truth would then read that as an
+ * unsaved change from the moment the page loads, with no operator act at
+ * all (#3167 review). The baseline captures the state right after that
+ * pre-population, so `hasUnsavedChanges` only goes true once the operator
+ * actually touches something from there — an edit, or un/re-checking the
+ * override box.
+ */
+interface DraftBaseline {
+  draft: DraftView;
+  customSources: Set<string>;
+}
+
 function toDraftRule(rule: PricingRule): DraftPricingRule {
   return { type: rule.type, percent: String(rule.percent), rounding: rule.rounding };
 }
@@ -225,6 +242,7 @@ export function PricingAndSyncSection({
 
   const [draft, setDraft] = useState<DraftView | null>(null);
   const [customSources, setCustomSources] = useState<Set<string>>(new Set());
+  const [baseline, setBaseline] = useState<DraftBaseline | null>(null);
   const [ruleFormOpen, setRuleFormOpen] = useState(false);
   const [dropOverrideConfirm, setDropOverrideConfirm] = useState<{
     droppedLabels: string[];
@@ -253,17 +271,26 @@ export function PricingAndSyncSection({
           ? (initialExpandSourceId as string)
           : null;
 
-      setDraft(() => {
-        const next = toDraftView(query.data);
-        if (expandTarget) {
-          // Same effect a manual checkbox click has: copy the default rule
-          // in as the starting point for this source's override.
-          const source = next.sources.find((s) => s.sourceConnectionId === expandTarget);
-          if (source) source.effective = cloneDraftSetting(next.default);
-        }
-        return next;
+      const seededCustomSources = new Set(
+        expandTarget ? [...alreadyCustom, expandTarget] : alreadyCustom
+      );
+      const seededDraft = toDraftView(query.data);
+      if (expandTarget) {
+        // Same effect a manual checkbox click has: copy the default rule
+        // in as the starting point for this source's override.
+        const source = seededDraft.sources.find((s) => s.sourceConnectionId === expandTarget);
+        if (source) source.effective = cloneDraftSetting(seededDraft.default);
+      }
+      setDraft(seededDraft);
+      setCustomSources(seededCustomSources);
+      // The baseline is THIS seeded state, not the raw server read — see
+      // `DraftBaseline`'s docblock. Cloned so a later in-place edit to
+      // `draft`/`customSources` can never also mutate the reference point
+      // it is being diffed against.
+      setBaseline({
+        draft: cloneDraftView(seededDraft),
+        customSources: new Set(seededCustomSources),
       });
-      setCustomSources(new Set(expandTarget ? [...alreadyCustom, expandTarget] : alreadyCustom));
       if (expandTarget) setPendingScrollTarget(expandTarget);
     }
   }, [query.data, draft, initialExpandSourceId]);
@@ -283,17 +310,20 @@ export function PricingAndSyncSection({
   // not only at mount. The server recomputes `sources[].effective` /
   // `isCustomOverride` / `openEpisodeCount` on write, so comparing the local
   // draft against the STALE `query.data` snapshot would keep `isDirty` true
-  // forever after the most common interaction this section offers.
+  // forever after the most common interaction this section offers. The
+  // baseline advances alongside `draft`/`customSources` — what was just
+  // saved is by definition the new "nothing changed yet" reference point.
   useEffect(() => {
     if (updateMutation.isSuccess && updateMutation.data) {
-      setDraft(toDraftView(updateMutation.data));
-      setCustomSources(
-        new Set(
-          updateMutation.data.sources
-            .filter((s) => s.isCustomOverride)
-            .map((s) => s.sourceConnectionId)
-        )
+      const savedDraft = toDraftView(updateMutation.data);
+      const savedCustomSources = new Set(
+        updateMutation.data.sources
+          .filter((s) => s.isCustomOverride)
+          .map((s) => s.sourceConnectionId)
       );
+      setDraft(savedDraft);
+      setCustomSources(savedCustomSources);
+      setBaseline({ draft: cloneDraftView(savedDraft), customSources: new Set(savedCustomSources) });
     }
   }, [updateMutation.isSuccess, updateMutation.data]);
 
@@ -315,15 +345,13 @@ export function PricingAndSyncSection({
     return <LoadingState title="Pricing & sync" message="Loading settings…" />;
   }
 
-  const isDirty = query.data ? JSON.stringify(draft) !== JSON.stringify(toDraftView(query.data)) : false;
-  const isCustomSourcesDirty = query.data
+  // Diffed against `baseline`, NOT the raw server read — see `DraftBaseline`.
+  // Otherwise a deep-link's own pre-population would itself read as an
+  // unsaved change on every load, before the operator has touched anything.
+  const isDirty = baseline ? JSON.stringify(draft) !== JSON.stringify(baseline.draft) : false;
+  const isCustomSourcesDirty = baseline
     ? JSON.stringify([...customSources].sort()) !==
-      JSON.stringify(
-        query.data.sources
-          .filter((s) => s.isCustomOverride)
-          .map((s) => s.sourceConnectionId)
-          .sort()
-      )
+      JSON.stringify([...baseline.customSources].sort())
     : false;
   const hasUnsavedChanges = isDirty || isCustomSourcesDirty;
 
@@ -439,11 +467,14 @@ export function PricingAndSyncSection({
   }
 
   function handleDiscard(): void {
-    if (!query.data) return;
-    setDraft(toDraftView(query.data));
-    setCustomSources(
-      new Set(query.data.sources.filter((s) => s.isCustomOverride).map((s) => s.sourceConnectionId))
-    );
+    // Reverts to `baseline`, not to a fresh read of `query.data` — Discard
+    // means "undo what I changed since I got here," and on a deep-linked
+    // visit that starting point already has the requested source's override
+    // pre-expanded. Reverting straight to raw server truth would also throw
+    // away the pre-expansion the operator followed the link to see.
+    if (!baseline) return;
+    setDraft(cloneDraftView(baseline.draft));
+    setCustomSources(new Set(baseline.customSources));
   }
 
   const totalPendingChanges = draft.sources.reduce((sum, s) => sum + s.openEpisodeCount, 0);

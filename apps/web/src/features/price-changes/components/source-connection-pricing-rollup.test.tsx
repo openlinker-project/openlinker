@@ -50,5 +50,9 @@ describe('SourceConnectionPricingRollup', () => {
     expect(
       screen.getByText(/No destinations are adjusting your prices right now/),
     ).toBeInTheDocument();
+    // The section heading/explanatory copy survives the empty case (#3167
+    // review, suggestion) — the empty state replaces only the row list, not
+    // the whole section.
+    expect(screen.getByText('How your prices get adjusted')).toBeInTheDocument();
   });
 });
