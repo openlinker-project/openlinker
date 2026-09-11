@@ -7,13 +7,16 @@
  * in demo mode.
  */
 import { describe, expect, it } from 'vitest';
-import { buildNavGroups } from './nav-registry';
+import { buildNavGroups, isNavItemVisible } from './nav-registry';
 import { RoleValues } from './nav-registry.types';
-import type { NavGroup } from './nav-registry.types';
+import type { LiveNavGroup, NavGroup } from './nav-registry.types';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
 
 const byLabel = (groups: NavGroup[], label: string): NavGroup | undefined =>
   groups.find((g) => g.label === label);
+
+const itemLabels = (group: NavGroup | undefined): string[] =>
+  group?.kind === 'live' ? (group as LiveNavGroup).items.map((i) => i.label) : [];
 
 describe('buildNavGroups', () => {
   describe('normal mode (demoMode: false)', () => {
@@ -75,6 +78,65 @@ describe('buildNavGroups', () => {
     it('does not crash buildNavGroups when no role is passed', () => {
       const groups = buildNavGroups({ isAdmin: false, demoMode: false });
       expect(byLabel(groups, 'Operations')?.kind).toBe('live');
+    });
+  });
+
+  // #3108 — "Pack bench" is visible to every role the bench API itself
+  // accepts (`@Roles('admin', 'operator', 'packer')`) and hidden from any
+  // other role (today, only `viewer`).
+  describe('"Pack bench" item-level role gate (#3108)', () => {
+    it.each(['admin', 'operator', 'packer'])('is visible to a %s session', (role) => {
+      const groups = buildNavGroups({ isAdmin: role === 'admin', demoMode: false, role });
+      expect(itemLabels(byLabel(groups, 'Operations'))).toContain('Pack bench');
+    });
+
+    it('is hidden from a viewer session', () => {
+      const groups = buildNavGroups({ isAdmin: false, demoMode: false, role: 'viewer' });
+      expect(itemLabels(byLabel(groups, 'Operations'))).not.toContain('Pack bench');
+    });
+
+    it('is hidden when no role is known yet (session not resolved)', () => {
+      const groups = buildNavGroups({ isAdmin: false, demoMode: false });
+      expect(itemLabels(byLabel(groups, 'Operations'))).not.toContain('Pack bench');
+    });
+
+    it('does not drop its sibling items in the same group for a role-gated absence', () => {
+      const groups = buildNavGroups({ isAdmin: false, demoMode: false, role: 'viewer' });
+      const labels = itemLabels(byLabel(groups, 'Operations'));
+      expect(labels).toContain('Orders');
+      expect(labels).toContain('Analytics');
+    });
+  });
+
+  describe('isNavItemVisible', () => {
+    const item = { to: '/bench', label: 'Pack bench', requiresRole: ['admin', 'operator', 'packer'] } as const;
+
+    it('is visible when the role matches', () => {
+      expect(isNavItemVisible(item, { role: 'packer' })).toBe(true);
+    });
+
+    it('is hidden when the role does not match', () => {
+      expect(isNavItemVisible(item, { role: 'viewer' })).toBe(false);
+    });
+
+    it('is hidden when no role is supplied at all', () => {
+      expect(isNavItemVisible(item, {})).toBe(false);
+    });
+
+    it('an item declaring neither gate is always visible', () => {
+      expect(isNavItemVisible({ to: '/orders', label: 'Orders' }, {})).toBe(true);
+    });
+
+    it('an item declaring both gates must satisfy both', () => {
+      const both = {
+        to: '/automations',
+        label: 'Automations',
+        requiresPermission: 'automations:read',
+        requiresRole: ['admin'],
+      } as const;
+      expect(isNavItemVisible(both, { permissions: ['automations:read'], role: 'operator' })).toBe(false);
+      expect(isNavItemVisible(both, { permissions: [], role: 'admin' })).toBe(false);
+      expect(isNavItemVisible(both, { permissions: ['automations:read'], role: 'admin' })).toBe(true);
     });
   });
 });
