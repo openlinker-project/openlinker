@@ -14,7 +14,8 @@
  * number) plus non-empty `accountNumber` and `bankName` strings — the
  * adapter stamps the latter two straight onto `'transfer'` invoices, so a
  * malformed shape must fail fast at save time (400) rather than surface as
- * an opaque inFakt 422 at issuance. Registered against
+ * an opaque inFakt 422 at issuance; an optional `defaultSaleType` (#2177)
+ * that, when present, must be one of `InfaktSaleTypeValues`. Registered against
  * `ConnectionConfigShapeValidatorRegistryService` at `infakt.accounting.v1`;
  * `ConnectionService` maps the thrown exception to a 400 at the API boundary.
  *
@@ -34,6 +35,7 @@ import { isAllowedInfaktBaseUrl } from '../../domain/policies/infakt-base-url.po
 import {
   InfaktEnvironmentValues,
   InfaktPaymentMethodValues,
+  InfaktSaleTypeValues,
 } from '../../domain/types/infakt-connection.types';
 
 export class InfaktConnectionConfigShapeValidatorAdapter
@@ -70,6 +72,18 @@ export class InfaktConnectionConfigShapeValidatorAdapter
       issues.push({
         path: 'defaultPaymentMethod',
         message: `must be one of: ${InfaktPaymentMethodValues.join(', ')}`,
+      });
+    }
+
+    const defaultSaleType = config.defaultSaleType;
+    if (
+      defaultSaleType !== undefined &&
+      defaultSaleType !== null &&
+      !InfaktSaleTypeValues.includes(defaultSaleType as (typeof InfaktSaleTypeValues)[number])
+    ) {
+      issues.push({
+        path: 'defaultSaleType',
+        message: `must be one of: ${InfaktSaleTypeValues.join(', ')}`,
       });
     }
 
