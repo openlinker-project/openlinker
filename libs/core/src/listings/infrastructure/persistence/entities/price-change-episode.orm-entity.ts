@@ -66,8 +66,11 @@ export class PriceChangeEpisodeOrmEntity {
   @Column({ type: 'numeric', precision: 14, scale: 4 })
   sourceNewAmount!: string;
 
-  @Column({ type: 'numeric', precision: 14, scale: 4 })
-  computedOldAmount!: string;
+  // NULL means "no baseline was ever recorded" — a brand-new mapping's first
+  // detection (#3159 review). The CHECK constraint below is unaffected: a
+  // Postgres CHECK evaluates to unknown (not violated) on a NULL operand.
+  @Column({ type: 'numeric', precision: 14, scale: 4, nullable: true })
+  computedOldAmount!: string | null;
 
   @Column({ type: 'numeric', precision: 14, scale: 4 })
   computedNewAmount!: string;
