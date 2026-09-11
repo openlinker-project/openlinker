@@ -761,7 +761,7 @@ describe('TaxCoverageDetectionService (#2465)', () => {
       expect(totalFromByConnection).toBe(counts['tax-b']);
     });
 
-    it('never calls findNetExcludedOrderCandidatesPage more than once, regardless of category count', async () => {
+    it('classifies once for every category, never once per category', async () => {
       mockSinglePage([]);
 
       await service.getAllCategoryCountsByConnection(baseFilters, 'EUR');

@@ -418,8 +418,19 @@ export interface OrderRecordRepositoryPort {
    * keeps reporting as `tax-a` an order that is already inside Net Sales.
    *
    * `limit` defaults to the repository's own page-size constant when
-   * omitted; callers (test code in particular) may pass a smaller value to
-   * exercise multi-page behaviour without seeding a large fixture.
+   * omitted. It exists so test code can pass a smaller value to exercise
+   * multi-page behaviour without seeding a large fixture — no production
+   * caller passes it; `TaxCoverageDetectionService.classify()` always omits
+   * it and takes the default.
+   *
+   * NOT a consistent snapshot across the whole loop: `classify()` calls this
+   * page by page rather than inside one transaction, so a row whose FX stamp
+   * (or any other predicate input) changes mid-loop can enter or leave the
+   * population between pages and be double-counted or skipped once. That is
+   * an accepted property of a diagnostic panel read on every page load —
+   * `getDailyOrderAggregates`'s `net_excluded_count` has the identical
+   * caveat for the same reason — and would matter only for a caller needing
+   * a point-in-time-consistent total, which this port does not promise.
    */
   findNetExcludedOrderCandidatesPage(
     filters: SalesAnalyticsFilters,

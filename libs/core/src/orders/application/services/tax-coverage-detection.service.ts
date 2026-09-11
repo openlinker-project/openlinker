@@ -172,6 +172,16 @@ export class TaxCoverageDetectionService implements ITaxCoverageDetectionService
     // held one page at a time — this map is the one piece of state that
     // legitimately spans pages, and it is small (one entry per distinct
     // product/variant, not per line or per order).
+    //
+    // Because a lookup failure is cached as `null` (see `resolveRates`), and
+    // `uncachedRateKeys` skips any key already present in this map — `null`
+    // included — a transient catalogue read failure on an EARLY page is
+    // never retried on a LATER page within the same `classify()` call, even
+    // though the same key surfaces again. This is a deliberate consequence
+    // of making dedup population-wide rather than per-page: it trades one
+    // retry opportunity per page for a classification that is deterministic
+    // across the whole population instead of depending on which page a
+    // transient failure happened to land on.
     const rateByKey = new Map<string, StoredTaxRate | null>();
 
     for (let pagesRead = 0; ; pagesRead++) {
