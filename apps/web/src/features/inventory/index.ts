@@ -61,6 +61,10 @@ export { LocationDialog, type LocationDialogTarget } from './components/location
 export { LocationDeleteDialog } from './components/location-delete-dialog';
 export { KIND_LABEL } from './components/location-dialog.schema';
 
+// Consumed by `pages/settings/settings-page.tsx` — a link-out tile, not a
+// full settings section (#2316 / #3066 follow-up).
+export { InventoryLocationsTile } from './components/inventory-locations-tile';
+
 export { useInventoryAvailabilityBatchQuery } from './hooks/use-inventory-availability-batch-query';
 // Query-key factory re-exported so the bulk wizard's chunked per-variant
 // availability fan-out (#1741) shares cache entries with the batch hook above.

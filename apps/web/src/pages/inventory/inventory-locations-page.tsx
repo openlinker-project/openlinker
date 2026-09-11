@@ -344,6 +344,7 @@ export function InventoryLocationsPage(): ReactElement {
 
   return (
     <PageLayout
+      backTo={{ to: '/settings', label: 'Settings' }}
       eyebrow="Fulfilment routing"
       title="Inventory locations"
       description="The warehouses, stores and third-party sites OpenLinker can source stock from. A location isn't authority over stock — it's the place sourcing rules pick between. Delete is refused while any stock still points here; retire it instead."
