@@ -387,6 +387,8 @@ export type {
   PriceChangeEpisodeFilters,
 } from './domain/types/price-change-episode.types';
 export type { PriceChangeEpisodeRepositoryPort } from './domain/ports/price-change-episode-repository.port';
+export { PriceChangeEpisodePersistenceError } from './domain/exceptions/price-change-episode-persistence.error';
+export { PriceChangeEpisodeSupersededError } from './domain/exceptions/price-change-episode-superseded.error';
 export { OfferCommercialSnapshot } from './domain/entities/offer-commercial-snapshot.entity';
 export type {
   OfferCommercialSnapshotProps,

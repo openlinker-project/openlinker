@@ -64,7 +64,19 @@ export interface UpsertOpenPriceChangeEpisodeInput {
   detectedAt: Date;
 }
 
-/** Filters for the review-queue list read. */
+/**
+ * Filters for the review-queue list read.
+ *
+ * Stale-variant exclusion (the #1689 precedent) is deliberately NOT a filter
+ * here — it is applied ABOVE the repository, in `PriceChangesService.listOpen`
+ * (#3162), which computes `staleVariantIds` via `IProductsService` and reports
+ * `hiddenStaleCount` alongside the list. A repository-level flag with no reader
+ * is worse than none: a future caller setting it would believe the guard ran
+ * and get episodes for master-deleted products whose offers #1689 already
+ * paused to quantity 0 (`docs/architecture-overview.md § Listings — Stale-
+ * variant offer pause`; #2380's "a control the backend cannot serve is dead
+ * code that type-checks").
+ */
 export interface PriceChangeEpisodeFilters {
   destinationConnectionId?: string;
   sourceConnectionId?: string;
@@ -72,6 +84,4 @@ export interface PriceChangeEpisodeFilters {
   direction?: 'up' | 'down';
   /** When `true`, only episodes with `|deltaPct| >= 10` (mockup's "Big changes"). */
   magnitudeLargeOnly?: boolean;
-  /** Exclude episodes whose variant/offer mapping is stale (#1689 precedent). */
-  excludeStaleVariants?: boolean;
 }
