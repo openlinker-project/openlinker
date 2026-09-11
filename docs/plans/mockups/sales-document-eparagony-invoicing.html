@@ -1,0 +1,914 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* ── Document chrome ───────────────────────────────────────────── */
+:root {
+  --ink:        oklch(16% 0.008 80);
+  --ink-2:      oklch(21% 0.009 80);
+  --ink-3:      oklch(26% 0.010 80);
+  --rule:       oklch(33% 0.010 80);
+  --rule-soft:  oklch(27% 0.009 80);
+  --fg:         oklch(92% 0.006 80);
+  --fg-2:       oklch(74% 0.008 80);
+  --fg-3:       oklch(58% 0.008 80);
+  --amber:      oklch(72% 0.17 55);
+  --amber-soft: oklch(30% 0.07 55);
+  --green:      oklch(72% 0.14 150);
+  --red:        oklch(70% 0.17 25);
+  --blue:       oklch(72% 0.11 245);
+
+  --doc:  "Newsreader", ui-serif, Georgia, serif;
+  --ui:   "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding-block: 0;
+  background: var(--ink);
+  color: var(--fg);
+  font-family: var(--ui);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 24px; }
+
+/* ── Masthead ──────────────────────────────────────────────────── */
+.masthead { padding-block: 64px 40px; border-bottom: 1px solid var(--rule); }
+.kicker {
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--amber); margin: 0 0 18px;
+}
+.masthead h1 {
+  font-family: var(--doc); font-weight: 600; font-size: clamp(34px, 6vw, 58px);
+  line-height: 1.02; letter-spacing: -0.02em; margin: 0 0 18px; text-wrap: balance;
+  color: #fff;
+}
+.masthead .lede {
+  font-family: var(--doc); font-size: clamp(17px, 2.2vw, 21px); line-height: 1.5;
+  color: var(--fg-2); margin: 0; max-width: 62ch;
+}
+.meta {
+  display: flex; flex-wrap: wrap; gap: 10px 26px; margin-top: 28px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--fg-3);
+}
+.meta b { color: var(--fg-2); font-weight: 500; }
+
+/* ── Legend ────────────────────────────────────────────────────── */
+.legend {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px;
+  padding: 14px 16px; border: 1px solid var(--rule-soft); border-radius: 10px;
+  background: var(--ink-2);
+}
+.legend div { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: var(--fg-2); }
+.swatch { width: 26px; height: 16px; border-radius: 3px; flex: none; }
+.swatch--real { border: 2px solid var(--fg-2); background: #fff; }
+.swatch--prop { border: 2px dashed var(--amber); background: var(--amber-soft); }
+.swatch--bug  { border: 2px solid var(--red); background: color-mix(in oklch, var(--red) 22%, transparent); }
+
+/* ── Step spine ────────────────────────────────────────────────── */
+.step { display: grid; grid-template-columns: 64px 1fr; gap: 0 28px; position: relative; }
+.step::before {
+  content: ""; position: absolute; left: 31px; top: 0; bottom: 0;
+  width: 1px; background: var(--rule-soft);
+}
+.step:last-of-type::before { bottom: auto; height: 54px; }
+.spine { position: relative; padding-top: 46px; }
+.num {
+  position: relative; z-index: 1; display: grid; place-items: center;
+  width: 44px; height: 44px; margin-left: 10px; border-radius: 50%;
+  background: var(--ink); border: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 13px; color: var(--amber);
+}
+.step--end .num { border-color: var(--amber); background: var(--amber-soft); }
+.body { padding-block: 38px 20px; min-width: 0; }
+.step h2 {
+  font-family: var(--doc); font-weight: 600; font-size: clamp(24px, 3.4vw, 33px);
+  line-height: 1.12; letter-spacing: -0.015em; margin: 0 0 12px; color: #fff; text-wrap: balance;
+}
+.step p { margin: 0 0 16px; max-width: 68ch; color: var(--fg-2); }
+.step p strong { color: var(--fg); font-weight: 600; }
+.step p code, .step li code, .note code, td code {
+  font-family: var(--mono); font-size: .88em; color: var(--amber);
+  background: var(--ink-3); padding: 1px 5px; border-radius: 4px;
+}
+
+/* ── Plates (screenshots + proposals) ──────────────────────────── */
+.plate { margin: 0 0 20px; }
+.plate-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 9px; font-family: var(--mono); font-size: 11px;
+  letter-spacing: .1em; text-transform: uppercase;
+}
+.tag {
+  padding: 3px 8px; border-radius: 4px; font-weight: 500; flex: none;
+}
+.tag--real { background: var(--fg-2); color: var(--ink); }
+.tag--prop { background: var(--amber); color: oklch(18% .012 50); }
+.tag--bug  { background: var(--red); color: oklch(16% .012 25); }
+.plate-head .where { color: var(--fg-3); letter-spacing: .06em; text-transform: none; font-size: 11.5px; }
+
+.shot {
+  border-radius: 10px; overflow: hidden; background: #fff;
+  border: 2px solid var(--fg-3); box-shadow: 0 18px 40px rgba(0,0,0,.4);
+}
+.shot img { display: block; width: 100%; height: auto; }
+.shot--narrow { max-width: 520px; }
+.shot--mid { max-width: 720px; }
+
+.prop {
+  border: 2px dashed var(--amber); border-radius: 10px; padding: 14px;
+  background: var(--amber-soft);
+}
+.prop--plain { background: transparent; }
+.prop--fit { width: fit-content; max-width: 100%; }
+
+.cap { margin-top: 9px; font-size: 12.5px; color: var(--fg-3); max-width: 66ch; }
+.cap b { color: var(--fg-2); font-weight: 500; }
+
+/* ── Notes ─────────────────────────────────────────────────────── */
+.note {
+  border-left: 3px solid var(--rule); padding: 12px 0 12px 16px;
+  margin: 0 0 18px; color: var(--fg-2); font-size: 14px; max-width: 68ch;
+}
+.note b { color: #fff; font-weight: 600; }
+.note--bug { border-left-color: var(--red); }
+.note--gap { border-left-color: var(--amber); }
+.note--ok  { border-left-color: var(--green); }
+.note .lbl {
+  display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--fg-3); margin-bottom: 5px;
+}
+.note--bug .lbl { color: var(--red); }
+.note--gap .lbl { color: var(--amber); }
+.note--ok  .lbl { color: var(--green); }
+
+/* ── Branches ──────────────────────────────────────────────────── */
+.branches { display: grid; gap: 18px; margin: 4px 0 20px; }
+@media (min-width: 820px) { .branches--3 { grid-template-columns: repeat(3, 1fr); } .branches--2 { grid-template-columns: repeat(2, 1fr); } }
+.branch {
+  border: 1px solid var(--rule-soft); border-radius: 10px; padding: 16px;
+  background: var(--ink-2); min-width: 0;
+}
+.branch h3 {
+  font-family: var(--ui); font-size: 13px; font-weight: 600; margin: 0 0 4px; color: #fff;
+}
+.branch .when {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--fg-3); margin: 0 0 10px;
+}
+.branch p { font-size: 13.5px; margin: 0 0 10px; color: var(--fg-2); }
+.branch .plate { margin-bottom: 12px; }
+
+/* ── Tables ────────────────────────────────────────────────────── */
+.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 0 0 18px; }
+.tbl th {
+  text-align: left; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--fg-3); font-weight: 500;
+  padding: 0 14px 9px 0; border-bottom: 1px solid var(--rule);
+}
+.tbl td { padding: 11px 14px 11px 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; color: var(--fg-2); }
+.tbl td:first-child { color: var(--fg); font-weight: 500; white-space: nowrap; }
+.tbl-scroll { overflow-x: auto; }
+
+/* ── Closing ───────────────────────────────────────────────────── */
+.closing { padding-block: 44px 80px; border-top: 1px solid var(--rule); margin-top: 40px; }
+.closing h2 { font-family: var(--doc); font-size: 28px; margin: 0 0 14px; color: #fff; font-weight: 600; }
+.closing ul { margin: 0; padding-left: 20px; color: var(--fg-2); max-width: 68ch; }
+.closing li { margin-bottom: 9px; }
+
+/* ── App-faithful replicas (real OpenLinker tokens) ────────────── */
+.app {
+  --bg-surface: #fff;
+  --bg-canvas: oklch(99% .003 80);
+  --bg-muted: oklch(96% .005 80);
+  --border-subtle: oklch(93.5% .006 80);
+  --border-default: oklch(88% .008 80);
+  --text-primary: oklch(20% .012 80);
+  --text-secondary: oklch(38% .01 80);
+  --text-muted: oklch(52% .008 80);
+  --accent: oklch(68% .18 50);
+  --accent-soft: oklch(96% .04 60);
+  --accent-border: oklch(85% .1 55);
+  --accent-fg: oklch(40% .16 50);
+  --ok-soft: oklch(96% .04 150); --ok-border: oklch(85% .08 150); --ok-fg: oklch(36% .12 150);
+  --warn-soft: oklch(96% .05 85); --warn-border: oklch(85% .1 85); --warn-fg: oklch(42% .12 80);
+  --err-soft: oklch(96% .04 25); --err-border: oklch(85% .1 25); --err-fg: oklch(42% .16 25);
+  --info-soft: oklch(96% .03 245); --info-border: oklch(85% .08 245); --info-fg: oklch(40% .12 245);
+
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--ui);
+  font-size: 14px;
+  line-height: 1.5;
+  border-radius: 8px;
+  padding: 18px;
+}
+.app * { box-sizing: border-box; }
+.app .eyebrow {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--accent); margin: 0 0 6px; font-weight: 500;
+}
+.app h4 { font-size: 15px; font-weight: 600; margin: 0 0 4px; color: var(--text-primary); }
+.app .sub { font-size: 12.5px; color: var(--text-muted); margin: 0 0 14px; }
+.app .card {
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: 8px; padding: 14px;
+}
+.app .kv { display: grid; grid-template-columns: minmax(120px, 42%) 1fr; }
+.app .kv > div {
+  padding: 9px 12px; border-bottom: 1px solid var(--border-subtle); min-width: 0; word-break: break-word;
+}
+.app .kv > div:nth-child(odd) {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--text-muted); background: var(--bg-muted);
+}
+.app .kv > div:nth-child(even) { font-size: 13px; color: var(--text-primary); }
+.app .kv .m { font-family: var(--mono); font-size: 12.5px; color: var(--text-secondary); }
+.app .kv .dim { color: var(--text-muted); }
+.app .kv > div:nth-last-child(-n+2) { border-bottom: 0; }
+.app .pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 9999px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase;
+  border: 1px solid var(--border-default); background: var(--bg-muted); color: var(--text-secondary);
+}
+.app .pill--ok { background: var(--ok-soft); border-color: var(--ok-border); color: var(--ok-fg); }
+.app .pill--warn { background: var(--warn-soft); border-color: var(--warn-border); color: var(--warn-fg); }
+.app .pill--err { background: var(--err-soft); border-color: var(--err-border); color: var(--err-fg); }
+.app .pill--info { background: var(--info-soft); border-color: var(--info-border); color: var(--info-fg); }
+.app .pill--muted { color: var(--text-muted); }
+.app .alert {
+  border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.5;
+  border: 1px solid var(--warn-border); border-left: 3px solid var(--warn-fg);
+  background: var(--warn-soft); color: var(--warn-fg);
+}
+.app .alert b { display: block; margin-bottom: 3px; color: var(--text-primary); }
+.app .alert--info { border-color: var(--info-border); border-left-color: var(--info-fg); background: var(--info-soft); color: var(--info-fg); }
+.app .alert--err { border-color: var(--err-border); border-left-color: var(--err-fg); background: var(--err-soft); color: var(--err-fg); }
+.app .btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 7px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-primary);
+}
+.app .btn--primary { background: var(--accent); border-color: var(--accent); color: oklch(18% .012 50); }
+.app .btn--ghost { background: transparent; }
+.app .field { display: block; margin-bottom: 12px; }
+.app .field > span {
+  display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 5px; font-weight: 500;
+}
+.app .control {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 11px; border: 1px solid var(--border-default); border-radius: 6px;
+  background: var(--bg-surface); font-size: 13.5px; color: var(--text-primary);
+}
+.app .control .chev { color: var(--text-muted); font-size: 11px; }
+.app .control--disabled { background: var(--bg-muted); color: var(--text-muted); }
+.app .row { display: flex; gap: 10px; flex-wrap: wrap; }
+.app .row > * { min-width: 0; }
+.app .grow { flex: 1 1 140px; }
+.app .hint { font-size: 12px; color: var(--text-muted); margin: 6px 0 0; }
+.app .mono { font-family: var(--mono); }
+.app hr { border: 0; border-top: 1px solid var(--border-subtle); margin: 14px 0; }
+.app table.t { width: 100%; border-collapse: collapse; font-size: 12.5px; background: var(--bg-surface); }
+.app table.t th {
+  text-align: left; font-family: var(--mono); font-size: 10px; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-muted); font-weight: 500;
+  padding: 9px 10px; background: var(--bg-muted); border-bottom: 1px solid var(--border-subtle);
+}
+.app table.t td { padding: 10px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+.app table.t tr:last-child td { border-bottom: 0; }
+.app table.t .new { background: var(--accent-soft); }
+.app .disclosure {
+  font-size: 12.5px; color: var(--text-link, oklch(50% .14 250)); text-decoration: underline;
+  text-underline-offset: 3px; cursor: default;
+}
+.app .reveal {
+  font-size: 12.5px; color: var(--text-secondary); margin: 6px 0 0; padding-left: 0;
+}
+
+/* Collapsed-by-default disclosure, as the shipped panel renders it. */
+.app details.disc { border-top: 1px solid var(--border-subtle); padding: 9px 0 0; }
+.app details.disc:first-of-type { border-top: 0; padding-top: 0; }
+.app details.disc + details.disc { margin-top: 9px; }
+.app details.disc > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: oklch(50% .14 250); text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.app details.disc > summary::-webkit-details-marker { display: none; }
+.app details.disc > summary::before {
+  content: "▸"; font-size: 9px; text-decoration: none; flex: none;
+  color: var(--text-muted); transition: transform .12s ease;
+}
+.app details.disc[open] > summary::before { transform: rotate(90deg); }
+.app details.disc[open] > summary { margin-bottom: 2px; }
+
+/* Inside a narrow branch column a two-column kv shreds its own values. */
+.branch .app .kv { grid-template-columns: 1fr; }
+.branch .app .kv > div:nth-child(odd) { border-bottom: 0; padding-bottom: 3px; background: transparent; }
+.branch .app .kv > div:nth-child(even) { padding-top: 0; }
+.branch .app .pill { white-space: nowrap; }
+
+/* ── Target-screen frames ──────────────────────────────────────── */
+.screen { margin: 0 0 26px; }
+.screen-head {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.screen-head .n {
+  font-family: var(--mono); font-size: 11px; color: var(--amber);
+  border: 1px solid var(--amber); border-radius: 4px; padding: 1px 6px; flex: none;
+}
+.screen-head h3 { font-family: var(--ui); font-size: 15px; font-weight: 600; margin: 0; color: #fff; }
+.screen-head .route { font-family: var(--mono); font-size: 11.5px; color: var(--fg-3); }
+.screen-frame {
+  border: 2px dashed var(--amber); border-radius: 12px; padding: 16px;
+  background: var(--amber-soft);
+}
+.screen-frame--fit { width: fit-content; max-width: 100%; }
+.states { display: grid; gap: 16px; }
+@media (min-width: 860px) { .states--2 { grid-template-columns: 1fr 1fr; } .states--3 { grid-template-columns: repeat(3, 1fr); } }
+.state-label {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--fg-3); margin: 0 0 7px;
+}
+
+/* ── Test-hook overlay ─────────────────────────────────────────── */
+.hooks-bar {
+  position: sticky; top: 0; z-index: 40; margin: 0 0 28px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 11px 14px; border: 1px solid var(--rule); border-radius: 10px;
+  background: color-mix(in oklch, var(--ink-2) 92%, transparent);
+  backdrop-filter: blur(6px);
+}
+.hooks-bar label { display: flex; align-items: center; gap: 9px; font-size: 13.5px; cursor: pointer; }
+.hooks-bar input { width: 16px; height: 16px; accent-color: oklch(72% .11 245); cursor: pointer; }
+.hooks-bar .muted { font-size: 12.5px; color: var(--fg-3); }
+
+.app [data-testid] { position: relative; }
+body.show-hooks .app [data-testid] { outline: 1px dashed oklch(72% .11 245); outline-offset: 1px; }
+body.show-hooks .app [data-testid]::after {
+  content: attr(data-testid);
+  position: absolute; left: 0; top: 0; transform: translateY(-104%);
+  font-family: var(--mono); font-size: 8.5px; line-height: 1.5; font-weight: 500;
+  background: oklch(46% .13 245); color: #fff; padding: 0 4px; border-radius: 3px;
+  white-space: nowrap; pointer-events: none; z-index: 6; letter-spacing: 0;
+}
+
+/* ── App components used by the target screens ─────────────────── */
+.app .modal { background: var(--bg-surface); border-radius: 12px; padding: 20px; box-shadow: 0 24px 48px rgba(15,18,26,.16); }
+.app .modal h3 { font-size: 17px; font-weight: 600; margin: 0 0 3px; }
+.app .modal .modal-sub { font-size: 12.5px; color: var(--text-muted); margin: 0 0 16px; }
+.app .modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.app .group { border: 1px solid var(--border-subtle); border-radius: 8px; padding: 13px; margin-bottom: 12px; background: var(--bg-canvas); }
+.app .group > .eyebrow { margin-bottom: 8px; }
+.app .cond {
+  border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-surface);
+  padding: 9px; margin-bottom: 7px;
+}
+.app .cond-line { display: flex; gap: 7px; align-items: center; }
+.app .cond-line + .cond-line { margin-top: 7px; }
+.app .and {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .12em; color: var(--text-muted);
+  text-align: center; margin: 0 0 7px;
+}
+.app .iconbtn {
+  flex: none; width: 30px; height: 32px; border: 1px solid var(--border-default); border-radius: 6px;
+  background: var(--bg-surface); color: var(--text-muted); display: grid; place-items: center; font-size: 13px;
+}
+.app .seg { display: inline-flex; border: 1px solid var(--border-default); border-radius: 7px; overflow: hidden; }
+.app .seg > span { padding: 7px 15px; font-size: 13px; color: var(--text-secondary); background: var(--bg-surface); }
+.app .seg > span + span { border-left: 1px solid var(--border-default); }
+.app .seg > span.on { background: var(--accent); color: oklch(18% .012 50); font-weight: 500; }
+.app .readback {
+  border: 1px solid var(--info-border); border-left: 3px solid var(--info-fg);
+  background: var(--info-soft); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--info-fg);
+}
+.app .readback b { color: var(--text-primary); }
+.app .readback .eyebrow { color: var(--info-fg); margin-bottom: 4px; }
+.app .amt { font-family: var(--mono); }
+.app .btn[aria-disabled="true"], .app .btn--off {
+  background: var(--accent-soft); border-color: var(--accent-border);
+  color: oklch(62% .06 50);
+}
+.app .rulecard {
+  border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--bg-surface);
+  padding: 12px; margin-bottom: 8px;
+}
+.app .rulecard .out { font-weight: 600; font-size: 13.5px; }
+.app .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.app .stepno {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--accent-soft); border: 1px solid var(--accent-border); color: var(--accent-fg);
+  font-family: var(--mono); font-size: 10.5px; flex: none;
+}
+
+/* ── Flaw list ─────────────────────────────────────────────────── */
+.flaws { list-style: none; margin: 0 0 18px; padding: 0; }
+.flaws li {
+  display: grid; grid-template-columns: 26px 1fr; gap: 13px; align-items: start;
+  margin-bottom: 13px; font-size: 14px; color: var(--fg-2); max-width: 68ch;
+}
+.flaws .x {
+  display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  border: 1px solid var(--red); color: var(--red); font-family: var(--mono); font-size: 11px;
+}
+.flaws b { color: #fff; font-weight: 600; }
+
+/* ── Step-shaped modal sections (sentence-case, no shouting) ───── */
+.app .steptitle { font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0 0 3px; }
+.app .stephint { font-size: 12.5px; color: var(--text-muted); margin: 0 0 11px; }
+.app .cond-head {
+  display: grid; grid-template-columns: 1fr 1fr 1.15fr 32px; gap: 7px;
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 6px;
+}
+.app .cond-grid {
+  display: grid; grid-template-columns: 1fr 1fr 1.15fr 32px; gap: 7px;
+  align-items: center; margin-bottom: 7px;
+}
+.app .pair { display: flex; gap: 6px; }
+.app .pair > :first-child { flex: 1 1 auto; min-width: 0; }
+.app .pair > :last-child { flex: 0 0 84px; }
+@media (max-width: 620px) {
+  .app .cond-head { display: none; }
+  .app .cond-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Status ladder ─────────────────────────────────────────────── */
+.app .ladder { display: flex; align-items: flex-start; margin: 4px 0 14px; }
+.app .ladder .node { flex: 1 1 0; text-align: center; position: relative; min-width: 0; padding: 0 2px; }
+.app .ladder .node + .node::before {
+  content: ""; position: absolute; top: 8px; left: -50%; width: 100%; height: 2px;
+  background: var(--border-default);
+}
+.app .ladder .node.done + .node.done::before,
+.app .ladder .node.done + .node.now::before { background: var(--ok-fg); }
+.app .ladder .dot {
+  display: block; position: relative; z-index: 1; width: 18px; height: 18px; border-radius: 50%;
+  margin: 0 auto 7px; background: var(--bg-surface); border: 2px solid var(--border-default);
+}
+.app .ladder .node.done .dot { background: var(--ok-fg); border-color: var(--ok-fg); }
+.app .ladder .node.now .dot { border-color: var(--warn-fg); background: var(--warn-soft); }
+.app .ladder .node.fail .dot { background: var(--err-fg); border-color: var(--err-fg); }
+.app .ladder .lbl2 { font-size: 11.5px; font-weight: 500; color: var(--text-primary); display: block; }
+.app .ladder .node:not(.done):not(.now):not(.fail) .lbl2 { color: var(--text-muted); font-weight: 400; }
+.app .ladder .when2 { font-family: var(--mono); font-size: 9.5px; color: var(--text-muted); display: block; margin-top: 2px; }
+
+/* ── Hook reference table ──────────────────────────────────────── */
+.hooks-tbl td:first-child { font-family: var(--mono); font-size: 12px; color: var(--blue); white-space: nowrap; }
+
+@media (max-width: 700px) {
+  .step { grid-template-columns: 1fr; gap: 0; }
+  .step::before { display: none; }
+  .spine { padding-top: 30px; }
+  .num { margin-left: 0; }
+  .body { padding-block: 12px 16px; }
+  .app .kv { grid-template-columns: 1fr; }
+  .app .kv > div:nth-child(odd) { border-bottom: 0; }
+}
+
+</style>
+<title>eparagony Issues Invoices</title>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="kicker">Epic 3 · New capability</p>
+  <h1>eparagony Issues Invoices</h1>
+  <p class="lede">The provider that registers our fiscal receipts can also issue full invoices and relay them to KSeF. This epic gives one connection both roles — and keeps the guarantee that one sale still ends with exactly one document.</p>
+  <div class="meta">
+    <span><b>Today</b> <code>['Fiscalization', 'FiscalRegistrationLocator']</code></span>
+    <span><b>Adds</b> <code>Invoicing</code> · <code>RegulatoryStatusReader</code> · <code>CorrectionIssuer</code></span>
+    <span><b>Screens</b> 5 · <b>tasks</b> 16</span>
+  </div>
+</header>
+
+<div class="hooks-bar">
+  <label><input type="checkbox" id="hooks-toggle"> <span>Show test hooks</span></label>
+  <span class="muted">Every mockup element carries a real <code>data-testid</code> — <b id="hooks-count">0</b> of them on this page, readable straight from this artifact's DOM.</span>
+</div>
+
+<!-- 00 -->
+<section class="step">
+  <div class="spine"><span class="num">·</span></div>
+  <div class="body">
+    <h2>Where the line runs, and why it holds itself</h2>
+    <p>The two capabilities do not overlap, and not because we maintain a convention — because they are <strong>different request bodies at the provider, with different validation</strong>.</p>
+
+    <div class="tbl-scroll">
+    <table class="tbl">
+      <thead><tr><th></th><th>Fiscalization</th><th>Invoicing</th></tr></thead>
+      <tbody>
+        <tr><td>Document</td><td><code>eReceipt</code></td><td><code>eInvoice</code> · <code>eCorrectiveInvoice</code></td></tr>
+        <tr><td>Buyer tax number</td><td><code>ReceiptMetadata.consumerTIN</code><br>pattern only</td><td><code>CommonInvoiceMetadata.consumerTIN</code><br>checksum-verified, optional since v3.3</td></tr>
+        <tr><td>Port</td><td><code>FiscalizationPort</code></td><td><code>InvoicingPort</code></td></tr>
+        <tr><td>Terminal</td><td><code>registered</code> — final, uncorrectable</td><td><code>accepted</code> / <code>rejected</code> — correctable</td></tr>
+        <tr><td>A receipt with a tax number</td><td><b>stays here</b> — Epic 1</td><td>never routed here</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="note note--ok">
+      <span class="lbl">One plugin, several capabilities: ordinary</span>
+      PrestaShop already dispatches <b>six</b> from one table. There is no structural obstacle to eparagony exposing two.
+    </div>
+
+    <div class="note note--ok">
+      <span class="lbl">And the double-issue fear was overstated</span>
+      I claimed the one-document guard assumed <code>(connection, kind)</code> uniqueness and had to be reviewed before anything else. <b>It does not.</b> Both cross-kind guards are already connection-blind — the invoice side searches by <code>blocksFurtherRegistration</code> with no connection filter, and the fiscal side calls <code>findBlockingInvoiceForOrder(orderId)</code> with no connection argument at all, both under the same per-order lock. A dual-role connection cannot produce both documents for one sale. What survives is a one-hour confirmation and a stale docblock sentence to correct.
+    </div>
+  </div>
+</section>
+
+<!-- 01 -->
+<section class="step">
+  <div class="spine"><span class="num">01</span></div>
+  <div class="body">
+    <h2>The connection grows a second role</h2>
+
+    <div class="states states--2">
+      <div>
+        <p class="state-label">Today — one of one</p>
+        <div class="screen-frame" style="border-style:solid;border-color:var(--rule);background:transparent">
+          <div class="app">
+            <p class="eyebrow">Capabilities</p>
+            <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:10px">
+              <h4>Enabled roles</h4><span class="pill pill--muted">1 of 1 enabled</span>
+            </div>
+            <div class="card">
+              <span class="pill pill--info">Fiscalization</span>
+              <p class="hint" style="margin-top:8px">Register a completed sale with this connection, which performs or brokers the fiscal registration. OpenLinker never decides whether an order requires one.</p>
+            </div>
+          </div>
+        </div>
+        <p class="cap">Verbatim from the running instance. The sentence is good and stays.</p>
+      </div>
+
+      <div>
+        <p class="state-label">Target — two of two</p>
+        <div class="screen-frame">
+          <div class="app">
+            <p class="eyebrow">Capabilities</p>
+            <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:10px">
+              <h4>Enabled roles</h4><span class="pill pill--ok" data-testid="capability-count">2 of 2 enabled</span>
+            </div>
+            <div class="card" style="margin-bottom:8px" data-testid="capability-fiscalization">
+              <span class="pill pill--info">Fiscalization</span>
+              <p class="hint" style="margin-top:8px">Register a completed sale with this connection, which performs or brokers the fiscal registration. OpenLinker never decides whether an order requires one.</p>
+            </div>
+            <div class="card" data-testid="capability-invoicing">
+              <span class="pill pill--info">Invoicing</span>
+              <p class="hint" style="margin-top:8px">Issue invoices and corrections with this connection. Where the provider relays a document onward, OpenLinker follows its status. OpenLinker never decides whether an order requires one.</p>
+            </div>
+          </div>
+        </div>
+        <p class="cap">The second sentence is written in the first one's voice, ending on the same disclaimer — because the disclaimer is the true part in both cases.</p>
+      </div>
+    </div>
+
+    <div class="screen" style="margin-top:22px">
+      <div class="screen-head"><span class="n">S2</span><h3>Edit connection — turning it on</h3><span class="route">/connections/:connectionId/edit</span></div>
+      <div class="screen-frame screen-frame--fit">
+        <div class="app" style="max-width:520px">
+          <p class="eyebrow">Capabilities</p>
+          <p class="sub">What this connection is allowed to do. Only roles its adapter advertises can be enabled.</p>
+          <div class="card" style="margin-bottom:8px">
+            <div class="row" style="align-items:center;gap:10px;margin-bottom:5px">
+              <span class="pill pill--ok" data-testid="capability-toggle-fiscalization">on</span>
+              <b style="font-size:13.5px">Fiscalization</b>
+            </div>
+            <p class="hint" style="margin:0">Register a completed sale. Receipts, including those carrying a buyer's tax number.</p>
+          </div>
+          <div class="card">
+            <div class="row" style="align-items:center;gap:10px;margin-bottom:5px">
+              <span class="pill pill--ok" data-testid="capability-toggle-invoicing">on</span>
+              <b style="font-size:13.5px">Invoicing</b>
+            </div>
+            <p class="hint" style="margin:0">Issue invoices and corrections. Where the provider relays a document onward, OpenLinker follows its status.</p>
+          </div>
+          <div class="alert alert--info" style="margin-top:12px" data-testid="capability-routing-note">
+            <b>Enabling a role does not route anything to it</b>
+            This connection becomes <i>eligible</i> to issue invoices. Which orders actually get one is decided under <b>Sales documents</b>, per country.
+          </div>
+        </div>
+      </div>
+      <p class="cap">Two independent switches, not one three-way choice — a connection may hold one role, the other, or both, and turning one off must never imply anything about the other.</p>
+    </div>
+
+    <div class="note note--gap">
+      <span class="lbl">The first support question this will generate</span>
+      A connection's enabled roles are <b>stamped at create and never back-filled</b>. An eparagony connection that already exists will not gain <code>Invoicing</code> when the adapter starts advertising it — the operator must switch it on. That is correct behaviour and it will still surprise somebody.
+    </div>
+  </div>
+</section>
+
+<!-- 02 -->
+<section class="step">
+  <div class="spine"><span class="num">02</span></div>
+  <div class="body">
+    <h2>What the connection issues — including "Both"</h2>
+    <p>Two things were asked for at different moments and look contradictory: <em>"I don't want to have to choose"</em>, and later <em>"there should be a dropdown to choose what it serves"</em>. They reconcile in one control: <strong>the dropdown, with "Both" among its options.</strong> The choice exists, and declining to choose is one of the choices.</p>
+
+    <div class="screen">
+      <div class="screen-head"><span class="n">S3</span><h3>Connected providers</h3><span class="route">/settings/sales-documents</span></div>
+      <div class="screen-frame">
+        <div class="app" style="padding:0">
+          <div style="overflow-x:auto">
+            <table class="t" data-testid="providers-table">
+              <thead><tr><th>Provider</th><th>Capability</th><th>Issues</th><th>Goes first</th><th>Trigger</th></tr></thead>
+              <tbody>
+                <tr data-testid="provider-row-eparagony">
+                  <td>e-paragony Sandbox<br><span class="amt" style="font-size:11px;color:oklch(52% .008 80)">eparagony</span></td>
+                  <td><span class="pill pill--info">Fiscalization</span> <span class="pill pill--info">Invoicing</span></td>
+                  <td>
+                    <div class="control" data-testid="provider-role-eparagony"><span>Both</span><span class="chev">▾</span></div>
+                    <p class="hint">Receipts · Invoices · Both · Nothing</p>
+                  </td>
+                  <td><span class="pill pill--ok" data-testid="provider-primary-eparagony">Yes</span></td>
+                  <td><div class="control" data-testid="provider-trigger-eparagony"><span>Auto on order paid</span><span class="chev">▾</span></div></td>
+                </tr>
+                <tr data-testid="provider-row-ksef">
+                  <td>Ksef Demo<br><span class="amt" style="font-size:11px;color:oklch(52% .008 80)">ksef</span></td>
+                  <td><span class="pill pill--info">Invoicing</span></td>
+                  <td>
+                    <div class="control" data-testid="provider-role-ksef"><span>Invoices</span><span class="chev">▾</span></div>
+                    <p class="hint">Only one capability — nothing to choose.</p>
+                  </td>
+                  <td><span class="pill pill--muted" data-testid="provider-primary-ksef">Make it first</span></td>
+                  <td><div class="control control--disabled" data-testid="provider-trigger-ksef"><span>Manual</span><span class="chev">▾</span></div></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <p class="cap">A connection holding one capability still renders the select, fixed and unchangeable, so the column means the same thing on every row.</p>
+    </div>
+
+    <div class="note note--bug">
+      <span class="lbl">This is the real gate of the epic, and it is not front-end work</span>
+      <code>readSalesDocumentRouting</code> reads <code>documentKind</code> as a <b>single string</b>, and <code>SalesDocumentRoutingCandidate.documentKind</code> is single-valued. <b>"Both" is not expressible in the shipped model.</b> It needs the config key, the coercer, the candidate type, the routing resolver, the auto-issue trigger and the settings view widened together — six sites. Everything else in this epic can proceed while that happens; only the role select and the acceptance test wait on it.
+    </div>
+
+    <div class="note">
+      <span class="lbl">Why "Both" is safe now and was not before</span>
+      "Goes first" used to be the only thing separating two candidates, so a connection offering two kinds was genuinely ambiguous. It is not any more: <b>a routing rule names the kind <i>and</i> the connection</b>, and the country fallback is a single select naming both. There is no decision left for the system to guess at — which is what makes declining to split the connection affordable.
+    </div>
+
+    <div class="note note--gap">
+      <span class="lbl">Cost to accept</span>
+      Widening the routing model touches <b>auto-issue</b>. That path decides, unattended, which document a paid order gets — so it needs its own regression tests, not just the acceptance scenario below.
+    </div>
+  </div>
+</section>
+
+<!-- 03 -->
+<section class="step">
+  <div class="spine"><span class="num">03</span></div>
+  <div class="body">
+    <h2>Awaiting submission</h2>
+    <p>eparagony relays to KSeF, so a document travels <code>PENDING → OFFLINE → CONFIRMED</code>. The provider's own words for <code>OFFLINE</code> are <b>"invoice issued in Offline mode – awaiting submission to KSeF"</b> — which maps to <code>pending-submission</code> on our neutral axis, not <code>submitted</code>. The document has not left yet.</p>
+
+    <div class="screen">
+      <div class="screen-head"><span class="n">S4</span><h3>Sales document — awaiting submission</h3><span class="route">/orders/:internalOrderId → Sales document</span></div>
+      <div class="screen-frame screen-frame--fit">
+        <div class="app" style="max-width:470px">
+          <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:12px">
+            <h4>Sales document</h4>
+            <span class="pill pill--warn" data-testid="sales-document-status-waiting">Invoice · Awaiting submission</span>
+          </div>
+          <div class="card">
+            <div class="ladder" data-testid="clearance-ladder-waiting">
+              <div class="node done"><span class="dot"></span><span class="lbl2">Issued</span><span class="when2">09:41</span></div>
+              <div class="node now" data-testid="clearance-node-waiting"><span class="dot"></span><span class="lbl2">With provider</span><span class="when2">12h 04m</span></div>
+              <div class="node"><span class="dot"></span><span class="lbl2">Cleared</span><span class="when2">—</span></div>
+            </div>
+            <div class="card" style="padding:0">
+              <div class="kv">
+                <div>Number</div><div class="m">FV2026/09/546</div>
+                <div>Provider status</div><div data-testid="provider-raw-status"><span class="m">OFFLINE</span></div>
+                <div>Processing mode</div><div data-testid="provider-raw-processing-mode"><span class="m">KSEF</span></div>
+                <div>Invoice hash</div><div data-testid="sales-document-invoice-hash"><span class="m" style="word-break:break-all">UtQp9Gpc51y-u3xApZjIjgkpZ01js-J8KflSPW8WzIE</span></div>
+              </div>
+            </div>
+            <hr>
+            <div class="alert" data-testid="clearance-cannot-retry">
+              <b>Waiting on the provider — OpenLinker cannot push this</b>
+              The provider's API has no call that triggers or re-triggers submission. The document is with them, and only they can move it on.
+            </div>
+            <div class="row" style="justify-content:space-between;align-items:center;margin-top:12px">
+              <span style="font-size:13px">Invoice visualisation</span>
+              <div class="btn" data-testid="sales-document-open-visualisation">Open</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap">Deliberately <b>no "Send again" button</b> — seven endpoints in the provider's API, none of which triggers transmission. The hash is shown because it is the one thing proving a document was built, and the value a support ticket gets answered against.</p>
+    </div>
+
+    <div class="note note--ok">
+      <span class="lbl">Correction — this is wiring, not new UI</span>
+      An earlier draft called this "the screen that does not exist". Overstated: the order cell already renders the literal label <b>"Awaiting submission"</b>, the invoice timeline already draws an active waiting node, and <code>pending-submission</code> is already handled in the lifecycle steps. <b>What is missing is the eparagony adapter mapping into it.</b> Do not build a second ladder beside the shipped one.
+    </div>
+
+    <div class="note note--gap">
+      <span class="lbl">The exception that shapes the copy</span>
+      During a <b>total outage at the authority</b>, this state stops being transitional: the visualisation becomes the legally valid document and there will be no further transition. Over the API the two cases are <b>indistinguishable</b> — the provider does not report the outage. Hence "waiting", never "it will clear shortly", and an elapsed measurement rather than a countdown.
+    </div>
+  </div>
+</section>
+
+<!-- 04 -->
+<section class="step">
+  <div class="spine"><span class="num">04</span></div>
+  <div class="body">
+    <h2>The invoice list, and a word about KSeF</h2>
+    <p>Documents awaiting the authority need collecting, in the same shape the order list already uses for blocked documents — a count and an age in one chip.</p>
+
+    <div class="screen">
+      <div class="screen-head"><span class="n">S5</span><h3>Invoice list — clearance</h3><span class="route">/invoices</span></div>
+      <div class="screen-frame">
+        <div class="app">
+          <div class="row" style="margin-bottom:12px">
+            <div class="control" style="flex:0 0 240px" data-testid="invoices-filter-regulatory"><span>All clearance states</span><span class="chev">▾</span></div>
+            <div class="btn btn--ghost" data-testid="invoices-chip-awaiting">Awaiting submission 4 · oldest 12 h</div>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="t" data-testid="invoices-table">
+              <thead><tr><th>Document</th><th>Clearance</th><th>With provider for</th><th>Connection</th></tr></thead>
+              <tbody>
+                <tr data-testid="invoice-row-0">
+                  <td class="amt">FV2026/09/546</td>
+                  <td><span class="pill pill--warn">Awaiting submission</span></td>
+                  <td class="amt" data-testid="invoice-row-waiting-0">12 h 04 m</td>
+                  <td>e-paragony Sandbox</td>
+                </tr>
+                <tr data-testid="invoice-row-1">
+                  <td class="amt">FV2026/09/547</td>
+                  <td><span class="pill pill--muted">Not applicable</span></td>
+                  <td class="dim">—</td>
+                  <td>e-paragony Sandbox</td>
+                </tr>
+                <tr data-testid="invoice-row-2">
+                  <td class="amt">FV2026/09/545</td>
+                  <td><span class="pill pill--ok">Cleared</span></td>
+                  <td class="dim">—</td>
+                  <td>e-paragony Sandbox</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="hint">Clearance states: not applicable · awaiting submission · submitted · cleared · accepted · rejected.</p>
+        </div>
+      </div>
+      <p class="cap">"With provider for" is an elapsed measurement, never an estimate of completion — OpenLinker has no basis for one.</p>
+    </div>
+
+    <div class="note note--bug">
+      <span class="lbl">A shipped violation this epic would widen</span>
+      <code>regulatory-status-badge.tsx</code> hard-codes <b>"KSeF: awaiting submission"</b> and four siblings in <code>features/invoicing/</code> — a <b>shared</b> folder, not a plugin, even though <code>apps/web/src/plugins/ksef/</code> exists. Nothing catches it: it sits outside the UI-vocabulary scan roots and outside every core guard. Restoring two filter values makes those labels render on <b>more</b> rows, so the relocation is not optional cleanup — it is part of this epic.
+    </div>
+
+    <div class="note note--gap">
+      <span class="lbl">About this filter</span>
+      Today it offers four of six values, and that is <b>deliberate</b> — <code>not-applicable</code> and <code>cleared</code> are explicitly filtered out in the list page. Restoring them is reversing a decision, so say so in the ticket.
+    </div>
+  </div>
+</section>
+
+<!-- 05 -->
+<section class="step step--end">
+  <div class="spine"><span class="num">05</span></div>
+  <div class="body">
+    <h2>One sale, one document — and one connection that cannot see its own work</h2>
+
+    <div class="screen">
+      <div class="screen-head"><span class="n">S6</span><h3>Sales document — already issued</h3><span class="route">/orders/:internalOrderId</span></div>
+      <div class="screen-frame screen-frame--fit">
+        <div class="app" style="max-width:470px">
+          <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:12px">
+            <h4>Sales document</h4>
+            <span class="pill pill--ok">Fiscal receipt · Registered</span>
+          </div>
+          <div class="card">
+            <div class="card" style="padding:0;margin-bottom:12px">
+              <div class="kv"><div>Receipt no.</div><div class="m">210</div><div>Issued by</div><div>e-paragony Sandbox</div></div>
+            </div>
+            <div class="alert" data-testid="one-document-guard">
+              <b>This order already has a document</b>
+              This order already has a fiscal receipt from e-paragony Sandbox. Invoice or receipt — never both for one sale. Void the receipt first if an invoice is what this order actually needs.
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="cap">Shipped copy, already correct. What changes is that the same connection is now capable of the other kind — so the guard does real work instead of describing a configuration nobody had.</p>
+    </div>
+
+    <figure class="plate" style="margin-top:22px">
+      <div class="plate-head"><span class="tag tag--bug">Defect</span> <span class="where">/connections/:connectionId?tab=health</span></div>
+      <div class="shot shot--mid"><img alt="Connection health reporting no activity" src="data:image/png;base64,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"></div>
+      <p class="cap">The connection registered receipt 210 — it is on the order with a full fiscal document identifier. Its health tab says <b>"Last succeeded: Never · Last failed: Never"</b> with no job records at all. This is the one screen an operator opens to ask whether an integration is alive, and it answers "never" for a working one.</p>
+    </figure>
+  </div>
+</section>
+
+<!-- Hooks -->
+<section class="step">
+  <div class="spine"><span class="num">⌘</span></div>
+  <div class="body">
+    <h2>Test hooks</h2>
+
+    <div class="tbl-scroll">
+    <table class="tbl hooks-tbl">
+      <thead><tr><th>data-testid</th><th>Element</th><th>Assertion</th></tr></thead>
+      <tbody>
+        <tr><td>capability-count</td><td>Enabled-roles summary</td><td>Reads "2 of 2" once the adapter advertises both</td></tr>
+        <tr><td>capability-toggle-invoicing</td><td>Enable switch</td><td>Independent of the fiscalisation switch; off on an existing connection</td></tr>
+        <tr><td>capability-routing-note</td><td>Consequence notice</td><td>Present when a role is enabled but no rule routes to it</td></tr>
+        <tr><td>provider-role-{key}</td><td>Role select</td><td><b>Four</b> options when both capabilities are held, two otherwise</td></tr>
+        <tr><td>provider-primary-{key}</td><td>Goes-first marker</td><td>Exactly one row carries it across the whole table</td></tr>
+        <tr><td>clearance-node-waiting</td><td>Current ladder node</td><td>Present only while awaiting submission; carries the elapsed figure</td></tr>
+        <tr><td>provider-raw-status</td><td>Provider's own word</td><td>Passed through untranslated</td></tr>
+        <tr><td>provider-raw-processing-mode</td><td>Provider's own mode value</td><td>Passed through untranslated — never mapped to a friendly label</td></tr>
+        <tr><td>sales-document-invoice-hash</td><td>Hash row</td><td>Present only in the waiting state</td></tr>
+        <tr><td>clearance-cannot-retry</td><td>Explanation</td><td><b>Never</b> coexists with a retry control</td></tr>
+        <tr><td>invoices-chip-awaiting</td><td>List chip</td><td>Count and age; drives the filter when clicked</td></tr>
+        <tr><td>one-document-guard</td><td>Refusal alert</td><td>Present when any document exists for the order, on any connection or role</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="note">
+      <span class="lbl">The acceptance scenario for the whole epic</span>
+      Enable both roles on one connection, route receipts and invoices to it from two rules, issue one of each on two orders, then attempt the other kind on each — <b>both attempts must be refused by <code>one-document-guard</code></b>.
+    </div>
+  </div>
+</section>
+
+<!-- Tasks -->
+<section class="step">
+  <div class="spine"><span class="num">≡</span></div>
+  <div class="body">
+    <h2>Tasks</h2>
+
+    <div class="tbl-scroll">
+    <table class="tbl">
+      <thead><tr><th>#</th><th>Task</th><th>Blocked by</th></tr></thead>
+      <tbody>
+        <tr><td>E3-1</td><td>Commit this mockup to <code>docs/plans/mockups/</code></td><td>—</td></tr>
+        <tr><td>E3-2</td><td><b>Widen the routing model to a multi-kind candidate</b> — config key, coercer, <code>SalesDocumentRoutingCandidate</code>, <code>resolveSalesDocumentRouting</code>, <code>AutoIssueTriggerService</code>, settings view. <i>Gates "Both" only.</i></td><td>—</td></tr>
+        <tr><td>E3-3</td><td><code>EparagonyInvoicingAdapter</code> implementing <code>InvoicingPort</code> over <code>eInvoice</code></td><td>—</td></tr>
+        <tr><td>E3-4</td><td><code>upsertCustomer</code> — <b>identity echo</b>, following the KSeF adapter's precedent: a deterministic id derived from the buyer's tax id, no network call. Not a no-op, not a throw</td><td>E3-3</td></tr>
+        <tr><td>E3-5</td><td><code>RegulatoryStatusReader</code>: map <code>OFFLINE → pending-submission</code>, <code>CONFIRMED+KSEF → cleared</code>, <code>CONFIRMED+NONE → not-applicable</code></td><td>E3-3</td></tr>
+        <tr><td>E3-6</td><td><code>CorrectionIssuer</code> over <code>eCorrectiveInvoice</code></td><td>E3-3</td></tr>
+        <tr><td>E3-7</td><td>Manifest advertises <code>Invoicing</code>. Required, not cosmetic — the connection service validates the name against the adapter's list</td><td>E3-3</td></tr>
+        <tr><td>E3-8</td><td>FE: capabilities block renders two roles</td><td>E3-7</td></tr>
+        <tr><td>E3-9</td><td>FE: independent enable toggles + the "enabling does not route" notice</td><td>E3-7</td></tr>
+        <tr><td>E3-10</td><td>FE: role select with <code>Both</code></td><td><b>E3-2</b>, E3-7</td></tr>
+        <tr><td>E3-11</td><td>Wire eparagony's waiting state onto the <b>existing</b> <code>pending-submission</code> rendering — no new ladder</td><td>E3-5</td></tr>
+        <tr><td>E3-12</td><td>FE: invoice list — restore the two excluded clearance values and add the age chip</td><td>E3-5</td></tr>
+        <tr><td>E3-12b</td><td><b>Move the hard-coded regulator labels out of the shared feature folder.</b> <code>regulatory-status-badge.tsx</code> hard-codes "KSeF: awaiting submission", "KSeF: accepted" and three siblings in <code>features/invoicing/</code>, while <code>plugins/ksef/</code> already exists. Relocate or make provider-supplied — <b>E3-12 renders them on more rows, so this must land with it</b></td><td>—</td></tr>
+        <tr><td>E3-13</td><td><b>Defect:</b> connection health counts document registrations</td><td>—</td></tr>
+        <tr><td>E3-14</td><td>Confirm the one-document guard against a dual-role connection; correct the stale docblock sentence claiming invoicing and fiscalization connection ids can never collide</td><td>—</td></tr>
+        <tr><td>E3-15</td><td>E2E acceptance scenario, plus <b>auto-issue regression tests</b> for the widened routing model</td><td>E3-10, E3-11</td></tr>
+        <tr><td>E3-16</td><td>Docs: second-capability setup, and the authority-outage caveat</td><td>E3-15</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="note note--ok">
+      <span class="lbl">What the audit changed here</span>
+      The old plan gated this entire epic on reviewing the one-document guard. <b>Wrong gate, and it cost the adapter its head start.</b> The guard is already connection-blind; the real gate is the single-valued routing model, and it holds up exactly two tasks. E3-3 onwards can start on day one.
+    </div>
+  </div>
+</section>
+
+<footer class="closing">
+  <h2>Open decisions</h2>
+  <ul>
+    <li><b>Whether "Both" or a narrowed role is the default</b> when an operator first enables the second capability. Narrow is conservative; "Both" matches what someone enabling it probably wants.</li>
+    <li><b>Whether voiding a receipt is in scope.</b> The guard's copy already offers it as the way forward, and no provider in the tree exposes a void today.</li>
+    <li><b>Whether a role may be disabled once documents exist under it.</b> Disabling leaves those documents without a live issuer for corrections.</li>
+  </ul>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var box = document.getElementById('hooks-toggle');
+  if (!box) return;
+  var apply = function () { document.body.classList.toggle('show-hooks', box.checked); };
+  box.addEventListener('change', apply);
+  apply();
+  var n = document.querySelectorAll('.app [data-testid]').length;
+  var c = document.getElementById('hooks-count');
+  if (c) c.textContent = String(n);
+})();
+</script>
