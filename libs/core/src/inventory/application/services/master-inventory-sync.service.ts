@@ -37,6 +37,7 @@ import type {
 } from '../../domain/ports/inventory-master.port';
 import { InventoryItem as InventoryItemDomainEntity } from '../../domain/entities/inventory-item.entity';
 import type { PruneStaleVariantsResult } from '../../domain/types/inventory.types';
+import { readStockLocationOverride } from '../../domain/types/stock-location-override.types';
 import { isBulkInventoryReader } from '../../domain/ports/capabilities/bulk-inventory-reader.capability';
 import type {
   IMasterInventorySyncService,
@@ -89,7 +90,19 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         connectionId,
         'InventoryMaster'
       );
-    return this.syncOneFromMaster(connectionId, externalId, inventoryAdapter);
+    const overrideLocationId = await this.resolveStockLocationOverride(connectionId);
+    return this.syncOneFromMaster(connectionId, externalId, inventoryAdapter, overrideLocationId);
+  }
+
+  /**
+   * Read the connection's `stockLocationOverride` (#3206) once per sync call
+   * (batch or single), never once per inventory row — `getAdapter` is a
+   * metadata-only lookup, but there is no reason to repeat it N times for one
+   * connection's page.
+   */
+  private async resolveStockLocationOverride(connectionId: string): Promise<string | null> {
+    const { connection } = await this.integrationsService.getAdapter(connectionId);
+    return readStockLocationOverride(connection.config);
   }
 
   /**
@@ -121,6 +134,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         connectionId,
         'InventoryMaster'
       );
+    const overrideLocationId = await this.resolveStockLocationOverride(connectionId);
 
     let prefetched = false;
     if (isBulkInventoryReader(inventoryAdapter) && externalIds.length > 0) {
@@ -141,7 +155,9 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       // Per product, so one failure costs one product rather than the page. The
       // caller re-enqueues what failed as an ordinary per-product job.
       try {
-        results.push(await this.syncOneFromMaster(connectionId, externalId, inventoryAdapter));
+        results.push(
+          await this.syncOneFromMaster(connectionId, externalId, inventoryAdapter, overrideLocationId)
+        );
       } catch (error) {
         failures.push({
           externalId,
@@ -180,7 +196,8 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
   private async syncOneFromMaster(
     connectionId: string,
     externalId: string,
-    inventoryAdapter: InventoryMasterPort
+    inventoryAdapter: InventoryMasterPort,
+    overrideLocationId: string | null
   ): Promise<MasterInventorySyncResult> {
     const internalProductId = await this.identifierMapping.getOrCreateInternalId(
       CORE_ENTITY_TYPE.Product,
@@ -219,11 +236,16 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       const inventoryItem = await this.toDomainInventoryItem(
         inventory,
         internalProductId,
-        connectionId
+        connectionId,
+        overrideLocationId
       );
       await this.inventoryService.setInventory(inventoryItem, connectionId);
       currentVariantIds.push(inventoryItem.productVariantId);
-      if ((inventory.locationId ?? null) !== null) {
+      // Effective location — an override folded in by `toDomainInventoryItem`
+      // makes this position "located" for the #2322 pooled-row repair below
+      // exactly as a real adapter-reported location would, since from the
+      // repair's perspective the two are indistinguishable (#3206).
+      if (inventoryItem.locationId !== null) {
         locatedVariantKeys.push(inventoryItem.productVariantId);
       } else {
         pooledVariantKeys.add(inventoryItem.productVariantId ?? '__product_level__');
@@ -596,9 +618,17 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
   private async toDomainInventoryItem(
     inventory: InventoryPortInterface,
     productId: string,
-    connectionId: string
+    connectionId: string,
+    overrideLocationId: string | null
   ): Promise<InventoryItemDomainEntity> {
     const variantId = await this.resolveVariantId(inventory, productId);
+
+    // The adapter's own answer always wins (#3206) — the override only fills
+    // the gap when the master reports nothing at all, per
+    // `readStockLocationOverride`'s docblock. Computed once, and both sites
+    // below (the lookup and the constructed row) must use this SAME value or
+    // the upsert would look up one location and write another.
+    const effectiveLocationId = inventory.locationId ?? overrideLocationId ?? null;
 
     // Provenance-scoped (#2320) and load-bearing: `existing?.id` below is
     // reused as the row identity, so an unscoped lookup would hand this
@@ -607,7 +637,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     const existing = await this.inventoryService.getInventory(
       productId,
       variantId,
-      inventory.locationId ?? null,
+      effectiveLocationId,
       connectionId
     );
 
@@ -622,7 +652,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       variantId,
       availableQuantity,
       inventory.reserved ?? 0,
-      inventory.locationId ?? null,
+      effectiveLocationId,
       inventory.updatedAt ?? new Date(),
       // `isStale` must now be passed explicitly to reach `sourceConnectionId`.
       // `false` is the constructor default this call site previously relied on,

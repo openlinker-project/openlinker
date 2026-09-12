@@ -299,6 +299,30 @@ export class ConnectionService implements IConnectionService {
     }
   }
 
+  /**
+   * Core-owned validation for `config.stockLocationOverride` (#3206): the id
+   * must resolve to a location this install actually has. Rejecting an
+   * unknown id here — rather than letting the sync silently write against a
+   * location that does not exist — is what keeps the value an operator
+   * assertion rather than a typo nobody notices until stock looks wrong.
+   *
+   * Never defaults a value in; an absent key stays absent (byte-identical to
+   * pre-#3206 behaviour for every connection that never sets it).
+   */
+  private async validateStockLocationOverride(config: Record<string, unknown>): Promise<void> {
+    const value = config.stockLocationOverride;
+    if (value === undefined || value === null) return;
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new BadRequestException('config.stockLocationOverride must be a non-empty string');
+    }
+    const location = await this.locations.getLocation(value);
+    if (!location) {
+      throw new BadRequestException(
+        `config.stockLocationOverride names an unknown location: ${value}`
+      );
+    }
+  }
+
   private async validateCredentialsShape(
     adapterKey: string,
     credentials: Record<string, unknown>
@@ -470,6 +494,7 @@ export class ConnectionService implements IConnectionService {
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
+        await this.validateStockLocationOverride(rest.config);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
         // #2407 — above the credential-persistence block below, which requires
         // that a 400 from validation never leaves an orphan credential row.
@@ -729,6 +754,7 @@ export class ConnectionService implements IConnectionService {
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
+        await this.validateStockLocationOverride(patch.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config);
         // #2407 — inside this branch, which is correct ONLY because
         // `ConnectionRepository.update` REPLACES `config` wholesale rather than

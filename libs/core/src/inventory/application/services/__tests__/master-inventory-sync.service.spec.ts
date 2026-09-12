@@ -65,7 +65,12 @@ describe('MasterInventorySyncService', () => {
 
     integrationsService = {
       getCapabilityAdapter: jest.fn().mockResolvedValue(inventoryAdapter),
-      getAdapter: jest.fn(),
+      // Default: no `stockLocationOverride` configured — byte-identical to the
+      // pre-#3206 behaviour for every test that doesn't opt in explicitly.
+      getAdapter: jest.fn().mockResolvedValue({
+        connection: { config: {} },
+        metadata: {},
+      }),
       listCapabilityAdapters: jest.fn(),
     } as unknown as jest.Mocked<IIntegrationsService>;
 
@@ -1226,6 +1231,111 @@ describe('MasterInventorySyncService', () => {
         ['ol_variant_a'],
         expect.anything()
       );
+    });
+  });
+
+  describe('stock-location override (#3206)', () => {
+    const pooled = (variantId: string): InventoryPortInterface => ({
+      id: `inv-${variantId}-pooled`,
+      productId: internalProductId,
+      variantId,
+      quantity: 4,
+      reserved: 0,
+      available: 4,
+      updatedAt: new Date('2026-05-01T10:00:00Z'),
+    });
+
+    const located = (variantId: string, locationId: string): InventoryPortInterface => ({
+      id: `inv-${variantId}-${locationId}`,
+      productId: internalProductId,
+      variantId,
+      locationId,
+      quantity: 5,
+      reserved: 0,
+      available: 5,
+      updatedAt: new Date('2026-05-01T10:00:00Z'),
+    });
+
+    it('should fold the connection override into an otherwise-pooled position', async () => {
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { config: { stockLocationOverride: 'ol_location_main' } },
+        metadata: {},
+      } as never);
+      inventoryAdapter.listInventory.mockResolvedValue([pooled('ol_variant_a')]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.getInventory).toHaveBeenCalledWith(
+        internalProductId,
+        'ol_variant_a',
+        'ol_location_main',
+        connectionId
+      );
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ locationId: 'ol_location_main' }),
+        connectionId
+      );
+    });
+
+    it('should treat an overridden position as located for the #2322 pooled-row repair', async () => {
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { config: { stockLocationOverride: 'ol_location_main' } },
+        metadata: {},
+      } as never);
+      inventoryAdapter.listInventory.mockResolvedValue([pooled('ol_variant_a')]);
+      (
+        inventoryService.staleLocationlessPositionsForSource as jest.Mock
+      ).mockResolvedValueOnce({ markedCount: 1, variantIds: ['ol_variant_a'] });
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleLocationlessPositionsForSource).toHaveBeenCalledWith(
+        internalProductId,
+        ['ol_variant_a'],
+        expect.anything()
+      );
+      expect(result.pooledPositionsStaled).toBe(1);
+    });
+
+    it('should let a real adapter-reported location win over the override', async () => {
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { config: { stockLocationOverride: 'ol_location_main' } },
+        metadata: {},
+      } as never);
+      inventoryAdapter.listInventory.mockResolvedValue([located('ol_variant_a', 'loc-real')]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ locationId: 'loc-real' }),
+        connectionId
+      );
+    });
+
+    it('should leave stock pooled when no override is configured (default, byte-identical to pre-#3206)', async () => {
+      // integrationsService.getAdapter's default mock (beforeEach) resolves an
+      // empty config — no override — so this is the ordinary pre-#3206 path.
+      inventoryAdapter.listInventory.mockResolvedValue([pooled('ol_variant_a')]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.setInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ locationId: null }),
+        connectionId
+      );
+      expect(inventoryService.staleLocationlessPositionsForSource).not.toHaveBeenCalled();
+    });
+
+    it('should resolve the override once per batch, not once per product (#2648 prefetch precedent)', async () => {
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { config: { stockLocationOverride: 'ol_location_main' } },
+        metadata: {},
+      } as never);
+      inventoryAdapter.listInventory.mockResolvedValue([pooled('ol_variant_a')]);
+
+      await service.syncFromMasterByExternalIds(connectionId, [externalId, 'ext-2', 'ext-3']);
+
+      expect(integrationsService.getAdapter).toHaveBeenCalledTimes(1);
     });
   });
 

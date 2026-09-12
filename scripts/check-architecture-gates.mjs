@@ -123,6 +123,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
         'config.orderLifecycleAuthority + config.returnsAuthority + config.refundTrigger',
     },
   ],
+  [
+    'libs/core/src/inventory/domain/types/stock-location-override.types.ts',
+    { helper: 'readStockLocationOverride', key: 'config.stockLocationOverride' },
+  ],
 ]);
 
 /**
@@ -218,8 +222,28 @@ const NON_KNOBS = new Map([
  * rationales above stand; the invariant preserved is the same in each — the
  * NEXT unrelated knob (the seventh) fires this gate again with zero headroom,
  * and #2169 remains the tracked consolidation.
+ *
+ * **Contributing raise — #3206, 7 -> 8.** The gate fired on
+ * `readStockLocationOverride`, and it is registered rather than exempted
+ * because it genuinely is per-connection JSONB coercion. It is NOT the kind of
+ * knob the #1032/#2169 consolidation is aimed at, though: every prior entry
+ * coerces a ROUTING or AUTHORITY decision (who issues, who decides, which
+ * document, which lifecycle) — exactly the "shared per-connection rules
+ * model" #2162 § Out of scope is about. `stockLocationOverride` coerces
+ * neither; it is a one-shot OPERATOR ASSERTION of a physical-world fact no
+ * master will ever report (ADR-058 decision (2): `locationId IS NULL`
+ * permanently means the master declines to locate its stock, for both shipped
+ * `InventoryMasterPort` adapters). A rules engine that could express "which
+ * connection issues invoice vs. receipt" has no way to express "where is this
+ * connection's unlocated stock physically located" — the two aren't the same
+ * shape of question, so consolidating this knob into that future engine buys
+ * nothing. It stays a candidate for #2169's revisit anyway, since the revisit
+ * is about the JSONB-accretion COST, not just the routing-knob shape.
+ *
+ * The rung is raised by exactly one, so the NEXT unrelated knob still stops and
+ * has this conversation. #2169 remains the tracked revisit.
  */
-const KNOB_THRESHOLD = 7;
+const KNOB_THRESHOLD = 8;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

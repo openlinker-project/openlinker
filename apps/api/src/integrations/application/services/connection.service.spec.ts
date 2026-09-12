@@ -218,6 +218,10 @@ describe('ConnectionService', () => {
     const mockLocations = {
       countActiveLocations: jest.fn().mockResolvedValue(1),
       bootstrapDefaultLocations: jest.fn(),
+      // #3206 — `validateStockLocationOverride` only calls this when the
+      // config key is present, so a `null` default costs nothing for every
+      // existing test that never sets `stockLocationOverride`.
+      getLocation: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<ILocationService>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -924,6 +928,63 @@ describe('ConnectionService', () => {
 
         await expect(service.update('connection-123', { config })).resolves.toEqual(mockConnection);
         expect(connectionPort.update).toHaveBeenCalledWith('connection-123', { config });
+      });
+    });
+
+    describe('stockLocationOverride validation (#3206)', () => {
+      it('should accept a create whose override names an existing location', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        locations.getLocation.mockResolvedValue({ id: 'ol_location_main' } as never);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 'ol_location_main' },
+          })
+        ).resolves.toEqual(mockConnection);
+        expect(locations.getLocation).toHaveBeenCalledWith('ol_location_main');
+        expect(connectionPort.create).toHaveBeenCalled();
+      });
+
+      it('should reject a create whose override names an unknown location', async () => {
+        locations.getLocation.mockResolvedValue(null);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 'ol_location_ghost' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a non-string override value', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 42 as unknown as string },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should leave an absent override untouched and never call the location lookup', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(payload)).resolves.toEqual(mockConnection);
+        expect(locations.getLocation).not.toHaveBeenCalled();
+      });
+
+      it('should reject the same unknown-location value on update', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+        locations.getLocation.mockResolvedValue(null);
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://shop.example.com', stockLocationOverride: 'ol_location_ghost' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
       });
     });
   });
