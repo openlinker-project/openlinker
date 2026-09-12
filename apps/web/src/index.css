@@ -1886,6 +1886,15 @@ textarea,
 
 .table-scroll {
   overflow-x: auto;
+  /* Momentum scroll on iOS Safari — a bare `overflow-x: auto` scrolls but
+     without inertia, which reads as broken on a touch device (#3164
+     review). A dedicated card view for <768px (the `DataTableCardView`
+     pattern `shared/ui/data-table.tsx` already ships) is deferred to the
+     table's own migration onto that primitive — tracked alongside the
+     `Chip`/`aria-pressed` fix above as the same underlying gap; this table
+     stays a horizontal-scroll surface at every width until then, which is
+     why the scroll itself is made as usable as a bare `overflow-x` allows. */
+  -webkit-overflow-scrolling: touch;
 }
 
 .table-wrap table {
@@ -2082,6 +2091,14 @@ textarea,
   background: var(--status-warning-soft);
   color: var(--status-warning-fg);
   border: 1px solid var(--status-warning-border);
+}
+
+/* #3164 review — `--up`/`--down` render the same color (matching the
+ * mockup, which distinguishes the two with an icon, not color); this is
+ * that icon's font-size, since the label carries its own +/- sign. */
+.delta-chip__icon {
+  font-size: 0.6rem;
+  line-height: 1;
 }
 
 .row-actions {

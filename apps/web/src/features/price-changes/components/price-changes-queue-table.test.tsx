@@ -10,6 +10,7 @@ import {
 import { ApiError } from '../../../shared/api/api-error';
 import { PriceChangesQueueTable } from './price-changes-queue-table';
 import type { PriceChangeItem, PriceChangeListResponse } from '../api/price-changes.types';
+import type { SessionUser } from '../../../shared/auth/session.types';
 
 // The "also set to Automatic" opt-in is admin-only (#3148 review, finding
 // 2), so any test that needs to see/toggle it renders as an admin session.
@@ -67,7 +68,13 @@ describe('PriceChangesQueueTable', () => {
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])) },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    // Every action here is a write, gated on `listings:write` behind
+    // `useWriteAccess`/`ReadOnlyLock` (#3164 review) — an admin session so
+    // this asserts the enabled shape, not the hidden one.
+    renderWithProviders(<PriceChangesQueueTable />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(await screen.findByText('Ergonomic Office Chair')).toBeInTheDocument();
     expect(screen.getByTestId('row-accept')).toBeInTheDocument();
@@ -81,7 +88,10 @@ describe('PriceChangesQueueTable', () => {
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), accept },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    renderWithProviders(<PriceChangesQueueTable />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await screen.findByText('Ergonomic Office Chair');
 
     // Accept no longer fires the API directly (#3164 review) — it opens a
@@ -194,7 +204,10 @@ describe('PriceChangesQueueTable', () => {
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), edit },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    renderWithProviders(<PriceChangesQueueTable />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await screen.findByText('Ergonomic Office Chair');
 
     await userEvent.click(screen.getByTestId('row-edit'));
@@ -222,7 +235,10 @@ describe('PriceChangesQueueTable', () => {
       },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    renderWithProviders(<PriceChangesQueueTable />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await screen.findByText(/changed again while you were deciding/);
     expect(screen.queryByTestId('row-accept')).not.toBeInTheDocument();
@@ -244,7 +260,10 @@ describe('PriceChangesQueueTable', () => {
       },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    renderWithProviders(<PriceChangesQueueTable />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(await screen.findByTestId('row-ignored')).toBeInTheDocument();
     expect(screen.getByText('Undo')).toBeInTheDocument();
@@ -310,7 +329,10 @@ describe('PriceChangesQueueTable', () => {
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage(items, 0, 2)), ignore },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    renderWithProviders(<PriceChangesQueueTable />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await screen.findByText('Ergonomic Office Chair');
 
     const checkboxes = screen.getAllByTestId('row-select');
@@ -440,5 +462,50 @@ describe('PriceChangesQueueTable', () => {
 
     expect(screen.getByRole('button', { name: /Allegro — PL/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /WooCommerce — EU Store/ })).toBeInTheDocument();
+  });
+
+  describe('write-access gating (listings:write, useWriteAccess + ReadOnlyLock, #3164 review)', () => {
+    const viewerUser: SessionUser = {
+      id: 'user_viewer',
+      username: 'viewer',
+      email: 'viewer@example.com',
+      role: 'viewer',
+      permissions: ['connections:read', 'listings:read'],
+    };
+
+    it('hides every write affordance for a genuinely unauthorized non-demo session (viewer)', async () => {
+      const apiClient = createMockApiClient({
+        priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])) },
+      });
+
+      renderWithProviders(<PriceChangesQueueTable />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(viewerUser),
+      });
+
+      await screen.findByText('Ergonomic Office Chair');
+      expect(screen.queryByTestId('row-accept')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('row-edit')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('row-ignore')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('row-select')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Select all')).not.toBeInTheDocument();
+    });
+
+    it('renders write affordances visible-but-disabled with a demo read-only tooltip', async () => {
+      const apiClient = createMockApiClient({
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+        priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])) },
+      });
+
+      renderWithProviders(<PriceChangesQueueTable />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(viewerUser),
+      });
+
+      await screen.findByText('Ergonomic Office Chair');
+      const accept = await screen.findByTestId('row-accept');
+      expect(accept).toBeInTheDocument();
+      expect(accept).toBeDisabled();
+    });
   });
 });

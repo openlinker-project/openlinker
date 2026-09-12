@@ -1,10 +1,10 @@
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { priceChangesQueryKeys } from '../api/price-changes.query-keys';
-import type { AcceptPriceChangeInput } from '../api/price-changes.types';
+import type { AcceptPriceChangeInput, PriceChangeResolutionResult } from '../api/price-changes.types';
 
 export function useAcceptPriceChangeMutation(): UseMutationResult<
-  void,
+  PriceChangeResolutionResult,
   Error,
   { id: string; input: AcceptPriceChangeInput }
 > {

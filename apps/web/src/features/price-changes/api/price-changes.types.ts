@@ -77,23 +77,61 @@ export interface ListPriceChangesFilters {
 
 export interface AcceptPriceChangeInput {
   optInAutomatic?: boolean;
-  expectedVersion?: string;
+  /**
+   * REQUIRED by the backend (`AcceptPriceChangeDto.expectedVersion`,
+   * #3145/#3162) — `accept` publishes `computedNewAmount`, a value that can
+   * move between the read that populated the row and the submit. Widened
+   * from optional to required at this same type-narrowing pass so a future
+   * caller cannot compile without it.
+   */
+  expectedVersion: string;
 }
 
 export interface EditPriceChangeInput {
   manualPriceOverride: number;
   optInAutomatic?: boolean;
+  /**
+   * Deliberately optional (`EditPriceChangeDto.expectedVersion` stays
+   * `@IsOptional()`, #3162) — `edit` publishes an operator-typed absolute
+   * number, not a value that can drift the way `accept`'s does.
+   */
   expectedVersion?: string;
+}
+
+/** The `PriceChangeResolutionResponseDto` body `accept`/`edit` now answer with (#3145/#3162 — was a bare 204). */
+export interface PriceChangeResolutionResult {
+  /**
+   * Present only when `optInAutomatic` was requested on this call. `true`
+   * when the (source, connection) pair was actually flipped into automatic
+   * mode; `false` on a lock miss or a validation failure — the price itself
+   * still published either way.
+   */
+  optInApplied?: boolean;
 }
 
 export interface BulkAcceptPriceChangeItem {
   id: string;
   optInAutomatic?: boolean;
+  /**
+   * REQUIRED by the backend (`BulkAcceptPriceChangeItemDto.expectedVersion`,
+   * #3145/#3162) — a bulk item publishes `computedNewAmount`, which can move
+   * between the read that populated the queue and the submit, exactly like
+   * the single-accept path. Omitting it here previously 400'd every bulk
+   * accept.
+   */
+  expectedVersion: string;
+}
+
+export interface PriceChangeOptInResult {
+  destinationConnectionId: string;
+  sourceConnectionId: string;
+  applied: boolean;
 }
 
 export interface BulkAcceptPriceChangesResponse {
   batchId: string;
   totalCount: number;
+  optInResults: PriceChangeOptInResult[];
 }
 
 export interface PriceChangeAutoAppliedItem {
