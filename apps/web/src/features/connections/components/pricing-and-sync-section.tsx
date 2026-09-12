@@ -65,6 +65,7 @@ import {
   useUpdateConnectionPricingSyncMutation,
   ruleSentenceFor,
   type ConnectionPricingSyncView,
+  type PriceChangeRuleSummary,
   type PricingRule,
   type PricingSyncSetting,
   type PriceSyncMode,
@@ -182,7 +183,16 @@ function validateRule(rule: DraftPricingRule): string | null {
   return null;
 }
 
-function toWireRule(rule: DraftPricingRule): PricingRule {
+/**
+ * The DRAFT always carries a concrete `percent`/`rounding` (#3166 merge
+ * fix) — the wire `PricingRule` type widens both to optional (a
+ * `passthrough` rule may omit them, #3148/#3146), but `toWireRule` never
+ * produces an `undefined` here, so its return type is the concrete
+ * `PriceChangeRuleSummary` rather than the wire type — `ruleSentenceFor`
+ * needs the former, and a required-fields object is assignable wherever
+ * the wider `PricingRule` is expected (`toWireSetting`).
+ */
+function toWireRule(rule: DraftPricingRule): PriceChangeRuleSummary {
   const parsed = Number(rule.percent);
   return {
     type: rule.type,
