@@ -50,5 +50,5 @@ export function readStockLocationOverride(
   if (typeof raw !== 'string' || raw.trim().length === 0) {
     return null;
   }
-  return raw;
+  return raw.trim();
 }
