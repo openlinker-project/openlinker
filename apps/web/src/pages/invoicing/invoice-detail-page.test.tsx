@@ -154,7 +154,12 @@ describe('InvoiceDetailPage — page states', () => {
 
   it('accepted clearance: renders "Accepted", never "Cleared"', async () => {
     renderPage(makeInvoice({ regulatoryStatus: 'accepted' }));
-    expect(await screen.findByText('Accepted')).toBeInTheDocument();
+    // The regulator-neutral badge label (#3181) and the InvoiceTimeline's
+    // clearance-lane node both legitimately render "Accepted" now (the badge
+    // used to say "KSeF: accepted", disambiguating it from the timeline node
+    // by accident) — assert at least one, rather than a single unique match.
+    const accepted = await screen.findAllByText('Accepted');
+    expect(accepted.length).toBeGreaterThan(0);
     expect(screen.queryByText(/cleared/i)).toBeNull();
   });
 });

@@ -1,9 +1,18 @@
 /**
- * Regulatory (KSeF) Status Badge (#757)
+ * Regulatory Status Badge (#757, neutralized #3181)
  *
  * Maps a `RegulatoryStatus` to a `StatusBadge` tone + `t()` label. Rendered
  * ONLY by the panel's `regulatoryStatus !== 'not-applicable'` gate (plan §1.6),
  * so `not-applicable` never reaches here.
+ *
+ * Regulator-neutral by construction (ADR-026 country-agnostic design, #3181
+ * decision 7): `RegulatoryStatus` is shared vocabulary across every
+ * `InvoicingPort` adapter (KSeF transmits directly, inFakt and Subiekt relay
+ * to KSeF on the seller's behalf) and this component lives in a **shared**
+ * feature folder, so its default labels must not name one regulator. A
+ * provider whose own invoice-detail surface wants its own branded wording
+ * (e.g. the KSeF plugin) supplies it via the optional `labelOverrides` prop
+ * rather than baking it in here — see `KsefInvoiceDetailSection`.
  *
  * @module apps/web/src/features/invoicing/components
  */
@@ -29,34 +38,47 @@ const TONE: Record<RegulatoryStatus, StatusBadgeTone> = {
 };
 
 /**
- * English fallback labels for each `RegulatoryStatus`. Exported so the invoices
- * list-page filter reuses the SAME labels the badge renders (#1585 F7) instead of
- * falling back to the raw hyphenated enum slug (`pending-submission`).
+ * Regulator-neutral English fallback labels for each `RegulatoryStatus`.
+ * Exported so the invoices list-page filter reuses the SAME labels the badge
+ * renders (#1585 F7) instead of falling back to the raw hyphenated enum slug
+ * (`pending-submission`). Carries no regulator name (#3181) — a
+ * provider-specific surface overrides via `labelOverrides` instead.
  */
 export const REGULATORY_STATUS_LABEL_FALLBACK: Record<RegulatoryStatus, string> = {
   'not-applicable': 'N/A',
-  'pending-submission': 'KSeF: awaiting submission',
-  submitted: 'KSeF: submitted',
-  cleared: 'KSeF: clearing',
-  accepted: 'KSeF: accepted',
-  rejected: 'KSeF: rejected',
+  'pending-submission': 'Awaiting submission',
+  submitted: 'Submitted',
+  cleared: 'Clearing',
+  accepted: 'Accepted',
+  rejected: 'Rejected',
 };
 
 const LABEL_FALLBACK = REGULATORY_STATUS_LABEL_FALLBACK;
 
 interface RegulatoryStatusBadgeProps {
   status: RegulatoryStatus;
+  /**
+   * Provider-supplied label override (#3181). A per-provider surface (e.g.
+   * the KSeF plugin's own invoice-detail section) may pass its own branded
+   * label map here; the shared default stays regulator-neutral. Absent ⇒
+   * `REGULATORY_STATUS_LABEL_FALLBACK`.
+   */
+  labelOverrides?: Partial<Record<RegulatoryStatus, string>>;
 }
 
-export function RegulatoryStatusBadge({ status }: RegulatoryStatusBadgeProps): ReactElement {
+export function RegulatoryStatusBadge({
+  status,
+  labelOverrides,
+}: RegulatoryStatusBadgeProps): ReactElement {
   const { t } = useTranslation();
+  const fallback = labelOverrides?.[status] ?? LABEL_FALLBACK[status];
   return (
     <StatusBadge
       tone={TONE[status]}
       withDot
       pulse={status === 'submitted' || status === 'pending-submission'}
     >
-      {t(`invoice.regulatory.${status}`, LABEL_FALLBACK[status])}
+      {t(`invoice.regulatory.${status}`, fallback)}
     </StatusBadge>
   );
 }
