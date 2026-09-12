@@ -28,7 +28,7 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { LoadingState, ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
 import { useConnectionAsSourceQuery } from '../hooks/use-connection-as-source-query';
-import { ruleLabelFor } from '../lib/price-change-copy';
+import { ruleLabelFor, toRuleSummary } from '../lib/price-change-copy';
 import type { ConnectionAsSourceEntry } from '../api/pricing-sync.types';
 
 export interface SourceConnectionPricingRollupProps {
@@ -37,7 +37,7 @@ export interface SourceConnectionPricingRollupProps {
 
 function summaryFor(entry: ConnectionAsSourceEntry): string {
   const modeLabel = entry.effectiveMode === 'automatic' ? 'Automatic' : 'Manual review';
-  const ruleLabel = ruleLabelFor(entry.effectiveRuleSummary);
+  const ruleLabel = ruleLabelFor(toRuleSummary(entry.effectiveRuleSummary));
   const suffix = entry.isCustomOverride
     ? '— a rule just for this source'
     : `— using ${entry.destinationLabel}'s default rule`;

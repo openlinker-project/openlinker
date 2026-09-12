@@ -51,5 +51,6 @@ export {
   ruleLabelFor,
   ruleSentenceFor,
   roundingLabelFor,
+  toRuleSummary,
   STEEP_DELTA_TOOLTIP,
 } from './lib/price-change-copy';

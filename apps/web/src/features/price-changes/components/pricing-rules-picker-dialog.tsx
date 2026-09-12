@@ -28,7 +28,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { Button } from '../../../shared/ui/button';
 import { EmptyState } from '../../../shared/ui/feedback-state';
 import { useDestinationPricingSyncSummaries } from '../hooks/use-destination-pricing-sync-summaries';
-import { ruleLabelFor } from '../lib/price-change-copy';
+import { ruleLabelFor, toRuleSummary } from '../lib/price-change-copy';
 import type { Connection } from '../../connections';
 
 export interface PricingRulesPickerDialogProps {
@@ -75,7 +75,7 @@ export function PricingRulesPickerDialog({
                           {summaryQuery.data.default.mode === 'automatic'
                             ? 'Automatic'
                             : 'Manual review'}{' '}
-                          · {ruleLabelFor(summaryQuery.data.default.rule)}
+                          · {ruleLabelFor(toRuleSummary(summaryQuery.data.default.rule))}
                           {overrideCount > 0
                             ? ` · ${overrideCount} source${overrideCount === 1 ? '' : 's'} with a different rule`
                             : ''}

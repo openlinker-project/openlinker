@@ -12,8 +12,24 @@
 import { ApiError } from '../../../shared/api/api-error';
 import { minorUnitExponentFor } from '../../invoicing';
 import type { PriceChangeItem, PriceChangeRuleSummary } from '../api/price-changes.types';
+import type { PricingRule } from '../api/pricing-sync.types';
 
 export type DeltaTone = 'up' | 'down' | 'flat' | 'steep';
+
+/**
+ * `PricingRule.percent`/`.rounding` are optional on the wire (#3148/#3146 —
+ * a `passthrough` rule carries neither), but the two read-only pricing-sync
+ * surfaces that render its label/sentence (`SourceConnectionPricingRollup`,
+ * `PricingRulesPickerDialog`, #3150) need the concrete shape `ruleLabelFor`/
+ * `ruleSentenceFor` require — an `undefined` fed into their template
+ * literals would render the literal text "undefined%". `0`/`'none'` are the
+ * same defaults `pricing-and-sync-section.tsx`'s own `toWireRule` falls
+ * back to, so this is a no-op for every rule the backend actually sends
+ * with concrete values (every non-passthrough rule, per that docblock).
+ */
+export function toRuleSummary(rule: PricingRule): PriceChangeRuleSummary {
+  return { type: rule.type, percent: rule.percent ?? 0, rounding: rule.rounding ?? 'none' };
+}
 
 /**
  * `|deltaPct| >= 10` is "steep" regardless of direction — matches the API's
@@ -159,7 +175,17 @@ export function parseLocalizedAmount(raw: string): number {
 
   if (hasComma) {
     if (isAmbiguousSeparator(cleaned, ',')) return NaN;
-    return Number(cleaned.replace(/,/g, '.'));
+    // A single `,` with anything OTHER than exactly 3 trailing digits is
+    // unambiguous (`1,5`, `399,50`) and is read as the decimal separator;
+    // more than one `,` (`1,234,567`) is unambiguous thousands grouping and
+    // is stripped outright rather than replaced with `.` — the previous
+    // shape replaced EVERY comma with `.`, turning `1,234,567` into the
+    // syntactically invalid `1.234.567` and silently producing `NaN` for a
+    // perfectly good number (found re-verifying #3167 against a fresh merge
+    // of this branch's own #3165 fix).
+    return Number(
+      cleaned.split(',').length - 1 > 1 ? cleaned.replace(/,/g, '') : cleaned.replace(/,/g, '.')
+    );
   }
 
   if (hasDot) {
@@ -171,6 +197,10 @@ export function parseLocalizedAmount(raw: string): number {
     return Number(cleaned.split('.').length - 1 > 1 ? cleaned.replace(/\./g, '') : cleaned);
   }
 
+  // `Number('')` is `0`, not `NaN` — an empty field must read as "no valid
+  // amount" rather than a silently-accepted zero price (same re-verify
+  // pass as the comma fix above).
+  if (cleaned === '') return NaN;
   return Number(cleaned);
 }
 
