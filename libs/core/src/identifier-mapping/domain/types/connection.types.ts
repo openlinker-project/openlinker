@@ -129,6 +129,30 @@ export interface ConnectionConfig {
   salesDocument?: {
     documentKind?: string;
   };
+  /**
+   * Operator-declared location for this connection's currently-unlocated
+   * stock (#3206). Neither shipped `InventoryMasterPort` adapter reports a
+   * `locationId` (PrestaShop only via the rarely-enabled Advanced Stock
+   * Management module; WooCommerce has no native multi-location at all), so
+   * ADR-058 decision (2) means every position from such a master is
+   * permanently pooled (`locationId IS NULL`) — which makes the OMS
+   * fulfilment router structurally sterile even once locations exist,
+   * because it skips every pooled row.
+   *
+   * This is NOT the sync inventing a location the master declined to give —
+   * that remains forbidden. It is the OPERATOR supplying, once and
+   * explicitly, the fact the master will never supply: "all of this
+   * connection's currently-unlocated stock physically lives here." A real
+   * adapter-reported location always wins over this value; see
+   * `readStockLocationOverride` (`@openlinker/core/inventory`'s
+   * `stock-location-override.types.ts`) for where it is consumed and why
+   * that ordering is enforced in exactly one place.
+   *
+   * An operator with genuinely multiple physical warehouses behind one
+   * connection must NOT use this — it asserts a single location for ALL of
+   * that connection's stock, which would misattribute the rest.
+   */
+  stockLocationOverride?: string;
   [key: string]: unknown;
 }
 
