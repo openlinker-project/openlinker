@@ -372,7 +372,33 @@ export class OrderRecord {
      * a PrestaShop order would be routed as gross while the operator-facing
      * surface still reports it `net-priced`.
      */
-    public readonly totalTaxTreatment: PriceTaxTreatment | null = null
+    public readonly totalTaxTreatment: PriceTaxTreatment | null = null,
+    /**
+     * The `sales_document_rules` row that decided this order's document kind
+     * (#3186), or `null` when no rule engine match produced the route (a
+     * country default, the pre-#2170 single-primary fallback, or no route at
+     * all). Independent of `salesDocumentBlockReason` — a rule can decide the
+     * kind while issuance is still blocked for an unrelated reason, so the two
+     * columns are never coupled to one another's null-ness.
+     *
+     * Level-triggered like the three `salesDocumentBlock*` fields above:
+     * `AutoIssueTriggerService` re-decides it on every order transition and
+     * `updateSalesDocumentBlock` writes the answer through, `null` included —
+     * so an edited or deleted rule stops being named as the reason on the
+     * very next transition rather than outliving the decision it made. No FK:
+     * a reference by value, like every other cross-aggregate reference in this
+     * tree (`order_changes.orderId`, `refund_records`'s siblings).
+     *
+     * Deliberately NOT round-tripped through `toOrm` — same reason as
+     * `salesDocumentBlockReason`: `persistOrder` runs BEFORE the auto-issue
+     * gate on every ingestion, so mapping it here would null the column and
+     * then immediately re-set it, racing a peer transition's own write.
+     *
+     * Appended LAST for the same reason every field above it was: this is a
+     * positional constructor, so a field inserted mid-list would silently
+     * shift every argument after it at each construction site.
+     */
+    public readonly salesDocumentMatchedRuleId: string | null = null
   ) {}
 
   /**

@@ -253,10 +253,18 @@ export interface IOrderRecordService {
    * per `docs/architecture-overview.md § "Cross-context dependencies in core"`),
    * and `AutoIssueTriggerService` must not inject this token either (its one-way
    * edge, F3). Invoicing REPORTS the block; orders WRITES it.
+   *
+   * `matchedRuleId` (#3186) names the `sales_document_rules` row that decided
+   * this order's document kind, when a rule engine match produced the route —
+   * `null` (the default) when none did, which is also the manual-issue clear
+   * path above. Level-triggered exactly like `block`: written on every call,
+   * `null` included, so a later rule edit/deletion self-corrects the persisted
+   * value instead of outliving the decision that produced it.
    */
   markSalesDocumentBlock(
     internalOrderId: string,
-    block: SalesDocumentBlock | null
+    block: SalesDocumentBlock | null,
+    matchedRuleId?: string | null
   ): Promise<void>;
 
   /**

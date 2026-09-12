@@ -53,10 +53,12 @@ import type {
   SalesDocumentDecision,
   SalesDocumentIdentity,
   SalesDocumentKind,
+  SalesDocumentMatchedRuleView,
   SalesDocumentOrderFacts,
   SalesDocumentOtherRecord,
   SalesDocumentRecordView,
   SalesDocumentRoutingCandidate,
+  SalesDocumentRule,
   SalesDocumentView,
 } from '@openlinker/core/sales-documents';
 
@@ -118,6 +120,10 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
     const prospectiveKinds = await this.resolveProspectiveKinds(
       records.filter((record) => !rankedByOrderId.has(record.internalOrderId)),
     );
+    // The rule (#3186) that decided each order's document kind, batch-loaded
+    // ONCE for the whole page rather than one read per row — mirrors
+    // `resolveProspectiveKinds`' own batching rationale.
+    const matchedRulesById = await this.loadMatchedRules(records);
 
     const views = new Map<string, SalesDocumentView>();
     for (const record of records) {
@@ -137,9 +143,40 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
         otherRecords: rest
           .filter((other) => winner !== undefined && other.connectionId !== winner.connectionId)
           .map(toOtherRecord),
+        // `null` covers BOTH "no rule ever decided this order's kind" and "one
+        // did, but has since been deleted" — see `SalesDocumentMatchedRuleView`'s
+        // own doc comment for why a surface must not tell the two apart.
+        matchedRule:
+          record.salesDocumentMatchedRuleId === null
+            ? null
+            : (matchedRulesById.get(record.salesDocumentMatchedRuleId) ?? null),
       });
     }
     return views;
+  }
+
+  /**
+   * Batch-resolve every distinct `salesDocumentMatchedRuleId` on this page of
+   * records (#3186) into its {@link SalesDocumentMatchedRuleView} projection, in
+   * ONE call to the rule store. A record whose matched rule has since been
+   * deleted is simply absent from the returned map — `getForOrders` reads that
+   * identically to "no rule ever matched".
+   */
+  private async loadMatchedRules(
+    records: readonly OrderRecord[],
+  ): Promise<Map<string, SalesDocumentMatchedRuleView>> {
+    const ruleIds = [
+      ...new Set(
+        records
+          .map((record) => record.salesDocumentMatchedRuleId)
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    if (ruleIds.length === 0) {
+      return new Map();
+    }
+    const rules = await this.salesDocumentRules.getRulesByIds(ruleIds);
+    return new Map(rules.map((rule) => [rule.id, toMatchedRuleView(rule)]));
   }
 
   async getForOrder(orderId: string): Promise<SalesDocumentView | null> {
@@ -428,6 +465,17 @@ function toIdentity(input: {
     createdAt: input.createdAt.toISOString(),
     completedAt: input.completedAt?.toISOString() ?? null,
     inFlightUntil: input.inFlightUntil?.toISOString() ?? null,
+  };
+}
+
+/** Reduce a full `SalesDocumentRule` to what the "Why this kind?" disclosure renders (#3186). */
+function toMatchedRuleView(rule: SalesDocumentRule): SalesDocumentMatchedRuleView {
+  return {
+    id: rule.id,
+    country: rule.country,
+    conditions: rule.conditions,
+    documentKind: rule.documentKind,
+    connectionId: rule.connectionId,
   };
 }
 

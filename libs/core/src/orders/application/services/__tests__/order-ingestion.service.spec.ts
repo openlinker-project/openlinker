@@ -511,6 +511,7 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith(
         'ol_order_test',
         block,
+        null,
       );
     });
 
@@ -525,7 +526,23 @@ describe('OrderIngestionService', () => {
       // a caller-side comparison would have to trust a record read before the
       // destination round-trip, and a concurrent clear could make a genuinely
       // new answer look unchanged.
-      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null);
+      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null, null);
+    });
+
+    it('threads the matched rule id through on `none` (#3186)', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({
+        kind: 'none',
+        matchedRuleId: 'rule-1',
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-11');
+
+      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith(
+        'ol_order_test',
+        null,
+        'rule-1',
+      );
     });
 
     it('writes NOTHING on `indeterminate` — the gate could not tell, so the reason stands', async () => {

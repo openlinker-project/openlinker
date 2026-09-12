@@ -29,6 +29,7 @@ function makeRuleRepo(): jest.Mocked<SalesDocumentRuleRepositoryPort> {
     findById: jest.fn(),
     findByCountry: jest.fn(),
     findByCountries: jest.fn(),
+    findByIds: jest.fn(),
     findByCountryAndConditionsHash: jest.fn(),
     create: jest.fn(),
     delete: jest.fn(),
@@ -210,6 +211,16 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.findById.mockResolvedValue(null);
       await expect(service.deleteRule('missing')).rejects.toThrow();
       expect(ruleRepo.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getRulesByIds (#3186)', () => {
+    it('should pass through to the repository unchanged', async () => {
+      const rule = existingRule();
+      ruleRepo.findByIds.mockResolvedValue([rule]);
+
+      await expect(service.getRulesByIds(['existing-rule-id'])).resolves.toEqual([rule]);
+      expect(ruleRepo.findByIds).toHaveBeenCalledWith(['existing-rule-id']);
     });
   });
 

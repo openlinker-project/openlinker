@@ -49,11 +49,13 @@ import {
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentIdentity,
+  SalesDocumentMatchedRuleView,
   SalesDocumentOtherRecord,
   SalesDocumentRecordView,
   SalesDocumentUnresolvedReason,
   SalesDocumentView,
 } from '@openlinker/core/sales-documents';
+import { SalesDocumentConditionDto } from '../../../sales-documents/http/dto/sales-document-condition.dto';
 
 export class SalesDocumentIdentityDto {
   @ApiProperty({ description: "The underlying record's own id, for the per-document routes." })
@@ -224,6 +226,23 @@ export class SalesDocumentOtherRecordDto {
   blocksFurtherIssuance!: boolean;
 }
 
+export class SalesDocumentMatchedRuleViewDto {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty({ description: 'ISO 3166-1 alpha-2, or `*` for the Rest-of-world scope.' })
+  country!: string;
+
+  @ApiProperty({ type: [SalesDocumentConditionDto] })
+  conditions!: SalesDocumentConditionDto[];
+
+  @ApiProperty({ enum: CoreSalesDocumentKindValues, description: 'Open-world document kind.' })
+  documentKind!: string;
+
+  @ApiProperty()
+  connectionId!: string;
+}
+
 @ApiExtraModels(SalesDocumentInvoiceViewDto, SalesDocumentReceiptViewDto)
 export class SalesDocumentViewResponseDto {
   @ApiProperty()
@@ -287,6 +306,17 @@ export class SalesDocumentViewResponseDto {
       'non-empty list is surfaced, never hidden behind the single-record panel.',
   })
   otherRecords!: SalesDocumentOtherRecordDto[];
+
+  @ApiProperty({
+    type: SalesDocumentMatchedRuleViewDto,
+    nullable: true,
+    description:
+      'The rule that decided this order\'s document kind. `null` covers BOTH "no rule ever decided ' +
+      'this order\'s kind" (a country default, the pre-#2170 single-primary fallback, a manually ' +
+      'issued document) AND "a rule did, but it has since been deleted" - a surface must not tell the ' +
+      'two apart, since either way there is no rule left to explain.',
+  })
+  matchedRule!: SalesDocumentMatchedRuleViewDto | null;
 }
 
 /**
@@ -308,6 +338,17 @@ export function toSalesDocumentViewDto(view: SalesDocumentView): SalesDocumentVi
     unresolvedReason: view.unresolvedReason,
     blockDetail: view.blockDetail,
     otherRecords: view.otherRecords.map(toOtherRecordDto),
+    matchedRule: view.matchedRule === null ? null : toMatchedRuleViewDto(view.matchedRule),
+  };
+}
+
+function toMatchedRuleViewDto(rule: SalesDocumentMatchedRuleView): SalesDocumentMatchedRuleViewDto {
+  return {
+    id: rule.id,
+    country: rule.country,
+    conditions: rule.conditions.map((condition) => SalesDocumentConditionDto.fromDomain(condition)),
+    documentKind: rule.documentKind,
+    connectionId: rule.connectionId,
   };
 }
 

@@ -2006,18 +2006,24 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
-   * Set or clear the sales-document block (#2100). Narrow absolute-set on the three
-   * `salesDocumentBlock*` columns only — no read-modify-write, so it can't race a
-   * concurrent write to any other column on the same row (mirrors
+   * Set or clear the sales-document block (#2100) and the matched routing rule
+   * (#3186). Narrow absolute-set on the FOUR `salesDocumentBlock*` /
+   * `salesDocumentMatchedRuleId` columns only — no read-modify-write, so it
+   * can't race a concurrent write to any other column on the same row (mirrors
    * {@link updateItemResolutionFailure}).
    *
    * Unlike {@link markCancelled}, this is deliberately last-write-wins rather than
    * first-write-wins: the gate re-decides on every transition, so the NEWEST answer
-   * is the truthful one and an older reason must not survive it.
+   * is the truthful one and an older reason must not survive it. `matchedRuleId`
+   * moves the same way, in the SAME statement, but is guarded and compared
+   * INDEPENDENTLY of the three block columns — a rule can decide the kind while
+   * issuance stays blocked for an unrelated reason, so neither's null-ness may be
+   * inferred from the other's.
    */
   async updateSalesDocumentBlock(
     internalOrderId: string,
-    block: SalesDocumentBlock | null
+    block: SalesDocumentBlock | null,
+    matchedRuleId?: string | null
   ): Promise<void> {
     // The no-op guard lives HERE, in the WHERE clause, rather than in the caller
     // (#2100 review). A caller-side comparison had to hold a record it read before
@@ -2040,11 +2046,13 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // watching. `releasedAt` is stamped on blocked -> none and cleared whenever a
     // block starts, so the pair always describes the CURRENT episode rather than
     // an arbitrary mix of two.
+    const ruleId = matchedRuleId ?? null;
     await this.repository.query(
       `UPDATE "order_records"
           SET "salesDocumentBlockReason" = $1,
               "salesDocumentUnresolvedReason" = $2,
               "salesDocumentBlockDetail" = $3,
+              "salesDocumentMatchedRuleId" = $4,
               "salesDocumentBlockedAt" = CASE
                 WHEN $1 IS NOT NULL AND "salesDocumentBlockReason" IS NULL THEN now()
                 ELSE "salesDocumentBlockedAt"
@@ -2055,14 +2063,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
                 ELSE "salesDocumentBlockReleasedAt"
               END,
               "updatedAt" = now()
-        WHERE "internalOrderId" = $4
+        WHERE "internalOrderId" = $5
           AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
             OR "salesDocumentUnresolvedReason" IS DISTINCT FROM $2
-            OR "salesDocumentBlockDetail" IS DISTINCT FROM $3)`,
+            OR "salesDocumentBlockDetail" IS DISTINCT FROM $3
+            OR "salesDocumentMatchedRuleId" IS DISTINCT FROM $4)`,
       [
         block?.reason ?? null,
         block?.unresolvedReason ?? null,
         block?.detail ?? null,
+        ruleId,
         internalOrderId,
       ]
     );
@@ -2944,7 +2954,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       readAuthorityAttentionEntries(entity.omsAttention),
       entity.buyerTaxId ?? null,
       entity.shippingAddressHash ?? null,
-      (entity.totalTaxTreatment as PriceTaxTreatment | null) ?? null
+      (entity.totalTaxTreatment as PriceTaxTreatment | null) ?? null,
+      entity.salesDocumentMatchedRuleId ?? null
     );
   }
 
@@ -2981,12 +2992,16 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *   reappear as not-shipped in the ship-by SLA buckets and list filter.
    * - `cancelledAt` (#1984) - sole writer `markCancelled` (COALESCE-based,
    *   atomic).
-   * - The three `salesDocument*` columns (#2100) - sole writer
+   * - The FOUR `salesDocument*` columns (#2100 / #3186) - sole writer
    *   `updateSalesDocumentBlock`, with a reason of their own on top of the
    *   shared one: `persistOrder` runs BEFORE the auto-issue gate on every
    *   ingestion, so round-tripping them here would null the columns and then
    *   immediately re-set them - a visible flicker for any concurrent read, and
-   *   a stomp against a reason a peer transition just wrote.
+   *   a stomp against a reason a peer transition just wrote. The fourth,
+   *   `salesDocumentMatchedRuleId` (#3186), moves in the SAME statement as the
+   *   other three for the identical reason, even though it can be non-null
+   *   while the block reason is null (a rule decided the kind; nothing is
+   *   currently blocking issuance).
    * - `omsAttention` (#2352) - sole writer `updateOmsAttention`. It carries the
    *   sharpest version of the same hazard: the column is an ARRAY shared by
    *   three unrelated producers, and its writer's entire contract is that it

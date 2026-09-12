@@ -226,6 +226,34 @@ export interface SalesDocumentOtherRecord {
   readonly blocksFurtherIssuance: boolean;
 }
 
+/**
+ * One condition of a matched routing rule (#3186) — hand-mirrored from the
+ * backend's `SalesDocumentConditionDto` wire shape, matching
+ * `SalesDocumentConditionInput` in `features/sales-documents/api` (kept as a
+ * separate local mirror rather than a cross-feature import, following this
+ * file's own established "hand-mirrored from the BE DTO" convention above).
+ */
+export interface SalesDocumentMatchedRuleCondition {
+  readonly field: 'buyerHasTaxId' | 'orderCountry' | 'orderTotalGross';
+  readonly op: 'eq' | 'gte' | 'lt';
+  readonly boolValue?: boolean;
+  readonly stringValue?: string;
+  readonly thresholdRef?: string;
+}
+
+/**
+ * The rule that decided this order's document kind (#3186). `null` covers
+ * BOTH "no rule ever decided this order's kind" and "one did, but it has
+ * since been deleted" — a surface must not tell the two apart.
+ */
+export interface SalesDocumentMatchedRuleView {
+  readonly id: string;
+  readonly country: string;
+  readonly conditions: readonly SalesDocumentMatchedRuleCondition[];
+  readonly documentKind: string;
+  readonly connectionId: string;
+}
+
 /** Everything a surface needs about one order's sales document (ADR-065). */
 export interface SalesDocumentView {
   readonly orderId: string;
@@ -244,6 +272,8 @@ export interface SalesDocumentView {
   /** Free-text elaboration the gate stored; never parsed, only displayed. */
   readonly blockDetail: string | null;
   readonly otherRecords: readonly SalesDocumentOtherRecord[];
+  /** The rule that decided this order's document kind (#3186); `null` when none did. */
+  readonly matchedRule: SalesDocumentMatchedRuleView | null;
 }
 
 // ── Mapping-aware delivery (epic #1776) ─────────────────────────────────────

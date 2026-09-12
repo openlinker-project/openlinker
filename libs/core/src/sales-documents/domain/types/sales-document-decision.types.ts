@@ -8,6 +8,12 @@
  *   issue against (decision 3a: invoice XOR receipt, never both, never twice).
  *   `documentKind: null` marks a SELF-ROUTING destination (decision 9): the
  *   destination decides the document kind itself, so OL supplies none.
+ *   `ruleId` (#3186) names the `sales_document_rules` row that decided the
+ *   kind, when one did — set ONLY by `evaluateSalesDocumentRules`'s tier-1
+ *   rule match, and absent for every other route (a tier-2 country default,
+ *   or the pre-#2170 operator-configured single-primary fallback): a country
+ *   default or the legacy resolver names a `(documentKind, connectionId)`
+ *   pair with no rule behind it, and `ruleId` must not imply one exists.
  * - `aggregate` — the order enters a periodic aggregation window instead of an
  *   immediate document (decision 8). Reserved in the type only — the
  *   aggregation mechanics (window boundaries, batch-document persistence) are
@@ -25,6 +31,12 @@ import type { SalesDocumentUnresolvedReason } from './sales-document-reason.type
 import type { SalesDocumentKind } from './sales-document-kind.types';
 
 export type SalesDocumentDecision =
-  | { kind: 'route'; documentKind: SalesDocumentKind | null; connectionId: string } // null = self-routing destination
+  | {
+      kind: 'route';
+      documentKind: SalesDocumentKind | null; // null = self-routing destination
+      connectionId: string;
+      /** The matched rule's id (tier-1 only) — see the module doc comment. */
+      ruleId?: string;
+    }
   | { kind: 'aggregate'; connectionId: string }
   | { kind: 'unresolved'; reason: SalesDocumentUnresolvedReason };

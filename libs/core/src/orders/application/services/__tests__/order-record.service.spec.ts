@@ -1316,13 +1316,13 @@ describe('OrderRecordService', () => {
 
       await service.markSalesDocumentBlock('ol_order_abc', block);
 
-      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', block);
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', block, null);
     });
 
     it('should pass null through — the clear is the ordinary path, not an edge case', async () => {
       await service.markSalesDocumentBlock('ol_order_abc', null);
 
-      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null);
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null, null);
     });
 
     it('should not accumulate: repeated calls with the same reason are plain absolute-sets', async () => {
@@ -1337,8 +1337,14 @@ describe('OrderRecordService', () => {
       // one state) rather than anything append-shaped.
       expect(repository.updateSalesDocumentBlock).toHaveBeenCalledTimes(3);
       for (const call of repository.updateSalesDocumentBlock.mock.calls) {
-        expect(call).toEqual(['ol_order_abc', block]);
+        expect(call).toEqual(['ol_order_abc', block, null]);
       }
+    });
+
+    it('should pass the matched rule id through (#3186)', async () => {
+      await service.markSalesDocumentBlock('ol_order_abc', null, 'rule-1');
+
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null, 'rule-1');
     });
   });
 

@@ -500,22 +500,33 @@ export interface OrderRecordRepositoryPort {
 
   /**
    * Set — or clear — the reason OpenLinker issued no fiscal document for this
-   * order (#2100, ADR-041 decision 11). Narrow absolute-set on the three
-   * `salesDocumentBlock*` columns only, mirroring
+   * order (#2100, ADR-041 decision 11), and the `sales_document_rules` row
+   * that decided its document kind, when a rule engine match produced it
+   * (#3186). Narrow absolute-set on the FOUR `salesDocumentBlock*` /
+   * `salesDocumentMatchedRuleId` columns only, mirroring
    * {@link updateItemResolutionFailure}, so it can't clobber a concurrent write
    * to any other column on the same row.
    *
-   * Passing `null` CLEARS all three columns, and that is the primary path, not an
-   * edge case: the auto-issue gate is level-evaluated, so this is called on
-   * every order transition with whatever the current answer is. Last write
-   * wins by design — the newest evaluation is the truthful one.
+   * Passing `null` for `block` CLEARS the three block columns, and passing
+   * `null` for `matchedRuleId` clears that one — both are the primary path,
+   * not an edge case: the auto-issue gate is level-evaluated, so this is
+   * called on every order transition with whatever the current answer is for
+   * both. Last write wins by design — the newest evaluation is the truthful
+   * one, which is also what lets an edited or deleted rule stop being named as
+   * this order's reason on the very next transition.
+   *
+   * `matchedRuleId` moves INDEPENDENTLY of `block`: a rule can decide the
+   * document kind while issuance is still blocked for an unrelated reason
+   * (e.g. a missing tax rate, or a `manual` trigger model), so the two are
+   * never coupled to one another's null-ness.
    *
    * No-op (no throw) when the order row doesn't exist, mirroring
    * {@link updateFulfillmentState}'s residual-race tolerance.
    */
   updateSalesDocumentBlock(
     internalOrderId: string,
-    block: SalesDocumentBlock | null
+    block: SalesDocumentBlock | null,
+    matchedRuleId?: string | null
   ): Promise<void>;
 
   /**

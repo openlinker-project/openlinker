@@ -11,6 +11,7 @@ import { InvoiceRecord } from '@openlinker/core/invoicing';
 import { FISCAL_REGISTRATION_SERVICE_TOKEN } from '@openlinker/core/fiscalization';
 import { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
 import { SALES_DOCUMENT_RULES_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
+import { SalesDocumentRule } from '@openlinker/core/sales-documents';
 
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { InvoicingModule } from '@openlinker/core/invoicing';
@@ -119,14 +120,17 @@ describe('SalesDocumentViewService', () => {
   let invoices: { listInvoicesForOrders: jest.Mock };
   let fiscalRegistrations: { getByOrderIds: jest.Mock };
   let connections: { list: jest.Mock };
-  let rules: { resolveRoutingBatch: jest.Mock };
+  let rules: { resolveRoutingBatch: jest.Mock; getRulesByIds: jest.Mock };
 
   beforeEach(async () => {
     orderRecords = { findByIds: jest.fn().mockResolvedValue([]) };
     invoices = { listInvoicesForOrders: jest.fn().mockResolvedValue([]) };
     fiscalRegistrations = { getByOrderIds: jest.fn().mockResolvedValue([]) };
     connections = { list: jest.fn().mockResolvedValue([]) };
-    rules = { resolveRoutingBatch: jest.fn().mockResolvedValue([]) };
+    rules = {
+      resolveRoutingBatch: jest.fn().mockResolvedValue([]),
+      getRulesByIds: jest.fn().mockResolvedValue([]),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -354,6 +358,76 @@ describe('SalesDocumentViewService', () => {
     orderRecords.findByIds.mockResolvedValue([]);
 
     await expect(service.getForOrders(['ol_order_missing'])).resolves.toEqual(new Map());
+  });
+
+  describe('matchedRule (#3186)', () => {
+    function rule(overrides: Partial<SalesDocumentRule> = {}): SalesDocumentRule {
+      const base = new SalesDocumentRule(
+        'rule-1',
+        'PL',
+        [{ field: 'buyerHasTaxId', op: 'eq', value: true }],
+        'hash-1',
+        'fiscal-receipt',
+        'conn-fiscal-1',
+        NOW,
+        null,
+        null,
+        NOW,
+        NOW,
+      );
+      return Object.assign(Object.create(SalesDocumentRule.prototype) as SalesDocumentRule, base, overrides);
+    }
+
+    it('projects the rule that decided the order\'s kind, when one did', async () => {
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ salesDocumentMatchedRuleId: 'rule-1' }),
+      ]);
+      rules.getRulesByIds.mockResolvedValue([rule()]);
+
+      const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+      expect(rules.getRulesByIds).toHaveBeenCalledWith(['rule-1']);
+      expect(view?.matchedRule).toEqual({
+        id: 'rule-1',
+        country: 'PL',
+        conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: true }],
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-fiscal-1',
+      });
+    });
+
+    it('reports null when no rule decided the order\'s kind', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+
+      const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+      expect(rules.getRulesByIds).not.toHaveBeenCalled();
+      expect(view?.matchedRule).toBeNull();
+    });
+
+    it('reports null when the matched rule has since been deleted', async () => {
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ salesDocumentMatchedRuleId: 'rule-gone' }),
+      ]);
+      rules.getRulesByIds.mockResolvedValue([]);
+
+      const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+      expect(view?.matchedRule).toBeNull();
+    });
+
+    it('reads the rule store ONCE for a page sharing the same matched rule id', async () => {
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ internalOrderId: 'ol_order_1', salesDocumentMatchedRuleId: 'rule-1' }),
+        orderRecord({ internalOrderId: 'ol_order_2', salesDocumentMatchedRuleId: 'rule-1' }),
+      ]);
+      rules.getRulesByIds.mockResolvedValue([rule()]);
+
+      await service.getForOrders(['ol_order_1', 'ol_order_2']);
+
+      expect(rules.getRulesByIds).toHaveBeenCalledTimes(1);
+      expect(rules.getRulesByIds).toHaveBeenCalledWith(['rule-1']);
+    });
   });
 
   it('should not grow its query count with the number of ids', async () => {

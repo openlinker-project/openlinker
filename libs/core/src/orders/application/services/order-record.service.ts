@@ -852,17 +852,20 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   /**
-   * Record or clear the sales-document block (#2100). Thin pass-through to the
+   * Record or clear the sales-document block (#2100), and the rule that
+   * decided this order's document kind (#3186). Thin pass-through to the
    * repository's narrow absolute-set — see
-   * {@link OrderRecordRepositoryPort.updateSalesDocumentBlock}. `null` clears,
-   * and is the ordinary path: the auto-issue gate is level-evaluated, so this is
-   * called on every transition with the current answer.
+   * {@link OrderRecordRepositoryPort.updateSalesDocumentBlock}. `null` clears
+   * `block`, and `null` clears `matchedRuleId` — both are the ordinary path:
+   * the auto-issue gate is level-evaluated, so this is called on every
+   * transition with the current answer for both.
    */
   async markSalesDocumentBlock(
     internalOrderId: string,
-    block: SalesDocumentBlock | null
+    block: SalesDocumentBlock | null,
+    matchedRuleId: string | null = null
   ): Promise<void> {
-    await this.repository.updateSalesDocumentBlock(internalOrderId, block);
+    await this.repository.updateSalesDocumentBlock(internalOrderId, block, matchedRuleId);
   }
 
   /**
