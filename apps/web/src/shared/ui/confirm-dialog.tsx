@@ -38,6 +38,14 @@ interface ConfirmDialogProps {
    * state, and only one of them ever resolves.
    */
   confirmDisabled?: boolean;
+  /**
+   * Which button receives focus when the dialog opens. Defaults to
+   * `'confirm'`, matching every existing consumer. Set `'cancel'` for a
+   * higher-stakes confirm (e.g. a deployment-wide, hard-to-notice write)
+   * where the safer default is landing on the button that does nothing
+   * (#2993 review, SUGGESTION).
+   */
+  initialFocus?: 'confirm' | 'cancel';
 }
 
 export function ConfirmDialog({
@@ -54,8 +62,10 @@ export function ConfirmDialog({
   confirmDisabled = false,
   className,
   overlayClassName,
+  initialFocus = 'confirm',
 }: ConfirmDialogProps): ReactElement {
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -64,14 +74,14 @@ export function ConfirmDialog({
         overlayClassName={overlayClassName}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
-          confirmButtonRef.current?.focus();
+          (initialFocus === 'cancel' ? cancelButtonRef : confirmButtonRef).current?.focus();
         }}
       >
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>
         {body ? <div className="dialog__body">{body}</div> : null}
         <DialogFooter>
-          <Button tone="secondary" onClick={() => onOpenChange(false)}>
+          <Button ref={cancelButtonRef} tone="secondary" onClick={() => onOpenChange(false)}>
             {cancelLabel}
           </Button>
           <Button
