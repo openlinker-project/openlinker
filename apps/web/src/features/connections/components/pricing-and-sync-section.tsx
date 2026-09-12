@@ -119,8 +119,17 @@ interface DraftView {
   sources: DraftSourceEntry[];
 }
 
+/**
+ * `PricingRule.percent` / `.rounding` are optional on the wire (#3148/#3146
+ * — a `passthrough` rule carries neither), but this draft's controlled
+ * inputs need a concrete value to render — an `undefined` fed straight into
+ * `String()` renders the literal text "undefined" in the percent field, and
+ * an `undefined` `<select>` value is an uncontrolled-to-controlled React
+ * warning. `0` / `'none'` are the same defaults `toWireRule` already falls
+ * back to on the way out, so a round-trip through this draft is a no-op.
+ */
 function toDraftRule(rule: PricingRule): DraftPricingRule {
-  return { type: rule.type, percent: String(rule.percent), rounding: rule.rounding };
+  return { type: rule.type, percent: String(rule.percent ?? 0), rounding: rule.rounding ?? 'none' };
 }
 
 function toDraftSetting(setting: PricingSyncSetting): DraftPricingSyncSetting {

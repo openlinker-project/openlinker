@@ -19,6 +19,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsNotEmpty,
   IsOptional,
   IsString,
   ValidateNested,
@@ -38,13 +39,20 @@ export class BulkAcceptPriceChangeItemDto {
   @IsBoolean()
   optInAutomatic?: boolean;
 
-  @ApiPropertyOptional({
+  /**
+   * REQUIRED (#3162 re-review, BLOCKING) — mirrors
+   * `AcceptPriceChangeDto.expectedVersion`'s reasoning: every bulk item
+   * publishes its episode's `computedNewAmount`, never an operator-typed
+   * absolute number, so it can move out from under the caller exactly like
+   * the single-accept path.
+   */
+  @ApiProperty({
     description:
-      'The episode version last seen by the caller — the staleness guard (mirrors the single-accept path). Omitted means "accept whatever the server currently has".',
+      'The episode version last seen by the caller — the staleness guard (mirrors the single-accept path). Required for the same reason: this item publishes computedNewAmount, which can move between read and submit.',
   })
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
-  expectedVersion?: string;
+  expectedVersion!: string;
 }
 
 export class BulkAcceptPriceChangesDto {

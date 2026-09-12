@@ -18,16 +18,28 @@
  * of a past detection and must survive a re-mapped variant or a deleted
  * connection rather than cascade away with it.
  *
- * `computedOldAmount` is nullable (#3159 review): a brand-new mapping's
- * first detection has no recorded baseline at all, which is a different fact
- * from a real recorded `0` (e.g. a previously-free product now carrying a
- * price). `CHK_price_change_episodes_amounts_non_negative` is unaffected — a
- * Postgres CHECK evaluates to "not violated" on a NULL operand.
+ * `computedOldAmount` AND `sourceOldAmount` are both nullable (#3159 review,
+ * the second amended in after the first): a brand-new mapping's first
+ * detection, or a variant that previously carried NO source price at all,
+ * has no recorded baseline to report — writing `sourceNewAmount` into a
+ * `NOT NULL` `sourceOldAmount` column would fabricate a "changed from N to
+ * N" fact the source never asserted. `CHK_price_change_episodes_amounts_non_negative`
+ * is unaffected — a Postgres CHECK evaluates to "not violated" on a NULL
+ * operand.
+ *
+ * `claimedAt` (#3162 review, IMPORTANT — "nothing claims the episode at
+ * accept time") is the exclusive-resolution-rights marker
+ * `PriceChangeEpisodeRepositoryPort.claimForResolution` stamps: without it,
+ * two operators could both accept the same episode, and a stuck job's
+ * amount-and-clock-derived idempotency key could re-publish the same accept
+ * hours later. It carries no index of its own — every read that matters
+ * (`claimForResolution`'s own guarded `UPDATE`) already filters on the
+ * primary key.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreatePriceChangeEpisodes1878000000000 implements MigrationInterface {
-  name = 'CreatePriceChangeEpisodes1878000000000';
+export class CreatePriceChangeEpisodes1880000000000 implements MigrationInterface {
+  name = 'CreatePriceChangeEpisodes1880000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
@@ -39,7 +51,7 @@ export class CreatePriceChangeEpisodes1878000000000 implements MigrationInterfac
         "destinationConnectionId" uuid NOT NULL,
         "sourceConnectionId" uuid NOT NULL,
         "sourceCurrency" character varying(8) NOT NULL,
-        "sourceOldAmount" numeric(14,4) NOT NULL,
+        "sourceOldAmount" numeric(14,4),
         "sourceNewAmount" numeric(14,4) NOT NULL,
         "computedOldAmount" numeric(14,4),
         "computedNewAmount" numeric(14,4) NOT NULL,
@@ -49,6 +61,7 @@ export class CreatePriceChangeEpisodes1878000000000 implements MigrationInterfac
         "detectedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
         "refreshedAt" TIMESTAMP WITH TIME ZONE,
         "resolvedAt" TIMESTAMP WITH TIME ZONE,
+        "claimedAt" TIMESTAMP WITH TIME ZONE,
         "resolution" character varying(32),
         "resolvedByUserId" text,
         "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),

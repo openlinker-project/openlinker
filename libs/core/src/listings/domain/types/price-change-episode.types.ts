@@ -71,7 +71,14 @@ export interface UpsertOpenPriceChangeEpisodeInput {
   destinationConnectionId: string;
   sourceConnectionId: string;
   sourceCurrency: string;
-  sourceOldAmount: number;
+  /**
+   * `null` means "no prior source price was ever recorded" — a variant that
+   * previously had no price at all, or a brand-new mapping (#3159 review,
+   * BLOCKING). The caller must NEVER fall back to `sourceNewAmount` here: an
+   * absent baseline fabricated as "old = new" reads on the operator surface
+   * as a genuine, no-op price change that never happened.
+   */
+  sourceOldAmount: number | null;
   sourceNewAmount: number;
   /**
    * `null` means "no prior computed value to compare" — a brand-new mapping
@@ -102,8 +109,15 @@ export interface UpsertOpenPriceChangeEpisodeInput {
 export interface PriceChangeEpisodeFilters {
   destinationConnectionId?: string;
   sourceConnectionId?: string;
-  /** `undefined` = both directions. */
-  direction?: 'up' | 'down';
+  /**
+   * `undefined` = every direction, including unknown. `'unknown'` asks for
+   * exactly the episodes `PriceChangeEpisode.deltaPct()` returns `null` for
+   * (no recorded baseline — a brand-new mapping's first detection, #3159
+   * review): those rows are counted in the unfiltered total but were
+   * previously unreachable under either `'up'` or `'down'`, which would make
+   * an operator's per-direction counts silently undercount the whole.
+   */
+  direction?: 'up' | 'down' | 'unknown';
   /** When `true`, only episodes with `|deltaPct| >= 10` (mockup's "Big changes"). */
   magnitudeLargeOnly?: boolean;
   /**
@@ -120,15 +134,18 @@ export interface PriceChangeEpisodeFilters {
    * one supplier price-file import across a 20k-SKU catalogue with two
    * destinations opens on the order of tens of thousands of episodes.
    *
-   * Applied as a real SQL `LIMIT`/`OFFSET` over the SARGABLE predicates
-   * (`resolvedAt IS NULL` + the optional connection filters), ordered by
-   * `detectedAt DESC` — the same page every caller already sees. `direction`
-   * / `magnitudeLargeOnly` remain application-code post-filters (they are
-   * derived from `deltaPct`, not a stored column, per this file's repository
-   * counterpart), so a page may legitimately return FEWER than `limit`
-   * visible rows when either is active — the same approximation
-   * `countOpen` already accepts for those two filters. `undefined` `limit`
-   * means "no page requested" (a bare `getMany()`), kept only for callers
+   * Applied as a real SQL `LIMIT`/`OFFSET` over EVERY filter, `direction`
+   * and `magnitudeLargeOnly` included (#3162 re-review, BLOCKING — these two
+   * are DERIVED from `deltaPct`, not a stored column, but "non-sargable"
+   * means "cannot use an index", never "inexpressible in SQL"; they were
+   * previously applied to the already-paged rows in application code, which
+   * silently walked `offset` over UNFILTERED space and capped `countOpen`'s
+   * fallback at the page size — see `PriceChangeEpisodeRepository`'s
+   * `buildOpenQuery`/`buildListQuery` for the SQL expressions this reproduces
+   * from `PriceChangeEpisode.direction()`/`.isSteep()`). Ordered by
+   * `detectedAt DESC` — the same page every caller already sees.
+   * `undefined` `limit` means "no page requested" (a bare `getMany()`), kept
+   * only for callers
    * that have not yet adopted pagination (none remain in this tree after
    * #3162, but the port stays permissive rather than silently defaulting a
    * caller who forgot to pass one — see `DEFAULT_PRICE_CHANGE_PAGE_SIZE` /
@@ -138,3 +155,25 @@ export interface PriceChangeEpisodeFilters {
   limit?: number;
   offset?: number;
 }
+
+/**
+ * The result of {@link PriceChangeEpisodeRepositoryPort.claimForResolution}
+ * (#3162 review, IMPORTANT — "nothing claims the episode at accept time").
+ *
+ * - `claimed`: exclusive resolution rights acquired; the caller may enqueue
+ *   the publish job.
+ * - `in-flight`: a PEER call already claimed this open episode and has not
+ *   yet resolved it — the caller must refuse (`PriceChangeEpisodeInFlightException`),
+ *   never silently proceed.
+ * - `resolved`: the episode is no longer open (raced a peer's resolution,
+ *   or the caller's own stale read).
+ * - `not-found`: no row exists for this id (defensive — episodes are never
+ *   deleted, so this is unreachable in practice).
+ */
+export const PriceChangeEpisodeClaimOutcomeValues = [
+  'claimed',
+  'in-flight',
+  'resolved',
+  'not-found',
+] as const;
+export type PriceChangeEpisodeClaimOutcome = (typeof PriceChangeEpisodeClaimOutcomeValues)[number];

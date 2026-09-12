@@ -167,5 +167,28 @@ describe('pricing-rule', () => {
         rounding: 'none',
       });
     });
+
+    // Piotr's PR #3158 review, BLOCKING: a headless `{ sourceOverrides }`
+    // container (no `default` key) must still resolve via the nested-shape
+    // branch, or every override in it is silently discarded on read.
+    it('should read sourceOverrides even when the container carries no `default` key', () => {
+      const config = {
+        pricingRule: {
+          sourceOverrides: { 'src-1': MARGIN_OVERRIDE },
+        },
+      };
+      expect(readPricingRuleConfig(config)).toEqual({
+        default: null,
+        sourceOverrides: { 'src-1': { type: 'margin', percent: 30, rounding: 'endingIn99' } },
+      });
+      expect(readPricingRuleForSource(config, 'src-1')).toEqual({
+        type: 'margin',
+        percent: 30,
+        rounding: 'endingIn99',
+      });
+      // No default and no override for this source ⇒ null, not a mis-read of
+      // the container itself as a legacy flat rule.
+      expect(readPricingRuleForSource(config, 'src-2')).toBeNull();
+    });
   });
 });
