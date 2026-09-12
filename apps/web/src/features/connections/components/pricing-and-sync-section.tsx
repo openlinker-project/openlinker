@@ -65,6 +65,7 @@ import {
   useUpdateConnectionPricingSyncMutation,
   ruleSentenceFor,
   type ConnectionPricingSyncView,
+  type PriceChangeRuleSummary,
   type PricingRule,
   type PricingSyncSetting,
   type PriceSyncMode,
@@ -146,8 +147,17 @@ interface DraftBaseline {
   customSources: Set<string>;
 }
 
+/**
+ * `PricingRule.percent` / `.rounding` are optional on the wire (#3148/#3146
+ * — a `passthrough` rule carries neither), but this draft's controlled
+ * inputs need a concrete value to render — an `undefined` fed straight into
+ * `String()` renders the literal text "undefined" in the percent field, and
+ * an `undefined` `<select>` value is an uncontrolled-to-controlled React
+ * warning. `0` / `'none'` are the same defaults `toWireRule` already falls
+ * back to on the way out, so a round-trip through this draft is a no-op.
+ */
 function toDraftRule(rule: PricingRule): DraftPricingRule {
-  return { type: rule.type, percent: String(rule.percent), rounding: rule.rounding };
+  return { type: rule.type, percent: String(rule.percent ?? 0), rounding: rule.rounding ?? 'none' };
 }
 
 function toDraftSetting(setting: PricingSyncSetting): DraftPricingSyncSetting {
@@ -200,7 +210,16 @@ function validateRule(rule: DraftPricingRule): string | null {
   return null;
 }
 
-function toWireRule(rule: DraftPricingRule): PricingRule {
+/**
+ * The DRAFT always carries a concrete `percent`/`rounding` (#3166 merge
+ * fix) — the wire `PricingRule` type widens both to optional (a
+ * `passthrough` rule may omit them, #3148/#3146), but `toWireRule` never
+ * produces an `undefined` here, so its return type is the concrete
+ * `PriceChangeRuleSummary` rather than the wire type — `ruleSentenceFor`
+ * needs the former, and a required-fields object is assignable wherever
+ * the wider `PricingRule` is expected (`toWireSetting`).
+ */
+function toWireRule(rule: DraftPricingRule): PriceChangeRuleSummary {
   const parsed = Number(rule.percent);
   return {
     type: rule.type,

@@ -25,10 +25,8 @@ import { BulkShopPublishController } from './http/bulk-shop-publish.controller';
 import { DescriptionFormatController } from './http/description-format.controller';
 import { TaxonomyController } from './http/taxonomy.controller';
 import { PriceChangesController } from './http/price-changes.controller';
-import {
-  PriceSyncModeOverrideService,
-  PRICE_SYNC_MODE_OVERRIDE_SERVICE_TOKEN,
-} from './application/services/price-sync-mode-override.service';
+import { PriceSyncModeOverrideService } from './application/services/price-sync-mode-override.service';
+import { PRICE_SYNC_MODE_OVERRIDE_SERVICE_TOKEN } from './application/services/price-sync-mode-override.service.interface';
 
 @Module({
   // CoreIntegrationsModule supplies INTEGRATIONS_SERVICE_TOKEN, which the

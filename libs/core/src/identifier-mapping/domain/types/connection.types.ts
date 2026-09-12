@@ -98,19 +98,25 @@ export interface ConnectionConfig {
    * shapes are read through `readPricingRuleConfig` /
    * `readPricingRuleForSource`, which coerce a legacy flat `PricingRule` into
    * `{ default: <that rule>, sourceOverrides: {} }` at read time — no
-   * backfill migration.
-   *
-   * `default` is `PricingRule | null` — a stored `null` means "no rule
-   * configured", the honest storage-side reflection of `PricingRuleConfig`'s
-   * own type (`pricing-rule.types.ts`). #3163 review, finding 3: writing a
-   * synthesized `{type: 'passthrough'}` in place of `null` is a real
-   * behaviour change (`applyPricingRule` applies rounding for a configured
-   * `passthrough` rule but not for `null`), so this type must accept `null`
-   * or a caller cannot honestly persist "unconfigured".
+   * backfill migration. `default` is BOTH optional AND nullable in the
+   * nested shape: optional so a HEADLESS `{ sourceOverrides }` container —
+   * one carrying per-source overrides but no destination-level default —
+   * round-trips (`readPricingRuleConfig` recognises the shape by `'default'
+   * in candidate || 'sourceOverrides' in candidate`, so this type must admit
+   * the same set the reader — and its validator counterpart in
+   * `ConnectionService` — actually accept, or a legitimate config value
+   * fails to type-check; PR #3158 review, BLOCKING fix), and nullable
+   * because a stored `null` means "no rule configured", the honest
+   * storage-side reflection of `PricingRuleConfig`'s own type
+   * (`pricing-rule.types.ts`) — writing a synthesized `{type: 'passthrough'}`
+   * in place of `null` would be a real behaviour change (`applyPricingRule`
+   * applies rounding for a configured `passthrough` rule but not for
+   * `null`), so this type must accept `null` or a caller cannot honestly
+   * persist "unconfigured" (#3163 review, finding 3).
    */
   pricingRule?:
     | PricingRule
-    | { default: PricingRule | null; sourceOverrides?: Record<string, PricingRule> };
+    | { default?: PricingRule | null; sourceOverrides?: Record<string, PricingRule> };
   /**
    * Per-(destination connection, feeding source connection) price-sync mode
    * (#3142, ADR-072 decision 3) — whether a detected price change waits for
@@ -221,6 +227,3 @@ export interface ConnectionFilters {
   platformType?: PlatformType;
   status?: ConnectionStatus;
 }
-
-
-

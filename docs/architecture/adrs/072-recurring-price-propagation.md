@@ -6,13 +6,15 @@
 
 ## Context
 
-`applyPricingRule`/`readPricingRule` (`libs/core/src/identifier-mapping/domain/types/pricing-rule.types.ts`) compute a destination price from the master catalog price only at offer-create / product-publish time (`OfferBuilderService.buildCreateOfferCommand`, `ProductPublishBuilderService.buildPublishProductCommand` — confirmed the only two call sites by grep). There is no ongoing re-price: a later master-price change never reaches an already-published listing. #3010 named this gap and deferred it as a product decision, since silent price propagation has a direct commercial consequence for the operator.
+`applyPricingRule`/`readPricingRule` (`libs/core/src/identifier-mapping/domain/types/pricing-rule.types.ts`) compute a destination price from the master catalog price at offer-create / product-publish time — `OfferBuilderService.buildCreateOfferCommand` and `ProductPublishBuilderService.buildPublishProductCommand` are the only two *publish-path* call sites. `Connection.config.pricingRule`, the value this ADR proposes reshaping (decision 2), has a wider reader surface than that: `apps/web/src/features/connections/lib/stock-and-pricing-preview.ts` (a second `applyPricingRule` implementation, the #2610 browser mirror), `stock-and-pricing-section.tsx` / `EditConnectionForm.tsx` (`readPricingRuleForm`) / `edit-connection.schema.ts`, and `apps/api/src/integrations/application/services/connection.service.ts` (server-side config-shape validation) all read or write the same key, and `scripts/check-stock-and-pricing-preview-mirror.mjs` plus `scripts/check-architecture-gates.mjs` (`KNOWN_CONFIG_KNOBS: {helper: 'readPricingRule', key: 'config.pricingRule'}`) lock that seam under `pnpm check:invariants`. There is no ongoing re-price on the publish path: a later master-price change never reaches an already-published listing. #3010 named this gap and deferred it as a product decision, since silent price propagation has a direct commercial consequence for the operator.
 
 A design session (interactive mockup, iterated across many review rounds including 6 specialist sub-agent reviews and a real-codebase backend-gap audit) converged on: opt-in, per (source connection, destination connection) pair, surfaced as a review queue. This ADR records the resulting architectural decisions, several of which reverse or extend existing patterns.
 
 ## Decision
 
 Build `price_change_episodes` (a new aggregate in the existing `listings` context) plus a default + per-source-override extension to `Connection.config.pricingRule`, and a review queue UI. Eight sub-decisions follow.
+
+**Where the episode sits relative to the shipped pricing path.** An approved episode re-enters the EXISTING publish path — it does not introduce a second one. The `passthrough | markup | margin` rule shapes are preserved verbatim; the flat rule already on a connection is read as the new `default` with no backfill migration (see the Consequences/Migration-path sections below); and applying an approved episode ends, as every publish already does, in `applyPricingRule` computing the destination price from the (now-updated) master catalog price. What this ADR adds is a REVIEW STEP in front of that existing computation for a recurring re-price, not a parallel one.
 
 **1. Episode pattern, not per-event rows.** `price_change_episodes` mirrors `ReservationShortfallEpisode` (`libs/core/src/inventory/domain/entities/reservation-shortfall-episode.entity.ts`): a row opened once, a partial unique index enforcing at most one OPEN row per `(productVariantId, destinationConnectionId, sourceConnectionId)`, re-detection updates the same open row.
 
@@ -48,12 +50,18 @@ Build `price_change_episodes` (a new aggregate in the existing `listings` contex
 - The cost-tracking and digest gaps are stated explicitly rather than silently absent, so a future reader doesn't rediscover them by surprise.
 
 **Cons / trade-offs:**
-- `Connection.config.pricingRule`'s shape change (flat rule → `{ default, sourceOverrides }`) requires every existing reader to be updated with a backward-compatible fallback for connections that predate this change (resolve at read time; no backfill migration).
+- `Connection.config.pricingRule`'s shape change (flat rule → `{ default, sourceOverrides }`) requires every existing reader to be updated with a backward-compatible fallback for connections that predate this change (resolve at read time; no backfill migration) — including the `apps/web` browser mirror in `stock-and-pricing-preview.ts` (the #2610 byte-identity discipline either survives the shape change or silently breaks there) and the two invariant scripts that pin the seam today, `check-stock-and-pricing-preview-mirror.mjs` and `check-architecture-gates.mjs`'s `KNOWN_CONFIG_KNOBS` entry — all three must be updated in the same change or `pnpm check:invariants` trips. (#3166 has since shipped a second pricing editor beside `StockAndPricingSection` with no precedence — exactly the kind of second reader this bullet warns about, and worth checking against once this ADR's implementation lands.)
 - The "steep change" signal is a real, acknowledged compromise — it will both miss genuinely unprofitable small changes and flag harmless large ones. This is accepted as strictly better than building a cost-tracking feature as an undiscussed side effect of a pricing-sync feature.
 - The currency restriction means a cross-currency connection gets zero automation from this feature until a separate FX effort lands.
 
 **Migration path (if applicable):**
 - None required for existing installs at ship time: every connection defaults to `Manual review` with the CURRENT flat rule read as the new `default` (no `sourceOverrides`), so behavior is unchanged until an operator explicitly opts a connection into review/automation.
+
+## Revisit when
+
+- **Two sync modes prove insufficient** (decision 3) — a real operator pattern needs a batched daily digest rather than per-episode manual review or fully silent automatic apply. The `Digest` mode was cut for lack of any existing notification surface, not because the need is implausible.
+- **Same-currency-only (decision 4) becomes the majority case** — once a separate FX effort lands (see ADR-040), cross-currency connections currently getting zero automation from this feature become the largest class of `blockReason: currency-mismatch` episodes and the exclusion should be re-taken.
+- **The magnitude-only "steep change" signal (decision 6) causes real operator harm** — either by under-flagging a genuinely unprofitable small change or by desensitizing operators to the flag through over-flagging harmless large ones (both are acknowledged, accepted trade-offs today, not remote risks).
 
 ## References
 

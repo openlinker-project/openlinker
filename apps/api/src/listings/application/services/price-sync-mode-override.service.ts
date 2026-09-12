@@ -22,6 +22,7 @@
  * here, to `apps/api`, where the HTTP controller already lives.
  *
  * @module apps/api/src/listings/application/services
+ * @implements {IPriceSyncModeOverrideService}
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
@@ -32,6 +33,10 @@ import {
   type IConnectionService,
 } from '../../../integrations/application/interfaces/connection.service.interface';
 import type { PriceChangeConnectionPair } from '@openlinker/core/listings';
+import type {
+  IPriceSyncModeOverrideService,
+  PriceSyncModeOverrideOutcome,
+} from './price-sync-mode-override.service.interface';
 
 /**
  * Lock TTL — sized to comfortably exceed a `get` + `update` round trip.
@@ -41,22 +46,6 @@ import type { PriceChangeConnectionPair } from '@openlinker/core/listings';
  * heartbeat to protect).
  */
 const PRICE_SYNC_MODE_LOCK_TTL_MS = 15_000;
-
-export interface IPriceSyncModeOverrideService {
-  /**
-   * Set `(destinationConnectionId).config.priceSyncMode.sourceOverrides[sourceConnectionId]`
-   * to `'automatic'`. Best-effort: a failure is logged and reported via the
-   * return value rather than thrown, since the price publish this
-   * accompanies has already succeeded/been enqueued and a failure to flip
-   * the mode must not be reported as a failed accept.
-   */
-  setSourceOverrideAutomatic(pair: PriceChangeConnectionPair): Promise<boolean>;
-
-  /** Convenience for a de-duplicated list of pairs (bulk accept). */
-  setSourceOverridesAutomatic(pairs: readonly PriceChangeConnectionPair[]): Promise<void>;
-}
-
-export const PRICE_SYNC_MODE_OVERRIDE_SERVICE_TOKEN = Symbol('IPriceSyncModeOverrideService');
 
 @Injectable()
 export class PriceSyncModeOverrideService implements IPriceSyncModeOverrideService {
@@ -109,9 +98,14 @@ export class PriceSyncModeOverrideService implements IPriceSyncModeOverrideServi
     }
   }
 
-  async setSourceOverridesAutomatic(pairs: readonly PriceChangeConnectionPair[]): Promise<void> {
+  async setSourceOverridesAutomatic(
+    pairs: readonly PriceChangeConnectionPair[]
+  ): Promise<readonly PriceSyncModeOverrideOutcome[]> {
+    const outcomes: PriceSyncModeOverrideOutcome[] = [];
     for (const pair of pairs) {
-      await this.setSourceOverrideAutomatic(pair);
+      const applied = await this.setSourceOverrideAutomatic(pair);
+      outcomes.push({ ...pair, applied });
     }
+    return outcomes;
   }
 }

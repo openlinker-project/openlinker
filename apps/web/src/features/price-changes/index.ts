@@ -39,6 +39,7 @@ export type {
   PriceChangeListResponse,
   ListPriceChangesFilters,
   PriceChangeAutoAppliedItem,
+  PriceChangeRuleSummary,
   PriceSyncMode,
   PricingRuleType,
   PriceRoundingMode,

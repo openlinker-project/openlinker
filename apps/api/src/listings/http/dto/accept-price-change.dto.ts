@@ -3,8 +3,8 @@
  *
  * @module apps/api/src/listings/http/dto
  */
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class AcceptPriceChangeDto {
   @ApiPropertyOptional({
@@ -15,11 +15,20 @@ export class AcceptPriceChangeDto {
   @IsBoolean()
   optInAutomatic?: boolean;
 
-  @ApiPropertyOptional({
+  /**
+   * REQUIRED (#3162 re-review, BLOCKING): `accept` publishes
+   * `episode.computedNewAmount`, a value that MOVES on re-detection —
+   * omitting the staleness guard would let a caller (a stale FE bundle,
+   * curl, MCP) publish a price the operator never actually saw. #2610's
+   * rule is that the refusal must be server-side, never only in a browser
+   * form; this is that refusal, enforced by `class-validator` before the
+   * request ever reaches `IPriceChangesService`.
+   */
+  @ApiProperty({
     description:
-      'The episode version last seen by the caller — the staleness guard. Omitted means "accept whatever the server currently has" (used by the automatic-opt-in re-fetch flow); a mismatch is rejected with 409.',
+      "The episode version last seen by the caller — the staleness guard. Required: `accept` publishes a value (`computedNewAmount`) that can move out from under the caller between read and write, so this cannot be optional the way `EditPriceChangeDto`'s is. A mismatch is rejected with 409.",
   })
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
-  expectedVersion?: string;
+  expectedVersion!: string;
 }

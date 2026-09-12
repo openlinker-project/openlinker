@@ -21,7 +21,11 @@ export class PriceChangeItemResponseDto {
 
   @ApiProperty() sourceConnectionId!: string;
   @ApiProperty() sourceLabel!: string;
-  @ApiProperty() sourceOldAmount!: number;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "`null` when this episode has no recorded prior source price (mirrors `computedOldAmount`).",
+  })
+  sourceOldAmount!: number | null;
   @ApiProperty() sourceNewAmount!: number;
   @ApiProperty() sourceCurrency!: string;
 
