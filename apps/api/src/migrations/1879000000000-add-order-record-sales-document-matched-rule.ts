@@ -37,10 +37,10 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddOrderRecordSalesDocumentMatchedRule1878000000000
+export class AddOrderRecordSalesDocumentMatchedRule1879000000000
   implements MigrationInterface
 {
-  name = 'AddOrderRecordSalesDocumentMatchedRule1878000000000';
+  name = 'AddOrderRecordSalesDocumentMatchedRule1879000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
