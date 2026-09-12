@@ -68,7 +68,10 @@ import { MissingTaxRateException } from '../../domain/exceptions/missing-tax-rat
 import { CapabilityNotSupportedException } from '@openlinker/core/integrations';
 // Published so an adapter spec can pin its own pre-call refusal message against
 // the very markers this service matches on (#2103 review) — see the constant's doc.
-import { CURRENCY_REJECTION_MARKERS } from '../../domain/types/invoicing.types';
+import {
+  CURRENCY_REJECTION_MARKERS,
+  SALE_CLASSIFICATION_REJECTION_MARKERS,
+} from '../../domain/types/invoicing.types';
 import type {
   CorrectionLine,
   GetInvoiceByOrderQuery,
@@ -947,8 +950,10 @@ export class InvoiceService implements IInvoiceService {
    * throwable's `reason`/message — never value-importing an adapter error class.
    *
    *   - `rejected` (TERMINAL): a tax-identifier rejection → `buyer-tax-id-invalid`;
-   *     a settlement-currency rejection → `invalid-currency` (both operator-
-   *     fixable on the source order); anything else → `provider-rejected`.
+   *     a settlement-currency rejection → `invalid-currency`; a missing
+   *     sale-classification rejection → `sale-classification-required` (all
+   *     three operator-fixable on the source order / connection config);
+   *     anything else → `provider-rejected`.
    *   - `in-doubt` (transient/indeterminate transport): `transport-timeout`.
    *
    * Tax id is checked first purely for determinism — a message naming both is
@@ -982,6 +987,9 @@ export class InvoiceService implements IInvoiceService {
     if (CURRENCY_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
       return 'invalid-currency';
     }
+    if (SALE_CLASSIFICATION_REJECTION_MARKERS.some((marker) => haystack.includes(marker))) {
+      return 'sale-classification-required';
+    }
     return 'provider-rejected';
   }
 
@@ -1001,6 +1009,11 @@ export class InvoiceService implements IInvoiceService {
       // route here, which is why it names the condition rather than the actor.
       'invalid-currency':
         'The settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the order and re-issue.',
+      // Names the connection config field an operator can actually set — the
+      // generic 'provider-rejected' copy gives no clue this is a one-field
+      // config gap rather than a per-order problem (#3031).
+      'sale-classification-required':
+        "This connection requires a sale classification (goods vs. services) to be configured before it can issue invoices. Set the connection's `defaultSaleType` and re-issue.",
       'provider-rejected': 'The invoicing provider rejected the request.',
       'transport-timeout':
         'The invoicing request timed out; the document may or may not have been created.',
