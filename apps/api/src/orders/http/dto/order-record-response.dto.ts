@@ -14,6 +14,7 @@ import {
   FulfillmentRollupStateValues,
 } from '@openlinker/core/orders';
 import { OrderRecordStatus, SlaState, FulfillmentRollupState } from '@openlinker/core/orders';
+import type { BuyerTaxId } from '@openlinker/core/orders';
 import {
   OrderLifecyclePhaseValues,
   HoldReasonValues,
@@ -93,6 +94,23 @@ export class OrderRecordResponseDto {
       'recordStatus = "awaiting_mapping" | "source_deleted". null for a "ready" record.',
   })
   mappingFailureReason!: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Buyer tax id as the source asserted it (#2599/#3180) - THREE states, not two, ' +
+      'because "the buyer has none" and "the source said nothing" decide different ' +
+      'fiscal documents. The key is ABSENT when the source asserted nothing (this is ' +
+      'also what a deployment running with `OL_STORE_PII=false` always reads, since ' +
+      'nothing is persisted there - it is byte-identical to an ordinary unasserted ' +
+      'value, never a false "asserted none"); `null` when the source positively ' +
+      'asserted the buyer has no tax id; a non-empty string, verbatim and unformatted, ' +
+      'when one was reported. Read server-side through `decodeBuyerTaxIdColumn`, never ' +
+      'a bare `IS NOT NULL` - that misreads the asserted-none row as present. Never ' +
+      'validated or normalised: core is country-agnostic and does not judge tax-id ' +
+      'formats or add a country prefix.',
+  })
+  buyerTaxId?: BuyerTaxId;
 
   @ApiPropertyOptional({
     enum: SalesDocumentGateBlockReasonValues,

@@ -83,6 +83,17 @@ describe('OrdersController', () => {
     new Date('2026-04-01T12:00:00Z')
   );
 
+  /**
+   * `OrderRecord`'s constructor is a long positional list; overriding one
+   * trailing field (like `buyerTaxId`, #3180) by re-listing every argument
+   * before it is exactly the fragility this helper avoids. `Object.create` on
+   * the real prototype keeps `buyerTaxIdState` (and every other getter) intact
+   * on the result — the `sales-document-view.service.spec.ts` precedent.
+   */
+  function orderRecordWith(overrides: Partial<OrderRecord>): OrderRecord {
+    return Object.assign(Object.create(OrderRecord.prototype) as OrderRecord, mockOrder, overrides);
+  }
+
   beforeEach(async () => {
     const mockRepository: jest.Mocked<OrderRecordRepositoryPort> = {
       findById: jest.fn(),
@@ -1508,6 +1519,40 @@ describe('OrdersController', () => {
         controller.countOrders({ cancelled: false, phase: 'cancelled' })
       ).rejects.toThrow(/contradicts/);
       expect(repository.countMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('buyer tax id on the DTO (#3180)', () => {
+    it('projects the id verbatim when the column carries a value', async () => {
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerTaxId: '5213796333' }));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.buyerTaxId).toBe('5213796333');
+    });
+
+    it('projects null (asserted-none) as null, never as the present state', async () => {
+      // The column's `''` sentinel decodes to the domain `null` via
+      // `buyerTaxIdState` — this constructs the RAW column as a real read
+      // from the repository would, rather than the already-decoded value,
+      // so the test actually exercises the decode step.
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerTaxId: '' }));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      expect(result.buyerTaxId).toBeNull();
+    });
+
+    it('reads unknown (undefined) when the column is NULL — never IS NOT NULL semantics', async () => {
+      repository.findById.mockResolvedValue(orderRecordWith({ buyerTaxId: null }));
+
+      const result = await controller.getOrder('ol_order_001');
+
+      // `undefined` here, and the key drops off the wire entirely once
+      // `JSON.stringify` runs over HTTP — the middle "asserted-none" state
+      // above is what a bare `IS NOT NULL` on the raw column would
+      // misidentify as this one.
+      expect(result.buyerTaxId).toBeUndefined();
     });
   });
 

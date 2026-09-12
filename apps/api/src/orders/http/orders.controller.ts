@@ -948,6 +948,11 @@ export class OrdersController {
       syncAttempts: order.syncAttempts.map((a) => this.toSyncAttemptDto(a)),
       recordStatus: order.recordStatus,
       mappingFailureReason: order.mappingFailureReason,
+      // #3180 - the entity getter is the only intended read of the raw column,
+      // decoding it through `decodeBuyerTaxIdColumn` so this DTO never has to
+      // remember that `''` means "asserted none" rather than absence. On the
+      // SHARED toDto, so the list and the detail response read it from one place.
+      buyerTaxId: order.buyerTaxIdState,
       salesDocumentBlockReason: order.salesDocumentBlockReason,
       salesDocumentUnresolvedReason: order.salesDocumentUnresolvedReason,
       salesDocumentBlockDetail: order.salesDocumentBlockDetail,
