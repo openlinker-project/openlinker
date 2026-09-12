@@ -177,6 +177,13 @@ export class PriceChangesService implements IPriceChangesService {
     return { items, hiddenStaleCount, total };
   }
 
+  /**
+   * The badge/tab counter — a bare passthrough. Unlike `listOpen`'s own
+   * `total`, this NEVER sets `includeRecentlyResolved` itself: it counts
+   * strictly-open episodes over whatever the caller asked for, so a badge
+   * never surfaces the recently-ignored row `listOpen`'s Undo affordance
+   * needs. See `price-changes.service.spec.ts`'s `countOpen` describe block.
+   */
   async countOpen(filters: PriceChangeEpisodeFilters): Promise<number> {
     return this.episodes.countOpen(filters);
   }

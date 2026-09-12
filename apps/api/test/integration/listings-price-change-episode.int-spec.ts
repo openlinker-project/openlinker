@@ -10,11 +10,12 @@
  * @module apps/api/test/integration
  */
 import type { IntegrationTestHarness } from './setup';
-import { getTestHarness, teardownTestHarness } from './setup';
+import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import {
   PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
   type PriceChangeEpisodeRepositoryPort,
 } from '@openlinker/core/listings';
+import { PRICE_CHANGE_DERIVED_FILTER_FIXTURES } from '@openlinker/core/listings/testing';
 
 const DEST_CONNECTION_ID = '44444444-4444-4444-8444-444444444444';
 const SRC_CONNECTION_ID = '55555555-5555-4555-8555-555555555555';
@@ -34,7 +35,11 @@ describe('Price Change Episode Repository Integration', () => {
   });
 
   afterEach(async () => {
-    await harness.getDataSource().query('TRUNCATE TABLE "price_change_episodes"');
+    // #3161 round-2 review — `price_change_episodes` is in the shared
+    // `tablesToTruncate` list (setup.ts), so the per-spec inline TRUNCATE is
+    // redundant with — and can drift from — the mechanism every other spec
+    // in this suite relies on to stop a row leaking into an unrelated case.
+    await resetTestHarness();
   });
 
   afterAll(async () => {
@@ -616,6 +621,50 @@ describe('Price Change Episode Repository Integration', () => {
         magnitudeLargeOnly: true,
       })
     ).toHaveLength(1);
+  });
+
+  describe('direction()/isSteep() SQL twin — fixture table (#3162 re-review, IMPORTANT)', () => {
+    // The SAME `PRICE_CHANGE_DERIVED_FILTER_FIXTURES` table runs through
+    // `PriceChangeEpisode.direction()`/`.isSteep()` in
+    // `price-change-episode.entity.spec.ts`. Nothing previously held those TS
+    // methods to the SQL `direction`/`magnitudeLargeOnly` predicates in
+    // `applyDerivedFilters` across an edit to either side — a docblock
+    // claiming they matched "exactly" is not a mechanism. One row per
+    // fixture is inserted and read back through the exact repository methods
+    // the review queue uses, so a divergence between the TS derivation and
+    // its SQL twin fails HERE, against real Postgres, rather than merely in
+    // the entity's own unit spec.
+    it.each(PRICE_CHANGE_DERIVED_FILTER_FIXTURES.map((f, i) => [f.name, f, i] as const))(
+      'direction/magnitudeLargeOnly filters agree with direction()/isSteep() for: %s',
+      async (_name, fixture, index) => {
+        const variantId = `ol_variant_derived_filter_${index}`;
+        const { episode } = await repository.upsertOpen({
+          ...baseInput,
+          productVariantId: variantId,
+          sourceOldAmount: fixture.computedOldAmount,
+          sourceNewAmount: fixture.computedNewAmount,
+          computedOldAmount: fixture.computedOldAmount,
+          computedNewAmount: fixture.computedNewAmount,
+        });
+
+        for (const direction of ['up', 'down', 'unknown'] as const) {
+          const matches = await repository.findOpenForConnection(DEST_CONNECTION_ID, {
+            direction,
+          });
+          const included = matches.some((e) => e.id === episode.id);
+          expect(included).toBe(direction === fixture.expectedDirection);
+        }
+
+        const steepMatches = await repository.findOpenForConnection(DEST_CONNECTION_ID, {
+          magnitudeLargeOnly: true,
+        });
+        expect(steepMatches.some((e) => e.id === episode.id)).toBe(fixture.expectedSteep);
+
+        expect(await repository.countOpen({ destinationConnectionId: DEST_CONNECTION_ID })).toBe(
+          1
+        );
+      }
+    );
   });
 
   it('claimForResolution()/releaseClaim() serialise concurrent accept/edit/bulk-item calls (#3162 re-review, IMPORTANT)', async () => {

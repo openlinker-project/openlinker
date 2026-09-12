@@ -455,11 +455,13 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
     // unguarded read-here/write-there race against a CONCURRENT
     // `inventory.propagateToMarketplaces` quantity write-back for the SAME
     // ShopProduct target could land an older quantity last (the exact
-    // oversell ADR-067 exists to prevent). `ShopProductManagerPort` has no
-    // partial-update primitive that would let this write carry price WITHOUT
-    // also carrying stock (`ExecutePublishProductInput.stock` is required) —
-    // that remains a genuine port-level gap, tracked separately rather than
-    // invented around here.
+    // oversell ADR-067 exists to prevent). `publishToShopGuarded` below closes
+    // that race for real (lock + freshness-guarded refusal, #3161 second
+    // re-review) rather than merely logging it. `ShopProductManagerPort` has
+    // no partial-update primitive that would let this write carry price
+    // WITHOUT also carrying stock (`ExecutePublishProductInput.stock` is
+    // required) — that remains a genuine port-level gap, tracked separately
+    // rather than invented around here.
     //
     // What IS reachable without a port change: `InventorySyncService`'s shop
     // write-back branch keys its lock/cursor by the `ShopProduct` EXTERNAL
@@ -517,16 +519,26 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
           cursorKey
         );
         if (!isWritableQuantityObservation(observedAt, lastWritten)) {
-          // Reachable only under clock skew or an unparseable mark — this
-          // read happened INSIDE the lock, so under the ordinary case it is
-          // already at least as fresh as anything the guard could compare it
-          // against. Logged rather than acted on: refusing here would drop
-          // the PRICE change too, and there is no partial-field write to
-          // fall back to.
-          this.logger.warn(
-            `[price-change-apply] stock observation for ShopProduct ${externalOfferId} on ` +
-              `connection=${input.destinationConnectionId} is not newer than the last mark ` +
-              `(observed=${observedAt} lastWritten=${lastWritten ?? 'none'}); publishing anyway`
+          // #3161 second re-review, IMPORTANT — publishing here would be
+          // exactly the failure ADR-067 (#2617) exists to prevent: an older
+          // quantity landing last and staying live on the channel until the
+          // next master-side change (an oversell whenever the older number
+          // is the higher one). ADR-067's own framing is that the guard
+          // "must not be a way to leave a listing permanently stale", and the
+          // mark advances only after a successful write precisely so a
+          // refusal always means a newer quantity is already live — writing
+          // past a false predicate inverts that guarantee. Refusing costs
+          // only a deferred retry, never a lost price change: this is
+          // exactly what `ContendedWriteError` + the penalty-free deferral
+          // budget (#2613/#2617) exist for, and the runner requeues without
+          // spending a retry attempt. `executeShopPublish` is deliberately
+          // never reached on this branch.
+          throw new ContendedWriteError(
+            `Stock observation for ShopProduct ${externalOfferId} on connection=` +
+              `${input.destinationConnectionId} is not newer than the last written mark ` +
+              `(observed=${observedAt} lastWritten=${lastWritten ?? 'none'}) — refusing to ` +
+              `publish a stale quantity alongside the price change; deferring instead`,
+            cursorKey
           );
         }
       }
