@@ -1176,6 +1176,31 @@ describe('InvoiceService', () => {
       await expect(service.issueInvoice(makeCmd())).resolves.toBeDefined();
       expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
     });
+
+    // #3184, ADR-072 decision 3: a connection may hold BOTH the invoicing and
+    // fiscalization roles, so a fiscalization connection id can be the exact
+    // same value as the invoicing connection id being asked to issue. The
+    // cross-kind check must refuse regardless — it must NOT read "same
+    // connection id" as "this is my own retry/replay state" the way the
+    // SAME-kind check does. This pins that the guard is connection-BLIND
+    // (never merely "different connection"), so a single dual-role
+    // connection can never produce both an invoice and a fiscal receipt for
+    // one order.
+    it('should refuse to issue when the blocking fiscal receipt is on the SAME (dual-role) connection', async () => {
+      stubFiscalRegistrationService([
+        fiscalRecord({ id: 'fiscal-on-dual-role-conn', connectionId: CONNECTION }),
+      ]);
+
+      const error = await service.issueInvoice(makeCmd()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(OrderAlreadyHasFiscalReceiptException);
+      const typed = error as OrderAlreadyHasFiscalReceiptException;
+      expect(typed.registeringConnectionId).toBe(CONNECTION);
+      expect(typed.requestedConnectionId).toBe(CONNECTION);
+      expect(typed.blockingRecordId).toBe('fiscal-on-dual-role-conn');
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
   });
 
   // #2047: the panel renders only the LATEST record, so it needs a way to say

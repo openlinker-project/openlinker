@@ -452,10 +452,16 @@ export class InvoiceService implements IInvoiceService {
    * SAME-kind check — the per-connection lifecycle (idempotency read-gate +
    * `resumeExisting` + the CAS claim) already owns retry/replay semantics
    * there, and re-checking them here would break the idempotent replay of an
-   * already-`issued` row. The CROSS-kind check has no such exemption: an
-   * invoicing connection id can never collide with a fiscalization connection
-   * id's own retry/replay state, so every blocking fiscal-receipt record
-   * refuses regardless of which connection is asking.
+   * already-`issued` row. The CROSS-kind check has NO such exemption, not even
+   * for the requested connection itself — deliberately so, and not merely
+   * because it never mattered: since ADR-072 decision 3 a single connection
+   * may hold BOTH the invoicing and fiscalization roles, so an invoicing
+   * connection id CAN be the identical value as a fiscalization connection
+   * id's. Exempting "the requested connection" here — the way the SAME-kind
+   * check does — would let exactly such a dual-role connection register both
+   * document kinds for one order, one from each role. So every blocking
+   * fiscal-receipt record refuses regardless of which connection is asking,
+   * including this one (#3184).
    *
    * A `failed` + `rejected` record elsewhere is NOT blocking: the provider
    * refused the document and created nothing, so moving the order to another
