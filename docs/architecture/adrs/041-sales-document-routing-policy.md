@@ -194,16 +194,17 @@ national specifics in the provider adapter, and a `NIP` rule in `libs/core` is p
 `sanitizeAddress` drops it from the snapshot and a `OL_STORE_PII=false` deployment stores no scalar either -
 which reads back as *not asserted*, i.e. the safe state rather than a false "has none".
 
-**Coverage is one source.** PrestaShop supplies it from `ps_address.vat_number`. Neither the Allegro nor the
-WooCommerce order source reads one (Allegro's checkout-form invoice block carries a company tax id that OL's
-own type does not model; WooCommerce's `billing` block has no tax field at all), so an order from either is
-*not asserted*, never *known to have none*. A rule keyed on `buyerHasTaxId === false` therefore still matches
-almost nothing in practice, for a data-coverage reason rather than a contract one.
+**Coverage was one source; #2822 widened it to all four.** PrestaShop supplies it from `ps_address.vat_number`;
+Allegro and Erli only from a buyer's VAT-invoice request at checkout; WooCommerce only when the store runs a
+VAT-number plugin writing an allowlisted `meta_data` key. Every path is conditional, so an order carrying no
+qualifying signal is still *not asserted*, never *known to have none* - no shipped adapter emits the asserted-none
+state at all. A rule keyed on `buyerHasTaxId === false` therefore still matches almost nothing in practice, for a
+data-coverage reason rather than a contract one.
 
 **`'missing-required-tax-id'` is still declared and never written**, and turning it on is a separate decision -
-it needs a gate that acts on the fact, and on this coverage a refusal keyed to it would block the two sources
-that simply do not report. That is a routing-policy choice to take deliberately, not a wiring step that fell
-out of #2599.
+it needs a gate that acts on the fact, and on this coverage a refusal keyed to it would block every order none
+of the four sources happened to report on. That is a routing-policy choice to take deliberately, not a wiring
+step that fell out of #2599.
 
 ## Alternatives considered
 
