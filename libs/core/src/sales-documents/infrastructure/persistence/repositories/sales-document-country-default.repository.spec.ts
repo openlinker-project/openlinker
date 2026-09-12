@@ -50,22 +50,22 @@ describe('SalesDocumentCountryDefaultRepository', () => {
 
   describe('upsert', () => {
     it('should upsert on the `country`-alone conflict path and re-read the row (#3177)', async () => {
-      ormRepository.findOneOrFail.mockResolvedValue(ormRow({ connectionId: 'conn-eparagony' }));
+      ormRepository.findOneOrFail.mockResolvedValue(ormRow({ connectionId: 'conn-1' }));
 
       const saved = await repository.upsert({
         country: 'PL',
         documentKind: 'invoice',
-        connectionId: 'conn-eparagony',
+        connectionId: 'conn-1',
       });
 
       expect(ormRepository.upsert).toHaveBeenCalledWith(
-        { country: 'PL', documentKind: 'invoice', connectionId: 'conn-eparagony' },
+        { country: 'PL', documentKind: 'invoice', connectionId: 'conn-1' },
         { conflictPaths: ['country'] },
       );
       expect(ormRepository.findOneOrFail).toHaveBeenCalledWith({
         where: { country: 'PL' },
       });
-      expect(saved.connectionId).toBe('conn-eparagony');
+      expect(saved.connectionId).toBe('conn-1');
     });
 
     it('should overwrite an existing default under a DIFFERENT documentKind rather than inserting a sibling row (#3177)', async () => {
@@ -73,17 +73,17 @@ describe('SalesDocumentCountryDefaultRepository', () => {
       // receipt default over an existing invoice default for the same
       // country replaces it — it must never collide/insert a second row.
       ormRepository.findOneOrFail.mockResolvedValue(
-        ormRow({ documentKind: 'fiscal-receipt', connectionId: 'conn-eparagony' }),
+        ormRow({ documentKind: 'fiscal-receipt', connectionId: 'conn-receipt-only' }),
       );
 
       const saved = await repository.upsert({
         country: 'PL',
         documentKind: 'fiscal-receipt',
-        connectionId: 'conn-eparagony',
+        connectionId: 'conn-receipt-only',
       });
 
       expect(ormRepository.upsert).toHaveBeenCalledWith(
-        { country: 'PL', documentKind: 'fiscal-receipt', connectionId: 'conn-eparagony' },
+        { country: 'PL', documentKind: 'fiscal-receipt', connectionId: 'conn-receipt-only' },
         { conflictPaths: ['country'] },
       );
       expect(saved.documentKind).toBe('fiscal-receipt');

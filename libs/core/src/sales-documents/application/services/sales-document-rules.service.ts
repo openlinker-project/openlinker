@@ -4,11 +4,12 @@
  * Owns the write-path conflict guard, threshold-ref validation, and the
  * read-side assembly that feeds the pure `evaluateSalesDocumentRules`. Injects
  * ONLY this concern's own four repository ports — no `IIntegrationsService`,
- * no connection lookup, no capability check. That check (a rule pointing
- * `Invoice → eparagony.pl` must be rejected because eparagony.pl carries no
- * `Invoicing` capability) is deliberately NOT done here: doing so would inject
- * a cross-context token into a concern this repo's architecture doc pins as a
- * zero-outbound-CORE-context-edge leaf. It is done at the API layer instead
+ * no connection lookup, no capability check. That check (a rule pointing an
+ * invoice-kind document at a connection must be rejected when that
+ * connection's adapter carries no `Invoicing` capability) is deliberately NOT
+ * done here: doing so would inject a cross-context token into a concern this
+ * repo's architecture doc pins as a zero-outbound-CORE-context-edge leaf. It
+ * is done at the API layer instead
  * (`apps/api/src/sales-documents/`), which already has `IIntegrationsService`
  * in scope and wraps this service's `createRule` / `upsertCountryDefault`.
  *

@@ -3,12 +3,15 @@
  *
  * The closed, cross-country condition vocabulary a `sales_document_rules` row
  * matches an order against. Every field is deliberately neutral —
- * `buyerHasTaxId`, not `buyerHasNip`; `orderCountry`, not `krajOdbiorcy` — so a
- * German rule reads the SAME `buyerHasTaxId` field a Polish rule does, rendered
- * in each operator's locale at the presentation layer only. Nothing here may
- * ever be a country-specific literal (grep-verified by the acceptance criteria
- * of #2170 — no `"NIP"` / `"KSeF"` / `"VAT"` string anywhere under this
- * concern).
+ * `buyerHasTaxId`, not a national tax-identifier name; `orderCountry`, not a
+ * locale-specific field name — so a rule authored for one country reads the
+ * SAME `buyerHasTaxId` field a rule authored for another country does,
+ * rendered in each operator's locale at the presentation layer only. Nothing
+ * here may ever be a country-specific literal — enforced by
+ * `libs/core/src/sales-documents/__tests__/neutral-vocabulary.spec.ts`, a
+ * build-failing sweep over this whole concern (the #3183 port of the
+ * fiscalization litmus, ADR-042 decision 4), not merely a documentation
+ * promise the way the old "grep-verified" wording implied.
  *
  * `computeSalesDocumentConditionsHash` imports `node:crypto` — a Node builtin,
  * not a framework and not a sibling `@openlinker/core/<ctx>` barrel, so it does

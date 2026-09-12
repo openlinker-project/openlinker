@@ -31,7 +31,7 @@ function rule(overrides: Partial<SalesDocumentRuleFact> = {}): SalesDocumentRule
     id: 'rule-1',
     conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: false }],
     documentKind: 'fiscal-receipt',
-    connectionId: 'conn-eparagony',
+    connectionId: 'conn-receipt-only',
     effectiveFrom: new Date('2020-01-01T00:00:00.000Z'),
     effectiveTo: null,
     ...overrides,
@@ -58,7 +58,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'route',
         documentKind: 'fiscal-receipt',
-        connectionId: 'conn-eparagony',
+        connectionId: 'conn-receipt-only',
       });
     });
 
@@ -132,7 +132,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       const input = baseInput({
         countryDefaults: [
           { documentKind: 'invoice', connectionId: 'conn-infakt' },
-          { documentKind: 'fiscal-receipt', connectionId: 'conn-eparagony' },
+          { documentKind: 'fiscal-receipt', connectionId: 'conn-receipt-only' },
         ],
       });
       expect(evaluateSalesDocumentRules(input)).toEqual({
@@ -239,7 +239,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'route',
         documentKind: 'fiscal-receipt',
-        connectionId: 'conn-eparagony',
+        connectionId: 'conn-receipt-only',
       });
     });
 
@@ -260,7 +260,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'route',
         documentKind: 'fiscal-receipt',
-        connectionId: 'conn-eparagony',
+        connectionId: 'conn-receipt-only',
       });
     });
 
@@ -279,7 +279,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'route',
         documentKind: 'fiscal-receipt',
-        connectionId: 'conn-eparagony',
+        connectionId: 'conn-receipt-only',
       });
     });
 
