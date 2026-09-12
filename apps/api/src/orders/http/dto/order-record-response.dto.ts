@@ -14,7 +14,7 @@ import {
   FulfillmentRollupStateValues,
 } from '@openlinker/core/orders';
 import { OrderRecordStatus, SlaState, FulfillmentRollupState } from '@openlinker/core/orders';
-import type { BuyerTaxId } from '@openlinker/core/orders';
+import { BuyerTaxId } from '@openlinker/core/orders';
 import {
   OrderLifecyclePhaseValues,
   HoldReasonValues,
