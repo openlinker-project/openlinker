@@ -95,11 +95,15 @@ jobs:
       # pre-merge (#1020). Forced refspec tolerates a stale ref on reused
       # self-hosted workspaces; main is never force-pushed.
       #
+      # check-adr-numbers.mjs (#2082) depends on this same ref too — it's the
+      # baseline for the cross-PR ADR-number-collision guard. Removing this
+      # step silently degrades BOTH invariants, not just the migration one.
+      #
       # Guarded on `git` being present: some self-hosted runners have no git
       # binary (actions/checkout then uses its tarball/API fallback), where a
       # bare `git fetch` would exit 127 and fail the job. When git is absent the
       # guard skips gracefully (it can't run without git anyway — see #662/#557).
-      - name: Fetch origin/main (baseline for migration-ordering invariant)
+      - name: Fetch origin/main (baseline for migration-ordering + ADR-number invariants)
         run: |
           if command -v git >/dev/null 2>&1; then
             git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
