@@ -132,3 +132,49 @@ describe('mergeStructuredIntoConfig — pricing rule (#2610)', () => {
     expect(result.pricingRule).toBeNull();
   });
 });
+
+describe('mergeStructuredIntoConfig — #3142 sourceOverrides preservation', () => {
+  it('re-nests the edited default underneath existing per-source overrides', () => {
+    const result = mergeStructuredIntoConfig(
+      {
+        pricingRule: {
+          default: { type: 'markup', percent: 10 },
+          sourceOverrides: { 'src-1': { type: 'margin', percent: 30 } },
+        },
+      },
+      { pricingRule: { type: 'markup', percent: '25', rounding: 'endingIn99' } },
+    );
+    expect(result.pricingRule).toEqual({
+      default: { type: 'markup', percent: 25, rounding: 'endingIn99' },
+      sourceOverrides: { 'src-1': { type: 'margin', percent: 30 } },
+    });
+  });
+
+  // PR #3158 review, BLOCKING: `existingSourceOverrides` used to test only
+  // `'default' in existingContainer`, so a headless `{ sourceOverrides }`
+  // container (no `default` key at all) resolved to `null` and the whole
+  // clause — written specifically to preserve per-source overrides — silently
+  // discarded every override on the very next unrelated save.
+  it('preserves overrides from a headless { sourceOverrides } container with no `default` key', () => {
+    const result = mergeStructuredIntoConfig(
+      {
+        pricingRule: {
+          sourceOverrides: { 'src-1': { type: 'margin', percent: 30 } },
+        },
+      },
+      { pricingRule: { type: 'markup', percent: '25', rounding: 'endingIn99' } },
+    );
+    expect(result.pricingRule).toEqual({
+      default: { type: 'markup', percent: 25, rounding: 'endingIn99' },
+      sourceOverrides: { 'src-1': { type: 'margin', percent: 30 } },
+    });
+  });
+
+  it('writes the flat legacy shape when there is nothing to preserve', () => {
+    const result = mergeStructuredIntoConfig(
+      { pricingRule: { type: 'markup', percent: 10 } },
+      { pricingRule: { type: 'markup', percent: '25' } },
+    );
+    expect(result.pricingRule).toEqual({ type: 'markup', percent: 25 });
+  });
+});

@@ -10,11 +10,12 @@
  * @module apps/api/test/integration
  */
 import type { IntegrationTestHarness } from './setup';
-import { getTestHarness, teardownTestHarness } from './setup';
+import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import {
   PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
   type PriceChangeEpisodeRepositoryPort,
 } from '@openlinker/core/listings';
+import { PRICE_CHANGE_DERIVED_FILTER_FIXTURES } from '@openlinker/core/listings/testing';
 
 const DEST_CONNECTION_ID = '44444444-4444-4444-8444-444444444444';
 const SRC_CONNECTION_ID = '55555555-5555-4555-8555-555555555555';
@@ -34,7 +35,11 @@ describe('Price Change Episode Repository Integration', () => {
   });
 
   afterEach(async () => {
-    await harness.getDataSource().query('TRUNCATE TABLE "price_change_episodes"');
+    // #3161 round-2 review — `price_change_episodes` is in the shared
+    // `tablesToTruncate` list (setup.ts), so the per-spec inline TRUNCATE is
+    // redundant with — and can drift from — the mechanism every other spec
+    // in this suite relies on to stop a row leaking into an unrelated case.
+    await resetTestHarness();
   });
 
   afterAll(async () => {
@@ -351,6 +356,50 @@ describe('Price Change Episode Repository Integration', () => {
       await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'down' })
     ).toEqual([]);
     expect(await repository.findOpenForConnection(DEST_CONNECTION_ID)).toHaveLength(1);
+
+    // The `direction: 'unknown'` filter (#3159 review, stack note) DOES match
+    // it — the three-valued behaviour is now a three-valued type.
+    expect(
+      await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'unknown' })
+    ).toHaveLength(1);
+  });
+
+  it('round-trips a null sourceOldAmount (no prior source price at all) instead of fabricating old = new (#3159 review, BLOCKING)', async () => {
+    const { episode } = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: null,
+      sourceNewAmount: 430.5,
+      computedOldAmount: null,
+      computedNewAmount: 430.5,
+    });
+
+    expect(episode.sourceOldAmount).toBeNull();
+
+    const read = await repository.findById(episode.id);
+    expect(read?.sourceOldAmount).toBeNull();
+  });
+
+  it('classifies a real zero baseline as an increase, not "down" (#3159 review)', async () => {
+    // A previously-free product (`computedOldAmount: 0`) that now carries a
+    // price. `deltaPct()` returns `0` here to avoid a `NaN`/`Infinity`
+    // percentage, but the DIRECTION must still read as an increase.
+    const { episode } = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 0,
+      sourceNewAmount: 100,
+      computedOldAmount: 0,
+      computedNewAmount: 100,
+    });
+
+    expect(episode.direction()).toBe('up');
+    expect(episode.deltaPct()).toBe(0);
+
+    expect(
+      await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'up' })
+    ).toHaveLength(1);
+    expect(
+      await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'down' })
+    ).toEqual([]);
   });
 
   it('findByIds() batches lookups and omits ids with no matching row (#3162 review)', async () => {
@@ -433,14 +482,23 @@ describe('Price Change Episode Repository Integration', () => {
     expect(withRecent[0].id).toBe(episode.id);
     expect(withRecent[0].resolution).toBe('ignored');
 
-    // countOpen must stay strictly "open" — a badge counter must never
-    // include a resolved row.
+    // A PLAIN badge counter (no `includeRecentlyResolved`) must stay
+    // strictly "open" — it never includes a resolved row.
+    expect(await repository.countOpen({ destinationConnectionId: DEST_CONNECTION_ID })).toBe(0);
+
+    // With `includeRecentlyResolved` — the SAME flag the list read passes
+    // when computing its `total` — `countOpen` counts over the IDENTICAL
+    // predicate `findOpenForConnection` paged from (#3162 re-review,
+    // IMPORTANT: "`total`, `items` and `hiddenStaleCount` describe three
+    // different sets" — a page rendering this row must be matched by a
+    // total that counts it, or a caller reading "N of M" sees a page with
+    // more visible rows than the M it was told to expect).
     expect(
       await repository.countOpen({
         destinationConnectionId: DEST_CONNECTION_ID,
         includeRecentlyResolved: true,
       })
-    ).toBe(0);
+    ).toBe(1);
   });
 
   it('acknowledgeRefresh() clears refreshedAt on an OPEN episode and no-ops on a resolved one (#3162 review)', async () => {
@@ -474,5 +532,171 @@ describe('Price Change Episode Repository Integration', () => {
     expect(onResolved).toBeNull();
 
     expect(await repository.acknowledgeRefresh('no-such-id')).toBeNull();
+  });
+
+  it('direction/magnitudeLargeOnly are real SQL predicates — the page and the total agree, and a limited page never under-fills (#3162 re-review, BLOCKING)', async () => {
+    // Two 'up' episodes and one 'down' episode for the SAME destination.
+    await repository.upsertOpen({
+      ...baseInput,
+      productVariantId: 'ol_variant_price_change_up_1',
+      detectedAt: new Date('2026-09-10T10:00:00.000Z'),
+      sourceOldAmount: 100,
+      sourceNewAmount: 130,
+      computedOldAmount: 100,
+      computedNewAmount: 130, // +30% — steep AND up
+    });
+    await repository.upsertOpen({
+      ...baseInput,
+      productVariantId: 'ol_variant_price_change_up_2',
+      detectedAt: new Date('2026-09-10T11:00:00.000Z'),
+      sourceOldAmount: 100,
+      sourceNewAmount: 101,
+      computedOldAmount: 100,
+      computedNewAmount: 101, // +1% — up, NOT steep
+    });
+    await repository.upsertOpen({
+      ...baseInput,
+      productVariantId: 'ol_variant_price_change_down_1',
+      detectedAt: new Date('2026-09-10T12:00:00.000Z'),
+      sourceOldAmount: 100,
+      sourceNewAmount: 80,
+      computedOldAmount: 100,
+      computedNewAmount: 80, // -20% — down
+    });
+
+    // A LIMITED page filtered to 'up' must return BOTH 'up' rows despite a
+    // page size of 1 — i.e. `offset` walks the FILTERED set, not the whole
+    // unfiltered one. Before the fix this queried the 3 newest rows first
+    // (LIMIT 1 OFFSET 0 over the unfiltered set), which is the 'down' row —
+    // an application-code post-filter would have returned ZERO 'up' rows on
+    // this exact page.
+    const upPage1 = await repository.findOpenForConnection(DEST_CONNECTION_ID, {
+      direction: 'up',
+      limit: 1,
+      offset: 0,
+    });
+    expect(upPage1).toHaveLength(1);
+    const upPage2 = await repository.findOpenForConnection(DEST_CONNECTION_ID, {
+      direction: 'up',
+      limit: 1,
+      offset: 1,
+    });
+    expect(upPage2).toHaveLength(1);
+    expect(upPage2[0].id).not.toBe(upPage1[0].id);
+    const upPage3 = await repository.findOpenForConnection(DEST_CONNECTION_ID, {
+      direction: 'up',
+      limit: 1,
+      offset: 2,
+    });
+    expect(upPage3).toHaveLength(0); // exactly 2 'up' rows exist
+
+    // The total must match the page's real filtered population, not be
+    // capped at the page's own `limit` (the exact defect this fix closes).
+    expect(
+      await repository.countOpen({ destinationConnectionId: DEST_CONNECTION_ID, direction: 'up' })
+    ).toBe(2);
+    expect(
+      await repository.countOpen({
+        destinationConnectionId: DEST_CONNECTION_ID,
+        direction: 'down',
+      })
+    ).toBe(1);
+
+    // magnitudeLargeOnly: the +30% AND -20% rows are both `|deltaPct| >= 10`.
+    const steep = await repository.findOpenForConnection(DEST_CONNECTION_ID, {
+      magnitudeLargeOnly: true,
+    });
+    expect(steep).toHaveLength(2);
+    expect(
+      await repository.countOpen({
+        destinationConnectionId: DEST_CONNECTION_ID,
+        magnitudeLargeOnly: true,
+      })
+    ).toBe(2);
+
+    // Combined: 'up' AND steep — only the +30% row.
+    expect(
+      await repository.findOpenForConnection(DEST_CONNECTION_ID, {
+        direction: 'up',
+        magnitudeLargeOnly: true,
+      })
+    ).toHaveLength(1);
+  });
+
+  describe('direction()/isSteep() SQL twin — fixture table (#3162 re-review, IMPORTANT)', () => {
+    // The SAME `PRICE_CHANGE_DERIVED_FILTER_FIXTURES` table runs through
+    // `PriceChangeEpisode.direction()`/`.isSteep()` in
+    // `price-change-episode.entity.spec.ts`. Nothing previously held those TS
+    // methods to the SQL `direction`/`magnitudeLargeOnly` predicates in
+    // `applyDerivedFilters` across an edit to either side — a docblock
+    // claiming they matched "exactly" is not a mechanism. One row per
+    // fixture is inserted and read back through the exact repository methods
+    // the review queue uses, so a divergence between the TS derivation and
+    // its SQL twin fails HERE, against real Postgres, rather than merely in
+    // the entity's own unit spec.
+    it.each(PRICE_CHANGE_DERIVED_FILTER_FIXTURES.map((f, i) => [f.name, f, i] as const))(
+      'direction/magnitudeLargeOnly filters agree with direction()/isSteep() for: %s',
+      async (_name, fixture, index) => {
+        const variantId = `ol_variant_derived_filter_${index}`;
+        const { episode } = await repository.upsertOpen({
+          ...baseInput,
+          productVariantId: variantId,
+          sourceOldAmount: fixture.computedOldAmount,
+          sourceNewAmount: fixture.computedNewAmount,
+          computedOldAmount: fixture.computedOldAmount,
+          computedNewAmount: fixture.computedNewAmount,
+        });
+
+        for (const direction of ['up', 'down', 'unknown'] as const) {
+          const matches = await repository.findOpenForConnection(DEST_CONNECTION_ID, {
+            direction,
+          });
+          const included = matches.some((e) => e.id === episode.id);
+          expect(included).toBe(direction === fixture.expectedDirection);
+        }
+
+        const steepMatches = await repository.findOpenForConnection(DEST_CONNECTION_ID, {
+          magnitudeLargeOnly: true,
+        });
+        expect(steepMatches.some((e) => e.id === episode.id)).toBe(fixture.expectedSteep);
+
+        expect(await repository.countOpen({ destinationConnectionId: DEST_CONNECTION_ID })).toBe(
+          1
+        );
+      }
+    );
+  });
+
+  it('claimForResolution()/releaseClaim() serialise concurrent accept/edit/bulk-item calls (#3162 re-review, IMPORTANT)', async () => {
+    const { episode } = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      computedOldAmount: 427,
+      computedNewAmount: 399,
+    });
+
+    const firstClaimAt = new Date();
+    expect(await repository.claimForResolution(episode.id, firstClaimAt)).toBe('claimed');
+
+    // A second caller sees 'in-flight', never silently re-claiming.
+    expect(await repository.claimForResolution(episode.id, new Date())).toBe('in-flight');
+
+    // Releasing frees it for a fresh claim.
+    await repository.releaseClaim(episode.id);
+    const secondClaimAt = new Date();
+    expect(await repository.claimForResolution(episode.id, secondClaimAt)).toBe('claimed');
+
+    // Resolving makes the claim moot — a claim attempt against a resolved
+    // episode reports 'resolved', never 'claimed' or 'in-flight'.
+    await repository.resolve(episode.id, 'accepted', 'user-1', null, new Date());
+    expect(await repository.claimForResolution(episode.id, new Date())).toBe('resolved');
+
+    // An unknown id is reported distinctly.
+    expect(await repository.claimForResolution('no-such-id', new Date())).toBe('not-found');
+
+    // releaseClaim is idempotent and never throws on an unclaimed/resolved row.
+    await expect(repository.releaseClaim(episode.id)).resolves.toBeUndefined();
+    await expect(repository.releaseClaim('no-such-id')).resolves.toBeUndefined();
   });
 });

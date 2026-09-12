@@ -8,17 +8,40 @@
  * ORM query builder.
  *
  * Direction/magnitude filtering (`PriceChangeEpisodeFilters.direction` /
- * `.magnitudeLargeOnly`) is applied in application code after the read,
- * because `deltaPct` is a DERIVED value (computed from `computedOldAmount` /
- * `computedNewAmount`, not a stored column). This IS one of the shapes
+ * `.magnitudeLargeOnly`) is a real SQL `WHERE` predicate (#3162 re-review,
+ * BLOCKING), reproducing `PriceChangeEpisode.direction()` / `.isSteep()` as
+ * SQL expressions over the two stored amount columns. An EARLIER revision
+ * took the SQL page first and applied these two as an application-code
+ * post-filter over the already-paged rows — which silently walked `offset`
+ * over UNFILTERED space (so paging a filtered queue skipped/repeated rows
+ * arbitrarily) and capped `countOpen`'s fallback (`findOpen(filters).length`)
+ * at the page size, so `total` could never exceed `limit` while a direction
+ * filter was active. The docblock justified this as "non-sargable" — which
+ * means "cannot use an index", not "inexpressible in SQL": `deltaPct` is
+ * plain arithmetic over two stored, indexed-adjacent columns
+ * (`computedNewAmount`, `computedOldAmount`), so both predicates belong in
+ * the `WHERE` clause, correctly-if-slowly, per
  * `docs/engineering-standards.md § When A Paginated Total Is Expensive`
- * warns about — an unbounded per-install read (`findOpenAll`) that cannot
- * push a predicate into the index — and it is not yet bounded: pagination on
- * `findOpenForConnection` / `findOpenAll` is deferred to the #3162 HTTP
- * surface, which is where the limit/offset (or cursor) parameters belong once
- * an operator-facing page size is chosen. `countOpen` / `countOpenBySource`
- * are real SQL aggregates specifically so the badge/tab counters do not pay
- * that unbounded read's cost in the meantime.
+ * ("correctness first, then an index or the `withTotal` opt-out"). See
+ * `applyDerivedFilters` below.
+ *
+ * `applyDerivedFilters` re-derives `direction()`/`isSteep()` as SQL, and a
+ * docblock claiming the two "match exactly" is not a mechanism that keeps
+ * them matching across an edit to either side (#3162 re-review, IMPORTANT —
+ * "the SQL twin of `direction()`/`isSteep()` has no mechanism holding it to
+ * its TypeScript original"). `PRICE_CHANGE_DERIVED_FILTER_FIXTURES`
+ * (`@openlinker/core/listings/testing`, the `RETURN_STAGE_FIXTURES`
+ * precedent) is the shared table both sides run: the core unit spec
+ * (`price-change-episode.entity.spec.ts`) runs it through the TS methods,
+ * and `listings-price-change-episode.int-spec.ts` inserts one episode per
+ * row and reads it back through this repository's own `direction`/
+ * `magnitudeLargeOnly` filters. A TS function over two numbers and a SQL
+ * `WHERE` over two columns admit no textual equality, so a mirror-structure
+ * script cannot prove the two AGREE — only running the same inputs through
+ * both and comparing the outputs can, which is what the fixture table is for.
+ *
+ * `countOpen` is consequently a real SQL `COUNT` for every filter
+ * combination, with no page-length fallback of any kind.
  *
  * Every domain error thrown here follows `docs/engineering-standards.md §
  * Error Handling`: a raw `QueryFailedError` never crosses this port.
@@ -39,6 +62,7 @@ import { PriceChangeEpisodePersistenceError } from '../../../domain/exceptions/p
 import { PriceChangeEpisodeSupersededError } from '../../../domain/exceptions/price-change-episode-superseded.error';
 import type { PriceChangeEpisodeRepositoryPort } from '../../../domain/ports/price-change-episode-repository.port';
 import type {
+  PriceChangeEpisodeClaimOutcome,
   PriceChangeEpisodeFilters,
   PriceChangeResolution,
   UpsertOpenPriceChangeEpisodeInput,
@@ -196,7 +220,15 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
     filters?: PriceChangeEpisodeFilters
   ): SelectQueryBuilder<PriceChangeEpisodeOrmEntity> {
     const qb = this.episodes.createQueryBuilder('e').where('e.resolvedAt IS NULL');
+    this.applyConnectionFilters(qb, filters);
+    this.applyDerivedFilters(qb, filters);
+    return qb;
+  }
 
+  private applyConnectionFilters(
+    qb: SelectQueryBuilder<PriceChangeEpisodeOrmEntity>,
+    filters?: PriceChangeEpisodeFilters
+  ): void {
     if (filters?.destinationConnectionId) {
       qb.andWhere('e.destinationConnectionId = :destinationConnectionId', {
         destinationConnectionId: filters.destinationConnectionId,
@@ -207,8 +239,57 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
         sourceConnectionId: filters.sourceConnectionId,
       });
     }
+  }
 
-    return qb;
+  /**
+   * `direction`/`magnitudeLargeOnly` as SQL, reproducing
+   * `PriceChangeEpisode.direction()`/`.isSteep()` (#3162 re-review, BLOCKING)
+   * so the SAME row set is what both the page and the count agree on —
+   * shared by `buildOpenQuery` (strictly-open: `countOpen`) and
+   * `buildListQuery` (the review-queue list read, `findOpen`).
+   *
+   * `direction()`: `'unknown'` when `computedOldAmount IS NULL` (no
+   * baseline), otherwise `'up'` when `computedNewAmount >= computedOldAmount`
+   * else `'down'` — never derived from `deltaPct() > 0`, which the entity's
+   * own docblock records as wrong for a `0 -> N` increase.
+   *
+   * `isSteep()`: `|deltaPct()| >= 10`, where `deltaPct()` is `null` (never
+   * steep) when there is no baseline, `0` (never steep) when the baseline is
+   * exactly zero, and otherwise `round(((new - old) / old) * 1000) / 10`.
+   *
+   * **Held to the entity methods by a shared fixture table, not by this
+   * comment** (#3162 re-review, IMPORTANT): `PRICE_CHANGE_DERIVED_FILTER_FIXTURES`
+   * (`@openlinker/core/listings/testing`) is run through both this predicate
+   * (`listings-price-change-episode.int-spec.ts`, against real Postgres) and
+   * `PriceChangeEpisode.direction()`/`.isSteep()`
+   * (`price-change-episode.entity.spec.ts`), including the three boundary
+   * cases a re-derivation is most likely to drift on: `computedOldAmount IS
+   * NULL`, a real `0` baseline, and `|deltaPct|` landing on exactly `10` from
+   * both sides. An edit to this predicate or to the entity methods that
+   * disagrees with the other now fails a test, rather than only a docblock's
+   * claim going stale.
+   */
+  private applyDerivedFilters(
+    qb: SelectQueryBuilder<PriceChangeEpisodeOrmEntity>,
+    filters?: PriceChangeEpisodeFilters
+  ): void {
+    if (filters?.direction) {
+      qb.andWhere(
+        `CASE
+           WHEN e."computedOldAmount" IS NULL THEN 'unknown'
+           WHEN e."computedNewAmount" >= e."computedOldAmount" THEN 'up'
+           ELSE 'down'
+         END = :direction`,
+        { direction: filters.direction }
+      );
+    }
+    if (filters?.magnitudeLargeOnly) {
+      qb.andWhere(
+        `e."computedOldAmount" IS NOT NULL
+         AND e."computedOldAmount" <> 0
+         AND ABS(ROUND(((e."computedNewAmount" - e."computedOldAmount") / e."computedOldAmount") * 1000) / 10) >= 10`
+      );
+    }
   }
 
   /**
@@ -237,16 +318,8 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
       qb.where('e.resolvedAt IS NULL');
     }
 
-    if (filters?.destinationConnectionId) {
-      qb.andWhere('e.destinationConnectionId = :destinationConnectionId', {
-        destinationConnectionId: filters.destinationConnectionId,
-      });
-    }
-    if (filters?.sourceConnectionId) {
-      qb.andWhere('e.sourceConnectionId = :sourceConnectionId', {
-        sourceConnectionId: filters.sourceConnectionId,
-      });
-    }
+    this.applyConnectionFilters(qb, filters);
+    this.applyDerivedFilters(qb, filters);
 
     return qb;
   }
@@ -258,34 +331,18 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
 
     // Bounded SQL page (#3162 review — this read previously hydrated the
     // WHOLE open set on every call, which is unbounded at catalogue scale).
-    // `direction`/`magnitudeLargeOnly` are non-sargable (derived from
-    // `deltaPct`, not a stored column) and stay APPLICATION-CODE post-filters
-    // over this page — a page may therefore legitimately come back with
-    // fewer than `limit` visible rows when either is active, the same
-    // approximation `countOpen` already accepts for these two filters.
+    // `direction`/`magnitudeLargeOnly` are now pushed into the SAME query via
+    // `applyDerivedFilters` (#3162 re-review, BLOCKING — see this file's
+    // header), so `limit`/`offset` walk the fully-filtered set and a page
+    // always returns up to `limit` MATCHING rows, never fewer because a
+    // post-filter thinned an already-paged batch.
     if (filters?.limit !== undefined) {
       qb.take(filters.limit);
       qb.skip(filters.offset ?? 0);
     }
 
     const rows = await qb.getMany();
-    let episodes = rows.map((row) => this.toDomain(row));
-
-    if (filters?.direction) {
-      // A `null` deltaPct (no baseline recorded yet — a brand-new mapping's
-      // first detection) is an UNKNOWN direction, matched by neither 'up'
-      // nor 'down' (#3159 review) — never defaulted to 'down' by treating
-      // `null > 0` as false.
-      episodes = episodes.filter((e) => {
-        const delta = e.deltaPct();
-        return delta !== null && (delta > 0 ? 'up' : 'down') === filters.direction;
-      });
-    }
-    if (filters?.magnitudeLargeOnly) {
-      episodes = episodes.filter((e) => e.isSteep());
-    }
-
-    return episodes;
+    return rows.map((row) => this.toDomain(row));
   }
 
   async resolve(
@@ -372,20 +429,75 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
   }
 
   async countOpen(filters?: PriceChangeEpisodeFilters): Promise<number> {
-    // `direction` / `magnitudeLargeOnly` are derived from `deltaPct`, which is
-    // computed in application code (not a stored column, not sargable) — see
-    // this file's header. Those two predicates fall back to a full read;
-    // every other (sargable) combination gets a real SQL `COUNT`, which is
-    // what the badge/tab counters this method backs actually need.
-    if (filters?.direction || filters?.magnitudeLargeOnly) {
-      const episodes = await this.findOpen(filters);
-      return episodes.length;
-    }
-
+    // A real SQL `COUNT` over every filter, `direction`/`magnitudeLargeOnly`
+    // included (#3162 re-review, BLOCKING) — both query builders push these
+    // into the `WHERE` clause via `applyDerivedFilters`, so this can no
+    // longer fall back to `findOpen(filters).length` (which silently capped
+    // the reported total at `filters.limit` whenever a direction filter was
+    // active — see this file's header).
+    //
+    // `includeRecentlyResolved` selects WHICH base predicate is counted
+    // (#3162 re-review, IMPORTANT — "`total`, `items` and `hiddenStaleCount`
+    // describe three different sets"): the review-queue list read
+    // (`PriceChangesService.listOpen`) always passes
+    // `includeRecentlyResolved: true` on its `total` call, so it must count
+    // over `buildListQuery` — the SAME predicate `findOpen` reads its page
+    // from — or `total` under-counts every recently-ignored row the page
+    // legitimately renders (the Undo affordance, #3162). Every OTHER caller
+    // (badge/tab counters via `PriceChangesService.countOpen`,
+    // `countOpenBySource`) never sets the flag and keeps the strictly-open
+    // count `buildOpenQuery` has always produced.
     try {
-      return await this.buildOpenQuery(filters).getCount();
+      const qb = filters?.includeRecentlyResolved
+        ? this.buildListQuery(filters)
+        : this.buildOpenQuery(filters);
+      return await qb.getCount();
     } catch (error) {
       throw new PriceChangeEpisodePersistenceError('countOpen', error);
+    }
+  }
+
+  async claimForResolution(
+    id: string,
+    claimedAt: Date
+  ): Promise<PriceChangeEpisodeClaimOutcome> {
+    try {
+      const rows = await this.raw<{ id: string }>(
+        `UPDATE "price_change_episodes"
+            SET "claimedAt" = $2, "updatedAt" = now()
+          WHERE "id" = $1
+            AND "resolvedAt" IS NULL
+            AND "claimedAt" IS NULL
+          RETURNING "id"`,
+        [id, claimedAt]
+      );
+      if (rows.length > 0) {
+        return 'claimed';
+      }
+
+      // Losing side of a race — cheap to re-read, since this only happens
+      // when a peer already holds (or resolved) the claim.
+      const row = await this.episodes.findOne({
+        where: { id },
+        select: ['id', 'resolvedAt', 'claimedAt'],
+      });
+      if (!row) return 'not-found';
+      if (row.resolvedAt !== null) return 'resolved';
+      return 'in-flight';
+    } catch (error) {
+      throw new PriceChangeEpisodePersistenceError('claimForResolution', error);
+    }
+  }
+
+  async releaseClaim(id: string): Promise<void> {
+    try {
+      // Idempotent and unconditional on the CURRENT `claimedAt` value — a
+      // no-op release (already `null`) is harmless, and `resolvedAt IS NULL`
+      // is enough to keep this from ever touching a resolved row (whose
+      // claim is moot regardless).
+      await this.episodes.update({ id, resolvedAt: IsNull() }, { claimedAt: null });
+    } catch (error) {
+      throw new PriceChangeEpisodePersistenceError('releaseClaim', error);
     }
   }
 
@@ -464,7 +576,7 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
       row.destinationConnectionId,
       row.sourceConnectionId,
       row.sourceCurrency,
-      Number(row.sourceOldAmount),
+      row.sourceOldAmount === null ? null : Number(row.sourceOldAmount),
       Number(row.sourceNewAmount),
       row.computedOldAmount === null ? null : Number(row.computedOldAmount),
       Number(row.computedNewAmount),
@@ -477,7 +589,8 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
       row.resolution,
       row.resolvedByUserId,
       new Date(row.createdAt),
-      new Date(row.updatedAt)
+      new Date(row.updatedAt),
+      row.claimedAt === null ? null : new Date(row.claimedAt)
     );
   }
 }
