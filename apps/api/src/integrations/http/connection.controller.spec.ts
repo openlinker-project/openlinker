@@ -29,6 +29,10 @@ import {
   DEMO_MODE_SERVICE_TOKEN,
   type IDemoModeService,
 } from '../../auth/demo-mode.service.interface';
+import { FISCAL_REGISTRATION_SERVICE_TOKEN, FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
+import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
+import { INVOICE_SERVICE_TOKEN, InvoiceRecord } from '@openlinker/core/invoicing';
+import type { IInvoiceService } from '@openlinker/core/invoicing';
 
 describe('ConnectionController', () => {
   let controller: ConnectionController;
@@ -39,6 +43,8 @@ describe('ConnectionController', () => {
   let webhookStatusService: { getStatus: jest.Mock };
   let rateLimitStatusService: { getStatus: jest.Mock };
   let integrationsService: { resolveAdapterMetadata: jest.Mock };
+  let fiscalRegistrations: jest.Mocked<IFiscalRegistrationService>;
+  let invoices: jest.Mocked<IInvoiceService>;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -72,6 +78,58 @@ describe('ConnectionController', () => {
       /* lastError    */ overrides.lastError ?? null,
       /* createdAt    */ overrides.createdAt ?? new Date('2025-01-01T10:00:00Z'),
       /* updatedAt    */ overrides.updatedAt ?? new Date('2025-01-01T10:01:00Z')
+    );
+
+  const makeFiscalRegistrationRecord = (
+    status: 'registered' | 'failed',
+    overrides: { registeredAt?: Date | null; updatedAt?: Date; failureReason?: string | null } = {}
+  ): FiscalRegistrationRecord =>
+    new FiscalRegistrationRecord(
+      /* id               */ 'fiscal-1',
+      /* connectionId     */ 'connection-123',
+      /* orderId          */ 'ol_order_1',
+      /* providerType     */ 'eparagony',
+      /* idempotencyKey   */ 'fiscal:connection-123:ol_order_1',
+      /* status           */ status,
+      /* providerReference*/ null,
+      /* documentReference*/ status === 'registered' ? '210' : null,
+      /* signingIdentity  */ null,
+      /* registeredAt     */ overrides.registeredAt ?? null,
+      /* regimeExtras     */ null,
+      /* artefacts        */ null,
+      /* failureMode      */ status === 'failed' ? 'rejected' : null,
+      /* failureReason    */ overrides.failureReason ?? null,
+      /* errorMessage     */ null,
+      /* leaseExpiresAt   */ null,
+      /* createdAt        */ overrides.updatedAt ?? new Date('2025-01-01T10:00:00Z'),
+      /* updatedAt        */ overrides.updatedAt ?? new Date('2025-01-01T10:00:00Z')
+    );
+
+  const makeInvoiceRecord = (
+    status: 'issued' | 'failed',
+    overrides: { issuedAt?: Date | null; updatedAt?: Date; failureReason?: string | null } = {}
+  ): InvoiceRecord =>
+    new InvoiceRecord(
+      /* id                    */ 'invoice-1',
+      /* connectionId          */ 'connection-123',
+      /* orderId               */ 'ol_order_1',
+      /* providerType          */ 'ksef',
+      /* documentType          */ 'invoice',
+      /* status                */ status,
+      /* providerInvoiceId     */ null,
+      /* providerInvoiceNumber */ null,
+      /* regulatoryStatus      */ 'not-applicable',
+      /* clearanceReference    */ null,
+      /* idempotencyKey        */ 'invoice-key-1',
+      /* pdfUrl                */ null,
+      /* issuedAt              */ overrides.issuedAt ?? null,
+      /* errorMessage          */ null,
+      /* createdAt             */ overrides.updatedAt ?? new Date('2025-01-01T10:00:00Z'),
+      /* updatedAt             */ overrides.updatedAt ?? new Date('2025-01-01T10:00:00Z'),
+      /* failureMode           */ status === 'failed' ? 'rejected' : null,
+      /* failureCode           */ null,
+      /* failureReason         */ overrides.failureReason ?? null,
+      /* leaseExpiresAt        */ null
     );
 
   beforeEach(async () => {
@@ -161,6 +219,18 @@ describe('ConnectionController', () => {
           provide: DEMO_MODE_SERVICE_TOKEN,
           useValue: { isDemoModeEnabled: jest.fn().mockReturnValue(false) },
         },
+        {
+          provide: FISCAL_REGISTRATION_SERVICE_TOKEN,
+          useValue: {
+            listRecentByConnectionId: jest.fn().mockResolvedValue([]),
+          } as unknown as jest.Mocked<IFiscalRegistrationService>,
+        },
+        {
+          provide: INVOICE_SERVICE_TOKEN,
+          useValue: {
+            listInvoices: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+          } as unknown as jest.Mocked<IInvoiceService>,
+        },
       ],
     }).compile();
 
@@ -172,6 +242,8 @@ describe('ConnectionController', () => {
     webhookStatusService = module.get(WEBHOOK_STATUS_SERVICE_TOKEN);
     rateLimitStatusService = module.get(RATE_LIMIT_STATUS_SERVICE_TOKEN);
     integrationsService = module.get(INTEGRATIONS_SERVICE_TOKEN);
+    fiscalRegistrations = module.get(FISCAL_REGISTRATION_SERVICE_TOKEN);
+    invoices = module.get(INVOICE_SERVICE_TOKEN);
   });
 
   describe('setWebhookSecret', () => {
@@ -573,6 +645,96 @@ describe('ConnectionController', () => {
       expect(result.lastSucceededAt).toBeNull();
       expect(result.lastFailedAt).toBeNull();
       expect(result.recentErrors).toHaveLength(0);
+    });
+
+    it('reports a fiscal registration as last-succeeded activity even with no sync jobs (#3179)', async () => {
+      service.get.mockResolvedValue(mockConnection);
+      syncJobRepository.findRecentByConnectionId.mockResolvedValue([]);
+      fiscalRegistrations.listRecentByConnectionId.mockResolvedValue([
+        makeFiscalRegistrationRecord('registered', {
+          registeredAt: new Date('2025-01-05T09:00:00Z'),
+          updatedAt: new Date('2025-01-05T09:00:01Z'),
+        }),
+      ]);
+
+      const result = await controller.getDiagnostics('connection-123');
+
+      expect(result.lastSucceededAt).toBe('2025-01-05T09:00:00.000Z');
+      expect(result.lastFailedAt).toBeNull();
+      expect(fiscalRegistrations.listRecentByConnectionId).toHaveBeenCalledWith(
+        'connection-123',
+        10
+      );
+    });
+
+    it('reports an invoice failure as last-failed activity, preferring the newer of two sources (#3179)', async () => {
+      service.get.mockResolvedValue(mockConnection);
+      syncJobRepository.findRecentByConnectionId.mockResolvedValue([
+        makeSyncJob({ status: 'succeeded', updatedAt: new Date('2025-01-01T10:01:00Z') }),
+      ]);
+      invoices.listInvoices.mockResolvedValue({
+        items: [
+          makeInvoiceRecord('failed', {
+            updatedAt: new Date('2025-01-06T12:00:00Z'),
+            failureReason: 'Buyer VAT id rejected by authority',
+          }),
+        ],
+        total: 1,
+      });
+
+      const result = await controller.getDiagnostics('connection-123');
+
+      expect(result.lastFailedAt).toBe('2025-01-06T12:00:00.000Z');
+      expect(result.recentErrors).toContain('Buyer VAT id rejected by authority');
+      expect(invoices.listInvoices).toHaveBeenCalledWith(
+        { connectionId: 'connection-123' },
+        { limit: 10, offset: 0 }
+      );
+    });
+
+    it('reports "Never" when the connection genuinely has no sync jobs, registrations or invoices', async () => {
+      service.get.mockResolvedValue(mockConnection);
+      syncJobRepository.findRecentByConnectionId.mockResolvedValue([]);
+      fiscalRegistrations.listRecentByConnectionId.mockResolvedValue([]);
+      invoices.listInvoices.mockResolvedValue({ items: [], total: 0 });
+
+      const result = await controller.getDiagnostics('connection-123');
+
+      expect(result.lastSucceededAt).toBeNull();
+      expect(result.lastFailedAt).toBeNull();
+      expect(result.unreadableSources).toEqual([]);
+    });
+
+    it('degrades one unreadable source rather than failing the whole read (#3179)', async () => {
+      service.get.mockResolvedValue(mockConnection);
+      syncJobRepository.findRecentByConnectionId.mockResolvedValue([
+        makeSyncJob({ status: 'succeeded', updatedAt: new Date('2025-01-01T10:01:00Z') }),
+      ]);
+      fiscalRegistrations.listRecentByConnectionId.mockRejectedValue(
+        new Error('fiscal_registration_records unreachable')
+      );
+      invoices.listInvoices.mockResolvedValue({ items: [], total: 0 });
+
+      const result = await controller.getDiagnostics('connection-123');
+
+      // The still-readable sources are reported normally...
+      expect(result.lastSucceededAt).toBe('2025-01-01T10:01:00.000Z');
+      // ...and the unreadable one is named, never silently folded in as "no
+      // fiscal activity" (a healthy-looking zero it did not actually confirm).
+      expect(result.unreadableSources).toEqual(['fiscalRegistrations']);
+    });
+
+    it('names every unreadable source when all three legs reject', async () => {
+      service.get.mockResolvedValue(mockConnection);
+      syncJobRepository.findRecentByConnectionId.mockRejectedValue(new Error('db down'));
+      fiscalRegistrations.listRecentByConnectionId.mockRejectedValue(new Error('db down'));
+      invoices.listInvoices.mockRejectedValue(new Error('db down'));
+
+      const result = await controller.getDiagnostics('connection-123');
+
+      expect(result.lastSucceededAt).toBeNull();
+      expect(result.lastFailedAt).toBeNull();
+      expect(result.unreadableSources).toEqual(['syncJobs', 'fiscalRegistrations', 'invoices']);
     });
   });
 

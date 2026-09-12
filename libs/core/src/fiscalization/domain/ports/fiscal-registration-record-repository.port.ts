@@ -51,6 +51,19 @@ export interface FiscalRegistrationRecordRepositoryPort {
   findAllByOrderIds(orderIds: readonly string[]): Promise<FiscalRegistrationRecord[]>;
 
   /**
+   * Recent records for ONE connection, newest-first (`createdAt` DESC, `id`
+   * DESC), capped at `limit` (#3179). Backs the connection health/diagnostics
+   * read: a document registration is real connection activity, and it must
+   * count even when the `sync_jobs` row that dispatched it has aged out of
+   * that read's own recency window, or predates job-based dispatch (#2525)
+   * entirely. Returns `[]` for a connection with no records.
+   */
+  findRecentByConnectionId(
+    connectionId: string,
+    limit: number,
+  ): Promise<FiscalRegistrationRecord[]>;
+
+  /**
    * Apply an outcome patch. Throws `FiscalRegistrationRecordNotFoundException`
    * when the id does not exist.
    */

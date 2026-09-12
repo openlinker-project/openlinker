@@ -116,6 +116,7 @@ describe('FiscalRegistrationService', () => {
       // the guard override it.
       findAllByOrderId: jest.fn().mockResolvedValue([]),
       findAllByOrderIds: jest.fn().mockResolvedValue([]),
+      findRecentByConnectionId: jest.fn().mockResolvedValue([]),
       updateOutcome: jest.fn(),
       claimForRegistration: jest.fn(),
     };
@@ -1438,6 +1439,16 @@ describe('FiscalRegistrationService', () => {
       await expect(service.getById('nope')).rejects.toThrow(
         FiscalRegistrationRecordNotFoundException,
       );
+    });
+
+    it('should return recent records for one connection, newest-first (#3179)', async () => {
+      const rows = [record('registered'), record('failed', { id: 'rec-2' })];
+      repo.findRecentByConnectionId.mockResolvedValue(rows);
+
+      await expect(
+        service.listRecentByConnectionId(CONNECTION_ID, 10),
+      ).resolves.toBe(rows);
+      expect(repo.findRecentByConnectionId).toHaveBeenCalledWith(CONNECTION_ID, 10);
     });
   });
 

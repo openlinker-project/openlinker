@@ -26,6 +26,12 @@ import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/
 // Safe for the same reason CoreListingsModule is: the core InventoryModule
 // imports the CORE IntegrationsModule, a different class from this one.
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
+// #3179 — ConnectionController's diagnostics read folds in the connection's
+// own document-registration activity (fiscal receipts / invoices) alongside
+// sync_jobs, so it needs FISCAL_REGISTRATION_SERVICE_TOKEN and
+// INVOICE_SERVICE_TOKEN. No cycle: neither core module imports this one.
+import { FiscalizationModule as CoreFiscalizationModule } from '@openlinker/core/fiscalization';
+import { InvoicingModule as CoreInvoicingModule } from '@openlinker/core/invoicing';
 import { WebhooksCoreModule } from '@openlinker/core/webhooks';
 import { RedisConfigModule } from '@openlinker/shared/redis';
 import { RateLimitModule } from '@openlinker/plugin-sdk';
@@ -54,6 +60,8 @@ import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
     CoreInventoryModule, // #2407 routing enablement guard reads the location count
     IdentifierMappingModule,
     SyncModule, // Required for cursor repository
+    CoreFiscalizationModule, // #3179 — FISCAL_REGISTRATION_SERVICE_TOKEN for connection diagnostics
+    CoreInvoicingModule, // #3179 — INVOICE_SERVICE_TOKEN for connection diagnostics
     WebhooksCoreModule, // Webhook-delivery repository for the webhook-status projection (#1770)
     RedisConfigModule, // Required for OAuth state storage
     // ConnectionService depends on HTTP_TRANSPORT_FACTORY_TOKEN directly
