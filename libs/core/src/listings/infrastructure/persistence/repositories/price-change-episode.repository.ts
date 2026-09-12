@@ -25,6 +25,21 @@
  * ("correctness first, then an index or the `withTotal` opt-out"). See
  * `applyDerivedFilters` below.
  *
+ * `applyDerivedFilters` re-derives `direction()`/`isSteep()` as SQL, and a
+ * docblock claiming the two "match exactly" is not a mechanism that keeps
+ * them matching across an edit to either side (#3162 re-review, IMPORTANT —
+ * "the SQL twin of `direction()`/`isSteep()` has no mechanism holding it to
+ * its TypeScript original"). `PRICE_CHANGE_DERIVED_FILTER_FIXTURES`
+ * (`@openlinker/core/listings/testing`, the `RETURN_STAGE_FIXTURES`
+ * precedent) is the shared table both sides run: the core unit spec
+ * (`price-change-episode.entity.spec.ts`) runs it through the TS methods,
+ * and `listings-price-change-episode.int-spec.ts` inserts one episode per
+ * row and reads it back through this repository's own `direction`/
+ * `magnitudeLargeOnly` filters. A TS function over two numbers and a SQL
+ * `WHERE` over two columns admit no textual equality, so a mirror-structure
+ * script cannot prove the two AGREE — only running the same inputs through
+ * both and comparing the outputs can, which is what the fixture table is for.
+ *
  * `countOpen` is consequently a real SQL `COUNT` for every filter
  * combination, with no page-length fallback of any kind.
  *
@@ -228,9 +243,9 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
 
   /**
    * `direction`/`magnitudeLargeOnly` as SQL, reproducing
-   * `PriceChangeEpisode.direction()`/`.isSteep()` exactly (#3162 re-review,
-   * BLOCKING) so the SAME row set is what both the page and the count agree
-   * on — shared by `buildOpenQuery` (strictly-open: `countOpen`) and
+   * `PriceChangeEpisode.direction()`/`.isSteep()` (#3162 re-review, BLOCKING)
+   * so the SAME row set is what both the page and the count agree on —
+   * shared by `buildOpenQuery` (strictly-open: `countOpen`) and
    * `buildListQuery` (the review-queue list read, `findOpen`).
    *
    * `direction()`: `'unknown'` when `computedOldAmount IS NULL` (no
@@ -240,10 +255,19 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
    *
    * `isSteep()`: `|deltaPct()| >= 10`, where `deltaPct()` is `null` (never
    * steep) when there is no baseline, `0` (never steep) when the baseline is
-   * exactly zero, and otherwise `round(((new - old) / old) * 1000) / 10` —
-   * reproduced here with the same `ROUND`/division order so the SQL and the
-   * entity method can never disagree on which side of the threshold a row
-   * falls.
+   * exactly zero, and otherwise `round(((new - old) / old) * 1000) / 10`.
+   *
+   * **Held to the entity methods by a shared fixture table, not by this
+   * comment** (#3162 re-review, IMPORTANT): `PRICE_CHANGE_DERIVED_FILTER_FIXTURES`
+   * (`@openlinker/core/listings/testing`) is run through both this predicate
+   * (`listings-price-change-episode.int-spec.ts`, against real Postgres) and
+   * `PriceChangeEpisode.direction()`/`.isSteep()`
+   * (`price-change-episode.entity.spec.ts`), including the three boundary
+   * cases a re-derivation is most likely to drift on: `computedOldAmount IS
+   * NULL`, a real `0` baseline, and `|deltaPct|` landing on exactly `10` from
+   * both sides. An edit to this predicate or to the entity methods that
+   * disagrees with the other now fails a test, rather than only a docblock's
+   * claim going stale.
    */
   private applyDerivedFilters(
     qb: SelectQueryBuilder<PriceChangeEpisodeOrmEntity>,

@@ -563,4 +563,34 @@ describe('PriceChangesService', () => {
       expect(connections.get).not.toHaveBeenCalled();
     });
   });
+
+  describe('countOpen', () => {
+    // The repository docblock states that badge/tab counters "never set the
+    // flag and keep the strictly-open predicate" — distinct from `listOpen`,
+    // which unconditionally forces `includeRecentlyResolved: true` onto its
+    // OWN `total` read. This is the assertion that pins the distinction
+    // (#3162 re-review, SUGGESTION): `countOpen` is a bare passthrough, so a
+    // badge/tab caller's filters reach the repository exactly as given,
+    // never widened to also surface a recently-ignored row.
+    it('passes filters straight through, never adding includeRecentlyResolved', async () => {
+      episodes.countOpen.mockResolvedValue(3);
+
+      const total = await service.countOpen({ destinationConnectionId: DEST_ID });
+
+      expect(total).toBe(3);
+      expect(episodes.countOpen).toHaveBeenCalledWith({ destinationConnectionId: DEST_ID });
+      expect(episodes.countOpen).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not strip an explicit includeRecentlyResolved a caller passed — it only refuses to ADD one', async () => {
+      episodes.countOpen.mockResolvedValue(1);
+
+      await service.countOpen({ destinationConnectionId: DEST_ID, includeRecentlyResolved: true });
+
+      expect(episodes.countOpen).toHaveBeenCalledWith({
+        destinationConnectionId: DEST_ID,
+        includeRecentlyResolved: true,
+      });
+    });
+  });
 });
