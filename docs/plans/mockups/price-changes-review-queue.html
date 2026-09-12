@@ -3,9 +3,67 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
+  /* ══════════ Tokens — verbatim from apps/web/src/index.css (#3155 review) ══════════
+     Light is the app's actual default (:root, index.css:185); dark is opt-in via
+     html[data-theme='dark'] (index.css:395) or the user's OS preference. Every value
+     below is copied byte-for-byte from index.css — no divergence, per the review's
+     mechanical diff against the real dark block. */
   :root {
     --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
     --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80); --bg-surface: #ffffff;
+    --bg-surface-elevated: oklch(99% 0.003 80); --bg-surface-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
+    --bg-strong: oklch(93% 0.006 80);
+    --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80);
+    --border-focus: oklch(68% 0.18 50);
+    --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80); --text-muted: oklch(52% 0.008 80);
+    --text-disabled: oklch(70% 0.005 80); --text-inverse: oklch(96% 0.005 80); --text-on-primary: oklch(18% 0.012 50);
+    --text-link: oklch(50% 0.14 250);
+    --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50); --accent-primary-active: oklch(56% 0.20 50);
+    --accent-primary-soft: oklch(96% 0.04 60); --accent-primary-soft-strong: oklch(40% 0.16 50); --accent-primary-border: oklch(85% 0.10 55);
+    --accent-ring: oklch(68% 0.18 50 / 0.30);
+    --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
+    --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+    --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
+    --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
+    --status-disabled: oklch(55% 0.008 80); --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+    --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04); --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+    --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08); --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
+    --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08); --shadow-focus: 0 0 0 3px var(--accent-ring);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+    --overlay-scrim: rgb(15 18 26 / 0.55);
+    --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem; --space-5: 1.5rem; --space-6: 2rem; --space-7: 3rem;
+    --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-pill: 9999px;
+    --tracking-caps: 0.08em; --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+      --bg-surface-elevated: oklch(22% 0.008 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+      --bg-strong: oklch(28% 0.010 270);
+      --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+      --border-focus: oklch(72% 0.18 50);
+      --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(60% 0.012 270);
+      --text-disabled: oklch(42% 0.012 270); --text-inverse: oklch(20% 0.012 80); --text-on-primary: oklch(16% 0.012 50);
+      --text-link: oklch(76% 0.14 245);
+      --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50); --accent-primary-active: oklch(84% 0.16 50);
+      --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55);
+      --accent-ring: oklch(72% 0.18 50 / 0.40);
+      --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+      --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+      --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+      --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+      --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+      --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40); --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+      --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36); --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+      --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+      --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+      --overlay-scrim: rgb(0 0 0 / 0.72);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme='dark'] {
     --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
     --bg-surface-elevated: oklch(22% 0.008 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
     --bg-strong: oklch(28% 0.010 270);
@@ -17,18 +75,17 @@
     --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50); --accent-primary-active: oklch(84% 0.16 50);
     --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-soft-strong: oklch(86% 0.14 60); --accent-primary-border: oklch(40% 0.14 55);
     --accent-ring: oklch(72% 0.18 50 / 0.40);
-    --status-success: oklch(68% 0.15 150); --status-success-soft: oklch(28% 0.06 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(84% 0.12 150);
-    --status-warning: oklch(78% 0.15 85); --status-warning-soft: oklch(30% 0.06 85); --status-warning-border: oklch(45% 0.10 85); --status-warning-fg: oklch(86% 0.13 85);
-    --status-error: oklch(68% 0.19 25); --status-error-soft: oklch(30% 0.07 25); --status-error-border: oklch(45% 0.12 25); --status-error-fg: oklch(84% 0.15 25);
-    --status-info: oklch(68% 0.14 245); --status-info-soft: oklch(28% 0.05 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(84% 0.10 245);
-    --status-disabled: oklch(55% 0.008 270); --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(38% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
+    --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+    --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+    --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+    --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+    --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
     --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40); --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
     --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36); --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
-    --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40); --shadow-focus: 0 0 0 3px var(--accent-ring);
+    --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
     --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
-    --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem; --space-5: 1.5rem; --space-6: 2rem; --space-7: 3rem;
-    --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-pill: 9999px;
-    --tracking-caps: 0.08em; --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --overlay-scrim: rgb(0 0 0 / 0.72);
+    color-scheme: dark;
   }
   * { box-sizing: border-box; min-width: 0; }
   body { margin: 0; background: var(--bg-canvas); color: var(--text-primary); font-family: var(--font-sans); font-size: 13px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
@@ -82,7 +139,7 @@
   .nav { grid-area: nav; background: var(--bg-shell); border-right: 1px solid var(--border-subtle); padding: var(--space-4) var(--space-3); overflow-y: auto; }
   @media (max-width: 860px) { .nav { position: fixed; top: 52px; left: 0; bottom: 0; width: min(260px, 78vw); z-index: 41; box-shadow: var(--shadow-overlay); transform: translateX(-100%); transition: transform 0.2s var(--ease-out); } .nav.is-open { transform: translateX(0); } }
   .nav-scrim { display: none; }
-  @media (max-width: 860px) { .nav-scrim { display: block; position: fixed; inset: 52px 0 0 0; background: rgb(0 0 0 / 0.5); z-index: 40; opacity: 0; pointer-events: none; transition: opacity 0.2s var(--ease-out); } .nav-scrim.is-open { opacity: 1; pointer-events: auto; } }
+  @media (max-width: 860px) { .nav-scrim { display: block; position: fixed; inset: 52px 0 0 0; background: var(--overlay-scrim); z-index: 40; opacity: 0; pointer-events: none; transition: opacity 0.2s var(--ease-out); } .nav-scrim.is-open { opacity: 1; pointer-events: auto; } }
   .nav__group { margin-bottom: var(--space-5); }
   .nav__group-label { font-size: 10px; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); padding: 0 var(--space-2); margin-bottom: var(--space-2); }
   .nav__item { display: flex; align-items: center; gap: var(--space-3); padding: 7px var(--space-2); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 13px; font-weight: 500; text-decoration: none; cursor: pointer; position: relative; }
@@ -227,6 +284,35 @@
   .state-panel h2 { margin: 0; font-size: 15px; font-weight: 600; }
   .state-panel p { margin: 0; font-size: 12.5px; color: var(--text-secondary); max-width: 40ch; }
 
+  /* Preview-state partition (#3155 review) — the "Preview a state" strip drives
+     five mutually-exclusive screens, and each is CSS-settable off body[data-state]
+     rather than only reachable through a click path, matching the § UX Mockups
+     convention (analytics-display-currency-picker.html). readonly gets its own
+     value here (it previously had none) and queue-live is force-hidden whenever
+     a different top-level screen is active, so two data-state values are never
+     simultaneously visible. JS keeps driving element[hidden] for the organic
+     "queue emptied because every row was resolved" case inside queue-live —
+     that is a distinct condition from the forced preview screens below and is
+     not part of this partition. */
+  body[data-state="queue-loading"] #queue-live,
+  body[data-state="queue-loading"] #queue-empty,
+  body[data-state="queue-loading"] #queue-error,
+  body[data-state="queue-error"] #queue-live,
+  body[data-state="queue-error"] #queue-loading,
+  body[data-state="queue-error"] #queue-empty,
+  body[data-state="queue-empty"] #queue-live,
+  body[data-state="queue-empty"] #queue-loading,
+  body[data-state="queue-empty"] #queue-error,
+  body[data-state="queue-live"] #queue-loading,
+  body[data-state="queue-live"] #queue-error,
+  body[data-state="queue-readonly"] #queue-loading,
+  body[data-state="queue-readonly"] #queue-error { display: none !important; }
+  body[data-state="queue-loading"] #queue-loading { display: block !important; }
+  body[data-state="queue-error"] #queue-error { display: block !important; }
+  body[data-state="queue-empty"] #queue-empty { display: flex !important; }
+  body[data-state="queue-live"] #queue-live,
+  body[data-state="queue-readonly"] #queue-live { display: block !important; }
+
   .bulk-action-bar { position: sticky; bottom: var(--space-4); margin-top: var(--space-4); display: flex; align-items: center; gap: var(--space-4); background: var(--bg-surface-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); padding: var(--space-3) var(--space-4); opacity: 0; transform: translateY(4px); pointer-events: none; transition: opacity 0.16s var(--ease-out), transform 0.16s var(--ease-out); flex-wrap: wrap; }
   .bulk-action-bar.is-visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
   .bulk-action-bar__count { font-size: 13px; }
@@ -249,7 +335,7 @@
   .publish-progress__lane b { color: var(--text-primary); font-weight: 600; }
   .publish-progress__lane.is-done { color: var(--status-success-fg); border-color: var(--status-success-border); }
 
-  .dialog__overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.55); z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.15s var(--ease-out); }
+  .dialog__overlay { position: fixed; inset: 0; background: var(--overlay-scrim); z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.15s var(--ease-out); }
   .dialog__overlay.is-open { opacity: 1; pointer-events: auto; }
   .dialog__content { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -48%) scale(0.98); width: min(500px, calc(100vw - 32px)); max-height: calc(100dvh - 64px); display: flex; flex-direction: column; background: var(--bg-surface-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); z-index: 51; opacity: 0; pointer-events: none; transition: opacity 0.16s var(--ease-out), transform 0.16s var(--ease-out); }
   .dialog__content.is-open { opacity: 1; transform: translate(-50%, -50%) scale(1); pointer-events: auto; }
@@ -546,9 +632,9 @@
             <div class="settings-section__desc" id="conn-rule-note" style="max-width:none"></div>
             <button class="button button--secondary button--xs" id="conn-edit-rule">Edit default rule</button>
           </div>
-          <div class="rule-editor-form" id="conn-rule-form" hidden>
+          <div class="rule-editor-form" id="conn-rule-form" data-state="rule-editor" hidden>
             <div class="field"><label class="field__label" for="rule-type">Pricing rule</label><select class="field__select" id="rule-type"><option value="passthrough">Use shop price as-is</option><option value="markup">Add a percentage</option><option value="margin">Keep a percentage margin</option></select></div>
-            <div class="field"><label class="field__label" for="rule-pct">Percent</label><div class="field__price-input"><input type="text" inputmode="decimal" id="rule-pct"><span class="field__currency">%</span></div></div>
+            <div class="field"><label class="field__label" for="rule-pct">Percent</label><div class="field__price-input" id="rule-pct-wrap"><input type="text" inputmode="decimal" id="rule-pct"><span class="field__currency">%</span></div><div class="field__feedback field__feedback--error" id="rule-pct-feedback" hidden></div></div>
             <div class="field"><label class="field__label" for="rule-rounding">Rounding</label><select class="field__select" id="rule-rounding"><option value="none">No rounding</option><option value="nearestWhole">Round to a whole number</option><option value="endingIn99">Round to end in .99</option></select></div>
           </div>
           <div class="unsaved-bar" id="conn-unsaved-bar" hidden>
@@ -665,10 +751,17 @@
 (function () {
   'use strict';
 
+  // A margin of 100% or more has no answer (base / (1 - pct/100) divides by
+  // zero at 100 and goes negative above it) — the shipped applyPricingRule
+  // falls back to the base price there rather than publishing garbage
+  // (#2610), and StockAndPricingSection refuses it in the form AND
+  // server-side. This mirror keeps both defences (#3155 review).
+  function isMarginPctInvalid(type, pct) { return type === 'margin' && isFinite(pct) && pct >= 100; }
+  var MARGIN_INVALID_MSG = 'Must be below 100. A margin of 100 or more has no answer, so it would be ignored and your catalogue price published instead.';
   function applyRule(base, rule) {
     if (rule.type === 'passthrough') return base;
     if (rule.type === 'markup') return base * (1 + rule.pct / 100);
-    if (rule.type === 'margin') return base / (1 - rule.pct / 100);
+    if (rule.type === 'margin') return isMarginPctInvalid('margin', rule.pct) ? base : base / (1 - rule.pct / 100);
     return base;
   }
   function round2(n) { return Math.round(n * 100) / 100; }
@@ -798,6 +891,12 @@
   function setPreview(mode) {
     state.preview = mode; state.readOnly = mode === 'readonly';
     qsa('.preview-strip__opt').forEach(function (btn) { btn.classList.toggle('is-active', btn.getAttribute('data-preview') === mode); });
+    // One of five mutually-exclusive values, settable directly (see the
+    // partition CSS above) — readonly now has its own reachable value,
+    // and #queue-live's own data-state follows it so a read-only screen
+    // is distinguishable from the live one wherever data-state is read.
+    document.body.setAttribute('data-state', mode === 'readonly' ? 'queue-readonly' : 'queue-' + mode);
+    qs('#queue-live').setAttribute('data-state', mode === 'readonly' ? 'queue-readonly' : 'queue-live');
     qs('#queue-loading').hidden = mode !== 'loading';
     qs('#queue-error').hidden = mode !== 'error';
     qs('#queue-live').hidden = !(mode === 'live' || mode === 'empty' || mode === 'readonly');
@@ -928,24 +1027,33 @@
   // show the shape of a lightweight, no-new-screen answer to "what did
   // Automatic just do."
   var AUTO_APPLIED_EXAMPLES = [
-    { name: 'Ceramic Coffee Mug', variant: '350 ml', connection: 'Erli — PL', old: '34,90 zł', neu: '36,90 zł', when: '2 h ago' },
-    { name: 'Bamboo Cutting Board', variant: null, connection: 'Erli — PL', old: '59,00 zł', neu: '54,00 zł', when: '5 h ago' }
+    { connKey: 'erli', name: 'Ceramic Coffee Mug', variant: '350 ml', connection: 'Erli — PL', old: '34,90 zł', neu: '36,90 zł', when: '2 h ago' },
+    { connKey: 'erli', name: 'Bamboo Cutting Board', variant: null, connection: 'Erli — PL', old: '59,00 zł', neu: '54,00 zł', when: '5 h ago' }
   ];
-  function anyConnectionAutomatic() {
-    return Object.keys(PRICING_CONFIG).some(function (destKey) {
+  function automaticConnectionKeys() {
+    return Object.keys(PRICING_CONFIG).filter(function (destKey) {
       var cfg = PRICING_CONFIG[destKey];
       if (cfg.default.mode === 'automatic') return true;
       return Object.keys(cfg.sources).some(function (srcKey) { var ov = cfg.sources[srcKey].override; return ov && ov.mode === 'automatic'; });
     });
   }
+  // The count, the visibility and the listed rows must all read the SAME
+  // predicate — visibility used to derive from "is any connection
+  // Automatic" while the count was an unconditional fixture length, so
+  // enabling Automatic on a connection with no fixture rows still
+  // claimed N items went live for it (#3155 review).
+  function autoAppliedExamplesForCurrentState() {
+    var autoKeys = automaticConnectionKeys();
+    return AUTO_APPLIED_EXAMPLES.filter(function (ex) { return autoKeys.indexOf(ex.connKey) !== -1; });
+  }
   function updateAutoAppliedNote() {
-    var show = anyConnectionAutomatic();
-    qs('#auto-applied-note').hidden = !show;
-    if (show) qs('#auto-applied-count').textContent = AUTO_APPLIED_EXAMPLES.length;
+    var examples = autoAppliedExamplesForCurrentState();
+    qs('#auto-applied-note').hidden = examples.length === 0;
+    if (examples.length) qs('#auto-applied-count').textContent = examples.length;
   }
   qs('#auto-applied-link').addEventListener('click', function (e) {
     e.preventDefault();
-    qs('#dialog-auto-applied-list').innerHTML = AUTO_APPLIED_EXAMPLES.map(function (it) {
+    qs('#dialog-auto-applied-list').innerHTML = autoAppliedExamplesForCurrentState().map(function (it) {
       return '<div class="mini-row"><span class="thumb" style="width:24px;height:24px;font-size:10px">' + initials(it.name) + '</span>' +
         '<div class="mini-row__text"><div class="mini-row__name">' + it.name + (it.variant ? ' — ' + it.variant : '') + '</div><div class="mini-row__meta">' + it.connection + ' · ' + it.when + '</div></div>' +
         '<div class="mini-row__price"><s>' + it.old + '</s>' + it.neu + '</div></div>';
@@ -1273,9 +1381,16 @@
     connSavedDefault = JSON.parse(JSON.stringify(PRICING_CONFIG[key].default));
     connSavedSources = JSON.parse(JSON.stringify(PRICING_CONFIG[key].sources));
     connDirty = false; qs('#conn-unsaved-bar').hidden = true; qs('#conn-rule-form').hidden = true;
+    qs('#rule-pct-wrap').classList.remove('has-error'); qs('#rule-pct-feedback').hidden = true;
+    qs('#conn-rule-form').setAttribute('data-state', 'rule-editor');
+    qs('#conn-save').disabled = false;
     renderDefaultBlock(key); renderSourceList(key);
     renderConnectionPending(key); renderActivity(key);
   }
+  // Disabling Save while ANY field is invalid mirrors the real form: a
+  // margin refusal must block the whole save, not just its own row
+  // (#3155 review).
+  function updateSaveButtonState() { qs('#conn-save').disabled = state.readOnly || qsa('.has-error').length > 0; }
   function renderDefaultBlock(key) {
     var cfg = PRICING_CONFIG[key].default;
     qsa('.mode-switch__opt', qs('#conn-mode-switch')).forEach(function (btn) {
@@ -1307,8 +1422,15 @@
   });
   function onDefaultRuleChange() {
     var key = qs('#page-connection').dataset.connection;
-    PRICING_CONFIG[key].default.rule = { type: qs('#rule-type').value, pct: parseFloat(qs('#rule-pct').value) || 0, rounding: qs('#rule-rounding').value };
-    renderDefaultBlock(key); markConnDirty();
+    var type = qs('#rule-type').value, pct = parseFloat(qs('#rule-pct').value);
+    var invalid = isMarginPctInvalid(type, pct);
+    qs('#rule-pct-wrap').classList.toggle('has-error', invalid);
+    var fb = qs('#rule-pct-feedback'); fb.hidden = !invalid; fb.textContent = invalid ? MARGIN_INVALID_MSG : '';
+    qs('#conn-rule-form').setAttribute('data-state', invalid ? 'rule-margin-invalid' : 'rule-editor');
+    markConnDirty(); updateSaveButtonState();
+    if (invalid) return; // refuse to persist a rule with no answer — the operator sees why, above
+    PRICING_CONFIG[key].default.rule = { type: type, pct: pct || 0, rounding: qs('#rule-rounding').value };
+    renderDefaultBlock(key);
   }
 
   function renderSourceList(destKey) {
@@ -1323,7 +1445,7 @@
         '<div class="source-row__head"><span class="source-row__name" id="source-row-name-' + rid + '">' + SOURCES[srcKey].label + '</span>' +
           '<label class="source-row__toggle"><input type="checkbox" id="src-custom-' + rid + '" data-testid="source-custom-toggle" data-src-custom="' + srcKey + '"' + (isCustom ? ' checked' : '') + (state.readOnly ? ' disabled' : '') + '> Use a different rule for this source</label></div>' +
         '<div class="source-row__summary" id="source-row-summary-' + rid + '" data-src-summary="' + srcKey + '">' + MODE_LABEL[effective.mode] + ' · ' + ruleSummaryHtml(effective.rule) + (isCustom ? '' : ' <i>(using the default rule)</i>') + '</div>' +
-        '<div class="source-row__body" id="source-row-body-' + rid + '" data-src-body="' + srcKey + '"' + (isCustom ? '' : ' hidden') + '>' +
+        '<div class="source-row__body" id="source-row-body-' + rid + '" data-src-body="' + srcKey + '" data-state="rule-editor"' + (isCustom ? '' : ' hidden') + '>' +
           '<div class="mode-switch mode-switch--sm" id="source-mode-group-' + rid + '" data-src-mode-group="' + srcKey + '">' +
             '<button class="mode-switch__opt' + (effective.mode === 'manual' ? ' is-active' : '') + '" id="source-mode-manual-' + rid + '" data-src-mode="manual">Manual review</button>' +
             '<button class="mode-switch__opt' + (effective.mode === 'automatic' ? ' is-active' : '') + '" id="source-mode-automatic-' + rid + '" data-src-mode="automatic">Automatic</button>' +
@@ -1333,7 +1455,7 @@
               '<option value="passthrough"' + (effective.rule.type === 'passthrough' ? ' selected' : '') + '>Use shop price as-is</option>' +
               '<option value="markup"' + (effective.rule.type === 'markup' ? ' selected' : '') + '>Add a percentage</option>' +
               '<option value="margin"' + (effective.rule.type === 'margin' ? ' selected' : '') + '>Keep a percentage margin</option></select></div>' +
-            '<div class="field"><label class="field__label" for="source-pct-' + rid + '">Percent</label><div class="field__price-input"><input type="text" inputmode="decimal" id="source-pct-' + rid + '" data-src-pct="' + srcKey + '" value="' + effective.rule.pct + '"><span class="field__currency">%</span></div></div>' +
+            '<div class="field"><label class="field__label" for="source-pct-' + rid + '">Percent</label><div class="field__price-input" id="source-pct-wrap-' + rid + '"><input type="text" inputmode="decimal" id="source-pct-' + rid + '" data-src-pct="' + srcKey + '" value="' + effective.rule.pct + '"><span class="field__currency">%</span></div><div class="field__feedback field__feedback--error" id="source-pct-feedback-' + rid + '" hidden></div></div>' +
             '<div class="field"><label class="field__label" for="source-rounding-' + rid + '">Rounding</label><select class="field__select" id="source-rounding-' + rid + '" data-src-rounding="' + srcKey + '">' +
               '<option value="none"' + (effective.rule.rounding === 'none' ? ' selected' : '') + '>No rounding</option>' +
               '<option value="nearestWhole"' + (effective.rule.rounding === 'nearestWhole' ? ' selected' : '') + '>Round to a whole number</option>' +
@@ -1371,14 +1493,19 @@
   });
   function updateSourceOverrideFromForm(destKey, srcKey) {
     var ov = PRICING_CONFIG[destKey].sources[srcKey].override; if (!ov) return;
-    ov.rule = {
-      type: qs('[data-src-type="' + srcKey + '"]').value,
-      pct: parseFloat(qs('[data-src-pct="' + srcKey + '"]').value) || 0,
-      rounding: qs('[data-src-rounding="' + srcKey + '"]').value
-    };
+    var rid = destKey + '-' + srcKey;
+    var type = qs('[data-src-type="' + srcKey + '"]').value;
+    var pct = parseFloat(qs('[data-src-pct="' + srcKey + '"]').value);
+    var invalid = isMarginPctInvalid(type, pct);
+    var wrap = qs('#source-pct-wrap-' + rid), fb = qs('#source-pct-feedback-' + rid), body = qs('#source-row-body-' + rid);
+    if (wrap) wrap.classList.toggle('has-error', invalid);
+    if (fb) { fb.hidden = !invalid; fb.textContent = invalid ? MARGIN_INVALID_MSG : ''; }
+    if (body) body.setAttribute('data-state', invalid ? 'rule-margin-invalid' : 'rule-editor');
+    markConnDirty(); updateSaveButtonState();
+    if (invalid) return; // refuse to persist a rule with no answer — same guard as the default-rule form
+    ov.rule = { type: type, pct: pct || 0, rounding: qs('[data-src-rounding="' + srcKey + '"]').value };
     var summary = qs('[data-src-summary="' + srcKey + '"]');
     summary.innerHTML = MODE_LABEL[ov.mode] + ' · ' + ruleSummaryHtml(ov.rule);
-    markConnDirty();
   }
 
   function markConnDirty() { connDirty = true; qs('#conn-unsaved-bar').hidden = state.readOnly; }
@@ -1411,6 +1538,8 @@
 
   function uniq(arr) { return arr.filter(function (v, i) { return arr.indexOf(v) === i; }); }
 
+  qs('#queue-live').setAttribute('data-state', 'queue-live');
+  document.body.setAttribute('data-state', 'queue-live');
   renderRows(); showListings(); showListingsTab('queue');
 })();
 </script>
