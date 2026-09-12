@@ -10,7 +10,7 @@
  * @module apps/api/test/integration
  */
 import type { IntegrationTestHarness } from './setup';
-import { getTestHarness, teardownTestHarness } from './setup';
+import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import {
   PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
   type PriceChangeEpisodeRepositoryPort,
@@ -34,7 +34,11 @@ describe('Price Change Episode Repository Integration', () => {
   });
 
   afterEach(async () => {
-    await harness.getDataSource().query('TRUNCATE TABLE "price_change_episodes"');
+    // #3161 round-2 review — `price_change_episodes` is in the shared
+    // `tablesToTruncate` list (setup.ts), so the per-spec inline TRUNCATE is
+    // redundant with — and can drift from — the mechanism every other spec
+    // in this suite relies on to stop a row leaking into an unrelated case.
+    await resetTestHarness();
   });
 
   afterAll(async () => {
