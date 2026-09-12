@@ -182,25 +182,42 @@ function exec(cmd, args) {
  * Pure: pick the related-tests runner from a package's `test` script. A vitest
  * package (apps/web) must run `vitest related`, not `jest --findRelatedTests` —
  * jest can't transform the vitest/TSX setup and fails the whole package.
+ * A package with neither a `test` script NOR jest/vitest as a (dev)dependency
+ * has no unit-test runner at all — e.g. `apps/e2e`, whose `.spec.ts` files are
+ * Playwright specs, not jest/vitest tests, and can't even be parsed as such.
  */
-function testRunnerForScript(testScript) {
-  return /\bvitest\b/.test(testScript ?? '') ? 'vitest' : 'jest';
+function testRunnerForScript(testScript, pkg) {
+  if (/\bvitest\b/.test(testScript ?? '')) return 'vitest';
+  if (/\bjest\b/.test(testScript ?? '')) return 'jest';
+  const deps = { ...pkg?.dependencies, ...pkg?.devDependencies };
+  if (deps?.vitest) return 'vitest';
+  if (deps?.jest) return 'jest';
+  return 'none';
 }
 
-/** Read a package's `test` script to decide its runner; default to jest. */
+/**
+ * Read a package's `test` script + deps to decide its runner; 'none' if
+ * neither jest nor vitest applies. An unreadable/missing `package.json` falls
+ * back to 'jest', not 'none' — this is a safety gate, and a read failure here
+ * must fail loud (a doomed jest invocation) rather than silently skip the
+ * package (#2993 review). Only a package.json that parses cleanly and
+ * genuinely declares neither runner resolves to 'none'.
+ */
 function testRunnerFor(root) {
   try {
     const pkg = JSON.parse(readFileSync(join(REPO_ROOT, root, 'package.json'), 'utf8'));
-    return testRunnerForScript(pkg.scripts?.test);
+    return testRunnerForScript(pkg.scripts?.test, pkg);
   } catch {
     return 'jest';
   }
 }
 
-/** Build the `pnpm --filter` related-tests command for a package + changed files. */
+/** Build the `pnpm --filter` related-tests command for a package + changed files, or null if it has no unit-test runner. */
 function relatedTestsArgs(root, rel) {
+  const runner = testRunnerFor(root);
+  if (runner === 'none') return null;
   const base = ['--filter', `./${root}`, 'exec'];
-  return testRunnerFor(root) === 'vitest'
+  return runner === 'vitest'
     ? [...base, 'vitest', 'related', '--run', '--passWithNoTests', ...rel]
     : [...base, 'jest', '--findRelatedTests', ...rel, '--passWithNoTests'];
 }
@@ -240,8 +257,15 @@ function main() {
       const rel = relWithin(root, files);
       if (rel.length === 0) continue;
       // Narrow within the package to specs related to the changed files, using
-      // the package's own runner (vitest for apps/web, jest elsewhere).
-      const code = exec('pnpm', relatedTestsArgs(root, rel));
+      // the package's own runner (vitest for apps/web, jest elsewhere) — or
+      // skip entirely if the package has no unit-test runner at all (e.g. a
+      // Playwright-only e2e package).
+      const args = relatedTestsArgs(root, rel);
+      if (args === null) {
+        process.stdout.write(`\n(skip ${root}: no jest/vitest unit-test runner)\n`);
+        continue;
+      }
+      const code = exec('pnpm', args);
       if (code !== 0) failures += 1;
     }
   }
@@ -348,16 +372,45 @@ function selfCheck() {
     if (!ok) failures.push(`  ✗ ${c.name}`);
   }
 
-  // Runner detection: a vitest package must not be run with jest.
+  // Runner detection: a vitest package must not be run with jest, and a
+  // package with neither a jest/vitest `test` script nor jest/vitest as a
+  // (dev)dependency has no unit-test runner at all (e.g. a Playwright-only
+  // e2e package) — must resolve to 'none', not silently default to jest.
   const runnerCases = [
-    { name: 'vitest run script → vitest', script: 'vitest run', expect: 'vitest' },
-    { name: 'jest script → jest', script: 'jest', expect: 'jest' },
-    { name: 'absent test script → jest', script: undefined, expect: 'jest' },
+    { name: 'vitest run script → vitest', script: 'vitest run', pkg: undefined, expect: 'vitest' },
+    { name: 'jest script → jest', script: 'jest', pkg: undefined, expect: 'jest' },
+    {
+      name: 'absent test script, jest devDependency → jest',
+      script: undefined,
+      pkg: { devDependencies: { jest: '^29.0.0' } },
+      expect: 'jest',
+    },
+    {
+      name: 'absent test script, no jest/vitest dependency → none (e.g. Playwright-only e2e package)',
+      script: undefined,
+      pkg: { devDependencies: { '@playwright/test': '^1.61.1' } },
+      expect: 'none',
+    },
   ];
   for (const c of runnerCases) {
-    if (testRunnerForScript(c.script) !== c.expect) failures.push(`  ✗ ${c.name}`);
+    if (testRunnerForScript(c.script, c.pkg) !== c.expect) failures.push(`  ✗ ${c.name}`);
   }
-  const total = cases.length + runnerCases.length;
+
+  // The catch path in `testRunnerFor` (unreadable/missing package.json) is a
+  // safety-gate default and must fail loud ('jest'), never silently skip
+  // ('none') — exercised directly, since `testRunnerForScript` alone never
+  // reaches this branch (#2993 review).
+  const catchCases = [
+    {
+      name: "testRunnerFor: missing package.json → 'jest' (fail loud, never silently skip)",
+      root: '__smart-test-self-check-nonexistent-package__',
+      expect: 'jest',
+    },
+  ];
+  for (const c of catchCases) {
+    if (testRunnerFor(c.root) !== c.expect) failures.push(`  ✗ ${c.name}`);
+  }
+  const total = cases.length + runnerCases.length + catchCases.length;
 
   if (failures.length === 0) {
     process.stdout.write(`✓ smart-test --self-check: ${total} case(s) passed.\n`);
