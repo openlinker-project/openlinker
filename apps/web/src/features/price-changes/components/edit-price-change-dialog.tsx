@@ -7,13 +7,20 @@
  * `onBlur`), a reset to the rule price, and a permalink to the destination
  * connection's edit page.
  *
- * **Number parsing (#3148 review, finding 7)** goes through
- * `parseLocalizedAmount` rather than a naive `replace(',', '.')`, which only
- * ever rewrites the FIRST comma and mis-parses a thousands-grouped value
- * like `1 234,56` or `1.234,56` as `NaN`. The confirmed value is also
- * clamped to the storage column's 4-decimal precision
- * (`clampToStorablePrecision`) so the operator sees what will actually be
- * saved rather than being surprised by a silent server-side truncation.
+ * **Number parsing (#3148 BLOCKING review finding, closed in two passes)**
+ * goes through `parseLocalizedAmount` rather than a naive
+ * `replace(',', '.')`, which only ever rewrites the FIRST comma. The first
+ * pass fixed the unambiguous multi-separator cases (`1 234,56`, `1.234,56`);
+ * it did NOT close the review's own flagship example — a lone `,` or `.`
+ * followed by exactly 3 digits (`"1,234"`) is genuinely ambiguous between a
+ * thousands grouping and a 3-decimal amount, and the first pass's "a lone
+ * `,` is always the decimal separator" rule silently reproduced the exact
+ * ~1000×-too-low bug the review named. `parseLocalizedAmount` now refuses
+ * that case outright (`NaN`) instead of guessing, and `feedbackFor` surfaces
+ * it as a distinct, actionable error. The confirmed value is also clamped to
+ * the CURRENCY's own minor-unit exponent (`clampToStorablePrecision`, via
+ * `minorUnitExponentFor`) rather than only the storage column's 4-decimal
+ * ceiling, so the operator sees the number that will actually publish.
  *
  * **Accessibility (#3148 review, finding 6)**: the input carries
  * `aria-invalid`/`aria-describedby` wired to the feedback paragraph, and an
@@ -52,7 +59,21 @@ interface Feedback {
 
 function feedbackFor(rawValue: string, rulePrice: number, currency: string | null | undefined): Feedback {
   const parsed = parseLocalizedAmount(rawValue);
-  if (rawValue.trim() === '' || !Number.isFinite(parsed) || parsed <= 0) {
+  if (rawValue.trim() === '') {
+    return { tone: 'error', message: 'Enter a price greater than 0.' };
+  }
+  if (!Number.isFinite(parsed)) {
+    // Reached only for a genuinely ambiguous separator (a lone `,` or `.`
+    // followed by exactly 3 digits, e.g. "1,234") — `parseLocalizedAmount`
+    // refuses to guess between a thousands grouping and a 3-decimal amount
+    // rather than silently publishing whichever it guessed (#3148 second
+    // review, still-open BLOCKING finding).
+    return {
+      tone: 'error',
+      message: 'This number is ambiguous — use a decimal point or comma with 2 decimal places (e.g. 399.50).',
+    };
+  }
+  if (parsed <= 0) {
     return { tone: 'error', message: 'Enter a price greater than 0.' };
   }
   const deviation = rulePrice > 0 ? (parsed - rulePrice) / rulePrice : 0;
@@ -84,7 +105,7 @@ export function EditPriceChangeDialog({
   const feedback = item
     ? feedbackFor(rawValue, item.computedNewAmount, item.destinationCurrency)
     : { tone: null, message: '' };
-  const parsed = clampToStorablePrecision(parseLocalizedAmount(rawValue));
+  const parsed = clampToStorablePrecision(parseLocalizedAmount(rawValue), item?.destinationCurrency);
   const canConfirm = feedback.tone !== 'error' && !isConfirming;
 
   return (

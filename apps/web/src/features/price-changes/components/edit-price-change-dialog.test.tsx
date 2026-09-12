@@ -103,7 +103,12 @@ describe('EditPriceChangeDialog', () => {
     expect(onConfirm).toHaveBeenCalledWith(1234.56);
   });
 
-  it('clamps a manual price to the numeric(14,4) storage precision', async () => {
+  // The component clamps to the DESTINATION CURRENCY's own minor-unit
+  // exponent (`clampToStorablePrecision`, via `minorUnitExponentFor`), not
+  // the raw `numeric(14,4)` storage column — `ITEM.destinationCurrency` is
+  // `'PLN'` (2 decimal places), so `399.123456` clamps to `399.12`, the
+  // number that will actually publish, per the dialog's own docblock.
+  it("clamps a manual price to the destination currency's minor-unit precision", async () => {
     const { onConfirm } = renderDialog();
 
     const input = screen.getByLabelText('Price to publish');
@@ -111,7 +116,7 @@ describe('EditPriceChangeDialog', () => {
     await userEvent.type(input, '399.123456');
     await userEvent.click(screen.getByRole('button', { name: /publish this price/i }));
 
-    expect(onConfirm).toHaveBeenCalledWith(399.1235);
+    expect(onConfirm).toHaveBeenCalledWith(399.12);
   });
 
   it('marks the price input invalid and describes the error for assistive tech', async () => {

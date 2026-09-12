@@ -60,8 +60,14 @@ export class PriceChangeEpisodeOrmEntity {
   @Column({ type: 'varchar', length: 8 })
   sourceCurrency!: string;
 
-  @Column({ type: 'numeric', precision: 14, scale: 4 })
-  sourceOldAmount!: string;
+  // NULL means "no prior source price was recorded at all" — a variant that
+  // previously carried no price, or a brand-new mapping (#3159 review,
+  // BLOCKING). Never fabricated as `sourceNewAmount` (old = new): that would
+  // record a real-looking "changed from N to N" fact the source never
+  // asserted. The CHECK constraint below is unaffected by the same NULL rule
+  // as `computedOldAmount`.
+  @Column({ type: 'numeric', precision: 14, scale: 4, nullable: true })
+  sourceOldAmount!: string | null;
 
   @Column({ type: 'numeric', precision: 14, scale: 4 })
   sourceNewAmount!: string;
@@ -97,6 +103,15 @@ export class PriceChangeEpisodeOrmEntity {
   // NULL while the episode stands. Never a sentinel date.
   @Column({ type: 'timestamptz', nullable: true })
   resolvedAt!: Date | null;
+
+  // Exclusive-resolution-rights marker (#3162 review, IMPORTANT). Set by
+  // `claimForResolution`'s guarded `UPDATE ... WHERE resolvedAt IS NULL AND
+  // claimedAt IS NULL`; cleared by `releaseClaim` on a failed enqueue, or
+  // rendered moot once `resolve()` sets `resolvedAt` (a resolved row can
+  // never be reclaimed). `null` on every never-claimed row, including every
+  // automatic-mode episode.
+  @Column({ type: 'timestamptz', nullable: true })
+  claimedAt!: Date | null;
 
   @Column({ type: 'varchar', length: 32, nullable: true })
   resolution!: PriceChangeResolution | null;

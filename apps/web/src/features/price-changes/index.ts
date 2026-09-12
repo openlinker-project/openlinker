@@ -40,6 +40,7 @@ export type {
   PriceChangeListResponse,
   ListPriceChangesFilters,
   PriceChangeAutoAppliedItem,
+  PriceChangeRuleSummary,
   PriceSyncMode,
   PricingRuleType,
   PriceRoundingMode,
@@ -51,5 +52,6 @@ export {
   ruleLabelFor,
   ruleSentenceFor,
   roundingLabelFor,
+  toRuleSummary,
   STEEP_DELTA_TOOLTIP,
 } from './lib/price-change-copy';

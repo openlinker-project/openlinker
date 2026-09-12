@@ -388,23 +388,23 @@ export function PriceChangesQueueTable(): ReactElement {
     }
   }
 
+  // Every item MUST carry the staleness token — the backend's
+  // `BulkAcceptPriceChangeItemDto.expectedVersion` is required (#3145/
+  // #3162), for the same reason the single-accept path's is: a bulk item
+  // publishes `computedNewAmount`, which can move between this read and the
+  // submit. `bulkDialogItems` is the FROZEN snapshot the dialog was opened
+  // with (the same frozen-target discipline the accept/edit dialogs use),
+  // so its `version` is "the version the operator was shown", not whatever
+  // the 30 s poll may have since re-fetched.
   const bulkDialogItems = items.filter((i) => selectedIds.includes(i.id));
 
   async function handleBulkAcceptConfirm(optInPairs: Set<string>): Promise<void> {
-    // Each item MUST carry the staleness token — the backend's
-    // `BulkAcceptPriceChangeItemDto.expectedVersion` is required (#3145/
-    // #3162), for the same reason the single-accept path's is: a bulk item
-    // publishes `computedNewAmount`, which can move between this read and
-    // the submit. `bulkDialogItems` (derived from `items`, not `selectedIds`
-    // alone) is the source of the version, since the version lives on the
-    // row, not the id (#3164 review, reconciled here with the #3148 dialog
-    // flow's opt-in-to-automatic pairing).
     try {
       const result = await bulkAcceptMutation.mutateAsync(
         bulkDialogItems.map((item) => ({
           id: item.id,
-          optInAutomatic: optInPairs.has(`${item.sourceConnectionId}:${item.destinationConnectionId}`),
           expectedVersion: item.version,
+          optInAutomatic: optInPairs.has(`${item.sourceConnectionId}:${item.destinationConnectionId}`),
         })),
       );
       setActiveBatch({ id: result.batchId, items: bulkDialogItems });

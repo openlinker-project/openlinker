@@ -385,7 +385,15 @@ export type {
   PriceChangeBlockReason,
   UpsertOpenPriceChangeEpisodeInput,
   PriceChangeEpisodeFilters,
+  PriceChangeEpisodeClaimOutcome,
 } from './domain/types/price-change-episode.types';
+// `PriceChangeEpisodeRepositoryPort` stays on the main barrel — the SAME
+// sanctioned round-trip exception `OfferMappingRepositoryPort` /
+// `OfferStatusSnapshotRepositoryPort` already carry above (int-spec
+// `apps/api/test/integration/listings-price-change-episode.int-spec.ts`
+// drives the conflict-arm write and the reopen-vs-rival-episode race
+// directly, allow-listed by symbol in `check-cross-context-imports.mjs`,
+// rewire tracked at #722 once #3162's `PriceChangesService` lands).
 export type { PriceChangeEpisodeRepositoryPort } from './domain/ports/price-change-episode-repository.port';
 export { PriceChangeEpisodePersistenceError } from './domain/exceptions/price-change-episode-persistence.error';
 export { PriceChangeEpisodeSupersededError } from './domain/exceptions/price-change-episode-superseded.error';
@@ -393,7 +401,13 @@ export { resolvePriceChangeBlockReason, readConnectionCurrency } from './domain/
 export type { IPriceChangeDetectionService } from './application/services/price-change-detection.service.interface';
 export { PriceChangeAutoAppliedLogEntry } from './domain/entities/price-change-auto-applied-log-entry.entity';
 export type { RecordAutoAppliedPriceChangeInput } from './domain/types/price-change-auto-applied-log.types';
-export type { PriceChangeAutoAppliedLogRepositoryPort } from './domain/ports/price-change-auto-applied-log-repository.port';
+// #3161 re-review, IMPORTANT — `PriceChangeAutoAppliedLogRepositoryPort` had
+// NO consumer outside `libs/core/src/listings` (unlike
+// `PriceChangeEpisodeRepositoryPort` above, which has a sanctioned int-spec
+// exception): every reader inside the context already imports it via a
+// relative path. Publishing it on the main barrel was gratuitous cross-context
+// surface with nothing behind it — removed rather than exported "just in
+// case"; a future external caller goes through `IPriceChangeApplyService`.
 export type {
   PriceChangeApplyInput,
   PriceChangeApplyResult,
@@ -403,6 +417,7 @@ export { PriceChangeEpisodeNotFoundException } from './domain/exceptions/price-c
 export { PriceChangeEpisodeAlreadyResolvedException } from './domain/exceptions/price-change-episode-already-resolved.exception';
 export { PriceChangeEpisodeStaleException } from './domain/exceptions/price-change-episode-stale.exception';
 export { PriceChangeEpisodeBlockedException } from './domain/exceptions/price-change-episode-blocked.exception';
+export { PriceChangeEpisodeInFlightException } from './domain/exceptions/price-change-episode-in-flight.exception';
 export type {
   PriceChangeQueueItem,
   PriceChangeQueueItemRuleSummary,
