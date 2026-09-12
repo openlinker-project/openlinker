@@ -3826,9 +3826,6 @@ a.delivery-rider-banner__button:focus-visible {
 .rule-composer-section__footnote {
   margin: 0;
 }
-.rule-composer-section__footnote-row {
-  background: var(--bg-surface-muted);
-}
 
 .rule-composer-conditions {
   display: grid;

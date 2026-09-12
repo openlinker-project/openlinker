@@ -1,5 +1,6 @@
 /**
- * SalesDocumentRuleComposerDialog Tests (#2809 review)
+ * SalesDocumentRuleComposerDialog Tests (#2809 review; #3182 removed the
+ * disabled tax-ID-on-receipt checkbox)
  *
  * The composer is the largest component in this feature and shipped with e2e
  * coverage only. Per `testing-guide.md § Test Pyramid` an e2e spec is not a
@@ -15,11 +16,10 @@
  *     `Alert` repeated once per condition — the density finding. Three tax-ID
  *     conditions must produce three triggers and zero banners.
  *  3. Document type stays EXACTLY two-valued; "receipt with the buyer's tax
- *     ID" is a disabled checkbox on the Receipt outcome, never a third option.
- *  4. That checkbox submits NOTHING — it exists so the composer's shape need
- *     not change when the adapter gap closes, and a future edit that starts
- *     sending it would be a field no destination reads.
- *  5. Save is refused until a destination connection is picked.
+ *     ID" is never a third option — and per #3182, there is no toggle for it
+ *     anywhere in the dialog, disabled or otherwise: if the order carries a
+ *     tax ID it always reaches the adapter, so no property exists to gate.
+ *  4. Save is refused until a destination connection is picked.
  */
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -81,7 +81,7 @@ describe('SalesDocumentRuleComposerDialog', () => {
     expect(options.map((o) => o.textContent)).toEqual(['Invoice', 'Receipt']);
   });
 
-  it('should show the tax-ID-on-receipt checkbox disabled, and only for the Receipt outcome', async () => {
+  it('should never render a tax-ID-on-receipt toggle, for either document type', async () => {
     const user = userEvent.setup();
     renderComposer();
     const root = await dialog();
@@ -91,8 +91,7 @@ describe('SalesDocumentRuleComposerDialog', () => {
 
     await user.selectOptions(select, 'fiscal-receipt');
 
-    const checkbox = await within(root).findByLabelText(/include the buyer's tax id/i);
-    expect(checkbox).toBeDisabled();
+    expect(within(root).queryByLabelText(/include the buyer's tax id/i)).not.toBeInTheDocument();
   });
 
   it('should refuse to save until a destination connection is picked', async () => {
@@ -102,7 +101,7 @@ describe('SalesDocumentRuleComposerDialog', () => {
     expect(save).toBeDisabled();
   });
 
-  it('should never send the tax-ID-on-receipt flag in the create payload', async () => {
+  it('should never send a tax-ID-on-receipt flag in the create payload — there is no such field', async () => {
     const user = userEvent.setup();
     const createRule = vi.fn().mockResolvedValue(null);
     const apiClient = renderComposer({
