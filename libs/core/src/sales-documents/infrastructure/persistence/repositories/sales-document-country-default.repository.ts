@@ -43,23 +43,34 @@ export class SalesDocumentCountryDefaultRepository
     return entities.map((entity) => this.toDomain(entity));
   }
 
+  /**
+   * A country now maps to at most ONE row regardless of `documentKind`
+   * (#3177) — kept for callers that still supply a kind, but it is no
+   * longer part of the row's identity and two different kinds resolve to
+   * the same row.
+   */
   async findByCountryAndKind(
     country: string,
-    documentKind: string,
+    _documentKind: string,
   ): Promise<SalesDocumentCountryDefault | null> {
-    const entity = await this.ormRepository.findOne({ where: { country, documentKind } });
+    const entity = await this.ormRepository.findOne({ where: { country } });
     return entity ? this.toDomain(entity) : null;
   }
 
   /**
-   * `INSERT ... ON CONFLICT (country, document_kind) DO UPDATE` — one atomic
-   * statement, not a `findOne` + `create`/`save` round-trip (review finding
-   * 10). The prior TOCTOU shape let two concurrent saves for the same
-   * `(country, documentKind)` both observe "not found" and both attempt an
-   * insert; the second collided against the unique index and 500'd instead
-   * of getting the same clean conflict handling `createRule` has. Mirrors
+   * `INSERT ... ON CONFLICT (country) DO UPDATE` — one atomic statement, not
+   * a `findOne` + `create`/`save` round-trip (review finding 10). The prior
+   * TOCTOU shape let two concurrent saves for the same `country` both
+   * observe "not found" and both attempt an insert; the second collided
+   * against the unique index and 500'd instead of getting the same clean
+   * conflict handling `createRule` has. Mirrors
    * `ReportingCurrencySettingRepository.upsertSetting` — the established
    * shape for this repo's singleton/unique-keyed upsert tables.
+   *
+   * The conflict target is `country` ALONE (#3177) — a country can only
+   * ever hold one default now, so a second upsert for the same country
+   * under a DIFFERENT `documentKind` overwrites the first rather than
+   * inserting a sibling row.
    */
   async upsert(input: SalesDocumentCountryDefaultInput): Promise<SalesDocumentCountryDefault> {
     await this.ormRepository.upsert(
@@ -68,10 +79,10 @@ export class SalesDocumentCountryDefaultRepository
         documentKind: input.documentKind,
         connectionId: input.connectionId,
       },
-      { conflictPaths: ['country', 'documentKind'] },
+      { conflictPaths: ['country'] },
     );
     const saved = await this.ormRepository.findOneOrFail({
-      where: { country: input.country, documentKind: input.documentKind },
+      where: { country: input.country },
     });
     return this.toDomain(saved);
   }
