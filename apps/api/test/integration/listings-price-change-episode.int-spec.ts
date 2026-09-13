@@ -24,6 +24,13 @@ const VARIANT_ID = 'ol_variant_price_change_1';
 // `uuid` column, so a malformed id (e.g. a non-uuid string) fails at the SQL
 // boundary before the repository's "no matching row" semantics ever apply.
 const UNKNOWN_EPISODE_ID = '99999999-9999-4999-8999-999999999999';
+// The same rule one column over: `sourceConnectionId` is a `uuid` too, so a
+// no-match assertion has to be spelled as a well-formed uuid or it asserts a
+// SQL type error rather than the empty result the port promises. Every real
+// caller is uuid-validated before it gets here (`ParseUUIDPipe` on the route,
+// `@IsUUID()` on the source-override keys), so the port is only ever asked
+// about well-formed ids in production.
+const UNKNOWN_CONNECTION_ID = '88888888-8888-4888-8888-888888888888';
 
 describe('Price Change Episode Repository Integration', () => {
   let harness: IntegrationTestHarness;
@@ -298,7 +305,7 @@ describe('Price Change Episode Repository Integration', () => {
     const bySource = await repository.countOpenBySource(DEST_CONNECTION_ID);
     expect(bySource.get(SRC_CONNECTION_ID)).toBe(1);
     expect(bySource.get(otherSourceId)).toBe(1);
-    expect(bySource.has('no-such-source')).toBe(false);
+    expect(bySource.has(UNKNOWN_CONNECTION_ID)).toBe(false);
   });
 
   it('listOpenDestinationConnectionIds() reports distinct destination ids for a source, deduplicated across variants (#3163 review)', async () => {
@@ -332,7 +339,7 @@ describe('Price Change Episode Repository Integration', () => {
     const destinationIds = await repository.listOpenDestinationConnectionIds(SRC_CONNECTION_ID);
     expect([...destinationIds].sort()).toEqual([DEST_CONNECTION_ID, otherDestId].sort());
 
-    expect(await repository.listOpenDestinationConnectionIds('no-such-source')).toEqual([]);
+    expect(await repository.listOpenDestinationConnectionIds(UNKNOWN_CONNECTION_ID)).toEqual([]);
   });
 
   it('round-trips a null computedOldAmount (a brand-new mapping with no baseline) and excludes it from direction filtering (#3159 review)', async () => {
