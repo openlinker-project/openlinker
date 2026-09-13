@@ -17,8 +17,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreatePriceChangeAutoAppliedLog1879000000000 implements MigrationInterface {
-  name = 'CreatePriceChangeAutoAppliedLog1879000000000';
+export class CreatePriceChangeAutoAppliedLog1881000000000 implements MigrationInterface {
+  name = 'CreatePriceChangeAutoAppliedLog1881000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS "uuid-ossp"`);
