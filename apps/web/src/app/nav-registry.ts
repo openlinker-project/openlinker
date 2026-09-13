@@ -19,7 +19,7 @@
 import { mergePluginNavContributions } from '../plugins/merge-nav-contributions';
 import { plugins } from '../plugins';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
-import type { Permission } from '../shared/auth/session.types';
+import type { Permission, Session } from '../shared/auth/session.types';
 import type { LiveNavItem, NavGroup, NavRegistryGroup } from './nav-registry.types';
 
 /**
@@ -126,6 +126,36 @@ export function isNavItemVisible(item: LiveNavItem, { permissions = [], role }: 
     return false;
   }
   return true;
+}
+
+/**
+ * The role a nav gate reads from a session — the single derivation feeding
+ * {@link isNavItemVisible}, for both the sidebar and ⌘K.
+ *
+ * Extracted by #3108's review. The visibility RULE was already shared; its
+ * INPUT was spelled twice and not identically — `app-shell.tsx` had
+ * `isReady && session.status === 'authenticated' ? session.user?.role : undefined`
+ * and `command-palette-provider.tsx` the same expression without `isReady`.
+ * That is exactly the argument this PR used for extracting `isNavItemVisible`
+ * ("two independent implementations is how ⌘K became a way around whichever one
+ * drifted"), applied one level up.
+ *
+ * ## Why there is no `isReady` parameter
+ *
+ * It would be redundant, not merely optional. `SessionProvider` starts at
+ * `ANONYMOUS_SESSION` and `refreshSession` calls `setSession(next)` and
+ * `setIsReady(true)` in the SAME callback, so React batches them and no render
+ * ever observes `status === 'authenticated'` while `isReady` is false —
+ * `clearSession` only moves in the safe direction (back to anonymous, leaving
+ * `isReady` true). An unresolved session therefore already yields `undefined`
+ * here, which `isNavItemVisible` treats as "no role known" and fails CLOSED.
+ *
+ * Do not add one back without re-checking that ordering: if a future provider
+ * ever restores a session optimistically before validating it, this function —
+ * not its two call sites — is where the extra condition belongs.
+ */
+export function navRoleOf(session: Session): string | undefined {
+  return session.status === 'authenticated' ? session.user?.role : undefined;
 }
 
 export interface BuildNavGroupsInput {

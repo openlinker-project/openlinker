@@ -24,7 +24,7 @@ import { NavLink, useLocation, useMatches } from 'react-router-dom';
 import { useSession } from '../shared/auth/use-session';
 import { useNumberFormat } from '../shared/i18n';
 import { resolveCrumbFromMatches } from './breadcrumbs';
-import { buildNavGroups } from './nav-registry';
+import { buildNavGroups, navRoleOf } from './nav-registry';
 import type { NavGroup } from './nav-registry.types';
 import { useNavCounts, type NavCounts } from './hooks/use-nav-counts';
 import { Button } from '../shared/ui/button';
@@ -264,7 +264,10 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   // string, since `packer`'s ROLE_PERMISSIONS grant is deliberately empty
   // (ADR-071) and so carries no permission a `requiresPermission` gate could
   // check instead.
-  const role = isReady && session.status === 'authenticated' ? session.user?.role : undefined;
+  // One shared derivation with ⌘K (#3108 review) — see `navRoleOf`, which also
+  // records why it needs no `isReady`: the provider sets session and readiness
+  // in one batched callback, so an unresolved session is already `undefined`.
+  const role = navRoleOf(session);
   const groups = useMemo(
     () => buildNavGroups({ isAdmin, demoMode, permissions, role }),
     [isAdmin, demoMode, permissions, role],

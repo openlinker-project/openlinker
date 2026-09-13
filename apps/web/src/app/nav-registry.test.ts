@@ -7,10 +7,12 @@
  * in demo mode.
  */
 import { describe, expect, it } from 'vitest';
-import { BASE_NAV_GROUPS, buildNavGroups, isNavItemVisible } from './nav-registry';
+import { BASE_NAV_GROUPS, buildNavGroups, isNavItemVisible, navRoleOf } from './nav-registry';
 import { RoleValues } from './nav-registry.types';
 import type { LiveNavGroup, NavGroup } from './nav-registry.types';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
+import { ANONYMOUS_SESSION } from '../shared/auth/session.types';
+import type { Session } from '../shared/auth/session.types';
 
 const byLabel = (groups: NavGroup[], label: string): NavGroup | undefined =>
   groups.find((g) => g.label === label);
@@ -120,6 +122,35 @@ describe('buildNavGroups', () => {
       const labels = itemLabels(byLabel(groups, 'Operations'));
       expect(labels).toContain('Orders');
       expect(labels).toContain('Analytics');
+    });
+  });
+
+  // #3108 review — the visibility RULE was shared but its INPUT was spelled
+  // twice, and not identically: the shell had an extra `isReady &&` the palette
+  // did not. `navRoleOf` is the one derivation both now call.
+  describe('navRoleOf', () => {
+    const authenticated = (role: string): Session => ({
+      status: 'authenticated',
+      accessToken: 'token',
+      user: { id: 'u1', username: 'u', email: null, role, permissions: [] },
+    });
+
+    it('returns the role of an authenticated session', () => {
+      expect(navRoleOf(authenticated('packer'))).toBe('packer');
+    });
+
+    // The unresolved-session case, which is why no `isReady` parameter is
+    // needed: the provider starts at ANONYMOUS_SESSION, so "not resolved yet"
+    // already reaches `isNavItemVisible` as `undefined` and fails CLOSED.
+    it('returns undefined for the anonymous session the provider starts at', () => {
+      expect(navRoleOf(ANONYMOUS_SESSION)).toBeUndefined();
+      expect(isNavItemVisible({ to: '/bench', label: 'Pack bench', requiresRole: ['packer'] }, {
+        role: navRoleOf(ANONYMOUS_SESSION),
+      })).toBe(false);
+    });
+
+    it('returns undefined when an authenticated session carries no user', () => {
+      expect(navRoleOf({ status: 'authenticated', accessToken: 't', user: null })).toBeUndefined();
     });
   });
 

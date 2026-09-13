@@ -36,7 +36,7 @@ import type { PaletteGroup, PaletteItem } from '../shared/ui/command-palette';
 import { useSession } from '../shared/auth/use-session';
 import { useDemoMode } from '../features/system';
 import { captureDemoEvent } from '../features/demo';
-import { BASE_NAV_GROUPS, isNavItemVisible } from './nav-registry';
+import { BASE_NAV_GROUPS, isNavItemVisible, navRoleOf } from './nav-registry';
 import type { LiveNavGroup } from './nav-registry.types';
 
 // ── Recents ──────────────────────────────────────────────────────────
@@ -200,7 +200,7 @@ export function CommandPaletteProvider({ children }: PropsWithChildren): ReactEl
         if (
           !isNavItemVisible(item, {
             permissions: session.user?.permissions,
-            role: session.status === 'authenticated' ? session.user?.role : undefined,
+            role: navRoleOf(session),
           })
         ) {
           continue;
