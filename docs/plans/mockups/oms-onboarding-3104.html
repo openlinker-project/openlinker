@@ -2,9 +2,17 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
 /* ============================================================================
-   Tokens — copied VERBATIM from apps/web/src/index.css (:root 185-386,
-   html[data-theme='dark'] 395-505). Do not hand-tune: the mockup is only
-   useful if a colour here is the colour that ships.
+   Tokens — every VALUE here is byte-identical to apps/web/src/index.css
+   (:root 185-386, html[data-theme='dark'] 395-505). Only two things differ,
+   and neither changes what renders: this file carries the SUBSET of tokens it
+   uses rather than all 111, and a multi-line value (the two font stacks) is
+   collapsed onto one line to fit the two-per-line layout below.
+
+   Do not hand-tune: the mockup is only useful if a colour here is the colour
+   that ships. A value edited here and not in index.css is a silent lie about
+   the app, which is how the font stacks previously came to drop
+   BlinkMacSystemFont, Consolas and 'Liberation Mono' under a comment that
+   claimed they were verbatim (PR #3125 review).
 
    The app selects dark with the `data-theme` attribute ALONE (the FOUC guard
    in index.html resolves `system` to a literal light|dark before paint, so the
@@ -51,14 +59,14 @@
   --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
   --button-primary-bg-hover: oklch(62% 0.19 50);
   --shell-topbar-height: 52px;
-  --space-1:.25rem; --space-2:.5rem; --space-3:.75rem; --space-4:1rem;
+  --space-1:0.25rem; --space-2:0.5rem; --space-3:0.75rem; --space-4:1rem;
   --space-5:1.5rem; --space-6:2rem; --space-7:3rem;
   --radius-xs:4px; --radius-sm:6px; --radius-md:8px; --radius-lg:10px;
   --radius-xl:14px; --radius-pill:9999px;
-  --duration-fast:120ms; --duration-normal:180ms; --ease-out:cubic-bezier(.16,1,.3,1);
-  --tracking-tight:-.012em; --tracking-wide:.02em; --tracking-caps:.08em;
-  --font-sans:'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+  --duration-fast:120ms; --duration-normal:180ms; --ease-out:cubic-bezier(0.16, 1, 0.3, 1);
+  --tracking-tight:-0.012em; --tracking-wide:0.02em; --tracking-caps:0.08em;
+  --font-sans:'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme='light']) {
@@ -93,11 +101,11 @@
   --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
   --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270);
   --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
-  --shadow-soft: 0 1px 2px rgb(0 0 0 / .40), 0 8px 24px rgb(0 0 0 / .40);
-  --shadow-overlay: 0 24px 48px rgb(0 0 0 / .60), 0 8px 16px rgb(0 0 0 / .40);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
   --overlay-scrim: rgb(0 0 0 / 0.72);
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / .40);
-  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / .04);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
   --button-primary-bg-hover: oklch(78% 0.18 50);
 } }
 :root[data-theme='dark'] {
@@ -132,11 +140,11 @@
   --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
   --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270);
   --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
-  --shadow-soft: 0 1px 2px rgb(0 0 0 / .40), 0 8px 24px rgb(0 0 0 / .40);
-  --shadow-overlay: 0 24px 48px rgb(0 0 0 / .60), 0 8px 16px rgb(0 0 0 / .40);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
   --overlay-scrim: rgb(0 0 0 / 0.72);
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / .40);
-  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / .04);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
   --button-primary-bg-hover: oklch(78% 0.18 50);
 }
 
@@ -373,6 +381,7 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
 .attention-row__do-label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase;
   letter-spacing:var(--tracking-caps); color:var(--text-secondary); margin-bottom:var(--space-2); }
 .attention-row__do ol{ margin:0; padding-left:var(--space-4); display:grid; gap:var(--space-1); }
+.attention-row__proposed{ font-size:.8125rem; color:var(--status-warning-fg); border-left:2px solid var(--status-warning-border); padding-left:var(--space-3); }
 .attention-row__do li{ font-size:.8125rem; }
 .attention-row__note{ border-left:2px solid var(--border-default); padding-left:var(--space-3);
   display:grid; gap:var(--space-1); max-width:74ch; }
@@ -384,11 +393,24 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
 /* ── inline previews ─────────────────────────────────────────────────────
    Shipped vs shipped-but-not-on-this-screen is still worth showing, so it
    keeps its own frame.
+
+   `--proposed` is the SECOND frame, and it is not decoration. This file is a
+   target-state mockup, and frontend-architecture.md § UX Mockups says a stale
+   mockup is worse than none "because it actively misleads" — so a target-state
+   file has to stay distinguishable from a description of today. A dashed frame
+   plus a `Proposed` label is that distinction, reusing the dash the gate row
+   already uses for "this one is not like the others". Three screens drawn here
+   do not exist: the fourth Who-decides arrangement, a Stock-locations screen,
+   and a Locations screen. (PR #3125 review.)
    ---------------------------------------------------------------------- */
 .preview{ border-radius:var(--radius-md); padding:var(--space-3); display:grid; gap:var(--space-2); max-width:74ch; }
 .preview--shipped{ border:1px solid var(--border-default); background:var(--bg-surface-muted); }
+.preview--proposed{ border:1px dashed var(--status-warning-border); background:var(--status-warning-soft); }
 .preview__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase;
   letter-spacing:var(--tracking-caps); color:var(--text-secondary); }
+/* After `.preview__label`, not before: equal specificity, so source order is what
+   decides the colour. Declared above it, this would never paint. */
+.preview__label--proposed{ color:var(--status-warning-fg); text-transform:none; letter-spacing:normal; }
 .mini-card{ display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-3);
   border-radius:var(--radius-md); background:var(--bg-surface); border:1px solid var(--border-default); }
 .mini-card__icon{ width:28px; height:28px; border-radius:var(--radius-sm); background:var(--accent-primary);
@@ -454,7 +476,9 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
    Replaces the old "what this page deliberately does not do" prose block.
    Those were three adjacent, already-shipped settings surfaces, not gaps —
    a link list says that in one line each instead of a paragraph apiece. */
-.related-links{ display:flex; flex-wrap:wrap; gap:var(--space-2) var(--space-5); font-size:.8125rem; }
+.related-links{ display:flex; flex-wrap:wrap; gap:var(--space-2) var(--space-5); font-size:.8125rem;
+  align-items:center; }
+.related-links span{ color:var(--text-muted); display:inline-flex; align-items:center; gap:var(--space-2); }
 </style>
 
 <div class="shell">
@@ -626,6 +650,19 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
           cannot be checked on their behalf. Every row reflects a live read, not a stored checkbox &mdash; closing
           this page loses no progress.
         </p>
+        <!-- The convention this file follows, stated once. frontend-architecture.md
+             § UX Mockups: "a stale mockup is worse than none, because it actively
+             misleads". Drawing a target state is fine; drawing it so it cannot be told
+             apart from today is not, which is what PR #3125's second review blocked on.
+             So: a `Proposed` badge and a dashed preview frame mark the three screens
+             this epic has to build, and everything without one exists today. -->
+        <p class="step__note-body" style="margin-top:var(--space-2);">
+          <b>What is drawn here, and what exists now.</b> This page is the target state, after this epic ships.
+          A row carrying a <span class="status-badge status-badge--compact status-badge--warning">Proposed</span>
+          badge, and any preview in a dashed amber frame, is something that has to be built &mdash; three of them:
+          the fourth <b>Who decides what</b> arrangement, a <b>Stock locations</b> screen, and a <b>Locations</b>
+          screen. Everything else on this page is shipped, and every figure on it is a live read.
+        </p>
       </section>
 
       <div id="outcomeSlot"></div>
@@ -637,11 +674,21 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
             <h2 class="section-title">Adjacent settings this page doesn&rsquo;t cover</h2>
           </div>
         </div>
+        <!-- Two of these four have no screen. `Dispatch & shipping labels` is the ADR-012
+             dispatch routing that `RoutingRulesPanel` already renders on the connection's
+             Mappings page, and `Who decides what` is /settings/who-decides — both shipped.
+             `Sourcing rules` is API-only (#2953 shipped the admin API under
+             connections/:connectionId/sourcing-rules; nothing in apps/web calls it), and
+             `Locations` has CRUD (#2316) with no page and no nav entry. Linking to either
+             without saying so sends an operator looking for a screen that is not there,
+             which is the dead end this whole page exists to remove. -->
         <div class="related-links">
           <a href="#">Dispatch &amp; shipping labels &rarr;</a>
-          <a href="#">Sourcing rules (which warehouse wins) &rarr;</a>
-          <a href="#">Locations (manage every warehouse) &rarr;</a>
           <a href="#">Who decides what &rarr;</a>
+          <span>Sourcing rules (which warehouse wins) &mdash;
+            <span class="status-badge status-badge--compact status-badge--warning">Proposed</span></span>
+          <span>Locations (manage every warehouse) &mdash;
+            <span class="status-badge status-badge--compact status-badge--warning">Proposed</span></span>
         </div>
       </section>
     </main>
@@ -690,11 +737,26 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
 <div class="dialog__overlay" id="ov-dialog-grant-sourcing"></div>
 <div class="dialog__content" role="dialog" aria-modal="true" tabindex="-1"
      aria-labelledby="dlg2-title" aria-describedby="dlg2-desc" id="dlg-dialog-grant-sourcing">
-  <h2 class="dialog__title" id="dlg2-title">Put OpenLinker in charge of where orders ship from?</h2>
+  <h2 class="dialog__title" id="dlg2-title">
+    Put OpenLinker in charge of where orders ship from?
+    <span class="status-badge status-badge--compact status-badge--warning">Proposed</span>
+  </h2>
+  <!-- PROPOSED, and the count matters. `AUTHORITY_PRESETS`
+       (apps/api/src/fulfillment-authority/application/authority-presets.ts) has exactly
+       three members and NONE of them writes `sourcingAuthority.enabled: true`:
+         leave-as-they-are  -> keepAsIs (:125) returns the same reference, writes nothing
+         openlinker-decides -> disableClaimsPreservingAssignment (:138-151), which only
+                               ever sets `enabled: false` — a revocation, not a grant
+         keep-other-system  -> available: false (:172), Wave-4 gated
+       So this dialog is a FOURTH arrangement the epic has to add, not one of the three.
+       Calling it "one of three" was the dead end PR #3125's review blocked on twice. -->
   <p class="dialog__description" id="dlg2-desc">
-    One of three arrangements on <b>Who decides what</b>. This only affects what happens from now on. Anything
-    already in progress &mdash; a parcel someone is packing, a label already bought &mdash; keeps its current
-    arrangement until it finishes.
+    <b>Proposed &mdash; this arrangement does not exist yet.</b> <b>Who decides what</b> ships three today
+    &mdash; &ldquo;Leave things as they are&rdquo;, &ldquo;Let OpenLinker decide&rdquo; and &ldquo;Keep the other
+    system in charge&rdquo; &mdash; and none of them puts OpenLinker in charge of this: the first writes nothing,
+    the second only ever switches claims <em>off</em>, and the third is not selectable yet. This epic adds a
+    fourth, drawn here. It would affect only what happens from now on: anything already in progress &mdash; a
+    parcel someone is packing, a label already bought &mdash; keeps its current arrangement until it finishes.
   </p>
   <div class="dialog__body">
     <p style="font-size:.8125rem; font-weight:600;">What changes</p>
@@ -703,10 +765,25 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
       <div class="diff-line__change"><b>Wherever the order lands today</b> becomes <b>OpenLinker</b></div>
       <div class="diff-line__meaning">OpenLinker will decide this from now on.</div>
     </div>
+    <!-- The mechanism behind the second row, because a reviewer with the codebase open
+         reached the OPPOSITE conclusion from it (PR #3125) by looking at #2397's
+         `OrderSyncRequest.destinationConnectionIds`, which narrows the fan-out and which
+         nothing populates. That is the wrong mechanism. The one that produces this is
+         #2396's intercept in
+         libs/core/src/orders/application/services/order-ingestion.service.ts:589-613 —
+         `interceptFulfillmentRouting` sits between `persistOrder` and `syncOrder`, and on
+         `held` the call to `syncOrder` is SKIPPED ENTIRELY. Its own comment: "No
+         destination fan-out, and therefore no `syncStatus` rows". `toInterceptOutcome`
+         (:986-1045) is what decides `held`, and the split is load-bearing for the copy
+         below: `routed` / `in-doubt` / `contended` / `already-live-elsewhere` are held and
+         are NOT mirrored, while `refused` (which includes a plan carrying an unsourceable
+         line) and a cancelled order are NOT held and take their ordinary path to the shop.
+         Hence "orders OpenLinker routes", never "orders OpenLinker sees". -->
     <div class="diff-line">
       <div class="diff-line__q">Where does the order get created?</div>
       <div class="diff-line__change"><b>Your shop, as it does now</b> becomes <b>OpenLinker only</b></div>
-      <div class="diff-line__meaning">Orders OpenLinker routes are no longer copied into your shop at all.</div>
+      <div class="diff-line__meaning">An order OpenLinker routes is not copied into your shop at all &mdash; it is
+        not that the copy arrives late or arrives incomplete, it is never created.</div>
     </div>
     <div class="alert alert--warning alert--wide" role="status">
       <div class="alert__content">
@@ -714,7 +791,9 @@ code { font-family:var(--font-mono); font-size:.9em; background:var(--bg-surface
         <p class="alert__description">
           It is the one that surprises people. Anything you do in your shop today with these orders &mdash; invoices,
           picking lists, stock counts, the customer&rsquo;s &ldquo;my orders&rdquo; page, a second person packing
-          &mdash; stops seeing them. Orders your shop raised itself are untouched.
+          &mdash; stops seeing them. Three kinds of order are untouched and still arrive in your shop exactly as they
+          do now: ones your shop raised itself, ones OpenLinker could not source &mdash; a single line it cannot fill
+          refuses the whole order &mdash; and ones that were already cancelled when OpenLinker read them.
         </p>
       </div>
     </div>
@@ -803,12 +882,11 @@ const ROWS = [
     value: (d) => d ? '1 active location — MAIN' : 'No location yet',
     sub: 'OpenLinker cannot choose where an order ships from until there is at least one place to choose. One is enough to start.',
     doItems: [
-      'Open the connection&rsquo;s <b>Health</b> tab and press <b>Create default location</b> for a quick start, or',
-      'Open <b>Locations</b> to add one with a full address, if you already know it',
+      'Open the connection&rsquo;s <b>Health</b> tab and press <b>Create default location</b>',
     ],
     note: {
-      title: 'Locations can be refined later',
-      body: 'A quick-created default location can be renamed and given a country and postcode from <b>Locations</b> at any time — the <em>nearest</em> and <em>ships-to-country</em> sourcing rules read those two columns once they are filled in.',
+      title: 'The location it creates is blank, and there is no screen yet to fill it in',
+      body: 'It is named <code>MAIN</code>, carries no country and no postcode, and locates none of your existing stock. Both of those columns matter later \u2014 the <em>nearest</em> and <em>ships-to-country</em> sourcing rules read them. A <b>Locations</b> screen for naming and addressing a warehouse is <b>proposed and not built</b>: the API behind it exists, but nothing in the app reaches it, so the quick-create button above is the only route today and a warehouse you can actually describe has to wait for that screen.',
     },
     preview: 'location',
     action: (d) => d ? null : { label: 'Create default location', onclick: 'completeRow(1)' },
@@ -818,25 +896,38 @@ const ROWS = [
     title: 'Stock tagged with a warehouse',
     value: (d) => `${d ? '4,812' : '0'} of 4,812`,
     sub: 'This is the row that decides whether any of the others produce packing work.',
+    // The FACT is live: `GET /inventory` takes a `locationId` filter and returns a total,
+    // so the count above is a real read. The REMEDY is not. There is no Stock-locations
+    // screen, no route for one, no nav entry and no bulk-assign UI anywhere in apps/web —
+    // the product detail page READS `locationId` and offers no way to set it. Drawing that
+    // screen as shipped is the same defect class as the "one of three arrangements" claim
+    // in the grant dialog: PR #3125's review caught that one, and this is its sibling.
+    proposed: 'A screen for assigning warehouses to stock is <b>proposed and not built</b>. The count above is a live read, so this row tells you the truth about your stock &mdash; but the only way to move it today is a source system that already reports where its stock is.',
     doItems: [
-      'Open <b>Products &rarr; Stock locations</b>',
-      'Assign each item&rsquo;s warehouse in bulk, or let it arrive automatically from a location-aware source system',
+      'Today: connect a source system that reports a location alongside its stock, and the count above fills in on its own as it syncs',
+      'Proposed: <b>Products &rarr; Stock locations</b>, to assign warehouses in bulk from inside OpenLinker',
     ],
     note: {
       title: 'Unlocated stock is skipped, never guessed',
-      body: 'A stock figure with no location means nobody has said where those goods physically are, and OpenLinker skips it rather than inventing an answer. Tag the remainder from <b>Stock locations</b> to bring it into rotation.',
+      body: 'A stock figure with no location means nobody has said where those goods physically are, and OpenLinker skips it rather than inventing an answer. It is not an error and nothing breaks \u2014 those orders keep taking their ordinary path to your shop \u2014 but none of that stock can be picked from until something says where it is.',
     },
     preview: 'stock',
-    action: (d) => d ? null : { label: 'Open Stock locations', onclick: 'completeRow(2)' },
+    action: (d) => d ? null : { label: 'Try it: mark stock as located', onclick: 'completeRow(2)', secondary: true },
   },
   {
     who: 'Admin',
     title: 'Who decides where orders ship from',
     value: (d) => d ? 'OpenLinker' : 'Your shop, as before',
     sub: 'The row that actually switches anything on. Until it changes, every order still goes exactly where it went before.',
+    // PROPOSED. `AUTHORITY_PRESETS` has exactly three members and none writes
+    // `sourcingAuthority.enabled: true` — see the HTML comment on the grant dialog for the
+    // line references. So this row's action is a FOURTH arrangement the epic adds, not a
+    // choice already sitting on Who decides what. Saying otherwise sent an operator to a
+    // screen that cannot do what they were sent there for, twice, in PR #3125's reviews.
+    proposed: 'The arrangement that puts OpenLinker in charge is <b>proposed and not built</b>. <b>Who decides what</b> ships three arrangements today and none of them grants this one: &ldquo;Leave things as they are&rdquo; writes nothing, &ldquo;Let OpenLinker decide&rdquo; only ever switches claims <em>off</em>, and &ldquo;Keep the other system in charge&rdquo; is not selectable yet.',
     doItems: [
       'Open <b>Settings &rarr; Who decides what</b>',
-      'Choose the arrangement that puts OpenLinker in charge, read the two rows it says will change, and save',
+      'Proposed: choose the fourth arrangement, the one that puts OpenLinker in charge; read the two rows it says will change, and save',
     ],
     note: {
       title: 'How to hand the decision back, once you have granted it',
@@ -926,8 +1017,8 @@ function previewHtml(kind) {
   if (kind === 'stock') {
     const total = 4812;
     const located = done[2] ? total : 0;
-    return `<div class="preview preview--shipped">
-      <p class="preview__label">Shipped &mdash; Products &rarr; Stock locations</p>
+    return `<div class="preview preview--proposed">
+      <p class="preview__label preview__label--proposed">Proposed &mdash; Products &rarr; Stock locations (no such screen today)</p>
       <div class="who-decides-row">
         <div class="who-decides-row__question">Stock with a known warehouse</div>
         <div class="who-decides-row__answer mono-text">${located.toLocaleString('en-GB')} of ${total.toLocaleString('en-GB')}</div>
@@ -938,8 +1029,9 @@ function previewHtml(kind) {
   }
   if (kind === 'whodecides') {
     const granted = done[3];
-    return `<div class="preview preview--shipped">
-      <p class="preview__label">Shipped &mdash; Who decides what</p>
+    return `<div class="preview preview--proposed">
+      <p class="preview__label preview__label--proposed">Who decides what &mdash; the page ships; this row moving to
+        &ldquo;OpenLinker&rdquo; is proposed</p>
       <div class="who-decides-rows">
         <div class="who-decides-row who-decides-row--highlight">
           <h4 class="who-decides-row__question">Where does an order ship from?</h4>
@@ -1043,6 +1135,7 @@ function render(focusId) {
             ${r.title}
             <span class="attention-row__value">${r.value(done[i])}</span>
             <span class="status-badge status-badge--compact ${r.who === 'Packer' ? 'status-badge--review' : 'status-badge--info'}">${r.who}</span>
+            ${r.proposed ? '<span class="status-badge status-badge--compact status-badge--warning">Proposed</span>' : ''}
             ${isCurrent ? '<span class="status-badge status-badge--compact status-badge--neutral">You are here</span>' : ''}
           </div>
           <p class="attention-row__sub">${r.sub}</p>
@@ -1056,6 +1149,7 @@ function render(focusId) {
       <div class="attention-row__detail" id="detail${i}" ${expanded ? '' : 'hidden'}>
         <div class="attention-row__do">
           <p class="attention-row__do-label">Do this</p>
+          ${r.proposed ? `<p class="attention-row__proposed">${r.proposed}</p>` : ''}
           <ol>${r.doItems.map((it) => `<li>${it}</li>`).join('')}</ol>
         </div>
         ${previewHtml(r.preview)}
