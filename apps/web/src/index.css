@@ -1854,7 +1854,7 @@ textarea,
  * cells — a new pattern this feature introduces, mirroring
  * docs/plans/mockups/price-changes-review-queue.html 1:1.
  */
-.filter-bar {
+.price-changes-queue .filter-bar {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -1862,7 +1862,7 @@ textarea,
   align-items: center;
 }
 
-.filter-bar__label {
+.price-changes-queue .filter-bar__label {
   font-size: 0.65rem;
   font-weight: 600;
   letter-spacing: var(--tracking-caps);
@@ -1871,39 +1871,43 @@ textarea,
   margin-right: 2px;
 }
 
-.filter-note {
+.price-changes-queue .filter-note {
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-bottom: var(--space-3);
 }
 
-.table-wrap {
+.price-changes-queue .table-wrap {
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
   overflow: hidden;
 }
 
-.table-scroll {
+.price-changes-queue .table-scroll {
   overflow-x: auto;
   /* Momentum scroll on iOS Safari — a bare `overflow-x: auto` scrolls but
      without inertia, which reads as broken on a touch device (#3164
      review). A dedicated card view for <768px (the `DataTableCardView`
      pattern `shared/ui/data-table.tsx` already ships) is deferred to the
-     table's own migration onto that primitive — tracked alongside the
-     `Chip`/`aria-pressed` fix above as the same underlying gap; this table
-     stays a horizontal-scroll surface at every width until then, which is
-     why the scroll itself is made as usable as a bare `overflow-x` allows. */
+     table's own migration onto that primitive — ONE tracked issue covers
+     both halves, because the migration is what supplies the card view:
+     openlinker-project/openlinker#3223. Until it lands this table stays a
+     horizontal-scroll surface at every width, against
+     `docs/frontend-ui-style-guide.md § Responsive`, whose parity matrix
+     specifies a card view for tables on mobile — which is why the scroll
+     itself is made as usable as a bare `overflow-x` allows. Delete this
+     paragraph together with the deferral, not before. */
   -webkit-overflow-scrolling: touch;
 }
 
-.table-wrap table {
+.price-changes-queue .table-wrap table {
   width: 100%;
   border-collapse: collapse;
   min-width: 900px;
 }
 
-.table-wrap thead th {
+.price-changes-queue .table-wrap thead th {
   text-align: left;
   font-size: 0.65rem;
   font-weight: 600;
@@ -1916,12 +1920,12 @@ textarea,
   white-space: nowrap;
 }
 
-.table-wrap th.col-num,
-.table-wrap td.col-num {
+.price-changes-queue .table-wrap th.col-num,
+.price-changes-queue .table-wrap td.col-num {
   text-align: right;
 }
 
-.table-wrap .th-sub {
+.price-changes-queue .table-wrap .th-sub {
   font-family: var(--font-mono);
   font-weight: 500;
   text-transform: none;
@@ -1931,54 +1935,54 @@ textarea,
   margin-left: 4px;
 }
 
-.table-wrap tbody td {
+.price-changes-queue .table-wrap tbody td {
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-default);
   vertical-align: middle;
 }
 
-.table-wrap tbody tr:last-child td {
+.price-changes-queue .table-wrap tbody tr:last-child td {
   border-bottom: none;
 }
 
-.table-wrap tbody tr.is-resolved td {
+.price-changes-queue .table-wrap tbody tr.is-resolved td {
   background: var(--bg-surface-muted);
 }
 
-.table-wrap tbody tr.is-resolved {
+.price-changes-queue .table-wrap tbody tr.is-resolved {
   opacity: 0.6;
 }
 
-.table-wrap tbody tr.is-group-start td {
+.price-changes-queue .table-wrap tbody tr.is-group-start td {
   border-top: 1px solid var(--border-default);
 }
 
-.table-wrap tbody tr.is-group-start:first-child td {
+.price-changes-queue .table-wrap tbody tr.is-group-start:first-child td {
   border-top: none;
 }
 
 /* The persistent left-border accent tying a fanned-out price change's rows
    together (#3147 AC: "exactly as in the mockup"). */
-.table-wrap tbody tr.is-grouped td:first-child {
+.price-changes-queue .table-wrap tbody tr.is-grouped td:first-child {
   box-shadow: inset 3px 0 0 var(--accent-primary-border);
 }
 
-.table-wrap tbody tr.is-flagged td {
+.price-changes-queue .table-wrap tbody tr.is-flagged td {
   background: color-mix(in oklab, var(--status-warning-soft) 55%, transparent);
 }
 
-.cell-product {
+.price-changes-queue .cell-product {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
 }
 
-.cell-product__text {
+.price-changes-queue .cell-product__text {
   min-width: 0;
 }
 
-.cell-product__name {
+.price-changes-queue .cell-product__name {
   font-size: 0.78rem;
   font-weight: 500;
   color: var(--text-primary);
@@ -1988,13 +1992,13 @@ textarea,
   max-width: 24ch;
 }
 
-.cell-product__sku {
+.price-changes-queue .cell-product__sku {
   font-size: 0.68rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
 
-.cell-product__source {
+.price-changes-queue .cell-product__source {
   font-size: 0.65rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
@@ -2002,7 +2006,7 @@ textarea,
   white-space: nowrap;
 }
 
-.cell-continuation {
+.price-changes-queue .cell-continuation {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2011,7 +2015,7 @@ textarea,
   font-size: 0.75rem;
 }
 
-.cell-continuation__help {
+.price-changes-queue .cell-continuation__help {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2026,7 +2030,7 @@ textarea,
   cursor: help;
 }
 
-.connection-tag {
+.price-changes-queue .connection-tag {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -2042,12 +2046,12 @@ textarea,
   text-decoration: none;
 }
 
-.connection-tag:hover {
+.price-changes-queue .connection-tag:hover {
   border-color: var(--border-strong);
   color: var(--text-primary);
 }
 
-.price-compare {
+.price-changes-queue .price-compare {
   display: flex;
   align-items: baseline;
   gap: 6px;
@@ -2055,19 +2059,19 @@ textarea,
   flex-wrap: wrap;
 }
 
-.price-compare__old {
+.price-changes-queue .price-compare__old {
   color: var(--text-muted);
   text-decoration: line-through;
   font-size: 0.72rem;
 }
 
-.price-compare__new {
+.price-changes-queue .price-compare__new {
   color: var(--text-primary);
   font-weight: 600;
   font-size: 0.8rem;
 }
 
-.delta-chip {
+.price-changes-queue .delta-chip {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -2079,15 +2083,15 @@ textarea,
   margin-left: 2px;
 }
 
-.delta-chip--up,
-.delta-chip--down,
-.delta-chip--flat {
+.price-changes-queue .delta-chip--up,
+.price-changes-queue .delta-chip--down,
+.price-changes-queue .delta-chip--flat {
   background: var(--status-info-soft);
   color: var(--status-info-fg);
   border: 1px solid var(--status-info-border);
 }
 
-.delta-chip--steep {
+.price-changes-queue .delta-chip--steep {
   background: var(--status-warning-soft);
   color: var(--status-warning-fg);
   border: 1px solid var(--status-warning-border);
@@ -2096,19 +2100,19 @@ textarea,
 /* #3164 review — `--up`/`--down` render the same color (matching the
  * mockup, which distinguishes the two with an icon, not color); this is
  * that icon's font-size, since the label carries its own +/- sign. */
-.delta-chip__icon {
+.price-changes-queue .delta-chip__icon {
   font-size: 0.6rem;
   line-height: 1;
 }
 
-.row-actions {
+.price-changes-queue .row-actions {
   display: flex;
   gap: 5px;
   justify-content: flex-end;
   flex-wrap: wrap;
 }
 
-.status-note {
+.price-changes-queue .status-note {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -2119,15 +2123,15 @@ textarea,
   justify-content: flex-end;
 }
 
-.status-note--accepted {
+.price-changes-queue .status-note--accepted {
   color: var(--status-success-fg);
 }
 
-.status-note--custom {
+.price-changes-queue .status-note--custom {
   color: var(--status-info-fg);
 }
 
-.status-note .undo {
+.price-changes-queue .status-note .undo {
   color: var(--accent-primary);
   cursor: pointer;
   font-weight: 500;
@@ -2139,21 +2143,29 @@ textarea,
   font-size: inherit;
 }
 
-.refresh-note {
+.price-changes-queue .refresh-note {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
 }
 
-.refresh-note__text {
+.price-changes-queue .refresh-note__text {
   font-size: 0.68rem;
   color: var(--status-warning-fg);
   text-align: right;
   max-width: 220px;
 }
 
-/* ── Price change dialogs (#3148, ADR-072) ────────────────────────── */
+/* ── Price change dialogs (#3148, ADR-072) ──────────────────────────
+ * No `@media` here either (#3165 round-3 review). The gap is the queue
+ * table's, one surface over, and it is the same tracked issue —
+ * openlinker-project/openlinker#3223 covers the price-changes feature's
+ * responsive treatment as a whole, dialogs included, rather than splitting
+ * one styling pass across two tickets. Dialogs are the surface most likely
+ * to be operated from a tablet, so this half is the more urgent one.
+ * Delete this paragraph together with the deferral, not before.
+ */
 
 .price-hero {
   display: flex;
@@ -9075,56 +9087,10 @@ a.kpi-card:focus-visible {
 }
 
 /*
- * ── Category picker (#305) ────────────────────────────────────────
- * Leaf-only Allegro category picker used in CreateOfferWizard Step 2.
- * Browse-backed via breadcrumb; clicking a leaf fires onChange(id).
- * The "--prefill" variant renders when the form opens with a pre-set
- * categoryId — shows the raw ID + "Change" button as a fallback since
- * we don't resolve the breadcrumb ancestor chain yet.
- */
-.category-picker {
-  display: grid;
-  gap: 0.375rem;
-  padding: 0.625rem 0.75rem;
-  border: 1px solid var(--border-default);
-  border-radius: 0.625rem;
-  background: var(--bg-surface);
-}
-
-.category-picker--invalid {
-  border-color: var(--status-error-border);
-  background: var(--status-error-soft);
-}
-
-.category-picker--disabled {
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-.category-picker__prefill {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.category-picker__prefill-label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-}
-
-/* Browse / list / breadcrumb surface lives in the shared
- * `.category-tree-browser` primitive (see `shared/ui/category-tree-browser.tsx`).
- * Only the pre-fill fallback row remains wrapper-specific here. */
-
-/*
  * ── Category Tree Browser (shared primitive, #304) ───────────────
  * Hierarchical tree navigation with breadcrumb + per-row Select/Browse
- * actions. Consumed by `CategoryPicker` (listings, leaf-only mode) and
- * `AllegroCategorySearch` (mappings, any-level staged mode). Density
- * `compact` enables overflow-x scroll + tighter spacing for
+ * actions. Consumed by `AllegroCategorySearch` (mappings, any-level staged
+ * mode). Density `compact` enables overflow-x scroll + tighter spacing for
  * dialog-bounded usage.
  */
 .category-tree-browser {

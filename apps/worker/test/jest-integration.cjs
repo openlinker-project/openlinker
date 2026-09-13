@@ -33,6 +33,14 @@ module.exports = {
   // green locally (dev stack on :5432/:6379) but ECONNREFUSED in CI (#786).
   globalSetup: '<rootDir>/test/integration/setup-global.ts',
   globalTeardown: '<rootDir>/test/integration/teardown.ts',
+  // Reset the shared harness around EVERY test case of EVERY int-spec, so a
+  // spec is isolated by omission rather than by its author remembering to
+  // call resetTestHarness(). 21 of the 27 specs here reset in `afterEach`
+  // only and six reset nowhere, which left a file's first assertion reading
+  // whatever the previous file happened to leave behind. The audit of what a
+  // reset (including its `flushDb()`) is safe to do between every test case,
+  // and why, lives in setup-each.ts.
+  setupFilesAfterEnv: ['<rootDir>/test/integration/setup-each.ts'],
   moduleNameMapper: {
     '^@openlinker/core$': path.resolve(__dirname, '../../../libs/core/src/index.ts'),
     '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../../libs/core/src/$1'),

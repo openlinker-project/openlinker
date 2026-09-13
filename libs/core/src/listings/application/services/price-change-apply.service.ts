@@ -476,12 +476,25 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
     // the documented, wider, out-of-scope gap.
     const externalOfferId = await this.resolveShopProductExternalId(input);
     if (externalOfferId === null) {
-      // No prior mapping to key a lock on — nothing has written this target
-      // via the guarded path either, so there is nothing to race against
-      // yet. Publish unguarded rather than block on a lock that protects
-      // nothing.
-      await this.executeShopPublish(input, snapshot, await this.resolveShopStock(input));
-      return;
+      // #3161 round-3 review, IMPORTANT — a missing `ShopProduct` mapping
+      // must be TERMINAL, not a fallthrough to an unguarded publish.
+      // `executeShopPublish` -> `executePublish` -> `publishProduct` with
+      // `externalProductId` unresolved makes `woocommerce-product-
+      // publisher.adapter.ts` take its `isUpsert = false` branch and issue a
+      // CREATE against the live storefront — this service cannot tell a
+      // price-change re-publish from a genuine first publish, so a deleted
+      // mapping must never be allowed to mint a brand-new listing as a side
+      // effect of a price update. Not reachable from #3159 today (detection
+      // only walks EXISTING `ShopProduct` mappings), but becomes reachable
+      // the moment #3145's manual-accept endpoint enqueues for an episode
+      // whose mapping was deleted in the meantime — refuse deterministically
+      // (ADR-007) rather than silently creating a duplicate product.
+      throw new PriceChangeApplyPermanentError(
+        `No ShopProduct mapping found for variant=${input.productVariantId} on ` +
+          `connection=${input.destinationConnectionId} — refusing to publish a price ` +
+          `change against an unmapped shop product (would create a new product instead ` +
+          `of updating the existing one)`
+      );
     }
 
     await this.publishToShopGuarded(input, snapshot, externalOfferId);

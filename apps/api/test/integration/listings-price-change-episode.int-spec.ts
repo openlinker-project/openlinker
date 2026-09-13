@@ -20,6 +20,17 @@ import { PRICE_CHANGE_DERIVED_FILTER_FIXTURES } from '@openlinker/core/listings/
 const DEST_CONNECTION_ID = '44444444-4444-4444-8444-444444444444';
 const SRC_CONNECTION_ID = '55555555-5555-4555-8555-555555555555';
 const VARIANT_ID = 'ol_variant_price_change_1';
+// A well-formed uuid with no matching row — `price_change_episodes.id` is a
+// `uuid` column, so a malformed id (e.g. a non-uuid string) fails at the SQL
+// boundary before the repository's "no matching row" semantics ever apply.
+const UNKNOWN_EPISODE_ID = '99999999-9999-4999-8999-999999999999';
+// The same rule one column over: `sourceConnectionId` is a `uuid` too, so a
+// no-match assertion has to be spelled as a well-formed uuid or it asserts a
+// SQL type error rather than the empty result the port promises. Every real
+// caller is uuid-validated before it gets here (`ParseUUIDPipe` on the route,
+// `@IsUUID()` on the source-override keys), so the port is only ever asked
+// about well-formed ids in production.
+const UNKNOWN_CONNECTION_ID = '88888888-8888-4888-8888-888888888888';
 
 describe('Price Change Episode Repository Integration', () => {
   let harness: IntegrationTestHarness;
@@ -294,7 +305,7 @@ describe('Price Change Episode Repository Integration', () => {
     const bySource = await repository.countOpenBySource(DEST_CONNECTION_ID);
     expect(bySource.get(SRC_CONNECTION_ID)).toBe(1);
     expect(bySource.get(otherSourceId)).toBe(1);
-    expect(bySource.has('no-such-source')).toBe(false);
+    expect(bySource.has(UNKNOWN_CONNECTION_ID)).toBe(false);
   });
 
   it('listOpenDestinationConnectionIds() reports distinct destination ids for a source, deduplicated across variants (#3163 review)', async () => {
@@ -328,7 +339,7 @@ describe('Price Change Episode Repository Integration', () => {
     const destinationIds = await repository.listOpenDestinationConnectionIds(SRC_CONNECTION_ID);
     expect([...destinationIds].sort()).toEqual([DEST_CONNECTION_ID, otherDestId].sort());
 
-    expect(await repository.listOpenDestinationConnectionIds('no-such-source')).toEqual([]);
+    expect(await repository.listOpenDestinationConnectionIds(UNKNOWN_CONNECTION_ID)).toEqual([]);
   });
 
   it('round-trips a null computedOldAmount (a brand-new mapping with no baseline) and excludes it from direction filtering (#3159 review)', async () => {
@@ -419,7 +430,7 @@ describe('Price Change Episode Repository Integration', () => {
       computedNewAmount: 108,
     });
 
-    const found = await repository.findByIds([first.episode.id, second.episode.id, 'no-such-id']);
+    const found = await repository.findByIds([first.episode.id, second.episode.id, UNKNOWN_EPISODE_ID]);
     expect(found.map((e) => e.id).sort()).toEqual(
       [first.episode.id, second.episode.id].sort()
     );
@@ -531,7 +542,7 @@ describe('Price Change Episode Repository Integration', () => {
     const onResolved = await repository.acknowledgeRefresh(first.episode.id);
     expect(onResolved).toBeNull();
 
-    expect(await repository.acknowledgeRefresh('no-such-id')).toBeNull();
+    expect(await repository.acknowledgeRefresh(UNKNOWN_EPISODE_ID)).toBeNull();
   });
 
   it('direction/magnitudeLargeOnly are real SQL predicates — the page and the total agree, and a limited page never under-fills (#3162 re-review, BLOCKING)', async () => {
@@ -693,10 +704,10 @@ describe('Price Change Episode Repository Integration', () => {
     expect(await repository.claimForResolution(episode.id, new Date())).toBe('resolved');
 
     // An unknown id is reported distinctly.
-    expect(await repository.claimForResolution('no-such-id', new Date())).toBe('not-found');
+    expect(await repository.claimForResolution(UNKNOWN_EPISODE_ID, new Date())).toBe('not-found');
 
     // releaseClaim is idempotent and never throws on an unclaimed/resolved row.
     await expect(repository.releaseClaim(episode.id)).resolves.toBeUndefined();
-    await expect(repository.releaseClaim('no-such-id')).resolves.toBeUndefined();
+    await expect(repository.releaseClaim(UNKNOWN_EPISODE_ID)).resolves.toBeUndefined();
   });
 });

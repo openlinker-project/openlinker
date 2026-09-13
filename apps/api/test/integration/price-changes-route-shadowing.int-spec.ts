@@ -62,6 +62,7 @@ describe('Price Changes Route-Shadowing API Integration', () => {
           items: expect.any(Array),
           hiddenStaleCount: expect.any(Number),
           total: expect.any(Number),
+          hasMore: expect.any(Boolean),
         })
       );
     });
