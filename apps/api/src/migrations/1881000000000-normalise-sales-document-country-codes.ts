@@ -40,8 +40,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class NormaliseSalesDocumentCountryCodes1878000000000 implements MigrationInterface {
-  name = 'NormaliseSalesDocumentCountryCodes1878000000000';
+export class NormaliseSalesDocumentCountryCodes1881000000000 implements MigrationInterface {
+  name = 'NormaliseSalesDocumentCountryCodes1881000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
