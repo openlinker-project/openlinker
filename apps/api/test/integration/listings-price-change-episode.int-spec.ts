@@ -20,6 +20,10 @@ import { PRICE_CHANGE_DERIVED_FILTER_FIXTURES } from '@openlinker/core/listings/
 const DEST_CONNECTION_ID = '44444444-4444-4444-8444-444444444444';
 const SRC_CONNECTION_ID = '55555555-5555-4555-8555-555555555555';
 const VARIANT_ID = 'ol_variant_price_change_1';
+// A well-formed uuid with no matching row — `price_change_episodes.id` is a
+// `uuid` column, so a malformed id (e.g. a non-uuid string) fails at the SQL
+// boundary before the repository's "no matching row" semantics ever apply.
+const UNKNOWN_EPISODE_ID = '99999999-9999-4999-8999-999999999999';
 
 describe('Price Change Episode Repository Integration', () => {
   let harness: IntegrationTestHarness;
@@ -419,7 +423,7 @@ describe('Price Change Episode Repository Integration', () => {
       computedNewAmount: 108,
     });
 
-    const found = await repository.findByIds([first.episode.id, second.episode.id, 'no-such-id']);
+    const found = await repository.findByIds([first.episode.id, second.episode.id, UNKNOWN_EPISODE_ID]);
     expect(found.map((e) => e.id).sort()).toEqual(
       [first.episode.id, second.episode.id].sort()
     );
@@ -531,7 +535,7 @@ describe('Price Change Episode Repository Integration', () => {
     const onResolved = await repository.acknowledgeRefresh(first.episode.id);
     expect(onResolved).toBeNull();
 
-    expect(await repository.acknowledgeRefresh('no-such-id')).toBeNull();
+    expect(await repository.acknowledgeRefresh(UNKNOWN_EPISODE_ID)).toBeNull();
   });
 
   it('direction/magnitudeLargeOnly are real SQL predicates — the page and the total agree, and a limited page never under-fills (#3162 re-review, BLOCKING)', async () => {
@@ -693,10 +697,10 @@ describe('Price Change Episode Repository Integration', () => {
     expect(await repository.claimForResolution(episode.id, new Date())).toBe('resolved');
 
     // An unknown id is reported distinctly.
-    expect(await repository.claimForResolution('no-such-id', new Date())).toBe('not-found');
+    expect(await repository.claimForResolution(UNKNOWN_EPISODE_ID, new Date())).toBe('not-found');
 
     // releaseClaim is idempotent and never throws on an unclaimed/resolved row.
     await expect(repository.releaseClaim(episode.id)).resolves.toBeUndefined();
-    await expect(repository.releaseClaim('no-such-id')).resolves.toBeUndefined();
+    await expect(repository.releaseClaim(UNKNOWN_EPISODE_ID)).resolves.toBeUndefined();
   });
 });

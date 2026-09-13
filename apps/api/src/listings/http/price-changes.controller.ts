@@ -35,6 +35,7 @@ import {
   Inject,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   ConflictException,
@@ -119,7 +120,7 @@ export class PriceChangesController {
   @ApiResponse({ status: 409, description: 'Already resolved, blocked, stale (re-detected since last read), or already claimed by another in-flight request' })
   @ApiResponse({ status: 403, description: 'optInAutomatic requires the admin role' })
   async accept(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: AcceptPriceChangeDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<PriceChangeResolutionResponseDto> {
@@ -142,7 +143,7 @@ export class PriceChangesController {
   @ApiResponse({ status: 204 })
   @ApiResponse({ status: 404, description: 'Episode not found' })
   @ApiResponse({ status: 409, description: 'Already resolved' })
-  async ignore(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser): Promise<void> {
+  async ignore(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser): Promise<void> {
     await this.wrapDomainErrors(() => this.priceChanges.ignore(id, user.id));
   }
 
@@ -157,7 +158,7 @@ export class PriceChangesController {
     description:
       'Not currently ignored (e.g. already accepted), or superseded by a fresh episode opened for the same key since this one was ignored',
   })
-  async unresolve(@Param('id') id: string): Promise<void> {
+  async unresolve(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
     await this.wrapDomainErrors(() => this.priceChanges.unresolve(id));
   }
 
@@ -171,7 +172,7 @@ export class PriceChangesController {
   @ApiResponse({ status: 200, type: PriceChangeItemResponseDto })
   @ApiResponse({ status: 404, description: 'Episode not found' })
   @ApiResponse({ status: 409, description: 'Already resolved' })
-  async refresh(@Param('id') id: string): Promise<PriceChangeItemResponseDto> {
+  async refresh(@Param('id', new ParseUUIDPipe()) id: string): Promise<PriceChangeItemResponseDto> {
     const item = await this.wrapDomainErrors(() => this.priceChanges.refresh(id));
     return PriceChangeItemResponseDto.fromDomain(item);
   }
@@ -185,7 +186,7 @@ export class PriceChangesController {
   @ApiResponse({ status: 409, description: 'Already resolved, blocked, stale, or already claimed by another in-flight request' })
   @ApiResponse({ status: 403, description: 'optInAutomatic requires the admin role' })
   async edit(
-    @Param('id') id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: EditPriceChangeDto,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<PriceChangeResolutionResponseDto> {

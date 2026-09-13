@@ -153,14 +153,34 @@ export const JobTypeValues = [
   // core-owned orchestration job that may target a shop OR a marketplace
   // destination, not a marketplace-specific one.
   //
-  // MERGE-ORDER NOTE (#3159 review, BLOCKING): this entry has NO registered
-  // handler/lane until #3144's stack registers it, so `assertFullLaneCoverage()`
+  // MERGE-ORDER NOTE (#3159 review, BLOCKING): this entry has no registered
+  // handler/lane until #3144's stack registers one, so `assertFullLaneCoverage()`
   // throws at worker boot on #3143's branch alone — the whole `apps/worker`
   // integration suite is red until #3144 merges alongside or immediately
-  // after it. This is expected and by design for the stack, NOT weakened
-  // guard behavior to route around: #3144's branch already registers the
-  // handler (`handler-registration.service.ts`), so the two must merge as
-  // one unit or in immediate sequence.
+  // after it.
+  //
+  // The entry cannot be relocated to #3144 to make #3143 boot-valid in
+  // isolation: `PriceChangeDetectionService.enqueueAutomaticApply` (#3143,
+  // `libs/core/src/listings`) already enqueues under this literal, and
+  // `JobType` is the closed union derived from `JobTypeValues` — removing
+  // the member here would fail #3143's own type-check at that call site,
+  // not merely its boot assertion. Widening that one call site with an `as
+  // JobType` cast to route around the type error would be worse than the
+  // red CI it replaces: an un-declared job type is invisible to
+  // `assertFullLaneCoverage()` (there is nothing in the array to assert
+  // over) and to every lane's `jobType = ANY(<lane membership>)` claim
+  // query, so the enqueued row would sit `queued` forever with no lane ever
+  // claiming it and no boot-time signal that anything is wrong — the exact
+  // silent-strand failure mode this guard exists to convert into a loud one
+  // (see § Sync Manager in `docs/architecture-overview.md`). So the guard
+  // firing here is correct, not a defect: the producer (this array member +
+  // its enqueue call) and the consumer (the registered handler) are split
+  // across two PRs by design, and `assertFullLaneCoverage()` cannot know
+  // the consumer is coming in a sibling branch. Do not weaken the guard, do
+  // not add a stub handler in #3143 (it would conflict with #3144's real
+  // registration), and do not cast around the type system to silence it —
+  // merge #3143 and #3144 together, or #3144 immediately after #3143, so
+  // the pair is never separated at `main`.
   'pricing.propagateToMarketplaces',
   // Connection-provenance backfill (#2317, ADR-058 ladder step (ii)). Stamps the
   // `'legacy'` sentinel onto pre-#2314 `inventory_items` rows, one bounded page
