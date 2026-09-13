@@ -8,6 +8,7 @@
  * @module libs/core/src/identifier-mapping/domain/types
  */
 import type { PricingRule } from './pricing-rule.types';
+import type { PriceSyncModeConfig } from './price-sync-mode.types';
 
 /**
  * Platform type identifier (e.g., 'prestashop', 'allegro', 'shopify')
@@ -90,8 +91,33 @@ export interface ConnectionConfig {
    * catalog price (no explicit per-item price override). A missing value
    * preserves the pre-#1843 raw passthrough. Read via `readPricingRule` and
    * applied via `applyPricingRule` (`pricing-rule.types.ts`).
+   *
+   * Since #3142 (ADR-072 decision 2), the value may ALSO be the
+   * default + per-source-override shape (`{ default, sourceOverrides }`),
+   * for recurring price propagation's per-(destination, source) rules. Both
+   * shapes are read through `readPricingRuleConfig` /
+   * `readPricingRuleForSource`, which coerce a legacy flat `PricingRule` into
+   * `{ default: <that rule>, sourceOverrides: {} }` at read time — no
+   * backfill migration. `default` is optional in the nested shape (rather
+   * than required) so a HEADLESS `{ sourceOverrides }` container — one
+   * carrying per-source overrides but no destination-level default — round-
+   * trips: `readPricingRuleConfig` recognises the shape by `'default' in
+   * candidate || 'sourceOverrides' in candidate`, so this type must admit
+   * the same set the reader (and its validator counterpart in
+   * `ConnectionService`) actually accept, or a legitimate config value fails
+   * to type-check (PR #3158 review, BLOCKING fix).
    */
-  pricingRule?: PricingRule;
+  pricingRule?:
+    | PricingRule
+    | { default?: PricingRule | null; sourceOverrides?: Record<string, PricingRule> };
+  /**
+   * Per-(destination connection, feeding source connection) price-sync mode
+   * (#3142, ADR-072 decision 3) — whether a detected price change waits for
+   * operator review (`manual`, the default) or publishes immediately
+   * (`automatic`). Read via `readPriceSyncModeForSource`
+   * (`price-sync-mode.types.ts`).
+   */
+  priceSyncMode?: PriceSyncModeConfig;
   /**
    * Per-connection outbound rate limit (#1810). Applied via
    * `HostServices.http` (`HttpTransportFactoryPort.forConnection(connection)`) —

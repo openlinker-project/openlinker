@@ -30,6 +30,7 @@ import {
   INFAKT_DEFAULT_BASE_URL,
   INFAKT_SANDBOX_BASE_URL,
   isAllowedInfaktBaseUrl,
+  isRootPathInfaktBaseUrlOverride,
   resolveInfaktBaseUrl,
 } from '../infakt-base-url.policy';
 import type { InfaktConnectionConfig } from '../../types/infakt-connection.types';
@@ -192,5 +193,31 @@ describe('isAllowedInfaktBaseUrl', () => {
 
   it('should reject a non-URL string', () => {
     expect(isAllowedInfaktBaseUrl('not-a-url')).toBe(false);
+  });
+});
+
+describe('isRootPathInfaktBaseUrlOverride (#3030)', () => {
+  it('should be true for a bare host with no path at all', () => {
+    expect(isRootPathInfaktBaseUrlOverride('https://api.infakt.pl')).toBe(true);
+  });
+
+  it('should be true for a bare host with only a trailing slash', () => {
+    expect(isRootPathInfaktBaseUrlOverride('https://api.infakt.pl/')).toBe(true);
+  });
+
+  it('should be false when the override already carries the /api/v3 path', () => {
+    expect(isRootPathInfaktBaseUrlOverride('https://api.infakt.pl/api/v3')).toBe(false);
+  });
+
+  // An operator-run proxy mounted under its own prefix must not be
+  // refused just because that prefix isn't literally /api/v3 — see the
+  // function's own docblock for why this package cannot verify a proxy's
+  // internal routing.
+  it('should be false for an override carrying a distinct, non-/api/v3 path', () => {
+    expect(isRootPathInfaktBaseUrlOverride('https://proxy.example.com/infakt')).toBe(false);
+  });
+
+  it('should be false for a non-URL string (defensive; callers pre-check URL-ness)', () => {
+    expect(isRootPathInfaktBaseUrlOverride('not-a-url')).toBe(false);
   });
 });
