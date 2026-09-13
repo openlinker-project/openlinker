@@ -42,6 +42,15 @@ export interface IAutoIssueTriggerService {
    *   exempts the order from the tax-rate gate, because such an order carries no
    *   rate on any line and no catalogue edit can add one after the sale
    *   (ADR-063 § Consequences).
+   * @param buyerTaxId - The order's persisted `order_records.buyerTaxId`
+   *   COLUMN (#3187, ADR-072 decision 1) - the raw three-state value, decoded
+   *   only where it is composed onto a `fiscal-receipt` command. Passed in as
+   *   an ARGUMENT for the same one-way-edge reason as `taxRateEra`: the caller
+   *   already holds the just-persisted record and this method must not inject
+   *   an `orders`-provided token to re-derive it. Deliberately the PERSISTED
+   *   column, not `order.billingAddress?.taxId` - the column is written only
+   *   when `OL_STORE_PII` is on, so reading the live address instead would
+   *   leak the number onto a receipt on an install that chose not to keep it.
    *
    * @returns A `SalesDocumentBlockOutcome` (#2100, ADR-041 decision 11) the caller
    *   persists onto the order:
@@ -71,5 +80,6 @@ export interface IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
     taxRateEra?: string | null,
+    buyerTaxId?: string | null,
   ): Promise<SalesDocumentBlockOutcome>;
 }

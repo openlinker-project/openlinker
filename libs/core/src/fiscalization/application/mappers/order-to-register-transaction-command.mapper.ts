@@ -13,6 +13,7 @@
  * @module libs/core/src/fiscalization/application/mappers
  */
 import type { Order, OrderItem } from '@openlinker/core/orders';
+import { decodeBuyerTaxIdColumn } from '@openlinker/core/orders';
 import {
   describeNetPricedOrderRefusal,
   minorUnitExponentFor,
@@ -81,6 +82,24 @@ export interface OrderToRegisterTransactionCommandInput {
    * pre-rollout history. Mirrors the invoice mapper's own input field.
    */
   taxRateEra?: string | null;
+  /**
+   * The order's persisted `order_records.buyerTaxId` COLUMN (#3187, ADR-072
+   * decision 1) - the RAW three-state value, read through
+   * {@link decodeBuyerTaxIdColumn} inside this function rather than by the
+   * caller.
+   *
+   * Deliberately the persisted column and NOT `order.billingAddress?.taxId` /
+   * `order.shippingAddress?.taxId`, even though `readBuyerTaxId(order)` would
+   * answer the same question from the live `Order`: the column is written
+   * ONLY when `OL_STORE_PII` is on (`order-record.service.ts`), so reading the
+   * live address instead would leak the number onto a receipt on an
+   * installation that chose not to keep it - the exact configuration the
+   * mockup's own gap note names ("the whole epic is inert on one
+   * configuration"). Passing `undefined` (the caller has no record yet) is
+   * indistinguishable from a column of `NULL` and both compose no field on the
+   * command, which is correct either way: nothing to send.
+   */
+  buyerTaxId?: string | null;
 }
 
 /**
@@ -99,7 +118,7 @@ export interface OrderToRegisterTransactionCommandInput {
 export function toRegisterTransactionCommand(
   input: OrderToRegisterTransactionCommandInput,
 ): RegisterTransactionCommand {
-  const { order, connectionId, idempotencyKey, shippingLineName, taxRateEra } = input;
+  const { order, connectionId, idempotencyKey, shippingLineName, taxRateEra, buyerTaxId } = input;
 
   // GROSS-only: a net-priced order would register net amounts labelled as gross,
   // and core may not convert (it never computes or defaults a tax rate). Fail
@@ -147,6 +166,19 @@ export function toRegisterTransactionCommand(
   // wire, exactly as the invoice mapper treats it.
   if (taxRateEra !== undefined && taxRateEra !== null) {
     command.taxRateEra = taxRateEra;
+  }
+
+  // #3187, ADR-072 decision 1: decode the persisted three-state column and
+  // stamp the command ONLY when there is an actual number to send. Both other
+  // states - "asserted none" (`decodeBuyerTaxIdColumn` returns `null`) and
+  // "not asserted" (`undefined`) - leave the field absent, the same way an
+  // absent `taxRateEra` above stays absent rather than becoming a wire `null`.
+  const decodedBuyerTaxId = decodeBuyerTaxIdColumn(buyerTaxId);
+  // `decodeBuyerTaxIdColumn` never returns an empty string - a blank column
+  // decodes to `null` - so `typeof` alone is what is left to narrow away the
+  // other two states.
+  if (typeof decodedBuyerTaxId === 'string') {
+    command.buyerTaxId = decodedBuyerTaxId;
   }
 
   return command;

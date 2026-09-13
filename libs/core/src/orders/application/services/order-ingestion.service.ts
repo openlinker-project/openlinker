@@ -757,7 +757,14 @@ export class OrderIngestionService implements IOrderIngestionService {
         // the feature. Without this the marker was write-only and every
         // already-ingested uninvoiced order became un-issuable under strict
         // enforcement.
-        existing?.taxRateEra ?? null
+        existing?.taxRateEra ?? null,
+        // #3187, ADR-072 decision 1: the OPPOSITE read from taxRateEra above -
+        // `persisted`, not `existing`. `buyerTaxId` is computed fresh by
+        // `persistOrder` from THIS transition's order, so a first-seen order
+        // (`existing === null`) still carries its correct three-state value on
+        // `persisted`; reading `existing` here would silently answer
+        // "not asserted" for every order's first ingestion.
+        persisted.buyerTaxId
       );
       // #2100 (ADR-041 §54/§105): a block is never log-only. The trigger REPORTS
       // the outcome and this service — which owns the order record — writes it,

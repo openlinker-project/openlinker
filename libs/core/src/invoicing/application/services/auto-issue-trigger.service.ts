@@ -397,6 +397,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
     taxRateEra?: string | null,
+    buyerTaxId?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     // D8: only ACTIVE connections receive issuance jobs. The scheduler's
     // `status: 'active'` filter already excludes disabled/error/needs_reauth
@@ -474,6 +475,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           sourceConnectionId,
           sourceEventId,
           taxRateEra,
+          buyerTaxId,
         );
     }
   }
@@ -616,6 +618,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
     taxRateEra?: string | null,
+    buyerTaxId?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     const connection = connections.find((candidate) => candidate.id === decision.connectionId);
     if (connection === undefined) {
@@ -668,6 +671,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourceEventId,
         taxRateEra,
         decision.ruleId,
+        buyerTaxId,
       );
     }
 
@@ -861,6 +865,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     matchedRuleId?: string,
+    buyerTaxId?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
       // Reused verbatim from `config.invoicing.triggerModel` — see the
@@ -918,6 +923,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourceConnectionId,
         sourceEventId,
         taxRateEra,
+        buyerTaxId,
       );
 
       await this.syncJobs.schedule({
@@ -1194,6 +1200,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
     taxRateEra?: string | null,
+    buyerTaxId?: string | null,
   ): FiscalizationRegisterPayloadV1 {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization` (see the doc comment above)
     const fiscalization = require('@openlinker/core/fiscalization') as {
@@ -1207,6 +1214,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       idempotencyKey,
       shippingLineName: this.readShippingLineName(connection),
       taxRateEra,
+      // #3187, ADR-072 decision 1 — the persisted three-state column; the
+      // mapper decodes it and stamps the command only when there is a real
+      // number to send.
+      buyerTaxId,
     });
 
     return toFiscalizationRegisterPayload(command, {

@@ -391,4 +391,61 @@ describe('toRegisterTransactionCommand', () => {
     });
     expect(cmd.recipient).toBeUndefined();
   });
+
+  describe("the buyer's tax number (#3187, ADR-072 decision 1)", () => {
+    it('should carry the tax number onto the command when the persisted column holds one', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order(),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+        buyerTaxId: '5213796333',
+      });
+      expect(cmd.buyerTaxId).toBe('5213796333');
+    });
+
+    it('should leave the field absent when the caller has no column value ("not asserted")', () => {
+      expect(
+        toRegisterTransactionCommand({ order: order(), connectionId: 'conn-1', idempotencyKey: 'k' })
+          .buyerTaxId,
+      ).toBeUndefined();
+    });
+
+    it('should leave the field absent for the "asserted none" state (an empty-string column)', () => {
+      // #3187 scope item 5: `readSourceBuyerTaxId` never returns `null`, so
+      // this state is unreachable from any shipped source and needs a fixture
+      // to exercise at all — this is that fixture. `encodeBuyerTaxIdColumn`
+      // persists "the buyer has none" as an empty string, decoded back to
+      // `null` by `decodeBuyerTaxIdColumn`; there is nothing for a receipt to
+      // transmit either way, so the command carries no field.
+      const cmd = toRegisterTransactionCommand({
+        order: order(),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+        buyerTaxId: '',
+      });
+      expect(cmd.buyerTaxId).toBeUndefined();
+    });
+
+    it('should leave the field absent when the caller explicitly passes null', () => {
+      const cmd = toRegisterTransactionCommand({
+        order: order(),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+        buyerTaxId: null,
+      });
+      expect(cmd.buyerTaxId).toBeUndefined();
+    });
+
+    it('should never validate, normalise or reject the value (ADR-072 decision 5)', () => {
+      // Core has no basis to judge which tax numbers a provider accepts, and
+      // acquiring one would mean holding a country's identifier rules here.
+      const cmd = toRegisterTransactionCommand({
+        order: order(),
+        connectionId: 'conn-1',
+        idempotencyKey: 'k',
+        buyerTaxId: 'not-a-real-looking-value-at-all',
+      });
+      expect(cmd.buyerTaxId).toBe('not-a-real-looking-value-at-all');
+    });
+  });
 });

@@ -37,8 +37,9 @@
  *
  * PII: unlike invoicing's payload, this one carries NO buyer name/address (a
  * fiscal registration names no buyer — see the fiscalization controller's own
- * `rehydrateOrder` doc) — only an optional `recipient` (email/phone). Failure
- * logs still name only ids + error name, never `recipient` / `lines`.
+ * `rehydrateOrder` doc) — only an optional `recipient` (email/phone) and, since
+ * #3187, an optional `buyerTaxId`. Failure logs still name only ids + error
+ * name, never `recipient` / `lines` / `buyerTaxId`.
  *
  * @module apps/worker/src/sync/handlers
  */
@@ -196,6 +197,10 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
       }
     }
 
+    if (p.buyerTaxId !== undefined && !isNonEmptyString(p.buyerTaxId)) {
+      return fail('buyerTaxId');
+    }
+
     if (p.recipient !== undefined && p.recipient !== null) {
       const recipient = p.recipient;
       if (typeof recipient !== 'object') return fail('recipient');
@@ -245,6 +250,9 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
     // era" (i.e. the guard applies) instead of silently exempting the order.
     if (isTaxRateEra(payload.taxRateEra)) {
       command.taxRateEra = payload.taxRateEra;
+    }
+    if (payload.buyerTaxId !== undefined) {
+      command.buyerTaxId = payload.buyerTaxId;
     }
 
     return command;
