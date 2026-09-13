@@ -133,9 +133,13 @@ describe('PriceChangeApplyService', () => {
     autoAppliedLog = { record: jest.fn().mockResolvedValue(undefined) };
     bulkProgress = { advanceBatchStatus: jest.fn().mockResolvedValue(null) };
     listingRecords = { findLatestByVariantAndConnection: jest.fn().mockResolvedValue(null) };
-    // Default: no prior `ShopProduct` mapping resolvable, so the shop-publish
-    // guard (#3161 re-review, IMPORTANT) takes the unguarded fallback and
-    // every pre-existing shop-publish test below is unaffected.
+    // Default: no `ShopProduct` mapping resolvable. Irrelevant to the
+    // marketplace-branch tests above, which never call
+    // `resolveShopProductExternalId`; the 'shop publish' describe block
+    // below overrides this with a resolvable mapping in its own `beforeEach`
+    // (#3161 round-3 review — a missing mapping is now a terminal refusal,
+    // not an unguarded fallback, so shop-publish tests must not hit it
+    // unintentionally).
     identifierMapping = { getExternalIds: jest.fn().mockResolvedValue([]) };
     syncLock = {
       acquire: jest.fn().mockResolvedValue('lock-token'),
@@ -348,6 +352,14 @@ describe('PriceChangeApplyService', () => {
         platformType: 'woocommerce',
         supportedCapabilities: ['ProductPublisher'],
       });
+      // A price-change episode only ever exists for an already-mapped,
+      // already-live shop listing (#3161 round-3 review) — resolve a
+      // `ShopProduct` mapping by default so every shop-publish test below
+      // exercises the ordinary, mapped path rather than the terminal
+      // no-mapping refusal, which has its own dedicated test.
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: 'ext-shop-1', platformType: 'woocommerce', connectionId: 'dest-1', entityType: 'ShopProduct' },
+      ]);
     });
 
     it('throws AvailabilityUnknownError (transient) rather than defaulting stock to 0 when ATP is null (#3161 review, BLOCKING)', async () => {
@@ -524,13 +536,18 @@ describe('PriceChangeApplyService', () => {
         expect(productPublishExecution.executePublish).not.toHaveBeenCalled();
       });
 
-      it('publishes unguarded (no lock taken) when no prior ShopProduct mapping is resolvable', async () => {
+      it('refuses as a terminal business_failure, never publishing unguarded, when no prior ShopProduct mapping is resolvable (#3161 round-3 review, IMPORTANT)', async () => {
+        // A missing mapping means `executePublish` would resolve
+        // `isUpsert = externalProductId != null` as false and CREATE a new
+        // product rather than update the existing one — the exact defect
+        // this refusal exists to prevent.
         identifierMapping.getExternalIds.mockResolvedValue([]);
 
         const result = await service.applyPriceChange(validInput);
 
-        expect(result).toEqual({ outcome: 'ok' });
+        expect(result.outcome).toBe('business_failure');
         expect(syncLock.acquire).not.toHaveBeenCalled();
+        expect(productPublishExecution.executePublish).not.toHaveBeenCalled();
       });
     });
   });
