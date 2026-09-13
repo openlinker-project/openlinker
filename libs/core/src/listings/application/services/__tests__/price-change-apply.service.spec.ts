@@ -210,6 +210,15 @@ describe('PriceChangeApplyService', () => {
       inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue([
         { productVariantId: 'ol_variant_1', totalAvailable: 12, locationCount: 1, availableToPromise: 9 },
       ]);
+      // This case asks which branch the CAPABILITY set selects, so it has to
+      // reach the shop publish itself — the terminal no-mapping refusal is a
+      // different question with its own case in the 'shop publish' block. The
+      // suite-wide default resolves no mapping, so seed one here rather than
+      // widening that default, which would hide the refusal from the case that
+      // exists to assert it.
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: 'ext-shop-1', platformType: 'woocommerce', connectionId: 'dest-1', entityType: 'ShopProduct' },
+      ]);
       productPublishExecution.executePublish.mockResolvedValue({
         outcome: 'ok',
         listingCreationRecord: new ListingCreationRecord(
