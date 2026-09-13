@@ -1,0 +1,892 @@
+<title>Fulfilment</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root, [data-theme='light'] {
+  --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff; --bg-surface-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80);
+  --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80); --text-disabled: oklch(70% 0.005 80); --text-on-primary: oklch(18% 0.012 50);
+  --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-soft: oklch(96% 0.04 60); --accent-primary-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25); --status-error-strong: oklch(42% 0.16 25);
+  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
+  --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+  --space-2:.5rem; --space-3:.75rem; --space-4:1rem; --space-5:1.5rem;
+  --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:9999px;
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / .04), 0 6px 16px rgb(15 18 26 / .06);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
+    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+    --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+    --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+    --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25); --status-error-strong: oklch(86% 0.14 25);
+    --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+    --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+    --overlay-scrim: rgb(0 0 0 / 0.72);
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / .40), 0 8px 24px rgb(0 0 0 / .40);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / .40);
+  }
+}
+:root[data-theme='dark'] {
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25); --status-error-strong: oklch(86% 0.14 25);
+  --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / .40), 0 8px 24px rgb(0 0 0 / .40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / .40);
+}
+* { box-sizing: border-box; }
+body { margin:0; min-width:320px; background:var(--bg-canvas); color:var(--text-primary); font-family:var(--font-sans); font-size:.875rem; line-height:1.5; }
+h1,h2,h3,p,dl,dd,dt,ul { margin:0; padding:0; }
+ul { list-style:none; }
+a { color:inherit; }
+button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visible { outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-md); }
+[hidden] { display:none !important; }
+
+.page{ max-width:1180px; margin:0 auto; padding:28px 24px 60px; }
+.eyebrow{ font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-primary-hover); }
+.title{ font-size:1.75rem; font-weight:600; letter-spacing:-.02em; margin-top:6px; }
+.desc{ font-size:.9375rem; color:var(--text-secondary); margin-top:6px; max-width:70ch; }
+.back-link{ display:inline-flex; align-items:center; gap:6px; font-size:.8125rem; color:var(--text-secondary); text-decoration:none; margin-bottom:14px; }
+.back-link:hover{ color:var(--text-primary); }
+
+.callout{ display:flex; gap:12px; align-items:flex-start; margin-top:18px; padding:14px 16px; border-radius:var(--radius-lg); background:var(--status-info-soft); border:1px solid var(--status-info-border); }
+.callout__glyph{ font-size:1rem; flex-shrink:0; }
+.callout__text{ font-size:.8125rem; color:var(--text-secondary); }
+.callout__text b{ color:var(--text-primary); }
+.callout__title{ font-weight:600; font-size:.8125rem; color:var(--status-info-fg); margin-bottom:3px; }
+code.k{ font-family:var(--font-mono); font-size:.8em; }
+
+.compare{ display:grid; grid-template-columns:1fr 1fr; gap:0; margin-top:16px; border:1px solid var(--border-default); border-radius:var(--radius-lg); overflow:hidden; max-width:78ch; }
+@media (max-width:640px){ .compare{ grid-template-columns:1fr; } }
+.compare__col{ padding:14px 16px; }
+.compare__col:first-child{ border-right:1px solid var(--border-default); background:var(--bg-surface-muted); }
+@media (max-width:640px){ .compare__col:first-child{ border-right:none; border-bottom:1px solid var(--border-default); } }
+.compare__col--this{ background:var(--bg-surface); }
+.compare__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); margin-bottom:4px; }
+.compare__text{ font-size:.8125rem; color:var(--text-secondary); }
+.compare__text b{ color:var(--text-primary); }
+
+.example{ display:flex; gap:12px; align-items:flex-start; margin-top:14px; padding:14px 16px; border-radius:var(--radius-lg); background:var(--accent-primary-soft); border:1px solid var(--accent-primary-border); max-width:78ch; }
+.example__glyph{ font-family:var(--font-mono); font-size:.875rem; font-weight:700; color:var(--accent-primary-hover); flex-shrink:0; }
+.example__text{ font-size:.8125rem; color:var(--text-secondary); }
+.example__text b{ color:var(--text-primary); }
+
+.demo-toolbar{ display:flex; align-items:center; gap:8px; margin-top:16px; padding:10px 14px; background:var(--bg-surface-muted); border-radius:var(--radius-md); flex-wrap:wrap; }
+.demo-toolbar__label{ font-family:var(--font-mono); font-size:.6875rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin-right:2px; width:100%; }
+@media (min-width:560px){ .demo-toolbar__label{ width:auto; } }
+.chip{ display:inline-flex; align-items:center; gap:.25rem; height:1.5rem; padding:0 .6rem; border:1px solid var(--border-subtle); border-radius:var(--radius-pill); background:var(--bg-surface); color:var(--text-secondary); font-size:.75rem; font-weight:500; cursor:pointer; font-family:inherit; }
+.chip.chip--active{ background:var(--accent-primary-soft); border-color:var(--accent-primary-border); color:var(--accent-primary-hover); font-weight:600; }
+
+.toolbar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:22px; }
+.field-input{ font-family:inherit; font-size:.875rem; color:var(--text-primary); background:var(--bg-surface); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:8px 12px; height:2.25rem; min-width:200px; }
+.field-input::placeholder{ color:var(--text-muted); }
+
+.lane{ margin-top:28px; }
+.lane__head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:2px; }
+.lane__title{ font-size:1rem; font-weight:600; }
+.lane__method{ font-size:.8125rem; color:var(--text-muted); }
+.lane__count{ font-size:.8125rem; color:var(--text-muted); margin-left:auto; font-variant-numeric:tabular-nums; }
+.lane__scope{ font-size:.75rem; color:var(--text-muted); margin-bottom:10px; }
+
+/* Desktop rows vs mobile cards — the SAME array rendered twice, CSS decides
+   which is visible (the real DataTable cardView idiom). */
+.worklist-desktop{ display:none; }
+.worklist-cards{ display:grid; gap:10px; }
+@media (min-width:860px){
+  .worklist-desktop{ display:block; border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); overflow:hidden; }
+  .worklist-cards{ display:none; }
+}
+
+.worklist-head{ display:grid; grid-template-columns:1.3fr 1.5fr .8fr auto; gap:16px; padding:9px 16px; background:var(--bg-surface-muted); border-bottom:1px solid var(--border-default); font-size:.6875rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); }
+.worklist-head span:last-child{ text-align:right; }
+
+/* Two-row layout: identity/state/lines stay on one compact line, and
+   actions get their OWN full-width row underneath — squeezing four
+   buttons into a narrow last grid column is what made the previous pass
+   wrap raggedly and read as "everything piled on top of itself". */
+.wrow{ padding:13px 16px; border-bottom:1px solid var(--border-subtle); cursor:pointer; }
+.wrow:last-child{ border-bottom:none; }
+.wrow:hover{ background:var(--bg-surface-hover); }
+.wrow__main{ display:grid; grid-template-columns:1.3fr 1.5fr .8fr; gap:16px; align-items:center; }
+.wrow__identity{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.wrow__id{ font-family:var(--font-mono); font-size:.75rem; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wrow__order{ font-family:var(--font-mono); font-size:.75rem; color:var(--text-muted); }
+.wrow__state{ display:flex; flex-direction:column; gap:4px; align-items:flex-start; }
+.wrow__substate{ font-size:.75rem; color:var(--text-muted); }
+.wrow__lines{ font-size:.8125rem; color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.wrow__actions{ display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; margin-top:10px; padding-top:10px; border-top:1px solid var(--border-subtle); }
+
+.task-card{ border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); padding:16px; cursor:pointer; }
+.task-card:hover{ border-color:var(--border-strong); }
+.task-card__head{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:10px; }
+.task-card__badges{ display:flex; flex-wrap:wrap; gap:6px; }
+.task-card__id{ font-family:var(--font-mono); font-size:.6875rem; color:var(--text-muted); white-space:nowrap; }
+
+.badge{ display:inline-flex; align-items:center; gap:6px; padding:2px 9px; border-radius:var(--radius-md); font-family:var(--font-mono); font-size:.6875rem; font-weight:500; letter-spacing:.02em; text-transform:uppercase; border:1px solid; }
+.badge--info{ border-color:var(--status-disabled-border); background:var(--status-disabled-soft); color:var(--status-disabled-fg); }
+.badge--warning{ border-color:var(--status-warning-border); background:var(--status-warning-soft); color:var(--status-warning-fg); }
+.badge__dot{ width:6px; height:6px; border-radius:999px; background:currentColor; opacity:.8; }
+.expedite-badge{ display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:var(--radius-pill); background:var(--accent-primary-soft); border:1px solid var(--accent-primary-border); color:var(--accent-primary-hover); font-size:.6875rem; font-weight:600; }
+
+.task-card__holds{ margin-bottom:10px; }
+.task-card__holds li{ font-size:.8125rem; color:var(--text-secondary); padding:2px 0; }
+
+.task-card__facts{ display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:8px 20px; margin-bottom:12px; }
+.task-card__facts div{ display:grid; gap:1px; }
+.task-card__facts dt{ font-size:.6875rem; color:var(--text-muted); }
+.task-card__facts dd{ font-size:.8125rem; font-weight:500; }
+
+.task-card__lines{ border-top:1px solid var(--border-subtle); padding-top:10px; margin-bottom:6px; }
+.task-card__lines li{ display:flex; justify-content:space-between; font-size:.8125rem; padding:3px 0; }
+.task-card__lines li span:last-child{ font-variant-numeric:tabular-nums; color:var(--text-secondary); }
+.task-card__note{ font-size:.75rem; color:var(--text-muted); margin-bottom:12px; }
+
+.task-card__actions{ display:flex; flex-wrap:wrap; gap:6px; padding-top:12px; border-top:1px solid var(--border-subtle); }
+
+.button{ display:inline-flex; align-items:center; justify-content:center; gap:6px; border:1px solid var(--accent-primary-border); border-radius:var(--radius-md); padding:0 14px; height:2rem; background:var(--accent-primary); color:var(--text-on-primary); font-family:inherit; font-size:.8125rem; font-weight:600; cursor:pointer; box-shadow:var(--shadow-xs); }
+.button:hover{ background:var(--accent-primary-hover); }
+.button--secondary{ border-color:var(--border-default); background:var(--bg-surface); color:var(--text-primary); }
+.button--secondary:hover{ background:var(--bg-surface-muted); border-color:var(--border-strong); }
+.button--danger{ border-color:var(--status-error-strong); background:var(--status-error); color:#fff; }
+.button:disabled{ cursor:not-allowed; opacity:.5; box-shadow:none; }
+
+/* One global toast STACK shared by both views — the real app answers every
+   action outcome through one `useToast()`, never a per-page inline result
+   slot, which is what makes "the worklist has no result surface" a defect
+   rather than a smaller surface than the detail page's. */
+.toast-stack{ position:fixed; right:20px; bottom:20px; z-index:60; display:flex; flex-direction:column; gap:8px; width:min(360px, calc(100vw - 40px)); }
+.toast{ display:flex; gap:10px; align-items:flex-start; padding:11px 14px; border-radius:var(--radius-md); border:1px solid; box-shadow:var(--shadow-soft); background:var(--bg-surface); }
+.toast--success{ background:var(--status-success-soft); border-color:var(--status-success-border); }
+.toast--warning{ background:var(--status-warning-soft); border-color:var(--status-warning-border); }
+.toast--error{ background:var(--status-error-soft); border-color:var(--status-error-border); }
+.toast__text{ flex:1; font-size:.8125rem; color:var(--text-secondary); }
+.toast__text b{ color:var(--text-primary); }
+.toast__dismiss{ background:none; border:none; padding:0; margin:0; cursor:pointer; color:var(--text-muted); font-size:1rem; line-height:1; flex-shrink:0; font-family:inherit; }
+.toast__dismiss:hover{ color:var(--text-primary); }
+
+.dialog-overlay{ position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; padding:20px; }
+.dialog-overlay[hidden]{ display:none; }
+.dialog-scrim{ position:absolute; inset:0; background:var(--overlay-scrim); }
+.action-dialog{ position:relative; z-index:1; width:100%; max-width:420px; margin:0; padding:20px; border-radius:var(--radius-lg); border:1px solid var(--border-default); background:var(--bg-surface); box-shadow:var(--shadow-soft); }
+.action-dialog__title{ font-weight:600; font-size:1rem; margin-bottom:6px; }
+.action-dialog__desc{ font-size:.8125rem; color:var(--text-secondary); margin-bottom:14px; }
+.action-dialog__field{ display:grid; gap:4px; margin-bottom:14px; }
+.action-dialog__field label{ font-size:.75rem; color:var(--text-muted); }
+.action-dialog select, .action-dialog textarea{ font-family:inherit; font-size:.875rem; color:var(--text-primary); background:var(--bg-surface-muted); border:1px solid var(--border-default); border-radius:var(--radius-md); padding:8px 10px; }
+.action-dialog textarea{ resize:vertical; min-height:52px; }
+.action-dialog__row{ display:flex; gap:8px; justify-content:flex-end; }
+
+.empty-state{ padding:50px 24px; text-align:center; border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); margin-top:16px; }
+.empty-state__title{ font-weight:600; font-size:1rem; margin-bottom:6px; }
+.empty-state__message{ font-size:.875rem; color:var(--text-secondary); margin-bottom:16px; }
+
+.pagination{ display:flex; align-items:center; justify-content:space-between; margin-top:18px; }
+.pagination__actions{ display:flex; gap:8px; }
+
+.panel-demo{ margin-top:36px; padding:20px; border-radius:var(--radius-lg); border:1px dashed var(--border-strong); background:var(--bg-surface-muted); }
+.panel-demo__label{ font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); margin-bottom:4px; }
+.panel-demo__title{ font-size:1.125rem; font-weight:600; margin-bottom:4px; }
+.panel-demo__desc{ font-size:.8125rem; color:var(--text-secondary); margin-bottom:14px; max-width:70ch; }
+.panel-demo .worklist-cards{ display:grid; }
+
+/* ── Detail page ─────────────────────────────────────────────────────── */
+.detail-hero{ margin-top:20px; padding:22px 24px; border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); }
+.detail-hero__sub{ font-size:.8125rem; color:var(--text-muted); margin-bottom:10px; }
+.detail-hero__row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.detail-hero__status{ font-size:1.375rem; font-weight:700; }
+.detail-hero__detail{ font-size:.875rem; color:var(--text-secondary); margin-top:8px; }
+.detail-section{ margin-top:22px; padding:20px 24px; border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); }
+.detail-section__title{ font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); margin-bottom:12px; }
+.detail-actions{ margin-top:22px; padding:18px 24px; border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-xs); display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.detail-actions__label{ font-size:.75rem; color:var(--text-muted); width:100%; margin-bottom:2px; }
+
+.hold-banner{ display:flex; gap:10px; padding:13px 15px; border-radius:var(--radius-md); background:var(--status-warning-soft); border:1px solid var(--status-warning-border); }
+.hold-banner:not(:last-child){ margin-bottom:8px; }
+.hold-banner__title{ font-weight:600; font-size:.875rem; color:var(--status-warning-fg); }
+.hold-banner__desc{ font-size:.8125rem; color:var(--text-secondary); margin-top:3px; }
+
+.item-row{ display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--border-subtle); }
+.item-row:last-child{ border-bottom:none; }
+.item-row__name{ font-weight:500; font-size:.9375rem; font-family:var(--font-mono); }
+.item-row__qty{ font-size:.8125rem; color:var(--text-secondary); }
+
+.fact-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px 24px; }
+.fact{ display:grid; gap:2px; }
+.fact__label{ font-size:.75rem; color:var(--text-muted); }
+.fact__value{ font-size:.9375rem; font-weight:500; }
+</style>
+
+<div class="page">
+
+  <!-- ══════════════════════ WORKLIST (#/) ══════════════════════ -->
+  <div id="listView">
+    <p class="eyebrow">Operations</p>
+    <h1 class="title">Fulfilment</h1>
+    <p class="desc">The fulfilment tasks waiting to be worked, grouped by where the goods are and how they leave.</p>
+
+    <div class="callout">
+      <span class="callout__glyph" aria-hidden="true">🔍</span>
+      <div>
+        <div class="callout__title">Validation note — not part of the product</div>
+        <p class="callout__text">Cross-checking against the real code: <code class="k">features/fulfillment</code> does <b>not</b> render <code class="k">expeditedAt</code> anywhere — an operator here can't tell a task was moved to the front except noticing the button flip. The pack bench already solves this (<code class="k">bench-work-row.tsx</code>, badge text "Moved to the front") — the badge below borrows that exact wording rather than inventing a second one.</p>
+      </div>
+    </div>
+
+    <div class="demo-toolbar" role="group" aria-label="Mockup — jump to a page state" id="pageStateSwitcher"></div>
+
+    <div class="toolbar" role="group" aria-label="Fulfilment task filters">
+      <input class="field-input" id="orderFilter" placeholder="Filter by order id" aria-label="Order">
+      <input class="field-input" id="locationFilter" placeholder="Filter by location id" aria-label="Location">
+      <button class="button button--secondary" id="clearFiltersBtn" style="display:none" onclick="clearFilters()">Clear filters</button>
+    </div>
+
+    <div id="pageBody"></div>
+
+    <div class="demo-toolbar" role="group" aria-label="Mockup — what happens when you click an action">
+      <span class="demo-toolbar__label">Mockup · clicking an action</span>
+      <button class="chip chip--active" data-outcome="ok" onclick="setOutcome('ok')">Works</button>
+      <button class="chip" data-outcome="version_conflict" onclick="setOutcome('version_conflict')">Someone else changed it first</button>
+      <button class="chip" data-outcome="action_not_legal" onclick="setOutcome('action_not_legal')">No longer possible</button>
+    </div>
+
+    <div class="panel-demo">
+      <p class="panel-demo__label">Same card, second surface</p>
+      <h2 class="panel-demo__title">Embedded on the order page</h2>
+      <p class="panel-demo__desc">The order-detail page shows the identical task card, filtered to that order's own tasks — one component, no second implementation to drift from this one.</p>
+      <div id="orderPanelDemo"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════ DETAIL (#/works/:id) ══════════════════════ -->
+  <div id="detailView" hidden>
+    <a class="back-link" href="#/">← Back to the worklist</a>
+    <p class="eyebrow">Fulfilment task</p>
+    <h1 class="title" id="detailTitle"></h1>
+
+    <div class="compare">
+      <div class="compare__col">
+        <div class="compare__label">Orders</div>
+        <p class="compare__text">What was sold, and its <b>overall</b> status — one row per order, always.</p>
+      </div>
+      <div class="compare__col compare__col--this">
+        <div class="compare__label">This task</div>
+        <p class="compare__text">One physical packing job. An order becomes more than one of these only when it ships from more than one place.</p>
+      </div>
+    </div>
+    <div class="example">
+      <span class="example__glyph">e.g.</span>
+      <p class="example__text">Order <b>#9F2E1A</b> is one row in Orders. But its shoe box ships from Warsaw and its earbuds ship from Berlin — so it's <b>two separate tasks</b> here, one per warehouse.</p>
+    </div>
+
+    <div class="demo-toolbar" role="group" aria-label="Mockup — view a different task" id="taskSwitcher"></div>
+
+    <div class="detail-hero" id="detailHero"></div>
+
+    <div id="detailHoldsSection"></div>
+
+    <div class="detail-section">
+      <p class="detail-section__title">What's in this task</p>
+      <div id="detailLines"></div>
+    </div>
+
+    <div class="detail-section">
+      <p class="detail-section__title">Details</p>
+      <dl class="fact-grid" id="detailFacts"></dl>
+    </div>
+
+    <div class="detail-actions">
+      <span class="detail-actions__label">What you can do</span>
+      <div id="detailActionsBody" style="display:contents"></div>
+    </div>
+
+    <div class="demo-toolbar" role="group" aria-label="Mockup — what happens when you click an action">
+      <span class="demo-toolbar__label">Mockup · clicking an action</span>
+      <button class="chip chip--active" data-outcome="ok" onclick="setOutcome('ok')">Works</button>
+      <button class="chip" data-outcome="version_conflict" onclick="setOutcome('version_conflict')">Someone else changed it first</button>
+      <button class="chip" data-outcome="action_not_legal" onclick="setOutcome('action_not_legal')">No longer possible</button>
+    </div>
+  </div>
+
+  <div id="dialogOverlay" class="dialog-overlay" hidden></div>
+  <!-- One shared result surface for BOTH views — see the toast-stack CSS
+       comment. Neither view gets its own inline slot. -->
+  <div id="toastStack" class="toast-stack" role="status" aria-live="polite"></div>
+</div>
+
+<script>
+// ── Real copy, ported verbatim from apps/web/src/features/fulfillment/lib ──
+// (fulfillment-task.copy.ts + fulfillment-worklist.copy.ts). Kept byte-for-byte
+// so this mockup cannot silently drift from the vocabulary gate those files
+// are named to satisfy — a mockup that says something different than the
+// shipped copy is a mockup that specifies the wrong thing.
+const STATUS_COPY = { open:'Open', scheduled:'Scheduled', on_hold:'On hold', in_progress:'In progress', closed:'Closed', cancelled:'Cancelled', incomplete:'Incomplete' };
+const REQUEST_STATUS_COPY = { unsubmitted:'Not offered yet', submitted:'Offered, awaiting reply', accepted:'Accepted', rejected:'Refused', cancellation_requested:'Cancellation requested', cancellation_accepted:'Cancellation accepted', cancellation_rejected:'Cancellation refused' };
+
+const FULFILLMENT_ACTION_COPY = {
+  schedule: { label:'Schedule', tone:'secondary', hint:'Plan this task for execution. It is not started yet.' },
+  hold: { label:'Put on hold', tone:'secondary', hint:'Suspend this task until someone releases the hold.' },
+  release_hold: { label:'Release hold', tone:'primary', hint:'Lift this hold so the task can move again.' },
+  mark_in_progress: { label:'Mark in progress', tone:'primary', hint:'Someone has started working this task.' },
+  close: { label:'Close', tone:'primary', hint:'This task is finished.' },
+  force_cancel: { label:'Force cancel', tone:'danger', hint:'Cancel this task outright, without asking whoever holds it.' },
+  expedite: { label:'Move to the front', tone:'secondary', hint:'Pack this ahead of its deadline order. It stays marked as moved, and it can be moved back.' },
+  release_expedite: { label:'Back to deadline order', tone:'secondary', hint:'Stop moving this ahead of the queue. It returns to its place by dispatch deadline.' },
+};
+
+// The shipped table is deliberately a loose `Record<string, …>`, not
+// `satisfies Record<Action, …>` — `apps/web` may not declare the action
+// union at all (`scripts/check-no-supported-actions-mirror.mjs`), and a value
+// the server declares legal must stay invokable even when this build's copy
+// hasn't caught up. `humanise()` + these three lookups are the real fallback
+// chain (`fulfillmentActionLabel` / `Tone` / `Hint`) — every render call below
+// goes through them rather than indexing `FULFILLMENT_ACTION_COPY` directly,
+// so an action this table doesn't know about gets a readable button instead
+// of a thrown `TypeError`.
+function humanise(raw) {
+  const spaced = String(raw).replace(/[_-]+/g, ' ').trim();
+  if (spaced.length === 0) return raw;
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+function actionLabel(action) { return FULFILLMENT_ACTION_COPY[action]?.label ?? humanise(action); }
+function actionTone(action) { return FULFILLMENT_ACTION_COPY[action]?.tone ?? 'secondary'; }
+function actionHint(action) { return FULFILLMENT_ACTION_COPY[action]?.hint ?? null; }
+// Same fallback shape as `fulfillmentStatusLabel` / `fulfillmentRequestStatusLabel`
+// — display-only vocabularies fall back to a humanised raw value rather than
+// `undefined`, for the identical reason the action lookups do.
+function statusLabel(status) { return STATUS_COPY[status] ?? humanise(status); }
+function requestStatusLabel(requestStatus) { return REQUEST_STATUS_COPY[requestStatus] ?? humanise(requestStatus); }
+
+const FULFILLMENT_ACTION_MODE_COPY = {
+  hold: { title:'Put this fulfilment task on hold', desc:'The task stops moving until someone releases the hold. The rest of the order is unaffected.', confirm:'Put on hold' },
+  release_hold: { title:'Release this hold', desc:'The fulfilment task can move again. Any other hold on it stays in place.', confirm:'Release hold' },
+  force_cancel: { title:'Force-cancel this fulfilment task', desc:'This cancels the task outright without asking whoever holds it, and cannot be undone. The order itself is not cancelled.', confirm:'Force cancel' },
+};
+
+const HOLD_REASON_LABEL = {
+  'payment-review': 'Payment review', 'fraud-review': 'Fraud review', operator: 'Held by operator',
+  'stock-shortfall': 'Stock shortfall', 'address-invalid': 'Address invalid', 'awaiting-amendment': 'Awaiting change',
+  'awaiting-customer-confirmation': 'Awaiting buyer', external: 'Held by channel',
+};
+const HOLD_REASON_ORDER = ['stock-shortfall','payment-review','fraud-review','address-invalid','awaiting-amendment','awaiting-customer-confirmation','operator','external'];
+
+// CONFLICT_COPY + the `applied.` success line are byte-identical to
+// `readFulfillmentConflict()` / the worklist page's `showToast()` call — the
+// real app answers BOTH surfaces (worklist and detail) through one global
+// toast, never a per-view inline banner, which is why this mockup's result
+// surface below is a toast stack shared by both views rather than two.
+const CONFLICT_COPY = {
+  version_conflict: 'Somebody moved this fulfilment task while you were looking at it. It has been refreshed — check it and try again.',
+  action_not_legal: 'That is no longer possible for this fulfilment task. The available actions have been refreshed.',
+};
+
+// fulfillment-worklist.copy.ts, ported in full — not cherry-picked — so
+// nothing here can silently diverge from what the shipped page says.
+const WORKLIST_COPY = {
+  row: {
+    taskLabel: 'Fulfilment task', stateLabel: 'State', handshakeLabel: 'Handshake',
+    linesLabel: 'Lines', actionsLabel: 'Actions',
+    lineCount: (f, t) => `${f} of ${t}`, noLines: 'No lines',
+    countersCaveat: 'Picked counts are reported by whoever is working the task and can be a little behind.',
+  },
+  lane: { noLocation: 'No location yet', noDeliveryMethod: 'No delivery method yet', pageScopeNote: 'Grouped from the tasks on this page only.' },
+  filter: { orderLabel: 'Order', orderPlaceholder: 'Filter by order id', locationLabel: 'Location', locationPlaceholder: 'Filter by location id', clear: 'Clear filters', groupLabel: 'Fulfilment task filters' },
+  loading: { message: 'Loading fulfilment tasks…' },
+  error: { title: 'Could not load the fulfilment worklist', message: 'The worklist could not be read just now. Nothing has been changed.', retry: 'Retry' },
+  empty: {
+    filtered: { title: 'No fulfilment tasks match these filters', message: 'Nothing on this page matches what you filtered for. Clear the filters to see everything.' },
+    none: { title: 'Nothing to work right now', message: 'No fulfilment tasks are waiting. That is normal unless fulfilment routing is switched on.' },
+    pastEnd: { title: 'Nothing on this page', message: 'There are fulfilment tasks, but none this far down the list.', action: 'Back to the first page' },
+  },
+  pagination: { previous: 'Previous', next: 'Next', range: (from, to, total) => `Showing ${from}–${to} of ${total}` },
+};
+
+// ── Demo data — 10 tasks across 3 lanes ─────────────────────────────────
+const TASKS = [
+  { id: 'ol_fwork_7a10', orderId: 'ol_order_88c412', locationId: 'ol_location_warsaw01', deliveryMethod: 'Courier', assignedConnectionId: 'DPD Polska (3PL)', status: 'scheduled', requestStatus: 'accepted', externalWorkId: 'DPD-WRK-88401', createdAt: '2026-09-10T06:10:00Z', expeditedAt: null, version: 1,
+    lines: [{ productVariantId: 'ol_variant_desklamp', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 }],
+    activeHolds: [], supportedActions: ['mark_in_progress', 'hold', 'expedite', 'force_cancel'],
+    detail: 'DPD Polska (3PL) will start picking this soon.' },
+  { id: 'ol_fwork_a91c', orderId: 'ol_order_9f2e1a', locationId: 'ol_location_warsaw01', deliveryMethod: 'Courier', assignedConnectionId: 'DPD Polska (3PL)', status: 'in_progress', requestStatus: 'accepted', externalWorkId: 'DPD-WRK-88213', createdAt: '2026-09-08T14:00:00Z', expeditedAt: null, version: 4,
+    lines: [{ productVariantId: 'ol_variant_shoes42', totalQuantity: 2, fulfilledQuantity: 2, cancelledQuantity: 0 }, { productVariantId: 'ol_variant_earbuds', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 }],
+    activeHolds: [], supportedActions: ['close', 'hold', 'expedite', 'force_cancel'],
+    detail: 'DPD Polska (3PL) is picking and packing this right now.' },
+  { id: 'ol_fwork_c5e8', orderId: 'ol_order_4c0091', locationId: 'ol_location_warsaw01', deliveryMethod: 'Courier', assignedConnectionId: 'DPD Polska (3PL)', status: 'in_progress', requestStatus: 'accepted', externalWorkId: 'DPD-WRK-88500', createdAt: '2026-09-09T11:30:00Z', expeditedAt: '2026-09-10T08:05:00Z', version: 3,
+    lines: [{ productVariantId: 'ol_variant_jacketL', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 }],
+    activeHolds: [], supportedActions: ['close', 'hold', 'release_expedite', 'force_cancel'],
+    detail: 'DPD Polska (3PL) is picking and packing this right now, ahead of its usual place in the queue.' },
+  { id: 'ol_fwork_f612', orderId: 'ol_order_2210bb', locationId: 'ol_location_warsaw01', deliveryMethod: 'Courier', assignedConnectionId: 'DPD Polska (3PL)', status: 'in_progress', requestStatus: 'cancellation_requested', externalWorkId: 'DPD-WRK-88602', createdAt: '2026-09-09T16:40:00Z', expeditedAt: null, version: 5,
+    lines: [{ productVariantId: 'ol_variant_grinder', totalQuantity: 1, fulfilledQuantity: 1, cancelledQuantity: 0 }],
+    activeHolds: [], supportedActions: ['close', 'hold', 'force_cancel'],
+    detail: 'Asked DPD Polska (3PL) to stop. They haven\'t answered — packing may still be happening.' },
+  { id: 'ol_fwork_d873', orderId: 'ol_order_2299aa', locationId: 'ol_location_warsaw01', deliveryMethod: 'Courier', assignedConnectionId: 'DPD Polska (3PL)', status: 'in_progress', requestStatus: 'cancellation_rejected', externalWorkId: 'DPD-WRK-88611', createdAt: '2026-09-09T09:00:00Z', expeditedAt: null, version: 6,
+    lines: [{ productVariantId: 'ol_variant_yogamat', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 }],
+    activeHolds: [], supportedActions: ['close', 'hold', 'expedite', 'force_cancel'],
+    detail: 'DPD Polska (3PL) said no to the cancellation — this is going ahead.' },
+  { id: 'ol_fwork_1ac0', orderId: 'ol_order_309ce1', locationId: 'ol_location_warsaw01', deliveryMethod: 'Courier', assignedConnectionId: 'DPD Polska (3PL)', status: 'incomplete', requestStatus: 'accepted', externalWorkId: 'DPD-WRK-87310', createdAt: '2026-09-07T10:15:00Z', expeditedAt: null, version: 3,
+    lines: [{ productVariantId: 'ol_variant_boardgame', totalQuantity: 2, fulfilledQuantity: 1, cancelledQuantity: 0 }],
+    activeHolds: [], supportedActions: [],
+    detail: 'DPD Polska (3PL) could only pack part of this. Needs re-sourcing or a manual decision.' },
+  { id: 'ol_fwork_9012', orderId: 'ol_order_1102fe', locationId: 'ol_location_warsaw01', deliveryMethod: 'Courier', assignedConnectionId: 'DPD Polska (3PL)', status: 'cancelled', requestStatus: 'cancellation_accepted', externalWorkId: 'DPD-WRK-87990', createdAt: '2026-09-04T10:00:00Z', expeditedAt: null, version: 6,
+    lines: [{ productVariantId: 'ol_variant_backpack', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 }],
+    activeHolds: [], supportedActions: [],
+    detail: 'DPD Polska (3PL) gave this back.' },
+  { id: 'ol_fwork_e337', orderId: 'ol_order_5a1cd0', locationId: 'ol_location_berlin01', deliveryMethod: 'Courier', assignedConnectionId: 'DHL courier', status: 'open', requestStatus: 'submitted', externalWorkId: null, createdAt: '2026-09-10T07:55:00Z', expeditedAt: null, version: 2,
+    lines: [{ productVariantId: 'ol_variant_screenprotector', totalQuantity: 3, fulfilledQuantity: 0, cancelledQuantity: 0 }],
+    activeHolds: [], supportedActions: ['hold', 'expedite', 'force_cancel'],
+    detail: 'Asked DHL courier to take this. No answer yet.' },
+  { id: 'ol_fwork_b204', orderId: 'ol_order_c71a02', locationId: 'ol_location_berlin01', deliveryMethod: 'Courier', assignedConnectionId: null, status: 'open', requestStatus: 'unsubmitted', externalWorkId: null, createdAt: '2026-09-10T07:20:00Z', expeditedAt: null, version: 1,
+    lines: [{ productVariantId: 'ol_variant_phonecase', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 }],
+    activeHolds: [
+      { id: 'hold_9a1', reason: 'stock-shortfall', note: '0 of 1 available at this location', placedAt: '2026-09-10T07:20:00Z' },
+      { id: 'hold_9a2', reason: 'address-invalid', note: null, placedAt: '2026-09-10T07:45:00Z' },
+    ],
+    supportedActions: ['release_hold', 'hold', 'expedite', 'force_cancel'],
+    detail: 'Two things are stopping this. See below.' },
+  { id: 'ol_fwork_z001', orderId: 'ol_order_77c210', locationId: null, deliveryMethod: null, assignedConnectionId: null, status: 'open', requestStatus: 'unsubmitted', externalWorkId: null, createdAt: '2026-09-10T09:00:00Z', expeditedAt: null, version: 1,
+    lines: [{ productVariantId: 'ol_variant_candleset', totalQuantity: 1, fulfilledQuantity: 0, cancelledQuantity: 0 }],
+    activeHolds: [], supportedActions: ['schedule', 'hold', 'expedite', 'force_cancel'],
+    detail: 'Not yet assigned anywhere — nothing to pick until this is routed.' },
+];
+
+const LOCATION_LABEL = { ol_location_warsaw01: 'Warsaw — Main warehouse', ol_location_berlin01: 'Berlin — 3PL partner' };
+const TASK_SWITCH_LABEL = {
+  ol_fwork_7a10: 'Scheduled', ol_fwork_a91c: 'Being packed', ol_fwork_c5e8: 'Being packed · moved',
+  ol_fwork_f612: 'Cancel requested', ol_fwork_d873: 'Cancel refused', ol_fwork_1ac0: 'Incomplete',
+  ol_fwork_9012: 'Cancelled', ol_fwork_e337: 'Awaiting answer', ol_fwork_b204: 'On hold', ol_fwork_z001: 'Unassigned',
+};
+
+// A stable, named handle for every distinct work STATE this page demonstrates
+// — never the opaque `ol_fwork_*` hash, which is what a task/E2E spec would
+// otherwise be reduced to referencing. DERIVED from the task's own fields
+// rather than a hand-typed id→slug table, so a demo action (put on hold, mark
+// in progress, …) that changes what a task IS also changes what it is named —
+// a static map would drift from the row the moment the mockup's own buttons
+// mutated it. Order matters: it is the same precedence
+// `fulfillment-supported-actions.types.ts` documents — heldness and the
+// negotiation axis both outrank the bare orchestration status, because
+// `status` alone can't say "on hold" (nothing ever writes `on_hold`) or
+// "a cancellation is in flight" on its own.
+function computeWorkStateSlug(task) {
+  if (task.status === 'cancelled') return 'cancelled';
+  if (task.status === 'incomplete') return 'incomplete';
+  if (task.activeHolds.length > 0) return 'on-hold';
+  if (task.requestStatus === 'cancellation_requested') return 'cancellation-requested';
+  if (task.requestStatus === 'cancellation_rejected') return 'cancellation-rejected';
+  if (task.requestStatus === 'submitted') return 'awaiting-answer';
+  if (!task.locationId) return 'unassigned';
+  if (task.status === 'scheduled') return 'scheduled';
+  if (task.status === 'in_progress') return task.expeditedAt ? 'in-progress-expedited' : 'in-progress';
+  return task.status.replace(/_/g, '-');
+}
+const NOT_FOUND_HASH = '#/works/does-not-exist';
+
+let currentOutcome = 'ok';
+let pageState = 'data';
+let orderFilter = '';
+let locationFilter = '';
+let openDialog = null; // { taskId, mode, holdId? }
+
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function fmtRelative(iso) { const d = new Date(iso); const diffH = Math.round((Date.now() - d.getTime()) / 3600000); if (diffH < 1) return 'just now'; if (diffH < 24) return diffH + 'h ago'; return Math.round(diffH / 24) + 'd ago'; }
+function fmtTime(iso) { const d = new Date(iso); return d.toLocaleDateString(undefined, { month:'short', day:'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit' }); }
+function findTask(id) { return TASKS.find((t) => t.id === id); }
+
+// Release-hold buttons need a distinguishing label the moment a task
+// carries more than one hold — two identical "Release hold" buttons next
+// to each other is exactly what read as illegible before this pass.
+function releaseHoldLabel(task, hold) {
+  return task.activeHolds.length > 1 ? `Release: ${HOLD_REASON_LABEL[hold.reason] || hold.reason}` : 'Release hold';
+}
+
+function groupIntoLanes(tasks) {
+  const map = new Map();
+  for (const t of tasks) {
+    const key = (t.locationId ?? '') + ' ' + (t.deliveryMethod ?? '');
+    if (!map.has(key)) {
+      map.set(key, { id: key, locationLabel: t.locationId ? (LOCATION_LABEL[t.locationId] || t.locationId) : 'No location yet', deliveryMethodLabel: t.deliveryMethod || 'No delivery method yet', tasks: [] });
+    }
+    map.get(key).tasks.push(t);
+  }
+  return [...map.values()];
+}
+
+function filteredTasks() {
+  return TASKS.filter((t) => {
+    if (orderFilter && !t.orderId.toLowerCase().includes(orderFilter.toLowerCase())) return false;
+    if (locationFilter && !(t.locationId || '').toLowerCase().includes(locationFilter.toLowerCase())) return false;
+    return true;
+  });
+}
+
+// ── Router ───────────────────────────────────────────────────────────────
+function router() {
+  const hash = location.hash || '#/';
+  const m = hash.match(/^#\/works\/(.+)$/);
+  document.getElementById('listView').hidden = !!m;
+  document.getElementById('detailView').hidden = !m;
+  if (m) { renderDetailView(m[1]); } else { render(); renderOrderPanelDemo(); }
+  openDialog = null;
+  renderDialog();
+}
+window.addEventListener('hashchange', router);
+
+function refreshCurrentView() {
+  const hash = location.hash || '#/';
+  const m = hash.match(/^#\/works\/(.+)$/);
+  if (m) { renderDetailView(m[1]); } else { render(); renderOrderPanelDemo(); }
+}
+
+// ── Worklist page states ─────────────────────────────────────────────────
+// Five slugs — one per distinct rendering this page can be in — plus the
+// third empty state (`empty-pastend`) the shipped copy table also carries.
+// `pageState` alone decides which branch renders; the live filter inputs
+// below only ever put the page into 'data' or 'empty-filtered', never into a
+// state whose slug they don't also own — which is what keeps a demo click on
+// "Empty — nothing to work" from being undone by a filter value the LAST demo
+// click left behind (a real bug in the previous pass: switching state never
+// cleared the input, so "empty-none" kept reading as "empty-filtered").
+const PAGE_STATES = [
+  { slug: 'data', label: 'Data' }, { slug: 'loading', label: 'Loading' }, { slug: 'error', label: 'Error' },
+  { slug: 'empty-none', label: 'Empty — nothing to work' }, { slug: 'empty-filtered', label: 'Empty — filtered' },
+  { slug: 'empty-pastend', label: 'Empty — past the last page' },
+];
+function renderStateSwitcher() {
+  document.getElementById('pageStateSwitcher').innerHTML = '<span class="demo-toolbar__label">Mockup · jump to a page state</span>' +
+    PAGE_STATES.map((s) => `<button class="chip ${s.slug === pageState ? 'chip--active' : ''}" data-state="${s.slug}" onclick="setPageState('${s.slug}')">${s.label}</button>`).join('');
+}
+function setPageState(slug) {
+  pageState = slug;
+  // Every slug OTHER than 'empty-filtered' clears the live filters — a demo
+  // state must not be an accidental composite of whatever the operator (or
+  // the previous demo click) typed into the filter boxes a moment ago.
+  if (slug === 'empty-filtered') { orderFilter = 'zzz-no-match'; locationFilter = ''; }
+  else { orderFilter = ''; locationFilter = ''; }
+  document.getElementById('orderFilter').value = orderFilter;
+  document.getElementById('locationFilter').value = locationFilter;
+  renderStateSwitcher(); render();
+}
+function clearFilters() {
+  orderFilter = ''; locationFilter = ''; document.getElementById('orderFilter').value = ''; document.getElementById('locationFilter').value = '';
+  pageState = 'data'; renderStateSwitcher(); render();
+}
+document.getElementById('orderFilter').addEventListener('input', (e) => { orderFilter = e.target.value; pageState = 'data'; renderStateSwitcher(); render(); });
+document.getElementById('locationFilter').addEventListener('input', (e) => { locationFilter = e.target.value; pageState = 'data'; renderStateSwitcher(); render(); });
+
+// ── Shared rendering: badges, actions, holds, lines ─────────────────────
+function renderActionButton(task, action, extraLabel) {
+  const tone = actionTone(action) === 'danger' ? 'button--danger' : (actionTone(action) === 'secondary' ? 'button--secondary' : '');
+  const hint = actionHint(action);
+  return `<button class="button ${tone}" ${hint ? `title="${escapeHtml(hint)}"` : ''} data-action="${action}" data-testid="action-${action}" onclick="event.stopPropagation(); handleActionClick('${task.id}','${action}')">${extraLabel || actionLabel(action)}</button>`;
+}
+function renderActions(task) {
+  if (task.supportedActions.length === 0) return '';
+  return task.supportedActions.map((a) => {
+    if (a === 'release_hold') {
+      const hint = actionHint('release_hold');
+      return task.activeHolds.map((h) => `<button class="button" ${hint ? `title="${escapeHtml(hint)}"` : ''} data-action="release_hold" data-hold-id="${h.id}" data-testid="action-release_hold-${h.id}" onclick="event.stopPropagation(); handleActionClick('${task.id}','release_hold','${h.id}')">${releaseHoldLabel(task, h)}</button>`).join('');
+    }
+    return renderActionButton(task, a);
+  }).join('');
+}
+function renderBadges(task) {
+  if (task.activeHolds.length > 0) return task.activeHolds.map((h) => `<span class="badge badge--warning"><span class="badge__dot"></span>On hold — ${HOLD_REASON_LABEL[h.reason] || h.reason}</span>`).join('');
+  return `<span class="badge badge--info">${statusLabel(task.status)}</span>`;
+}
+function renderHoldList(task) {
+  if (task.activeHolds.length === 0) return '';
+  return `<ul class="task-card__holds">${task.activeHolds.map((h) => `<li>${HOLD_REASON_LABEL[h.reason] || h.reason} · since ${fmtRelative(h.placedAt)}${h.note ? ' — ' + escapeHtml(h.note) : ''}</li>`).join('')}</ul>`;
+}
+function renderFactsRows(task) {
+  const rows = [['State', statusLabel(task.status)], ['Handshake', requestStatusLabel(task.requestStatus)]];
+  if (task.locationId) rows.push(['Location', LOCATION_LABEL[task.locationId] || task.locationId]);
+  if (task.deliveryMethod) rows.push(['Delivery', task.deliveryMethod]);
+  if (task.externalWorkId) rows.push(['External reference', task.externalWorkId]);
+  return rows;
+}
+function renderLinesList(task) {
+  if (task.lines.length === 0) return '<p class="text-muted">This fulfilment task covers no lines.</p>';
+  return `<ul class="task-card__lines">${task.lines.map((l) => `<li><span class="mono-text" style="font-family:var(--font-mono)">${l.productVariantId}</span><span>${l.fulfilledQuantity} / ${l.totalQuantity}${l.cancelledQuantity > 0 ? ` (${l.cancelledQuantity} cancelled)` : ''}</span></li>`).join('')}</ul><p class="task-card__note">Picked counts are reported by whoever is working the task and can be a little behind what you see here.</p>`;
+}
+
+// ── Worklist: card + row + lane ──────────────────────────────────────────
+// `data-work-id` names the row; `data-state` names the STATE it is in
+// (`computeWorkStateSlug`) — the second is the finding this pass closes: a
+// task/E2E spec pointed at "the on-hold state" previously had nothing to
+// select except an opaque hash or the free-text switcher-chip label.
+function taskCardHtml(task) {
+  const slug = computeWorkStateSlug(task);
+  return `<li class="task-card" data-work-id="${task.id}" data-state="${slug}" data-testid="task-card-${task.id}" onclick="location.hash = '#/works/${task.id}'">
+    <div class="task-card__head">
+      <div class="task-card__badges">${renderBadges(task)}${task.expeditedAt ? `<span class="expedite-badge" data-testid="expedited-badge" title="Proposed — see validation note above">⚡ Moved to the front</span>` : ''}</div>
+      <span class="task-card__id" title="${task.id}">${task.id}</span>
+    </div>
+    ${renderHoldList(task)}
+    <dl class="task-card__facts">${renderFactsRows(task).map(([k, v]) => `<div><dt>${k}</dt><dd>${escapeHtml(String(v))}</dd></div>`).join('')}</dl>
+    ${renderLinesList(task)}
+    <div class="task-card__actions">${renderActions(task)}</div>
+  </li>`;
+}
+function taskRowHtml(task) {
+  const fulfilled = task.lines.reduce((s, l) => s + l.fulfilledQuantity, 0);
+  const total = task.lines.reduce((s, l) => s + l.totalQuantity, 0);
+  const slug = computeWorkStateSlug(task);
+  return `<div class="wrow" data-work-id="${task.id}" data-state="${slug}" data-testid="task-row-${task.id}" onclick="location.hash = '#/works/${task.id}'">
+    <div class="wrow__main">
+      <div class="wrow__identity"><span class="wrow__id">${task.id}</span><span class="wrow__order">${task.orderId}</span></div>
+      <div class="wrow__state">${renderBadges(task)}${task.expeditedAt ? `<span class="expedite-badge" title="Proposed — see validation note above">⚡ Moved</span>` : ''}<span class="wrow__substate">${statusLabel(task.status)} · ${requestStatusLabel(task.requestStatus)}</span></div>
+      <div class="wrow__lines">${task.lines.length > 0 ? WORKLIST_COPY.row.lineCount(fulfilled, total) : WORKLIST_COPY.row.noLines}</div>
+    </div>
+    ${task.supportedActions.length ? `<div class="wrow__actions">${renderActions(task)}</div>` : ''}
+  </div>`;
+}
+// Said ONCE per lane, and it is BOTH sentences — the shipped
+// FulfillmentLaneSection renders pageScopeNote and countersCaveat together,
+// here, not scattered one-per-row (the defect this pass fixes: a previous
+// version dropped the lane-level sentence and kept only the per-card one).
+function laneHtml(lane) {
+  const fulfilled = lane.tasks.reduce((s, t) => s + t.lines.reduce((ss, l) => ss + l.fulfilledQuantity, 0), 0);
+  const total = lane.tasks.reduce((s, t) => s + t.lines.reduce((ss, l) => ss + l.totalQuantity, 0), 0);
+  return `<section class="lane" aria-label="${escapeHtml(lane.locationLabel)} — ${escapeHtml(lane.deliveryMethodLabel)}">
+    <div class="lane__head">
+      <h3 class="lane__title">${escapeHtml(lane.locationLabel)}</h3>
+      <span class="lane__method">${escapeHtml(lane.deliveryMethodLabel)}</span>
+      <span class="lane__count">${WORKLIST_COPY.row.lineCount(fulfilled, total)}</span>
+    </div>
+    <p class="lane__scope">${WORKLIST_COPY.lane.pageScopeNote} ${WORKLIST_COPY.row.countersCaveat}</p>
+    <div class="worklist-desktop">
+      <div class="worklist-head"><span>${WORKLIST_COPY.row.taskLabel}</span><span>${WORKLIST_COPY.row.stateLabel}</span><span>${WORKLIST_COPY.row.linesLabel}</span><span>${WORKLIST_COPY.row.actionsLabel}</span></div>
+      ${lane.tasks.map(taskRowHtml).join('')}
+    </div>
+    <ul class="worklist-cards">${lane.tasks.map(taskCardHtml).join('')}</ul>
+  </section>`;
+}
+
+function render() {
+  const target = document.getElementById('pageBody');
+  document.getElementById('clearFiltersBtn').style.display = (orderFilter || locationFilter) ? '' : 'none';
+  // `data-state` on the RENDERED SURFACE, not only on the switcher button that
+  // requested it — a task/E2E spec selects `#pageBody[data-state="…"]`, never
+  // "whichever chip currently carries `chip--active`".
+  target.dataset.state = pageState;
+
+  if (pageState === 'loading') { target.innerHTML = `<p style="margin-top:20px; color:var(--text-muted);">${WORKLIST_COPY.loading.message}</p>`; return; }
+  if (pageState === 'error') {
+    target.innerHTML = `<div class="empty-state"><div class="empty-state__title">${WORKLIST_COPY.error.title}</div><p class="empty-state__message">${WORKLIST_COPY.error.message}</p><button class="button" onclick="setPageState('data')">${WORKLIST_COPY.error.retry}</button></div>`;
+    return;
+  }
+  if (pageState === 'empty-pastend') {
+    target.innerHTML = `<div class="empty-state"><div class="empty-state__title">${WORKLIST_COPY.empty.pastEnd.title}</div><p class="empty-state__message">${WORKLIST_COPY.empty.pastEnd.message}</p><button class="button button--secondary" onclick="setPageState('data')">${WORKLIST_COPY.empty.pastEnd.action}</button></div>`;
+    return;
+  }
+  if (pageState === 'empty-none') {
+    target.innerHTML = `<div class="empty-state"><div class="empty-state__title">${WORKLIST_COPY.empty.none.title}</div><p class="empty-state__message">${WORKLIST_COPY.empty.none.message}</p></div>`;
+    return;
+  }
+  // pageState === 'data' from here — but the LIVE filters can still produce an
+  // empty, filtered result (typing into the boxes), which is the ordinary
+  // 'empty-filtered' rendering rather than a distinct pageState of its own.
+  const tasks = filteredTasks();
+  if (tasks.length === 0) {
+    target.dataset.state = 'empty-filtered';
+    target.innerHTML = `<div class="empty-state"><div class="empty-state__title">${WORKLIST_COPY.empty.filtered.title}</div><p class="empty-state__message">${WORKLIST_COPY.empty.filtered.message}</p><button class="button button--secondary" onclick="clearFilters()">${WORKLIST_COPY.filter.clear}</button></div>`;
+    return;
+  }
+  const lanes = groupIntoLanes(tasks);
+  target.innerHTML = lanes.map(laneHtml).join('') + `
+    <div class="pagination">
+      <span style="font-variant-numeric:tabular-nums; color:var(--text-muted);">${WORKLIST_COPY.pagination.range(1, tasks.length, tasks.length)}</span>
+      <div class="pagination__actions"><button class="button button--secondary" disabled>${WORKLIST_COPY.pagination.previous}</button><button class="button button--secondary" disabled>${WORKLIST_COPY.pagination.next}</button></div>
+    </div>`;
+}
+
+function renderOrderPanelDemo() {
+  const orderTasks = TASKS.filter((t) => t.orderId === 'ol_order_9f2e1a' || t.orderId === 'ol_order_4c0091');
+  document.getElementById('orderPanelDemo').innerHTML = `<ul class="worklist-cards">${orderTasks.map(taskCardHtml).join('')}</ul>`;
+}
+
+// ── Detail view ───────────────────────────────────────────────────────────
+// `activeSlug` is 'not-found' when the current hash names no real task — the
+// missing branch the previous pass left with no switcher entry at all.
+function renderTaskSwitcher(activeSlug) {
+  const taskChips = TASKS.map((t) => {
+    const slug = computeWorkStateSlug(t);
+    return `<button class="chip ${slug === activeSlug ? 'chip--active' : ''}" data-state="${slug}" onclick="location.hash = '#/works/${t.id}'">${TASK_SWITCH_LABEL[t.id]}</button>`;
+  }).join('');
+  const notFoundChip = `<button class="chip ${activeSlug === 'not-found' ? 'chip--active' : ''}" data-state="not-found" onclick="location.hash = '${NOT_FOUND_HASH}'">Not found</button>`;
+  document.getElementById('taskSwitcher').innerHTML = '<span class="demo-toolbar__label">Mockup · view a different task</span>' + taskChips + notFoundChip;
+}
+
+function renderDetailView(taskId) {
+  const task = findTask(taskId);
+  const detailViewEl = document.getElementById('detailView');
+  if (!task) {
+    detailViewEl.dataset.state = 'not-found';
+    document.getElementById('detailTitle').textContent = 'Task not found';
+    document.getElementById('detailHero').innerHTML = `<p>No fulfilment task matches <code class="k">${escapeHtml(taskId)}</code>.</p>`;
+    document.getElementById('detailHoldsSection').innerHTML = '';
+    document.getElementById('detailLines').innerHTML = '';
+    document.getElementById('detailFacts').innerHTML = '';
+    document.getElementById('detailActionsBody').innerHTML = '';
+    renderTaskSwitcher('not-found');
+    return;
+  }
+  const slug = computeWorkStateSlug(task);
+  detailViewEl.dataset.state = slug;
+  renderTaskSwitcher(slug);
+  document.getElementById('detailTitle').textContent = `Order ${task.orderId.replace('ol_order_', '#').toUpperCase()}`;
+
+  document.getElementById('detailHero').innerHTML = `
+    <div class="detail-hero__sub">${task.id} · ${task.locationId ? escapeHtml(LOCATION_LABEL[task.locationId] || task.locationId) : 'No location yet'}</div>
+    <div class="detail-hero__row">
+      <span class="detail-hero__status">${statusLabel(task.status)} · ${requestStatusLabel(task.requestStatus)}</span>
+      ${task.expeditedAt ? `<span class="expedite-badge" data-testid="expedited-badge">⚡ Moved to the front · ${fmtTime(task.expeditedAt)}</span>` : ''}
+    </div>
+    <p class="detail-hero__detail">${escapeHtml(task.detail)}</p>
+  `;
+
+  document.getElementById('detailHoldsSection').innerHTML = task.activeHolds.length
+    ? `<div class="detail-section"><p class="detail-section__title">Why it's stuck</p>${task.activeHolds.map((h) => `<div class="hold-banner"><span aria-hidden="true">⏸</span><div><div class="hold-banner__title">${HOLD_REASON_LABEL[h.reason] || h.reason}</div>${h.note ? `<div class="hold-banner__desc">${escapeHtml(h.note)}</div>` : ''}<div class="hold-banner__desc">since ${fmtTime(h.placedAt)}</div></div></div>`).join('')}</div>`
+    : '';
+
+  document.getElementById('detailLines').innerHTML = task.lines.map((l) => {
+    const done = l.fulfilledQuantity >= l.totalQuantity;
+    return `<div class="item-row"><span class="item-row__name">${l.productVariantId}</span><span class="item-row__qty">${l.fulfilledQuantity} / ${l.totalQuantity}${l.cancelledQuantity > 0 ? ` (${l.cancelledQuantity} cancelled)` : ''}${done ? ' ✓' : ''}</span></div>`;
+  }).join('') + `<p class="task-card__note" style="margin-top:8px;">Picked counts are reported by whoever is working the task and can be a little behind what you see here.</p>`;
+
+  document.getElementById('detailFacts').innerHTML = renderFactsRows(task).map(([k, v]) => `<div class="fact"><span class="fact__label">${k}</span><span class="fact__value">${escapeHtml(String(v))}</span></div>`).join('') +
+    `<div class="fact"><span class="fact__label">Started</span><span class="fact__value">${fmtTime(task.createdAt)}</span></div>`;
+
+  document.getElementById('detailActionsBody').innerHTML = task.supportedActions.length === 0
+    ? `<span style="font-size:.875rem; color:var(--text-muted);">Nothing left to do.</span>`
+    : renderActions(task);
+}
+
+// ── Dialogs + conflict handling (shared by both views) ──────────────────
+const ACTIONS_NEEDING_A_FORM = new Set(['hold', 'release_hold', 'force_cancel']);
+function handleActionClick(taskId, action, holdId) {
+  if (ACTIONS_NEEDING_A_FORM.has(action)) { openDialog = { taskId, mode: action, holdId }; renderDialog(); return; }
+  performAction(taskId, action);
+}
+function renderDialog() {
+  const overlay = document.getElementById('dialogOverlay');
+  if (!openDialog) { overlay.hidden = true; overlay.innerHTML = ''; return; }
+  const { taskId, mode } = openDialog;
+  const copy = FULFILLMENT_ACTION_MODE_COPY[mode];
+  overlay.hidden = false;
+
+  let fields = '';
+  if (mode === 'hold') {
+    fields = `<div class="action-dialog__field"><label for="holdReasonSelect">Reason</label><select id="holdReasonSelect" data-testid="hold-reason-select">${HOLD_REASON_ORDER.map((r) => `<option value="${r}"${r === 'operator' ? ' selected' : ''}>${HOLD_REASON_LABEL[r]}</option>`).join('')}</select></div>
+      <div class="action-dialog__field"><label for="holdNote">Note — optional</label><textarea id="holdNote" data-testid="hold-note-input"></textarea></div>`;
+  } else if (mode === 'release_hold') {
+    fields = `<div class="action-dialog__field"><label for="releaseNote">Note — optional</label><textarea id="releaseNote" data-testid="release-note-input"></textarea></div>`;
+  }
+  const confirmClass = mode === 'force_cancel' ? 'button button--danger' : 'button';
+  const cancelLabel = mode === 'force_cancel' ? 'Keep it' : 'Cancel';
+  overlay.innerHTML = `<div class="dialog-scrim" onclick="cancelDialog()"></div>
+    <div class="action-dialog" role="dialog" aria-modal="true" data-testid="dialog-${mode}">
+      <div class="action-dialog__title">${copy.title}</div>
+      <p class="action-dialog__desc">${copy.desc}</p>
+      ${fields}
+      <div class="action-dialog__row">
+        <button class="${confirmClass}" data-testid="confirm-${mode}" onclick="confirmDialog()">${copy.confirm}</button>
+        <button class="button button--secondary" data-testid="cancel-dialog" onclick="cancelDialog()">${cancelLabel}</button>
+      </div>
+    </div>`;
+}
+function cancelDialog() { openDialog = null; renderDialog(); }
+function confirmDialog() {
+  const { taskId, mode, holdId } = openDialog;
+  if (mode === 'hold') { const reason = document.getElementById('holdReasonSelect').value; openDialog = null; performAction(taskId, 'hold', undefined, { reason }); return; }
+  if (mode === 'release_hold') { openDialog = null; performAction(taskId, 'release_hold', holdId); return; }
+  openDialog = null; performAction(taskId, 'force_cancel');
+}
+
+const TOAST_GLYPH = { success: '✓', warning: '↻', error: '✕' };
+/**
+ * The one result surface both views share (see the `.toast-stack` CSS
+ * comment) — a plain `Record<action, …>` fallback like the vocabulary
+ * lookups above, never a thrown error over an unrecognised tone.
+ */
+function showToast(tone, html) {
+  const stack = document.getElementById('toastStack');
+  const id = 'toast_' + Math.random().toString(36).slice(2, 8);
+  stack.insertAdjacentHTML('beforeend', `<div class="toast toast--${tone}" data-testid="toast-${tone}" id="${id}"><span aria-hidden="true">${TOAST_GLYPH[tone] || 'ℹ'}</span><div class="toast__text">${html}</div><button class="toast__dismiss" aria-label="Dismiss" onclick="document.getElementById('${id}').remove()">✕</button></div>`);
+}
+
+function performAction(taskId, action, holdId, fields) {
+  const task = findTask(taskId);
+  openDialog = null;
+  // Found while validating this pass, not one of the review's findings: a
+  // form-backed action (hold/release_hold/force_cancel) confirmed through the
+  // dialog left the scrim up forever, since only `cancelDialog()` used to call
+  // `renderDialog()` to close it. `confirmDialog()` sets `openDialog = null`
+  // and calls straight into here, so THIS is where the close has to happen.
+  renderDialog();
+
+  if (currentOutcome === 'version_conflict') {
+    task.version += 1;
+    refreshCurrentView();
+    showToast('warning', `<b>${escapeHtml(CONFLICT_COPY.version_conflict)}</b>`);
+    return;
+  }
+  if (currentOutcome === 'action_not_legal') {
+    task.supportedActions = task.supportedActions.filter((a) => a !== action);
+    refreshCurrentView();
+    showToast('error', `<b>${escapeHtml(CONFLICT_COPY.action_not_legal)}</b>`);
+    return;
+  }
+
+  if (action === 'hold') {
+    task.activeHolds = [...task.activeHolds, { id: 'hold_' + Math.random().toString(36).slice(2, 7), reason: fields.reason, note: null, placedAt: new Date().toISOString() }];
+    task.supportedActions = task.supportedActions.filter((a) => a !== 'schedule' && a !== 'mark_in_progress');
+    if (!task.supportedActions.includes('release_hold')) task.supportedActions = ['release_hold', ...task.supportedActions];
+  }
+  if (action === 'release_hold') {
+    task.activeHolds = task.activeHolds.filter((h) => h.id !== holdId);
+    if (task.activeHolds.length === 0) task.supportedActions = task.supportedActions.filter((a) => a !== 'release_hold');
+  }
+  if (action === 'force_cancel') { task.status = 'cancelled'; task.requestStatus = 'cancellation_accepted'; task.supportedActions = []; task.detail = (task.assignedConnectionId || 'Whoever held it') + ' was told to stop.'; }
+  if (action === 'close') { task.status = 'closed'; task.supportedActions = []; task.detail = 'This task is finished.'; }
+  if (action === 'mark_in_progress') { task.status = 'in_progress'; task.supportedActions = ['close', 'hold', 'expedite', 'force_cancel']; task.detail = (task.assignedConnectionId || 'Whoever holds it') + ' is picking and packing this right now.'; }
+  if (action === 'schedule') { task.status = 'scheduled'; task.supportedActions = ['mark_in_progress', 'hold', 'expedite', 'force_cancel']; }
+  if (action === 'expedite') { task.expeditedAt = new Date().toISOString(); task.supportedActions = task.supportedActions.map((a) => a === 'expedite' ? 'release_expedite' : a); }
+  if (action === 'release_expedite') { task.expeditedAt = null; task.supportedActions = task.supportedActions.map((a) => a === 'release_expedite' ? 'expedite' : a); }
+
+  refreshCurrentView();
+  showToast('success', `<b>${escapeHtml(actionLabel(action))} applied.</b>`);
+}
+
+function setOutcome(name) {
+  currentOutcome = name;
+  document.querySelectorAll('[aria-label="Mockup — what happens when you click an action"] .chip[data-outcome]').forEach((c) => c.classList.toggle('chip--active', c.dataset.outcome === name));
+}
+
+renderStateSwitcher();
+router();
+</script>
