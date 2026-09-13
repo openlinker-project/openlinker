@@ -191,7 +191,16 @@ export function PriceChangesQueueTable(): ReactElement {
   // review) — `query` above is filtered server-side, so once ANY chip is
   // active its own `items` can no longer answer "how many for every OTHER
   // chip", which previously collapsed every other chip's count to zero.
-  const unfilteredQuery = usePriceChangesQuery({ limit: CHIP_COUNTS_LIMIT });
+  // No standing poll of its own (#3164 re-review, SUGGESTION): with a filter
+  // active this tab already holds three cache entries against the same
+  // unbounded endpoint (tab badge, filtered rows, these counts), and a chip
+  // count is a slowly-changing sidebar number rather than the working set. It
+  // still refreshes on the ordinary invalidation every accept/ignore/edit
+  // mutation fires, so a count cannot go stale behind an action taken here.
+  const unfilteredQuery = usePriceChangesQuery(
+    { limit: CHIP_COUNTS_LIMIT },
+    { refetchIntervalMs: false },
+  );
 
   const acceptMutation = useAcceptPriceChangeMutation();
   const ignoreMutation = useIgnorePriceChangeMutation();
@@ -232,6 +241,26 @@ export function PriceChangesQueueTable(): ReactElement {
     });
     return firstIndex;
   }, [items]);
+
+  // A chip count is a claim about the operator's own data, so it must never be
+  // made from a read that is still in flight or that failed
+  // (`docs/frontend-architecture.md § Paginated Totals As A Second Stage` — a
+  // failed count leaves the placeholder and never renders `0`, because absence
+  // and "none matched" are different claims). Every chip reads the same
+  // unfiltered query, so they go dark together rather than each asserting a
+  // confident zero; `?? 0` below stays correct once the data IS known, where a
+  // connection genuinely absent from the map has no open episodes.
+  const chipCountsUnavailable = unfilteredQuery.isError;
+  const chipCountsKnown = !chipCountsUnavailable && unfilteredQuery.data !== undefined;
+  const renderChipCount = (value: number) => {
+    if (chipCountsUnavailable) {
+      return <span className="chip__count">—</span>;
+    }
+    if (!chipCountsKnown) {
+      return null;
+    }
+    return <span className="chip__count">{value}</span>;
+  };
 
   const connectionCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -431,16 +460,21 @@ export function PriceChangesQueueTable(): ReactElement {
     // REPORTED rather than swallowed (`.catch(() => undefined)`): a wholly
     // failed bulk ignore used to look identical to a successful one.
     let succeeded = 0;
-    let failed = 0;
+    const failedIds: string[] = [];
     for (const id of selectedIds) {
       try {
         await ignoreMutation.mutateAsync(id);
         succeeded += 1;
       } catch {
-        failed += 1;
+        failedIds.push(id);
       }
     }
-    setSelected(new Set());
+    const failed = failedIds.length;
+    // Keep the FAILED rows selected (#3164 re-review, SUGGESTION) — the toast
+    // below tells the operator to "try again for the rest", so clearing the
+    // whole selection leaves them nothing to retry and no way to tell which
+    // rows the "rest" were.
+    setSelected(new Set(failedIds));
     if (failed === 0) {
       showToast({
         tone: 'success',
@@ -500,7 +534,7 @@ export function PriceChangesQueueTable(): ReactElement {
       <div className="filter-bar" role="group" aria-label="Filter by connection">
         <span className="filter-bar__label">Connection</span>
         <Chip active={connectionFilter === 'all'} onClick={() => setConnectionFilter('all')}>
-          All <span className="chip__count">{unfilteredQuery.data?.total ?? 0}</span>
+          All {renderChipCount(unfilteredQuery.data?.total ?? 0)}
         </Chip>
         {destinationConnections.map((connection) => (
           <Chip
@@ -508,7 +542,7 @@ export function PriceChangesQueueTable(): ReactElement {
             active={connectionFilter === connection.id}
             onClick={() => setConnectionFilter(connection.id)}
           >
-            {connection.name} <span className="chip__count">{connectionCounts.get(connection.id) ?? 0}</span>
+            {connection.name} {renderChipCount(connectionCounts.get(connection.id) ?? 0)}
           </Chip>
         ))}
       </div>
