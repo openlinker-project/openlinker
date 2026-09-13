@@ -20,10 +20,7 @@ import type { NavCounts } from './hooks/use-nav-counts';
  * Roles that the FE chrome gates against. Runtime array + derived union
  * follows the `as const` pattern from engineering standards § "Union Types".
  *
- * `'operator'` is included so nav groups can declare `requiresRole: 'operator'`
- * for operator-only sections without any further type changes.
- *
- * `'packer'` (#3107, ADR-071/#2413) is narrower still than `'operator'` and
+ * `'packer'` (#3107, ADR-071/#2413) is narrower than `'operator'` and
  * deliberately carries an EMPTY `ROLE_PERMISSIONS` grant on the backend — a
  * packer's access is enforced purely route-by-route via `@Roles(...)`, not
  * via any `Permission`. That is exactly why the item-level
@@ -31,14 +28,60 @@ import type { NavCounts } from './hooks/use-nav-counts';
  * nothing to check a packer session against, so "packer may see this item"
  * can only be expressed as a role check.
  *
+ * ## This union is NOT what the group and contribution gates accept
+ *
+ * An earlier version of this docblock said `'operator'` was included "so nav
+ * groups can declare `requiresRole: 'operator'` … without any further type
+ * changes". That was false, and falsest in the worst direction: both gates that
+ * read a declared role compare for EQUALITY against `'admin'` and nothing else
+ * —
+ *
+ * - `nav-registry.ts` — `group.requiresRole === 'admin' && !isAdmin`
+ * - `plugins/merge-nav-contributions.ts` — `contribution.requiresRole === 'admin' && !isAdmin`
+ *
+ * — so a group or contribution declaring any OTHER member of this union was an
+ * inert gate that stayed visible to everyone. On a field whose only purpose is
+ * access gating, that fails **open**. `docs/frontend-architecture.md §
+ * Access Control And UI Visibility` names the inverse hazard ("a typo
+ * type-checks and silently evaluates false") as the reason a role is never
+ * compared inline; this is the same defect pointing the other way.
+ *
+ * Rather than restate the limit in prose and leave the wider type standing, the
+ * two gate fields are typed {@link GroupRoleGate} — so the state the comment
+ * used to describe wrongly is now one the compiler refuses. See that type for
+ * what to do when a second role genuinely needs group-level gating.
+ *
  * The backend's `UserRoleValues` also carries `'viewer'`, deliberately absent
- * here — nothing in the FE chrome's nav gating needs to name a viewer
- * specifically today (viewer-only UI behaviour is resolved elsewhere, e.g.
- * `app-shell.tsx`'s own `isViewerOnly` check against `session.user.role`
- * directly). Add it here only when a nav gate actually needs to name it.
+ * here — viewer-only UI behaviour is resolved elsewhere (e.g. `app-shell.tsx`'s
+ * own `isViewerOnly` check against `session.user.role` directly). Add it here
+ * only when a nav gate actually needs to name it. **There is already a known
+ * consumer waiting**: `packer` appears in `@Roles(...)` on exactly the three
+ * bench controllers, so a packer sees every other entry in the ungated
+ * `Operations` group and 403s on each one. The per-item remedy is
+ * `requiresRole: ['admin', 'operator', 'viewer']` on those entries, which this
+ * union cannot yet express — tracked against epic #3104, and recorded here so
+ * the next reader does not re-derive it.
  */
 export const RoleValues = ['admin', 'operator', 'packer'] as const;
 export type Role = (typeof RoleValues)[number];
+
+/**
+ * The only role a GROUP-level or CONTRIBUTION-level gate actually honours.
+ *
+ * Deliberately narrower than {@link Role}: both consumers test
+ * `requiresRole === 'admin'`, so `'admin'` is the whole of what those two
+ * fields can mean. Typing them as the full union let a declaration type-check
+ * and then silently do nothing — see the {@link RoleValues} docblock.
+ *
+ * **Widening this is a two-file change, never a one-file one.** Add the value
+ * here only together with the gate that reads it, in `nav-registry.ts` and
+ * `plugins/merge-nav-contributions.ts` — both of which must then compare
+ * against the SESSION role rather than the `isAdmin` boolean they take today.
+ * The item-level `LiveNavItem.requiresRole` (#3108) is the worked example of
+ * that shape and is typed `readonly Role[]`, because it really is honoured for
+ * every member.
+ */
+export type GroupRoleGate = 'admin';
 
 export type NavCountKey = keyof NavCounts;
 
@@ -78,8 +121,13 @@ export interface LiveNavGroup {
   items: LiveNavItem[];
   kind: 'live';
   label: string;
-  /** Declarative role gate — admin-only groups are filtered out for non-admin sessions. */
-  requiresRole?: Role;
+  /**
+   * Declarative role gate — admin-only groups are filtered out for non-admin
+   * sessions. {@link GroupRoleGate}, not {@link Role}: `nav-registry.ts`
+   * compares this for equality against `'admin'`, so any other value would be
+   * an inert, fail-open gate rather than a narrower one.
+   */
+  requiresRole?: GroupRoleGate;
 }
 
 export interface PlannedNavGroup {

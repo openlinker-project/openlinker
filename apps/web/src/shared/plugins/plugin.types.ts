@@ -31,7 +31,7 @@ import type { RouteObject } from 'react-router-dom';
 import type { RefinementCtx, ZodType } from 'zod';
 
 import type { ApiRequest, PluginApiNamespaces } from '../../app/api/api-client';
-import type { Role } from '../../app/nav-registry.types';
+import type { GroupRoleGate } from '../../app/nav-registry.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { EditConnectionFormValues } from '../../features/connections/components/edit-connection.schema';
 import type { InvoiceRecord } from '../../features/invoicing';
@@ -56,12 +56,19 @@ export interface NavContribution {
   label: string;
   end?: boolean;
   /**
-   * Declarative role gate (#610). When set, the contribution is dropped for
-   * sessions whose role doesn't match — same UI-hide semantics as the AI
-   * group's `requiresRole: 'admin'` on `BASE_NAV_GROUPS`. Authorization is
-   * still enforced backend-side; this only hides the nav affordance.
+   * Declarative ADMIN-ONLY gate (#610). When set, the contribution is dropped
+   * for non-admin sessions — same UI-hide semantics as the AI group's
+   * `requiresRole: 'admin'` on `BASE_NAV_GROUPS`. Authorization is still
+   * enforced backend-side; this only hides the nav affordance.
+   *
+   * Typed {@link GroupRoleGate} rather than the wider `Role` union (#3107
+   * review):
+   * `merge-nav-contributions.ts` tests `requiresRole === 'admin'`, so this said
+   * "dropped for sessions whose role doesn't match" while a contribution
+   * declaring `'operator'` was in fact shown to EVERY role. A plugin author
+   * gets a compile error now instead of a gate that silently does nothing.
    */
-  requiresRole?: Role;
+  requiresRole?: GroupRoleGate;
 }
 
 /**
