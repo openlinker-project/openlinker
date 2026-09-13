@@ -112,4 +112,19 @@ export interface PriceChangeQueuePage {
    * that field's own docblock for why).
    */
   total: number;
+  /**
+   * Whether a further page (a greater `offset`) may still hold matching
+   * episodes — computed from `offset + <raw rows fetched for this page>
+   * < total`, i.e. from the SAME pre-stale-filter row count `total` was
+   * counted against, NEVER from `items.length` (#3162 review).
+   *
+   * This is the field the stale-exclusion docblock above names as the
+   * remedy for its own limitation: a page whose every row happens to be
+   * stale renders `items: []`, and without this flag that is
+   * indistinguishable from "no more results" — the caller would stop
+   * paging on a queue that, in fact, still holds unreviewed episodes
+   * further on. `hasMore` answers that question directly, independent of
+   * how many (if any) of this page's rows survived the stale filter.
+   */
+  hasMore: boolean;
 }

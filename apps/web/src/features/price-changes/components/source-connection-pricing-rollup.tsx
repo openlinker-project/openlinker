@@ -74,11 +74,11 @@ export function SourceConnectionPricingRollup({
   const entries = query.data ?? [];
 
   return (
-    <div className="settings-section">
-      <div className="settings-section__head">
+    <div className="pricing-rollup">
+      <div className="pricing-rollup__head">
         <div>
-          <h2>How your prices get adjusted</h2>
-          <p className="settings-section__desc">
+          <h3>How your prices get adjusted</h3>
+          <p className="pricing-rollup__desc">
             Each place you sell can mark up or round your price differently. Manage a rule from
             where it&apos;s used.
           </p>
@@ -90,11 +90,11 @@ export function SourceConnectionPricingRollup({
           message="No destinations are adjusting your prices right now. A destination appears here once it has its own rule for this source, or a price change from it is waiting for review."
         />
       ) : (
-        <div className="source-list" id="source-page-list">
+        <div className="pricing-rollup__list" id="source-page-list">
           {entries.map((entry) => (
-            <div className="source-row" key={entry.destinationConnectionId}>
-              <div className="source-row__head">
-                <span className="source-row__name">{entry.destinationLabel}</span>
+            <div className="pricing-rollup__row" key={entry.destinationConnectionId}>
+              <div className="pricing-rollup__row-head">
+                <span className="pricing-rollup__row-name">{entry.destinationLabel}</span>
                 <Link
                   className="button button--secondary button--xs"
                   id={`source-page-manage-${entry.destinationConnectionId}`}
@@ -103,7 +103,7 @@ export function SourceConnectionPricingRollup({
                   Manage
                 </Link>
               </div>
-              <div className="source-row__summary">{summaryFor(entry)}</div>
+              <div className="pricing-rollup__row-summary">{summaryFor(entry)}</div>
             </div>
           ))}
         </div>

@@ -14,6 +14,10 @@ import type { ConnectionPricingSyncView } from '../api/pricing-sync.types';
  * without this every render of the Price changes tab fired one request per
  * destination connection nobody asked for yet.
  */
+/** One minute — long enough to cover a picker re-open, short enough that
+ * an edit made in another tab is not stale for long. */
+const SUMMARY_STALE_MS = 60_000;
+
 export function useDestinationPricingSyncSummaries(
   connectionIds: readonly string[],
   options?: { enabled?: boolean },
@@ -26,6 +30,13 @@ export function useDestinationPricingSyncSummaries(
       queryKey: connectionPricingSyncQueryKey(connectionId),
       queryFn: () => apiClient.pricingSync.get(connectionId),
       enabled,
+      // A destination's default rule changes when an operator edits it, not
+      // on its own, and this picker is opened repeatedly in one sitting
+      // (#3167 round-3 review). The `useUpdateConnectionPricingSyncMutation`
+      // and `useSetSourceSyncModeMutation` both invalidate this exact key, so
+      // an edit still lands immediately — this only stops a re-open refetching
+      // N connections that nothing has touched.
+      staleTime: SUMMARY_STALE_MS,
     })),
   });
 }

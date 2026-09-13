@@ -93,6 +93,14 @@ const DESTINATION_CAPABILITIES = ['OfferManager', 'ProductPublisher'];
  */
 const CHIP_COUNTS_LIMIT = 200;
 
+/**
+ * How long the "also set to Automatic" Undo stays offered (#3165 round-3
+ * review). Deliberately many times the toast provider's 4s default: this is
+ * the operator's only chance to reverse a switch to publishing prices without
+ * review before the setting persists silently on the connection.
+ */
+const AUTOMATIC_OPT_IN_UNDO_MS = 30_000;
+
 /** Groups rows fanning from the same source event across several destinations. */
 function groupKeyFor(item: PriceChangeItem): string {
   return `${item.productVariantId}:${item.sourceConnectionId}:${item.sourceOldAmount}:${item.sourceNewAmount}`;
@@ -201,7 +209,16 @@ export function PriceChangesQueueTable(): ReactElement {
   // review) — `query` above is filtered server-side, so once ANY chip is
   // active its own `items` can no longer answer "how many for every OTHER
   // chip", which previously collapsed every other chip's count to zero.
-  const unfilteredQuery = usePriceChangesQuery({ limit: CHIP_COUNTS_LIMIT });
+  // No standing poll of its own (#3164 re-review, SUGGESTION): with a filter
+  // active this tab already holds three cache entries against the same
+  // unbounded endpoint (tab badge, filtered rows, these counts), and a chip
+  // count is a slowly-changing sidebar number rather than the working set. It
+  // still refreshes on the ordinary invalidation every accept/ignore/edit
+  // mutation fires, so a count cannot go stale behind an action taken here.
+  const unfilteredQuery = usePriceChangesQuery(
+    { limit: CHIP_COUNTS_LIMIT },
+    { refetchIntervalMs: false },
+  );
 
   const acceptMutation = useAcceptPriceChangeMutation();
   const ignoreMutation = useIgnorePriceChangeMutation();
@@ -243,6 +260,26 @@ export function PriceChangesQueueTable(): ReactElement {
     return firstIndex;
   }, [items]);
 
+  // A chip count is a claim about the operator's own data, so it must never be
+  // made from a read that is still in flight or that failed
+  // (`docs/frontend-architecture.md § Paginated Totals As A Second Stage` — a
+  // failed count leaves the placeholder and never renders `0`, because absence
+  // and "none matched" are different claims). Every chip reads the same
+  // unfiltered query, so they go dark together rather than each asserting a
+  // confident zero; `?? 0` below stays correct once the data IS known, where a
+  // connection genuinely absent from the map has no open episodes.
+  const chipCountsUnavailable = unfilteredQuery.isError;
+  const chipCountsKnown = !chipCountsUnavailable && unfilteredQuery.data !== undefined;
+  const renderChipCount = (value: number) => {
+    if (chipCountsUnavailable) {
+      return <span className="chip__count">—</span>;
+    }
+    if (!chipCountsKnown) {
+      return null;
+    }
+    return <span className="chip__count">{value}</span>;
+  };
+
   const connectionCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const item of unfilteredItems) {
@@ -259,9 +296,18 @@ export function PriceChangesQueueTable(): ReactElement {
    * (added `ShowToastOptions.action` to the shared toast provider for this —
    * it previously had no action-button slot). Takes a LIST of pairs so a
    * bulk accept renders ONE aggregated toast instead of one per pair
-   * (#3148 review, finding 2) — N independently-expiring 4s toasts stacking
-   * on a 12-pair bulk accept was unreadable and, worse, meant clicking one
-   * Undo dismissed only its own toast while the other 11 kept ticking down.
+   * (#3148 review, finding 2) — N independently-expiring toasts stacking on a
+   * 12-pair bulk accept was unreadable and, worse, meant clicking one Undo
+   * dismissed only its own toast while the other 11 kept ticking down.
+   *
+   * It also runs far longer than the provider's 4s default (#3165 round-3
+   * review): this Undo is the only window in which an operator can reverse a
+   * switch to publishing prices WITHOUT review, and past it the setting
+   * persists silently on the connection until someone opens its settings
+   * page. Four seconds is not a decision window for that. The in-row Undo on
+   * an ignored row is the stack's other precedent and has no timer at all;
+   * this toast cannot follow that shape (there is no row to hang it on after
+   * a bulk accept), so it buys the time instead.
    */
   function offerAutomaticUndo(
     pairs: Array<{ sourceConnectionId: string; destinationConnectionId: string; sourceLabel: string }>,
@@ -275,6 +321,7 @@ export function PriceChangesQueueTable(): ReactElement {
       tone: 'success',
       title: pairs.length === 1 ? 'Set to Automatic' : `Turned on automatic pricing for ${pairs.length} sources`,
       description,
+      durationMs: AUTOMATIC_OPT_IN_UNDO_MS,
       action: {
         label: 'Undo',
         onClick: () => {
@@ -441,16 +488,21 @@ export function PriceChangesQueueTable(): ReactElement {
     // REPORTED rather than swallowed (`.catch(() => undefined)`): a wholly
     // failed bulk ignore used to look identical to a successful one.
     let succeeded = 0;
-    let failed = 0;
+    const failedIds: string[] = [];
     for (const id of selectedIds) {
       try {
         await ignoreMutation.mutateAsync(id);
         succeeded += 1;
       } catch {
-        failed += 1;
+        failedIds.push(id);
       }
     }
-    setSelected(new Set());
+    const failed = failedIds.length;
+    // Keep the FAILED rows selected (#3164 re-review, SUGGESTION) — the toast
+    // below tells the operator to "try again for the rest", so clearing the
+    // whole selection leaves them nothing to retry and no way to tell which
+    // rows the "rest" were.
+    setSelected(new Set(failedIds));
     if (failed === 0) {
       showToast({
         tone: 'success',
@@ -526,7 +578,7 @@ export function PriceChangesQueueTable(): ReactElement {
       <div className="filter-bar" role="group" aria-label="Filter by connection">
         <span className="filter-bar__label">Connection</span>
         <Chip active={connectionFilter === 'all'} onClick={() => setConnectionFilter('all')}>
-          All <span className="chip__count">{unfilteredQuery.data?.total ?? 0}</span>
+          All {renderChipCount(unfilteredQuery.data?.total ?? 0)}
         </Chip>
         {destinationConnections.map((connection) => (
           <Chip
@@ -534,7 +586,7 @@ export function PriceChangesQueueTable(): ReactElement {
             active={connectionFilter === connection.id}
             onClick={() => setConnectionFilter(connection.id)}
           >
-            {connection.name} <span className="chip__count">{connectionCounts.get(connection.id) ?? 0}</span>
+            {connection.name} {renderChipCount(connectionCounts.get(connection.id) ?? 0)}
           </Chip>
         ))}
       </div>

@@ -91,7 +91,22 @@ export function PricingRulesPickerDialog({
                     className="button button--secondary button--xs"
                     id={`picker-open-${connection.id}`}
                     to={`/connections/${connection.id}/pricing-sync`}
-                    onClick={() => onOpenChange(false)}
+                    onClick={(event) => {
+                      // Let a modified click do what the operator asked —
+                      // open in a new tab/window — instead of closing the
+                      // dialog under a navigation that never happened here
+                      // (#3167 round-3 review).
+                      if (
+                        event.metaKey ||
+                        event.ctrlKey ||
+                        event.shiftKey ||
+                        event.altKey ||
+                        event.button !== 0
+                      ) {
+                        return;
+                      }
+                      onOpenChange(false);
+                    }}
                   >
                     Open
                   </Link>

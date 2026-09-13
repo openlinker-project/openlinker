@@ -122,7 +122,7 @@ describe('OrdersController', () => {
       findDispatchDeadlineCandidates: jest.fn(),
       findCurrencyMismatchOrders: jest.fn(),
       findCurrencyMismatchOrdersByConnection: jest.fn(),
-      findNetExcludedOrderCandidates: jest.fn(),
+      findNetExcludedOrderCandidatesPage: jest.fn(),
       findProductMatchingErrorOrders: jest.fn(),
       findCurrencyMismatchOrderRefsAfter: jest.fn(),
       clearFxStampForRestatement: jest.fn(),

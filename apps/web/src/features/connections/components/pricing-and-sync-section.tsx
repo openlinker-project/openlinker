@@ -46,6 +46,15 @@
  * interactive control is simply disabled rather than the whole section being
  * hidden, and Save/Discard carry the demo-mode `ReadOnlyLock` tooltip on top.
  *
+ * **This component must stay OUT of `features/connections/index.ts`**
+ * (#3166 round-3 review). It value-imports from `'../../price-changes'`,
+ * while `price-changes-queue-table.tsx` value-imports `useConnectionsQuery`
+ * from `'../../connections'` — putting this one on the connections barrel
+ * closes a runtime cycle between the two feature barrels (#337/#359). It is
+ * reached by a deep import from `pages/connections/`, which
+ * `docs/frontend-architecture.md` still permits for the `pages/` tier; that
+ * is deliberate here, not an oversight to tidy up.
+ *
  * @module apps/web/src/features/connections/components
  */
 import { useEffect, useState, type ReactElement } from 'react';
@@ -77,15 +86,26 @@ import { useToast } from '../../../shared/ui/toast-provider';
 export interface PricingAndSyncSectionProps {
   connectionId: string;
   /**
-   * Pre-expands the named source's override editor on load — the "reuse the
-   * same expandSourceRow-equivalent mechanism" #3150 asks to share between
-   * the Edit-dialog's "Set a rule just for this source" permalink (#3148,
-   * `?source=`) and the source rollup page's "Manage" links. Enabling the
-   * override is what "expanded" means here: the row's body only renders
-   * for a custom source, so landing on an inherited one turns it on —
-   * exactly what a manual click of the checkbox already does.
+   * Scroll the named source's row into view and highlight it on load. Looking
+   * at a row changes nothing — see `initialCreateOverrideForSourceId` for the
+   * other half.
    */
   initialExpandSourceId?: string;
+  /**
+   * Pre-create an override for the named source, exactly as ticking its
+   * checkbox does: add it to `customSources` and seed its rule from the
+   * default.
+   *
+   * **Separate from `initialExpandSourceId` on purpose (#3167 round-3
+   * review).** Both used to be the one `?source=` param, so the rollup's
+   * neutral "Manage" link — which means *go and look* — silently staged an
+   * override the operator never ticked, and `persistSave` writes
+   * `sourceOverrides` unconditionally with no creation-guard, so any later
+   * unrelated edit on that page persisted it. Intent now travels in the URL:
+   * `?source=` looks, `?source=&override=1` creates. A caller that means the
+   * second must say so.
+   */
+  initialCreateOverrideForSourceId?: string;
 }
 
 const MODE_HINT: Record<PriceSyncMode, string> = {
@@ -188,7 +208,14 @@ function cloneDraftView(view: DraftView): DraftView {
 }
 
 /** Any finite non-negative percent — matches the server's `@Min(0)` floor. */
-const PERCENT_PATTERN = /^\d+(\.\d+)?$/;
+/**
+ * The LIVE pattern (#3166 round-3 review): a trailing `.` is accepted, so
+ * typing `22.5` does not flash "Enter a percentage, 0 or more." and disable
+ * Save between the `.` and the `5`. A half-typed decimal is an incomplete
+ * entry, not a wrong one, and the field must not make a false claim about it
+ * mid-keystroke.
+ */
+const PERCENT_PATTERN = /^\d+(\.\d*)?$/;
 
 /**
  * Mirrors `pricingRuleFormSchema.superRefine` verbatim (#3166 review, finding
@@ -250,6 +277,7 @@ function applyRulePatch(rule: DraftPricingRule, patch: RulePatch): DraftPricingR
 export function PricingAndSyncSection({
   connectionId,
   initialExpandSourceId,
+  initialCreateOverrideForSourceId,
 }: PricingAndSyncSectionProps): ReactElement {
   const query = useConnectionPricingSyncQuery(connectionId);
   const updateMutation = useUpdateConnectionPricingSyncMutation(connectionId);
@@ -285,9 +313,16 @@ export function PricingAndSyncSection({
       if (initialExpandSourceId && !requestedFound) {
         setNotFoundSourceId(initialExpandSourceId);
       }
+      // Only an EXPLICIT create-override request stages one. A bare
+      // `?source=` scrolls and highlights; it must not stage anything (#3167
+      // round-3 review).
       const expandTarget =
-        requestedFound && !alreadyCustom.includes(initialExpandSourceId as string)
-          ? (initialExpandSourceId as string)
+        initialCreateOverrideForSourceId &&
+        query.data.sources.some(
+          (s) => s.sourceConnectionId === initialCreateOverrideForSourceId
+        ) &&
+        !alreadyCustom.includes(initialCreateOverrideForSourceId)
+          ? initialCreateOverrideForSourceId
           : null;
 
       const seededCustomSources = new Set(
@@ -310,9 +345,11 @@ export function PricingAndSyncSection({
         draft: cloneDraftView(seededDraft),
         customSources: new Set(seededCustomSources),
       });
-      if (expandTarget) setPendingScrollTarget(expandTarget);
+      // Scrolling follows the VIEW request, not the create request — a bare
+      // `?source=` must still land the operator on the row it names.
+      if (requestedFound) setPendingScrollTarget(initialExpandSourceId as string);
     }
-  }, [query.data, draft, initialExpandSourceId]);
+  }, [query.data, draft, initialExpandSourceId, initialCreateOverrideForSourceId]);
 
   // Scroll the pre-expanded row into view once it has actually rendered —
   // `draft` is a dependency so this retries on the render right after the
@@ -378,7 +415,23 @@ export function PricingAndSyncSection({
   const activeSourceErrors = draft.sources
     .filter((s) => customSources.has(s.sourceConnectionId))
     .map((s) => validateRule(s.effective.rule));
-  const hasInvalidRule = defaultRuleError !== null || activeSourceErrors.some((e) => e !== null);
+  const firstSourceError = activeSourceErrors.find((e) => e !== null) ?? null;
+  const hasInvalidRule = defaultRuleError !== null || firstSourceError !== null;
+  /**
+   * The reason Save is disabled, stated where the disabled button is (#3166
+   * round-3 review). The error itself renders next to the offending field —
+   * but the default rule's field lives inside a COLLAPSIBLE form, so one
+   * click on "Edit default rule" used to leave Save inert with its reason
+   * off screen, which `docs/frontend-architecture.md § Async UX Conventions`
+   * calls out as not actionable. Forcing the form open was the other option
+   * and is not enough on its own: `hasInvalidRule` also covers the per-source
+   * rows, whose errors are nowhere near that form.
+   */
+  const saveBlockedReason = defaultRuleError
+    ? `Can't save yet. Default rule: ${defaultRuleError}`
+    : firstSourceError
+      ? `Can't save yet. Source override: ${firstSourceError}`
+      : null;
 
   function updateDefault(mode?: PriceSyncMode, rulePatch?: RulePatch): void {
     setDraft((prev) => {
@@ -522,7 +575,7 @@ export function PricingAndSyncSection({
         </div>
 
         <div className="pricing-sync__rule-row">
-          <div className="pricing-sync__section-desc" id="conn-rule-note" style={{ maxWidth: 'none' }}>
+          <div className="pricing-sync__section-desc pricing-sync__section-desc--wide" id="conn-rule-note">
             {sentenceForDraftRule(draft.default.rule)}
           </div>
           <Button
@@ -551,8 +604,15 @@ export function PricingAndSyncSection({
 
         {hasUnsavedChanges ? (
           <div className="pricing-sync__unsaved-bar" id="conn-unsaved-bar">
-            <span className="pricing-sync__unsaved-bar-text">
-              You&apos;ve changed something and haven&apos;t saved it yet.
+            <span
+              className={
+                saveBlockedReason
+                  ? 'pricing-sync__unsaved-bar-text pricing-sync__unsaved-bar-text--error'
+                  : 'pricing-sync__unsaved-bar-text'
+              }
+              role={saveBlockedReason ? 'alert' : undefined}
+            >
+              {saveBlockedReason ?? "You've changed something and haven't saved it yet."}
             </span>
             <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
               <div className="pricing-sync__unsaved-bar-actions">
@@ -582,14 +642,14 @@ export function PricingAndSyncSection({
 
       <div className="pricing-sync__section">
         <h3 className="pricing-sync__section-title">Give one source its own rule</h3>
-        <p className="pricing-sync__section-desc" style={{ marginBottom: 'var(--space-3)' }}>
+        <p className="pricing-sync__section-desc pricing-sync__section-desc--spaced">
           Use this when one supplier or warehouse should be priced differently — for example, a
           second warehouse with its own margin.
         </p>
         {notFoundSourceId ? (
-          <p className="pricing-sync__field-error" id="conn-source-not-found" role="status">
-            The linked source isn&apos;t one of this connection&apos;s current sources, so nothing
-            was pre-selected below.
+          <p className="pricing-sync__notice" id="conn-source-not-found" role="status">
+            The linked source isn&apos;t one of this connection&apos;s current sources, so there
+            was nothing to show you below.
           </p>
         ) : null}
         <div className="pricing-sync__source-list" id="conn-source-list">
@@ -685,7 +745,7 @@ export function PricingAndSyncSection({
 
       <div className="pricing-sync__section">
         <h3 className="pricing-sync__section-title">Recent activity</h3>
-        <p className="pricing-sync__section-desc" style={{ marginBottom: 'var(--space-3)' }}>
+        <p className="pricing-sync__section-desc pricing-sync__section-desc--spaced">
           The last price decisions made on this connection.
         </p>
         {/*

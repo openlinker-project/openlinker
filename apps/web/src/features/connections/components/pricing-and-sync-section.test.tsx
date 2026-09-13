@@ -265,9 +265,20 @@ describe('PricingAndSyncSection', () => {
       await userEvent.clear(percentInput);
       await userEvent.type(percentInput, '150');
 
+      // The message renders twice on purpose (#3166 round-3 review): beside
+      // the offending field, and again in the unsaved bar next to the
+      // disabled Save — because "Edit default rule" is a toggle, and
+      // collapsing it used to leave Save inert with its reason off screen.
+      const ruleForm = document.getElementById('conn-rule-form') as HTMLElement;
       expect(
-        await screen.findByText(/A margin must be below 100%/),
+        await within(ruleForm).findByText(/A margin must be below 100%/),
       ).toBeInTheDocument();
+
+      const unsavedBar = document.getElementById('conn-unsaved-bar') as HTMLElement;
+      const blockedReason = within(unsavedBar).getByRole('alert');
+      expect(blockedReason).toHaveTextContent(/Can't save yet\. Default rule:/);
+      expect(blockedReason).toHaveTextContent(/A margin must be below 100%/);
+
       expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
       expect(update).not.toHaveBeenCalled();
     });
@@ -341,14 +352,37 @@ describe('PricingAndSyncSection', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  describe('initialExpandSourceId deep-link pre-expand (#3167 review)', () => {
-    it('pre-checks the named source and copies the default rule in, without claiming an unsaved change', async () => {
+  describe('deep-link intent split (#3167 round-3 review)', () => {
+    it('does NOT stage an override for a bare ?source= link — looking is not an operator act', async () => {
       const apiClient = createMockApiClient({
         pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
       });
 
       renderWithProviders(
         <PricingAndSyncSection connectionId="dest-1" initialExpandSourceId="src-1" />,
+        { apiClient, sessionAdapter: ADMIN_SESSION },
+      );
+
+      await screen.findByText(/keep a 22% margin/, { selector: '#conn-rule-note' });
+      // The rollup's "Manage" link is a neutral pointer. Staging an override
+      // here would persist a per-source rule nobody ticked on the next
+      // unrelated save, because `persistSave` writes `sourceOverrides`
+      // unconditionally.
+      expect(screen.queryByTestId('source-custom-toggle')).not.toBeChecked();
+      expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+    });
+
+    it('pre-checks the named source and copies the default rule in, without claiming an unsaved change', async () => {
+      const apiClient = createMockApiClient({
+        pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
+      });
+
+      renderWithProviders(
+        <PricingAndSyncSection
+          connectionId="dest-1"
+          initialExpandSourceId="src-1"
+          initialCreateOverrideForSourceId="src-1"
+        />,
         { apiClient, sessionAdapter: ADMIN_SESSION },
       );
 
@@ -370,7 +404,11 @@ describe('PricingAndSyncSection', () => {
       });
 
       renderWithProviders(
-        <PricingAndSyncSection connectionId="dest-1" initialExpandSourceId="src-1" />,
+        <PricingAndSyncSection
+          connectionId="dest-1"
+          initialExpandSourceId="src-1"
+          initialCreateOverrideForSourceId="src-1"
+        />,
         { apiClient, sessionAdapter: ADMIN_SESSION },
       );
 
@@ -392,7 +430,11 @@ describe('PricingAndSyncSection', () => {
       });
 
       renderWithProviders(
-        <PricingAndSyncSection connectionId="dest-1" initialExpandSourceId="src-1" />,
+        <PricingAndSyncSection
+          connectionId="dest-1"
+          initialExpandSourceId="src-1"
+          initialCreateOverrideForSourceId="src-1"
+        />,
         { apiClient, sessionAdapter: ADMIN_SESSION },
       );
 
@@ -419,7 +461,11 @@ describe('PricingAndSyncSection', () => {
       window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
 
       renderWithProviders(
-        <PricingAndSyncSection connectionId="dest-1" initialExpandSourceId="src-1" />,
+        <PricingAndSyncSection
+          connectionId="dest-1"
+          initialExpandSourceId="src-1"
+          initialCreateOverrideForSourceId="src-1"
+        />,
         { apiClient, sessionAdapter: ADMIN_SESSION },
       );
 
