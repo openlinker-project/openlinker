@@ -1,285 +1,2704 @@
 <title>Correction Proposal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
-:root, [data-theme='light'] {
-  --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80);
-  --bg-surface: #ffffff; --bg-surface-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80);
-  --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80);
-  --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80);
-  --text-muted: oklch(52% 0.008 80); --text-disabled: oklch(70% 0.005 80); --text-on-primary: oklch(18% 0.012 50);
-  --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50);
-  --accent-primary-soft: oklch(96% 0.04 60); --accent-primary-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30);
-  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
-  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
-  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
-  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
-  --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
-  --space-2:.5rem; --space-3:.75rem; --space-4:1rem; --space-5:1.5rem;
-  --radius-md:8px; --radius-lg:10px; --radius-xl:14px; --radius-pill:9999px;
+/* ══════════════════════════════════════════════════════════════════════════
+   #3116 · epic #3087 — Return credit-note correction proposal, UI mockup
+   ══════════════════════════════════════════════════════════════════════════
+   0. WHAT THIS FILE IS, AND WHAT IT DEPENDS ON
+
+   This is the design of record for epic #3087 and supersedes the earlier
+   revision that asked the operator to pick which of two identical invoice
+   lines a returned item belonged to. That question was dropped on the finding
+   that it is BOTH unanswerable and unnecessary: the operator holds a parcel,
+   `InvoiceLine` carries no id and no SKU, and both candidates carry the same
+   product name — while OpenLinker builds the invoice itself from `order.items`
+   in order (`order-to-issue-invoice-command.mapper.ts:113`), so the join is
+   already in hand at ingestion and never had to be asked for.
+
+   Two things follow, and both are load-bearing rather than housekeeping.
+
+   #3172 IS A PREREQUISITE, NOT A NICE-TO-HAVE. `ReturnLine.resolvedOrderLineId`
+   is hardcoded `null` (`returns.service.ts:444`) and nothing in the tree
+   populates it. Until #3172 lands, OpenLinker cannot pre-fill a single
+   quantity in the grid below, so no frontend sub-issue of #3087 should start
+   ahead of it. Three further reads this sheet draws do not exist at all — the
+   refund figure beside the credit, per-line already-credited quantities, and
+   the shipping decision; each is named where it is used, in the "backend work
+   that does not exist yet" note further down. Nothing here claims they are
+   built.
+
+   SPEC § 5.8 IS AMENDED, NOT IGNORED.
+   `docs/specs/product-spec-oms-returns-operator-ux.md` § 5.8 described the
+   picker, and now carries an amendment naming this file. A mockup contradicting
+   a live spec is the same "actively misleads" failure as a stale mockup, one
+   file over — so the two move together or neither moves.
+   ══════════════════════════════════════════════════════════════════════════
+   1. TOKENS — pasted VERBATIM from apps/web/src/index.css (:root, then
+      html[data-theme='dark']), then the dark block a SECOND time inside a
+      prefers-color-scheme query. The app needs only the attribute form
+      because it always stamps `data-theme`; a viewer left on "system"
+      stamps nothing, and without the media copy the page would render
+      light tokens on the host's dark ground. Keep the two bodies identical.
+   ══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Typography ───────────────────────────────────────────────────── */
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', monospace;
+
+  /* ── Surfaces ──────────────────────────────────────────────────────
+   * Warm-neutral OKLCH ramp (#775). Canvas is the page background;
+   * surface is the elevated card; shell sits between for sidebars and
+   * sticky bars. `bg-strong` is a deeper neutral for inset hovers and
+   * pressed states. `bg-surface-muted` / `bg-surface-hover` are kept
+   * as aliases for the FE-002 vocabulary that the rest of the CSS
+   * already uses.
+   */
+  --bg-canvas: oklch(99% 0.003 80);
+  --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80);
+  --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80);
+  --bg-strong: oklch(93% 0.006 80);
+
+  /* ── Borders ──────────────────────────────────────────────────────── */
+  --border-subtle: oklch(93.5% 0.006 80);
+  --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80);
+  --border-focus: oklch(68% 0.18 50);
+
+  /* ── Text ─────────────────────────────────────────────────────────── */
+  --text-primary: oklch(20% 0.012 80);
+  --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80);
+  --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50); /* text on accent button */
+  --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
+
+  /* ── Accent ───────────────────────────────────────────────────────
+   * Signal-orange brand accent (#775). Reverses the monochrome stance
+   * of #371 — the prior monochrome accent flattened the cockpit. The
+   * accent is used sparingly: primary buttons, active-tab underline,
+   * KPI top-rule, pulsing live dot, focus rings. Status hues remain
+   * reserved for status meaning.
+   *
+   * `--accent-primary` is the brand colour; `--text-on-primary` above
+   * is the legible text colour to pair with it on primary buttons.
+   */
+  --accent-primary: oklch(68% 0.18 50);
+  --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50);
+  --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-soft-strong: oklch(40% 0.16 50);
+  --accent-primary-border: oklch(85% 0.10 55);
+  --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+
+  /* ── Status: success ──────────────────────────────────────────────── */
+  --status-success: oklch(54% 0.14 150);
+  --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150);
+  --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
+
+  /* ── Status: warning ──────────────────────────────────────────────── */
+  --status-warning: oklch(72% 0.16 85);
+  --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85);
+  --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
+
+  /* ── Status: error ────────────────────────────────────────────────── */
+  --status-error: oklch(58% 0.20 25);
+  --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25);
+  --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
+
+  /* ── Status: info ─────────────────────────────────────────────────── */
+  --status-info: oklch(56% 0.14 245);
+  --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245);
+  --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
+
+  /* ── Viz: categorical series (#1739) ──────────────────────────────────
+   * Small categorical palette for proportion visuals (routing-split bar).
+   * NOT status hues — a series colour distinguishes entities (carriers,
+   * connections), never encodes health. `--viz-cat-muted` is the neutral
+   * "default / unassigned" bucket. */
+  --viz-cat-1: oklch(75% 0.13 85);
+  --viz-cat-2: oklch(60% 0.15 20);
+  --viz-cat-3: oklch(58% 0.12 245);
+  --viz-cat-4: oklch(60% 0.13 150);
+  --viz-cat-muted: oklch(82% 0.008 80);
+
+  /* ── Channel brand hues (#1752) ──────────────────────────────────────
+   * Per-marketplace dot/pill identity colours, previously copy-pasted as raw
+   * oklch literals across the orders, coverage, channel-pill, product-detail,
+   * and variant-drawer rulesets. Brand identity, NOT status — a channel hue
+   * distinguishes the platform, never encodes health. Single definition
+   * (identical in light/dark), mirroring the viz categorical set. */
+  --channel-allegro: oklch(70% 0.18 35);
+  --channel-prestashop: oklch(60% 0.18 250);
+  --channel-erli: oklch(66% 0.17 320);
+  --channel-woocommerce: oklch(64% 0.16 150);
+  --channel-amazon: oklch(72% 0.16 75);
+  --channel-shopify: oklch(64% 0.16 150);
+
+  /* ── Status: review / manual ──────────────────────────────────────── */
+  --status-review: oklch(58% 0.16 290);
+  --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290);
+  --status-review-fg: oklch(42% 0.14 290);
+  --status-review-strong: oklch(42% 0.14 290);
+
+  /* ── Status: conflict ─────────────────────────────────────────────── */
+  --status-conflict: oklch(64% 0.16 45);
+  --status-conflict-soft: oklch(96% 0.05 45);
+  --status-conflict-border: oklch(85% 0.10 45);
+  --status-conflict-strong: oklch(40% 0.14 45);
+
+  /* ── Status: disabled ─────────────────────────────────────────────── */
+  --status-disabled: oklch(55% 0.008 80);
+  --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80);
+  --status-disabled-fg: oklch(38% 0.010 80);
+  --status-disabled-strong: oklch(38% 0.010 80);
+
+  /* ── Elevation ────────────────────────────────────────────────────── */
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-soft-hover: 0 2px 4px rgb(15 18 26 / 0.04), 0 12px 28px rgb(15 18 26 / 0.10);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+
   --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
-  --shadow-soft: 0 1px 2px rgb(15 18 26 / .04), 0 6px 16px rgb(15 18 26 / .06);
+  --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+  --shadow-lg: 0 6px 12px rgb(15 18 26 / 0.06), 0 16px 32px rgb(15 18 26 / 0.10);
   --shadow-focus: 0 0 0 3px var(--accent-ring);
-  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+
+  /* Primary button hover — accent-driven (#775). Kept as a named token
+     because existing CSS references it. The cascade through
+     `--accent-primary-hover` would also work, but the explicit token
+     makes the contract auditable in `tokens.ts`. */
+  --button-primary-bg-hover: oklch(62% 0.19 50);
+
+  /* ── Spacing scale (strict 4px grid) ─────────────────────────────── */
+  /* ── Layout heights (#2227) ────────────────────────────────────────
+   * The two pinned strips at the top of the shell, named once instead of
+   * repeated as a literal `52px` in `.shell-topbar` and `.demo-banner`. Height,
+   * not padding, so the value stays true: the banner carries a matching
+   * `min-height`.
+   */
+  --shell-topbar-height: 52px;
+  --demo-banner-height: 48px;
+
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.5rem; /* 24px */
+  --space-6: 2rem; /* 32px */
+  --space-7: 3rem; /* 48px */
+  --space-8: 4rem; /* 64px */
+
+  /* ── Radius scale ─────────────────────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-pill: 9999px;
+
+  /* ── Motion ───────────────────────────────────────────────────────── */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 280ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ── Tracking (letter-spacing) ────────────────────────────────────── */
+  --tracking-tight: -0.012em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.02em;
+  --tracking-caps: 0.08em;
+
+  color-scheme: light;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-primary);
+  background: var(--bg-canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
 }
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Primary button hover — accent-driven (#775). */
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+
+  /* Surfaces — cool graphite ramp (#775). Hue 270 carries a faint
+     cool cast that keeps the dark palette from looking dead-neutral.
+     Elevation step sizes match the previous graphite ramp so existing
+     components carry over. */
+  --bg-canvas: oklch(14% 0.005 270);
+  --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270);
+  --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270);
+  --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270);
+  --bg-strong: oklch(28% 0.010 270);
+
+  /* Borders */
+  --border-subtle: oklch(24% 0.010 270);
+  --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270);
+  --border-focus: oklch(72% 0.18 50);
+
+  /* Text */
+  --text-primary: oklch(96% 0.006 270);
+  --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270);
+  --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); /* text on accent button — same black bias as light */
+  --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+
+  /* Accent — see :root for the rationale (#775). */
+  --accent-primary: oklch(72% 0.18 50);
+  --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50);
+  --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-soft-strong: oklch(86% 0.14 60);
+  --accent-primary-border: oklch(40% 0.14 55);
+  --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+
+  /* Status — success */
+  --status-success: oklch(68% 0.16 150);
+  --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150);
+  --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+
+  /* Status — warning */
+  --status-warning: oklch(78% 0.16 85);
+  --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85);
+  --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+
+  /* Status — error */
+  --status-error: oklch(70% 0.18 25);
+  --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25);
+  --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+
+  /* Status — info */
+  --status-info: oklch(72% 0.14 245);
+  --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245);
+  --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+
+  /* Viz — categorical series (#1739) */
+  --viz-cat-1: oklch(70% 0.12 85);
+  --viz-cat-2: oklch(62% 0.14 20);
+  --viz-cat-3: oklch(62% 0.11 245);
+  --viz-cat-4: oklch(62% 0.12 150);
+  --viz-cat-muted: oklch(42% 0.008 80);
+
+  /* Status — review */
+  --status-review: oklch(74% 0.14 290);
+  --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290);
+  --status-review-fg: oklch(88% 0.12 290);
+  --status-review-strong: oklch(88% 0.12 290);
+
+  /* Status — conflict */
+  --status-conflict: oklch(72% 0.16 45);
+  --status-conflict-soft: oklch(28% 0.08 45);
+  --status-conflict-border: oklch(40% 0.12 45);
+  --status-conflict-strong: oklch(88% 0.14 45);
+
+  /* Status — disabled */
+  --status-disabled: oklch(65% 0.010 270);
+  --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270);
+  --status-disabled-fg: oklch(82% 0.010 270);
+  --status-disabled-strong: oklch(82% 0.010 270);
+
+  /* Elevation */
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+  --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+}
+
+/* Same declarations again, for a viewer that stamps nothing. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
-    --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
-    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
-    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
-    --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
-    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
-    --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
-    --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
-    --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
-    --status-error-soft: oklch(28% 0.09 25); --status-error-border: oklch(42% 0.13 25); --status-error-fg: oklch(84% 0.14 25);
-    --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
-    --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
-    --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
-    --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
+    color-scheme: dark;
+  
+    /* Primary button hover — accent-driven (#775). */
+    --button-primary-bg-hover: oklch(78% 0.18 50);
+  
+    /* Surfaces — cool graphite ramp (#775). Hue 270 carries a faint
+       cool cast that keeps the dark palette from looking dead-neutral.
+       Elevation step sizes match the previous graphite ramp so existing
+       components carry over. */
+    --bg-canvas: oklch(14% 0.005 270);
+    --bg-shell: oklch(16% 0.006 270);
+    --bg-surface: oklch(19% 0.007 270);
+    --bg-surface-elevated: oklch(22% 0.008 270);
+    --bg-muted: oklch(24% 0.009 270);
+    --bg-surface-muted: oklch(24% 0.009 270);
+    --bg-surface-hover: oklch(28% 0.010 270);
+    --bg-strong: oklch(28% 0.010 270);
+  
+    /* Borders */
+    --border-subtle: oklch(24% 0.010 270);
+    --border-default: oklch(30% 0.012 270);
+    --border-strong: oklch(42% 0.014 270);
+    --border-focus: oklch(72% 0.18 50);
+  
+    /* Text */
+    --text-primary: oklch(96% 0.006 270);
+    --text-secondary: oklch(78% 0.010 270);
+    --text-muted: oklch(60% 0.012 270);
+    --text-disabled: oklch(42% 0.012 270);
+    --text-on-primary: oklch(16% 0.012 50); /* text on accent button — same black bias as light */
+    --text-inverse: oklch(20% 0.012 80);
+    --text-link: oklch(76% 0.14 245);
+  
+    /* Accent — see :root for the rationale (#775). */
+    --accent-primary: oklch(72% 0.18 50);
+    --accent-primary-hover: oklch(78% 0.18 50);
+    --accent-primary-active: oklch(84% 0.16 50);
+    --accent-primary-soft: oklch(28% 0.08 50);
+    --accent-primary-soft-strong: oklch(86% 0.14 60);
+    --accent-primary-border: oklch(40% 0.14 55);
+    --accent-focus: oklch(72% 0.18 50);
+    --accent-ring: oklch(72% 0.18 50 / 0.40);
+  
+    /* Status — success */
+    --status-success: oklch(68% 0.16 150);
+    --status-success-soft: oklch(26% 0.06 150);
+    --status-success-border: oklch(36% 0.10 150);
+    --status-success-fg: oklch(86% 0.14 150);
+    --status-success-strong: oklch(86% 0.14 150);
+  
+    /* Status — warning */
+    --status-warning: oklch(78% 0.16 85);
+    --status-warning-soft: oklch(28% 0.07 85);
+    --status-warning-border: oklch(38% 0.10 85);
+    --status-warning-fg: oklch(88% 0.14 85);
+    --status-warning-strong: oklch(88% 0.14 85);
+  
+    /* Status — error */
+    --status-error: oklch(70% 0.18 25);
+    --status-error-soft: oklch(28% 0.10 25);
+    --status-error-border: oklch(40% 0.14 25);
+    --status-error-fg: oklch(86% 0.14 25);
+    --status-error-strong: oklch(86% 0.14 25);
+  
+    /* Status — info */
+    --status-info: oklch(72% 0.14 245);
+    --status-info-soft: oklch(26% 0.06 245);
+    --status-info-border: oklch(36% 0.10 245);
+    --status-info-fg: oklch(86% 0.12 245);
+    --status-info-strong: oklch(86% 0.12 245);
+  
+    /* Viz — categorical series (#1739) */
+    --viz-cat-1: oklch(70% 0.12 85);
+    --viz-cat-2: oklch(62% 0.14 20);
+    --viz-cat-3: oklch(62% 0.11 245);
+    --viz-cat-4: oklch(62% 0.12 150);
+    --viz-cat-muted: oklch(42% 0.008 80);
+  
+    /* Status — review */
+    --status-review: oklch(74% 0.14 290);
+    --status-review-soft: oklch(28% 0.06 290);
+    --status-review-border: oklch(38% 0.10 290);
+    --status-review-fg: oklch(88% 0.12 290);
+    --status-review-strong: oklch(88% 0.12 290);
+  
+    /* Status — conflict */
+    --status-conflict: oklch(72% 0.16 45);
+    --status-conflict-soft: oklch(28% 0.08 45);
+    --status-conflict-border: oklch(40% 0.12 45);
+    --status-conflict-strong: oklch(88% 0.14 45);
+  
+    /* Status — disabled */
+    --status-disabled: oklch(65% 0.010 270);
+    --status-disabled-soft: oklch(24% 0.010 270);
+    --status-disabled-border: oklch(34% 0.012 270);
+    --status-disabled-fg: oklch(82% 0.010 270);
+    --status-disabled-strong: oklch(82% 0.010 270);
+  
+    /* Elevation */
+    --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+    --shadow-soft-hover: 0 2px 4px rgb(0 0 0 / 0.42), 0 12px 32px rgb(0 0 0 / 0.42);
+    --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+    --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-lg: 0 6px 12px rgb(0 0 0 / 0.42), 0 16px 32px rgb(0 0 0 / 0.40);
+    --shadow-focus: 0 0 0 3px var(--accent-ring);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+    --overlay-scrim: rgb(0 0 0 / 0.72);
   }
 }
-:root[data-theme='dark'] {
-  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
-  --bg-surface: oklch(19% 0.007 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270);
-  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270);
-  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
-  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270); --text-on-primary: oklch(16% 0.012 50);
-  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
-  --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
-  --status-success-soft: oklch(28% 0.07 150); --status-success-border: oklch(40% 0.10 150); --status-success-fg: oklch(80% 0.12 150);
-  --status-warning-soft: oklch(30% 0.08 85); --status-warning-border: oklch(45% 0.11 85); --status-warning-fg: oklch(85% 0.12 85);
-  --status-error-soft: oklch(28% 0.09 25); --status-error-border: oklch(42% 0.13 25); --status-error-fg: oklch(84% 0.14 25);
-  --status-info-soft: oklch(28% 0.06 245); --status-info-border: oklch(42% 0.10 245); --status-info-fg: oklch(82% 0.10 245);
-  --status-disabled-soft: oklch(26% 0.006 270); --status-disabled-border: oklch(36% 0.010 270); --status-disabled-fg: oklch(70% 0.010 270);
-  --shadow-soft: 0 1px 2px rgb(0 0 0 / .4), 0 8px 24px rgb(0 0 0 / .4);
-  --shadow-xs: 0 1px 2px rgb(0 0 0 / .4);
-}
+
+/* ══════════════════════════════════════════════════════════════════════
+   2. BASE — element defaults, copied from apps/web/src/index.css
+   ══════════════════════════════════════════════════════════════════════ */
 * { box-sizing: border-box; }
-body { margin:0; min-width:320px; background:var(--bg-canvas); color:var(--text-primary); font-family:var(--font-sans); font-size:.875rem; line-height:1.55; }
-h1,h2,h3,p { margin:0; }
-a{ color:var(--accent-primary-hover); text-decoration:underline; text-underline-offset:.16em; }
-button:focus-visible, a:focus-visible{ outline:none; box-shadow:var(--shadow-focus); border-radius:var(--radius-md); }
 
-.page{ max-width:700px; margin:0 auto; padding:28px 24px 60px; }
-.back-link{ display:inline-flex; align-items:center; gap:.375rem; font-size:.8125rem; color:var(--text-muted); text-decoration:none; margin-bottom:10px; }
-.eyebrow{ margin:0; font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--accent-primary-hover); }
-.page-header{ display:grid; gap:.5rem; margin-bottom:22px; }
-.page-title{ font-size:1.75rem; font-weight:600; letter-spacing:-.02em; margin-top:6px; }
-.page-description{ color:var(--text-secondary); font-size:.9375rem; max-width:60ch; }
+/* [hidden] LOSES to a class selector — `.returns-credit-note { display: flex }`
+   and `.state-card { display: grid }` both beat the UA's `[hidden]`. The
+   Artifact host injects exactly this rule, so the sheet looked correct there
+   while the repo copy — opened at `file://`, which is how § UX Mockups says an
+   E2E baseline must consume it — rendered ALL SIX state elements at once. The
+   app hits the same trap and answers it per class (`index.css`:
+   `.raw-payload__body[hidden]`, `.bulk-destbar__panel[hidden]`); a single
+   file generalises it, because a per-class list is a list the next state
+   forgets to join. */
+[hidden] { display: none !important; }
 
-.button{ display:inline-flex; align-items:center; justify-content:center; gap:8px; border:1px solid var(--accent-primary-border); border-radius:var(--radius-md); padding:0 var(--space-4); height:2.25rem; background:var(--accent-primary); color:var(--text-on-primary); font-family:inherit; font-size:.875rem; font-weight:600; cursor:pointer; box-shadow:var(--shadow-xs); }
-.button:hover{ background:var(--accent-primary-hover); }
-.button--secondary{ border-color:var(--border-default); background:var(--bg-surface); color:var(--text-primary); }
-.button--secondary:hover{ background:var(--bg-surface-muted); border-color:var(--border-strong); }
-.button:disabled{ cursor:not-allowed; opacity:.5; box-shadow:none; }
-.button--sm{ height:1.875rem; padding:0 var(--space-3); font-size:.8125rem; }
+body {
+  margin: 0;
+  min-width: 320px;
+  /* Explicit, from tokens: the artifact host paints its own ground behind
+     the page, so a transparent body would borrow the host's theme. */
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
-/* headline summary — the whole point, at a glance */
-.summary{ display:flex; align-items:center; gap:20px; padding:26px 26px; border-radius:var(--radius-xl); background:var(--bg-surface); border:1px solid var(--border-default); box-shadow:var(--shadow-soft); margin-bottom:26px; flex-wrap:wrap; border-left:5px solid var(--status-success); }
-.summary--empty{ border-left-color:var(--border-strong); }
-.summary__num{ font-size:2.75rem; font-weight:700; letter-spacing:-.03em; line-height:1; font-variant-numeric:tabular-nums; }
-.summary__num--credit{ color:var(--status-success-fg); }
-.summary__body{ flex:1; min-width:200px; }
-.summary__title{ font-size:1.125rem; font-weight:700; }
-.summary__desc{ font-size:.8125rem; color:var(--text-muted); margin-top:3px; }
-.summary__breakdown{ display:flex; gap:16px; font-size:.8125rem; color:var(--text-muted); margin-top:10px; flex-wrap:wrap; }
-.summary__breakdown b{ color:var(--text-primary); font-weight:700; }
+h1, h2, h3, p, dl, dd { margin: 0; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
 
-.line{ display:flex; align-items:center; gap:14px; padding:15px 18px; border-radius:var(--radius-lg); border:1px solid var(--border-subtle); background:var(--bg-surface); margin-bottom:10px; }
-.line--pick{ align-items:flex-start; border-color:var(--status-warning-border); background:var(--status-warning-soft); }
-.line--no{ opacity:.7; }
-.line__icon{ width:34px; height:34px; border-radius:999px; display:flex; align-items:center; justify-content:center; font-size:1rem; flex-shrink:0; }
-.line__icon--yes{ background:var(--status-success-soft); color:var(--status-success-fg); }
-.line__icon--pick{ background:var(--status-warning-border); color:var(--status-warning-fg); }
-.line__icon--no{ background:var(--status-disabled-soft); color:var(--text-disabled); }
-.line__body{ flex:1; min-width:0; }
-.line__name{ font-weight:600; font-size:.9375rem; }
-.line__sub{ font-size:.8125rem; color:var(--text-muted); margin-top:2px; }
-.line__amount{ font-family:var(--font-mono); font-size:.9375rem; font-weight:700; flex-shrink:0; }
-.line__amount--yes{ color:var(--status-success-fg); }
-.line__amount--no{ color:var(--text-disabled); font-family:var(--font-sans); font-weight:500; font-size:.8125rem; }
+a {
+  color: var(--accent-primary-hover);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
 
-/* ambiguous inline choice — two big obvious tap targets, no table */
-.choice-row{ display:flex; gap:10px; margin-top:12px; }
-.choice-btn{ flex:1; text-align:left; border:2px solid var(--border-default); border-radius:var(--radius-md); padding:12px 14px; background:var(--bg-surface); cursor:pointer; }
-.choice-btn:hover{ border-color:var(--border-strong); }
-.choice-btn--picked{ border-color:var(--status-success); background:var(--status-success-soft); }
-.choice-btn__label{ font-weight:700; font-size:.875rem; }
-.choice-btn__price{ font-family:var(--font-mono); font-size:.8125rem; color:var(--text-muted); margin-top:3px; }
-.choice-btn--picked .choice-btn__price{ color:var(--status-success-fg); }
+:focus-visible { outline: none; box-shadow: var(--shadow-focus); border-radius: var(--radius-xs); }
 
-.section-title{ font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); margin:22px 0 8px; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
 
-.sticky-footer{ position:sticky; bottom:0; background:var(--bg-surface); border-top:1px solid var(--border-subtle); padding:16px 0 0; margin-top:20px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
-.sticky-footer__note{ font-size:.75rem; color:var(--text-muted); max-width:34ch; }
+.mono-text, .mono { font-family: var(--font-mono); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.tabular { font-variant-numeric: tabular-nums; }
 
-.callout{ display:flex; gap:10px; padding:12px 14px; border-radius:var(--radius-md); border:1px solid; margin-bottom:16px; }
-.callout--warning{ background:var(--status-warning-soft); border-color:var(--status-warning-border); }
-.callout--info{ background:var(--status-info-soft); border-color:var(--status-info-border); }
-.callout__text{ font-size:.8125rem; color:var(--text-secondary); }
-.callout__text b{ color:var(--text-primary); }
+/* `.text-muted` is used 116 times in apps/web/src and has NO rule in
+   index.css — the shipped app renders these spans in --text-primary. This
+   mockup defines the intent; see the header note. */
+.text-muted { color: var(--text-muted); }
+.muted-text, .page-description, .panel-copy { margin: 0; color: var(--text-secondary); }
 
-.demo-toolbar{ display:flex; align-items:center; gap:8px; margin-bottom:18px; padding:8px 12px; background:var(--bg-surface-muted); border-radius:var(--radius-md); flex-wrap:wrap; }
-.demo-toolbar__label{ font-family:var(--font-mono); font-size:.625rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin-right:2px; }
-.chip{ display:inline-flex; align-items:center; gap:.25rem; height:1.375rem; padding:0 .55rem; border:1px solid var(--border-subtle); border-radius:var(--radius-pill); background:var(--bg-surface); color:var(--text-secondary); font-size:.6875rem; font-weight:500; cursor:pointer; }
-.chip.chip--active{ background:var(--accent-primary-soft); border-color:var(--accent-primary-border); color:var(--accent-primary-hover); font-weight:600; }
-.state-card{ border:1px solid var(--border-default); border-radius:var(--radius-lg); background:var(--bg-surface); box-shadow:var(--shadow-soft); padding:32px 28px; text-align:left; }
-.state-card__title{ font-size:1.0625rem; font-weight:600; margin-top:4px; }
-.state-card__message{ color:var(--text-secondary); font-size:.875rem; margin-top:6px; max-width:56ch; }
+.eyebrow {
+  margin: 0; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--accent-primary-hover);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   3. APP SHELL
+   ══════════════════════════════════════════════════════════════════════ */
+.shell {
+  background: var(--bg-canvas);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'main';
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.shell-sidebar { display: none; }
+
+@media (min-width: 1024px) {
+  .shell { grid-template-columns: 240px minmax(0, 1fr); grid-template-areas: 'sidebar main'; }
+  .shell-sidebar {
+    grid-area: sidebar; display: flex; flex-direction: column;
+    background: var(--bg-shell); border-right: 1px solid var(--border-subtle);
+    padding: 12px 0;
+  }
+}
+
+.shell-brand { display: flex; align-items: center; gap: 8px; padding: 4px 16px 16px; }
+.shell-brand__mark {
+  width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center;
+  background: var(--accent-primary); color: var(--text-on-primary);
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+}
+.shell-brand__name { font-weight: 600; font-size: 14px; color: var(--text-primary); letter-spacing: -0.02em; }
+
+.shell-nav { flex: 1; padding: 0 12px; }
+.shell-nav__group { margin-bottom: 16px; }
+.shell-nav__label {
+  margin: 0 0 4px; padding: 0 8px; font-size: 10px; font-weight: 600;
+  letter-spacing: 0.11em; text-transform: uppercase; color: var(--text-muted);
+}
+.shell-nav__list { display: grid; gap: 1px; }
+.shell-nav__link {
+  display: flex; align-items: center; padding: 6px 8px; border-radius: 6px;
+  color: var(--text-secondary); font-size: 13px; font-weight: 500; text-decoration: none;
+}
+.shell-nav__link--active {
+  background: var(--bg-surface-muted); color: var(--text-primary); font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent-primary);
+}
+.shell-nav__link-label { flex: 1; min-width: 0; }
+.shell-nav__link-count { font-size: 11px; font-weight: 500; color: var(--text-muted); padding-left: 0.5rem; letter-spacing: -0.01em; }
+
+.shell-workspace { padding: 12px 16px 0; border-top: 1px solid var(--border-subtle); margin-top: 8px; display: grid; gap: 10px; }
+.shell-workspace__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.shell-workspace__name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); letter-spacing: -0.01em; }
+.shell-workspace__user { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-muted); }
+.shell-workspace__username { font-weight: 500; color: var(--text-secondary); }
+
+.shell-main { grid-area: main; min-width: 0; display: flex; flex-direction: column; }
+
+.shell-topbar {
+  display: flex; align-items: center; gap: 12px;
+  height: var(--shell-topbar-height);
+  padding: 0 16px; background: var(--bg-shell); border-bottom: 1px solid var(--border-subtle);
+}
+.shell-topbar__hamburger {
+  width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-default); border-radius: 6px; background: var(--bg-surface);
+  color: var(--text-primary); font-size: 16px; flex-shrink: 0; box-shadow: none;
+}
+@media (min-width: 1024px) { .shell-topbar__hamburger { display: none; } }
+
+.shell-crumbs { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); min-width: 0; }
+.shell-crumbs__group { white-space: nowrap; }
+.shell-crumbs__sep { color: var(--border-strong); font-size: 12px; line-height: 1; }
+.shell-crumbs__current { color: var(--text-primary); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.shell-topbar__spacer { flex: 1; }
+.shell-topbar__search {
+  display: none; align-items: center; gap: 8px; height: 32px; min-width: 240px; max-width: 420px;
+  flex: 1; padding: 0 10px; border: 1px solid var(--border-default);
+  border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-muted);
+  font-size: 13px; font-weight: 400; text-align: left; box-shadow: none;
+}
+@media (min-width: 1024px) { .shell-topbar__search { display: inline-flex; } }
+.shell-topbar__search-placeholder { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.shell-topbar__search-kbd {
+  font-family: var(--font-mono); font-size: 10.5px; padding: 1px 6px;
+  border: 1px solid var(--border-default); border-bottom-width: 2px;
+  border-radius: var(--radius-xs); color: var(--text-muted); background: var(--bg-surface-muted);
+  line-height: 1; letter-spacing: 0.04em; font-weight: 500;
+}
+.shell-topbar__alerts { padding: 6px 10px; font-size: 12.5px; font-weight: 500; border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary); box-shadow: none; }
+
+.shell-user-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px 3px 3px;
+  border: none; border-radius: var(--radius-pill); background: transparent;
+  color: var(--text-primary); height: 32px; box-shadow: none;
+}
+.shell-user-chip__avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), var(--status-review));
+  color: var(--text-inverse); display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; flex-shrink: 0;
+}
+.shell-user-chip__name { font-size: 12.5px; font-weight: 500; color: var(--text-primary); }
+@media (max-width: 767.98px) { .shell-user-chip__name { display: none; } }
+
+.shell-content { flex: 1; padding: 20px 16px 32px; overflow-x: hidden; }
+@media (min-width: 768px)  { .shell-content { padding: 20px 24px 40px; } }
+@media (min-width: 1024px) { .shell-content { padding: 20px 32px 48px; } }
+
+/* ══════════════════════════════════════════════════════════════════════
+   4. PAGE SCAFFOLD
+   ══════════════════════════════════════════════════════════════════════ */
+.page-section, .page-header, .detail-section, .status-strip { display: grid; gap: 0.75rem; }
+.page-section { grid-template-columns: minmax(0, 1fr); }
+.page-header { gap: 0.45rem; }
+.page-header--split { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+.page-header__content, .page-header__actions { display: grid; gap: 0.75rem; }
+.page-header__actions { justify-items: end; }
+
+/* index.css gives .page-title no font-size; it renders as an <h2> at the UA
+   default. 22px/600 is the shell doc's stated intent and what the newest
+   repo mockup uses. */
+.page-title { margin: 0; color: var(--text-primary); font-size: 22px; font-weight: 600; letter-spacing: var(--tracking-tight); }
+.section-title { margin: 0; color: var(--text-primary); font-size: 0.9375rem; font-weight: 600; }
+
+.back-link {
+  display: inline-flex; align-items: center; gap: 0.375rem; justify-self: start;
+  font-size: 0.8125rem; line-height: 1.2; color: var(--text-muted);
+  text-decoration: none; padding: 0.25rem 0;
+}
+.back-link__glyph { font-size: 0.9em; line-height: 1; }
+
+.panel { border: 1px solid var(--border-default); border-radius: 0.5rem; background: var(--bg-surface); box-shadow: var(--shadow-soft); padding: 1rem; }
+.detail-section__title { margin: 0; font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); }
+
+.toolbar {
+  display: flex; align-items: center; gap: 0.75rem; justify-content: space-between;
+  padding: var(--space-3) var(--space-4); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); background: var(--bg-shell); flex-wrap: wrap;
+}
+.toolbar__group { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.pagination__actions { display: flex; gap: 0.5rem; }
+
+.state-card, .state-card__header, .state-card__actions { display: grid; gap: 0.75rem; }
+.state-card {
+  border: 1px solid var(--border-default); border-radius: 0.5rem;
+  background: var(--bg-surface); box-shadow: var(--shadow-soft); padding: 1rem;
+}
+.state-card__header { gap: 0.4rem; }
+.state-card__title { margin: 0; color: var(--text-primary); font-size: 1.0625rem; font-weight: 600; }
+.state-card__message { margin: 0; color: var(--text-secondary); }
+.state-card__actions { justify-items: start; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   5. SHARED PRIMITIVES
+   ══════════════════════════════════════════════════════════════════════ */
+button, .button {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md);
+  padding: 0 var(--space-4); height: 2rem;
+  background: var(--accent-primary); color: var(--text-on-primary);
+  font-family: inherit; font-size: 0.8125rem; font-weight: 500;
+  letter-spacing: var(--tracking-normal); cursor: pointer; text-decoration: none;
+  user-select: none; white-space: nowrap;
+  box-shadow: var(--shadow-xs), var(--shadow-inset-top);
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+button:hover, .button:hover { background: var(--button-primary-bg-hover); border-color: var(--button-primary-bg-hover); color: var(--text-on-primary); }
+button:active, .button:active { background: var(--accent-primary-active); border-color: var(--accent-primary-active); }
+
+.button--secondary { border-color: var(--border-default); background: var(--bg-surface); color: var(--text-primary); }
+.button--secondary:hover { background: var(--bg-surface-muted); border-color: var(--border-strong); color: var(--text-primary); }
+.button--ghost { border-color: transparent; background: transparent; color: var(--text-secondary); box-shadow: none; }
+.button--ghost:hover { background: var(--bg-surface-muted); border-color: transparent; color: var(--text-primary); }
+.button--danger { border-color: color-mix(in oklab, var(--status-error) 80%, black); background: var(--status-error); color: #ffffff; }
+
+button:disabled, .button:disabled { cursor: not-allowed; opacity: 0.55; box-shadow: none; }
+.button--xs { height: 1.5rem; padding: 0 var(--space-2); font-size: 0.6875rem; border-radius: var(--radius-sm); gap: var(--space-1); }
+.button--sm { height: 1.75rem; padding: 0 var(--space-3); font-size: 0.75rem; }
+.button--lg { height: 2.375rem; padding: 0 var(--space-5); font-size: 0.875rem; }
+
+.card-button-reset {
+  display: block; width: 100%; min-width: 0; height: auto; padding: 0;
+  border: none; background: none; box-shadow: none;
+  white-space: normal; text-align: left; cursor: pointer;
+}
+.card-button-reset > .metric-card { height: 100%; }
+
+.alert {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+  border: 1px solid var(--border-default); border-radius: var(--radius-lg);
+  padding: 0.875rem 1rem 0.875rem 1.125rem;
+  background: var(--bg-surface); box-shadow: inset 3px 0 0 var(--border-default);
+}
+.alert--info     { border-color: var(--status-info-border);     background: var(--status-info-soft);     box-shadow: inset 3px 0 0 var(--status-info); }
+.alert--success  { border-color: var(--status-success-border);  background: var(--status-success-soft);  box-shadow: inset 3px 0 0 var(--status-success); }
+.alert--warning  { border-color: var(--status-warning-border);  background: var(--status-warning-soft);  box-shadow: inset 3px 0 0 var(--status-warning); }
+.alert--conflict { border-color: var(--status-conflict-border); background: var(--status-conflict-soft); box-shadow: inset 3px 0 0 var(--status-conflict); }
+.alert--error    { border-color: var(--status-error-border);    background: var(--status-error-soft);    box-shadow: inset 3px 0 0 var(--status-error); }
+.alert__content { display: grid; gap: 0.35rem; }
+.alert__title { color: var(--text-primary); }
+.alert__description { color: var(--text-secondary); }
+.alert__description p { margin: 0; }
+.alert__description p + p { margin-top: 0.4rem; }
+.alert__actions { flex-shrink: 0; }
+
+.status-badge {
+  display: inline-flex; align-items: center; gap: var(--space-2); padding: 2px var(--space-2);
+  border: 1px solid var(--status-disabled-border); border-radius: var(--radius-sm);
+  background: var(--status-disabled-soft); color: var(--status-disabled-fg);
+  font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; line-height: 1.5;
+  letter-spacing: var(--tracking-wide); text-transform: uppercase; white-space: nowrap;
+}
+.status-badge--compact { padding: 1px var(--space-2); font-size: 0.625rem; }
+.status-badge__dot { width: 0.375rem; height: 0.375rem; border-radius: 999px; background: currentColor; flex-shrink: 0; opacity: 0.75; }
+.status-badge--success  { border-color: var(--status-success-border);  background: var(--status-success-soft);  color: var(--status-success-fg); }
+.status-badge--warning  { border-color: var(--status-warning-border);  background: var(--status-warning-soft);  color: var(--status-warning-fg); }
+.status-badge--error    { border-color: var(--status-error-border);    background: var(--status-error-soft);    color: var(--status-error-fg); }
+.status-badge--review   { border-color: var(--status-review-border);   background: var(--status-review-soft);   color: var(--status-review-fg); }
+/* The conflict family has no `-fg` member — it reads `-strong`. */
+.status-badge--conflict { border-color: var(--status-conflict-border); background: var(--status-conflict-soft); color: var(--status-conflict-strong); }
+.status-badge--info     { border-color: var(--status-info-border);     background: var(--status-info-soft);     color: var(--status-info-fg); }
+.status-badge--neutral  { border-color: var(--status-disabled-border); background: var(--status-disabled-soft); color: var(--status-disabled-fg); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 0.25rem; height: 1.375rem; padding: 0 0.5rem;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted); color: var(--text-secondary);
+  font-size: 0.75rem; font-weight: 500; line-height: 1; text-decoration: none; box-shadow: none;
+}
+.chip:hover { background: var(--bg-surface-hover); border-color: var(--border-default); color: var(--text-primary); }
+.chip--active { background: var(--accent-primary-soft); border-color: var(--accent-primary-border); color: var(--accent-primary-soft-strong); font-weight: 600; }
+.chip--error { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-fg); }
+.chip__count { font-family: var(--font-mono); font-size: 0.65rem; opacity: 0.85; }
+
+.metric-card {
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4);
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+  background: var(--bg-surface); box-shadow: var(--shadow-xs);
+  text-decoration: none; color: inherit; height: 100%; min-height: 5.5rem;
+}
+.metric-card__label {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted);
+}
+.metric-card__icon { display: inline-flex; align-items: center; color: var(--status-warning-strong); }
+.metric-card--error .metric-card__icon { color: var(--status-error-strong); }
+.metric-card__value {
+  font-size: 1.75rem; font-weight: 600; letter-spacing: var(--tracking-tight);
+  font-variant-numeric: tabular-nums; color: var(--text-primary); line-height: 1.05;
+}
+.metric-card__description { font-size: 0.75rem; color: var(--text-secondary); }
+.metric-card--success { background: var(--status-success-soft); border-color: var(--status-success-border); }
+.metric-card--success .metric-card__value { color: var(--status-success-strong); }
+.metric-card--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); }
+.metric-card--warning .metric-card__value { color: var(--status-warning-strong); }
+.metric-card--error { background: var(--status-error-soft); border-color: var(--status-error-border); }
+.metric-card--error .metric-card__value { color: var(--status-error-strong); }
+.metric-card--info { background: var(--status-info-soft); border-color: var(--status-info-border); }
+.metric-card--info .metric-card__value { color: var(--status-info-strong); }
+
+.data-table { width: auto; min-width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+.data-table__container {
+  overflow-x: auto; position: relative;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+  background: var(--bg-surface); box-shadow: var(--shadow-xs);
+}
+.data-table th, .data-table td {
+  padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle);
+  text-align: left; vertical-align: middle; font-size: 0.8125rem; line-height: 1.4;
+}
+.data-table thead th {
+  border-top: 0; border-bottom: 1px solid var(--border-subtle); color: var(--text-muted);
+  font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; background: var(--bg-shell);
+}
+.data-table tbody td { color: var(--text-primary); }
+.data-table tbody tr:last-child td { border-bottom: 0; }
+.data-table .data-table__cell--right { text-align: right; font-variant-numeric: tabular-nums; }
+.data-table__row--linked:hover { background: color-mix(in oklab, var(--bg-shell) 60%, transparent); }
+.data-table__row-link { color: var(--text-primary); text-decoration: none; font-weight: 500; }
+.data-table__expand-cell { width: 2.25rem; padding-left: var(--space-2); padding-right: 0; text-align: center; }
+.data-table__expand-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.5rem; height: 1.5rem; padding: 0; background: transparent; border: none;
+  border-radius: var(--radius-xs); color: var(--text-muted); box-shadow: none;
+}
+.data-table__stack { display: grid; gap: 2px; }
+.data-table-skeleton__bar {
+  display: block; height: 10px; width: 100%; border-radius: 4px;
+  background-color: var(--bg-surface-muted);
+  background-image: linear-gradient(90deg, var(--bg-surface-muted) 0%, var(--bg-surface-hover) 50%, var(--bg-surface-muted) 100%);
+  background-size: 200% 100%; background-repeat: no-repeat;
+  animation: data-table-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.data-table-skeleton__bar--title { height: 12px; width: 70%; }
+.data-table-skeleton__bar--meta { width: 60%; }
+@keyframes data-table-skeleton-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .data-table-skeleton__bar { animation: none; } }
+
+.key-value-list {
+  display: grid; grid-template-columns: 1fr; gap: 0; margin: 0; padding: 0;
+  background: var(--bg-surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); overflow: hidden;
+}
+@media (min-width: 768px) { .key-value-list { grid-template-columns: minmax(160px, max-content) 1fr; } }
+.key-value-list__label, .key-value-list__value { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border-subtle); margin: 0; min-width: 0; }
+.key-value-list__label {
+  font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 500; color: var(--text-muted);
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; background: var(--bg-shell);
+}
+.key-value-list__value { color: var(--text-primary); font-size: 0.8125rem; word-break: break-word; }
+.key-value-list__value > * { max-width: 100%; }
+.key-value-list > :nth-child(-n + 2) { border-top: 0; }
+
+.dialog__overlay { position: absolute; inset: 0; background: var(--overlay-scrim); border-radius: var(--radius-lg); }
+.dialog__content {
+  position: relative; width: min(520px, 92vw);
+  background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl); box-shadow: var(--shadow-overlay);
+  padding: var(--space-5) var(--space-6);
+}
+.dialog__title { margin: 0 0 var(--space-1); font-size: 1.0625rem; font-weight: 600; letter-spacing: var(--tracking-tight); color: var(--text-primary); }
+.dialog__description { margin: 0 0 var(--space-4); font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.5; }
+.dialog__description p { margin: 0; }
+.dialog__description p + p { margin-top: 0.5rem; }
+.dialog__footer {
+  display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap;
+  margin: var(--space-5) calc(var(--space-6) * -1) calc(var(--space-5) * -1);
+  padding: var(--space-4) var(--space-6);
+  background: var(--bg-shell); border-top: 1px solid var(--border-subtle);
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PRODUCT-SIDE ADDITIONS proposed by this mockup (#3087)
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Native disclosure rather than a hover tooltip: Radix Tooltip returns early on
+   `pointerType === 'touch'`, so a hover-only explainer is dead on a tablet. */
+.infotip { position: relative; display: inline-flex; }
+.infotip > summary {
+  list-style: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 1.25rem; height: 1.25rem; border-radius: var(--radius-pill);
+  color: var(--text-muted); cursor: help; font-size: 0.875rem;
+}
+.infotip > summary::-webkit-details-marker { display: none; }
+.infotip > summary:hover { color: var(--text-primary); background: var(--bg-surface-muted); }
+.infotip > summary:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+.infotip-popover {
+  position: absolute; top: 1.75rem; left: 0; z-index: 5;
+  width: max-content; max-width: min(22rem, 70vw);
+  padding: var(--space-3); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg); background: var(--bg-surface-elevated);
+  box-shadow: var(--shadow-md); font-size: 0.75rem; line-height: 1.5;
+}
+.infotip-def__term { font-weight: 600; color: var(--text-primary); margin: 0 0 var(--space-1); }
+.infotip-def__text { margin: 0; color: var(--text-secondary); }
+.infotip-def__caveat { margin: var(--space-2) 0 0; color: var(--text-muted); }
+
+
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   THE CREDIT NOTE GRID (#3087, redesigned)
+   The shape five Polish invoicing tools share: every invoice line present in
+   the document's own order, a recessed read-only "as invoiced" column, one
+   editable "after correction" column holding the TARGET quantity, and a
+   computed credit column — the only place a minus sign appears. Row position
+   IS the corrected line number, so nothing is ever asked.
+   ══════════════════════════════════════════════════════════════════════ */
+input[type='number'], select {
+  width: 100%; height: 2rem;
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  padding: 0 var(--space-3); background: var(--bg-surface); color: var(--text-primary);
+  font-family: inherit; font-size: 0.8125rem; line-height: 1.5; box-shadow: var(--shadow-xs);
+}
+input[type='number']:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--border-strong); }
+input[type='number']:focus-visible, select:focus-visible { outline: none; border-color: var(--border-focus); box-shadow: var(--shadow-focus); }
+input:disabled, select:disabled { background: var(--bg-surface-muted); color: var(--text-disabled); }
+
+.returns-credit-note { display: flex; flex-direction: column; gap: var(--space-3); }
+.returns-credit-note__head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+/* The grid, its note and the refund check are siblings — without a gap they
+   render flush and the note reads as part of the table. */
+.returns-credit-note__body { display: flex; flex-direction: column; gap: var(--space-3); }
+.returns-credit-note__lead { margin: 0; font-size: 0.875rem; color: var(--text-secondary); }
+.returns-credit-note__lead b { color: var(--text-primary); }
+.returns-credit-note__actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.returns-credit-note__footer { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.returns-credit-note__footer .button { min-height: 44px; }
+
+/* The line's position IS its identity — a gutter, not a label. */
+.credit-grid__lp { width: 2.5rem; text-align: right; font-family: var(--font-mono); color: var(--text-muted); }
+
+/* Evidence: recessed, never an input. Fakturownia and iFirma both make the
+   "before" side structurally untouchable; this is that, in our tokens. */
+/* Money and rate codes never wrap: a figure broken across two lines is
+   unreadable, and the container already scrolls sideways. */
+.credit-cell--invoiced, .credit-cell--after, .credit-cell--credit, .credit-grid tfoot td { white-space: nowrap; }
+.credit-cell--invoiced { background: var(--bg-shell); color: var(--text-secondary); }
+/* The one white, editable column. */
+.credit-cell--after { background: var(--bg-surface); }
+/* Computed. No tint: a credit is the expected outcome here, and colour marks
+   the exception (style guide #2507). */
+.credit-cell--credit { background: var(--bg-shell); font-variant-numeric: tabular-nums; }
+
+/* A line the return does not touch: present and inert, never hidden. */
+.credit-row--untouched .credit-cell--after { background: var(--bg-shell); }
+.credit-row--untouched td { color: var(--text-muted); }
+.credit-row--blocked .credit-cell--after { background: var(--bg-shell); }
+
+.credit-grid tfoot td { border-top: 1px solid var(--border-default); font-weight: 600; }
+.credit-grid__note { font-size: 0.75rem; }
+
+/* Returned items with no invoice line. Deliberately NOT tinted as an error:
+   nothing is broken, these simply cannot be credited from here, and the style
+   guide (#2507) reserves colour for a state someone has to act on. */
+.credit-unmatched {
+  display: grid; gap: var(--space-2);
+  padding: var(--space-4); border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg); background: var(--bg-shell);
+}
+.credit-unmatched__title { margin: 0; font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); }
+.credit-unmatched__lead { margin: 0; font-size: 0.75rem; }
+.credit-unmatched__list { display: grid; gap: var(--space-2); }
+.credit-unmatched__item {
+  display: grid; gap: 2px;
+  padding-top: var(--space-2); border-top: 1px solid var(--border-subtle);
+}
+.credit-unmatched__list > :first-child { padding-top: 0; border-top: 0; }
+.credit-unmatched__item-name { font-size: 0.8125rem; color: var(--text-primary); }
+.credit-unmatched__reason { font-size: 0.75rem; color: var(--text-muted); }
+.credit-row__note { display: block; font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+/* Two inputs, one cell: the quantity and the unit price that SHOULD be on the
+   invoice. Both editable, because a credit can come from fewer units, a lower
+   price, or both. */
+.credit-cell__pair { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-1); }
+.credit-cell__times { color: var(--text-muted); font-size: 0.75rem; }
+.input--w-qty { width: 3.25rem; }
+.input--w-price { width: 5.5rem; }
+.credit-grid__subhead {
+  display: block; font-size: 0.625rem; font-weight: 400;
+  letter-spacing: var(--tracking-normal); text-transform: none; color: var(--text-disabled);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   6. RETURNS FEATURE — copied from index.css :21453+
+   ══════════════════════════════════════════════════════════════════════ */
+.returns-segments { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
+.returns-segment { flex: 1 1 12rem; border-radius: var(--radius-lg); }
+.returns-segment--active { outline: 2px solid var(--accent-focus); outline-offset: 2px; border-radius: var(--radius-md); }
+
+.returns-stage-cell, .returns-identity-cell, .returns-order-cell, .returns-line-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0;
+}
+.returns-stage-cell__counters { font-size: 0.75rem; color: var(--text-muted); }
+
+.returns-detail__lines, .returns-detail__source, .returns-detail__activity, .returns-decline { display: grid; gap: var(--space-3); }
+.returns-decline { justify-items: start; }
+.returns-money-panel { display: flex; flex-direction: column; gap: var(--space-3); }
+.returns-rails__note { font-size: 0.8125rem; color: var(--text-muted); margin: 0 0 var(--space-3); }
+.returns-rail { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.returns-rail__label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.returns-rail__note { font-size: 0.75rem; color: var(--text-muted); }
+
+.return-custody-panel { display: grid; gap: var(--space-3); }
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   8. FLOW MAP (frame 0)
+   ══════════════════════════════════════════════════════════════════════ */
+.flow { display: grid; gap: var(--space-4); }
+.flow__rail { display: grid; gap: var(--space-2); grid-template-columns: 1fr; }
+@media (min-width: 1024px) {
+  /* Only the 4th connector carries a label, so only it gets a wide track. */
+  .flow__rail { grid-template-columns: repeat(3, minmax(0, 1fr) 1.5rem) minmax(0, 1fr) 4.5rem minmax(0, 1fr); align-items: stretch; }
+}
+.flow-card {
+  display: grid; gap: 4px; align-content: start;
+  border: 1px solid var(--border-default); border-radius: var(--radius-lg);
+  background: var(--bg-surface); padding: var(--space-3);
+}
+.flow-card--out-of-scope { border-style: dashed; opacity: 0.72; }
+.flow-card__ord { font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; letter-spacing: var(--tracking-caps); color: var(--text-muted); }
+.flow-card__title { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+.flow-card__body { font-size: 0.75rem; color: var(--text-secondary); }
+.flow-card__who { font-size: 0.75rem; font-weight: 600; color: var(--text-primary); margin-top: 2px; }
+.flow-card__route { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text-muted); overflow-wrap: anywhere; }
+
+.flow__link { display: grid; place-items: center; color: var(--border-strong); font-size: 1rem; line-height: 1; }
+.flow__link--soft { color: var(--status-warning); }
+.flow__link-glyph { display: block; }
+@media (max-width: 1023.98px) { .flow__link { transform: rotate(90deg); padding: 2px 0; } }
+
+
+/* ══════════════════════════════════════════════════════════════════════
+   9. MOCKUP CHROME — dashed edges throughout so a reviewer can never
+      mistake any of it for product UI.
+   ══════════════════════════════════════════════════════════════════════ */
+.controls {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3) var(--space-5); flex-wrap: wrap;
+  background: var(--bg-shell); border-bottom: 1px solid var(--border-subtle);
+}
+.controls__label { font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+
+/* Reused by the state index at the foot of the sheet. */
+.key-rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-2) var(--space-3); margin: 0; }
+.key-rows dt { justify-self: start; font-family: var(--font-mono); font-size: 0.6875rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+.key-rows dd { margin: 0; font-size: 0.78125rem; color: var(--text-secondary); line-height: 1.55; }
+.key-rows dd code { font-family: var(--font-mono); font-size: 0.95em; }
+.sheet__open { display: grid; gap: var(--space-2); margin: 0 0 var(--space-6); }
+.sheet__legend {
+  margin: 0; padding: var(--space-2) var(--space-3);
+  border-left: 2px dashed var(--border-strong);
+  font-size: 0.78125rem; color: var(--text-secondary); line-height: 1.7;
+}
+.sheet__legend b { color: var(--text-primary); }
+.sheet { max-width: 1320px; margin: 0 auto; padding-block: var(--space-6) var(--space-8); padding-left: var(--space-5); padding-right: var(--space-5); }
+@media (max-width: 767.98px) { .sheet { padding-left: var(--space-4); padding-right: var(--space-4); } }
+.sheet__title { font-size: 26px; line-height: 32px; font-weight: 700; letter-spacing: var(--tracking-tight); margin: 0 0 var(--space-1); text-wrap: balance; }
+.sheet__sub { color: var(--text-secondary); margin: 0 0 var(--space-4); max-width: 76ch; }
+.sheet__note {
+  display: grid; gap: var(--space-2); font-size: 0.78125rem; color: var(--text-secondary); line-height: 1.6;
+  background: var(--bg-surface-muted); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin: 0 0 var(--space-6);
+}
+.sheet__note b { color: var(--text-primary); }
+.sheet__note p { margin: 0; }
+.sheet__note-title { font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+
+.viewport-frame { margin: 0 0 var(--space-7); }
+.viewport-frame__label {
+  display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap;
+  margin: 0 0 var(--space-3); padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.viewport-frame__label .eyebrow-mono { font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--accent-primary-hover); }
+.viewport-frame__label b { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+.viewport-frame__label .caption { font-size: 0.75rem; color: var(--text-muted); max-width: 68ch; }
+
+.frame-scroll { overflow-x: auto; }
+.app-frame { display: grid; gap: var(--space-4); padding: var(--space-4); background: var(--bg-canvas); border: 1px dashed var(--border-default); border-radius: var(--radius-lg); }
+.app-frame > * { min-width: 0; }
+.app-frame--wide { min-width: 62rem; }
+.closeup { padding: var(--space-4); background: var(--bg-canvas); border: 1px dashed var(--border-default); border-radius: var(--radius-lg); }
+.closeup__inner { max-width: 880px; }
+
+
+.gap-mark { font-family: var(--font-mono); color: var(--accent-primary-hover); cursor: help; font-weight: 600; font-size: 0.7em; }
+/* Every use is now a single <p>, so this must be a BLOCK: as a grid it put each
+   inline child — including the lone dagger — on its own row. */
+.gap-legend {
+  display: block; margin: var(--space-3) 0 var(--space-6);
+  font-size: 0.75rem; color: var(--text-muted); line-height: 1.7;
+}
+.gap-legend b { color: var(--text-primary); }
+
+/* Frame 5's stub panels: real chrome, deliberately unfilled. */
+.stub-panel { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); padding: var(--space-3) var(--space-4); display: grid; gap: var(--space-2); }
+.sales-document-panel__correction { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-shell); padding: var(--space-3); display: grid; gap: var(--space-2); }
+.sales-document-panel__correction > summary { font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); cursor: pointer; }
+.doc-slot { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: var(--bg-surface); overflow: hidden; }
+.doc-slot__head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); background: var(--bg-shell); border-bottom: 1px solid var(--border-subtle); }
+.doc-slot__kind { font-family: var(--font-mono); font-size: 0.6875rem; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+.doc-slot__body { padding: var(--space-3); display: grid; gap: var(--space-3); }
+
+.order-detail__stack { display: grid; gap: var(--space-3); }
+@media (min-width: 1024px) { .order-detail__stack--split { grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.9fr); align-items: start; } }
+
+/* Mockup chrome: marks the row the next frame opens. Dashed, so it cannot be
+   mistaken for a product state. */
+.is-path { outline: 1px dashed var(--accent-primary); outline-offset: -1px; }
+.frame-annotation { font-size: 0.75rem; color: var(--text-muted); margin: var(--space-2) 0 0; }
+.frame-annotation b { font-family: var(--font-mono); color: var(--accent-primary-hover); }
+
+
+/* Artboard canvas: the shell supplies its own frame, so this only sets the
+   desktop width the shell needs. Below 1024px it shrinks and the shell
+   renders its own mobile layout — which is worth seeing. */
+.frame-canvas { min-width: 0; }
+@media (min-width: 1024px) { .frame-canvas { min-width: 62rem; } }
+
+/* Frame 03's dialog stage: the scrim must lie OVER the page fragment, and the
+   dialog must stay in normal flow so it can never be clipped. */
+.dialog-stage { position: relative; display: grid; place-items: center; padding: var(--space-5); overflow: hidden; }
+.dialog-stage__backdrop { position: absolute; inset: var(--space-4); overflow: hidden; }
+.dialog-stage__scrim { position: absolute; inset: 0; background: var(--overlay-scrim); }
+.dialog-stage > .dialog__content { position: relative; z-index: 1; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   10. THE SHEET LAYER — one rule: a DASHED edge plus a `sheet` tag means
+   the document is talking. Nothing product-side may be dashed.
+   ══════════════════════════════════════════════════════════════════════ */
+.chrome-tag {
+  display: inline-flex; align-items: center; height: 1.125rem; padding: 0 var(--space-2);
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-pill);
+  background: var(--bg-canvas); color: var(--text-muted);
+  font-family: var(--font-mono); font-size: 0.5625rem; font-weight: 600;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; white-space: nowrap; flex-shrink: 0;
+}
+
+
+
+
+/* The switcher band. Lifted OUT of the app shell — chrome inside the product's
+   own chrome is the single worst confusion in the previous revision. */
+.switch-band {
+  display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); padding: var(--space-3);
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-md);
+  background: var(--bg-surface-muted);
+}
+.switch-band__head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.switch-band__title { font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); }
+.switch-row { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
+.switch-row__label {
+  min-width: 6rem; font-family: var(--font-mono); font-size: 0.625rem; font-weight: 600;
+  letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted);
+}
+.switch-row__opts { display: flex; gap: 2px; padding: 2px; background: var(--bg-canvas); border-radius: var(--radius-sm); flex-wrap: wrap; }
+.switch-opt {
+  height: auto; padding: 5px 10px; border: none; border-radius: var(--radius-xs);
+  background: transparent; box-shadow: none;
+  font-size: 0.71875rem; font-weight: 500; color: var(--text-muted);
+}
+.switch-opt:hover { background: var(--bg-surface-muted); border-color: transparent; color: var(--text-primary); }
+.switch-opt.is-active { background: var(--bg-surface); color: var(--text-primary); font-weight: 600; box-shadow: var(--shadow-xs); }
+.switch-opt:disabled { opacity: 0.4; }
+.switch-row__note, .switch-readout { margin: 0; font-size: 0.71875rem; color: var(--text-muted); }
+.switch-readout { padding-top: var(--space-2); border-top: 1px dashed var(--border-default); }
+.switch-readout b { color: var(--text-primary); }
+.switch-readout code { font-family: var(--font-mono); font-size: 0.9em; color: var(--accent-primary-hover); }
+.switch-band[data-overridden='true'] .switch-row--credit { opacity: 0.45; }
+
+
+.flow__link-note { font-size: 0.5625rem; color: var(--status-warning-fg); text-align: center; line-height: 1.2; }
 </style>
-
-<div class="page">
-  <a class="back-link" href="#">&larr; Back to return AL-RET-88213</a>
-  <header class="page-header">
-    <p class="eyebrow">Credit note</p>
-    <h1 class="page-title">Crediting this return on the invoice</h1>
-    <p class="page-description">A preview only — nothing is sent to the tax office until you confirm.</p>
-  </header>
-
-  <div id="content"></div>
-
-  <div class="demo-toolbar" role="group" aria-label="Mockup — not part of the product">
-    <span class="demo-toolbar__label">Mockup</span>
-    <button class="chip chip--active" data-state="mixed" onclick="setState('mixed')">Mixed result</button>
-    <button class="chip" data-state="all-good" onclick="setState('all-good')">All creditable</button>
-    <button class="chip" data-state="none" onclick="setState('none')">Nothing creditable</button>
-    <button class="chip" data-state="no-invoice" onclick="setState('no-invoice')">No invoice yet</button>
-  </div>
+<div class="controls">
+  <span class="controls__label">Mockup &middot; issue #3116 &middot; epic #3087 &middot; credit-note correction proposal</span>
+  <button type="button" class="button button--secondary button--sm" id="theme-toggle">Toggle theme</button>
 </div>
 
-<script>
-function money(n, cur){ return n.toLocaleString('pl-PL', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' ' + cur; }
+<div class="sheet">
+  <div class="sheet__open">
+    <h1 class="sheet__title">Crediting a return on the invoice</h1>
+    <p class="sheet__sub">
+      Five frames: how an operator finds the return, the screen this epic builds, and who finishes the
+      job. Real tokens, real component classes; every state shown is one the shipped backend returns.
+    </p>
+    <p class="sheet__legend">
+      <span class="chrome-tag">sheet</span> and every dashed edge is this document talking, never the
+      product &middot; <span class="gap-mark">&dagger;</span> marks a gap, explained in the note under the
+      frame that carries it &middot; <b>start with <a href="#frame-00">frame&nbsp;00</a>, then
+      <a href="#frame-02">frame&nbsp;02</a></b> &mdash; the rest is context &middot;
+      <a href="#decisions">the two decisions to agree with</a>
+    </p>
+  </div>
 
-const DATA = {
-  mixed: {
-    currency:'PLN', invoice:'FV/2026/09/0142',
-    lines:[
-      { id:'l1', name:'Running shoes — size 42', qty:1, status:'yes', amount:249.00 },
-      { id:'l2', name:'Wireless earbuds', qty:1, status:'pick',
-        options:[{ label:'Invoice line #3', price:189.00 }, { label:'Invoice line #5', price:179.00 }] },
-      { id:'l3', name:'Phone case — clear', qty:1, status:'no', reason:"We haven't confirmed the stock came back yet." },
-      { id:'l4', name:'Screen protector 2-pack', qty:2, status:'no', reason:"Nothing on the invoice matches this item's name." },
-    ],
-  },
-  'all-good': {
-    currency:'PLN', invoice:'FV/2026/09/0201',
-    lines:[
-      { id:'l1', name:'Running shoes — size 42', qty:1, status:'yes', amount:249.00 },
-      { id:'l2', name:'Water bottle', qty:2, status:'yes', amount:78.00 },
-    ],
-  },
-  none: {
-    currency:'PLN', invoice:'FV/2026/09/0055',
-    lines:[
-      { id:'l1', name:'Phone case — clear', qty:1, status:'no', reason:"We haven't confirmed the stock came back yet." },
-      { id:'l2', name:'Screen protector 2-pack', qty:2, status:'no', reason:"That quantity is more than the invoice ever billed for this line." },
-    ],
-  },
-};
+  <!-- ══════════════════════════════════════════════════════════════════
+       FRAME 00 — the flow
+       ══════════════════════════════════════════════════════════════════ -->
+  <section class="viewport-frame" id="frame-00" data-frame="flow-map">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">Frame 00</span>
+      <b>How a return becomes a credit note</b>
+      <span class="caption">five stages &middot; three roles &middot; two gaps</span>
+    </div>
 
-let currentState = 'mixed';
-let choices = {};
-let recorded = false;
+    <div class="closeup">
+      <div class="flow">
+        <div class="flow__rail">
+          <div class="flow-card">
+            <span class="flow-card__ord">01</span>
+            <span class="flow-card__title">Parcel arrives</span>
+            <span class="flow-card__body">You record what physically came back, line by line.</span>
+            <span class="flow-card__who">operator</span>
+            <span class="flow-card__route">/returns/:id #custody</span>
+          </div>
+          <div class="flow__link"><span class="flow__link-glyph" aria-hidden="true">&rarr;</span></div>
 
-function creditable(l) { return l.status === 'yes' || (l.status === 'pick' && choices[l.id] !== undefined); }
-function amountFor(l) {
-  if (l.status === 'yes') return l.amount;
-  if (l.status === 'pick' && choices[l.id] !== undefined) return l.options[choices[l.id]].price;
-  return 0;
-}
+          <div class="flow-card">
+            <span class="flow-card__ord">02</span>
+            <span class="flow-card__title">Units disposed</span>
+            <span class="flow-card__body">You restock or scrap each line. Only units you have confirmed can be credited.</span>
+            <span class="flow-card__who">operator</span>
+            <span class="flow-card__route">/returns/:id #custody</span>
+          </div>
+          <div class="flow__link"><span class="flow__link-glyph" aria-hidden="true">&rarr;</span></div>
 
-function renderLine(l) {
-  if (l.status === 'yes') {
-    return `<div class="line">
-      <div class="line__icon line__icon--yes">✓</div>
-      <div class="line__body"><div class="line__name">${l.name}</div><div class="line__sub">Credited automatically</div></div>
-      <div class="line__amount line__amount--yes">${money(l.amount, DATA[currentState].currency)}</div>
-    </div>`;
-  }
-  if (l.status === 'pick') {
-    const picked = choices[l.id];
-    return `<div class="line line--pick">
-      <div class="line__icon line__icon--pick">?</div>
-      <div class="line__body">
-        <div class="line__name">${l.name}</div>
-        <div class="line__sub">${picked !== undefined ? '✓ You picked which one — ready to credit' : 'This item is on the invoice twice. Which one was it?'}</div>
-        <div class="choice-row">
-          ${l.options.map((o, i) => `<button class="choice-btn ${picked===i?'choice-btn--picked':''}" onclick="pickOption('${l.id}', ${i})">
-            <div class="choice-btn__label">${picked===i?'✓ ':''}${o.label}</div>
-            <div class="choice-btn__price">${money(o.price, DATA[currentState].currency)}</div>
-          </button>`).join('')}
+          <div class="flow-card">
+            <span class="flow-card__ord">03</span>
+            <span class="flow-card__title">Proposal shown</span>
+            <span class="flow-card__body">OpenLinker matches the disposed lines to the invoice and shows what it found.</span>
+            <span class="flow-card__who">any signed-in account</span>
+            <span class="flow-card__route">/returns/:id #correction</span>
+          </div>
+          <div class="flow__link"><span class="flow__link-glyph" aria-hidden="true">&rarr;</span></div>
+
+          <div class="flow-card">
+            <span class="flow-card__ord">04</span>
+            <span class="flow-card__title">Recorded for review</span>
+            <span class="flow-card__body">You record the match. Nothing is issued.</span>
+            <span class="flow-card__who">operator or admin</span>
+            <span class="flow-card__route">same page</span>
+          </div>
+          <div class="flow__link flow__link--soft">
+            <span class="flow__link-glyph" aria-hidden="true">&#8674;</span>
+            <span class="flow__link-note">nothing carries it</span>
+          </div>
+
+          <div class="flow-card flow-card--out-of-scope">
+            <span class="flow-card__ord">05</span>
+            <span class="chrome-tag">out of scope</span>
+            <span class="flow-card__title">Issued and sent</span>
+            <span class="flow-card__body">An admin issues the correction from the order.</span>
+            <span class="flow-card__who">admin only</span>
+            <span class="flow-card__route">/orders/:id #invoicing</span>
+          </div>
+
         </div>
+
       </div>
-    </div>`;
-  }
-  return `<div class="line line--no">
-    <div class="line__icon line__icon--no">✕</div>
-    <div class="line__body"><div class="line__name">${l.name}</div><div class="line__sub">${l.reason}</div></div>
-    <div class="line__amount line__amount--no">Can't credit</div>
-  </div>`;
-}
+    </div>
 
-function render() {
-  const content = document.getElementById('content');
+    <p class="gap-legend">
+      <b>Two gaps.</b> Recording a proposal queues it nowhere &mdash; nothing reads it back and it lapses
+      after about fifteen minutes, so it is a note to yourself that the match was checked. And issuing is
+      admin-only, on another page: hand over to someone else and they cannot see what you recorded. Both
+      are marked <span class="gap-mark">&dagger;</span> above.
+    </p>
+  </section>
 
-  if (currentState === 'no-invoice') {
-    content.innerHTML = `<div class="state-card">
-      <p class="eyebrow">No invoice yet</p>
-      <h3 class="state-card__title">This order hasn't been invoiced</h3>
-      <p class="state-card__message">There's nothing to credit until an invoice exists for this order.</p>
-    </div>`;
-    return;
-  }
-
-  const d = DATA[currentState];
-  const total = d.lines.reduce((s, l) => s + amountFor(l), 0);
-  const creditableCount = d.lines.filter(creditable).length;
-  const pickCount = d.lines.filter(l => l.status === 'pick' && choices[l.id] === undefined).length;
-
-  const summaryHtml = creditableCount === 0
-    ? `<div class="summary summary--empty">
-        <div class="summary__body">
-          <div class="summary__title">Nothing here can be credited yet</div>
-          <div class="summary__desc">See why below — usually it's waiting on a stock confirmation or a name that doesn't match.</div>
-        </div>
-      </div>`
-    : `<div class="summary">
-        <div class="summary__num summary__num--credit">${money(total, d.currency)}</div>
-        <div class="summary__body">
-          <div class="summary__title">Ready to credit on invoice ${d.invoice}</div>
-          <div class="summary__breakdown">
-            <span><b>${d.lines.filter(l=>l.status==='yes').length}</b> automatic</span>
-            ${pickCount > 0 ? `<span><b>${pickCount}</b> need your pick</span>` : ''}
-            ${d.lines.filter(l=>l.status==='no').length > 0 ? `<span><b>${d.lines.filter(l=>l.status==='no').length}</b> can't credit</span>` : ''}
+  <!-- ══════════════════════════════════════════════════════════════════
+       FRAME 01 — finding the return
+       ══════════════════════════════════════════════════════════════════ -->
+  <section class="viewport-frame" id="frame-01" data-frame="returns-list">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">Frame 01</span>
+      <b>Finding the return</b>
+      <span class="caption">1440 px artboard, scrolls sideways &middot; Returns is 9th in Operations, with no count badge</span>
+    </div>
+    <div class="frame-scroll"><div class="frame-canvas">
+      <div class="shell">
+        <div class="shell-sidebar">
+          <div class="shell-brand">
+            <span class="shell-brand__mark" aria-hidden="true">OL</span>
+            <span class="shell-brand__name">OpenLinker</span>
+          </div>
+          <nav class="shell-nav" aria-label="Primary">
+            <section class="shell-nav__group">
+              <p class="shell-nav__label">Operations</p>
+              <ul class="shell-nav__list">
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Analytics</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Insights</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Orders</span><span class="shell-nav__link-count mono-text">12</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Products</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Customers</span><span class="shell-nav__link-count mono-text">381</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Listings</span><span class="shell-nav__link-count mono-text">1 204</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Shipments</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Fulfilment</span></a></li>
+            <li><a class="shell-nav__link shell-nav__link--active" href="#" aria-current="page"><span class="shell-nav__link-label">Returns</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Automations</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Invoices</span></a></li>
+              </ul>
+            </section>
+            <section class="shell-nav__group">
+              <p class="shell-nav__label">Diagnostics</p>
+              <ul class="shell-nav__list">
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Jobs & Logs</span><span class="shell-nav__link-count mono-text">2</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Webhooks</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Cursors</span></a></li>
+              </ul>
+            </section>
+            <section class="shell-nav__group">
+              <p class="shell-nav__label">Platform</p>
+              <ul class="shell-nav__list">
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Connections</span><span class="shell-nav__link-count mono-text">4</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Adapters</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Settings</span></a></li>
+              </ul>
+            </section>
+          </nav>
+          <div class="shell-workspace">
+            <div class="shell-workspace__header"><span class="shell-workspace__name">Default organization</span></div>
+            <div class="shell-workspace__user"><span class="shell-workspace__username">norbert</span><span>Sign out</span></div>
           </div>
         </div>
-      </div>`;
 
-  content.innerHTML = `
-    ${summaryHtml}
-    ${d.lines.map(renderLine).join('')}
-    <div class="sticky-footer">
-      <span class="sticky-footer__note">${recorded ? 'Recorded — an operator confirms and issues it from the invoice.' : (pickCount > 0 ? "Pick an invoice line above for every \"?\" item first." : "This only records a proposal for review. It doesn't send anything yet.")}</span>
-      ${recorded
-        ? `<button class="button button--secondary" disabled>✓ Recorded for review</button>`
-        : `<button class="button" ${(creditableCount === 0 || pickCount > 0) ? 'disabled' : ''} onclick="recordProposal()">Record for review</button>`}
+        <div class="shell-main">
+          <header class="shell-topbar">
+            <button type="button" class="shell-topbar__hamburger" aria-label="Open menu"><span aria-hidden="true">&#9776;</span></button>
+            <nav aria-label="Breadcrumb" class="shell-crumbs">
+              <span class="shell-crumbs__group">Operations</span>
+              <span class="shell-crumbs__sep" aria-hidden="true">/</span>
+              <span class="shell-crumbs__current">Returns</span>
+            </nav>
+            <button type="button" class="shell-topbar__search">
+              <span class="shell-topbar__search-placeholder">Search or jump to&hellip;</span>
+              <span class="shell-topbar__search-kbd">&#8984;K</span>
+            </button>
+            <div class="shell-topbar__spacer"></div>
+            <button type="button" class="button button--ghost shell-topbar__alerts">Alerts <span aria-hidden="true">0</span></button>
+            <button type="button" class="shell-user-chip">
+              <span class="shell-user-chip__avatar" aria-hidden="true">NK</span>
+              <span class="shell-user-chip__name">norbert</span>
+            </button>
+          </header>
+          <main class="shell-content">
+            <section class="page-section">
+              <div class="page-header">
+                <div class="page-header__content">
+                  <p class="eyebrow">Operations</p>
+                  <h2 class="page-title">Returns</h2>
+                  <p class="page-description">Returns reported by your connected channels, newest first. OpenLinker records what the channel says and does not reinterpret it.</p>
+                </div>
+              </div>
+
+              <div class="returns-segments" role="group" aria-label="Filter returns by what needs doing">
+                <button type="button" class="card-button-reset returns-segment" aria-pressed="false">
+                  <div class="metric-card">
+                    <span class="metric-card__label">All returns</span>
+                    <span class="metric-card__value">128</span>
+                  </div>
+                </button>
+                <button type="button" class="card-button-reset returns-segment" aria-pressed="false">
+                  <div class="metric-card metric-card--warning">
+                    <span class="metric-card__label"><span class="metric-card__icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2.5 14.5 13.5H1.5L8 2.5Z"/><path d="M8 6.6v3.2"/><path d="M8 11.7v.3"/></svg></span>Needs receiving</span>
+                    <span class="metric-card__value">6</span>
+                  </div>
+                </button>
+                <button type="button" class="card-button-reset returns-segment returns-segment--active" aria-pressed="true">
+                  <div class="metric-card metric-card--warning">
+                    <span class="metric-card__label"><span class="metric-card__icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2.5 14.5 13.5H1.5L8 2.5Z"/><path d="M8 6.6v3.2"/><path d="M8 11.7v.3"/></svg></span>Needs disposition</span>
+                    <span class="metric-card__value">3</span>
+                  </div>
+                </button>
+                <button type="button" class="card-button-reset returns-segment" aria-pressed="false">
+                  <div class="metric-card metric-card--error">
+                    <span class="metric-card__label"><span class="metric-card__icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.4"/><path d="M8 10.7v.3"/></svg></span>Restock blocked</span>
+                    <span class="metric-card__value">1</span>
+                  </div>
+                </button>
+                <button type="button" class="card-button-reset returns-segment" aria-pressed="false">
+                  <div class="metric-card metric-card--warning">
+                    <span class="metric-card__label"><span class="metric-card__icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2.5 14.5 13.5H1.5L8 2.5Z"/><path d="M8 6.6v3.2"/><path d="M8 11.7v.3"/></svg></span>Money pending</span>
+                    <span class="metric-card__value">9</span>
+                  </div>
+                </button>
+                <button type="button" class="card-button-reset returns-segment" aria-pressed="false">
+                  <div class="metric-card metric-card--error">
+                    <span class="metric-card__label"><span class="metric-card__icon" aria-hidden="true"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.4"/><path d="M8 10.7v.3"/></svg></span>Orphans</span>
+                    <span class="metric-card__value">2</span>
+                  </div>
+                </button>
+                <button type="button" class="card-button-reset returns-segment" aria-pressed="false">
+                  <div class="metric-card">
+                    <span class="metric-card__label">All open</span>
+                    <span class="metric-card__value">14</span>
+                  </div>
+                </button>
+              </div>
+
+              <div class="toolbar">
+                <div class="toolbar__group" role="group" aria-label="Filter by attribution">
+                  <button type="button" class="chip chip--active" aria-pressed="true">All <span class="chip__count">128</span></button>
+                  <button type="button" class="chip chip--error" aria-pressed="false">Orphan <span class="chip__count">2</span></button>
+                  <button type="button" class="chip" aria-pressed="false">Matched to an order <span class="chip__count">126</span></button>
+                </div>
+                <div class="toolbar__group">
+                  <button type="button" class="chip">All sources <span aria-hidden="true">&#9662;</span></button>
+                </div>
+              </div>
+
+              <div class="data-table__container">
+                <table class="data-table">
+                  <caption class="sr-only">Returns, newest first</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Return</th>
+                      <th scope="col">Order</th>
+                      <th scope="col">Source</th>
+                      <th scope="col">Opened</th>
+                      <th scope="col">Source status</th>
+                      <th scope="col">Stage <sup class="gap-mark" title="Gap: nothing on this list says a return is waiting for a credit note. Explained under this frame.">&dagger;</sup></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="data-table__row--linked is-path">
+                      <td><span class="returns-identity-cell"><span class="mono-text">AL-RET-88213</span></span></td>
+                      <td><span class="returns-order-cell"><a class="mono-text" href="#">ol_order_9f31&hellip;</a></span></td>
+                      <td>Allegro &mdash; PL</td>
+                      <td>2 hours ago</td>
+                      <td><span class="mono-text text-muted" title="Reported by the source channel, word for word. OpenLinker does not interpret this value.">Allegro &mdash; PL: DELIVERED</span></td>
+                      <td>
+                        <span class="returns-stage-cell">
+                          <span class="status-badge status-badge--neutral status-badge--compact">Received &mdash; awaiting disposition</span>
+                          <span class="returns-stage-cell__counters">4 of 4 received</span>
+                        </span>
+                      </td>
+                    </tr>
+                    <tr class="data-table__row--linked">
+                      <td><span class="returns-identity-cell"><span class="mono-text">AL-RET-88207</span></span></td>
+                      <td><span class="returns-order-cell"><a class="mono-text" href="#">ol_order_7c02&hellip;</a></span></td>
+                      <td>Allegro &mdash; PL</td>
+                      <td>yesterday</td>
+                      <td><span class="mono-text text-muted">Allegro &mdash; PL: FINISHED</span></td>
+                      <td>
+                        <span class="returns-stage-cell">
+                          <span class="status-badge status-badge--neutral status-badge--compact">Disposed</span>
+                          <span class="returns-stage-cell__counters">2 of 2 received</span>
+                        </span>
+                      </td>
+                    </tr>
+                    <tr class="data-table__row--linked">
+                      <td>
+                        <span class="returns-identity-cell">
+                          <span class="mono-text text-muted" title="No channel reference: ol_return_4d81c7">ol_return_4d81&hellip;</span>
+                          <span class="status-badge status-badge--info status-badge--compact">Recorded by you</span>
+                        </span>
+                      </td>
+                      <td>
+                        <span class="returns-order-cell">
+                          <span class="status-badge status-badge--error status-badge--compact" title="Returns for orders OpenLinker has never seen. They are kept, but nothing is triggered from them — no stock change, no refund, no credit note — until they are matched to an order.">Orphan</span>
+                          <span class="mono-text text-muted">No matching order</span>
+                        </span>
+                      </td>
+                      <td>Erli</td>
+                      <td>3 days ago</td>
+                      <td><span class="text-muted">Not reported</span></td>
+                      <td>
+                        <span class="returns-stage-cell">
+                          <span class="status-badge status-badge--neutral status-badge--compact">Awaiting parcel</span>
+                          <span class="returns-stage-cell__counters">0 of 1 received</span>
+                        </span>
+                      </td>
+                    </tr>
+                    <tr class="data-table__row--linked">
+                      <td><span class="returns-identity-cell"><span class="mono-text">AL-RET-88190</span></span></td>
+                      <td><span class="returns-order-cell"><a class="mono-text" href="#">ol_order_1ab4&hellip;</a></span></td>
+                      <td>Allegro &mdash; PL</td>
+                      <td>4 days ago</td>
+                      <td><span class="mono-text text-muted">Allegro &mdash; PL: CANCELLED</span></td>
+                      <td>
+                        <span class="returns-stage-cell">
+                          <span class="status-badge status-badge--warning status-badge--compact">Declined</span>
+                          <span class="returns-stage-cell__counters">0 of 3 received</span>
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="pagination">
+                <span class="text-muted">Showing 1&ndash;4 of 128</span>
+                <div class="pagination__actions">
+                  <button type="button" class="button button--secondary" disabled>Previous</button>
+                  <button type="button" class="button button--secondary">Next</button>
+                </div>
+              </div>
+            </section>
+          </main>
+        </div>
+      </div>
+    </div></div>
+    <p class="gap-legend">
+      <b>The gap.</b> Nothing on this list says a return is waiting for a credit note &mdash; no backend read
+      exposes it at any grain, so the only way to find one is to open the return. The dashed row is this
+      sheet's marker for the return frame 02 opens.
+    </p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       FRAME 02 — the screen this epic builds. The credit-note panel is
+       section 5 of 8, at the shipped #correction anchor, between Money and
+       "What the channel says". The switcher band sits OUTSIDE the app
+       shell: sheet controls inside the product's own chrome were the single
+       worst confusion in the previous revision.
+       ══════════════════════════════════════════════════════════════════ -->
+  <section class="viewport-frame" id="frame-02" data-frame="return-detail">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">Frame 02</span>
+      <b>The screen this epic builds</b>
+      <span class="caption">1440 px artboard, scrolls sideways &middot; the panel is section 5 of 8 &middot; 12 states &middot; the invoice-line choices are live</span>
     </div>
-  `;
-}
+    <div class="switch-band" data-overridden="false">
+      <div class="switch-band__head">
+        <span class="chrome-tag">sheet</span>
+        <span class="switch-band__title">Click a state to preview it. Then change a quantity in the grid and watch
+          the credit, the total and the refund check follow.</span>
+      </div>
 
-function pickOption(lineId, idx) {
-  choices[lineId] = idx;
-  render();
-}
-function recordProposal() { recorded = true; render(); }
+      <div class="switch-row switch-row--credit">
+        <span class="switch-row__label">The credit note</span>
+        <div class="switch-row__opts" role="tablist" aria-label="Credit note state">
+          <button type="button" class="switch-opt is-active" data-credit="credit-draft">Draft</button>
+          <button type="button" class="switch-opt" data-credit="credit-nothing-disposed">Nothing disposed yet</button>
+          <button type="button" class="switch-opt" data-credit="credit-no-invoice">No invoice yet</button>
+          <button type="button" class="switch-opt" data-credit="credit-no-content">Lines not stored</button>
+          <button type="button" class="switch-opt" data-credit="credit-lines-unauthoritative">Lines don't match</button>
+          <button type="button" class="switch-opt" data-credit="credit-issued">Already issued</button>
+          <button type="button" class="switch-opt" data-credit="credit-unmatched">Some items not on the invoice</button>
+          <button type="button" class="switch-opt" data-credit="credit-read-only">Viewer account</button>
+        </div>
+        <p class="switch-row__note" data-role="credit-row-note">Swaps what the credit note panel returns.</p>
+      </div>
 
-function setState(name) {
-  currentState = name; choices = {}; recorded = false;
-  document.querySelectorAll('.demo-toolbar .chip[data-state]').forEach(c => c.classList.toggle('chip--active', c.dataset.state === name));
-  render();
-}
+      <div class="switch-row">
+        <span class="switch-row__label">The page</span>
+        <div class="switch-row__opts" role="tablist" aria-label="Page state">
+          <button type="button" class="switch-opt is-active" data-page="page-loaded">Loaded</button>
+          <button type="button" class="switch-opt" data-page="detail-loading">Loading</button>
+          <button type="button" class="switch-opt" data-page="detail-error">Read failed</button>
+          <button type="button" class="switch-opt" data-page="detail-unreadable">Version mismatch</button>
+          <button type="button" class="switch-opt" data-page="detail-orphan">Return has no order</button>
+        </div>
+        <p class="switch-row__note">Replaces the whole page, so the row above stops applying.</p>
+      </div>
 
-setState('mixed');
+      <p class="switch-readout" role="status" aria-live="polite" id="switch-readout"></p>
+    </div>
+
+    <div class="frame-scroll"><div class="frame-canvas">
+      <div class="shell">
+        <div class="shell-sidebar">
+          <div class="shell-brand">
+            <span class="shell-brand__mark" aria-hidden="true">OL</span>
+            <span class="shell-brand__name">OpenLinker</span>
+          </div>
+          <nav class="shell-nav" aria-label="Primary">
+            <section class="shell-nav__group">
+              <p class="shell-nav__label">Operations</p>
+              <ul class="shell-nav__list">
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Analytics</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Insights</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Orders</span><span class="shell-nav__link-count mono-text">12</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Products</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Customers</span><span class="shell-nav__link-count mono-text">381</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Listings</span><span class="shell-nav__link-count mono-text">1 204</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Shipments</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Fulfilment</span></a></li>
+            <li><a class="shell-nav__link shell-nav__link--active" href="#" aria-current="page"><span class="shell-nav__link-label">Returns</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Automations</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Invoices</span></a></li>
+              </ul>
+            </section>
+            <section class="shell-nav__group">
+              <p class="shell-nav__label">Diagnostics</p>
+              <ul class="shell-nav__list">
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Jobs & Logs</span><span class="shell-nav__link-count mono-text">2</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Webhooks</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Cursors</span></a></li>
+              </ul>
+            </section>
+            <section class="shell-nav__group">
+              <p class="shell-nav__label">Platform</p>
+              <ul class="shell-nav__list">
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Connections</span><span class="shell-nav__link-count mono-text">4</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Adapters</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Settings</span></a></li>
+              </ul>
+            </section>
+          </nav>
+          <div class="shell-workspace">
+            <div class="shell-workspace__header"><span class="shell-workspace__name">Default organization</span></div>
+            <div class="shell-workspace__user"><span class="shell-workspace__username">norbert</span><span>Sign out</span></div>
+          </div>
+        </div>
+
+        <div class="shell-main">
+          <header class="shell-topbar">
+            <button type="button" class="shell-topbar__hamburger" aria-label="Open menu"><span aria-hidden="true">&#9776;</span></button>
+            <nav aria-label="Breadcrumb" class="shell-crumbs">
+              <span class="shell-crumbs__group">Operations</span>
+              <span class="shell-crumbs__sep" aria-hidden="true">/</span>
+              <span class="shell-crumbs__current">Return</span>
+            </nav>
+            <button type="button" class="shell-topbar__search">
+              <span class="shell-topbar__search-placeholder">Search or jump to&hellip;</span>
+              <span class="shell-topbar__search-kbd">&#8984;K</span>
+            </button>
+            <div class="shell-topbar__spacer"></div>
+            <button type="button" class="button button--ghost shell-topbar__alerts">Alerts <span aria-hidden="true">0</span></button>
+            <button type="button" class="shell-user-chip">
+              <span class="shell-user-chip__avatar" aria-hidden="true">NK</span>
+              <span class="shell-user-chip__name">norbert</span>
+            </button>
+          </header>
+          <main class="shell-content">
+            <section class="page-section">
+              <div class="page-header page-header--split">
+                <div class="page-header__content">
+                  <a class="back-link" href="#"><span class="back-link__glyph" aria-hidden="true">&larr;</span>Returns</a>
+                  <p class="eyebrow">Operations</p>
+                  <h2 class="page-title">AL-RET-88213</h2>
+                </div>
+              </div>
+
+
+              <div class="page-section" data-role="page-body">
+
+              <!-- 1 — orphan banner -->
+              <div class="alert alert--error" role="alert" data-state="detail-orphan" hidden>
+                <div class="alert__content">
+                  <strong class="alert__title">This return is not matched to an order.</strong>
+                  <div class="alert__description">
+                    <p>Returns for orders OpenLinker has never seen. They are kept, but nothing is triggered from them &mdash; no stock change, no refund, no credit note &mdash; until they are matched to an order.</p>
+                    <p>It is safe here &mdash; nothing is lost. If the order is ingested later, OpenLinker matches this return to it automatically and the actions below become available.</p>
+                    <p><span class="mono-text">AL-ORD-55120</span></p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2 — header summary -->
+              <dl class="key-value-list">
+                <dt class="key-value-list__label">Channel reference</dt>
+                <dd class="key-value-list__value"><span class="mono-text">AL-RET-88213</span></dd>
+                <dt class="key-value-list__label">OpenLinker ID</dt>
+                <dd class="key-value-list__value"><span class="mono-text">ol_return_5b2ae9f0c1</span></dd>
+                <dt class="key-value-list__label">Source</dt>
+                <dd class="key-value-list__value">Allegro &mdash; PL</dd>
+                <dt class="key-value-list__label">Order</dt>
+                <dd class="key-value-list__value"><a class="mono-text" href="#">ol_order_9f31c4ab27</a></dd>
+                <dt class="key-value-list__label">Origin</dt>
+                <dd class="key-value-list__value">Reported by the channel</dd>
+                <dt class="key-value-list__label">Opened</dt>
+                <dd class="key-value-list__value"><span class="mono-text">2026-09-10 08:14</span></dd>
+                <dt class="key-value-list__label">Last updated</dt>
+                <dd class="key-value-list__value">2 hours ago</dd>
+              </dl>
+
+              <!-- 3 — what came back -->
+              <section class="returns-detail__lines">
+                <h2 class="section-title">What came back</h2>
+                <p class="returns-rails__note">These two move independently. A marketplace can refund the buyer before the parcel arrives, and a parcel can arrive with no refund owed.</p>
+                <section class="return-custody-panel" id="custody">
+                  <div class="data-table__container">
+                    <table class="data-table">
+                      <caption class="sr-only">Returned lines, in the order the channel reported them</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col" class="data-table__expand-cell"><span class="sr-only">Expand</span></th>
+                          <th scope="col">Item</th>
+                          <th scope="col">Advised</th>
+                          <th scope="col">Received</th>
+                          <th scope="col">Restocked</th>
+                          <th scope="col">Scrapped</th>
+                          <th scope="col">Goods</th>
+                          <th scope="col">Refund</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td class="data-table__expand-cell"><button type="button" class="data-table__expand-toggle" aria-label="Record what happened to Running shoes — size 42"><span aria-hidden="true">&#9656;</span></button></td>
+                          <td><span class="returns-line-item"><span>Running shoes &mdash; size 42</span><span class="mono-text text-muted">SHOE-42</span></span></td>
+                          <td><span class="tabular">1</span></td><td><span class="tabular">1</span></td><td><span class="tabular">1</span></td><td><span class="tabular">0</span></td>
+                          <td><span class="status-badge status-badge--neutral status-badge--compact">Handled</span></td>
+                          <td><span class="status-badge status-badge--neutral status-badge--compact">Refunded</span></td>
+                        </tr>
+                        <tr>
+                          <td class="data-table__expand-cell"><button type="button" class="data-table__expand-toggle" aria-label="Record what happened to Wireless earbuds"><span aria-hidden="true">&#9656;</span></button></td>
+                          <td><span class="returns-line-item"><span>Wireless earbuds</span><span class="mono-text text-muted">EARB-01</span></span></td>
+                          <td><span class="tabular">1</span></td><td><span class="tabular">1</span></td><td><span class="tabular">1</span></td><td><span class="tabular">0</span></td>
+                          <td><span class="status-badge status-badge--neutral status-badge--compact">Handled</span></td>
+                          <td><span class="status-badge status-badge--neutral status-badge--compact">Refunded</span></td>
+                        </tr>
+                        <tr>
+                          <td class="data-table__expand-cell"><button type="button" class="data-table__expand-toggle" aria-label="Record what happened to Phone case — clear"><span aria-hidden="true">&#9656;</span></button></td>
+                          <td><span class="returns-line-item"><span>Phone case &mdash; clear</span><span class="mono-text text-muted">CASE-CLR</span></span></td>
+                          <td><span class="tabular">1</span></td><td><span class="tabular">1</span></td><td><span class="tabular">0</span></td><td><span class="tabular">0</span></td>
+                          <td><span class="status-badge status-badge--neutral status-badge--compact">Received</span></td>
+                          <td><span class="status-badge status-badge--warning status-badge--compact">Refund outcome unconfirmed</span></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <p class="text-muted">4 more lines are not shown in this frame.</p>
+                </section>
+              </section>
+
+              <!-- 4 — money -->
+              <section class="returns-money-panel" id="money">
+                <h2 class="section-title">Money</h2>
+                <div class="returns-rail">
+                  <span class="returns-rail__label">Refund</span>
+                  <span class="status-badge status-badge--neutral status-badge--compact">Refunded</span>
+                  <span class="returns-rail__note">Confirmed by Allegro &mdash; PL</span>
+                </div>
+              </section>
+
+              <!-- 5 — THE CREDIT NOTE. Section 5 of 8, between Money and
+                   "What the channel says", at the shipped #correction anchor.
+                   The grid iterates the ISSUED INVOICE's own lines, in the
+                   document's order, so a row's position IS the line number a
+                   correction addresses — nothing is ever asked. -->
+              <section class="returns-credit-note" id="correction" data-state="credit-draft">
+                <header class="returns-credit-note__head">
+                  <h2 class="section-title">Credit note</h2>
+                  <span class="status-badge status-badge--review" data-role="doc-badge">Draft &mdash; nothing sent</span>
+                  <details class="infotip">
+                    <summary aria-label="What a credit note does here" title="What a credit note does here">&#9432;</summary>
+                    <div class="infotip-popover">
+                      <p class="infotip-def__term">Credit note</p>
+                      <p class="infotip-def__text">OpenLinker never issues a credit note on its own. It matches the returned lines to the invoice and shows you what it found; issuing is always your decision.</p>
+                      <p class="infotip-def__caveat">Stock was already changed when you disposed of these units. A credit note only changes the invoice.</p>
+                    </div>
+                  </details>
+                </header>
+
+                <p class="returns-credit-note__lead" data-role="lead">
+                  <b>OpenLinker filled this in from the 1 item that came back.</b>
+                  Nothing has been sent. Once a credit note has been issued and sent, it cannot be withdrawn. Check every line before you confirm.
+                </p>
+
+                <div class="returns-credit-note__body" data-role="body">
+                  <dl class="key-value-list">
+                    <dt class="key-value-list__label">Correcting</dt>
+                    <dd class="key-value-list__value"><span class="mono-text">FV/2026/09/0142</span> &middot; issued 2 Sep 2026</dd>
+                    <dt class="key-value-list__label">Reason</dt>
+                    <dd class="key-value-list__value">
+                      <select id="credit-reason" aria-describedby="credit-reason-note">
+                        <option selected>Goods returned by the buyer</option>
+                        <option>Agreed discount or rebate</option>
+                        <option>Price, rate or quantity was wrong on the invoice</option>
+                      </select>
+                      <span class="text-muted" id="credit-reason-note">Printed on the document the buyer receives.</span>
+                    </dd>
+                  </dl>
+
+                  <div class="data-table__container">
+                    <table class="data-table credit-grid">
+                      <caption class="sr-only">Invoice lines, in the order they appear on the issued document</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col" class="credit-grid__lp">#</th>
+                          <th scope="col">Item</th>
+                          <th scope="col" class="data-table__cell--right">As invoiced</th>
+                          <th scope="col" class="data-table__cell--right">After correction<span class="credit-grid__subhead">quantity &times; unit price</span></th>
+                          <th scope="col" class="data-table__cell--right">Credit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr data-line="1" data-qty="2" data-unit="189" data-disposed="1">
+                          <td class="credit-grid__lp">1</td>
+                          <td>Wireless earbuds</td>
+                          <td class="credit-cell--invoiced data-table__cell--right">
+                            <span class="data-table__stack">
+                              <span class="tabular">2 &times; 189,00</span>
+                              <span class="text-muted tabular">378,00 PLN &middot; VAT 23</span>
+                            </span>
+                          </td>
+                          <td class="credit-cell--after data-table__cell--right">
+                            <span class="data-table__stack">
+                              <span class="credit-cell__pair">
+                                <input class="input--w-qty tabular" type="number" min="0" max="2" step="1" value="1" aria-label="Quantity after correction, line 1" />
+                                <span class="credit-cell__times" aria-hidden="true">&times;</span>
+                                <input class="input--w-price tabular" type="number" min="0" step="0.01" value="189.00" aria-label="Unit price after correction, line 1" />
+                              </span>
+                              <span class="text-muted tabular" data-role="after-value">189,00 PLN</span>
+                            </span>
+                          </td>
+                          <td class="credit-cell--credit data-table__cell--right">
+                            <span class="data-table__stack">
+                              <span class="tabular" data-role="credit-qty">&minus;1</span>
+                              <span class="mono-text tabular" data-role="credit-value">&minus;189,00 PLN</span>
+                            </span>
+                          </td>
+                        </tr>
+
+                        <tr class="credit-row--untouched" data-line="2" data-qty="1" data-unit="179" data-disposed="0">
+                          <td class="credit-grid__lp">2</td>
+                          <td>Wireless earbuds</td>
+                          <td class="credit-cell--invoiced data-table__cell--right">
+                            <span class="data-table__stack">
+                              <span class="tabular">1 &times; 179,00</span>
+                              <span class="text-muted tabular">179,00 PLN &middot; VAT 23</span>
+                            </span>
+                          </td>
+                          <td class="credit-cell--after data-table__cell--right">
+                            <span class="data-table__stack">
+                              <span class="credit-cell__pair">
+                                <input class="input--w-qty tabular" type="number" min="0" max="1" step="1" value="1" aria-label="Quantity after correction, line 2" />
+                                <span class="credit-cell__times" aria-hidden="true">&times;</span>
+                                <input class="input--w-price tabular" type="number" min="0" step="0.01" value="179.00" aria-label="Unit price after correction, line 2" />
+                              </span>
+                              <span class="text-muted tabular" data-role="after-value">179,00 PLN</span>
+                            </span>
+                          </td>
+                          <td class="credit-cell--credit data-table__cell--right"><span class="text-muted" data-role="credit-qty">&mdash;</span></td>
+                        </tr>
+
+                        <tr data-line="3" data-qty="1" data-unit="12.99" data-disposed="0">
+                          <td class="credit-grid__lp">3</td>
+                          <td>Delivery &mdash; InPost</td>
+                          <td class="credit-cell--invoiced data-table__cell--right">
+                            <span class="data-table__stack">
+                              <span class="tabular">1 &times; 12,99</span>
+                              <span class="text-muted tabular">12,99 PLN &middot; VAT 23</span>
+                            </span>
+                          </td>
+                          <td class="credit-cell--after data-table__cell--right">
+                            <span class="data-table__stack">
+                              <span class="credit-cell__pair">
+                                <input class="input--w-qty tabular" type="number" min="0" max="1" step="1" value="1" aria-label="Quantity after correction, line 3" />
+                                <span class="credit-cell__times" aria-hidden="true">&times;</span>
+                                <input class="input--w-price tabular" type="number" min="0" step="0.01" value="12.99" aria-label="Unit price after correction, line 3" />
+                              </span>
+                              <span class="text-muted tabular" data-role="after-value">12,99 PLN</span>
+                            </span>
+                          </td>
+                          <td class="credit-cell--credit data-table__cell--right"><span class="text-muted" data-role="credit-qty">&mdash;</span></td>
+                        </tr>
+
+                        <tr class="credit-row--blocked" data-line="4" data-qty="1" data-unit="39" data-disposed="0" data-blocked="1">
+                          <td class="credit-grid__lp">4</td>
+                          <td>
+                            Screen protector 2-pack
+                            <span class="credit-row__note">Not confirmed as restocked or scrapped, so it is not credited here. <a href="#custody">Mark stock handled</a></span>
+                          </td>
+                          <td class="credit-cell--invoiced data-table__cell--right">
+                            <span class="data-table__stack">
+                              <span class="tabular">1 &times; 39,00</span>
+                              <span class="text-muted tabular">39,00 PLN &middot; VAT 23</span>
+                            </span>
+                          </td>
+                          <td class="credit-cell--after data-table__cell--right">
+                            <span class="data-table__stack">
+                              <span class="credit-cell__pair">
+                                <input class="input--w-qty tabular" type="number" min="0" max="1" step="1" value="1" disabled aria-label="Quantity after correction, line 4" />
+                                <span class="credit-cell__times" aria-hidden="true">&times;</span>
+                                <input class="input--w-price tabular" type="number" min="0" step="0.01" value="39.00" disabled aria-label="Unit price after correction, line 4" />
+                              </span>
+                              <span class="text-muted tabular" data-role="after-value">39,00 PLN</span>
+                            </span>
+                          </td>
+                          <td class="credit-cell--credit data-table__cell--right"><span class="text-muted" data-role="credit-qty">&mdash;</span></td>
+                        </tr>
+                      </tbody>
+                      <tfoot>
+                        <tr>
+                          <td colspan="4" class="data-table__cell--right">Total credit</td>
+                          <td class="credit-cell--credit data-table__cell--right"><span class="mono-text tabular" data-role="total">&minus;189,00 PLN</span></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  <p class="text-muted credit-grid__note">
+                    Enter the quantity and unit price that <b>should</b> be on the invoice &mdash; quantity <span class="mono-text">0</span> credits the whole line, and a lower price credits the difference without anything being returned.
+                    Figures are a preview; your invoicing provider calculates the final amounts on the document.
+                  </p>
+
+                  <!-- Returned items that resolve to NO line on this invoice. The grid
+                       above iterates the INVOICE's own lines, so an item that matches
+                       none of them has no row in it — and § 22 Returns says in those
+                       words that a no-match line must never silently vanish. This is
+                       where the three remaining `ReturnCorrectionNoMatchReason` values
+                       land; the fourth, `disposition-not-confirmed`, keeps its row in
+                       the grid, because that item IS on the invoice. -->
+                  <section class="credit-unmatched" data-role="unmatched" hidden>
+                    <h3 class="credit-unmatched__title">Came back, but not on this invoice</h3>
+                    <p class="text-muted credit-unmatched__lead">
+                      These items were returned and disposed of, and OpenLinker could not place
+                      them on <span class="mono-text">FV/2026/09/0142</span>. They are not credited
+                      here. Stock has already been changed for them &mdash; only the invoice is
+                      untouched.
+                    </p>
+                    <ul class="credit-unmatched__list">
+                      <li class="credit-unmatched__item" data-reason="no-line-by-name">
+                        <span class="credit-unmatched__item-name">Gift wrap</span>
+                        <span class="mono-text text-muted">WRAP-01</span>
+                        <span class="credit-unmatched__reason">No line on this invoice matches this item. Issue the correction by hand on the invoice if it belongs there.</span>
+                      </li>
+                      <li class="credit-unmatched__item" data-reason="no-line-name">
+                        <span class="credit-unmatched__item-name"><span class="text-muted">Item with no name</span></span>
+                        <span class="mono-text text-muted">&mdash;</span>
+                        <span class="credit-unmatched__reason">This returned line carries no product name, and a name is the only thing the invoice line offers to match on.</span>
+                      </li>
+                      <li class="credit-unmatched__item" data-reason="quantity-exceeds-invoiced">
+                        <span class="credit-unmatched__item-name">Running shoes &mdash; size 42</span>
+                        <span class="mono-text text-muted">SHOE-42</span>
+                        <span class="credit-unmatched__reason">3 came back, but the invoice bills 2. OpenLinker will not credit more than was invoiced &mdash; check the return against the order.</span>
+                      </li>
+                    </ul>
+                  </section>
+
+                  <!-- The reconciliation. This replaces the picker as the thing
+                       deserving attention: OpenLinker knows what the channel
+                       already refunded and what this credits. -->
+                  <div class="alert" role="status" data-role="reconcile">
+                    <div class="alert__content"><div class="alert__description"><p data-role="reconcile-text"></p></div></div>
+                  </div>
+                </div>
+
+                <p class="text-muted" data-role="blocked-message" hidden></p>
+
+                <footer class="returns-credit-note__footer" data-role="footer">
+                  <div class="returns-credit-note__actions" data-role="actions"></div>
+                </footer>
+              </section>
+
+              <!-- Where §5 would be, when the return is an orphan: the page does
+                   not request a proposal at all, because the backend answers 409. -->
+              <section class="returns-credit-note" data-state="credit-absent-orphan" hidden>
+                <h2 class="section-title">Credit note</h2>
+                <p class="text-muted">No credit note is prepared for an unmatched return. Match it to an order first.</p>
+              </section>
+
+              <!-- 6 — what the channel says -->
+              <section class="returns-detail__source">
+                <h2 class="section-title">What the channel says</h2>
+                <p class="text-muted">These values are the channel's own, recorded word for word. OpenLinker does not translate or interpret them.</p>
+                <dl class="key-value-list">
+                  <dt class="key-value-list__label">Status</dt>
+                  <dd class="key-value-list__value"><span class="mono-text" title="Reported by the source channel, word for word. OpenLinker does not interpret this value.">Allegro &mdash; PL: DELIVERED</span></dd>
+                </dl>
+              </section>
+
+              <!-- 7 — decline -->
+              <section class="returns-decline">
+                <h2 class="section-title">Decline this return</h2>
+                <p class="text-muted">Declining tells the channel you are refusing this return. The channel decides what happens next &mdash; OpenLinker records the outcome it reports.</p>
+                <button type="button" class="button button--secondary">Decline this return</button>
+              </section>
+
+              <!-- 8 — activity -->
+              <section class="returns-detail__activity">
+                <h2 class="section-title">Activity</h2>
+                <ul class="data-table__stack">
+                  <li class="text-muted">2 hours ago &mdash; Received 1 &times; Wireless earbuds</li>
+                  <li class="text-muted">2 hours ago &mdash; Restocked 1 &times; Wireless earbuds</li>
+                  <li class="text-muted">3 hours ago &mdash; Opened at Allegro &mdash; PL</li>
+                </ul>
+              </section>
+              </div><!-- /page-body -->
+
+              <!-- Page-level states, each replacing the body below the header -->
+              <div class="state-card state-card--loading" role="status" data-state="detail-loading" hidden>
+                <div class="state-card__header">
+                  <p class="eyebrow">Operations</p>
+                  <h2 class="state-card__title">Loading return&hellip;</h2>
+                </div>
+                <p class="state-card__message">Fetching this return and its lines.</p>
+                <div class="data-table__stack">
+                  <span class="data-table-skeleton__bar data-table-skeleton__bar--title"></span>
+                  <span class="data-table-skeleton__bar data-table-skeleton__bar--meta"></span>
+                  <span class="data-table-skeleton__bar"></span>
+                </div>
+              </div>
+
+              <div class="state-card state-card--error" role="alert" data-state="detail-error" hidden>
+                <div class="state-card__header">
+                  <p class="eyebrow">Error</p>
+                  <h2 class="state-card__title">Credit note could not be read</h2>
+                </div>
+                <p class="state-card__message">OpenLinker could not read this invoice&rsquo;s lines just now. This is not a statement about whether one exists.</p>
+                <div class="state-card__actions"><button type="button" class="button">Retry</button></div>
+              </div>
+
+              <div class="state-card state-card--error" role="alert" data-state="detail-unreadable" hidden>
+                <div class="state-card__header">
+                  <p class="eyebrow">Error</p>
+                  <h2 class="state-card__title">Credit note could not be read</h2>
+                </div>
+                <p class="state-card__message">The response came back in a shape this version of OpenLinker could not read. Nothing shown here is a statement about the invoice.</p>
+                <div class="state-card__actions"><button type="button" class="button">Retry</button></div>
+              </div>
+            </section>
+          </main>
+        </div>
+      </div>
+    </div></div>
+    <p class="gap-legend">
+      <b>The gap.</b> How much of an invoice line has already been credited is computed nowhere in
+      OpenLinker, so a candidate cannot say how much of it is still creditable. Business Central and
+      Comarch ERP Optima both hide fully-credited lines on that basis; we cannot, so the operator sees
+      every candidate and judges.
+    </p>
+  </section>
+  <!-- ══════════════════════════════════════════════════════════════════
+       FRAME 03 — issuing
+       ══════════════════════════════════════════════════════════════════ -->
+  <section class="viewport-frame" id="frame-03" data-frame="confirm-dialog">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">Frame 03</span>
+      <b>Issuing</b>
+      <span class="caption">520 px dialog over the grid &middot; the last reversible moment</span>
+    </div>
+
+    <div class="closeup dialog-stage">
+      <div class="dialog-stage__backdrop">
+        <div class="closeup__inner" aria-hidden="true">
+          <section class="returns-credit-note">
+            <header class="returns-credit-note__head">
+              <h2 class="section-title">Credit note</h2>
+              <span class="status-badge status-badge--review">Draft &mdash; nothing sent</span>
+            </header>
+            <p class="returns-credit-note__lead"><b>OpenLinker filled this in from the 2 items that came back.</b> Check the quantities, pick a reason, and issue it.</p>
+          </section>
+        </div>
+      </div>
+      <div class="dialog-stage__scrim"></div>
+      <div class="dialog__content" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+        <h2 class="dialog__title" id="confirm-title">Issue this credit note?</h2>
+        <div class="dialog__description">
+          <p>This files a correction to invoice <span class="mono-text">FV/2026/09/0142</span> with your
+             invoicing provider. Once a credit note has been issued and sent, it cannot be withdrawn. Check every line before you confirm.</p>
+        </div>
+        <dl class="key-value-list">
+          <dt class="key-value-list__label">Reason</dt>
+          <dd class="key-value-list__value">Goods returned by the buyer</dd>
+          <dt class="key-value-list__label">Lines corrected</dt>
+          <dd class="key-value-list__value"><span class="tabular">2 of 4</span></dd>
+          <dt class="key-value-list__label">Total credit</dt>
+          <dd class="key-value-list__value"><span class="mono-text tabular">&minus;201,99 PLN</span></dd>
+          <dt class="key-value-list__label">Refund check</dt>
+          <dd class="key-value-list__value">Matches the <span class="mono-text tabular">201,99 PLN</span> the channel refunded</dd>
+        </dl>
+        <div class="dialog__footer">
+          <button type="button" class="button button--secondary">Cancel</button>
+          <button type="button" class="button">Issue credit note</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="gap-legend">
+      <b>Every figure in this dialog is a preview.</b> OpenLinker computes no money on a fiscal document
+      (ADR-063) &mdash; the invoicing provider calculates and rounds the amounts that appear on the issued
+      correction. The dialog shows them so the operator is not asked to confirm a number they cannot see.
+    </p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       FRAME 04 — where it ends
+       ══════════════════════════════════════════════════════════════════ -->
+  <section class="viewport-frame" id="frame-04" data-frame="handoff-invoicing">
+    <div class="viewport-frame__label">
+      <span class="eyebrow-mono">Frame 04</span>
+      <b>Where it ends</b>
+      <span class="caption">1440 px artboard, scrolls sideways &middot; order page &middot; admin only</span>
+    </div>
+    <div class="frame-scroll"><div class="frame-canvas">
+      <div class="shell">
+        <div class="shell-sidebar">
+          <div class="shell-brand">
+            <span class="shell-brand__mark" aria-hidden="true">OL</span>
+            <span class="shell-brand__name">OpenLinker</span>
+          </div>
+          <nav class="shell-nav" aria-label="Primary">
+            <section class="shell-nav__group">
+              <p class="shell-nav__label">Operations</p>
+              <ul class="shell-nav__list">
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Analytics</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Insights</span></a></li>
+            <li><a class="shell-nav__link shell-nav__link--active" href="#" aria-current="page"><span class="shell-nav__link-label">Orders</span><span class="shell-nav__link-count mono-text">12</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Products</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Customers</span><span class="shell-nav__link-count mono-text">381</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Listings</span><span class="shell-nav__link-count mono-text">1 204</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Shipments</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Fulfilment</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Returns</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Automations</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Invoices</span></a></li>
+              </ul>
+            </section>
+            <section class="shell-nav__group">
+              <p class="shell-nav__label">Diagnostics</p>
+              <ul class="shell-nav__list">
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Jobs & Logs</span><span class="shell-nav__link-count mono-text">2</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Webhooks</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Cursors</span></a></li>
+              </ul>
+            </section>
+            <section class="shell-nav__group">
+              <p class="shell-nav__label">Platform</p>
+              <ul class="shell-nav__list">
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Connections</span><span class="shell-nav__link-count mono-text">4</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Adapters</span></a></li>
+            <li><a class="shell-nav__link" href="#"><span class="shell-nav__link-label">Settings</span></a></li>
+              </ul>
+            </section>
+          </nav>
+          <div class="shell-workspace">
+            <div class="shell-workspace__header"><span class="shell-workspace__name">Default organization</span></div>
+            <div class="shell-workspace__user"><span class="shell-workspace__username">norbert</span><span>Sign out</span></div>
+          </div>
+        </div>
+
+        <div class="shell-main">
+          <header class="shell-topbar">
+            <button type="button" class="shell-topbar__hamburger" aria-label="Open menu"><span aria-hidden="true">&#9776;</span></button>
+            <nav aria-label="Breadcrumb" class="shell-crumbs">
+              <span class="shell-crumbs__group">Operations</span>
+              <span class="shell-crumbs__sep" aria-hidden="true">/</span>
+              <span class="shell-crumbs__current">Order detail</span>
+            </nav>
+            <button type="button" class="shell-topbar__search">
+              <span class="shell-topbar__search-placeholder">Search or jump to&hellip;</span>
+              <span class="shell-topbar__search-kbd">&#8984;K</span>
+            </button>
+            <div class="shell-topbar__spacer"></div>
+            <button type="button" class="button button--ghost shell-topbar__alerts">Alerts <span aria-hidden="true">0</span></button>
+            <button type="button" class="shell-user-chip">
+              <span class="shell-user-chip__avatar" aria-hidden="true">NK</span>
+              <span class="shell-user-chip__name">norbert</span>
+            </button>
+          </header>
+          <main class="shell-content">
+            <section class="page-section">
+              <div class="page-header">
+                <div class="page-header__content">
+                  <a class="back-link" href="#"><span class="back-link__glyph" aria-hidden="true">&larr;</span>Orders</a>
+                  <p class="eyebrow">Orders</p>
+                  <h2 class="page-title">Order detail</h2>
+                </div>
+              </div>
+
+              <div class="order-detail__stack order-detail__stack--split">
+                <div class="order-detail__stack">
+                  <section class="detail-section">
+                    <h3 class="detail-section__title">Summary</h3>
+                    <dl class="key-value-list">
+                      <dt class="key-value-list__label">OpenLinker ID</dt>
+                      <dd class="key-value-list__value"><span class="mono-text">ol_order_9f31c4ab27</span></dd>
+                      <dt class="key-value-list__label">Placed</dt>
+                      <dd class="key-value-list__value"><span class="mono-text">2026-08-28 11:02</span></dd>
+                    </dl>
+                  </section>
+                  <section class="detail-section">
+                    <h3 class="detail-section__title">Returns</h3>
+                    <div class="stub-panel">
+                      <span class="text-muted">1 return &mdash; <a class="mono-text" href="#">AL-RET-88213</a></span>
+                      <span class="text-muted">This is the return whose proposal you recorded. The recorded proposal itself is not shown here, because nothing carries it across. <sup class="gap-mark" title="Gap: a recorded proposal is not queued anywhere and lapses after about fifteen minutes. Explained under frame 00.">&dagger;</sup></span>
+                    </div>
+                  </section>
+                </div>
+
+                <div class="order-detail__stack">
+                  <section class="detail-section" id="shipment">
+                    <h3 class="detail-section__title">Shipment</h3>
+                    <div class="stub-panel"><span class="text-muted">Delivered &middot; InPost &middot; 6201&hellip;4412</span></div>
+                  </section>
+
+                  <section class="detail-section" id="invoicing" data-state="handoff-invoicing">
+                    <h3 class="detail-section__title">Sales document</h3>
+                    <div class="doc-slot">
+                      <div class="doc-slot__head">
+                        <span class="doc-slot__kind">invoice</span>
+                        <span class="status-badge status-badge--success status-badge--compact">Issued and sent</span>
+                      </div>
+                      <div class="doc-slot__body">
+                        <dl class="key-value-list">
+                          <dt class="key-value-list__label">Number</dt>
+                          <dd class="key-value-list__value"><span class="mono-text">FV/2026/09/0142</span></dd>
+                          <dt class="key-value-list__label">Issued</dt>
+                          <dd class="key-value-list__value"><span class="mono-text">2026-08-28 11:40</span></dd>
+                        </dl>
+
+                        <details class="sales-document-panel__correction" open>
+                          <summary>Issue correction <sup class="gap-mark" title="Gap: issuing is admin-only, on another page, and nothing carries the recorded match there. Explained under this frame.">&dagger;</sup></summary>
+                          <p class="panel-copy">A correction is a new document linked to this one &mdash; not a replacement, and not an edit to what was already issued.</p>
+                          <button type="button" class="button button--secondary">Issue correction</button>
+                        </details>
+                      </div>
+                    </div>
+                    <p class="text-muted">This is where the correction is really issued: an admin, on this page, through the invoicing provider's own flow. The proposal's own handoff link points at <span class="mono-text">/invoices/:id</span>, which has no correction action today. <sup class="gap-mark" title="Gap: the handoff link points at a page with no correction action. Explained under this frame.">&dagger;</sup></p>
+                  </section>
+                </div>
+              </div>
+            </section>
+          </main>
+        </div>
+      </div>
+    </div></div>
+    <p class="gap-legend">
+      <b>Two gaps.</b> Nothing carries the recorded match onto this screen &mdash; an operator hands over
+      verbally. And the proposal's handoff link points at <code>/invoices/:id</code>, which has no
+      correction action today; the real flow is this panel. That link is drift, not a design choice.
+    </p>
+  </section>
+  <div class="sheet__note" id="decisions">
+    <span class="sheet__note-title">The two things to agree with</span>
+    <p>
+      <b>1. A grid over the invoice's own lines &mdash; not a card per returned line, and no picker.</b>
+      An earlier revision of this sheet asked the operator to choose which of two identical invoice lines a
+      returned item belonged to. That question is unanswerable: the operator holds a parcel, both candidate
+      lines carry the same product name, and <b>InvoiceLine</b> has no id and no SKU. It was also
+      unnecessary. OpenLinker builds the invoice itself from <b>order.items</b> in order
+      (<b>order-to-issue-invoice-command.mapper.ts:113</b>), and <b>GET /invoices/:id/content</b> (#2076)
+      returns those lines index-aligned with the very array a correction addresses &mdash; so a row's
+      position <i>is</i> its line number. The grid is therefore honest because it is built from the
+      document, not from whichever lines happened to match by name. Every Polish invoicing tool a seller
+      already uses has this shape: a recessed read-only &ldquo;as invoiced&rdquo; column, one editable
+      column holding the quantity that <i>should</i> be there, and a computed credit. BaseLinker
+      advertises the absence of line-picking as a feature. Both the quantity <b>and</b> the unit
+      price are editable, because <b>CorrectionLine</b> carries <b>newQuantity</b> and
+      <b>newUnitPriceGross</b> and the returns path used only the first &mdash; so a discount, an
+      agreed reduction or a re-priced line was unexpressible even though the backend and every
+      Polish invoicing tool support it.
+    </p>
+    <p>
+      <b>2. The screen's subject is the refund that already happened.</b> A marketplace refunds the buyer
+      before the goods are even examined, so by the time this screen opens the money has usually moved.
+      The question worth the operator's attention is therefore not &ldquo;which line&rdquo; but
+      &ldquo;does this credit note match what the buyer actually got back&rdquo;. OpenLinker holds both
+      figures and compares them nowhere today. That comparison is the loudest thing on the screen here,
+      and the first thing it catches is delivery cost &mdash; which the current matcher can never credit,
+      because it joins product names and a delivery line is not a product.
+    </p>
+  </div>
+
+  <div class="sheet__note">
+    <span class="sheet__note-title">This screen needs backend work that does not exist yet</span>
+    <p>
+      The grid is built from <b>GET /invoices/:id/content</b> (#2076), whose lines are index-aligned with
+      the array a correction addresses &mdash; so a row's position <i>is</i> its line number and nothing has
+      to be guessed. That read is shipped. Four things it depends on are not.
+    </p>
+    <p>
+      <b>1. The join.</b> <b>ReturnLine.resolvedOrderLineId</b> is hardcoded <b>null</b> at
+      <b>returns.service.ts:444</b> and nothing in the tree populates it. Until it is, OpenLinker cannot
+      pre-fill a single quantity, because it does not know which invoice line a returned item belongs to.
+      The data is already in hand at ingestion &mdash; the return carries <b>offerId</b> and
+      <b>unitPrice</b>, and the invoice is built from <b>order.items</b> in order.
+    </p>
+    <p>
+      <b>2. The refund figure.</b> The reconciliation compares this credit against what the channel already
+      refunded. OpenLinker holds both numbers and no read exposes them together.
+    </p>
+    <p>
+      <b>3. Already-credited quantities.</b> Nothing tracks how much of a line an earlier return already
+      credited, so a second return can over-credit the same line. This is a correctness hole, not a
+      convenience: Business Central and Comarch ERP Optima both gate on it.
+    </p>
+    <p>
+      <b>4. Shipping.</b> Delivery is a real invoice line, so it appears in this grid &mdash; but the current
+      matcher joins product names, so it can never be matched, and delivery is today silently never
+      credited. A buyer who withdrew within 14 days is owed the cheapest delivery option back.
+    </p>
+    <p>
+      Also unbuilt and out of this epic: a correction in a currency other than PLN cannot be filed
+      (<b>KursWaluty</b> is implemented nowhere), and a line the seller resolved by sending a replacement
+      would still be offered for credit.
+    </p>
+  </div>
+
+  <div class="sheet__note">
+    <span class="sheet__note-title">State index &mdash; cite these names in the sub-issues</span>
+    <p>
+      Every value below is settable without a click &mdash; open the file with
+      <b>?state=&lt;name&gt;</b> (or <b>#state=&lt;name&gt;</b>, which also responds to a hash change).
+      An E2E baseline loads the state it wants and asserts on the attribute; it must never drive this
+      sheet by synthesising clicks on the switcher, or the baseline ends up testing the switcher
+      instead of the screen. An unrecognised name is ignored rather than silently rendering the
+      default, so a typo in a ticket reads as &ldquo;nothing happened&rdquo; and not as a wrong
+      screenshot.
+    </p>
+    <p>
+      <b>Which attribute holds what.</b> <b>body[data-state]</b> is the state in force &mdash; a page
+      state outranks a credit state, because it replaces the panel outright. <b>body[data-credit-state]</b>
+      and <b>body[data-page-state]</b> always hold their own family's current value, which is where
+      <b>page-loaded</b> lives: it is the <i>absence</i> of a page-level override, so it is never the
+      state in force and never appears on <b>body[data-state]</b>. Cite <b>body[data-page-state]="page-loaded"</b>
+      for that one. The per-element <b>data-state</b> attributes stay and say WHERE each state renders,
+      which is a different question from which one is showing. Frames carry <b>data-frame</b>.
+    </p>
+    <dl class="key-rows">
+      <dt><b>frames</b></dt>
+      <dd>flow-map &middot; returns-list &middot; return-detail &middot; confirm-dialog &middot; handoff-invoicing</dd>
+      <dt><b>credit note</b></dt>
+      <dd>credit-draft &middot; credit-nothing-disposed &middot; credit-no-invoice &middot; credit-no-content &middot; credit-lines-unauthoritative &middot; credit-issued &middot; credit-unmatched &middot; credit-read-only &middot; credit-absent-orphan</dd>
+      <dt><b>page</b></dt>
+      <dd>page-loaded &middot; detail-loading &middot; detail-error &middot; detail-unreadable &middot; detail-orphan</dd>
+    </dl>
+    <p>
+      <b>For the implementer.</b> Tokens are verbatim from <b>apps/web/src/index.css</b>. Two drifts are
+      reproduced, not fixed: <b>.text-muted</b> has no rule despite 116 uses, so the app renders those spans
+      in <b>--text-primary</b>; <b>.dialog__head</b> / <b>.dialog__desc</b> do not exist. Classes
+      <b>.returns-credit-note</b>, <b>.credit-grid</b>, <b>.credit-cell--*</b> and <b>.infotip</b> are
+      proposed here, per the #3147 precedent. The shipped copy string
+      <b>RETURN_PROPOSAL_COPY.reviewCta</b> (&ldquo;Confirm these matches&rdquo;) is rendered nowhere today
+      and becomes <b>Issue credit note</b> &mdash; a rename, not a new string.
+    </p>
+    <p>
+      <b>Two things the grid leaves for the implementer.</b> The price cells are
+      <b>&lt;input type="number"&gt;</b>, which always renders and accepts a dot, while the
+      &ldquo;as invoiced&rdquo; column renders a Polish comma &mdash; a seller types
+      <span class="mono-text">189,00</span>. Use a text input with locale parsing (accepting both
+      separators) rather than shipping the mismatch. And the unit price shown here is <b>gross</b>,
+      derived as <b>line.gross / line.quantity</b>, because that is the unit a correction asks for;
+      <b>IssuedDocumentLine.unitNet</b> is the wrong field and its own type says so.
+    </p>
+  </div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var qs = function (s, r) { return (r || document).querySelector(s); };
+  var qsa = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+
+  /* ── Theme ────────────────────────────────────────────────────────────
+     Defer to a theme the HOST already stamped. Published as an Artifact the
+     viewer owns `data-theme`; only a bare document resolves its own. The app
+     has no prefers-color-scheme rule at all — dark is html[data-theme='dark']
+     — but a viewer left on "system" stamps nothing, which is why the dark
+     block is declared a second time inside a media query above. */
+  var root = document.documentElement;
+  if (!root.getAttribute('data-theme')) {
+    root.setAttribute('data-theme',
+      window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  }
+  var toggle = qs('#theme-toggle');
+  if (toggle) {
+    toggle.addEventListener('click', function () {
+      root.setAttribute('data-theme', root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+    });
+  }
+
+  var panel = qs('#correction');
+  if (!panel) return;
+
+  /* What the channel already paid the buyer. The whole point of the
+     reconciliation: OpenLinker holds this figure and the credit it is about
+     to file, and today compares them nowhere. */
+  var REFUNDED = 201.99;
+
+  /* VERBATIM `RETURN_PROPOSAL_COPY.irreversible`
+     (apps/web/src/features/returns/lib/return-proposal.copy.ts). Declared once so
+     the lead, the action footer and the dialog cannot drift from each other or
+     from the shipped string. Note what it does NOT say: `check-ui-vocabulary`
+     (design rule P9) bans the word "authority" from operator copy, so the spec's
+     own "sent to {authority}" is unsayable and "issued and sent" carries the same
+     fact — the constant's docblock records that trade. */
+  var IRREVERSIBLE =
+    'Once a credit note has been issued and sent, it cannot be withdrawn. Check every line before you confirm.';
+  /* The fact half, beside the button — the advice half is what the lead already
+     said and what the operator has just done. Sliced rather than retyped so the
+     two can never disagree about the fact. */
+  var IRREVERSIBLE_FACT = IRREVERSIBLE.split('. ')[0] + '.';
+
+  /* The app resolves its locale through `getBcp47Locale` (apps/web/src/shared/i18n/locale.ts)
+     and DEFAULTS TO 'en'. This sheet pins 'pl-PL' because the fixture is a Polish
+     seller's invoice and a correction filed in PL renders a comma decimal — but the
+     implementation must read the resolved locale, never a literal. Named here so the
+     pin is a visible fixture choice rather than a hardcode inside a formatter. */
+  var FIXTURE_LOCALE = 'pl-PL';
+  var FIXTURE_CURRENCY = 'PLN';
+
+  var money = function (n) {
+    return n.toLocaleString(FIXTURE_LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+      ' ' + FIXTURE_CURRENCY;
+  };
+
+  var body = qs('[data-role="body"]', panel);
+  var lead = qs('[data-role="lead"]', panel);
+  var badge = qs('[data-role="doc-badge"]', panel);
+  var blockedMessage = qs('[data-role="blocked-message"]', panel);
+  var actions = qs('[data-role="actions"]', panel);
+  var reconcile = qs('[data-role="reconcile"]', panel);
+  var reconcileText = qs('[data-role="reconcile-text"]', panel);
+  var total = qs('[data-role="total"]', panel);
+  var rows = qsa('tbody tr', panel);
+  var unmatched = qs('[data-role="unmatched"]', panel);
+
+  var STATES = {
+    'credit-draft': null,
+    'credit-nothing-disposed': {
+      badge: 'Nothing to credit yet',
+      message: 'Nothing has been restocked or scrapped yet, so there is nothing to credit.',
+      action: { label: 'Record what came back', href: '#custody' }
+    },
+    'credit-no-invoice': {
+      badge: 'No invoice',
+      message: 'This order has no issued invoice, so there is nothing to correct.',
+      action: { label: 'Issue the invoice first', href: '#' }
+    },
+    'credit-no-content': {
+      badge: 'Lines not stored',
+      message: 'This invoice has no stored copy of its lines, so a credit note cannot be prepared here.',
+      action: { label: 'Issue the correction on the order', href: '#' }
+    },
+    'credit-lines-unauthoritative': {
+      badge: 'Lines not stored',
+      message: "This invoice's lines cannot be matched to the stored copy a correction uses.",
+      action: { label: 'Issue the correction on the order', href: '#' }
+    },
+    'credit-issued': {
+      badge: 'Issued and sent',
+      message: 'Credit note KOR/2026/09/0007 was issued on 10 Sep 2026.',
+      action: { label: 'Open the credit note', href: '#' }
+    },
+    /* The grid still renders; what changes is that the "came back, but not on
+       this invoice" block is present. It is a state of the SAME draft, not an
+       alternative to it — a return can legitimately have creditable lines and
+       unmatched ones at once. */
+    'credit-unmatched': null,
+    'credit-read-only': null
+  };
+
+  var state = 'credit-draft';
+
+  function rowOf(tr) {
+    return {
+      tr: tr,
+      qty: Number(tr.getAttribute('data-qty')),
+      unit: Number(tr.getAttribute('data-unit')),
+      blocked: tr.getAttribute('data-blocked') === '1',
+      qtyInput: qs('.input--w-qty', tr),
+      priceInput: qs('.input--w-price', tr),
+      afterValue: qs('[data-role="after-value"]', tr),
+      creditQty: qs('[data-role="credit-qty"]', tr),
+      creditValue: qs('[data-role="credit-value"]', tr)
+    };
+  }
+
+  /* The credit is a VALUE delta, not a quantity delta: a line can be credited
+     because fewer units remain, because the unit price came down (a discount or
+     an agreed reduction, with nothing returned), or both. `CorrectionLine`
+     carries `newQuantity` and `newUnitPriceGross` for exactly that, and the
+     returns path used only the first. A price INCREASE is a legitimate upward
+     correction, so the sign is reported rather than clamped. */
+  function renderRow(r) {
+    var afterQty = r.blocked ? r.qty : Math.max(0, Math.min(r.qty, Number(r.qtyInput.value) || 0));
+    var afterUnit = r.blocked ? r.unit : Math.max(0, Number(r.priceInput.value) || 0);
+    var invoicedValue = r.qty * r.unit;
+    var afterValue = afterQty * afterUnit;
+    var deltaValue = Math.round((invoicedValue - afterValue) * 100) / 100;
+    var deltaQty = afterQty - r.qty;
+
+    r.afterValue.textContent = money(afterValue);
+    r.tr.classList.toggle('credit-row--untouched', deltaValue === 0 && deltaQty === 0 && !r.blocked);
+
+    if (deltaValue === 0 && deltaQty === 0) {
+      r.creditQty.textContent = '—';
+      r.creditQty.className = 'text-muted';
+      if (r.creditValue) r.creditValue.textContent = '';
+      return 0;
+    }
+
+    var sign = deltaValue < 0 ? '+' : '−';
+    r.creditQty.textContent = deltaQty === 0 ? 'price only' : (deltaQty < 0 ? '−' : '+') + Math.abs(deltaQty);
+    r.creditQty.className = deltaQty === 0 ? 'text-muted' : 'tabular';
+    if (r.creditValue) r.creditValue.textContent = sign + money(Math.abs(deltaValue));
+    return deltaValue;
+  }
+
+  function renderReconcile(credited) {
+    var diff = Math.round((REFUNDED - credited) * 100) / 100;
+    if (Math.abs(diff) < 0.005) {
+      reconcile.className = 'alert alert--success';
+      reconcileText.innerHTML = 'The channel refunded <b>' + money(REFUNDED) +
+        '</b>, and this credit note is for the same amount.';
+      return;
+    }
+    reconcile.className = 'alert alert--conflict';
+    if (diff > 0) {
+      reconcileText.innerHTML = 'The channel refunded <b>' + money(diff) +
+        '</b> more than this credits. The buyer got <b>' + money(REFUNDED) +
+        '</b> back; this credit note is for <b>' + money(credited) +
+        '</b>. A buyer who withdrew within 14 days is owed the cheapest delivery option back. ' +
+        '<button type="button" class="button button--secondary button--sm" data-role="credit-delivery">Credit delivery too</button>';
+      var btn = qs('[data-role="credit-delivery"]', reconcileText);
+      if (btn) btn.addEventListener('click', function () {
+        var d = rows.filter(function (tr) { return tr.getAttribute('data-line') === '3'; })[0];
+        if (d) { qs('.input--w-qty', d).value = '0'; renderAll(); }
+      });
+      return;
+    }
+    reconcileText.innerHTML = 'This credits <b>' + money(Math.abs(diff)) +
+      '</b> more than the channel refunded. Check the quantities before issuing.';
+  }
+
+  function renderActions() {
+    actions.innerHTML = '';
+    var conf = STATES[state];
+    if (state === 'credit-read-only') {
+      actions.innerHTML = '<span class="text-muted">Your account can see this credit note but cannot issue it. Ask an operator or an admin.</span>';
+      return;
+    }
+    if (conf && conf.action) {
+      actions.innerHTML = '<a class="button button--secondary" href="' + conf.action.href + '">' +
+        conf.action.label + '</a>';
+      return;
+    }
+    actions.innerHTML = '<button type="button" class="button">Issue credit note</button>' +
+      '<span class="text-muted">' + IRREVERSIBLE_FACT + '</span>';
+  }
+
+  /* ONE attribute naming the state in force. A page state outranks a credit
+     state because it replaces the panel outright, and an orphan page shows the
+     `credit-absent-orphan` panel rather than the grid — so that pairing is
+     reported as the credit state it actually renders. The per-element
+     `data-state` attributes stay: they say WHERE each state renders, which is
+     a different question from which one is showing. */
+  function stampBody() {
+    var effective = pageState !== 'page-loaded' ? pageState : state;
+    document.body.setAttribute('data-state', effective);
+    document.body.setAttribute('data-page-state', pageState);
+    document.body.setAttribute('data-credit-state',
+      pageState === 'detail-orphan' ? 'credit-absent-orphan' : state);
+  }
+
+  function renderAll() {
+    panel.setAttribute('data-state', state);
+    stampBody();
+    var conf = STATES[state];
+    var showGrid = conf === null;
+
+    body.hidden = !showGrid;
+    blockedMessage.hidden = showGrid;
+    lead.hidden = !showGrid;
+
+    if (!showGrid) {
+      badge.textContent = conf.badge;
+      badge.className = 'status-badge status-badge--neutral';
+      blockedMessage.textContent = conf.message;
+      renderActions();
+      return;
+    }
+
+    badge.textContent = 'Draft — nothing sent';
+    badge.className = 'status-badge status-badge--review';
+    if (unmatched) unmatched.hidden = state !== 'credit-unmatched';
+
+    var readOnly = state === 'credit-read-only';
+    var credited = 0;
+    rows.map(rowOf).forEach(function (r) {
+      r.qtyInput.disabled = readOnly || r.blocked;
+      r.priceInput.disabled = readOnly || r.blocked;
+      credited += renderRow(r);
+    });
+    credited = Math.round(credited * 100) / 100;
+    total.textContent =
+      credited === 0 ? '—' : (credited < 0 ? '+' : '−') + money(Math.abs(credited));
+
+    var creditedLines = rows.filter(function (tr) {
+      var r = rowOf(tr);
+      return !r.blocked && (Number(r.qtyInput.value) || 0) !== r.qty;
+    }).length;
+    lead.innerHTML = '<b>OpenLinker filled this in from the ' +
+      (creditedLines === 1 ? '1 item' : creditedLines + ' items') + ' that came back.</b> ' +
+      'Nothing has been sent. ' + IRREVERSIBLE;
+
+    renderReconcile(credited);
+    renderActions();
+    renderReadout();
+  }
+
+  qsa('tbody input[type="number"]', panel).forEach(function (i) {
+    i.addEventListener('input', renderAll);
+  });
+
+
+  /* ── Switchers ─────────────────────────────────────────────────────── */
+  function setActive(group, el) {
+    qsa('[data-' + group + ']').forEach(function (b) { b.classList.remove('is-active'); });
+    if (el) el.classList.add('is-active');
+  }
+
+  var readout = qs('#switch-readout');
+  var band = qs('.switch-band');
+  var pageState = 'page-loaded';
+
+  function labelFor(group, value) {
+    var b = qs('[data-' + group + '="' + value + '"]');
+    return b ? b.textContent.trim() : value;
+  }
+
+  function renderReadout() {
+    if (!readout) return;
+    if (pageState !== 'page-loaded') {
+      readout.innerHTML = 'Showing: <b>the page as ' + labelFor('page', pageState) +
+        '</b> — the credit note row above does not apply &middot; <code>data-state="' + pageState + '"</code>';
+      return;
+    }
+    readout.innerHTML = 'Showing: <b>the credit note as ' + labelFor('credit', state) +
+      '</b> &middot; <code>data-state="' + state + '"</code>';
+  }
+
+  qsa('[data-credit]').forEach(function (b) {
+    b.addEventListener('click', function () { applyCredit(b.getAttribute('data-credit')); });
+  });
+
+  var pageBody = qs('[data-role="page-body"]');
+  var orphanBanner = qs('[data-state="detail-orphan"]');
+  var orphanPanel = qs('[data-state="credit-absent-orphan"]');
+  var proposalNote = qs('[data-role="credit-row-note"]');
+  var pageStates = {
+    'detail-loading': qs('[data-state="detail-loading"]'),
+    'detail-error': qs('[data-state="detail-error"]'),
+    'detail-unreadable': qs('[data-state="detail-unreadable"]')
+  };
+
+  function applyPage(name) {
+    pageState = name;
+    setActive('page', qs('[data-page="' + name + '"]'));
+    Object.keys(pageStates).forEach(function (k) {
+      if (pageStates[k]) pageStates[k].hidden = k !== pageState;
+    });
+    var replaced = pageStates[pageState] !== undefined;
+    if (pageBody) pageBody.hidden = replaced;
+    if (orphanBanner) orphanBanner.hidden = pageState !== 'detail-orphan';
+    if (orphanPanel) orphanPanel.hidden = pageState !== 'detail-orphan';
+    panel.hidden = pageState === 'detail-orphan';
+
+    /* Dimming always arrives with a sentence. */
+    var overridden = pageState !== 'page-loaded';
+    if (band) band.setAttribute('data-overridden', overridden ? 'true' : 'false');
+    if (proposalNote) {
+      proposalNote.textContent = overridden
+        ? 'Not applicable while the page is in this state.'
+        : 'Swaps what the credit note panel returns.';
+    }
+    qsa('.switch-opt[data-credit]').forEach(function (o) { o.disabled = overridden; });
+    stampBody();
+    renderReadout();
+  }
+
+  function applyCredit(name) {
+    state = name;
+    setActive('credit', qs('[data-credit="' + name + '"]'));
+    renderAll();
+  }
+
+  qsa('[data-page]').forEach(function (b) {
+    b.addEventListener('click', function () { applyPage(b.getAttribute('data-page')); });
+  });
+
+  /* ── Settable without a click ───────────────────────────────────────────
+     `?state=credit-no-invoice` or `#state=detail-error`. An E2E spec loads
+     the file at a state and asserts on `body[data-state]`; driving it by
+     synthesising clicks on a mockup's own chrome is how a baseline ends up
+     testing the switcher instead of the screen. An unknown name is ignored
+     rather than silently rendering the default, so a typo in a ticket shows
+     up as "nothing happened" and not as a wrong screenshot. */
+  var PAGE_STATES = ['page-loaded', 'detail-loading', 'detail-error', 'detail-unreadable', 'detail-orphan'];
+
+  function setStateByName(name) {
+    if (!name) return false;
+    if (PAGE_STATES.indexOf(name) !== -1) { applyPage(name); return true; }
+    if (Object.prototype.hasOwnProperty.call(STATES, name)) {
+      applyPage('page-loaded');
+      applyCredit(name);
+      return true;
+    }
+    if (name === 'credit-absent-orphan') { applyPage('detail-orphan'); return true; }
+    return false;
+  }
+
+  /* Exposed so a Playwright spec can call it directly where a URL reload is
+     wasteful; the URL form is the documented one. */
+  window.__setMockupState = setStateByName;
+
+  function requestedState() {
+    var q = /[?&]state=([^&#]+)/.exec(window.location.search);
+    if (q) return decodeURIComponent(q[1]);
+    var h = /^#state=(.+)$/.exec(window.location.hash);
+    return h ? decodeURIComponent(h[1]) : null;
+  }
+
+  renderAll();
+  if (!setStateByName(requestedState())) stampBody();
+  window.addEventListener('hashchange', function () { setStateByName(requestedState()); });
+})();
 </script>
