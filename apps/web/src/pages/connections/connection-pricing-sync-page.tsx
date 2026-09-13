@@ -35,11 +35,9 @@ import type { ReactElement } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
-import { useConnectionQuery } from '../../features/connections';
+import { isPricingDestination, useConnectionQuery } from '../../features/connections';
 import { PricingAndSyncSection } from '../../features/connections/components/pricing-and-sync-section';
 import { SourceConnectionPricingRollup } from '../../features/price-changes/components/source-connection-pricing-rollup';
-
-const DESTINATION_CAPABILITIES = ['OfferManager', 'ProductPublisher'] as const;
 
 export function ConnectionPricingSyncPage(): ReactElement {
   const { connectionId = '' } = useParams();
@@ -72,9 +70,7 @@ export function ConnectionPricingSyncPage(): ReactElement {
   }
 
   const connection = connectionQuery.data;
-  const isDestination = DESTINATION_CAPABILITIES.some((cap) =>
-    connection.enabledCapabilities.includes(cap),
-  );
+  const isDestination = isPricingDestination(connection);
   const isSource = connection.enabledCapabilities.includes('ProductMaster');
 
   if (!isDestination && !isSource) {

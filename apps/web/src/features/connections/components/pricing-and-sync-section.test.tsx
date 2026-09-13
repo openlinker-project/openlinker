@@ -265,9 +265,20 @@ describe('PricingAndSyncSection', () => {
       await userEvent.clear(percentInput);
       await userEvent.type(percentInput, '150');
 
+      // The message renders twice on purpose (#3166 round-3 review): beside
+      // the offending field, and again in the unsaved bar next to the
+      // disabled Save — because "Edit default rule" is a toggle, and
+      // collapsing it used to leave Save inert with its reason off screen.
+      const ruleForm = document.getElementById('conn-rule-form') as HTMLElement;
       expect(
-        await screen.findByText(/A margin must be below 100%/),
+        await within(ruleForm).findByText(/A margin must be below 100%/),
       ).toBeInTheDocument();
+
+      const unsavedBar = document.getElementById('conn-unsaved-bar') as HTMLElement;
+      const blockedReason = within(unsavedBar).getByRole('alert');
+      expect(blockedReason).toHaveTextContent(/Can't save yet\. Default rule:/);
+      expect(blockedReason).toHaveTextContent(/A margin must be below 100%/);
+
       expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
       expect(update).not.toHaveBeenCalled();
     });

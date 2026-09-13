@@ -160,6 +160,11 @@ function isAmbiguousSeparator(cleaned: string, separator: ',' | '.'): boolean {
 
 export function parseLocalizedAmount(raw: string): number {
   const cleaned = raw.trim().replace(/\s/g, '');
+  // `Number('')` is 0, not NaN, so an empty input would otherwise leave this
+  // helper reporting a valid zero against its own documented NaN-for-invalid
+  // contract (#3165 round-3 review). Today's only caller happens to catch it
+  // with a `> 0` check; the next one through the barrel will not.
+  if (cleaned === '') return NaN;
   const hasComma = cleaned.includes(',');
   const hasDot = cleaned.includes('.');
 

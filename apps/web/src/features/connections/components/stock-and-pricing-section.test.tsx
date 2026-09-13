@@ -17,8 +17,7 @@ interface HarnessProps {
   syncPricingRuleToJson?: () => void;
   initialStockPolicy?: { safetyBuffer?: string; zeroThreshold?: string };
   initialPricingRule?: { type?: string; percent?: string; rounding?: string };
-  pricingRuleManagedElsewhere?: boolean;
-  pricingRuleManagedElsewhereHref?: string;
+  pricingRuleManagedElsewhere?: { href: string };
 }
 
 function Harness({
@@ -28,7 +27,6 @@ function Harness({
   initialStockPolicy,
   initialPricingRule,
   pricingRuleManagedElsewhere,
-  pricingRuleManagedElsewhereHref,
 }: HarnessProps): ReactElement {
   const form = useForm<any>({
     defaultValues: {
@@ -44,7 +42,6 @@ function Harness({
         syncStockPolicyToJson={syncStockPolicyToJson}
         syncPricingRuleToJson={syncPricingRuleToJson}
         pricingRuleManagedElsewhere={pricingRuleManagedElsewhere}
-        pricingRuleManagedElsewhereHref={pricingRuleManagedElsewhereHref}
       />
     </MemoryRouter>
   );
@@ -131,8 +128,7 @@ describe('StockAndPricingSection', () => {
       render(
         <Harness
           initialPricingRule={{ type: 'margin', percent: '22', rounding: 'endingIn99' }}
-          pricingRuleManagedElsewhere
-          pricingRuleManagedElsewhereHref="/connections/dest-1/pricing-sync"
+          pricingRuleManagedElsewhere={{ href: '/connections/dest-1/pricing-sync' }}
         />,
       );
       expect(
@@ -149,8 +145,7 @@ describe('StockAndPricingSection', () => {
       render(
         <Harness
           initialStockPolicy={{ safetyBuffer: '4', zeroThreshold: '' }}
-          pricingRuleManagedElsewhere
-          pricingRuleManagedElsewhereHref="/connections/dest-1/pricing-sync"
+          pricingRuleManagedElsewhere={{ href: '/connections/dest-1/pricing-sync' }}
         />,
       );
       expect(screen.getByLabelText('Publish less stock than you hold')).toBeChecked();

@@ -21,10 +21,12 @@
  *
  * @module apps/web/src/features/price-changes/hooks
  */
-import { useMutation, type UseMutationResult } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import type { PriceSyncMode } from '../api/price-changes.types';
 import type { PricingSyncSetting } from '../api/pricing-sync.types';
+import { priceChangesQueryKeys } from '../api/price-changes.query-keys';
+import { connectionPricingSyncQueryKey } from './use-connection-pricing-sync-query';
 
 export interface SetSourceSyncModeInput {
   destinationConnectionId: string;
@@ -38,6 +40,7 @@ export function useSetSourceSyncModeMutation(): UseMutationResult<
   SetSourceSyncModeInput
 > {
   const apiClient = useApiClient();
+  const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({ destinationConnectionId, sourceConnectionId, mode }) => {
@@ -55,6 +58,20 @@ export function useSetSourceSyncModeMutation(): UseMutationResult<
         default: view.default,
         sourceOverrides,
       });
+    },
+    // #3165 round-3 review, SUGGESTION — the same pair of keys
+    // `useUpdateConnectionPricingSyncMutation` invalidates, for the same
+    // reason. The connection's cached pricing-sync view would otherwise keep
+    // rendering the mode this toast just changed (that read arrived with
+    // #3166; before it, this hook's own imperative read was the only copy and
+    // there was nothing to stale). The queue is re-read because switching a
+    // pair to `automatic`, or undoing it, changes what it will report for
+    // that source.
+    onSuccess: async (_data, variables) => {
+      await queryClient.invalidateQueries({
+        queryKey: connectionPricingSyncQueryKey(variables.destinationConnectionId),
+      });
+      await queryClient.invalidateQueries({ queryKey: priceChangesQueryKeys.all });
     },
   });
 }
