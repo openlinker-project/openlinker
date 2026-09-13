@@ -293,7 +293,21 @@
      simultaneously visible. JS keeps driving element[hidden] for the organic
      "queue emptied because every row was resolved" case inside queue-live —
      that is a distinct condition from the forced preview screens below and is
-     not part of this partition. */
+     not part of this partition.
+
+     KNOWN DIVERGENCE from the shipped component (#3164 re-review). Here the
+     five screens are whole-page and queue-error hides #queue-live outright,
+     so the filter chips vanish with it. The real
+     `price-changes-queue-table.tsx` renders the filter bar OUTSIDE the
+     loading/error swap — only the table body is replaced — so the chips stay
+     on screen while their (separate, unfiltered) counts read is pending or
+     failed. That produces one state this mockup cannot show: chips visible
+     with no count at all while the read is in flight, and an em dash instead
+     of a number once it fails. Never `0` — a failed count and "none matched"
+     are different claims (`docs/frontend-architecture.md § Paginated Totals
+     As A Second Stage`). Modelling it here would mean lifting the filter bar
+     out of #queue-live, which moves the screenshot baseline #3152 is written
+     against; it is recorded rather than restructured on purpose. */
   body[data-state="queue-loading"] #queue-live,
   body[data-state="queue-loading"] #queue-empty,
   body[data-state="queue-loading"] #queue-error,
