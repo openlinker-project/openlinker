@@ -19,6 +19,31 @@
  *    order that does not exist still answers 403 (not 404) when the gate is
  *    closed, which only the real controller wiring proves.
  *
+ * ## Why mutating `NODE_ENV` on a shared harness is safe here (#3127 review)
+ *
+ * Case 2 sets `process.env.NODE_ENV = 'production'` on a harness shared by the
+ * whole integration run, and the next reader's instinct is the right one to
+ * have: `DatabaseModule` gates `synchronize` on exactly that value
+ * (`libs/shared/src/database/database.module.ts:72`), so a stray
+ * `NODE_ENV=production` is precisely what would stop the test schema being
+ * built. It cannot happen from here, for three separate reasons, and it is
+ * worth knowing which one is load-bearing:
+ *
+ *  1. **The DataSource is already open.** `getTestHarness()` is a process-wide
+ *     singleton booted in `beforeAll`, and TypeORM reads `synchronize` once, at
+ *     DataSource initialisation. By the time any case mutates the variable the
+ *     schema exists; a later read never happens.
+ *  2. **The value is restored in `afterEach`, ahead of `resetTestHarness()`** —
+ *     so nothing that runs between cases, including the truncation walk, ever
+ *     observes it.
+ *  3. **Nothing else is in flight.** Both integration jest configs pin
+ *     `maxWorkers: 1` (`apps/api/test/jest-integration.cjs:24`), so there is no
+ *     concurrent suite that could read the global mid-mutation.
+ *
+ * (1) is the one that matters: (2) and (3) would not save a harness booted
+ * lazily per suite. A future change that re-boots the app inside a test must
+ * therefore restore `NODE_ENV` before doing so.
+ *
  * @module apps/api/test/integration/orders
  */
 import {
