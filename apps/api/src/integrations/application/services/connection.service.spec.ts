@@ -903,6 +903,69 @@ describe('ConnectionService', () => {
         expect(connectionPort.create).not.toHaveBeenCalled();
       });
 
+      it('should accept the #3142 nested { default, sourceOverrides } shape within bounds', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: {
+              ...payload.config,
+              pricingRule: {
+                default: { type: 'markup', percent: 20 },
+                sourceOverrides: { 'src-1': { type: 'margin', percent: 30 } },
+              },
+            },
+          })
+        ).resolves.toEqual(mockConnection);
+        expect(connectionPort.create).toHaveBeenCalled();
+      });
+
+      it('should reject a >=100% margin inside a #3142 sourceOverrides entry', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: {
+              ...payload.config,
+              pricingRule: {
+                default: { type: 'passthrough' },
+                sourceOverrides: { 'src-1': { type: 'margin', percent: 100 } },
+              },
+            },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a >=100% margin in a headless { sourceOverrides } container with no `default` key (PR #3158 review, BLOCKING)', async () => {
+        // Before the fix, the absence of a `default` key routed this whole
+        // container through the LEGACY flat-shape validator, which checked
+        // `type`/`percent`/`rounding` on the container itself (all
+        // `undefined`) and let every override through unchecked.
+        await expect(
+          service.create({
+            ...payload,
+            config: {
+              ...payload.config,
+              pricingRule: {
+                sourceOverrides: { 'src-1': { type: 'margin', percent: 150 } },
+              },
+            },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a percent with no type, which coercePricingRule would silently drop on read (SUGGESTION 1)', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, pricingRule: { percent: 150 } as unknown as PricingRule },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
       it('should reject the same values on update, which is the path the raw JSON editor takes', async () => {
         connectionPort.get.mockResolvedValue(mockConnection);
 
