@@ -38,7 +38,9 @@
       "@openlinker/oms": ["../../libs/oms/src/index.ts"],
       "@openlinker/oms/*": ["../../libs/oms/src/*"],
       "@openlinker/plugin-sdk": ["../../libs/plugin-sdk/src/index.ts"],
-      "@openlinker/plugin-sdk/*": ["../../libs/plugin-sdk/src/*"]
+      "@openlinker/plugin-sdk/*": ["../../libs/plugin-sdk/src/*"],
+      "@openlinker/test-kit": ["../../libs/test-kit/src/index.ts"],
+      "@openlinker/test-kit/*": ["../../libs/test-kit/src/*"]
     }
   },
   "include": ["src/**/*"],
