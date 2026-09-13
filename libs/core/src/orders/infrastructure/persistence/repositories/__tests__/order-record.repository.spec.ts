@@ -2995,10 +2995,12 @@ describe('OrderRecordRepository', () => {
 
       await repository.countOrdersByRoutingCountrySince(new Date());
 
-      // NULLIF(btrim(...), '') collapses blank into NULL, and the NOT NULL arm
-      // then drops both: the evaluator cannot route such an order either.
+      // NULLIF(upper(btrim(...)), '') collapses blank into NULL, and the NOT
+      // NULL arm then drops both: the evaluator cannot route such an order
+      // either. The `upper(` wrapper is #3176's case normalisation — a market
+      // reported as 'pl' must group with 'PL' rather than as a second market.
       expect(parts.select).toHaveBeenCalledWith(
-        expect.stringContaining("NULLIF(btrim("),
+        expect.stringContaining("NULLIF(upper(btrim("),
         'country'
       );
       expect(parts.andWhere).toHaveBeenCalledWith(expect.stringContaining('IS NOT NULL'));
