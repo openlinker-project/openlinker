@@ -265,6 +265,35 @@ describe('InfaktInvoicingAdapter', () => {
       expect(lookup?.query).not.toHaveProperty('q[nip_eq]');
     });
 
+    // #3224 — core may not mint a `scheme` (ADR-073 decision 1), so the
+    // auto-issue path hands inFakt an UNTAGGED number. Dropping it here would
+    // mint a duplicate client on every order and leave the invoice with no
+    // buyer NIP; inFakt has one tax-number field, so there is nothing to
+    // choose between.
+    it('should use an UNTAGGED buyer tax id for the client lookup (#3224)', async () => {
+      http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', listResponse([]));
+      http.seed('POST', 'clients.json', { ...CLIENTS_CAPTURE.entities[1], id: 9 });
+
+      const untagged = new BuyerProfile(
+        'Acme Sp. z o.o.',
+        { value: '1234563218' },
+        {
+          line1: 'Testowa 1',
+          line2: null,
+          city: 'Warszawa',
+          postalCode: '00-001',
+          countryIso2: 'PL',
+        },
+        'company',
+        null,
+      );
+
+      await adapter.upsertCustomer({ connectionId: 'conn-1', buyer: untagged });
+
+      const lookup = http.calls.find((c) => c.method === 'GET' && c.path === 'clients.json');
+      expect(lookup?.query).toEqual({ 'q[clean_nip_eq]': '1234563218', limit: '25' });
+    });
+
     // The NIP is normalised on BOTH the lookup and the create (verified live,
     // #1926): the filter tolerates either form, but the stored value is what a
     // human reads on the invoice and what the client-side re-match compares.

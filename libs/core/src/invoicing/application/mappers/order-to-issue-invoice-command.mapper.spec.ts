@@ -80,6 +80,37 @@ describe('toIssueInvoiceCommand', () => {
     expect(cmd.buyer.name).toBe('Jan Kowalski');
   });
 
+  // #3224 — the auto-issue path holds a bare number from
+  // `order_records.buyerTaxId` and may not mint a `scheme` (ADR-073 decision
+  // 1), so an UNTAGGED identifier has to be a first-class shape here.
+  it('B2B untagged: an identifier with no scheme still yields "company" and carries through verbatim (#3224)', () => {
+    const taxId = { value: '5213796333' };
+    const cmd = toIssueInvoiceCommand({
+      order: makeOrder({ billingAddress: makeAddress({ company: 'ACME Sp. z o.o.' }) }),
+      connectionId: 'conn-1',
+      buyerTaxId: taxId,
+    });
+
+    expect(cmd.buyer.type).toBe('company');
+    expect(cmd.buyer.taxId).toEqual(taxId);
+    // Core mints no tag: the adapter that issues the document supplies one.
+    expect(cmd.buyer.taxId?.scheme).toBeUndefined();
+  });
+
+  // Guards the reason the buyer-type test is presence-of-a-value rather than
+  // object truthiness: an untagged identifier makes `{ value: '' }` a
+  // representable shape, and a bare `buyerTaxId ? ...` would read it as a
+  // company carrying no tax number at all.
+  it('B2B untagged: an empty value is not a company (#3224)', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: makeOrder(),
+      connectionId: 'conn-1',
+      buyerTaxId: { value: '   ' },
+    });
+
+    expect(cmd.buyer.type).toBe('private');
+  });
+
   it('carries order.customerEmail into buyer.email (#1797)', () => {
     const cmd = toIssueInvoiceCommand({
       order: makeOrder({ customerEmail: 'buyer@example.com' }),

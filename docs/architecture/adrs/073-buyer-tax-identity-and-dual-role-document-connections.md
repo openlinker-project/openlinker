@@ -6,7 +6,7 @@
 
 ## Context
 
-A receipt carrying the buyer's tax number is, below a threshold, already an invoice in some regimes — no second document is issued. OpenLinker stores that number (`order_records.buyerTaxId`, three-state per #2599), routes on it, and never sends it: `libs/integrations/eparagony` contains zero occurrences of `consumerTIN`. Separately, the same provider can issue `eInvoice` and relay it onward, which OpenLinker cannot ask for, so a second provider is required for invoices.
+A receipt carrying the buyer's tax number is, below a threshold, already an invoice in some regimes — no second document is issued. OpenLinker stores that number (`order_records.buyerTaxId`, three-state per #2599), routes on it, and never sends it: `libs/integrations/eparagony` contains zero occurrences of `consumerTIN`. The same is true one document over, and for a different reason: an auto-issued INVOICE carries no buyer tax number either, because `AutoIssueTriggerService.dispatchInvoice` takes no such argument and `toIssueInvoiceCommand` is therefore called without one - so `buyer.taxId` is `null` and the buyer is typed `private`, on exactly the orders a routing rule selected an invoice for BECAUSE the buyer has a tax number. Separately, the same provider can issue `eInvoice` and relay it onward, which OpenLinker cannot ask for, so a second provider is required for invoices.
 
 Both gaps invite the same mistake — letting a regime's vocabulary into `libs/core`. [ADR-026](./026-country-agnostic-invoicing-domain.md) and [ADR-042](./042-fiscalization-capability.md) forbid it, but only fiscalization enforces it with a build-failing sweep.
 
@@ -44,6 +44,7 @@ Both gaps invite the same mistake — letting a regime's vocabulary into `libs/c
 ## References
 
 - Related issues: #3173 (epic), #3174, #3183, #3186, #3187, #3192, #3195
+- Decision 1 implemented by: #3187 (receipt half), **#3224** (invoice half - `TaxIdentifier.scheme` made OPTIONAL so core can hand over an untagged number, with each adapter tagging for its own market)
 - Related ADRs: [ADR-026](./026-country-agnostic-invoicing-domain.md), [ADR-041](./041-sales-document-routing-policy.md), [ADR-042](./042-fiscalization-capability.md), [ADR-002](./002-capability-ports-with-sub-capabilities.md)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § 14 Invoicing, § 16 Fiscalization, § 17 Sales Documents
 - Mockups: [`docs/plans/mockups/sales-document-tax-number-on-receipt.html`](../../plans/mockups/sales-document-tax-number-on-receipt.html), [`docs/plans/mockups/sales-document-eparagony-invoicing.html`](../../plans/mockups/sales-document-eparagony-invoicing.html)
