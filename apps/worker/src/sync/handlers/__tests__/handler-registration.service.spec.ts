@@ -113,8 +113,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // candidates have by construction been unrelayed for at least the grace
     // window, AND unlike the reaper beside it each one fans a lifecycle relay
     // out to N participant adapters — heavy outbound work, which is what
-    // `bulk` is for.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(29);
+    // `bulk` is for. #3144's `pricing.propagateToMarketplaces` is the
+    // thirtieth (ADR-072 decision 8/9): like `marketplace.offer.create`, it
+    // is single-unit work that can arrive up to N wide from a bulk-accept
+    // wave (#3145/#3148) — the operator-wave shape decision 1 assigns to
+    // `bulk`, not the single-item "someone is waiting on this" shape
+    // `realtime` is for.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(30);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });
