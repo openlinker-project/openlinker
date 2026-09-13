@@ -26,6 +26,7 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import type { PriceSyncMode } from '../api/price-changes.types';
 import type { PricingSyncSetting } from '../api/pricing-sync.types';
 import { priceChangesQueryKeys } from '../api/price-changes.query-keys';
+import { connectionPricingSyncQueryKey } from './use-connection-pricing-sync-query';
 
 export interface SetSourceSyncModeInput {
   destinationConnectionId: string;
@@ -58,18 +59,18 @@ export function useSetSourceSyncModeMutation(): UseMutationResult<
         sourceOverrides,
       });
     },
-    // #3165 round-3 review, SUGGESTION. Switching a pair to `automatic` (or
-    // undoing it) changes what the queue will report for that source, so the
-    // list is re-read rather than left showing pre-change rows.
-    //
-    // That is the ONLY key there is to invalidate here: this hook reads the
-    // pricing-sync view imperatively inside `mutationFn`, so it always sees
-    // the server's current state and there is no cache of it to go stale.
-    // #3166 introduces the cached read (`connectionPricingSyncQueryKey`) and
-    // its own sibling mutation invalidates both keys — when that lands, this
-    // hook must invalidate the connection's pricing-sync key too, or the
-    // settings page will keep rendering the mode this toast just changed.
-    onSuccess: async () => {
+    // #3165 round-3 review, SUGGESTION — the same pair of keys
+    // `useUpdateConnectionPricingSyncMutation` invalidates, for the same
+    // reason. The connection's cached pricing-sync view would otherwise keep
+    // rendering the mode this toast just changed (that read arrived with
+    // #3166; before it, this hook's own imperative read was the only copy and
+    // there was nothing to stale). The queue is re-read because switching a
+    // pair to `automatic`, or undoing it, changes what it will report for
+    // that source.
+    onSuccess: async (_data, variables) => {
+      await queryClient.invalidateQueries({
+        queryKey: connectionPricingSyncQueryKey(variables.destinationConnectionId),
+      });
       await queryClient.invalidateQueries({ queryKey: priceChangesQueryKeys.all });
     },
   });

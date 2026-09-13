@@ -24179,6 +24179,16 @@ legend.analytics-settings-dialog__label {
   color: var(--text-secondary);
 }
 
+/* Replaces two inline styles the component used to carry (#3166 round-3
+   review) — it ships its own stylesheet block, so these belong in it. */
+.pricing-sync__section-desc--wide {
+  max-width: none;
+}
+
+.pricing-sync__section-desc--spaced {
+  margin-bottom: var(--space-3);
+}
+
 .pricing-sync__pending {
   display: flex;
   align-items: center;
@@ -24238,6 +24248,14 @@ legend.analytics-settings-dialog__label {
   color: var(--text-primary);
 }
 
+/* Save is disabled and the bar now says why (#3166 round-3 review) — the
+   reason must read as a blocker, not as the neutral "you have unsaved
+   changes" note it replaces. */
+.pricing-sync__unsaved-bar-text--error {
+  color: var(--status-error-fg);
+  font-weight: 500;
+}
+
 .pricing-sync__unsaved-bar-actions {
   display: flex;
   gap: var(--space-2);
@@ -24276,7 +24294,9 @@ legend.analytics-settings-dialog__label {
 .pricing-sync__source-row-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* Was a raw 6px (#3166 round-3 review). The scale has no 6px, so this is
+     the nearest token that keeps the control and its label from crowding. */
+  gap: var(--space-2);
   font-size: 0.75rem;
   color: var(--text-secondary);
   cursor: pointer;

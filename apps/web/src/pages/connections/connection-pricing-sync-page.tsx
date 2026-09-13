@@ -21,10 +21,8 @@ import type { ReactElement } from 'react';
 import { useParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
-import { useConnectionQuery } from '../../features/connections';
+import { isPricingDestination, useConnectionQuery } from '../../features/connections';
 import { PricingAndSyncSection } from '../../features/connections/components/pricing-and-sync-section';
-
-const DESTINATION_CAPABILITIES = ['OfferManager', 'ProductPublisher'] as const;
 
 export function ConnectionPricingSyncPage(): ReactElement {
   const { connectionId = '' } = useParams();
@@ -56,9 +54,7 @@ export function ConnectionPricingSyncPage(): ReactElement {
   }
 
   const connection = connectionQuery.data;
-  const isDestination = DESTINATION_CAPABILITIES.some((cap) =>
-    connection.enabledCapabilities.includes(cap),
-  );
+  const isDestination = isPricingDestination(connection);
 
   if (!isDestination) {
     return (

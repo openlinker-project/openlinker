@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
+import { isPricingDestination } from '../../features/connections/lib/pricing-destination';
 import { useProductMasterConnections } from '../../features/connections/hooks/use-product-master-connections';
 import { ConnectionActionsPanel } from '../../features/connections/components/ConnectionActionsPanel';
 import { EnableConnectionButton } from '../../features/connections/components/EnableConnectionButton';
@@ -247,11 +248,10 @@ export function ConnectionDetailPage(): ReactElement {
                 Category Mappings
               </Link>
             ) : null}
-            {/* #3149/#3166 review — a viable pricing destination is one
-                that can either list marketplace offers or publish shop
-                products, mirroring `ConnectionPricingSyncPage`'s own gate. */}
-            {connection.enabledCapabilities.includes('OfferManager') ||
-            connection.enabledCapabilities.includes('ProductPublisher') ? (
+            {/* The same predicate the pricing-sync page gates on and that
+                EditConnectionForm keys its pricingRule deletion off — one
+                definition, in features/connections/lib (#3166 review). */}
+            {isPricingDestination(connection) ? (
               <Link
                 className="button button--secondary"
                 to={`/connections/${connectionId}/pricing-sync`}

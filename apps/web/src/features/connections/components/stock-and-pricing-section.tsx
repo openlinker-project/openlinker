@@ -75,9 +75,22 @@ export interface StockAndPricingSectionProps {
    * read-only pointer to that page instead — the stock-publish-policy half
    * is untouched, since it has no rival editor.
    */
-  pricingRuleManagedElsewhere?: boolean;
-  /** Where the read-only pointer above links to. Required when the flag is set. */
-  pricingRuleManagedElsewhereHref?: string;
+  pricingRuleManagedElsewhere?: PricingRuleManagedElsewhere;
+}
+
+/**
+ * Where the pricing rule is managed, when it is managed elsewhere.
+ *
+ * ABSENT means it is edited here. PRESENT means it is not, and carries the
+ * destination — which is the only thing that makes the pointer useful. It was
+ * a `boolean` plus a separate optional `href` whose docblock claimed the href
+ * was "required when the flag is set" (#3166 round-3 review); the type did
+ * not keep that promise, and the combination it allowed rendered the dead
+ * plain-text string "Manage pricing & sync" with nowhere to go, which is
+ * worse than either branch. One optional object makes that unrepresentable.
+ */
+export interface PricingRuleManagedElsewhere {
+  href: string;
 }
 
 /**
@@ -99,8 +112,7 @@ export function StockAndPricingSection({
   configIsParseable,
   syncStockPolicyToJson,
   syncPricingRuleToJson,
-  pricingRuleManagedElsewhere = false,
-  pricingRuleManagedElsewhereHref,
+  pricingRuleManagedElsewhere,
 }: StockAndPricingSectionProps): ReactElement {
   const stockErrors = form.formState.errors.stockPolicy;
   const priceErrors = form.formState.errors.pricingRule;
@@ -243,12 +255,7 @@ export function StockAndPricingSection({
         <p className="rate-limit-section__help" id="pricing-rule-managed-elsewhere">
           The price published to this destination — a default rule plus any per-source overrides
           — is managed on its own page.{' '}
-          {pricingRuleManagedElsewhereHref ? (
-            <Link to={pricingRuleManagedElsewhereHref}>Manage pricing &amp; sync</Link>
-          ) : (
-            'Manage pricing & sync'
-          )}
-          .
+          <Link to={pricingRuleManagedElsewhere.href}>Manage pricing &amp; sync</Link>.
         </p>
       ) : (
         <>

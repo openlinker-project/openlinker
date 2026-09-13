@@ -38,6 +38,7 @@ import {
 } from '../../../shared/plugins';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
+import { isPricingDestination } from '../lib/pricing-destination';
 
 interface EditConnectionFormProps {
   connection: Connection;
@@ -493,9 +494,10 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   // master-catalog product data (name/description/images/price) through
   // `masterCatalogConnectionId` — `OfferBuilderService` and
   // `ProductPublishBuilderService` share the same requirement.
-  const isMarketplace = connection.enabledCapabilities.includes('OfferManager');
-  const needsMasterCatalog =
-    isMarketplace || connection.enabledCapabilities.includes('ProductPublisher');
+  // ONE predicate, shared with the pricing-sync page and the detail page
+  // (#3166 round-3 review) — `onSubmit` deletes `config.pricingRule` for this
+  // population, so a divergence here is silently destructive.
+  const needsMasterCatalog = isPricingDestination(connection);
   const hasStructuredInputs = StructuredSection !== undefined || needsMasterCatalog;
 
   // Tracks whether the raw JSON currently parses. When it doesn't, we lock the
@@ -862,8 +864,9 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         configIsParseable={configIsParseable}
         syncStockPolicyToJson={syncStockPolicyToJson}
         syncPricingRuleToJson={syncPricingRuleToJson}
-        pricingRuleManagedElsewhere={needsMasterCatalog}
-        pricingRuleManagedElsewhereHref={`/connections/${connection.id}/pricing-sync`}
+        pricingRuleManagedElsewhere={
+          needsMasterCatalog ? { href: `/connections/${connection.id}/pricing-sync` } : undefined
+        }
       />
 
       <div className="config-panel__toggle">
