@@ -343,6 +343,15 @@ detail is a product call.
 deferred follow-up to a real capability, versus keeping quantity-0 as the universal primitive with eBay as a
 special case, is a decision the eBay epic forces.
 
+**A standing note across items 6 and 7, and across Group R.** Wherever this catalogue proposes a capability name
+(`OfferDeactivator` in item 7, `FulfillmentExecutor` in item 6, `ReturnSourceReader` in Group R), whether that
+name enters the closed `CoreCapabilityValues` set or stays **advertised-without-dispatch / guard-only** is a
+decision each epic must take deliberately, not one to make by accident while four adapters land at once. It is a
+correctness question, not a style one: a connection's `enabledCapabilities` is stamped at create and never
+retro-filled, so a name added to the closed set and then *gated on* silently drains nothing for every connection
+that already exists (#2085), while a guard-only name gated on is permanently `ungated`. Both halves of that trap
+are documented in place on `canonical-inbound-event.types.ts`'s `'fulfillment'` and `'return'` arms.
+
 ---
 
 ## 5. Probe-first shortlist per platform
@@ -392,7 +401,7 @@ Four sibling epics under one programme, sequenced by cost-to-build and by what e
 
 | Order | Epic | Why here | Unlocks |
 |---|---|---|---|
-| 1 | **Shopify** | Richest fit, cleanest docs, no approval gate. The only one that *extends* OL rather than adding a channel | `ProductMaster` #2 in the tree; the first real `FulfillmentExecutor` (ADR-054 validation) |
+| 1 | **Shopify** | Richest fit, cleanest docs, no approval gate. The only one that *extends* OL rather than adding a channel | `ProductMaster` **#3** in the tree, after `PrestashopProductMasterAdapter` and `WooCommerceProductMasterAdapter`; the first **third-party** `FulfillmentExecutor` (`OlFulfillmentExecutorAdapter`, #2409, already holds first), and so the first exercise of #2404's shared port-contract kit against a second implementer, which is the ADR-054 validation that matters |
 | 2 | **eBay** | Well-documented, closest to Allegro's shape | `OfferDeactivator` (#1689's deferred capability); RFC 9421 signing seam |
 | 3 | **Amazon** | Highest strategic value, highest cost | SQS ingress; PII retention sweep; both reusable |
 | 4 | **TikTok Shop** | Cheapest surface, but blocked on two product questions (masked PII, no EU sandbox) | — |
