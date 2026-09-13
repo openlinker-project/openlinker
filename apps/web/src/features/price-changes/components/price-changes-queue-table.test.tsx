@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -324,6 +324,34 @@ describe('PriceChangesQueueTable', () => {
       const accept = await screen.findByTestId('row-accept');
       expect(accept).toBeInTheDocument();
       expect(accept).toBeDisabled();
+    });
+  });
+  describe('chip counts never assert a number the read did not supply (#3164 re-review)', () => {
+    it('renders an em dash, not 0, when the counts read fails', async () => {
+      const apiClient = createMockApiClient({
+        priceChanges: { list: vi.fn().mockRejectedValue(new Error('boom')) },
+      });
+
+      renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+
+      const group = await screen.findByRole('group', { name: 'Filter by connection' });
+      const allChip = within(group).getByRole('button', { name: /^All/ });
+      await waitFor(() => expect(allChip).toHaveTextContent('—'));
+      // The point of the fix: a failed read must not read as "zero open
+      // episodes", which is a different and usually false claim.
+      expect(allChip).not.toHaveTextContent('0');
+    });
+
+    it('renders no count at all while the counts read is still in flight', async () => {
+      const apiClient = createMockApiClient({
+        priceChanges: { list: vi.fn().mockReturnValue(new Promise(() => undefined)) },
+      });
+
+      renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+
+      const group = await screen.findByRole('group', { name: 'Filter by connection' });
+      const allChip = within(group).getByRole('button', { name: /^All/ });
+      expect(allChip.querySelector('.chip__count')).toBeNull();
     });
   });
 });
