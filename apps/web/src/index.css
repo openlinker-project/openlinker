@@ -2157,7 +2157,15 @@ textarea,
   max-width: 220px;
 }
 
-/* ── Price change dialogs (#3148, ADR-072) ────────────────────────── */
+/* ── Price change dialogs (#3148, ADR-072) ──────────────────────────
+ * No `@media` here either (#3165 round-3 review). The gap is the queue
+ * table's, one surface over, and it is the same tracked issue —
+ * openlinker-project/openlinker#3223 covers the price-changes feature's
+ * responsive treatment as a whole, dialogs included, rather than splitting
+ * one styling pass across two tickets. Dialogs are the surface most likely
+ * to be operated from a tablet, so this half is the more urgent one.
+ * Delete this paragraph together with the deferral, not before.
+ */
 
 .price-hero {
   display: flex;

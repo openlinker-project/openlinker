@@ -91,6 +91,14 @@ const DESTINATION_CAPABILITIES = ['OfferManager', 'ProductPublisher'];
  */
 const CHIP_COUNTS_LIMIT = 200;
 
+/**
+ * How long the "also set to Automatic" Undo stays offered (#3165 round-3
+ * review). Deliberately many times the toast provider's 4s default: this is
+ * the operator's only chance to reverse a switch to publishing prices without
+ * review before the setting persists silently on the connection.
+ */
+const AUTOMATIC_OPT_IN_UNDO_MS = 30_000;
+
 /** Groups rows fanning from the same source event across several destinations. */
 function groupKeyFor(item: PriceChangeItem): string {
   return `${item.productVariantId}:${item.sourceConnectionId}:${item.sourceOldAmount}:${item.sourceNewAmount}`;
@@ -278,9 +286,18 @@ export function PriceChangesQueueTable(): ReactElement {
    * (added `ShowToastOptions.action` to the shared toast provider for this —
    * it previously had no action-button slot). Takes a LIST of pairs so a
    * bulk accept renders ONE aggregated toast instead of one per pair
-   * (#3148 review, finding 2) — N independently-expiring 4s toasts stacking
-   * on a 12-pair bulk accept was unreadable and, worse, meant clicking one
-   * Undo dismissed only its own toast while the other 11 kept ticking down.
+   * (#3148 review, finding 2) — N independently-expiring toasts stacking on a
+   * 12-pair bulk accept was unreadable and, worse, meant clicking one Undo
+   * dismissed only its own toast while the other 11 kept ticking down.
+   *
+   * It also runs far longer than the provider's 4s default (#3165 round-3
+   * review): this Undo is the only window in which an operator can reverse a
+   * switch to publishing prices WITHOUT review, and past it the setting
+   * persists silently on the connection until someone opens its settings
+   * page. Four seconds is not a decision window for that. The in-row Undo on
+   * an ignored row is the stack's other precedent and has no timer at all;
+   * this toast cannot follow that shape (there is no row to hang it on after
+   * a bulk accept), so it buys the time instead.
    */
   function offerAutomaticUndo(
     pairs: Array<{ sourceConnectionId: string; destinationConnectionId: string; sourceLabel: string }>,
@@ -294,6 +311,7 @@ export function PriceChangesQueueTable(): ReactElement {
       tone: 'success',
       title: pairs.length === 1 ? 'Set to Automatic' : `Turned on automatic pricing for ${pairs.length} sources`,
       description,
+      durationMs: AUTOMATIC_OPT_IN_UNDO_MS,
       action: {
         label: 'Undo',
         onClick: () => {
