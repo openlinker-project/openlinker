@@ -30,10 +30,10 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class UnifySalesDocumentCountryDefaultPerCountry1878000000001
+export class UnifySalesDocumentCountryDefaultPerCountry1881000000001
   implements MigrationInterface
 {
-  name = 'UnifySalesDocumentCountryDefaultPerCountry1878000000001';
+  name = 'UnifySalesDocumentCountryDefaultPerCountry1881000000001';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Keep exactly one row per `country` — the most recently updated,
