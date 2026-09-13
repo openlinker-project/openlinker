@@ -1,23 +1,36 @@
 /**
  * Infakt Connection Config Shape Validator
  *
- * Validates the non-secret config for an Infakt connection: an optional
- * `environment` selector (#2174) that, when present, must be one of
- * `InfaktEnvironmentValues`; a legacy `baseUrl` override (sandbox vs
- * production, no longer surfaced on either FE form but still honoured for
- * back-compat) that, when present, must be a non-empty, well-formed **https**
- * URL - the API key travels on every request against it, so cleartext is
- * refused at save time (#2179 review round 3, Important #1); an
- * optional `defaultPaymentMethod` (#1303) that, when present, must be one of
- * `InfaktPaymentMethodValues`; and an optional `bankAccount` snapshot (#1303
- * follow-up) that, when present, must carry an `id` (string or legacy
- * number) plus non-empty `accountNumber` and `bankName` strings — the
- * adapter stamps the latter two straight onto `'transfer'` invoices, so a
- * malformed shape must fail fast at save time (400) rather than surface as
- * an opaque inFakt 422 at issuance; an optional `defaultSaleType` (#2177)
- * that, when present, must be one of `InfaktSaleTypeValues`. Registered against
- * `ConnectionConfigShapeValidatorRegistryService` at `infakt.accounting.v1`;
- * `ConnectionService` maps the thrown exception to a 400 at the API boundary.
+ * Validates the non-secret config for an Infakt connection:
+ *
+ * - an optional `environment` selector (#2174) that, when present, must be
+ *   one of `InfaktEnvironmentValues`;
+ * - a legacy `baseUrl` override (sandbox vs production, no longer surfaced
+ *   on either FE form but still honoured for back-compat) that, when
+ *   present, must be a non-empty, well-formed **https** URL - the API key
+ *   travels on every request against it, so cleartext is refused at save
+ *   time (#2179 review round 3, Important #1) - and, for a *new* save, must
+ *   not be a bare-host / root-path override with no `/api/v3` path of its
+ *   own (#3030): refusing it here, rather than relying on
+ *   `resolveInfaktBaseUrl`'s read-time normalization to paper over it, is
+ *   the only channel through which an operator learns their override is
+ *   malformed at the point they typed it, instead of via a later,
+ *   unexplained request failure. An override that carries its own distinct
+ *   path (an operator-run proxy) is left alone;
+ * - an optional `defaultPaymentMethod` (#1303) that, when present, must be
+ *   one of `InfaktPaymentMethodValues`;
+ * - an optional `bankAccount` snapshot (#1303 follow-up) that, when present,
+ *   must carry an `id` (string or legacy number) plus non-empty
+ *   `accountNumber` and `bankName` strings — the adapter stamps the latter
+ *   two straight onto `'transfer'` invoices, so a malformed shape must fail
+ *   fast at save time (400) rather than surface as an opaque inFakt 422 at
+ *   issuance;
+ * - an optional `defaultSaleType` (#2177) that, when present, must be one of
+ *   `InfaktSaleTypeValues`.
+ *
+ * Registered against `ConnectionConfigShapeValidatorRegistryService` at
+ * `infakt.accounting.v1`; `ConnectionService` maps the thrown exception to a
+ * 400 at the API boundary.
  *
  * Hand-rolled (no class-validator) — two optional fields don't justify a DTO
  * graph, and the plugin stays dependency-light. Error messages use neutral
@@ -31,7 +44,11 @@ import {
   type FlatValidationIssue,
   InvalidConnectionConfigException,
 } from '@openlinker/core/integrations';
-import { isAllowedInfaktBaseUrl } from '../../domain/policies/infakt-base-url.policy';
+import {
+  INFAKT_API_VERSION_PATH,
+  isAllowedInfaktBaseUrl,
+  isRootPathInfaktBaseUrlOverride,
+} from '../../domain/policies/infakt-base-url.policy';
 import {
   InfaktEnvironmentValues,
   InfaktPaymentMethodValues,
@@ -59,6 +76,23 @@ export class InfaktConnectionConfigShapeValidatorAdapter
         // operator proxy, so an allowlist would refuse existing rows on their
         // next save. See `isAllowedInfaktBaseUrl` for the full rationale.
         issues.push({ path: 'baseUrl', message: 'must use https' });
+      } else if (isRootPathInfaktBaseUrlOverride(baseUrl.trim())) {
+        // Refused at save time (#3030) rather than silently rewritten: a
+        // bare-host override (the package README's own historical example)
+        // resolves verbatim to a host with no API surface at its root, so a
+        // NEW save must already carry the real path. An override that
+        // carries its own distinct path (an operator-run proxy) is left
+        // alone - see `isRootPathInfaktBaseUrlOverride` for why. An existing
+        // pre-#3030 row saved before this check existed is unaffected until
+        // its next save.
+        issues.push({
+          path: 'baseUrl',
+          message:
+            `must include the ${INFAKT_API_VERSION_PATH} path (e.g. ` +
+            `"https://api.infakt.pl${INFAKT_API_VERSION_PATH}") — a bare host ` +
+            'is not a valid inFakt API endpoint; see the package README for the ' +
+            'correct override shape',
+        });
       }
     }
 
