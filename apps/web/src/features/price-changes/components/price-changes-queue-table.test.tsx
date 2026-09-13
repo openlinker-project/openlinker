@@ -12,6 +12,15 @@ import { PriceChangesQueueTable } from './price-changes-queue-table';
 import type { PriceChangeItem, PriceChangeListResponse } from '../api/price-changes.types';
 import type { SessionUser } from '../../../shared/auth/session.types';
 
+/** Authenticated, write-capable, NOT admin — see the non-admin checkbox case. */
+const OPERATOR_SESSION_USER: SessionUser = {
+  id: 'user_2',
+  username: 'operator',
+  email: 'operator@example.com',
+  role: 'operator',
+  permissions: ['listings:read', 'listings:write'],
+};
+
 // The "also set to Automatic" opt-in is admin-only (#3148 review, finding
 // 2), so any test that needs to see/toggle it renders as an admin session.
 const ADMIN_SESSION = createAuthenticatedSessionAdapter();
@@ -123,7 +132,10 @@ describe('PriceChangesQueueTable', () => {
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), accept },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    renderWithProviders(<PriceChangesQueueTable />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await screen.findByText('Ergonomic Office Chair');
 
     await userEvent.click(screen.getByTestId('row-accept'));
@@ -190,7 +202,13 @@ describe('PriceChangesQueueTable', () => {
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])) },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    // An OPERATOR: carries `listings:write`, so the row actions render, but
+    // is not admin, which is the whole subject of this case. The suite-wide
+    // default user IS an admin, so passing it here would assert nothing.
+    renderWithProviders(<PriceChangesQueueTable />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(OPERATOR_SESSION_USER),
+    });
     await screen.findByText('Ergonomic Office Chair');
 
     await userEvent.click(screen.getByTestId('row-accept'));
@@ -363,7 +381,10 @@ describe('PriceChangesQueueTable', () => {
       listings: { getBulkBatch },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+    renderWithProviders(<PriceChangesQueueTable />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await screen.findByText('Ergonomic Office Chair');
 
     const checkboxes = screen.getAllByTestId('row-select');

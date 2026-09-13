@@ -144,6 +144,11 @@ function isAmbiguousSeparator(cleaned: string, separator: ',' | '.'): boolean {
 
 export function parseLocalizedAmount(raw: string): number {
   const cleaned = raw.trim().replace(/\s/g, '');
+  // `Number('')` is 0, not NaN, so an empty input would otherwise leave this
+  // helper reporting a valid zero against its own documented NaN-for-invalid
+  // contract (#3165 round-3 review). Today's only caller happens to catch it
+  // with a `> 0` check; the next one through the barrel will not.
+  if (cleaned === '') return NaN;
   const hasComma = cleaned.includes(',');
   const hasDot = cleaned.includes('.');
 
@@ -159,7 +164,14 @@ export function parseLocalizedAmount(raw: string): number {
 
   if (hasComma) {
     if (isAmbiguousSeparator(cleaned, ',')) return NaN;
-    return Number(cleaned.replace(/,/g, '.'));
+    // Mirrors the dot branch below, and must (#3165 round-3 review): more than
+    // one `,` is unambiguous grouping (`1,234,567`) and is stripped, while a
+    // single one is a decimal separator. Without this arm the branch fell
+    // through to `Number('1.234.567')` and refused a perfectly unambiguous
+    // value as "enter a valid price".
+    return Number(
+      cleaned.split(',').length - 1 > 1 ? cleaned.replace(/,/g, '') : cleaned.replace(',', '.')
+    );
   }
 
   if (hasDot) {
