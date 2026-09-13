@@ -1,4 +1,4 @@
-# ADR-072: Buyer tax identity, the fiscalization/invoicing split, and dual-role connections
+# ADR-073: Buyer tax identity, the fiscalization/invoicing split, and dual-role connections
 
 - **Status**: Accepted
 - **Date**: 2026-09-11
