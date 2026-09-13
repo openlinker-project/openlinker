@@ -5,13 +5,23 @@
  * (Postgres + Redis), boots Nest application context (no HTTP server), runs migrations,
  * and provides utilities for test execution.
  *
+ * `resetTestHarness()` below is called from every int-spec's own `afterEach` AND, since
+ * #2999, from a root-level `beforeEach`/`afterEach` registered once via `setupFilesAfterEnv`
+ * — see `setup-each.ts` for the audit of what that global reset is safe to do across every
+ * worker int-spec, and `harness-isolation.int-spec.ts` for the regression guard.
+ *
  * @module apps/worker/test/integration
  */
 import { NestFactory } from '@nestjs/core';
 import { INestApplicationContext } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import { AppModule } from '../../src/app.module';
 import { RedisClientType } from 'redis';
+// Test-only deep import, resolved by `jest-integration.cjs`'s
+// `@openlinker/test-kit/*` -> `libs/test-kit/src/*` mapping. See `reset()`.
+import { truncateTables } from '@openlinker/test-kit/harness';
+import { MASTER_DELETION_EVENT_STREAM } from '@openlinker/core/products';
+import { AppModule } from '../../src/app.module';
+import { MASTER_DELETION_CONSUMER_GROUP } from '../../src/events/master-deletion-to-job.handler';
 
 /**
  * Worker Integration Test Harness
@@ -72,31 +82,103 @@ export class WorkerIntegrationTestHarness {
   /**
    * Reset database and cache between tests
    *
-   * Truncates all tables and clears Redis cache.
+   * Truncates the tables listed below and clears the Redis database, but only
+   * the ones that actually hold state (#2999) — the pre-existing unconditional
+   * 7-statement `TRUNCATE` chain plus `flushDb()` cost a fixed amount of
+   * round-trip time on EVERY reset regardless of whether the previous test
+   * dirtied anything, and since #2999 wires this into a `beforeEach`/
+   * `afterEach` pair for every test case of every int-spec (`setup-each.ts`)
+   * rather than an occasional per-file `afterEach`, that fixed cost is now
+   * paid far more often.
+   *
+   * The probe is `truncateTables` from `@openlinker/test-kit/harness`, the
+   * same helper the api suite reaches through `createIntegrationTestHarness`
+   * — NOT a local copy of it (#3126 review). The difference is the one thing
+   * a reimplementation gets wrong: `truncateTables` expands the caller's list
+   * with its `pg_constraint` CASCADE closure before probing, so skipping an
+   * EMPTY parent cannot leave a dependent's rows behind. Probing the literal
+   * list alone silently drops the collateral an unconditional
+   * `TRUNCATE <parent> CASCADE` used to clear, turning a guarantee into a
+   * per-schema reasoning obligation over a ~100-table schema that grows while
+   * only seven names are listed here. (An earlier revision of this file said
+   * the helper was "intentionally not exported for reuse" — that was wrong.
+   * It is exported from `harness.ts`, merely absent from the package barrel,
+   * and `jest-integration.cjs` maps `@openlinker/test-kit/*` to `src/*`, so
+   * this deep import is the sanctioned test-only one and resolves in exactly
+   * this realm. `setup.ts` is never loaded from the `globalSetup` /
+   * `globalTeardown` realms, where that mapping would not apply.)
    */
   async reset(): Promise<void> {
     if (!this.dataSource) {
       throw new Error('Harness not initialized. Call setup() first.');
     }
 
-    // Truncate all tables (in correct order due to foreign keys)
-    // Note: Order matters - child tables first, then parent tables
-    await this.dataSource.query('TRUNCATE TABLE sync_jobs CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE inventory_items CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE product_variants CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE products CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE identifier_mappings CASCADE');
-    // #2219: the master sweeps persist a resume cursor here. Without this a
-    // spec inherits the previous one's cursor and silently resumes mid-cycle.
-    await this.dataSource.query('TRUNCATE TABLE connection_cursors CASCADE');
-    await this.dataSource.query('TRUNCATE TABLE connections CASCADE');
+    // #2219's connection_cursors note still applies: the master sweeps persist
+    // a resume cursor there, and without truncating it a spec inherits the
+    // previous one's cursor and silently resumes mid-cycle.
+    await truncateTables(this.dataSource, [
+      'sync_jobs',
+      'inventory_items',
+      'product_variants',
+      'products',
+      'identifier_mappings',
+      'connection_cursors',
+      'connections',
+    ]);
 
-    // Clear Redis cache and streams
+    // Clear Redis cache and streams — but only if there's anything to clear.
+    // `DBSIZE` is an O(1) server-side counter (unlike `KEYS`/`SCAN`), so this
+    // probe costs nothing material even on a database that never went empty.
     if (this.redisClient) {
       try {
-        await this.redisClient.flushDb();
+        const size = await this.redisClient.dbSize();
+        if (size > 0) {
+          await this.redisClient.flushDb();
+          await this.restoreMasterDeletionConsumerGroup();
+        }
       } catch (error) {
         console.warn('Failed to flush Redis:', error);
+      }
+    }
+  }
+
+  /**
+   * Put `events.master.deletion` and its consumer group back after a flush.
+   *
+   * `MasterDeletionToJobHandler` creates the group exactly ONCE, in
+   * `onModuleInit` (`MKSTREAM: true`), and its `consumeLoop` catches every
+   * read error, logs at ERROR level, sleeps 1 s and retries — it never
+   * recreates the group. `OL_MASTER_DELETION_CONSUMER_ENABLED` is not forced
+   * off by `harness.ts`, so that loop is live in every worker int-spec,
+   * including the boot specs.
+   *
+   * Without this, the FIRST `flushDb()` destroys stream and group permanently
+   * for the rest of the file's run and the loop emits an error line per
+   * second — worst of all in the six boot specs, whose whole purpose is
+   * diagnosing wiring (#3126 review). No assertion breaks
+   * (`master-inventory-deletion-e2e` reads the stream with `xRange`, not
+   * through the group), so this is diagnosability rather than correctness —
+   * which is exactly why it would have been left to rot.
+   *
+   * Best-effort by design: a failure here must never fail a reset, and the
+   * loop may still log one error if it happens to read in the window between
+   * the flush and this call. One line is not one per second.
+   */
+  private async restoreMasterDeletionConsumerGroup(): Promise<void> {
+    if (!this.redisClient) {
+      return;
+    }
+    try {
+      await this.redisClient.xGroupCreate(
+        MASTER_DELETION_EVENT_STREAM,
+        MASTER_DELETION_CONSUMER_GROUP,
+        '$',
+        { MKSTREAM: true }
+      );
+    } catch (error) {
+      // BUSYGROUP means a peer recreated it first — the desired end state.
+      if (!(error instanceof Error) || !error.message.includes('BUSYGROUP')) {
+        console.warn('Failed to restore master-deletion consumer group:', error);
       }
     }
   }
