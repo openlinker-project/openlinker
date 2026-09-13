@@ -23,11 +23,18 @@ export class PriceChangeListResponseDto {
   })
   total!: number;
 
+  @ApiProperty({
+    description:
+      'Whether a further page exists (computed against the raw, pre-stale-filter row count — never against `items.length`). A page can render zero `items` while every one of its rows was merely stale-hidden; read `hasMore` rather than an empty `items` array to decide whether to fetch the next page.',
+  })
+  hasMore!: boolean;
+
   static fromDomain(page: PriceChangeQueuePage): PriceChangeListResponseDto {
     const dto = new PriceChangeListResponseDto();
     dto.items = page.items.map((item) => PriceChangeItemResponseDto.fromDomain(item));
     dto.hiddenStaleCount = page.hiddenStaleCount;
     dto.total = page.total;
+    dto.hasMore = page.hasMore;
     return dto;
   }
 }

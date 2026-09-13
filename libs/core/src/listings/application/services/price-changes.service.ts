@@ -155,6 +155,16 @@ export class PriceChangesService implements IPriceChangesService {
     const visible = episodes.filter((e) => !staleVariantIds.has(e.productVariantId));
     const hiddenStaleCount = episodes.length - visible.length;
 
+    // `hasMore` is derived from the RAW (pre-stale-filter) row count against
+    // `total` — never from `visible.length`/`items.length` (#3162 review).
+    // A page whose every row is stale renders `items: []`, and without this
+    // a caller cannot tell that apart from "no more results"; `episodes`
+    // here is exactly the rows this page's `LIMIT`/`OFFSET` actually
+    // fetched, so `offset + episodes.length < total` answers "does a
+    // further page exist" independent of how many of those rows survived
+    // the stale filter.
+    const hasMore = offset + episodes.length < total;
+
     const productIds = Array.from(
       new Set(
         visible
@@ -174,7 +184,7 @@ export class PriceChangesService implements IPriceChangesService {
       this.toQueueItem(episode, variantsById, productsById, connectionsById)
     );
 
-    return { items, hiddenStaleCount, total };
+    return { items, hiddenStaleCount, total, hasMore };
   }
 
   /**
