@@ -82,10 +82,22 @@ import type {
 import type {
   CoverageDetectionPagination,
   PaginatedCurrencyMismatchOrders,
-  NetExcludedOrderCandidate,
+  NetExcludedOrderCandidateCursor,
+  NetExcludedOrderCandidatePage,
   PaginatedProductMatchingErrorOrders,
   CoverageConnectionAggregateRow,
 } from '../../../domain/types/coverage-detection.types';
+
+/**
+ * Default page size for {@link OrderRecordRepository.findNetExcludedOrderCandidatesPage}
+ * (#2834) — bounds every individual SQL statement's row count instead of the
+ * pre-#2834 single unbounded `getRawMany()`. Mirrors the scale already
+ * documented on the port method (10-100 orders/day persona, per #1985's
+ * ADR-039 note) — a window under this size costs exactly one round trip,
+ * which is the overwhelmingly common case. Not env-configurable: this is a
+ * request-scoped internal batch size, not an operator-tunable sweep cadence.
+ */
+const NET_EXCLUDED_CANDIDATE_PAGE_SIZE = 500;
 
 /**
  * Empty defaults for the columns whose "unwritten" value is not `null`, keyed
@@ -1010,25 +1022,32 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
-   * Data Coverage tax A/B/C detector's base population (#2465) — see the
-   * port's JSDoc for the predicate rationale. Mirrors
+   * Data Coverage tax A/B/C detector's base population, ONE BOUNDED PAGE at
+   * a time (#2465, re-bounded by #2834) — see the port's JSDoc for the
+   * predicate rationale and the keyset-pagination contract. Mirrors
    * `getDailyOrderAggregates`'s `netExcludedAndNotCancelled` fragment
-   * EXACTLY (non-cancelled, current-era stamped, `NOT` net-eligible) so
-   * `candidates.length` is always the same figure as `netExcludedCount`
-   * for the identical filters/currency.
+   * EXACTLY (non-cancelled, current-era stamped, `NOT` net-eligible) so the
+   * sum of every page's `items.length` is always the same figure as
+   * `netExcludedCount` for the identical filters/currency.
    *
    * Reads only the four columns {@link NetExcludedOrderCandidate} needs via
    * `getRawMany`, not `getMany` (#2826) — the full `OrderRecordOrmEntity`
    * additionally carries `orderSnapshot` (an arbitrary-size JSONB column)
-   * that this classification pass never reads, so hydrating it for every
-   * candidate in the window was pure waste on top of an already-unpaged
-   * read (unpaged by design — see this method's port-level doc comment).
+   * that this classification pass never reads.
+   *
+   * Fetches `limit + 1` rows rather than issuing a separate `COUNT(*)` to
+   * decide whether another page follows — the standard "peek one extra row"
+   * keyset-pagination idiom. `nextCursor` is derived from the LAST row of
+   * the page actually returned (never the peeked extra row, which is
+   * trimmed off before mapping).
    */
-  async findNetExcludedOrderCandidates(
+  async findNetExcludedOrderCandidatesPage(
     filters: SalesAnalyticsFilters,
     currentReportingCurrency: string,
-    includeBackfilledPreRollout = false
-  ): Promise<NetExcludedOrderCandidate[]> {
+    includeBackfilledPreRollout = false,
+    cursor: NetExcludedOrderCandidateCursor | null = null,
+    limit: number = NET_EXCLUDED_CANDIDATE_PAGE_SIZE
+  ): Promise<NetExcludedOrderCandidatePage> {
     const { netEligible } = this.buildNetSalesOrderFragments(includeBackfilledPreRollout);
     const netExcludedAndNotCancelled = `rec."cancelledAt" IS NULL AND rec."reportingCurrency" = :currentReportingCurrency AND NOT ${netEligible}`;
 
@@ -1039,23 +1058,43 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       .addSelect('rec."placedAt"', 'placed_at')
       .addSelect('rec."taxRateEra"', 'tax_rate_era')
       .andWhere(netExcludedAndNotCancelled, { currentReportingCurrency })
-      .orderBy('rec."placedAt"', 'DESC');
+      .orderBy('rec."placedAt"', 'DESC')
+      .addOrderBy('rec."internalOrderId"', 'DESC')
+      .take(limit + 1);
 
     this.applySalesAnalyticsScope(qb, filters);
+
+    if (cursor) {
+      qb.andWhere(
+        '(rec."placedAt" < :cursorPlacedAt OR (rec."placedAt" = :cursorPlacedAt AND rec."internalOrderId" < :cursorInternalOrderId))',
+        { cursorPlacedAt: cursor.placedAt, cursorInternalOrderId: cursor.internalOrderId }
+      );
+    }
 
     const rows = await qb.getRawMany<{
       internal_order_id: string;
       source_connection_id: string;
-      placed_at: Date | null;
+      placed_at: Date;
       tax_rate_era: string | null;
     }>();
 
-    return rows.map((row) => ({
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+
+    const items = page.map((row) => ({
       internalOrderId: row.internal_order_id,
       sourceConnectionId: row.source_connection_id,
       placedAt: row.placed_at,
       taxRateEra: row.tax_rate_era,
     }));
+
+    const lastRow = page.at(-1);
+    const nextCursor: NetExcludedOrderCandidateCursor | null =
+      hasMore && lastRow
+        ? { placedAt: lastRow.placed_at, internalOrderId: lastRow.internal_order_id }
+        : null;
+
+    return { items, nextCursor };
   }
 
   /**
