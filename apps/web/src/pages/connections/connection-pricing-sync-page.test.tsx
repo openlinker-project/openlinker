@@ -126,7 +126,7 @@ describe('ConnectionPricingSyncPage', () => {
     expect(await screen.findByText('Erli — PL')).toBeInTheDocument();
   });
 
-  it('threads `?source=` into the editable section to pre-expand that source (#3148 permalink / #3150 rollup "Manage" link)', async () => {
+  it('threads the deep link\'s INTENT into the editable section — `?source=` shows, `&override=1` stages (#3167 round-3 review)', async () => {
     const view: ConnectionPricingSyncView = {
       default: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
       sources: [
@@ -155,6 +155,44 @@ describe('ConnectionPricingSyncPage', () => {
         <Route path="/connections/:connectionId/pricing-sync" element={<ConnectionPricingSyncPage />} />
       </Routes>,
       { apiClient, route: '/connections/dest-1/pricing-sync?source=src-1' },
+    );
+
+    // A bare `?source=` is the rollup's neutral "Manage" pointer: show me
+    // this row. It must not stage an override, or the next unrelated save
+    // persists a per-source rule nobody ticked.
+    const checkbox = await screen.findByTestId('source-custom-toggle');
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it('stages the override when the deep link asks for it with `&override=1`', async () => {
+    const view: ConnectionPricingSyncView = {
+      default: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
+      sources: [
+        {
+          sourceConnectionId: 'src-1',
+          sourceLabel: 'PrestaShop — Main Store',
+          isCustomOverride: false,
+          effective: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
+          openEpisodeCount: 0,
+        },
+      ],
+    };
+    const apiClient = createMockApiClient({
+      connections: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleConnection,
+          id: 'dest-1',
+          enabledCapabilities: ['OfferManager'],
+        }),
+      },
+      pricingSync: { get: vi.fn().mockResolvedValue(view) },
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/connections/:connectionId/pricing-sync" element={<ConnectionPricingSyncPage />} />
+      </Routes>,
+      { apiClient, route: '/connections/dest-1/pricing-sync?source=src-1&override=1' },
     );
 
     const checkbox = await screen.findByTestId('source-custom-toggle');

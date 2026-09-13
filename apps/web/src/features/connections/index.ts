@@ -91,6 +91,7 @@ export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaul
 export { CapabilityTogglesSection } from './components/CapabilityTogglesSection';
 export type { CapabilityTogglesSectionProps } from './components/CapabilityTogglesSection';
 export {
+  hasPricingSyncPage,
   isPricingDestination,
   PRICING_DESTINATION_CAPABILITIES,
 } from './lib/pricing-destination';

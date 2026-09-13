@@ -106,6 +106,15 @@ export function ConnectionPricingSyncPage(): ReactElement {
         <PricingAndSyncSection
           connectionId={connectionId}
           initialExpandSourceId={searchParams.get('source') ?? undefined}
+          // `?source=` alone means "show me this row". Creating an override
+          // needs `&override=1` (#3167 round-3 review) — the rollup's
+          // "Manage" link is a neutral pointer and must not stage a rule
+          // nobody ticked.
+          initialCreateOverrideForSourceId={
+            searchParams.get('override') === '1'
+              ? (searchParams.get('source') ?? undefined)
+              : undefined
+          }
         />
       ) : null}
       {isSource ? <SourceConnectionPricingRollup connectionId={connectionId} /> : null}

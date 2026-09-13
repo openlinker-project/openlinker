@@ -86,15 +86,26 @@ import { useToast } from '../../../shared/ui/toast-provider';
 export interface PricingAndSyncSectionProps {
   connectionId: string;
   /**
-   * Pre-expands the named source's override editor on load — the "reuse the
-   * same expandSourceRow-equivalent mechanism" #3150 asks to share between
-   * the Edit-dialog's "Set a rule just for this source" permalink (#3148,
-   * `?source=`) and the source rollup page's "Manage" links. Enabling the
-   * override is what "expanded" means here: the row's body only renders
-   * for a custom source, so landing on an inherited one turns it on —
-   * exactly what a manual click of the checkbox already does.
+   * Scroll the named source's row into view and highlight it on load. Looking
+   * at a row changes nothing — see `initialCreateOverrideForSourceId` for the
+   * other half.
    */
   initialExpandSourceId?: string;
+  /**
+   * Pre-create an override for the named source, exactly as ticking its
+   * checkbox does: add it to `customSources` and seed its rule from the
+   * default.
+   *
+   * **Separate from `initialExpandSourceId` on purpose (#3167 round-3
+   * review).** Both used to be the one `?source=` param, so the rollup's
+   * neutral "Manage" link — which means *go and look* — silently staged an
+   * override the operator never ticked, and `persistSave` writes
+   * `sourceOverrides` unconditionally with no creation-guard, so any later
+   * unrelated edit on that page persisted it. Intent now travels in the URL:
+   * `?source=` looks, `?source=&override=1` creates. A caller that means the
+   * second must say so.
+   */
+  initialCreateOverrideForSourceId?: string;
 }
 
 const MODE_HINT: Record<PriceSyncMode, string> = {
@@ -266,6 +277,7 @@ function applyRulePatch(rule: DraftPricingRule, patch: RulePatch): DraftPricingR
 export function PricingAndSyncSection({
   connectionId,
   initialExpandSourceId,
+  initialCreateOverrideForSourceId,
 }: PricingAndSyncSectionProps): ReactElement {
   const query = useConnectionPricingSyncQuery(connectionId);
   const updateMutation = useUpdateConnectionPricingSyncMutation(connectionId);
@@ -301,9 +313,16 @@ export function PricingAndSyncSection({
       if (initialExpandSourceId && !requestedFound) {
         setNotFoundSourceId(initialExpandSourceId);
       }
+      // Only an EXPLICIT create-override request stages one. A bare
+      // `?source=` scrolls and highlights; it must not stage anything (#3167
+      // round-3 review).
       const expandTarget =
-        requestedFound && !alreadyCustom.includes(initialExpandSourceId as string)
-          ? (initialExpandSourceId as string)
+        initialCreateOverrideForSourceId &&
+        query.data.sources.some(
+          (s) => s.sourceConnectionId === initialCreateOverrideForSourceId
+        ) &&
+        !alreadyCustom.includes(initialCreateOverrideForSourceId)
+          ? initialCreateOverrideForSourceId
           : null;
 
       const seededCustomSources = new Set(
@@ -326,9 +345,11 @@ export function PricingAndSyncSection({
         draft: cloneDraftView(seededDraft),
         customSources: new Set(seededCustomSources),
       });
-      if (expandTarget) setPendingScrollTarget(expandTarget);
+      // Scrolling follows the VIEW request, not the create request — a bare
+      // `?source=` must still land the operator on the row it names.
+      if (requestedFound) setPendingScrollTarget(initialExpandSourceId as string);
     }
-  }, [query.data, draft, initialExpandSourceId]);
+  }, [query.data, draft, initialExpandSourceId, initialCreateOverrideForSourceId]);
 
   // Scroll the pre-expanded row into view once it has actually rendered —
   // `draft` is a dependency so this retries on the render right after the
@@ -626,9 +647,9 @@ export function PricingAndSyncSection({
           second warehouse with its own margin.
         </p>
         {notFoundSourceId ? (
-          <p className="pricing-sync__field-error" id="conn-source-not-found" role="status">
-            The linked source isn&apos;t one of this connection&apos;s current sources, so nothing
-            was pre-selected below.
+          <p className="pricing-sync__notice" id="conn-source-not-found" role="status">
+            The linked source isn&apos;t one of this connection&apos;s current sources, so there
+            was nothing to show you below.
           </p>
         ) : null}
         <div className="pricing-sync__source-list" id="conn-source-list">
