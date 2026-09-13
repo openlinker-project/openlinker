@@ -11,6 +11,12 @@
  * staleness guard — the guard the single-item `accept`/`edit` paths already
  * enforce.
  *
+ * `@IsUUID()` on the item id: `price_change_episodes.id` is a `uuid` column,
+ * and a malformed id previously reached `findByIds` unpiped, surfacing as a
+ * Postgres `invalid input syntax for type uuid` error rather than a 400 for
+ * that one item. See `PriceChangesController`'s route-level `ParseUUIDPipe`
+ * for the equivalent fix on the single-item routes.
+ *
  * @module apps/api/src/listings/http/dto
  */
 import { Type } from 'class-transformer';
@@ -22,6 +28,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -31,7 +38,7 @@ const MAX_BULK_ACCEPT_ITEMS = 100;
 
 export class BulkAcceptPriceChangeItemDto {
   @ApiProperty({ description: 'The price-change episode id.' })
-  @IsString()
+  @IsUUID()
   id!: string;
 
   @ApiPropertyOptional({ description: "Also set this item's (source, connection) pair to `automatic`." })

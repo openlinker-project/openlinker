@@ -520,6 +520,33 @@ describe('PriceChangesService', () => {
       expect(page.items[0].id).toBe('ep-1');
       expect(page.hiddenStaleCount).toBe(1);
       expect(page.total).toBe(2);
+      expect(page.hasMore).toBe(false);
+    });
+
+    // #3162 review — the exact failure mode the review names: a page whose
+    // every row is stale renders `items: []`, which must not be read as
+    // "end of results" when a further page genuinely exists. `hasMore` is
+    // derived from the RAW row count fetched for this page against `total`,
+    // never from `items.length`, so it stays correct even here.
+    it('reports hasMore from the raw row count, not from items.length, when a page is entirely stale-hidden', async () => {
+      episodes.findOpenAll.mockResolvedValue([
+        buildEpisode({ id: 'ep-1', productVariantId: 'v1' }),
+        buildEpisode({ id: 'ep-2', productVariantId: 'v2' }),
+      ]);
+      // A real total far larger than this page — a further page exists.
+      episodes.countOpen.mockResolvedValue(50);
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'v1', productId: 'p1', sku: 'sku-1', attributes: null, isStale: true },
+        { id: 'v2', productId: 'p1', sku: 'sku-2', attributes: null, isStale: true },
+      ]);
+      productsService.getProductsByIds.mockResolvedValue([]);
+
+      const page = await service.listOpen({ offset: 0 });
+
+      expect(page.items).toHaveLength(0);
+      expect(page.hiddenStaleCount).toBe(2);
+      expect(page.total).toBe(50);
+      expect(page.hasMore).toBe(true);
     });
 
     it('passes a bounded page (default limit) down to the repository, plus includeRecentlyResolved', async () => {

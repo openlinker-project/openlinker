@@ -449,7 +449,7 @@ export async function seedNoRateProductOrder(
 
   // `recordStatus: 'ready'` is NOT sufficient — the tax-b coverage candidate
   // query additionally requires `order_records.reportingCurrency` to equal
-  // the CURRENT reporting-currency setting (`findNetExcludedOrderCandidates`,
+  // the CURRENT reporting-currency setting (`findNetExcludedOrderCandidatesPage`,
   // `order-record.repository.ts`), and that FX stamp can land asynchronously
   // after ingestion (a retry job, not always inline — see
   // `docs/architecture-overview.md` § Currency). Without this poll the order
