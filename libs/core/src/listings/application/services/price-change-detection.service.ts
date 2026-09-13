@@ -128,16 +128,13 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
   ): Promise<void> {
     const connection = await this.getConnectionCached(destinationConnectionId);
     if (!connection || connection.status !== 'active') {
-      // Logged rather than silent (#3159 review, SUGGESTION — the
-      // `analytics-trust` #1982 lesson): a destination that flipped to
-      // `needs_reauth`/`disabled`/`error` mid-sweep otherwise stops accruing
-      // episodes with no trace anywhere. Best-effort visibility only — this
-      // is not a retryable condition, and the next detection pass re-checks
-      // the connection from scratch.
-      this.logger.warn(
-        `[price-change-detection] skipping destination=${destinationConnectionId} for variant=${observation.productVariantId}: ` +
-          (connection ? `connection status is '${connection.status}', not 'active'` : 'connection not found')
-      );
+      // Visibility for this state lives in `getConnectionCached` (#3159
+      // round-3 review, IMPORTANT) — logged once per CACHE MISS, not once
+      // per call. This method runs once per changed variant per destination
+      // (`onMasterPriceChanged`'s loop), so logging here would emit one
+      // identical line per variant on a batch page — 300 lines for a
+      // 100-product/3-variant page with one disabled destination, every
+      // sweep tick.
       return;
     }
 
@@ -240,7 +237,19 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
     // open row inflating the review-queue's `countOpen` badges until it does.
   }
 
-  /** See the `connectionCache` field docblock. */
+  /**
+   * See the `connectionCache` field docblock.
+   *
+   * Also the single place a non-active/not-found connection is LOGGED
+   * (#3159 round-3 review, IMPORTANT): the review-1 fix put the warning in
+   * `detectForDestination`, which runs once per changed VARIANT, so a 100
+   * -product/3-variant sweep page against one disabled destination emitted
+   * 300 identical lines every tick. The condition is per CONNECTION, not per
+   * variant, so it belongs beside the cache MISS that first observes it — a
+   * cache HIT (including a hit that answers "still not active") logs
+   * nothing, bounding the log volume to once per `CONNECTION_CACHE_TTL_MS`
+   * window per connection rather than once per call.
+   */
   private async getConnectionCached(connectionId: string): Promise<Connection | null> {
     const now = Date.now();
     const cached = this.connectionCache.get(connectionId);
@@ -248,6 +257,20 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
       return cached.connection;
     }
     const connection = await this.connections.get(connectionId).catch(() => null);
+    if (!connection || connection.status !== 'active') {
+      // Logged rather than silent (#3159 review round 1, SUGGESTION — the
+      // `analytics-trust` #1982 lesson): a destination that flipped to
+      // `needs_reauth`/`disabled`/`error` mid-sweep otherwise stops accruing
+      // episodes with no trace anywhere. Best-effort visibility only — this
+      // is not a retryable condition, and the next cache miss re-checks the
+      // connection from scratch.
+      this.logger.warn(
+        `[price-change-detection] skipping destination=${connectionId}: ` +
+          (connection
+            ? `connection status is '${connection.status}', not 'active'`
+            : 'connection not found')
+      );
+    }
     this.connectionCache.set(connectionId, {
       connection,
       expiresAt: now + PriceChangeDetectionService.CONNECTION_CACHE_TTL_MS,
