@@ -60,14 +60,17 @@ export class TaxonomyController {
   @ApiParam({ name: 'connectionId', type: String })
   @ApiQuery({ name: 'parentId', required: false, type: String })
   @ApiResponse({ status: 200, type: [TaxonomyCategoryResponseDto] })
-  // Corrected in #2085: 404 / 409 are unreachable on any taxonomy read. Scope
-  // resolution probes the destination kind through a swallowing try/catch, so
-  // an unknown connection, a disabled one, and a missing browse capability all
-  // arrive as the same 422.
+  // Restored in #2146: the #2085 comment this replaced was documenting a bug,
+  // not a design choice — scope resolution used to swallow every failure from
+  // its capability probe, including connection-level ones. It now rethrows
+  // ConnectionNotFoundException / ConnectionDisabledException, so those are
+  // distinguishable again.
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
   @ApiResponse({
     status: 422,
     description:
-      'No taxonomy source could be resolved — the connection does not exist, is disabled, or exposes no category browser',
+      'No taxonomy source could be resolved — the connection exists and is active, but exposes no category browser',
   })
   async browseCategories(
     @Param('connectionId') connectionId: string,
@@ -87,12 +90,13 @@ export class TaxonomyController {
   @ApiParam({ name: 'connectionId', type: String })
   @ApiResponse({ status: 200, type: [TaxonomySearchHitResponseDto] })
   @ApiResponse({ status: 400, description: 'Query too short' })
-  // See the note on `browseCategories` above — 404 / 409 are unreachable here
-  // for the same reason.
+  // See the note on `browseCategories` above — restored in #2146.
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
   @ApiResponse({
     status: 422,
     description:
-      'No taxonomy source could be resolved — the connection does not exist, is disabled, or exposes no category browser',
+      'No taxonomy source could be resolved — the connection exists and is active, but exposes no category browser',
   })
   async searchCategories(
     @Param('connectionId') connectionId: string,
