@@ -2308,6 +2308,13 @@ textarea,
   text-overflow: ellipsis;
 }
 
+/* Was an inline style (#3168 round-3 review) — the dialog ships its own
+   stylesheet block, so the variant suffix belongs in it. */
+.mini-row__variant {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 .mini-row__meta {
   font-size: 0.68rem;
   color: var(--text-muted);

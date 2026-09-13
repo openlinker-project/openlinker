@@ -24,6 +24,7 @@ import { TimeDisplay } from '../../../shared/ui/time-display';
 import { AbsentValue } from '../../../shared/ui/absent-value';
 import { formatAmount } from '../../../shared/format/format-amount';
 import type { PriceChangeAutoAppliedItem } from '../api/price-changes.types';
+import { initialsFor } from '../lib/price-change-copy';
 
 export interface AutoAppliedRow {
   item: PriceChangeAutoAppliedItem;
@@ -39,15 +40,13 @@ export interface AutoAppliedDialogProps {
   rows: readonly AutoAppliedRow[];
 }
 
-function initials(name: string | null): string {
-  if (!name) return '?';
-  return name
-    .split(' ')
-    .map((w) => w[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
+/**
+ * One `initialsFor` in this feature (#3168 round-3 review) — this wrapper adds
+ * only the null case, which the shared helper deliberately does not model
+ * (an avatar chip for an unnamed row is a display concern, not a naming rule).
+ */
+function initialsForOrUnknown(name: string | null): string {
+  return name ? initialsFor(name) : '?';
 }
 
 export function AutoAppliedDialog({ open, onOpenChange, rows }: AutoAppliedDialogProps): ReactElement {
@@ -62,13 +61,13 @@ export function AutoAppliedDialog({ open, onOpenChange, rows }: AutoAppliedDialo
           {rows.map(({ item, productName, variantLabel, destinationLabel }) => (
             <div className="mini-row" key={item.id}>
               <span className="thumb" aria-hidden="true">
-                {initials(productName)}
+                {initialsForOrUnknown(productName)}
               </span>
               <div className="mini-row__text">
                 <div className="mini-row__name">
                   {productName === null ? <AbsentValue label="Product not found" /> : productName}
                   {variantLabel ? (
-                    <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> — {variantLabel}</span>
+                    <span className="mini-row__variant"> — {variantLabel}</span>
                   ) : null}
                 </div>
                 <div className="mini-row__meta">
