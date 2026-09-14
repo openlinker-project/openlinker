@@ -37,6 +37,8 @@ export const TAX_RATE_BACKFILL_SERVICE_TOKEN = Symbol('ITaxRateBackfillService')
 export const ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN = Symbol(
   'OrderCancellationSignalRepositoryPort'
 );
+// Test-fixture-only writes unreachable via any real ingestion flow (#2855).
+export const ORDER_TEST_FIXTURE_SERVICE_TOKEN = Symbol('IOrderTestFixtureService');
 
 
 
