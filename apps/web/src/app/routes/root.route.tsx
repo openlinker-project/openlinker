@@ -24,6 +24,7 @@ import { cursorsRoute } from './cursors.route';
 import { customersRoute } from './customers.route';
 import { devUiRoute } from './dev-ui.route';
 import { insightsRoute } from './insights.route';
+import { inventoryLocationsRoute } from './inventory-locations.route';
 import { listingsRoute } from './listings.route';
 import { aiProviderSettingsRoute } from './ai-provider-settings.route';
 import { mcpTokensRoute } from './mcp-tokens.route';
@@ -71,6 +72,7 @@ export const coreChildren: RouteObject[] = [
   automationsRoute,
   invoicesRoute,
   connectionsRoute,
+  inventoryLocationsRoute,
   adaptersRoute,
   newConnectionRoute,
   advancedNewConnectionRoute,
