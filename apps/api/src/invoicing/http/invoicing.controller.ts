@@ -115,6 +115,7 @@ import type {
   StoredDocument,
 } from '@openlinker/core/invoicing';
 import {
+  decodeBuyerTaxIdColumn,
   ORDER_RECORD_SERVICE_TOKEN,
   IOrderRecordService,
   orderFromReadySnapshot,
@@ -1551,6 +1552,10 @@ export class InvoicingController {
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
       orderSummary: orderSummary ? OrderSummaryProjectionDto.fromSummary(orderSummary) : null,
+      // #3188 - the three-state value the `taxId=with|without` filter was asking
+      // about. Decoded here for the same reason `fromDomain` decodes it: `''` is
+      // the asserted-none state, not an empty id.
+      buyerTaxId: decodeBuyerTaxIdColumn(record.buyerTaxId),
     };
   }
 

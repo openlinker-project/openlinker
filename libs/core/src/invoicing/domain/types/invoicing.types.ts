@@ -653,6 +653,29 @@ export interface IssueInvoiceCommand {
    * has the record in hand.
    */
   taxRateEra?: string | null;
+  /**
+   * The buyer tax identity KNOWN AT ISSUE TIME, in the same three-state
+   * encoding `order_records.buyerTaxId` uses (#2599): `null`/absent = the
+   * source asserted nothing, `''` = it positively asserted the buyer has none,
+   * otherwise the id.
+   *
+   * Frozen onto {@link InvoiceRecord.buyerTaxId} so the invoice list can render
+   * the three states the order detail renders (#3188) without joining to the
+   * Order — and, more importantly, without MOVING: an invoice is an immutable
+   * fiscal document, while `order_records.buyerTaxId` is rewritten by every
+   * re-ingestion, so a joined read could later show a number the issued
+   * document does not carry.
+   *
+   * Carried on the command for the same reason {@link taxRateEra} above is:
+   * `InvoiceService` depends on no orders-context token, and adding one would
+   * be a new module edge into the context whose module already imports this
+   * one. Every issuance caller has the value in hand.
+   *
+   * It never reaches a provider and never appears on a document — the id the
+   * document carries is `buyer.taxId`, and the write path refuses to let this
+   * field contradict it.
+   */
+  buyerTaxIdAssertion?: string | null;
 }
 
 /**
@@ -880,6 +903,14 @@ export interface CreateInvoiceRecordInput {
    * presence flag set on the write path; defaults `false` when omitted.
    */
   hasBuyerTaxId?: boolean;
+  /**
+   * The buyer tax identity frozen at issue time (#3188), three-state encoded as
+   * `order_records.buyerTaxId` is: `null` = not asserted, `''` = asserted-none,
+   * otherwise the id the document carries. Read it back through
+   * `decodeBuyerTaxIdColumn`, never with a bare `!== null` — that reports true
+   * for the asserted-none row.
+   */
+  buyerTaxId?: string | null;
   /** Neutral issued-document content snapshot (§7.3); `null` when not captured. */
   documentContent?: IssuedDocumentContent | null;
   /** Persisted machine-readable source document (e.g. FA(3) XML); `null` when not captured. */

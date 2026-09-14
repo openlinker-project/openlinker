@@ -4789,6 +4789,33 @@ a.delivery-rider-banner__button:focus-visible {
   margin: 0;
 }
 
+/* ── Rule composer readback (#3189) ──
+ * The whole rule in one sentence, framed as its own accent block rather than
+ * a fourth `.rule-composer-section` card: the mockup keeps the accent rare —
+ * on the save button and this frame — and the composer has exactly three
+ * grouped steps beside it. Info tones (not warning): the sentence states what
+ * the rule will do, it never reports a problem. */
+.rule-composer-readback {
+  border: 1px solid var(--status-info-border);
+  background: var(--status-info-soft);
+  box-shadow: inset 3px 0 0 var(--status-info);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  display: grid;
+  gap: 4px;
+}
+.rule-composer-readback__eyebrow {
+  margin: 0;
+  color: var(--status-info);
+}
+.rule-composer-readback__sentence {
+  margin: 0;
+  color: var(--text-primary);
+}
+.rule-composer-readback__hint {
+  margin: 0;
+}
+
 .rule-composer-conditions {
   display: grid;
   gap: var(--space-2);

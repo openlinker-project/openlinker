@@ -7,13 +7,16 @@
  * needs, and a runtime narrower that treats a malformed persisted condition as
  * **never matches** rather than throwing.
  *
- * **Declared divergence from #2161** (spec §5.5 divergence 2): `orderTotalGross`
- * carries an **inline amount + currency**, where #2170 structurally forbids one
- * and forces a `thresholdRef`. That indirection exists so a LEGAL amount can
- * version independently of the rules citing it. An automation threshold ("email
- * me about orders over 2,000 PLN") has no legal-matrix versioning concern, and
- * routing the operator through a separate thresholds table to author one would
- * be ceremony imported from a constraint that does not apply here.
+ * **This was a declared divergence from #2161 and is no longer one** (spec §5.5
+ * divergence 2): `orderTotalGross` carries an **inline amount + currency**,
+ * where #2170 structurally forbade one and forced a `thresholdRef` so a LEGAL
+ * amount could version independently of the rules citing it. An automation
+ * threshold ("email me about orders over 2,000 PLN") has no legal-matrix
+ * versioning concern, so importing that ceremony here was never justified —
+ * and #3189 removed the indirection from the sales-document rules too, after
+ * it turned out to make the amount unauthorable there as well. The two models
+ * now agree; this paragraph is kept because the REASONS differ and the spec's
+ * divergence list would otherwise read as still open.
  *
  * **The amount is a decimal STRING, not a JSON number.** JSON numbers are IEEE
  * doubles, and this value round-trips through `jsonb`. A string lets the

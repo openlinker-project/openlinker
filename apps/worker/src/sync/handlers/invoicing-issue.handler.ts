@@ -268,6 +268,13 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     if (isTaxRateEra(payload.taxRateEra)) {
       command.taxRateEra = payload.taxRateEra;
     }
+    // #3188: the three-state buyer tax identity frozen onto the issued record.
+    // Carried verbatim - `''` is the asserted-none state and must not be
+    // normalised away by a truthiness test, which is why this checks the TYPE
+    // rather than using `isNonEmptyString` like the fields above.
+    if (typeof payload.buyerTaxIdAssertion === 'string') {
+      command.buyerTaxIdAssertion = payload.buyerTaxIdAssertion;
+    }
 
     return command;
   }

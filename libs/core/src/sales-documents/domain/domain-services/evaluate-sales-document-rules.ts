@@ -32,8 +32,8 @@
  * that is exactly the runtime ambiguity this reason exists to catch.
  *
  * NEVER A SILENT FX CONVERSION: an `orderTotalGross` condition's referenced
- * threshold is compared against the order's OWN `currency` with no conversion
- * step. A currency mismatch resolves `unresolved`/`threshold-currency-mismatch`
+ * condition's own `currency` is compared against the order's OWN `currency` with
+ * no conversion step. A mismatch resolves `unresolved`/`threshold-currency-mismatch`
  * — the existing FX stamp (ADR-040) is analytics-only and explicitly forbidden
  * as a fiscal-document rate source, so this evaluator must never reach for it
  * (and does not import anything that could).
@@ -48,7 +48,6 @@ import {
   type SalesDocumentCountryDefaultFact,
   type SalesDocumentOrderFacts,
   type SalesDocumentRuleFact,
-  type SalesDocumentThresholdFact,
 } from '../types/sales-document-order-facts.types';
 
 export interface SalesDocumentRuleEngineInput {
@@ -61,8 +60,6 @@ export interface SalesDocumentRuleEngineInput {
   readonly restOfWorldRules: readonly SalesDocumentRuleFact[];
   /** Country defaults for `★ Rest of world`. */
   readonly restOfWorldDefaults: readonly SalesDocumentCountryDefaultFact[];
-  /** Every threshold any loaded rule's conditions may reference, keyed by `ref`. */
-  readonly thresholds: readonly SalesDocumentThresholdFact[];
   /** Evaluation instant for effective-date filtering — never read from the system clock inside this function. */
   readonly now: Date;
 }
@@ -87,15 +84,8 @@ function isEffective(rule: SalesDocumentRuleFact, now: Date): boolean {
 /** Terminal signal from evaluating a single `orderTotalGross` condition, or `null` when it evaluates cleanly. */
 function checkAmountConditionDataProblem(
   order: SalesDocumentOrderFacts,
-  threshold: SalesDocumentThresholdFact | undefined,
+  condition: Extract<SalesDocumentCondition, { field: 'orderTotalGross' }>,
 ): 'net-priced' | 'currency-mismatch' | null {
-  if (threshold === undefined) {
-    // Referential-integrity gap (a rule cites a thresholdRef the caller did
-    // not load) — never a data problem worth halting the whole evaluation
-    // over. The condition simply cannot be evaluated, so the rule that
-    // carries it cannot match; other rules in the same scope are unaffected.
-    return null;
-  }
   // A missing `taxTreatment` is NOT "known to be inclusive" — the type's own
   // doc comment (`SalesDocumentOrderFacts.taxTreatment`) says a missing OR
   // `exclusive` treatment resolves the same way, and this codebase's stance
@@ -104,7 +94,10 @@ function checkAmountConditionDataProblem(
   if (order.taxTreatment !== 'inclusive') {
     return 'net-priced';
   }
-  if (threshold.currency !== order.currency) {
+  // NEVER a conversion (#3189 keeps ADR-041's rule, only the amount moved
+  // inline): a rule written in one currency simply does not match an order
+  // priced in another, and a second currency is a second rule.
+  if (condition.currency !== order.currency) {
     return 'currency-mismatch';
   }
   return null;
@@ -113,7 +106,6 @@ function checkAmountConditionDataProblem(
 function evaluateCondition(
   condition: SalesDocumentCondition,
   order: SalesDocumentOrderFacts,
-  thresholdsByRef: ReadonlyMap<string, SalesDocumentThresholdFact>,
 ): { matches: boolean; dataProblem: 'net-priced' | 'currency-mismatch' | null } {
   if (condition.field === 'buyerHasTaxId') {
     return { matches: order.buyerHasTaxId === condition.value, dataProblem: null };
@@ -137,16 +129,19 @@ function evaluateCondition(
     };
   }
   // condition.field === 'orderTotalGross'
-  const threshold = thresholdsByRef.get(condition.thresholdRef);
-  const dataProblem = checkAmountConditionDataProblem(order, threshold);
+  const dataProblem = checkAmountConditionDataProblem(order, condition);
   if (dataProblem !== null) {
     return { matches: false, dataProblem };
   }
-  if (threshold === undefined) {
-    return { matches: false, dataProblem: null };
-  }
-  const matches =
-    condition.op === 'gte' ? order.totalGross >= threshold.amount : order.totalGross < threshold.amount;
+  // Compared as NUMBERS even though the rule stores a decimal STRING, and that
+  // is not an oversight. `order.totalGross` is already a JS number by the time
+  // it reaches here, so no comparison can be more exact than that operand; the
+  // string exists so the amount survives a jsonb round-trip unchanged and is
+  // shown back to the operator verbatim, which a JSON number would not do
+  // (`450.10` is not representable). `isDecimalAmountString` has already
+  // rejected anything `Number()` could misread.
+  const amount = Number(condition.amount);
+  const matches = condition.op === 'gte' ? order.totalGross >= amount : order.totalGross < amount;
   return { matches, dataProblem: null };
 }
 
@@ -156,13 +151,12 @@ function evaluateScope(
   defaults: readonly SalesDocumentCountryDefaultFact[],
   order: SalesDocumentOrderFacts,
   now: Date,
-  thresholdsByRef: ReadonlyMap<string, SalesDocumentThresholdFact>,
 ): ScopeResult {
   const matched: SalesDocumentRuleFact[] = [];
   // The first order-data problem encountered across ALL rules in this scope,
   // kept aside rather than returned immediately (review finding 3): a rule
   // ordered AFTER a clean match must never discard that match just because
-  // IT happens to reference a threshold with a currency mismatch, or the
+  // ITS OWN condition carries a currency mismatch, or the
   // order is net-priced. The problem is only surfaced if the scope ends up
   // with no clean match at all — see below.
   let dataProblemFound: 'net-priced' | 'currency-mismatch' | null = null;
@@ -171,7 +165,7 @@ function evaluateScope(
 
     let allTrue = true;
     for (const condition of rule.conditions) {
-      const { matches, dataProblem } = evaluateCondition(condition, order, thresholdsByRef);
+      const { matches, dataProblem } = evaluateCondition(condition, order);
       if (dataProblem !== null) {
         // This rule cannot be reliably evaluated — it does not match, but
         // the problem is remembered in case nothing else in the scope does
@@ -224,12 +218,11 @@ function evaluateScope(
  * four-tier ladder and the reasoning behind each `unresolved` mapping.
  */
 export function evaluateSalesDocumentRules(input: SalesDocumentRuleEngineInput): SalesDocumentDecision {
-  const { order, countryRules, countryDefaults, restOfWorldRules, restOfWorldDefaults, thresholds, now } =
+  const { order, countryRules, countryDefaults, restOfWorldRules, restOfWorldDefaults, now } =
     input;
-  const thresholdsByRef = new Map(thresholds.map((t) => [t.ref, t] as const));
 
   const countryConfigured = countryRules.length > 0 || countryDefaults.length > 0;
-  const countryResult = evaluateScope(countryRules, countryDefaults, order, now, thresholdsByRef);
+  const countryResult = evaluateScope(countryRules, countryDefaults, order, now);
 
   if (countryResult.kind === 'route') {
     return {
@@ -262,7 +255,7 @@ export function evaluateSalesDocumentRules(input: SalesDocumentRuleEngineInput):
   // Tier 3: the country carried NOTHING at all — evaluate `★ Rest of world`
   // by the identical ladder.
   const rowConfigured = restOfWorldRules.length > 0 || restOfWorldDefaults.length > 0;
-  const rowResult = evaluateScope(restOfWorldRules, restOfWorldDefaults, order, now, thresholdsByRef);
+  const rowResult = evaluateScope(restOfWorldRules, restOfWorldDefaults, order, now);
 
   if (rowResult.kind === 'route') {
     return {

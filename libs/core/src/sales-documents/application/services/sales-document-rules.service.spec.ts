@@ -15,11 +15,10 @@ import type { SalesDocumentCountryDefaultRepositoryPort } from '../../domain/por
 import type { SalesDocumentThresholdRepositoryPort } from '../../domain/ports/sales-document-threshold-repository.port';
 import type { SalesDocumentCountryAcknowledgmentRepositoryPort } from '../../domain/ports/sales-document-country-acknowledgment-repository.port';
 import { SalesDocumentRule } from '../../domain/entities/sales-document-rule.entity';
-import { SalesDocumentThreshold } from '../../domain/entities/sales-document-threshold.entity';
 import { SalesDocumentCountryDefault } from '../../domain/entities/sales-document-country-default.entity';
 import { SalesDocumentCountryAcknowledgment } from '../../domain/entities/sales-document-country-acknowledgment.entity';
 import { SalesDocumentRuleConflictException } from '../../domain/exceptions/sales-document-rule-conflict.exception';
-import { SalesDocumentThresholdNotFoundException } from '../../domain/exceptions/sales-document-threshold-not-found.exception';
+import { SalesDocumentInvalidConditionException } from '../../domain/exceptions/sales-document-invalid-condition.exception';
 import { SalesDocumentCountryAlreadyConfiguredException } from '../../domain/exceptions/sales-document-country-already-configured.exception';
 import { computeSalesDocumentConditionsHash } from '../../domain/types/sales-document-condition.types';
 import type { SalesDocumentRuleInput } from '../../domain/types/sales-document-rule-write.types';
@@ -170,33 +169,65 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
     });
   });
 
-  describe('createRule — threshold-ref validation', () => {
-    it('should reject an orderTotalGross condition whose thresholdRef does not resolve', async () => {
-      thresholdRepo.findByRefs.mockResolvedValue([]);
-
+  // #3189 replaced threshold-ref validation: an `orderTotalGross` condition
+  // carries its own amount and currency now, so there is no ref to resolve and
+  // the guard that matters is the SHAPE check. It matters for the same reason
+  // the ref check did - a condition the engine cannot narrow reads as "this
+  // rule never matches", with nothing said to the operator, so it has to be
+  // refused at authoring time.
+  describe('createRule — inline amount validation (#3189)', () => {
+    it('should reject an orderTotalGross condition whose amount is not a decimal string', async () => {
       const input = baseInput({
-        conditions: [{ field: 'orderTotalGross', op: 'lt', thresholdRef: 'unknown-ref' }],
+        conditions: [
+          { field: 'orderTotalGross', op: 'lt', amount: '450 PLN', currency: 'PLN' } as never,
+        ],
       });
 
       await expect(service.createRule(input)).rejects.toBeInstanceOf(
-        SalesDocumentThresholdNotFoundException,
+        SalesDocumentInvalidConditionException,
       );
       expect(ruleRepo.findByCountryAndConditionsHash).not.toHaveBeenCalled();
       expect(ruleRepo.create).not.toHaveBeenCalled();
     });
 
-    it('should proceed when the referenced threshold resolves', async () => {
-      thresholdRepo.findByRefs.mockResolvedValue([
-        new SalesDocumentThreshold('pl-simplified-invoice-2026', 450, 'PLN', 'lt', new Date(), null, new Date(), new Date()),
-      ]);
+    it('should reject an orderTotalGross condition whose currency is not an ISO code', async () => {
+      const input = baseInput({
+        conditions: [
+          { field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'zloty' } as never,
+        ],
+      });
+
+      await expect(service.createRule(input)).rejects.toBeInstanceOf(
+        SalesDocumentInvalidConditionException,
+      );
+      expect(ruleRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('should proceed on a well-formed inline amount', async () => {
       ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([]);
       ruleRepo.create.mockResolvedValue(existingRule());
 
       const input = baseInput({
-        conditions: [{ field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' }],
+        conditions: [{ field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' }],
       });
 
       await expect(service.createRule(input)).resolves.toBeDefined();
+    });
+
+    // The threshold table is no longer read on the evaluation or the write
+    // path; asserted so a re-introduced lookup is a failing test rather than a
+    // quiet re-coupling.
+    it('should not consult the threshold repository at all', async () => {
+      ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([]);
+      ruleRepo.create.mockResolvedValue(existingRule());
+
+      await service.createRule(
+        baseInput({
+          conditions: [{ field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' }],
+        }),
+      );
+
+      expect(thresholdRepo.findByRefs).not.toHaveBeenCalled();
     });
   });
 
@@ -250,7 +281,11 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       expect(decisions).toHaveLength(40);
       expect(ruleRepo.findByCountries).toHaveBeenCalledTimes(1);
       expect(countryDefaultRepo.findByCountries).toHaveBeenCalledTimes(1);
-      expect(thresholdRepo.findAll).toHaveBeenCalledTimes(1);
+      // #3189: the batch reads rules and defaults only - an `orderTotalGross`
+      // condition carries its own amount, so the threshold store is not on the
+      // evaluation path at all. Asserted as an absence so a re-introduced read
+      // fails here rather than quietly adding a query per batch.
+      expect(thresholdRepo.findAll).not.toHaveBeenCalled();
     });
 
     it('should load the distinct countries plus Rest of world', async () => {
@@ -542,6 +577,8 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       });
 
       expect(ruleRepo.findByCountry).toHaveBeenCalledWith('PL');
+      // A tier-1 RULE match carries `ruleId` (#3186); only a country default or
+      // the Rest-of-world tier routes without one.
       expect(decision).toEqual({
         kind: 'route',
         documentKind: existingRule().documentKind,

@@ -50,10 +50,18 @@ describe('sales-document starter-template catalogue', () => {
     it('should carry the rule shapes and their required capability when Poland is read', () => {
       const template = getSalesDocumentStarterTemplate('PL');
       expect(template).not.toBeNull();
+      // #3189 changed this list in two ways. `no-tax-id` is GONE: it matched
+      // `buyerHasTaxId === false`, which is reachable only from a positively
+      // asserted "has none", and no source adapter can produce that state - so
+      // the flagship template shipped a rule that was dead on every install.
+      // And the threshold pair is now per CURRENCY, because an inline amount is
+      // compared and never converted: PL's simplified-invoice ceiling is 450 PLN
+      // OR 100 EUR, which under that rule is two rules rather than one.
       expect(template?.rules.map((rule) => rule.slot)).toEqual([
-        'no-tax-id',
         'tax-id-below-threshold',
         'tax-id-above-threshold',
+        'tax-id-below-threshold-eur',
+        'tax-id-above-threshold-eur',
       ]);
       for (const rule of template?.rules ?? []) {
         expect(['Invoicing', 'Fiscalization']).toContain(rule.requiredCapability);
