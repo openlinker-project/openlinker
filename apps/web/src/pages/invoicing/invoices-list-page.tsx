@@ -438,7 +438,7 @@ export function InvoicesListPage(): ReactElement {
       title={t('invoice.list.title', 'Invoices')}
       description={t(
         'invoice.list.description',
-        'Issued, pending, and failed invoices across connections, with regulatory (KSeF) status.',
+        'Issued, pending, and failed invoices across connections, with regulatory status.',
       )}
     >
       {retryMutation.error ? (
