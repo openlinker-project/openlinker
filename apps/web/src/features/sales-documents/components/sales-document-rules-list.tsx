@@ -41,11 +41,17 @@ function ruleResultLabel(rule: SalesDocumentRule): string {
   return rule.documentKind === 'invoice' ? 'Invoice' : 'Receipt';
 }
 
+/** One place minting the row's DOM id, so the anchor and the lookup cannot drift. */
+function ruleCardDomId(ruleId: string): string {
+  return `rule-card-${ruleId}`;
+}
+
 export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps): ReactElement {
   const rulesQuery = useSalesDocumentRulesQuery(country);
   const connectionsQuery = useConnectionsQuery();
   const deleteRule = useDeleteSalesDocumentRuleMutation();
   const [composerOpen, setComposerOpen] = useState(false);
+  const [highlightedRuleId, setHighlightedRuleId] = useState<string | null>(null);
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
 
@@ -99,7 +105,14 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
         const deleteFailedForThisRule =
           deleteRule.isError && deleteRule.variables === rule.id ? deleteRule.error : null;
         return (
-          <div key={rule.id} className="rule-card">
+          <div
+            key={rule.id}
+            id={ruleCardDomId(rule.id)}
+            data-testid={`rule-card-${rule.id}`}
+            className={
+              highlightedRuleId === rule.id ? 'rule-card rule-card--highlighted' : 'rule-card'
+            }
+          >
             <div className="rule-card__flow">
               {rule.conditions.map((condition, index) => (
                 <span key={index} className="condition-chip">
@@ -159,7 +172,18 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
 
       {rules.length === 0 ? <p className="muted-text">No rules yet for this country.</p> : null}
 
-      <SalesDocumentRuleComposerDialog country={country} open={composerOpen} onOpenChange={setComposerOpen} />
+      <SalesDocumentRuleComposerDialog
+        country={country}
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        onOpenRule={(ruleId) => {
+          // Reveal the rival the composer just named (#3190). Highlight AND
+          // scroll: on a long list the row is usually off-screen, and a
+          // highlight nobody can see is the same as no affordance at all.
+          setHighlightedRuleId(ruleId);
+          document.getElementById(ruleCardDomId(ruleId))?.scrollIntoView({ block: 'center' });
+        }}
+      />
     </div>
   );
 }

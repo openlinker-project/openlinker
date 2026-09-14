@@ -20,7 +20,9 @@
  *     anywhere in the dialog, disabled or otherwise: if the order carries a
  *     tax ID it always reaches the adapter, so no property exists to gate.
  *  4. Save is refused until a destination connection is picked.
- *  5. The readback (#3189) states the assembled rule and never fills a gap in
+ *  5. Overlap (#3190): `rule-conflict` and `rule-no-conflict` are mutually
+ *     exclusive, and the save is inert while a collision stands.
+ *  6. The readback (#3189) states the assembled rule and never fills a gap in
  *     - the mockup's primary assertion target. The sentence itself is pinned
  *     by `describe-sales-document-rule-draft.test.ts`; what is asserted HERE
  *     is that the dialog is wired to it at all.
@@ -53,6 +55,68 @@ describe('SalesDocumentRuleComposerDialog', () => {
     expect(within(root).getByText('Document & destination')).toBeInTheDocument();
     expect(within(root).getByText('Effective window')).toBeInTheDocument();
     expect(root.querySelectorAll('.rule-composer-section')).toHaveLength(3);
+  });
+
+  describe('overlap detection (#3190)', () => {
+    it('warns and makes the save inert when the draft could match the same order', async () => {
+      renderComposer({
+        salesDocumentRules: {
+          checkRuleOverlap: vi.fn().mockResolvedValue({
+            overlapping: [
+              { ruleId: 'rule-1', connectionId: 'conn-1', documentKind: 'fiscal-receipt' },
+            ],
+            disjoint: [],
+            undecided: [],
+          }),
+        },
+      });
+      const root = await dialog();
+
+      const conflict = await within(root).findByTestId('rule-conflict');
+      expect(conflict).toHaveTextContent('hold the order instead of one winning');
+      // The acceptance criterion: the save is not merely styled as blocked.
+      expect(within(root).getByTestId('rule-save-blocked')).toBeDisabled();
+      expect(within(root).queryByTestId('rule-save')).not.toBeInTheDocument();
+      expect(within(root).queryByTestId('rule-no-conflict')).not.toBeInTheDocument();
+    });
+
+    it('states the provable non-collision, and leaves the save available', async () => {
+      renderComposer({
+        salesDocumentRules: {
+          checkRuleOverlap: vi.fn().mockResolvedValue({
+            overlapping: [],
+            disjoint: [{ ruleId: 'rule-1', reason: 'currency' }],
+            undecided: [],
+          }),
+        },
+      });
+      const root = await dialog();
+
+      const clear = await within(root).findByTestId('rule-no-conflict');
+      expect(clear).toHaveTextContent('cannot match the same order');
+      expect(within(root).queryByTestId('rule-conflict')).not.toBeInTheDocument();
+      expect(within(root).getByTestId('rule-save')).toBeInTheDocument();
+    });
+
+    // The third outcome must not read as either of the other two - silence
+    // here is the false reassurance the whole check exists to remove.
+    it('surfaces a pair it could not decide about, without claiming safety', async () => {
+      renderComposer({
+        salesDocumentRules: {
+          checkRuleOverlap: vi.fn().mockResolvedValue({
+            overlapping: [],
+            disjoint: [],
+            undecided: [{ ruleId: 'rule-1', reason: 'unreadable-condition' }],
+          }),
+        },
+      });
+      const root = await dialog();
+
+      const undecided = await within(root).findByTestId('rule-overlap-undecided');
+      expect(undecided).toHaveTextContent('could not tell');
+      expect(within(root).queryByTestId('rule-no-conflict')).not.toBeInTheDocument();
+      expect(within(root).queryByTestId('rule-conflict')).not.toBeInTheDocument();
+    });
   });
 
   it('should read the draft back, naming the unchosen destination rather than omitting it', async () => {

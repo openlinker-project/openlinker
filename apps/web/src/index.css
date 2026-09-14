@@ -3833,6 +3833,13 @@ a.delivery-rider-banner__button:focus-visible {
  * on the save button and this frame — and the composer has exactly three
  * grouped steps beside it. Info tones (not warning): the sentence states what
  * the rule will do, it never reports a problem. */
+/* A rival rule the composer just named (#3190): brief, non-destructive accent
+   so the operator's eye lands on the row the warning was about. */
+.rule-card--highlighted {
+  outline: 2px solid var(--status-warning);
+  outline-offset: 2px;
+}
+
 .rule-composer-readback {
   border: 1px solid var(--status-info-border);
   background: var(--status-info-soft);

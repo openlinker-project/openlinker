@@ -17,7 +17,10 @@
  * @implements {ISalesDocumentRulesService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import type { ISalesDocumentRulesService } from '../interfaces/sales-document-rules.service.interface';
+import type {
+  ISalesDocumentRulesService,
+  SalesDocumentRuleOverlapCheckInput,
+} from '../interfaces/sales-document-rules.service.interface';
 import {
   SALES_DOCUMENT_COUNTRY_ACKNOWLEDGMENT_REPOSITORY_TOKEN,
   SALES_DOCUMENT_COUNTRY_DEFAULT_REPOSITORY_TOKEN,
@@ -47,6 +50,11 @@ import {
 import type { SalesDocumentDecision } from '../../domain/types/sales-document-decision.types';
 import type { SalesDocumentCountrySummary } from '../../domain/types/sales-document-country-summary.types';
 import { evaluateSalesDocumentRules } from '../../domain/domain-services/evaluate-sales-document-rules';
+import {
+  detectSalesDocumentRuleOverlap,
+  salesDocumentRuleWindowsOverlap,
+} from '../../domain/domain-services/detect-sales-document-rule-overlap';
+import type { SalesDocumentRuleOverlapVerdict } from '../../domain/domain-services/detect-sales-document-rule-overlap';
 import { SalesDocumentRuleConflictException } from '../../domain/exceptions/sales-document-rule-conflict.exception';
 import { SalesDocumentInvalidConditionException } from '../../domain/exceptions/sales-document-invalid-condition.exception';
 import {
@@ -59,17 +67,6 @@ import { SalesDocumentCountryAlreadyConfiguredException } from '../../domain/exc
 interface CountryDefaultSlots {
   invoiceDefaultConnectionId: string | null;
   receiptDefaultConnectionId: string | null;
-}
-
-function rangesOverlap(
-  aFrom: Date,
-  aTo: Date | null,
-  bFrom: Date,
-  bTo: Date | null,
-): boolean {
-  const aEnd = aTo ?? new Date(8640000000000000); // open-ended = effectively +infinity
-  const bEnd = bTo ?? new Date(8640000000000000);
-  return aFrom.getTime() <= bEnd.getTime() && bFrom.getTime() <= aEnd.getTime();
 }
 
 @Injectable()
@@ -336,6 +333,38 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   }
 
   /**
+   * #3190. Reads the country's live rules and asks the pure detector whether
+   * the draft could match the same order as any of them.
+   *
+   * Scoped to the draft's own country ONLY, which is what `findByCountry`
+   * gives: two rules in different markets are already disjoint by the engine's
+   * own country tiering, so widening the read would spend a scan to rediscover
+   * that. `'*'` (Rest of world) is a country value like any other here - a
+   * `*` rule and a `PL` rule are separate tiers and never compete.
+   */
+  async detectRuleOverlap(
+    input: SalesDocumentRuleOverlapCheckInput,
+  ): Promise<SalesDocumentRuleOverlapVerdict> {
+    const existing = await this.ruleRepository.findByCountry(input.country);
+    return detectSalesDocumentRuleOverlap(
+      {
+        conditions: input.conditions,
+        effectiveFrom: input.effectiveFrom,
+        effectiveTo: input.effectiveTo,
+        excludeRuleId: input.excludeRuleId,
+      },
+      existing.map((rule) => ({
+        id: rule.id,
+        connectionId: rule.connectionId,
+        documentKind: rule.documentKind,
+        conditions: rule.conditions,
+        effectiveFrom: rule.effectiveFrom,
+        effectiveTo: rule.effectiveTo,
+      })),
+    );
+  }
+
+  /**
    * The write-path conflict guard (mockup tab 02): same country + same
    * `conditionsHash` + an OVERLAPPING effective range + a DIFFERENT
    * connection is rejected outright. Deliberately no `priority` field breaks
@@ -369,7 +398,7 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     const candidates = await this.ruleRepository.findByCountryAndConditionsHash(country, conditionsHash);
     for (const candidate of candidates) {
       if (candidate.connectionId === connectionId) continue;
-      if (rangesOverlap(effectiveFrom, effectiveTo, candidate.effectiveFrom, candidate.effectiveTo)) {
+      if (salesDocumentRuleWindowsOverlap(effectiveFrom, effectiveTo, candidate.effectiveFrom, candidate.effectiveTo)) {
         throw new SalesDocumentRuleConflictException(candidate.id, candidate.connectionId);
       }
     }
