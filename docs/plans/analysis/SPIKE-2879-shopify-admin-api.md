@@ -107,7 +107,7 @@ the reconciled count.
 
 | # | Story | Fact | Evidence |
 |---|---|---|---|
-| E-M1 | M2/M3 | Product read returns real seeded test data — `products(first: 5)` returned 5 real products including deliberately-named edge cases (`The Draft Snowboard`, `The Out of Stock Snowboard`, `The Inventory Not Tracked Snowboard`) | Live — observed, no transcript retained |
+| E-M1 | M1/M2/M3 | Product read returns real seeded test data — `products(first: 5)` returned 5 real products including deliberately-named edge cases (`The Draft Snowboard`, `The Out of Stock Snowboard`, `The Inventory Not Tracked Snowboard`). `products(first, after)` is the same cursor-paged enumeration call M1 (`listExternalIds`, paged) asks for — confirmed live here and reused throughout (E-M10's `sortKey: UPDATED_AT` pass, E-M12's bulk-operation path) | Live — observed, no transcript retained |
 | E-M2 | M7 | **Deletion detection confirmed.** Querying `product(id: ...)` for a product just deleted via `productDelete` returns `{"data":{"product":null}}` — **no error, no HTTP error code, silent `null`**. Adapter must treat `null` (not an exception) as the `MasterProductNotFoundError` signal | Live transcript below — create → delete → re-query in one sequence |
 | E-M3 | M11 | `inventoryAdjustQuantities` **requires** `changeFromQuantity` (CAS) as a mandatory field of `InventoryChangeInput`, separate from the `@idempotent` directive requirement | Live: mutation without it → `"InventoryChangeInput must include the following argument: changeFromQuantity."` |
 | E-M4 | M13 | `@idempotent` directive is enforced **at runtime**, confirmed live on API version `2026-07` already (issue's desk research said "mandatory at 2026-04" — confirmed still in force) | Live: mutation without directive → `"The @idempotent directive is required for this mutation but was not provided."`, `extensions.code: BAD_REQUEST` |
@@ -557,8 +557,9 @@ Story cell above besides the excluded C7: C1 via E-C1/E-C2/E-C3/E-C5/E-C6, C2/C3
 E-C9, C8 via E-C4, C10 via E-C7; C3 partial/behavioural; C4 gained a reusable
 `currentAppInstallation.accessScopes` health-check pattern; C7 is EXCLUDED from this numerator — see
 "Attempted but inconclusive" below, it is an unmet test condition, not a confirmed result either way)
-· **M** 13/13 (M6/M10 bulk operations confirmed end to
-end via `bulkOperationRunQuery`) · **T** 6/12 (T1, T1b, T8-implicit via `fullName`/global tree, T9,
+· **M** 13/13 (M1-via-`products(first,after)`-cursor-pagination (E-M1, reused in E-M10/E-M12), M6/M10
+bulk operations confirmed end to end via `bulkOperationRunQuery`) · **T** 6/12 (T1, T2-via-`fullName`/
+`ancestorIds`-breadcrumb-resolution (E-T1b), T8-implicit via `fullName`/global tree, T9,
 T11-NOT-SUPPORTED, T12-quota-fits) · **P** 6/13 (P1, P3-implicit, P6, P7, P8,
 P13-behaviourally-confirmed-as-PATCH) · **S** 6/13 (S1, S4, S6, S7, S10, S13) · **O** 13/16 (O1, O2,
 O3, O5-partial, O6, O7, O9, O10, O11, O12, O13-vocab-only, O14, O15-CONFIRMED-with-real-5/min-cap;
