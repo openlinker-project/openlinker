@@ -49,6 +49,7 @@ export {
   useInventoryLocationsForRulesQuery,
   SOURCING_RULE_LOCATION_PAGE_SIZE,
 } from './hooks/use-inventory-locations-for-rules-query';
+export type { SourcingRuleLocationsPage } from './hooks/use-inventory-locations-for-rules-query';
 
 // #3061 - the composed section: states + table + dialogs.
 export { SourcingRulesSection } from './components/sourcing-rules-section';
