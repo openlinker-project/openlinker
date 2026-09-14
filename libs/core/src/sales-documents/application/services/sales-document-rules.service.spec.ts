@@ -21,6 +21,7 @@ import { SalesDocumentCountryAcknowledgment } from '../../domain/entities/sales-
 import { SalesDocumentRuleConflictException } from '../../domain/exceptions/sales-document-rule-conflict.exception';
 import { SalesDocumentThresholdNotFoundException } from '../../domain/exceptions/sales-document-threshold-not-found.exception';
 import { SalesDocumentCountryAlreadyConfiguredException } from '../../domain/exceptions/sales-document-country-already-configured.exception';
+import { computeSalesDocumentConditionsHash } from '../../domain/types/sales-document-condition.types';
 import type { SalesDocumentRuleInput } from '../../domain/types/sales-document-rule-write.types';
 import type { SalesDocumentOrderFacts } from '../../domain/types/sales-document-order-facts.types';
 
@@ -42,7 +43,6 @@ function makeCountryDefaultRepo(): jest.Mocked<SalesDocumentCountryDefaultReposi
     findByCountry: jest.fn(),
     findByCountries: jest.fn(),
     findAll: jest.fn(),
-    findByCountryAndKind: jest.fn(),
     upsert: jest.fn(),
     delete: jest.fn(),
   };
@@ -536,6 +536,64 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
         documentKind: existingRule().documentKind,
         connectionId: existingRule().connectionId,
       });
+    });
+
+    it('should uppercase an orderCountry condition VALUE before hashing and persisting it', async () => {
+      ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([]);
+      ruleRepo.create.mockResolvedValue(existingRule());
+
+      await service.createRule(
+        baseInput({ conditions: [{ field: 'orderCountry', op: 'eq', value: 'pl' }] }),
+      );
+
+      // The evaluator compares `order.country === condition.value` and
+      // `resolveRouting` always uppercases the order's country, so a stored
+      // `pl` would never match again.
+      expect(ruleRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conditions: [{ field: 'orderCountry', op: 'eq', value: 'PL' }],
+        }),
+      );
+
+      // Ordering matters: the hash is a column of
+      // `UQ_sales_document_rules_country_hash_from`, so it must be computed
+      // over the NORMALISED conditions or `pl` and `PL` occupy two scopes.
+      const expectedHash = computeSalesDocumentConditionsHash([
+        { field: 'orderCountry', op: 'eq', value: 'PL' },
+      ]);
+      expect(ruleRepo.findByCountryAndConditionsHash).toHaveBeenCalledWith('PL', expectedHash);
+      expect(ruleRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ conditionsHash: expectedHash }),
+      );
+    });
+
+    it('should fold a stray-case row the migration skipped into ONE market card', async () => {
+      // The migration deliberately leaves a colliding stray-case row alone;
+      // without a read-side fold it renders a second card for one country.
+      ruleRepo.countRulesByCountry.mockResolvedValue(
+        new Map([
+          ['PL', 2],
+          ['pl', 1],
+        ]),
+      );
+      countryDefaultRepo.findAll.mockResolvedValue([
+        countryDefault({ country: 'pl', documentKind: 'invoice', connectionId: 'conn-infakt' }),
+      ]);
+      acknowledgmentRepo.findAll.mockResolvedValue([
+        new SalesDocumentCountryAcknowledgment('Pl', new Date('2027-01-01T00:00:00.000Z')),
+      ]);
+
+      const summaries = await service.listConfiguredCountries();
+
+      expect(summaries).toEqual([
+        {
+          country: 'PL',
+          ruleCount: 3,
+          invoiceDefaultConnectionId: 'conn-infakt',
+          receiptDefaultConnectionId: null,
+          acknowledgedNoDocumentAt: '2027-01-01T00:00:00.000Z',
+        },
+      ]);
     });
 
     it('should resolve a batch keyed by the normalised country, even when two orders differ only in case', async () => {

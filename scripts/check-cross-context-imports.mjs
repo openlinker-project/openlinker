@@ -169,9 +169,14 @@ const ALLOW_LIST = new Map([
   ],
 
   // apps + worker → sync.SyncJobRepositoryPort — rewire via ISyncJobsService
-  ['apps/api/src/integrations/http/connection.controller.ts', new Set(['SyncJobRepositoryPort'])],
+  // (#3179 moved the connection diagnostics fan-out off the controller and into
+  // ConnectionDiagnosticsService, so the coupling moved with it.)
   [
-    'apps/api/src/integrations/http/connection.controller.spec.ts',
+    'apps/api/src/integrations/application/services/connection-diagnostics.service.ts',
+    new Set(['SyncJobRepositoryPort']),
+  ],
+  [
+    'apps/api/src/integrations/application/services/connection-diagnostics.service.spec.ts',
     new Set(['SyncJobRepositoryPort']),
   ],
   ['apps/api/src/sync/http/sync.controller.ts', new Set(['SyncJobRepositoryPort'])],

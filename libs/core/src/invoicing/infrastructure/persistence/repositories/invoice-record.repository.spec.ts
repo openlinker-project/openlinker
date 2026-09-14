@@ -84,6 +84,7 @@ describe('InvoiceRecordRepository', () => {
     };
     ormRepo = {
       findOne: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
       save: jest.fn(),
       // `create` hydrates a RETURNING raw row into an entity (#1200 claimForIssue);
       // the real impl copies fields, so a pass-through is faithful enough here.
@@ -561,6 +562,30 @@ describe('InvoiceRecordRepository', () => {
       expect(result.items).toHaveLength(2);
       expect(result.items[0]).toBeInstanceOf(InvoiceRecord);
       expect(result.items[1].id).toBe('ol_invoice_2');
+    });
+  });
+
+  describe('findRecentByConnectionId (#3179)', () => {
+    it('reads the newest N records for one connection without computing a total', async () => {
+      ormRepo.find.mockResolvedValue([ormRow(), ormRow({ id: 'ol_invoice_2' })]);
+
+      const records = await repository.findRecentByConnectionId('conn_1', 10);
+
+      expect(ormRepo.find).toHaveBeenCalledWith({
+        where: { connectionId: 'conn_1' },
+        order: { createdAt: 'DESC', id: 'DESC' },
+        take: 10,
+      });
+      // The COUNT `getManyAndCount` always runs is exactly what this read
+      // exists to avoid, so the query builder must not be touched at all.
+      expect(ormRepo.createQueryBuilder).not.toHaveBeenCalled();
+      expect(records.map((record) => record.id)).toEqual(['ol_invoice_1', 'ol_invoice_2']);
+    });
+
+    it('returns an empty array for a connection with no records', async () => {
+      ormRepo.find.mockResolvedValue([]);
+
+      await expect(repository.findRecentByConnectionId('conn_empty', 10)).resolves.toEqual([]);
     });
   });
 
