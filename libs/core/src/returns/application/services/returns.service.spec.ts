@@ -41,6 +41,7 @@ describe('ReturnsService', () => {
     listReturns: jest.Mock;
     countReturnsByBucket: jest.Mock;
     claimAttribution: jest.Mock;
+    claimOrderLineResolution: jest.Mock;
   };
   let identifierMapping: {
     getInternalId: jest.Mock;
@@ -71,6 +72,7 @@ describe('ReturnsService', () => {
       listReturns: jest.fn().mockResolvedValue([]),
       countReturnsByBucket: jest.fn().mockResolvedValue({ total: 0, orphan: 0, attributed: 0 }),
       claimAttribution: jest.fn().mockResolvedValue(true),
+      claimOrderLineResolution: jest.fn().mockResolvedValue(true),
     };
     identifierMapping = {
       getInternalId: jest.fn().mockResolvedValue('ol_order_abc'),
@@ -622,6 +624,136 @@ describe('ReturnsService', () => {
         expect(persisted.offerId).toBeNull();
         expect(persisted.resolvedOrderLineId).toBeNull();
       }
+    });
+  });
+
+  describe('resolveOrderLinesForReturn (#3171 review — offerId axis threading)', () => {
+    const returnLine = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+      id: 'ol_return_line_1',
+      lineIndex: 0,
+      sku: null,
+      offerId: 'offer-abc',
+      resolvedOrderLineId: null,
+      ...over,
+    });
+
+    // Allegro's return payload carries no SKU, only `offerId` — so a service
+    // that only forwarded `line.sku` into the resolver would leave every
+    // Allegro return line on the price-alone branch. This pins that
+    // `ReturnLine.offerId` is threaded through.
+    it('should thread the persisted offerId into the resolver, not just sku', async () => {
+      const record = {
+        id: 'ol_return_1',
+        lines: [returnLine()],
+        rawPayload: null,
+      };
+      repository.findById.mockResolvedValue(record);
+
+      const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+        { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+      ]);
+
+      expect(summary.resolved).toBe(1);
+      expect(repository.claimOrderLineResolution).toHaveBeenCalledWith(
+        'ol_return_line_1',
+        'oi_1'
+      );
+    });
+
+    it('should skip a line whose resolvedOrderLineId is already set, without touching the row', async () => {
+      const record = {
+        id: 'ol_return_1',
+        lines: [returnLine({ resolvedOrderLineId: 'oi_already' })],
+        rawPayload: null,
+      };
+      repository.findById.mockResolvedValue(record);
+
+      const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+        { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+      ]);
+
+      expect(summary.alreadyResolved).toBe(1);
+      expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+    });
+
+    it('should report ambiguous rather than pick when two order lines share the offerId and price', async () => {
+      const record = {
+        id: 'ol_return_1',
+        lines: [returnLine()],
+        rawPayload: null,
+      };
+      repository.findById.mockResolvedValue(record);
+
+      const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+        { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+        { id: 'oi_2', quantity: 1, price: 100, sku: 'offer-abc' },
+      ]);
+
+      expect(summary.unresolved).toEqual({ ambiguous: 1 });
+      expect(summary.skipped).toBeNull();
+      expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+    });
+
+    // #3171 review, SUGGESTION 4: three arms used to return an all-zero summary
+    // that a caller holding only that summary could not tell apart from "every
+    // line was examined and none resolved". The reason is now named.
+    describe('skipped (a pass that examined no line says so)', () => {
+      it('should report unknown-return when the id resolves to no row', async () => {
+        repository.findById.mockResolvedValue(null);
+
+        const summary = await service.resolveOrderLinesForReturn('ol_return_missing', [
+          { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+        ]);
+
+        expect(summary.skipped).toBe('unknown-return');
+        expect(summary.resolved).toBe(0);
+        expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+      });
+
+      it('should report no-order-lines when the caller supplied no candidates', async () => {
+        repository.findById.mockResolvedValue({
+          id: 'ol_return_1',
+          lines: [returnLine()],
+          rawPayload: null,
+        });
+
+        const summary = await service.resolveOrderLinesForReturn('ol_return_1', []);
+
+        expect(summary.skipped).toBe('no-order-lines');
+        expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+      });
+
+      it('should report no-return-lines when the return itself carries none', async () => {
+        repository.findById.mockResolvedValue({
+          id: 'ol_return_1',
+          lines: [],
+          rawPayload: null,
+        });
+
+        const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+          { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+        ]);
+
+        expect(summary.skipped).toBe('no-return-lines');
+        expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+      });
+
+      // The discriminator is only worth anything if it is absent on the path
+      // that DID look. A resolved pass must never carry a skip reason.
+      it('should leave skipped null when at least one line was examined', async () => {
+        repository.findById.mockResolvedValue({
+          id: 'ol_return_1',
+          lines: [returnLine()],
+          rawPayload: null,
+        });
+
+        const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+          { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+        ]);
+
+        expect(summary.skipped).toBeNull();
+        expect(summary.resolved).toBe(1);
+      });
     });
   });
 });

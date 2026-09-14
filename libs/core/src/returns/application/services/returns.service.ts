@@ -65,8 +65,11 @@ import type {
   IReturnsService,
   MatchOrphanToOrderInput,
   RecordReturnInput,
+  ReturnOrderLineResolutionSummary,
   UpsertReturnObservationResult,
 } from './returns.service.interface';
+import { resolveReturnLineOrderLine } from '../../domain/domain-services/return-order-line-resolution.domain-service';
+import type { ResolvableOrderLine } from '../../domain/domain-services/return-order-line-resolution.domain-service';
 
 /**
  * The two advertised-without-dispatch sub-capability names this service reads
@@ -134,6 +137,111 @@ export class ReturnsService implements IReturnsService {
 
   async getReturn(id: string): Promise<ReturnRecord | null> {
     return this.repository.findById(id);
+  }
+
+  /** See {@link IReturnsService.resolveOrderLinesForReturn}. */
+  async resolveOrderLinesForReturn(
+    returnId: string,
+    orderLines: readonly ResolvableOrderLine[]
+  ): Promise<ReturnOrderLineResolutionSummary> {
+    const summary: ReturnOrderLineResolutionSummary = {
+      resolved: 0,
+      alreadyResolved: 0,
+      unresolved: {},
+      skipped: null,
+    };
+
+    const record = await this.repository.findById(returnId);
+    if (record === null) {
+      // A named zero summary, not a throw. An unknown id is a state the caller
+      // reports, and failing the surrounding sync job here would trade a
+      // missing attribution for a lost return. `skipped` is what keeps the
+      // zeros from reading as "every line was examined and none resolved".
+      return { ...summary, skipped: 'unknown-return' };
+    }
+    if (orderLines.length === 0) {
+      return { ...summary, skipped: 'no-order-lines' };
+    }
+    if (record.lines.length === 0) {
+      return { ...summary, skipped: 'no-return-lines' };
+    }
+
+    for (const line of record.lines) {
+      // Already answered — skip without touching the row. The claim below would
+      // return `false` anyway; not issuing the statement keeps a re-run free.
+      if (line.resolvedOrderLineId !== null) {
+        summary.alreadyResolved += 1;
+        continue;
+      }
+
+      const resolution = resolveReturnLineOrderLine(
+        {
+          sku: line.sku,
+          offerId: line.offerId,
+          unitPrice: this.readReportedUnitPrice(record, line.lineIndex),
+        },
+        orderLines
+      );
+
+      if (resolution.status === 'unresolved') {
+        summary.unresolved[resolution.reason] = (summary.unresolved[resolution.reason] ?? 0) + 1;
+        continue;
+      }
+
+      const claimed = await this.repository.claimOrderLineResolution(
+        line.id,
+        resolution.orderLineId
+      );
+      if (claimed) {
+        summary.resolved += 1;
+      } else {
+        summary.alreadyResolved += 1;
+      }
+    }
+
+    return summary;
+  }
+
+  /**
+   * The source's own per-unit price for one line, read back out of the raw
+   * payload `upsertFromSource` stored it in (`buildRawPayload`'s per-line
+   * `extras.unitPrice`).
+   *
+   * `ReturnLine` carries no price column — deliberately, per ADR-060: the
+   * aggregate records custody and disposition, not money the source decided.
+   * The value is nonetheless the only tie-breaker between two order lines
+   * selling the same SKU, so it is read from the one place it was kept rather
+   * than promoted to a column this rule is the sole consumer of.
+   *
+   * Matched on the entry's own `lineIndex`, NEVER on its array position:
+   * `buildRawPayload` drops every line that carried no extras, so the stored
+   * array is sparse relative to the return's lines and positional indexing
+   * would silently read one line's price onto another — a wrong resolution
+   * rather than a missing one.
+   *
+   * Fail-safe: anything not a finite number reads as "not reported", which the
+   * rule then treats as an absent axis rather than a zero price.
+   */
+  private readReportedUnitPrice(record: ReturnRecord, lineIndex: number): number | null {
+    const payload = record.rawPayload;
+    if (payload === null) {
+      return null;
+    }
+    const lines = payload.lines;
+    if (!Array.isArray(lines)) {
+      return null;
+    }
+    const entry = lines.find((candidate): candidate is Record<string, unknown> => {
+      if (typeof candidate !== 'object' || candidate === null) {
+        return false;
+      }
+      return (candidate as Record<string, unknown>).lineIndex === lineIndex;
+    });
+    if (entry === undefined) {
+      return null;
+    }
+    const value = entry.unitPrice;
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
   }
 
   async listOrphanReturns(limit: number, offset: number): Promise<ReturnRecord[]> {
