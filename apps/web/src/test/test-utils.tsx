@@ -497,6 +497,15 @@ export function createMockApiClient(
         limit: 20,
         offset: 0,
       }),
+      // #3060. The default is an install with no locations, which is the
+      // honest zero-config state — a test that needs one opts in, rather than
+      // inheriting a warehouse it never declared. `listActiveLocations` is the
+      // separate probe the sourcing-rules gate reads (`total` only), so the two
+      // are defaulted together or a test would set one and silently keep the
+      // other's stale answer.
+      listLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 200 }),
+      listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 }),
+      bootstrapLocations: vi.fn().mockResolvedValue({ created: [], existingCodes: [] }),
       ...overrides.inventory,
     } as ApiClient['inventory'],
     invoicing: {
@@ -985,6 +994,18 @@ export function createMockApiClient(
       }),
       ...overrides.salesDocumentRules,
     } as ApiClient['salesDocumentRules'],
+    // #3056. The default is a connection with no sourcing rules — the honest
+    // empty ruleset, so a test that renders the table without opting in gets
+    // the "no rules yet" branch rather than rows it never declared.
+    sourcingRules: {
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue(null),
+      update: vi.fn().mockResolvedValue(null),
+      reorder: vi.fn().mockResolvedValue([]),
+      remove: vi.fn().mockResolvedValue(undefined),
+      ...overrides.sourcingRules,
+    } as ApiClient['sourcingRules'],
     // The default is the healthy-but-empty deployment: no returns, and returns
     // ingestion IS configured — so a test that renders the list without opting
     // in gets the neutral "no returns yet" branch rather than the

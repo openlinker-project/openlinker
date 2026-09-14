@@ -46,6 +46,7 @@ import { returnsRoute } from './returns.route';
 import { fulfillmentRoute } from './fulfillment.route';
 import { operationalSettingsRoute } from './operational-settings.route';
 import { salesDocumentsRoute } from './sales-documents.route';
+import { sourcingRulesRoute } from './sourcing-rules.route';
 import { whoDecidesRoute } from './who-decides.route';
 import { settingsRoute } from './settings.route';
 import { shipmentsRoute } from './shipments.route';
@@ -87,6 +88,7 @@ export const coreChildren: RouteObject[] = [
   settingsRoute,
   operationalSettingsRoute,
   salesDocumentsRoute,
+  sourcingRulesRoute,
   whoDecidesRoute,
   promptTemplatesListRoute,
   promptTemplateDetailRoute,
