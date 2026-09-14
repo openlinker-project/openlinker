@@ -144,6 +144,7 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
     if (input.episodeId) {
       episode = await this.episodes.findById(input.episodeId);
       if (!episode) {
+        // Nothing to release — a claim needs a row, and there is none.
         return this.terminal(
           input,
           `Price-change episode not found: ${input.episodeId}`
@@ -157,7 +158,8 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
       if (episode.blockReason) {
         return this.terminal(
           input,
-          `episode ${input.episodeId} carries blockReason=${episode.blockReason}`
+          `episode ${input.episodeId} carries blockReason=${episode.blockReason}`,
+          input.episodeId
         );
       }
     }
@@ -166,7 +168,7 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
       await this.publishPrice(input);
     } catch (error) {
       if (error instanceof PriceChangeApplyPermanentError) {
-        return this.terminal(input, error.message);
+        return this.terminal(input, error.message, input.episodeId);
       }
       // Transient / unclassified: propagate with `.cause` preserved so the
       // runner's registered `RetryClassifierPort`s (which unwrap
@@ -234,9 +236,24 @@ export class PriceChangeApplyService implements IPriceChangeApplyService {
 
   private async terminal(
     input: PriceChangeApplyInput,
-    reason: string
+    reason: string,
+    episodeId?: string
   ): Promise<PriceChangeApplyResult> {
     this.logger.warn(`[price-change-apply] refusing as a terminal business failure: ${reason}`);
+    // Release the accept/edit/bulk-item claim this business failure would
+    // otherwise leave standing forever (#3162 re-review, IMPORTANT):
+    // `resolve()` is never called on this path (a `business_failure` is not
+    // a resolution), so without this the episode stays `claimedAt`-set and
+    // every future accept/edit/bulk-item on it answers `'in-flight'`
+    // permanently. Best-effort — a failed release does not itself fail the
+    // job, since the underlying publish already failed for its own reason.
+    if (episodeId) {
+      await this.episodes.releaseClaim(episodeId).catch((releaseError: unknown) => {
+        this.logger.warn(
+          `[price-change-apply] failed to release claim for episode ${episodeId} after a terminal business failure: ${(releaseError as Error).message}`
+        );
+      });
+    }
     await this.advanceBulkProgress(input, 'failed');
     return { outcome: 'business_failure', reason };
   }
