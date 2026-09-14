@@ -104,6 +104,15 @@ export class PriceChangeEpisodeOrmEntity {
   @Column({ type: 'timestamptz', nullable: true })
   resolvedAt!: Date | null;
 
+  // Exclusive-resolution-rights marker (#3162 review, IMPORTANT). Set by
+  // `claimForResolution`'s guarded `UPDATE ... WHERE resolvedAt IS NULL AND
+  // claimedAt IS NULL`; cleared by `releaseClaim` on a failed enqueue, or
+  // rendered moot once `resolve()` sets `resolvedAt` (a resolved row can
+  // never be reclaimed). `null` on every never-claimed row, including every
+  // automatic-mode episode.
+  @Column({ type: 'timestamptz', nullable: true })
+  claimedAt!: Date | null;
+
   @Column({ type: 'varchar', length: 32, nullable: true })
   resolution!: PriceChangeResolution | null;
 
