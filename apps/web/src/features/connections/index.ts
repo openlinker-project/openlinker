@@ -90,3 +90,7 @@ export { PrestashopRateLimitReadout } from './components/prestashop-rate-limit-r
 export { AllegroSellerDefaultsSection } from './components/allegro-seller-defaults-section';
 export { CapabilityTogglesSection } from './components/CapabilityTogglesSection';
 export type { CapabilityTogglesSectionProps } from './components/CapabilityTogglesSection';
+export {
+  isPricingDestination,
+  PRICING_DESTINATION_CAPABILITIES,
+} from './lib/pricing-destination';
