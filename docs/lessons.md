@@ -1298,3 +1298,83 @@ a whole-Redis flush.
 per-spec audit) and guarded by `harness-isolation.int-spec.ts`.
 
 **Source**: #2999.
+
+---
+
+## Bound the fan-out when the hook escalates to the full suite; never reach for `--no-verify`
+
+**Context**: a change that touches a core context's top-level barrel
+(`libs/core/src/<ctx>/index.ts`) or its `<ctx>.tokens.ts` is classified by
+`scripts/smart-test.mjs` as a **wide** trigger (`CORE_BARREL_RE` /
+`CORE_TOKENS_RE`) — correctly, since both are published-contract changes. The
+wide branch then runs `pnpm test`, which is `pnpm -r test`.
+
+**Problem**: `pnpm -r` fans out at pnpm's DEFAULT `workspace-concurrency` of
+**4**, so four packages' Jest instances run at once, each defaulting to about
+`cores - 1` workers. On a memory-constrained machine that is an OS OOM-kill,
+which surfaces as `signal=SIGKILL` / `exitCode=null` and reads like a test
+failure rather than a resource one. `test:ci` was bounded to
+`--workspace-concurrency=2` back in #976 for exactly this, but the pre-commit
+hook's path was never bounded — so the same machine passes CI-shaped runs and
+dies on a commit.
+
+The tempting escape is `git commit --no-verify`, and it is the wrong one: it
+skips **lint and type-check as well**, so the commit lands verified by nothing.
+On a stacked epic whose PRs target a sibling branch rather than `main`, CI does
+not run either (`ci.yml` is `pull_request: branches: [main]`), so the hook is
+the only gate there is.
+
+**Rule**: bound the fan-out for that one commit instead of skipping the gate —
+
+```
+npm_config_workspace_concurrency=1 git commit -s -F <message-file>
+```
+
+Where a full local run is genuinely impractical, run `pnpm lint` and
+`pnpm type-check` by hand plus the suites for every package the diff touches,
+and say so in the commit body. "I skipped the hook" and "I ran the gate another
+way" are different claims and the reader cannot tell them apart afterwards.
+
+**Applies to**: any commit touching `libs/core/src/<ctx>/index.ts` or
+`libs/core/src/<ctx>/<ctx>.tokens.ts`; more generally any diff `smart-test.mjs`
+classifies wide. See `docs/testing-guide.md` § "Red suite with `SIGKILL`" for
+diagnosing the OOM itself — that section does not name this trigger.
+
+**Source**: #3188 (rider), building on #976.
+
+---
+
+## Read GitHub issues and retarget PRs through `gh api`, not `gh issue view` / `gh pr edit`
+
+**Context**: this repository still carries Projects (classic) data, and the
+`gh` CLI resolves `repository.issue.projectCards` on several of its
+higher-level commands.
+
+**Problem**: both `gh issue view <N>` and `gh pr edit <N> --base <branch>` fail
+outright with
+
+```
+GraphQL: Projects (classic) is being deprecated in favor of the new Projects
+experience ... (repository.issue.projectCards)
+```
+
+This is not a transient error and no flag avoids it. It matters more than a
+missing convenience: several `docs/plans/*.md` instruct the reader to retarget
+a dependent PR with `gh pr edit <n> --base main`, which cannot work, and a
+stacked epic needs exactly that operation.
+
+**Rule**: use the REST endpoints, which are unaffected —
+
+```
+gh api repos/openlinker-project/openlinker/issues/<N> --jq '.title + "\n" + .body'
+gh api repos/openlinker-project/openlinker/pulls/<N> -X PATCH -f base=<branch>
+```
+
+Note also that `gh pr checks <N>` returns nothing for a PR targeting a sibling
+branch; the working read is
+`gh api repos/openlinker-project/openlinker/commits/<branch>/check-runs`.
+
+**Applies to**: any agent or contributor scripting against this repo's issues
+and PRs, and to the plan documents that still recommend `gh pr edit`.
+
+**Source**: #3188 (rider).

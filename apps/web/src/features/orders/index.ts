@@ -70,6 +70,11 @@ export { StockAtRiskBadge } from './components/stock-at-risk-badge';
 export { StockAtRiskCallout } from './components/stock-at-risk-callout';
 export type { OrderReservationShortfall } from './api/orders.types';
 export { ConnectionDot } from './components/connection-dot';
+// #3188: the invoices LIST renders the same three buyer-tax-id states the
+// order detail does, by rendering the same component rather than a second
+// copy of the vocabulary. Consumed from `pages/`, which sits above both
+// features, so no feature-to-feature edge is created.
+export { OrderBuyerTaxIdValue } from './components/order-buyer-tax-id-value';
 export { OrderIdentityCell, formatOrderRef } from './components/order-identity-cell';
 export type { OrderIdentityCellProps } from './components/order-identity-cell';
 

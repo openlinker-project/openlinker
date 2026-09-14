@@ -542,6 +542,8 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       });
 
       expect(ruleRepo.findByCountry).toHaveBeenCalledWith('PL');
+      // A tier-1 RULE match carries `ruleId` (#3186); only a country default or
+      // the Rest-of-world tier routes without one.
       expect(decision).toEqual({
         kind: 'route',
         documentKind: existingRule().documentKind,
