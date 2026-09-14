@@ -50,6 +50,9 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
 interface RuleRow {
   id: string;
   conditions: unknown;
+  /** Needed for the unique-index pre-check below, not for the rewrite itself. */
+  country: string;
+  effective_from: string;
 }
 
 interface ThresholdRow {
@@ -101,7 +104,7 @@ export class InlineSalesDocumentRuleAmounts1884000000000 implements MigrationInt
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     const rules = (await queryRunner.query(
-      `SELECT "id", "conditions" FROM "sales_document_rules"`,
+      `SELECT "id", "conditions", "country", "effective_from" FROM "sales_document_rules"`,
     )) as RuleRow[];
     if (rules.length === 0) return;
 
@@ -115,7 +118,12 @@ export class InlineSalesDocumentRuleAmounts1884000000000 implements MigrationInt
     }
 
     const unresolved: string[] = [];
-    const updates: { id: string; conditions: Record<string, unknown>[] }[] = [];
+    const updates: {
+      id: string;
+      conditions: Record<string, unknown>[];
+      country: string;
+      effectiveFrom: string;
+    }[] = [];
 
     for (const rule of rules) {
       if (!Array.isArray(rule.conditions)) continue;
@@ -140,7 +148,39 @@ export class InlineSalesDocumentRuleAmounts1884000000000 implements MigrationInt
           currency: version.currency,
         };
       });
-      if (changed) updates.push({ id: rule.id, conditions: rewritten });
+      if (changed) {
+        updates.push({
+          id: rule.id,
+          conditions: rewritten,
+          country: rule.country,
+          effectiveFrom: String(rule.effective_from),
+        });
+      }
+    }
+
+    // Two rules citing DIFFERENT refs that resolve to the same amount + currency
+    // hash identically after the rewrite, and
+    // `UQ_sales_document_rules_country_hash_from` refuses the second UPDATE. The
+    // transaction rolls back cleanly either way, so this is not about data
+    // safety - it is so the operator reads which rules to repoint instead of a
+    // raw Postgres 23505 naming an index, the same standard the unresolvable-ref
+    // arm below already sets.
+    const collisions = new Map<string, string[]>();
+    for (const update of updates) {
+      const key = `${update.country}|${hashConditions(update.conditions)}|${update.effectiveFrom}`;
+      collisions.set(key, [...(collisions.get(key) ?? []), update.id]);
+    }
+    const collided = [...collisions.entries()].filter(([, ids]) => ids.length > 1);
+    if (collided.length > 0) {
+      throw new Error(
+        `Cannot inline sales-document rule amounts: ${collided.length} group(s) of rules would ` +
+          `become identical once their threshold refs resolve to the same amount and currency, ` +
+          `and "UQ_sales_document_rules_country_hash_from" forbids that. They cite different ` +
+          `refs today but the same figure. Delete or narrow one rule per group, then re-run. ` +
+          collided
+            .map(([key, ids]) => `[${key.split('|')[0]} @ ${key.split('|')[2]}] ${ids.join(', ')}`)
+            .join('; '),
+      );
     }
 
     if (unresolved.length > 0) {

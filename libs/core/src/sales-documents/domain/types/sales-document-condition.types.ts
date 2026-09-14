@@ -106,10 +106,18 @@ export function isCurrencyCode(value: unknown): value is string {
  * convention (negative when `a < b`).
  *
  * Deliberately NOT via `parseFloat`: that is the step which reintroduces the
- * binary-float error the decimal string was chosen to avoid, and this
- * comparison decides which fiscal document a real sale gets. Both sides are
+ * binary-float error the decimal string was chosen to avoid. Both sides are
  * already known well-formed, so it is an integer comparison once the fractional
  * parts are padded to a common width.
+ *
+ * **It does NOT decide which document a sale gets** (#3241 review, correcting
+ * an earlier version of this comment that said so). `evaluateSalesDocumentRules`
+ * compares with `Number(condition.amount)` against `order.totalGross`, which is
+ * already a JS number - no comparison can be more exact than that operand, so
+ * routing an order through BigInt would buy nothing. What this function serves
+ * is comparison between two AUTHORED amounts, where both sides are decimal
+ * strings and exactness is real: the overlap detector (#3190) intersects two
+ * rules' bounds with it.
  */
 export function compareDecimalAmountStrings(a: string, b: string): number {
   const [aInt, aFrac = ''] = a.split('.');
