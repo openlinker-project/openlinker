@@ -23699,3 +23699,15 @@ legend.analytics-settings-dialog__label {
 .priority-picker__row--stale .priority-picker__label {
   color: var(--status-warning-fg, var(--text-muted));
 }
+
+/* The delete/retire confirm offers a third, differently-toned action, so its
+   footer splits: the reversible alternative on the left, away from the
+   destructive pair on the right (#3059). */
+.dialog__footer--split {
+  justify-content: space-between;
+}
+
+.dialog__footer-group {
+  display: inline-flex;
+  gap: var(--space-2);
+}
