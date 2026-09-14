@@ -896,16 +896,34 @@ const ROWS = [
     title: 'Stock tagged with a warehouse',
     value: (d) => `${d ? '4,812' : '0'} of 4,812`,
     sub: 'This is the row that decides whether any of the others produce packing work.',
-    // The FACT is live: `GET /inventory` takes a `locationId` filter and returns a total,
-    // so the count above is a real read. The REMEDY is not. There is no Stock-locations
-    // screen, no route for one, no nav entry and no bulk-assign UI anywhere in apps/web —
-    // the product detail page READS `locationId` and offers no way to set it. Drawing that
-    // screen as shipped is the same defect class as the "one of three arrangements" claim
-    // in the grant dialog: PR #3125's review caught that one, and this is its sibling.
-    proposed: 'A screen for assigning warehouses to stock is <b>proposed and not built</b>. The count above is a live read, so this row tells you the truth about your stock &mdash; but the only way to move it today is a source system that already reports where its stock is.',
+    // BOTH HALVES OF THIS ROW ARE PROPOSED — the count as much as the button. An earlier
+    // revision split them ("the FACT is live, the REMEDY is not") and put the count on the
+    // wrong side of that line, which made the row read as "the number is true, only the
+    // screen is missing". It is not.
+    //
+    // The DENOMINATOR is live: `GET /inventory` with no filter returns `total`
+    // (inventory.controller.ts:35, `findAndCount`). The NUMERATOR is not obtainable from
+    // any single call. `InventoryFilters` carries exactly four members — `productId`,
+    // `productVariantId`, `locationId`, `sourceConnectionId` (inventory.types.ts:198-218)
+    // — and `locationId` is exact-match on ONE id
+    // (inventory.repository.ts:289, `where.locationId = filters.locationId`). There is no
+    // has-any-location predicate and no `IS NULL` arm on the read path anywhere, so
+    // "4,812 of 4,812 located" needs either a fan-out issuing one `GET /inventory` per row
+    // of `GET /inventory/locations` and summing each `total`, or a fifth filter member that
+    // does not exist. (`GET /inventory/duplicate-positions` groups by the four-column
+    // position key but reports only keys holding MORE than one row, so it cannot serve it
+    // either.) Naming the read is the point: whoever builds this row has to build the read
+    // first, and the comment should say so rather than implying a page-load away.
+    //
+    // The REMEDY is likewise absent: no Stock-locations screen, no route for one, no nav
+    // entry and no bulk-assign UI anywhere in apps/web — the product detail page READS
+    // `locationId` and offers no way to set it. Drawing either half as shipped is the same
+    // defect class as the "one of three arrangements" claim in the grant dialog: PR #3125's
+    // review caught that one, and this is its sibling.
+    proposed: 'Both halves of this row are <b>proposed and not built</b> &mdash; the count as well as the screen. The <em>total</em> is a live read, but nothing today can tell you how much of it carries a warehouse: the inventory read filters on <em>one</em> warehouse at a time and has no &ldquo;has any warehouse&rdquo; test, so the figure above needs a read built for it before a screen can show it. The only way to move the real number today is a source system that already reports where its stock is.',
     doItems: [
-      'Today: connect a source system that reports a location alongside its stock, and the count above fills in on its own as it syncs',
-      'Proposed: <b>Products &rarr; Stock locations</b>, to assign warehouses in bulk from inside OpenLinker',
+      'Today: connect a source system that reports a location alongside its stock, and the underlying stock rows pick up a warehouse on their own as it syncs &mdash; there is no screen that counts them for you yet',
+      'Proposed: a read that answers &ldquo;how much of my stock has a warehouse?&rdquo;, and a <b>Products &rarr; Stock locations</b> screen to assign warehouses in bulk from inside OpenLinker',
     ],
     note: {
       title: 'Unlocated stock is skipped, never guessed',
@@ -1018,7 +1036,8 @@ function previewHtml(kind) {
     const total = 4812;
     const located = done[2] ? total : 0;
     return `<div class="preview preview--proposed">
-      <p class="preview__label preview__label--proposed">Proposed &mdash; Products &rarr; Stock locations (no such screen today)</p>
+      <p class="preview__label preview__label--proposed">Proposed &mdash; Products &rarr; Stock locations. Neither this screen nor the
+        count on it exists today: the inventory read filters one warehouse at a time and has no &ldquo;has any warehouse&rdquo; test</p>
       <div class="who-decides-row">
         <div class="who-decides-row__question">Stock with a known warehouse</div>
         <div class="who-decides-row__answer mono-text">${located.toLocaleString('en-GB')} of ${total.toLocaleString('en-GB')}</div>
@@ -1247,6 +1266,11 @@ function syncUrl() {
   const openIdx = opened.findIndex(Boolean);
   if (openIdx >= 0 && !expandAll) url.searchParams.set('open', String(openIdx));
   else url.searchParams.delete('open');
+  // Carry the state too, so a URL copied out of the address bar reproduces the
+  // screen someone is looking at rather than the default one.
+  const st = document.body.dataset.state;
+  if (st && st !== 'not-started') url.searchParams.set('state', st);
+  else url.searchParams.delete('state');
   history.replaceState(null, '', url);
 }
 
@@ -1344,11 +1368,48 @@ function closeDialog(silent) {
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDialog(); });
 document.querySelectorAll('.dialog__overlay').forEach((o) => o.addEventListener('click', () => closeDialog()));
 
-/* ── boot: honour ?open=<i> if present, else the not-started state ──────── */
+/* ── boot: honour ?state= and ?open=<i>, else the not-started state ─────── */
+
+/* A screenshot baseline opens the file AT a state and asserts on
+   `body[data-state]`; driving it by synthesising clicks on the mockup's own
+   switcher is how a baseline ends up testing the switcher instead of the
+   screen. Both the page states and the three dialogs are addressable. An
+   unknown name is IGNORED rather than silently rendering the default, so a
+   typo in a ticket shows up as "nothing happened" and not as a screenshot of
+   the wrong screen. */
+const DIALOG_STATES = ['dialog-create-connection', 'dialog-grant-sourcing', 'dialog-grant-refused'];
+
+function setStateByName(name) {
+  if (!name) return false;
+  if (Object.prototype.hasOwnProperty.call(PRESETS, name)) { setState(name); return true; }
+  if (DIALOG_STATES.indexOf(name) !== -1) {
+    // Each dialog needs the page state that can legitimately reach it: the
+    // refusal only exists while no location has been created, and the grant
+    // only exists once one has.
+    setState(name === 'dialog-grant-refused' ? 'blocked-no-location' : 'in-progress');
+    openDialog(name);
+    return true;
+  }
+  return false;
+}
+
+/* Exposed so a Playwright spec can call it directly where a reload is wasteful;
+   the URL form is the documented one. */
+window.__setMockupState = setStateByName;
+
+function requestedState() {
+  const q = /[?&]state=([^&#]+)/.exec(location.search);
+  if (q) return decodeURIComponent(q[1]);
+  const h = /^#state=(.+)$/.exec(location.hash);
+  return h ? decodeURIComponent(h[1]) : null;
+}
+
 (function boot() {
-  setState('not-started');
+  if (!setStateByName(requestedState())) setState('not-started');
   const open = new URL(location.href).searchParams.get('open');
   const idx = open === null ? -1 : parseInt(open, 10);
   if (idx >= 0 && idx < ROWS.length) openRow(idx);
 })();
+
+window.addEventListener('hashchange', () => { setStateByName(requestedState()); });
 </script>
