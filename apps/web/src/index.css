@@ -1909,16 +1909,17 @@ textarea,
   overflow-x: auto;
   /* Momentum scroll on iOS Safari — a bare `overflow-x: auto` scrolls but
      without inertia, which reads as broken on a touch device (#3164
-     review). A dedicated card view for <768px (the `DataTableCardView`
-     pattern `shared/ui/data-table.tsx` already ships) is deferred to the
-     table's own migration onto that primitive — ONE tracked issue covers
-     both halves, because the migration is what supplies the card view:
-     openlinker-project/openlinker#3223. Until it lands this table stays a
-     horizontal-scroll surface at every width, against
-     `docs/frontend-ui-style-guide.md § Responsive`, whose parity matrix
-     specifies a card view for tables on mobile — which is why the scroll
-     itself is made as usable as a bare `overflow-x` allows. Delete this
-     paragraph together with the deferral, not before. */
+     review). The card view for <768px SHIPPED with #3223 — see the
+     "Price changes queue — mobile card view" block further down; this
+     scroller is the tablet and desktop treatment, which
+     `docs/frontend-ui-style-guide.md § Responsive` keeps as the full table.
+     The `DataTableCardView` migration is separately tracked as
+     openlinker-project/openlinker#3237 and is BLOCKED on the primitive
+     gaining a per-row class/attribute hook: this table hangs its grouping
+     treatment and its `data-state` handles on the row element, which
+     `DataTable` hard-codes. An earlier revision of this comment claimed one
+     issue covered both halves on the premise that the migration supplies
+     the card view; it does not, which is why they are two. */
   -webkit-overflow-scrolling: touch;
 }
 
@@ -2177,6 +2178,120 @@ textarea,
   text-align: right;
   max-width: 220px;
 }
+
+/* ── Price changes queue — mobile card view (#3223) ─────────────────
+ * `docs/frontend-ui-style-guide.md` § Responsive makes mobile first-class and
+ * its parity matrix specifies a CARD VIEW for tables there, not a 7-column
+ * grid behind a horizontal scrollbar. This is the queue's own card layout on
+ * its existing markup; it is expected to be REPLACED by `DataTableCardView`
+ * when #3237 migrates the table onto the shared primitive — which is blocked
+ * on that primitive gaining a per-row class/attribute hook, since the queue
+ * hangs its grouping treatment and its `data-state` handles on the row.
+ *
+ * The bound is 767.98px, not 768px. § Responsive calls the fraction
+ * load-bearing: a rounded `max-width: 768px` MATCHES at 768px and overlaps the
+ * tablet `min-width: 768px` band by one pixel, so at that width this block
+ * would be in its mobile branch while every other table on the page is in its
+ * desktop one. It is the same bound `.data-table__cell--hide-below-768` uses,
+ * deliberately — a component follows the primitive if the house breakpoint
+ * ever moves.
+ *
+ * Tablet (768–1023px) is NOT carded: the parity matrix keeps the full table
+ * there, scrolled within its container.
+ */
+@media (max-width: 767.98px) {
+  /* The scroller and its 900px floor are what the card view exists to
+     replace — leaving either would keep the horizontal scrollbar. */
+  .price-changes-queue .table-wrap {
+    border: 0;
+    border-radius: 0;
+    background: none;
+    overflow: visible;
+  }
+
+  .price-changes-queue .table-scroll {
+    overflow-x: visible;
+  }
+
+  .price-changes-queue .table-wrap table {
+    display: block;
+    min-width: 0;
+  }
+
+  /* The header row's labels move onto each cell via `data-label` below. */
+  .price-changes-queue .table-wrap thead {
+    display: none;
+  }
+
+  .price-changes-queue .table-wrap tbody {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .price-changes-queue .table-wrap tbody tr {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+  }
+
+  .price-changes-queue .table-wrap tbody td {
+    display: block;
+    padding: 0;
+    border: 0;
+    grid-column: 2;
+  }
+
+  /* Selection stays in its own leading column so the checkbox sits beside the
+     product identity rather than above it. */
+  .price-changes-queue .table-wrap tbody td.cell-select {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .price-changes-queue .table-wrap tbody td.cell-identity {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  /* Every remaining cell is labelled, because the header that carried its
+     meaning is hidden above. A cell with no `data-label` renders bare — the
+     action cell, whose buttons name themselves. */
+  .price-changes-queue .table-wrap tbody td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+
+  /* The action row is the card's footer: full width, and its controls keep a
+     44px touch target regardless of the pointer media query the global rule
+     is keyed on — this branch is keyed on WIDTH. */
+  .price-changes-queue .table-wrap tbody td.col-num {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .price-changes-queue .table-wrap tbody td.col-num .button {
+    min-height: 44px;
+  }
+
+  /* The grouped treatment survives as a left edge on the card itself — the
+     desktop version borders the first cell, which no longer exists as a
+     column here. */
+  .price-changes-queue .table-wrap tbody tr.is-grouped {
+    border-left: 3px solid var(--accent-primary-border);
+  }
+}
+
 
 /* ── Price change dialogs (#3148, ADR-072) ──────────────────────────
  * No `@media` here either (#3165 round-3 review). The gap is the queue

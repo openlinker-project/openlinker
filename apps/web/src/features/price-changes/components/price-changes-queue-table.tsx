@@ -695,7 +695,7 @@ export function PriceChangesQueueTable(): ReactElement {
                         data-state={rowState}
                         className={rowClasses || undefined}
                       >
-                        <td>
+                        <td className="cell-select">
                           {write.visible ? (
                             <input
                               type="checkbox"
@@ -707,7 +707,7 @@ export function PriceChangesQueueTable(): ReactElement {
                             />
                           ) : null}
                         </td>
-                        <td>
+                        <td className="cell-identity">
                           {isGroupStart ? (
                             <div className="cell-product">
                               <ProductThumbnail name={item.productName} src={null} size="md" />
@@ -746,7 +746,7 @@ export function PriceChangesQueueTable(): ReactElement {
                             </div>
                           )}
                         </td>
-                        <td>
+                        <td data-label="Changed in">
                           <div className="cell-product__source">
                             <Link
                               className="connection-tag"
@@ -761,7 +761,7 @@ export function PriceChangesQueueTable(): ReactElement {
                             {formatAmount(item.sourceNewAmount, item.sourceCurrency)}
                           </div>
                         </td>
-                        <td>
+                        <td data-label="Connection">
                           <Link
                             className="connection-tag"
                             data-testid="row-connection-tag"
@@ -770,10 +770,10 @@ export function PriceChangesQueueTable(): ReactElement {
                             {item.destinationLabel}
                           </Link>
                         </td>
-                        <td>
+                        <td data-label="Price on this connection">
                           <PriceCell item={item} />
                         </td>
-                        <td>
+                        <td data-label="Detected">
                           <TimeDisplay iso={item.detectedAt} format="datetime" />
                         </td>
                         <td className="col-num">
