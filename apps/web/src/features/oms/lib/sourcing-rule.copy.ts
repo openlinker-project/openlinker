@@ -101,6 +101,51 @@ export const SOURCING_RULES_TABLE_COPY = {
   moveToTop: 'Move to top',
   moveToBottom: 'Move to bottom',
   governs: "Sets today's splitting limit",
-  /** Shown instead of Edit on a rule this build cannot evaluate. */
+  /**
+   * Names the CONTROL, not the outcome.
+   *
+   * The button is enabled and opens the explanation, so its accessible name has
+   * to say what clicking does. Announcing the refusal here instead would offer
+   * a live action under a name that says it cannot act, and a sighted operator
+   * would read “cannot edit” and never reach the one remedy there is.
+   */
+  editRefusedAction: 'Why this rule cannot be edited',
+  /**
+   * The fallback name, used only where no explanation is wired and the control
+   * is therefore genuinely inert.
+   */
   editLocked: 'Cannot edit — this rule is no longer recognised',
+} as const;
+
+/**
+ * The three read states (#3061).
+ *
+ * `empty` says what the ABSENCE means rather than merely that the list is
+ * empty: with no rule, the router narrows nothing, which is the fact an
+ * operator needs in order to decide whether to act.
+ *
+ * `error` says explicitly that nothing changed. A failed READ is the one
+ * failure an operator is most likely to mistake for a lost configuration.
+ */
+export const SOURCING_RULES_STATE_COPY = {
+  loadingTitle: 'Loading sourcing rules',
+  loadingMessage: 'Reading the rules that decide where an order ships from…',
+  errorTitle: 'Could not load sourcing rules',
+  errorMessage:
+    'Your sourcing rules could not be read just now. Nothing has changed — this is a loading problem, not a configuration one.',
+  errorRetry: 'Retry',
+  emptyEyebrow: 'No rules',
+  emptyTitle: 'Nothing decides where an order ships from yet',
+  emptyMessage:
+    'Without a rule, no location is ruled out and none is ranked. Add a rule to start narrowing down which locations qualify.',
+  addRule: 'Add rule',
+  /**
+   * The reorder refusal is dismissed BY HAND, never on the next settle.
+   *
+   * A 409 invalidates the list, so an auto-clear tied to the refreshed read
+   * would pull the sentence away within a few hundred milliseconds of it
+   * appearing — the operator would see a row snap back with no surviving
+   * explanation, which is the state the message exists to prevent.
+   */
+  dismissReorderError: 'Dismiss',
 } as const;

@@ -2,8 +2,9 @@
  * OMS — public surface (#3056)
  *
  * Transport, hooks, the ordered rule table and the authoring dialog for the
- * #2953 sourcing-rules admin API, plus the delete/retire confirm. The page and
- * its tile arrive with #3060-#3062 and add their own lines here.
+ * #2953 sourcing-rules admin API, composed into one section that owns the
+ * read's four states and all three dialogs. The page and its tile arrive with
+ * #3060 / #3062 and add their own lines here.
  *
  * Deliberately NOT exported, per the start-narrow rule: the api module itself
  * (consumers reach transport through the hooks) and the query keys (every
@@ -42,6 +43,12 @@ export type {
   SourcingRuleLocationOption,
 } from './components/sourcing-rule-dialog';
 
+// #3061 - the composed section: states + table + dialogs.
+export { SourcingRulesSection } from './components/sourcing-rules-section';
+export type { SourcingRulesSectionProps } from './components/sourcing-rules-section';
+export { SourcingRuleLockedDialog } from './components/sourcing-rule-locked-dialog';
+export type { SourcingRuleLockedDialogProps } from './components/sourcing-rule-locked-dialog';
+
 // #3059 - removal.
 export { SourcingRuleDeleteDialog } from './components/sourcing-rule-delete-dialog';
 export type { SourcingRuleDeleteDialogProps } from './components/sourcing-rule-delete-dialog';
@@ -60,6 +67,7 @@ export {
   sourcingRuleNameHint,
   sourcingRuleNameLabel,
   SOURCING_RULES_TABLE_COPY,
+  SOURCING_RULES_STATE_COPY,
 } from './lib/sourcing-rule.copy';
 export {
   AFTER_ACTION_PERMISSIVENESS,

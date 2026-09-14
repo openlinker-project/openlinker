@@ -158,9 +158,39 @@ describe('SourcingRulesTable (#3057)', () => {
     expect(within(rowFor('a')).queryByText("Sets today's splitting limit")).toBeNull();
   });
 
-  it('refuses edit on an unrecognised rule, visibly, instead of hiding it', async () => {
-    // The API rejects the patch outright; a disabled control that says why is
-    // what sends the operator to Delete. An absent one reads as a bug.
+  it('routes edit on an unrecognised rule to the refusal, never to the form', async () => {
+    // The API rejects the patch outright. The control stays ENABLED so the
+    // explanation and its remedy are reachable — a disabled button cannot be
+    // focused in every browser and its title is not reliably announced (#3061).
+    const onEdit = vi.fn();
+    const onEditRefused = vi.fn();
+    render(
+      <SourcingRulesTable
+        rules={[rule('a', { recognised: false })]}
+        onReorder={vi.fn()}
+        onEdit={onEdit}
+        onEditRefused={onEditRefused}
+        now={NOW}
+      />
+    );
+
+    // The name describes what clicking DOES. A live control announced as
+    // "Cannot edit" sends both a sighted and a screen-reader operator past the
+    // explanation and its remedy.
+    expect(
+      screen.queryByRole('button', { name: 'Cannot edit — this rule is no longer recognised' })
+    ).toBeNull();
+    const edit = screen.getByRole('button', { name: 'Why this rule cannot be edited' });
+    expect(edit).toBeEnabled();
+
+    await userEvent.click(edit);
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(onEditRefused).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to a disabled edit when no refusal handler is wired', async () => {
+    // A caller that has not wired the explanation still must not open the form
+    // on a rule the server will refuse.
     const onEdit = vi.fn();
     render(
       <SourcingRulesTable
@@ -171,12 +201,44 @@ describe('SourcingRulesTable (#3057)', () => {
       />
     );
 
+    // Only the genuinely inert control keeps the refusal as its name.
     const edit = screen.getByRole('button', {
       name: 'Cannot edit — this rule is no longer recognised',
     });
     expect(edit).toBeDisabled();
     await userEvent.click(edit);
     expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it('renders the refusal for a caller that wires only the explanation', async () => {
+    // An absent control reads as a rendering bug, so a caller with no edit
+    // handler at all must still reach the explanation on an unrecognised row.
+    const onEditRefused = vi.fn();
+    render(
+      <SourcingRulesTable
+        rules={[rule('a', { recognised: false })]}
+        onReorder={vi.fn()}
+        onEditRefused={onEditRefused}
+        now={NOW}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Why this rule cannot be edited' }));
+    expect(onEditRefused).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers no edit control on a recognised rule when only the refusal is wired', () => {
+    render(
+      <SourcingRulesTable
+        rules={[rule('a')]}
+        onReorder={vi.fn()}
+        onEditRefused={vi.fn()}
+        now={NOW}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /^Edit / })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Why this rule cannot be edited' })).toBeNull();
   });
 
   it('still offers delete on an unrecognised rule, which is its only remedy', () => {
