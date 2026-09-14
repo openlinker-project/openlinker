@@ -3,11 +3,20 @@
  *
  * These cover what a mocked driver CAN prove: the delta arithmetic, the
  * mandatory `inventoryItemId` claim ordering (the deadlock guarantee), the
+ * POSITION and MODE of `applyGuardedAdd`'s row lock (#3035 / #3245), the
  * empty-array short-circuit, and the translation of each zero-row branch into
  * its named domain error.
  *
+ * The lock belongs on that list without weakening the disclaimer below, because
+ * both of its properties are properties of the STATEMENT TEXT, which the harness
+ * records verbatim: that it is issued, that it is issued FIRST, that it names
+ * this claim's position, and that it asks for `FOR NO KEY UPDATE` rather than
+ * `FOR UPDATE`. What that mode then does to a concurrent transaction is a
+ * different claim entirely, and is not made here.
+ *
  * They deliberately do NOT claim to prove the guards. A `WHERE` predicate is not
- * exercised by a mock that decides for itself how many rows it returns — that is
+ * exercised by a mock that decides for itself how many rows it returns, and
+ * neither is a lock by a mock with nothing to serialise against - that is
  * `apps/api/test/integration/reservations-ledger.int-spec.ts`'s job, against
  * real Postgres and real concurrency.
  *
@@ -55,13 +64,20 @@ function claim(overrides: Partial<ReservationClaimInput> = {}): ReservationClaim
 /**
  * The reply to `applyGuardedAdd`'s position lock.
  *
- * `SELECT 1 … FOR UPDATE` is not a data-modifying statement, so the driver
- * surfaces it as a plain row array and never as a `[rows, affectedCount]` tuple
- * — which is why this is the same value in the tuple-shaped harnesses below.
- * The repository reads nothing out of it; it is here because the queue is
+ * `SELECT 1 … FOR NO KEY UPDATE` is not a data-modifying statement, so the
+ * driver surfaces it as a plain row array and never as a `[rows, affectedCount]`
+ * tuple - which is why this is the same value in the tuple-shaped harnesses
+ * below. The repository reads nothing out of it; it is here because the queue is
  * positional.
+ *
+ * A factory rather than one shared `const`: a dozen harnesses holding the same
+ * mutable array is state shared between tests that buys nothing. Nothing mutates
+ * it today (`raw()` only ever reads `outer[0]`), so this closes a latent class
+ * rather than a live defect - at the price of one pair of parentheses.
  */
-const LOCK_REPLY: unknown[] = [];
+function lockReply(): unknown[] {
+  return [];
+}
 
 /**
  * A scripted `EntityManager.query`: each call shifts one reply off the queue and
@@ -69,8 +85,9 @@ const LOCK_REPLY: unknown[] = [];
  * a fake's internal state.
  *
  * The queue is POSITIONAL, so a script must account for EVERY statement the path
- * issues — including `applyGuardedAdd`'s `SELECT … FOR UPDATE`, whose own reply
- * the repository discards but which still occupies a slot (`LOCK_REPLY` below).
+ * issues - including `applyGuardedAdd`'s `SELECT … FOR NO KEY UPDATE`, whose own
+ * reply the repository discards but which still occupies a slot (`lockReply()`
+ * above).
  *
  * An exhausted queue THROWS rather than answering `[]`. The silent fallback cost
  * a red `main` once (#3245): adding the lock statement shifted every downstream
@@ -123,11 +140,11 @@ describe('ReservationRepository', () => {
       // order. Asserted on the statements, not on an internal sorted array.
       const h = createHarness([
         [reservationRow({ id: 'r-a', inventoryItemId: 'inv-a' })],
-        LOCK_REPLY,
+        lockReply(),
         [{ remainingAtp: 5 }],
         [reservationRow({ id: 'r-a', inventoryItemId: 'inv-a' })],
         [reservationRow({ id: 'r-c', inventoryItemId: 'inv-c' })],
-        LOCK_REPLY,
+        lockReply(),
         [{ remainingAtp: 7 }],
         [reservationRow({ id: 'r-c', inventoryItemId: 'inv-c' })],
       ]);
@@ -152,13 +169,22 @@ describe('ReservationRepository', () => {
       // UPDATE to start on a fresh snapshot, so what is pinned here is the
       // ORDERING, not merely that a lock is taken somewhere.
       //
-      // Nothing else in this suite has an opinion on it: the scripts tolerate the
-      // statement, and deleting it would leave them green while reopening the
-      // oversell. Only `reservations-ledger.int-spec.ts` would catch that, and
-      // only intermittently.
+      // The rest of the suite is anything but indifferent to the statement - and
+      // that is what this test is for, not a reason it is redundant. The queue is
+      // positional, so deleting the lock over-supplies every locked-path script
+      // by one: the guarded UPDATE eats the lock's empty reply and matches
+      // nothing, then the discriminating probe eats the row meant for
+      // `setQuantity`. Simulated against the real reply-consumption logic, 11 of
+      // the 12 locked-path harnesses change outcome - landing either on
+      // `InsufficientAvailabilityError` with a NaN availability or on a
+      // mislabelled `'missing'` position, both in a branch their script never
+      // mentions. Only *reason missing* is accidentally unaffected, and only
+      // because it already expects the branch the shift pushes it into. So
+      // deleting the lock costs a dozen tests all failing about availability;
+      // THIS one is the only test that names the lock.
       const h = createHarness([
         [reservationRow({ quantity: 3 })],
-        LOCK_REPLY,
+        lockReply(),
         [{ remainingAtp: 4 }],
         [reservationRow({ quantity: 3 })],
       ]);
@@ -168,10 +194,28 @@ describe('ReservationRepository', () => {
       // derails. Asserting over `statements` — recorded whatever the outcome —
       // keeps the failure message about the missing lock rather than about
       // whichever downstream read the shift happened to corrupt.
-      await h.repository.claimHeld([claim({ quantity: 3 })]).catch(() => undefined);
+      //
+      // An unscripted statement is the one rejection NOT discarded. `createHarness`
+      // rejects there so that a newly added statement names itself, and a blanket
+      // catch would make this the single test in the file blind to that guard -
+      // the test pinning the statement ORDER sitting green while every other test
+      // goes red at the new statement is exactly backwards.
+      await h.repository.claimHeld([claim({ quantity: 3 })]).catch((e: unknown) => {
+        if (e instanceof Error && e.message.startsWith('Unscripted statement:')) throw e;
+      });
 
-      const lockIndex = h.statements.findIndex(
-        (s) => s.sql.includes('"inventory_items"') && s.sql.includes('FOR NO KEY UPDATE'),
+      // The finder is deliberately MODE-AGNOSTIC, so the two ways this can break
+      // produce two different, correct messages: a DELETED lock fails the index
+      // assertion ("no lock"), an ESCALATED one fails the mode assertion below
+      // and names the mode. A finder that required `FOR NO KEY UPDATE` would
+      // report an escalation as `Expected: >= 0 / Received: -1`, i.e. "the lock
+      // is missing" about a lock that is present and wrong - the
+      // failure-message defect this whole change exists to remove, reintroduced
+      // one level down. The prefix is unambiguous: the probe opens
+      // `SELECT "i"."isStale"` and the conflict recovery `SELECT * FROM
+      // "reservations"`.
+      const lockIndex = h.statements.findIndex((s) =>
+        s.sql.startsWith('SELECT 1 FROM "inventory_items"'),
       );
       const guardIndex = h.statements.findIndex((s) => s.sql.includes('+ $3'));
       expect(lockIndex).toBeGreaterThanOrEqual(0);
@@ -188,13 +232,13 @@ describe('ReservationRepository', () => {
       // claims cannot help: both are already at the same row. `FOR NO KEY
       // UPDATE` is the strength the guarded UPDATE takes anyway, so it
       // serialises the claimers without conflicting with the FK.
-      expect(h.statements[lockIndex].sql).not.toContain('FOR UPDATE');
+      expect(h.statements[lockIndex].sql).toContain('FOR NO KEY UPDATE');
     });
 
     it('should apply the full quantity as the delta when the row is newly inserted', async () => {
       const h = createHarness([
         [reservationRow({ quantity: 3 })],
-        LOCK_REPLY,
+        lockReply(),
         [{ remainingAtp: 4 }],
         [reservationRow({ quantity: 3 })],
       ]);
@@ -224,7 +268,7 @@ describe('ReservationRepository', () => {
       //    its own units.
       const h = createHarness([
         [reservationRow({ quantity: 3 })],
-        LOCK_REPLY,
+        lockReply(),
         [{ remainingAtp: 4 }],
         [reservationRow({ quantity: 3 })],
       ]);
@@ -243,7 +287,7 @@ describe('ReservationRepository', () => {
       // the full delta — it is the denormalised total of BOTH stamps.
       const h = createHarness([
         [reservationRow({ quantity: 3, atpEffect: 'diagnostic' })],
-        LOCK_REPLY,
+        lockReply(),
         [{ remainingAtp: 10 }],
         [reservationRow({ quantity: 3, atpEffect: 'diagnostic' })],
       ]);
@@ -276,7 +320,7 @@ describe('ReservationRepository', () => {
       const h = createHarness([
         [],
         [reservationRow({ quantity: 2 })],
-        LOCK_REPLY,
+        lockReply(),
         [{ remainingAtp: 1 }],
         [reservationRow({ quantity: 5 })],
       ]);
@@ -314,7 +358,7 @@ describe('ReservationRepository', () => {
     it('should throw InsufficientAvailabilityError when the position is live but short', async () => {
       const h = createHarness([
         [reservationRow({ quantity: 9 })],
-        LOCK_REPLY,
+        lockReply(),
         [], // guarded add matched nothing
         [{ isStale: false, atp: 4 }], // discriminating probe
       ]);
@@ -327,7 +371,7 @@ describe('ReservationRepository', () => {
     it('should throw ReservationPositionUnavailableError with reason stale for a stale position', async () => {
       const h = createHarness([
         [reservationRow()],
-        LOCK_REPLY,
+        lockReply(),
         [],
         [{ isStale: true, atp: 100 }],
       ]);
@@ -339,7 +383,7 @@ describe('ReservationRepository', () => {
     });
 
     it('should throw ReservationPositionUnavailableError with reason missing when no position exists', async () => {
-      const h = createHarness([[reservationRow()], LOCK_REPLY, [], []]);
+      const h = createHarness([[reservationRow()], lockReply(), [], []]);
 
       const rejection = await h.repository.claimHeld([claim()]).catch((e: unknown) => e);
 
@@ -358,11 +402,11 @@ describe('ReservationRepository', () => {
     it('should not mutate the caller-supplied claims array while sorting', async () => {
       const h = createHarness([
         [reservationRow({ inventoryItemId: 'inv-a' })],
-        LOCK_REPLY,
+        lockReply(),
         [{ remainingAtp: 1 }],
         [reservationRow({ inventoryItemId: 'inv-a' })],
         [reservationRow({ inventoryItemId: 'inv-c' })],
-        LOCK_REPLY,
+        lockReply(),
         [{ remainingAtp: 1 }],
         [reservationRow({ inventoryItemId: 'inv-c' })],
       ]);
@@ -423,13 +467,13 @@ describe('ReservationRepository', () => {
     it('should read rows out of a [rows, affectedCount] tuple exactly as it does a plain array', async () => {
       const tuple = createHarness([
         [[reservationRow({ quantity: 3 })], 1],
-        LOCK_REPLY,
+        lockReply(),
         [[{ remainingAtp: 4 }], 1],
         [[reservationRow({ quantity: 3 })], 1],
       ]);
       const plain = createHarness([
         [reservationRow({ quantity: 3 })],
-        LOCK_REPLY,
+        lockReply(),
         [{ remainingAtp: 4 }],
         [reservationRow({ quantity: 3 })],
       ]);
@@ -448,7 +492,7 @@ describe('ReservationRepository', () => {
       // exact shape that would turn a refusal into a silent oversell.
       const h = createHarness([
         [[reservationRow({ quantity: 3 })], 1],
-        LOCK_REPLY,
+        lockReply(),
         [[], 0],
         [[{ isStale: false, atp: 1 }], 1],
       ]);
