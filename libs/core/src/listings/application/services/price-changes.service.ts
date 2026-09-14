@@ -47,6 +47,8 @@ import {
   type BulkBatchStatus,
 } from '../../domain/types/bulk-listing-batch.types';
 import type { BulkListingBatch } from '../../domain/entities/bulk-listing-batch.entity';
+import { PriceChangeOverrideOutOfRangeException } from '../../domain/exceptions/price-change-override-out-of-range.exception';
+import { checkPriceOverrideBound } from '../../domain/types/price-override-bound.types';
 import { PriceChangeEpisodeNotFoundException } from '../../domain/exceptions/price-change-episode-not-found.exception';
 import { PriceChangeEpisodeAlreadyResolvedException } from '../../domain/exceptions/price-change-episode-already-resolved.exception';
 import { PriceChangeEpisodeStaleException } from '../../domain/exceptions/price-change-episode-stale.exception';
@@ -224,6 +226,23 @@ export class PriceChangesService implements IPriceChangesService {
     input: EditPriceChangeInput
   ): Promise<PriceChangeResolutionResult> {
     const { episode, claimedAt } = await this.loadActionable(episodeId, input.expectedVersion);
+    // Refused HERE rather than on the DTO (#3222): the bound is proportionate
+    // to the episode's own computed price, which only exists once the episode
+    // is loaded. The DTO's `@Max` is a pathological-input guard against the
+    // `numeric(14,4)` column and says so in its own comment — it cannot see a
+    // 100x typo. Checked after the claim so a refused edit releases it like
+    // any other failure, rather than leaving the episode claimed.
+    const bound = checkPriceOverrideBound(input.manualPriceOverride, episode.computedNewAmount);
+    if (bound.outcome !== 'ok') {
+      await this.episodes.releaseClaim(episodeId);
+      throw new PriceChangeOverrideOutOfRangeException(
+        episodeId,
+        bound.outcome,
+        input.manualPriceOverride,
+        episode.computedNewAmount,
+        bound.limit as number
+      );
+    }
     await this.enqueueOrReleaseClaim(episode, claimedAt, {
       amount: input.manualPriceOverride,
       manualPriceOverride: true,

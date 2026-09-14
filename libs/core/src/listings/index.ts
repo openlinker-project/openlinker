@@ -666,3 +666,13 @@ export type {
 
 // Tokens
 export * from './listings.tokens';
+export {
+  checkPriceOverrideBound,
+  PRICE_OVERRIDE_MAX_FACTOR,
+  PriceOverrideBoundOutcomeValues,
+} from './domain/types/price-override-bound.types';
+export type {
+  PriceOverrideBoundOutcome,
+  PriceOverrideBoundResult,
+} from './domain/types/price-override-bound.types';
+export { PriceChangeOverrideOutOfRangeException } from './domain/exceptions/price-change-override-out-of-range.exception';

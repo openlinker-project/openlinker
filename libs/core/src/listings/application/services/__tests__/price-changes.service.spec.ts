@@ -94,6 +94,8 @@ function buildBatch(overrides: Partial<Record<string, unknown>> = {}): Record<st
   };
 }
 
+import { PriceChangeOverrideOutOfRangeException } from '../../../domain/exceptions/price-change-override-out-of-range.exception';
+
 describe('PriceChangesService', () => {
   let episodes: {
     findById: jest.Mock;
@@ -307,6 +309,40 @@ describe('PriceChangesService', () => {
     it('still claims exclusive resolution rights, even without an expectedVersion (it is optional here, not un-guarded)', async () => {
       await service.edit('ep-1', { manualPriceOverride: 420, resolvedByUserId: 'user-1' });
       expect(episodes.claimForResolution).toHaveBeenCalledWith('ep-1', expect.any(Date));
+    });
+
+    describe('disproportionate override (#3222)', () => {
+      it('refuses a 100x override, enqueues nothing, and releases the claim', async () => {
+        // The computed price is 399; the form warns at ±30% and publishes
+        // anyway, and curl/MCP never see the form at all.
+        await expect(
+          service.edit('ep-1', { manualPriceOverride: 39_900, resolvedByUserId: 'user-1' })
+        ).rejects.toThrow(PriceChangeOverrideOutOfRangeException);
+
+        // The point of the refusal: nothing reaches the marketplace.
+        expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+        // And the episode is not left claimed by an edit that never happened.
+        expect(episodes.releaseClaim).toHaveBeenCalledWith('ep-1');
+      });
+
+      it('carries the bound it crossed, so the operator is told the limit rather than just "no"', async () => {
+        let error: PriceChangeOverrideOutOfRangeException | null = null;
+        try {
+          await service.edit('ep-1', { manualPriceOverride: 39_900, resolvedByUserId: 'user-1' });
+        } catch (thrown) {
+          error = thrown as PriceChangeOverrideOutOfRangeException;
+        }
+        if (error === null) throw new Error('expected the override to be refused');
+
+        expect(error.outcome).toBe('too-high');
+        expect(error.limit).toBe(3990);
+        expect(error.computedAmount).toBe(399);
+      });
+
+      it('lets a large but plausible correction through', async () => {
+        await service.edit('ep-1', { manualPriceOverride: 1197, resolvedByUserId: 'user-1' });
+        expect(jobEnqueue.enqueueJob).toHaveBeenCalled();
+      });
     });
   });
 

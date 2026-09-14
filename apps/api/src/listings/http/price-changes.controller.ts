@@ -47,6 +47,7 @@ import {
   PRICE_CHANGES_SERVICE_TOKEN,
   PriceChangeEpisodeAlreadyResolvedException,
   PriceChangeEpisodeBlockedException,
+  PriceChangeOverrideOutOfRangeException,
   PriceChangeEpisodeInFlightException,
   PriceChangeEpisodeNotFoundException,
   PriceChangeEpisodeStaleException,
@@ -273,7 +274,13 @@ export class PriceChangesController {
       ) {
         throw new ConflictException(error.message);
       }
-      if (error instanceof PriceChangeEpisodeBlockedException) {
+      if (
+        error instanceof PriceChangeEpisodeBlockedException ||
+        error instanceof PriceChangeOverrideOutOfRangeException
+      ) {
+        // 422, not 400: the request is well-formed and the episode is
+        // actionable — the VALUE is refused (#3222). 400 on this route is
+        // already the DTO-shape failure.
         throw new UnprocessableEntityException(error.message);
       }
       throw error;
