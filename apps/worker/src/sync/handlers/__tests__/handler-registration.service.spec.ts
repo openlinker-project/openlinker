@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (16 realtime / 29 bulk / 5 fiscal / 7 fan-out across 57 job types —
+ * table (16 realtime / 30 bulk / 5 fiscal / 7 fan-out across 58 job types —
  * `fiscalization.register` joined `fiscal` post-ADR, #2156;
  * `inventory.provenance.backfill` joined `bulk` with #2317; the three returns
  * types joined realtime/bulk/fan-out with #2330; `returns.orphan.reconcile`
@@ -54,7 +54,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 57 job types 16/29/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 58 job types 16/30/5/7 per ADR-050 decision 1', () => {
     // 16: three of the FIVE fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
@@ -113,8 +113,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // candidates have by construction been unrelayed for at least the grace
     // window, AND unlike the reaper beside it each one fans a lifecycle relay
     // out to N participant adapters — heavy outbound work, which is what
-    // `bulk` is for.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(29);
+    // `bulk` is for. #3144's `pricing.propagateToMarketplaces` is the
+    // thirtieth (ADR-072 decision 8/9): like `marketplace.offer.create`, it
+    // is single-unit work that can arrive up to N wide from a bulk-accept
+    // wave (#3145/#3148) — the operator-wave shape decision 1 assigns to
+    // `bulk`, not the single-item "someone is waiting on this" shape
+    // `realtime` is for.
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(30);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });
