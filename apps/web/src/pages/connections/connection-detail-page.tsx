@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useConnectionQuery } from '../../features/connections/hooks/use-connection-query';
+import { hasPricingSyncPage } from '../../features/connections/lib/pricing-destination';
 import { useProductMasterConnections } from '../../features/connections/hooks/use-product-master-connections';
 import { ConnectionActionsPanel } from '../../features/connections/components/ConnectionActionsPanel';
 import { EnableConnectionButton } from '../../features/connections/components/EnableConnectionButton';
@@ -245,6 +246,19 @@ export function ConnectionDetailPage(): ReactElement {
             {connection.enabledCapabilities.includes('ProductMaster') ? (
               <Link className="button button--secondary" to={`/connections/${connectionId}/mappings/categories`}>
                 Category Mappings
+              </Link>
+            ) : null}
+            {/* Wider than the destination predicate: the page also carries a
+                SOURCE connection's read-only pricing rollup, so a
+                ProductMaster-only connection must be able to reach it from
+                here too (#3167 review). One definition, in
+                features/connections/lib. */}
+            {hasPricingSyncPage(connection) ? (
+              <Link
+                className="button button--secondary"
+                to={`/connections/${connectionId}/pricing-sync`}
+              >
+                Pricing &amp; sync
               </Link>
             ) : null}
           </div>

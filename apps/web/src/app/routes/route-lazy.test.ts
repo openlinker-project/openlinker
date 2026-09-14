@@ -55,8 +55,12 @@ const lazyRoutes = collectLazyRoutes([
  * route reverted to eager `element:` form, which is exactly the regression
  * the parameterized test below is meant to catch.
  *
- * Today's breakdown (62 total = 46 authenticated + 4 guest + 12 plugin):
- *   - 46 authenticated children (under `coreChildren`, counting per-children-node
+ * Today's breakdown (64 total = 47 authenticated + 4 guest + 1 standalone +
+ * 12 plugin — the arithmetic below previously didn't sum to the constant
+ * because `/bench` was described inline as part of the 47 while actually
+ * living in the separate `standaloneRoutes` array; it now gets its own
+ * bucket):
+ *   - 47 authenticated children (under `coreChildren`, counting per-children-node
  *     because grouped routes like orders/customers expose multiple
  *     lazy nodes — includes `/dev/ui` design-system page (#775), `/shipments` (#770),
  *     `/users` user-management page (#1125), `/invoices/:invoiceId` detail (#1240),
@@ -64,7 +68,11 @@ const lazyRoutes = collectLazyRoutes([
  *     `/dashboard` (#2740), `/settings/mcp-tokens` MCP token management
  *     (#1486/#1932), `/settings/sales-documents` (#2159), `/orders/dispatch-risk`
  *     (#2306), the two returns routes `/returns` (#2335) + `/returns/:returnId`
- *     (#2336), and `/settings/who-decides` (#2354), plus `/bench` — the pack-bench identity
+ *     (#2336), `/settings/who-decides` (#2354),
+ *     `/settings/inventory-locations` (#3064), and
+ *     `/connections/:connectionId/pricing-sync` (#3150 — the destination
+ *     Pricing & sync settings page and the source connection rollup, dual-mode
+ *     resolved by capability), plus `/bench` — the pack-bench identity
  *     surface (#2413), which carries no nav entry and is reached by URL at a
  *     terminal;
  *     the former `/inventory/:id` detail route was removed (#1305/#1609) once
@@ -73,6 +81,10 @@ const lazyRoutes = collectLazyRoutes([
  *     absorbed cross-catalog stock browsing)
  *   - 4 guest routes (forgot-password, reset-password, register, confirm-email (#1624)
  *     — login stays eager)
+ *   - 1 standalone route: `/bench` — the pack-bench identity surface
+ *     (#2413), which carries no nav entry and is reached by URL at a
+ *     terminal, and renders outside `AuthenticatedAppLayout` (see the
+ *     `standaloneRoutes` comment above)
  *   - 12 plugin routes (allegro callback + setup, prestashop setup, dpd setup,
  *     woocommerce setup, erli setup, subiekt setup (#1199), ksef setup, ksef
  *     invoice numbering (#1577), inpost setup, infakt setup (#1282), eparagony
@@ -83,7 +95,7 @@ const lazyRoutes = collectLazyRoutes([
  *   - prompt-templates-legacy-redirects (inline `<Navigate>` element)
  *   - `/analytics` legacy alias (inline `<Navigate>` to `/`, #2740)
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 64;
+const EXPECTED_LAZY_ROUTE_COUNT = 65;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {
