@@ -269,13 +269,15 @@ Decision 5 above specifies the threshold as a **`thresholdRef`** — "a named am
 
 **The migration is the load-bearing part.** `isSalesDocumentCondition` returns `null` on a shape mismatch and callers read that as *"never matches"*. Shipping the new shape without migrating persisted `sales_document_rules.conditions` (and their `conditions_hash`) therefore makes every existing rule **silently stop matching**, with orders held and nothing logged. The model change and the data migration ship in one release, never two. The starter-template catalogue is a separate, additional migration — it is not a substitute for migrating operator-authored rules.
 
+**On this ADR's status.** The amendment is settled, not provisional: decision 5's rule engine is shipped (#2170/#2173), so the `thresholdRef` it retires is a live model this change edits rather than a proposal it revises. It does **not** move the parent's status — ADR-041 stays `Proposed` because decision 1's router and decision 8's aggregation mechanics are still unbuilt, which is what that status is about; a settled amendment to one decision does not make the rest of the document accepted.
+
 **Unchanged by this amendment:** the gross-amount evaluation and the `exclusive`-resolves-`unresolved` rule, the currency-mismatch rule, and decision 6's treatment of two matches as a conflict rather than a tie-break.
 
 
 ## References
 
-- Related PRs: #2055 (this ADR)
-- Related issues: #2051, #2009, #2047, #1908, #2054, #1902, #1841, #2599 (buyer tax id on the order contract)
-- Related ADRs: [ADR-026](./026-country-agnostic-invoicing-domain.md) (invoicing domain; policy-above-the-port, and the VAT-rate annex proposed under #2009), [ADR-002](./002-capability-ports-with-sub-capabilities.md) (capability decomposition), [ADR-007](./007-syncjob-status-vs-outcome-split.md) (job status vs outcome), [ADR-014](./014-source-authoritative-order-pricing.md) (source-authoritative amounts; note its live text *rejects* a per-line tax rate as destination-catalog knowledge - the supersession that would carry the VAT rate through is proposed in #2054, not settled here)
+- Related PRs: #2055 (this ADR), #3200 (the #3189 threshold amendment)
+- Related issues: #2051, #2009, #2047, #1908, #2054, #1902, #1841, #2599 (buyer tax id on the order contract), #3175 (the epic issue this amendment ships under), #3189 (inline threshold amount)
+- Related ADRs: [ADR-073](./073-buyer-tax-identity-and-dual-role-document-connections.md) (buyer tax identity and dual-role connections; its decision 3 lands a guard on decision 3a's single-primary pool), [ADR-026](./026-country-agnostic-invoicing-domain.md) (invoicing domain; policy-above-the-port, and the VAT-rate annex proposed under #2009), [ADR-002](./002-capability-ports-with-sub-capabilities.md) (capability decomposition), [ADR-007](./007-syncjob-status-vs-outcome-split.md) (job status vs outcome), [ADR-014](./014-source-authoritative-order-pricing.md) (source-authoritative amounts; note its live text *rejects* a per-line tax rate as destination-catalog knowledge - the supersession that would carry the VAT rate through is proposed in #2054, not settled here)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § 14 Invoicing, § Cross-context dependencies in core
 - Spec: [`docs/specs/product-spec-1902-eparagony-e-receipts.md`](../../specs/product-spec-1902-eparagony-e-receipts.md)

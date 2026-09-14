@@ -164,18 +164,38 @@ describe('ConnectionDiagnosticsResponseDto.fromDomain', () => {
     expect(dto.lastSucceededAt).toBe('2025-01-06T00:00:00.000Z');
   });
 
-  it('folds fiscal and invoice failure reasons into recentErrors alongside job errors', () => {
+  it('orders recentErrors newest-first ACROSS sources, not by source', () => {
+    // Deliberately fed in the order the three sources are read, with the
+    // OLDEST first: the panel renders this array verbatim, so a concatenated
+    // order would sit a month-old job error above today's invoice failure.
     const job = syncJob('dead', new Date('2025-01-01T10:00:00Z'), 'transport timeout');
-    const failedFiscal = fiscalRecord('failed', { failureReason: 'authority rejected receipt' });
-    const failedInvoice = invoiceRecord('failed', { failureReason: 'buyer VAT id rejected' });
+    const failedFiscal = fiscalRecord('failed', {
+      updatedAt: new Date('2025-02-10T10:00:00Z'),
+      failureReason: 'authority rejected receipt',
+    });
+    const failedInvoice = invoiceRecord('failed', {
+      updatedAt: new Date('2025-02-11T10:00:00Z'),
+      failureReason: 'buyer VAT id rejected',
+    });
 
     const dto = ConnectionDiagnosticsResponseDto.fromDomain(CONNECTION, [job], [failedFiscal], [failedInvoice]);
 
     expect(dto.recentErrors).toEqual([
-      'transport timeout',
-      'authority rejected receipt',
       'buyer VAT id rejected',
+      'authority rejected receipt',
+      'transport timeout',
     ]);
+    expect(dto.lastFailedAt).toBe('2025-02-11T10:00:00.000Z');
+  });
+
+  it('keeps source order for two failures sharing one instant (stable sort)', () => {
+    const at = new Date('2025-03-01T08:00:00Z');
+    const job = syncJob('dead', at, 'transport timeout');
+    const failedFiscal = fiscalRecord('failed', { updatedAt: at, failureReason: 'authority rejected receipt' });
+
+    const dto = ConnectionDiagnosticsResponseDto.fromDomain(CONNECTION, [job], [failedFiscal], []);
+
+    expect(dto.recentErrors).toEqual(['transport timeout', 'authority rejected receipt']);
   });
 
   it('counts a registered record as success but ignores an in-flight "registering" one', () => {
