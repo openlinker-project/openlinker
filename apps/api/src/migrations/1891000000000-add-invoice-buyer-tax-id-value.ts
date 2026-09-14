@@ -23,15 +23,15 @@
  * is unindexed — the filter is served by the boolean beside it, and nothing
  * filters or sorts on the value.
  *
- * Prefix `1883000000000` is strictly greater than the current tail
+ * Prefix `1891000000000` is strictly greater than the current tail
  * (`1882000000000`).
  *
  * @module apps/api/src/migrations
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddInvoiceBuyerTaxIdValue1883000000000 implements MigrationInterface {
-  name = 'AddInvoiceBuyerTaxIdValue1883000000000';
+export class AddInvoiceBuyerTaxIdValue1891000000000 implements MigrationInterface {
+  name = 'AddInvoiceBuyerTaxIdValue1891000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "invoice_records" ADD "buyerTaxId" text`);

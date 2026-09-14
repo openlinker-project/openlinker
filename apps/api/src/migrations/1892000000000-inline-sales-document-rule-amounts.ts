@@ -99,8 +99,8 @@ function pickVersion(rows: readonly ThresholdRow[]): ThresholdRow | undefined {
   )[0];
 }
 
-export class InlineSalesDocumentRuleAmounts1884000000000 implements MigrationInterface {
-  name = 'InlineSalesDocumentRuleAmounts1884000000000';
+export class InlineSalesDocumentRuleAmounts1892000000000 implements MigrationInterface {
+  name = 'InlineSalesDocumentRuleAmounts1892000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     const rules = (await queryRunner.query(
@@ -206,7 +206,7 @@ export class InlineSalesDocumentRuleAmounts1884000000000 implements MigrationInt
   // rejection is raised synchronously by the caller's own `await`.
   public down(): Promise<void> {
     throw new Error(
-      'InlineSalesDocumentRuleAmounts1884000000000 is not reversible: rebuilding a thresholdRef ' +
+      'InlineSalesDocumentRuleAmounts1892000000000 is not reversible: rebuilding a thresholdRef ' +
         'would mean inventing which ref an inline amount came from, and two rules carrying the ' +
         'same amount could have cited different refs. Restore from a backup instead.',
     );
