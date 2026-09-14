@@ -87,6 +87,18 @@ export interface InvoicingIssuePayloadV1 {
   /** The trigger model that produced this job. */
   trigger: InvoiceTriggerModel;
   /**
+   * The order's buyer tax identity as the gate saw it (#3188), in
+   * `order_records.buyerTaxId`'s three-state encoding: absent/`null` = not
+   * asserted, `''` = asserted-none, otherwise the id. Optional additive field
+   * (no `schemaVersion` bump) — a payload persisted before it existed reads
+   * `undefined`, which is the correct "not asserted".
+   *
+   * Frozen onto the issued `InvoiceRecord` so the invoice list can render the
+   * same three states the order detail does without joining to an order whose
+   * own column re-ingestion rewrites. It never reaches a provider.
+   */
+  buyerTaxIdAssertion?: string | null;
+  /**
    * The order's tax-rate era marker (#2245 review) - today only `'pre-rollout'`,
    * for an order that existed before per-line rates did. Optional additive field
    * (no `schemaVersion` bump); absent means "after the feature", which is the

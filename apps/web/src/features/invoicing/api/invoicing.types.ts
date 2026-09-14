@@ -111,6 +111,18 @@ export interface InvoiceRecord {
   createdAt: string;
   updatedAt: string;
   /**
+   * Buyer tax id as it stood when this document was ISSUED (#3188) — THREE
+   * states, the same shape the order detail renders: the key is ABSENT when
+   * nothing was asserted, `null` when the source asserted the buyer has none,
+   * and a string when the document carries one. Never collapse the two
+   * absences: they decide different fiscal documents.
+   *
+   * Frozen server-side at issue, not joined from the order, so it cannot drift
+   * away from the document after a re-ingestion. `undefined` on every invoice
+   * issued before the column existed.
+   */
+  buyerTaxId?: string | null;
+  /**
    * Batched order-identity projection (#1995). Only populated by `GET
    * /invoices` (the list endpoint) — single-invoice reads carry `null` (not
    * fetched there).

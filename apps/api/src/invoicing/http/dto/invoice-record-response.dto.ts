@@ -33,6 +33,7 @@ import {
   RegulatoryStatusValues,
 } from '@openlinker/core/invoicing';
 import type { OrderSummary } from '@openlinker/core/orders';
+import { decodeBuyerTaxIdColumn , BuyerTaxId} from '@openlinker/core/orders';
 import { OrderSummaryProjectionDto } from '../../../orders/http/dto/order-summary-projection.dto';
 
 export class InvoiceRecordResponseDto {
@@ -126,6 +127,23 @@ export class InvoiceRecordResponseDto {
   })
   otherInvoicingConnectionIds?: string[];
 
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Buyer tax id as it stood when this document was ISSUED (#3188) - THREE states, ' +
+      'not two, matching the order detail exactly (#2599/#3180): the key is ABSENT when ' +
+      'nothing was asserted, `null` when the source positively asserted the buyer has ' +
+      'none, and a non-empty string, verbatim and unformatted, when the document carries ' +
+      'one. FROZEN at issue rather than joined from the order, because an invoice is an ' +
+      'immutable fiscal document while the order`s own column is rewritten by every ' +
+      're-ingestion - a joined read could later show a number the issued document does ' +
+      'not carry. It never claims more than the document does: an assertion carrying an ' +
+      'id the document does not carry reads as not-asserted. `null` on every row issued ' +
+      'before the column existed, since there is nothing to backfill it from. This is the ' +
+      'value the `taxId=with|without` filter was already asking about and could not show.',
+  })
+  buyerTaxId?: BuyerTaxId;
+
   /**
    * @param orderSummary Batched order-identity projection (#1995), or `null`
    *   when not resolved for this call site. Required (not defaulted) so a
@@ -154,6 +172,9 @@ export class InvoiceRecordResponseDto {
     dto.createdAt = record.createdAt.toISOString();
     dto.updatedAt = record.updatedAt.toISOString();
     dto.orderSummary = orderSummary ? OrderSummaryProjectionDto.fromSummary(orderSummary) : null;
+    // Decoded, never passed raw: `''` is the asserted-none state and a consumer
+    // reading the column directly would misread it as an empty id.
+    dto.buyerTaxId = decodeBuyerTaxIdColumn(record.buyerTaxId);
     return dto;
   }
 }

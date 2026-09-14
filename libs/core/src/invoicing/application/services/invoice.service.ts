@@ -419,6 +419,10 @@ export class InvoiceService implements IInvoiceService {
         // from the command's buyer so the taxId list filter needs no Order join.
         // Non-null but empty-string values are treated as absent (no tax id).
         hasBuyerTaxId: cmd.buyer.taxId !== null && cmd.buyer.taxId.value.length > 0,
+        // The VALUE behind that flag, frozen here rather than joined later
+        // (#3188). See `freezeBuyerTaxIdAtIssue` for why it can never contradict
+        // the document.
+        buyerTaxId: freezeBuyerTaxIdAtIssue(cmd),
       });
     } catch (error) {
       // (5) Create-race: a concurrent same-key call won the dedup guard between
@@ -1397,4 +1401,31 @@ export class InvoiceService implements IInvoiceService {
     }
     return [...byRate.values()];
   }
+}
+
+
+/**
+ * The buyer tax identity to freeze onto a newly-created `InvoiceRecord`
+ * (#3188), in `order_records.buyerTaxId`'s three-state encoding: `null` = not
+ * asserted, `''` = asserted-none, otherwise the id.
+ *
+ * **It can never claim more than the document does.** The id is taken from
+ * `cmd.buyer.taxId` — what actually goes onto the document — and the caller's
+ * `buyerTaxIdAssertion` is consulted ONLY to tell the two ABSENCES apart. So an
+ * assertion carrying an id the document does not carry (an operator issuing by
+ * hand without one, against an order that has one) reads as "not asserted"
+ * rather than putting a number on a list row whose document has none.
+ *
+ * Pure and module-scoped rather than a private method: it reads nothing but its
+ * argument, and keeping it callable from a spec is what lets that one rule be
+ * pinned directly instead of through a whole issuance.
+ */
+export function freezeBuyerTaxIdAtIssue(cmd: IssueInvoiceCommand): string | null {
+  const issued = cmd.buyer.taxId;
+  if (issued !== null && issued.value.trim().length > 0) {
+    return issued.value.trim();
+  }
+  // `''` is the asserted-none encoding and the ONLY assertion that survives a
+  // document carrying no id; everything else collapses to "not asserted".
+  return cmd.buyerTaxIdAssertion === '' ? '' : null;
 }
