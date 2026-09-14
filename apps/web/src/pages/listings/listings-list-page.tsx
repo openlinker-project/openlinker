@@ -60,6 +60,7 @@ import {
 } from '../../features/listings/lib/listing-connection-notices';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { useDemoMode } from '../../features/system';
+import { PriceChangesQueueTable, usePriceChangesQuery } from '../../features/price-changes';
 import type {
   ListingsFilters,
   OfferLifecycle,
@@ -436,6 +437,29 @@ export function ListingsListPage(): ReactElement {
   const tab: LifecycleTab = isLifecycleTab(rawTab) ? rawTab : DEFAULT_TAB;
   const activeTabDef = LIFECYCLE_TABS.find((def) => def.key === tab) ?? LIFECYCLE_TABS[0];
 
+  // Top-level view switch (#3147): "All listings" (everything below,
+  // unchanged) vs "Price changes" (the new review queue). A permanent tab on
+  // this page per the epic's placement decision — no promotion to a
+  // dedicated nav surface is planned.
+  const rawView = searchParams.get('view');
+  const view: 'all' | 'queue' = rawView === 'queue' ? 'queue' : 'all';
+  // The badge needs a real count on every visit (including the default "all
+  // listings" tab), so the read itself stays enabled — but the standing 30s
+  // BACKGROUND POLL only runs while the "Price changes" tab is actually on
+  // screen (#3164 review): unconditionally passing the default interval here
+  // meant every visit to `/listings` polled an unbounded, opt-in,
+  // default-off feature's endpoint every 30s regardless of which tab was
+  // showing.
+  const priceChangesCountQuery = usePriceChangesQuery(undefined, {
+    refetchIntervalMs: view === 'queue' ? undefined : false,
+  });
+  // `total` (from `countOpen`) is the strictly-open count a badge should
+  // show — `items.length` also carries recently-ignored rows within their
+  // 15-minute Undo window (#3162), which would overcount "needs your
+  // attention" work.
+  const priceChangesOpenCount = priceChangesCountQuery.data?.total ?? null;
+  const priceChangesCountUnavailable = priceChangesCountQuery.isError;
+
   const [searchInput, setSearchInput] = useState(urlSearch);
 
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
@@ -699,6 +723,47 @@ export function ListingsListPage(): ReactElement {
         ) : null
       }
     >
+      <Tabs
+        value={view}
+        onValueChange={(value) => {
+          setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            if (value === 'queue') next.set('view', 'queue');
+            else next.delete('view');
+            return next;
+          });
+        }}
+      >
+        <TabsList aria-label="Listings views">
+          <TabsTrigger value="all">All listings</TabsTrigger>
+          <TabsTrigger value="queue">
+            Price changes{' '}
+            <span className="tabs__count">
+              {/* Same 3-state treatment as the lifecycle tab counts below
+                  (#3164 review) — a count that snaps from a placeholder `0`
+                  to its real value reads as a bug, and a FAILED read must
+                  never render `0` either (absence and "none matched" are
+                  different claims, `docs/frontend-architecture.md § Paginated
+                  Totals As A Second Stage`). While the query is disabled
+                  (browsing "all listings" and never yet visited "Price
+                  changes" this session) `data` is `undefined` and this reads
+                  the same as "still loading". */}
+              {priceChangesCountUnavailable ? (
+                '—'
+              ) : priceChangesOpenCount === null ? (
+                <span className="tabs__count-skeleton" aria-hidden="true" />
+              ) : (
+                priceChangesOpenCount
+              )}
+            </span>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {view === 'queue' ? (
+        <PriceChangesQueueTable />
+      ) : (
+        <>
       <div className="toolbar toolbar--compact listings-toolbar">
         <div className="toolbar__group">
           <Input
@@ -1073,6 +1138,8 @@ export function ListingsListPage(): ReactElement {
       </Tabs>
 
       <OfferProductPickerModal isOpen={isWizardOpen} onClose={() => setIsWizardOpen(false)} />
+        </>
+      )}
     </PageLayout>
   );
 }
