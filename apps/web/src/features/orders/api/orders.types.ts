@@ -416,6 +416,31 @@ export interface OrderRecord {
    */
   mappingFailureReason?: string | null;
   /**
+   * Buyer tax id as the source asserted it (#2599/#3180) — THREE states on
+   * the wire, not two:
+   *
+   * - the key is ABSENT (`undefined`) — the source asserted nothing. This is
+   *   also what a deployment running `OL_STORE_PII=false` always reads, since
+   *   nothing is persisted there — byte-identical to an ordinary unasserted
+   *   value, never a false "asserted none".
+   * - `null` — the source POSITIVELY asserted the buyer has no tax id.
+   * - a non-empty string — the id, verbatim and unformatted. Render it
+   *   exactly as received: never reformat, strip, or prefix a country code.
+   *
+   * "Has none" and "we don't know" decide different fiscal documents, so
+   * collapsing them into one rendering is the exact bug this field exists to
+   * prevent. Switch on presence-then-nullness, never on truthiness.
+   *
+   * **Detail read only** — attached by `GET /orders/:id`, never by the paged
+   * list, where a buyer-identifying value with no reader has no business on
+   * every row. That makes the absent state ENDPOINT-dependent in a way the
+   * other optional fields here are not: on a list row the key is always absent,
+   * which is not the source saying nothing. Render it from a detail read or not
+   * at all — a list row must never be fed to `OrderBuyerTaxIdValue`, which would
+   * state "Not asserted by the source" about an order nobody asked about.
+   */
+  buyerTaxId?: string | null;
+  /**
    * Why OpenLinker issued no sales document for this order (#2100, #2156).
    * `null` when nothing is blocking it. Independent of `recordStatus` — an
    * order can be `ready` and `synced` while still carrying a block.
