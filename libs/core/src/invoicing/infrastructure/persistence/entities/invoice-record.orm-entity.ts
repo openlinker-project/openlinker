@@ -163,6 +163,19 @@ export class InvoiceRecordOrmEntity {
   hasBuyerTaxId!: boolean;
 
   /**
+   * The buyer tax identity frozen at issue time (#3188). Three-state, encoded
+   * exactly as `order_records.buyerTaxId`: `NULL` = not asserted, `''` =
+   * asserted-none, otherwise the id. Decode with `decodeBuyerTaxIdColumn`; a
+   * bare `IS NOT NULL` reads the middle state wrong.
+   *
+   * Deliberately NOT indexed: the `taxId=with|without` filter is served by the
+   * `hasBuyerTaxId` boolean beside it, and nothing filters or sorts on the
+   * value itself.
+   */
+  @Column({ type: 'text', nullable: true })
+  buyerTaxId!: string | null;
+
+  /**
    * Neutral issued-document content snapshot (§7.3), captured at issue time.
    * `null` until a document is issued (or when the adapter surfaces no content).
    */

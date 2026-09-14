@@ -49,7 +49,6 @@ import type { SalesDocumentDecision } from '../../domain/types/sales-document-de
 import type { SalesDocumentCountrySummary } from '../../domain/types/sales-document-country-summary.types';
 import { evaluateSalesDocumentRules } from '../../domain/domain-services/evaluate-sales-document-rules';
 import { SalesDocumentRuleConflictException } from '../../domain/exceptions/sales-document-rule-conflict.exception';
-import { SalesDocumentThresholdNotFoundException } from '../../domain/exceptions/sales-document-threshold-not-found.exception';
 import { SalesDocumentInvalidConditionException } from '../../domain/exceptions/sales-document-invalid-condition.exception';
 import {
   SalesDocumentCountryDefaultNotFoundException,
@@ -159,7 +158,8 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
       country: this.normaliseCountry(rawInput.country),
       conditions: this.normaliseConditionCountries(rawInput.conditions),
     };
-    await this.assertThresholdRefsResolve(input);
+    // `assertThresholdRefsResolve` is gone with #3189 - a condition carries its
+    // own amount now, so there is no ref left to resolve.
 
     const conditionsHash = computeSalesDocumentConditionsHash(input.conditions);
     await this.assertNoConflict(input.country, conditionsHash, input.effectiveFrom, input.effectiveTo, input.connectionId);
@@ -220,13 +220,14 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     // delivery-address country from the source would silently resolve to
     // "no configuration for this country" instead of the real market.
     const order = { ...rawOrder, country: this.normaliseCountry(rawOrder.country) };
-    const [countryRules, countryDefaults, restOfWorldRules, restOfWorldDefaults, thresholds] =
+    // No threshold read since #3189: an `orderTotalGross` condition carries its
+    // own amount and currency, so the engine needs nothing beyond the rules.
+    const [countryRules, countryDefaults, restOfWorldRules, restOfWorldDefaults] =
       await Promise.all([
         this.ruleRepository.findByCountry(order.country),
         this.countryDefaultRepository.findByCountry(order.country),
         this.ruleRepository.findByCountry(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY),
         this.countryDefaultRepository.findByCountry(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY),
-        this.thresholdRepository.findAll(),
       ]);
 
     return evaluateSalesDocumentRules({
@@ -235,7 +236,6 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
       countryDefaults,
       restOfWorldRules,
       restOfWorldDefaults,
-      thresholds,
       now,
     });
   }
@@ -269,10 +269,9 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     countries.add(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY);
     const countryList = [...countries];
 
-    const [rules, defaults, thresholds] = await Promise.all([
+    const [rules, defaults] = await Promise.all([
       this.ruleRepository.findByCountries(countryList),
       this.countryDefaultRepository.findByCountries(countryList),
-      this.thresholdRepository.findAll(),
     ]);
 
     const rulesByCountry = groupByCountry(rules);
@@ -287,7 +286,6 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
         countryDefaults: defaultsByCountry.get(order.country) ?? [],
         restOfWorldRules,
         restOfWorldDefaults,
-        thresholds,
         now,
       }),
     );
@@ -408,30 +406,6 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     for (let i = 0; i < conditions.length; i++) {
       if (!isSalesDocumentCondition(conditions[i])) {
         throw new SalesDocumentInvalidConditionException(i);
-      }
-    }
-  }
-
-  /**
-   * Validate every `orderTotalGross` condition's `thresholdRef` resolves
-   * BEFORE persisting the rule — an unresolvable ref at evaluation time would
-   * silently make the condition unevaluable rather than loudly wrong at
-   * authoring time.
-   */
-  private async assertThresholdRefsResolve(input: SalesDocumentRuleInput): Promise<void> {
-    const refs: string[] = [];
-    for (const condition of input.conditions) {
-      if (condition.field === 'orderTotalGross') {
-        refs.push(condition.thresholdRef);
-      }
-    }
-    if (refs.length === 0) return;
-
-    const found = await this.thresholdRepository.findByRefs(refs);
-    const foundRefs = new Set(found.map((t) => t.ref));
-    for (const ref of refs) {
-      if (!foundRefs.has(ref)) {
-        throw new SalesDocumentThresholdNotFoundException(ref);
       }
     }
   }

@@ -20,6 +20,10 @@
  *     anywhere in the dialog, disabled or otherwise: if the order carries a
  *     tax ID it always reaches the adapter, so no property exists to gate.
  *  4. Save is refused until a destination connection is picked.
+ *  5. The readback (#3189) states the assembled rule and never fills a gap in
+ *     - the mockup's primary assertion target. The sentence itself is pinned
+ *     by `describe-sales-document-rule-draft.test.ts`; what is asserted HERE
+ *     is that the dialog is wired to it at all.
  */
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -49,6 +53,22 @@ describe('SalesDocumentRuleComposerDialog', () => {
     expect(within(root).getByText('Document & destination')).toBeInTheDocument();
     expect(within(root).getByText('Effective window')).toBeInTheDocument();
     expect(root.querySelectorAll('.rule-composer-section')).toHaveLength(3);
+  });
+
+  it('should read the draft back, naming the unchosen destination rather than omitting it', async () => {
+    renderComposer();
+    const root = await dialog();
+    await waitFor(() => expect(within(root).getByText('Conditions')).toBeInTheDocument());
+
+    const readback = within(root).getByTestId('rule-readback');
+    // A fresh draft starts on `buyerHasTaxId` with nothing else chosen, so the
+    // sentence must SAY the destination is unchosen. Reading as though a
+    // destination were already picked is the failure this guards: the operator
+    // would believe they had chosen one.
+    // A fresh draft starts on `buyerHasTaxId` = true — the only state a real
+    // order can reach (#3189) — with nothing else chosen.
+    expect(readback).toHaveTextContent('customer has a tax ID');
+    expect(readback).toHaveTextContent('(no integration selected)');
   });
 
   it('should render ONE small caveat trigger per tax-ID condition and no full-width banner', async () => {

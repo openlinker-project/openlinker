@@ -1170,6 +1170,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       },
       sourceConnectionId,
       trigger: triggerModel,
+      // #3188 - the RAW three-state column, not the decoded/trimmed number the
+      // command carries: the record freezes which of the two ABSENCES this
+      // order is in, and trimming has already collapsed them above.
+      buyerTaxIdAssertion: buyerTaxId ?? null,
     };
 
     if (command.documentType !== undefined) {

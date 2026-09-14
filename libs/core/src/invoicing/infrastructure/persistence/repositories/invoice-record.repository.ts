@@ -560,6 +560,9 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     // A freshly-created `pending` row holds no in-flight lease (#1200).
     entity.leaseExpiresAt = null;
     entity.hasBuyerTaxId = input.hasBuyerTaxId ?? false;
+    // `?? null` rather than a falsy coalesce: `''` is the asserted-none state
+    // and must survive as itself (#3188).
+    entity.buyerTaxId = input.buyerTaxId ?? null;
     entity.documentContent = input.documentContent ?? null;
     entity.sourceDocument = input.sourceDocument ?? null;
     entity.issuedLineSnapshot = input.issuedLineSnapshot ?? null;
@@ -596,6 +599,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.numberingSeriesId,
       entity.documentNumber,
       entity.allocatedSeq,
+      entity.buyerTaxId,
     );
   }
 }
