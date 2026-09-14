@@ -8,6 +8,7 @@ import { McpTokensTile } from '../../features/mcp-tokens/components/mcp-tokens-t
 import { SalesDocumentsTile } from '../../features/sales-documents';
 import { WhoDecidesTile } from '../../features/fulfillment-authority';
 import { SyncPacingTile } from '../../features/settings';
+import { InventoryLocationsTile } from '../../features/inventory';
 import { PageLayout } from '../../shared/ui/page-layout';
 
 export function SettingsPage(): ReactElement {
@@ -31,6 +32,8 @@ export function SettingsPage(): ReactElement {
           {/* Ungated, unlike its admin-gated neighbours — see `WhoDecidesTile`'s docblock. */}
           <span className="toolbar-chip">Who decides what</span>
           {isAdmin ? <span className="toolbar-chip">Sync pacing</span> : null}
+          {/* Ungated — see `InventoryLocationsTile`'s docblock. */}
+          <span className="toolbar-chip">Inventory locations</span>
           <span className="toolbar-chip">Upcoming</span>
         </div>
       }
@@ -114,6 +117,9 @@ export function SettingsPage(): ReactElement {
 
         {/* ── Sync pacing (admin-only, #2653) ───────────────────────── */}
         {isAdmin ? <SyncPacingTile /> : null}
+
+        {/* Deliberately NOT admin-gated — see `InventoryLocationsTile`'s docblock. */}
+        <InventoryLocationsTile />
 
         {/* ── Notifications (planned) ───────────────────────────────── */}
         <article className="panel panel--dense">
