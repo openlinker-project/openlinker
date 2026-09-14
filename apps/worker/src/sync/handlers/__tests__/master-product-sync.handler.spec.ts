@@ -68,6 +68,7 @@ describe('MasterProductSyncHandler', () => {
     masterDeleted,
     pruneSkipped,
     taxRateChanges,
+    priceChangeObserverFailures: 0,
   });
 
   it('returns outcome=ok for a normal sync', async () => {
