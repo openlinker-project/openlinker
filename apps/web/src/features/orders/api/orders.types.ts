@@ -232,6 +232,9 @@ export interface SalesDocumentOtherRecord {
  * `SalesDocumentConditionInput` in `features/sales-documents/api` (kept as a
  * separate local mirror rather than a cross-feature import, following this
  * file's own established "hand-mirrored from the BE DTO" convention above).
+ *
+ * `field` mirrors core's `SalesDocumentConditionFieldValues` and is held to it
+ * by `scripts/check-sales-document-condition-field-mirror.mjs`.
  */
 export interface SalesDocumentMatchedRuleCondition {
   readonly field: 'buyerHasTaxId' | 'orderCountry' | 'orderTotalGross';

@@ -26,11 +26,16 @@ export function matchedRuleReadsBuyerTaxId(
 }
 
 function describeCondition(condition: SalesDocumentMatchedRuleCondition, t: Translate): string {
-  // Captured before the narrowing below so the fallback can still echo it: this
+  // Captured before the narrowing below so the fallback can still echo it. This
   // union is a HAND-WRITTEN mirror of `SalesDocumentConditionFieldValues` in
-  // `libs/core`, with no `check-*-mirror.mjs` behind it (unlike the sibling
-  // reason vocabulary in this same feature), so a fourth field added in core
-  // reaches this function at RUNTIME while the type here still says three.
+  // `libs/core` - the browser bundle does not depend on `@openlinker/core`
+  // (#591), so the vocabulary is re-declared here rather than imported. Drift is
+  // a BUILD failure now: `scripts/check-sales-document-condition-field-mirror.mjs`
+  // (under `pnpm check:invariants`) compares the two, so a fourth field added in
+  // core can no longer reach this function while the type here still says three.
+  // The echo arm below stays regardless - that guard aligns the two SOURCE
+  // trees, it cannot stop a deployed API running ahead of this bundle from
+  // sending a value neither side knows about yet.
   const field: string = condition.field;
 
   if (condition.field === 'buyerHasTaxId') {
