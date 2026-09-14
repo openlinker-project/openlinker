@@ -15,8 +15,13 @@
  *   - `failed+rejected` maps to Issued node with error tone + stop the lane there
  *   - `in-doubt` maps to Issued node with warning tone + stop there (no Retry shown)
  *   - Terminal clearance success is `accepted` — never render "Cleared" as success
- *   - `pending-submission` (#1585) renders an active "Awaiting KSeF" node — never
- *     a "Submitted" done check (nothing has been transmitted to the authority)
+ *   - `pending-submission` (#1585) renders an active "Awaiting submission" node —
+ *     never a "Submitted" done check (nothing has been transmitted to the authority)
+ *
+ * Every operator-facing string here is regulator-NEUTRAL (#3181): this is a
+ * shared feature component rendered for an inFakt or Subiekt invoice just as
+ * much as for a KSeF one, and it exposes no per-provider override seam, so a
+ * regulator name in a label would be wrong for most of the invoices it serves.
  *
  * @module apps/web/src/features/invoicing/components
  */
@@ -197,13 +202,16 @@ function buildClearanceLane(
   // effect but has NOT been transmitted to the authority yet (the authority was
   // unreachable at issuance; a sweep will resubmit). It must NEVER fall through to
   // the "Submitted" done node below — that would tell the operator the document
-  // reached KSeF when nothing was sent. Render a single active "Awaiting KSeF"
-  // node instead ("in motion, no action owed").
+  // reached the authority when nothing was sent. Render a single active
+  // "Awaiting submission" node instead ("in motion, no action owed").
   if (status === 'pending-submission') {
     return [
       {
-        label: t('invoice.tl.pendingSubmission', 'Awaiting KSeF submission'),
-        subLabel: t('invoice.tl.pendingSubmissionHint', 'Issued offline — not yet sent to KSeF'),
+        label: t('invoice.tl.pendingSubmission', 'Awaiting submission'),
+        subLabel: t(
+          'invoice.tl.pendingSubmissionHint',
+          'Issued offline — not yet sent to the authority',
+        ),
         timestamp: invoice.updatedAt,
         state: 'active',
       },
