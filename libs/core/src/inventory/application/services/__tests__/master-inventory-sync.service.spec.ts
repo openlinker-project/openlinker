@@ -92,6 +92,9 @@ describe('MasterInventorySyncService', () => {
       staleLocationlessPositionsForSource: jest
         .fn()
         .mockResolvedValue({ markedCount: 0, variantIds: [] }),
+      staleLocatedPositionsForSource: jest
+        .fn()
+        .mockResolvedValue({ markedCount: 0, variantIds: [] }),
     } as unknown as jest.Mocked<IInventoryService>;
 
     productsService = {
@@ -182,6 +185,7 @@ describe('MasterInventorySyncService', () => {
         masterDeleted: false,
         pruneSkipped: false,
         pooledPositionsStaled: 0,
+        locatedPositionsStaled: 0,
       });
     });
 
@@ -226,6 +230,7 @@ describe('MasterInventorySyncService', () => {
         masterDeleted: false,
         pruneSkipped: false,
         pooledPositionsStaled: 0,
+        locatedPositionsStaled: 0,
       });
       // Adapter supplies the per-combination variantIds — no products-service fallback.
       expect(productsService.getVariantsByProductId).not.toHaveBeenCalled();
@@ -429,6 +434,7 @@ describe('MasterInventorySyncService', () => {
         masterDeleted: true,
         pruneSkipped: false,
         pooledPositionsStaled: 0,
+        locatedPositionsStaled: 0,
       });
     });
 
@@ -898,6 +904,7 @@ describe('MasterInventorySyncService', () => {
         masterDeleted: false,
         pruneSkipped: true,
         pooledPositionsStaled: 0,
+        locatedPositionsStaled: 0,
       });
     });
 
@@ -919,6 +926,7 @@ describe('MasterInventorySyncService', () => {
         masterDeleted: true,
         pruneSkipped: true,
         pooledPositionsStaled: 0,
+        locatedPositionsStaled: 0,
       });
     });
   });
@@ -1336,6 +1344,90 @@ describe('MasterInventorySyncService', () => {
       await service.syncFromMasterByExternalIds(connectionId, [externalId, 'ext-2', 'ext-3']);
 
       expect(integrationsService.getAdapter).toHaveBeenCalledTimes(1);
+    });
+
+    // The reverse of the #2322 transition (#3206). `markStaleExceptVariants`
+    // prunes per VARIANT, so clearing the override re-creates the pooled row
+    // while the abandoned located row stays live and `global`-scope ATP sums
+    // both (#2321) - an invisible oversell until this mirror shipped.
+    it('should stale the source own located rows for the variants it just pooled', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([pooled('ol_variant_a')]);
+      (inventoryService.staleLocatedPositionsForSource as jest.Mock).mockResolvedValueOnce({
+        markedCount: 1,
+        variantIds: ['ol_variant_a'],
+      });
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleLocatedPositionsForSource).toHaveBeenCalledWith(
+        internalProductId,
+        ['ol_variant_a'],
+        { sourceConnectionId: connectionId, includeUnattributedProvenance: true }
+      );
+      expect(result.locatedPositionsStaled).toBe(1);
+    });
+
+    it('should never reach storage for the mirror when every reported position is located', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([located('ol_variant_a', 'loc-1')]);
+
+      const result = await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleLocatedPositionsForSource).not.toHaveBeenCalled();
+      expect(result.locatedPositionsStaled).toBe(0);
+    });
+
+    // Load-bearing: staling the same variant from BOTH sides would leave it with
+    // no live position at all, and #1689 turns that known zero into paused
+    // offers for stock that is still there.
+    it('should exclude a variant reported both pooled and located from the mirror', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([
+        located('ol_variant_a', 'loc-1'),
+        { ...pooled('ol_variant_a'), id: 'inv-a-pooled-dup' },
+        pooled('ol_variant_b'),
+      ]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleLocatedPositionsForSource).toHaveBeenCalledWith(
+        internalProductId,
+        ['ol_variant_b'],
+        expect.anything()
+      );
+    });
+
+    it('should fall back to strict provenance for the mirror when a rival master claims the id', async () => {
+      entityClaims.findRivalClaimants.mockResolvedValue(['rival-connection']);
+      inventoryAdapter.listInventory.mockResolvedValue([pooled('ol_variant_a')]);
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      expect(inventoryService.staleLocatedPositionsForSource).toHaveBeenCalledWith(
+        internalProductId,
+        ['ol_variant_a'],
+        { sourceConnectionId: connectionId, includeUnattributedProvenance: false }
+      );
+    });
+
+    // The pooled row IS written by setInventory, but its no-change guard can
+    // skip the propagation enqueue while this pass removes the located row from
+    // the aggregate - so the destination would keep selling the doubled number.
+    it('should enqueue variant-keyed propagation for each staled located position', async () => {
+      inventoryAdapter.listInventory.mockResolvedValue([pooled('ol_variant_a')]);
+      (inventoryService.staleLocatedPositionsForSource as jest.Mock).mockResolvedValueOnce({
+        markedCount: 1,
+        variantIds: ['ol_variant_a'],
+      });
+
+      await service.syncFromMasterByExternalId(connectionId, externalId);
+
+      const propagations = jobQueue.enqueue.mock.calls
+        .map((c) => c[0] as { type: string; payload: Record<string, unknown> })
+        .filter((c) => c.type === 'inventory.propagateToMarketplaces');
+
+      expect(propagations).toHaveLength(1);
+      expect(propagations[0].payload).toEqual(
+        expect.objectContaining({ productId: internalProductId, variantId: 'ol_variant_a' })
+      );
     });
   });
 

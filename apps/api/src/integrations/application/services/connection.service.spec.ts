@@ -934,7 +934,10 @@ describe('ConnectionService', () => {
     describe('stockLocationOverride validation (#3206)', () => {
       it('should accept a create whose override names an existing location', async () => {
         connectionPort.create.mockResolvedValue(mockConnection);
-        locations.getLocation.mockResolvedValue({ id: 'ol_location_main' } as never);
+        locations.getLocation.mockResolvedValue({
+          id: 'ol_location_main',
+          status: 'active',
+        } as never);
 
         await expect(
           service.create({
@@ -985,6 +988,56 @@ describe('ConnectionService', () => {
           })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      // An inactive location is retired: the fulfilment router filters
+      // `status: 'active'`, so an override naming it writes a config that
+      // decides nothing — the #2407 shape this refusal exists to prevent.
+      it('should reject a create whose override names a retired location', async () => {
+        locations.getLocation.mockResolvedValue({
+          id: 'ol_location_retired',
+          status: 'inactive',
+        } as never);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 'ol_location_retired' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      // Transition-scoped, mirroring `assertRouterEnablementPreconditions`:
+      // `config` is replaced wholesale, so every unrelated patch re-asserts the
+      // stored override. A location retired AFTER the override was set must not
+      // make the connection un-editable.
+      it('should not re-validate an unchanged override on update', async () => {
+        connectionPort.get.mockResolvedValue(
+          new Connection(
+            'connection-123',
+            'prestashop',
+            'Test Connection',
+            'active',
+            { baseUrl: 'https://example.com', stockLocationOverride: 'ol_location_retired' },
+            'cred_123',
+            new Date(),
+            new Date(),
+            undefined,
+            ['ProductMaster']
+          )
+        );
+        connectionPort.update.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: {
+              baseUrl: 'https://shop.example.com',
+              stockLocationOverride: 'ol_location_retired',
+            },
+          })
+        ).resolves.toBeDefined();
+        expect(locations.getLocation).not.toHaveBeenCalled();
       });
     });
   });

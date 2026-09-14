@@ -191,6 +191,67 @@ describe('Stock-location override — pooled-to-located transition end-to-end (#
     expect(liveTotal).toBe(8);
   });
 
+  // The REVERSE transition (#3206 review). `markStaleExceptVariants` prunes per
+  // VARIANT, so clearing the override re-creates and un-stales the pooled row
+  // while the abandoned located row stays live — and `getPromisableQuantities`
+  // sums across every location in `global` scope (#2321), so the variant would
+  // publish 16 for 8 units of real stock, with every counter internally
+  // consistent and nothing logged.
+  it('stales the abandoned located row once the override is cleared, with no double-count', async () => {
+    const master = await createTestConnection(dataSource, {
+      platformType: 'prestashop',
+      status: 'active',
+      config: {
+        baseUrl: 'http://localhost:8080',
+        preferredLanguageId: 1,
+        stockLocationOverride: OVERRIDE_LOCATION_ID,
+      },
+    });
+    const { productId, variantId, externalId } = await seedVariant(master.id);
+
+    jest
+      .spyOn(integrationsService, 'getCapabilityAdapter')
+      .mockResolvedValue(pooledOnlyAdapter({ externalId, variantId, quantity: 8 }));
+
+    const masterSync = harness.get<IMasterInventorySyncService>(MASTER_INVENTORY_SYNC_SERVICE_TOKEN);
+
+    // Start from the located steady state the override produces.
+    await masterSync.syncFromMasterByExternalId(master.id, externalId);
+    const afterLocated = await readRows(productId, variantId);
+    expect(afterLocated).toHaveLength(1);
+    expect(afterLocated[0].locationId).toBe(OVERRIDE_LOCATION_ID);
+    expect(afterLocated[0].isStale).toBe(false);
+
+    // The operator clears the override. The adapter is UNCHANGED, so any effect
+    // below is attributable to the config change alone.
+    await dataSource
+      .getRepository(ConnectionOrmEntity)
+      .update(
+        { id: master.id },
+        { config: { baseUrl: 'http://localhost:8080', preferredLanguageId: 1 } }
+      );
+
+    const reverted = await masterSync.syncFromMasterByExternalId(master.id, externalId);
+    expect(reverted.locatedPositionsStaled ?? 0).toBeGreaterThan(0);
+
+    const afterReverted = await readRows(productId, variantId);
+    expect(afterReverted).toHaveLength(2);
+
+    const pooled = afterReverted.find((r) => r.locationId === null);
+    const located = afterReverted.find((r) => r.locationId === OVERRIDE_LOCATION_ID);
+
+    // The pooled row is the master's answer again; the located one is retired.
+    expect(pooled?.isStale).toBe(false);
+    expect(pooled?.availableQuantity).toBe(8);
+    expect(located?.isStale).toBe(true);
+
+    // The claim this test exists for: 8, never 16.
+    const liveTotal = afterReverted
+      .filter((r) => !r.isStale)
+      .reduce((sum, r) => sum + r.availableQuantity, 0);
+    expect(liveTotal).toBe(8);
+  });
+
   it('never applies the override once the adapter reports a real location itself', async () => {
     const master = await createTestConnection(dataSource, {
       platformType: 'prestashop',
