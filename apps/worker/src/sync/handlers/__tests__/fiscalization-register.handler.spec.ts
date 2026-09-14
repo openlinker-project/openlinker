@@ -254,6 +254,35 @@ describe('FiscalizationRegisterHandler', () => {
     });
   });
 
+  describe("the buyer's tax number (#3187, ADR-073 decision 1)", () => {
+    it('carries the tax number onto the command when present', async () => {
+      await handler.execute(makeJob(makePayload({ buyerTaxId: '5213796333' })));
+      expect(fiscalRegistrations.register).toHaveBeenCalledWith(
+        expect.objectContaining({ buyerTaxId: '5213796333' }),
+      );
+    });
+
+    it('omits the field for an ordinary order', async () => {
+      await handler.execute(makeJob(makePayload()));
+      const command = fiscalRegistrations.register.mock.calls[0]?.[0];
+      expect(command && 'buyerTaxId' in command).toBe(false);
+    });
+
+    it('rejects a present-but-non-string buyerTaxId as a business_failure (no register call)', async () => {
+      const result = await handler.execute(
+        makeJob(makePayload({ buyerTaxId: 42 as unknown as string })),
+      );
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(fiscalRegistrations.register).not.toHaveBeenCalled();
+    });
+
+    it('rejects a present-but-empty buyerTaxId as a business_failure', async () => {
+      const result = await handler.execute(makeJob(makePayload({ buyerTaxId: '' })));
+      expect(result).toEqual({ outcome: 'business_failure' });
+      expect(fiscalRegistrations.register).not.toHaveBeenCalled();
+    });
+  });
+
   describe('retryable failures', () => {
     it('FiscalRegistrationContendedException is retryable (wrapped, thrown)', async () => {
       fiscalRegistrations.register.mockRejectedValue(

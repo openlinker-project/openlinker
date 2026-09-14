@@ -68,4 +68,11 @@ export interface FiscalizationRegisterPayloadV1 {
    * coerces it through the union's guard.
    */
   taxRateEra?: string;
+  /**
+   * The buyer's tax number (#3187, ADR-073 decision 1) - a bare value, never a
+   * tagged `TaxIdentifier`. Present only when there is a real number to send;
+   * absent for both the "asserted none" and "not asserted" states, which carry
+   * nothing a receipt can transmit.
+   */
+  buyerTaxId?: string;
 }

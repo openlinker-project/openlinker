@@ -521,6 +521,22 @@ describe('OrderIngestionService', () => {
       );
     });
 
+    it('passes the just-persisted buyerTaxId as the 5th arg (#3187, ADR-073 decision 1)', async () => {
+      // Read from `persisted`, NEVER `existing` (unlike `taxRateEra`, which is
+      // deliberately pre-persist): `buyerTaxId` is computed fresh by
+      // `persistOrder` from THIS transition's order, so a first-seen order
+      // (`existing === null`) must still carry its correct value here.
+      orderRecordService.persistOrder.mockResolvedValueOnce({
+        buyerTaxId: '5213796333',
+      } as never);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const call = autoIssueTrigger.onOrderTransition.mock.calls[0];
+      expect(call[4]).toBe('5213796333');
+    });
+
     it('swallows a thrown onOrderTransition failure — order sync still returns results — with a PII-safe log', async () => {
       const warnSpy = jest
         .spyOn((service as unknown as { logger: { warn: (m: string) => void } }).logger, 'warn')

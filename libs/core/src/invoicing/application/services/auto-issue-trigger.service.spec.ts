@@ -598,6 +598,41 @@ describe('AutoIssueTriggerService', () => {
       expect('taxRateEra' in payload).toBe(false);
     });
 
+    describe("the buyer's tax number (#3187, ADR-073 decision 1)", () => {
+      it("carries the order's persisted buyer tax id into the payload", async () => {
+        connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+        await service.onOrderTransition(
+          makeOrder({ paymentStatus: 'paid' }),
+          'src-1',
+          undefined,
+          null,
+          '5213796333',
+        );
+        const payload = syncJobs.schedule.mock.calls[0][0].payload;
+        expect(payload.buyerTaxId).toBe('5213796333');
+      });
+
+      it('omits the field from the payload for an ordinary order (not asserted)', async () => {
+        connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+        await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+        const payload = syncJobs.schedule.mock.calls[0][0].payload;
+        expect('buyerTaxId' in payload).toBe(false);
+      });
+
+      it('omits the field for the "asserted none" state (an empty-string column)', async () => {
+        connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
+        await service.onOrderTransition(
+          makeOrder({ paymentStatus: 'paid' }),
+          'src-1',
+          undefined,
+          null,
+          '',
+        );
+        const payload = syncJobs.schedule.mock.calls[0][0].payload;
+        expect('buyerTaxId' in payload).toBe(false);
+      });
+    });
+
     it('enqueues a rate-less PRE-ROLLOUT order with the switch ON (#2260 review)', async () => {
       // Both gates exempt it, so the job is enqueued and the registration goes
       // through exactly as it did before the epic.
