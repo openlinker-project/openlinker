@@ -5,6 +5,8 @@
  * `PUT /order` is exhaustive and refuses a subset, so a table that emits the
  * wrong set produces a 409 about rules the operator never touched.
  */
+import type { ReactElement } from 'react';
+import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -269,6 +271,92 @@ describe('SourcingRulesTable (#3057)', () => {
     render(<SourcingRulesTable rules={[rule('a')]} onReorder={vi.fn()} now={NOW} />);
 
     expect(screen.getByText('Always')).toBeInTheDocument();
+  });
+
+  it('moves focus to the row\'s other arrow when the pressed arrow becomes the end-stop', async () => {
+    // The press that completes the task is the one that disables the button
+    // under the cursor, and the browser answers that by dropping focus to
+    // <body>. Without restoration a keyboard user finishes the reorder and is
+    // then nowhere, with nothing announced.
+    function Harness(): ReactElement {
+      const [order, setOrder] = useState(['a', 'b']);
+      return (
+        <SourcingRulesTable
+          rules={order.map((id) => rule(id))}
+          onReorder={(ids) => setOrder(ids)}
+          now={NOW}
+        />
+      );
+    }
+    render(<Harness />);
+
+    await userEvent.click(within(rowFor('b')).getByLabelText('Move up'));
+
+    const moved = within(rowFor('b'));
+    expect(moved.getByLabelText('Move up')).toBeDisabled();
+    expect(moved.getByLabelText('Move down')).toHaveFocus();
+  });
+
+  it('keeps focus on the pressed arrow while the row still has somewhere to go', async () => {
+    // Passes without the restoration effect too - the browser leaves focus on a
+    // button that stays enabled. It is here to catch an over-reaching fix that
+    // moves focus somewhere the operator did not ask for, not to prove the
+    // effect exists; the end-stop case above does that.
+    function Harness(): ReactElement {
+      const [order, setOrder] = useState(['a', 'b', 'c']);
+      return (
+        <SourcingRulesTable
+          rules={order.map((id) => rule(id))}
+          onReorder={(ids) => setOrder(ids)}
+          now={NOW}
+        />
+      );
+    }
+    render(<Harness />);
+
+    await userEvent.click(within(rowFor('c')).getByLabelText('Move up'));
+
+    expect(within(rowFor('c')).getByLabelText('Move up')).toHaveFocus();
+  });
+
+  it('sends the full live list when a row jumps to the top, and restores focus there', async () => {
+    // The mockup's `.rule-position__jump` group, shipped rather than dropped.
+    // Same end-stop problem as the nudge arrows: landing at position 1 disables
+    // the button that was just pressed.
+    function Harness(): ReactElement {
+      const [order, setOrder] = useState(['a', 'b', 'c']);
+      return (
+        <SourcingRulesTable
+          rules={order.map((id) => rule(id))}
+          onReorder={(ids) => setOrder(ids)}
+          now={NOW}
+        />
+      );
+    }
+    render(<Harness />);
+
+    await userEvent.click(within(rowFor('c')).getByLabelText('Move to top'));
+
+    const ids = [...document.querySelectorAll('[data-rule-id]')].map((row) =>
+      row.getAttribute('data-rule-id')
+    );
+    expect(ids).toEqual(['c', 'a', 'b']);
+    expect(within(rowFor('c')).getByLabelText('Move to bottom')).toHaveFocus();
+  });
+
+  it('sends the full live list when a row jumps to the bottom', async () => {
+    const onReorder = vi.fn();
+    render(
+      <SourcingRulesTable
+        rules={[rule('a'), rule('b'), rule('c')]}
+        onReorder={onReorder}
+        now={NOW}
+      />
+    );
+
+    await userEvent.click(within(rowFor('a')).getByLabelText('Move to bottom'));
+
+    expect(onReorder).toHaveBeenCalledWith(['b', 'c', 'a']);
   });
 
   it('disables every control while a write is in flight', () => {

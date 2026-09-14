@@ -45,10 +45,10 @@ function renderDialog(
       open
       onOpenChange={vi.fn()}
       connectionId={CONNECTION_ID}
+      rule={target}
       rules={[target]}
       now={NOW}
       {...props}
-      rule={target}
     />,
     { apiClient: createMockApiClient({ sourcingRules: sourcingRules as never }) }
   );
@@ -109,7 +109,10 @@ describe('SourcingRuleDeleteDialog (#3059)', () => {
     const governing = rule({ id: 'rule_strict', afterAction: 'no-split' });
     renderDialog({ rule: governing, rules: [governing] });
 
-    expect(screen.getByText(/removes your only limit on splitting/)).toBeInTheDocument();
+    expect(screen.getByText(/lifts your only limit on splitting/)).toBeInTheDocument();
+    // Retiring drops the rule out of the same active set deleting it does, so
+    // copy naming only Delete would point at the wrong button.
+    expect(screen.getByText(/Retiring has the same effect as deleting/)).toBeInTheDocument();
   });
 
   it('does not warn when another active rule keeps the same limit', () => {
@@ -117,17 +120,64 @@ describe('SourcingRuleDeleteDialog (#3059)', () => {
     const sibling = rule({ id: 'rule_b', name: 'nearest', afterAction: 'no-split' });
     renderDialog({ rule: governing, rules: [governing, sibling] });
 
-    expect(screen.queryByText(/removes your only limit on splitting/)).toBeNull();
+    expect(screen.queryByText(/lifts your only limit on splitting/)).toBeNull();
   });
 
-  it('surfaces a delete refusal verbatim and stays open', async () => {
+  it('does not offer retire for a rule that has not started yet', () => {
+    // `SourcingRuleAdminService.update` validates the MERGED window, so
+    // `PATCH { effectiveTo: <now> }` against a future start date is always
+    // `to < from` and always answers 400. Offering the button would tell the
+    // operator about a start date they never touched in this dialog.
+    renderDialog({ rule: rule({ effectiveFrom: '2026-12-01T00:00:00.000Z' }) });
+
+    expect(screen.queryByRole('button', { name: 'Retire instead' })).toBeNull();
+    expect(screen.getByText(/has not started yet/)).toBeInTheDocument();
+  });
+
+  it('still runs the retire path while the splitting warning is shown', () => {
+    // The warning describes a consequence BOTH buttons produce, so it must not
+    // suppress the reversible one.
+    const governing = rule({ id: 'rule_strict', afterAction: 'no-split' });
+    renderDialog({ rule: governing, rules: [governing] });
+
+    expect(screen.getByText(/lifts your only limit on splitting/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retire instead' })).toBeInTheDocument();
+  });
+
+  it('renders the canned sentence for a 404 delete and stays open', async () => {
     const remove = vi.fn().mockRejectedValue(new ApiError('rule not found on this connection', 404, {}));
     const onOpenChange = vi.fn();
     renderDialog({ onOpenChange }, { remove });
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
+    // `describeSourcingRuleError`'s canned 404 sentence, NOT the server's
+    // message - the verbatim path is the 400/409 one, asserted below.
     expect(await screen.findByText('This sourcing rule no longer exists.')).toBeInTheDocument();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('surfaces a 400 retire refusal VERBATIM and stays open', async () => {
+    // The client-side guard is not a trust boundary: a rule whose start date
+    // moved into the future in another tab still reaches the API, and its 400
+    // names the actual problem. A generic sentence would throw that away.
+    const update = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError(
+          'effectiveTo must be after effectiveFrom - a rule whose window closes before it opens is never evaluated.',
+          400,
+          {}
+        )
+      );
+    const onOpenChange = vi.fn();
+    renderDialog({ onOpenChange }, { update });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retire instead' }));
+
+    expect(
+      await screen.findByText(/a rule whose window closes before it opens/)
+    ).toBeInTheDocument();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
