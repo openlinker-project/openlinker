@@ -45,6 +45,10 @@ One presentational rule follows and is load-bearing: **a detected, unconfigured 
 **Migration path:**
 - Additive and read-only. An existing install gains the list; nothing about its routing changes.
 
+## Amendment (#2822, 2026-09-04): the buyer-tax-ID coverage named in the Context has widened; the decision stands
+
+The Context above describes the live-demo Poland failure as rules keying on a buyer tax ID that "neither the Allegro nor the WooCommerce order source supplies". That was true when this ADR was written; #2822 has since wired the field onto Allegro, Erli and WooCommerce, so all four order sources supply it. Neither the decision nor the failure it addresses is affected, because every one of those paths is conditional - Allegro and Erli read a tax ID only from a buyer's VAT-invoice request at checkout, WooCommerce only when the store runs a VAT-number plugin writing an allowlisted `meta_data` key - so an order carrying no qualifying signal still resolves to no document while the settings page presents the configuration as working. The same silence, over a narrower but still-real set of orders, which is what market discovery exists to surface.
+
 ## References
 
 - Related issues: #2503, #2513, #2518, #2528, #2529, #2530

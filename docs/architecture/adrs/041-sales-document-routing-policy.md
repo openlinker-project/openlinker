@@ -205,6 +205,29 @@ it needs a gate that acts on the fact, and on this coverage a refusal keyed to i
 that simply do not report. That is a routing-policy choice to take deliberately, not a wiring step that fell
 out of #2599.
 
+## Amendment (#2822, 2026-09-04): coverage widened to all four order sources, and every path is conditional
+
+The **Coverage is one source** paragraph in the #2599 amendment above no longer holds. #2822 wired the field
+onto the three remaining order sources, so all four supply it now. What did **not** change is the reason a rule
+keyed on `buyerHasTaxId === false` still matches almost nothing: every path is *conditional*, so the widening
+moves orders from *not asserted* into *present*, never into *asserted none*.
+
+| source | where the value comes from | when it is present |
+|---|---|---|
+| PrestaShop | `ps_address.vat_number`, via the shared `hydrateAddress` used for both the billing and the shipping address | whenever the address carries one |
+| Allegro | `invoice.address.company` (`ids?.[0]?.value ?? company.taxId`) | only on a buyer's VAT-invoice request at checkout |
+| Erli | `mapAddress` reads `address.nip` under `options.isInvoiceAddress` | only on a buyer's VAT-invoice request at checkout |
+| WooCommerce | an allowlisted `meta_data` key (`WOOCOMMERCE_VAT_META_KEY_ALLOWLIST`) | only when the store runs a VAT-number plugin |
+
+**No shipped adapter emits the asserted-none middle state**, and that is structural rather than merely observed:
+the shared `readSourceBuyerTaxId` coercer cannot return `null` - a missing key, a JSON `null` and a blank string
+all yield `undefined`. The three-state contract stands; only two of its states are reachable from a source today.
+
+So **`'missing-required-tax-id'` is still declared and never written**, for the same reason and in the same shape
+as before - on this coverage a refusal keyed to it would block every order that none of the four sources happened
+to report on. Wider coverage does not turn enabling it into a wiring step; it remains the routing-policy choice
+#2599 deferred.
+
 ## Alternatives considered
 
 - **Put routing in `orders`** (order transition picks the document): rejected - `orders` would have to learn both fiscal domains' connections, capabilities and document types, and it is depended on by five sibling contexts that have no fiscal concern.
