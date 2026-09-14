@@ -172,9 +172,13 @@ describe('SourcingRulesTable (#3057)', () => {
       />
     );
 
-    const edit = screen.getByRole('button', {
-      name: 'Cannot edit — this rule is no longer recognised',
-    });
+    // The name describes what clicking DOES. A live control announced as
+    // "Cannot edit" sends both a sighted and a screen-reader operator past the
+    // explanation and its remedy.
+    expect(
+      screen.queryByRole('button', { name: 'Cannot edit — this rule is no longer recognised' })
+    ).toBeNull();
+    const edit = screen.getByRole('button', { name: 'Why this rule cannot be edited' });
     expect(edit).toBeEnabled();
 
     await userEvent.click(edit);
@@ -195,12 +199,44 @@ describe('SourcingRulesTable (#3057)', () => {
       />
     );
 
+    // Only the genuinely inert control keeps the refusal as its name.
     const edit = screen.getByRole('button', {
       name: 'Cannot edit — this rule is no longer recognised',
     });
     expect(edit).toBeDisabled();
     await userEvent.click(edit);
     expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it('renders the refusal for a caller that wires only the explanation', async () => {
+    // An absent control reads as a rendering bug, so a caller with no edit
+    // handler at all must still reach the explanation on an unrecognised row.
+    const onEditRefused = vi.fn();
+    render(
+      <SourcingRulesTable
+        rules={[rule('a', { recognised: false })]}
+        onReorder={vi.fn()}
+        onEditRefused={onEditRefused}
+        now={NOW}
+      />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Why this rule cannot be edited' }));
+    expect(onEditRefused).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers no edit control on a recognised rule when only the refusal is wired', () => {
+    render(
+      <SourcingRulesTable
+        rules={[rule('a')]}
+        onReorder={vi.fn()}
+        onEditRefused={vi.fn()}
+        now={NOW}
+      />
+    );
+
+    expect(screen.queryByRole('button', { name: /^Edit / })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Why this rule cannot be edited' })).toBeNull();
   });
 
   it('still offers delete on an unrecognised rule, which is its only remedy', () => {

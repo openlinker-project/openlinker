@@ -281,7 +281,10 @@ export function SourcingRulesTable({
  *
  * With no `onEditRefused` supplied the control falls back to disabled, so a
  * caller that has not wired the explanation still cannot open the form on a
- * rule the server will refuse.
+ * rule the server will refuse — and only THERE does it keep the refusal as its
+ * name. An enabled control announces the affordance instead, because a button
+ * whose accessible name says it cannot act, and then acts, sends a sighted
+ * operator and a screen-reader user past the only remedy the row has.
  */
 function renderEdit(
   rule: SourcingRule,
@@ -289,11 +292,17 @@ function renderEdit(
   onEditRefused: ((rule: SourcingRule) => void) | undefined,
   busy: boolean
 ): ReactNode {
-  if (onEdit === undefined) return null;
+  // Either handler is enough to render something; a caller that wires only the
+  // refusal still has an unrecognised row to explain.
+  if (onEdit === undefined && onEditRefused === undefined) return null;
+
+  const refused = !rule.recognised;
+  // A recognised rule has nothing to offer without the edit handler itself.
+  if (!refused && onEdit === undefined) return null;
 
   const label = sourcingRuleNameLabel(rule.name);
-  const refused = !rule.recognised;
-  const title = refused ? COPY.editLocked : `Edit ${label}`;
+  const inert = refused && onEditRefused === undefined;
+  const title = refused ? (inert ? COPY.editLocked : COPY.editRefusedAction) : `Edit ${label}`;
 
   return (
     <button
@@ -301,8 +310,8 @@ function renderEdit(
       className="button button--ghost button--icon button--sm"
       title={title}
       aria-label={title}
-      disabled={busy || (refused && onEditRefused === undefined)}
-      onClick={() => (refused ? onEditRefused?.(rule) : onEdit(rule))}
+      disabled={busy || inert}
+      onClick={() => (refused ? onEditRefused?.(rule) : onEdit?.(rule))}
     >
       <span aria-hidden="true">✎</span>
     </button>
