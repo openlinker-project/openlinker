@@ -179,6 +179,11 @@
       "require": "./dist/listings/services/index.js",
       "default": "./dist/listings/services/index.js"
     },
+    "./listings/testing": {
+      "types": "./dist/listings/testing/index.d.ts",
+      "require": "./dist/listings/testing/index.js",
+      "default": "./dist/listings/testing/index.js"
+    },
     "./customers": {
       "types": "./dist/customers/index.d.ts",
       "require": "./dist/customers/index.js",

@@ -238,6 +238,29 @@ export interface IOrderRecordService {
   markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
 
   /**
+   * Durably record that a cancellation arrived for an order OL has not yet
+   * ingested (#2069). Called by
+   * `OrderIngestionService.handleSourceCancellation` when
+   * `IIdentifierMappingService.getInternalId` resolves nothing — there is no
+   * internal order id yet for `markCancelled` to hit, so the signal is keyed
+   * on `(sourceConnectionId, externalOrderId)` instead. See
+   * `OrderCancellationSignalRepositoryPort` for why no internal id is minted
+   * here (minting one would point every downstream trigger at a phantom
+   * order — the #2328 lesson for returns attribution).
+   *
+   * Consumed by `persistIncomingSnapshot` the moment the order is genuinely
+   * first (or later) ingested, and applied through the same first-write-wins
+   * `markCancelled` pipeline this cancellation-observation path already uses.
+   * First-write-wins here too: a redelivered cancel event is a harmless
+   * no-op.
+   */
+  recordEarlyCancellationSignal(
+    sourceConnectionId: string,
+    externalOrderId: string,
+    cancelledAt: Date
+  ): Promise<void>;
+
+  /**
    * Record — or clear — why OpenLinker issued no fiscal document for this order
    * (#2100, ADR-041 decision 11: a block is never log-only).
    *
