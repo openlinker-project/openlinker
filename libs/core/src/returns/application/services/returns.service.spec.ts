@@ -690,7 +690,70 @@ describe('ReturnsService', () => {
       ]);
 
       expect(summary.unresolved).toEqual({ ambiguous: 1 });
+      expect(summary.skipped).toBeNull();
       expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+    });
+
+    // #3171 review, SUGGESTION 4: three arms used to return an all-zero summary
+    // that a caller holding only that summary could not tell apart from "every
+    // line was examined and none resolved". The reason is now named.
+    describe('skipped (a pass that examined no line says so)', () => {
+      it('should report unknown-return when the id resolves to no row', async () => {
+        repository.findById.mockResolvedValue(null);
+
+        const summary = await service.resolveOrderLinesForReturn('ol_return_missing', [
+          { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+        ]);
+
+        expect(summary.skipped).toBe('unknown-return');
+        expect(summary.resolved).toBe(0);
+        expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+      });
+
+      it('should report no-order-lines when the caller supplied no candidates', async () => {
+        repository.findById.mockResolvedValue({
+          id: 'ol_return_1',
+          lines: [returnLine()],
+          rawPayload: null,
+        });
+
+        const summary = await service.resolveOrderLinesForReturn('ol_return_1', []);
+
+        expect(summary.skipped).toBe('no-order-lines');
+        expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+      });
+
+      it('should report no-return-lines when the return itself carries none', async () => {
+        repository.findById.mockResolvedValue({
+          id: 'ol_return_1',
+          lines: [],
+          rawPayload: null,
+        });
+
+        const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+          { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+        ]);
+
+        expect(summary.skipped).toBe('no-return-lines');
+        expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+      });
+
+      // The discriminator is only worth anything if it is absent on the path
+      // that DID look. A resolved pass must never carry a skip reason.
+      it('should leave skipped null when at least one line was examined', async () => {
+        repository.findById.mockResolvedValue({
+          id: 'ol_return_1',
+          lines: [returnLine()],
+          rawPayload: null,
+        });
+
+        const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+          { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+        ]);
+
+        expect(summary.skipped).toBeNull();
+        expect(summary.resolved).toBe(1);
+      });
     });
   });
 });

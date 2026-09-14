@@ -148,14 +148,22 @@ export class ReturnsService implements IReturnsService {
       resolved: 0,
       alreadyResolved: 0,
       unresolved: {},
+      skipped: null,
     };
 
     const record = await this.repository.findById(returnId);
-    if (record === null || orderLines.length === 0) {
-      // A zero summary, not a throw. An unknown id or an order with no usable
-      // lines is a state the caller reports, and failing the surrounding sync
-      // job here would trade a missing attribution for a lost return.
-      return summary;
+    if (record === null) {
+      // A named zero summary, not a throw. An unknown id is a state the caller
+      // reports, and failing the surrounding sync job here would trade a
+      // missing attribution for a lost return. `skipped` is what keeps the
+      // zeros from reading as "every line was examined and none resolved".
+      return { ...summary, skipped: 'unknown-return' };
+    }
+    if (orderLines.length === 0) {
+      return { ...summary, skipped: 'no-order-lines' };
+    }
+    if (record.lines.length === 0) {
+      return { ...summary, skipped: 'no-return-lines' };
     }
 
     for (const line of record.lines) {

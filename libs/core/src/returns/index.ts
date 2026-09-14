@@ -51,8 +51,10 @@ export { narrowRefundReason, toRefundReasonOrOther } from './domain/return-reaso
 export { ReturnObservationMissingExternalIdError } from './domain/exceptions/return-observation-missing-external-id.error';
 export { ReturnPersistenceError } from './domain/exceptions/return-persistence.error';
 export { ReturnSourceNotReadableError } from './domain/exceptions/return-source-not-readable.error';
+export { ReturnOrderLineResolutionSkipReasonValues } from './application/services/returns.service.interface';
 export type {
   IReturnsService,
+  ReturnOrderLineResolutionSkipReason,
   ReturnOrderLineResolutionSummary,
   UpsertReturnObservationResult,
 } from './application/services/returns.service.interface';

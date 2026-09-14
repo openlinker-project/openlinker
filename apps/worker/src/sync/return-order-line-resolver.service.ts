@@ -54,11 +54,20 @@ export class ReturnOrderLineResolverService {
    * per-return sync and the lifecycle re-read — and it is the only way a return
    * ingested BEFORE this shipped ever gets its lines resolved.
    *
-   * Returns the summary rather than `void` so a future caller (or a future
-   * revision of this one) can act on `unresolved` without re-reading — it costs
-   * nothing to compute and was already being discarded. `null` means the pass
-   * did not run at all (unknown return, an orphan, or an unreadable order),
-   * distinct from a summary reporting zero resolutions.
+   * Returns the summary rather than `void` so a caller can act on `unresolved`
+   * without re-reading — it costs nothing to compute and was already being
+   * discarded. `null` means the pass did not run at all (unknown return, an
+   * orphan, or an unreadable order), distinct from a summary reporting zero
+   * resolutions; a summary that ran but examined no line names its own
+   * `skipped` reason rather than reporting bare zeros.
+   *
+   * **RESERVED, not forgotten: no caller reads this value today.**
+   * `MarketplaceReturnSyncHandler` awaits it and discards it. The intended
+   * first consumer is the follow-up that narrows
+   * `return-correction-matching.domain-service.ts` onto
+   * `ReturnLine.resolvedOrderLineId` and retires its `ambiguous` line picker
+   * (#3171 § 4, epic #3087) — that is the reader for which `unresolved` has to
+   * be a count rather than only a log line.
    *
    * **`unresolved` is deliberately log-only in this slice.** An `ambiguous`
    * line (most commonly two order lines of the same offer at the same price,
@@ -102,6 +111,17 @@ export class ReturnOrderLineResolverService {
       }
 
       const summary = await this.returns.resolveOrderLinesForReturn(returnId, order.orderItems);
+
+      // A named skip, reported at `log` rather than `warn`: nothing failed, the
+      // pass simply had nothing to examine. The worker's own guards above catch
+      // the two reachable causes first, so this arm covers a return that carries
+      // no lines and any future caller that skips those guards.
+      if (summary.skipped !== null) {
+        this.logger.log(
+          `Return ${returnId}: order-line resolution examined no lines (${summary.skipped})`
+        );
+        return summary;
+      }
 
       const unresolved = Object.entries(summary.unresolved);
       if (unresolved.length > 0) {
