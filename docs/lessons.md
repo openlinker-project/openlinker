@@ -1298,3 +1298,39 @@ a whole-Redis flush.
 per-spec audit) and guarded by `harness-isolation.int-spec.ts`.
 
 **Source**: #2999.
+
+## A guarded UPDATE's cross-table subquery does not see a concurrent committer, even after the row lock unblocks
+
+**Context**: `ReservationRepository.applyGuardedAdd` guards a reservation claim with one
+`UPDATE inventory_items SET olReservedQuantity = ... WHERE availableQuantity - (SELECT SUM(...)
+FROM reservations WHERE ...) >= $delta`. Two concurrent claims for the last unit of stock
+(different `orderRecordId`, same position) intermittently both got granted in CI —
+`reservations-ledger.int-spec.ts`'s "exactly one of two concurrent claims" test failed with
+`granted.length === 2`.
+
+**Problem**: PostgreSQL's READ COMMITTED re-check (EvalPlanQual) for a blocked UPDATE only
+refetches the ROW BEING UPDATED once the blocking transaction commits — it does **not** take a
+fresh snapshot for a correlated subquery against a *different* table referenced in the WHERE
+clause. The subquery still runs against the snapshot the statement started with, which predates
+the other transaction's commit. So transaction B, blocked on the `inventory_items` row A holds,
+unblocks after A commits, re-checks the row itself against the new version, but its subquery
+into `reservations` still doesn't see A's just-committed reservation row — B computes the same
+"nobody else holds this" sum A did, and both pass the availability guard. This is documented
+Postgres behavior ("it does not see effects of [concurrent] commands on any other rows in the
+database" — PostgreSQL docs § Read Committed Isolation), not a driver or ORM bug, and it only
+manifests when the two transactions' timing causes one to actually block on the other — hence a
+CI-only intermittent failure rather than a deterministic one.
+
+**Rule**: when a guard's WHERE clause combines the target row with a correlated subquery
+against another table, acquire the target row's lock as its **own** prior statement
+(`SELECT ... FOR UPDATE`) before issuing the guarded UPDATE. The guarded UPDATE then runs as a
+brand-new statement that only starts once the lock is actually held — under READ COMMITTED,
+a new statement always takes a fresh snapshot, so the concurrent committer's row is now visible
+to the subquery. A single statement that both locks and reads cross-table state cannot be made
+safe this way; it must be split into two.
+
+**Applies to**: any guarded `UPDATE ... WHERE <column> - (SELECT ... FROM <other table>) >= ...`
+pattern — currently `libs/core/src/inventory/infrastructure/persistence/repositories/reservation.repository.ts`'s
+`applyGuardedAdd`.
+
+**Source**: PR #3035 CI failure, fixed same-branch.
