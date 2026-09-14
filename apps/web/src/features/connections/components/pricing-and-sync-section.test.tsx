@@ -351,4 +351,143 @@ describe('PricingAndSyncSection', () => {
     expect(await screen.findByText(/keep a 22% margin/, { selector: '#conn-rule-note' })).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  describe('deep-link intent split (#3167 round-3 review)', () => {
+    it('does NOT stage an override for a bare ?source= link — looking is not an operator act', async () => {
+      const apiClient = createMockApiClient({
+        pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
+      });
+
+      renderWithProviders(
+        <PricingAndSyncSection connectionId="dest-1" initialExpandSourceId="src-1" />,
+        { apiClient, sessionAdapter: ADMIN_SESSION },
+      );
+
+      await screen.findByText(/keep a 22% margin/, { selector: '#conn-rule-note' });
+      // The rollup's "Manage" link is a neutral pointer. Staging an override
+      // here would persist a per-source rule nobody ticked on the next
+      // unrelated save, because `persistSave` writes `sourceOverrides`
+      // unconditionally.
+      expect(screen.queryByTestId('source-custom-toggle')).not.toBeChecked();
+      expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+    });
+
+    it('pre-checks the named source and copies the default rule in, without claiming an unsaved change', async () => {
+      const apiClient = createMockApiClient({
+        pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
+      });
+
+      renderWithProviders(
+        <PricingAndSyncSection
+          connectionId="dest-1"
+          initialExpandSourceId="src-1"
+          initialCreateOverrideForSourceId="src-1"
+        />,
+        { apiClient, sessionAdapter: ADMIN_SESSION },
+      );
+
+      const checkbox = await screen.findByTestId('source-custom-toggle');
+      expect(checkbox).toBeChecked();
+      // Bare navigation is not an operator act (#3167 review, blocking):
+      // arriving here pre-expands the row so the operator can SEE and edit
+      // it, exactly like a manual checkbox click would render, but it must
+      // not itself count as "you changed something" — the unsaved bar (and
+      // the Save/Discard pair it wraps) stays absent until they actually do.
+      expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+      expect(screen.queryByText(/haven.t saved it yet/)).not.toBeInTheDocument();
+    });
+
+    it('does show the unsaved bar once the operator edits the pre-expanded row', async () => {
+      const user = userEvent.setup();
+      const apiClient = createMockApiClient({
+        pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
+      });
+
+      renderWithProviders(
+        <PricingAndSyncSection
+          connectionId="dest-1"
+          initialExpandSourceId="src-1"
+          initialCreateOverrideForSourceId="src-1"
+        />,
+        { apiClient, sessionAdapter: ADMIN_SESSION },
+      );
+
+      await screen.findByTestId('source-custom-toggle');
+      expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+
+      // Un-checking the pre-expanded override is a real operator act (it
+      // diverges from the baseline the deep link seeded), so it must now
+      // surface the unsaved bar rather than staying silent.
+      await user.click(screen.getByTestId('source-custom-toggle'));
+
+      expect(await screen.findByRole('button', { name: 'Save changes' })).toBeEnabled();
+    });
+
+    it('Discard reverts to the pre-expanded baseline, not to the raw un-expanded server read', async () => {
+      const user = userEvent.setup();
+      const apiClient = createMockApiClient({
+        pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
+      });
+
+      renderWithProviders(
+        <PricingAndSyncSection
+          connectionId="dest-1"
+          initialExpandSourceId="src-1"
+          initialCreateOverrideForSourceId="src-1"
+        />,
+        { apiClient, sessionAdapter: ADMIN_SESSION },
+      );
+
+      const checkbox = await screen.findByTestId('source-custom-toggle');
+      expect(checkbox).toBeChecked();
+
+      await user.click(checkbox); // unchecks — diverges from baseline
+      await user.click(await screen.findByRole('button', { name: 'Discard' }));
+
+      // Back to the deep-link's own baseline: still checked, still no
+      // unsaved bar — not the un-expanded state the raw server read would
+      // produce, which would silently discard the reason the operator
+      // followed the link in the first place.
+      expect(screen.getByTestId('source-custom-toggle')).toBeChecked();
+      expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+    });
+
+    it('scrolls the pre-expanded row into view once it renders', async () => {
+      const apiClient = createMockApiClient({
+        pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
+      });
+      const scrollIntoViewMock = vi.fn();
+      // jsdom doesn't implement `scrollIntoView` at all.
+      window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+
+      renderWithProviders(
+        <PricingAndSyncSection
+          connectionId="dest-1"
+          initialExpandSourceId="src-1"
+          initialCreateOverrideForSourceId="src-1"
+        />,
+        { apiClient, sessionAdapter: ADMIN_SESSION },
+      );
+
+      await screen.findByTestId('source-custom-toggle');
+      await waitFor(() => {
+        expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' });
+      });
+    });
+
+    it('reports rather than silently dropping a source id absent from the data', async () => {
+      const apiClient = createMockApiClient({
+        pricingSync: { get: vi.fn().mockResolvedValue(buildView()) },
+      });
+
+      renderWithProviders(
+        <PricingAndSyncSection connectionId="dest-1" initialExpandSourceId="src-does-not-exist" />,
+        { apiClient, sessionAdapter: ADMIN_SESSION },
+      );
+
+      expect(await screen.findByText(/isn't one of this connection's current sources/)).toBeInTheDocument();
+      // And nothing was spuriously pre-selected.
+      expect(screen.getByTestId('source-custom-toggle')).not.toBeChecked();
+    });
+  });
 });

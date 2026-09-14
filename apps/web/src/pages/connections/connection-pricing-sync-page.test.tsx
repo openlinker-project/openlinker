@@ -1,5 +1,5 @@
 /**
- * ConnectionPricingSyncPage tests (#3149/#3166 review)
+ * ConnectionPricingSyncPage tests (#3149/#3166 review, #3150/#3167 review)
  *
  * @module apps/web/src/pages/connections
  */
@@ -8,13 +8,25 @@ import { Routes, Route } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders, sampleConnection } from '../../test/test-utils';
 import { ConnectionPricingSyncPage } from './connection-pricing-sync-page';
-import type { ConnectionPricingSyncView } from '../../features/price-changes';
+import type { ConnectionPricingSyncView, ConnectionAsSourceEntry } from '../../features/price-changes';
 
 function buildView(): ConnectionPricingSyncView {
   return {
     default: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
     sources: [],
   };
+}
+
+function buildAsSourceEntries(): ConnectionAsSourceEntry[] {
+  return [
+    {
+      destinationConnectionId: 'dest-2',
+      destinationLabel: 'Erli — PL',
+      effectiveMode: 'automatic',
+      effectiveRuleSummary: { type: 'markup', percent: 15, rounding: 'none' },
+      isCustomOverride: false,
+    },
+  ];
 }
 
 describe('ConnectionPricingSyncPage', () => {
@@ -61,6 +73,130 @@ describe('ConnectionPricingSyncPage', () => {
     );
 
     expect(await screen.findByText('Nothing to configure here')).toBeInTheDocument();
+  });
+
+  it('renders the read-only rollup for a source-only connection (#3150)', async () => {
+    const apiClient = createMockApiClient({
+      connections: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleConnection,
+          id: 'src-1',
+          enabledCapabilities: ['ProductMaster'],
+        }),
+      },
+      pricingSync: { asSource: vi.fn().mockResolvedValue(buildAsSourceEntries()) },
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/connections/:connectionId/pricing-sync" element={<ConnectionPricingSyncPage />} />
+      </Routes>,
+      { apiClient, route: '/connections/src-1/pricing-sync' },
+    );
+
+    expect(await screen.findByText('Erli — PL')).toBeInTheDocument();
+    // Read-only: the editable settings section never renders for a
+    // connection with nothing to publish or list.
+    expect(screen.queryByText('Default pricing rule')).not.toBeInTheDocument();
+  });
+
+  it('renders BOTH the editable settings and the read-only rollup for a connection that is both a destination and a source (#3167 review, finding 2)', async () => {
+    const apiClient = createMockApiClient({
+      connections: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleConnection,
+          id: 'both-1',
+          enabledCapabilities: ['ProductPublisher', 'ProductMaster'],
+        }),
+      },
+      pricingSync: {
+        get: vi.fn().mockResolvedValue(buildView()),
+        asSource: vi.fn().mockResolvedValue(buildAsSourceEntries()),
+      },
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/connections/:connectionId/pricing-sync" element={<ConnectionPricingSyncPage />} />
+      </Routes>,
+      { apiClient, route: '/connections/both-1/pricing-sync' },
+    );
+
+    expect(await screen.findByText('Default pricing rule')).toBeInTheDocument();
+    expect(await screen.findByText('Erli — PL')).toBeInTheDocument();
+  });
+
+  it('threads the deep link\'s INTENT into the editable section — `?source=` shows, `&override=1` stages (#3167 round-3 review)', async () => {
+    const view: ConnectionPricingSyncView = {
+      default: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
+      sources: [
+        {
+          sourceConnectionId: 'src-1',
+          sourceLabel: 'PrestaShop — Main Store',
+          isCustomOverride: false,
+          effective: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
+          openEpisodeCount: 0,
+        },
+      ],
+    };
+    const apiClient = createMockApiClient({
+      connections: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleConnection,
+          id: 'dest-1',
+          enabledCapabilities: ['OfferManager'],
+        }),
+      },
+      pricingSync: { get: vi.fn().mockResolvedValue(view) },
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/connections/:connectionId/pricing-sync" element={<ConnectionPricingSyncPage />} />
+      </Routes>,
+      { apiClient, route: '/connections/dest-1/pricing-sync?source=src-1' },
+    );
+
+    // A bare `?source=` is the rollup's neutral "Manage" pointer: show me
+    // this row. It must not stage an override, or the next unrelated save
+    // persists a per-source rule nobody ticked.
+    const checkbox = await screen.findByTestId('source-custom-toggle');
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it('stages the override when the deep link asks for it with `&override=1`', async () => {
+    const view: ConnectionPricingSyncView = {
+      default: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
+      sources: [
+        {
+          sourceConnectionId: 'src-1',
+          sourceLabel: 'PrestaShop — Main Store',
+          isCustomOverride: false,
+          effective: { mode: 'manual', rule: { type: 'margin', percent: 22, rounding: 'endingIn99' } },
+          openEpisodeCount: 0,
+        },
+      ],
+    };
+    const apiClient = createMockApiClient({
+      connections: {
+        getById: vi.fn().mockResolvedValue({
+          ...sampleConnection,
+          id: 'dest-1',
+          enabledCapabilities: ['OfferManager'],
+        }),
+      },
+      pricingSync: { get: vi.fn().mockResolvedValue(view) },
+    });
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/connections/:connectionId/pricing-sync" element={<ConnectionPricingSyncPage />} />
+      </Routes>,
+      { apiClient, route: '/connections/dest-1/pricing-sync?source=src-1&override=1' },
+    );
+
+    const checkbox = await screen.findByTestId('source-custom-toggle');
+    expect(checkbox).toBeChecked();
   });
 
   it('surfaces a connection load error', async () => {

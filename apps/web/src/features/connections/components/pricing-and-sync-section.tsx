@@ -85,6 +85,36 @@ import { useToast } from '../../../shared/ui/toast-provider';
 
 export interface PricingAndSyncSectionProps {
   connectionId: string;
+  /**
+   * Scroll the named source's row into view and highlight it on load. Looking
+   * at a row changes nothing — see `initialCreateOverrideForSourceId` for the
+   * other half.
+   */
+  initialExpandSourceId?: string;
+  /**
+   * Pre-create an override for the named source, exactly as ticking its
+   * checkbox does: add it to `customSources` and seed its rule from the
+   * default.
+   *
+   * **Separate from `initialExpandSourceId` on purpose (#3167 round-3
+   * review).** Both used to be the one `?source=` param, so the rollup's
+   * neutral "Manage" link — which means *go and look* — silently staged an
+   * override the operator never ticked, and `persistSave` writes
+   * `sourceOverrides` unconditionally with no creation-guard, so any later
+   * unrelated edit on that page persisted it. Intent now travels in the URL:
+   * `?source=` looks, `?source=&override=1` creates. A caller that means the
+   * second must say so.
+   *
+   * **It has no producer yet, and that is a known gap rather than an
+   * oversight** (#3167 approval, SUGGESTION). `&override=1` is emitted by
+   * nothing in the tree: the queue table's two links use the neutral form,
+   * the rollup's "Manage" is neutral by design, and the "Set a rule just for
+   * this source" permalink the split was drawn around does not exist in
+   * `edit-price-change-dialog.tsx` at all. So this half is reachable only by
+   * typing the URL. It errs safe — nothing pre-arms a write — but half the
+   * mechanism is unexercised in the product until that permalink is built.
+   */
+  initialCreateOverrideForSourceId?: string;
 }
 
 const MODE_HINT: Record<PriceSyncMode, string> = {
@@ -127,6 +157,23 @@ interface DraftSourceEntry {
 interface DraftView {
   default: DraftPricingSyncSetting;
   sources: DraftSourceEntry[];
+}
+
+/**
+ * The "nothing changed yet" reference point for the dirty check — NOT the
+ * same thing as the last server read. A deep-link arrival (`?source=`)
+ * pre-populates `draft`/`customSources` exactly as a manual checkbox click
+ * would, so an operator lands on the row already expanded and ready to
+ * edit; diffing straight against server truth would then read that as an
+ * unsaved change from the moment the page loads, with no operator act at
+ * all (#3167 review). The baseline captures the state right after that
+ * pre-population, so `hasUnsavedChanges` only goes true once the operator
+ * actually touches something from there — an edit, or un/re-checking the
+ * override box.
+ */
+interface DraftBaseline {
+  draft: DraftView;
+  customSources: Set<string>;
 }
 
 /**
@@ -236,7 +283,11 @@ function applyRulePatch(rule: DraftPricingRule, patch: RulePatch): DraftPricingR
   };
 }
 
-export function PricingAndSyncSection({ connectionId }: PricingAndSyncSectionProps): ReactElement {
+export function PricingAndSyncSection({
+  connectionId,
+  initialExpandSourceId,
+  initialCreateOverrideForSourceId,
+}: PricingAndSyncSectionProps): ReactElement {
   const query = useConnectionPricingSyncQuery(connectionId);
   const updateMutation = useUpdateConnectionPricingSyncMutation(connectionId);
   const { showToast } = useToast();
@@ -247,37 +298,97 @@ export function PricingAndSyncSection({ connectionId }: PricingAndSyncSectionPro
 
   const [draft, setDraft] = useState<DraftView | null>(null);
   const [customSources, setCustomSources] = useState<Set<string>>(new Set());
+  const [baseline, setBaseline] = useState<DraftBaseline | null>(null);
   const [ruleFormOpen, setRuleFormOpen] = useState(false);
   const [dropOverrideConfirm, setDropOverrideConfirm] = useState<{
     droppedLabels: string[];
   } | null>(null);
+  // Deep-link pre-expand (#3150, mirrors `MappingPanel`'s #1794 pattern): a
+  // requested source not present among this connection's current sources
+  // (stale link, or a source removed since) is reported rather than
+  // resolving to `null` silently.
+  const [notFoundSourceId, setNotFoundSourceId] = useState<string | null>(null);
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<string | null>(null);
 
   useEffect(() => {
     if (query.data && draft === null) {
-      setDraft(toDraftView(query.data));
-      setCustomSources(
-        new Set(
-          query.data.sources.filter((s) => s.isCustomOverride).map((s) => s.sourceConnectionId)
-        )
+      const alreadyCustom = query.data.sources
+        .filter((s) => s.isCustomOverride)
+        .map((s) => s.sourceConnectionId);
+      const requestedFound = Boolean(
+        initialExpandSourceId &&
+          query.data.sources.some((s) => s.sourceConnectionId === initialExpandSourceId)
       );
+      if (initialExpandSourceId && !requestedFound) {
+        setNotFoundSourceId(initialExpandSourceId);
+      }
+      // Only an EXPLICIT create-override request stages one. A bare
+      // `?source=` scrolls and highlights; it must not stage anything (#3167
+      // round-3 review).
+      const expandTarget =
+        initialCreateOverrideForSourceId &&
+        query.data.sources.some(
+          (s) => s.sourceConnectionId === initialCreateOverrideForSourceId
+        ) &&
+        !alreadyCustom.includes(initialCreateOverrideForSourceId)
+          ? initialCreateOverrideForSourceId
+          : null;
+
+      const seededCustomSources = new Set(
+        expandTarget ? [...alreadyCustom, expandTarget] : alreadyCustom
+      );
+      const seededDraft = toDraftView(query.data);
+      if (expandTarget) {
+        // Same effect a manual checkbox click has: copy the default rule
+        // in as the starting point for this source's override.
+        const source = seededDraft.sources.find((s) => s.sourceConnectionId === expandTarget);
+        if (source) source.effective = cloneDraftSetting(seededDraft.default);
+      }
+      setDraft(seededDraft);
+      setCustomSources(seededCustomSources);
+      // The baseline is THIS seeded state, not the raw server read — see
+      // `DraftBaseline`'s docblock. Cloned so a later in-place edit to
+      // `draft`/`customSources` can never also mutate the reference point
+      // it is being diffed against.
+      setBaseline({
+        draft: cloneDraftView(seededDraft),
+        customSources: new Set(seededCustomSources),
+      });
+      // Scrolling follows the VIEW request, not the create request — a bare
+      // `?source=` must still land the operator on the row it names.
+      if (requestedFound) setPendingScrollTarget(initialExpandSourceId as string);
     }
-  }, [query.data, draft]);
+  }, [query.data, draft, initialExpandSourceId, initialCreateOverrideForSourceId]);
+
+  // Scroll the pre-expanded row into view once it has actually rendered —
+  // `draft` is a dependency so this retries on the render right after the
+  // effect above populates it (the `bulk-review-step.tsx` `pendingScroll`
+  // precedent).
+  useEffect(() => {
+    if (pendingScrollTarget === null) return;
+    const el = document.getElementById(`source-row-name-${pendingScrollTarget}`);
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setPendingScrollTarget(null);
+  }, [pendingScrollTarget, draft]);
 
   // Re-seed from a SUCCESSFUL save's own response (#3166 review, finding 3) —
   // not only at mount. The server recomputes `sources[].effective` /
   // `isCustomOverride` / `openEpisodeCount` on write, so comparing the local
   // draft against the STALE `query.data` snapshot would keep `isDirty` true
-  // forever after the most common interaction this section offers.
+  // forever after the most common interaction this section offers. The
+  // baseline advances alongside `draft`/`customSources` — what was just
+  // saved is by definition the new "nothing changed yet" reference point.
   useEffect(() => {
     if (updateMutation.isSuccess && updateMutation.data) {
-      setDraft(toDraftView(updateMutation.data));
-      setCustomSources(
-        new Set(
-          updateMutation.data.sources
-            .filter((s) => s.isCustomOverride)
-            .map((s) => s.sourceConnectionId)
-        )
+      const savedDraft = toDraftView(updateMutation.data);
+      const savedCustomSources = new Set(
+        updateMutation.data.sources
+          .filter((s) => s.isCustomOverride)
+          .map((s) => s.sourceConnectionId)
       );
+      setDraft(savedDraft);
+      setCustomSources(savedCustomSources);
+      setBaseline({ draft: cloneDraftView(savedDraft), customSources: new Set(savedCustomSources) });
     }
   }, [updateMutation.isSuccess, updateMutation.data]);
 
@@ -299,23 +410,13 @@ export function PricingAndSyncSection({ connectionId }: PricingAndSyncSectionPro
     return <LoadingState title="Pricing & sync" message="Loading settings…" />;
   }
 
-  // The BASELINE the draft is compared against must be the same view the
-  // draft was last seeded from (#3166 round-3 review). The effect above
-  // re-seeds from a successful save's own response, while this comparison
-  // read `query.data` alone — so between the save resolving and the
-  // invalidation refetch landing, the two disagreed and the unsaved bar
-  // reappeared underneath the "Saved" toast. `updateMutation.data` is the
-  // newer of the two whenever it exists, and is exactly what the draft holds.
-  const baseline = updateMutation.data ?? query.data;
-  const isDirty = baseline ? JSON.stringify(draft) !== JSON.stringify(toDraftView(baseline)) : false;
+  // Diffed against `baseline`, NOT the raw server read — see `DraftBaseline`.
+  // Otherwise a deep-link's own pre-population would itself read as an
+  // unsaved change on every load, before the operator has touched anything.
+  const isDirty = baseline ? JSON.stringify(draft) !== JSON.stringify(baseline.draft) : false;
   const isCustomSourcesDirty = baseline
     ? JSON.stringify([...customSources].sort()) !==
-      JSON.stringify(
-        baseline.sources
-          .filter((s) => s.isCustomOverride)
-          .map((s) => s.sourceConnectionId)
-          .sort()
-      )
+      JSON.stringify([...baseline.customSources].sort())
     : false;
   const hasUnsavedChanges = isDirty || isCustomSourcesDirty;
 
@@ -454,11 +555,14 @@ export function PricingAndSyncSection({ connectionId }: PricingAndSyncSectionPro
   }
 
   function handleDiscard(): void {
-    if (!query.data) return;
-    setDraft(toDraftView(query.data));
-    setCustomSources(
-      new Set(query.data.sources.filter((s) => s.isCustomOverride).map((s) => s.sourceConnectionId))
-    );
+    // Reverts to `baseline`, not to a fresh read of `query.data` — Discard
+    // means "undo what I changed since I got here," and on a deep-linked
+    // visit that starting point already has the requested source's override
+    // pre-expanded. Reverting straight to raw server truth would also throw
+    // away the pre-expansion the operator followed the link to see.
+    if (!baseline) return;
+    setDraft(cloneDraftView(baseline.draft));
+    setCustomSources(new Set(baseline.customSources));
   }
 
   const totalPendingChanges = draft.sources.reduce((sum, s) => sum + s.openEpisodeCount, 0);
@@ -558,6 +662,12 @@ export function PricingAndSyncSection({ connectionId }: PricingAndSyncSectionPro
           Use this when one supplier or warehouse should be priced differently — for example, a
           second warehouse with its own margin.
         </p>
+        {notFoundSourceId ? (
+          <p className="pricing-sync__notice" id="conn-source-not-found" role="status">
+            The linked source isn&apos;t one of this connection&apos;s current sources, so there
+            was nothing to show you below.
+          </p>
+        ) : null}
         <div className="pricing-sync__source-list" id="conn-source-list">
           {draft.sources.map((source) => {
             const isCustom = customSources.has(source.sourceConnectionId);

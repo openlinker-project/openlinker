@@ -2496,6 +2496,75 @@ textarea,
 }
 
 
+/* ── Source connection pricing rollup (#3150, ADR-072) ──────────────
+ * The read-only "how your prices get adjusted" list on a SOURCE
+ * connection's page, pointing at each destination that adjusts its prices.
+ * Its own block rather than reusing `.pricing-sync__*`: that one styles the
+ * editable settings on a DESTINATION's page, in another feature, and the two
+ * must be free to diverge. It shipped with no rules at all (#3167 round-3
+ * review, BLOCKING) — the component rendered `.settings-section` /
+ * `.source-list` / `.source-row`, none of which existed anywhere, so the
+ * surface rendered unstyled.
+ */
+.pricing-rollup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pricing-rollup__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.pricing-rollup__desc {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.pricing-rollup__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* ~52 px — registered in `docs/frontend-ui-style-guide.md`
+   § Density & Row Heights. Two lines: destination name + Manage, then the
+   rule summary. */
+.pricing-rollup__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.pricing-rollup__row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.pricing-rollup__row-name {
+  font-weight: 500;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+
+.pricing-rollup__row-summary {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+
 /* ── Theme toggle ───────────────────────────────────────────────────
  * Three-option radiogroup rendered as a segmented button group. Sits
  * inside the user-chip dropdown in the topbar (Phase 2 wiring).
@@ -24227,6 +24296,15 @@ legend.analytics-settings-dialog__label {
   color: var(--text-secondary);
 }
 
+/* A stale `?source=` link is INFORMATION, not a validation failure (#3167
+   round-3 review) — it used to borrow `pricing-sync__field-error`'s red
+   while carrying `role="status"`, which said two different things at once. */
+.pricing-sync__notice {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
 /* Replaces two inline styles the component used to carry (#3166 round-3
    review) — it ships its own stylesheet block, so these belong in it. */
 .pricing-sync__section-desc--wide {
@@ -24367,4 +24445,18 @@ legend.analytics-settings-dialog__label {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+/* ── Price changes tab toolbar (#3150) ── */
+.tab-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.tab-toolbar p {
+  margin: 0;
+  max-width: 70ch;
 }
