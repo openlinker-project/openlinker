@@ -23547,7 +23547,14 @@ legend.analytics-settings-dialog__label {
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-default);
   color: var(--text-secondary);
-  background: var(--bg-subtle);
+  /* `--bg-subtle` was never declared anywhere (#3228 review) — an undeclared
+     custom property resolves to nothing, so this chip and the governing-row
+     highlight below both painted transparent. `check-design-tokens.mjs` is
+     one-directional (catalog -> CSS), so lint stayed green over it.
+     `--bg-surface-muted` is the catalogued subtle fill and already carries a
+     light and a dark definition, so reusing it fixes both sites without
+     minting a token whose colour would need defending in two themes. */
+  background: var(--bg-surface-muted);
 }
 
 .rule-cell__label {
@@ -23613,5 +23620,8 @@ legend.analytics-settings-dialog__label {
 }
 
 .sourcing-rule-row--governing {
-  background: var(--bg-subtle);
+  /* See the note on `.rule-cell__kind-badge` above. This is the site the
+     review calls out as operator-visible: the governing rule is the whole
+     story of the table, and it had no affordance at all. */
+  background: var(--bg-surface-muted);
 }
