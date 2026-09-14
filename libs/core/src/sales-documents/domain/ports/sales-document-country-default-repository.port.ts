@@ -23,17 +23,6 @@ export interface SalesDocumentCountryDefaultRepositoryPort {
   findAll(): Promise<SalesDocumentCountryDefault[]>;
 
   /**
-   * A country now maps to at most ONE row regardless of `documentKind`
-   * (#3177) — kept for callers that still supply a kind, but it is no
-   * longer part of the row's identity and two different kinds resolve to
-   * the same row.
-   */
-  findByCountryAndKind(
-    country: string,
-    documentKind: string,
-  ): Promise<SalesDocumentCountryDefault | null>;
-
-  /**
    * Insert, or replace the existing row's `documentKind` + `connectionId`.
    * The conflict target is `country` ALONE (#3177) — upserting under a
    * DIFFERENT `documentKind` for a country that already has a default

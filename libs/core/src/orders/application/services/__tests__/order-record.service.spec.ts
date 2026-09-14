@@ -1314,37 +1314,67 @@ describe('OrderRecordService', () => {
         detail: '2 invoicing connections, none marked primary',
       } as const;
 
-      await service.markSalesDocumentBlock('ol_order_abc', block);
+      await service.markSalesDocumentBlock('ol_order_abc', block, {
+        action: 'set',
+        matchedRuleId: null,
+      });
 
-      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', block, null);
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', block, {
+        action: 'set',
+        matchedRuleId: null,
+      });
     });
 
     it('should pass null through — the clear is the ordinary path, not an edge case', async () => {
-      await service.markSalesDocumentBlock('ol_order_abc', null);
+      await service.markSalesDocumentBlock('ol_order_abc', null, {
+        action: 'set',
+        matchedRuleId: null,
+      });
 
-      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null, null);
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null, {
+        action: 'set',
+        matchedRuleId: null,
+      });
     });
 
     it('should not accumulate: repeated calls with the same reason are plain absolute-sets', async () => {
       const block = { reason: 'trigger-model-manual' } as const;
+      const matchedRule = { action: 'set', matchedRuleId: null } as const;
 
-      await service.markSalesDocumentBlock('ol_order_abc', block);
-      await service.markSalesDocumentBlock('ol_order_abc', block);
-      await service.markSalesDocumentBlock('ol_order_abc', block);
+      await service.markSalesDocumentBlock('ol_order_abc', block, matchedRule);
+      await service.markSalesDocumentBlock('ol_order_abc', block, matchedRule);
+      await service.markSalesDocumentBlock('ol_order_abc', block, matchedRule);
 
       // The gate is level-evaluated and fires on EVERY transition, so this method
       // is called repeatedly for one order. It must stay an absolute-set (one row,
       // one state) rather than anything append-shaped.
       expect(repository.updateSalesDocumentBlock).toHaveBeenCalledTimes(3);
       for (const call of repository.updateSalesDocumentBlock.mock.calls) {
-        expect(call).toEqual(['ol_order_abc', block, null]);
+        expect(call).toEqual(['ol_order_abc', block, matchedRule]);
       }
     });
 
     it('should pass the matched rule id through (#3186)', async () => {
-      await service.markSalesDocumentBlock('ol_order_abc', null, 'rule-1');
+      await service.markSalesDocumentBlock('ol_order_abc', null, {
+        action: 'set',
+        matchedRuleId: 'rule-1',
+      });
 
-      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null, 'rule-1');
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null, {
+        action: 'set',
+        matchedRuleId: 'rule-1',
+      });
+    });
+
+    it('should forward a preserve instruction verbatim, never collapsing it to null (#3186 review)', async () => {
+      // The manual-issue clear path decides the block alone. Collapsing this to
+      // `null` would wipe the rule that chose the document kind on the default
+      // `manual` trigger model, and the next transition would put it back.
+      await service.markSalesDocumentBlock('ol_order_abc', null, { action: 'preserve' });
+
+      expect(repository.updateSalesDocumentBlock).toHaveBeenCalledWith('ol_order_abc', null, {
+        action: 'preserve',
+      });
     });
   });
 

@@ -314,7 +314,9 @@ export class SalesDocumentViewResponseDto {
       'The rule that decided this order\'s document kind. `null` covers BOTH "no rule ever decided ' +
       'this order\'s kind" (a country default, the pre-#2170 single-primary fallback, a manually ' +
       'issued document) AND "a rule did, but it has since been deleted" - a surface must not tell the ' +
-      'two apart, since either way there is no rule left to explain.',
+      'two apart, since either way there is no rule left to explain. DETAIL-ONLY: always `null` on the ' +
+      'paged `GET /orders` list, which renders no explanation from it - read the single-order endpoint ' +
+      'before concluding that no rule decided an order\'s kind.',
   })
   matchedRule!: SalesDocumentMatchedRuleViewDto | null;
 }
