@@ -140,7 +140,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
    *    finite number `> 0` and `unitPriceGross` a finite number `>= 0`;
    *  - `buyer.type ∈ BuyerTypeValues`; `buyer.name` non-empty; `buyer.address`
    *    present with required string fields; `buyer.taxId` `null` OR
-   *    `{ scheme, value }` with both non-empty; `buyer.email` (#1797) absent
+   *    `{ value }` with `value` non-empty and `scheme` OPTIONAL (#3224 - core
+   *    hands the number over untagged); `buyer.email` (#1797) absent
    *    (pre-existing payload), `null`, OR a `string` — never any other type.
    *
    * PII: on violation logs ONLY the failed field name(s) + `orderId` /
@@ -193,7 +194,19 @@ export class InvoicingIssueHandler implements SyncJobHandler {
 
     if (buyer.taxId !== null) {
       if (!buyer.taxId || typeof buyer.taxId !== 'object') return fail('buyer.taxId');
-      if (!isNonEmptyString(buyer.taxId.scheme)) return fail('buyer.taxId.scheme');
+      // `scheme` is OPTIONAL (#3224, ADR-073 decision 1): the order stores a
+      // bare tax number and core hands it over UNTAGGED, because minting a tag
+      // would make `libs/core` name a country's identifier system - "an adapter
+      // needing a tag supplies it". Requiring it here rejected every
+      // auto-issued B2B invoice as a terminal `business_failure`, i.e. NO
+      // document at all rather than the untagged one the epic exists to send -
+      // strictly worse than the defective invoice #3224 replaced.
+      //
+      // Present-but-wrong-shaped is still refused, the same way `buyer.email`
+      // (#1797) distinguishes absent from malformed.
+      if (buyer.taxId.scheme !== undefined && !isNonEmptyString(buyer.taxId.scheme)) {
+        return fail('buyer.taxId.scheme');
+      }
       if (!isNonEmptyString(buyer.taxId.value)) return fail('buyer.taxId.value');
     }
     // Optional additive field (#1797): a payload persisted before this field

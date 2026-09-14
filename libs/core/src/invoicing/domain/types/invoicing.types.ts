@@ -332,12 +332,28 @@ export const BuyerTypeValues = ['company', 'private'] as const;
 export type BuyerType = (typeof BuyerTypeValues)[number];
 
 /**
- * Scheme-tagged tax identifier — EN 16931 BT-30 / ISO 6523 / Stripe `tax_ids`
- * shape. `scheme` is an OPEN string the adapter interprets (`pl-nip`, `eu-vat`,
+ * Tax identifier — EN 16931 BT-30 / ISO 6523 / Stripe `tax_ids` shape.
+ *
+ * `scheme` is an OPEN string the adapter interprets (`pl-nip`, `eu-vat`,
  * `de-ustid`); core never names a country's identifier system.
+ *
+ * It is OPTIONAL, and the absence is meaningful rather than a convenience
+ * (#3224, ADR-073 decision 1). An `Order` stores a bare tax number with no
+ * tag, so the auto-issue path has a value and no scheme — and minting one
+ * in core is exactly what ADR-073 forbids, because the tag names a country's
+ * identifier system and a mis-set one silently mislabels every document.
+ * ADR-073's own words: *"An adapter needing a tag supplies it."* The seller's
+ * identity already works this way (the KSeF adapter resolves `pl-nip` from its
+ * own connection config), so this is the same rule applied to the buyer.
+ *
+ * **An adapter must therefore treat an absent `scheme` as "untagged, decide
+ * for your own market", never as "not a tax id".** Dropping the value there
+ * silently omits the buyer's tax number from a document that legally needs it.
+ * A value the provider then refuses is surfaced verbatim (ADR-073 decision 5);
+ * core never pre-judges which identifiers a provider accepts.
  */
 export interface TaxIdentifier {
-  scheme: string;
+  scheme?: string;
   value: string;
 }
 

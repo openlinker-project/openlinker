@@ -136,6 +136,7 @@ import { isKsefUnavailable, NON_RETRYABLE_KSEF_STATUS_CODES } from './ksef-avail
 import { KsefApiException } from '../../domain/exceptions/ksef-api.exception';
 import type { KsefInvoicingAdapterOptions } from './ksef-invoicing-adapter.types';
 import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
+import { resolveBuyerIdSchemeTag } from '../fa3/domain/fa3-buyer-id.mapper';
 
 /** Neutral document types KSeF issues. Open-world `DocumentType` is narrowed to these two. */
 const SUPPORTED_DOCUMENT_TYPES: DocumentType[] = ['invoice', 'corrected'];
@@ -836,8 +837,13 @@ export class KsefInvoicingAdapter
    */
   upsertCustomer(cmd: UpsertCustomerCommand): Promise<UpsertCustomerResult> {
     const taxId = cmd.buyer.taxId;
+    // `scheme` is optional since #3224, so interpolating it directly rendered
+    // `ksef:undefined:5213796333` and split one buyer across two handles
+    // depending on which path issued. `resolveBuyerIdSchemeTag` resolves the
+    // domestic case the same way either path would and never yields
+    // `undefined`.
     const providerCustomerId = taxId
-      ? `ksef:${taxId.scheme}:${taxId.value}`
+      ? `ksef:${resolveBuyerIdSchemeTag(taxId)}:${taxId.value}`
       : `ksef:${this.connectionId}:guest`;
     return Promise.resolve({ providerCustomerId });
   }

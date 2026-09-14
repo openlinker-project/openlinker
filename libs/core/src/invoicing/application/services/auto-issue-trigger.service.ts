@@ -136,7 +136,7 @@ import type { Order } from '@openlinker/core/orders';
 // `@openlinker/core/orders/types` sub-barrel: exports dependency-free constants
 // without pulling in `OrdersModule`. Using the main barrel would close a CJS
 // cycle (OrdersModule imports InvoicingModule which provides this service).
-import { PAYMENT_STATUS } from '@openlinker/core/orders/types';
+import { PAYMENT_STATUS, decodeBuyerTaxIdColumn } from '@openlinker/core/orders/types';
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
@@ -660,6 +660,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourceEventId,
         taxRateEra,
         decision.ruleId,
+        buyerTaxId,
       );
     }
     if (decision.documentKind === 'fiscal-receipt') {
@@ -711,6 +712,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceEventId?: string,
     taxRateEra?: string | null,
     matchedRuleId?: string,
+    buyerTaxId?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     const supported = await this.connectionSupportsInvoiceDocumentType(connection.id);
     if (!supported) {
@@ -803,6 +805,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         this.readShippingLineName(connection),
         sourcePlatformType,
         taxRateEra,
+        buyerTaxId,
       );
 
       await this.syncJobs.schedule({
@@ -1110,6 +1113,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     shippingLineName?: string,
     sourcePlatformType?: string,
     taxRateEra?: string | null,
+    buyerTaxId?: string | null,
   ): InvoicingIssuePayloadV1 {
     // The mapper owns the neutral Order->command rules and may surface
     // InvalidBuyerProfileError / UnsupportedPriceTreatmentError (both PII-clean).
@@ -1119,12 +1123,34 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // `payload.lines` verbatim, so the label MUST be baked here, where the
     // Connection is in hand; a blank/absent value defers to the mapper's neutral
     // `SHIPPING_LINE_NAME` default.
+    // #3224, ADR-073 decision 1 - the invoice half of what #3187 did for the
+    // receipt. The persisted three-state column decodes to a real number, to a
+    // positively-asserted "has none" (`null`), or to "not asserted"
+    // (`undefined`); only the first is a tax id to send, and the other two both
+    // mean the same thing to the mapper, which reads `null`/absent as B2C.
+    //
+    // The identifier is handed over UNTAGGED. `order_records.buyerTaxId` stores
+    // a bare number, and minting a `scheme` here would make core name a
+    // country's identifier system - the one thing ADR-073 decision 1 forbids,
+    // and its Alternatives section rejects a per-connection default by name.
+    // Whichever adapter issues the document tags it for its own market.
+    const decodedBuyerTaxId = decodeBuyerTaxIdColumn(buyerTaxId);
+    // Trimmed, and stamped only when something survives. `decodeBuyerTaxIdColumn`
+    // maps an EMPTY column to `null`, but a whitespace-only one decodes to the
+    // blank string itself - so without this an adapter would receive
+    // `{ value: '   ' }` and, because an untagged identifier is read as domestic
+    // (#3224), file a blank tax number on a real document. `encodeBuyerTaxIdColumn`
+    // makes that column unreachable through the ordinary write path; core still
+    // does not hand a downstream adapter a value it has not confirmed.
+    const buyerTaxNumber =
+      typeof decodedBuyerTaxId === 'string' ? decodedBuyerTaxId.trim() : '';
     const command = toIssueInvoiceCommand({
       order,
       connectionId: invoicingConnectionId,
       idempotencyKey,
       shippingLineName,
       taxRateEra,
+      buyerTaxId: buyerTaxNumber.length > 0 ? { value: buyerTaxNumber } : null,
     });
 
     // #12: flatten the BuyerProfile class into the PLAIN, jsonb-safe field-set.
