@@ -57,6 +57,24 @@ export interface MasterProductSyncResult {
    * be told.
    */
   taxRateChanges: readonly MasterTaxRateChange[];
+  /**
+   * How many detected price changes could NOT be reported to the optional
+   * price-change observer this pass (#3159 review) — a thrown observer call
+   * is logged at `error` with the `price_change_observer_failed` token and
+   * counted here, rather than swallowed at `warn` with nothing to show for
+   * it. There is no reconcile pass for this yet: a non-zero count here is a
+   * permanently lost notification, since the catalogue upsert this sync
+   * already ran has overwritten the prior price the miss would have been
+   * detected against. `0` on every path that never reads a price at all
+   * (a master-side deletion, no observer wired) — INCLUDING a wired observer
+   * that could not be consulted because this master product carries no
+   * currency (`Product.currency` is nullable). That last case is logged at
+   * `warn` with the `price_change_observer_skipped_no_currency` token rather
+   * than counted here: it is a different fact from an observer call that was
+   * attempted and failed (fix the master's missing currency, not retry a
+   * call that never happened).
+   */
+  priceChangeObserverFailures: number;
 }
 
 /** One variant whose effective rate moved, as the sync observed it (#2263). */

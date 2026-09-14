@@ -129,6 +129,19 @@ const harness = createIntegrationTestHarness({
     // publish attempts. No ORM/migration FK, so nothing cascades from
     // connections; truncate explicitly so each shop-publish case starts clean.
     'listing_creation_records',
+    // price_change_episodes (#3143, ADR-072) — the detected-price-change
+    // aggregate. No ORM/migration FK (an episode is evidence of a past
+    // detection and must survive a re-mapped variant or a deleted
+    // connection), so `truncateTables`' CASCADE closure never reaches it;
+    // truncate explicitly or a leftover OPEN episode collides on the
+    // partial UQ_price_change_episodes_open index in the next case.
+    'price_change_episodes',
+    // price_change_auto_applied_log (#3144, ADR-072 decision 3) — the
+    // automatic-mode audit trail. Same no-FK, reference-by-value posture as
+    // price_change_episodes above, so it is likewise invisible to the
+    // closure walk; truncate explicitly or a prior case's row is still
+    // counted by the next `findRecent` read.
+    'price_change_auto_applied_log',
     // invoice_records (#751) — order- + connection-scoped invoicing projection.
     // No ORM/migration FK; truncate explicitly so each invoicing case (incl.
     // the (connectionId, idempotencyKey) dedup assertion) starts clean.
