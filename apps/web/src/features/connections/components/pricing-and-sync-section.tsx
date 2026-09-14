@@ -427,6 +427,13 @@ export function PricingAndSyncSection({
    * and is not enough on its own: `hasInvalidRule` also covers the per-source
    * rows, whose errors are nowhere near that form.
    */
+  // COUPLED to `hasUnsavedChanges` (#3166 approval, SUGGESTION): this reason
+  // renders inside the unsaved bar, so it is only ever seen while the bar is.
+  // That is sound today because an invalid rule can only come from an edit,
+  // which by definition diverges the draft from its baseline — but it is a
+  // second mechanism the first one has to keep being true for. If a rule can
+  // ever be invalid WITHOUT a pending change (a server-side rule that stops
+  // validating, say), the reason needs its own home outside the bar.
   const saveBlockedReason = defaultRuleError
     ? `Can't save yet. Default rule: ${defaultRuleError}`
     : firstSourceError
