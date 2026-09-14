@@ -22,8 +22,10 @@ import { ApiProperty } from '@nestjs/swagger';
 export class DetectedMarketDto {
   @ApiProperty({
     description:
-      'ISO 3166-1 alpha-2 as the order carried it, verbatim - never normalised or mapped to a display ' +
-      'name here, because the value has to stay comparable with what a rule was authored against.',
+      'ISO 3166-1 alpha-2, trimmed and upper-cased (#3176) - never mapped to a display name here. ' +
+      'A source may report the delivery-address country in any case; this read normalises it exactly ' +
+      'as `SalesDocumentRulesService` normalises a rule\'s own `country` scope on write, so the two stay ' +
+      'comparable rather than silently drifting into two markets for one country.',
     example: 'PL',
   })
   country!: string;

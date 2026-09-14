@@ -99,6 +99,30 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       });
     });
 
+    it('should match an orderCountry condition stored in stray case against the normalised order country (#3176)', () => {
+      // A rule authored before #3176 persists `pl` in its `conditions` jsonb,
+      // and `resolveRouting` now always hands the evaluator an uppercased
+      // `order.country` — a strict compare would make that rule permanently
+      // unmatchable. The migration cannot rewrite the stored value without
+      // desynchronising `conditions_hash`, so the fold lives here.
+      const legacy = rule({ conditions: [{ field: 'orderCountry', op: 'eq', value: 'pl' }] });
+      const input = baseInput({ order: order({ country: 'PL' }), countryRules: [legacy] });
+      expect(evaluateSalesDocumentRules(input)).toEqual({
+        kind: 'route',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-eparagony',
+      });
+    });
+
+    it('should still not match an orderCountry condition naming a DIFFERENT country', () => {
+      const other = rule({ conditions: [{ field: 'orderCountry', op: 'eq', value: 'de' }] });
+      const input = baseInput({ order: order({ country: 'PL' }), countryRules: [other] });
+      expect(evaluateSalesDocumentRules(input)).toEqual({
+        kind: 'unresolved',
+        reason: 'no-matching-rule',
+      });
+    });
+
     it('should resolve unresolved/conflicting-rules-equal-priority when two DIFFERENT rules both match (no priority field)', () => {
       const ruleA = rule({ id: 'a', conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: false }] });
       const ruleB = rule({
