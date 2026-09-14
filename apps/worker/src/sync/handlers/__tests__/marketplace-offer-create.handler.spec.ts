@@ -22,7 +22,9 @@ import {
   type IOfferCreationExecutionService,
 } from '@openlinker/core/listings';
 import type { IContentSuggestionService } from '@openlinker/core/content';
+import { PromptTemplateNotFoundException } from '@openlinker/core/ai';
 import type { IProductsService } from '@openlinker/core/products';
+import type { IIntegrationsService } from '@openlinker/core/integrations';
 
 const VARIANT_ID = 'ol_variant_123';
 const PRODUCT_ID = 'ol_product_456';
@@ -56,6 +58,7 @@ describe('MarketplaceOfferCreateHandler', () => {
   let contentSuggestion: jest.Mocked<IContentSuggestionService>;
   let products: jest.Mocked<IProductsService>;
   let bulkProgress: jest.Mocked<IBulkListingProgressService>;
+  let integrationsService: jest.Mocked<IIntegrationsService>;
 
   beforeEach(() => {
     offerCreation = {
@@ -74,11 +77,18 @@ describe('MarketplaceOfferCreateHandler', () => {
       advanceBatchStatus: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<IBulkListingProgressService>;
 
+    integrationsService = {
+      getAdapter: jest.fn().mockResolvedValue({
+        connection: { id: CONNECTION_ID, platformType: 'allegro' },
+      }),
+    } as unknown as jest.Mocked<IIntegrationsService>;
+
     handler = new MarketplaceOfferCreateHandler(
       offerCreation,
       contentSuggestion,
       products,
-      bulkProgress
+      bulkProgress,
+      integrationsService
     );
   });
 
@@ -244,6 +254,7 @@ describe('MarketplaceOfferCreateHandler', () => {
       await handler.execute(job);
 
       expect(products.getVariant).toHaveBeenCalledWith(VARIANT_ID);
+      expect(integrationsService.getAdapter).toHaveBeenCalledWith(CONNECTION_ID);
       expect(contentSuggestion.suggestDescription).toHaveBeenCalledWith({
         productId: PRODUCT_ID,
         channel: 'allegro',
@@ -252,6 +263,113 @@ describe('MarketplaceOfferCreateHandler', () => {
       expect(offerCreation.executeCreation).toHaveBeenCalledWith(
         expect.objectContaining({
           overrides: { title: 'Operator Title', description: '<p>AI-built description</p>' },
+        })
+      );
+    });
+
+    it('resolves the channel from the connection platformType, not a hardcoded literal', async () => {
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { id: CONNECTION_ID, platformType: 'erli' } as never,
+        metadata: {} as never,
+      });
+      products.getVariant.mockResolvedValue({
+        id: VARIANT_ID,
+        productId: PRODUCT_ID,
+      } as never);
+      contentSuggestion.suggestDescription.mockResolvedValue({
+        suggestion: '<p>Erli description</p>',
+      } as never);
+      offerCreation.executeCreation.mockResolvedValue({
+        offerCreationRecord: buildRecord({
+          status: 'active',
+          externalOfferId: EXTERNAL_OFFER_ID,
+          bulkBatchId: BATCH_ID,
+        }),
+        outcome: 'ok',
+      });
+
+      const job = createJob(
+        baseV2({
+          generateDescription: true,
+          overrides: { title: 'Operator Title' },
+        })
+      );
+
+      await handler.execute(job);
+
+      expect(contentSuggestion.suggestDescription).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: 'erli' })
+      );
+    });
+
+    it('falls through with operator overrides when the resolved channel has no published template', async () => {
+      // Regression coverage for #3027's review: `channel` resolving
+      // correctly is not the same as a template existing for it —
+      // `PromptTemplateService.render` does an exact (key, channel) match
+      // and throws `PromptTemplateNotFoundException` with no channel→master
+      // fallback, which is exactly what a real, unseeded channel produces.
+      integrationsService.getAdapter.mockResolvedValue({
+        connection: { id: CONNECTION_ID, platformType: 'erli' } as never,
+        metadata: {} as never,
+      });
+      products.getVariant.mockResolvedValue({
+        id: VARIANT_ID,
+        productId: PRODUCT_ID,
+      } as never);
+      contentSuggestion.suggestDescription.mockRejectedValue(
+        new PromptTemplateNotFoundException({
+          key: 'offer.description.suggest',
+          channel: 'erli',
+        })
+      );
+      offerCreation.executeCreation.mockResolvedValue({
+        offerCreationRecord: buildRecord({ status: 'failed' }),
+        outcome: 'business_failure',
+      });
+
+      const job = createJob(
+        baseV2({
+          generateDescription: true,
+          overrides: { title: 'Operator Title' },
+        })
+      );
+
+      await handler.execute(job);
+
+      expect(contentSuggestion.suggestDescription).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: 'erli' })
+      );
+      expect(offerCreation.executeCreation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overrides: { title: 'Operator Title' },
+        })
+      );
+    });
+
+    it('falls through with operator overrides when connection lookup fails', async () => {
+      products.getVariant.mockResolvedValue({
+        id: VARIANT_ID,
+        productId: PRODUCT_ID,
+      } as never);
+      integrationsService.getAdapter.mockRejectedValue(new Error('connection not found'));
+      offerCreation.executeCreation.mockResolvedValue({
+        offerCreationRecord: buildRecord({ status: 'failed' }),
+        outcome: 'business_failure',
+      });
+
+      const job = createJob(
+        baseV2({
+          generateDescription: true,
+          overrides: { title: 'Operator Title' },
+        })
+      );
+
+      await handler.execute(job);
+
+      expect(contentSuggestion.suggestDescription).not.toHaveBeenCalled();
+      expect(offerCreation.executeCreation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overrides: { title: 'Operator Title' },
         })
       );
     });
