@@ -24172,3 +24172,199 @@ legend.analytics-settings-dialog__label {
     justify-items: start;
   }
 }
+
+/* ── PricingAndSyncSection (#3149, ADR-072) ──
+   Mirrors `docs/plans/mockups/price-changes-review-queue.html`'s
+   `#page-connection` `.settings-section` / `.source-row` / `.unsaved-bar`
+   shapes, under a `.pricing-sync__` prefix (#3166 review, finding 7) — an
+   earlier revision claimed every mockup class name was "only ever
+   referenced in a comment, never defined", which was true for
+   `.settings-section` but FALSE for `.activity-list`, already defined above
+   (search this file for `.activity-list`) with its own `__item` rules. The
+   #2473 precedent this cites namespaced the mockup's names for exactly
+   this reason (`.settings-field` → `.analytics-settings-dialog__field`);
+   this block now does the same rather than claiming them globally.
+   `.mode-switch*` is gone — the mode toggle is `SegmentedControl`
+   (`shared/ui/segmented-control.tsx`), which ships its own styling and
+   conveys selection through more than colour alone. */
+.pricing-sync__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* An explicit modifier rather than `:first-of-type` (#3166 review, finding
+   7) — `:first-of-type` matches the first element of its TAG among
+   siblings, not the first of this CLASS, so a sibling `<div>` rendered
+   before the first `.pricing-sync__section` (e.g. `PageLayout`'s own
+   `.page-header`) silently defeated the intended "no top border on the
+   first section" rule. */
+.pricing-sync__section--first {
+  border-top: none;
+  padding-top: 0;
+}
+
+.pricing-sync__section-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pricing-sync__section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.pricing-sync__section-desc {
+  margin: 0;
+  max-width: 60ch;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+/* Replaces two inline styles the component used to carry (#3166 round-3
+   review) — it ships its own stylesheet block, so these belong in it. */
+.pricing-sync__section-desc--wide {
+  max-width: none;
+}
+
+.pricing-sync__section-desc--spaced {
+  margin-bottom: var(--space-3);
+}
+
+.pricing-sync__pending {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.pricing-sync__mode-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.pricing-sync__rule-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.pricing-sync__rule-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-surface-muted);
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 640px) {
+  .pricing-sync__rule-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pricing-sync__field-error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--status-error-strong);
+}
+
+.pricing-sync__unsaved-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3);
+  background: var(--accent-primary-soft);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-md);
+}
+
+.pricing-sync__unsaved-bar-text {
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+
+/* Save is disabled and the bar now says why (#3166 round-3 review) — the
+   reason must read as a blocker, not as the neutral "you have unsaved
+   changes" note it replaces. */
+.pricing-sync__unsaved-bar-text--error {
+  color: var(--status-error-fg);
+  font-weight: 500;
+}
+
+.pricing-sync__unsaved-bar-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.pricing-sync__source-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pricing-sync__source-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.pricing-sync__source-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.pricing-sync__source-row-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pricing-sync__source-row-toggle {
+  display: flex;
+  align-items: center;
+  /* Was a raw 6px (#3166 round-3 review). The scale has no 6px, so this is
+     the nearest token that keeps the control and its label from crowding. */
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.pricing-sync__source-row-summary {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.pricing-sync__source-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.pricing-sync__activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
