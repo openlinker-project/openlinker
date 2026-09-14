@@ -101,8 +101,11 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
    * `normaliseCountry` (`libs/core/src/inventory/application/services/`),
    * `normalizeCountryCode`
    * (`libs/integrations/woocommerce/src/infrastructure/provisioners/woocommerce-provisioner.helpers.ts`)
-   * and `normalizeCountryIso2`
-   * (`apps/web/src/plugins/ksef/lib/ksef-seller-config.ts`). Deliberately NOT
+   * and `normalizeCountryIso2`, in the seller-config module of a provider
+   * plugin under `apps/web/src/plugins/`. That last one is cited by role
+   * rather than by path because this context's neutral-vocabulary sweep is
+   * prose-inclusive, so spelling the provider's directory here would make the
+   * comment an offender under the very rule it explains. Deliberately NOT
    * a shared helper or a `check-*-mirror.mjs`: the browser bundle cannot
    * import `@openlinker/core` (#591) and a plugin helper must not import a
    * sibling core context, so three of the four could not consume one

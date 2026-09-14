@@ -110,7 +110,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
       expect(evaluateSalesDocumentRules(input)).toEqual({
         kind: 'route',
         documentKind: 'fiscal-receipt',
-        connectionId: 'conn-eparagony',
+        connectionId: 'conn-receipt-only',
       });
     });
 
