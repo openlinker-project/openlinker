@@ -12,23 +12,18 @@ import { PriceChangesQueueTable } from './price-changes-queue-table';
 import type { PriceChangeItem, PriceChangeListResponse } from '../api/price-changes.types';
 import type { SessionUser } from '../../../shared/auth/session.types';
 
-// The "also set to Automatic" opt-in is admin-only (#3148 review, finding
-// 2), so any test that needs to see/toggle it renders as an admin session.
-const ADMIN_SESSION = createAuthenticatedSessionAdapter();
-
-// Write-capable but NOT admin (#3164 review's write-access gating, reconciled
-// here with the #3148 dialog tests during the #3147 rebase): `listings:write`
-// is what makes row actions/checkboxes render at all, while the admin-only
-// "also set to Automatic" checkbox is gated on role alone (`useIsAdmin`), not
-// on this permission — this fixture is what lets a test exercise the former
-// while asserting the absence of the latter.
-const OPERATOR_SESSION = createAuthenticatedSessionAdapter({
-  id: 'user_operator',
+/** Authenticated, write-capable, NOT admin — see the non-admin checkbox case. */
+const OPERATOR_SESSION_USER: SessionUser = {
+  id: 'user_2',
   username: 'operator',
   email: 'operator@example.com',
   role: 'operator',
-  permissions: ['connections:read', 'listings:read', 'listings:write'],
-});
+  permissions: ['listings:read', 'listings:write'],
+};
+
+// The "also set to Automatic" opt-in is admin-only (#3148 review, finding
+// 2), so any test that needs to see/toggle it renders as an admin session.
+const ADMIN_SESSION = createAuthenticatedSessionAdapter();
 
 function buildItem(overrides: Partial<PriceChangeItem> = {}): PriceChangeItem {
   return {
@@ -137,7 +132,10 @@ describe('PriceChangesQueueTable', () => {
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])), accept },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient, sessionAdapter: ADMIN_SESSION });
+    renderWithProviders(<PriceChangesQueueTable />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await screen.findByText('Ergonomic Office Chair');
 
     await userEvent.click(screen.getByTestId('row-accept'));
@@ -204,14 +202,12 @@ describe('PriceChangesQueueTable', () => {
       priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])) },
     });
 
-    // Write-capable (so the row's Accept button renders at all — #3164
-    // review's write-access gating, reconciled here during the #3147
-    // rebase), but deliberately NOT admin, since that is the exact
-    // distinction this test asserts (`useIsAdmin()`, independent of the
-    // `listings:write` permission).
+    // An OPERATOR: carries `listings:write`, so the row actions render, but
+    // is not admin, which is the whole subject of this case. The suite-wide
+    // default user IS an admin, so passing it here would assert nothing.
     renderWithProviders(<PriceChangesQueueTable />, {
       apiClient,
-      sessionAdapter: OPERATOR_SESSION,
+      sessionAdapter: createAuthenticatedSessionAdapter(OPERATOR_SESSION_USER),
     });
     await screen.findByText('Ergonomic Office Chair');
 
@@ -385,7 +381,10 @@ describe('PriceChangesQueueTable', () => {
       listings: { getBulkBatch },
     });
 
-    renderWithProviders(<PriceChangesQueueTable />, { apiClient, sessionAdapter: ADMIN_SESSION });
+    renderWithProviders(<PriceChangesQueueTable />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
     await screen.findByText('Ergonomic Office Chair');
 
     const checkboxes = screen.getAllByTestId('row-select');
