@@ -1,7 +1,8 @@
 # Spike — eBay Sell APIs (GB/DE/FR/PL): capabilities, flows, verdict
 
 **Status:** live-probed against the eBay sandbox with a sandbox keyset, a sandbox test seller and
-separate sandbox test buyer accounts. Zero production calls.
+separate sandbox test buyer accounts. Zero production **API** calls; one production
+developer-portal configuration attempt, recorded in Open Risk 5.
 Corrects and extends the day-0 desk research recorded in issue #2880 — every "Confirmed" /
 "Corrected" / "New finding" line below reflects a real HTTP request/response captured during this
 session, not a re-read of eBay's documentation.
@@ -48,7 +49,7 @@ API's `GetOrders`) be considered.
 | 7 | S8 (`withdrawOffer` relist behaviour) | Open question: does relisting reset listing age/watchers? | `withdraw` → offer survives (`status: UNPUBLISHED`) → `publish` again → **new** `listingId` | **Answered**: relisting mints a new listing; offer data (SKU, policies, category) is preserved, listing identity is not |
 | 8 | S2 (`bulkUpdatePriceQuantity` 1 vs 25) | eBay's own docs contradict themselves | 2 different SKUs in one `requests[]` array → both `statusCode: 200` | **Resolved** in favour of "up to 25"; the "only one SKU" wording in eBay's method intro is wrong/misleading |
 | 9 | T8 (shared category tree ids across markets) | "Some EU sites share a tree id" | GB=3, DE=77, FR=71, PL=212 — all four distinct | **Corrected for this specific set** — none of the 4 target markets share a tree |
-| 10 | P10 (GPSR regulatory policies) | Conditionally required EU/NI, discoverable per category | `get_regulatory_policies` (GB tree, all 14209 categories) → 50 categories carry `MANUFACTURER_CONTACT: REQUIRED` | **Confirmed**, and — unlike T5 — this endpoint's `usage` value is trustworthy |
+| 10 | P10 (GPSR regulatory policies) | Conditionally required EU/NI, discoverable per category | `get_regulatory_policies` (GB tree, all 14209 categories — a live count, snapshot only; re-query rather than quote) → 50 categories carry `MANUFACTURER_CONTACT: REQUIRED` | **Confirmed**, and — unlike T5 — this endpoint's `usage` value is trustworthy |
 | 11 | P9 (tax rate write, ADR-063) | `tax.vatPercentage` is a `number`, cannot express `zw`/`np`/`oo` | `20.5` accepted and round-trips exactly; `"zw"` → `400 Could not serialize field [tax.vatPercentage]` | **Confirmed** |
 | 12 | P8 (multi-variant grouping) | Siblings must share category/policies/location/marketplace | Full `inventory_item_group` → per-SKU offers → `publish_by_inventory_item_group` succeeded once a variation-enabled aspect (`Motyw`) was used | **Confirmed E2E**, + T6's `aspectEnabledForVariations` field confirmed as the authoritative "what may vary" signal |
 | 13 | O1-O16, F1-F7 (minus F5), R1-R10, D1-D9 | Assumed testable via poll/hydrate once an order exists | Two independent sandbox purchases both registered as a sale at the offer level, **neither ever appeared via `GET /sell/fulfillment/v1/order`** | **New, critical**: order flow not verifiable in this sandbox — see Open Risks |
@@ -59,8 +60,8 @@ API's `GetOrders`) be considered.
 | 18 | T2 (category path) | ✅ | `get_category_suggestions` returns a full `categoryTreeNodeAncestors[]` chain per hit | **Confirmed** — no extra per-level call needed |
 | 19 | P6 (description format grammar, ADR-046) | Marked `?` | `listingDescription` containing `<script>alert(1)</script>` written and read back byte-for-byte, unsanitised; no discovery endpoint found | **Answered**: eBay is a "declares nothing" destination under ADR-046 — OL's own conservative sanitisation is the only defence |
 | 20 | P7 (image upload, Media API) | Flagged ⚠️ (Trading API decommissioning) | `POST /commerce/media/v1_beta/image/create_image_from_url` → `201`, but body carries `"expirationDate"` ~30 days out | **Confirmed working, + new finding**: an uploaded-but-unpublished image expires after ~30 days (classic EPS "hosted picture" behaviour) |
-| 21 | C11 (Notification API topic list) | Names specific topics: auth revocation, order confirmation, PLA budget, seller service metric/standards, 3× feedback | `GET /commerce/notification/v1/topic` → 15 live topics, **none of the above present** | **Corrected**: replace the topic list with the live one (includes `LISTING`, `ORDER_CANCELLATION_ACTIVITY`, `ITEM_MARKED_SHIPPED`, `MARKETPLACE_ACCOUNT_DELETION`, etc.) |
-| 22 | C10 (webhook provisioning: config → destination → subscription) | Marked ⚠️, no verdict | Full chain reached `HTTP 201` twice; eBay delivered three genuine 64-hex challenge codes to our endpoint and both objects read back `ENABLED` | **Confirmed WORKING end to end**, after two blockers: a malformed request payload (ours) and a missing app-level notification config (the account's) — see New findings 8/9 |
+| 21 | C11 (Notification API topic list) | Names specific topics: auth revocation, order confirmation, PLA budget, seller service metric/standards, 3× feedback | `GET /commerce/notification/v1/topic` → 15 live topics (a live count, snapshot only; re-query rather than quote), **none of the above present** | **Corrected**: replace the topic list with the live one (includes `LISTING`, `ORDER_CANCELLATION_ACTIVITY`, `ITEM_MARKED_SHIPPED`, `MARKETPLACE_ACCOUNT_DELETION`, etc.) |
+| 22 | C10 (webhook provisioning: config → destination → subscription) | Marked ⚠️, no verdict | Full chain reached `HTTP 201` twice; eBay delivered three genuine 64-hex challenge codes to our endpoint and both objects read back `ENABLED` | **Confirmed WORKING end to end**, after two blockers: a malformed request payload (ours) and a missing app-level notification config (the account's) — see New findings 11/12 |
 | 23 | C11/C12 (decode + verify + translate) | Marked ⚠️ / no verdict | `POST /subscription/{id}/test` → `HTTP 500 errorId 2003 "Internal error"` on a live `ENABLED` subscription; no event fires on demand | **Untested** — provisioning works, but no real payload could be obtained to decode |
 | 24 | P11 (duplicate offer guard) | 🔴 flagged | `POST /offer` with an already-used sku+marketplaceId+format → `400`, names the existing offer id | **Confirmed** — clean, actionable refusal |
 | 25 | P3 (idempotency on create) | ⚠️ noted "SKU is the key" | `PUT /inventory_item/{sku}` called twice, byte-identical body → `204` both times, no duplicate | **Confirmed** — genuinely idempotent |
@@ -71,7 +72,7 @@ API's `GetOrders`) be considered.
 | 30 | P5 (policies per marketplace) | "12 policies for four markets" | GB policy ids were **accepted** on a DE offer at `createOffer`; `publishOffer` then failed `404 25713 "This Offer is not available"` (twice; GB control published fine) | **Refined**: no per-marketplace policy check at create; and that 404 is a misleading error for a marketplace-eligibility problem — it must not be read as "offer missing" |
 | 31 | C9 (which marketplaces does this credential cover) | Marked **?**, "decides AC4" | `GET /sell/account/v1/privilege` → **`{"sellerRegistrationCompleted": false}`**; `get_opted_in_programs` → only `SELLING_POLICY_MANAGEMENT`; no DE policies exist | **Answered**: `/privilege` is the endpoint — and it reports this account as incompletely registered, which is the likely cause of both the DE publish 404 and the checkout payment failure |
 | 32 | (new) publish idempotency while published | not in #2880 | Re-publishing an already-published offer → `HTTP 200`, **same** `listingId`, warning `25402` | **New finding**: publish is idempotent while published, unlike withdraw→publish which mints a new `listingId` — relevant to retry safety |
-| 33 | Prerequisite 3 (seller account verified, DSA) | Stated as a **hard precondition** for all four markets | `GET /commerce/identity/v1/user/` → `{"accountType":"INDIVIDUAL","registrationMarketplaceId":"EBAY_DE"}`, with `sellerRegistrationCompleted: false`, while everything was published to `EBAY_GB` | **ROOT CAUSE of the checkout failure** — the prerequisite was never satisfied; the whole session was accidentally cross-border. Remedy: a sandbox seller whose "Registration site" matches the marketplace under test |
+| 33 | Prerequisite 3 (seller account verified, DSA) | Stated as a **hard precondition** for all four markets | `GET /commerce/identity/v1/user/` → `{"accountType":"INDIVIDUAL","registrationMarketplaceId":"EBAY_DE"}`, with `sellerRegistrationCompleted: false`, while everything was published to `EBAY_GB` | **Most likely root cause of the checkout failure** — the prerequisite was never satisfied; the whole session was accidentally cross-border. Remedy: a sandbox seller whose "Registration site" matches the marketplace under test |
 | 34 | (new) Account API silently strips a write | not in #2880 | `PUT payment_policy` with `CREDIT_CARD` + `brands` → accepted, then reads back `paymentMethods: []` | **New finding**: correct behaviour for a managed-payments seller (eBay processes cards itself), but the write is acknowledged and discarded — same shape as the locale no-op in Evidence 29 |
 
 ### New findings not present in #2880 at all
@@ -99,32 +100,32 @@ API's `GetOrders`) be considered.
    `PUT inventory_item_group` with a SKU that already has a live standalone offer returns
    `"The following SKU is already listed as a single SKU listing"`. The standalone offer must be
    withdrawn first.
-7a. **`GET /sell/inventory/v1/offer` requires a `sku` query parameter — there is no endpoint
-    that enumerates every offer on the account in one call.** A reconciliation sweep must be
-    two steps: page through `GET /sell/inventory/v1/inventory_item` (no `sku` required,
-    `limit`/`offset` paged) to discover every SKU, then resolve each SKU's offer(s) via
-    `GET /offer?sku={sku}`. Designing S10 as a single bulk read would be wrong.
-7b. **Catalog API (`commerce/catalog/v1_beta`) returned `403 Access denied` in this session**,
-    both with a user token and a freshly-minted application token requesting the base
-    `api_scope`. This blocks live verification of GTIN-based catalogue matching (S11, and by
-    extension T7's catalogue-linking story) — flag as an open access/entitlement question
-    before relying on this API in the adapter design.
-7c. **`listingDescription` accepts and stores raw, unsanitised HTML including `<script>`
-    tags, byte-for-byte, on write/read round trip.** eBay declares no description-format
-    grammar via any discovery endpoint. Confirms this destination is a "declares nothing"
-    case under ADR-046 — OL's own outbound sanitisation is the only defence, never assume
-    the destination will strip anything.
-7d. **An uploaded Media API image expires ~30 days after upload if unattached to a
+7. **`GET /sell/inventory/v1/offer` requires a `sku` query parameter — there is no endpoint
+   that enumerates every offer on the account in one call.** A reconciliation sweep must be
+   two steps: page through `GET /sell/inventory/v1/inventory_item` (no `sku` required,
+   `limit`/`offset` paged) to discover every SKU, then resolve each SKU's offer(s) via
+   `GET /offer?sku={sku}`. Designing S10 as a single bulk read would be wrong.
+8. **Catalog API (`commerce/catalog/v1_beta`) returned `403 Access denied` in this session**,
+   both with a user token and a freshly-minted application token requesting the base
+   `api_scope`. This blocks live verification of GTIN-based catalogue matching (S11, and by
+   extension T7's catalogue-linking story) — flag as an open access/entitlement question
+   before relying on this API in the adapter design.
+9. **`listingDescription` accepts and stores raw, unsanitised HTML including `<script>`
+   tags, byte-for-byte, on write/read round trip.** eBay declares no description-format
+   grammar via any discovery endpoint. Confirms this destination is a "declares nothing"
+   case under ADR-046 — OL's own outbound sanitisation is the only defence, never assume
+   the destination will strip anything.
+10. **An uploaded Media API image expires ~30 days after upload if unattached to a
     published listing** (`expirationDate` in the `createImageFromUrl` response). Not
     mentioned in #2880 at all — relevant to any retry/draft workflow that might upload
     images well ahead of the final publish call.
-7e. **`createDestination`'s request field is `deliveryConfig.endpoint`, and a wrong shape is
+11. **`createDestination`'s request field is `deliveryConfig.endpoint`, and a wrong shape is
     indistinguishable from a bad URL.** The API answers `195017 "Invalid or missing end point"`
     identically for a valid HTTPS URL, an `http://` URL, `localhost`, and a request carrying
     **no endpoint field at all** — so the error cannot be used to diagnose the URL, and a
     malformed payload reads exactly like a rejected host. Any adapter work here should pin the
     field shape with a live-call test rather than trusting a hand-written body.
-7f. **App-level notification config is an undocumented precondition for webhook provisioning.**
+12. **App-level notification config is an undocumented precondition for webhook provisioning.**
     Until `PUT /commerce/notification/v1/config` has stored an `alertEmail`,
     `createDestination` fails with `195003 "Please provide configurations required for
     notifications"` — a message that names no field. `GET /config` returning
@@ -134,11 +135,11 @@ API's `GetOrders`) be considered.
     rejects a user token with `195011 "Not authorized for this topic"` and needs a
     client-credentials token, so the `scope` field on each topic must be read rather than
     assumed.
-8. **Not every category aspect may be used as a variation axis.** `publishOfferByInventoryItemGroup`
-   with `variesBy` set to `Brand` failed with `"Brand is not allowed as a variation specific"`.
-   `aspectConstraint.aspectEnabledForVariations` (already surfaced by T6's endpoint) is the
-   authoritative signal for which aspects are legal variation axes — this should be read
-   alongside `aspectRequired` (T5) whenever building a variant-grouping or listing wizard.
+13. **Not every category aspect may be used as a variation axis.** `publishOfferByInventoryItemGroup`
+    with `variesBy` set to `Brand` failed with `"Brand is not allowed as a variation specific"`.
+    `aspectConstraint.aspectEnabledForVariations` (already surfaced by T6's endpoint) is the
+    authoritative signal for which aspects are legal variation axes — this should be read
+    alongside `aspectRequired` (T5) whenever building a variant-grouping or listing wizard.
 
 ## API surface exercised (live, sandbox)
 
@@ -225,7 +226,11 @@ Logistics API (F5 — confirmed by #2880 as limited-release, not attempted), leg
    form), C15/AC2 (production keyset — blocked on standing up the account-deletion endpoint, not
    attempted in this session), F5 (Logistics API — limited-release, out of scope), X1 (every KB 684
    sandbox limitation not superseded above still stands, since none of shipping labels, ePID
-   catalogue matching, VAT-exempt registration, or fees were exercised).
+   catalogue matching, VAT-exempt registration, or fees were exercised), S3 (async quantity-ack
+   reconcile — no order ever reached `GET /sell/fulfillment/v1/order`, so there was nothing to
+   reconcile against), S9 (restore stock after cancellation — same blocker as S3, no cancellable
+   order was ever created), X5 (API deprecation clock — desk research, not a sandbox-testable
+   claim; not re-verified here).
 
 ## Recommendation
 
@@ -241,12 +246,19 @@ Logistics API (F5 — confirmed by #2880 as limited-release, not attempted), leg
   /sell/fulfillment/v1/order` actually surfaces a paid order, or (b) evaluate whether the legacy
   Trading API's `GetOrders` is a viable fallback for sandbox-only integration testing going
   forward. Recorded as AC2's answer for the O/F/R/D groups: **CONCEDED in sandbox, unresolved**.
-- **S8 recommendation for #2880's own open question:** `withdrawOffer` should be treated as a
-  genuine `OfferDeactivator` (promoted per #1689), not merely an eBay special case beside
-  quantity-0 — it actually ends the listing (buyer-facing `ACTIVE` → `ENDED`) rather than leaving a
-  zero-stock listing visible, which is a real improvement over the quantity-0 primitive. The
-  caveat that "resuming" mints a new `listingId` (fresh listing age/search standing) should be
-  surfaced to the operator, not silently treated as a true pause/resume.
+- **S8 recommendation for #2880's own open question:** `withdrawOffer` is a stronger candidate
+  than quantity-0 for #1689's pause primitive — Evidence 7 (the only live `withdrawOffer`
+  observation in this session) confirms the offer moves to `status: UNPUBLISHED`, and eBay's own
+  `withdrawOffer` reference states the call additionally "will end the eBay listing that is
+  associated with the offer" ([eBay Inventory API —
+  `withdrawOffer`](https://developer.ebay.com/api-docs/sell/inventory/resources/offer/methods/withdrawOffer));
+  this document did not itself observe a buyer-facing state transition (no listing-state enum is
+  named there either), so the claim is cited to eBay's documentation rather than presented as a
+  live finding. If confirmed, this is a real improvement over quantity-0, which leaves a
+  zero-stock listing visible. The caveat that "resuming" mints a new `listingId` (fresh listing
+  age/search standing) should be surfaced to the operator, not silently treated as a true
+  pause/resume. **Promoting a new `OfferDeactivator` sub-capability is an architecture decision
+  this spike does not make** — see the product-spec's R7 and its ADR-pending note.
 - **Webhook provisioning is viable and should be budgeted for.** The `config` → `destination`
   → `subscription` chain works in sandbox, challenge-response verification included, so the
   adapter can implement `WebhookProvisioningPort` for real rather than treating eBay as

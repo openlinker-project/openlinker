@@ -1,8 +1,8 @@
 # Product Spec — #2880 eBay (GB/DE/FR/PL) marketplace integration
 
-**Status:** Phase C (solution exploration) — grounded in a live-probed technical spike, not yet
-through a market/cohort gate. **This is not a Gate-D commit and spawns no implementation issues
-yet** — see §10.
+**Status:** phase C complete — grounded in a live-probed technical spike, not yet through a
+market/cohort gate. **This is not a Gate-D commit and spawns no implementation issues yet** —
+see §9.
 **Parent issue:** [#2880](https://github.com/openlinker-project/openlinker/issues/2880), part of epic [#2878](https://github.com/openlinker-project/openlinker/issues/2878)
 **Started:** 2026-09-07
 **Last updated:** 2026-09-07
@@ -20,10 +20,12 @@ Shopify, eBay, TikTok Shop) to something OL already knows how to build.
 Two things make eBay valuable beyond "another channel", both confirmed live in
 [SPIKE-2880](../plans/analysis/SPIKE-2880-ebay-sell-apis.md):
 
-1. **`withdrawOffer` is a real, verified end-listing that preserves the offer for relisting** —
-   the first shipped destination with a genuine `OfferDeactivator`, the capability #1689 deferred
-   because no adapter had one. Live-probed: withdraw survives as `UNPUBLISHED`, republish mints a
-   new `listingId` but keeps SKU/policies/category.
+1. **`withdrawOffer` is a real, verified pause primitive that preserves the offer for
+   relisting** — live-probed: withdraw survives as `UNPUBLISHED`, republish mints a new
+   `listingId` but keeps SKU/policies/category. eBay's own documentation additionally states the
+   call ends the buyer-facing listing, which — if confirmed — would make eBay a strong candidate
+   for the `OfferDeactivator` capability #1689 deferred because no adapter had one; that promotion
+   is not yet an architecture decision (see §4, R7).
 2. **The `inventory_item → offer → publishOffer` staging model** maps directly onto OL's existing
    `OfferCreationRecord` two-phase shape — confirmed end to end, including multi-variant grouping.
 
@@ -84,7 +86,8 @@ selection below:
 
 Same capability shape as Erli and Allegro before it — `OfferManagerPort` (+ sub-capabilities:
 `CategoryBrowser`, an EAN/catalogue matcher, `OfferCreator`, `OfferFieldUpdater`,
-`OfferQuantityBatchUpdater`, and now a real `OfferDeactivator`) for publish, `OrderSourcePort` +
+`OfferQuantityBatchUpdater`, and — pending the ADR decision in R7 — possibly a new
+`OfferDeactivator`) for publish, `OrderSourcePort` +
 `OrderProcessorManagerPort`-family capabilities for the order side. The open question is not *what*
 to build — the ports are established — but *how much, and in what order*, given that one half is
 production-ready-shaped and the other is a confirmed unknown.
@@ -105,7 +108,7 @@ production-ready-shaped and the other is a confirmed unknown.
 | **Evidence fit** — matches what this session actually confirmed | ❌ Commits to an unverified half alongside the verified one | ✅ Ships exactly what was proven | ❌ Ships exactly what was *not* proven | 🟡 Defers everything, including the confirmed half |
 | **Risk — silent failure** | ❌ An order-ingestion bug ships behind a confident-looking PR, indistinguishable from the account-setup issue this spike found | ✅ No order-ingestion code ships until a real order has round-tripped | ❌ Builds the riskiest half first with the least evidence | ✅ No risk, no progress either |
 | **Time-to-value** | 🟡 Slower — both halves gate each other | ✅ Fastest real capability shipped | 🟡 Blocked on the same retest, with nothing else to show meanwhile | ❌ Slowest — blocked on production access unrelated to publish |
-| **`OfferDeactivator` promotion (#1689)** | ✅ | ✅ | ❌ Not reached in this shape | ❌ Not reached |
+| **`OfferDeactivator` promotion (#1689)** | 🟡 Reachable, still ADR-pending (R7) | 🟡 Reachable, still ADR-pending (R7) | ❌ Not reached in this shape | ❌ Not reached |
 
 ### Chosen shape
 
@@ -128,10 +131,16 @@ Rationale:
 
 ### Key sub-decisions carried from the spike
 
-- **`withdrawOffer` is promoted to a real `OfferDeactivator`** (#1689's deferred capability),
-  not kept as an eBay special case beside quantity-0 — it genuinely ends the listing
-  (`ACTIVE → ENDED`) rather than leaving a zero-stock listing visible. The "resuming mints a new
-  `listingId`" caveat must be operator-visible, never presented as a silent pause/resume.
+- **`withdrawOffer` is confirmed as a working pause primitive (offer → `UNPUBLISHED`), and eBay's
+  own documentation — not a live observation in this session — states it additionally ends the
+  buyer-facing listing.** Whether that justifies promoting a new `OfferDeactivator` sub-capability
+  (#1689's deferred capability, which would reverse the recorded rejection in
+  `implementation-plan-1689`) is an **ADR-pending decision, not a settled sub-decision of this
+  spec** — see R7. If adopted, the shape follows the `OfferCreator`/`CategoryBrowser` precedent
+  (`docs/architecture-overview.md § Advertised-without-dispatch sub-capabilities`): declared in
+  the manifest, resolved by narrowing the dispatched `OfferManager` adapter with an `is*` guard,
+  and kept out of `CoreCapabilityValues`. The "resuming mints a new `listingId`" caveat must be
+  operator-visible regardless of which shape is chosen, never presented as a silent pause/resume.
 - **Category/attribute UI must read `aspectConstraint.aspectRequired`, never `aspectUsage`** — the
   latter lies (`RECOMMENDED` even for hard-required aspects), confirmed 4/4 live.
 - **A partial `PUT /inventory_item` must never be issued.** The publish-side builder needs a
@@ -143,7 +152,7 @@ Rationale:
 **Effort estimate:** deliberately not sized here. Order-ingestion effort cannot be estimated
 responsibly until the retest in Open Risk 1 either confirms the path works or surfaces a real
 platform limitation; sizing the publish half alone belongs in a Tier 2 implementation plan once
-Gate C-equivalent sign-off happens (§10).
+Gate C-equivalent sign-off happens (§9).
 
 ### User stories (publish half only — Shape B v1)
 
@@ -218,17 +227,9 @@ version's scope** — see §6 — pending Open Risk 1's resolution.
 | **R4** | **Taxonomy quota is 5,000 calls/day per App ID, shared across every tenant on a multi-tenant deployment (`T12`).** | The paged, resumable `expandedAt` frontier (#1979/#2061) that `DestinationCategory` already uses for Allegro is mandatory here, not optional. |
 | **R5** | **`EBAY_PL`'s commercial value is unconfirmed** (`AC8`, epic #2878) — traffic estimates conflict by ~10x and neither is eBay's own figure. | Do not build a PL-specific marketing case on either number. Treat the "Polish seller exporting into DE/GB/FR" framing as the more defensible product shape until real evidence says otherwise. |
 | **R6** | **Two silent-write defects confirmed live** (partial `PUT /inventory_item` destroys omitted fields including `ean`; mismatched `Content-Language` writes discard content while returning `204`) **could ship as latent adapter bugs if the builder doesn't read-modify-write.** | Treat these as hard implementation constraints in the Tier 2 plan, not general awareness — a spec that doesn't enforce them will reproduce them. |
+| **R7** | **Promoting `withdrawOffer` to a real `OfferDeactivator` reverses a recorded architecture decision** (`docs/architecture-overview.md § Listings` states it as "a deferred follow-up"; `implementation-plan-1689` rejected it because quantity-0 already stops the sale on every shipped marketplace) **on the strength of eBay's documentation, not a live-observed buyer-facing state transition** — Evidence 7 in [SPIKE-2880](../plans/analysis/SPIKE-2880-ebay-sell-apis.md) only confirms the offer moves to `UNPUBLISHED`. | Write an ADR before implementing (`docs/engineering-standards.md § Architecture Decision Records` — plugin-contract changes require one). Either observe the buyer-facing listing state before the ADR is written, or have the ADR state the decision is made on eBay's documented behaviour rather than a live probe. |
 
-## 9. Decision log
-
-| Date | Phase | Decision | Rationale |
-|---|---|---|---|
-| 2026-09-04 | Pre-A | Issue #2880 filed as a day-0 desk-research spike, part of epic #2878's four-marketplace scan | eBay flagged as the closest-to-Allegro-shaped, best-documented of the four candidates |
-| 2026-09-07 | Phase A/C (technical) | Live sandbox probe conducted against the full #2880 checklist; publish half confirmed production-ready-shaped, order half confirmed unverifiable in this sandbox, root cause narrowed to an incomplete sandbox seller registration | [SPIKE-2880-ebay-sell-apis.md](../plans/analysis/SPIKE-2880-ebay-sell-apis.md) |
-| 2026-09-07 | Phase C | **Shape B — publish-first, orders gated on the Open Risk 1 retest** selected over full-parity (A), orders-first (C), and wait-for-production (D) | The spike proved one half works and could not verify the other; shipping the unverified half first (or alongside) reproduces exactly the "confident but untested" failure the spike's own methodological note flags |
-| 2026-09-07 | Phase C | This document written at Phase C (solution exploration), explicitly **not** a Gate-D commit | Market/cohort research (persona economics, `AC8`'s PL commercial question) has not been performed for eBay the way it was for Erli's #978 spec — fabricating that evidence here would be worse than leaving it open |
-
-## 10. Implementation breakdown
+## 9. Implementation breakdown
 
 **Not spawned in this pass.** Unlike #978's Erli spec — which reached Gate D and spawned 18
 implementation issues — this document stops at Phase C because:
@@ -248,3 +249,15 @@ implementation issues — this document stops at Phase C because:
    the above.
 4. Resolve epic #2878's `AC8` (is `EBAY_PL` worth a connection, or is the real product "PL seller
    exporting into DE/GB/FR") before committing engineering time to a PL-specific connection UX.
+5. Write the R7 ADR (or fold its verdict into #4's Tier 2 plan) before any `OfferDeactivator`
+   code lands — this decision reverses `implementation-plan-1689`'s recorded rejection and is a
+   plugin-contract change per `docs/engineering-standards.md § Architecture Decision Records`.
+
+## 10. Decision log
+
+| Date | Phase | Decision | Rationale |
+|---|---|---|---|
+| 2026-09-04 | Pre-A | Issue #2880 filed as a day-0 desk-research spike, part of epic #2878's four-marketplace scan | eBay flagged as the closest-to-Allegro-shaped, best-documented of the four candidates |
+| 2026-09-07 | Phase A/C (technical) | Live sandbox probe conducted against the full #2880 checklist; publish half confirmed production-ready-shaped, order half confirmed unverifiable in this sandbox, root cause narrowed to an incomplete sandbox seller registration | [SPIKE-2880-ebay-sell-apis.md](../plans/analysis/SPIKE-2880-ebay-sell-apis.md) |
+| 2026-09-07 | Phase C | **Shape B — publish-first, orders gated on the Open Risk 1 retest** selected over full-parity (A), orders-first (C), and wait-for-production (D) | The spike proved one half works and could not verify the other; shipping the unverified half first (or alongside) reproduces exactly the "confident but untested" failure the spike's own methodological note flags |
+| 2026-09-07 | Phase C | This document written at Phase C (solution exploration), explicitly **not** a Gate-D commit | Market/cohort research (persona economics, `AC8`'s PL commercial question) has not been performed for eBay the way it was for Erli's #978 spec — fabricating that evidence here would be worse than leaving it open |
