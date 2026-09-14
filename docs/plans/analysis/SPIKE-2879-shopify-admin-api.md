@@ -96,7 +96,7 @@ the reconciled count.
 | E-C1 | C1 | Admin-created custom apps genuinely closed; only path is Dev Dashboard → custom-distribution app, installed on a specific store | Live: app created and installed exactly this way |
 | E-C2 | C1/X3/X4 | Protected Customer Data (name, email, phone, address) is grantable on a dev store with **zero review**: UI states *"If you're installing on a dev store, select your data use in step 1 to access protected customer data"*; the 16-question "Data protection details" form is explicitly stated as needed **only** for App Store Listing submission | Live: Dev Dashboard "API access requests" screen, `Protected customer data access` section, "Draft" status persists with no blocking effect on dev-store access |
 | E-C3 | C1/C2/C3 | Access token returned by OAuth code exchange has prefix `shpua_`, not `shpat_`. Repeated OAuth exchange for the same app+shop+scope returns the **identical** token value (tested twice) — behavioural evidence of an offline/app-scoped token despite the unexpected prefix | Live: two independent `code`→token exchanges both returned `shpua_REDACTED` |
-| E-C4 | C8 | `extensions.cost.throttleStatus` present on every GraphQL response; on this dev store's plan, `maximumAvailable: 4000`, `restoreRate: 200` — higher than the 1000/100 figures the issue's desk research assumed for "Standard" plan | Live: every call below carries this field |
+| E-C4 | C8/X2 | `extensions.cost.throttleStatus` present on every GraphQL response; on this dev store's plan, `maximumAvailable: 4000`, `restoreRate: 200` — higher than the 1000/100 figures the issue's desk research assumed for "Standard" plan. This is also the live confirmation of X2 ("Rate-limit observability — `throttleStatus` on every reply") | Live: every call below carries this field |
 | E-C5 | C1 (scope UI) | Dev Dashboard's scope picker mixes **Admin API** scopes (e.g. `read_orders`) with unrelated **Customer Account API** scopes (`customer_read_orders`) under the same category label ("Orders") in one search result — an easy mis-click trap | Live: Dev Dashboard scope picker, search "read_orders" |
 | E-C6 | C1 | `read_all_orders` is **not** a checkbox in the standard scope picker at all; it is a separately-requested grant via a legacy (visually distinct, pre-Dev-Dashboard) "API access requests" page, requiring "Choose distribution" first, then a written justification, then **manual Shopify review ("rolling basis")** | Live: `Request additional scopes and APIs` section of the legacy Partner Dashboard-style page |
 | E-C7 | C10 | `webhookSubscriptionCreate` confirmed working — registered a real `ORDERS_CREATE` subscription, `JSON` format, callback URL accepted without validation that the URL is reachable (placeholder `test-ol-example.com` accepted) | Live: `webhookSubscriptionCreate(topic: ORDERS_CREATE, ...)` → success, real `WebhookSubscription` id returned |
@@ -509,7 +509,7 @@ $ curl ... mutation { returnProcess(input: {returnId: "...", returnLineItems: [{
 
 **Lean ADOPT, confirmed rather than merely carried over from desk research.** Every one of the
 issue's three headline findings survived live verification, and F6 came back *stronger* than
-claimed (E-F5's near-verbatim vocabulary match to ADR-054). Nothing found across ~80 live-verified
+claimed (E-F5's near-verbatim vocabulary match to ADR-054). Nothing found across the 76 live-verified
 stories contradicts the ADOPT lean.
 
 Six corrections are load-bearing enough that a follow-up implementation plan must account for them
@@ -552,26 +552,35 @@ verify" list should cite it directly rather than being written from memory.
 ## Coverage tally
 
 Live-verified (transcript exists above unless marked "no transcript retained" — see the individual
-evidence rows), by group: **C** 9/12 (C3 partial/behavioural; C4 gained a reusable
+evidence rows), by group: **C** 6/11 (C1, C2, C3, C4, C8, C10 — the only C ids that appear in any
+Story cell above besides the excluded C7: C1 via E-C1/E-C2/E-C3/E-C5/E-C6, C2/C3 via E-C3, C4 via
+E-C9, C8 via E-C4, C10 via E-C7; C3 partial/behavioural; C4 gained a reusable
 `currentAppInstallation.accessScopes` health-check pattern; C7 is EXCLUDED from this numerator — see
 "Attempted but inconclusive" below, it is an unmet test condition, not a confirmed result either way)
 · **M** 13/13 (M6/M10 bulk operations confirmed end to
 end via `bulkOperationRunQuery`) · **T** 6/12 (T1, T1b, T8-implicit via `fullName`/global tree, T9,
-T11-NOT-SUPPORTED, T12-quota-fits) · **P** 6/13 (P1, P3-implicit, P6, P7,
+T11-NOT-SUPPORTED, T12-quota-fits) · **P** 6/13 (P1, P3-implicit, P6, P7, P8,
 P13-behaviourally-confirmed-as-PATCH) · **S** 6/13 (S1, S4, S6, S7, S10, S13) · **O** 13/16 (O1, O2,
 O3, O5-partial, O6, O7, O9, O10, O11, O12, O13-vocab-only, O14, O15-CONFIRMED-with-real-5/min-cap;
 O16 is EXCLUDED from this numerator — see "Attempted but inconclusive" below) · **F** 8/8 (F1, F2, F3-implicit, F4, F6-flagship, F7-implicit,
 F8-vocab, F10-negotiation-axis-closes-group) · **D** 5/9 (D2, D4, D5, D8, D9) · **R** 8/9 (R1, R2,
-R3, R4, R5, R6, R7-CLOSED-by-R9, R9-corrected) · **X** 4/6 (X1-orderCreate-cap-confirmed, X2, X3, X5,
-plus X4's PII exemption confirmed and its diagnostic pattern via C4/E-C9).
+R3, R4, R5, R6, R7-CLOSED-by-R9, R9-corrected) · **X** 5/6 (X1-orderCreate-cap-confirmed via E-X2 —
+that clause only; X1's other two clauses, dev-store-to-production conversion and the Bogus payment
+gateway, remain a qualitative judgement, not a live test; X2-throttleStatus-confirmed via E-C4 — see
+its Story cell, updated to `C8/X2`; X3 via E-C2; X4 via E-C2/E-C9; X5 via E-X1; X6 deliberately
+skipped — see the closing note below).
 
-**Denominators sum to 111, not ~90** — the "~90" figure used in earlier revisions of this document
-(and echoed once in the PR description / product spec) undercounted the issue's own checklist and is
-corrected here: `12+13+12+13+13+16+8+9+9+6 = 111`. Any earlier reference to "~90" elsewhere in this
-epic is stale and should be read as 111.
+**Denominators sum to 110, not ~90 and not 111** — the "~90" figure used in earlier revisions of this
+document (and echoed once in the PR description / product spec) undercounted the issue's own
+checklist; a later revision corrected it to 111 by taking each group's denominator as the
+highest-numbered story id within that group (`12+13+12+13+13+16+8+9+9+6`), which is right for every
+group except C. The C group's numbering jumps `C8` straight to `C10` — **`C9` was never a real story
+id** — so a denominator built the same way every other group's is gives C 11, not 12:
+`11+13+12+13+13+16+8+9+9+6 = 110`. Any earlier reference to "~90" or "111" elsewhere in this epic is
+stale and should be read as 110.
 
-**Sum across groups: 78 of the 111 stories in the issue's own checklist, confirmed**
-(9+13+6+6+6+13+8+5+8+4 = 78). This is the single authoritative headline figure for this spike — the
+**Sum across groups: 76 of the 110 stories in the issue's own checklist, confirmed**
+(6+13+6+6+6+13+8+5+8+5 = 76). This is the single authoritative headline figure for this spike — the
 PR description and the product spec must both cite this number (and this denominator) rather than a
 separately-eyeballed one; any other figure appearing elsewhere in either document as of this revision
 is stale and should be corrected to match. It deliberately **excludes** the two
@@ -583,13 +592,17 @@ a negative result the underlying test never actually established.
 above.
 
 **Genuinely not testable via the Admin API and not attempted** — these are OL-side adapter/design
-decisions, not Shopify facts to verify: C5 (config/credential shape validators — OL code), C9 (does
-not exist in the issue's own checklist), C12 (`CanonicalInboundEvent` translation — OL code), D1/D6
+decisions, not Shopify facts to verify: C5 (config/credential shape validators — OL code), C6 (auth
+failure → `needs_reauth`, `AuthFailureClassifierPort` — OL code), C11 (webhook decode + HMAC verify,
+`InboundWebhookDecoderPort` — OL code), C12 (`CanonicalInboundEvent` translation — OL code), D1/D6
 (invoice issuance/correction logic — OL/invoicing-provider concern, Shopify's role is only to supply
-order + tax-line data, already confirmed via O9/O10), X1 (sandbox fidelity — a qualitative judgement,
-partially informed by findings above: generous 4000-pt budget confirmed resistant to accidental
-throttling even at 50 parallel calls, seeded test data confirmed present, dev-store-only `orderCreate`
-rate cap now CONFIRMED real, see E-X2).
+order + tax-line data, already confirmed via O9/O10).
+
+**`C9` does not exist in the issue's own checklist** — its numbering jumps `C8` straight to `C10` —
+so it is neither "confirmed" nor "not attempted"; it is excluded from the C denominator entirely
+rather than counted as an unattempted slot, which is why the C group above reads `6/11`, not the
+`9/12` an earlier revision derived by (incorrectly, for this one group) treating the highest-numbered
+id as the count of real stories.
 
 **Attempted but inconclusive, not a confirmed negative result**: O16/C7 (429/retry behaviour) — a
 50-parallel-call burst against a moderately expensive query produced zero throttling, but per E-C8's

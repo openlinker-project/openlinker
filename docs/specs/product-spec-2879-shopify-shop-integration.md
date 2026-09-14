@@ -9,7 +9,11 @@
 
 Shopify is the only one of the four candidate platforms (#2878: Shopify, eBay, Amazon, TikTok Shop)
 that can act as both a `ProductMaster`/`InventoryMaster` (source of truth) and a destination —
-closest existing analogue is the shipped `libs/integrations/woocommerce` adapter. See issue #2879 for
+closest existing analogue is the shipped `libs/integrations/woocommerce` adapter. As a destination
+this is a **shop**, not a marketplace: publish, sync-fields, and category/attribute browsing land on
+`ShopProductManagerPort` (+ the advertised-without-dispatch `ShopCategoryBrowser` /
+`ShopAttributeReader` sub-capabilities), per `docs/architecture-overview.md § Listings` — never
+`OfferManagerPort`, which is reserved for marketplace offer/listing management. See issue #2879 for
 the full framing and the three headline findings (per-line tax rate, `FulfillmentExecutor`-shaped
 FulfillmentOrder model, native `#2368` idempotency).
 
@@ -93,14 +97,16 @@ to 8/8. This strengthens (not weakens) the case for including F6 in a first slic
 
 ## 11. Coverage summary
 
-**78 of the issue's 111 stories verified live** against a real development store sandbox
+**76 of the issue's 110 stories verified live** against a real development store sandbox
 (`{shop-domain}.myshopify.com`) — see the SPIKE doc's `## Coverage tally` section for the exact
-per-group arithmetic behind this number (9+13+6+6+6+13+8+5+8+4 = 78, against a denominator of
-12+13+12+13+13+16+8+9+9+6 = 111 — a prior "~90" estimate in this epic undercounted the checklist and
-is superseded); this is the single authoritative figure and denominator and supersedes any other
-count appearing elsewhere in this spec or the PR description. Includes M group at 13/13 (bulk
-operations confirmed end to end) and F group closed to 8/8 (negotiation axis, SPIKE E-F10).
-**C7/O16 (429/retry) are deliberately EXCLUDED from the 78** — they are attempted but inconclusive,
+per-group arithmetic behind this number (6+13+6+6+6+13+8+5+8+5 = 76, against a denominator of
+11+13+12+13+13+16+8+9+9+6 = 110 — a prior "~90" estimate in this epic undercounted the checklist, and
+a later "111" derived the C group's denominator from its highest-numbered id (`C12`) without noticing
+that `C9` does not exist in the issue's own checklist, so C's real denominator is 11, not 12; both are
+superseded); this is the single authoritative figure and denominator and supersedes any other count
+appearing elsewhere in this spec or the PR description. Includes M group at 13/13 (bulk operations
+confirmed end to end) and F group closed to 8/8 (negotiation axis, SPIKE E-F10).
+**C7/O16 (429/retry) are deliberately EXCLUDED from the 76** — they are attempted but inconclusive,
 not a confirmed negative result: the burst test used was insufficient to reach the platform's real
 throttling threshold, so retry-classification behaviour stays genuinely UNVERIFIED (see SPIKE E-C8
 and the corrected coverage tally note). All three headline findings from the issue confirmed; F6
