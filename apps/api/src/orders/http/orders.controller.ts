@@ -515,6 +515,19 @@ export class OrdersController {
       throw new NotFoundException(`Order not found: ${internalOrderId}`);
     }
     const dto = this.toDto(order);
+    // Buyer tax id (#3180). DETAIL READ ONLY — off the shared `toDto`, so the
+    // paged list never carries it. Unlike `activeHold` below this costs no extra
+    // query (the column is already loaded); it is scoped for DATA MINIMISATION.
+    // It is the first buyer-identifying value on this DTO — `customerId` is an
+    // internal id — it is PII-gated at persistence exactly like `customerEmail`
+    // (#2599: for a sole trader the tax id identifies a natural person), and no
+    // list surface reads it. `GET /orders` is the hottest order read in the
+    // product; a value with no consumer does not belong on every row of it.
+    //
+    // The entity getter is the only intended read of the raw column, decoding it
+    // through `decodeBuyerTaxIdColumn` so this DTO never has to remember that
+    // `''` means "asserted none" rather than absence.
+    dto.buyerTaxId = order.buyerTaxIdState;
     // Invoice projection (#1224): the FE invoice panel reads a neutral `invoice`
     // sub-tree off the snapshot. The list endpoint now shares the same projection
     // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
@@ -955,11 +968,8 @@ export class OrdersController {
       syncAttempts: order.syncAttempts.map((a) => this.toSyncAttemptDto(a)),
       recordStatus: order.recordStatus,
       mappingFailureReason: order.mappingFailureReason,
-      // #3180 - the entity getter is the only intended read of the raw column,
-      // decoding it through `decodeBuyerTaxIdColumn` so this DTO never has to
-      // remember that `''` means "asserted none" rather than absence. On the
-      // SHARED toDto, so the list and the detail response read it from one place.
-      buyerTaxId: order.buyerTaxIdState,
+      // `buyerTaxId` is deliberately NOT here (#3180) - it is set by `getOrder`
+      // alone. See the assignment there for why.
       salesDocumentBlockReason: order.salesDocumentBlockReason,
       salesDocumentUnresolvedReason: order.salesDocumentUnresolvedReason,
       salesDocumentBlockDetail: order.salesDocumentBlockDetail,

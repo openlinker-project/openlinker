@@ -1253,6 +1253,10 @@ export class InvoiceService implements IInvoiceService {
     return this.repo.findAllByOrderIds(orderIds);
   }
 
+  async listRecentByConnectionId(connectionId: string, limit: number): Promise<InvoiceRecord[]> {
+    return this.repo.findRecentByConnectionId(connectionId, limit);
+  }
+
   async listInvoices(
     filter: InvoiceRecordFilters,
     pagination: InvoiceRecordPagination,

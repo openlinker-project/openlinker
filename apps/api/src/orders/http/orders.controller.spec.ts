@@ -1524,6 +1524,22 @@ describe('OrdersController', () => {
   });
 
   describe('buyer tax id on the DTO (#3180)', () => {
+    it('is absent from every LIST row, even when the column carries a value', async () => {
+      // Data minimisation, not query cost: the column is already loaded, so
+      // projecting it would be free — and it is the first buyer-identifying
+      // value on this DTO, on the hottest order read, with no list consumer.
+      // `toBeUndefined` alone would pass on a DTO that carried the key with an
+      // undefined value, so assert the key itself is missing.
+      repository.findMany.mockResolvedValue({
+        items: [orderRecordWith({ buyerTaxId: '5213796333' })],
+        total: 1,
+      });
+
+      const result = await controller.listOrders({ limit: 20, offset: 0 });
+
+      expect(result.items[0]).not.toHaveProperty('buyerTaxId');
+    });
+
     it('projects the id verbatim when the column carries a value', async () => {
       repository.findById.mockResolvedValue(orderRecordWith({ buyerTaxId: '5213796333' }));
 
