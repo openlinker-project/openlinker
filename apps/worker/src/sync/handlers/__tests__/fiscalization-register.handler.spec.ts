@@ -254,7 +254,7 @@ describe('FiscalizationRegisterHandler', () => {
     });
   });
 
-  describe("the buyer's tax number (#3187, ADR-072 decision 1)", () => {
+  describe("the buyer's tax number (#3187, ADR-073 decision 1)", () => {
     it('carries the tax number onto the command when present', async () => {
       await handler.execute(makeJob(makePayload({ buyerTaxId: '5213796333' })));
       expect(fiscalRegistrations.register).toHaveBeenCalledWith(

@@ -1244,7 +1244,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       idempotencyKey,
       shippingLineName: this.readShippingLineName(connection),
       taxRateEra,
-      // #3187, ADR-072 decision 1 — the persisted three-state column; the
+      // #3187, ADR-073 decision 1 — the persisted three-state column; the
       // mapper decodes it and stamps the command only when there is a real
       // number to send.
       buyerTaxId,

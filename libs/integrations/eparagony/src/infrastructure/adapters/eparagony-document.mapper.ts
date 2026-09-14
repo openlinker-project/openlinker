@@ -152,7 +152,7 @@ export function toCreateReceiptRequest(
   if (/^[A-Z]{3}$/.test(command.currency)) {
     request.eReceipt.metadata.currency = command.currency;
   }
-  // #3187, ADR-072 decision 5 - sent VERBATIM, with no validation, normalisation
+  // #3187, ADR-073 decision 5 - sent VERBATIM, with no validation, normalisation
   // or format check of any kind. `command.buyerTaxId` is already present only
   // when core resolved a real value (never "asserted none" / "not asserted"),
   // so the sole condition here is "is there something to send". A value the
@@ -160,8 +160,13 @@ export function toCreateReceiptRequest(
   // through the existing `createDocument` catch - this adapter has no basis to
   // refuse a shape first, and acquiring one would mean holding a member-state
   // list nowhere in this tree.
-  if (typeof command.buyerTaxId === 'string' && command.buyerTaxId.length > 0) {
-    request.eReceipt.metadata.consumerTIN = command.buyerTaxId;
+  // Trimmed before the length test, not normalised: a whitespace-only value is
+  // the ABSENCE of a number rather than a number to send, and core trims for
+  // the same reason one layer up. The value that survives is still sent
+  // verbatim - no validation, no reformatting.
+  const buyerTaxId = typeof command.buyerTaxId === 'string' ? command.buyerTaxId.trim() : '';
+  if (buyerTaxId.length > 0) {
+    request.eReceipt.metadata.consumerTIN = buyerTaxId;
   }
 
   return request;

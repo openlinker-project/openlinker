@@ -1177,7 +1177,7 @@ describe('InvoiceService', () => {
       expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
     });
 
-    // #3184, ADR-072 decision 3: a connection may hold BOTH the invoicing and
+    // #3184, ADR-073 decision 3: a connection may hold BOTH the invoicing and
     // fiscalization roles, so a fiscalization connection id can be the exact
     // same value as the invoicing connection id being asked to issue. The
     // cross-kind check must refuse regardless — it must NOT read "same
