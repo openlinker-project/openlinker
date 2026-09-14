@@ -185,7 +185,7 @@ describe('SalesDocumentCountryDefaults', () => {
     });
     expect(screen.getByText(/Ksef Demo \(no longer eligible\)/)).toBeInTheDocument();
     expect(screen.getByTestId('country-default-readback')).toHaveTextContent(
-      'An order in PL matching none of the rules above gets a Invoice through Ksef Demo.',
+      'An order in PL matching none of the rules above gets an Invoice through Ksef Demo.',
     );
   });
 });

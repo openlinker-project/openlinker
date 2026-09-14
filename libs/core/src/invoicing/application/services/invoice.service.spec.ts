@@ -211,6 +211,7 @@ describe('InvoiceService', () => {
       claimForIssue: jest.fn(),
       claimPendingSubmission: jest.fn(),
       findMany: jest.fn(),
+      findRecentByConnectionId: jest.fn(),
       findIssuedNonTerminal: jest.fn(),
       findPendingSubmission: jest.fn(),
       findStuckPending: jest.fn(),
@@ -1233,6 +1234,19 @@ describe('InvoiceService', () => {
       repo.findAllByOrderId.mockResolvedValue([]);
 
       expect(await service.listInvoiceConnectionIdsForOrder('order-1')).toEqual([]);
+    });
+  });
+
+  describe('listRecentByConnectionId (#3179)', () => {
+    it('should delegate to the bounded recency read, never the paginated list', async () => {
+      const rows = [makeRecord({ id: 'r1' }), makeRecord({ id: 'r2' })];
+      repo.findRecentByConnectionId.mockResolvedValue(rows);
+
+      await expect(service.listRecentByConnectionId('conn-a', 10)).resolves.toBe(rows);
+      expect(repo.findRecentByConnectionId).toHaveBeenCalledWith('conn-a', 10);
+      // The diagnostics read discards a total, so it must never reach the
+      // `getManyAndCount` path that always computes one.
+      expect(repo.findMany).not.toHaveBeenCalled();
     });
   });
 

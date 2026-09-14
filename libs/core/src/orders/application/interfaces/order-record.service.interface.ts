@@ -17,6 +17,7 @@ import type {
   OrderRecordPagination,
   OrderRecordStatus,
   PaginatedOrderRecords,
+  SalesDocumentMatchedRuleWrite,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
@@ -254,17 +255,19 @@ export interface IOrderRecordService {
    * and `AutoIssueTriggerService` must not inject this token either (its one-way
    * edge, F3). Invoicing REPORTS the block; orders WRITES it.
    *
-   * `matchedRuleId` (#3186) names the `sales_document_rules` row that decided
-   * this order's document kind, when a rule engine match produced the route —
-   * `null` (the default) when none did, which is also the manual-issue clear
-   * path above. Level-triggered exactly like `block`: written on every call,
-   * `null` included, so a later rule edit/deletion self-corrects the persisted
-   * value instead of outliving the decision that produced it.
+   * `matchedRule` (#3186) names the `sales_document_rules` row that decided this
+   * order's document kind. It is a SEPARATE decision from the block and the
+   * instruction is REQUIRED, never defaulted (#3186 review): the gate decides
+   * both and passes `{action: 'set'}` — level-triggered exactly like `block`, so
+   * a later rule edit or deletion self-corrects the persisted value instead of
+   * outliving the decision that produced it — while the manual-issue clear path
+   * above decides only the block and passes `{action: 'preserve'}`, because
+   * clearing a badge must not also erase why the kind was chosen.
    */
   markSalesDocumentBlock(
     internalOrderId: string,
     block: SalesDocumentBlock | null,
-    matchedRuleId?: string | null
+    matchedRule: SalesDocumentMatchedRuleWrite
   ): Promise<void>;
 
   /**

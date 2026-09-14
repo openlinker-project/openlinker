@@ -41,6 +41,12 @@ export interface ISalesDocumentViewService {
    * inventing an all-null entry would let a caller render a document panel for
    * an order OpenLinker has never seen.
    *
+   * `matchedRule` is ALWAYS `null` here (#3186 review): the "Why this kind?"
+   * disclosure is a detail-only read — the #2349/#2350 convention — so this
+   * path neither carries a conditions array per row nor issues the extra rule
+   * read. A caller must therefore never infer "no rule decided this order's
+   * kind" from this read; only {@link getForOrder} answers that.
+   *
    * Duplicate ids are collapsed. Returns an empty map for an empty input.
    */
   getForOrders(orderIds: readonly string[]): Promise<Map<string, SalesDocumentView>>;
@@ -55,6 +61,10 @@ export interface ISalesDocumentViewService {
    * they stop agreeing. `null` is the caller's 404, never an all-null
    * projection - an order OpenLinker has never seen has no document state to
    * describe.
+   *
+   * The ONE field that differs from the batch read is `matchedRule`, which only
+   * this path resolves (#3186 review) — one shared assembly with one flag, not
+   * a second path, so nothing else can drift between the row and the panel.
    */
   getForOrder(orderId: string): Promise<SalesDocumentView | null>;
 }

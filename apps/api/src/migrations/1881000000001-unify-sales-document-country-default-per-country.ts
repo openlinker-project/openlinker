@@ -39,17 +39,42 @@ export class UnifySalesDocumentCountryDefaultPerCountry1881000000001
     // Keep exactly one row per `country` — the most recently updated,
     // ties broken by `id` so the statement is deterministic even when two
     // rows share an `updated_at` instant.
+    //
+    // The losing row is a fiscal-routing setting an operator chose, so the
+    // delete names what it dropped rather than being silent — the `DO $$ ...
+    // RAISE NOTICE` shape `1788000000001-rename-marketplace-capability`
+    // already uses for a migration-log breadcrumb. It cannot be reconstructed
+    // from the surviving row (see `down()`), so the migration log is the only
+    // record of it that exists afterwards.
     await queryRunner.query(`
-      WITH ranked AS (
-        SELECT "id",
-               ROW_NUMBER() OVER (
-                 PARTITION BY "country"
-                 ORDER BY "updated_at" DESC, "id" DESC
-               ) AS rn
-        FROM "sales_document_country_defaults"
-      )
-      DELETE FROM "sales_document_country_defaults"
-      WHERE "id" IN (SELECT "id" FROM ranked WHERE rn > 1)
+      DO $$
+      DECLARE removed_pairs text;
+      BEGIN
+        WITH ranked AS (
+          SELECT "id",
+                 ROW_NUMBER() OVER (
+                   PARTITION BY "country"
+                   ORDER BY "updated_at" DESC, "id" DESC
+                 ) AS rn
+          FROM "sales_document_country_defaults"
+        ), removed AS (
+          DELETE FROM "sales_document_country_defaults"
+          WHERE "id" IN (SELECT "id" FROM ranked WHERE rn > 1)
+          RETURNING "country", "document_kind"
+        )
+        SELECT string_agg(
+                 '(' || "country" || ', ' || "document_kind" || ')',
+                 ', ' ORDER BY "country", "document_kind"
+               )
+          INTO removed_pairs
+          FROM removed;
+
+        IF removed_pairs IS NOT NULL THEN
+          RAISE NOTICE
+            '[#3177] Dropped the superseded sales-document country default(s) %. A country now holds at most one default; the most recently updated row was kept.',
+            removed_pairs;
+        END IF;
+      END$$;
     `);
 
     await queryRunner.query(

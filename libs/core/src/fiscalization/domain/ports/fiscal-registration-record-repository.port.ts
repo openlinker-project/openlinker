@@ -56,7 +56,17 @@ export interface FiscalRegistrationRecordRepositoryPort {
    * read: a document registration is real connection activity, and it must
    * count even when the `sync_jobs` row that dispatched it has aged out of
    * that read's own recency window, or predates job-based dispatch (#2525)
-   * entirely. Returns `[]` for a connection with no records.
+   * entirely.
+   *
+   * **The selection clock is not the comparison clock.** The window is the
+   * newest `limit` rows by `createdAt`, while the caller ranks them by
+   * `registeredAt ?? updatedAt`. A record created outside that window but
+   * registered recently — a long-running `in-doubt` registration that #2520's
+   * reconcile later resolved, or one that spent the retry ladder's 6-hour
+   * backoff before succeeding — therefore never reaches the merge, so the
+   * caller's "last succeeded" is a lower bound rather than an exact answer. An
+   * accepted proxy for a diagnostics read, not an invariant. Returns `[]` for
+   * a connection with no records.
    */
   findRecentByConnectionId(
     connectionId: string,
