@@ -64,8 +64,6 @@ import type {
   ConnectionFilters,
   ConnectionRateLimit,
 } from '@openlinker/core/identifier-mapping';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync';
-import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
@@ -77,6 +75,10 @@ import {
   type IDemoModeService,
 } from '../../auth/demo-mode.service.interface';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import {
+  IConnectionDiagnosticsService,
+  CONNECTION_DIAGNOSTICS_SERVICE_TOKEN,
+} from '../application/interfaces/connection-diagnostics.service.interface';
 
 @ApiBearerAuth()
 @ApiTags('connections')
@@ -86,8 +88,6 @@ export class ConnectionController {
 
   constructor(
     private readonly connectionService: ConnectionService,
-    @Inject(SYNC_JOB_REPOSITORY_TOKEN)
-    private readonly syncJobRepository: SyncJobRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
@@ -97,7 +97,9 @@ export class ConnectionController {
     @Inject(RATE_LIMIT_STATUS_SERVICE_TOKEN)
     private readonly rateLimitStatusService: IRateLimitStatusService,
     @Inject(DEMO_MODE_SERVICE_TOKEN)
-    private readonly demoModeService: IDemoModeService
+    private readonly demoModeService: IDemoModeService,
+    @Inject(CONNECTION_DIAGNOSTICS_SERVICE_TOKEN)
+    private readonly connectionDiagnosticsService: IConnectionDiagnosticsService
   ) {}
 
   private async toResponse(
@@ -231,9 +233,17 @@ export class ConnectionController {
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async getDiagnostics(@Param('id') id: string): Promise<ConnectionDiagnosticsResponseDto> {
-    const connection = await this.connectionService.get(id);
-    const recentJobs = await this.syncJobRepository.findRecentByConnectionId(id, 10);
-    return ConnectionDiagnosticsResponseDto.fromDomain(connection, recentJobs);
+    // Thin by design: the three-source fan-out and its per-source degradation
+    // policy live in ConnectionDiagnosticsService (#3179), alongside the other
+    // composed connection reads.
+    const reads = await this.connectionDiagnosticsService.getDiagnostics(id);
+    return ConnectionDiagnosticsResponseDto.fromDomain(
+      reads.connection,
+      reads.recentJobs,
+      reads.recentFiscalRegistrations,
+      reads.recentInvoices,
+      reads.unreadableSources
+    );
   }
 
   @Roles('admin')
