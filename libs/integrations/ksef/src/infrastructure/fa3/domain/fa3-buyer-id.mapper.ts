@@ -47,6 +47,24 @@ export const EU_VAT_PATTERN = /^([A-Z]{2})([A-Za-z0-9]+)$/;
 export const COUNTRY_PREFIXED_ID_PATTERN = EU_VAT_PATTERN;
 
 /**
+ * The scheme tag to use when a buyer tax id has to be rendered into a STABLE
+ * handle rather than placed into a document (#3225 review).
+ *
+ * Deliberately does NOT throw where {@link resolveBuyerIdentity} does. That
+ * function refuses an untagged non-domestic value because placing it would
+ * mean guessing an element of a document bound for a tax authority; a customer
+ * handle has no such consequence, and throwing would fail `upsertCustomer` for
+ * a buyer the adapter can otherwise serve. It resolves the domestic case so
+ * one buyer keeps one handle whichever path issued - tagged from the HTTP
+ * path, untagged from auto-issue - and falls back to a literal `untagged`
+ * rather than ever rendering `undefined` into a persisted identifier.
+ */
+export function resolveBuyerIdSchemeTag(taxId: TaxIdentifier): string {
+  if (taxId.scheme !== undefined) return taxId.scheme.toLowerCase();
+  return NIP_PATTERN.test(taxId.value.trim()) ? 'pl-nip' : 'untagged';
+}
+
+/**
  * Resolve a neutral buyer `TaxIdentifier` (or `null` for B2C) to the FA(3)
  * `Podmiot2` choice.
  *

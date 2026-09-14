@@ -182,7 +182,19 @@ body {
 .closing ul { margin: 0; padding-left: 20px; color: var(--fg-2); max-width: 68ch; }
 .closing li { margin-bottom: 9px; }
 
-/* ── App-faithful replicas (real OpenLinker tokens) ────────────── */
+/* ── App-faithful replicas (real OpenLinker tokens) ─────────────────────────
+ *
+ * Every custom property below is a real name from apps/web/src/index.css, with
+ * the value lifted verbatim, so a declaration copied out of a screen here
+ * resolves unchanged in the app.
+ *
+ * Deliberately SINGLE-THEME (light). Light is the app's default palette
+ * (index.css :root), and these screens are read for what the sales-document
+ * surfaces SAY, not for how they survive a theme swap - a second palette would
+ * double every screen in an already long document and buy no decision. The
+ * shipped components are theme-aware; nothing here asks them not to be. A
+ * mockup that does need both is analytics-display-currency-picker.html.
+ * ───────────────────────────────────────────────────────────────────────── */
 .app {
   --bg-surface: #fff;
   --bg-canvas: oklch(99% .003 80);
@@ -192,14 +204,14 @@ body {
   --text-primary: oklch(20% .012 80);
   --text-secondary: oklch(38% .01 80);
   --text-muted: oklch(52% .008 80);
-  --accent: oklch(68% .18 50);
-  --accent-soft: oklch(96% .04 60);
-  --accent-border: oklch(85% .1 55);
-  --accent-fg: oklch(40% .16 50);
-  --ok-soft: oklch(96% .04 150); --ok-border: oklch(85% .08 150); --ok-fg: oklch(36% .12 150);
-  --warn-soft: oklch(96% .05 85); --warn-border: oklch(85% .1 85); --warn-fg: oklch(42% .12 80);
-  --err-soft: oklch(96% .04 25); --err-border: oklch(85% .1 25); --err-fg: oklch(42% .16 25);
-  --info-soft: oklch(96% .03 245); --info-border: oklch(85% .08 245); --info-fg: oklch(40% .12 245);
+  --accent-primary: oklch(68% .18 50);
+  --accent-primary-soft: oklch(96% .04 60);
+  --accent-primary-border: oklch(85% .1 55);
+  --accent-primary-soft-strong: oklch(40% .16 50);
+  --status-success-soft: oklch(96% .04 150); --status-success-border: oklch(85% .08 150); --status-success-fg: oklch(36% .12 150);
+  --status-warning-soft: oklch(96% .05 85); --status-warning-border: oklch(85% .1 85); --status-warning-fg: oklch(42% .12 80);
+  --status-error-soft: oklch(96% .04 25); --status-error-border: oklch(85% .1 25); --status-error-fg: oklch(42% .16 25);
+  --status-info-soft: oklch(96% .03 245); --status-info-border: oklch(85% .08 245); --status-info-fg: oklch(40% .12 245);
 
   background: var(--bg-canvas);
   color: var(--text-primary);
@@ -212,7 +224,7 @@ body {
 .app * { box-sizing: border-box; }
 .app .eyebrow {
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--accent); margin: 0 0 6px; font-weight: 500;
+  color: var(--accent-primary); margin: 0 0 6px; font-weight: 500;
 }
 .app h4 { font-size: 15px; font-weight: 600; margin: 0 0 4px; color: var(--text-primary); }
 .app .sub { font-size: 12.5px; color: var(--text-muted); margin: 0 0 14px; }
@@ -237,30 +249,30 @@ body {
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase;
   border: 1px solid var(--border-default); background: var(--bg-muted); color: var(--text-secondary);
 }
-.app .pill--ok { background: var(--ok-soft); border-color: var(--ok-border); color: var(--ok-fg); }
-.app .pill--warn { background: var(--warn-soft); border-color: var(--warn-border); color: var(--warn-fg); }
-.app .pill--err { background: var(--err-soft); border-color: var(--err-border); color: var(--err-fg); }
-.app .pill--info { background: var(--info-soft); border-color: var(--info-border); color: var(--info-fg); }
+.app .pill--ok { background: var(--status-success-soft); border-color: var(--status-success-border); color: var(--status-success-fg); }
+.app .pill--warn { background: var(--status-warning-soft); border-color: var(--status-warning-border); color: var(--status-warning-fg); }
+.app .pill--err { background: var(--status-error-soft); border-color: var(--status-error-border); color: var(--status-error-fg); }
+.app .pill--info { background: var(--status-info-soft); border-color: var(--status-info-border); color: var(--status-info-fg); }
 .app .pill--muted { color: var(--text-muted); }
 .app .alert {
   border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.5;
-  border: 1px solid var(--warn-border); border-left: 3px solid var(--warn-fg);
-  background: var(--warn-soft); color: var(--warn-fg);
+  border: 1px solid var(--status-warning-border); border-left: 3px solid var(--status-warning-fg);
+  background: var(--status-warning-soft); color: var(--status-warning-fg);
 }
 .app .alert b { display: block; margin-bottom: 3px; color: var(--text-primary); }
-.app .alert--info { border-color: var(--info-border); border-left-color: var(--info-fg); background: var(--info-soft); color: var(--info-fg); }
-.app .alert--err { border-color: var(--err-border); border-left-color: var(--err-fg); background: var(--err-soft); color: var(--err-fg); }
+.app .alert--info { border-color: var(--status-info-border); border-left-color: var(--status-info-fg); background: var(--status-info-soft); color: var(--status-info-fg); }
+.app .alert--err { border-color: var(--status-error-border); border-left-color: var(--status-error-fg); background: var(--status-error-soft); color: var(--status-error-fg); }
 .app .btn {
   display: inline-flex; align-items: center; justify-content: center;
   padding: 7px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
   border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-primary);
 }
-.app .btn--primary { background: var(--accent); border-color: var(--accent); color: oklch(18% .012 50); }
+.app .btn--primary { background: var(--accent-primary); border-color: var(--accent-primary); color: oklch(18% .012 50); }
 .app .btn--ghost { background: transparent; }
 .app .field { display: block; margin-bottom: 12px; }
 .app .field > span {
   display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
-  text-transform: uppercase; color: var(--accent); margin-bottom: 5px; font-weight: 500;
+  text-transform: uppercase; color: var(--accent-primary); margin-bottom: 5px; font-weight: 500;
 }
 .app .control {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -283,7 +295,7 @@ body {
 }
 .app table.t td { padding: 10px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
 .app table.t tr:last-child td { border-bottom: 0; }
-.app table.t .new { background: var(--accent-soft); }
+.app table.t .new { background: var(--accent-primary-soft); }
 .app .disclosure {
   font-size: 12.5px; color: var(--text-link, oklch(50% .14 250)); text-decoration: underline;
   text-underline-offset: 3px; cursor: default;
@@ -384,16 +396,16 @@ body.show-hooks .app [data-testid]::after {
 .app .seg { display: inline-flex; border: 1px solid var(--border-default); border-radius: 7px; overflow: hidden; }
 .app .seg > span { padding: 7px 15px; font-size: 13px; color: var(--text-secondary); background: var(--bg-surface); }
 .app .seg > span + span { border-left: 1px solid var(--border-default); }
-.app .seg > span.on { background: var(--accent); color: oklch(18% .012 50); font-weight: 500; }
+.app .seg > span.on { background: var(--accent-primary); color: oklch(18% .012 50); font-weight: 500; }
 .app .readback {
-  border: 1px solid var(--info-border); border-left: 3px solid var(--info-fg);
-  background: var(--info-soft); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--info-fg);
+  border: 1px solid var(--status-info-border); border-left: 3px solid var(--status-info-fg);
+  background: var(--status-info-soft); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--status-info-fg);
 }
 .app .readback b { color: var(--text-primary); }
-.app .readback .eyebrow { color: var(--info-fg); margin-bottom: 4px; }
+.app .readback .eyebrow { color: var(--status-info-fg); margin-bottom: 4px; }
 .app .amt { font-family: var(--mono); }
 .app .btn[aria-disabled="true"], .app .btn--off {
-  background: var(--accent-soft); border-color: var(--accent-border);
+  background: var(--accent-primary-soft); border-color: var(--accent-primary-border);
   color: oklch(62% .06 50);
 }
 .app .rulecard {
@@ -404,7 +416,7 @@ body.show-hooks .app [data-testid]::after {
 .app .chips { display: flex; flex-wrap: wrap; gap: 5px; }
 .app .stepno {
   display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
-  background: var(--accent-soft); border: 1px solid var(--accent-border); color: var(--accent-fg);
+  background: var(--accent-primary-soft); border: 1px solid var(--accent-primary-border); color: var(--accent-primary-soft-strong);
   font-family: var(--mono); font-size: 10.5px; flex: none;
 }
 
@@ -448,14 +460,14 @@ body.show-hooks .app [data-testid]::after {
   background: var(--border-default);
 }
 .app .ladder .node.done + .node.done::before,
-.app .ladder .node.done + .node.now::before { background: var(--ok-fg); }
+.app .ladder .node.done + .node.now::before { background: var(--status-success-fg); }
 .app .ladder .dot {
   display: block; position: relative; z-index: 1; width: 18px; height: 18px; border-radius: 50%;
   margin: 0 auto 7px; background: var(--bg-surface); border: 2px solid var(--border-default);
 }
-.app .ladder .node.done .dot { background: var(--ok-fg); border-color: var(--ok-fg); }
-.app .ladder .node.now .dot { border-color: var(--warn-fg); background: var(--warn-soft); }
-.app .ladder .node.fail .dot { background: var(--err-fg); border-color: var(--err-fg); }
+.app .ladder .node.done .dot { background: var(--status-success-fg); border-color: var(--status-success-fg); }
+.app .ladder .node.now .dot { border-color: var(--status-warning-fg); background: var(--status-warning-soft); }
+.app .ladder .node.fail .dot { background: var(--status-error-fg); border-color: var(--status-error-fg); }
 .app .ladder .lbl2 { font-size: 11.5px; font-weight: 500; color: var(--text-primary); display: block; }
 .app .ladder .node:not(.done):not(.now):not(.fail) .lbl2 { color: var(--text-muted); font-weight: 400; }
 .app .ladder .when2 { font-family: var(--mono); font-size: 9.5px; color: var(--text-muted); display: block; margin-top: 2px; }
@@ -536,7 +548,7 @@ body.show-hooks .app [data-testid]::after {
       <div>
         <p class="state-label">Today — one of one</p>
         <div class="screen-frame" style="border-style:solid;border-color:var(--rule);background:transparent">
-          <div class="app">
+          <div class="app" data-state="connection-roles-today">
             <p class="eyebrow">Capabilities</p>
             <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:10px">
               <h4>Enabled roles</h4><span class="pill pill--muted">1 of 1 enabled</span>
@@ -553,7 +565,7 @@ body.show-hooks .app [data-testid]::after {
       <div>
         <p class="state-label">Target — two of two</p>
         <div class="screen-frame">
-          <div class="app">
+          <div class="app" data-state="connection-roles-target">
             <p class="eyebrow">Capabilities</p>
             <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:10px">
               <h4>Enabled roles</h4><span class="pill pill--ok" data-testid="capability-count">2 of 2 enabled</span>
@@ -575,7 +587,7 @@ body.show-hooks .app [data-testid]::after {
     <div class="screen" style="margin-top:22px">
       <div class="screen-head"><span class="n">S2</span><h3>Edit connection — turning it on</h3><span class="route">/connections/:connectionId/edit</span></div>
       <div class="screen-frame screen-frame--fit">
-        <div class="app" style="max-width:520px">
+        <div class="app" data-state="connection-edit-capabilities" style="max-width:520px">
           <p class="eyebrow">Capabilities</p>
           <p class="sub">What this connection is allowed to do. Only roles its adapter advertises can be enabled.</p>
           <div class="card" style="margin-bottom:8px">
@@ -618,7 +630,7 @@ body.show-hooks .app [data-testid]::after {
     <div class="screen">
       <div class="screen-head"><span class="n">S3</span><h3>Connected providers</h3><span class="route">/settings/sales-documents</span></div>
       <div class="screen-frame">
-        <div class="app" style="padding:0">
+        <div class="app" data-state="connected-providers-table" style="padding:0">
           <div style="overflow-x:auto">
             <table class="t" data-testid="providers-table">
               <thead><tr><th>Provider</th><th>Capability</th><th>Issues</th><th>Goes first</th><th>Trigger</th></tr></thead>
@@ -678,7 +690,7 @@ body.show-hooks .app [data-testid]::after {
     <div class="screen">
       <div class="screen-head"><span class="n">S4</span><h3>Sales document — awaiting submission</h3><span class="route">/orders/:internalOrderId → Sales document</span></div>
       <div class="screen-frame screen-frame--fit">
-        <div class="app" style="max-width:470px">
+        <div class="app" data-state="invoice-awaiting-submission" style="max-width:470px">
           <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:12px">
             <h4>Sales document</h4>
             <span class="pill pill--warn" data-testid="sales-document-status-waiting">Invoice · Awaiting submission</span>
@@ -734,7 +746,7 @@ body.show-hooks .app [data-testid]::after {
     <div class="screen">
       <div class="screen-head"><span class="n">S5</span><h3>Invoice list — clearance</h3><span class="route">/invoices</span></div>
       <div class="screen-frame">
-        <div class="app">
+        <div class="app" data-state="invoice-list-clearance">
           <div class="row" style="margin-bottom:12px">
             <div class="control" style="flex:0 0 240px" data-testid="invoices-filter-regulatory"><span>All clearance states</span><span class="chev">▾</span></div>
             <div class="btn btn--ghost" data-testid="invoices-chip-awaiting">Awaiting submission 4 · oldest 12 h</div>
@@ -791,7 +803,7 @@ body.show-hooks .app [data-testid]::after {
     <div class="screen">
       <div class="screen-head"><span class="n">S6</span><h3>Sales document — already issued</h3><span class="route">/orders/:internalOrderId</span></div>
       <div class="screen-frame screen-frame--fit">
-        <div class="app" style="max-width:470px">
+        <div class="app" data-state="sales-document-already-issued" style="max-width:470px">
           <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:12px">
             <h4>Sales document</h4>
             <span class="pill pill--ok">Fiscal receipt · Registered</span>
@@ -823,6 +835,24 @@ body.show-hooks .app [data-testid]::after {
   <div class="spine"><span class="num">⌘</span></div>
   <div class="body">
     <h2>Test hooks</h2>
+
+    <p>Each screen root carries a <code>data-state</code> naming the screen, so a ticket or an
+       E2E spec cites the screen rather than an inner hook that several screens share.</p>
+
+    <div class="tbl-scroll">
+    <table class="tbl hooks-tbl">
+      <thead><tr><th>data-state</th><th>Screen</th></tr></thead>
+      <tbody>
+        <tr><td>connection-roles-today</td><td>Connection roles — one of one, as shipped</td></tr>
+        <tr><td>connection-roles-target</td><td>Connection roles — both roles, the target</td></tr>
+        <tr><td>connection-edit-capabilities</td><td>S2 — enabling the second role</td></tr>
+        <tr><td>connected-providers-table</td><td>S3 — providers, roles and triggers</td></tr>
+        <tr><td>invoice-awaiting-submission</td><td>S4 — clearance ladder, waiting with the provider</td></tr>
+        <tr><td>invoice-list-clearance</td><td>S5 — list filtered by clearance state</td></tr>
+        <tr><td>sales-document-already-issued</td><td>S6 — one sale, one document, already issued</td></tr>
+      </tbody>
+    </table>
+    </div>
 
     <div class="tbl-scroll">
     <table class="tbl hooks-tbl">

@@ -26,10 +26,11 @@ import { ListingsModule as CoreListingsModule } from '@openlinker/core/listings/
 // Safe for the same reason CoreListingsModule is: the core InventoryModule
 // imports the CORE IntegrationsModule, a different class from this one.
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
-// #3179 — ConnectionController's diagnostics read folds in the connection's
-// own document-registration activity (fiscal receipts / invoices) alongside
-// sync_jobs, so it needs FISCAL_REGISTRATION_SERVICE_TOKEN and
-// INVOICE_SERVICE_TOKEN. No cycle: neither core module imports this one.
+// #3179 — ConnectionDiagnosticsService folds the connection's own
+// document-registration activity (fiscal receipts / invoices) into the
+// diagnostics read alongside sync_jobs, so it needs
+// FISCAL_REGISTRATION_SERVICE_TOKEN and INVOICE_SERVICE_TOKEN. No cycle:
+// neither core module imports this one.
 import { FiscalizationModule as CoreFiscalizationModule } from '@openlinker/core/fiscalization';
 import { InvoicingModule as CoreInvoicingModule } from '@openlinker/core/invoicing';
 import { WebhooksCoreModule } from '@openlinker/core/webhooks';
@@ -50,6 +51,8 @@ import { WebhookStatusService } from './application/services/webhook-status.serv
 import { WEBHOOK_STATUS_SERVICE_TOKEN } from './application/interfaces/webhook-status.service.interface';
 import { RateLimitStatusService } from './application/services/rate-limit-status.service';
 import { RATE_LIMIT_STATUS_SERVICE_TOKEN } from './application/interfaces/rate-limit-status.service.interface';
+import { ConnectionDiagnosticsService } from './application/services/connection-diagnostics.service';
+import { CONNECTION_DIAGNOSTICS_SERVICE_TOKEN } from './application/interfaces/connection-diagnostics.service.interface';
 import { DemoModeService } from '../auth/demo-mode.service';
 import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
 
@@ -98,6 +101,10 @@ import { DEMO_MODE_SERVICE_TOKEN } from '../auth/demo-mode.service.interface';
     // explicit import needed here.
     RateLimitStatusService,
     { provide: RATE_LIMIT_STATUS_SERVICE_TOKEN, useExisting: RateLimitStatusService },
+    // The connection-health read (#3179), composed here for the same reason the
+    // two above are: one app-layer service per composed read, controllers thin.
+    ConnectionDiagnosticsService,
+    { provide: CONNECTION_DIAGNOSTICS_SERVICE_TOKEN, useExisting: ConnectionDiagnosticsService },
     // Wired locally (mirrors SystemModule) — DemoModeService depends only on
     // the global ConfigService, so IntegrationsModule doesn't need AuthModule
     // just to gate demo-viewer config visibility (#1616 review fix).

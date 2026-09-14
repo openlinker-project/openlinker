@@ -336,9 +336,11 @@ describe('Order health summary (integration)', () => {
         recordStatus: 'ready',
         syncStatus: [],
       });
-      await repository.updateSalesDocumentBlock(seeded.internalOrderId, {
-        reason: 'trigger-model-manual',
-      });
+      await repository.updateSalesDocumentBlock(
+        seeded.internalOrderId,
+        { reason: 'trigger-model-manual' },
+        { action: 'set', matchedRuleId: null },
+      );
 
       // The reason IS persisted (ADR-041 lists it) and the per-order badge renders
       // it — but `manual` is `parseTriggerModel`'s default, so counting it would
@@ -365,23 +367,30 @@ describe('Order health summary (integration)', () => {
         recordStatus: 'ready',
         syncStatus: [],
       });
-      await repository.updateSalesDocumentBlock(seeded.internalOrderId, {
-        reason: 'trigger-model-batched',
-      });
+      await repository.updateSalesDocumentBlock(
+        seeded.internalOrderId,
+        { reason: 'trigger-model-batched' },
+        { action: 'set', matchedRuleId: null },
+      );
       const first = await repository.findById(seeded.internalOrderId);
       const firstTouched = first!.updatedAt.getTime();
 
       // Re-writing the SAME outcome must not touch the row: the gate is
       // level-evaluated, so this is the common case on every re-poll, and
       // `updatedAt` is a live filter axis (`FulfillmentStatusSyncService`).
-      await repository.updateSalesDocumentBlock(seeded.internalOrderId, {
-        reason: 'trigger-model-batched',
-      });
+      await repository.updateSalesDocumentBlock(
+        seeded.internalOrderId,
+        { reason: 'trigger-model-batched' },
+        { action: 'set', matchedRuleId: null },
+      );
       const second = await repository.findById(seeded.internalOrderId);
       expect(second!.updatedAt.getTime()).toBe(firstTouched);
 
       // A genuinely different answer still wins.
-      await repository.updateSalesDocumentBlock(seeded.internalOrderId, null);
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, null, {
+        action: 'set',
+        matchedRuleId: null,
+      });
       const third = await repository.findById(seeded.internalOrderId);
       expect(third!.salesDocumentBlockReason).toBeNull();
       expect(third!.updatedAt.getTime()).toBeGreaterThanOrEqual(firstTouched);
@@ -396,11 +405,15 @@ describe('Order health summary (integration)', () => {
         syncStatus: [{ destinationConnectionId: DEST, status: 'failed', error: 'x' }],
       });
 
-      await repository.updateSalesDocumentBlock(seeded.internalOrderId, {
-        reason: 'unresolved-routing',
-        unresolvedReason: 'ambiguous-connection-no-primary',
-        detail: '2 invoicing connections, none marked primary',
-      });
+      await repository.updateSalesDocumentBlock(
+        seeded.internalOrderId,
+        {
+          reason: 'unresolved-routing',
+          unresolvedReason: 'ambiguous-connection-no-primary',
+          detail: '2 invoicing connections, none marked primary',
+        },
+        { action: 'set', matchedRuleId: null },
+      );
 
       let found = await repository.findById(seeded.internalOrderId);
       expect(found?.salesDocumentBlockReason).toBe('unresolved-routing');
@@ -413,13 +426,42 @@ describe('Order health summary (integration)', () => {
       expect(found?.mappingFailureReason).toBe('unresolved item ref');
 
       // `null` clears all three — the level-triggered clear, and the ordinary path.
-      await repository.updateSalesDocumentBlock(seeded.internalOrderId, null);
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, null, {
+        action: 'set',
+        matchedRuleId: null,
+      });
 
       found = await repository.findById(seeded.internalOrderId);
       expect(found?.salesDocumentBlockReason).toBeNull();
       expect(found?.salesDocumentUnresolvedReason).toBeNull();
       expect(found?.salesDocumentBlockDetail).toBeNull();
       expect(found?.recordStatus).toBe('awaiting_mapping');
+    });
+
+    it('preserve leaves the matched rule alone while the block clears (#3186 review)', async () => {
+      const ds = harness.getDataSource();
+      const seeded = await createTestOrderRecord(ds, {
+        sourceConnectionId: SOURCE_A,
+        recordStatus: 'ready',
+        syncStatus: [],
+      });
+      await repository.updateSalesDocumentBlock(
+        seeded.internalOrderId,
+        { reason: 'trigger-model-manual' },
+        { action: 'set', matchedRuleId: 'rule-1' },
+      );
+
+      // This is the manual-issue clear path: the operator issued by hand, so the
+      // block goes, but nothing on that path re-decided which rule chose the
+      // document kind. Writing `null` there would drop "Why this kind?" off the
+      // panel until an unrelated transition put it back.
+      await repository.updateSalesDocumentBlock(seeded.internalOrderId, null, {
+        action: 'preserve',
+      });
+
+      const found = await repository.findById(seeded.internalOrderId);
+      expect(found?.salesDocumentBlockReason).toBeNull();
+      expect(found?.salesDocumentMatchedRuleId).toBe('rule-1');
     });
 
     it('upsert does NOT clear a block written by updateSalesDocumentBlock', async () => {
@@ -429,9 +471,11 @@ describe('Order health summary (integration)', () => {
         recordStatus: 'ready',
         syncStatus: [],
       });
-      await repository.updateSalesDocumentBlock(seeded.internalOrderId, {
-        reason: 'trigger-model-manual',
-      });
+      await repository.updateSalesDocumentBlock(
+        seeded.internalOrderId,
+        { reason: 'trigger-model-manual' },
+        { action: 'set', matchedRuleId: null },
+      );
 
       const record = await repository.findById(seeded.internalOrderId);
       expect(record).not.toBeNull();

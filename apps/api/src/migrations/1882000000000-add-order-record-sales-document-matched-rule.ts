@@ -23,7 +23,11 @@
  *
  * Written ONLY by `OrderRecordRepository.updateSalesDocumentBlock`, in the
  * SAME statement as the three existing `salesDocumentBlock*` columns
- * (#2100) — see that method's doc comment. Excluded from `toOrm`/`upsert`'s
+ * (#2100) — see that method's doc comment — and only when that call carries
+ * `{action: 'set'}`. A caller that decided the block ALONE (the manual-issue
+ * clear) says `{action: 'preserve'}` and the column is left out of the
+ * statement entirely, so clearing a badge never erases why the kind was
+ * chosen. Excluded from `toOrm`/`upsert`'s
  * write set for the identical reason those three are: `persistOrder` runs
  * BEFORE the auto-issue gate on every ingestion, so round-tripping it here
  * would null the column and then immediately re-set it, racing a peer

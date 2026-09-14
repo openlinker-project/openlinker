@@ -111,7 +111,22 @@ function evaluateCondition(
     return { matches: order.buyerHasTaxId === condition.value, dataProblem: null };
   }
   if (condition.field === 'orderCountry') {
-    return { matches: order.country === condition.value, dataProblem: null };
+    // Case-insensitive by design (#3176, review finding 2). `createRule` folds
+    // a NEW rule's condition value to uppercase, but an install that authored
+    // `orderCountry eq 'pl'` before this release still carries the stray-case
+    // value — and `SalesDocumentRulesService.resolveRouting` now always hands
+    // this function an uppercased `order.country`, so a strict compare would
+    // make that stored condition permanently and silently unmatchable. Folding
+    // HERE rather than rewriting the `conditions` jsonb is what keeps
+    // `sales_document_rules.conditions_hash` consistent with the row it
+    // describes: that hash is a SHA-256 over the canonical JSON computed in
+    // application code, so a migration could rewrite the value but could not
+    // recompute the hash, and the hash is a column of
+    // `UQ_sales_document_rules_country_hash_from`.
+    return {
+      matches: order.country.toUpperCase() === condition.value.toUpperCase(),
+      dataProblem: null,
+    };
   }
   // condition.field === 'orderTotalGross'
   const dataProblem = checkAmountConditionDataProblem(order, condition);

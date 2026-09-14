@@ -527,7 +527,7 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith(
         'ol_order_test',
         block,
-        null,
+        { action: 'set', matchedRuleId: null },
       );
     });
 
@@ -542,7 +542,10 @@ describe('OrderIngestionService', () => {
       // a caller-side comparison would have to trust a record read before the
       // destination round-trip, and a concurrent clear could make a genuinely
       // new answer look unchanged.
-      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null, null);
+      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null, {
+        action: 'set',
+        matchedRuleId: null,
+      });
     });
 
     it('threads the matched rule id through on `none` (#3186)', async () => {
@@ -554,10 +557,13 @@ describe('OrderIngestionService', () => {
 
       await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-11');
 
+      // The gate is the ONE caller that re-decides the rule, so it always says
+      // `set` — never `preserve` (#3186 review), or a deleted rule would outlive
+      // the decision it produced.
       expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith(
         'ol_order_test',
         null,
-        'rule-1',
+        { action: 'set', matchedRuleId: 'rule-1' },
       );
     });
 

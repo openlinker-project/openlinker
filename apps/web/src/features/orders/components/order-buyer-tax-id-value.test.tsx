@@ -51,5 +51,8 @@ describe('OrderBuyerTaxIdValue (#3180)', () => {
 
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip).toHaveTextContent(/OL_STORE_PII=false/);
+    // The mechanism alone reads as cosmetic. The consequence is what makes the
+    // caveat actionable: on that deployment a whole document type is unreachable.
+    expect(tooltip).toHaveTextContent(/simplified invoice can never issue/);
   });
 });

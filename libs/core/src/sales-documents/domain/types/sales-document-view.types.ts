@@ -292,6 +292,12 @@ export interface SalesDocumentView {
    * the two cases that collapse into `null`. Verbatim from the persisted
    * `order_records.salesDocumentMatchedRuleId`, joined against the rule store;
    * a surface renders it or renders nothing, exactly like `blockReason`.
+   *
+   * DETAIL-ONLY (#3186 review): resolved by `ISalesDocumentViewService`'s
+   * single-order read and left `null` by the batched list read, so on a list
+   * `null` ALSO means "this read did not resolve it". Only a surface that
+   * obtained the view from the single-order read may say anything about why a
+   * kind was chosen.
    */
   readonly matchedRule: SalesDocumentMatchedRuleView | null;
 }

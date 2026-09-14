@@ -10,8 +10,21 @@
  * here may ever be a country-specific literal — enforced by
  * `libs/core/src/sales-documents/__tests__/neutral-vocabulary.spec.ts`, a
  * build-failing sweep over this whole concern (the #3183 port of the
- * fiscalization litmus, ADR-042 decision 4), not merely a documentation
+ * fiscalization litmus, ADR-042 decision 4 — same rule, a different matcher,
+ * for the reason that spec's own header gives), not merely a documentation
  * promise the way the old "grep-verified" wording implied.
+ *
+ * A COST OF THAT CHOICE, recorded so it is visible to whoever revisits
+ * ADR-041 decision 5: because the sweep covers prose too, this comment can
+ * name only the neutral spelling and not the country-specific one it replaces,
+ * so the side-by-side contrast that once made the rule teachable cannot be
+ * written down here. The alternative — amend the ADR to carve doc comments
+ * out, as ADR-026 does for `invoicing`, whose sibling guard shipping in the
+ * same change demonstrates that narrower shape — was weighed and declined:
+ * ADR-041 decision 5 states the ban over "this concern" without qualification,
+ * and a guard looser than its own ADR is worse than a comment that has to
+ * describe the banned half instead of showing it. Changing that means changing
+ * the ADR and the sweep's scope together, never the sweep alone.
  *
  * `computeSalesDocumentConditionsHash` imports `node:crypto` — a Node builtin,
  * not a framework and not a sibling `@openlinker/core/<ctx>` barrel, so it does
@@ -106,10 +119,18 @@ export function isCurrencyCode(value: unknown): value is string {
  * convention (negative when `a < b`).
  *
  * Deliberately NOT via `parseFloat`: that is the step which reintroduces the
- * binary-float error the decimal string was chosen to avoid, and this
- * comparison decides which fiscal document a real sale gets. Both sides are
+ * binary-float error the decimal string was chosen to avoid. Both sides are
  * already known well-formed, so it is an integer comparison once the fractional
  * parts are padded to a common width.
+ *
+ * **It does NOT decide which document a sale gets** (#3241 review, correcting
+ * an earlier version of this comment that said so). `evaluateSalesDocumentRules`
+ * compares with `Number(condition.amount)` against `order.totalGross`, which is
+ * already a JS number - no comparison can be more exact than that operand, so
+ * routing an order through BigInt would buy nothing. What this function serves
+ * is comparison between two AUTHORED amounts, where both sides are decimal
+ * strings and exactness is real: the overlap detector (#3190) intersects two
+ * rules' bounds with it.
  */
 export function compareDecimalAmountStrings(a: string, b: string): number {
   const [aInt, aFrac = ''] = a.split('.');

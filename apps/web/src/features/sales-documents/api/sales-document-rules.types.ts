@@ -6,7 +6,10 @@
  * used by `sales-documents.types.ts` (#2159). `SalesDocumentConditionField` /
  * `SalesDocumentThresholdComparisonOp` mirror
  * `SalesDocumentConditionFieldValues` / `SalesDocumentThresholdComparisonOpValues`
- * (`@openlinker/core/sales-documents`) by convention, not by import.
+ * (`@openlinker/core/sales-documents`) by re-declaration, not by import. The
+ * field vocabulary is held to core by
+ * `scripts/check-sales-document-condition-field-mirror.mjs`;
+ * the operator vocabulary has no such guard yet.
  *
  * @module apps/web/src/features/sales-documents/api
  */

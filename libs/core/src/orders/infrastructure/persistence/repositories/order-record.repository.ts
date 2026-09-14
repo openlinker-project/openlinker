@@ -41,6 +41,7 @@ import type {
   OrderRecordSortDirection,
   FailedSyncValueSummary,
   OrderLifecyclePhaseSummary,
+  SalesDocumentMatchedRuleWrite,
 } from '../../../domain/types/order-record.types';
 import type { SlaState, OrderSlaSummary } from '../../../domain/types/order-sla.types';
 import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
@@ -2065,7 +2066,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    *
    * Unlike {@link markCancelled}, this is deliberately last-write-wins rather than
    * first-write-wins: the gate re-decides on every transition, so the NEWEST answer
-   * is the truthful one and an older reason must not survive it. `matchedRuleId`
+   * is the truthful one and an older reason must not survive it. `matchedRule`
    * moves the same way, in the SAME statement, but is guarded and compared
    * INDEPENDENTLY of the three block columns — a rule can decide the kind while
    * issuance stays blocked for an unrelated reason, so neither's null-ness may be
@@ -2074,7 +2075,7 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   async updateSalesDocumentBlock(
     internalOrderId: string,
     block: SalesDocumentBlock | null,
-    matchedRuleId?: string | null
+    matchedRule: SalesDocumentMatchedRuleWrite
   ): Promise<void> {
     // The no-op guard lives HERE, in the WHERE clause, rather than in the caller
     // (#2100 review). A caller-side comparison had to hold a record it read before
@@ -2097,13 +2098,35 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // watching. `releasedAt` is stamped on blocked -> none and cleared whenever a
     // block starts, so the pair always describes the CURRENT episode rather than
     // an arbitrary mix of two.
-    const ruleId = matchedRuleId ?? null;
+    //
+    // `preserve` (#3186 review) drops the rule column out of BOTH the SET list
+    // and the no-op guard rather than writing back a value read a moment ago:
+    // the manual-issue clear path has no opinion on which rule chose the kind,
+    // and a read-then-write there would reintroduce exactly the race this
+    // statement's caller-free guard exists to avoid. Only `$n` placeholders are
+    // composed below — never a value — so the statement stays fully bound.
+    const params: Array<string | null> = [
+      block?.reason ?? null,
+      block?.unresolvedReason ?? null,
+      block?.detail ?? null,
+    ];
+    let matchedRuleAssignment = '';
+    let matchedRuleGuard = '';
+    if (matchedRule.action === 'set') {
+      params.push(matchedRule.matchedRuleId);
+      const placeholder = `$${params.length}`;
+      matchedRuleAssignment = `"salesDocumentMatchedRuleId" = ${placeholder},`;
+      matchedRuleGuard = `OR "salesDocumentMatchedRuleId" IS DISTINCT FROM ${placeholder}`;
+    }
+    params.push(internalOrderId);
+    const orderIdPlaceholder = `$${params.length}`;
+
     await this.repository.query(
       `UPDATE "order_records"
           SET "salesDocumentBlockReason" = $1,
               "salesDocumentUnresolvedReason" = $2,
               "salesDocumentBlockDetail" = $3,
-              "salesDocumentMatchedRuleId" = $4,
+              ${matchedRuleAssignment}
               "salesDocumentBlockedAt" = CASE
                 WHEN $1 IS NOT NULL AND "salesDocumentBlockReason" IS NULL THEN now()
                 ELSE "salesDocumentBlockedAt"
@@ -2114,18 +2137,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
                 ELSE "salesDocumentBlockReleasedAt"
               END,
               "updatedAt" = now()
-        WHERE "internalOrderId" = $5
+        WHERE "internalOrderId" = ${orderIdPlaceholder}
           AND ("salesDocumentBlockReason" IS DISTINCT FROM $1
             OR "salesDocumentUnresolvedReason" IS DISTINCT FROM $2
             OR "salesDocumentBlockDetail" IS DISTINCT FROM $3
-            OR "salesDocumentMatchedRuleId" IS DISTINCT FROM $4)`,
-      [
-        block?.reason ?? null,
-        block?.unresolvedReason ?? null,
-        block?.detail ?? null,
-        ruleId,
-        internalOrderId,
-      ]
+            ${matchedRuleGuard})`,
+      params
     );
   }
 
