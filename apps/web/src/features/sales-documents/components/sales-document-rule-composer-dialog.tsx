@@ -4,11 +4,12 @@
  *
  * Document type stays EXACTLY two-valued — Invoice / Receipt — never a third
  * "Receipt with NIP" option (the independent-review correction the mockup's
- * own tab 02 documents): "include the buyer's tax ID on the receipt" is a
- * checkbox on the Receipt outcome, shown disabled with a caveat, since
- * eparagony.pl's `RegisterTransactionCommand` carries no `buyerTaxId` field
- * yet. The checkbox therefore submits NOTHING today — it exists so the
- * composer's shape doesn't need to change once that adapter gap closes.
+ * own tab 02 documents). There is no "include the buyer's tax ID on the
+ * receipt" toggle (#3182, epic #3173 tab 05): if the order carries a tax ID
+ * it goes to the adapter unconditionally, so no property on the rule or the
+ * routing decision was ever needed — the value travels with the order the
+ * way the currency does. `Customer tax ID` survives purely as a condition
+ * (`buyerHasTaxId` above).
  *
  * Always opened from `SalesDocumentRulesList`, which in turn only ever
  * renders inside `SalesDocumentCountryRoutingDialog` (#2188) - so this
@@ -354,19 +355,6 @@ export function SalesDocumentRuleComposerDialog({
               </Select>
             </div>
           </div>
-
-          {documentKind === 'fiscal-receipt' ? (
-            <div className="ack-row rule-composer-section__footnote-row">
-              <input type="checkbox" id="sd-rule-taxid-toggle" disabled />
-              <label htmlFor="sd-rule-taxid-toggle">
-                Include the buyer&apos;s tax ID on the receipt, where the destination supports it
-                <span className="muted-text" style={{ display: 'block', marginTop: 2 }}>
-                  A property of the Receipt outcome, not a separate document type. Not workable
-                  today — eparagony.pl&apos;s adapter has no tax-id field yet.
-                </span>
-              </label>
-            </div>
-          ) : null}
         </section>
 
         <section className="rule-composer-section">
