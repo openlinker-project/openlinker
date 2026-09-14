@@ -7,6 +7,7 @@
  */
 import type { PriceChangeEpisode } from '../entities/price-change-episode.entity';
 import type {
+  PriceChangeEpisodeClaimOutcome,
   PriceChangeEpisodeFilters,
   PriceChangeResolution,
   UpsertOpenPriceChangeEpisodeInput,
@@ -14,6 +15,17 @@ import type {
 
 export interface PriceChangeEpisodeRepositoryPort {
   findById(id: string): Promise<PriceChangeEpisode | null>;
+
+  /**
+   * Batched `findById` (#3162 review — `bulkAccept` previously called
+   * `findById` once per item in a loop; `docs/engineering-standards.md §
+   * When A Paginated Total Is Expensive` / the #2083 rule: a batched read
+   * happens ONCE, before the per-row loop, never inside it). Ids with no
+   * matching row are simply absent from the result — never a thrown error,
+   * since the caller (`loadActionable`) still needs its own not-found check
+   * per id to report which one.
+   */
+  findByIds(ids: readonly string[]): Promise<readonly PriceChangeEpisode[]>;
 
   /** The one open episode for this key, or `null` if none exists. */
   findOpenByKey(
@@ -63,13 +75,20 @@ export interface PriceChangeEpisodeRepositoryPort {
     input: UpsertOpenPriceChangeEpisodeInput
   ): Promise<{ episode: PriceChangeEpisode; wasRefresh: boolean }>;
 
-  /** Every open episode for a destination connection, filtered for the review queue. Unbounded — see `countOpen` / `countOpenBySource` for the operator-facing counts; pagination is not yet implemented on this read (tracked for the #3162 HTTP surface). */
+  /**
+   * Open episodes for a destination connection, filtered for the review
+   * queue. Bounded by `filters.limit`/`filters.offset` (#3162) — see
+   * `countOpen` / `countOpenBySource` for the operator-facing counts.
+   */
   findOpenForConnection(
     destinationConnectionId: string,
     filters?: PriceChangeEpisodeFilters
   ): Promise<readonly PriceChangeEpisode[]>;
 
-  /** Every open episode across the install (no destination scope) for the review queue's "All" filter. Unbounded, same caveat as `findOpenForConnection`. */
+  /**
+   * Open episodes across the install (no destination scope) for the review
+   * queue's "All" filter. Bounded, same as `findOpenForConnection`.
+   */
   findOpenAll(filters?: PriceChangeEpisodeFilters): Promise<readonly PriceChangeEpisode[]>;
 
   /**
@@ -100,8 +119,47 @@ export interface PriceChangeEpisodeRepositoryPort {
    */
   reopenIgnored(id: string): Promise<boolean>;
 
+  /**
+   * Acknowledge a re-detection (#3162 review — `needsRefresh` must not be
+   * sticky forever): clears `refreshedAt` back to `null` on an OPEN episode,
+   * so the row's `version` collapses back onto `detectedAt` and the caller's
+   * NEXT read reports `needsRefresh: false` for whatever it just re-fetched.
+   *
+   * Guarded `WHERE "resolvedAt" IS NULL` — a resolved episode's `refreshedAt`
+   * is historical, not an actionable flag, and must not be touched here.
+   *
+   * Returns the refreshed row, or `null` if it does not exist or is no
+   * longer open.
+   */
+  acknowledgeRefresh(id: string): Promise<PriceChangeEpisode | null>;
+
   /** Count of open episodes matching the filters, for badge/tab counters. */
   countOpen(filters?: PriceChangeEpisodeFilters): Promise<number>;
+
+  /**
+   * Claim exclusive resolution rights over an OPEN episode (#3162 review,
+   * IMPORTANT — "nothing claims the episode at accept time"). Guarded
+   * `WHERE "resolvedAt" IS NULL AND "claimedAt" IS NULL`, the
+   * `claimWaybillRelay`/`claimDispatchAttempt` idiom applied here: a
+   * concurrent second accept/edit/bulk-item on the SAME episode sees
+   * `'in-flight'` rather than silently enqueueing a second publish job for
+   * the same price change. `claimedAt` also doubles as the idempotency
+   * key's generation marker (never the raw amount or a wall-clock bucket,
+   * per #2285/#3159's "episode id + a generation the row itself owns"
+   * rule) — a released-then-reclaimed episode mints a fresh, distinct key.
+   */
+  claimForResolution(id: string, claimedAt: Date): Promise<PriceChangeEpisodeClaimOutcome>;
+
+  /**
+   * Release a claim taken by {@link claimForResolution} WITHOUT resolving
+   * the episode — a failed enqueue, or a bulk submit that aborted
+   * mid-validation/mid-fan-out (#3162 review). Idempotent: releasing an
+   * unclaimed or already-resolved episode is a silent no-op — `resolve`'s
+   * own `WHERE resolvedAt IS NULL` guard already makes a resolved row
+   * unreachable via `claimForResolution` again, so there is nothing left to
+   * protect once it resolves.
+   */
+  releaseClaim(id: string): Promise<void>;
 
   /**
    * Open-episode count per source connection, for a single destination — one

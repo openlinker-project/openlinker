@@ -1,0 +1,130 @@
+/**
+ * Price Change Queue Item (#3145)
+ *
+ * The enriched, review-queue-ready projection of a `PriceChangeEpisode`.
+ * Carries everything `docs/plans/mockups/price-changes-review-queue.html`'s
+ * `ITEMS` render — the mockup's `buildItem`'s job is done SERVER-SIDE here
+ * (`deltaPct`, rounding math already applied by the detection service), so
+ * the frontend never re-implements `applyPricingRule`.
+ *
+ * `ruleSummary` is deliberately STRUCTURED, not a pre-composed sentence —
+ * the frontend composes the plain-language copy (mirroring the
+ * `stock-and-pricing-preview.ts` browser-side-mirror precedent, since
+ * `apps/web` cannot import `@openlinker/core`, #591).
+ *
+ * @module libs/core/src/listings/application/types
+ */
+import type {
+  PriceChangeBlockReason,
+  PriceChangeResolution,
+} from '../../domain/types/price-change-episode.types';
+import type { PricingRule } from '@openlinker/core/identifier-mapping';
+
+export interface PriceChangeQueueItemRuleSummary {
+  type: PricingRule['type'];
+  percent: number;
+  rounding: NonNullable<PricingRule['rounding']>;
+}
+
+export interface PriceChangeQueueItem {
+  id: string;
+  productVariantId: string;
+  productName: string;
+  variantLabel: string | null;
+  sku: string | null;
+
+  sourceConnectionId: string;
+  sourceLabel: string;
+  /**
+   * `null` mirrors `PriceChangeEpisode.sourceOldAmount` (widened onto the
+   * entity by the parent stack's #3159 re-review, `de951c9e8`, picked up by
+   * this rebase — the same "no prior source price was ever recorded" case
+   * `computedOldAmount`/`deltaPct` already account for below): a variant
+   * that previously carried no price at all, or a brand-new mapping's first
+   * detection.
+   */
+  sourceOldAmount: number | null;
+  sourceNewAmount: number;
+  sourceCurrency: string;
+
+  destinationConnectionId: string;
+  destinationLabel: string;
+  /**
+   * The DESTINATION's own currency (`readConnectionCurrency`), never the
+   * source's (#3162 review — this field previously always fabricated the
+   * source's currency, which is wrong exactly on the one row where it
+   * matters: a `'currency-mismatch'` `blockReason` is true *because* the two
+   * differ). `null` mirrors `'destination-currency-unknown'` — the
+   * destination's currency is not configured/resolvable at all.
+   */
+  destinationCurrency: string | null;
+
+  /**
+   * `null` mirrors `PriceChangeEpisode.computedOldAmount` (#3159 — widened
+   * onto the entity by a sibling in this stack after this type was first
+   * written): a brand-new mapping's first detection has no recorded
+   * baseline to diff against.
+   */
+  computedOldAmount: number | null;
+  computedNewAmount: number;
+  /** `null` when `computedOldAmount` is `null` — see `PriceChangeEpisode.deltaPct()`. */
+  deltaPct: number | null;
+  isSteep: boolean;
+
+  ruleSummary: PriceChangeQueueItemRuleSummary;
+
+  blockReason: PriceChangeBlockReason | null;
+  /** `true` when a re-detection landed after this episode was opened. */
+  needsRefresh: boolean;
+  /** The version token the accept/edit staleness guard compares against. */
+  version: string;
+
+  manualPriceOverride: number | null;
+  resolution: PriceChangeResolution | null;
+  resolvedAt: string | null;
+  resolvedByUserId: string | null;
+  detectedAt: string;
+}
+
+export interface PriceChangeQueuePage {
+  items: readonly PriceChangeQueueItem[];
+  /**
+   * Episodes excluded from THIS PAGE because their variant's offer mapping
+   * is stale (#1689) — a PER-PAGE count, not a global one (#3162 re-review,
+   * IMPORTANT). Stale-exclusion is deliberately not pushed into the
+   * repository's SQL predicate (`PriceChangeEpisodeFilters`'s own docblock:
+   * a cross-context join against `product_variants.isStale` does not belong
+   * at this layer), so `total` below may legitimately include stale
+   * episodes this page — or any page — never renders, the same accepted
+   * page-scoped approximation `direction`/`magnitudeLargeOnly` used to be
+   * before #3162's SQL-predicate fix (those two are now exact; this one is
+   * not, and is documented as such rather than silently read as global).
+   */
+  hiddenStaleCount: number;
+  /**
+   * The total count of open (+recently-ignored, when
+   * `PriceChangeEpisodeFilters.includeRecentlyResolved` was set) episodes
+   * matching the SAME filter set the page was read with (#3162 review —
+   * the list read is now paginated; `total` is what lets a caller render "N
+   * of M" / drive further pages without hydrating the whole set). A real
+   * SQL `COUNT`, from `PriceChangeEpisodeRepositoryPort.countOpen` — never
+   * derived from `items.length`. Does NOT subtract `hiddenStaleCount` (see
+   * that field's own docblock for why).
+   */
+  total: number;
+  /**
+   * Whether a further page (a greater `offset`) may still hold matching
+   * episodes — computed from `offset + <raw rows fetched for this page>
+   * < total`, i.e. from the SAME pre-stale-filter row count `total` was
+   * counted against, NEVER from `items.length` (#3162 review).
+   *
+   * This is the field the stale-exclusion docblock above names as the
+   * remedy for its own limitation: a page whose every row happens to be
+   * stale renders `items: []`, and without this flag that is
+   * indistinguishable from "no more results" — the caller would stop
+   * paging on a queue that, in fact, still holds unreviewed episodes
+   * further on. `hasMore` answers that question directly, independent of
+   * how many (if any) of this page's rows survived the stale filter.
+   */
+  hasMore: boolean;
+}
