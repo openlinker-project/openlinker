@@ -68,8 +68,15 @@ CANCELLATION_REJECTED, CLOSED`) and `FulfillmentOrderStatus` (`OPEN, IN_PROGRESS
 INCOMPLETE, CLOSED, SCHEDULED, ON_HOLD`) matching OL's own independently-designed ADR-054
 `FulfillmentRequestStatus`/`FulfillmentWorkStatus` vocabularies almost name-for-name — see E-F5.
 The negotiation axis itself (accept/reject/submit) was initially blocked by a missing scope (E-F8)
-and was then confirmed working end to end (E-F10), closing the F group to **8/8**. This substantially
-strengthens the case for F6 being in scope for a first slice rather than deferred.
+and was then confirmed working end to end (E-F10). **Correction (post-review): the F group has 7 real
+story ids in the issue's own checklist (F1-F4, F6-F8 — there is no F5), not 8, and F4 ("Late-waybill
+relay", #1947) was never exercised anywhere in this pass — the earlier "closes the F group to 8/8"
+claim conflated the denominator with the evidence-row count and asserted F4 by omission rather than by
+evidence. The group's honest state is 6/7**: F1/F2/F6 directly confirmed, F3/F7/F8 implicit/vocabulary
+strength only, F4 an open gap. This still substantially strengthens the case for F6 being in scope for
+a first slice — F6 itself, the flagship story, is the most strongly evidenced finding in this
+document — but F4 is now tracked as a real, named gap rather than a closed box; see `## Open risks`
+item 6 and the corrected `## Coverage tally`.
 
 **Three recurring, load-bearing corrections to the issue's own Prerequisites, all now resolved.** The
 requested scope list was missing three scopes, discovered live and each added via a fresh OAuth
@@ -80,8 +87,7 @@ grant, then re-verified working:
    have access to the fulfillment order."` (E-F3/E-F4); resolved, see E-F6.
 2. `read_customers` — without it, `order.customer { id email }` was blocked (E-O7); resolved.
 3. `write_third_party_fulfillment_orders` / `read_third_party_fulfillment_orders` — without them,
-   the negotiation axis on fulfillment-service locations was blocked (E-F8); resolved, see E-F10,
-   which is what closes the F group to 8/8 above.
+   the negotiation axis on fulfillment-service locations was blocked (E-F8); resolved, see E-F10.
 
 Any team resuming this spike should re-derive the full scope list from the actual mutations/queries
 the adapter will use, rather than trusting the issue's original list — see `## Open risks` item 5 for
@@ -143,7 +149,6 @@ the reconciled count.
 | E-P2 | P6 | 🚨 **`descriptionHtml` accepts arbitrary HTML with ZERO server-side sanitization.** A write containing `<p>`, `<em>`, `<strong>`, `<ul><li>`, `<table><tr><td>` **and a literal `<script>alert(1)</script>`** was accepted verbatim (`userErrors: []`) and read back byte-identical, script tag included. Shopify's Admin API is **not** an XSS security boundary — `ADR-046`'s `applyDescriptionFormat` narrowing must be treated as publish-time content-model shaping only, same as every other adapter; inbound sanitization (`sanitizeStoredHtml`) remains entirely OL's own responsibility with no help from the platform | Live transcript below |
 | E-P3 | P7 | `productCreateMedia` confirmed working — image accepted from a remote URL, initial `status: "UPLOADED"` (implies async processing to a later `READY` state) | Live: real `MediaImage` id returned |
 | E-P5 | P13 | 🎯 **`productSet` behaves as PATCH, not PUT/full-replace, despite its name.** Created a product with `descriptionHtml`/`tags`/`vendor` set, then called `productSet` again on the same `id` with ONLY `title` changed — the omitted fields (`descriptionHtml`, `tags`, `vendor`) survived unchanged rather than being wiped/reset to defaults. Confirms `productSet` is safe to use for a targeted field update without first re-reading and re-sending the full product state | Live transcript below |
-| E-P4 | S10 | `products(query: "status:active")` filter confirmed working; `publishedAt` is a per-product field independent of `status` — one `ACTIVE` product had `publishedAt: null`, meaning `status` (catalog visibility) and channel-publication (`publishedAt`) are two different facts, not one | Live: 3 real products, one with `publishedAt: null` despite `status: ACTIVE` |
 | E-P6 | P8 | `productSet` with `productOptions` + per-variant `optionValues` confirmed working — 3 variants (S/M/L) created in one call, each with its own price, native option-based grouping (not a separate `variantGroup` mechanism) | Live: product + 3 priced variants created in one `productSet` call |
 | E-P8 | P3 (async media, deepened) | 🎯 **Full async media ladder confirmed: `UPLOADED → READY` or `UPLOADED → FAILED` with a structured, actionable error.** A bad URL and a wrong-content-type URL both resolved to `status: FAILED` with a real `mediaErrors: [{code, details}]` (e.g. `"UNSUPPORTED_IMAGE_FILE_TYPE"`, `"(text/html) is not a recognized format"`); a genuine image URL resolved to `READY` with a real hosted CDN URL. Async media failures are observable, not silent | Live — observed, no transcript retained (referenced a local session log not included in this PR) |
 | E-P9 | P (option limit, negative confirmed) | The 3-option ceiling (E-P1's `resourceLimits.maxProductOptions`) is enforced server-side with a clear refusal (`"Can only specify a maximum of 3 options"`) when a 4th option + matching variant is submitted via `productSet` | Live |
@@ -157,9 +162,10 @@ the reconciled count.
 | E-S1 | S13 | Every write mutation observed costs **10 points** minimum (`productCreate`, `productDelete`, `productUpdate`, `refundCreate` pre-content-validation, `inventoryAdjustQuantities`, `webhookSubscriptionCreate`, `orderCancel` all costed exactly 10 or thereabouts) — matches the issue's stated "10 points minimum" claim exactly. `orderCreate` with a tax line costed more (`actualQueryCost: 14`, `requestedQueryCost: 18`) proportional to the richer input/selection shape | Live: aggregated from every mutation transcript in this document |
 | E-S5 | S5 | `productUpdate(product: {seo: {title, description}})` confirmed working — additional field-update surface beyond `descriptionHtml` | Live: SEO title/description written and echoed back |
 | E-S4b | S7 | 🎯 **Confirmed — one query, one call.** `variants(first:1) { price inventoryQuantity availableForSale }` returns price + quantity + sellability together, no second read needed for the commercial snapshot. Bonus nuance: `"The Inventory Not Tracked Snowboard"` reports `inventoryQuantity: 0` but `availableForSale: true` — confirms "inventory not tracked" means sellable regardless of the (meaningless, in that mode) quantity figure, a distinction an adapter must not misread as "out of stock" | Live: 3 real products read together, one showing the not-tracked/available-anyway combination |
-| E-S6 | S (status write, deepened) | 🎯 **Full product status lifecycle confirmed via WRITE, not just read.** `productUpdate` cycled a real product `DRAFT → ACTIVE → ARCHIVED → DRAFT` cleanly across 3 calls, `publishedAt` staying `null` throughout every transition — confirms at write-time (not just read-time, cf. E-P4) that catalog `status` and channel publication are independent facts | Live — observed, no transcript retained |
+| E-S6 | S (status write, deepened) | 🎯 **Full product status lifecycle confirmed via WRITE, not just read.** `productUpdate` cycled a real product `DRAFT → ACTIVE → ARCHIVED → DRAFT` cleanly across 3 calls, `publishedAt` staying `null` throughout every transition — confirms at write-time (not just read-time, cf. E-S9) that catalog `status` and channel publication are independent facts | Live — observed, no transcript retained |
 | E-S7 | S (metafields workaround) | `metafieldsSet` confirmed working as the generic escape hatch for fields Shopify has no native equivalent for (e.g. buyer/seller tax id, cf. E-O8) — wrote `custom.ol_test_tax_id` on the `Shop` owner, read back byte-identical. Needs the owner's real internal id (`shop { id }`), a bare `"Shop/1"` guess fails with `"Owner does not exist."` | Live: metafield written + confirmed present |
 | E-S8 | S6 (status lifecycle, closes it) | `UNLISTED` confirmed as a real, settable status via `productUpdate` — completes the full 4-value `ProductStatus` write lifecycle (`DRAFT ↔ ACTIVE ↔ ARCHIVED ↔ UNLISTED`, all pairwise transitions now exercised) | Live |
+| E-S9 | S10 | `products(query: "status:active")` filter confirmed working; `publishedAt` is a per-product field independent of `status` — one `ACTIVE` product had `publishedAt: null`, meaning `status` (catalog visibility) and channel-publication (`publishedAt`) are two different facts, not one. *(Filed under P as `E-P4` in an earlier revision of this document — moved here because the story it evidences, S10 "Enumerate published products → reconcile mappings", belongs to the S group, not P; the coverage tally previously miscounted it as a P-group hit as a result.)* | Live: 3 real products, one with `publishedAt: null` despite `status: ACTIVE` |
 
 ### O — Orders
 
@@ -189,7 +195,7 @@ the reconciled count.
 | E-F7 | F6 (HOLD supportedAction) | `fulfillmentOrderHold`/`fulfillmentOrderReleaseHold` confirmed live: `status` transitions `OPEN → ON_HOLD → OPEN`. Confirms the `HOLD` entry in `supportedActions` (E-F1) is a real, working action, not just an advertised capability | Live: hold → `ON_HOLD`, release → `OPEN` |
 | E-F8 | F (negotiation axis, scope gap) | 🚨 **A third confirmed scope gap** (on the negotiation axis — see Open risk 5 for the full, reconciled count of three). Discovered 6 previously-unseen mutations forming the negotiation axis from ADR-054 (`fulfillmentOrderSubmitFulfillmentRequest`, `AcceptFulfillmentRequest`, `RejectFulfillmentRequest`, and the `...CancellationRequest` trio). They only apply to a `FulfillmentOrder` assigned to a **fulfillment-service** location, not a merchant-managed one — moving a FO there via `fulfillmentOrderMove` failed with `"The api_client does not have access to fulfillment orders at the new location"`, requiring the **still-missing** `write_third_party_fulfillment_orders` scope (distinct from `write_merchant_managed_fulfillment_orders`, which the token already has). The negotiation axis (`UNSUBMITTED→SUBMITTED→ACCEPTED/REJECTED`) therefore remained **entirely untested live** until E-F10 | Live — observed, no transcript retained |
 | E-F9 | F | Additional fulfillment mutations discovered by full schema scan, none yet tested: `fulfillmentOrderReportProgress`, `fulfillmentOrderSplit`, `fulfillmentOrderMerge`, `fulfillmentOrderReschedule`, `fulfillmentOrdersSetFulfillmentDeadline`, `fulfillmentOrdersReroute`, `reverseFulfillmentOrderDispose` (a lower-level disposition primitive `returnProcess` likely wraps) | Live: `__schema { mutationType { fields { name } } }` filtered for "fulfillment"/"reverse" |
-| E-F10 | F6 (negotiation axis — closes the F group to 8/8) | 🎯 **Negotiation axis confirmed fully working, closing the scope gap from E-F8.** After adding `write_third_party_fulfillment_orders`/`read_third_party_fulfillment_orders` (no re-auth needed — same token, verified via `currentAppInstallation.accessScopes`), the full chain worked: gave the target variant a SKU (fulfillment-service locations refuse to stock a SKU-less variant), `inventoryActivate` (also requires `@idempotent`, a fourth mutation confirmed under the mandatory-idempotency rule) at the `OL-Spike-Fulfillment` location, `fulfillmentOrderMove` succeeded (`supportedActions` gained `REQUEST_FULFILLMENT`), then `fulfillmentOrderSubmitFulfillmentRequest` moved `requestStatus: UNSUBMITTED → SUBMITTED`, then `fulfillmentOrderAcceptFulfillmentRequest` moved it `SUBMITTED → ACCEPTED` **while the independent execution axis moved `OPEN → IN_PROGRESS` on the same call** — confirming the two-axis model moves together on acceptance, not just independently in isolation | Live — observed, no transcript retained |
+| E-F10 | F6 (negotiation axis, closes the scope gap opened by E-F8) | 🎯 **Negotiation axis confirmed fully working, closing the scope gap from E-F8.** After adding `write_third_party_fulfillment_orders`/`read_third_party_fulfillment_orders` (no re-auth needed — same token, verified via `currentAppInstallation.accessScopes`), the full chain worked: gave the target variant a SKU (fulfillment-service locations refuse to stock a SKU-less variant), `inventoryActivate` (also requires `@idempotent`, a fourth mutation confirmed under the mandatory-idempotency rule) at the `OL-Spike-Fulfillment` location, `fulfillmentOrderMove` succeeded (`supportedActions` gained `REQUEST_FULFILLMENT`), then `fulfillmentOrderSubmitFulfillmentRequest` moved `requestStatus: UNSUBMITTED → SUBMITTED`, then `fulfillmentOrderAcceptFulfillmentRequest` moved it `SUBMITTED → ACCEPTED` **while the independent execution axis moved `OPEN → IN_PROGRESS` on the same call** — confirming the two-axis model moves together on acceptance, not just independently in isolation | Live — observed, no transcript retained |
 
 ### D — Tax, currency & documents
 
@@ -493,12 +499,21 @@ $ curl ... mutation { returnProcess(input: {returnId: "...", returnLineItems: [{
    `write_merchant_managed_fulfillment_orders` (blocked F group writes, E-F3/E-F4 — resolved, see
    E-F6), `read_customers` (blocked resolving `order.customer`, E-O7 — resolved), and
    `write_third_party_fulfillment_orders`/`read_third_party_fulfillment_orders` (blocked the
-   negotiation axis on fulfillment-service locations, E-F8 — resolved, see E-F10, which closes the F
-   group to 8/8). This is the reconciled, final count — treat any other number elsewhere in this
-   document or the spec as stale. The full requested scope set from the issue should still not be
-   trusted as complete without a line-by-line re-verification against every mutation/query actually
-   used by the eventual adapter, since further, as-yet-undiscovered gaps remain possible.
-6. **`descriptionHtml` has zero server-side sanitization (E-P2)** — confirmed a live, real security
+   negotiation axis on fulfillment-service locations, E-F8 — resolved, see E-F10). This is the
+   reconciled, final count — treat any other number elsewhere in this document or the spec as stale.
+   The full requested scope set from the issue should still not be trusted as complete without a
+   line-by-line re-verification against every mutation/query actually used by the eventual adapter,
+   since further, as-yet-undiscovered gaps remain possible.
+6. **F4 ("Late-waybill relay", #1947) was never exercised.** The F group's negotiation axis (F6) is
+   thoroughly confirmed, but F4 specifically — a tracking number arriving *after* dispatch, and being
+   relayed on to the source separately from the original dispatch notification — has no evidence
+   anywhere in this document; nothing here tests it even implicitly. An earlier revision of this
+   document's coverage tally asserted F4 as confirmed and additionally miscounted the F group's real
+   denominator as 8 rather than 7 (there is no story `F5` in the issue's checklist), producing the
+   "closes the F group to 8/8" claim in earlier text. Both are corrected: the F group's real
+   denominator is 7, and its honest confirmed count is 6/7 (F1, F2, F6 directly confirmed; F3, F7, F8
+   implicit/vocabulary-strength only; F4 an open gap) — see the corrected `## Coverage tally`.
+7. **`descriptionHtml` has zero server-side sanitization (E-P2)** — confirmed a live, real security
    property of the platform, not a desk-research guess. Any OL-side `ADR-046`-style narrowing for
    Shopify must not be mistaken for an XSS boundary; `sanitizeStoredHtml` (or equivalent) is entirely
    OL's responsibility on this platform, same as everywhere else, but worth stating explicitly since
@@ -509,10 +524,10 @@ $ curl ... mutation { returnProcess(input: {returnId: "...", returnLineItems: [{
 
 **Lean ADOPT, confirmed rather than merely carried over from desk research.** Every one of the
 issue's three headline findings survived live verification, and F6 came back *stronger* than
-claimed (E-F5's near-verbatim vocabulary match to ADR-054). Nothing found across the 76 live-verified
+claimed (E-F5's near-verbatim vocabulary match to ADR-054). Nothing found across the 74 live-verified
 stories contradicts the ADOPT lean.
 
-Six corrections are load-bearing enough that a follow-up implementation plan must account for them
+Seven corrections are load-bearing enough that a follow-up implementation plan must account for them
 explicitly, not just note them in passing:
 
 1. **Prerequisites scope list has three confirmed gaps** (all three since added and re-verified
@@ -543,6 +558,10 @@ explicitly, not just note them in passing:
    platform's own required path since API 2025-07+. Design the OL adapter's return-correction flow
    around `returnProcess` from the start rather than discovering the distinction the way this spike
    did (by accidentally spending the refundable quantity via the wrong mutation first).
+7. **F4 (late-waybill relay, #1947) is an open gap, not a closed box.** An earlier revision of this
+   document claimed the F group closed to 8/8; the group has only 7 real story ids (no `F5`), and F4
+   specifically was never exercised. Treat late-waybill relay as untested for this platform going into
+   any implementation plan — see Open risk 6.
 
 Remaining unverified ground (bulk operations at scale, retry/429 behaviour, real order-creation
 rate-limit ceiling, `read_all_orders` review outcome) is bounded and named explicitly in the coverage
@@ -551,43 +570,82 @@ verify" list should cite it directly rather than being written from memory.
 
 ## Coverage tally
 
+> **Revised after tech review (PR #2888).** Every earlier revision of this tally — the "~90" estimate,
+> then "111", then "110" — derived a group's denominator by taking **the highest-numbered story id
+> within that group**, on the assumption that story numbering is consecutive from 1. That assumption
+> holds for C (once the nonexistent `C9` is excluded), M, O, R and X, but **T, P, S, F and D all have
+> real gaps in their numbering** (e.g. the T group's real ids are `T1, T2, T8, T9, T11, T12` — 6 items,
+> not 12), so five of ten group denominators were substantially inflated. The methodology below instead
+> counts, per group, the exact set of `- [ ] **<Letter><N>**` checklist items that actually exist in
+> issue #2879's own body — verified directly against the issue text rather than inferred from the
+> highest number seen in this document's own evidence table.
+
 Live-verified (transcript exists above unless marked "no transcript retained" — see the individual
-evidence rows), by group: **C** 6/11 (C1, C2, C3, C4, C8, C10 — the only C ids that appear in any
-Story cell above besides the excluded C7: C1 via E-C1/E-C2/E-C3/E-C5/E-C6, C2/C3 via E-C3, C4 via
-E-C9, C8 via E-C4, C10 via E-C7; C3 partial/behavioural; C4 gained a reusable
-`currentAppInstallation.accessScopes` health-check pattern; C7 is EXCLUDED from this numerator — see
-"Attempted but inconclusive" below, it is an unmet test condition, not a confirmed result either way)
-· **M** 13/13 (M1-via-`products(first,after)`-cursor-pagination (E-M1, reused in E-M10/E-M12), M6/M10
-bulk operations confirmed end to end via `bulkOperationRunQuery`) · **T** 6/12 (T1, T2-via-`fullName`/
-`ancestorIds`-breadcrumb-resolution (E-T1b), T8-implicit via `fullName`/global tree, T9,
-T11-NOT-SUPPORTED, T12-quota-fits) · **P** 6/13 (P1, P3-implicit, P6, P7, P8,
-P13-behaviourally-confirmed-as-PATCH) · **S** 6/13 (S1, S4, S6, S7, S10, S13) · **O** 13/16 (O1, O2,
-O3, O5-partial, O6, O7, O9, O10, O11, O12, O13-vocab-only, O14, O15-CONFIRMED-with-real-5/min-cap;
-O16 is EXCLUDED from this numerator — see "Attempted but inconclusive" below) · **F** 8/8 (F1, F2, F3-implicit, F4, F6-flagship, F7-implicit,
-F8-vocab, F10-negotiation-axis-closes-group) · **D** 5/9 (D2, D4, D5, D8, D9) · **R** 8/9 (R1, R2,
-R3, R4, R5, R6, R7-CLOSED-by-R9, R9-corrected) · **X** 5/6 (X1-orderCreate-cap-confirmed via E-X2 —
-that clause only; X1's other two clauses, dev-store-to-production conversion and the Bogus payment
-gateway, remain a qualitative judgement, not a live test; X2-throttleStatus-confirmed via E-C4 — see
-its Story cell, updated to `C8/X2`; X3 via E-C2; X4 via E-C2/E-C9; X5 via E-X1; X6 deliberately
-skipped — see the closing note below).
+evidence rows), by group:
 
-**Denominators sum to 110, not ~90 and not 111** — the "~90" figure used in earlier revisions of this
-document (and echoed once in the PR description / product spec) undercounted the issue's own
-checklist; a later revision corrected it to 111 by taking each group's denominator as the
-highest-numbered story id within that group (`12+13+12+13+13+16+8+9+9+6`), which is right for every
-group except C. The C group's numbering jumps `C8` straight to `C10` — **`C9` was never a real story
-id** — so a denominator built the same way every other group's is gives C 11, not 12:
-`11+13+12+13+13+16+8+9+9+6 = 110`. Any earlier reference to "~90" or "111" elsewhere in this epic is
-stale and should be read as 110.
+- **C** 6/11 — `C1, C2, C3, C4, C8, C10` (C1 via E-C1/E-C2/E-C3/E-C5/E-C6, C2/C3 via E-C3, C4 via
+  E-C9, C8 via E-C4, C10 via E-C7; C3 partial/behavioural; C4 gained a reusable
+  `currentAppInstallation.accessScopes` health-check pattern). C7 is EXCLUDED from this numerator —
+  see "Attempted but inconclusive" below. Real ids: `1,2,3,4,5,6,7,8,10,11,12` (11 — `C9` does not
+  exist in the issue's own checklist, see below).
+- **M** 13/13 — every real id (`1`-`13`) directly evidenced (M1 via `products(first,after)` cursor
+  pagination, reused in E-M10/E-M12; M6/M10 bulk operations confirmed end to end via
+  `bulkOperationRunQuery`).
+- **T** 6/6 — `T1, T2, T8-implicit, T9, T11, T12` (T2 via `fullName`/`ancestorIds` breadcrumb
+  resolution, E-T1b/E-T9; T8-implicit via the global/`fullName` tree shape, not a dedicated test; T11
+  is the confirmed NOT-SUPPORTED result; T12 is the quota-fits result). Real ids:
+  `1,2,8,9,11,12` (6 — this group's numbering skips 3-7,10; the earlier "T 6/12" reading was wrong on
+  the denominator only, the numerator was already correct).
+- **P** 6/6 — `P1-implicit, P3-implicit, P6, P7, P8, P13` (P1 implicit via the many real products
+  created throughout this pass, e.g. E-M2/E-P5/E-P6/E-F6; P13 behaviourally confirmed as PATCH). Real
+  ids: `1,3,6,7,8,13` (6). Full coverage once the denominator is corrected.
+- **S** 7/7 — `S1-implicit, S4, S5, S6, S7, S10, S13` (S1 implicit via `inventoryAdjustQuantities`,
+  tested at length under M11/M13, not a dedicated S-group test; **S5 is added here** — E-S5
+  (`productUpdate(product: {seo: ...})`) was live-evidenced but omitted from the numerator in an
+  earlier revision; S10 is `E-S9` in the table above, moved there from a misfiled `E-P4` — see the note
+  on that row). Real ids: `1,4,5,6,7,10,13` (7). Full coverage.
+- **O** 13/16 — `O1, O2-implicit, O3, O5-partial, O6-via-E-O7, O7, O9, O10, O11, O12, O13-vocab-only,
+  O14, O15` (O2 implicit — single-order hydration by id happens repeatedly, e.g. E-O3's follow-up read;
+  O6 via E-O7's fact text, which exercises `shippingAddress`/`billingAddress` even though that row's
+  Story tag reads `O5`; O15 confirmed with the real 5/min cap via E-X2). O16 is EXCLUDED from this
+  numerator — see "Attempted but inconclusive" below. Real ids: `1`-`16` (16, unchanged).
+- **F** 6/7 — `F1, F2, F3-implicit, F6-flagship, F7-implicit, F8-vocab` (F1/F2 via E-F6's
+  `fulfillmentCreate` + tracking write; F6 the flagship, closed end to end by E-F10's negotiation-axis
+  confirmation; F3/F7/F8 carry only implicit/vocabulary-adjacent support, no dedicated live test).
+  **F4 (late-waybill relay, #1947) and the earlier "F10" citation are both removed** — F4 has no
+  evidence anywhere in this document (see Recommendation item 7 / Open risk 6), and "F10" was never a
+  real story id, it was evidence-row `E-F10`'s id mistaken for one; its actual Story is F6, already
+  counted. Real ids: `1,2,3,4,6,7,8` (7 — there is no `F5`). The group's earlier "8/8" claim was wrong
+  on both the denominator (7, not 8) and the numerator (F4 unevidenced).
+- **D** 5/7 — `D2, D4, D5, D8, D9`. D1 and D6 are excluded — see "Genuinely not testable" below. Real
+  ids: `1,2,4,5,6,8,9` (7 — there is no `D3` or `D7`).
+- **R** 7/9 — `R1, R2, R3, R5, R6, R7-CLOSED-by-R9, R9-corrected`. **`R4` is removed** — the earlier
+  citation was evidence-row `E-R4` (Story: `R9`) mistaken for real story `R4` ("Decline a return");
+  `returnDeclineRequest` was only ever seen in a schema-introspection mutation-name dump (inside
+  E-R8's discovery sequence) and was never actually called, so R4 stays genuinely untested. Real ids:
+  `1`-`9` (9, unchanged).
+- **X** 5/6 — `X1-orderCreate-cap-confirmed` (via E-X2, that clause only — the other two clauses of X1,
+  dev-store-to-production conversion and the Bogus payment gateway, remain a qualitative judgement, not
+  a live test), `X2-throttleStatus-confirmed` (via E-C4, Story cell updated to `C8/X2`), `X3` (via
+  E-C2), `X4` (via E-C2/E-C9), `X5` (via E-X1). `X6` deliberately skipped — see the closing note below.
+  Real ids: `1`-`6` (6, unchanged).
 
-**Sum across groups: 76 of the 110 stories in the issue's own checklist, confirmed**
-(6+13+6+6+6+13+8+5+8+5 = 76). This is the single authoritative headline figure for this spike — the
-PR description and the product spec must both cite this number (and this denominator) rather than a
+**Denominators sum to 88, not 110, not 111, and not the earlier "~90" estimate** — every prior figure
+in this epic derived T/P/S/F/D's denominators from the highest story-id number seen rather than from
+the real count of checklist items, which overstated those five groups' denominators by a combined 22
+(T: 12→6, P: 13→6, S: 13→7, F: 8→7, D: 9→7). C, M, O, R and X were already correct.
+`11+13+6+6+7+16+7+7+9+6 = 88`. Any earlier reference to "~90", "110" or "111" elsewhere in this epic is
+stale and should be read as 88.
+
+**Sum across groups: 74 of the 88 stories in the issue's own checklist, confirmed**
+(6+13+6+6+7+13+6+5+7+5 = 74). This is the single authoritative headline figure for this spike — the PR
+description and the product spec must both cite this number (and this denominator) rather than a
 separately-eyeballed one; any other figure appearing elsewhere in either document as of this revision
 is stale and should be corrected to match. It deliberately **excludes** the two
 attempted-but-inconclusive stories (O16, C7, both 429/retry-behaviour probes that could not reach the
-platform's real throttling threshold) — see the next section. Counting them as confirmed would report
-a negative result the underlying test never actually established.
+platform's real throttling threshold) — see the next section — and the two mis-citations corrected
+above (F4, R4), neither of which has any live evidence behind it. Counting either bucket as confirmed
+would report a result the underlying test never actually established.
 
 **X6 (multi-tenant quota) deliberately skipped** — see the closing note under the X-group table
 above.
@@ -601,9 +659,9 @@ order + tax-line data, already confirmed via O9/O10).
 
 **`C9` does not exist in the issue's own checklist** — its numbering jumps `C8` straight to `C10` —
 so it is neither "confirmed" nor "not attempted"; it is excluded from the C denominator entirely
-rather than counted as an unattempted slot, which is why the C group above reads `6/11`, not the
-`9/12` an earlier revision derived by (incorrectly, for this one group) treating the highest-numbered
-id as the count of real stories.
+rather than counted as an unattempted slot, which is why the C group above reads `6/11`, not `9/12`.
+This is the same numbering-gap defect that (uncorrected until this revision) also affected T, P, S, F
+and D — see the note at the top of this section.
 
 **Attempted but inconclusive, not a confirmed negative result**: O16/C7 (429/retry behaviour) — a
 50-parallel-call burst against a moderately expensive query produced zero throttling, but per E-C8's
