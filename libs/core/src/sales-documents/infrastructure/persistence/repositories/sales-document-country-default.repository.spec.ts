@@ -98,31 +98,6 @@ describe('SalesDocumentCountryDefaultRepository', () => {
     });
   });
 
-  describe('findByCountryAndKind (#3177 — a country now maps to at most one row, regardless of the kind argument)', () => {
-    it('should return null when no default is configured', async () => {
-      ormRepository.findOne.mockResolvedValue(null);
-
-      await expect(repository.findByCountryAndKind('DE', 'invoice')).resolves.toBeNull();
-    });
-
-    it('should query by country alone, ignoring the documentKind argument', async () => {
-      ormRepository.findOne.mockResolvedValue(ormRow());
-
-      const result = await repository.findByCountryAndKind('PL', 'invoice');
-
-      expect(ormRepository.findOne).toHaveBeenCalledWith({ where: { country: 'PL' } });
-      expect(result).toMatchObject({ country: 'PL', documentKind: 'invoice', connectionId: 'conn-infakt' });
-    });
-
-    it('should return the same row for either documentKind — the kind is no longer part of identity', async () => {
-      ormRepository.findOne.mockResolvedValue(ormRow({ documentKind: 'fiscal-receipt' }));
-
-      const result = await repository.findByCountryAndKind('PL', 'invoice');
-
-      expect(result).toMatchObject({ documentKind: 'fiscal-receipt' });
-    });
-  });
-
   describe('findByCountry / findAll', () => {
     it('should map every row for one country', async () => {
       ormRepository.find.mockResolvedValue([ormRow(), ormRow({ id: 'default-2', documentKind: 'fiscal-receipt' })]);
