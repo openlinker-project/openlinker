@@ -4,20 +4,23 @@
  * Covers what the controller itself decides: the country-filter uppercasing,
  * the null-to-404 read, the verbatim create delegation, the omitted-vs-null
  * partial-update distinction, the count-BEFORE-delete ordering behind the 409,
- * and the response allowlist.
+ * the response allowlist, and the `inventory-locations:write` lockstep.
  *
  * @module apps/api/src/inventory/http
  */
+import 'reflect-metadata';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, RequestMethod } from '@nestjs/common';
 import {
   InventoryLocation,
   LOCATION_SERVICE_TOKEN,
   LocationInUseError,
   type ILocationService,
 } from '@openlinker/core/inventory';
+import { ROLE_PERMISSIONS, UserRoleValues } from '@openlinker/core/users';
 import { InventoryLocationsController } from './inventory-locations.controller';
+import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 
 function makeLocation(
   overrides: Partial<Pick<InventoryLocation, 'name' | 'postcode'>> = {}
@@ -221,5 +224,100 @@ describe('InventoryLocationsController', () => {
       expect(result.created).toEqual([]);
       expect(result.existingCodes).toEqual(['MAIN']);
     });
+  });
+});
+
+/**
+ * `inventory-locations:write` is a DISPLAY predicate only - no permission guard
+ * exists, so the FE reads it to decide whether to render a control while the
+ * controller's own `@Roles` is what actually refuses. The two must agree, or an
+ * operator is shown an enabled button that answers 403.
+ *
+ * The earlier form of this assertion read `ROLE_PERMISSIONS` against a
+ * hardcoded `['admin']` literal, which is only the GRANT half: changing the
+ * controller to `@Roles('admin', 'operator')` left it green, i.e. it could not
+ * fail on the drift its own name promised to catch (#3198 review; the #2673
+ * check-that-cannot-fail shape). Both halves are now read from source - the
+ * grant from `ROLE_PERMISSIONS`, the requirement from the controller's own
+ * decorator metadata, the `route-authorization-coverage.spec.ts` technique.
+ */
+const WRITE_METHODS: readonly RequestMethod[] = [
+  RequestMethod.POST,
+  RequestMethod.PUT,
+  RequestMethod.PATCH,
+  RequestMethod.DELETE,
+];
+
+/** Deliberately a literal, as in `route-authorization-coverage.spec.ts`. */
+const METHOD_METADATA = 'method';
+
+interface WriteRoute {
+  readonly handler: string;
+  /** Sorted, so the comparison does not depend on decorator argument order. */
+  readonly roles: readonly string[];
+}
+
+function discoverWriteRoutes(): WriteRoute[] {
+  const proto = InventoryLocationsController.prototype as unknown as Record<string, unknown>;
+  const routes: WriteRoute[] = [];
+
+  for (const handler of Object.getOwnPropertyNames(proto)) {
+    if (handler === 'constructor') continue;
+    const fn = proto[handler];
+    if (typeof fn !== 'function') continue;
+
+    // `RequestMethod.GET` is 0, so emptiness is `undefined`, never falsiness.
+    const verb = Reflect.getMetadata(METHOD_METADATA, fn) as RequestMethod | undefined;
+    if (verb === undefined || !WRITE_METHODS.includes(verb)) continue;
+
+    const roles = (Reflect.getMetadata(ROLES_KEY, fn) as string[] | undefined) ?? [];
+    routes.push({ handler, roles: [...roles].sort() });
+  }
+
+  return routes.sort((a, b) => a.handler.localeCompare(b.handler));
+}
+
+function rolesGrantedWritePermission(): string[] {
+  return UserRoleValues.filter((role) =>
+    ROLE_PERMISSIONS[role].includes('inventory-locations:write')
+  )
+    .slice()
+    .sort();
+}
+
+describe('inventory-locations:write permission lockstep', () => {
+  it('should be granted to exactly the roles every write route of this controller @Roles', () => {
+    const routes = discoverWriteRoutes();
+
+    // Discovery guard: a vacuous or shrunken route set would make the
+    // comparison below pass while asserting nothing, which is the failure this
+    // whole block exists to remove. Handler names, not a count, so a renamed
+    // or newly added write route is a visible diff line here.
+    expect(routes.map((route) => route.handler)).toEqual([
+      'bootstrap',
+      'create',
+      'remove',
+      'update',
+    ]);
+
+    const granted = rolesGrantedWritePermission();
+    const drifted = routes.filter((route) => route.roles.join() !== granted.join());
+
+    // Empty-array comparison rather than a loop: a failure prints the offending
+    // handlers together with the roles they actually carry.
+    expect(drifted).toEqual([]);
+  });
+
+  it('should keep every write route admin-only', () => {
+    // The lockstep above only proves the two halves AGREE; this is the anchor
+    // that says which value they must agree on (#2316: the location register is
+    // configuration, so its writes are admin-only).
+    expect(rolesGrantedWritePermission()).toEqual(['admin']);
+    expect(discoverWriteRoutes().map((route) => route.roles)).toEqual([
+      ['admin'],
+      ['admin'],
+      ['admin'],
+      ['admin'],
+    ]);
   });
 });
