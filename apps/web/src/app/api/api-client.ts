@@ -96,6 +96,10 @@ import {
   type SalesDocumentRulesApi,
 } from '../../features/sales-documents/api/sales-document-rules.api';
 import {
+  createSourcingRulesApi,
+  type SourcingRulesApi,
+} from '../../features/oms/api/sourcing-rules.api';
+import {
   createFulfillmentAuthorityApi,
   type FulfillmentAuthorityApi,
 } from '../../features/fulfillment-authority/api/who-decides.api';
@@ -238,6 +242,7 @@ export interface CoreApiClient {
   requestStream: ApiStreamRequest;
   returns: ReturnsApi;
   salesDocumentRules: SalesDocumentRulesApi;
+  sourcingRules: SourcingRulesApi;
   fulfillmentAuthority: FulfillmentAuthorityApi;
   fulfillment: FulfillmentApi;
   bench: BenchApi;
@@ -472,6 +477,7 @@ export function createApiClient({
     requestBlob,
     requestStream,
     salesDocumentRules: createSalesDocumentRulesApi(request),
+    sourcingRules: createSourcingRulesApi(request),
     automations: createAutomationsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     fulfillment: createFulfillmentApi(request),

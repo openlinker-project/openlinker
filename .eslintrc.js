@@ -329,6 +329,18 @@ module.exports = {
                   '**/returns/components/**',
                   '**/returns/lib/**',
                   '**/returns/types/**',
+                  // `features/oms` joins both groups with its first cross-feature
+                  // surface (#3226 review): the sourcing-rules stack ships an
+                  // api/hooks/components/lib/types slice, and an unregistered
+                  // slug makes the deep-import ban fail OPEN for it —
+                  // `docs/frontend-architecture.md` § Feature Public Surface
+                  // says the matcher enumerates every `<slug>/<part>` pair
+                  // explicitly, so a missing one is silently unguarded.
+                  '**/oms/api/**',
+                  '**/oms/hooks/**',
+                  '**/oms/components/**',
+                  '**/oms/lib/**',
+                  '**/oms/types/**',
                   // Added on the #2761 tech-review pass — `features/orders`
                   // imports `resolveSalesDocumentReasonCopy` /
                   // `SalesDocumentReasonTone` from `features/sales-documents`'
@@ -606,6 +618,18 @@ module.exports = {
                   '**/returns/components/**',
                   '**/returns/lib/**',
                   '**/returns/types/**',
+                  // `features/oms` joins both groups with its first cross-feature
+                  // surface (#3226 review): the sourcing-rules stack ships an
+                  // api/hooks/components/lib/types slice, and an unregistered
+                  // slug makes the deep-import ban fail OPEN for it —
+                  // `docs/frontend-architecture.md` § Feature Public Surface
+                  // says the matcher enumerates every `<slug>/<part>` pair
+                  // explicitly, so a missing one is silently unguarded.
+                  '**/oms/api/**',
+                  '**/oms/hooks/**',
+                  '**/oms/components/**',
+                  '**/oms/lib/**',
+                  '**/oms/types/**',
                   // Added on the #2761 tech-review pass — `features/orders`
                   // reaches `features/sales-documents`' public barrel
                   // (`resolveSalesDocumentReasonCopy`, `SalesDocumentReasonTone`),

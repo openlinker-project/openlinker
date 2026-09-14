@@ -69,8 +69,8 @@ const lazyRoutes = collectLazyRoutes([
  *     (#1486/#1932), `/settings/sales-documents` (#2159), `/orders/dispatch-risk`
  *     (#2306), the two returns routes `/returns` (#2335) + `/returns/:returnId`
  *     (#2336), `/settings/who-decides` (#2354),
- *     `/settings/inventory-locations` (#3064), and
- *     `/connections/:connectionId/pricing-sync` (#3150 — the destination
+ *     `/settings/inventory-locations` (#3064), `/settings/sourcing-rules` (#3060),
+ *     and `/connections/:connectionId/pricing-sync` (#3150 — the destination
  *     Pricing & sync settings page and the source connection rollup, dual-mode
  *     resolved by capability), plus `/bench` — the pack-bench identity
  *     surface (#2413), which carries no nav entry and is reached by URL at a
@@ -95,7 +95,7 @@ const lazyRoutes = collectLazyRoutes([
  *   - prompt-templates-legacy-redirects (inline `<Navigate>` element)
  *   - `/analytics` legacy alias (inline `<Navigate>` to `/`, #2740)
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 65;
+const EXPECTED_LAZY_ROUTE_COUNT = 66;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {
