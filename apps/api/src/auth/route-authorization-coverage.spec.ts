@@ -105,11 +105,40 @@ const CLASS_LEVEL_PUBLIC_CONTROLLERS = [
   'WebhookController',
 ] as const;
 
+/**
+ * A route path segment that marks a TEST-FIXTURE seam — a write that exists
+ * only to reach a state no real flow can produce, and that must never run
+ * against real data. See the `test-fixture route` describe block below.
+ */
+const TEST_FIXTURE_PATH_SEGMENT = 'test-fixtures';
+
+/** The in-process gate every test-fixture route must reach before doing work. */
+const TEST_FIXTURE_GATE_CALL = 'assertTestFixturesAllowed(';
+
+/**
+ * Calls that ARE the test-fixture seam, whichever route reaches them.
+ *
+ * The path-segment check below is keyed on a spelling; these are keyed on the
+ * behaviour, so a seam mounted at `test-fixture`, `dev-fixtures` or no such
+ * segment at all is still caught. See the complementary-direction block.
+ */
+const TEST_FIXTURE_SEAM_CALLS = [TEST_FIXTURE_GATE_CALL, 'markPreRolloutEraForTesting('] as const;
+
+/** Names a controller cannot mention without being part of the fixture seam. */
+const TEST_FIXTURE_SERVICE_REFERENCES = [
+  'IOrderTestFixtureService',
+  'ORDER_TEST_FIXTURE_SERVICE_TOKEN',
+] as const;
+
 interface DiscoveredRoute {
   readonly file: string;
   readonly controller: string;
   readonly handler: string;
   readonly verb: string;
+  /** `@Controller(...)` prefix segments followed by the handler's own path segments. */
+  readonly pathSegments: readonly string[];
+  /** The RESOLVED role list (handler's, else the class's), `[]` when neither. */
+  readonly roles: readonly string[];
   readonly isPublic: boolean;
   readonly hasRoles: boolean;
   readonly hasAnyRole: boolean;
@@ -182,11 +211,27 @@ function collectRoutes(file: string): DiscoveredRoute[] {
       const hasRoles = handlerDeclares ? handlerHasRoles : classHasRoles;
       const hasAnyRole = handlerDeclares ? handlerAnyRole : classAnyRole;
 
+      // `@Controller(['a', 'b'])` and `@Post(['x', 'y'])` are both legal, so
+      // the metadata may be an array. Flattening rather than `String(...)`-ing
+      // it keeps a multi-path route's segments separable instead of glueing
+      // them with a comma — which would make a `test-fixtures` segment
+      // unmatchable on exactly the shape most likely to hide one.
+      const toSegments = (raw: unknown): string[] =>
+        (Array.isArray(raw) ? raw : [raw])
+          .flatMap((part) => String(part ?? '').split('/'))
+          .filter((part) => part.length > 0);
+      const resolvedRoles = (handlerDeclares ? handlerRoles : classRoles) ?? [];
+
       routes.push({
         file: file.replace(`${SRC_ROOT}/`, ''),
         controller: name,
         handler,
         verb: RequestMethod[verb],
+        pathSegments: [
+          ...toSegments(Reflect.getMetadata(PATH_METADATA, cls)),
+          ...toSegments(Reflect.getMetadata(PATH_METADATA, fn)),
+        ],
+        roles: resolvedRoles.map((role) => String(role)),
         isPublic: classPublic || Reflect.getMetadata(IS_PUBLIC_KEY, fn) === true,
         hasRoles,
         hasAnyRole,
@@ -206,6 +251,36 @@ const allRoutes = [...routesByFile.values()].flat();
 
 function describeRoute(r: DiscoveredRoute): string {
   return `${r.file} :: ${r.controller}.${r.handler} (${r.verb})`;
+}
+
+/**
+ * The source text of one handler's body, by brace-matching from its
+ * declaration. Reflection cannot answer "does this handler call X" — the
+ * decorator metadata says nothing about the body — so the only way to assert
+ * the in-process gate is reached is to read it.
+ *
+ * Returns `null` when the declaration is not found, which the caller must
+ * treat as a FAILURE rather than as "no gate needed": a silent `null` here is
+ * exactly the vacuity the file header's five guards exist to prevent.
+ */
+function extractHandlerBody(fileSource: string, handler: string): string | null {
+  // Bounded by INDENTATION, not by brace counting. Prettier (`tabWidth: 2`)
+  // puts every class member at two spaces and every statement inside one at
+  // four or more, so `\n  }` is unambiguously the member's own closing brace.
+  //
+  // Brace counting was tried and rejected: it needs string and comment
+  // literals masked out first, and masking single quotes without also
+  // handling backticks pairs an apostrophe inside a template literal with a
+  // real string quote and blanks whole methods. That failed OPEN — the slice
+  // ran past the member and could find the gate call in the next one. This
+  // cannot: the slice never crosses `\n  }`.
+  const declaration = new RegExp(`\\n  (?:async )?${handler}\\s*\\(`).exec(fileSource);
+  if (declaration === null) return null;
+
+  const end = fileSource.indexOf('\n  }', declaration.index);
+  if (end === -1) return null;
+
+  return fileSource.slice(declaration.index, end + '\n  }'.length);
 }
 
 describe('Route-authorization coverage invariant (#2079)', () => {
@@ -374,6 +449,207 @@ describe('Route-authorization coverage invariant (#2079)', () => {
       expect(route?.isPublic).toBe(true);
       expect(route?.hasRoles).toBe(false);
       expect(route?.hasAnyRole).toBe(false);
+    });
+  });
+
+  /**
+   * Test-fixture routes (#3127 review)
+   *
+   * A separate invariant sharing this file's discovery machinery, because a
+   * second walk of `apps/api` would be a second set that could silently stop
+   * agreeing with this one.
+   *
+   * `OrderTestFixtureService.assertTestFixturesAllowed()` is a METHOD the
+   * controller must remember to call — precisely the "applies by remembering
+   * rather than by omission" shape #2999 exists to remove one directory over.
+   * The route that exists today calls it correctly, so both gates hold. What
+   * fails silently is the NEXT `test-fixtures/*` route: `@Roles('admin')`
+   * alone leaves it live in production, and nothing else in the build objects
+   * — lint passes, type-check passes, and the coverage invariant above is
+   * satisfied by the audience decorator without ever asking whether the gate
+   * was reached.
+   *
+   * So the two halves are asserted here, over EVERY discovered route whose
+   * path carries a `test-fixtures` segment:
+   *
+   *   1. it is `@Roles('admin')` exactly — never `@Public()`, never
+   *      `@AnyRole()`, never a wider or different role set;
+   *   2. its body reaches `assertTestFixturesAllowed(`.
+   *
+   * Non-vacuity, matching the file header's discipline: a filter that matches
+   * nothing reads green, so the count is asserted first. If the seam is ever
+   * removed, DELETE this block — do not let it pass over an empty set.
+   *
+   * The path segment is the discriminator rather than a decorator, because a
+   * decorator is one more thing to remember and this check must fire on a
+   * route whose author forgot everything except the URL they chose.
+   *
+   * That leaves one escape — a seam mounted WITHOUT that segment, which this
+   * filter never sees. The nested block at the end closes it from the other
+   * direction, by asking which routes reach the seam rather than which paths
+   * look like it.
+   */
+  describe('test-fixture routes are admin-gated AND reach the in-process gate (#3127 review)', () => {
+    const fixtureRoutes = allRoutes.filter((r) =>
+      r.pathSegments.includes(TEST_FIXTURE_PATH_SEGMENT)
+    );
+
+    it('discovers at least one test-fixture route (non-vacuity)', () => {
+      expect(fixtureRoutes.length).toBeGreaterThan(0);
+    });
+
+    it('every test-fixture route is @Roles(admin) exactly', () => {
+      const offenders = fixtureRoutes
+        .filter(
+          (r) =>
+            r.isPublic ||
+            r.hasAnyRole ||
+            r.roles.length !== 1 ||
+            r.roles[0] !== 'admin'
+        )
+        .map((r) => `${describeRoute(r)} → roles=[${r.roles.join(', ')}] public=${r.isPublic}`);
+
+      expect(offenders).toEqual([]);
+    });
+
+    it('every test-fixture route reaches assertTestFixturesAllowed()', () => {
+      const offenders: string[] = [];
+
+      for (const route of fixtureRoutes) {
+        const source = readFileSync(join(SRC_ROOT, route.file), 'utf8');
+        const body = extractHandlerBody(source, route.handler);
+
+        // A body we could not locate is an offender, not a pass. Reporting it
+        // as "no gate needed" is how this check would quietly stop checking.
+        if (body === null) {
+          offenders.push(`${describeRoute(route)} → handler body not found`);
+          continue;
+        }
+        if (!body.includes(TEST_FIXTURE_GATE_CALL)) {
+          offenders.push(`${describeRoute(route)} → does not call ${TEST_FIXTURE_GATE_CALL})`);
+        }
+      }
+
+      expect(offenders).toEqual([]);
+    });
+
+    it('the body extractor can fail, so a missing gate is really detected', () => {
+      // Guard on the guard: `extractHandlerBody` returning a body that happens
+      // to contain the call for unrelated reasons would make the assertion
+      // above green forever. Feed it a handler that provably lacks the call,
+      // and one that does not exist at all.
+      const source = readFileSync(join(SRC_ROOT, 'auth/auth.controller.ts'), 'utf8');
+      const body = extractHandlerBody(source, 'login');
+
+      expect(body).not.toBeNull();
+      expect(body).toContain('validateUser');
+      expect(body).not.toContain(TEST_FIXTURE_GATE_CALL);
+      expect(extractHandlerBody(source, 'noSuchHandlerExists')).toBeNull();
+    });
+
+    it('resolves a body for EVERY discovered route, so the indentation assumption is checked', () => {
+      // `extractHandlerBody` bounds the slice on `\n  }`, which is only the
+      // member's closing brace while every class member sits at two spaces.
+      // That is Prettier's doing, not a language rule — so it is asserted
+      // rather than assumed. If a formatting change ever breaks it, this goes
+      // red here instead of silently turning the gate check above into a
+      // "handler body not found" that someone deletes.
+      const unresolved = allRoutes
+        .filter((route) => {
+          const source = readFileSync(join(SRC_ROOT, route.file), 'utf8');
+          return extractHandlerBody(source, route.handler) === null;
+        })
+        .map(describeRoute);
+
+      expect(unresolved).toEqual([]);
+    });
+
+    /**
+     * The complementary direction (#3127 review, second pass)
+     *
+     * Everything above is keyed on the PATH SPELLING, so a future seam mounted
+     * at `test-fixture`, `dev-fixtures`, or with no such segment at all,
+     * escapes both of those assertions silently — the same "applies by
+     * remembering" shape one level up that this whole block exists to remove.
+     *
+     * This closes it from the other end. Rather than asking whether a
+     * fixture-shaped PATH is gated, it asks whether the fixture SEAM is
+     * reachable from anywhere but a fixture-shaped path. Two scans, because
+     * they fail differently:
+     *
+     *   A. per HANDLER — a body calling `assertTestFixturesAllowed(` or
+     *      `markPreRolloutEraForTesting(` must sit on a `test-fixtures` path.
+     *      This is what catches the off-convention spelling: such a route
+     *      still calls the seam, so it is found here and fails for lacking
+     *      the segment.
+     *
+     *   B. per FILE — a controller that so much as NAMES the fixture service
+     *      must expose at least one `test-fixtures` route. `extractHandlerBody`
+     *      sees one member, so a handler delegating through a private helper
+     *      is invisible to (A); (B) does not care where in the file the
+     *      reference sits.
+     *
+     * (B) matches a bare mention in a comment too, and that is deliberate
+     * rather than sloppy — the same reasoning the file header gives for the
+     * `contradicts` strictness. What it refuses is meaningless rather than
+     * workable: a controller naming the fixture seam while exposing no
+     * fixture route. The remedy is to drop the mention or mount the route.
+     *
+     * Read this as defence in depth. The real protection is that
+     * `markPreRolloutEraForTesting` calls the gate as its own first
+     * statement, so even an off-convention route stays triple-gated; what
+     * these two buy is that such a route cannot exist *unnoticed*.
+     */
+    describe('the seam is reachable only from a test-fixture path', () => {
+      const routesReachingSeam = allRoutes.filter((route) => {
+        const source = readFileSync(join(SRC_ROOT, route.file), 'utf8');
+        const body = extractHandlerBody(source, route.handler);
+        // `null` cannot be treated as "does not reach the seam" — that would
+        // hide exactly the handler this scan is for. The preceding test
+        // asserts every route resolves, so a `null` here is already red there;
+        // counting it as a match keeps this one honest if that ever changes.
+        if (body === null) return true;
+        return TEST_FIXTURE_SEAM_CALLS.some((call) => body.includes(call));
+      });
+
+      const filesNamingSeam = controllerFiles.filter((file) => {
+        const source = readFileSync(file, 'utf8');
+        return TEST_FIXTURE_SERVICE_REFERENCES.some((ref) => source.includes(ref));
+      });
+
+      it('finds the seam from both directions (non-vacuity)', () => {
+        // Either scan silently matching nothing reads green. If the seam is
+        // ever removed, DELETE this block rather than letting it pass over an
+        // empty set.
+        expect(routesReachingSeam.length).toBeGreaterThan(0);
+        expect(filesNamingSeam.length).toBeGreaterThan(0);
+      });
+
+      it('(A) every route reaching the seam is mounted on a test-fixtures path', () => {
+        const offenders = routesReachingSeam
+          .filter((route) => !route.pathSegments.includes(TEST_FIXTURE_PATH_SEGMENT))
+          .map((route) => `${describeRoute(route)} → path=/${route.pathSegments.join('/')}`);
+
+        expect(offenders).toEqual([]);
+      });
+
+      it('(B) every controller naming the fixture service exposes a test-fixtures route', () => {
+        const offenders = filesNamingSeam
+          .map((file) => file.replace(`${SRC_ROOT}/`, ''))
+          .filter((relative) => !fixtureRoutes.some((route) => route.file === relative));
+
+        expect(offenders).toEqual([]);
+      });
+
+      it('both scans can produce a negative, so neither matches everything', () => {
+        // Guard on the guard: a scan that matched every controller would make
+        // (A) and (B) green for reasons unrelated to the seam. `AuthController`
+        // neither names the fixture service nor reaches its calls.
+        const authFile = join(SRC_ROOT, 'auth/auth.controller.ts');
+
+        expect(filesNamingSeam).not.toContain(authFile);
+        expect(routesReachingSeam.map((r) => r.file)).not.toContain('auth/auth.controller.ts');
+      });
     });
   });
 });
