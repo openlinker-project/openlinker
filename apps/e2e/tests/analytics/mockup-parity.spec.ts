@@ -23,14 +23,11 @@
  *
  * 15 states total, per the issue's own state table.
  *
- * Fully compared (screenshot + content, both mockup and real app) — 11:
+ * Fully compared (screenshot + content, both mockup and real app) — 12:
  * `native`, `converting`, `converted`, `unavailable`, `settings-open`,
  * `all-clear`, `detail-currency`, `currency-in-progress`, `currency-fixed`,
- * `detail-mapping`, `detail-novat`.
- *
- * Documented divergence (mockup screenshotted; real app asserted to NOT have
- * the mockup's confirm step — a real product gap, not a spec defect) — 1:
- * `tax-confirm`. See #2857.
+ * `detail-mapping`, `detail-novat`, `tax-confirm` (real confirm-gate now
+ * shipped, #2857).
  *
  * Skipped with a named, verified reason (mockup screenshotted only) — 3:
  * `detail-tax` / `detail-postrollout` (tax-a / tax-c: `taxRateEra =
@@ -391,35 +388,55 @@ test.describe('analytics mockup parity (#2482)', () => {
         }
       });
 
-      // ── tax-confirm: documented mockup/real-app divergence (#2857) ──────
+      // ── tax-confirm: now exercisable in the real app (#2857) ────────────
       await test.step('tax-confirm', async () => {
         await pages.analyticsMockup.gotoState('tax-confirm');
-        await captureBoth(
-          testInfo,
-          pages.analyticsMockup.regionFor('tax-confirm'),
-          page,
-          'tax-confirm-mockup-reference',
-        );
-        // The mockup shows a confirm dialog ("Turn on including orders with a
-        // guessed tax rate?") before the toggle applies. The shipped
-        // AnalyticsSettingsDialog's `handleTaxToggleChange` writes directly
-        // on change with no confirm step (#2857) — asserted here as a real,
-        // known divergence rather than silently glossed over.
+        // The mockup shows a confirm dialog before the toggle applies. The
+        // shipped `AnalyticsSettingsDialog` now gates the ON direction behind
+        // a real `ConfirmDialog` too (#2857, mirroring the currency-recalculate
+        // confirm precedent from #2668 review, finding 14).
         await pages.analytics.openSettings();
         const toggle = pages.analytics.settingsDialog.getByRole('checkbox', {
           name: /Use the rate found in the product catalog/,
         });
         await toggle.waitFor({ state: 'visible' });
         const before = await toggle.isChecked();
-        await toggle.click();
-        await expect(
-          page.getByRole('dialog', { name: /Confirm including tax-rate-guessed orders/ }),
-          'known divergence #2857: the mockup shows a confirm dialog here; the shipped Settings dialog toggles directly with no confirm step',
-        ).toHaveCount(0);
-        // Restore the toggle to its prior value so this run leaves the
-        // deployment-wide setting unchanged.
-        if ((await toggle.isChecked()) !== before) {
+        try {
+          if (before) {
+            // Already ON from a prior run — flip OFF (direct write, no confirm
+            // gate on that direction) so this step can exercise the ON confirm.
+            await toggle.click();
+            await expect(toggle).not.toBeChecked();
+          }
           await toggle.click();
+          const confirmDialog = page.getByRole('dialog', {
+            name: 'Turn on including orders with a guessed tax rate?',
+          });
+          await expect(confirmDialog).toBeVisible();
+          // Capture the REAL confirm dialog, not the settings page behind it —
+          // capturing before this point (as a prior revision did) screenshots
+          // the analytics page in its default state and silently never
+          // exercises the "fully compared" claim this state is listed under
+          // above (#2993 review, IMPORTANT 1).
+          await captureBoth(testInfo, pages.analyticsMockup.regionFor('tax-confirm'), page, 'tax-confirm');
+          // Cancelling must not write anything — the checkbox stays OFF.
+          await confirmDialog.getByRole('button', { name: 'Cancel' }).click();
+          await expect(confirmDialog).toBeHidden();
+          await expect(toggle).not.toBeChecked();
+        } finally {
+          // Restore the deployment-wide setting to its prior value —
+          // best-effort, in a `finally`, so a failure between the OFF click
+          // above and this restore does not leave the setting flipped for
+          // the whole environment (#2993 review, SUGGESTION: "leaves it
+          // unchanged" was true only on the happy path).
+          if (before && !(await toggle.isChecked())) {
+            await toggle.click();
+            await page
+              .getByRole('dialog', { name: 'Turn on including orders with a guessed tax rate?' })
+              .getByRole('button', { name: 'Turn on' })
+              .click();
+            await expect(toggle).toBeChecked();
+          }
         }
         await page.getByRole('button', { name: 'Cancel' }).click();
       });

@@ -41,6 +41,9 @@ export type FailureMode = (typeof FailureModeValues)[number];
 export const FailureCodeValues = [
   'buyer-tax-id-invalid',
   'invalid-currency',
+  // A missing per-connection sale classification (goods vs. services) — a
+  // one-field config gap, not an order-data problem (#3031).
+  'sale-classification-required',
   'provider-rejected',
   'transport-timeout',
   'provider-error',
