@@ -8,7 +8,7 @@
 
 A clean OpenLinker instance has **no sales-document routing at all**, and it should not: which document a sale needs is a legal question about the seller's business, and [ADR-041](./041-sales-document-routing-policy.md) is explicit that OpenLinker executes configured routing rather than deciding tax obligations.
 
-The consequence today is silence. Orders arrive, no document is issued, and nothing on any screen says which markets the operator would need to configure. The failure is invisible until someone notices no documents exist - which on the live demo is exactly what happened for Poland, where three configured rules key on a buyer tax ID that, at the time, only PrestaShop populated - #2599 carried the field (`order_records.buyerTaxId`, populated from `ps_address.vat_number`), and Allegro/Erli/WooCommerce did not populate it until #2822. Coverage is now four sources wide, but every one of them is still conditional (a VAT-invoice request at Allegro/Erli checkout, a VAT-number plugin on WooCommerce), so an order carrying no qualifying signal still resolves to no document while the settings page presents the configuration as working - the same silence, for a narrower but still-real set of orders.
+The consequence today is silence. Orders arrive, no document is issued, and nothing on any screen says which markets the operator would need to configure. The failure is invisible until someone notices no documents exist - which on the live demo is exactly what happened for Poland, where three configured rules key on a buyer tax ID that neither the Allegro nor the WooCommerce order source supplies - #2599 carries the field (`order_records.buyerTaxId`, populated from `ps_address.vat_number`), but only PrestaShop populates it - so every Polish order from those sources resolves to no document while the settings page presents the configuration as working.
 
 OpenLinker does already know where orders are delivered: an `order_records` row carries its delivery-address country - the same field [ADR-041](./041-sales-document-routing-policy.md) decision 5 routes on. It is not a column, though: the value lives in the `orderSnapshot` jsonb as `shippingAddress.country`, it survives `OL_STORE_PII=false` (`sanitizeAddress` redacts every address field except the country code), and it is absent on a non-`ready` record and on any source that supplies no shipping address. So the set of markets that need a decision is derivable, and leaving it underived is a choice, not a limitation.
 
@@ -44,6 +44,10 @@ One presentational rule follows and is load-bearing: **a detected, unconfigured 
 
 **Migration path:**
 - Additive and read-only. An existing install gains the list; nothing about its routing changes.
+
+## Amendment (#2822, 2026-09-04): the buyer-tax-ID coverage named in the Context has widened; the decision stands
+
+The Context above describes the live-demo Poland failure as rules keying on a buyer tax ID that "neither the Allegro nor the WooCommerce order source supplies". That was true when this ADR was written; #2822 has since wired the field onto Allegro, Erli and WooCommerce, so all four order sources supply it. Neither the decision nor the failure it addresses is affected, because every one of those paths is conditional - Allegro and Erli read a tax ID only from a buyer's VAT-invoice request at checkout, WooCommerce only when the store runs a VAT-number plugin writing an allowlisted `meta_data` key - so an order carrying no qualifying signal still resolves to no document while the settings page presents the configuration as working. The same silence, over a narrower but still-real set of orders, which is what market discovery exists to surface.
 
 ## References
 
