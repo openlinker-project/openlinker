@@ -17,15 +17,6 @@
  * `sourceConnectionId` are all references by value — an episode is evidence
  * of a past detection and must survive a re-mapped variant or a deleted
  * connection rather than cascade away with it.
- *
- * `computedOldAmount` AND `sourceOldAmount` are both nullable (#3159 review,
- * the second amended in after the first): a brand-new mapping's first
- * detection, or a variant that previously carried NO source price at all,
- * has no recorded baseline to report — writing `sourceNewAmount` into a
- * `NOT NULL` `sourceOldAmount` column would fabricate a "changed from N to
- * N" fact the source never asserted. `CHK_price_change_episodes_amounts_non_negative`
- * is unaffected — a Postgres CHECK evaluates to "not violated" on a NULL
- * operand.
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
@@ -42,9 +33,9 @@ export class CreatePriceChangeEpisodes1880000000000 implements MigrationInterfac
         "destinationConnectionId" uuid NOT NULL,
         "sourceConnectionId" uuid NOT NULL,
         "sourceCurrency" character varying(8) NOT NULL,
-        "sourceOldAmount" numeric(14,4),
+        "sourceOldAmount" numeric(14,4) NOT NULL,
         "sourceNewAmount" numeric(14,4) NOT NULL,
-        "computedOldAmount" numeric(14,4),
+        "computedOldAmount" numeric(14,4) NOT NULL,
         "computedNewAmount" numeric(14,4) NOT NULL,
         "manualPriceOverride" numeric(14,4),
         "manualPriceOverrideSetAt" TIMESTAMP WITH TIME ZONE,
