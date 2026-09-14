@@ -8402,56 +8402,10 @@ a.kpi-card:focus-visible {
 }
 
 /*
- * ── Category picker (#305) ────────────────────────────────────────
- * Leaf-only Allegro category picker used in CreateOfferWizard Step 2.
- * Browse-backed via breadcrumb; clicking a leaf fires onChange(id).
- * The "--prefill" variant renders when the form opens with a pre-set
- * categoryId — shows the raw ID + "Change" button as a fallback since
- * we don't resolve the breadcrumb ancestor chain yet.
- */
-.category-picker {
-  display: grid;
-  gap: 0.375rem;
-  padding: 0.625rem 0.75rem;
-  border: 1px solid var(--border-default);
-  border-radius: 0.625rem;
-  background: var(--bg-surface);
-}
-
-.category-picker--invalid {
-  border-color: var(--status-error-border);
-  background: var(--status-error-soft);
-}
-
-.category-picker--disabled {
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-.category-picker__prefill {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.category-picker__prefill-label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-}
-
-/* Browse / list / breadcrumb surface lives in the shared
- * `.category-tree-browser` primitive (see `shared/ui/category-tree-browser.tsx`).
- * Only the pre-fill fallback row remains wrapper-specific here. */
-
-/*
  * ── Category Tree Browser (shared primitive, #304) ───────────────
  * Hierarchical tree navigation with breadcrumb + per-row Select/Browse
- * actions. Consumed by `CategoryPicker` (listings, leaf-only mode) and
- * `AllegroCategorySearch` (mappings, any-level staged mode). Density
- * `compact` enables overflow-x scroll + tighter spacing for
+ * actions. Consumed by `AllegroCategorySearch` (mappings, any-level staged
+ * mode). Density `compact` enables overflow-x scroll + tighter spacing for
  * dialog-bounded usage.
  */
 .category-tree-browser {

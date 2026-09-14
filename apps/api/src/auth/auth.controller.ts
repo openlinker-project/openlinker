@@ -153,8 +153,21 @@ export class AuthController {
       "Demo mode: the session-recording condition was not accepted (`analyticsConsent` omitted or `false`). Outside demo mode the field is optional and this response does not apply.",
   })
   @ApiResponse({ status: 403, description: 'Registration is disabled for this installation' })
-  @ApiResponse({ status: 409, description: 'Username or email already taken' })
-  @ApiResponse({ status: 429, description: 'Too many registration attempts from this IP' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Username or email already taken. The body never names which of the two collided, nor ' +
+      'the submitted value (#3156). Note this status is itself a user-enumeration oracle — a ' +
+      'caller controls both fields, so 409 vs 201 answers "is this identifier registered?" ' +
+      'regardless of the message. Tracked on #3156; not closed here.',
+  })
+  @ApiResponse({
+    status: 429,
+    description:
+      'Too many registration attempts from this IP. **Demo-mode instances only** — the rate ' +
+      'limiter is gated on `OL_DEMO_MODE`, so a self-hosted installation with ' +
+      '`OL_REGISTRATION_ENABLED=true` never returns this.',
+  })
   async register(@Body() dto: RegisterDto, @Req() req: Request): Promise<OkResponseDto> {
     try {
       await this.registrationService.register(
