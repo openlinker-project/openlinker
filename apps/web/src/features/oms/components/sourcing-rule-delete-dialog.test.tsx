@@ -144,6 +144,26 @@ describe('SourcingRuleDeleteDialog (#3059)', () => {
     expect(screen.getByRole('button', { name: 'Retire instead' })).toBeInTheDocument();
   });
 
+  it('splits the footer while Retire is on offer', () => {
+    renderDialog();
+
+    const footer = screen.getByRole('button', { name: 'Delete' }).closest('.dialog__footer');
+    expect(footer).toHaveClass('dialog__footer--split');
+    expect(footer?.children).toHaveLength(2);
+  });
+
+  it('drops the split modifier - not a spacer element - when Retire is absent', () => {
+    // `space-between` needs two children to mean anything. With Retire gone the
+    // footer holds one group and `.dialog__footer`'s own flex-end right-aligns
+    // it, so the modifier comes off rather than an empty element being rendered
+    // to hold the left slot open.
+    renderDialog({ rule: rule({ effectiveTo: '2026-01-01T00:00:00.000Z' }) });
+
+    const footer = screen.getByRole('button', { name: 'Delete' }).closest('.dialog__footer');
+    expect(footer).not.toHaveClass('dialog__footer--split');
+    expect(footer?.children).toHaveLength(1);
+  });
+
   it('renders the canned sentence for a 404 delete and stays open', async () => {
     const remove = vi.fn().mockRejectedValue(new ApiError('rule not found on this connection', 404, {}));
     const onOpenChange = vi.fn();
