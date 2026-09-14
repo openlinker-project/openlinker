@@ -53,15 +53,42 @@ function claim(overrides: Partial<ReservationClaimInput> = {}): ReservationClaim
 }
 
 /**
+ * The reply to `applyGuardedAdd`'s position lock.
+ *
+ * `SELECT 1 … FOR UPDATE` is not a data-modifying statement, so the driver
+ * surfaces it as a plain row array and never as a `[rows, affectedCount]` tuple
+ * — which is why this is the same value in the tuple-shaped harnesses below.
+ * The repository reads nothing out of it; it is here because the queue is
+ * positional.
+ */
+const LOCK_REPLY: unknown[] = [];
+
+/**
  * A scripted `EntityManager.query`: each call shifts one reply off the queue and
  * records the SQL, so a test asserts over the STATEMENTS issued rather than over
  * a fake's internal state.
+ *
+ * The queue is POSITIONAL, so a script must account for EVERY statement the path
+ * issues — including `applyGuardedAdd`'s `SELECT … FOR UPDATE`, whose own reply
+ * the repository discards but which still occupies a slot (`LOCK_REPLY` below).
+ *
+ * An exhausted queue THROWS rather than answering `[]`. The silent fallback cost
+ * a red `main` once (#3245): adding the lock statement shifted every downstream
+ * reply by one, so the guarded `UPDATE` consumed the row meant for
+ * `setQuantity`, `setQuantity` read the empty fallback, and ten tests failed
+ * four call frames away with `ReservationLedgerConstraintError` — naming a
+ * concern the change had not touched. Failing at the unscripted statement names
+ * the statement instead.
  */
 function createHarness(replies: unknown[][]) {
   const statements: { sql: string; params: unknown[] }[] = [];
   const query = jest.fn((sql: string, params: unknown[]) => {
     statements.push({ sql, params });
-    return Promise.resolve(replies.shift() ?? []);
+    const reply = replies.shift();
+    if (reply === undefined) {
+      return Promise.reject(new Error(`Unscripted statement: ${sql}`));
+    }
+    return Promise.resolve(reply);
   });
   const manager = { query };
   const transaction = jest.fn((fn: (m: typeof manager) => Promise<unknown>) => fn(manager));
@@ -96,9 +123,11 @@ describe('ReservationRepository', () => {
       // order. Asserted on the statements, not on an internal sorted array.
       const h = createHarness([
         [reservationRow({ id: 'r-a', inventoryItemId: 'inv-a' })],
+        LOCK_REPLY,
         [{ remainingAtp: 5 }],
         [reservationRow({ id: 'r-a', inventoryItemId: 'inv-a' })],
         [reservationRow({ id: 'r-c', inventoryItemId: 'inv-c' })],
+        LOCK_REPLY,
         [{ remainingAtp: 7 }],
         [reservationRow({ id: 'r-c', inventoryItemId: 'inv-c' })],
       ]);
@@ -114,9 +143,49 @@ describe('ReservationRepository', () => {
       expect(touched).toEqual(['inv-a', 'inv-c']);
     });
 
+    it('should lock the position row in its own statement before the guarded add', async () => {
+      // The #3035 race: `othersSum` is a correlated subquery against a DIFFERENT
+      // table, and under READ COMMITTED a blocked UPDATE that unblocks re-fetches
+      // only the row it updates — the subquery still runs on the pre-block
+      // snapshot, so two concurrent claims for one unit can both read zero and
+      // both pass. The lock has to be its OWN prior statement for the guarded
+      // UPDATE to start on a fresh snapshot, so what is pinned here is the
+      // ORDERING, not merely that a lock is taken somewhere.
+      //
+      // Nothing else in this suite has an opinion on it: the scripts tolerate the
+      // statement, and deleting it would leave them green while reopening the
+      // oversell. Only `reservations-ledger.int-spec.ts` would catch that, and
+      // only intermittently.
+      const h = createHarness([
+        [reservationRow({ quantity: 3 })],
+        LOCK_REPLY,
+        [{ remainingAtp: 4 }],
+        [reservationRow({ quantity: 3 })],
+      ]);
+
+      // The outcome is deliberately discarded: this script is written for the
+      // LOCKED sequence, so if the lock is gone every reply shifts and the claim
+      // derails. Asserting over `statements` — recorded whatever the outcome —
+      // keeps the failure message about the missing lock rather than about
+      // whichever downstream read the shift happened to corrupt.
+      await h.repository.claimHeld([claim({ quantity: 3 })]).catch(() => undefined);
+
+      const lockIndex = h.statements.findIndex(
+        (s) => s.sql.includes('"inventory_items"') && s.sql.includes('FOR UPDATE'),
+      );
+      const guardIndex = h.statements.findIndex((s) => s.sql.includes('+ $3'));
+      expect(lockIndex).toBeGreaterThanOrEqual(0);
+      expect(guardIndex).toBeGreaterThanOrEqual(0);
+      expect(lockIndex).toBeLessThan(guardIndex);
+      // The lock names the position this claim is about — locking the wrong row
+      // serialises nothing.
+      expect(h.statements[lockIndex].params).toEqual(['inv-b']);
+    });
+
     it('should apply the full quantity as the delta when the row is newly inserted', async () => {
       const h = createHarness([
         [reservationRow({ quantity: 3 })],
+        LOCK_REPLY,
         [{ remainingAtp: 4 }],
         [reservationRow({ quantity: 3 })],
       ]);
@@ -146,6 +215,7 @@ describe('ReservationRepository', () => {
       //    its own units.
       const h = createHarness([
         [reservationRow({ quantity: 3 })],
+        LOCK_REPLY,
         [{ remainingAtp: 4 }],
         [reservationRow({ quantity: 3 })],
       ]);
@@ -164,6 +234,7 @@ describe('ReservationRepository', () => {
       // the full delta — it is the denormalised total of BOTH stamps.
       const h = createHarness([
         [reservationRow({ quantity: 3, atpEffect: 'diagnostic' })],
+        LOCK_REPLY,
         [{ remainingAtp: 10 }],
         [reservationRow({ quantity: 3, atpEffect: 'diagnostic' })],
       ]);
@@ -196,6 +267,7 @@ describe('ReservationRepository', () => {
       const h = createHarness([
         [],
         [reservationRow({ quantity: 2 })],
+        LOCK_REPLY,
         [{ remainingAtp: 1 }],
         [reservationRow({ quantity: 5 })],
       ]);
@@ -233,6 +305,7 @@ describe('ReservationRepository', () => {
     it('should throw InsufficientAvailabilityError when the position is live but short', async () => {
       const h = createHarness([
         [reservationRow({ quantity: 9 })],
+        LOCK_REPLY,
         [], // guarded add matched nothing
         [{ isStale: false, atp: 4 }], // discriminating probe
       ]);
@@ -245,6 +318,7 @@ describe('ReservationRepository', () => {
     it('should throw ReservationPositionUnavailableError with reason stale for a stale position', async () => {
       const h = createHarness([
         [reservationRow()],
+        LOCK_REPLY,
         [],
         [{ isStale: true, atp: 100 }],
       ]);
@@ -256,7 +330,7 @@ describe('ReservationRepository', () => {
     });
 
     it('should throw ReservationPositionUnavailableError with reason missing when no position exists', async () => {
-      const h = createHarness([[reservationRow()], [], []]);
+      const h = createHarness([[reservationRow()], LOCK_REPLY, [], []]);
 
       const rejection = await h.repository.claimHeld([claim()]).catch((e: unknown) => e);
 
@@ -275,9 +349,11 @@ describe('ReservationRepository', () => {
     it('should not mutate the caller-supplied claims array while sorting', async () => {
       const h = createHarness([
         [reservationRow({ inventoryItemId: 'inv-a' })],
+        LOCK_REPLY,
         [{ remainingAtp: 1 }],
         [reservationRow({ inventoryItemId: 'inv-a' })],
         [reservationRow({ inventoryItemId: 'inv-c' })],
+        LOCK_REPLY,
         [{ remainingAtp: 1 }],
         [reservationRow({ inventoryItemId: 'inv-c' })],
       ]);
@@ -338,11 +414,13 @@ describe('ReservationRepository', () => {
     it('should read rows out of a [rows, affectedCount] tuple exactly as it does a plain array', async () => {
       const tuple = createHarness([
         [[reservationRow({ quantity: 3 })], 1],
+        LOCK_REPLY,
         [[{ remainingAtp: 4 }], 1],
         [[reservationRow({ quantity: 3 })], 1],
       ]);
       const plain = createHarness([
         [reservationRow({ quantity: 3 })],
+        LOCK_REPLY,
         [{ remainingAtp: 4 }],
         [reservationRow({ quantity: 3 })],
       ]);
@@ -361,6 +439,7 @@ describe('ReservationRepository', () => {
       // exact shape that would turn a refusal into a silent oversell.
       const h = createHarness([
         [[reservationRow({ quantity: 3 })], 1],
+        LOCK_REPLY,
         [[], 0],
         [[{ isStale: false, atp: 1 }], 1],
       ]);
