@@ -3,7 +3,10 @@ import {
   describeMatchedSalesDocumentRule,
   matchedRuleReadsBuyerTaxId,
 } from './describe-matched-sales-document-rule';
-import type { SalesDocumentMatchedRuleView } from '../api/orders.types';
+import type {
+  SalesDocumentMatchedRuleCondition,
+  SalesDocumentMatchedRuleView,
+} from '../api/orders.types';
 
 const t = (_key: string, fallback: string): string => fallback;
 
@@ -89,6 +92,28 @@ describe('describeMatchedSalesDocumentRule (#3186)', () => {
       t,
     );
     expect(sentence).toContain('periodic-summary');
+  });
+
+  it('echoes an unrecognised condition field instead of claiming it is about the total', () => {
+    // `field` is a hand-written mirror of a closed `libs/core` union with no
+    // mirror script behind it, so a fourth field reaches the browser at runtime
+    // while this type still says three. It must not fall through into the
+    // threshold sentence and make a false statement about the operator's rule.
+    const sentence = describeMatchedSalesDocumentRule(
+      rule({
+        conditions: [
+          {
+            field: 'orderChannel',
+            op: 'eq',
+            stringValue: 'allegro',
+          } as unknown as SalesDocumentMatchedRuleCondition,
+        ],
+      }),
+      'conn',
+      t,
+    );
+    expect(sentence).toContain('orderChannel');
+    expect(sentence).not.toContain('threshold');
   });
 
   it('describes an orderTotalGross gte condition distinctly from lt', () => {

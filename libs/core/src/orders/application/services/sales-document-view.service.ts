@@ -102,6 +102,26 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
   ) {}
 
   async getForOrders(orderIds: readonly string[]): Promise<Map<string, SalesDocumentView>> {
+    return this.buildViews(orderIds, false);
+  }
+
+  /**
+   * The one assembly path behind both reads (#2517). `includeMatchedRule`
+   * decides ONLY whether the "Why this kind?" disclosure (#3186) is resolved —
+   * a second assembly path would be how the row and the panel stop agreeing
+   * about the same order, which is the property `getForOrder`'s own doc comment
+   * names.
+   *
+   * It is off for the list because `matchedRule` is a DETAIL-only disclosure
+   * (#3186 review, the #2349/#2350 convention): the paged row renders nothing
+   * from it, so resolving it there would put a full conditions array on every
+   * row of every page plus one extra `IN (...)` read per page, for a sentence
+   * nothing on that surface shows.
+   */
+  private async buildViews(
+    orderIds: readonly string[],
+    includeMatchedRule: boolean,
+  ): Promise<Map<string, SalesDocumentView>> {
     const uniqueIds = [...new Set(orderIds)];
     if (uniqueIds.length === 0) {
       return new Map();
@@ -122,8 +142,11 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
     );
     // The rule (#3186) that decided each order's document kind, batch-loaded
     // ONCE for the whole page rather than one read per row — mirrors
-    // `resolveProspectiveKinds`' own batching rationale.
-    const matchedRulesById = await this.loadMatchedRules(records);
+    // `resolveProspectiveKinds`' own batching rationale. Skipped entirely on
+    // the list path, which renders none of it.
+    const matchedRulesById = includeMatchedRule
+      ? await this.loadMatchedRules(records)
+      : new Map<string, SalesDocumentMatchedRuleView>();
 
     const views = new Map<string, SalesDocumentView>();
     for (const record of records) {
@@ -145,9 +168,11 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
           .map(toOtherRecord),
         // `null` covers BOTH "no rule ever decided this order's kind" and "one
         // did, but has since been deleted" — see `SalesDocumentMatchedRuleView`'s
-        // own doc comment for why a surface must not tell the two apart.
+        // own doc comment for why a surface must not tell the two apart. On the
+        // list path it additionally means "this read did not resolve it", which
+        // is why only the detail surface may render an explanation from it.
         matchedRule:
-          record.salesDocumentMatchedRuleId === null
+          !includeMatchedRule || record.salesDocumentMatchedRuleId === null
             ? null
             : (matchedRulesById.get(record.salesDocumentMatchedRuleId) ?? null),
       });
@@ -180,7 +205,7 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
   }
 
   async getForOrder(orderId: string): Promise<SalesDocumentView | null> {
-    return (await this.getForOrders([orderId])).get(orderId) ?? null;
+    return (await this.buildViews([orderId], true)).get(orderId) ?? null;
   }
 
   /**

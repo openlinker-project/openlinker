@@ -55,10 +55,7 @@ import { UpdateConnectionDto } from './dto/update-connection.dto';
 import { UpdateConnectionCredentialsDto } from './dto/update-connection-credentials.dto';
 import { ConnectionFiltersDto } from './dto/connection-filters.dto';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
-import {
-  ConnectionDiagnosticsResponseDto,
-  type ConnectionDiagnosticsSource,
-} from './dto/connection-diagnostics-response.dto';
+import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
 import { ConnectionTestResultDto } from './dto/connection-test-result.dto';
 import { ConnectionService } from '../application/services/connection.service';
 import type {
@@ -67,8 +64,6 @@ import type {
   ConnectionFilters,
   ConnectionRateLimit,
 } from '@openlinker/core/identifier-mapping';
-import { SyncJobRepositoryPort } from '@openlinker/core/sync';
-import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
@@ -81,18 +76,9 @@ import {
 } from '../../auth/demo-mode.service.interface';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import {
-  IFiscalRegistrationService,
-  FISCAL_REGISTRATION_SERVICE_TOKEN,
-} from '@openlinker/core/fiscalization';
-import { IInvoiceService, INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
-
-/**
- * Cap on the connection-scoped registration reads {@link
- * ConnectionController.getDiagnostics} pulls in alongside the sync-job read
- * (#3179) — enough to surface a genuinely recent registration, never an
- * unbounded per-connection scan.
- */
-const RECENT_ACTIVITY_LIMIT = 10;
+  IConnectionDiagnosticsService,
+  CONNECTION_DIAGNOSTICS_SERVICE_TOKEN,
+} from '../application/interfaces/connection-diagnostics.service.interface';
 
 @ApiBearerAuth()
 @ApiTags('connections')
@@ -102,8 +88,6 @@ export class ConnectionController {
 
   constructor(
     private readonly connectionService: ConnectionService,
-    @Inject(SYNC_JOB_REPOSITORY_TOKEN)
-    private readonly syncJobRepository: SyncJobRepositoryPort,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
     @Inject(WEBHOOK_SECRET_SERVICE_TOKEN)
@@ -114,10 +98,8 @@ export class ConnectionController {
     private readonly rateLimitStatusService: IRateLimitStatusService,
     @Inject(DEMO_MODE_SERVICE_TOKEN)
     private readonly demoModeService: IDemoModeService,
-    @Inject(FISCAL_REGISTRATION_SERVICE_TOKEN)
-    private readonly fiscalRegistrations: IFiscalRegistrationService,
-    @Inject(INVOICE_SERVICE_TOKEN)
-    private readonly invoices: IInvoiceService
+    @Inject(CONNECTION_DIAGNOSTICS_SERVICE_TOKEN)
+    private readonly connectionDiagnosticsService: IConnectionDiagnosticsService
   ) {}
 
   private async toResponse(
@@ -251,73 +233,17 @@ export class ConnectionController {
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Connection not found' })
   async getDiagnostics(@Param('id') id: string): Promise<ConnectionDiagnosticsResponseDto> {
-    const connection = await this.connectionService.get(id);
-    // A document registration is real connection activity whether or not the
-    // sync_jobs row that dispatched it still sits inside the recent-job
-    // window below, so both sources are read independently (#3179) rather
-    // than relying on sync_jobs alone. Read via allSettled, NOT all: this
-    // panel is exactly what an operator opens when something is broken, and
-    // a Promise.all here would let a fiscalization- or invoicing-table
-    // outage take down a read that used to depend on sync_jobs alone. A
-    // rejected leg folds in as "no observations from that source" and is
-    // named in unreadableSources so the DTO never claims a confirmed "Never"
-    // for a source it could not actually read.
-    const [jobsResult, fiscalResult, invoicesResult] = await Promise.allSettled([
-      this.syncJobRepository.findRecentByConnectionId(id, RECENT_ACTIVITY_LIMIT),
-      this.fiscalRegistrations.listRecentByConnectionId(id, RECENT_ACTIVITY_LIMIT),
-      this.invoices.listInvoices(
-        { connectionId: id },
-        { limit: RECENT_ACTIVITY_LIMIT, offset: 0 }
-      ),
-    ]);
-
-    const unreadableSources: ConnectionDiagnosticsSource[] = [];
-
-    const recentJobs = this.unwrapDiagnosticsRead(jobsResult, 'syncJobs', id, unreadableSources);
-    const recentFiscalRegistrations = this.unwrapDiagnosticsRead(
-      fiscalResult,
-      'fiscalRegistrations',
-      id,
-      unreadableSources
-    );
-    const recentInvoices = this.unwrapDiagnosticsRead(
-      invoicesResult,
-      'invoices',
-      id,
-      unreadableSources
-    );
-
+    // Thin by design: the three-source fan-out and its per-source degradation
+    // policy live in ConnectionDiagnosticsService (#3179), alongside the other
+    // composed connection reads.
+    const reads = await this.connectionDiagnosticsService.getDiagnostics(id);
     return ConnectionDiagnosticsResponseDto.fromDomain(
-      connection,
-      recentJobs ?? [],
-      recentFiscalRegistrations ?? [],
-      recentInvoices?.items ?? [],
-      unreadableSources
+      reads.connection,
+      reads.recentJobs,
+      reads.recentFiscalRegistrations,
+      reads.recentInvoices,
+      reads.unreadableSources
     );
-  }
-
-  /**
-   * Unwraps one leg of the diagnostics `Promise.allSettled` fan-out (#3179).
-   * A rejection is logged and recorded in `unreadableSources` rather than
-   * thrown — the whole point of `allSettled` here is that one unreadable
-   * source must not take down the other two, or the panel itself.
-   */
-  private unwrapDiagnosticsRead<T>(
-    result: PromiseSettledResult<T>,
-    source: ConnectionDiagnosticsSource,
-    connectionId: string,
-    unreadableSources: ConnectionDiagnosticsSource[]
-  ): T | undefined {
-    if (result.status === 'fulfilled') {
-      return result.value;
-    }
-    this.logger.warn(
-      `Could not read '${source}' for connection diagnostics (connection ${connectionId}): ${
-        result.reason instanceof Error ? result.reason.message : String(result.reason)
-      }`
-    );
-    unreadableSources.push(source);
-    return undefined;
   }
 
   @Roles('admin')

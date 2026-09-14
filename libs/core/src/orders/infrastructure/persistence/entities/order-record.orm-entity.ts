@@ -181,7 +181,8 @@ export class OrderRecordOrmEntity {
    * relation OpenLinker enforces.
    *
    * Level-triggered and written ONLY by `updateSalesDocumentBlock`, alongside
-   * the three columns above — see that method's own doc comment.
+   * the three columns above, and only when that call carries `{action: 'set'}`
+   * — see that method's own doc comment.
    */
   @Column({ type: 'varchar', nullable: true })
   salesDocumentMatchedRuleId!: string | null;
