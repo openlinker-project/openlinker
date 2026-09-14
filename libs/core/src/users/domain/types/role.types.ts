@@ -77,6 +77,16 @@ export const PermissionValues = [
   // own reasoning. Same discipline as `shipments:write` above.
   'automations:read',
   'automations:write',
+  // DISPLAY-ONLY (#3066): gates the FE's inventory-locations write
+  // affordances (Add/Edit/Delete/Retire on the locations list, #2316). It is
+  // deliberately NOT `inventory:write` — that permission is held by `operator`
+  // too, but `InventoryLocationsController`'s three write routes are
+  // `@Roles('admin')` only, so granting `inventory:write` here would show an
+  // operator an enabled button that then 403s. The roles holding this
+  // permission MUST stay identical to that controller's `@Roles` list (asserted
+  // in `inventory-locations.controller.spec.ts`), the `shipments:write` /
+  // `automations:write` discipline.
+  'inventory-locations:write',
   // DISPLAY-ONLY (#2473): gates the FE's analytics-settings write affordances
   // (tax-rate opt-in toggle, currency-recalculation trigger). It authorizes no
   // mutation — those endpoints are `@Roles('admin')`-gated directly and no
