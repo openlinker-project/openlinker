@@ -104,6 +104,15 @@ export interface PricingAndSyncSectionProps {
    * unrelated edit on that page persisted it. Intent now travels in the URL:
    * `?source=` looks, `?source=&override=1` creates. A caller that means the
    * second must say so.
+   *
+   * **It has no producer yet, and that is a known gap rather than an
+   * oversight** (#3167 approval, SUGGESTION). `&override=1` is emitted by
+   * nothing in the tree: the queue table's two links use the neutral form,
+   * the rollup's "Manage" is neutral by design, and the "Set a rule just for
+   * this source" permalink the split was drawn around does not exist in
+   * `edit-price-change-dialog.tsx` at all. So this half is reachable only by
+   * typing the URL. It errs safe — nothing pre-arms a write — but half the
+   * mechanism is unexercised in the product until that permalink is built.
    */
   initialCreateOverrideForSourceId?: string;
 }
@@ -427,6 +436,13 @@ export function PricingAndSyncSection({
    * and is not enough on its own: `hasInvalidRule` also covers the per-source
    * rows, whose errors are nowhere near that form.
    */
+  // COUPLED to `hasUnsavedChanges` (#3166 approval, SUGGESTION): this reason
+  // renders inside the unsaved bar, so it is only ever seen while the bar is.
+  // That is sound today because an invalid rule can only come from an edit,
+  // which by definition diverges the draft from its baseline — but it is a
+  // second mechanism the first one has to keep being true for. If a rule can
+  // ever be invalid WITHOUT a pending change (a server-side rule that stops
+  // validating, say), the reason needs its own home outside the bar.
   const saveBlockedReason = defaultRuleError
     ? `Can't save yet. Default rule: ${defaultRuleError}`
     : firstSourceError
