@@ -207,14 +207,16 @@ export function SourcingRuleDeleteDialog({
           )}
         </div>
 
-        <DialogFooter className="dialog__footer--split">
+        {/* The split modifier is carried only while the third action renders.
+            With Retire absent the footer holds one group, and plain
+            `.dialog__footer` already right-aligns it - so there is no empty
+            element standing in for layout. */}
+        <DialogFooter className={retireBlockedReason === null ? 'dialog__footer--split' : ''}>
           {retireBlockedReason === null ? (
             <Button tone="secondary" disabled={isPending} onClick={() => void run('retire')}>
               {retireMutation.isPending ? 'Retiring…' : 'Retire instead'}
             </Button>
-          ) : (
-            <span />
-          )}
+          ) : null}
           <span className="dialog__footer-group">
             <Button tone="secondary" disabled={isPending} onClick={() => onOpenChange(false)}>
               Cancel

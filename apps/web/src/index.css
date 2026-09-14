@@ -23692,7 +23692,10 @@ legend.analytics-settings-dialog__label {
 
 /* The delete/retire confirm offers a third, differently-toned action, so its
    footer splits: the reversible alternative on the left, away from the
-   destructive pair on the right (#3059). */
+   destructive pair on the right (#3059). The modifier is applied only while
+   that third action renders - without it the footer holds a single group and
+   `.dialog__footer`'s own flex-end already right-aligns it, so no empty
+   spacer element is needed to hold the left slot open. */
 .dialog__footer--split {
   justify-content: space-between;
 }
@@ -23700,4 +23703,15 @@ legend.analytics-settings-dialog__label {
 .dialog__footer-group {
   display: inline-flex;
   gap: var(--space-2);
+}
+
+@media (max-width: 480px) {
+  /* `.dialog__footer` stacks its actions at this width and stretches them to
+     full width. The group is a row, so left alone its two buttons would stay
+     side by side and shrink to share one line - the one footer in the app that
+     quietly opted out of that contract. Reversed for the same reason the
+     footer itself is: the weightiest action reads first. */
+  .dialog__footer-group {
+    flex-direction: column-reverse;
+  }
 }
