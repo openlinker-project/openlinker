@@ -42,15 +42,31 @@ export const PRICE_OVERRIDE_MAX_FACTOR = 10;
 export const PriceOverrideBoundOutcomeValues = ['ok', 'too-high', 'too-low'] as const;
 export type PriceOverrideBoundOutcome = (typeof PriceOverrideBoundOutcomeValues)[number];
 
-export interface PriceOverrideBoundResult {
-  outcome: PriceOverrideBoundOutcome;
-  /** The bound the value crossed, in the episode's own currency. Absent when `ok`. */
-  limit?: number;
-}
+/**
+ * A discriminated union rather than `{ outcome; limit? }` (#3236 review): that
+ * shape made `{ outcome: 'ok', limit: 5 }` and `{ outcome: 'too-high' }` both
+ * type-check, and forced a `limit as number` cast at the one call site. The
+ * arms are derived from `PriceOverrideBoundOutcome`, the
+ * `TerminaliseRoutingDecisionInput` precedent, so a fourth outcome cannot be
+ * added without deciding whether it carries a bound.
+ */
+export type PriceOverrideBoundResult =
+  | { outcome: 'ok' }
+  | {
+      outcome: Exclude<PriceOverrideBoundOutcome, 'ok'>;
+      /** The bound the value crossed, in the episode's own currency. */
+      limit: number;
+    };
 
 /**
  * Pure, side-effect-free (the `applyPricingRule` / `checkRequiredToSell`
  * precedent, `engineering-standards.md § The pure-rule exception`).
+ *
+ * A non-finite `override` also yields `ok`, because both comparisons are false
+ * — worth knowing since this is exported from the `@openlinker/core/listings`
+ * barrel. `@IsNumber()` rejects `NaN` on the only route that reaches it today,
+ * so the rule does not re-check it; a future caller without that guard must
+ * (#3236 review).
  *
  * A non-finite or non-positive `computedAmount` yields `ok`: with no baseline
  * there is nothing to be disproportionate TO, and refusing on a baseline the

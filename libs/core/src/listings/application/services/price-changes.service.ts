@@ -234,13 +234,18 @@ export class PriceChangesService implements IPriceChangesService {
     // any other failure, rather than leaving the episode claimed.
     const bound = checkPriceOverrideBound(input.manualPriceOverride, episode.computedNewAmount);
     if (bound.outcome !== 'ok') {
-      await this.episodes.releaseClaim(episodeId);
+      // `releaseClaims`, not `episodes.releaseClaim` (#3236 review): the
+      // helper logs and never throws, so a transient release failure cannot
+      // replace the refusal with a 500 that says nothing about the bound —
+      // which is the one thing this path exists to tell the operator. Every
+      // other abort path in this file goes through it.
+      await this.releaseClaims([episodeId]);
       throw new PriceChangeOverrideOutOfRangeException(
         episodeId,
         bound.outcome,
         input.manualPriceOverride,
         episode.computedNewAmount,
-        bound.limit as number
+        bound.limit
       );
     }
     await this.enqueueOrReleaseClaim(episode, claimedAt, {

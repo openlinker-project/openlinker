@@ -41,8 +41,15 @@ describe('checkPriceOverrideBound (#3222)', () => {
   it("contains the browser's own warn threshold, so the form can never submit what the server refuses", () => {
     // `DEVIATION_WARN_THRESHOLD = 0.3` in edit-price-change-dialog.tsx warns
     // at ±30% and lets the operator publish. A server band NARROWER than that
-    // would refuse work the form invited — the #2240 rule. Asserted rather
-    // than left to whoever edits one of the two constants next.
+    // would refuse work the form invited — the #2240 rule.
+    //
+    // This copy pins ONE side only, and says so rather than claiming more
+    // (#3236 review): `apps/web` cannot be imported from here (#591), so
+    // editing the browser constant fails nothing in this file. Both sides are
+    // held together by `scripts/check-price-override-bound-mirror.mjs` under
+    // `pnpm check:invariants`, which reads each constant from its own file.
+    // What this case adds is the BEHAVIOUR at the boundary — that a value the
+    // form would merely warn about is actually accepted by the rule.
     const BROWSER_WARN_THRESHOLD = 0.3;
     const base = 399;
     const widestFormAllows = base * (1 + BROWSER_WARN_THRESHOLD);
