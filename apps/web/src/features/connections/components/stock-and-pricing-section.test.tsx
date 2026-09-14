@@ -7,6 +7,7 @@
 import type { ReactElement } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
+import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { StockAndPricingSection } from './stock-and-pricing-section';
 
@@ -16,6 +17,7 @@ interface HarnessProps {
   syncPricingRuleToJson?: () => void;
   initialStockPolicy?: { safetyBuffer?: string; zeroThreshold?: string };
   initialPricingRule?: { type?: string; percent?: string; rounding?: string };
+  pricingRuleManagedElsewhere?: { href: string };
 }
 
 function Harness({
@@ -24,6 +26,7 @@ function Harness({
   syncPricingRuleToJson = (): void => {},
   initialStockPolicy,
   initialPricingRule,
+  pricingRuleManagedElsewhere,
 }: HarnessProps): ReactElement {
   const form = useForm<any>({
     defaultValues: {
@@ -32,12 +35,15 @@ function Harness({
     },
   });
   return (
-    <StockAndPricingSection
-      form={form as any}
-      configIsParseable={configIsParseable}
-      syncStockPolicyToJson={syncStockPolicyToJson}
-      syncPricingRuleToJson={syncPricingRuleToJson}
-    />
+    <MemoryRouter>
+      <StockAndPricingSection
+        form={form as any}
+        configIsParseable={configIsParseable}
+        syncStockPolicyToJson={syncStockPolicyToJson}
+        syncPricingRuleToJson={syncPricingRuleToJson}
+        pricingRuleManagedElsewhere={pricingRuleManagedElsewhere}
+      />
+    </MemoryRouter>
   );
 }
 
@@ -115,5 +121,35 @@ describe('StockAndPricingSection', () => {
     render(<Harness configIsParseable={false} initialStockPolicy={{ safetyBuffer: '4' }} />);
     expect(screen.getByLabelText('Units to hold back')).toBeDisabled();
     expect(screen.getByLabelText('Publish less stock than you hold')).toBeDisabled();
+  });
+
+  describe('pricingRuleManagedElsewhere (#3149/#3166 review)', () => {
+    it('replaces the editable pricing-rule fields with a read-only pointer', () => {
+      render(
+        <Harness
+          initialPricingRule={{ type: 'margin', percent: '22', rounding: 'endingIn99' }}
+          pricingRuleManagedElsewhere={{ href: '/connections/dest-1/pricing-sync' }}
+        />,
+      );
+      expect(
+        screen.queryByLabelText('Publish a different price than your catalogue'),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('How to set the price')).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Manage pricing & sync' })).toHaveAttribute(
+        'href',
+        '/connections/dest-1/pricing-sync',
+      );
+    });
+
+    it('leaves the stock-publish-policy half untouched', () => {
+      render(
+        <Harness
+          initialStockPolicy={{ safetyBuffer: '4', zeroThreshold: '' }}
+          pricingRuleManagedElsewhere={{ href: '/connections/dest-1/pricing-sync' }}
+        />,
+      );
+      expect(screen.getByLabelText('Publish less stock than you hold')).toBeChecked();
+      expect(screen.getByLabelText('Units to hold back')).toHaveValue('4');
+    });
   });
 });
