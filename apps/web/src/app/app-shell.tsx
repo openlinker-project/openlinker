@@ -249,25 +249,34 @@ export function AppShell({ children }: PropsWithChildren): ReactElement {
   const username = session.user?.username;
   const email = session.user?.email ?? null;
   const counts = useNavCounts();
-  const isAdmin =
-    isReady && session.status === 'authenticated' && session.user?.role === 'admin';
+  // The session's own role string, and the ONLY place this file reads it.
+  //
+  // Role-gated nav items (#3108) — e.g. "Pack bench" — need the raw string,
+  // since `packer`'s ROLE_PERMISSIONS grant is deliberately empty (ADR-071)
+  // and so carries no permission a `requiresPermission` gate could check
+  // instead. `navRoleOf` is shared with ⌘K (#3108 review) so the two cannot
+  // drift, and its docblock records why it needs no `isReady`: the provider
+  // sets session and readiness in one batched callback, so no render observes
+  // `authenticated` with `isReady` false and an unresolved session already
+  // yields `undefined`.
+  //
+  // The two booleans below derive from it rather than re-spelling the same
+  // expression a third and fourth time (#3204 review). They are a different
+  // QUESTION from the nav gate — shell behaviour, not item visibility — but
+  // they were the same DERIVATION, which is what the extraction was for. Note
+  // the return type is `string | undefined`, not `Role | undefined`: `viewer`
+  // is deliberately absent from the FE `Role` union (see `nav-registry.types`),
+  // so `isViewerOnly` can only be expressed against the raw string.
+  const role = navRoleOf(session);
+  const isAdmin = role === 'admin';
   // Demo mode's "write actions are disabled" claim is only true for a
   // viewer-role session — RolesGuard lets admin/operator write fine, so
   // showing the banner to them is actively misleading during a live
   // walkthrough (#1468).
-  const isViewerOnly =
-    isReady && session.status === 'authenticated' && session.user?.role === 'viewer';
+  const isViewerOnly = role === 'viewer';
   // Permission-gated nav items (#2358 review I5) need the session's permission
   // list, not just the admin flag — `/automations` is admin + operator.
   const permissions = session.user?.permissions;
-  // Role-gated nav items (#3108) — e.g. "Pack bench" — need the raw role
-  // string, since `packer`'s ROLE_PERMISSIONS grant is deliberately empty
-  // (ADR-071) and so carries no permission a `requiresPermission` gate could
-  // check instead.
-  // One shared derivation with ⌘K (#3108 review) — see `navRoleOf`, which also
-  // records why it needs no `isReady`: the provider sets session and readiness
-  // in one batched callback, so an unresolved session is already `undefined`.
-  const role = navRoleOf(session);
   const groups = useMemo(
     () => buildNavGroups({ isAdmin, demoMode, permissions, role }),
     [isAdmin, demoMode, permissions, role],
