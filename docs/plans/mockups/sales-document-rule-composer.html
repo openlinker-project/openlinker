@@ -694,7 +694,7 @@ body.show-hooks .app [data-testid]::after {
 
           <div class="alert" style="margin-top:10px" data-testid="rules-destination-warning">
             <b>One destination is not issuing anything</b>
-            <b>e-paragony Sandbox</b> is set to issue <b>Nothing</b> under Connected providers, so the two rules above cannot route. Give it a role, or point them elsewhere.
+            <b>e-paragony Sandbox</b> is set to issue <b>Nothing</b> under Connected providers, so 2 rules naming it cannot route. Give it a role, or point them elsewhere.
           </div>
 
           <div class="row" style="margin-top:10px">
@@ -811,7 +811,7 @@ body.show-hooks .app [data-testid]::after {
         <tr><td>rule-readback</td><td>The sentence</td><td>Reflects every condition, destination and window — primary assertion target</td></tr>
         <tr><td>rule-conflict</td><td>Overlap refusal</td><td>Names the rival; coexists with <code>rule-save-blocked</code></td></tr>
         <tr><td>rule-no-conflict</td><td>Provable non-overlap</td><td>Mutually exclusive with <code>rule-conflict</code></td></tr>
-        <tr><td>rules-destination-warning</td><td>List-level alert</td><td>Present when any rule names a connection issuing nothing</td></tr>
+        <tr><td>rules-destination-warning</td><td>List-level alert</td><td>Present when a live rule names a connection that cannot route — issuing nothing, or not <code>active</code>; one sentence per reason, since the remedies differ</td></tr>
         <tr><td>country-default</td><td>Fallback select</td><td>Single-valued — the two-defaults state is unreachable</td></tr>
       </tbody>
     </table>
