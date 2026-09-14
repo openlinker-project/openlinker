@@ -18,18 +18,27 @@
  * view, not a document ledger.
  *
  * **The three reads are independently fallible, and a failure must never
- * read as a confirmed zero.** The controller reads sync jobs, fiscal
- * registrations and invoices via `Promise.allSettled` rather than
+ * read as a confirmed zero.** `ConnectionDiagnosticsService` reads sync jobs,
+ * fiscal registrations and invoices via `Promise.allSettled` rather than
  * `Promise.all` (#3179) — a fiscalization- or invoicing-table outage must
  * not take down the whole diagnostics panel the way it would if any one of
  * the three `Promise.all` legs rejected. A rejected read is folded in as `[]`
  * (no observations lost from it, because there were none to lose) and its
- * source is named in `unreadableSources`, so the FE can distinguish three
- * states behind a `null` timestamp: genuinely no activity
- * (`unreadableSources` empty), versus "we could not fully check"
- * (`unreadableSources` non-empty) — the `analytics-trust` /
+ * source is named in `unreadableSources` — the `analytics-trust` /
  * `catalog-trust` / `sync-status` precedent of a distinct `unknown` rather
  * than a silently healthy-looking zero.
+ *
+ * That field is RENDERED, not merely modelled: `ConnectionDiagnosticsPanel`
+ * shows "Unknown" rather than "Never" behind a `null` timestamp while any
+ * source is unreadable, and states which ones it could not read. A field
+ * nothing reads would be a guarantee nobody has, and the panel printing a
+ * flat "Never" for a source it failed to read is the same false claim #3179
+ * exists to remove, from a different cause.
+ *
+ * **`recentErrors` is newest-first across all three sources**, not
+ * source-ordered: the panel renders the array verbatim, so a concatenated
+ * order would sit a month-old job error above today's invoice failure with
+ * nothing to indicate it.
  *
  * @module apps/api/src/integrations/http/dto
  */
@@ -38,19 +47,10 @@ import type { Connection } from '@openlinker/core/identifier-mapping';
 import type { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import type { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
 import type { InvoiceRecord } from '@openlinker/core/invoicing';
-
-/**
- * The three independently-read activity sources {@link
- * ConnectionDiagnosticsResponseDto} folds together. Named here (rather than
- * left as ad hoc strings) so `unreadableSources` carries a closed,
- * FE-narrowable vocabulary.
- */
-export const ConnectionDiagnosticsSourceValues = [
-  'syncJobs',
-  'fiscalRegistrations',
-  'invoices',
-] as const;
-export type ConnectionDiagnosticsSource = (typeof ConnectionDiagnosticsSourceValues)[number];
+import {
+  ConnectionDiagnosticsSourceValues,
+  type ConnectionDiagnosticsSource,
+} from '../../application/types/connection-diagnostics.types';
 
 export class RecentJobSummaryDto {
   @ApiProperty({ description: 'Job UUID' })
@@ -169,10 +169,17 @@ export class ConnectionDiagnosticsResponseDto {
       }
     }
 
-    dto.lastSucceededAt = mostRecent(succeeded)?.at.toISOString() ?? null;
-    dto.lastFailedAt = mostRecent(failed)?.at.toISOString() ?? null;
+    // Newest-first, ACROSS sources. The three lists above are appended in
+    // source order, so an unsorted `recentErrors` would put a month-old job
+    // error above today's invoice failure with nothing on the panel — which
+    // renders the array verbatim — to indicate it. `Array.prototype.sort` is
+    // stable, so observations sharing an instant keep their source order.
+    const failedNewestFirst = [...failed].sort((a, b) => b.at.getTime() - a.at.getTime());
 
-    dto.recentErrors = failed
+    dto.lastSucceededAt = mostRecent(succeeded)?.at.toISOString() ?? null;
+    dto.lastFailedAt = failedNewestFirst[0]?.at.toISOString() ?? null;
+
+    dto.recentErrors = failedNewestFirst
       .map((f) => f.message)
       .filter((message): message is string => message !== null && message !== undefined);
 
