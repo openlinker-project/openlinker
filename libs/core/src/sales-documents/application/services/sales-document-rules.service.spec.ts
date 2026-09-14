@@ -42,7 +42,6 @@ function makeCountryDefaultRepo(): jest.Mocked<SalesDocumentCountryDefaultReposi
     findByCountry: jest.fn(),
     findByCountries: jest.fn(),
     findAll: jest.fn(),
-    findByCountryAndKind: jest.fn(),
     upsert: jest.fn(),
     delete: jest.fn(),
   };
