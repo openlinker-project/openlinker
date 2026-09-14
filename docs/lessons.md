@@ -1378,3 +1378,34 @@ branch; the working read is
 and PRs, and to the plan documents that still recommend `gh pr edit`.
 
 **Source**: #3188 (rider).
+
+## A leaf-bound value import from a main `@openlinker/core/<ctx>` barrel can undefine a DI token in a sibling context
+
+**Context**: #3187 threaded the three-state buyer tax id onto the fiscal-receipt path, and its
+mapper reached for `decodeBuyerTaxIdColumn` through `@openlinker/core/orders` — the main orders
+barrel. That barrel publishes `OrdersModule` and every orders service, one of which
+(`SalesDocumentViewService`, #2516) value-imports `@openlinker/core/fiscalization` straight back.
+
+**Problem**: a real CJS cycle, `invoicing -> orders -> fiscalization -> invoicing`, whose only
+symptom was a Nest error that names the wrong culprit: *"Nest can't resolve dependencies of the
+SalesDocumentViewService (…, ?, …), make sure the argument dependency at index [2] is available in
+the RootTestModule context"* — while the spec provided all five tokens. `?` there does **not** mean
+a missing provider. It means the token the `@Inject()` decorator recorded was `undefined` at class
+evaluation, because the barrel it came from was still mid-load. Twenty-four tests failed on that
+one import, and two plausible fixes (a type-only import of the fixture class, reordering the spec's
+own imports) each moved the number without touching the cause.
+
+**Rule**: when a Nest dependency error prints `?` for a token the test clearly provides, stop
+looking at the providers array and log the token at the *service module's* own evaluation
+(`console.log(String(TOKEN))` above the `@Injectable()`); `undefined` proves a cycle. Then fix the
+cycle at its source — import the symbol from the context's `@openlinker/core/<ctx>/types`
+cycle-breaker sub-barrel, which publishes the vocabulary without the module, the services or the
+ORM entities. Never repair it by reordering imports in the spec: that moves which module loses the
+race, so the failure reappears one level up (here, `OrdersModule`'s own `imports` metadata lost
+`FiscalizationModule`) and the production cycle survives untouched.
+
+**Applies to**: any `libs/core/src/<ctx>` file importing a *value* from a sibling context's main
+barrel, and especially the mutually-importing `orders` / `invoicing` / `fiscalization` triangle.
+
+**Source**: #3189 (fixing an edge introduced by #3187); the sub-barrel contract is
+`docs/engineering-standards.md § Import Aliases` and `scripts/check-types-sub-barrels.mjs`.

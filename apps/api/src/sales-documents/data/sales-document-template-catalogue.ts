@@ -33,7 +33,10 @@ export interface SalesDocumentTemplateCondition {
   readonly field: 'buyerHasTaxId' | 'orderCountry' | 'orderTotalGross';
   readonly op: 'eq' | 'gte' | 'lt';
   readonly value?: boolean | string;
-  readonly thresholdRef?: string;
+  /** Decimal string; present only on an `orderTotalGross` condition (#3189). */
+  readonly amount?: string;
+  /** ISO 4217; present only on an `orderTotalGross` condition (#3189). */
+  readonly currency?: string;
 }
 
 export interface SalesDocumentTemplateRule {
@@ -57,19 +60,37 @@ export interface SalesDocumentStarterTemplate {
 }
 
 /**
- * ## What these rules do and do not fire on (#2599 review, finding 2)
+ * ## What these rules do and do not fire on
  *
- * All three rules test `buyerHasTaxId`, which is a three-state fact: unknown,
- * known-absent, or a value. A rule testing `eq false` matches only the
- * known-absent state, never the unknown one, so an order whose source said
- * nothing about the buyer's tax id keeps falling through to the country
- * default exactly as it did before the fact was wired.
+ * Every rule tests `buyerHasTaxId`, a THREE-state fact: unknown, known-absent,
+ * or a value. All of them test `eq true`, so they fire only on an order whose
+ * source actually reported a tax number; anything else falls through to the
+ * country default, which is what issues a receipt to a consumer.
  *
- * That is what makes the wiring safe for an operator who already adopted this
- * template: a PrestaShop consumer order leaves `ps_address.vat_number` blank,
- * blank reads as unknown, and rule 1 does not fire. A B2B order carrying a
- * real tax id now matches rule 2 or 3, which is the behaviour an operator
- * adopting a template with these labels asked for.
+ * **A fourth rule used to sit at the top of this list and could never fire**
+ * (#3224 / #3188 review, removed by #3189). It read
+ * `{ field: 'buyerHasTaxId', op: 'eq', value: false }` under the label
+ * "Customer has no tax ID -> Receipt", and `eq false` matches ONLY the
+ * known-absent state - which `readSourceBuyerTaxId` structurally cannot
+ * produce, and which no shipped order-source adapter writes. So an operator
+ * adopting the flagship template got a rule that promised to work and matched
+ * nothing, while the country default quietly did the job it claimed.
+ *
+ * It is not replaced by a widened operator. Separating "has none" from "we
+ * were not told" is a deliberate #2599 decision with a legal motivation - a
+ * fiscal document is a legal event for the seller, so that side of the
+ * ambiguity fails to unknown - and a `notPresent` operator matching both would
+ * reverse it and needs an amendment to ADR-063 / ADR-073, not a template edit.
+ * When an adapter can positively report "this buyer has no tax id", a rule on
+ * it becomes expressible and can be added back.
+ *
+ * ## Two currencies, two rules
+ *
+ * Polish law names the simplified-invoice ceiling as 450 zl **or** 100 euro,
+ * and a currency never converts here (ADR-041, kept by #3189) - so a
+ * euro-priced order matches only the EUR pair and a zloty-priced one only the
+ * PLN pair. Before inline amounts this was inexpressible and a euro-priced
+ * order delivered to Poland matched no rule at all.
  */
 const POLAND_TEMPLATE: SalesDocumentStarterTemplate = {
   country: 'PL',
@@ -81,37 +102,52 @@ const POLAND_TEMPLATE: SalesDocumentStarterTemplate = {
     'accountant before adopting. Nothing is active until you choose to adopt it.',
   rules: [
     {
-      slot: 'no-tax-id',
-      conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: false }],
-      documentKind: 'fiscal-receipt',
-      requiredCapability: 'Fiscalization',
-      effectiveFrom: '2020-01-01',
-      effectiveTo: null,
-      label: 'Customer has no tax ID → Receipt',
-    },
-    {
       slot: 'tax-id-below-threshold',
       conditions: [
         { field: 'buyerHasTaxId', op: 'eq', value: true },
-        { field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' },
+        { field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' },
       ],
       documentKind: 'fiscal-receipt',
       requiredCapability: 'Fiscalization',
       effectiveFrom: '2020-01-01',
-      effectiveTo: '2026-12-31',
-      label: 'Customer has tax ID and total ≤ 450 PLN → Receipt (+ tax ID)',
+      effectiveTo: null,
+      label: 'Customer has tax ID and total under 450 PLN → Receipt (+ tax ID)',
     },
     {
       slot: 'tax-id-above-threshold',
       conditions: [
         { field: 'buyerHasTaxId', op: 'eq', value: true },
-        { field: 'orderTotalGross', op: 'gte', thresholdRef: 'pl-simplified-invoice-2026' },
+        { field: 'orderTotalGross', op: 'gte', amount: '450.00', currency: 'PLN' },
       ],
       documentKind: 'invoice',
       requiredCapability: 'Invoicing',
       effectiveFrom: '2020-01-01',
       effectiveTo: null,
-      label: 'Customer has tax ID and total > 450 PLN → Invoice',
+      label: 'Customer has tax ID and total 450 PLN or more → Invoice',
+    },
+    {
+      slot: 'tax-id-below-threshold-eur',
+      conditions: [
+        { field: 'buyerHasTaxId', op: 'eq', value: true },
+        { field: 'orderTotalGross', op: 'lt', amount: '100.00', currency: 'EUR' },
+      ],
+      documentKind: 'fiscal-receipt',
+      requiredCapability: 'Fiscalization',
+      effectiveFrom: '2020-01-01',
+      effectiveTo: null,
+      label: 'Customer has tax ID and total under 100 EUR → Receipt (+ tax ID)',
+    },
+    {
+      slot: 'tax-id-above-threshold-eur',
+      conditions: [
+        { field: 'buyerHasTaxId', op: 'eq', value: true },
+        { field: 'orderTotalGross', op: 'gte', amount: '100.00', currency: 'EUR' },
+      ],
+      documentKind: 'invoice',
+      requiredCapability: 'Invoicing',
+      effectiveFrom: '2020-01-01',
+      effectiveTo: null,
+      label: 'Customer has tax ID and total 100 EUR or more → Invoice',
     },
   ],
 };

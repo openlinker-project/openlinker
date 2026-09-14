@@ -238,7 +238,13 @@ export interface SalesDocumentMatchedRuleCondition {
   readonly op: 'eq' | 'gte' | 'lt';
   readonly boolValue?: boolean;
   readonly stringValue?: string;
-  readonly thresholdRef?: string;
+  /**
+   * Decimal string (`'450.00'`) on an `orderTotalGross` condition (#3189).
+   * Never a number: it round-trips through jsonb and is shown back verbatim.
+   */
+  readonly amount?: string;
+  /** ISO 4217 on an `orderTotalGross` condition. Compared, never converted. */
+  readonly currency?: string;
 }
 
 /**

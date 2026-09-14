@@ -13,7 +13,7 @@ function rule(overrides: Partial<SalesDocumentMatchedRuleView> = {}): SalesDocum
     country: 'PL',
     conditions: [
       { field: 'buyerHasTaxId', op: 'eq', boolValue: true },
-      { field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' },
+      { field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' },
     ],
     documentKind: 'fiscal-receipt',
     connectionId: 'conn-fiscal-1',
@@ -42,7 +42,7 @@ describe('describeMatchedSalesDocumentRule (#3186)', () => {
     const sentence = describeMatchedSalesDocumentRule(rule(), 'Fiscal Provider Sandbox', t);
     expect(sentence).toContain('PL');
     expect(sentence).toContain('has a tax ID');
-    expect(sentence).toContain('total under the configured threshold');
+    expect(sentence).toContain('total under 450.00 PLN');
     expect(sentence).toContain('fiscal receipt');
     expect(sentence).toContain('Fiscal Provider Sandbox');
   });
@@ -69,7 +69,10 @@ describe('describeMatchedSalesDocumentRule (#3186)', () => {
   it('renders the ★ Rest of world scope distinctly from a real country code', () => {
     const sentence = describeMatchedSalesDocumentRule(rule({ country: '*' }), 'conn', t);
     expect(sentence).toContain('Rest of world');
-    expect(sentence).not.toContain('PL');
+    // Asserted against the scope PHRASE, not the bare code: since #3189 the
+    // sentence also names a currency, and 'PLN' contains 'PL', so a substring
+    // check on the code alone would fail on an unrelated, correct change.
+    expect(sentence).not.toContain('the PL rule');
   });
 
   it('labels the invoice kind distinctly from the fiscal-receipt kind', () => {
@@ -95,12 +98,12 @@ describe('describeMatchedSalesDocumentRule (#3186)', () => {
     const sentence = describeMatchedSalesDocumentRule(
       rule({
         conditions: [
-          { field: 'orderTotalGross', op: 'gte', thresholdRef: 'pl-simplified-invoice-2026' },
+          { field: 'orderTotalGross', op: 'gte', amount: '450.00', currency: 'PLN' },
         ],
       }),
       'conn',
       t,
     );
-    expect(sentence).toContain('total at or above the configured threshold');
+    expect(sentence).toContain('total at or above 450.00 PLN');
   });
 });

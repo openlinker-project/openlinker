@@ -32,7 +32,13 @@ export interface SalesDocumentConditionInput {
   op: 'eq' | SalesDocumentThresholdComparisonOp;
   boolValue?: boolean;
   stringValue?: string;
-  thresholdRef?: string;
+  /**
+   * Decimal string (`'450.00'`) on an `orderTotalGross` condition (#3189).
+   * Never a number: it round-trips through jsonb and is shown back verbatim.
+   */
+  amount?: string;
+  /** ISO 4217 on an `orderTotalGross` condition. Compared, never converted. */
+  currency?: string;
 }
 
 export interface SalesDocumentRule {

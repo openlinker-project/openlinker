@@ -17,12 +17,20 @@ describe('describeSalesDocumentCondition (#2170)', () => {
     ).toBe('order country is DE');
   });
 
-  it('describes an orderTotalGross condition, referencing the thresholdRef, never a literal amount', () => {
+  it('describes an orderTotalGross condition with the amount and currency the operator typed (#3189)', () => {
     const description = describeSalesDocumentCondition({
       field: 'orderTotalGross',
       op: 'lt',
-      thresholdRef: 'pl-simplified-invoice-2026',
+      amount: '450.00',
+      currency: 'PLN',
     });
-    expect(description).toBe('total < pl-simplified-invoice-2026');
+    expect(description).toBe('total < 450.00 PLN');
+  });
+
+  // A rule this build cannot read must not have a figure invented for it.
+  it('falls back to ? for an orderTotalGross condition carrying no amount', () => {
+    expect(describeSalesDocumentCondition({ field: 'orderTotalGross', op: 'gte' })).toBe(
+      'total ≥ ?',
+    );
   });
 });

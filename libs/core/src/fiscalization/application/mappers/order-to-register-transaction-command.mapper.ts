@@ -13,7 +13,7 @@
  * @module libs/core/src/fiscalization/application/mappers
  */
 import type { Order, OrderItem } from '@openlinker/core/orders';
-import { decodeBuyerTaxIdColumn } from '@openlinker/core/orders';
+import { decodeBuyerTaxIdColumn } from '@openlinker/core/orders/types';
 import {
   describeNetPricedOrderRefusal,
   minorUnitExponentFor,

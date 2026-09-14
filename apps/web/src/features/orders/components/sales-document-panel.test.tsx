@@ -192,7 +192,7 @@ describe('SalesDocumentPanel — "Why this kind?" (#3186)', () => {
               country: 'PL',
               conditions: [
                 { field: 'buyerHasTaxId', op: 'eq', boolValue: true },
-                { field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' },
+                { field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' },
               ],
               documentKind: 'fiscal-receipt',
               connectionId: FISCAL_CONN_ID,

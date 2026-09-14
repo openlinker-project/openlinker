@@ -37,14 +37,23 @@ function describeCondition(condition: SalesDocumentMatchedRuleCondition, t: Tran
       condition.stringValue ?? '?',
     );
   }
-  // orderTotalGross — the threshold's own amount/currency is not part of this
-  // projection (it lives in `sales_document_thresholds`, versioned separately
-  // per ADR-041 decision 5), so the comparison is named generically rather
-  // than resolved through a second query this disclosure does not otherwise
-  // need.
-  return condition.op === 'gte'
-    ? t('salesDocument.matchedRule.totalAtLeast', 'total at or above the configured threshold')
-    : t('salesDocument.matchedRule.totalUnder', 'total under the configured threshold');
+  // orderTotalGross — #3189 put the amount and currency ON the condition, so
+  // the sentence names the figure the operator typed instead of the versioned
+  // threshold slug it used to gesture at. A condition carrying no amount is a
+  // rule this build cannot read: it keeps the generic wording rather than
+  // printing a figure that was never asserted.
+  const amount = condition.amount;
+  if (amount === undefined) {
+    return condition.op === 'gte'
+      ? t('salesDocument.matchedRule.totalAtLeast', 'total at or above the configured threshold')
+      : t('salesDocument.matchedRule.totalUnder', 'total under the configured threshold');
+  }
+  const figure = condition.currency ? `${amount} ${condition.currency}` : amount;
+  return (
+    condition.op === 'gte'
+      ? t('salesDocument.matchedRule.totalAtLeastAmount', 'total at or above {{amount}}')
+      : t('salesDocument.matchedRule.totalUnderAmount', 'total under {{amount}}')
+  ).replace('{{amount}}', figure);
 }
 
 /** Plain-language label for an open-world document kind (mirrors the panel's own `salesDocument.kind.*` keys). */

@@ -18,6 +18,8 @@ import {
   SalesDocumentConditionFieldValues,
   SalesDocumentThresholdComparisonOpValues,
   type SalesDocumentCondition,
+  isCurrencyCode,
+  isDecimalAmountString,
 } from '@openlinker/core/sales-documents';
 
 export class SalesDocumentConditionDto {
@@ -39,10 +41,28 @@ export class SalesDocumentConditionDto {
   @IsString()
   stringValue?: string;
 
-  @ApiProperty({ required: false })
+  /**
+   * The amount an `orderTotalGross` condition compares against (#3189), as a
+   * DECIMAL STRING — `'450.00'`, never a JSON number. The value is persisted in
+   * jsonb and shown back to the operator verbatim, and a JSON number cannot
+   * round-trip `450.10` as itself. `toDomain` rejects anything the core guard
+   * would not accept, so a malformed amount is a 400 here rather than a rule
+   * that saves and silently never matches.
+   */
+  @ApiProperty({ required: false, example: '450.00' })
   @IsOptional()
   @IsString()
-  thresholdRef?: string;
+  amount?: string;
+
+  /**
+   * The currency that amount is expressed in (#3189), ISO 4217 uppercase. Never
+   * converted: a rule written in one currency does not match an order priced in
+   * another, and a second currency is a second rule.
+   */
+  @ApiProperty({ required: false, example: 'PLN' })
+  @IsOptional()
+  @IsString()
+  currency?: string;
 
   static toDomain(dto: SalesDocumentConditionDto): SalesDocumentCondition {
     if (dto.field === 'buyerHasTaxId') {
@@ -66,12 +86,22 @@ export class SalesDocumentConditionDto {
         `Condition field "orderTotalGross" requires "op" to be "gte" or "lt", got "${dto.op}"`,
       );
     }
-    if (typeof dto.thresholdRef !== 'string' || dto.thresholdRef.length === 0) {
+    // Narrowed through the CORE guards rather than re-stated here, so
+    // "authorable over HTTP" and "evaluable by the engine" cannot diverge: a
+    // shape this DTO accepted but `isSalesDocumentCondition` rejected would
+    // persist a rule that reads as "never matches" with nothing said to the
+    // operator.
+    if (!isDecimalAmountString(dto.amount)) {
       throw new BadRequestException(
-        `Condition field "orderTotalGross" requires a non-empty "thresholdRef"`,
+        `Condition field "orderTotalGross" requires "amount" as a decimal string, e.g. "450.00"`,
       );
     }
-    return { field: 'orderTotalGross', op: dto.op, thresholdRef: dto.thresholdRef };
+    if (!isCurrencyCode(dto.currency)) {
+      throw new BadRequestException(
+        `Condition field "orderTotalGross" requires "currency" as a 3-letter ISO 4217 code, e.g. "PLN"`,
+      );
+    }
+    return { field: 'orderTotalGross', op: dto.op, amount: dto.amount, currency: dto.currency };
   }
 
   static fromDomain(condition: SalesDocumentCondition): SalesDocumentConditionDto {
@@ -83,7 +113,8 @@ export class SalesDocumentConditionDto {
     } else if (condition.field === 'orderCountry') {
       dto.stringValue = condition.value;
     } else {
-      dto.thresholdRef = condition.thresholdRef;
+      dto.amount = condition.amount;
+      dto.currency = condition.currency;
     }
     return dto;
   }
