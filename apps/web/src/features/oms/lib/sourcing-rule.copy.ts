@@ -128,3 +128,42 @@ export const SOURCING_RULES_STATE_COPY = {
     'Without a rule, no location is ruled out and none is ranked. Add a rule to start narrowing down which locations qualify.',
   addRule: 'Add rule',
 } as const;
+
+/** The `/settings` entry point (#3060). */
+export const SOURCING_RULES_TILE_COPY = {
+  eyebrow: 'Platform',
+  title: 'Sourcing rules',
+  description:
+    'Decide which of your locations may fulfil an order, and in what order they are preferred.',
+  linkLabel: 'Manage sourcing rules',
+} as const;
+
+/**
+ * The two page-level gates (#3060).
+ *
+ * Both are states an operator can act on, not errors: a ruleset authored on the
+ * wrong connection would never be read, and one authored with no location to
+ * rank would decide nothing.
+ */
+export const SOURCING_RULES_PAGE_COPY = {
+  backToSettings: 'Settings',
+  crumbGroup: 'Platform',
+  crumbTitle: 'Sourcing rules',
+  description:
+    'Rules run in order. Filters rule locations out; sorts rank whatever is left.',
+  wrongConnectionTitle: 'This is not your OpenLinker OMS connection',
+  wrongConnectionMessage:
+    'Sourcing rules only apply to your OpenLinker OMS connection — anything set up here would never be used. Enable the OMS, then manage its rules from that connection.',
+  noOmsTitle: 'The OpenLinker OMS is not enabled',
+  noOmsMessage:
+    'Sourcing rules belong to the OpenLinker OMS connection, and there is not one yet. Enable the OMS first; its rules are managed from here afterwards.',
+  noLocationsTitle: 'No locations to route to yet',
+  noLocationsMessage:
+    'Sourcing rules choose between your locations, and there are none. Create one before authoring rules — until then every rule would rank an empty set.',
+  manageLocations: 'Manage locations',
+  loadingTitle: 'Opening sourcing rules',
+  loadingMessage: 'Reading your connections and locations…',
+  errorTitle: 'Could not open sourcing rules',
+  errorMessage:
+    'Your connections or locations could not be read just now. Nothing has changed — this is a loading problem, not a configuration one.',
+} as const;

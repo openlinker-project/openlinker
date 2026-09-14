@@ -13,6 +13,8 @@ import type {
   InventoryAvailabilityResponse,
 } from './inventory.types';
 import type {
+  InventoryLocationFilters,
+  InventoryLocationListPagination,
   LocationBootstrapResult,
   PaginatedInventoryLocations,
 } from './inventory-locations.types';
@@ -36,6 +38,18 @@ export interface InventoryApi {
    * that already exists comes back in `existingCodes` untouched.
    */
   bootstrapLocations: () => Promise<LocationBootstrapResult>;
+  /**
+   * The real, filtered, paginated locations read (#2316 / #3060).
+   *
+   * Named `listLocations` rather than the plain `list` this interface already
+   * carries for inventory ITEMS, which the two would collide on — the naming
+   * `listActiveLocations` / `bootstrapLocations` already established here, and
+   * the same name #3198 uses, so the two converge on merge.
+   */
+  listLocations: (
+    filters?: InventoryLocationFilters,
+    pagination?: InventoryLocationListPagination,
+  ) => Promise<PaginatedInventoryLocations>;
 }
 
 interface ApiRequest {
@@ -67,6 +81,18 @@ export function createInventoryApi(request: ApiRequest): InventoryApi {
     },
     bootstrapLocations(): Promise<LocationBootstrapResult> {
       return request<LocationBootstrapResult>('/inventory/locations/bootstrap', { method: 'POST' });
+    },
+    listLocations(filters, pagination): Promise<PaginatedInventoryLocations> {
+      const params = new URLSearchParams();
+      // Only params that are SET are emitted: URLSearchParams stringifies
+      // `undefined` to the literal "undefined", which the DTO then validates.
+      if (filters?.status !== undefined) params.set('status', filters.status);
+      if (pagination?.page !== undefined) params.set('page', String(pagination.page));
+      if (pagination?.limit !== undefined) params.set('limit', String(pagination.limit));
+      const query = params.toString();
+      return request<PaginatedInventoryLocations>(
+        query.length > 0 ? `/inventory/locations?${query}` : '/inventory/locations',
+      );
     },
   };
 }

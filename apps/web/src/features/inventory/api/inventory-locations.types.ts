@@ -14,6 +14,28 @@ export interface InventoryLocationSummary {
   readonly status: string;
 }
 
+/**
+ * Filters the locations listing accepts (#3060).
+ *
+ * A deliberate SUBSET: only the axis this stack reads. #3198 (the locations
+ * CRUD screen) widens it with `kind` / `countryIso2` / `codePrefix` under the
+ * same names, so the two converge rather than compete.
+ */
+export interface InventoryLocationFilters {
+  /** Omitted lists every status, including `inactive` — retirement stays visible. */
+  status?: string;
+}
+
+/**
+ * 1-based `page`/`limit`, unlike `InventoryPagination`'s `limit`/`offset` — the
+ * divergence echoes `ListLocationsQueryDto`'s own contract rather than
+ * normalising it here.
+ */
+export interface InventoryLocationListPagination {
+  page?: number;
+  limit?: number;
+}
+
 /** The paged listing, of which only `total` is read by the readiness surface. */
 export interface PaginatedInventoryLocations {
   readonly items: readonly InventoryLocationSummary[];
