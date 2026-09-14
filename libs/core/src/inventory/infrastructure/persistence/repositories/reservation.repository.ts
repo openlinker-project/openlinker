@@ -426,6 +426,24 @@ export class ReservationRepository implements ReservationRepositoryPort {
     // the subtrahend and nothing else.
     const publishedClaim = claim.atpEffect === 'published' ? claim.quantity : 0;
 
+    // Lock the position FIRST, as its own statement. Under READ COMMITTED, an
+    // UPDATE whose WHERE correlates to a DIFFERENT table (here: `reservations`,
+    // via `othersSum`) only re-checks the TARGET row against the new tuple when
+    // it wakes from a lock wait — the correlated subquery still runs against
+    // the snapshot the statement started with, so a concurrent sibling's
+    // just-committed reservation is invisible to it (documented Postgres
+    // behaviour: "it does not see effects of [concurrent] commands on other
+    // rows in the database"). Two concurrent claims against one unit of stock
+    // could therefore both pass the guard. A standalone `SELECT ... FOR
+    // UPDATE` forces this transaction to block until any concurrent claimant
+    // on the same position commits or rolls back; the guarded UPDATE that
+    // follows is then a genuinely NEW statement, so its snapshot (and the
+    // `othersSum` subquery within it) is taken fresh — after the wait — and
+    // correctly sees every reservation the other side just committed.
+    await this.raw(manager, `SELECT 1 FROM "inventory_items" WHERE "id" = $1 FOR UPDATE`, [
+      claim.inventoryItemId,
+    ]);
+
     const rows = await this.raw<{ remainingAtp: number | string }>(
       manager,
       `UPDATE "inventory_items" AS "i"
