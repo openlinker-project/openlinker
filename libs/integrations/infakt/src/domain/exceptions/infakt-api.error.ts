@@ -27,6 +27,18 @@ export class InfaktApiError extends Error {
     message: string,
     public readonly statusCode: number,
     public readonly responseBody: unknown,
+    /**
+     * Operator-readable rejection reason, read STRUCTURALLY (duck-typed) by
+     * core's `InvoiceService.classifyFailureCode` (#1200/W1) — mirrors
+     * `SubiektInvoiceRejectedError.reason`. Optional and OL-authored: `message`
+     * deliberately never echoes the raw provider response body (it can carry
+     * buyer PII), so `reason` is the one place an adapter may recognise a
+     * SPECIFIC rejection shape (e.g. a missing `errors.sale_type`, #3031) and
+     * hand core a PII-free phrase it can match against a published marker
+     * list to derive a more actionable `InvoiceFailureCode` than the generic
+     * `provider-rejected`.
+     */
+    public readonly reason?: string,
   ) {
     super(message);
     this.name = 'InfaktApiError';

@@ -188,6 +188,8 @@ export type {
   TaxCoverageLineRateObservation,
   PaginatedTaxCoverageOrders,
   NetExcludedOrderCandidate,
+  NetExcludedOrderCandidateCursor,
+  NetExcludedOrderCandidatePage,
   TaxCoverageClassification,
   ProductMatchingErrorOrderRow,
   PaginatedProductMatchingErrorOrders,
@@ -313,6 +315,7 @@ export type {
   TaxRateBackfillPageResult,
 } from './application/services/tax-rate-backfill.service.interface';
 export type { ITaxCoverageDetectionService } from './application/services/tax-coverage-detection.service.interface';
+export type { IOrderTestFixtureService } from './application/interfaces/order-test-fixture.service.interface';
 export type { IDisplayCurrencyConversionService } from './application/interfaces/display-currency-conversion.service.interface';
 export * from './orders.tokens';
 
@@ -336,6 +339,7 @@ export { OrderSnapshotUnavailableError } from './domain/exceptions/order-snapsho
 export { DuplicateRefundRecordException } from './domain/exceptions/duplicate-refund-record.exception';
 export { RefundCurrencyMismatchException } from './domain/exceptions/refund-currency-mismatch.exception';
 export { OrderChangeVocabularyError } from './domain/exceptions/order-change-vocabulary.error';
+export { TaxCoveragePageCeilingExceededError } from './domain/exceptions/tax-coverage-page-ceiling-exceeded.error';
 
 // Typed-Order accessor for cross-context command composition (#1119).
 export { orderFromReadySnapshot } from './domain/order-from-ready-snapshot';
@@ -386,6 +390,7 @@ export type {
   ReleaseOrderHoldInput,
 } from './domain/types/order-hold.types';
 export { OrderAlreadyOnHoldError } from './domain/exceptions/order-already-on-hold.error';
+export { TestFixturesDisabledException } from './domain/exceptions/test-fixtures-disabled.exception';
 export { OrderHoldContendedError } from './domain/exceptions/order-hold-contended.error';
 export { HoldAlreadyReleasedError } from './domain/exceptions/hold-already-released.error';
 export { OrderHoldNotFoundError } from './domain/exceptions/order-hold-not-found.error';
