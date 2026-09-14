@@ -50,9 +50,15 @@ export class ReturnOrderLineResolverService {
    *
    * Idempotent: core's write is a fill-in-when-NULL claim, so re-running this
    * for a return whose lines already resolved changes nothing and reports
-   * `alreadyResolved`. That is what makes it safe to call from both the
-   * per-return sync and the lifecycle re-read — and it is the only way a return
-   * ingested BEFORE this shipped ever gets its lines resolved.
+   * `alreadyResolved`. That is what makes it safe to re-drive without a lock —
+   * and it is the route by which a return ingested BEFORE this shipped ever gets
+   * its lines resolved, the next time `marketplace.return.sync` runs for it
+   * (the poll fan-out, or an inbound `'return'` webhook since #2400).
+   *
+   * **There is exactly one caller today**, `MarketplaceReturnSyncHandler`. The
+   * `marketplace.returns.statusSync` lifecycle re-read does NOT resolve:
+   * `ReturnStatusSyncResult` reports counters only and carries no list of the
+   * returns it touched, so that pass has no id to pass here.
    *
    * Returns the summary rather than `void` so a caller can act on `unresolved`
    * without re-reading — it costs nothing to compute and was already being

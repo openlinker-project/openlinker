@@ -55,8 +55,13 @@ export interface UpsertReturnObservationResult {
  * Deliberately narrower than `CreateReturnLineInput`: an operator supplies what the
  * goods ARE and how many are coming back, and nothing else. `lineIndex` is assigned
  * by position, `externalLineId` / `offerId` are source provenance a return with no
- * source cannot have, and `resolvedOrderLineId` has no populator anywhere in the
- * tree (it is a by-value reference into the order snapshot's jsonb).
+ * source cannot have, and `resolvedOrderLineId` is **core-resolved, never
+ * operator-supplied** — it is a by-value reference into the order snapshot's
+ * jsonb, so there is no value an operator could meaningfully type even if the
+ * field were offered. Since #3171 it does have a populator,
+ * `ReturnOrderLineResolverService`, but that runs only on the marketplace
+ * per-return sync path; an operator-authored return's lines therefore stay
+ * `null`, a stated limitation rather than a gap in the model.
  */
 export interface RecordReturnLineInput {
   sku: string | null;
@@ -359,10 +364,12 @@ export interface IReturnsService {
    *     line nor a quantity.
    *
    * **Line resolution is not re-triggered by this action** — `resolvedOrderLineId`
-   * (#3171) is populated by `ReturnOrderLineResolverService`, called from the
-   * per-return sync and the lifecycle re-read, neither of which this invokes; a
-   * manually-matched orphan's lines therefore stay unresolved until the
-   * connection's next per-return sync rather than immediately, a stated
+   * (#3171) is populated by `ReturnOrderLineResolverService`, whose only caller is
+   * the `marketplace.return.sync` per-return path, which this does not invoke. The
+   * `marketplace.returns.statusSync` lifecycle re-read does not resolve either
+   * (`ReturnStatusSyncResult` reports counters and carries no list of the returns
+   * it touched), so a manually-matched orphan's lines stay unresolved until that
+   * per-return sync runs for the return again rather than immediately — a stated
    * limitation rather than a gap in the model.
    *
    * @throws {ReturnNotFoundError} the id resolves to no row.
