@@ -26,6 +26,23 @@
  * Both files are parsed TEXTUALLY (no TypeScript import, no transpile) so this
  * stays a zero-dependency `check:invariants` step like its siblings.
  *
+ * TWO deliberate departures from the ~30 sibling guards, both raised on the
+ * #3168 approval and recorded here rather than left to be re-derived:
+ *
+ * - They are invoked TWICE in `check:invariants` (`--self-check`, then the
+ *   real run); this one is invoked once and runs its self-check inline at the
+ *   top. That is stronger, not weaker — the self-check cannot be omitted when
+ *   the chain is edited — but it is a local convention, so a reader comparing
+ *   the `package.json` line against its neighbours is not looking at a
+ *   mistake.
+ * - The self-check's `'// const A = 20;'` case admits that a commented-out
+ *   declaration still matches, because the reader is a regex and not a
+ *   parser. The failure mode that admits is benign HERE: a commented-out
+ *   constant leaves the real one unmatched or matching first, so the guard
+ *   either still compares the live values or fails loudly with "not found" —
+ *   it cannot silently pass on a stale number. It would NOT be benign in a
+ *   guard that tolerates a missing side.
+ *
  * SCOPE, so the wrong guard is not trusted: this compares the two literals and
  * nothing else. It does NOT assert that the controller actually passes its
  * constant to `listAutoApplied`, nor that the component actually calls
