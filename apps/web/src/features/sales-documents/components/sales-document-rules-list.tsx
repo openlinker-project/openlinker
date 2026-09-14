@@ -26,6 +26,11 @@ import {
   describeBuyerTaxIdRuleCount,
   usesBuyerTaxIdCondition,
 } from '../lib/describe-sales-document-tax-id-coverage';
+import {
+  describeSalesDocumentDestinationWarning,
+  describeSalesDocumentDestinationWarningTitle,
+  findSalesDocumentDestinationWarnings,
+} from '../lib/find-sales-document-destination-warnings';
 import type { SalesDocumentRule } from '../api/sales-document-rules.types';
 
 interface SalesDocumentRulesListProps {
@@ -59,6 +64,7 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
   const rules = rulesQuery.data ?? [];
   const connections = connectionsQuery.data ?? [];
   const taxIdRuleCount = countRulesUsingBuyerTaxId(rules);
+  const destinationWarnings = findSalesDocumentDestinationWarnings(rules, connections);
 
   return (
     <div className="page-section">
@@ -137,6 +143,19 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
           </div>
         );
       })}
+
+      {destinationWarnings.length > 0 ? (
+        <div data-testid="rules-destination-warning">
+          <Alert
+            tone="warning"
+            title={describeSalesDocumentDestinationWarningTitle(destinationWarnings.length)}
+          >
+            {destinationWarnings.map((warning) => (
+              <p key={warning.connectionId}>{describeSalesDocumentDestinationWarning(warning)}</p>
+            ))}
+          </Alert>
+        </div>
+      ) : null}
 
       {rules.length === 0 ? <p className="muted-text">No rules yet for this country.</p> : null}
 
