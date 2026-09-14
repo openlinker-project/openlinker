@@ -24734,8 +24734,6 @@ legend.analytics-settings-dialog__label {
     flex-direction: column-reverse;
   }
 }
-||||||| de04cf011
-=======
 
 /* ── PricingAndSyncSection (#3149, ADR-072) ──
    Mirrors `docs/plans/mockups/price-changes-review-queue.html`'s
