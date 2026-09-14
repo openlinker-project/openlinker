@@ -461,6 +461,17 @@ describe('SalesDocumentPanel - reconcile outcomes (#2522/#2583)', () => {
     });
   }
 
+  it('never renders a retry control beside an in-doubt registration (#3187 acceptance)', async () => {
+    // A fiscal registration is a legal event; retrying one OpenLinker cannot
+    // account for is how a sale gets registered twice. "Look it up" is the
+    // only action offered here — "Register receipt" (the rejected-state
+    // retry) must not coexist with it.
+    renderInDoubt(vi.fn());
+
+    await screen.findByRole('button', { name: 'Look it up' });
+    expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
+  });
+
   it('reports still-unknown as an unsettled check, naming no cause for it', async () => {
     // Two things must both hold. It must not fall through to the "cannot be
     // looked up automatically" arm, which is false - the check worked and

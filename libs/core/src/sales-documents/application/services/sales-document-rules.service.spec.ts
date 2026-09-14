@@ -546,6 +546,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
         kind: 'route',
         documentKind: existingRule().documentKind,
         connectionId: existingRule().connectionId,
+        ruleId: existingRule().id,
       });
     });
 

@@ -63,6 +63,12 @@ export function toFiscalizationRegisterPayload(
   if (command.taxRateEra !== undefined && command.taxRateEra !== null) {
     payload.taxRateEra = command.taxRateEra;
   }
+  // #3187 - carried straight across: the command already omits the field for
+  // both the "asserted none" and "not asserted" states, so there is nothing
+  // further to decide here.
+  if (command.buyerTaxId !== undefined) {
+    payload.buyerTaxId = command.buyerTaxId;
+  }
 
   return payload;
 }
