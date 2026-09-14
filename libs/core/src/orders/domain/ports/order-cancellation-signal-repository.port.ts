@@ -28,8 +28,14 @@ export interface OrderCancellationSignalRepositoryPort {
    * `(sourceConnectionId, externalOrderId)` index, so a redelivered cancel
    * event (at-least-once delivery is a platform-wide invariant) is a harmless
    * no-op rather than a second row or an error.
+   *
+   * @returns `true` when this call inserted the row, `false` when the
+   *   conflict arm fired (a signal already existed for this pair). Callers
+   *   that don't care may ignore the value; it exists so a future
+   *   observability pass over never-consumed rows has something to build on
+   *   without a second round-trip.
    */
-  record(sourceConnectionId: string, externalOrderId: string, cancelledAt: Date): Promise<void>;
+  record(sourceConnectionId: string, externalOrderId: string, cancelledAt: Date): Promise<boolean>;
 
   /**
    * Atomically read-and-clear the signal for `(sourceConnectionId,

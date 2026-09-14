@@ -467,7 +467,9 @@ describe('OrderIngestionService', () => {
     it('should not reserve, and should enqueue stock-restore, on a poll AFTER the signal was already consumed', async () => {
       orderSource.getOrder.mockResolvedValue(reservableIncoming); // status still 'BOUGHT'
       orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
         cancelledAt: new Date('2026-08-01T10:00:00.000Z'),
+        orderSnapshot: { status: 'BOUGHT' },
       } as unknown as OrderRecord);
       orderRecordService.persistIncomingSnapshot.mockResolvedValue({
         cancelledAt: null,

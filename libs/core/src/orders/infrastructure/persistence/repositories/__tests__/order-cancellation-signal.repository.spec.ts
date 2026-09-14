@@ -60,12 +60,13 @@ describe('OrderCancellationSignalRepository', () => {
   });
 
   describe('record', () => {
-    it('should issue an ON CONFLICT DO NOTHING insert with the given values', async () => {
-      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+    it('should issue an ON CONFLICT DO NOTHING insert with the given values, and return true when it inserted', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([{ externalOrderId: 'ext-order-1' }]);
       const cancelledAt = new Date('2026-08-11T09:00:00Z');
 
-      await repository.record('conn-1', 'ext-order-1', cancelledAt);
+      const inserted = await repository.record('conn-1', 'ext-order-1', cancelledAt);
 
+      expect(inserted).toBe(true);
       expect(ormRepository.query).toHaveBeenCalledWith(
         expect.stringContaining('ON CONFLICT ("sourceConnectionId", "externalOrderId") DO NOTHING'),
         ['conn-1', 'ext-order-1', cancelledAt]
@@ -76,12 +77,10 @@ describe('OrderCancellationSignalRepository', () => {
       );
     });
 
-    it('should not throw when a redelivered cancel event collides with an existing signal', async () => {
+    it('should not throw, and should return false, when a redelivered cancel event collides with an existing signal', async () => {
       (ormRepository.query as jest.Mock).mockResolvedValue([]);
 
-      await expect(
-        repository.record('conn-1', 'ext-order-1', new Date())
-      ).resolves.toBeUndefined();
+      await expect(repository.record('conn-1', 'ext-order-1', new Date())).resolves.toBe(false);
     });
   });
 

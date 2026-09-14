@@ -41,13 +41,18 @@ export class OrderCancellationSignalRepository implements OrderCancellationSigna
     sourceConnectionId: string,
     externalOrderId: string,
     cancelledAt: Date
-  ): Promise<void> {
-    await this.repository.query(
+  ): Promise<boolean> {
+    // `RETURNING` is empty on the conflict arm (ON CONFLICT DO NOTHING never
+    // produces a row to return), so an empty result set is the insert/no-op
+    // discriminator — no second statement needed.
+    const rows = (await this.repository.query(
       `INSERT INTO "order_cancellation_signals" ("sourceConnectionId", "externalOrderId", "cancelledAt")
        VALUES ($1, $2, $3)
-       ON CONFLICT ("sourceConnectionId", "externalOrderId") DO NOTHING`,
+       ON CONFLICT ("sourceConnectionId", "externalOrderId") DO NOTHING
+       RETURNING "externalOrderId"`,
       [sourceConnectionId, externalOrderId, cancelledAt]
-    );
+    )) as Array<{ externalOrderId: string }>;
+    return rows.length > 0;
   }
 
   async consume(sourceConnectionId: string, externalOrderId: string): Promise<Date | null> {

@@ -105,7 +105,7 @@ describe('OrderRecordService', () => {
     // assertion (`incoming.status === 'cancelled'`) keeps its original
     // meaning unless a test opts into a signal being present.
     cancellationSignalRepository = {
-      record: jest.fn().mockResolvedValue(undefined),
+      record: jest.fn().mockResolvedValue(true),
       consume: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<OrderCancellationSignalRepositoryPort>;
 
