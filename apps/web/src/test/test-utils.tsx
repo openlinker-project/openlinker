@@ -985,6 +985,18 @@ export function createMockApiClient(
       }),
       ...overrides.salesDocumentRules,
     } as ApiClient['salesDocumentRules'],
+    // #3056. The default is a connection with no sourcing rules — the honest
+    // empty ruleset, so a test that renders the table without opting in gets
+    // the "no rules yet" branch rather than rows it never declared.
+    sourcingRules: {
+      list: vi.fn().mockResolvedValue([]),
+      get: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue(null),
+      update: vi.fn().mockResolvedValue(null),
+      reorder: vi.fn().mockResolvedValue([]),
+      remove: vi.fn().mockResolvedValue(undefined),
+      ...overrides.sourcingRules,
+    } as ApiClient['sourcingRules'],
     // The default is the healthy-but-empty deployment: no returns, and returns
     // ingestion IS configured — so a test that renders the list without opting
     // in gets the neutral "no returns yet" branch rather than the
