@@ -169,6 +169,27 @@ export class InventoryService implements IInventoryService {
     return result;
   }
 
+  async staleLocatedPositionsForSource(
+    productId: string,
+    pooledVariantKeys: readonly (string | null)[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult> {
+    const result = await this.inventoryRepository.markLocatedStaleForSource(
+      productId,
+      pooledVariantKeys,
+      scope
+    );
+    if (result.markedCount > 0) {
+      // Warn rather than debug for the mirror's reason: this pass removes stock
+      // from availability, so an operator reading a quantity drop needs the
+      // repair in the log beside it (#3206).
+      this.logger.warn(
+        `inventory_located_position_staled_by_pooled_write product=${productId} rows=${result.markedCount} variants=${result.variantIds.length} pooled=${pooledVariantKeys.length} source=${scope.sourceConnectionId}`
+      );
+    }
+    return result;
+  }
+
   /**
    * The propagation dedupe key is deliberately LOCATION-FREE (#2324).
    *

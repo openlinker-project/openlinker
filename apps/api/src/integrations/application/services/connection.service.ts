@@ -415,6 +415,91 @@ export class ConnectionService implements IConnectionService {
     }
   }
 
+  /**
+   * Core-owned validation for `config.stockLocationOverride` (#3206): the id
+   * must resolve to a location this install actually has, AND that location
+   * must be ACTIVE. Rejecting here — rather than letting the sync silently
+   * write against a location that does not exist or that every downstream
+   * reader filters out — is what keeps the value an operator assertion rather
+   * than a typo nobody notices until stock looks wrong.
+   *
+   * **Why `inactive` is refused.** `status: 'inactive'` means "retired, keep
+   * historical positions pointing at a row that exists" (#2316) — the
+   * fulfilment router filters `status: 'active'`, and
+   * `assertRouterEnablementPreconditions` a few methods above already counts
+   * only active locations for exactly that reason. An override naming a
+   * retired location writes a config that names a row the rest of the system
+   * treats as absent: the #2407 shape of a configuration that persists happily
+   * and then decides nothing.
+   *
+   * **Fires only when the VALUE CHANGES, compared against the PERSISTED
+   * config** — the `assertRouterEnablementPreconditions` rule, and load-bearing
+   * for the same reason. `ConnectionRepository.update` replaces `config`
+   * wholesale, so every unrelated config patch (a rate-limit edit, and
+   * `AuthorityStatusService`'s who-decides preset apply, which writes the
+   * connection's whole config back) re-asserts whatever override is already
+   * stored. Refusing those would let a location retired AFTER the override was
+   * set make the connection un-editable — punishing an operator for a state
+   * this guard already let through, and for a state whose remedy lives on a
+   * different page.
+   *
+   * The standing degraded state (an override whose location was retired or
+   * deleted later) is therefore NOT enforced here. `deleteLocation`'s
+   * referential refusal counts `inventory_items` rows only and cannot see a
+   * config key, so a location referenced solely by an override still deletes
+   * cleanly: the config keeps naming a row that no longer exists, and nothing
+   * re-checks it. Closing that needs either a widened refusal there or an
+   * observable degradation at resolve time.
+   *
+   * That is DEFERRED AND UNTRACKED - there is no issue for it, deliberately
+   * said here rather than left as a claim a reader would verify with an empty
+   * search. #3207 covers the frontend field only. Whoever takes the next slice
+   * of this area owns the decision; do not read this paragraph as work already
+   * queued somewhere.
+   *
+   * Never defaults a value in; an absent key stays absent (byte-identical to
+   * pre-#3206 behaviour for every connection that never sets it).
+   */
+  private async validateStockLocationOverride(
+    config: Record<string, unknown>,
+    previousConfig: unknown
+  ): Promise<void> {
+    const value = config.stockLocationOverride;
+    if (value === undefined || value === null) return;
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new BadRequestException('config.stockLocationOverride must be a non-empty string');
+    }
+
+    // Shape-only read of the persisted value: `Connection.config` is JSONB, so
+    // anything may be in there. A previous value that is not a string can never
+    // equal this one, which correctly reads as a change.
+    const previous =
+      previousConfig && typeof previousConfig === 'object'
+        ? (previousConfig as Record<string, unknown>).stockLocationOverride
+        : undefined;
+    // Trimmed on both sides, because `readStockLocationOverride` trims before
+    // the sync uses the value — validating the untrimmed string would check a
+    // location id the sync never asks for.
+    const locationId = value.trim();
+    if (typeof previous === 'string' && previous.trim() === locationId) {
+      return;
+    }
+
+    const location = await this.locations.getLocation(locationId);
+    if (!location) {
+      throw new BadRequestException(
+        `config.stockLocationOverride names an unknown location: ${locationId}`
+      );
+    }
+    if (location.status !== 'active') {
+      throw new BadRequestException(
+        `config.stockLocationOverride names a retired location: ${locationId} (status: ${location.status}). ` +
+          'Stock written to an inactive location is filtered out by fulfilment routing, so the ' +
+          'override would decide nothing. Name an active location, or reactivate this one.'
+      );
+    }
+  }
+
   private async validateCredentialsShape(
     adapterKey: string,
     credentials: Record<string, unknown>
@@ -586,6 +671,7 @@ export class ConnectionService implements IConnectionService {
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
+        await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
         // #2407 — above the credential-persistence block below, which requires
         // that a 400 from validation never leaves an orphan credential row.
@@ -845,6 +931,7 @@ export class ConnectionService implements IConnectionService {
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
+        await this.validateStockLocationOverride(patch.config, existing.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config);
         // #2407 — inside this branch, which is correct ONLY because
         // `ConnectionRepository.update` REPLACES `config` wholesale rather than
