@@ -1,9 +1,9 @@
 /**
  * OMS — public surface (#3056)
  *
- * Transport, hooks and the ordered rule table for the #2953 sourcing-rules
- * admin API. The dialogs, the page and its tile arrive with #3058-#3062 and add
- * their own lines here.
+ * Transport, hooks, the ordered rule table and the authoring dialog for the
+ * #2953 sourcing-rules admin API. The delete/retire flow, the page and its tile
+ * arrive with #3059-#3062 and add their own lines here.
  *
  * Deliberately NOT exported, per the start-narrow rule: the api module itself
  * (consumers reach transport through the hooks) and the query keys (every
@@ -34,6 +34,13 @@ export {
 // #3057 - the ordered table.
 export { SourcingRulesTable } from './components/sourcing-rules-table';
 export type { SourcingRulesTableProps } from './components/sourcing-rules-table';
+
+// #3058 - authoring.
+export { SourcingRuleDialog } from './components/sourcing-rule-dialog';
+export type {
+  SourcingRuleDialogProps,
+  SourcingRuleLocationOption,
+} from './components/sourcing-rule-dialog';
 
 export { resolveSplitCeiling, type SplitCeiling } from './lib/sourcing-rule-ceiling';
 export {

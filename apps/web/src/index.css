@@ -23615,3 +23615,87 @@ legend.analytics-settings-dialog__label {
 .sourcing-rule-row--governing {
   background: var(--bg-subtle);
 }
+
+/* ============================================================
+   SOURCING RULE DIALOG (#3058)
+
+   The authoring form for one sourcing rule. Its only bespoke control is the
+   priority-location list, which is ORDERED — the order IS the ranking — so it
+   carries the same arrow buttons the rules table does (#3055 § Decisions) and
+   deliberately no drag affordance.
+   ============================================================ */
+
+.dialog-section {
+  padding-block: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.dialog-section:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.dialog-section__head {
+  margin: 0 0 var(--space-3);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.priority-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.priority-picker__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.priority-picker__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.priority-picker__pos {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 1.5em;
+  color: var(--text-secondary);
+}
+
+.priority-picker__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.priority-picker__note {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* The location this entry names was deleted after the rule was saved. It ranks
+   nothing, so it is shown and marked rather than quietly dropped. */
+.priority-picker__row--stale {
+  border-color: var(--status-warning-border, var(--border-default));
+}
+
+.priority-picker__row--stale .priority-picker__label {
+  color: var(--status-warning-fg, var(--text-muted));
+}
