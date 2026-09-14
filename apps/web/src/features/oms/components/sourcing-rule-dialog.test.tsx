@@ -134,15 +134,35 @@ describe('SourcingRuleDialog (#3058)', () => {
     ).toBeNull();
   });
 
-  it('shows the priority list only for the priority sort', async () => {
+  it('shows the priority list only for the priority sort, as a NAMED group', async () => {
     renderDialog();
 
-    expect(screen.queryByLabelText(/Location order/)).toBeNull();
+    expect(screen.queryByRole('group', { name: /Location order/ })).toBeNull();
 
     await userEvent.selectOptions(screen.getByLabelText('Type'), 'sort');
     await userEvent.selectOptions(screen.getByLabelText('Rule'), 'priority');
 
-    expect(screen.getByText(/Location order/)).toBeInTheDocument();
+    // Queried by ROLE + name, because `queryByLabelText` was vacuous here:
+    // `FormField` labels its child with `<label htmlFor>` and a `<div>` is not a
+    // labelable element, so it returned null whether or not the field rendered.
+    const group = screen.getByRole('group', { name: /Location order/ });
+
+    // The same wiring is what carries the description and the validation error
+    // to a screen reader, so assert it actually resolves to something.
+    const described = (group.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent ?? '')
+      .join(' ');
+    expect(described).toMatch(/Any location you do not add here/);
+  });
+
+  it('seeds a create with the first name no live sibling has claimed', () => {
+    // Seeding with a claimed name opens on a DISABLED option, and browsers skip
+    // disabled options - so the operator cannot select it back, and the only way
+    // out is a save that 409s.
+    renderDialog({ rules: [rule({ id: 'rule_live', kind: 'filter', name: 'in-stock' })] });
+
+    expect(screen.getByLabelText<HTMLSelectElement>('Rule').value).toBe('country-served');
   });
 
   it('saves without confirmation when the change does not loosen splitting', async () => {
@@ -216,6 +236,49 @@ describe('SourcingRuleDialog (#3058)', () => {
       expect(create).toHaveBeenCalledTimes(1);
     });
     expect(screen.queryByText('Allow more splitting than today?')).toBeNull();
+  });
+
+  it('CONFIRMS when an end date would retire the governing rule and lift the ceiling', async () => {
+    // The window feeds the same ceiling computation the Splitting select does:
+    // a past end date takes this rule out of the active set, so nothing
+    // restricts splitting any more. Read through `getValues` instead of watched,
+    // neither the preview nor this gate would see the typed date at all.
+    const update = vi.fn().mockResolvedValue(rule());
+    const governing = rule({ id: 'rule_strict', afterAction: 'no-split' });
+    renderDialog({ rule: governing, rules: [governing] }, { update });
+
+    await userEvent.type(screen.getByLabelText(/Ends on/), '2026-01-01');
+    await userEvent.click(screen.getByRole('button', { name: 'Save rule' }));
+
+    const confirm = await screen.findByRole('dialog', {
+      name: 'Allow more splitting than today?',
+    });
+    expect(update).not.toHaveBeenCalled();
+
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Save anyway' }));
+
+    await waitFor(() => {
+      expect(update).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('recomputes the splitting preview when the start date changes', async () => {
+    // The other direction: a scheduled rule restricts nothing today, so clearing
+    // its start date makes the ruleset STRICTER. The preview is the one
+    // operator-facing statement this dialog makes about the ruleset, so it has
+    // to follow the dates rather than describe the ones it opened with.
+    const scheduled = rule({
+      id: 'rule_scheduled',
+      afterAction: 'no-split',
+      effectiveFrom: '2026-12-01T00:00:00.000Z',
+    });
+    renderDialog({ rule: scheduled, rules: [scheduled] });
+
+    expect(screen.getByText(/splitting stays the same overall/)).toBeInTheDocument();
+
+    await userEvent.clear(screen.getByLabelText(/Starts on/));
+
+    expect(await screen.findByText(/makes splitting stricter overall/)).toBeInTheDocument();
   });
 
   it('refuses an end date that is not after the start, before any request', async () => {
