@@ -132,7 +132,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
     // context — the authoritative table is ADR-050 decision 1, now 16 realtime /
-    // 29 bulk / 5 fiscal / 7 fan-out across 57 job types. Amendments since the
+    // 30 bulk / 5 fiscal / 7 fan-out across 58 job types. Amendments since the
     // ADR: `fiscalization.register` joined `fiscal` (#2156),
     // `inventory.provenance.backfill` joined `bulk` (#2317), the three returns
     // types joined realtime/bulk/fan-out (#2330), `returns.orphan.reconcile`
