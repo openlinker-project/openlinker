@@ -131,6 +131,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
     'libs/core/src/inventory/domain/types/stock-location-override.types.ts',
     { helper: 'readStockLocationOverride', key: 'config.stockLocationOverride' },
   ],
+  [
+    'libs/core/src/listings/domain/types/price-change-block.types.ts',
+    { helper: 'readConnectionCurrency', key: 'config.currency' },
+  ],
 ]);
 
 /**
@@ -275,11 +279,40 @@ const NON_KNOBS = new Map([
  * has this conversation. #2169 remains the tracked revisit.
  *
  * Merge note: #3142 took the 7 -> 8 step on `main` while this branch was open,
- * for a different helper. Both raises are real and independent, so both
- * paragraphs stand and the threshold lands on 9 rather than either side
- * silently overwriting the other back to 8.
+ * for a different helper, and #3159 then took 8 -> 9 for `readConnectionCurrency`.
+ * All three raises are real and independent, so every paragraph stands and the
+ * threshold lands on 10 rather than any side silently overwriting the others
+ * back down. The gate is `>=`, so 9 registered knobs under a threshold of 10
+ * passes while a tenth still stops and has this conversation - verified by
+ * adding a probe entry and watching it trip.
+ *
+ * **Contributing raise — #3143/#3159 (ADR-072 decision 4, currency-mismatch
+ * blocking), the eighth knob, 8 -> 9.** `readConnectionCurrency`
+ * (`config.currency`) is registered above rather than exempted: it genuinely
+ * coerces a per-connection JSONB value of exactly the counted shape (a
+ * destination's configured currency, read to decide whether the automatic
+ * price-propagation bypass may fire). It is registered even though the #3159
+ * review found it currently INERT on the repo's default topology — no
+ * destination form writes `config.currency` today, only a PrestaShop
+ * SOURCE-side setup form does — because "not yet reachable in practice" is
+ * not the same claim as "not a knob"; suppressing it here would make the
+ * count lie about the shape of the config surface rather than about how
+ * often it fires. The deferral grounds are the same as #2305/#2304/#3142's:
+ *
+ * 1. `price-change-block.types.ts` is a types-and-pure-helpers file with no
+ *    persistence and no binding, exactly like `price-sync-mode.types.ts`
+ *    beside it — a shared per-connection rules model needs both, which this
+ *    slice must not grow ahead of the design owning it.
+ * 2. The knob is required by the design, not accreted casually: ADR-072
+ *    decision 4 blocks a currency mismatch by naming why, and doing so needs
+ *    to read what currency the destination is configured for.
+ * 3. The consolidation already has an owner (#2169). Raising the bar by one
+ *    buys exactly one more knob before the gate fires again — the ninth knob
+ *    re-opens this same conversation with no further headroom.
+ *
+ * A reviewer who disagrees should push back on this raise specifically.
  */
-const KNOB_THRESHOLD = 9;
+const KNOB_THRESHOLD = 10;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
