@@ -22,6 +22,7 @@ import type { LoggerPort } from '@openlinker/shared/logging';
 import {
   BuyerProfile,
   CURRENCY_REJECTION_MARKERS,
+  SALE_CLASSIFICATION_REJECTION_MARKERS,
   FractionalTaxRateNotationError,
   MissingTaxRateException,
   InvoiceRecord,
@@ -62,7 +63,9 @@ function listResponse<T>(entities: T[]): InfaktListResponse<T> {
   return { entities, metainfo: { ...CLIENTS_CAPTURE.metainfo, total_count: entities.length } };
 }
 
-function buyer(overrides: Partial<{ nip: string | null; email: string | null }> = {}): BuyerProfile {
+function buyer(
+  overrides: Partial<{ nip: string | null; email: string | null; countryIso2: string }> = {},
+): BuyerProfile {
   return new BuyerProfile(
     'Acme Sp. z o.o.',
     overrides.nip === undefined || overrides.nip === null
@@ -73,7 +76,7 @@ function buyer(overrides: Partial<{ nip: string | null; email: string | null }> 
       line2: null,
       city: 'Warszawa',
       postalCode: '00-001',
-      countryIso2: 'PL',
+      countryIso2: overrides.countryIso2 ?? 'PL',
     },
     overrides.nip ? 'company' : 'private',
     overrides.email ?? null,
@@ -1789,6 +1792,200 @@ describe('InfaktInvoicingAdapter', () => {
         corrective_invoice: expect.objectContaining({ payment_method: 'transfer' }),
       });
     });
+  });
+
+  describe('sale_type (#2177)', () => {
+    const invoiceCmd: IssueInvoiceCommand = {
+      connectionId: 'conn-1',
+      orderId: 'order-1',
+      buyer: buyer({ nip: '1234567890' }),
+      currency: 'PLN',
+      lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 123, taxRate: '23' }],
+      idempotencyKey: 'idem-1',
+    };
+    // AC-3 (#2177): the entire subject of the issue is a non-PL buyer — every
+    // other case in this describe block uses the PL-hardcoded `buyer()`
+    // default, which asserts nothing about the reported bug (a PL client
+    // 422s neither with nor without `sale_type`, since inFakt defaults it
+    // server-side there). This is the first case to actually exercise it.
+    const nonPlInvoiceCmd: IssueInvoiceCommand = {
+      ...invoiceCmd,
+      buyer: buyer({ nip: '1234567890', countryIso2: 'DE' }),
+    };
+    const correctionCmd: IssueCorrectionCommand = {
+      connectionId: 'conn-1',
+      orderId: 'order-1',
+      originalProviderInvoiceId: 'inv-uuid-1',
+      reason: 'Zwrot towaru',
+      lines: [{ originalLineNumber: 1, newQuantity: 0 }],
+      idempotencyKey: 'idem-corr-1',
+    };
+
+    function seedIssueFixtures(): void {
+      http.seed<InfaktListResponse<InfaktClient>>('GET', 'clients.json', listResponse([]));
+      http.seed('POST', 'clients.json', {
+        id: 1,
+        uuid: 'client-uuid-1',
+        name: 'Acme',
+        nip: '1234567890',
+        email: null,
+        city: null,
+        street: null,
+        post_code: null,
+        country: null,
+      });
+      http.seed('POST', 'invoices.json', invoiceFixture());
+      http.seed('POST', 'invoices/inv-uuid-1/send_to_ksef.json', ksefResponseFixture());
+    }
+
+    function seedCorrectionFixtures(): void {
+      http.seed('GET', 'invoices/inv-uuid-1.json', invoiceFixture());
+      http.seed('POST', 'async/corrective_invoices.json', asyncTaskFixture());
+      http.seed(
+        'GET',
+        'corrective_invoices/corr-uuid-1.json',
+        invoiceFixture({ uuid: 'corr-uuid-1', kind: 'correction' }),
+      );
+      http.seed('POST', 'corrective_invoices/corr-uuid-1/send_to_ksef.json', ksefResponseFixture());
+    }
+
+    it('should NOT include sale_type on issueInvoice when the connection has no defaultSaleType configured (regression guard)', async () => {
+      seedIssueFixtures();
+      await adapter.issueInvoice(invoiceCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      const body = invoiceCall?.body as { invoice: Record<string, unknown> };
+      expect('sale_type' in body.invoice).toBe(false);
+    });
+
+    it.each(['service'] as const)(
+      'should send sale_type: %s on issueInvoice when defaultSaleType is configured',
+      async (saleType) => {
+        const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+          defaultSaleType: saleType,
+        });
+        seedIssueFixtures();
+        await configured.issueInvoice(invoiceCmd);
+
+        const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+        expect(invoiceCall?.body).toMatchObject({
+          invoice: expect.objectContaining({ sale_type: saleType }),
+        });
+      },
+    );
+
+    it('should succeed for a non-PL client once defaultSaleType is configured (AC-3, #2177)', async () => {
+      const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+        defaultSaleType: 'service',
+      });
+      seedIssueFixtures();
+
+      await configured.issueInvoice(nonPlInvoiceCmd);
+
+      const invoiceCall = http.calls.find((c) => c.method === 'POST' && c.path === 'invoices.json');
+      expect(invoiceCall?.body).toMatchObject({
+        invoice: expect.objectContaining({ sale_type: 'service' }),
+      });
+    });
+
+    // #3031: detect Infakt's `errors.sale_type` 422 shape and surface a
+    // specific, actionable hint instead of the generic provider-rejected
+    // failure — for the connection that never configured `defaultSaleType`
+    // and whose buyer requires the field (the exact opaque-422 case #2177
+    // originally reported).
+    describe('missing-sale_type 422 detection (#3031)', () => {
+      it('should re-throw with a reason core routes to sale-classification-required for the errors.sale_type shape', async () => {
+        seedIssueFixtures();
+        // Live-verified body shape (#2177): a Rails-style field-level
+        // validation error, not the async task's {processing_code, ...}
+        // envelope — this shape is only reachable on the direct
+        // `invoices.json` POST issueInvoice makes.
+        http.seedError(
+          'POST',
+          'invoices.json',
+          new InfaktApiError('Infakt API POST invoices.json failed with status 422', 422, {
+            errors: { sale_type: ['Proszę określić rodzaj sprzedaży.'] },
+          }),
+        );
+
+        const error = await adapter
+          .issueInvoice(nonPlInvoiceCmd)
+          .then(() => null)
+          .catch((e: unknown) => e as InfaktApiError);
+
+        expect(error).toBeInstanceOf(InfaktApiError);
+        expect(error).toMatchObject({ statusCode: 422, failureMode: 'rejected' });
+        // Asserted against the published marker list rather than a copied
+        // string (the #2103 `invalid-currency` precedent) — a reword on
+        // either side breaks the build instead of silently losing the
+        // routing to the specific failure code.
+        const haystack = (error?.reason ?? '').toLowerCase();
+        expect(
+          SALE_CLASSIFICATION_REJECTION_MARKERS.some((marker: string) =>
+            haystack.includes(marker),
+          ),
+        ).toBe(true);
+      });
+
+      it('should propagate an unrelated 422 unchanged (no reason stamped)', async () => {
+        seedIssueFixtures();
+        const original = new InfaktApiError(
+          'Infakt API POST invoices.json failed with status 422',
+          422,
+          { errors: { client_id: ['jest wymagane'] } },
+        );
+        http.seedError('POST', 'invoices.json', original);
+
+        const error = await adapter
+          .issueInvoice(nonPlInvoiceCmd)
+          .then(() => null)
+          .catch((e: unknown) => e as InfaktApiError);
+
+        expect(error).toBe(original);
+        expect(error?.reason).toBeUndefined();
+      });
+
+      it('should propagate a 422 with a non-object body unchanged (defensive)', async () => {
+        seedIssueFixtures();
+        const original = new InfaktApiError(
+          'Infakt API POST invoices.json returned non-JSON (422)',
+          422,
+          'not json',
+        );
+        http.seedError('POST', 'invoices.json', original);
+
+        await expect(adapter.issueInvoice(nonPlInvoiceCmd)).rejects.toBe(original);
+      });
+    });
+
+    it('should NOT include sale_type on issueCorrection when the connection has no defaultSaleType configured (regression guard)', async () => {
+      seedCorrectionFixtures();
+      await adapter.issueCorrection(correctionCmd);
+
+      const invoiceCall = http.calls.find(
+        (c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json',
+      );
+      const body = invoiceCall?.body as { corrective_invoice: Record<string, unknown> };
+      expect('sale_type' in body.corrective_invoice).toBe(false);
+    });
+
+    it.each(['service'] as const)(
+      'should send sale_type: %s on issueCorrection when defaultSaleType is configured',
+      async (saleType) => {
+        const configured = new InfaktInvoicingAdapter('conn-1', http, logger, {
+          defaultSaleType: saleType,
+        });
+        seedCorrectionFixtures();
+        await configured.issueCorrection(correctionCmd);
+
+        const invoiceCall = http.calls.find(
+          (c) => c.method === 'POST' && c.path === 'async/corrective_invoices.json',
+        );
+        expect(invoiceCall?.body).toMatchObject({
+          corrective_invoice: expect.objectContaining({ sale_type: saleType }),
+        });
+      },
+    );
   });
 
   describe('bank accounts (#1303 follow-up)', () => {

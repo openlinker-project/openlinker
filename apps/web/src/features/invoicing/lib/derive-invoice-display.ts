@@ -70,6 +70,8 @@ const FAILURE_CODE_FALLBACK: Record<FailureCode, string> = {
     'The provider rejected the buyer’s tax ID. Check the tax ID on the order’s customer, then retry. Nothing was issued.',
   'invalid-currency':
     'The document’s settlement currency is missing, malformed, or not accepted for this document. Fix the currency on the source order, then retry. Nothing was issued.',
+  'sale-classification-required':
+    'This connection needs a sale classification (goods vs. services) configured before it can issue invoices. Set it in the connection’s configuration, then retry. Nothing was issued.',
   'provider-rejected':
     'The provider rejected the document. Check the order’s data, then retry. Nothing was issued.',
   'transport-timeout':
