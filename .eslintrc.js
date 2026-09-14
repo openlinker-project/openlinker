@@ -309,6 +309,16 @@ module.exports = {
                   '**/orders/components/**',
                   '**/orders/lib/**',
                   '**/orders/types/**',
+                  // #3147 review — `features/price-changes` ships a public
+                  // barrel consumed by `features/listings` (the tab badge)
+                  // and by the queue table's own page; new slug goes into
+                  // BOTH pattern groups per docs/frontend-architecture.md
+                  // § Feature Public Surface.
+                  '**/price-changes/api/**',
+                  '**/price-changes/hooks/**',
+                  '**/price-changes/components/**',
+                  '**/price-changes/lib/**',
+                  '**/price-changes/types/**',
                   '**/products/api/**',
                   '**/products/hooks/**',
                   '**/products/components/**',
@@ -576,6 +586,16 @@ module.exports = {
                   '**/orders/components/**',
                   '**/orders/lib/**',
                   '**/orders/types/**',
+                  // #3147 review — `features/price-changes` ships a public
+                  // barrel consumed by `features/listings` (the tab badge)
+                  // and by the queue table's own page; new slug goes into
+                  // BOTH pattern groups per docs/frontend-architecture.md
+                  // § Feature Public Surface.
+                  '**/price-changes/api/**',
+                  '**/price-changes/hooks/**',
+                  '**/price-changes/components/**',
+                  '**/price-changes/lib/**',
+                  '**/price-changes/types/**',
                   '**/products/api/**',
                   '**/products/hooks/**',
                   '**/products/components/**',
