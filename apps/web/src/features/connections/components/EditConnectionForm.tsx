@@ -38,6 +38,7 @@ import {
 } from '../../../shared/plugins';
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
+import { isPricingDestination } from '../lib/pricing-destination';
 
 interface EditConnectionFormProps {
   connection: Connection;
@@ -493,9 +494,10 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   // master-catalog product data (name/description/images/price) through
   // `masterCatalogConnectionId` — `OfferBuilderService` and
   // `ProductPublishBuilderService` share the same requirement.
-  const isMarketplace = connection.enabledCapabilities.includes('OfferManager');
-  const needsMasterCatalog =
-    isMarketplace || connection.enabledCapabilities.includes('ProductPublisher');
+  // ONE predicate, shared with the pricing-sync page and the detail page
+  // (#3166 round-3 review) — `onSubmit` deletes `config.pricingRule` for this
+  // population, so a divergence here is silently destructive.
+  const needsMasterCatalog = isPricingDestination(connection);
   const hasStructuredInputs = StructuredSection !== undefined || needsMasterCatalog;
 
   // Tracks whether the raw JSON currently parses. When it doesn't, we lock the
@@ -691,9 +693,24 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // the operator never touched survives a concurrent sibling write, while
       // anything the operator actually edited in the raw JSON still wins.
       const fresh = await apiClient.connections.getById(connection.id);
+      const mergedConfig: Record<string, unknown> = { ...fresh.config, ...input.config };
+      // #3149/#3166 review — for a viable pricing DESTINATION,
+      // `config.pricingRule` is owned exclusively by the dedicated
+      // `PricingAndSyncSection` page (nested `{default, sourceOverrides}`,
+      // PATCHed through its own lock-guarded endpoint). This form's
+      // `input.config.pricingRule` is derived from `configText`, whose
+      // snapshot predates this submit and can never see a save made there
+      // concurrently — spreading it over `fresh.config.pricingRule` would
+      // silently roll that save back (and, via the legacy flat-shape
+      // `StockAndPricingSection`, could drop every per-source override too).
+      // Deleting the key here means `fresh.config.pricingRule` — whatever it
+      // currently holds — always survives this form's own submit.
+      if (needsMasterCatalog) {
+        delete mergedConfig.pricingRule;
+      }
       await updateConnection.mutateAsync({
         connectionId: connection.id,
-        input: { ...input, config: { ...fresh.config, ...input.config } },
+        input: { ...input, config: mergedConfig },
       });
       showToast({
         tone: 'success',
@@ -830,12 +847,26 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         defaultRateLimit={connection.defaultRateLimit ?? null}
       />
 
-      {/* #2610 — generic, platform-neutral: rendered for every connection. */}
+      {/* #2610 — generic, platform-neutral: rendered for every connection.
+          `pricingRuleManagedElsewhere` (#3149/#3166 review) is true for a
+          viable pricing DESTINATION (`needsMasterCatalog`) — that population
+          now owns `config.pricingRule` exclusively through the dedicated
+          `PricingAndSyncSection` page (nested `{default, sourceOverrides}`
+          shape), so this section renders a read-only pointer there instead
+          of its own editable flat-shape fields for the same key. Two
+          independent editors of one config key on one mega-form produced a
+          contradiction on first paint, a destructive checkbox interaction,
+          and a stale-merge-on-submit hazard; this is the structural fix
+          rather than a UI-only patch, since `onSubmit` below also excludes
+          `pricingRule` from what this form ever writes for that population. */}
       <StockAndPricingSection
         form={form}
         configIsParseable={configIsParseable}
         syncStockPolicyToJson={syncStockPolicyToJson}
         syncPricingRuleToJson={syncPricingRuleToJson}
+        pricingRuleManagedElsewhere={
+          needsMasterCatalog ? { href: `/connections/${connection.id}/pricing-sync` } : undefined
+        }
       />
 
       <div className="config-panel__toggle">

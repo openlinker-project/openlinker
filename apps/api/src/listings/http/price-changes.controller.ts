@@ -1,0 +1,310 @@
+/**
+ * Price Changes Controller (#3145, ADR-072)
+ *
+ * Thin HTTP orchestration over `IPriceChangesService`. Guarded per
+ * `docs/architecture-overview.md § Capability Assignment` /
+ * `engineering-standards.md § Route authorization` — reads are
+ * `admin`/`operator`/`viewer` (matching every other Listings read), writes
+ * are `admin`/`operator` (day-to-day listings operator actions).
+ *
+ * **The `automatic` opt-in is `admin`-only** (#3162 review — an earlier
+ * revision's header claimed this reused "the `connections:write` gating",
+ * which `role.types.spec.ts` directly contradicts: `ROLE_PERMISSIONS`
+ * asserts `operator` does NOT carry `connections:write`, and that map is
+ * informational only — `@Roles` is the actual authorization mechanism, per
+ * that same spec's own comment). Setting `optInAutomatic` mutates
+ * `Connection.config.priceSyncMode`, a connection-wide setting; the
+ * sibling connection Pricing & sync settings surface (#3163) gates the
+ * equivalent write at `admin`. Rather than widen that surface's gate to
+ * `operator` — the connection-config surface an operator's own Undo
+ * affordance could not reach — this endpoint refuses the opt-in for a
+ * non-admin caller (`ForbiddenException`) instead of silently applying it:
+ * an operator can still accept/edit/bulk-accept the price itself, they
+ * simply cannot ALSO flip the connection into automatic mode. This keeps
+ * both surfaces answering to the same gate; if #3163 ships with a
+ * different rule, this refusal is the one to revisit to match it.
+ *
+ * @module apps/api/src/listings/http
+ */
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  ConflictException,
+  ForbiddenException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  PRICE_CHANGES_SERVICE_TOKEN,
+  PriceChangeEpisodeAlreadyResolvedException,
+  PriceChangeEpisodeBlockedException,
+  PriceChangeOverrideOutOfRangeException,
+  PriceChangeEpisodeInFlightException,
+  PriceChangeEpisodeNotFoundException,
+  PriceChangeEpisodeStaleException,
+  PriceChangeEpisodeSupersededError,
+  type IPriceChangesService,
+  type PriceChangeResolutionResult,
+} from '@openlinker/core/listings';
+import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../auth/auth.types';
+import {
+  PRICE_SYNC_MODE_OVERRIDE_SERVICE_TOKEN,
+  type IPriceSyncModeOverrideService,
+} from '../application/services/price-sync-mode-override.service.interface';
+import { ListPriceChangesQueryDto } from './dto/list-price-changes-query.dto';
+import { AcceptPriceChangeDto } from './dto/accept-price-change.dto';
+import { EditPriceChangeDto } from './dto/edit-price-change.dto';
+import { BulkAcceptPriceChangesDto } from './dto/bulk-accept-price-changes.dto';
+import { PriceChangeListResponseDto } from './dto/price-change-list-response.dto';
+import { PriceChangeItemResponseDto } from './dto/price-change-item-response.dto';
+import { PriceChangeResolutionResponseDto } from './dto/price-change-resolution-response.dto';
+import { BulkAcceptPriceChangesResponseDto } from './dto/bulk-accept-price-changes-response.dto';
+import { PriceChangeAutoAppliedItemResponseDto } from './dto/price-change-auto-applied-response.dto';
+
+const DEFAULT_AUTO_APPLIED_LIMIT = 20;
+
+@ApiTags('listings')
+@ApiBearerAuth()
+@Controller('listings/price-changes')
+export class PriceChangesController {
+  constructor(
+    @Inject(PRICE_CHANGES_SERVICE_TOKEN)
+    private readonly priceChanges: IPriceChangesService,
+    @Inject(PRICE_SYNC_MODE_OVERRIDE_SERVICE_TOKEN)
+    private readonly priceSyncModeOverride: IPriceSyncModeOverrideService
+  ) {}
+
+  @Get()
+  @Roles('admin', 'operator', 'viewer')
+  @ApiOperation({ summary: 'List open price-change episodes (the review queue).' })
+  @ApiResponse({ status: 200, type: PriceChangeListResponseDto })
+  async list(@Query() query: ListPriceChangesQueryDto): Promise<PriceChangeListResponseDto> {
+    const page = await this.priceChanges.listOpen({
+      destinationConnectionId: query.connectionId,
+      direction: query.direction,
+      magnitudeLargeOnly: query.magnitudeLarge,
+      limit: query.limit,
+      offset: query.offset,
+    });
+    return PriceChangeListResponseDto.fromDomain(page);
+  }
+
+  @Get('auto-applied')
+  @Roles('admin', 'operator', 'viewer')
+  @ApiOperation({
+    summary:
+      'Recently-applied-automatically log (ADR-072 decision 3) — deliberately not paginated/filterable.',
+  })
+  @ApiResponse({ status: 200, type: [PriceChangeAutoAppliedItemResponseDto] })
+  async autoApplied(): Promise<PriceChangeAutoAppliedItemResponseDto[]> {
+    const entries = await this.priceChanges.listAutoApplied(DEFAULT_AUTO_APPLIED_LIMIT);
+    return entries.map((entry) => PriceChangeAutoAppliedItemResponseDto.fromView(entry));
+  }
+
+  @Post(':id/accept')
+  @HttpCode(HttpStatus.OK)
+  @Roles('admin', 'operator')
+  @ApiOperation({ summary: 'Accept the rule-computed price and publish it.' })
+  @ApiResponse({ status: 200, type: PriceChangeResolutionResponseDto })
+  @ApiResponse({ status: 404, description: 'Episode not found' })
+  @ApiResponse({ status: 409, description: 'Already resolved, blocked, stale (re-detected since last read), or already claimed by another in-flight request' })
+  @ApiResponse({ status: 403, description: 'optInAutomatic requires the admin role' })
+  async accept(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: AcceptPriceChangeDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<PriceChangeResolutionResponseDto> {
+    this.assertOptInAllowed(dto.optInAutomatic, user);
+    const result = await this.wrapDomainErrors(() =>
+      this.priceChanges.accept(id, {
+        optInAutomatic: dto.optInAutomatic,
+        expectedVersion: dto.expectedVersion,
+        resolvedByUserId: user.id,
+      })
+    );
+    const optInApplied = await this.applyOptIn(result);
+    return PriceChangeResolutionResponseDto.from(optInApplied);
+  }
+
+  @Post(':id/ignore')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('admin', 'operator')
+  @ApiOperation({ summary: 'Keep the old (live) price — marks the episode ignored.' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 404, description: 'Episode not found' })
+  @ApiResponse({ status: 409, description: 'Already resolved' })
+  async ignore(@Param('id', new ParseUUIDPipe()) id: string, @CurrentUser() user: AuthenticatedUser): Promise<void> {
+    await this.wrapDomainErrors(() => this.priceChanges.ignore(id, user.id));
+  }
+
+  @Post(':id/unresolve')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Roles('admin', 'operator')
+  @ApiOperation({ summary: "Undo a previous 'Keep price' decision, re-opening the episode." })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 404, description: 'Episode not found' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Not currently ignored (e.g. already accepted), or superseded by a fresh episode opened for the same key since this one was ignored',
+  })
+  async unresolve(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
+    await this.wrapDomainErrors(() => this.priceChanges.unresolve(id));
+  }
+
+  @Post(':id/refresh')
+  @HttpCode(HttpStatus.OK)
+  @Roles('admin', 'operator')
+  @ApiOperation({
+    summary:
+      "Acknowledge a re-detection — clears the row's 'this changed again' marker and returns it as it now stands.",
+  })
+  @ApiResponse({ status: 200, type: PriceChangeItemResponseDto })
+  @ApiResponse({ status: 404, description: 'Episode not found' })
+  @ApiResponse({ status: 409, description: 'Already resolved' })
+  async refresh(@Param('id', new ParseUUIDPipe()) id: string): Promise<PriceChangeItemResponseDto> {
+    const item = await this.wrapDomainErrors(() => this.priceChanges.refresh(id));
+    return PriceChangeItemResponseDto.fromDomain(item);
+  }
+
+  @Post(':id/edit')
+  @HttpCode(HttpStatus.OK)
+  @Roles('admin', 'operator')
+  @ApiOperation({ summary: 'Publish an operator-pinned price instead of the rule-computed one.' })
+  @ApiResponse({ status: 200, type: PriceChangeResolutionResponseDto })
+  @ApiResponse({ status: 404, description: 'Episode not found' })
+  @ApiResponse({ status: 409, description: 'Already resolved, blocked, stale, or already claimed by another in-flight request' })
+  @ApiResponse({ status: 403, description: 'optInAutomatic requires the admin role' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'The override is disproportionate to the rule-computed price. The body carries `outcome` ' +
+      "('too-high' | 'too-low'), `attempted`, `computedAmount` and `limit` alongside the message, " +
+      'so a caller can render the bound without parsing prose (#3236 review).',
+  })
+  async edit(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: EditPriceChangeDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<PriceChangeResolutionResponseDto> {
+    this.assertOptInAllowed(dto.optInAutomatic, user);
+    const result = await this.wrapDomainErrors(() =>
+      this.priceChanges.edit(id, {
+        manualPriceOverride: dto.manualPriceOverride,
+        optInAutomatic: dto.optInAutomatic,
+        expectedVersion: dto.expectedVersion,
+        resolvedByUserId: user.id,
+      })
+    );
+    const optInApplied = await this.applyOptIn(result);
+    return PriceChangeResolutionResponseDto.from(optInApplied);
+  }
+
+  @Post('bulk')
+  @Roles('admin', 'operator')
+  @ApiOperation({
+    summary:
+      'Accept N episodes together. Returns a batch id pollable via the existing bulk-batch-progress mechanism.',
+  })
+  @ApiResponse({ status: 200, type: BulkAcceptPriceChangesResponseDto })
+  @ApiResponse({ status: 403, description: 'optInAutomatic requires the admin role' })
+  async bulkAccept(
+    @Body() dto: BulkAcceptPriceChangesDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BulkAcceptPriceChangesResponseDto> {
+    if (dto.items.some((item) => item.optInAutomatic)) {
+      this.assertOptInAllowed(true, user);
+    }
+    const result = await this.wrapDomainErrors(() =>
+      this.priceChanges.bulkAccept(dto.items, user.id)
+    );
+    const optInResults = await this.priceSyncModeOverride.setSourceOverridesAutomatic(
+      result.optInPairs
+    );
+    return BulkAcceptPriceChangesResponseDto.fromDomain(result, optInResults);
+  }
+
+  /**
+   * Reject `optInAutomatic` from a non-admin caller rather than silently
+   * applying it (see class docblock). The required role is factored into
+   * {@link assertRole} (#3162 re-review, SUGGESTION) so the "which role" and
+   * "when is it required" questions are answered in two different places —
+   * the comparison itself is not duplicated per call site, which is what
+   * would let a future copy-paste drift into failing open.
+   */
+  private assertOptInAllowed(optInAutomatic: boolean | undefined, user: AuthenticatedUser): void {
+    if (optInAutomatic) {
+      this.assertRole(user, 'admin', 'Setting a source to automatic sync mode requires the admin role.');
+    }
+  }
+
+  /** Throws `ForbiddenException` unless `user.role` is exactly `requiredRole`. */
+  private assertRole(
+    user: AuthenticatedUser,
+    requiredRole: AuthenticatedUser['role'],
+    message: string
+  ): void {
+    if (user.role !== requiredRole) {
+      throw new ForbiddenException(message);
+    }
+  }
+
+  /** Returns the applied outcome, or `undefined` when `optInAutomatic` was not requested on this call. */
+  private async applyOptIn(result: PriceChangeResolutionResult): Promise<boolean | undefined> {
+    if (!result.optInPair) return undefined;
+    return this.priceSyncModeOverride.setSourceOverrideAutomatic(result.optInPair);
+  }
+
+  private async wrapDomainErrors<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (error) {
+      if (error instanceof PriceChangeEpisodeNotFoundException) {
+        throw new NotFoundException(error.message);
+      }
+      if (
+        error instanceof PriceChangeEpisodeAlreadyResolvedException ||
+        error instanceof PriceChangeEpisodeStaleException ||
+        error instanceof PriceChangeEpisodeSupersededError ||
+        error instanceof PriceChangeEpisodeInFlightException
+      ) {
+        throw new ConflictException(error.message);
+      }
+      if (error instanceof PriceChangeOverrideOutOfRangeException) {
+        // The bound travels as FIELDS, not only inside the sentence (#3236
+        // review). The repo's rule is that a client parsing a message breaks
+        // on the first reword — `ReturnCustodyTransitionError.reason` and
+        // `ReturnNotAttributedError.trigger` are both emitted as fields for
+        // that reason — so the dialog can render "at most 3990 PLN" inline
+        // instead of surfacing a paragraph in a toast.
+        throw new UnprocessableEntityException({
+          message: error.message,
+          error: 'Unprocessable Entity',
+          statusCode: 422,
+          outcome: error.outcome,
+          attempted: error.attempted,
+          computedAmount: error.computedAmount,
+          limit: error.limit,
+        });
+      }
+      if (error instanceof PriceChangeEpisodeBlockedException) {
+        // 422, not 400: the request is well-formed and the episode is
+        // actionable — the VALUE is refused (#3222). 400 on this route is
+        // already the DTO-shape failure.
+        throw new UnprocessableEntityException(error.message);
+      }
+      throw error;
+    }
+  }
+}
