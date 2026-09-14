@@ -74,8 +74,8 @@ const SKIP_REPORTED_TABLES = [
   { table: 'sales_document_rules', keyRest: ['conditions_hash', 'effective_from'] },
 ] as const;
 
-export class NormaliseSalesDocumentCountryCodes1881000000000 implements MigrationInterface {
-  name = 'NormaliseSalesDocumentCountryCodes1881000000000';
+export class NormaliseSalesDocumentCountryCodes1880500000000 implements MigrationInterface {
+  name = 'NormaliseSalesDocumentCountryCodes1880500000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // `country` IS the primary key here, so the folding set is partitioned on
