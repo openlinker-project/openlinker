@@ -10,7 +10,7 @@
  * @module apps/api/test/integration
  */
 import type { IntegrationTestHarness } from './setup';
-import { getTestHarness, teardownTestHarness } from './setup';
+import { getTestHarness, resetTestHarness, teardownTestHarness } from './setup';
 import {
   PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
   type PriceChangeEpisodeRepositoryPort,
@@ -34,7 +34,11 @@ describe('Price Change Episode Repository Integration', () => {
   });
 
   afterEach(async () => {
-    await harness.getDataSource().query('TRUNCATE TABLE "price_change_episodes"');
+    // #3161 round-2 review — `price_change_episodes` is in the shared
+    // `tablesToTruncate` list (setup.ts), so the per-spec inline TRUNCATE is
+    // redundant with — and can drift from — the mechanism every other spec
+    // in this suite relies on to stop a row leaking into an unrelated case.
+    await resetTestHarness();
   });
 
   afterAll(async () => {
@@ -290,5 +294,76 @@ describe('Price Change Episode Repository Integration', () => {
     expect(bySource.get(SRC_CONNECTION_ID)).toBe(1);
     expect(bySource.get(otherSourceId)).toBe(1);
     expect(bySource.has('no-such-source')).toBe(false);
+  });
+
+  it('round-trips a null computedOldAmount (a brand-new mapping with no baseline) and excludes it from direction filtering (#3159 review)', async () => {
+    const { episode } = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 430.5,
+      sourceNewAmount: 430.5,
+      computedOldAmount: null,
+      computedNewAmount: 430.5,
+    });
+
+    expect(episode.computedOldAmount).toBeNull();
+    expect(episode.deltaPct()).toBeNull();
+    expect(episode.isSteep()).toBe(false);
+
+    const read = await repository.findById(episode.id);
+    expect(read?.computedOldAmount).toBeNull();
+
+    // An unknown direction matches neither 'up' nor 'down' — never defaults
+    // to 'down' the way `computedOldAmount === 0` used to.
+    expect(await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'up' })).toEqual(
+      []
+    );
+    expect(
+      await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'down' })
+    ).toEqual([]);
+    expect(await repository.findOpenForConnection(DEST_CONNECTION_ID)).toHaveLength(1);
+
+    // The `direction: 'unknown'` filter (#3159 review, stack note) DOES match
+    // it — the three-valued behaviour is now a three-valued type.
+    expect(
+      await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'unknown' })
+    ).toHaveLength(1);
+  });
+
+  it('round-trips a null sourceOldAmount (no prior source price at all) instead of fabricating old = new (#3159 review, BLOCKING)', async () => {
+    const { episode } = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: null,
+      sourceNewAmount: 430.5,
+      computedOldAmount: null,
+      computedNewAmount: 430.5,
+    });
+
+    expect(episode.sourceOldAmount).toBeNull();
+
+    const read = await repository.findById(episode.id);
+    expect(read?.sourceOldAmount).toBeNull();
+  });
+
+  it('classifies a real zero baseline as an increase, not "down" (#3159 review)', async () => {
+    // A previously-free product (`computedOldAmount: 0`) that now carries a
+    // price. `deltaPct()` returns `0` here to avoid a `NaN`/`Infinity`
+    // percentage, but the DIRECTION must still read as an increase.
+    const { episode } = await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 0,
+      sourceNewAmount: 100,
+      computedOldAmount: 0,
+      computedNewAmount: 100,
+    });
+
+    expect(episode.direction()).toBe('up');
+    expect(episode.deltaPct()).toBe(0);
+
+    expect(
+      await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'up' })
+    ).toHaveLength(1);
+    expect(
+      await repository.findOpenForConnection(DEST_CONNECTION_ID, { direction: 'down' })
+    ).toEqual([]);
   });
 });
