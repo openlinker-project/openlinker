@@ -78,6 +78,10 @@ import {
   type PriceChangesApi,
 } from '../../features/price-changes/api/price-changes.api';
 import {
+  createPricingSyncApi,
+  type PricingSyncApi,
+} from '../../features/price-changes/api/pricing-sync.api';
+import {
   createMailerSettingsApi,
   type MailerSettingsApi,
 } from '../../features/mailer-settings/api/mailer-settings.api';
@@ -219,6 +223,7 @@ export interface CoreApiClient {
   invoicing: InvoicingApi;
   listings: ListingsApi;
   priceChanges: PriceChangesApi;
+  pricingSync: PricingSyncApi;
   mailerSettings: MailerSettingsApi;
   automations: AutomationsApi;
   mcpTokens: McpTokensApi;
@@ -454,6 +459,7 @@ export function createApiClient({
     invoicing: createInvoicingApi(request, requestBlob),
     listings: createListingsApi(request, requestStream),
     priceChanges: createPriceChangesApi(request),
+    pricingSync: createPricingSyncApi(request),
     mailerSettings: createMailerSettingsApi(request),
     mcpTokens: createMcpTokensApi(request),
     mappings: createMappingsApi(request),
