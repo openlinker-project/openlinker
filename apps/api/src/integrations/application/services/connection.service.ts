@@ -447,8 +447,15 @@ export class ConnectionService implements IConnectionService {
    * deleted later) is therefore NOT enforced here. `deleteLocation`'s
    * referential refusal counts `inventory_items` rows only and cannot see a
    * config key, so a location referenced solely by an override still deletes
-   * cleanly; closing that needs either a widened refusal there or an observable
-   * degradation at resolve time, and is tracked rather than half-done.
+   * cleanly: the config keeps naming a row that no longer exists, and nothing
+   * re-checks it. Closing that needs either a widened refusal there or an
+   * observable degradation at resolve time.
+   *
+   * That is DEFERRED AND UNTRACKED - there is no issue for it, deliberately
+   * said here rather than left as a claim a reader would verify with an empty
+   * search. #3207 covers the frontend field only. Whoever takes the next slice
+   * of this area owns the decision; do not read this paragraph as work already
+   * queued somewhere.
    *
    * Never defaults a value in; an absent key stays absent (byte-identical to
    * pre-#3206 behaviour for every connection that never sets it).
