@@ -430,6 +430,14 @@ export interface OrderRecord {
    * "Has none" and "we don't know" decide different fiscal documents, so
    * collapsing them into one rendering is the exact bug this field exists to
    * prevent. Switch on presence-then-nullness, never on truthiness.
+   *
+   * **Detail read only** — attached by `GET /orders/:id`, never by the paged
+   * list, where a buyer-identifying value with no reader has no business on
+   * every row. That makes the absent state ENDPOINT-dependent in a way the
+   * other optional fields here are not: on a list row the key is always absent,
+   * which is not the source saying nothing. Render it from a detail read or not
+   * at all — a list row must never be fed to `OrderBuyerTaxIdValue`, which would
+   * state "Not asserted by the source" about an order nobody asked about.
    */
   buyerTaxId?: string | null;
   /**

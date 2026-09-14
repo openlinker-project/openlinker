@@ -15,8 +15,14 @@
  */
 import type { RegulatoryStatus } from '../../../features/invoicing';
 
-export const KSEF_REGULATORY_STATUS_LABELS: Record<RegulatoryStatus, string> = {
-  'not-applicable': 'N/A',
+/**
+ * `Partial` and NOT `Record`: the badge is rendered only behind the panel's
+ * `regulatoryStatus !== 'not-applicable'` gate, so that value never arrives —
+ * an exhaustive `Record` would force this surface to state an opinion about a
+ * status it never sees. The prop is `Partial` too, and the badge falls back to
+ * the shared neutral label per status for any key omitted here.
+ */
+export const KSEF_REGULATORY_STATUS_LABELS: Partial<Record<RegulatoryStatus, string>> = {
   'pending-submission': 'KSeF: awaiting submission',
   submitted: 'KSeF: submitted',
   cleared: 'KSeF: clearing',
