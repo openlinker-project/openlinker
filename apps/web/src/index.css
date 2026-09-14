@@ -23485,3 +23485,133 @@ legend.analytics-settings-dialog__label {
     justify-items: start;
   }
 }
+
+/* ============================================================
+   SOURCING RULES TABLE (#3057)
+
+   The ordered ruleset the OL fulfilment router evaluates. Rendering order IS
+   evaluation order, so the position column carries the reorder controls rather
+   than a sort affordance.
+   ============================================================ */
+
+.rule-position {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Not draggable. Reorder is the arrow buttons only (#3055 § Decisions), so
+   this stays a static indicator: cursor: default and aria-hidden, because a
+   grab cursor would promise an interaction nothing backs. */
+.rule-position__handle {
+  cursor: default;
+  color: var(--text-disabled);
+  font-size: 13px;
+  line-height: 1;
+  user-select: none;
+  opacity: 0.4;
+  transition: opacity 120ms var(--ease-out), color 120ms var(--ease-out);
+}
+
+.rule-position:hover .rule-position__handle,
+.rule-position:focus-within .rule-position__handle {
+  opacity: 1;
+  color: var(--text-muted);
+}
+
+.rule-position__num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 1.25em;
+  text-align: right;
+}
+
+.rule-position__nudge {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 0;
+}
+
+.rule-cell__kind {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.rule-cell__kind-badge {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+}
+
+.rule-cell__label {
+  font-weight: 500;
+}
+
+.rule-cell__desc {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+
+.rule-cell__governs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.rule-cell__governs-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-info-fg, currentColor);
+}
+
+.split-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.rule-state--plain {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.rule-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}
+
+/* A rule this build cannot evaluate is listed so it can be found and deleted.
+   Muting it says "the router ignores this" without hiding it. */
+.sourcing-rule-row--unrecognised .rule-cell__label,
+.sourcing-rule-row--unrecognised .rule-position__num {
+  color: var(--text-muted);
+}
+
+.sourcing-rule-row--governing {
+  background: var(--bg-subtle);
+}

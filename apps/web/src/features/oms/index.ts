@@ -1,9 +1,9 @@
 /**
  * OMS — public surface (#3056)
  *
- * The first `features/oms` slice: transport and hooks for the #2953
- * sourcing-rules admin API. Components, the page and its tile arrive with
- * #3057-#3062 and add their own lines here.
+ * Transport, hooks and the ordered rule table for the #2953 sourcing-rules
+ * admin API. The dialogs, the page and its tile arrive with #3058-#3062 and add
+ * their own lines here.
  *
  * Deliberately NOT exported, per the start-narrow rule: the api module itself
  * (consumers reach transport through the hooks) and the query keys (every
@@ -30,6 +30,38 @@ export {
   useReorderSourcingRulesMutation,
   type ReorderSourcingRulesInput,
 } from './hooks/use-reorder-sourcing-rules-mutation';
+
+// #3057 - the ordered table.
+export { SourcingRulesTable } from './components/sourcing-rules-table';
+export type { SourcingRulesTableProps } from './components/sourcing-rules-table';
+
+export { resolveSplitCeiling, type SplitCeiling } from './lib/sourcing-rule-ceiling';
+export {
+  isLiveSourcingRule,
+  resolveSourcingRuleStatus,
+  SOURCING_RULE_STATUS_VALUES,
+  type SourcingRuleStatus,
+  type SourcingRuleStatusView,
+} from './lib/sourcing-rule-status';
+export {
+  sourcingAfterActionHint,
+  sourcingAfterActionLabel,
+  sourcingRuleNameHint,
+  sourcingRuleNameLabel,
+  SOURCING_RULES_TABLE_COPY,
+} from './lib/sourcing-rule.copy';
+export {
+  AFTER_ACTION_PERMISSIVENESS,
+  mostRestrictiveAfterAction,
+  SOURCING_AFTER_ACTION_VALUES,
+  SOURCING_FILTER_NAME_VALUES,
+  SOURCING_RULE_KIND_VALUES,
+  SOURCING_SORT_NAME_VALUES,
+  type SourcingAfterAction,
+  type SourcingFilterName,
+  type SourcingRuleKind,
+  type SourcingSortName,
+} from './lib/sourcing-rule-vocabulary';
 
 export {
   describeSourcingRuleError,
