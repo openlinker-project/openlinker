@@ -83,7 +83,7 @@ export interface OrderToRegisterTransactionCommandInput {
    */
   taxRateEra?: string | null;
   /**
-   * The order's persisted `order_records.buyerTaxId` COLUMN (#3187, ADR-072
+   * The order's persisted `order_records.buyerTaxId` COLUMN (#3187, ADR-073
    * decision 1) - the RAW three-state value, read through
    * {@link decodeBuyerTaxIdColumn} inside this function rather than by the
    * caller.
@@ -168,17 +168,25 @@ export function toRegisterTransactionCommand(
     command.taxRateEra = taxRateEra;
   }
 
-  // #3187, ADR-072 decision 1: decode the persisted three-state column and
+  // #3187, ADR-073 decision 1: decode the persisted three-state column and
   // stamp the command ONLY when there is an actual number to send. Both other
   // states - "asserted none" (`decodeBuyerTaxIdColumn` returns `null`) and
   // "not asserted" (`undefined`) - leave the field absent, the same way an
   // absent `taxRateEra` above stays absent rather than becoming a wire `null`.
   const decodedBuyerTaxId = decodeBuyerTaxIdColumn(buyerTaxId);
-  // `decodeBuyerTaxIdColumn` never returns an empty string - a blank column
-  // decodes to `null` - so `typeof` alone is what is left to narrow away the
-  // other two states.
-  if (typeof decodedBuyerTaxId === 'string') {
-    command.buyerTaxId = decodedBuyerTaxId;
+  // `decodeBuyerTaxIdColumn` maps an EMPTY column to `null`, but a
+  // WHITESPACE-only one decodes to the blank string itself (its guard is
+  // `column.length === 0`), so `typeof` alone is not enough: a column holding
+  // `'   '` would go out as `consumerTIN: "   "` on a fiscal document. Trim
+  // and require something left, which is the same standard the invoice half
+  // of this epic (#3224) applies to the same input. `encodeBuyerTaxIdColumn`
+  // trims on the ordinary write path, so the state is only reachable through a
+  // direct database write - core still does not hand an adapter a value it has
+  // not confirmed.
+  const trimmedBuyerTaxId =
+    typeof decodedBuyerTaxId === 'string' ? decodedBuyerTaxId.trim() : '';
+  if (trimmedBuyerTaxId.length > 0) {
+    command.buyerTaxId = trimmedBuyerTaxId;
   }
 
   return command;

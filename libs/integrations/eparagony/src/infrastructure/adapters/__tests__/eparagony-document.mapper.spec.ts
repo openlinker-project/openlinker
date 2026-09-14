@@ -38,7 +38,7 @@ function makeCommand(
   };
 }
 
-describe('toCreateReceiptRequest — buyer tax number (#3187, ADR-072 decision 1)', () => {
+describe('toCreateReceiptRequest — buyer tax number (#3187, ADR-073 decision 1)', () => {
   it('writes the buyer tax number to eReceipt.metadata.consumerTIN, verbatim', () => {
     const request = toCreateReceiptRequest({
       command: makeCommand({ buyerTaxId: '5213796333' }),
@@ -50,8 +50,23 @@ describe('toCreateReceiptRequest — buyer tax number (#3187, ADR-072 decision 1
     expect(request.eReceipt.metadata.consumerTIN).toBe('5213796333');
   });
 
+  it('omits the key for a WHITESPACE-only value rather than sending blanks (#3220 review)', () => {
+    // A blank column decodes to the blank string rather than to `null`
+    // upstream, so without a trim here a real fiscal document would carry
+    // `consumerTIN: "   "`. Trimming is not normalisation: what survives is
+    // still sent verbatim.
+    const request = toCreateReceiptRequest({
+      command: makeCommand({ buyerTaxId: '   ' }),
+      config: makeConfig(),
+      documentToken: 'doc-1',
+      transactionToken: 'txn-1',
+    });
+
+    expect(request.eReceipt.metadata.consumerTIN).toBeUndefined();
+  });
+
   it('sends the value with NO validation, normalisation or format check', () => {
-    // ADR-072 decision 5: core never pre-judges which numbers a provider will
+    // ADR-073 decision 5: core never pre-judges which numbers a provider will
     // accept. A malformed-looking value is passed through exactly as given —
     // the vendor's own regex is the only judge, and its refusal surfaces as an
     // ordinary EparagonyApiError from the create call, never from this mapper.

@@ -248,7 +248,7 @@ export interface RegisterTransactionCommand {
    */
   taxRateEra?: string | null;
   /**
-   * The buyer's tax number, as the source reported it (ADR-072 decision 1 /
+   * The buyer's tax number, as the source reported it (ADR-073 decision 1 /
    * #3187) - a BARE value, never a `TaxIdentifier { scheme, value }`. Every
    * `scheme` in the tree is produced by an adapter or an HTTP caller, never by
    * core, and core has no country to derive one from here: the order stores an
@@ -262,7 +262,7 @@ export interface RegisterTransactionCommand {
    * an empty or null value the provider would have to interpret.
    *
    * Carried verbatim, with NO validation, normalisation or format check on
-   * either side of the wire (ADR-072 decision 5): a receipt is not an invoice,
+   * either side of the wire (ADR-073 decision 5): a receipt is not an invoice,
    * and telling one country's number from another's would need a member-state
    * list that must exist nowhere in this tree. A provider that refuses the
    * value reports its own refusal, which core surfaces on the record's

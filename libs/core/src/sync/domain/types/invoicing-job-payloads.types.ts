@@ -31,7 +31,12 @@ import type { InvoiceTriggerModel } from '@openlinker/core/invoicing';
 /** PLAIN, serializable counterpart of `BuyerProfile` (no class, no getter). */
 export interface InvoicingIssueBuyerV1 {
   name: string;
-  /** Scheme-tagged tax id, or `null` for B2C. */
+  /**
+   * The buyer's tax id, or `null` for B2C. Since #3224 the `scheme` is
+   * OPTIONAL: an order stores a bare number and core sends it UNTAGGED,
+   * because tagging it would make `libs/core` name a country's identifier
+   * system (ADR-073 decision 1 - an adapter needing a tag supplies it).
+   */
   taxId: TaxIdentifier | null;
   address: BuyerAddress;
   type: BuyerType;
