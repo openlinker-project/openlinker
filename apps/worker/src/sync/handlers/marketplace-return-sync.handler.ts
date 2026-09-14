@@ -22,6 +22,7 @@ import {
   ReturnSourceNotReadableError,
 } from '@openlinker/core/returns';
 import { Logger } from '@openlinker/shared/logging';
+import { ReturnOrderLineResolverService } from '../return-order-line-resolver.service';
 
 type SyncJob = SyncJobEntity;
 
@@ -31,7 +32,8 @@ export class MarketplaceReturnSyncHandler implements SyncJobHandler {
 
   constructor(
     @Inject(RETURN_INGESTION_SERVICE_TOKEN)
-    private readonly returnIngestion: IReturnIngestionService
+    private readonly returnIngestion: IReturnIngestionService,
+    private readonly orderLineResolver: ReturnOrderLineResolverService
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -50,6 +52,13 @@ export class MarketplaceReturnSyncHandler implements SyncJobHandler {
       this.logger.log(
         `Return ${payload.externalReturnId} persisted as ${result.returnId} (attributed=${result.attributed}, connection: ${job.connectionId})`
       );
+
+      // #3171 — join each line to the order line it came from, so the
+      // credit-note path reads a resolved reference instead of matching invoice
+      // lines by product name. Composed here rather than inside `returns`
+      // because only the ORDER READ is cross-context; see the service. Never
+      // throws: the return is already durably persisted above.
+      await this.orderLineResolver.resolveForReturn(result.returnId);
 
       return { outcome: 'ok' };
     } catch (error) {

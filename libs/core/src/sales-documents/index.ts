@@ -18,11 +18,11 @@
  * needed the first to give up — the write-path conflict guard genuinely
  * needs a database — but nothing in this concern injects `IIntegrationsService`,
  * `IOrdersService`, or any other `@openlinker/core/<sibling>` token; the one
- * connection-capability check the mockup describes ("a rule pointing
- * `Invoice → eparagony.pl` is rejected because eparagony.pl carries no
- * `Invoicing` capability") is deliberately done at the API layer
- * (`apps/api/src/sales-documents/`), which already has that token in scope,
- * rather than injected here. `libs/core/src/__tests__/barrel-purity.spec.ts`
+ * connection-capability check the mockup describes ("a rule pointing an
+ * invoice-kind document at a connection is rejected because that connection's
+ * adapter carries no `Invoicing` capability") is deliberately done at the API
+ * layer (`apps/api/src/sales-documents/`), which already has that token in
+ * scope, rather than injected here. `libs/core/src/__tests__/barrel-purity.spec.ts`
  * now enforces the NARROWER property: no VALUE or (non-exempt) TYPE-ONLY
  * import from a `@openlinker/core/<ctx>` specifier anywhere under this
  * directory, while `@nestjs/*` / `typeorm` / `node:crypto` imports are

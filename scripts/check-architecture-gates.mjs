@@ -128,6 +128,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
     },
   ],
   [
+    'libs/core/src/inventory/domain/types/stock-location-override.types.ts',
+    { helper: 'readStockLocationOverride', key: 'config.stockLocationOverride' },
+  ],
+  [
     'libs/core/src/listings/domain/types/price-change-block.types.ts',
     { helper: 'readConnectionCurrency', key: 'config.currency' },
   ],
@@ -254,6 +258,34 @@ const NON_KNOBS = new Map([
  * richer shape, not a second one, and does not itself contribute to this
  * raise.
  *
+ * **Contributing raise — #3206, the eighth knob, 8 -> 9.** The gate fired on
+ * `readStockLocationOverride`, and it is registered rather than exempted
+ * because it genuinely is per-connection JSONB coercion. It is NOT the kind of
+ * knob the #1032/#2169 consolidation is aimed at, though: every prior entry
+ * coerces a ROUTING or AUTHORITY decision (who issues, who decides, which
+ * document, which lifecycle) — exactly the "shared per-connection rules
+ * model" #2162 § Out of scope is about. `stockLocationOverride` coerces
+ * neither; it is a one-shot OPERATOR ASSERTION of a physical-world fact no
+ * master will ever report (ADR-058 decision (2): `locationId IS NULL`
+ * permanently means the master declines to locate its stock, for both shipped
+ * `InventoryMasterPort` adapters). A rules engine that could express "which
+ * connection issues invoice vs. receipt" has no way to express "where is this
+ * connection's unlocated stock physically located" — the two aren't the same
+ * shape of question, so consolidating this knob into that future engine buys
+ * nothing. It stays a candidate for #2169's revisit anyway, since the revisit
+ * is about the JSONB-accretion COST, not just the routing-knob shape.
+ *
+ * The rung is raised by exactly one, so the NEXT unrelated knob still stops and
+ * has this conversation. #2169 remains the tracked revisit.
+ *
+ * Merge note: #3142 took the 7 -> 8 step on `main` while this branch was open,
+ * for a different helper, and #3159 then took 8 -> 9 for `readConnectionCurrency`.
+ * All three raises are real and independent, so every paragraph stands and the
+ * threshold lands on 10 rather than any side silently overwriting the others
+ * back down. The gate is `>=`, so 9 registered knobs under a threshold of 10
+ * passes while a tenth still stops and has this conversation - verified by
+ * adding a probe entry and watching it trip.
+ *
  * **Contributing raise — #3143/#3159 (ADR-072 decision 4, currency-mismatch
  * blocking), the eighth knob, 8 -> 9.** `readConnectionCurrency`
  * (`config.currency`) is registered above rather than exempted: it genuinely
@@ -280,7 +312,7 @@ const NON_KNOBS = new Map([
  *
  * A reviewer who disagrees should push back on this raise specifically.
  */
-const KNOB_THRESHOLD = 9;
+const KNOB_THRESHOLD = 10;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);

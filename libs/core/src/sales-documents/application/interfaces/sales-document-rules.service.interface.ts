@@ -21,15 +21,25 @@ export interface ISalesDocumentRulesService {
   /**
    * Create a rule. Runs the write-path conflict guard (same country + same
    * `conditionsHash` + overlapping effective range + a DIFFERENT connection
-   * → `SalesDocumentRuleConflictException`) and validates every referenced
-   * `thresholdRef` resolves (`SalesDocumentThresholdNotFoundException`
-   * otherwise) before persisting. Auto-clears any existing no-document
+   * → `SalesDocumentRuleConflictException`) and narrows every condition through
+   * `isSalesDocumentCondition` before persisting, so a malformed one is refused
+   * at authoring time rather than silently reading as "never matches" at
+   * evaluation time. The threshold-ref resolution check this used to run went
+   * with the refs themselves (#3189 inlined the amount). Auto-clears any existing no-document
    * acknowledgment for `input.country` as part of the same write (#2186) — a
    * real configuration and an acknowledgment can never coexist.
    */
   createRule(input: SalesDocumentRuleInput): Promise<SalesDocumentRule>;
 
   deleteRule(id: string): Promise<void>;
+
+  /**
+   * Batch lookup by id (#3186) — every rule named by `ids`, in no particular
+   * order, an id naming a since-deleted rule simply absent from the result.
+   * Backs the per-order sales-document projection's "Why this kind?"
+   * disclosure, which resolves a whole page's matched rules in one call.
+   */
+  getRulesByIds(ids: readonly string[]): Promise<SalesDocumentRule[]>;
 
   listCountryDefaults(country: string): Promise<SalesDocumentCountryDefault[]>;
 

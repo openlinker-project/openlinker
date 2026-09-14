@@ -12,7 +12,15 @@
  *
  * @module libs/core/src/fiscalization/application/mappers
  */
+// Value imports come from the `@openlinker/core/orders/types` cycle-breaker
+// sub-barrel, never the main barrel: that one re-exports `OrdersModule`, whose
+// own module file value-imports `@openlinker/core/fiscalization`, so a value
+// import here closes a `fiscalization -> orders -> fiscalization` CJS load
+// cycle and leaves `FISCAL_REGISTRATION_SERVICE_TOKEN` undefined at the
+// `@Inject()` decorator in `SalesDocumentViewService`. `Order` / `OrderItem`
+// are type-only and erase, so they may come from either.
 import type { Order, OrderItem } from '@openlinker/core/orders';
+import { decodeBuyerTaxIdColumn } from '@openlinker/core/orders/types';
 import {
   describeNetPricedOrderRefusal,
   minorUnitExponentFor,
@@ -81,6 +89,24 @@ export interface OrderToRegisterTransactionCommandInput {
    * pre-rollout history. Mirrors the invoice mapper's own input field.
    */
   taxRateEra?: string | null;
+  /**
+   * The order's persisted `order_records.buyerTaxId` COLUMN (#3187, ADR-073
+   * decision 1) - the RAW three-state value, read through
+   * {@link decodeBuyerTaxIdColumn} inside this function rather than by the
+   * caller.
+   *
+   * Deliberately the persisted column and NOT `order.billingAddress?.taxId` /
+   * `order.shippingAddress?.taxId`, even though `readBuyerTaxId(order)` would
+   * answer the same question from the live `Order`: the column is written
+   * ONLY when `OL_STORE_PII` is on (`order-record.service.ts`), so reading the
+   * live address instead would leak the number onto a receipt on an
+   * installation that chose not to keep it - the exact configuration the
+   * mockup's own gap note names ("the whole epic is inert on one
+   * configuration"). Passing `undefined` (the caller has no record yet) is
+   * indistinguishable from a column of `NULL` and both compose no field on the
+   * command, which is correct either way: nothing to send.
+   */
+  buyerTaxId?: string | null;
 }
 
 /**
@@ -99,7 +125,7 @@ export interface OrderToRegisterTransactionCommandInput {
 export function toRegisterTransactionCommand(
   input: OrderToRegisterTransactionCommandInput,
 ): RegisterTransactionCommand {
-  const { order, connectionId, idempotencyKey, shippingLineName, taxRateEra } = input;
+  const { order, connectionId, idempotencyKey, shippingLineName, taxRateEra, buyerTaxId } = input;
 
   // GROSS-only: a net-priced order would register net amounts labelled as gross,
   // and core may not convert (it never computes or defaults a tax rate). Fail
@@ -147,6 +173,27 @@ export function toRegisterTransactionCommand(
   // wire, exactly as the invoice mapper treats it.
   if (taxRateEra !== undefined && taxRateEra !== null) {
     command.taxRateEra = taxRateEra;
+  }
+
+  // #3187, ADR-073 decision 1: decode the persisted three-state column and
+  // stamp the command ONLY when there is an actual number to send. Both other
+  // states - "asserted none" (`decodeBuyerTaxIdColumn` returns `null`) and
+  // "not asserted" (`undefined`) - leave the field absent, the same way an
+  // absent `taxRateEra` above stays absent rather than becoming a wire `null`.
+  const decodedBuyerTaxId = decodeBuyerTaxIdColumn(buyerTaxId);
+  // `decodeBuyerTaxIdColumn` maps an EMPTY column to `null`, but a
+  // WHITESPACE-only one decodes to the blank string itself (its guard is
+  // `column.length === 0`), so `typeof` alone is not enough: a column holding
+  // `'   '` would go out as `consumerTIN: "   "` on a fiscal document. Trim
+  // and require something left, which is the same standard the invoice half
+  // of this epic (#3224) applies to the same input. `encodeBuyerTaxIdColumn`
+  // trims on the ordinary write path, so the state is only reachable through a
+  // direct database write - core still does not hand an adapter a value it has
+  // not confirmed.
+  const trimmedBuyerTaxId =
+    typeof decodedBuyerTaxId === 'string' ? decodedBuyerTaxId.trim() : '';
+  if (trimmedBuyerTaxId.length > 0) {
+    command.buyerTaxId = trimmedBuyerTaxId;
   }
 
   return command;

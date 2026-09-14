@@ -30,6 +30,17 @@ describe('toBridgeBuyer', () => {
     expect(toBridgeBuyer(buyer({ scheme: 'pl-nip', value: '' })).nip).toBeNull();
   });
 
+  // #3224 — Subiekt nexo has exactly one tax-number slot, so an untagged
+  // identifier has only one possible placement. Requiring the tag would drop
+  // the buyer's NIP from every auto-issued document.
+  it('maps nip from an UNTAGGED taxId (#3224)', () => {
+    expect(toBridgeBuyer(buyer({ value: '5213796333' })).nip).toBe('5213796333');
+  });
+
+  it('still sets nip to null for an untagged EMPTY value (#3224)', () => {
+    expect(toBridgeBuyer(buyer({ value: '' })).nip).toBeNull();
+  });
+
   it('maps address countryIso2 -> countryCode', () => {
     expect(toBridgeBuyer(buyer(null)).address?.countryCode).toBe('PL');
   });

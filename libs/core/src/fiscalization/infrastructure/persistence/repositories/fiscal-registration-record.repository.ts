@@ -94,6 +94,18 @@ export class FiscalRegistrationRecordRepository
     return entities.map((entity) => this.toDomain(entity));
   }
 
+  async findRecentByConnectionId(
+    connectionId: string,
+    limit: number,
+  ): Promise<FiscalRegistrationRecord[]> {
+    const entities = await this.repository.find({
+      where: { connectionId },
+      order: { createdAt: 'DESC', id: 'DESC' },
+      take: limit,
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   async updateOutcome(
     id: string,
     patch: FiscalRegistrationOutcomePatch,

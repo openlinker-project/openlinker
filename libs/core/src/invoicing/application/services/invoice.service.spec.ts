@@ -211,6 +211,7 @@ describe('InvoiceService', () => {
       claimForIssue: jest.fn(),
       claimPendingSubmission: jest.fn(),
       findMany: jest.fn(),
+      findRecentByConnectionId: jest.fn(),
       findIssuedNonTerminal: jest.fn(),
       findPendingSubmission: jest.fn(),
       findStuckPending: jest.fn(),
@@ -1176,6 +1177,31 @@ describe('InvoiceService', () => {
       await expect(service.issueInvoice(makeCmd())).resolves.toBeDefined();
       expect(adapter.issueInvoice).toHaveBeenCalledTimes(1);
     });
+
+    // #3184, ADR-073 decision 3: a connection may hold BOTH the invoicing and
+    // fiscalization roles, so a fiscalization connection id can be the exact
+    // same value as the invoicing connection id being asked to issue. The
+    // cross-kind check must refuse regardless — it must NOT read "same
+    // connection id" as "this is my own retry/replay state" the way the
+    // SAME-kind check does. This pins that the guard is connection-BLIND
+    // (never merely "different connection"), so a single dual-role
+    // connection can never produce both an invoice and a fiscal receipt for
+    // one order.
+    it('should refuse to issue when the blocking fiscal receipt is on the SAME (dual-role) connection', async () => {
+      stubFiscalRegistrationService([
+        fiscalRecord({ id: 'fiscal-on-dual-role-conn', connectionId: CONNECTION }),
+      ]);
+
+      const error = await service.issueInvoice(makeCmd()).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(OrderAlreadyHasFiscalReceiptException);
+      const typed = error as OrderAlreadyHasFiscalReceiptException;
+      expect(typed.registeringConnectionId).toBe(CONNECTION);
+      expect(typed.requestedConnectionId).toBe(CONNECTION);
+      expect(typed.blockingRecordId).toBe('fiscal-on-dual-role-conn');
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(adapter.issueInvoice).not.toHaveBeenCalled();
+    });
   });
 
   // #2047: the panel renders only the LATEST record, so it needs a way to say
@@ -1208,6 +1234,19 @@ describe('InvoiceService', () => {
       repo.findAllByOrderId.mockResolvedValue([]);
 
       expect(await service.listInvoiceConnectionIdsForOrder('order-1')).toEqual([]);
+    });
+  });
+
+  describe('listRecentByConnectionId (#3179)', () => {
+    it('should delegate to the bounded recency read, never the paginated list', async () => {
+      const rows = [makeRecord({ id: 'r1' }), makeRecord({ id: 'r2' })];
+      repo.findRecentByConnectionId.mockResolvedValue(rows);
+
+      await expect(service.listRecentByConnectionId('conn-a', 10)).resolves.toBe(rows);
+      expect(repo.findRecentByConnectionId).toHaveBeenCalledWith('conn-a', 10);
+      // The diagnostics read discards a total, so it must never reach the
+      // `getManyAndCount` path that always computes one.
+      expect(repo.findMany).not.toHaveBeenCalled();
     });
   });
 

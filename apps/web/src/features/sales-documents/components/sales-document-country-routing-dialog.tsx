@@ -6,17 +6,19 @@
  * country index (#2187). The body composes, UNCHANGED, the two already-shipped
  * components — `SalesDocumentRulesList` (rule cards + "+ Add rule", which
  * already opens `SalesDocumentRuleComposerDialog` and surfaces the real server
- * 409 conflict) and `SalesDocumentCountryDefaults` (Invoice/Receipt default
- * pickers). Neither component's own logic is touched here — this dialog only
- * decides WHERE they render and what surrounds them.
+ * 409 conflict) and `SalesDocumentCountryDefaults` (the single country-default
+ * control, #3177). Neither component's own logic is touched here — this
+ * dialog only decides WHERE they render and what surrounds them.
  *
  * Fallback ladder, rendered as numbered tiers:
  *
  *   1. Rules            — `SalesDocumentRulesList`
- *   2. Country default   — `SalesDocumentCountryDefaults` (+ a dual-default
- *                          warning `Alert` when both Invoice and Receipt
- *                          defaults are set — an open resolution question,
- *                          not something to silently accept)
+ *   2. Country default   — `SalesDocumentCountryDefaults`, a single control
+ *                          (#3177): the two-defaults contradiction this tier
+ *                          used to warn about is unexpressible now that
+ *                          `sales_document_country_defaults` is unique on
+ *                          `country` alone, so this dialog no longer detects
+ *                          or explains it.
  *   3. Falls through to ★ Rest of world — a cross-link that opens ★ Rest of
  *      world's OWN dialog (`onNavigate`, carrying `cameFrom` so that dialog
  *      can render a "← Back to {country}" affordance)
@@ -139,9 +141,11 @@ export function SalesDocumentCountryRoutingDialog({
 
   const rules = rulesQuery.data ?? [];
   const defaults = defaultsQuery.data ?? [];
+  // At most one default row per country now (#3177 — unique on `country`
+  // alone), so these two are mutually exclusive; both are still read here
+  // for `describeSalesDocumentCountryReset`'s naming.
   const hasInvoiceDefault = defaults.some((d) => d.documentKind === 'invoice');
   const hasReceiptDefault = defaults.some((d) => d.documentKind === 'fiscal-receipt');
-  const hasDualDefault = hasInvoiceDefault && hasReceiptDefault;
 
   const isSummaryLoading =
     rulesQuery.isLoading || defaultsQuery.isLoading || countriesQuery.isLoading;
@@ -203,25 +207,7 @@ export function SalesDocumentCountryRoutingDialog({
     {
       key: 'country-default',
       title: 'Country default',
-      content: (
-        <>
-          <SalesDocumentCountryDefaults country={country} />
-          {hasDualDefault ? (
-            <Alert tone="warning" title="Both an Invoice and a Receipt default are set">
-              A default only applies when no rule above matched. With two defaults set for{' '}
-              {displayName}, that step is disabled entirely — an order that matches no rule is
-              held rather than taking either default. Remove one of the two to restore a working
-              fallback.
-            </Alert>
-          ) : (hasInvoiceDefault || hasReceiptDefault) ? (
-            <p className="muted-text">
-              This default applies only when no rule above matches this order. Setting a default
-              for the other document kind too disables this fallback — one default, not two, keeps
-              it working.
-            </p>
-          ) : null}
-        </>
-      ),
+      content: <SalesDocumentCountryDefaults country={country} />,
     },
   ];
 

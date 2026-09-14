@@ -31,7 +31,12 @@ import type { InvoiceTriggerModel } from '@openlinker/core/invoicing';
 /** PLAIN, serializable counterpart of `BuyerProfile` (no class, no getter). */
 export interface InvoicingIssueBuyerV1 {
   name: string;
-  /** Scheme-tagged tax id, or `null` for B2C. */
+  /**
+   * The buyer's tax id, or `null` for B2C. Since #3224 the `scheme` is
+   * OPTIONAL: an order stores a bare number and core sends it UNTAGGED,
+   * because tagging it would make `libs/core` name a country's identifier
+   * system (ADR-073 decision 1 - an adapter needing a tag supplies it).
+   */
   taxId: TaxIdentifier | null;
   address: BuyerAddress;
   type: BuyerType;
@@ -86,6 +91,18 @@ export interface InvoicingIssuePayloadV1 {
   sourceEventId?: string;
   /** The trigger model that produced this job. */
   trigger: InvoiceTriggerModel;
+  /**
+   * The order's buyer tax identity as the gate saw it (#3188), in
+   * `order_records.buyerTaxId`'s three-state encoding: absent/`null` = not
+   * asserted, `''` = asserted-none, otherwise the id. Optional additive field
+   * (no `schemaVersion` bump) — a payload persisted before it existed reads
+   * `undefined`, which is the correct "not asserted".
+   *
+   * Frozen onto the issued `InvoiceRecord` so the invoice list can render the
+   * same three states the order detail does without joining to an order whose
+   * own column re-ingestion rewrites. It never reaches a provider.
+   */
+  buyerTaxIdAssertion?: string | null;
   /**
    * The order's tax-rate era marker (#2245 review) - today only `'pre-rollout'`,
    * for an order that existed before per-line rates did. Optional additive field

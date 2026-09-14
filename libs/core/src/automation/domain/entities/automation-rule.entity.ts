@@ -22,11 +22,12 @@
  *    happens, do Y"*, so `trigger` is the scope column and the index axis. A
  *    country index would be a category error.
  * 2. **`orderTotalGross` carries an INLINE amount + currency, not a
- *    `thresholdRef`.** #2161's indirection exists so a legal amount can version
- *    independently of the rules citing it. An automation threshold has no
- *    legal-matrix versioning concern, and forcing the operator through a
- *    separate thresholds table would be ceremony imported from a constraint
- *    that does not apply. Currency mismatch still resolves the #2161 way — no
+ *    `thresholdRef`.** #2161's indirection existed so a legal amount could
+ *    version independently of the rules citing it; an automation threshold has
+ *    no legal-matrix versioning concern, so that ceremony was never justified
+ *    here. **No longer a divergence** — #3189 inlined the sales-document
+ *    amounts as well, for a different reason (the indirection made the amount
+ *    unauthorable). Currency mismatch still resolves the #2161 way — no
  *    conversion, ever; the rule simply does not match.
  * 3. **Actions are an ORDERED, multi-step list capped at 3, stop-on-first-failure.**
  *    #2161 has one outcome. Consequently *several* rules may fire for one

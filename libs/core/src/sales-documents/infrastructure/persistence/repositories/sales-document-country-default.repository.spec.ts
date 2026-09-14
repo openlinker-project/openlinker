@@ -1,11 +1,16 @@
 /**
- * SalesDocumentCountryDefaultRepository — Unit Tests (#2170, review finding 10)
+ * SalesDocumentCountryDefaultRepository — Unit Tests (#2170, review finding 10, #3177)
  *
  * Pins `upsert` to a single atomic `INSERT ... ON CONFLICT DO UPDATE`
  * statement rather than a `findOne` + `create`/`save` round-trip — the
- * TOCTOU shape that let two concurrent saves for the same
- * `(country, documentKind)` both observe "not found" and both attempt an
- * insert, with the second colliding against the unique index.
+ * TOCTOU shape that let two concurrent saves for the same `country` both
+ * observe "not found" and both attempt an insert, with the second colliding
+ * against the unique index.
+ *
+ * #3177 moved the conflict target from `(country, documentKind)` to
+ * `country` alone — a country can only ever hold ONE default now, so a
+ * second upsert for the same country under a different `documentKind`
+ * overwrites the first rather than inserting a sibling row.
  *
  * @module libs/core/src/sales-documents/infrastructure/persistence/repositories
  */
@@ -44,23 +49,44 @@ describe('SalesDocumentCountryDefaultRepository', () => {
   });
 
   describe('upsert', () => {
-    it('should upsert on the (country, documentKind) conflict path and re-read the row', async () => {
-      ormRepository.findOneOrFail.mockResolvedValue(ormRow({ connectionId: 'conn-eparagony' }));
+    it('should upsert on the `country`-alone conflict path and re-read the row (#3177)', async () => {
+      ormRepository.findOneOrFail.mockResolvedValue(ormRow({ connectionId: 'conn-1' }));
 
       const saved = await repository.upsert({
         country: 'PL',
         documentKind: 'invoice',
-        connectionId: 'conn-eparagony',
+        connectionId: 'conn-1',
       });
 
       expect(ormRepository.upsert).toHaveBeenCalledWith(
-        { country: 'PL', documentKind: 'invoice', connectionId: 'conn-eparagony' },
-        { conflictPaths: ['country', 'documentKind'] },
+        { country: 'PL', documentKind: 'invoice', connectionId: 'conn-1' },
+        { conflictPaths: ['country'] },
       );
       expect(ormRepository.findOneOrFail).toHaveBeenCalledWith({
-        where: { country: 'PL', documentKind: 'invoice' },
+        where: { country: 'PL' },
       });
-      expect(saved.connectionId).toBe('conn-eparagony');
+      expect(saved.connectionId).toBe('conn-1');
+    });
+
+    it('should overwrite an existing default under a DIFFERENT documentKind rather than inserting a sibling row (#3177)', async () => {
+      // A country default is now unique on `country` alone, so upserting a
+      // receipt default over an existing invoice default for the same
+      // country replaces it — it must never collide/insert a second row.
+      ormRepository.findOneOrFail.mockResolvedValue(
+        ormRow({ documentKind: 'fiscal-receipt', connectionId: 'conn-receipt-only' }),
+      );
+
+      const saved = await repository.upsert({
+        country: 'PL',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-receipt-only',
+      });
+
+      expect(ormRepository.upsert).toHaveBeenCalledWith(
+        { country: 'PL', documentKind: 'fiscal-receipt', connectionId: 'conn-receipt-only' },
+        { conflictPaths: ['country'] },
+      );
+      expect(saved.documentKind).toBe('fiscal-receipt');
     });
 
     it('should never fall back to findOne + create/save (no TOCTOU window)', async () => {
@@ -69,22 +95,6 @@ describe('SalesDocumentCountryDefaultRepository', () => {
       await repository.upsert({ country: 'DE', documentKind: 'fiscal-receipt', connectionId: 'conn-1' });
 
       expect(ormRepository.findOne).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('findByCountryAndKind', () => {
-    it('should return null when no default is configured', async () => {
-      ormRepository.findOne.mockResolvedValue(null);
-
-      await expect(repository.findByCountryAndKind('DE', 'invoice')).resolves.toBeNull();
-    });
-
-    it('should map the row onto the domain entity', async () => {
-      ormRepository.findOne.mockResolvedValue(ormRow());
-
-      const result = await repository.findByCountryAndKind('PL', 'invoice');
-
-      expect(result).toMatchObject({ country: 'PL', documentKind: 'invoice', connectionId: 'conn-infakt' });
     });
   });
 

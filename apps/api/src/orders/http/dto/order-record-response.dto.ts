@@ -13,7 +13,12 @@ import {
   SlaStateValues,
   FulfillmentRollupStateValues,
 } from '@openlinker/core/orders';
-import { OrderRecordStatus, SlaState, FulfillmentRollupState } from '@openlinker/core/orders';
+import {
+  OrderRecordStatus,
+  SlaState,
+  FulfillmentRollupState,
+  BuyerTaxId,
+} from '@openlinker/core/orders';
 import {
   OrderLifecyclePhaseValues,
   HoldReasonValues,
@@ -93,6 +98,36 @@ export class OrderRecordResponseDto {
       'recordStatus = "awaiting_mapping" | "source_deleted". null for a "ready" record.',
   })
   mappingFailureReason!: string | null;
+
+  @ApiPropertyOptional({
+    // `BuyerTaxId` is `string | null | undefined`, and `design:type` reflection
+    // over a union emits `Object` - so without this the published schema would
+    // type the property `object` and a generated client would follow it.
+    type: String,
+    nullable: true,
+    example: '5213796333',
+    description:
+      'Buyer tax id as the source asserted it (#2599/#3180) - THREE states, not two, ' +
+      'because "the buyer has none" and "the source said nothing" decide different ' +
+      'fiscal documents. The key is ABSENT when the source asserted nothing (this is ' +
+      'also what a deployment running with `OL_STORE_PII=false` always reads, since ' +
+      'nothing is persisted there - it is byte-identical to an ordinary unasserted ' +
+      'value, never a false "asserted none"); `null` when the source positively ' +
+      'asserted the buyer has no tax id; a non-empty string, verbatim and unformatted, ' +
+      'when one was reported. Read server-side through `decodeBuyerTaxIdColumn`, never ' +
+      'a bare `IS NOT NULL` - that misreads the asserted-none row as present. Never ' +
+      'validated or normalised: core is country-agnostic and does not judge tax-id ' +
+      'formats or add a country prefix. ' +
+      'DETAIL READ ONLY - GET /orders/:id sets it; the paged list never does. It is a ' +
+      'buyer-identifying value with no list consumer, and the list is the hottest order ' +
+      'read in the product, so it is scoped by data minimisation rather than by query ' +
+      'cost (the `activeHold` precedent below narrows for the other reason). ' +
+      'CONSEQUENCE: on a list row the key is always absent, and absence there is a ' +
+      'property of the ENDPOINT, not an assertion about the order - a list consumer must ' +
+      'never render it as "not asserted by the source". Adding one means moving this back ' +
+      'onto the shared projection deliberately, not reading the gap.',
+  })
+  buyerTaxId?: BuyerTaxId;
 
   @ApiPropertyOptional({
     enum: SalesDocumentGateBlockReasonValues,

@@ -161,6 +161,11 @@ export class FiscalizationController {
         // the same verdict the manual invoice path does, so the marker travels
         // with the command rather than being re-derived (or lost) downstream.
         taxRateEra: record.taxRateEra,
+        // #3187, ADR-073 decision 1: the persisted column, not the rehydrated
+        // `order`'s billing/shipping address - the column is written only under
+        // `OL_STORE_PII`, and reading the live address instead would leak the
+        // number onto a receipt on an install that chose not to keep it.
+        buyerTaxId: record.buyerTaxId,
       });
     } catch (error) {
       throw this.toHttpException(error);
