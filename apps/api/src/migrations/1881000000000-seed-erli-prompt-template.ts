@@ -31,8 +31,22 @@
  * gap may already have hand-authored an `erli` template as a workaround —
  * the bare `INSERT` this migration originally shipped would then abort
  * `migration:run` on `ux_prompt_templates_kcv_channel` /
- * `ux_prompt_templates_published_channel`. `down` still removes exactly this
- * seeded row (harmless no-op if the conflict path skipped the insert).
+ * `ux_prompt_templates_published_channel`. This is silent for a colliding
+ * *draft* row too (a draft doesn't conflict on the published-uniqueness
+ * index, but does conflict on the `(key, channel, version)` index) — the
+ * seed reports success either way, with no published `erli` row and no log
+ * line, so the regression this migration exists to close can persist
+ * invisibly on an install that already has a draft v1 under this key.
+ *
+ * `down` must NOT unconditionally delete the row it may have declined to
+ * insert: doing so would let a revert destroy an operator-authored `erli`
+ * v1 template it never created. It therefore only deletes a row this
+ * migration is known to have written — `created_by IS NULL` (every
+ * operator-authored template carries a real actor id) AND the seeded
+ * `system_prompt` text verbatim. A hand-authored row at a *different*
+ * version is already unaffected by construction (the predicate is
+ * `version = 1`); it's the v1 collision — the shape a workaround most
+ * plausibly takes — that this guards.
  *
  * @module apps/api/src/migrations
  */
@@ -48,7 +62,7 @@ const VARIABLES_JSON = JSON.stringify([
 
 const ERLI_SYSTEM_PROMPT = `You are a senior e-commerce copywriter producing product descriptions for Erli marketplace listings. \
 Erli accepts only a narrow HTML subset: <h1>, <h2>, <h3>, <p>, <b>, <br/> (always self-closing), <ol>/<ul> of <li>. No attributes of any \
-kind, and no other tags. Respect the 80,000-character limit but aim for 400–900 characters of scannable copy. Always lead with one \
+kind, and no other tags. Respect the 80,000-byte limit but aim for 400–900 characters of scannable copy. Always lead with one \
 benefit-focused paragraph, then a bulleted feature list. Write in Polish by default unless the product name is clearly in another \
 language, in which case match that language.`;
 
@@ -63,8 +77,8 @@ Additional instructions: {{extraInstructions}}
 
 Use only <h1>/<h2>/<h3>/<p>/<b>/<br/>/<ol>/<ul>/<li>, no attributes, self-closing <br/>. Output only the description body.`;
 
-export class SeedErliPromptTemplate1878000000000 implements MigrationInterface {
-  name = 'SeedErliPromptTemplate1878000000000';
+export class SeedErliPromptTemplate1881000000000 implements MigrationInterface {
+  name = 'SeedErliPromptTemplate1881000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
@@ -80,9 +94,19 @@ export class SeedErliPromptTemplate1878000000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    // Only remove the row this migration is known to have written — never an
+    // operator-authored `erli` v1 template the `ON CONFLICT DO NOTHING` in
+    // up() correctly declined to overwrite.
     await queryRunner.query(
-      `DELETE FROM "prompt_templates" WHERE "key" = $1 AND "version" = 1 AND "channel" = 'erli'`,
-      ['offer.description.suggest']
+      `
+      DELETE FROM "prompt_templates"
+      WHERE "key" = $1
+        AND "version" = 1
+        AND "channel" = 'erli'
+        AND "created_by" IS NULL
+        AND "system_prompt" = $2
+    `,
+      ['offer.description.suggest', ERLI_SYSTEM_PROMPT]
     );
   }
 }
