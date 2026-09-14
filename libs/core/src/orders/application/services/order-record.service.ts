@@ -16,6 +16,7 @@ import {
 } from '../../domain/types/buyer-tax-id.types';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
+import { OrderCancellationSignalRepositoryPort } from '../../domain/ports/order-cancellation-signal-repository.port';
 import { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync.types';
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
@@ -60,6 +61,7 @@ import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
+  ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
 } from '../../orders.tokens';
 import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
 import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-projection';
@@ -95,7 +97,9 @@ export class OrderRecordService implements IOrderRecordService {
     @Inject(REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN)
     private readonly reportingCurrencySettings: IReportingCurrencySettingsService,
     @Inject(AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN)
-    private readonly automationEmission: IAutomationTriggerEmissionService
+    private readonly automationEmission: IAutomationTriggerEmissionService,
+    @Inject(ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN)
+    private readonly cancellationSignalRepository: OrderCancellationSignalRepositoryPort
   ) {}
 
   /**
@@ -442,10 +446,25 @@ export class OrderRecordService implements IOrderRecordService {
     // stamping here would be work repeated moments later for the overwhelming
     // majority of orders. An order that never leaves `awaiting_mapping` still
     // carries `totals` in this snapshot and is picked up by the reconcile sweep.
+    //
+    // Consume the early-cancellation signal (#2069) HERE, after the row above
+    // is durably persisted, never before: a failure here leaves the signal
+    // row untouched (a DELETE that throws commits nothing), so a retry — or
+    // simply the next ordinary poll/webhook for this order, since this call
+    // runs unconditionally on every invocation, not only the first — picks it
+    // up again. Consuming before the upsert would risk losing the signal
+    // forever if the upsert itself then failed. `persistOrder` never needs
+    // the same check: its own `upsertWithLineItems()` excludes `cancelledAt`
+    // from its column list, so whatever this write sets here survives it
+    // untouched.
+    const earlySignalAt = await this.cancellationSignalRepository.consume(
+      sourceConnectionId,
+      incoming.externalOrderId
+    );
     const cancellationWrote = await this.recordCancellationIfNeeded(
       internalOrderId,
-      incoming.status === 'cancelled',
-      now
+      incoming.status === 'cancelled' || earlySignalAt !== null,
+      earlySignalAt ?? now
     );
 
     return cancellationWrote ? (await this.repository.findById(internalOrderId)) ?? saved : saved;
@@ -681,6 +700,18 @@ export class OrderRecordService implements IOrderRecordService {
    */
   async markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void> {
     await this.repository.markCancelled(internalOrderId, cancelledAt);
+  }
+
+  async recordEarlyCancellationSignal(
+    sourceConnectionId: string,
+    externalOrderId: string,
+    cancelledAt: Date
+  ): Promise<void> {
+    await this.cancellationSignalRepository.record(
+      sourceConnectionId,
+      externalOrderId,
+      cancelledAt
+    );
   }
 
   async getSalesAndChannelAnalytics(
