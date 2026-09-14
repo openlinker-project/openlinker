@@ -183,6 +183,19 @@ export interface IFiscalRegistrationService {
   getByOrderIds(orderIds: readonly string[]): Promise<FiscalRegistrationRecord[]>;
 
   /**
+   * Recent registration records for ONE connection, newest-first, capped at
+   * `limit` (#3179). Backs the connection health/diagnostics read: a document
+   * registration is real activity on that connection even when it left no
+   * trace in that read's own recent `sync_jobs` window (the job aged out, or
+   * the record predates job-based dispatch, #2525). Returns `[]` for a
+   * connection with no records.
+   */
+  listRecentByConnectionId(
+    connectionId: string,
+    limit: number,
+  ): Promise<FiscalRegistrationRecord[]>;
+
+  /**
    * Is a registration for this order being attempted RIGHT NOW (#2521, ADR-042
    * amendment #2502 decision 2)?
    *

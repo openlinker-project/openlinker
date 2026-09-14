@@ -37,6 +37,7 @@ import type {
 } from '../../domain/ports/inventory-master.port';
 import { InventoryItem as InventoryItemDomainEntity } from '../../domain/entities/inventory-item.entity';
 import type { PruneStaleVariantsResult } from '../../domain/types/inventory.types';
+import { readStockLocationOverride } from '../../domain/types/stock-location-override.types';
 import { isBulkInventoryReader } from '../../domain/ports/capabilities/bulk-inventory-reader.capability';
 import type {
   IMasterInventorySyncService,
@@ -45,6 +46,17 @@ import type {
   MasterInventorySyncResult,
 } from './master-inventory-sync.service.interface';
 import { Logger } from '@openlinker/shared/logging';
+
+/**
+ * Set-membership stand-in for a product-level position's `null` variant id.
+ *
+ * The pooled and located key sets are compared against each other (#3206), and
+ * `null` is a legitimate member of both — a `Set<string | null>` would compare
+ * fine, but the sentinel predates this and both sides must spell it the SAME
+ * way or a product-level row would never be recognised as contradicted. Kept
+ * as one constant so they cannot drift.
+ */
+const PRODUCT_LEVEL_VARIANT_KEY = '__product_level__';
 
 @Injectable()
 export class MasterInventorySyncService implements IMasterInventorySyncService {
@@ -89,7 +101,19 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         connectionId,
         'InventoryMaster'
       );
-    return this.syncOneFromMaster(connectionId, externalId, inventoryAdapter);
+    const overrideLocationId = await this.resolveStockLocationOverride(connectionId);
+    return this.syncOneFromMaster(connectionId, externalId, inventoryAdapter, overrideLocationId);
+  }
+
+  /**
+   * Read the connection's `stockLocationOverride` (#3206) once per sync call
+   * (batch or single), never once per inventory row — `getAdapter` is a
+   * metadata-only lookup, but there is no reason to repeat it N times for one
+   * connection's page.
+   */
+  private async resolveStockLocationOverride(connectionId: string): Promise<string | null> {
+    const { connection } = await this.integrationsService.getAdapter(connectionId);
+    return readStockLocationOverride(connection.config);
   }
 
   /**
@@ -121,6 +145,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         connectionId,
         'InventoryMaster'
       );
+    const overrideLocationId = await this.resolveStockLocationOverride(connectionId);
 
     let prefetched = false;
     if (isBulkInventoryReader(inventoryAdapter) && externalIds.length > 0) {
@@ -141,7 +166,9 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       // Per product, so one failure costs one product rather than the page. The
       // caller re-enqueues what failed as an ordinary per-product job.
       try {
-        results.push(await this.syncOneFromMaster(connectionId, externalId, inventoryAdapter));
+        results.push(
+          await this.syncOneFromMaster(connectionId, externalId, inventoryAdapter, overrideLocationId)
+        );
       } catch (error) {
         failures.push({
           externalId,
@@ -180,7 +207,8 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
   private async syncOneFromMaster(
     connectionId: string,
     externalId: string,
-    inventoryAdapter: InventoryMasterPort
+    inventoryAdapter: InventoryMasterPort,
+    overrideLocationId: string | null
   ): Promise<MasterInventorySyncResult> {
     const internalProductId = await this.identifierMapping.getOrCreateInternalId(
       CORE_ENTITY_TYPE.Product,
@@ -219,14 +247,19 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       const inventoryItem = await this.toDomainInventoryItem(
         inventory,
         internalProductId,
-        connectionId
+        connectionId,
+        overrideLocationId
       );
       await this.inventoryService.setInventory(inventoryItem, connectionId);
       currentVariantIds.push(inventoryItem.productVariantId);
-      if ((inventory.locationId ?? null) !== null) {
+      // Effective location — an override folded in by `toDomainInventoryItem`
+      // makes this position "located" for the #2322 pooled-row repair below
+      // exactly as a real adapter-reported location would, since from the
+      // repair's perspective the two are indistinguishable (#3206).
+      if (inventoryItem.locationId !== null) {
         locatedVariantKeys.push(inventoryItem.productVariantId);
       } else {
-        pooledVariantKeys.add(inventoryItem.productVariantId ?? '__product_level__');
+        pooledVariantKeys.add(inventoryItem.productVariantId ?? PRODUCT_LEVEL_VARIANT_KEY);
       }
       availableQuantity += inventoryItem.availableQuantity;
       reservedQuantity += inventoryItem.reservedQuantity;
@@ -272,7 +305,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     // enforcement runs after the whole loop - but it means the master
     // contradicted itself, so it is reported separately from the ordinary case.
     const contradicted = locatedVariantKeys.filter((key) =>
-      pooledVariantKeys.has(key ?? '__product_level__')
+      pooledVariantKeys.has(key ?? PRODUCT_LEVEL_VARIANT_KEY)
     );
     if (contradicted.length > 0) {
       this.logger.warn(
@@ -292,6 +325,50 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
             // `InventoryMaster` claiming the id. With a rival present the claim
             // cannot be attributed, so the repair falls back to strict matching
             // rather than staling a row it cannot prove is its own.
+            { sourceConnectionId: connectionId, includeUnattributedProvenance: !pruneSkipped }
+          );
+
+    // #3206 - the MIRROR of the repair above, in the located-to-pooled
+    // direction, and the reason ADR-058's "reversal is half free" note no
+    // longer holds. `markStaleExceptVariants` prunes per VARIANT, so it keeps
+    // every location row of a variant the master still reports: without this
+    // pass, a source that stops locating (an operator clearing
+    // `stockLocationOverride`, or a location that stops resolving) re-creates
+    // and un-stales its pooled row through the ordinary upsert while the
+    // abandoned located row stays live - and `getPromisableQuantities` sums
+    // across every location in `global` scope (#2321), so the variant's
+    // available-to-promise DOUBLES with every counter internally consistent and
+    // nothing logged.
+    //
+    // The contradicted set is SUBTRACTED, and that subtraction is load-bearing:
+    // a variant reported both pooled and located in one payload is already
+    // staled from the pooled side above ("located wins"), so staling it from
+    // this side too would leave the variant with no live position at all - a
+    // known zero that #1689 turns into paused offers for stock that is there.
+    //
+    // Unlike its mirror, this pass DOES cost a round-trip on the ordinary
+    // pooled-only sync (both in-tree adapters report no location, so the keys
+    // are never empty). Accepted deliberately: it is one local indexed UPDATE
+    // beside the already-unconditional `pruneStaleVariants`, on a per-product
+    // path whose cost is dominated by the adapter's own platform call - and the
+    // only way to skip it is a read that answers "does a located row exist",
+    // which costs the same round-trip it would save.
+    const locatedKeySet = new Set(
+      locatedVariantKeys.map((key) => key ?? PRODUCT_LEVEL_VARIANT_KEY)
+    );
+    const pooledOnlyVariantKeys = [...pooledVariantKeys]
+      .filter((key) => !locatedKeySet.has(key))
+      .map((key) => (key === PRODUCT_LEVEL_VARIANT_KEY ? null : key));
+
+    const locatedStaleResult =
+      pooledOnlyVariantKeys.length === 0
+        ? { markedCount: 0, variantIds: [] }
+        : await this.inventoryService.staleLocatedPositionsForSource(
+            internalProductId,
+            pooledOnlyVariantKeys,
+            // Same INVARIANT as the mirror above: the unattributed claim is
+            // safe only where this connection is the sole `InventoryMaster`
+            // claiming the id.
             { sourceConnectionId: connectionId, includeUnattributedProvenance: !pruneSkipped }
           );
 
@@ -384,8 +461,21 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       );
     }
 
+    // The mirror needs its own enqueue for the same reason (#3206). The pooled
+    // row IS written by `setInventory` above, but that write's no-change guard
+    // can legitimately skip the propagation enqueue while THIS pass removes the
+    // located row from the aggregate - so the destination would keep selling
+    // the doubled number until an unrelated quantity change.
+    if (locatedStaleResult.markedCount > 0) {
+      await this.enqueueAggregatePropagation(
+        internalProductId,
+        locatedStaleResult.variantIds,
+        locatedStaleResult.markedProductLevel === true
+      );
+    }
+
     this.logger.debug(
-      `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, itemsWritten=${inventories.length}, markedStale=${pruneResult.markedCount}, pooledPositionsStaled=${pooledStaleResult.markedCount}, pruneSkipped=${pruneSkipped}, available=${availableQuantity}, reserved=${reservedQuantity})`
+      `Master inventory sync complete (connection: ${connectionId}, externalId: ${externalId}, internalProductId: ${internalProductId}, itemsWritten=${inventories.length}, markedStale=${pruneResult.markedCount}, pooledPositionsStaled=${pooledStaleResult.markedCount}, locatedPositionsStaled=${locatedStaleResult.markedCount}, pruneSkipped=${pruneSkipped}, available=${availableQuantity}, reserved=${reservedQuantity})`
     );
 
     return {
@@ -396,6 +486,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       masterDeleted: false,
       pruneSkipped,
       pooledPositionsStaled: pooledStaleResult.markedCount,
+      locatedPositionsStaled: locatedStaleResult.markedCount,
     };
   }
 
@@ -488,6 +579,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
         masterDeleted: true,
         pruneSkipped: true,
         pooledPositionsStaled: 0,
+        locatedPositionsStaled: 0,
       };
     }
 
@@ -543,6 +635,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       masterDeleted: true,
       pruneSkipped,
       pooledPositionsStaled: 0,
+      locatedPositionsStaled: 0,
     };
   }
 
@@ -596,9 +689,17 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
   private async toDomainInventoryItem(
     inventory: InventoryPortInterface,
     productId: string,
-    connectionId: string
+    connectionId: string,
+    overrideLocationId: string | null
   ): Promise<InventoryItemDomainEntity> {
     const variantId = await this.resolveVariantId(inventory, productId);
+
+    // The adapter's own answer always wins (#3206) — the override only fills
+    // the gap when the master reports nothing at all, per
+    // `readStockLocationOverride`'s docblock. Computed once, and both sites
+    // below (the lookup and the constructed row) must use this SAME value or
+    // the upsert would look up one location and write another.
+    const effectiveLocationId = inventory.locationId ?? overrideLocationId ?? null;
 
     // Provenance-scoped (#2320) and load-bearing: `existing?.id` below is
     // reused as the row identity, so an unscoped lookup would hand this
@@ -607,7 +708,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
     const existing = await this.inventoryService.getInventory(
       productId,
       variantId,
-      inventory.locationId ?? null,
+      effectiveLocationId,
       connectionId
     );
 
@@ -622,7 +723,7 @@ export class MasterInventorySyncService implements IMasterInventorySyncService {
       variantId,
       availableQuantity,
       inventory.reserved ?? 0,
-      inventory.locationId ?? null,
+      effectiveLocationId,
       inventory.updatedAt ?? new Date(),
       // `isStale` must now be passed explicitly to reach `sourceConnectionId`.
       // `false` is the constructor default this call site previously relied on,

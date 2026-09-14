@@ -114,7 +114,16 @@ export class OrderRecordOrmEntity {
    * Instant the source reported this order cancelled (#1984). `null` = never
    * cancelled (or a historical row the backfill migration could not derive a
    * proxy timestamp for). Independent of `recordStatus`. Indexed for the
-   * future exclusion predicate (#1987/#1988: `WHERE "cancelledAt" IS NULL`).
+   * exclusion predicate `WHERE "cancelledAt" IS NULL`, which
+   * `OrderSyncService.syncOrder` applies before destination provisioning
+   * (#2284) — no longer future. #2069 closed the remaining gap: a
+   * cancellation that arrives before the order is ever ingested has no row
+   * here yet to write against, so it is recorded as a durable signal keyed
+   * on `(sourceConnectionId, externalOrderId)` instead
+   * (`OrderCancellationSignalRepositoryPort`), consumed by
+   * `OrderRecordService.persistIncomingSnapshot` the moment this row is
+   * first created — so a not-yet-ingested order's later create still sees
+   * this column set before `OrderSyncService` ever reads it.
    */
   @Column({ type: 'timestamptz', nullable: true })
   @Index()
@@ -171,6 +180,21 @@ export class OrderRecordOrmEntity {
    */
   @Column({ type: 'text', nullable: true })
   salesDocumentBlockDetail!: string | null;
+
+  /**
+   * The `sales_document_rules` row that decided this order's document kind
+   * (#3186), when a rule engine match produced the route — `null` when it
+   * didn't (a country default, the pre-#2170 single-primary fallback, or no
+   * route at all). No FK: rules are fully editable/deletable, so this is a
+   * reference by value like `order_changes.orderId` and its siblings, not a
+   * relation OpenLinker enforces.
+   *
+   * Level-triggered and written ONLY by `updateSalesDocumentBlock`, alongside
+   * the three columns above, and only when that call carries `{action: 'set'}`
+   * — see that method's own doc comment.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  salesDocumentMatchedRuleId!: string | null;
 
   /**
    * When the CURRENT hold started (#2248 / #2245 F4).

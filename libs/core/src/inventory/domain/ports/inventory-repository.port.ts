@@ -260,10 +260,12 @@ export interface InventoryRepositoryPort {
    * **A repair, not a refusal.** The located write has already happened when
    * this runs; refusing it would leave the master's own answer unrecorded, and
    * a DB constraint cannot express the rule at all before the four-column index
-   * (#2325). Reversal is free and needs no code: a source that stops locating
-   * re-creates and un-stales its pooled row through the ordinary
-   * `setInventory` upsert, and its located rows then stale via the ordinary
-   * `markStaleExceptVariants` prune.
+   * (#2325). Reversal is NOT free and does need code — see
+   * {@link InventoryRepositoryPort.markLocatedStaleForSource} (#3206), which is
+   * this method's mirror. `markStaleExceptVariants` prunes per VARIANT, so it
+   * keeps every location row of a variant the master still reports; the pooled
+   * row does come back on its own through the ordinary upsert, but the
+   * abandoned located row does not go away with it.
    *
    * **The scope is REQUIRED, unlike `markStaleExceptVariants`'s.** An unscoped
    * sweep here would stale a RIVAL master's legitimately-pooled row on the
@@ -287,6 +289,51 @@ export interface InventoryRepositoryPort {
   markLocationlessStaleForSource(
     productId: string,
     locatedVariantKeys: readonly (string | null)[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult>;
+
+  /**
+   * The MIRROR of {@link InventoryRepositoryPort.markLocationlessStaleForSource}
+   * (#3206), enforcing ADR-058 decision (2) in the located-to-pooled direction.
+   *
+   * A source that STOPS reporting a variant at a location leaves its own
+   * located row behind. `markStaleExceptVariants` prunes per variant and keeps
+   * every location row of a variant the master still reports, so the ordinary
+   * upsert re-creates and un-stales the pooled row while the abandoned located
+   * row stays live — and `getPromisableQuantities` sums across every location
+   * in `global` scope (#2321), so the variant's available-to-promise DOUBLES.
+   * Every counter stays internally consistent, nothing throws, and no log
+   * fires: an oversell that is invisible until a buyer hits it.
+   *
+   * That gap was documented and unreachable while no shipped adapter set
+   * `locationId`. The #3206 per-connection override makes it one `PATCH` away,
+   * and back again, which is why the mirror ships with it.
+   *
+   * **Strictly the decision-(2) mirror, NOT multi-location pruning.** A variant
+   * the master reports at ANY location is absent from `pooledVariantKeys` and
+   * therefore untouched, so a master that drops one of two locations still
+   * leaves the abandoned row behind — the gap ADR-058 leaves out of scope.
+   *
+   * Scope is REQUIRED for the mirror's reason: a rival master's located row is
+   * its own stock and says nothing about this master's decision to pool.
+   *
+   * Emits nothing. Re-pooling a variant is not a master-side deletion, so the
+   * `master.variant.stale` event (#1599/#1689) must NOT fire off this count —
+   * it would pause live marketplace offers for stock that is still there.
+   *
+   * @param productId internal OpenLinker product ID
+   * @param pooledVariantKeys variant keys the master just reported WITHOUT a
+   *   location (may include `null` for a product-level position). The caller
+   *   must subtract any variant it also reported located in the same payload,
+   *   or the two mirrors would stale the variant from both sides and drop it
+   *   out of availability entirely.
+   * @param scope the claiming connection's provenance restriction
+   * @returns rows newly marked stale (`markedCount`) + the distinct non-null
+   *   variant ids flagged (`variantIds`), reported for logging only
+   */
+  markLocatedStaleForSource(
+    productId: string,
+    pooledVariantKeys: readonly (string | null)[],
     scope: ProvenanceScope
   ): Promise<PruneStaleVariantsResult>;
 

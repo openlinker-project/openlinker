@@ -121,12 +121,60 @@ describe('InvoicesListPage', () => {
     expect(link).toHaveAttribute('href', 'https://example.com/invoice.pdf');
     expect(within(link).getByText('FV/2026/001')).toBeInTheDocument();
     // Status badge (issued) renders in both the desktop table cell and the
-    // mobile card-view meta. The regulatory label "KSeF: accepted" now appears
-    // both as the row badge AND as a filter <option> (the filter reuses the badge
-    // label map, #1585 F7), so assert the non-option badge element specifically.
+    // mobile card-view meta. The regulatory label is regulator-neutral
+    // (#3181 — this list mixes rows from every provider, e.g. this fixture's
+    // own `providerType: 'subiekt'`, so it must never assume KSeF): "Accepted"
+    // appears both as the row badge AND as a filter <option> (the filter
+    // reuses the badge label map, #1585 F7), so assert the non-option badge
+    // element specifically.
     expect(screen.getAllByText('Issued').length).toBeGreaterThan(0);
-    const accepted = screen.getAllByText('KSeF: accepted');
+    const accepted = screen.getAllByText('Accepted');
     expect(accepted.some((el) => el.tagName !== 'OPTION')).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------
+  // #3188 — the Buyer tax ID column. The list already FILTERED on tax
+  // identity (`taxId=with|without`, #1202) while showing no column for it, so
+  // the filter answered a yes/no question and hid the answer.
+  //
+  // The three renderings come from the order detail's own component, so there
+  // is no second copy of the vocabulary to drift; these assert the states are
+  // reachable from this page and carry the hook
+  // `docs/plans/mockups/sales-document-tax-number-on-receipt.html` declares.
+  // ---------------------------------------------------------------------
+  it('renders the buyer tax id verbatim when the document carries one (#3188)', async () => {
+    const invoice = makeInvoice({ buyerTaxId: '5213796333' });
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [invoice], total: 1 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    const cell = await screen.findByTestId('invoice-row-tax-id-0');
+    expect(within(cell).getByText('5213796333')).toBeInTheDocument();
+  });
+
+  // "Has none" and "we were not told" decide DIFFERENT fiscal documents, so the
+  // two absences are told apart by hook rather than by wording.
+  it('distinguishes asserted-none from not-asserted by hook, not by text (#3188)', async () => {
+    const assertedNone = makeInvoice({ id: 'inv_1', buyerTaxId: null });
+    const notAsserted = makeInvoice({ id: 'inv_2' });
+    const list = vi
+      .fn()
+      .mockResolvedValue(makeEnvelope({ items: [assertedNone, notAsserted], total: 2 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    const first = await screen.findByTestId('invoice-row-tax-id-0');
+    const second = await screen.findByTestId('invoice-row-tax-id-1');
+    expect(within(first).getByTestId('order-buyer-tax-id-none')).toBeInTheDocument();
+    expect(within(second).getByTestId('order-buyer-tax-id-unknown')).toBeInTheDocument();
+  });
+
+  // An invoice issued before the column existed has nothing to backfill from,
+  // so it must read as "not asserted" rather than as an empty identifier.
+  it('renders a pre-column invoice as not-asserted rather than blank (#3188)', async () => {
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [makeInvoice()], total: 1 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    const cell = await screen.findByTestId('invoice-row-tax-id-0');
+    expect(within(cell).getByTestId('order-buyer-tax-id-unknown')).toBeInTheDocument();
   });
 
   it('links each row to /invoices/:id (not /orders/:orderId)', async () => {
@@ -170,9 +218,12 @@ describe('InvoicesListPage', () => {
     expect(within(cell as HTMLElement).getByText('Invoice (faktura)')).toBeInTheDocument();
     expect(within(cell as HTMLElement).queryByText('invoice')).toBeNull();
 
-    // The separate "Invoice no." column is gone; the list is 8 columns wide.
+    // The separate "Invoice no." column is gone. The width is 9 since #3188 added
+    // Buyer tax ID (8 before it); the assertion that carries the #2090 intent is
+    // the `Invoice no.` absence below, and the count is kept beside it so a
+    // column added by accident still fails something.
     const headers = container.querySelectorAll('thead th');
-    expect(headers).toHaveLength(8);
+    expect(headers).toHaveLength(9);
     expect(screen.queryByText('Invoice no.')).toBeNull();
 
     // The merged column must survive 768px — it hosts #2094's tablet fold, so it

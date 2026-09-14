@@ -497,12 +497,70 @@ export class InventoryRepository implements InventoryRepositoryPort {
     locatedVariantKeys: readonly (string | null)[],
     scope: ProvenanceScope
   ): Promise<PruneStaleVariantsResult> {
-    if (locatedVariantKeys.length === 0) {
+    return this.markSameSourceOrphanPositionsStale(productId, locatedVariantKeys, scope, 'pooled');
+  }
+
+  /**
+   * Third `isStale` writer on this table (#3206, ADR-058 decision (2)) — the
+   * MIRROR of `markLocationlessStaleForSource`, and the reason that method's
+   * "reversal is free and needs no code" note is no longer true.
+   *
+   * `markStaleExceptVariants` prunes per VARIANT, not per location, so it keeps
+   * every location row of a variant the master still reports. A source that
+   * stops locating therefore re-creates and un-stales its pooled row through
+   * the ordinary upsert while its abandoned LOCATED row stays live — and
+   * `getPromisableQuantities` sums across every location in `global` scope
+   * (#2321), so the variant's available-to-promise doubles with every counter
+   * internally consistent and nothing logged. That gap was unreachable while no
+   * shipped adapter set `locationId`; #3206's operator override makes it one
+   * `PATCH` away, and back again.
+   *
+   * Scope is REQUIRED for the same reason the mirror's is: a rival master's
+   * located row is its own stock and says nothing about this master's decision
+   * to pool.
+   *
+   * **Strictly the decision-(2) mirror, NOT multi-location pruning.** A variant
+   * the master reports at ANY location is absent from `pooledVariantKeys` and
+   * untouched here, so a master that drops one of two locations still leaves the
+   * abandoned row behind — the gap ADR-058 leaves out of scope, unchanged.
+   *
+   * Emits nothing, for the mirror's reason: re-pooling a variant is not a
+   * master-side deletion, and firing `master.variant.stale` off this count
+   * would pause live offers for stock that is still there (#1689).
+   */
+  async markLocatedStaleForSource(
+    productId: string,
+    pooledVariantKeys: readonly (string | null)[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult> {
+    return this.markSameSourceOrphanPositionsStale(productId, pooledVariantKeys, scope, 'located');
+  }
+
+  /**
+   * The statement both same-source position repairs run (#2322 / #3206).
+   *
+   * Shared rather than copied because the provenance membership rule is
+   * duplicated from `applyProvenanceScope` already and its own docblock warns
+   * the two must not drift — a third hand-written copy is how that warning
+   * stops being true. `orphanShape` selects which half of decision (2) is being
+   * enforced and is a closed literal union, never caller-supplied SQL.
+   *
+   * The empty-set early return is behavioural, not an optimisation: with no
+   * reported variants there is nothing to enforce, and a round-trip that could
+   * only ever match zero rows should not touch storage at all.
+   */
+  private async markSameSourceOrphanPositionsStale(
+    productId: string,
+    reportedVariantKeys: readonly (string | null)[],
+    scope: ProvenanceScope,
+    orphanShape: 'pooled' | 'located'
+  ): Promise<PruneStaleVariantsResult> {
+    if (reportedVariantKeys.length === 0) {
       return { markedCount: 0, variantIds: [] };
     }
 
-    const nonNullLocated = locatedVariantKeys.filter((v): v is string => v !== null);
-    const locatedNull = locatedVariantKeys.includes(null);
+    const nonNullReported = reportedVariantKeys.filter((v): v is string => v !== null);
+    const reportedNull = reportedVariantKeys.includes(null);
 
     // RAW SQL, for exactly the reason `backfillLegacyProvenance` is raw (see
     // its docblock): TypeORM auto-appends the `@UpdateDateColumn` to any
@@ -515,23 +573,23 @@ export class InventoryRepository implements InventoryRepositoryPort {
     // names, which is what makes the no-bump claim TRUE rather than intended.
     const params: unknown[] = [productId];
 
-    // A row is an orphan iff its variant is one the master just located. Each
-    // branch guards its own NULL so the predicate stays total, and the array
-    // membership test is only applied to guaranteed-non-null values — the same
-    // discipline `markStaleExceptVariants` keeps, in the mirror direction.
+    // A row is an orphan iff its variant is one the master just reported in the
+    // OPPOSITE shape. Each branch guards its own NULL so the predicate stays
+    // total, and the array membership test is only applied to guaranteed-non-null
+    // values — the same discipline `markStaleExceptVariants` keeps.
     const variantClauses: string[] = [];
-    if (nonNullLocated.length > 0) {
-      params.push(nonNullLocated);
+    if (nonNullReported.length > 0) {
+      params.push(nonNullReported);
       variantClauses.push(`"productVariantId" = ANY($${params.length}::text[])`);
     }
-    if (locatedNull) {
+    if (reportedNull) {
       variantClauses.push('"productVariantId" IS NULL');
     }
 
     // Per-source restriction (#2320), kept as its own parenthesised group
     // beside the variant group so the two OR-groups cannot re-associate.
-    // REQUIRED here: an unscoped sweep would stale a rival master's pooled row
-    // over this master's own choice. The membership rule mirrors
+    // REQUIRED here: an unscoped sweep would stale a rival master's row over
+    // this master's own choice. The membership rule mirrors
     // `applyProvenanceScope` exactly — the two must not drift.
     params.push(scope.sourceConnectionId);
     const provenanceClauses = [`"sourceConnectionId" = $${params.length}`];
@@ -542,14 +600,20 @@ export class InventoryRepository implements InventoryRepositoryPort {
       provenanceClauses.push(`"sourceConnectionId" = $${params.length}`);
     }
 
+    // `pooled` stales the rows that decline to locate (orphans of a located
+    // write); `located` stales the rows AT a location (orphans of a pooled
+    // write). Exactly one of the two runs per variant — the caller subtracts
+    // the contradicted set so a variant reported both ways in one payload
+    // cannot be staled from both sides and vanish entirely.
+    const locationPredicate =
+      orphanShape === 'pooled' ? '"locationId" IS NULL' : '"locationId" IS NOT NULL';
+
     const rows = (await this.repository.query(
       `UPDATE "inventory_items"
           SET "isStale" = true
         WHERE "productId" = $1
           AND "isStale" = false
-          -- The pooled half of the rule: only a row that declines to locate is
-          -- an orphan of a located write. A row AT a location IS the write.
-          AND "locationId" IS NULL
+          AND ${locationPredicate}
           AND (${variantClauses.join(' OR ')})
           AND (${provenanceClauses.join(' OR ')})
     RETURNING "productVariantId"`,

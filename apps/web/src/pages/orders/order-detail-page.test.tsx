@@ -733,3 +733,50 @@ describe('OrderDetailPage — the returns panel (#2640)', () => {
     expect(screen.queryByText('No returns on this order')).not.toBeInTheDocument();
   });
 });
+
+describe('OrderDetailPage — buyer tax id in the Summary block (#3180)', () => {
+  afterEach(cleanup);
+
+  it('renders the id verbatim on the "order-buyer-tax-id" hook when present', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue({ ...sampleOrder, buyerTaxId: '5213796333' }) },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    const el = screen.getByTestId('order-buyer-tax-id');
+    expect(el).toHaveTextContent('5213796333');
+    expect(screen.queryByTestId('order-buyer-tax-id-none')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('order-buyer-tax-id-unknown')).not.toBeInTheDocument();
+  });
+
+  it('renders a distinct pill on "order-buyer-tax-id-none" when the source asserted the buyer has none', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue({ ...sampleOrder, buyerTaxId: null }) },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    expect(screen.getByTestId('order-buyer-tax-id-none')).toHaveTextContent('None — asserted');
+    expect(screen.queryByTestId('order-buyer-tax-id')).not.toBeInTheDocument();
+  });
+
+  it('renders muted "not asserted" copy on "order-buyer-tax-id-unknown" when the field is absent from the payload', async () => {
+    // `sampleOrder` carries no `buyerTaxId` key at all — the wire shape for
+    // "the source asserted nothing", and also what OL_STORE_PII=false reads.
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+    });
+
+    renderDetail(api);
+
+    await screen.findByText('ol_order_abc123');
+    expect(screen.getByTestId('order-buyer-tax-id-unknown')).toHaveTextContent(
+      'Not asserted by the source',
+    );
+    expect(screen.queryByTestId('order-buyer-tax-id')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('order-buyer-tax-id-none')).not.toBeInTheDocument();
+  });
+});

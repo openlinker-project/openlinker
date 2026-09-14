@@ -140,13 +140,18 @@ describe('OrderIngestionService', () => {
 
     orderRecordService = {
       persistOrder: jest.fn().mockResolvedValue({}),
-      persistIncomingSnapshot: jest.fn().mockResolvedValue({}),
+      // `cancelledAt: null` by default so a mock that doesn't override this
+      // return value isn't mistaken for an early-cancellation signal (#2069) —
+      // an omitted field would read as `undefined`, which the service treats
+      // as "no signal" via `!= null`, but making it explicit here pins that.
+      persistIncomingSnapshot: jest.fn().mockResolvedValue({ cancelledAt: null }),
       updateSyncStatus: jest.fn().mockResolvedValue(undefined),
       getOrderRecord: jest.fn(),
       findMany: jest.fn(),
       findByIds: jest.fn(),
       markItemResolutionFailure: jest.fn().mockResolvedValue(undefined),
       markCancelled: jest.fn().mockResolvedValue(undefined),
+      recordEarlyCancellationSignal: jest.fn().mockResolvedValue(undefined),
       markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
       markFulfillmentBlock: jest.fn().mockResolvedValue(undefined),
       recordAmendment: jest.fn().mockResolvedValue(undefined),
@@ -428,6 +433,58 @@ describe('OrderIngestionService', () => {
 
       expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
     });
+
+    // #2069 review — the exact race the early-cancellation signal exists for:
+    // the source's order RESOURCE still reports the pre-cancel status when
+    // `getOrder` runs (the event journal that produced the signal leads the
+    // resource), so `incoming.status` alone must not be trusted once
+    // `persistIncomingSnapshot` reports a consumed signal via `cancelledAt`.
+    it('should not reserve, and should enqueue stock-restore, when the incoming status still lags a consumed early-cancellation signal', async () => {
+      orderSource.getOrder.mockResolvedValue(reservableIncoming); // status still 'BOUGHT'
+      orderRecordService.persistIncomingSnapshot.mockResolvedValue({
+        cancelledAt: new Date('2026-08-01T10:00:00.000Z'),
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'marketplace.offer.stockRestore',
+          payload: expect.objectContaining({ internalOrderId: 'ol_order_res' }),
+        })
+      );
+    });
+
+    // #2069 re-review — the residue found in the fix above: on the poll AFTER
+    // the one that consumed the signal, `persistIncomingSnapshot` no longer
+    // has anything to consume, so it returns `upsert()`'s own return value
+    // (`fromRawRow` resets every column outside its write set, and
+    // `cancelledAt` is deliberately outside it) — `cancelledAt: null` here,
+    // even though the row IS cancelled. Without also reading the
+    // pre-persist `existing` record loaded via `getOrderRecord`, this poll
+    // would silently regress to the original defect.
+    it('should not reserve, and should enqueue stock-restore, on a poll AFTER the signal was already consumed', async () => {
+      orderSource.getOrder.mockResolvedValue(reservableIncoming); // status still 'BOUGHT'
+      orderRecordService.getOrderRecord.mockResolvedValue({
+        sourceConnectionId: connectionId,
+        cancelledAt: new Date('2026-08-01T10:00:00.000Z'),
+        orderSnapshot: { status: 'BOUGHT' },
+      } as unknown as OrderRecord);
+      orderRecordService.persistIncomingSnapshot.mockResolvedValue({
+        cancelledAt: null,
+      } as unknown as OrderRecord);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      expect(reservationService.reserveForOrder).not.toHaveBeenCalled();
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'marketplace.offer.stockRestore',
+          payload: expect.objectContaining({ internalOrderId: 'ol_order_res' }),
+        })
+      );
+    });
   });
 
   describe('auto-issue trigger (OL #1120)', () => {
@@ -462,6 +519,22 @@ describe('OrderIngestionService', () => {
       expect(orderSyncService.syncOrder.mock.invocationCallOrder[0]).toBeLessThan(
         autoIssueTrigger.onOrderTransition.mock.invocationCallOrder[0]
       );
+    });
+
+    it('passes the just-persisted buyerTaxId as the 5th arg (#3187, ADR-073 decision 1)', async () => {
+      // Read from `persisted`, NEVER `existing` (unlike `taxRateEra`, which is
+      // deliberately pre-persist): `buyerTaxId` is computed fresh by
+      // `persistOrder` from THIS transition's order, so a first-seen order
+      // (`existing === null`) must still carry its correct value here.
+      orderRecordService.persistOrder.mockResolvedValueOnce({
+        buyerTaxId: '5213796333',
+      } as never);
+      orderSyncService.syncOrder.mockResolvedValue([]);
+
+      await service.syncOrderFromSource(connectionId, externalOrderId);
+
+      const call = autoIssueTrigger.onOrderTransition.mock.calls[0];
+      expect(call[4]).toBe('5213796333');
     });
 
     it('swallows a thrown onOrderTransition failure — order sync still returns results — with a PII-safe log', async () => {
@@ -511,6 +584,7 @@ describe('OrderIngestionService', () => {
       expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith(
         'ol_order_test',
         block,
+        { action: 'set', matchedRuleId: null },
       );
     });
 
@@ -525,7 +599,29 @@ describe('OrderIngestionService', () => {
       // a caller-side comparison would have to trust a record read before the
       // destination round-trip, and a concurrent clear could make a genuinely
       // new answer look unchanged.
-      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null);
+      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith('ol_order_test', null, {
+        action: 'set',
+        matchedRuleId: null,
+      });
+    });
+
+    it('threads the matched rule id through on `none` (#3186)', async () => {
+      orderSyncService.syncOrder.mockResolvedValue([]);
+      autoIssueTrigger.onOrderTransition.mockResolvedValueOnce({
+        kind: 'none',
+        matchedRuleId: 'rule-1',
+      });
+
+      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-11');
+
+      // The gate is the ONE caller that re-decides the rule, so it always says
+      // `set` — never `preserve` (#3186 review), or a deleted rule would outlive
+      // the decision it produced.
+      expect(orderRecordService.markSalesDocumentBlock).toHaveBeenCalledWith(
+        'ol_order_test',
+        null,
+        { action: 'set', matchedRuleId: 'rule-1' },
+      );
     });
 
     it('writes NOTHING on `indeterminate` — the gate could not tell, so the reason stands', async () => {
@@ -1724,12 +1820,35 @@ describe('OrderIngestionService', () => {
       expect(markCancelledOrder).toBeLessThan(relayOrder);
     });
 
-    it('does NOT mark the record cancelled when the order was never ingested (no internal mapping)', async () => {
+    it('does NOT mark the record cancelled when the order was never ingested (no internal mapping) — instead records a durable early-cancellation signal (#2069)', async () => {
       identifierMapping.getInternalId.mockResolvedValue(null);
 
-      await service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled');
+      const result = await service.syncOrderFromSource(
+        connectionId,
+        externalOrderId,
+        'evt-1',
+        'cancelled'
+      );
 
+      expect(result).toEqual([]);
       expect(orderRecordService.markCancelled).not.toHaveBeenCalled();
+      expect(orderRecordService.recordEarlyCancellationSignal).toHaveBeenCalledWith(
+        connectionId,
+        externalOrderId,
+        expect.any(Date)
+      );
+      expect(orderLifecycleRelay.relay).not.toHaveBeenCalled();
+    });
+
+    it('propagates a failure recording the early-cancellation signal (#2069) — unlike the known-order branch, there is no relay to protect', async () => {
+      identifierMapping.getInternalId.mockResolvedValue(null);
+      orderRecordService.recordEarlyCancellationSignal.mockRejectedValueOnce(
+        new Error('db unavailable')
+      );
+
+      await expect(
+        service.syncOrderFromSource(connectionId, externalOrderId, 'evt-1', 'cancelled')
+      ).rejects.toThrow('db unavailable');
     });
 
     it('does NOT mark the record cancelled on a destination-echo cancel', async () => {

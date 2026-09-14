@@ -51,8 +51,11 @@ export { narrowRefundReason, toRefundReasonOrOther } from './domain/return-reaso
 export { ReturnObservationMissingExternalIdError } from './domain/exceptions/return-observation-missing-external-id.error';
 export { ReturnPersistenceError } from './domain/exceptions/return-persistence.error';
 export { ReturnSourceNotReadableError } from './domain/exceptions/return-source-not-readable.error';
+export { ReturnOrderLineResolutionSkipReasonValues } from './application/services/returns.service.interface';
 export type {
   IReturnsService,
+  ReturnOrderLineResolutionSkipReason,
+  ReturnOrderLineResolutionSummary,
   UpsertReturnObservationResult,
 } from './application/services/returns.service.interface';
 
@@ -165,6 +168,18 @@ export {
   blockedBeforeMaster,
 } from './domain/domain-services/restock-outcome.domain-service';
 export type { RestockOutcome } from './domain/domain-services/restock-outcome.domain-service';
+export {
+  resolveReturnLineOrderLine,
+  ReturnOrderLineMatchAxisValues,
+  ReturnOrderLineUnresolvedReasonValues,
+} from './domain/domain-services/return-order-line-resolution.domain-service';
+export type {
+  ResolvableOrderLine,
+  ResolvableReturnLine,
+  ReturnOrderLineMatchAxis,
+  ReturnOrderLineResolution,
+  ReturnOrderLineUnresolvedReason,
+} from './domain/domain-services/return-order-line-resolution.domain-service';
 export { ReturnLineNotFoundError } from './domain/exceptions/return-line-not-found.error';
 export { ReturnRestockAttestationInvalidError } from './domain/exceptions/return-restock-attestation-invalid.error';
 export { ReturnCustodyContendedError } from './domain/exceptions/return-custody-contended.error';

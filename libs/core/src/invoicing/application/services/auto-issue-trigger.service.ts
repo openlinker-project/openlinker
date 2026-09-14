@@ -136,7 +136,7 @@ import type { Order } from '@openlinker/core/orders';
 // `@openlinker/core/orders/types` sub-barrel: exports dependency-free constants
 // without pulling in `OrdersModule`. Using the main barrel would close a CJS
 // cycle (OrdersModule imports InvoicingModule which provides this service).
-import { PAYMENT_STATUS } from '@openlinker/core/orders/types';
+import { PAYMENT_STATUS, decodeBuyerTaxIdColumn } from '@openlinker/core/orders/types';
 import {
   IIntegrationsService,
   INTEGRATIONS_SERVICE_TOKEN,
@@ -363,18 +363,19 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   private async reportBlock(
     block: SalesDocumentBlock,
     orderId: string,
+    matchedRuleId?: string,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
       const existing = await this.invoices.getLatestInvoiceForOrder(orderId);
       if (existing !== null && existing.blocksIssuanceElsewhere) {
-        return { kind: 'none' };
+        return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
       }
 
       const fiscalRegistrationService = this.resolveFiscalRegistrationService();
       if (fiscalRegistrationService !== null) {
         const registrations = await fiscalRegistrationService.getByOrderId(orderId);
         if (registrations.some((record) => record.blocksFurtherRegistration)) {
-          return { kind: 'none' };
+          return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
         }
       }
     } catch (error) {
@@ -386,7 +387,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       );
       return { kind: 'indeterminate' };
     }
-    return { kind: 'blocked', block };
+    return matchedRuleId !== undefined
+      ? { kind: 'blocked', block, matchedRuleId }
+      : { kind: 'blocked', block };
   }
 
   async onOrderTransition(
@@ -394,6 +397,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
     taxRateEra?: string | null,
+    buyerTaxId?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     // D8: only ACTIVE connections receive issuance jobs. The scheduler's
     // `status: 'active'` filter already excludes disabled/error/needs_reauth
@@ -471,6 +475,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           sourceConnectionId,
           sourceEventId,
           taxRateEra,
+          buyerTaxId,
         );
     }
   }
@@ -613,6 +618,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
     taxRateEra?: string | null,
+    buyerTaxId?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     const connection = connections.find((candidate) => candidate.id === decision.connectionId);
     if (connection === undefined) {
@@ -653,6 +659,8 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourceConnectionId,
         sourceEventId,
         taxRateEra,
+        decision.ruleId,
+        buyerTaxId,
       );
     }
     if (decision.documentKind === 'fiscal-receipt') {
@@ -663,6 +671,8 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourceConnectionId,
         sourceEventId,
         taxRateEra,
+        decision.ruleId,
+        buyerTaxId,
       );
     }
 
@@ -684,6 +694,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         detail: `connection ${connection.id} resolved to unrecognized kind '${decision.documentKind}'`,
       },
       order.id,
+      decision.ruleId,
     );
   }
 
@@ -700,6 +711,8 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
     taxRateEra?: string | null,
+    matchedRuleId?: string,
+    buyerTaxId?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     const supported = await this.connectionSupportsInvoiceDocumentType(connection.id);
     if (!supported) {
@@ -715,6 +728,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           detail: `connection ${connection.id} does not list 'invoice' in getSupportedDocumentTypes()`,
         },
         order.id,
+        matchedRuleId,
       );
     }
 
@@ -761,16 +775,17 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
               detail: describeMissingTaxRate(missingRate),
             },
             order.id,
+            matchedRuleId,
           );
         }
       }
 
       const gate = this.evaluateGate(order, triggerModel, connection.id);
       if (gate.kind === 'waiting') {
-        return { kind: 'none' };
+        return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
       }
       if (gate.kind === 'blocked') {
-        return await this.reportBlock({ reason: gate.reason }, order.id);
+        return await this.reportBlock({ reason: gate.reason }, order.id, matchedRuleId);
       }
 
       // F4: compose the deterministic key ONCE and thread it into BOTH the
@@ -790,6 +805,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         this.readShippingLineName(connection),
         sourcePlatformType,
         taxRateEra,
+        buyerTaxId,
       );
 
       await this.syncJobs.schedule({
@@ -802,8 +818,11 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       });
       // Enqueued: report NO block, which is what clears a previously persisted
       // reason once the operator has fixed the configuration. This is the
-      // level-triggered half of the clear-on-success rule.
-      return { kind: 'none' };
+      // level-triggered half of the clear-on-success rule. `matchedRuleId`
+      // (#3186) rides along here too, level-triggered exactly like the block
+      // reason: it is what lets "Why this kind?" name the rule that decided
+      // this order's document, once one issues.
+      return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
     } catch (error) {
       this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
       if (error instanceof BatchedTriggerNotImplementedError) {
@@ -813,6 +832,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         return await this.reportBlock(
           { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
           order.id,
+          matchedRuleId,
         );
       }
       // Anything else is `indeterminate`, NOT a clear (#2100 review). Three of the
@@ -847,6 +867,8 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
     taxRateEra?: string | null,
+    matchedRuleId?: string,
+    buyerTaxId?: string | null,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
       // Reused verbatim from `config.invoicing.triggerModel` — see the
@@ -878,16 +900,17 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
               detail: describeMissingTaxRate(missingRate),
             },
             order.id,
+            matchedRuleId,
           );
         }
       }
 
       const gate = this.evaluateGate(order, triggerModel, connection.id);
       if (gate.kind === 'waiting') {
-        return { kind: 'none' };
+        return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
       }
       if (gate.kind === 'blocked') {
-        return await this.reportBlock({ reason: gate.reason }, order.id);
+        return await this.reportBlock({ reason: gate.reason }, order.id, matchedRuleId);
       }
 
       // ONE definition of the key, shared with every other caller that asks for
@@ -903,6 +926,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourceConnectionId,
         sourceEventId,
         taxRateEra,
+        buyerTaxId,
       );
 
       await this.syncJobs.schedule({
@@ -913,13 +937,15 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         maxAttempts: AUTO_ISSUE_RETRY_BUDGET,
         runAfter: new Date(),
       });
-      return { kind: 'none' };
+      // Same level-triggered `matchedRuleId` (#3186) as `dispatchInvoice`.
+      return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
     } catch (error) {
       this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
       if (error instanceof BatchedTriggerNotImplementedError) {
         return await this.reportBlock(
           { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
           order.id,
+          matchedRuleId,
         );
       }
       // Same reasoning as dispatchInvoice's catch: InvalidFiscalLineError /
@@ -1087,6 +1113,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     shippingLineName?: string,
     sourcePlatformType?: string,
     taxRateEra?: string | null,
+    buyerTaxId?: string | null,
   ): InvoicingIssuePayloadV1 {
     // The mapper owns the neutral Order->command rules and may surface
     // InvalidBuyerProfileError / UnsupportedPriceTreatmentError (both PII-clean).
@@ -1096,12 +1123,34 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // `payload.lines` verbatim, so the label MUST be baked here, where the
     // Connection is in hand; a blank/absent value defers to the mapper's neutral
     // `SHIPPING_LINE_NAME` default.
+    // #3224, ADR-073 decision 1 - the invoice half of what #3187 did for the
+    // receipt. The persisted three-state column decodes to a real number, to a
+    // positively-asserted "has none" (`null`), or to "not asserted"
+    // (`undefined`); only the first is a tax id to send, and the other two both
+    // mean the same thing to the mapper, which reads `null`/absent as B2C.
+    //
+    // The identifier is handed over UNTAGGED. `order_records.buyerTaxId` stores
+    // a bare number, and minting a `scheme` here would make core name a
+    // country's identifier system - the one thing ADR-073 decision 1 forbids,
+    // and its Alternatives section rejects a per-connection default by name.
+    // Whichever adapter issues the document tags it for its own market.
+    const decodedBuyerTaxId = decodeBuyerTaxIdColumn(buyerTaxId);
+    // Trimmed, and stamped only when something survives. `decodeBuyerTaxIdColumn`
+    // maps an EMPTY column to `null`, but a whitespace-only one decodes to the
+    // blank string itself - so without this an adapter would receive
+    // `{ value: '   ' }` and, because an untagged identifier is read as domestic
+    // (#3224), file a blank tax number on a real document. `encodeBuyerTaxIdColumn`
+    // makes that column unreachable through the ordinary write path; core still
+    // does not hand a downstream adapter a value it has not confirmed.
+    const buyerTaxNumber =
+      typeof decodedBuyerTaxId === 'string' ? decodedBuyerTaxId.trim() : '';
     const command = toIssueInvoiceCommand({
       order,
       connectionId: invoicingConnectionId,
       idempotencyKey,
       shippingLineName,
       taxRateEra,
+      buyerTaxId: buyerTaxNumber.length > 0 ? { value: buyerTaxNumber } : null,
     });
 
     // #12: flatten the BuyerProfile class into the PLAIN, jsonb-safe field-set.
@@ -1121,6 +1170,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       },
       sourceConnectionId,
       trigger: triggerModel,
+      // #3188 - the RAW three-state column, not the decoded/trimmed number the
+      // command carries: the record freezes which of the two ABSENCES this
+      // order is in, and trimming has already collapsed them above.
+      buyerTaxIdAssertion: buyerTaxId ?? null,
     };
 
     if (command.documentType !== undefined) {
@@ -1177,6 +1230,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
     taxRateEra?: string | null,
+    buyerTaxId?: string | null,
   ): FiscalizationRegisterPayloadV1 {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires -- lazy require needed to break a CommonJS barrel-load cycle with `@openlinker/core/fiscalization` (see the doc comment above)
     const fiscalization = require('@openlinker/core/fiscalization') as {
@@ -1190,6 +1244,10 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       idempotencyKey,
       shippingLineName: this.readShippingLineName(connection),
       taxRateEra,
+      // #3187, ADR-073 decision 1 — the persisted three-state column; the
+      // mapper decodes it and stamps the command only when there is a real
+      // number to send.
+      buyerTaxId,
     });
 
     return toFiscalizationRegisterPayload(command, {

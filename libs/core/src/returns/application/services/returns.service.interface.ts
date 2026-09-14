@@ -25,6 +25,10 @@ import type {
 } from '../../domain/types/return-query.types';
 import type { ReturnSegmentCounts } from '../../domain/types/return-segment.types';
 import type { ReturnTimelineForOrder } from '../../domain/types/return-timeline-entry.types';
+import type {
+  ResolvableOrderLine,
+  ReturnOrderLineUnresolvedReason,
+} from '../../domain/domain-services/return-order-line-resolution.domain-service';
 
 /**
  * What one ingested observation did.
@@ -51,8 +55,13 @@ export interface UpsertReturnObservationResult {
  * Deliberately narrower than `CreateReturnLineInput`: an operator supplies what the
  * goods ARE and how many are coming back, and nothing else. `lineIndex` is assigned
  * by position, `externalLineId` / `offerId` are source provenance a return with no
- * source cannot have, and `resolvedOrderLineId` has no populator anywhere in the
- * tree (it is a by-value reference into the order snapshot's jsonb).
+ * source cannot have, and `resolvedOrderLineId` is **core-resolved, never
+ * operator-supplied** — it is a by-value reference into the order snapshot's
+ * jsonb, so there is no value an operator could meaningfully type even if the
+ * field were offered. Since #3171 it does have a populator,
+ * `ReturnOrderLineResolverService`, but that runs only on the marketplace
+ * per-return sync path; an operator-authored return's lines therefore stay
+ * `null`, a stated limitation rather than a gap in the model.
  */
 export interface RecordReturnLineInput {
   sku: string | null;
@@ -89,6 +98,57 @@ export interface MatchOrphanToOrderInput {
   returnId: string;
   internalOrderId: string;
   actorUserId: string | null;
+}
+
+/**
+ * Why a pass examined no lines at all (#3171 review, SUGGESTION 4). A pass-level
+ * vocabulary, deliberately NOT folded into
+ * {@link ReturnOrderLineUnresolvedReason}, which is per-LINE and counts lines
+ * the rule looked at and could not settle.
+ *
+ * It exists because the three arms below all produce an all-zero summary, which
+ * without a discriminator reads identically to "the return had lines and none of
+ * them resolved" — a caller holding only the summary could not tell "we did not
+ * try" from "we tried and nothing matched". Reported, never inferred from the
+ * zeros.
+ */
+export const ReturnOrderLineResolutionSkipReasonValues = [
+  /** The id resolved to no return row. */
+  'unknown-return',
+  /**
+   * The caller supplied no candidate order lines — an order whose snapshot
+   * yielded none usable. Never "the order has none"; see `OrderRecord.orderItems`.
+   */
+  'no-order-lines',
+  /** The return row exists and carries no lines. */
+  'no-return-lines',
+] as const;
+
+export type ReturnOrderLineResolutionSkipReason =
+  (typeof ReturnOrderLineResolutionSkipReasonValues)[number];
+
+/**
+ * What one resolution pass did (#3171). Returned rather than logged-and-dropped
+ * so the CALLER can report it: under Option B the worker composes this step, and
+ * a summary that never reaches the job result would make a missing call look
+ * identical to a return whose lines genuinely could not be resolved.
+ */
+export interface ReturnOrderLineResolutionSummary {
+  /** Lines this pass newly resolved. */
+  resolved: number;
+  /**
+   * Lines a concurrent pass (or an earlier run) had already resolved. Not a
+   * failure — the desired end state was reached either way.
+   */
+  alreadyResolved: number;
+  /** Lines left `null`, keyed by why. Reported, never defaulted. */
+  unresolved: Partial<Record<ReturnOrderLineUnresolvedReason, number>>;
+  /**
+   * Set when the pass examined no lines, and `null` when it examined at least
+   * one. `null` plus three zeros therefore cannot occur: a pass that looked at a
+   * line always reports it under one of the three fields above.
+   */
+  skipped: ReturnOrderLineResolutionSkipReason | null;
 }
 
 export interface IReturnsService {
@@ -303,9 +363,14 @@ export interface IReturnsService {
    *     rows sum back to the counters, and a header-level attribution has neither a
    *     line nor a quantity.
    *
-   * Line resolution is deliberately NOT re-run: nothing in the tree populates
-   * `ReturnLine.resolvedOrderLineId`, so there is no resolution to re-run and
-   * inventing one here would be a second, undesigned mapping.
+   * **Line resolution is not re-triggered by this action** — `resolvedOrderLineId`
+   * (#3171) is populated by `ReturnOrderLineResolverService`, whose only caller is
+   * the `marketplace.return.sync` per-return path, which this does not invoke. The
+   * `marketplace.returns.statusSync` lifecycle re-read does not resolve either
+   * (`ReturnStatusSyncResult` reports counters and carries no list of the returns
+   * it touched), so a manually-matched orphan's lines stay unresolved until that
+   * per-return sync runs for the return again rather than immediately — a stated
+   * limitation rather than a gap in the model.
    *
    * @throws {ReturnNotFoundError} the id resolves to no row.
    * @throws {ReturnMatchRefusedError} already attributed (including a lost race), or
@@ -340,4 +405,30 @@ export interface IReturnsService {
    *   named connection.
    */
   recordReturn(input: RecordReturnInput): Promise<ReturnRecord>;
+
+  /**
+   * Resolve each of this return's lines to the order line it came from (#3171),
+   * persisting `ReturnLine.resolvedOrderLineId` — the value
+   * `reservations.orderLineId` and `shipment_lines.lineId` already key on.
+   *
+   * The order's lines arrive as an **argument**, never read from here: `returns`
+   * takes no `orders` service, so the caller that already holds the order
+   * composes this step. `OrderRecord.orderItems` is the intended source and is
+   * structurally assignable to `ResolvableOrderLine[]`.
+   *
+   * Idempotent and safe to re-run: every write is a fill-in-when-NULL claim, so
+   * a second pass reports `alreadyResolved` and changes nothing. An unresolved
+   * line is left `null` and counted by reason — the matcher's `ambiguous` path
+   * must stay reachable for a line this rule honestly cannot settle.
+   *
+   * Returns a summary for an unknown return id rather than throwing: this runs
+   * after ingestion on a best-effort footing, and failing a sync job over an
+   * attribution nicety would trade a missing field for a lost return. That
+   * summary carries a `skipped` reason, so "no line was examined" never reads as
+   * "every line was examined and none resolved".
+   */
+  resolveOrderLinesForReturn(
+    returnId: string,
+    orderLines: readonly ResolvableOrderLine[]
+  ): Promise<ReturnOrderLineResolutionSummary>;
 }

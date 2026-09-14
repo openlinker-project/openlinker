@@ -116,6 +116,7 @@ describe('FiscalRegistrationService', () => {
       // the guard override it.
       findAllByOrderId: jest.fn().mockResolvedValue([]),
       findAllByOrderIds: jest.fn().mockResolvedValue([]),
+      findRecentByConnectionId: jest.fn().mockResolvedValue([]),
       updateOutcome: jest.fn(),
       claimForRegistration: jest.fn(),
     };
@@ -382,6 +383,34 @@ describe('FiscalRegistrationService', () => {
 
       expect(invoiceService.findBlockingInvoiceForOrder).toHaveBeenCalledWith(ORDER_ID);
       expect(adapter.registerTransaction).toHaveBeenCalledTimes(1);
+    });
+
+    // #3184, ADR-073 decision 3: a connection may hold BOTH the invoicing and
+    // fiscalization roles, so the blocking invoice's connectionId can be the
+    // EXACT SAME value as the fiscalization connection now requesting a
+    // registration. The cross-kind check must refuse regardless — this is
+    // not "a different connection" the way the same-kind guard reasons about
+    // it, so a connection filter must never be added here either.
+    it('should refuse to register when the blocking invoice is on the SAME (dual-role) connection', async () => {
+      invoiceService.findBlockingInvoiceForOrder.mockResolvedValue({
+        id: 'invoice-on-dual-role-conn',
+        connectionId: CONNECTION_ID,
+        status: 'issued',
+      } as unknown as Awaited<ReturnType<IInvoiceService['findBlockingInvoiceForOrder']>>);
+
+      const promise = service.register(command());
+
+      // The class is asserted before the payload because `toMatchObject` alone
+      // would pass for ANY error carrying these three fields - it pins what the
+      // refusal says without pinning that it is this guard's refusal.
+      await expect(promise).rejects.toBeInstanceOf(OrderAlreadyHasInvoiceException);
+      await expect(promise).rejects.toMatchObject({
+        invoicingConnectionId: CONNECTION_ID,
+        requestedConnectionId: CONNECTION_ID,
+        blockingInvoiceId: 'invoice-on-dual-role-conn',
+      });
+      expect(repo.create).not.toHaveBeenCalled();
+      expect(adapter.registerTransaction).not.toHaveBeenCalled();
     });
   });
 
@@ -1438,6 +1467,16 @@ describe('FiscalRegistrationService', () => {
       await expect(service.getById('nope')).rejects.toThrow(
         FiscalRegistrationRecordNotFoundException,
       );
+    });
+
+    it('should return recent records for one connection, newest-first (#3179)', async () => {
+      const rows = [record('registered'), record('failed', { id: 'rec-2' })];
+      repo.findRecentByConnectionId.mockResolvedValue(rows);
+
+      await expect(
+        service.listRecentByConnectionId(CONNECTION_ID, 10),
+      ).resolves.toBe(rows);
+      expect(repo.findRecentByConnectionId).toHaveBeenCalledWith(CONNECTION_ID, 10);
     });
   });
 
