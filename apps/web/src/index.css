@@ -1877,6 +1877,27 @@ textarea,
   margin-bottom: var(--space-3);
 }
 
+/* A real <button> styled to read as inline text (#3151 review fix) — a link
+   look for an action that opens a dialog rather than navigating. */
+.price-changes-queue .filter-note__action {
+  display: inline;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  font: inherit;
+  color: var(--accent-primary-hover);
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+  cursor: pointer;
+}
+
+.price-changes-queue .filter-note__action:hover {
+  color: var(--accent-primary);
+  background: none;
+}
+
 .price-changes-queue .table-wrap {
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
@@ -2287,6 +2308,13 @@ textarea,
   text-overflow: ellipsis;
 }
 
+/* Was an inline style (#3168 round-3 review) — the dialog ships its own
+   stylesheet block, so the variant suffix belongs in it. */
+.mini-row__variant {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 .mini-row__meta {
   font-size: 0.68rem;
   color: var(--text-muted);
@@ -2303,22 +2331,27 @@ textarea,
   margin-right: 4px;
 }
 
-/* Initials-avatar chip inside a mini-row (#3148 review, finding 8) — was
-   entirely unstyled: the sizing comes from the inline `width`/`height`/
-   `fontSize` style props at the call site, but with no `display` rule an
-   inline `<span>` ignores both, and with no background/radius it rendered
-   as bare, uncentered text. */
+/* Initials-avatar chip inside a mini-row (#3148 review, finding 8; sizing
+   folded in here rather than left on a caller's inline style, #3151 review)
+   — was entirely unstyled: with no `display` rule an inline `<span>`
+   ignored width/height, and with no background/radius it rendered as bare,
+   uncentered text. Shared by BulkAcceptPriceChangesDialog and
+   AutoAppliedDialog — one rule, so neither caller carries an inline
+   width/height/fontSize style. */
 .mini-row .thumb {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
+  width: 24px;
+  height: 24px;
   border-radius: 999px;
   border: 1px solid var(--border-default);
   background: var(--bg-surface-muted);
   color: var(--text-secondary);
   font-weight: 600;
   font-family: var(--font-mono);
+  font-size: 0.62rem;
 }
 
 .field__price-input {

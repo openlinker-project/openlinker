@@ -67,7 +67,7 @@ export function BulkAcceptPriceChangesDialog({
         <div className="mini-list">
           {items.map((item) => (
             <div className="mini-row" key={item.id}>
-              <span className="thumb" style={{ width: 24, height: 24, fontSize: 10 }} aria-hidden="true">
+              <span className="thumb" aria-hidden="true">
                 {initialsFor(item.productName)}
               </span>
               <div className="mini-row__text">

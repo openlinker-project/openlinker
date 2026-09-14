@@ -591,6 +591,92 @@ describe('PriceChangesService', () => {
     });
   });
 
+  describe('listAutoApplied', () => {
+    it('enriches each log entry with the product name, variant label, and SKU', async () => {
+      autoAppliedLog.findRecent.mockResolvedValue([
+        {
+          id: 'log-1',
+          productVariantId: 'v1',
+          destinationConnectionId: 'dest-1',
+          sourceConnectionId: 'src-1',
+          oldAmount: 34.9,
+          newAmount: 36.9,
+          currency: 'PLN',
+          appliedAt: new Date('2026-09-10T10:00:00.000Z'),
+        },
+      ]);
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'v1', productId: 'p1', sku: 'MUG-350', attributes: { size: '350 ml' }, isStale: false },
+      ]);
+      productsService.getProductsByIds.mockResolvedValue([{ id: 'p1', name: 'Ceramic Coffee Mug' }]);
+
+      const [view] = await service.listAutoApplied(20);
+
+      expect(productsService.getVariantsByIds).toHaveBeenCalledWith(['v1']);
+      expect(productsService.getProductsByIds).toHaveBeenCalledWith(['p1']);
+      expect(view).toMatchObject({
+        id: 'log-1',
+        productVariantId: 'v1',
+        productName: 'Ceramic Coffee Mug',
+        variantLabel: '350 ml',
+        sku: 'MUG-350',
+      });
+    });
+
+    it('short-circuits with no product lookups when the log is empty', async () => {
+      autoAppliedLog.findRecent.mockResolvedValue([]);
+
+      const views = await service.listAutoApplied(20);
+
+      expect(views).toEqual([]);
+      expect(productsService.getVariantsByIds).not.toHaveBeenCalled();
+    });
+
+    it('reports null (never a fallback sentence) product/label/sku when the variant cannot be resolved', async () => {
+      autoAppliedLog.findRecent.mockResolvedValue([
+        {
+          id: 'log-1',
+          productVariantId: 'v-deleted',
+          destinationConnectionId: 'dest-1',
+          sourceConnectionId: 'src-1',
+          oldAmount: 10,
+          newAmount: 12,
+          currency: 'PLN',
+          appliedAt: new Date('2026-09-10T10:00:00.000Z'),
+        },
+      ]);
+      productsService.getVariantsByIds.mockResolvedValue([]);
+      productsService.getProductsByIds.mockResolvedValue([]);
+
+      const [view] = await service.listAutoApplied(20);
+
+      expect(view).toMatchObject({ productName: null, variantLabel: null, sku: null });
+    });
+
+    it('reports a null product name (never asserting the variant name) when the variant resolves but its product does not', async () => {
+      autoAppliedLog.findRecent.mockResolvedValue([
+        {
+          id: 'log-1',
+          productVariantId: 'v1',
+          destinationConnectionId: 'dest-1',
+          sourceConnectionId: 'src-1',
+          oldAmount: 10,
+          newAmount: 12,
+          currency: 'PLN',
+          appliedAt: new Date('2026-09-10T10:00:00.000Z'),
+        },
+      ]);
+      productsService.getVariantsByIds.mockResolvedValue([
+        { id: 'v1', productId: 'p-deleted', sku: 'MUG-350', attributes: { size: '350 ml' }, isStale: false },
+      ]);
+      productsService.getProductsByIds.mockResolvedValue([]);
+
+      const [view] = await service.listAutoApplied(20);
+
+      expect(view).toMatchObject({ productName: null, variantLabel: '350 ml', sku: 'MUG-350' });
+    });
+  });
+
   describe('countOpen', () => {
     // The repository docblock states that badge/tab counters "never set the
     // flag and keep the strictly-open predicate" — distinct from `listOpen`,
