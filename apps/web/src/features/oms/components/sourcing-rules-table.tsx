@@ -32,8 +32,19 @@
  * control group does not change width as rules move, and so a keyboard user's
  * tab order is stable.
  *
+ * ## Focus survives the press that disables the button under it
+ *
+ * A keyboard user nudges a row upwards by pressing the same arrow repeatedly.
+ * On the press that lands it at position 1 that arrow becomes `disabled`, and
+ * the browser drops focus to `<body>` - so the one press that completes the
+ * task is the one that strands the user, with nothing announced and no way
+ * back except re-tabbing the whole table. After the reordered set renders,
+ * focus is put back on the arrow that was pressed, or on its opposite when
+ * that arrow is now the disabled end-stop.
+ *
  * @module apps/web/src/features/oms/components
  */
+import { useEffect, useMemo, useRef } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 
 import { StatusBadge } from '../../../shared/ui/status-badge';
@@ -84,17 +95,30 @@ function formatDate(iso: string): string {
   return parsed.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+type MoveDirection = 'up' | 'down' | 'top' | 'bottom';
+
+/** The arrow a press hands focus to when the pressed one becomes the end-stop. */
+const FOCUS_FALLBACK: Record<MoveDirection, MoveDirection> = {
+  up: 'down',
+  down: 'up',
+  top: 'bottom',
+  bottom: 'top',
+};
+
 interface MoveButtonProps {
   label: string;
   glyph: string;
   disabled: boolean;
   onClick: () => void;
+  /** Registers the element so focus can be restored after a reorder. */
+  register: (element: HTMLButtonElement | null) => void;
 }
 
-function MoveButton({ label, glyph, disabled, onClick }: MoveButtonProps): ReactElement {
+function MoveButton({ label, glyph, disabled, onClick, register }: MoveButtonProps): ReactElement {
   return (
     <button
       type="button"
+      ref={register}
       className="button button--ghost button--icon button--sm"
       title={label}
       aria-label={label}
@@ -112,15 +136,55 @@ export function SourcingRulesTable({
   onEdit,
   onDelete,
   busy = false,
-  now = new Date(),
+  now: nowProp,
 }: SourcingRulesTableProps): ReactElement {
+  /* A default-parameter `new Date()` is a fresh instant on every render, so the
+     status and ceiling reads drift against each other while nothing schedules a
+     re-render at a window boundary. One instant per mount instead. */
+  const mountedAt = useMemo(() => new Date(), []);
+  const now = nowProp ?? mountedAt;
+
   const { governingRuleIds } = resolveSplitCeiling(rules, now);
   const governing = new Set(governingRuleIds);
 
   /** The reorder set, in the order the table shows it. */
   const liveIds = rules.filter((rule) => isLiveSourcingRule(rule, now)).map((rule) => rule.id);
 
-  function move(ruleId: string, to: 'up' | 'down' | 'top' | 'bottom'): void {
+  const arrowsRef = useRef(new Map<string, HTMLButtonElement | null>());
+  const pendingFocusRef = useRef<{ ruleId: string; direction: MoveDirection } | null>(null);
+
+  /**
+   * Keyed on the RENDERED order rather than on the click, because the caller's
+   * reorder is a server round-trip: at click time the row has not moved yet, so
+   * restoring focus there would put it back on a button that is about to be
+   * disabled. A failed reorder leaves the order unchanged, the effect never
+   * runs, and focus stays where the browser already had it.
+   */
+  const renderedOrder = liveIds.join(',');
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (pending === null) return;
+    pendingFocusRef.current = null;
+
+    const pressed = arrowsRef.current.get(`${pending.ruleId}:${pending.direction}`);
+    if (pressed && !pressed.disabled) {
+      pressed.focus();
+      return;
+    }
+    // The pressed arrow is now the end-stop, so the row's other arrow is the
+    // nearest control that still means something for this row.
+    arrowsRef.current.get(`${pending.ruleId}:${FOCUS_FALLBACK[pending.direction]}`)?.focus();
+  }, [renderedOrder]);
+
+  function registerArrow(ruleId: string, direction: MoveDirection) {
+    return (element: HTMLButtonElement | null): void => {
+      const key = `${ruleId}:${direction}`;
+      if (element === null) arrowsRef.current.delete(key);
+      else arrowsRef.current.set(key, element);
+    };
+  }
+
+  function move(ruleId: string, to: MoveDirection): void {
     const from = liveIds.indexOf(ruleId);
     if (from === -1) return;
 
@@ -131,21 +195,29 @@ export function SourcingRulesTable({
     if (target < 0 || target > next.length) return;
     next.splice(target, 0, ruleId);
 
+    pendingFocusRef.current = { ruleId, direction: to };
     onReorder(next);
   }
 
   return (
     <div className="data-table__container">
-      <table className="data-table" aria-label={COPY.caption}>
+      <table className="data-table">
+        {/* A real <caption> rather than `title` on two <th>s: a `title` is not
+            reliably announced, never appears on touch, and needs a hover-and-
+            wait on desktop - so the two sentences that explain what the screen
+            IS were the least reachable text on it. The caption also labels the
+            table natively, which is why the `aria-label` is gone rather than
+            kept alongside it. */}
+        <caption className="sourcing-rules-table__caption">
+          {COPY.caption}
+          <span className="sourcing-rules-table__caption-hint">{COPY.stepHint}</span>
+          <span className="sourcing-rules-table__caption-hint">{COPY.splittingHint}</span>
+        </caption>
         <thead>
           <tr>
-            <th style={{ width: '96px' }} title={COPY.stepHint}>
-              {COPY.stepHeader}
-            </th>
+            <th style={{ width: '96px' }}>{COPY.stepHeader}</th>
             <th>{COPY.ruleHeader}</th>
-            <th style={{ width: '140px' }} title={COPY.splittingHint}>
-              {COPY.splittingHeader}
-            </th>
+            <th style={{ width: '140px' }}>{COPY.splittingHeader}</th>
             <th style={{ width: '150px' }}>{COPY.windowHeader}</th>
             <th style={{ width: '120px' }}>{COPY.statusHeader}</th>
             <th style={{ width: '96px' }}>
@@ -188,12 +260,30 @@ export function SourcingRulesTable({
                         glyph="▲"
                         disabled={busy || !live || liveIndex === 0}
                         onClick={() => move(rule.id, 'up')}
+                        register={registerArrow(rule.id, 'up')}
                       />
                       <MoveButton
                         label={COPY.moveDown}
                         glyph="▼"
                         disabled={busy || !live || liveIndex === liveIds.length - 1}
                         onClick={() => move(rule.id, 'down')}
+                        register={registerArrow(rule.id, 'down')}
+                      />
+                    </span>
+                    <span className="rule-position__jump">
+                      <MoveButton
+                        label={COPY.moveToTop}
+                        glyph="⤒"
+                        disabled={busy || !live || liveIndex === 0}
+                        onClick={() => move(rule.id, 'top')}
+                        register={registerArrow(rule.id, 'top')}
+                      />
+                      <MoveButton
+                        label={COPY.moveToBottom}
+                        glyph="⤓"
+                        disabled={busy || !live || liveIndex === liveIds.length - 1}
+                        onClick={() => move(rule.id, 'bottom')}
+                        register={registerArrow(rule.id, 'bottom')}
                       />
                     </span>
                   </div>
