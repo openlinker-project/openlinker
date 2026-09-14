@@ -69,7 +69,7 @@ import {
   DOCUMENT_TYPE_UNKNOWN_LABEL,
 } from '../../features/invoicing';
 import { ConnectionCell, ConnectionFold, useConnectionsQuery } from '../../features/connections';
-import { OrderIdentityCell, formatOrderRef } from '../../features/orders';
+import { OrderBuyerTaxIdValue, OrderIdentityCell, formatOrderRef } from '../../features/orders';
 
 const PAGE_SIZE = 20;
 
@@ -338,6 +338,21 @@ export function InvoicesListPage(): ReactElement {
     }
   }
 
+  // `DataTableColumn.cell` receives the row and no index, but the mockup's
+  // declared hook for the buyer-tax-id cell is positional
+  // (`invoice-row-tax-id-{i}`), so the position is resolved here rather than by
+  // scanning the rows inside every cell render.
+  //
+  // The index is the row's position in the FETCHED PAGE, which is what the table
+  // renders until an operator sorts a column client-side; after that the hook no
+  // longer tracks visual order. Stated rather than worked around: a test should
+  // assert on the page as loaded, and a hook silently renumbering itself under a
+  // sort would be worse than one that plainly does not follow it. A row missing
+  // from the map emits NO hook rather than a duplicate `-0`.
+  const rowIndexById = new Map<string, number>(
+    (query.data?.items ?? []).map((row, index) => [row.id, index]),
+  );
+
   const columns: DataTableColumn<InvoiceRecord>[] = [
     {
       id: 'select',
@@ -404,6 +419,30 @@ export function InvoicesListPage(): ReactElement {
       hideBelow: 1024,
     },
     {
+      id: 'buyerTaxId',
+      header: t('invoice.column.buyerTaxId', 'Buyer tax ID'),
+      // #3188: the value the `taxId=with|without` filter was already asking
+      // about. Renders the ORDER DETAIL's own component rather than a second
+      // copy of the three-state vocabulary — there is no second render to drift.
+      // The record's value is frozen at issue, so this states what the document
+      // carries, not what the order asserts today.
+      cell: (r) => (
+        <span
+          data-testid={
+            rowIndexById.has(r.id) ? `invoice-row-tax-id-${rowIndexById.get(r.id)}` : undefined
+          }
+        >
+          <OrderBuyerTaxIdValue buyerTaxId={r.buyerTaxId} />
+        </span>
+      ),
+      // Sorts on the VALUE only. The two absences sort together, which is
+      // honest: neither is a tax id, and inventing an ordering between "has
+      // none" and "we were not told" would assert a difference the sort cannot
+      // support.
+      accessor: (r) => r.buyerTaxId ?? '',
+      hideBelow: 1024,
+    },
+    {
       id: 'connection',
       header: t('invoice.column.connection', 'Connection'),
       // The id used to live in a `title` attribute — invisible, unselectable and
@@ -438,7 +477,7 @@ export function InvoicesListPage(): ReactElement {
       title={t('invoice.list.title', 'Invoices')}
       description={t(
         'invoice.list.description',
-        'Issued, pending, and failed invoices across connections, with regulatory (KSeF) status.',
+        'Issued, pending, and failed invoices across connections, with regulatory status.',
       )}
     >
       {retryMutation.error ? (

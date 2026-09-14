@@ -173,6 +173,76 @@ describe('SalesDocumentPanel — state 1: filled (fiscal receipt)', () => {
   });
 });
 
+describe('SalesDocumentPanel — "Why this kind?" (#3186)', () => {
+  it('renders the disclosure, closed by default, naming the rule and the connection, on a fiscal receipt', async () => {
+    renderWithProviders(
+      <SalesDocumentPanel
+        order={{
+          ...order,
+          salesDocument: {
+            orderId: ORDER_ID,
+            documentKind: 'fiscal-receipt',
+            document: null,
+            blockReason: null,
+            unresolvedReason: null,
+            blockDetail: null,
+            otherRecords: [],
+            matchedRule: {
+              id: 'rule-1',
+              country: 'PL',
+              conditions: [
+                { field: 'buyerHasTaxId', op: 'eq', boolValue: true },
+                { field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' },
+              ],
+              documentKind: 'fiscal-receipt',
+              connectionId: FISCAL_CONN_ID,
+            },
+          },
+        }}
+      />,
+      {
+        apiClient: createMockApiClient({
+          connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+          fiscalization: { listForOrder: vi.fn().mockResolvedValue([makeFiscalRecord()]) },
+        }),
+        ...adminSession,
+      },
+    );
+
+    await screen.findByText('1/2026/08/14');
+
+    const summary = screen.getByText('Why this kind?');
+    // Native <details>: closed-by-default is the `open` attribute's absence,
+    // not the content leaving the DOM (its content stays in the tree either
+    // way — only its rendering is gated by the browser's UA stylesheet).
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+
+    const user = userEvent.setup();
+    await user.click(summary);
+    expect(summary.closest('details')).toHaveAttribute('open');
+
+    const sentence = screen.getByTestId('sales-document-matched-rule');
+    expect(sentence.textContent).toMatch(/Matched the PL rule/i);
+    expect(sentence.textContent).toMatch(/has a tax ID/i);
+    expect(sentence.textContent).toMatch(/fiscal receipt/i);
+    expect(sentence.textContent).toContain(fiscalConnection.name);
+  });
+
+  it('is absent when no rule decided the order\'s kind (e.g. a manually issued document)', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([makeFiscalRecord()]) },
+      }),
+      ...adminSession,
+    });
+
+    await screen.findByText('1/2026/08/14');
+
+    expect(screen.queryByText('Why this kind?')).toBeNull();
+  });
+});
+
 describe('SalesDocumentPanel — state 2: empty + gate-block reason', () => {
   it('shows the ambiguous-no-primary reason, distinct from a write-path refusal', async () => {
     const a = { ...invoicingConnection, id: 'conn_aaa', name: 'Alpha' };
@@ -390,6 +460,17 @@ describe('SalesDocumentPanel - reconcile outcomes (#2522/#2583)', () => {
       ...adminSession,
     });
   }
+
+  it('never renders a retry control beside an in-doubt registration (#3187 acceptance)', async () => {
+    // A fiscal registration is a legal event; retrying one OpenLinker cannot
+    // account for is how a sale gets registered twice. "Look it up" is the
+    // only action offered here — "Register receipt" (the rejected-state
+    // retry) must not coexist with it.
+    renderInDoubt(vi.fn());
+
+    await screen.findByRole('button', { name: 'Look it up' });
+    expect(screen.queryByRole('button', { name: 'Register receipt' })).toBeNull();
+  });
 
   it('reports still-unknown as an unsettled check, naming no cause for it', async () => {
     // Two things must both hold. It must not fall through to the "cannot be

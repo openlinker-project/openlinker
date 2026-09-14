@@ -28,6 +28,35 @@ import { SubiektUnsupportedDocumentTypeError } from '../../domain/exceptions/sub
 export const PL_NIP_SCHEME = 'pl-nip';
 
 /**
+ * The buyer's domestic tax number, or `null` when there is none to send.
+ *
+ * ONE rule, two readers (this file's document-type trigger and
+ * `toBridgeBuyer`'s `nip` field), because they must agree: a document typed
+ * `FV` whose buyer carries no `nip` is a faktura with no buyer tax number on
+ * it, and the inverse is a paragon carrying one.
+ *
+ * An UNTAGGED identifier counts (#3224). Since ADR-073 decision 1 core may not
+ * mint a `scheme` — an `Order` stores a bare number — an untagged value now
+ * reaches every invoicing adapter, and *"an adapter needing a tag supplies
+ * it"*. Subiekt nexo is a Polish accounting system with exactly one tax-number
+ * slot, so there is no placement to get wrong: the domestic reading is the only
+ * one it has. Requiring the tag instead would silently drop the buyer's tax
+ * number from every auto-issued document and quietly downgrade it to a paragon.
+ *
+ * A value that is not in fact a valid Polish NIP is sent and REFUSED BY THE
+ * PROVIDER (ADR-073 decision 5); this adapter does not pre-judge it.
+ */
+export function readDomesticTaxId(taxId: BuyerProfile['taxId']): string | null {
+  if (taxId === null) {
+    return null;
+  }
+  if (taxId.scheme !== undefined && taxId.scheme !== PL_NIP_SCHEME) {
+    return null;
+  }
+  return taxId.value.length > 0 ? taxId.value : null;
+}
+
+/**
  * Neutral -> bridge-native `documentType`. The bridge accepts `"FV"` (faktura)
  * and `"PA"` (paragon); see the bridge's `CreateInvoiceRequestDto`.
  */
@@ -49,9 +78,7 @@ export function deriveNeutralDocumentType(
   if (explicit !== undefined && explicit.length > 0) {
     return explicit as DocumentType;
   }
-  const taxId = buyer.taxId;
-  const hasPlNip = taxId !== null && taxId.scheme === PL_NIP_SCHEME && taxId.value.length > 0;
-  return hasPlNip ? 'invoice' : 'receipt';
+  return readDomesticTaxId(buyer.taxId) !== null ? 'invoice' : 'receipt';
 }
 
 /**
