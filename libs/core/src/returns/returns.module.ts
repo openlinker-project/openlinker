@@ -113,10 +113,12 @@ import {
     // real cycle rather than a documented rule. Acyclic: `OrderChangesModule`
     // imports nothing but its own `TypeOrmModule.forFeature`.
     OrderChangesModule,
-    // #2370 restock: a return line carries no product id (`resolvedOrderLineId`
-    // is a by-value reference INTO the order snapshot's jsonb and nothing
-    // populates it yet), so the sku is resolved to a variant through
-    // `IProductsService`. Acyclic — `ProductsModule` does not import this one.
+    // #2370 restock: a return line carries no product id — `resolvedOrderLineId`
+    // is a by-value reference INTO the order snapshot's jsonb, and since #3171
+    // it is written only at ingestion and stays `null` for an orphan or a line
+    // the resolver could not settle — so the sku is resolved to a variant
+    // through `IProductsService`. Acyclic — `ProductsModule` does not import
+    // this one.
     ProductsModule,
     // #2374 the credit-note correction proposal: reads the invoice projection
     // (`IInvoiceService.getLatestIssuedInvoiceForOrder` + its #1297 line

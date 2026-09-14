@@ -670,8 +670,10 @@ export class ReturnCustodyService implements IReturnCustodyService {
    *
    * **A return line carries no product id**, and cannot: `resolvedOrderLineId`
    * is a by-value reference INTO the order snapshot's jsonb (there is no order
-   * lines table), and nothing in the shipped model populates it yet. The sku is
-   * therefore the only usable coordinate, resolved through `IProductsService`.
+   * lines table), and since #3171 it is written only at ingestion and stays
+   * `null` for an orphan or a line the resolver could not settle. The sku is
+   * therefore the only coordinate always available here, resolved through
+   * `IProductsService`.
    *
    * Both failure modes BLOCK rather than guess. A sku OL has never catalogued is
    * a real state — a marketplace can report one, and the parcel still arrived —
