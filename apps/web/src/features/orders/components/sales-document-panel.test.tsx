@@ -173,6 +173,76 @@ describe('SalesDocumentPanel — state 1: filled (fiscal receipt)', () => {
   });
 });
 
+describe('SalesDocumentPanel — "Why this kind?" (#3186)', () => {
+  it('renders the disclosure, closed by default, naming the rule and the connection, on a fiscal receipt', async () => {
+    renderWithProviders(
+      <SalesDocumentPanel
+        order={{
+          ...order,
+          salesDocument: {
+            orderId: ORDER_ID,
+            documentKind: 'fiscal-receipt',
+            document: null,
+            blockReason: null,
+            unresolvedReason: null,
+            blockDetail: null,
+            otherRecords: [],
+            matchedRule: {
+              id: 'rule-1',
+              country: 'PL',
+              conditions: [
+                { field: 'buyerHasTaxId', op: 'eq', boolValue: true },
+                { field: 'orderTotalGross', op: 'lt', thresholdRef: 'pl-simplified-invoice-2026' },
+              ],
+              documentKind: 'fiscal-receipt',
+              connectionId: FISCAL_CONN_ID,
+            },
+          },
+        }}
+      />,
+      {
+        apiClient: createMockApiClient({
+          connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+          fiscalization: { listForOrder: vi.fn().mockResolvedValue([makeFiscalRecord()]) },
+        }),
+        ...adminSession,
+      },
+    );
+
+    await screen.findByText('1/2026/08/14');
+
+    const summary = screen.getByText('Why this kind?');
+    // Native <details>: closed-by-default is the `open` attribute's absence,
+    // not the content leaving the DOM (its content stays in the tree either
+    // way — only its rendering is gated by the browser's UA stylesheet).
+    expect(summary.closest('details')).not.toHaveAttribute('open');
+
+    const user = userEvent.setup();
+    await user.click(summary);
+    expect(summary.closest('details')).toHaveAttribute('open');
+
+    const sentence = screen.getByTestId('sales-document-matched-rule');
+    expect(sentence.textContent).toMatch(/Matched the PL rule/i);
+    expect(sentence.textContent).toMatch(/has a tax ID/i);
+    expect(sentence.textContent).toMatch(/fiscal receipt/i);
+    expect(sentence.textContent).toContain(fiscalConnection.name);
+  });
+
+  it('is absent when no rule decided the order\'s kind (e.g. a manually issued document)', async () => {
+    renderWithProviders(<SalesDocumentPanel order={order} />, {
+      apiClient: createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([fiscalConnection]) },
+        fiscalization: { listForOrder: vi.fn().mockResolvedValue([makeFiscalRecord()]) },
+      }),
+      ...adminSession,
+    });
+
+    await screen.findByText('1/2026/08/14');
+
+    expect(screen.queryByText('Why this kind?')).toBeNull();
+  });
+});
+
 describe('SalesDocumentPanel — state 2: empty + gate-block reason', () => {
   it('shows the ambiguous-no-primary reason, distinct from a write-path refusal', async () => {
     const a = { ...invoicingConnection, id: 'conn_aaa', name: 'Alpha' };

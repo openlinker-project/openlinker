@@ -35,6 +35,7 @@ function baseSalesDocumentView(over: Partial<SalesDocumentView> = {}): SalesDocu
     unresolvedReason: null,
     blockDetail: null,
     otherRecords: [],
+    matchedRule: null,
     ...over,
   };
 }

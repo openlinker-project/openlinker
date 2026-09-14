@@ -11,6 +11,8 @@ import { InvoiceRecord } from '@openlinker/core/invoicing';
 import { FISCAL_REGISTRATION_SERVICE_TOKEN } from '@openlinker/core/fiscalization';
 import { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
 import { SALES_DOCUMENT_RULES_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
+import type { SalesDocumentView } from '@openlinker/core/sales-documents';
+import { SalesDocumentRule } from '@openlinker/core/sales-documents';
 
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { InvoicingModule } from '@openlinker/core/invoicing';
@@ -113,20 +115,34 @@ function connection(overrides: Partial<Connection> = {}): Connection {
   } as Connection;
 }
 
+/**
+ * Drops `matchedRule` without binding it, so the parity assertion below compares
+ * every other field. A rest-destructure would name a binding the linter then
+ * reports as unused.
+ */
+const withoutMatchedRule = (view: SalesDocumentView): Record<string, unknown> => {
+  const rest: Record<string, unknown> = { ...view };
+  delete rest.matchedRule;
+  return rest;
+};
+
 describe('SalesDocumentViewService', () => {
   let service: SalesDocumentViewService;
   let orderRecords: { findByIds: jest.Mock };
   let invoices: { listInvoicesForOrders: jest.Mock };
   let fiscalRegistrations: { getByOrderIds: jest.Mock };
   let connections: { list: jest.Mock };
-  let rules: { resolveRoutingBatch: jest.Mock };
+  let rules: { resolveRoutingBatch: jest.Mock; getRulesByIds: jest.Mock };
 
   beforeEach(async () => {
     orderRecords = { findByIds: jest.fn().mockResolvedValue([]) };
     invoices = { listInvoicesForOrders: jest.fn().mockResolvedValue([]) };
     fiscalRegistrations = { getByOrderIds: jest.fn().mockResolvedValue([]) };
     connections = { list: jest.fn().mockResolvedValue([]) };
-    rules = { resolveRoutingBatch: jest.fn().mockResolvedValue([]) };
+    rules = {
+      resolveRoutingBatch: jest.fn().mockResolvedValue([]),
+      getRulesByIds: jest.fn().mockResolvedValue([]),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -356,6 +372,91 @@ describe('SalesDocumentViewService', () => {
     await expect(service.getForOrders(['ol_order_missing'])).resolves.toEqual(new Map());
   });
 
+  describe('matchedRule (#3186)', () => {
+    function rule(overrides: Partial<SalesDocumentRule> = {}): SalesDocumentRule {
+      const base = new SalesDocumentRule(
+        'rule-1',
+        'PL',
+        [{ field: 'buyerHasTaxId', op: 'eq', value: true }],
+        'hash-1',
+        'fiscal-receipt',
+        'conn-fiscal-1',
+        NOW,
+        null,
+        null,
+        NOW,
+        NOW,
+      );
+      return Object.assign(Object.create(SalesDocumentRule.prototype) as SalesDocumentRule, base, overrides);
+    }
+
+    it('projects the rule that decided the order\'s kind, when one did', async () => {
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ salesDocumentMatchedRuleId: 'rule-1' }),
+      ]);
+      rules.getRulesByIds.mockResolvedValue([rule()]);
+
+      const view = await service.getForOrder('ol_order_1');
+
+      expect(rules.getRulesByIds).toHaveBeenCalledWith(['rule-1']);
+      expect(view?.matchedRule).toEqual({
+        id: 'rule-1',
+        country: 'PL',
+        conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: true }],
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-fiscal-1',
+      });
+    });
+
+    it('reports null when no rule decided the order\'s kind', async () => {
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+
+      const view = await service.getForOrder('ol_order_1');
+
+      expect(rules.getRulesByIds).not.toHaveBeenCalled();
+      expect(view?.matchedRule).toBeNull();
+    });
+
+    it('reports null when the matched rule has since been deleted', async () => {
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ salesDocumentMatchedRuleId: 'rule-gone' }),
+      ]);
+      rules.getRulesByIds.mockResolvedValue([]);
+
+      const view = await service.getForOrder('ol_order_1');
+
+      expect(view?.matchedRule).toBeNull();
+    });
+
+    it('reads the rule store ONCE even when several records share a matched rule id', async () => {
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ internalOrderId: 'ol_order_1', salesDocumentMatchedRuleId: 'rule-1' }),
+        orderRecord({ internalOrderId: 'ol_order_2', salesDocumentMatchedRuleId: 'rule-1' }),
+      ]);
+      rules.getRulesByIds.mockResolvedValue([rule()]);
+
+      await service.getForOrder('ol_order_1');
+
+      expect(rules.getRulesByIds).toHaveBeenCalledTimes(1);
+      expect(rules.getRulesByIds).toHaveBeenCalledWith(['rule-1']);
+    });
+
+    it('the LIST read neither resolves the rule nor reads the rule store (#3186 review)', async () => {
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ salesDocumentMatchedRuleId: 'rule-1' }),
+      ]);
+      rules.getRulesByIds.mockResolvedValue([rule()]);
+
+      const view = (await service.getForOrders(['ol_order_1'])).get('ol_order_1');
+
+      // Detail-only disclosure (#2349/#2350's convention): the paged row renders
+      // nothing from it, so the conditions array never rides on a list response
+      // and the extra `IN (...)` read is never issued.
+      expect(rules.getRulesByIds).not.toHaveBeenCalled();
+      expect(view?.matchedRule).toBeNull();
+    });
+  });
+
   it('should not grow its query count with the number of ids', async () => {
     const ids = Array.from({ length: 50 }, (_, index) => `ol_order_${index}`);
     orderRecords.findByIds.mockResolvedValue(
@@ -379,7 +480,7 @@ describe('SalesDocumentViewService', () => {
   });
 
   describe('getForOrder', () => {
-    it('should return the same projection the batch read builds', async () => {
+    it('should return the same projection the batch read builds, apart from matchedRule', async () => {
       orderRecords.findByIds.mockResolvedValue([orderRecord()]);
       invoices.listInvoicesForOrders.mockResolvedValue([invoiceRecord()]);
 
@@ -388,7 +489,13 @@ describe('SalesDocumentViewService', () => {
         service.getForOrders(['ol_order_1']),
       ]);
 
-      expect(single).toEqual(batched.get('ol_order_1'));
+      // One assembly path with one flag (#3186 review): `matchedRule` is the
+      // ONLY field the two reads may differ on, so every other field is
+      // compared here rather than left to drift.
+      expect(single).not.toBeNull();
+      const batchedView = batched.get('ol_order_1');
+      expect(batchedView).toBeDefined();
+      expect(withoutMatchedRule(single!)).toEqual(withoutMatchedRule(batchedView!));
     });
 
     it('should report null for an order with no record at all', async () => {

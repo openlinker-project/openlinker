@@ -363,18 +363,19 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   private async reportBlock(
     block: SalesDocumentBlock,
     orderId: string,
+    matchedRuleId?: string,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
       const existing = await this.invoices.getLatestInvoiceForOrder(orderId);
       if (existing !== null && existing.blocksIssuanceElsewhere) {
-        return { kind: 'none' };
+        return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
       }
 
       const fiscalRegistrationService = this.resolveFiscalRegistrationService();
       if (fiscalRegistrationService !== null) {
         const registrations = await fiscalRegistrationService.getByOrderId(orderId);
         if (registrations.some((record) => record.blocksFurtherRegistration)) {
-          return { kind: 'none' };
+          return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
         }
       }
     } catch (error) {
@@ -386,7 +387,9 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       );
       return { kind: 'indeterminate' };
     }
-    return { kind: 'blocked', block };
+    return matchedRuleId !== undefined
+      ? { kind: 'blocked', block, matchedRuleId }
+      : { kind: 'blocked', block };
   }
 
   async onOrderTransition(
@@ -653,6 +656,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourceConnectionId,
         sourceEventId,
         taxRateEra,
+        decision.ruleId,
       );
     }
     if (decision.documentKind === 'fiscal-receipt') {
@@ -663,6 +667,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         sourceConnectionId,
         sourceEventId,
         taxRateEra,
+        decision.ruleId,
       );
     }
 
@@ -684,6 +689,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         detail: `connection ${connection.id} resolved to unrecognized kind '${decision.documentKind}'`,
       },
       order.id,
+      decision.ruleId,
     );
   }
 
@@ -700,6 +706,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
     taxRateEra?: string | null,
+    matchedRuleId?: string,
   ): Promise<SalesDocumentBlockOutcome> {
     const supported = await this.connectionSupportsInvoiceDocumentType(connection.id);
     if (!supported) {
@@ -715,6 +722,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           detail: `connection ${connection.id} does not list 'invoice' in getSupportedDocumentTypes()`,
         },
         order.id,
+        matchedRuleId,
       );
     }
 
@@ -761,16 +769,17 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
               detail: describeMissingTaxRate(missingRate),
             },
             order.id,
+            matchedRuleId,
           );
         }
       }
 
       const gate = this.evaluateGate(order, triggerModel, connection.id);
       if (gate.kind === 'waiting') {
-        return { kind: 'none' };
+        return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
       }
       if (gate.kind === 'blocked') {
-        return await this.reportBlock({ reason: gate.reason }, order.id);
+        return await this.reportBlock({ reason: gate.reason }, order.id, matchedRuleId);
       }
 
       // F4: compose the deterministic key ONCE and thread it into BOTH the
@@ -802,8 +811,11 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       });
       // Enqueued: report NO block, which is what clears a previously persisted
       // reason once the operator has fixed the configuration. This is the
-      // level-triggered half of the clear-on-success rule.
-      return { kind: 'none' };
+      // level-triggered half of the clear-on-success rule. `matchedRuleId`
+      // (#3186) rides along here too, level-triggered exactly like the block
+      // reason: it is what lets "Why this kind?" name the rule that decided
+      // this order's document, once one issues.
+      return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
     } catch (error) {
       this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
       if (error instanceof BatchedTriggerNotImplementedError) {
@@ -813,6 +825,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         return await this.reportBlock(
           { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
           order.id,
+          matchedRuleId,
         );
       }
       // Anything else is `indeterminate`, NOT a clear (#2100 review). Three of the
@@ -847,6 +860,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     sourceConnectionId: string,
     sourceEventId?: string,
     taxRateEra?: string | null,
+    matchedRuleId?: string,
   ): Promise<SalesDocumentBlockOutcome> {
     try {
       // Reused verbatim from `config.invoicing.triggerModel` — see the
@@ -878,16 +892,17 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
               detail: describeMissingTaxRate(missingRate),
             },
             order.id,
+            matchedRuleId,
           );
         }
       }
 
       const gate = this.evaluateGate(order, triggerModel, connection.id);
       if (gate.kind === 'waiting') {
-        return { kind: 'none' };
+        return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
       }
       if (gate.kind === 'blocked') {
-        return await this.reportBlock({ reason: gate.reason }, order.id);
+        return await this.reportBlock({ reason: gate.reason }, order.id, matchedRuleId);
       }
 
       // ONE definition of the key, shared with every other caller that asks for
@@ -913,13 +928,15 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
         maxAttempts: AUTO_ISSUE_RETRY_BUDGET,
         runAfter: new Date(),
       });
-      return { kind: 'none' };
+      // Same level-triggered `matchedRuleId` (#3186) as `dispatchInvoice`.
+      return matchedRuleId !== undefined ? { kind: 'none', matchedRuleId } : { kind: 'none' };
     } catch (error) {
       this.logIssuanceFailure(error, connection.id, order.id, sourceEventId);
       if (error instanceof BatchedTriggerNotImplementedError) {
         return await this.reportBlock(
           { reason: BLOCK_REASON_BY_TRIGGER_MODEL.batched },
           order.id,
+          matchedRuleId,
         );
       }
       // Same reasoning as dispatchInvoice's catch: InvalidFiscalLineError /
