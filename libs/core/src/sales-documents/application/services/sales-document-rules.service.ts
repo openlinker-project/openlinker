@@ -182,6 +182,10 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     await this.ruleRepository.delete(id);
   }
 
+  async getRulesByIds(ids: readonly string[]): Promise<SalesDocumentRule[]> {
+    return this.ruleRepository.findByIds(ids);
+  }
+
   async listCountryDefaults(country: string): Promise<SalesDocumentCountryDefault[]> {
     return this.countryDefaultRepository.findByCountry(this.normaliseCountry(country));
   }

@@ -142,6 +142,7 @@ describe('SalesDocumentView', () => {
         unresolvedReason: 'no-configuration-for-country',
         blockDetail: null,
         otherRecords: [],
+        matchedRule: null,
       };
 
       expect(view.documentKind).toBeNull();
@@ -158,6 +159,7 @@ describe('SalesDocumentView', () => {
         unresolvedReason: null,
         blockDetail: null,
         otherRecords: [],
+        matchedRule: null,
       };
 
       expect(view.documentKind).toBe('fiscal-receipt');
@@ -191,6 +193,7 @@ describe('SalesDocumentView', () => {
             blocksFurtherIssuance: false,
           },
         ],
+        matchedRule: null,
       };
 
       expect(view.otherRecords).toHaveLength(1);

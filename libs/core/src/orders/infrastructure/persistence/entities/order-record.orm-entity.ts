@@ -182,6 +182,21 @@ export class OrderRecordOrmEntity {
   salesDocumentBlockDetail!: string | null;
 
   /**
+   * The `sales_document_rules` row that decided this order's document kind
+   * (#3186), when a rule engine match produced the route — `null` when it
+   * didn't (a country default, the pre-#2170 single-primary fallback, or no
+   * route at all). No FK: rules are fully editable/deletable, so this is a
+   * reference by value like `order_changes.orderId` and its siblings, not a
+   * relation OpenLinker enforces.
+   *
+   * Level-triggered and written ONLY by `updateSalesDocumentBlock`, alongside
+   * the three columns above, and only when that call carries `{action: 'set'}`
+   * — see that method's own doc comment.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  salesDocumentMatchedRuleId!: string | null;
+
+  /**
    * When the CURRENT hold started (#2248 / #2245 F4).
    *
    * The reason column is level-triggered and nulled the moment it clears, so

@@ -98,6 +98,7 @@ import { DocumentHeadline } from '../../../shared/ui/document-headline';
 import { DocumentLifecycle } from '../../../shared/ui/document-lifecycle';
 import { resolveSalesDocumentReasonCopy } from '../../sales-documents';
 import { resolveInvoiceHeadline, resolveFiscalHeadline } from '../lib/sales-document-headline';
+import { describeMatchedSalesDocumentRule } from '../lib/describe-matched-sales-document-rule';
 
 import {
   useOrderInvoiceQuery,
@@ -290,6 +291,28 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
   const reconcileMutation = useReconcileFiscalRegistrationMutation();
 
   const allConnections = connectionsQuery.data ?? [];
+  // #3186 — the rule that decided this order's document kind, when a rule
+  // engine match produced the route. `null` covers BOTH "no rule decided" (a
+  // country default, the pre-#2170 single-primary fallback, a manually issued
+  // document) AND "one did, but has since been deleted" — the disclosure is
+  // simply absent either way, never rendered with a stale/guessed explanation.
+  const matchedRule = order.salesDocument?.matchedRule ?? null;
+  const matchedRuleConnectionName =
+    matchedRule !== null
+      ? (allConnections.find((c) => c.id === matchedRule.connectionId)?.name ?? matchedRule.connectionId)
+      : '';
+  const whyKindDisclosure =
+    matchedRule !== null ? (
+      <details
+        className="sales-document-panel__routing-disclosure sales-document-panel__why-kind"
+        data-testid="sales-document-why-kind"
+      >
+        <summary>{t('salesDocument.panel.whyThisKind', 'Why this kind?')}</summary>
+        <p className="panel-copy" data-testid="sales-document-matched-rule">
+          {describeMatchedSalesDocumentRule(matchedRule, matchedRuleConnectionName, t)}
+        </p>
+      </details>
+    ) : null;
   const invoicingConnections = selectInvoicingCandidates(allConnections);
   const reauthConnections = selectReauthInvoicingConnections(allConnections);
   const fiscalCandidates = selectFiscalizationCandidates(allConnections);
@@ -806,6 +829,11 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
             <div className="sales-document-panel__body">
               <DocumentLifecycle kind="invoice" steps={resolveInvoiceLifecycleSteps(invoice, t)} />
               <KeyValueList items={buildInvoiceFieldItems(invoice, showRegulatoryBadge, t)} />
+              {/* #3186 — "Why this kind?", beside the shipped "Why this
+                  document?" (InvoiceConnectionLock, above). Absent when no
+                  rule engine match decided this order's kind (including a
+                  manually issued document). */}
+              {whyKindDisclosure}
               {InvoiceDetailSection && invoicingConnection ? (
                 <InvoiceDetailSection invoice={invoice} connection={invoicingConnection} />
               ) : null}
@@ -1195,10 +1223,15 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                   )}
                 </Alert>
               )}
+              {/* #3186 — "Why this kind?". A fiscal receipt has no analogous
+                  "Why this document?" connection lock (unlike the invoice
+                  slot's InvoiceConnectionLock), so this is the receipt's only
+                  routing-rationale disclosure. */}
+              {whyKindDisclosure}
               {/* #2559 — a registered receipt is final. OpenLinker never issues
                   a fiscal correction, so this state must not imply one is
                   possible here. */}
-              <p className="sales-document-panel__notice">
+              <p className="sales-document-panel__notice" data-testid="registration-final">
                 {t(
                   'fiscalReceipt.registered.final',
                   'This registration is final and cannot be corrected here.',
