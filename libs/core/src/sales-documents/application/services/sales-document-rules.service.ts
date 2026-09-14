@@ -39,6 +39,7 @@ import type {
 import {
   computeSalesDocumentConditionsHash,
   isSalesDocumentCondition,
+  type SalesDocumentCondition,
 } from '../../domain/types/sales-document-condition.types';
 import {
   SALES_DOCUMENT_REST_OF_WORLD_COUNTRY,
@@ -93,10 +94,52 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
    * Without it, a rule authored as `PL` and an order whose delivery address
    * carries `pl` never compare equal: two markets exist for one country, one
    * of them permanently unconfigured and silently holding every order that
-   * lands there. Mirrors `LocationService.normaliseCountry`.
+   * lands there.
+   *
+   * Sibling copies of this two-line rule, named so a fifth author finds them
+   * rather than writing a sixth (review finding 5): `LocationService`'s own
+   * `normaliseCountry` (`libs/core/src/inventory/application/services/`),
+   * `normalizeCountryCode`
+   * (`libs/integrations/woocommerce/src/infrastructure/provisioners/woocommerce-provisioner.helpers.ts`)
+   * and `normalizeCountryIso2`
+   * (`apps/web/src/plugins/ksef/lib/ksef-seller-config.ts`). Deliberately NOT
+   * a shared helper or a `check-*-mirror.mjs`: the browser bundle cannot
+   * import `@openlinker/core` (#591) and a plugin helper must not import a
+   * sibling core context, so three of the four could not consume one
+   * definition anyway.
    */
   private normaliseCountry(country: string): string {
     return country.trim().toUpperCase();
+  }
+
+  /**
+   * Fold every `orderCountry` condition's own comparison value to the casing
+   * {@link normaliseCountry} writes (#3176, review finding 2).
+   *
+   * Without this the scope normalisation above INVERTS the defect it fixes
+   * rather than closing it: `evaluateSalesDocumentRules` compares
+   * `order.country === condition.value` strictly, and `resolveRouting` now
+   * always hands it an uppercased `order.country`, so a condition authored as
+   * `orderCountry eq 'pl'` could never match anything again.
+   *
+   * Ordering is load-bearing: this must run BEFORE
+   * `computeSalesDocumentConditionsHash`, because the hash is a column of
+   * `UQ_sales_document_rules_country_hash_from` — hashing the un-normalised
+   * value would let `pl` and `PL` occupy two different uniqueness scopes for
+   * one semantically identical rule, and would leave the conflict guard's
+   * `findByCountryAndConditionsHash` candidate pool split across the two.
+   *
+   * Conditions are validated before they reach here, so every `orderCountry`
+   * entry is known to carry a string `value`.
+   */
+  private normaliseConditionCountries(
+    conditions: readonly SalesDocumentCondition[],
+  ): readonly SalesDocumentCondition[] {
+    return conditions.map((condition) =>
+      condition.field === 'orderCountry'
+        ? { ...condition, value: this.normaliseCountry(condition.value) }
+        : condition,
+    );
   }
 
   async listRules(country: string): Promise<SalesDocumentRule[]> {
@@ -104,8 +147,15 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   }
 
   async createRule(rawInput: SalesDocumentRuleInput): Promise<SalesDocumentRule> {
-    const input = { ...rawInput, country: this.normaliseCountry(rawInput.country) };
-    this.assertConditionsWellFormed(input.conditions);
+    // Validation runs on the RAW conditions, before normalisation, so a
+    // malformed entry is still rejected by the defense-in-depth guard rather
+    // than reaching `normaliseConditionCountries` with a non-string value.
+    this.assertConditionsWellFormed(rawInput.conditions);
+    const input = {
+      ...rawInput,
+      country: this.normaliseCountry(rawInput.country),
+      conditions: this.normaliseConditionCountries(rawInput.conditions),
+    };
     await this.assertThresholdRefsResolve(input);
 
     const conditionsHash = computeSalesDocumentConditionsHash(input.conditions);
@@ -240,30 +290,50 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
    * Merges rule counts + country defaults + acknowledgments by country
    * (#2186) — a country appearing in ANY of the three sources gets a row; a
    * missing side defaults to `0` / `null` rather than the row being dropped.
+   *
+   * Every grouping key is normalised on READ (#3176, review finding 3). The
+   * write path uppercases going forward and the migration rewrites what it
+   * safely can, but the migration deliberately SKIPS a stray-case row that
+   * would collide with an uppercase sibling — leaving that row for a human
+   * rather than guessing which of two fiscal-routing rows to keep. Grouping by
+   * the raw stored value would render that surviving row as a SECOND market
+   * card for one country, which is the exact defect this issue reports. Rule
+   * counts are SUMMED across the folding set rather than overwritten, so a
+   * country holding rules under both casings reports the real total.
    */
   async listConfiguredCountries(): Promise<SalesDocumentCountrySummary[]> {
-    const [ruleCounts, defaults, acknowledgments] = await Promise.all([
+    const [rawRuleCounts, defaults, acknowledgments] = await Promise.all([
       this.ruleRepository.countRulesByCountry(),
       this.countryDefaultRepository.findAll(),
       this.acknowledgmentRepository.findAll(),
     ]);
 
+    const ruleCounts = new Map<string, number>();
+    for (const [country, count] of rawRuleCounts) {
+      const key = this.normaliseCountry(country);
+      ruleCounts.set(key, (ruleCounts.get(key) ?? 0) + count);
+    }
+
     const defaultSlotsByCountry = new Map<string, CountryDefaultSlots>();
     for (const countryDefault of defaults) {
+      const key = this.normaliseCountry(countryDefault.country);
       const slots =
-        defaultSlotsByCountry.get(countryDefault.country) ??
+        defaultSlotsByCountry.get(key) ??
         ({ invoiceDefaultConnectionId: null, receiptDefaultConnectionId: null } satisfies CountryDefaultSlots);
       if (countryDefault.documentKind === 'invoice') {
         slots.invoiceDefaultConnectionId = countryDefault.connectionId;
       } else if (countryDefault.documentKind === 'fiscal-receipt') {
         slots.receiptDefaultConnectionId = countryDefault.connectionId;
       }
-      defaultSlotsByCountry.set(countryDefault.country, slots);
+      defaultSlotsByCountry.set(key, slots);
     }
 
     const acknowledgedAtByCountry = new Map<string, Date>();
     for (const acknowledgment of acknowledgments) {
-      acknowledgedAtByCountry.set(acknowledgment.country, acknowledgment.acknowledgedAt);
+      acknowledgedAtByCountry.set(
+        this.normaliseCountry(acknowledgment.country),
+        acknowledgment.acknowledgedAt,
+      );
     }
 
     const countries = new Set<string>([

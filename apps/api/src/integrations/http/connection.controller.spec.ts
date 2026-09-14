@@ -14,7 +14,6 @@ import { ConnectionService } from '../application/services/connection.service';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
-import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
   WEBHOOK_SECRET_SERVICE_TOKEN,
@@ -22,29 +21,26 @@ import {
 } from '@openlinker/core/integrations';
 import { WEBHOOK_STATUS_SERVICE_TOKEN } from '../application/interfaces/webhook-status.service.interface';
 import { RATE_LIMIT_STATUS_SERVICE_TOKEN } from '../application/interfaces/rate-limit-status.service.interface';
-import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
-import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import {
   DEMO_MODE_SERVICE_TOKEN,
   type IDemoModeService,
 } from '../../auth/demo-mode.service.interface';
-import { FISCAL_REGISTRATION_SERVICE_TOKEN, FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
-import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization';
-import { INVOICE_SERVICE_TOKEN, InvoiceRecord } from '@openlinker/core/invoicing';
-import type { IInvoiceService } from '@openlinker/core/invoicing';
+import {
+  CONNECTION_DIAGNOSTICS_SERVICE_TOKEN,
+  type IConnectionDiagnosticsService,
+} from '../application/interfaces/connection-diagnostics.service.interface';
+import type { ConnectionDiagnosticsReads } from '../application/types/connection-diagnostics.types';
 
 describe('ConnectionController', () => {
   let controller: ConnectionController;
   let service: jest.Mocked<ConnectionService>;
-  let syncJobRepository: jest.Mocked<SyncJobRepositoryPort>;
   let demoModeService: jest.Mocked<IDemoModeService>;
   let webhookSecretService: { rotate: jest.Mock; set: jest.Mock };
   let webhookStatusService: { getStatus: jest.Mock };
   let rateLimitStatusService: { getStatus: jest.Mock };
   let integrationsService: { resolveAdapterMetadata: jest.Mock };
-  let fiscalRegistrations: jest.Mocked<IFiscalRegistrationService>;
-  let invoices: jest.Mocked<IInvoiceService>;
+  let connectionDiagnosticsService: jest.Mocked<IConnectionDiagnosticsService>;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -62,75 +58,16 @@ describe('ConnectionController', () => {
 
   const mockAdminUser: AuthenticatedUser = { id: 'user-1', username: 'admin', role: 'admin' };
 
-  const makeSyncJob = (overrides: Partial<SyncJob> = {}): SyncJob =>
-    new SyncJob(
-      /* id           */ overrides.id ?? 'job-1',
-      /* jobType      */ overrides.jobType ?? 'marketplace.orders.poll',
-      /* connectionId */ 'connection-123',
-      /* payload      */ {},
-      /* status       */ overrides.status ?? 'succeeded',
-      /* idempotencyKey */ overrides.idempotencyKey ?? 'key-1',
-      /* attempts     */ overrides.attempts ?? 1,
-      /* maxAttempts  */ 10,
-      /* nextRunAt    */ new Date('2025-01-01T10:00:00Z'),
-      /* lockedAt     */ null,
-      /* lockedBy     */ null,
-      /* lastError    */ overrides.lastError ?? null,
-      /* createdAt    */ overrides.createdAt ?? new Date('2025-01-01T10:00:00Z'),
-      /* updatedAt    */ overrides.updatedAt ?? new Date('2025-01-01T10:01:00Z')
-    );
-
-  const makeFiscalRegistrationRecord = (
-    status: 'registered' | 'failed',
-    overrides: { registeredAt?: Date | null; updatedAt?: Date; failureReason?: string | null } = {}
-  ): FiscalRegistrationRecord =>
-    new FiscalRegistrationRecord(
-      /* id               */ 'fiscal-1',
-      /* connectionId     */ 'connection-123',
-      /* orderId          */ 'ol_order_1',
-      /* providerType     */ 'eparagony',
-      /* idempotencyKey   */ 'fiscal:connection-123:ol_order_1',
-      /* status           */ status,
-      /* providerReference*/ null,
-      /* documentReference*/ status === 'registered' ? '210' : null,
-      /* signingIdentity  */ null,
-      /* registeredAt     */ overrides.registeredAt ?? null,
-      /* regimeExtras     */ null,
-      /* artefacts        */ null,
-      /* failureMode      */ status === 'failed' ? 'rejected' : null,
-      /* failureReason    */ overrides.failureReason ?? null,
-      /* errorMessage     */ null,
-      /* leaseExpiresAt   */ null,
-      /* createdAt        */ overrides.updatedAt ?? new Date('2025-01-01T10:00:00Z'),
-      /* updatedAt        */ overrides.updatedAt ?? new Date('2025-01-01T10:00:00Z')
-    );
-
-  const makeInvoiceRecord = (
-    status: 'issued' | 'failed',
-    overrides: { issuedAt?: Date | null; updatedAt?: Date; failureReason?: string | null } = {}
-  ): InvoiceRecord =>
-    new InvoiceRecord(
-      /* id                    */ 'invoice-1',
-      /* connectionId          */ 'connection-123',
-      /* orderId               */ 'ol_order_1',
-      /* providerType          */ 'ksef',
-      /* documentType          */ 'invoice',
-      /* status                */ status,
-      /* providerInvoiceId     */ null,
-      /* providerInvoiceNumber */ null,
-      /* regulatoryStatus      */ 'not-applicable',
-      /* clearanceReference    */ null,
-      /* idempotencyKey        */ 'invoice-key-1',
-      /* pdfUrl                */ null,
-      /* issuedAt              */ overrides.issuedAt ?? null,
-      /* errorMessage          */ null,
-      /* createdAt             */ overrides.updatedAt ?? new Date('2025-01-01T10:00:00Z'),
-      /* updatedAt             */ overrides.updatedAt ?? new Date('2025-01-01T10:00:00Z'),
-      /* failureMode           */ status === 'failed' ? 'rejected' : null,
-      /* failureCode           */ null,
-      /* failureReason         */ overrides.failureReason ?? null,
-      /* leaseExpiresAt        */ null
-    );
+  const diagnosticsReads = (
+    overrides: Partial<ConnectionDiagnosticsReads> = {}
+  ): ConnectionDiagnosticsReads => ({
+    connection: mockConnection,
+    recentJobs: [],
+    recentFiscalRegistrations: [],
+    recentInvoices: [],
+    unreadableSources: [],
+    ...overrides,
+  });
 
   beforeEach(async () => {
     const mockService = {
@@ -147,38 +84,12 @@ describe('ConnectionController', () => {
       disable: jest.fn(),
     } as unknown as jest.Mocked<ConnectionService>;
 
-    const mockSyncJobRepository: jest.Mocked<SyncJobRepositoryPort> = {
-      createIfNotExistsByIdempotencyKey: jest.fn(),
-      findAndLockDueJobs: jest.fn(),
-      findAndLockDueJobsForLane: jest.fn(),
-      findById: jest.fn(),
-      findByIdempotencyKey: jest.fn(),
-      findMany: jest.fn(),
-      markSucceeded: jest.fn(),
-      markFailed: jest.fn(),
-      markDead: jest.fn(),
-      requeueStuckJobs: jest.fn(),
-      requeueDeadJob: jest.fn(),
-      requeueDeadByIdempotencyKey: jest.fn(),
-      findRecentByConnectionId: jest.fn(),
-      findGroupedByStatus: jest.fn(),
-      requeueDeadJobsInGroup: jest.fn(),
-      heartbeat: jest.fn(),
-      requeueWithoutPenalty: jest.fn(),
-      findLastSucceededByConnectionAndJobType: jest.fn(),
-      getConnectionBacklogStats: jest.fn(),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ConnectionController],
       providers: [
         {
           provide: ConnectionService,
           useValue: mockService,
-        },
-        {
-          provide: SYNC_JOB_REPOSITORY_TOKEN,
-          useValue: mockSyncJobRepository,
         },
         {
           provide: INTEGRATIONS_SERVICE_TOKEN,
@@ -220,30 +131,23 @@ describe('ConnectionController', () => {
           useValue: { isDemoModeEnabled: jest.fn().mockReturnValue(false) },
         },
         {
-          provide: FISCAL_REGISTRATION_SERVICE_TOKEN,
-          useValue: {
-            listRecentByConnectionId: jest.fn().mockResolvedValue([]),
-          } as unknown as jest.Mocked<IFiscalRegistrationService>,
-        },
-        {
-          provide: INVOICE_SERVICE_TOKEN,
-          useValue: {
-            listInvoices: jest.fn().mockResolvedValue({ items: [], total: 0 }),
-          } as unknown as jest.Mocked<IInvoiceService>,
+          // One composed read, mocked whole (#3179): the three-source fan-out
+          // and its degradation policy are the service's own behaviour and are
+          // tested in connection-diagnostics.service.spec.ts.
+          provide: CONNECTION_DIAGNOSTICS_SERVICE_TOKEN,
+          useValue: { getDiagnostics: jest.fn() },
         },
       ],
     }).compile();
 
     controller = module.get<ConnectionController>(ConnectionController);
     service = module.get(ConnectionService);
-    syncJobRepository = module.get(SYNC_JOB_REPOSITORY_TOKEN);
     demoModeService = module.get(DEMO_MODE_SERVICE_TOKEN);
     webhookSecretService = module.get(WEBHOOK_SECRET_SERVICE_TOKEN);
     webhookStatusService = module.get(WEBHOOK_STATUS_SERVICE_TOKEN);
     rateLimitStatusService = module.get(RATE_LIMIT_STATUS_SERVICE_TOKEN);
     integrationsService = module.get(INTEGRATIONS_SERVICE_TOKEN);
-    fiscalRegistrations = module.get(FISCAL_REGISTRATION_SERVICE_TOKEN);
-    invoices = module.get(INVOICE_SERVICE_TOKEN);
+    connectionDiagnosticsService = module.get(CONNECTION_DIAGNOSTICS_SERVICE_TOKEN);
   });
 
   describe('setWebhookSecret', () => {
@@ -589,152 +493,37 @@ describe('ConnectionController', () => {
   });
 
   describe('getDiagnostics', () => {
-    it('should return diagnostics DTO for existing connection', async () => {
-      const succeededJob = makeSyncJob({
-        status: 'succeeded',
-        updatedAt: new Date('2025-01-01T10:01:00Z'),
-      });
-      service.get.mockResolvedValue(mockConnection);
-      syncJobRepository.findRecentByConnectionId.mockResolvedValue([succeededJob]);
+    it('delegates the whole three-source read to ConnectionDiagnosticsService', async () => {
+      connectionDiagnosticsService.getDiagnostics.mockResolvedValue(diagnosticsReads());
 
       const result = await controller.getDiagnostics('connection-123');
 
+      expect(connectionDiagnosticsService.getDiagnostics).toHaveBeenCalledWith('connection-123');
       expect(result).toBeInstanceOf(ConnectionDiagnosticsResponseDto);
       expect(result.connectionId).toBe('connection-123');
       expect(result.connectionName).toBe('Test Connection');
       expect(result.connectionStatus).toBe('active');
-      expect(result.lastSucceededAt).toBe('2025-01-01T10:01:00.000Z');
-      expect(result.lastFailedAt).toBeNull();
-      expect(result.recentJobs).toHaveLength(1);
-      expect(syncJobRepository.findRecentByConnectionId).toHaveBeenCalledWith('connection-123', 10);
+    });
+
+    it('carries unreadableSources through to the response verbatim', async () => {
+      connectionDiagnosticsService.getDiagnostics.mockResolvedValue(
+        diagnosticsReads({ unreadableSources: ['fiscalRegistrations'] })
+      );
+
+      const result = await controller.getDiagnostics('connection-123');
+
+      expect(result.unreadableSources).toEqual(['fiscalRegistrations']);
+      expect(result.lastSucceededAt).toBeNull();
     });
 
     it('should throw NotFoundException for unknown connection', async () => {
-      service.get.mockRejectedValue(new NotFoundException('Connection not found'));
+      connectionDiagnosticsService.getDiagnostics.mockRejectedValue(
+        new NotFoundException('Connection not found')
+      );
 
       await expect(controller.getDiagnostics('unknown-id')).rejects.toBeInstanceOf(
         NotFoundException
       );
-    });
-
-    it('should derive lastFailedAt from retrying job with lastError (markFailed sets status queued)', async () => {
-      // markFailed() re-queues jobs as 'queued', so 'failed' status never appears.
-      // The filter uses lastError !== null to capture retrying failures.
-      const retryingJob = makeSyncJob({
-        status: 'queued',
-        lastError: 'Timeout',
-        updatedAt: new Date('2025-01-01T11:00:00Z'),
-      });
-      service.get.mockResolvedValue(mockConnection);
-      syncJobRepository.findRecentByConnectionId.mockResolvedValue([retryingJob]);
-
-      const result = await controller.getDiagnostics('connection-123');
-
-      expect(result.lastFailedAt).toBe('2025-01-01T11:00:00.000Z');
-      expect(result.lastSucceededAt).toBeNull();
-      expect(result.recentErrors).toEqual(['Timeout']);
-    });
-
-    it('should return empty diagnostics when no jobs exist', async () => {
-      service.get.mockResolvedValue(mockConnection);
-      syncJobRepository.findRecentByConnectionId.mockResolvedValue([]);
-
-      const result = await controller.getDiagnostics('connection-123');
-
-      expect(result.recentJobs).toHaveLength(0);
-      expect(result.lastSucceededAt).toBeNull();
-      expect(result.lastFailedAt).toBeNull();
-      expect(result.recentErrors).toHaveLength(0);
-    });
-
-    it('reports a fiscal registration as last-succeeded activity even with no sync jobs (#3179)', async () => {
-      service.get.mockResolvedValue(mockConnection);
-      syncJobRepository.findRecentByConnectionId.mockResolvedValue([]);
-      fiscalRegistrations.listRecentByConnectionId.mockResolvedValue([
-        makeFiscalRegistrationRecord('registered', {
-          registeredAt: new Date('2025-01-05T09:00:00Z'),
-          updatedAt: new Date('2025-01-05T09:00:01Z'),
-        }),
-      ]);
-
-      const result = await controller.getDiagnostics('connection-123');
-
-      expect(result.lastSucceededAt).toBe('2025-01-05T09:00:00.000Z');
-      expect(result.lastFailedAt).toBeNull();
-      expect(fiscalRegistrations.listRecentByConnectionId).toHaveBeenCalledWith(
-        'connection-123',
-        10
-      );
-    });
-
-    it('reports an invoice failure as last-failed activity, preferring the newer of two sources (#3179)', async () => {
-      service.get.mockResolvedValue(mockConnection);
-      syncJobRepository.findRecentByConnectionId.mockResolvedValue([
-        makeSyncJob({ status: 'succeeded', updatedAt: new Date('2025-01-01T10:01:00Z') }),
-      ]);
-      invoices.listInvoices.mockResolvedValue({
-        items: [
-          makeInvoiceRecord('failed', {
-            updatedAt: new Date('2025-01-06T12:00:00Z'),
-            failureReason: 'Buyer VAT id rejected by authority',
-          }),
-        ],
-        total: 1,
-      });
-
-      const result = await controller.getDiagnostics('connection-123');
-
-      expect(result.lastFailedAt).toBe('2025-01-06T12:00:00.000Z');
-      expect(result.recentErrors).toContain('Buyer VAT id rejected by authority');
-      expect(invoices.listInvoices).toHaveBeenCalledWith(
-        { connectionId: 'connection-123' },
-        { limit: 10, offset: 0 }
-      );
-    });
-
-    it('reports "Never" when the connection genuinely has no sync jobs, registrations or invoices', async () => {
-      service.get.mockResolvedValue(mockConnection);
-      syncJobRepository.findRecentByConnectionId.mockResolvedValue([]);
-      fiscalRegistrations.listRecentByConnectionId.mockResolvedValue([]);
-      invoices.listInvoices.mockResolvedValue({ items: [], total: 0 });
-
-      const result = await controller.getDiagnostics('connection-123');
-
-      expect(result.lastSucceededAt).toBeNull();
-      expect(result.lastFailedAt).toBeNull();
-      expect(result.unreadableSources).toEqual([]);
-    });
-
-    it('degrades one unreadable source rather than failing the whole read (#3179)', async () => {
-      service.get.mockResolvedValue(mockConnection);
-      syncJobRepository.findRecentByConnectionId.mockResolvedValue([
-        makeSyncJob({ status: 'succeeded', updatedAt: new Date('2025-01-01T10:01:00Z') }),
-      ]);
-      fiscalRegistrations.listRecentByConnectionId.mockRejectedValue(
-        new Error('fiscal_registration_records unreachable')
-      );
-      invoices.listInvoices.mockResolvedValue({ items: [], total: 0 });
-
-      const result = await controller.getDiagnostics('connection-123');
-
-      // The still-readable sources are reported normally...
-      expect(result.lastSucceededAt).toBe('2025-01-01T10:01:00.000Z');
-      // ...and the unreadable one is named, never silently folded in as "no
-      // fiscal activity" (a healthy-looking zero it did not actually confirm).
-      expect(result.unreadableSources).toEqual(['fiscalRegistrations']);
-    });
-
-    it('names every unreadable source when all three legs reject', async () => {
-      service.get.mockResolvedValue(mockConnection);
-      syncJobRepository.findRecentByConnectionId.mockRejectedValue(new Error('db down'));
-      fiscalRegistrations.listRecentByConnectionId.mockRejectedValue(new Error('db down'));
-      invoices.listInvoices.mockRejectedValue(new Error('db down'));
-
-      const result = await controller.getDiagnostics('connection-123');
-
-      expect(result.lastSucceededAt).toBeNull();
-      expect(result.lastFailedAt).toBeNull();
-      expect(result.unreadableSources).toEqual(['syncJobs', 'fiscalRegistrations', 'invoices']);
     });
   });
 
