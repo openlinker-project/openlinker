@@ -114,7 +114,16 @@ export class OrderRecordOrmEntity {
    * Instant the source reported this order cancelled (#1984). `null` = never
    * cancelled (or a historical row the backfill migration could not derive a
    * proxy timestamp for). Independent of `recordStatus`. Indexed for the
-   * future exclusion predicate (#1987/#1988: `WHERE "cancelledAt" IS NULL`).
+   * exclusion predicate `WHERE "cancelledAt" IS NULL`, which
+   * `OrderSyncService.syncOrder` applies before destination provisioning
+   * (#2284) — no longer future. #2069 closed the remaining gap: a
+   * cancellation that arrives before the order is ever ingested has no row
+   * here yet to write against, so it is recorded as a durable signal keyed
+   * on `(sourceConnectionId, externalOrderId)` instead
+   * (`OrderCancellationSignalRepositoryPort`), consumed by
+   * `OrderRecordService.persistIncomingSnapshot` the moment this row is
+   * first created — so a not-yet-ingested order's later create still sees
+   * this column set before `OrderSyncService` ever reads it.
    */
   @Column({ type: 'timestamptz', nullable: true })
   @Index()
