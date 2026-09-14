@@ -24459,6 +24459,282 @@ legend.analytics-settings-dialog__label {
   }
 }
 
+/* =====================================================
+   SOURCING RULES TABLE (#3057)
+
+   The ordered ruleset the OL fulfilment router evaluates. Rendering order IS
+   evaluation order, so the position column carries the reorder controls rather
+   than a sort affordance.
+   ============================================================ */
+
+.sourcing-rules-table__caption {
+  caption-side: top;
+  text-align: left;
+  padding: 0 0 var(--space-3);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sourcing-rules-table__caption-hint {
+  display: block;
+  font-weight: 400;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.rule-position {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Not draggable. Reorder is the arrow buttons only (#3055 § Decisions), so
+   this stays a static indicator: cursor: default and aria-hidden, because a
+   grab cursor would promise an interaction nothing backs. */
+.rule-position__handle {
+  cursor: default;
+  color: var(--text-disabled);
+  font-size: 13px;
+  line-height: 1;
+  user-select: none;
+  opacity: 0.4;
+  transition: opacity 120ms var(--ease-out), color 120ms var(--ease-out);
+}
+
+.rule-position:hover .rule-position__handle,
+.rule-position:focus-within .rule-position__handle {
+  opacity: 1;
+  color: var(--text-muted);
+}
+
+.rule-position__num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 1.25em;
+  text-align: right;
+}
+
+.rule-position__nudge {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 0;
+}
+
+/* The mockup (`docs/plans/mockups/sourcing-rules-3055.html`) reveals both
+   control groups only on `:hover`/`:focus-within`. They are permanently
+   visible here instead: a ruleset is reordered from a touch device as readily
+   as from a mouse, and a hover-revealed control does not exist on one. */
+.rule-position__jump {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 0;
+}
+
+.rule-cell__kind {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.rule-cell__kind-badge {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  /* `--bg-subtle` was never declared anywhere (#3228 review) — an undeclared
+     custom property resolves to nothing, so this chip and the governing-row
+     highlight below both painted transparent. `check-design-tokens.mjs` is
+     one-directional (catalog -> CSS), so lint stayed green over it.
+     `--bg-surface-muted` is the catalogued subtle fill and already carries a
+     light and a dark definition, so reusing it fixes both sites without
+     minting a token whose colour would need defending in two themes. */
+  background: var(--bg-surface-muted);
+}
+
+.rule-cell__label {
+  font-weight: 500;
+}
+
+.rule-cell__desc {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+
+.rule-cell__governs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.rule-cell__governs-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-info-fg, currentColor);
+}
+
+.split-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.rule-state--plain {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.rule-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  justify-content: flex-end;
+}
+
+/* A rule this build cannot evaluate is listed so it can be found and deleted.
+   Muting it says "the router ignores this" without hiding it. */
+.sourcing-rule-row--unrecognised .rule-cell__label,
+.sourcing-rule-row--unrecognised .rule-position__num {
+  color: var(--text-muted);
+}
+
+.sourcing-rule-row--governing {
+  /* See the note on `.rule-cell__kind-badge` above. This is the site the
+     review calls out as operator-visible: the governing rule is the whole
+     story of the table, and it had no affordance at all. */
+  background: var(--bg-surface-muted);
+}
+
+/* ============================================================
+   SOURCING RULE DIALOG (#3058)
+
+   The authoring form for one sourcing rule. Its only bespoke control is the
+   priority-location list, which is ORDERED — the order IS the ranking — so it
+   carries the same arrow buttons the rules table does (#3055 § Decisions) and
+   deliberately no drag affordance.
+   ============================================================ */
+
+.dialog-section {
+  padding-block: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.dialog-section:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.dialog-section__head {
+  margin: 0 0 var(--space-3);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.priority-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.priority-picker__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.priority-picker__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.priority-picker__pos {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 1.5em;
+  color: var(--text-secondary);
+}
+
+.priority-picker__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.priority-picker__note {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* The location this entry names was deleted after the rule was saved. It ranks
+   nothing, so it is shown and marked rather than quietly dropped. */
+.priority-picker__row--stale {
+  border-color: var(--status-warning-border, var(--border-default));
+}
+
+.priority-picker__row--stale .priority-picker__label {
+  color: var(--status-warning-fg, var(--text-muted));
+}
+
+/* The delete/retire confirm offers a third, differently-toned action, so its
+   footer splits: the reversible alternative on the left, away from the
+   destructive pair on the right (#3059). The modifier is applied only while
+   that third action renders - without it the footer holds a single group and
+   `.dialog__footer`'s own flex-end already right-aligns it, so no empty
+   spacer element is needed to hold the left slot open. */
+.dialog__footer--split {
+  justify-content: space-between;
+}
+
+.dialog__footer-group {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+@media (max-width: 480px) {
+  /* `.dialog__footer` stacks its actions at this width and stretches them to
+     full width. The group is a row, so left alone its two buttons would stay
+     side by side and shrink to share one line - the one footer in the app that
+     quietly opted out of that contract. Reversed for the same reason the
+     footer itself is: the weightiest action reads first. */
+  .dialog__footer-group {
+    flex-direction: column-reverse;
+  }
+}
+
 /* ── PricingAndSyncSection (#3149, ADR-072) ──
    Mirrors `docs/plans/mockups/price-changes-review-queue.html`'s
    `#page-connection` `.settings-section` / `.source-row` / `.unsaved-bar`
