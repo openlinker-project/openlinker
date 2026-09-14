@@ -56,6 +56,15 @@ function documentKindLabel(kind: SalesDocumentKind): string {
   return kind === 'invoice' ? 'Invoice' : 'Receipt';
 }
 
+/**
+ * The readback names the kind in prose, so the article has to follow it — a
+ * fixed `a` renders "a Invoice". Only the Receipt branch appears in the
+ * mockup, which is why it read correctly there.
+ */
+function documentKindArticle(kind: SalesDocumentKind): string {
+  return kind === 'invoice' ? 'an' : 'a';
+}
+
 function countryDisplayName(country: string): string {
   return country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? '★ Rest of world' : country;
 }
@@ -85,6 +94,18 @@ export function SalesDocumentCountryDefaults({
   const connections = connectionsQuery.data ?? [];
   const rows = deriveSalesDocumentRows(connections);
 
+  // Eligibility is capability AND role, which is the pair
+  // `resolveSalesDocumentRouting` narrows on: `deriveSalesDocumentRows`
+  // already keeps only connections with `Invoicing` or `Fiscalization`
+  // enabled, and `documentKind !== null` mirrors that resolver's
+  // `isEligibleCandidate`. It deliberately does NOT mirror the resolver's
+  // step-6 kind-to-capability pairing (`invoice` needs `Invoicing`), so a
+  // connection whose role contradicts its capability is still offered here
+  // and refused at routing time. `sales-document-rule-composer-dialog.tsx`
+  // answers the same question — which connection may a routing decision
+  // name — with the capability predicate alone (`selectInvoicingCandidates`
+  // / `selectFiscalizationCandidates`); converging the two is a follow-up,
+  // not this change.
   const candidates: CountryDefaultCandidate[] = rows
     .filter((row) => row.status === 'active' && row.documentKind !== null)
     .map((row) => ({
@@ -150,14 +171,22 @@ export function SalesDocumentCountryDefaults({
           ))}
         </Select>
       </ReadOnlyLock>
-      <p className="hint">
+      <p className="muted-text">
         Options: <b>Nothing — hold the order</b>, or any one connection with a role.
       </p>
-      <div className="readback" data-testid="country-default-readback">
-        <p className="eyebrow">Which means</p>
+      {/* The mockup renders this as a tinted, bordered callout under its own
+          `.readback` rule, but that rule is built on `--info-*` tokens the
+          app's `index.css` does not declare. Reproducing it would mean
+          inventing design tokens, so the readback uses the classes this
+          component and its siblings already use. */}
+      <div data-testid="country-default-readback">
+        <p className="eyebrow" style={{ marginBottom: 2 }}>
+          Which means
+        </p>
         {current ? (
-          <p>
-            An order in <b>{displayCountry}</b> matching none of the rules above gets a{' '}
+          <p className="muted-text">
+            An order in <b>{displayCountry}</b> matching none of the rules above gets{' '}
+            {documentKindArticle(current.documentKind)}{' '}
             <b>{documentKindLabel(current.documentKind)}</b> through{' '}
             <b>
               {connections.find((c) => c.id === current.connectionId)?.name ??
@@ -166,7 +195,7 @@ export function SalesDocumentCountryDefaults({
             .
           </p>
         ) : (
-          <p>
+          <p className="muted-text">
             An order in <b>{displayCountry}</b> matching none of the rules above has no fallback
             here and is <b>held</b>.
           </p>

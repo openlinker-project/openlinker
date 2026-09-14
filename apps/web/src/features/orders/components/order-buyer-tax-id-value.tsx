@@ -35,10 +35,18 @@ export interface OrderBuyerTaxIdValueProps {
  * exactly like an order the source said nothing about. Never asserts which of
  * the two THIS order is — that would be a deployment-wide claim a single row
  * cannot observe (the `customers-list-page` `NAMELESS_LABEL` precedent).
+ *
+ * The second sentence is the operator-actionable half: the mechanism alone says
+ * the field is empty, which reads as cosmetic. What it costs is that the tax id
+ * a simplified invoice is issued ON is never there, so that document type is
+ * unreachable for the whole deployment — a configuration fact, stated as a
+ * conditional ("where …"), so it still asserts nothing about THIS order.
  */
 const UNKNOWN_EXPLANATION =
   'The source did not assert a tax id for this order. This also reads this way on a deployment ' +
-  'with PII storage disabled (OL_STORE_PII=false), where no tax id is persisted at all.';
+  'with PII storage disabled (OL_STORE_PII=false), where no tax id is persisted at all — and ' +
+  'there a simplified invoice can never issue, because the tax id it is issued on is never ' +
+  'recorded.';
 
 export function OrderBuyerTaxIdValue({ buyerTaxId }: OrderBuyerTaxIdValueProps): ReactElement {
   if (buyerTaxId === undefined) {

@@ -12,7 +12,9 @@
  * feature folder, so its default labels must not name one regulator. A
  * provider whose own invoice-detail surface wants its own branded wording
  * (e.g. the KSeF plugin) supplies it via the optional `labelOverrides` prop
- * rather than baking it in here — see `KsefInvoiceDetailSection`.
+ * rather than baking it in here — see `KsefInvoiceDetailSection`. That
+ * override outranks the translated `invoice.regulatory.*` catalog entry, which
+ * is neutral by design and would otherwise contradict it.
  *
  * @module apps/web/src/features/invoicing/components
  */
@@ -71,14 +73,20 @@ export function RegulatoryStatusBadge({
   labelOverrides,
 }: RegulatoryStatusBadgeProps): ReactElement {
   const { t } = useTranslation();
-  const fallback = labelOverrides?.[status] ?? LABEL_FALLBACK[status];
+  // The override is resolved OUTSIDE `t()`, never handed to it as the fallback
+  // argument: `t(key, fallback)` returns the CATALOG hit and falls back only on
+  // a miss, and `invoice.regulatory.*` is by design the regulator-NEUTRAL key —
+  // so a provider override passed as the fallback would become unreachable the
+  // day anyone populates that key, silently and with no test failing.
+  const label =
+    labelOverrides?.[status] ?? t(`invoice.regulatory.${status}`, LABEL_FALLBACK[status]);
   return (
     <StatusBadge
       tone={TONE[status]}
       withDot
       pulse={status === 'submitted' || status === 'pending-submission'}
     >
-      {t(`invoice.regulatory.${status}`, fallback)}
+      {label}
     </StatusBadge>
   );
 }

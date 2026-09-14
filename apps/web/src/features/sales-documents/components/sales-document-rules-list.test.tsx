@@ -2,9 +2,10 @@
  * SalesDocumentRulesList Tests (#3178)
  *
  * Covers the one behaviour this issue adds: a list-level warning when a
- * rule names a connection that Connected Providers currently has set to
- * issue Nothing (`documentKind` unset, or the connection carries neither
- * `Invoicing` nor `Fiscalization`) — such a rule can never route.
+ * rule names a connection that cannot be a routing candidate — set to issue
+ * Nothing (`documentKind` unset, or the connection carries neither
+ * `Invoicing` nor `Fiscalization`), or not `active`. Such a rule can never
+ * route.
  */
 import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -58,6 +59,28 @@ describe('SalesDocumentRulesList', () => {
     const warning = await screen.findByTestId('rules-destination-warning');
     expect(warning).toHaveTextContent('e-paragony Sandbox');
     expect(warning).toHaveTextContent('Nothing');
+  });
+
+  it('should render the disabled remedy, not the role one, for a non-active destination', async () => {
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([makeRule()]),
+      },
+      connections: {
+        list: vi.fn().mockResolvedValue([
+          makeConnection({
+            status: 'disabled',
+            config: { salesDocument: { documentKind: 'fiscal-receipt' } },
+          }),
+        ]),
+      },
+    });
+
+    renderWithProviders(<SalesDocumentRulesList country="PL" />, { apiClient });
+
+    const warning = await screen.findByTestId('rules-destination-warning');
+    expect(warning).toHaveTextContent('is disabled');
+    expect(warning).toHaveTextContent('Enable it');
   });
 
   it('should not render the warning when the destination has a document kind configured', async () => {

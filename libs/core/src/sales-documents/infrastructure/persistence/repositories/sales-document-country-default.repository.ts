@@ -44,20 +44,6 @@ export class SalesDocumentCountryDefaultRepository
   }
 
   /**
-   * A country now maps to at most ONE row regardless of `documentKind`
-   * (#3177) — kept for callers that still supply a kind, but it is no
-   * longer part of the row's identity and two different kinds resolve to
-   * the same row.
-   */
-  async findByCountryAndKind(
-    country: string,
-    _documentKind: string,
-  ): Promise<SalesDocumentCountryDefault | null> {
-    const entity = await this.ormRepository.findOne({ where: { country } });
-    return entity ? this.toDomain(entity) : null;
-  }
-
-  /**
    * `INSERT ... ON CONFLICT (country) DO UPDATE` — one atomic statement, not
    * a `findOne` + `create`/`save` round-trip (review finding 10). The prior
    * TOCTOU shape let two concurrent saves for the same `country` both
