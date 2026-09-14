@@ -430,3 +430,31 @@ export interface PaginatedOrderRecords {
   items: OrderRecord[];
   total: number;
 }
+
+/**
+ * What a caller SAYS about `order_records.salesDocumentMatchedRuleId` when it
+ * writes the sales-document block (#3186 review).
+ *
+ * The block and the matched rule are two independent facts carried by one
+ * narrow UPDATE, and only ONE caller re-decides both: the level-evaluated
+ * auto-issue gate, which runs on every order transition. The manual-issue
+ * clear path decides the block ALONE — it knows nothing about which rule chose
+ * the document kind, so writing `null` there would erase an operator-visible
+ * disclosure that the next unrelated transition then puts straight back, and a
+ * surface fact that flaps on an unrelated action is worse than one that is
+ * simply absent.
+ *
+ * Hence a REQUIRED, explicit instruction rather than a defaulted parameter: a
+ * default is a silent decline, and lets a later call site keep compiling while
+ * writing a cohort it never decided about — the rule
+ * `ShipmentRepositoryPort`'s required `direction` states
+ * (`docs/architecture-overview.md` § 23).
+ *
+ * - `set` — this caller re-decided the rule; the column is written, `null`
+ *   included, which is what lets an edited or deleted rule stop being named.
+ * - `preserve` — this caller has no opinion; the column is left out of the
+ *   statement entirely, so there is no read-then-write and nothing to race.
+ */
+export type SalesDocumentMatchedRuleWrite =
+  | { readonly action: 'set'; readonly matchedRuleId: string | null }
+  | { readonly action: 'preserve' };

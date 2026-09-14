@@ -272,7 +272,12 @@ export interface SalesDocumentView {
   /** Free-text elaboration the gate stored; never parsed, only displayed. */
   readonly blockDetail: string | null;
   readonly otherRecords: readonly SalesDocumentOtherRecord[];
-  /** The rule that decided this order's document kind (#3186); `null` when none did. */
+  /**
+   * The rule that decided this order's document kind (#3186); `null` when none
+   * did. DETAIL-ONLY (#3186 review): the backend leaves it `null` on the paged
+   * `/orders` list, so only the order-detail panel may render an explanation
+   * from it — a row must never read `null` here as "no rule decided this".
+   */
   readonly matchedRule: SalesDocumentMatchedRuleView | null;
 }
 

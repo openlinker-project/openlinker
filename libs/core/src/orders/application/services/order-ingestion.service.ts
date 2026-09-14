@@ -1199,12 +1199,15 @@ export class OrderIngestionService implements IOrderIngestionService {
 
     try {
       // `matchedRuleId` (#3186) rides alongside the block, level-triggered the
-      // same way: `undefined` clears the persisted column, exactly like `null`
-      // clears the reason — see `markSalesDocumentBlock`'s own doc comment.
+      // same way. This is the ONE caller that re-decides both, so it is the one
+      // that may write the rule column — `undefined` from the gate means "no
+      // rule matched this time" and must clear the persisted value, exactly as
+      // `null` clears the reason, or a deleted rule would outlive the decision
+      // it produced. Every other caller passes `preserve`.
       await this.orderRecordService.markSalesDocumentBlock(
         internalOrderId,
         outcome.kind === 'blocked' ? outcome.block : null,
-        outcome.matchedRuleId ?? null
+        { action: 'set', matchedRuleId: outcome.matchedRuleId ?? null }
       );
     } catch (error) {
       const errorName = error instanceof Error ? error.name : 'UnknownError';

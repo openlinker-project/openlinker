@@ -18,6 +18,7 @@ import type {
   OrderLifecyclePhaseSummary,
   OrderRecordStatus,
   FailedSyncValueSummary,
+  SalesDocumentMatchedRuleWrite,
 } from '../types/order-record.types';
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
@@ -537,18 +538,21 @@ export interface OrderRecordRepositoryPort {
    * {@link updateItemResolutionFailure}, so it can't clobber a concurrent write
    * to any other column on the same row.
    *
-   * Passing `null` for `block` CLEARS the three block columns, and passing
-   * `null` for `matchedRuleId` clears that one — both are the primary path,
-   * not an edge case: the auto-issue gate is level-evaluated, so this is
-   * called on every order transition with whatever the current answer is for
-   * both. Last write wins by design — the newest evaluation is the truthful
-   * one, which is also what lets an edited or deleted rule stop being named as
-   * this order's reason on the very next transition.
+   * Passing `null` for `block` CLEARS the three block columns — the primary
+   * path, not an edge case: the auto-issue gate is level-evaluated, so this is
+   * called on every order transition with whatever the current answer is. Last
+   * write wins by design — the newest evaluation is the truthful one.
    *
-   * `matchedRuleId` moves INDEPENDENTLY of `block`: a rule can decide the
+   * `matchedRule` moves INDEPENDENTLY of `block`: a rule can decide the
    * document kind while issuance is still blocked for an unrelated reason
    * (e.g. a missing tax rate, or a `manual` trigger model), so the two are
-   * never coupled to one another's null-ness.
+   * never coupled to one another's null-ness — and the instruction is
+   * REQUIRED, never defaulted, so a caller that decided only the block has to
+   * say so ({@link SalesDocumentMatchedRuleWrite}). `{action: 'set'}` writes
+   * the column, `null` included, which is what lets an edited or deleted rule
+   * stop being named on the very next transition; `{action: 'preserve'}` omits
+   * it from the statement altogether, so no read-then-write is needed and
+   * nothing can race.
    *
    * No-op (no throw) when the order row doesn't exist, mirroring
    * {@link updateFulfillmentState}'s residual-race tolerance.
@@ -556,7 +560,7 @@ export interface OrderRecordRepositoryPort {
   updateSalesDocumentBlock(
     internalOrderId: string,
     block: SalesDocumentBlock | null,
-    matchedRuleId?: string | null
+    matchedRule: SalesDocumentMatchedRuleWrite
   ): Promise<void>;
 
   /**

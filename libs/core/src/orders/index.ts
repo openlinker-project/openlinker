@@ -131,6 +131,7 @@ export {
   OrderRecordSortDirection,
   OrderRecordSortDirectionValues,
   FailedSyncValueSummary,
+  SalesDocumentMatchedRuleWrite,
 } from './domain/types/order-record.types';
 // Ship-by SLA axis + fulfillment rollup (#1108)
 export {
