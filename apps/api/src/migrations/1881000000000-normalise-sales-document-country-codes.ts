@@ -62,10 +62,16 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
 /** The three operator-authored tables `up()` rewrites, in rewrite order. */
+/**
+ * Each table paired with the REST of its uniqueness key beyond `country` — what
+ * the skip report needs to name both sides of a collision rather than only the
+ * stray row (review finding). Empty for the acknowledgments table, whose primary
+ * key is `country` alone.
+ */
 const SKIP_REPORTED_TABLES = [
-  'sales_document_country_acknowledgments',
-  'sales_document_country_defaults',
-  'sales_document_rules',
+  { table: 'sales_document_country_acknowledgments', keyRest: [] },
+  { table: 'sales_document_country_defaults', keyRest: ['document_kind'] },
+  { table: 'sales_document_rules', keyRest: ['conditions_hash', 'effective_from'] },
 ] as const;
 
 export class NormaliseSalesDocumentCountryCodes1881000000000 implements MigrationInterface {
@@ -133,8 +139,8 @@ export class NormaliseSalesDocumentCountryCodes1881000000000 implements Migratio
 
     // Every row the ranking could safely rewrite has been rewritten, so what
     // still carries a stray-case country is exactly the skipped set.
-    for (const table of SKIP_REPORTED_TABLES) {
-      await this.reportSkippedRows(queryRunner, table);
+    for (const { table, keyRest } of SKIP_REPORTED_TABLES) {
+      await this.reportSkippedRows(queryRunner, table, keyRest);
     }
   }
 
@@ -149,29 +155,47 @@ export class NormaliseSalesDocumentCountryCodes1881000000000 implements Migratio
 
   /**
    * Emit one `RAISE NOTICE` per table that still holds a stray-case country
-   * after `up()`'s rewrites, naming the count and the surviving casings. The
-   * docblock defers a collision to a human; without this the human is never
-   * told the row exists.
+   * after `up()`'s rewrites. The docblock defers a collision to a human; without
+   * this the human is never told the row exists.
    *
-   * `table` is interpolated from {@link SKIP_REPORTED_TABLES}, a local literal
-   * list — no caller supplies it.
+   * It names BOTH sides of each collision — the stray value and the uppercase
+   * value it would fold onto — plus the rest of that table's uniqueness key, so
+   * the operator can see the choice they are being asked to make without first
+   * writing the grouping query themselves (review finding). A ready-to-paste
+   * SELECT follows for the full rows.
+   *
+   * `table` and `keyRest` are interpolated from {@link SKIP_REPORTED_TABLES}, a
+   * local literal list — no caller supplies either.
    */
-  private async reportSkippedRows(queryRunner: QueryRunner, table: string): Promise<void> {
+  private async reportSkippedRows(
+    queryRunner: QueryRunner,
+    table: string,
+    keyRest: readonly string[],
+  ): Promise<void> {
+    const keyRestSelect = keyRest.map((column) => `, "${column}"`).join('');
+    const keyRestLabel =
+      keyRest.length === 0 ? "''" : keyRest.map((column) => `"${column}"::text`).join(` || '/' || `);
     await queryRunner.query(`
       DO $$
       DECLARE
         skipped_count integer;
-        skipped_countries text;
+        skipped_pairs text;
       BEGIN
-        SELECT count(*), string_agg(DISTINCT "country", ', ' ORDER BY "country")
-          INTO skipped_count, skipped_countries
+        SELECT count(*),
+               string_agg(
+                 DISTINCT format('%s -> %s%s',
+                   "country",
+                   UPPER("country"),
+                   CASE WHEN ${keyRestLabel} = '' THEN '' ELSE ' [' || ${keyRestLabel} || ']' END),
+                 ', ')
+          INTO skipped_count, skipped_pairs
           FROM "${table}"
          WHERE "country" <> UPPER("country");
 
         IF skipped_count > 0 THEN
           RAISE NOTICE
-            '#3176: left % row(s) in "${table}" with a non-uppercase country (%) — each would collide with an existing row under the table''s uniqueness once uppercased. Resolve by hand: decide which row to keep, delete the other, then re-run this migration or uppercase the survivor.',
-            skipped_count, skipped_countries;
+            '#3176: left % row(s) in "${table}" with a non-uppercase country. Each pair below is the stray value and the uppercase value it would fold onto, with the rest of the uniqueness key in brackets: %. Inspect both sides with:  SELECT "country"${keyRestSelect} FROM "${table}" WHERE UPPER("country") IN (SELECT UPPER("country") FROM "${table}" WHERE "country" <> UPPER("country")) ORDER BY UPPER("country"), "country";  Then decide which row to keep, delete the other, and uppercase the survivor.',
+            skipped_count, skipped_pairs;
         END IF;
       END
       $$;
