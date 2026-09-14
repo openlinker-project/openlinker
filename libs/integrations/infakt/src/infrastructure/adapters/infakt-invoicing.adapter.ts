@@ -571,7 +571,20 @@ export class InfaktInvoicingAdapter
     // writing a prefixed or separator-formatted NIP would leave the seller's own
     // records carrying three spellings of one tax id, and would depend on the
     // filter's normalisation to stay findable at all.
-    const rawNip = buyer.taxId?.scheme === 'pl-nip' ? buyer.taxId.value : null;
+    //
+    // An UNTAGGED tax id counts (#3224). ADR-073 decision 1 forbids core minting
+    // a `scheme` - an `Order` stores a bare number - so an untagged value now
+    // reaches every invoicing adapter and *"an adapter needing a tag supplies
+    // it"*. inFakt is a Polish accounting system with one tax-number field, so
+    // the domestic reading is the only placement there is; requiring the tag
+    // would silently drop the buyer's NIP from every auto-issued invoice and
+    // create a duplicate client on every order. A value that is not a valid NIP
+    // is sent and refused BY inFakt (ADR-073 decision 5), not pre-judged here.
+    const rawNip =
+      buyer.taxId !== null &&
+      (buyer.taxId.scheme === undefined || buyer.taxId.scheme === 'pl-nip')
+        ? buyer.taxId.value
+        : null;
     const nip = rawNip === null ? null : normalizeNip(rawNip) || null;
 
     // Search for existing client by NIP first

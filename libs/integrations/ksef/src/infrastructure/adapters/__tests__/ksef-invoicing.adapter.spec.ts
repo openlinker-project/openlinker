@@ -678,6 +678,39 @@ describe('KsefInvoicingAdapter', () => {
       expect(result.providerCustomerId).toBe('ksef:pl-nip:9876543210');
       expect(http.calls).toHaveLength(0);
     });
+
+    // #3225 review: `scheme` is optional since #3224, so interpolating it
+    // rendered `ksef:undefined:…` and split one buyer across two handles
+    // depending on which path issued. The domestic case must resolve to the
+    // SAME handle either way, and nothing may ever render `undefined`.
+    it('resolves an UNTAGGED domestic tax id to the same handle as a tagged one', async () => {
+      const http = new FakeKsefHttpClient();
+      const untagged = new BuyerProfile(
+        'Klient Sp. z o.o.',
+        { value: '9876543210' },
+        { line1: 'ul. Kupiecka 2', line2: null, city: 'Kraków', postalCode: '30-001', countryIso2: 'PL' },
+        'company',
+      );
+
+      const result = await adapter(http).upsertCustomer({ connectionId: 'conn-1', buyer: untagged });
+
+      expect(result.providerCustomerId).toBe('ksef:pl-nip:9876543210');
+    });
+
+    it('never renders undefined for an untagged value it cannot place domestically', async () => {
+      const http = new FakeKsefHttpClient();
+      const foreign = new BuyerProfile(
+        'Kunde GmbH',
+        { value: 'DE123456789' },
+        { line1: 'Hauptstr. 1', line2: null, city: 'Berlin', postalCode: '10115', countryIso2: 'DE' },
+        'company',
+      );
+
+      const result = await adapter(http).upsertCustomer({ connectionId: 'conn-1', buyer: foreign });
+
+      expect(result.providerCustomerId).toBe('ksef:untagged:DE123456789');
+      expect(result.providerCustomerId).not.toContain('undefined');
+    });
   });
 
   describe('isRegulatoryTransmitter', () => {

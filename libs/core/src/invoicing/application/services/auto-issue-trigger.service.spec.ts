@@ -413,6 +413,88 @@ describe('AutoIssueTriggerService', () => {
       expect(buyer.type).toBe('private');
       expect(buyer.taxId).toBeNull();
     });
+
+    // ---------------------------------------------------------------------
+    // #3224 — the buyer tax number on an AUTO-ISSUED invoice.
+    //
+    // #3187 threaded the persisted three-state `order_records.buyerTaxId`
+    // into the fiscal-receipt branch only. The invoice branch took no such
+    // argument, so every auto-issued invoice went out with `taxId: null` and
+    // `type: 'private'` — including the ones a routing rule had selected
+    // *because* the buyer has a tax number. This path decides, unattended,
+    // what a paid order gets, so both arms are pinned.
+    // ---------------------------------------------------------------------
+    function issuedBuyer(): { type: string; taxId: { scheme?: string; value: string } | null } {
+      return (
+        syncJobs.schedule.mock.calls[0][0].payload as {
+          buyer: { type: string; taxId: { scheme?: string; value: string } | null };
+        }
+      ).buyer;
+    }
+
+    it('a known buyer tax number reaches the auto-issued invoice (#3224)', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+        undefined,
+        undefined,
+        '5213796333',
+      );
+
+      const buyer = issuedBuyer();
+      expect(buyer.taxId).toEqual({ value: '5213796333' });
+      expect(buyer.type).toBe('company');
+    });
+
+    // ADR-073 decision 1: every `scheme` in the tree is produced by an adapter
+    // or an HTTP caller, never by core. Minting one here would make core name a
+    // country's identifier system, and a mis-set default silently mislabels
+    // every document.
+    it('core mints NO scheme for the auto-issued invoice (#3224, ADR-073 decision 1)', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+        undefined,
+        undefined,
+        '5213796333',
+      );
+
+      expect(issuedBuyer().taxId?.scheme).toBeUndefined();
+    });
+
+    // The column's three states collapse to two on a document: only a real
+    // number is something to send. "Asserted none" and "not asserted" differ
+    // for ROUTING (they decide which document is issued) and are identical
+    // once the document is being composed.
+    it('an asserted-none buyer tax id issues as B2C, exactly like not-asserted (#3224)', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+        undefined,
+        undefined,
+        '',
+      );
+
+      const buyer = issuedBuyer();
+      expect(buyer.taxId).toBeNull();
+      expect(buyer.type).toBe('private');
+    });
+
+    it('a blank buyer tax id column issues as B2C rather than an empty identifier (#3224)', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+      await service.onOrderTransition(
+        makeOrder({ paymentStatus: 'paid' }),
+        'src-1',
+        undefined,
+        undefined,
+        '   ',
+      );
+
+      expect(issuedBuyer().taxId).toBeNull();
+    });
   });
 
   describe('shipping-line label wiring (#1562, invoice kind)', () => {
