@@ -35,8 +35,8 @@
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class RelaxPriceChangeEpisodeBaselines1887000000001 implements MigrationInterface {
-  name = 'RelaxPriceChangeEpisodeBaselines1887000000001';
+export class RelaxPriceChangeEpisodeBaselines1888000000000 implements MigrationInterface {
+  name = 'RelaxPriceChangeEpisodeBaselines1888000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
