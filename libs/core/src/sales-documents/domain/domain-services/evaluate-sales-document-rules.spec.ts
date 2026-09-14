@@ -59,6 +59,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
         kind: 'route',
         documentKind: 'fiscal-receipt',
         connectionId: 'conn-receipt-only',
+        ruleId: 'rule-1',
       });
     });
 
@@ -87,6 +88,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
         kind: 'route',
         documentKind: 'invoice',
         connectionId: 'conn-infakt',
+        ruleId: 'rule-high',
       });
     });
 
@@ -111,6 +113,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
         kind: 'route',
         documentKind: 'fiscal-receipt',
         connectionId: 'conn-receipt-only',
+        ruleId: 'rule-1',
       });
     });
 
@@ -176,6 +179,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
         kind: 'route',
         documentKind: 'fiscal-receipt',
         connectionId: 'conn-row',
+        ruleId: 'rule-1',
       });
     });
 
@@ -264,6 +268,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
         kind: 'route',
         documentKind: 'fiscal-receipt',
         connectionId: 'conn-receipt-only',
+        ruleId: 'rule-1',
       });
     });
 
@@ -285,6 +290,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
         kind: 'route',
         documentKind: 'fiscal-receipt',
         connectionId: 'conn-receipt-only',
+        ruleId: 'clean',
       });
     });
 
@@ -304,6 +310,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
         kind: 'route',
         documentKind: 'fiscal-receipt',
         connectionId: 'conn-receipt-only',
+        ruleId: 'clean',
       });
     });
 

@@ -29,6 +29,7 @@ import type {
   OrderRecordPagination,
   OrderRecordStatus,
   PaginatedOrderRecords,
+  SalesDocumentMatchedRuleWrite,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
@@ -883,17 +884,24 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   /**
-   * Record or clear the sales-document block (#2100). Thin pass-through to the
-   * repository's narrow absolute-set — see
-   * {@link OrderRecordRepositoryPort.updateSalesDocumentBlock}. `null` clears,
-   * and is the ordinary path: the auto-issue gate is level-evaluated, so this is
-   * called on every transition with the current answer.
+   * Record or clear the sales-document block (#2100), and the rule that decided
+   * this order's document kind (#3186). Thin pass-through to the repository's
+   * narrow absolute-set — see
+   * {@link OrderRecordRepositoryPort.updateSalesDocumentBlock}. `null` clears
+   * `block`, the ordinary path: the auto-issue gate is level-evaluated, so this
+   * is called on every transition with the current answer.
+   *
+   * `matchedRule` carries no default (#3186 review) so that every caller states
+   * whether it decided the rule at all — `{action: 'set'}` for the gate, which
+   * re-decides both, and `{action: 'preserve'}` for a caller that decided only
+   * the block.
    */
   async markSalesDocumentBlock(
     internalOrderId: string,
-    block: SalesDocumentBlock | null
+    block: SalesDocumentBlock | null,
+    matchedRule: SalesDocumentMatchedRuleWrite
   ): Promise<void> {
-    await this.repository.updateSalesDocumentBlock(internalOrderId, block);
+    await this.repository.updateSalesDocumentBlock(internalOrderId, block, matchedRule);
   }
 
   /**

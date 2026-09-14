@@ -68,7 +68,10 @@ export interface SalesDocumentRuleEngineInput {
 }
 
 type ScopeResult =
-  | { kind: 'route'; documentKind: string; connectionId: string }
+  // `ruleId` is present only for a tier-1 rule match — see this module's own
+  // doc comment on `SalesDocumentDecision.route.ruleId` (#3186). A tier-2
+  // country default carries none.
+  | { kind: 'route'; documentKind: string; connectionId: string; ruleId?: string }
   | { kind: 'no-match' }
   | { kind: 'ambiguous-rules' }
   | { kind: 'ambiguous-defaults' }
@@ -190,6 +193,7 @@ function evaluateScope(
       kind: 'route',
       documentKind: matched[0].documentKind,
       connectionId: matched[0].connectionId,
+      ruleId: matched[0].id,
     };
   }
   if (matched.length > 1) {
@@ -232,6 +236,7 @@ export function evaluateSalesDocumentRules(input: SalesDocumentRuleEngineInput):
       kind: 'route',
       documentKind: countryResult.documentKind,
       connectionId: countryResult.connectionId,
+      ...(countryResult.ruleId !== undefined ? { ruleId: countryResult.ruleId } : {}),
     };
   }
   if (countryResult.kind === 'net-priced') {
@@ -260,7 +265,12 @@ export function evaluateSalesDocumentRules(input: SalesDocumentRuleEngineInput):
   const rowResult = evaluateScope(restOfWorldRules, restOfWorldDefaults, order, now, thresholdsByRef);
 
   if (rowResult.kind === 'route') {
-    return { kind: 'route', documentKind: rowResult.documentKind, connectionId: rowResult.connectionId };
+    return {
+      kind: 'route',
+      documentKind: rowResult.documentKind,
+      connectionId: rowResult.connectionId,
+      ...(rowResult.ruleId !== undefined ? { ruleId: rowResult.ruleId } : {}),
+    };
   }
   if (rowResult.kind === 'net-priced') {
     return { kind: 'unresolved', reason: 'net-priced-order' };

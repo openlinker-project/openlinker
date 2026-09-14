@@ -483,10 +483,18 @@ export class InvoicingController {
    *
    * Best-effort: an invoice really was issued, so a failure to tidy the badge must
    * never turn a 201 into a 500. The next order transition re-decides it anyway.
+   *
+   * Clears the block ONLY (#3186 review). This path knows nothing about which
+   * routing rule chose the document kind, so it passes `preserve` rather than
+   * `null`: writing `null` here would drop "Why this kind?" off the order panel
+   * on the most ordinary configuration there is (`parseTriggerModel` defaults to
+   * `manual`, so rule decides -> gate blocks -> operator issues by hand), and
+   * the next unrelated transition would put it straight back. A surface fact
+   * that flaps on an unrelated action is worse than one that is simply absent.
    */
   private async clearSalesDocumentBlock(orderId: string): Promise<void> {
     try {
-      await this.orders.markSalesDocumentBlock(orderId, null);
+      await this.orders.markSalesDocumentBlock(orderId, null, { action: 'preserve' });
     } catch (error) {
       const errorName = error instanceof Error ? error.name : 'UnknownError';
       this.logger.warn(

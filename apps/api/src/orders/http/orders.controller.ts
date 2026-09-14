@@ -364,7 +364,10 @@ export class OrdersController {
     // list row is what lets the `/orders` cell state the routed document kind
     // and the persisted block reason without a second request per row - and
     // it is the SAME shape the detail endpoint serves, so the row and the
-    // panel cannot disagree about one order.
+    // panel cannot disagree about one order. The one field it deliberately
+    // leaves `null` is `matchedRule` (#3186 review): the "Why this kind?"
+    // disclosure is detail-only, so no row carries a conditions array and no
+    // page pays the extra rule read for a sentence it never renders.
     const salesDocumentByOrderId = await this.salesDocumentView.getForOrders(
       items.map((order) => order.internalOrderId)
     );
@@ -581,7 +584,9 @@ export class OrdersController {
     dto.holdHistory = holds.map((hold) => this.toHoldDto(hold));
     dto.activeHold = dto.holdHistory.find((hold) => hold.releasedAt === null) ?? null;
     // Same projection the list carries (#2517) - one shape, so the panel never
-    // interprets a field differently from the row it was opened from.
+    // interprets a field differently from the row it was opened from. This read
+    // additionally resolves `matchedRule`, which the list path leaves `null`
+    // (#3186 review) because only this panel renders it.
     const salesDocument = await this.salesDocumentView.getForOrder(order.internalOrderId);
     if (salesDocument) {
       dto.salesDocument = toSalesDocumentViewDto(salesDocument);
@@ -599,7 +604,9 @@ export class OrdersController {
       'axis belonging to that kind (both invoice axes, or the single fiscal one), the persisted block ' +
       'and unresolved reasons VERBATIM, and any record held on another connection. Read-only - it ' +
       'issues, registers, routes and configures nothing. The same shape is carried on every row of ' +
-      'GET /orders, so the detail panel needs this endpoint only when it is opened directly.',
+      'GET /orders, so the detail panel needs this endpoint only when it is opened directly - with ' +
+      'one exception: `matchedRule` is resolved HERE only and is always `null` on the list, so a ' +
+      'client must read this endpoint before concluding no rule decided an order\'s kind.',
   })
   @ApiResponse({ status: 200, description: 'Sales-document projection', type: SalesDocumentViewResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })

@@ -57,6 +57,7 @@ import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
 } from './sales-document-reason.types';
+import type { SalesDocumentCondition } from './sales-document-condition.types';
 
 /**
  * The identity fields a surface renders for a document, whichever kind it is.
@@ -215,6 +216,27 @@ export interface SalesDocumentOtherRecord {
 }
 
 /**
+ * The `sales_document_rules` row that decided this order's document kind
+ * (#3186), reduced to what the "Why this kind?" disclosure renders — never
+ * the full `SalesDocumentRule` entity (no `provenance`, no `effectiveFrom` /
+ * `effectiveTo`), because nothing downstream needs them.
+ *
+ * `null` on {@link SalesDocumentView.matchedRule} covers BOTH "no rule ever
+ * decided this order's kind" (a country default, the pre-#2170 single-primary
+ * fallback, a manually issued document) AND "a rule did, but it has since been
+ * deleted" — the persisted `order_records.salesDocumentMatchedRuleId` is a
+ * reference by value with no FK, and a surface must not distinguish the two:
+ * either way there is no rule left to explain.
+ */
+export interface SalesDocumentMatchedRuleView {
+  readonly id: string;
+  readonly country: string;
+  readonly conditions: readonly SalesDocumentCondition[];
+  readonly documentKind: SalesDocumentKind;
+  readonly connectionId: string;
+}
+
+/**
  * Everything the three surfaces need about one order's sales document.
  */
 export interface SalesDocumentView {
@@ -264,4 +286,18 @@ export interface SalesDocumentView {
    * single-record panel.
    */
   readonly otherRecords: readonly SalesDocumentOtherRecord[];
+  /**
+   * The rule that decided this order's document kind (#3186), or `null` when
+   * none did — see {@link SalesDocumentMatchedRuleView}'s own doc comment for
+   * the two cases that collapse into `null`. Verbatim from the persisted
+   * `order_records.salesDocumentMatchedRuleId`, joined against the rule store;
+   * a surface renders it or renders nothing, exactly like `blockReason`.
+   *
+   * DETAIL-ONLY (#3186 review): resolved by `ISalesDocumentViewService`'s
+   * single-order read and left `null` by the batched list read, so on a list
+   * `null` ALSO means "this read did not resolve it". Only a surface that
+   * obtained the view from the single-order read may say anything about why a
+   * kind was chosen.
+   */
+  readonly matchedRule: SalesDocumentMatchedRuleView | null;
 }

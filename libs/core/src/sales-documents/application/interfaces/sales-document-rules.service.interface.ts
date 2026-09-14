@@ -31,6 +31,14 @@ export interface ISalesDocumentRulesService {
 
   deleteRule(id: string): Promise<void>;
 
+  /**
+   * Batch lookup by id (#3186) — every rule named by `ids`, in no particular
+   * order, an id naming a since-deleted rule simply absent from the result.
+   * Backs the per-order sales-document projection's "Why this kind?"
+   * disclosure, which resolves a whole page's matched rules in one call.
+   */
+  getRulesByIds(ids: readonly string[]): Promise<SalesDocumentRule[]>;
+
   listCountryDefaults(country: string): Promise<SalesDocumentCountryDefault[]>;
 
   /**
