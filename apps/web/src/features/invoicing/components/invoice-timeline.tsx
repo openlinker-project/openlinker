@@ -15,13 +15,13 @@
  *   - `failed+rejected` maps to Issued node with error tone + stop the lane there
  *   - `in-doubt` maps to Issued node with warning tone + stop there (no Retry shown)
  *   - Terminal clearance success is `accepted` — never render "Cleared" as success
- *   - `pending-submission` (#1585) renders an active "Awaiting submission" node —
- *     never a "Submitted" done check (nothing has been transmitted to the authority)
- *
- * Every operator-facing string here is regulator-NEUTRAL (#3181): this is a
- * shared feature component rendered for an inFakt or Subiekt invoice just as
- * much as for a KSeF one, and it exposes no per-provider override seam, so a
- * regulator name in a label would be wrong for most of the invoices it serves.
+ *   - `pending-submission` (#1585) renders an active "Awaiting submission" node
+ *     — never a "Submitted" done check (nothing has been transmitted to the
+ *     authority). Regulator-neutral by construction (#3183, ADR-026): this
+ *     component is shared across every `InvoicingPort` adapter's invoices, not
+ *     only KSeF's, so its copy names no regulator — a per-provider surface
+ *     wanting branded wording contributes its own component the way the KSeF
+ *     plugin's `KsefInvoiceDetailSection` does for `RegulatoryStatusBadge`.
  *
  * @module apps/web/src/features/invoicing/components
  */
@@ -203,14 +203,16 @@ function buildClearanceLane(
   // unreachable at issuance; a sweep will resubmit). It must NEVER fall through to
   // the "Submitted" done node below — that would tell the operator the document
   // reached the authority when nothing was sent. Render a single active
-  // "Awaiting submission" node instead ("in motion, no action owed").
+  // "Awaiting submission" node instead ("in motion, no action owed") — no
+  // regulator name here, since this lane renders for every `InvoicingPort`
+  // adapter's invoices, not only KSeF's (#3183, ADR-026).
   if (status === 'pending-submission') {
     return [
       {
         label: t('invoice.tl.pendingSubmission', 'Awaiting submission'),
         subLabel: t(
           'invoice.tl.pendingSubmissionHint',
-          'Issued offline — not yet sent to the authority',
+          'Issued offline — not yet sent for clearance',
         ),
         timestamp: invoice.updatedAt,
         state: 'active',
