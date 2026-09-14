@@ -47,6 +47,7 @@ import {
   PRICE_CHANGES_SERVICE_TOKEN,
   PriceChangeEpisodeAlreadyResolvedException,
   PriceChangeEpisodeBlockedException,
+  PriceChangeOverrideOutOfRangeException,
   PriceChangeEpisodeInFlightException,
   PriceChangeEpisodeNotFoundException,
   PriceChangeEpisodeStaleException,
@@ -185,6 +186,13 @@ export class PriceChangesController {
   @ApiResponse({ status: 404, description: 'Episode not found' })
   @ApiResponse({ status: 409, description: 'Already resolved, blocked, stale, or already claimed by another in-flight request' })
   @ApiResponse({ status: 403, description: 'optInAutomatic requires the admin role' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'The override is disproportionate to the rule-computed price. The body carries `outcome` ' +
+      "('too-high' | 'too-low'), `attempted`, `computedAmount` and `limit` alongside the message, " +
+      'so a caller can render the bound without parsing prose (#3236 review).',
+  })
   async edit(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: EditPriceChangeDto,
@@ -273,7 +281,27 @@ export class PriceChangesController {
       ) {
         throw new ConflictException(error.message);
       }
+      if (error instanceof PriceChangeOverrideOutOfRangeException) {
+        // The bound travels as FIELDS, not only inside the sentence (#3236
+        // review). The repo's rule is that a client parsing a message breaks
+        // on the first reword — `ReturnCustodyTransitionError.reason` and
+        // `ReturnNotAttributedError.trigger` are both emitted as fields for
+        // that reason — so the dialog can render "at most 3990 PLN" inline
+        // instead of surfacing a paragraph in a toast.
+        throw new UnprocessableEntityException({
+          message: error.message,
+          error: 'Unprocessable Entity',
+          statusCode: 422,
+          outcome: error.outcome,
+          attempted: error.attempted,
+          computedAmount: error.computedAmount,
+          limit: error.limit,
+        });
+      }
       if (error instanceof PriceChangeEpisodeBlockedException) {
+        // 422, not 400: the request is well-formed and the episode is
+        // actionable — the VALUE is refused (#3222). 400 on this route is
+        // already the DTO-shape failure.
         throw new UnprocessableEntityException(error.message);
       }
       throw error;
