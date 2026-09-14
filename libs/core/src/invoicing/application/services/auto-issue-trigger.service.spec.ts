@@ -598,7 +598,7 @@ describe('AutoIssueTriggerService', () => {
       expect('taxRateEra' in payload).toBe(false);
     });
 
-    describe("the buyer's tax number (#3187, ADR-072 decision 1)", () => {
+    describe("the buyer's tax number (#3187, ADR-073 decision 1)", () => {
       it("carries the order's persisted buyer tax id into the payload", async () => {
         connectionPort.list.mockResolvedValue([makeFiscalConnection('auto-on-paid')]);
         await service.onOrderTransition(
