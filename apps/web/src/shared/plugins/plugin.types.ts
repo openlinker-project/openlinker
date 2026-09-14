@@ -690,7 +690,7 @@ export interface PlatformContribution {
   bulkOfferRowSection?: ComponentType<BulkOfferRowSectionProps>;
   /**
    * Bulk offer creation: per-connection override for whether the Review edit
-   * modal shows the browsable category tree (`CategoryPicker` +
+   * modal shows the browsable category tree (`BulkCategoryChooseModal` +
    * category-parameters step) instead of the manual Allegro-category-id
    * input. The default signal (`connection.supportedCapabilities.includes
    * ('CategoryBrowser')`) is a static, manifest-level flag — it can never be

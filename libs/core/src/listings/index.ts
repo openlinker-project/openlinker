@@ -372,6 +372,23 @@ export type {
   OfferStatusSnapshotRepositoryPort,
   OfferStatusUpsertResult,
 } from './domain/ports/offer-status-snapshot-repository.port';
+// Recurring price propagation (#3142, ADR-072)
+export { PriceChangeEpisode } from './domain/entities/price-change-episode.entity';
+export {
+  PriceChangeResolutionValues,
+  PriceChangeBlockReasonValues,
+  isPriceChangeResolution,
+  isPriceChangeBlockReason,
+} from './domain/types/price-change-episode.types';
+export type {
+  PriceChangeResolution,
+  PriceChangeBlockReason,
+  UpsertOpenPriceChangeEpisodeInput,
+  PriceChangeEpisodeFilters,
+} from './domain/types/price-change-episode.types';
+export type { PriceChangeEpisodeRepositoryPort } from './domain/ports/price-change-episode-repository.port';
+export { PriceChangeEpisodePersistenceError } from './domain/exceptions/price-change-episode-persistence.error';
+export { PriceChangeEpisodeSupersededError } from './domain/exceptions/price-change-episode-superseded.error';
 export { OfferCommercialSnapshot } from './domain/entities/offer-commercial-snapshot.entity';
 export type {
   OfferCommercialSnapshotProps,
