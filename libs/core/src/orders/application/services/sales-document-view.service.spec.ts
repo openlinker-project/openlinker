@@ -11,7 +11,7 @@ import { InvoiceRecord } from '@openlinker/core/invoicing';
 import { FISCAL_REGISTRATION_SERVICE_TOKEN } from '@openlinker/core/fiscalization';
 import { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
 import { SALES_DOCUMENT_RULES_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
-import { SalesDocumentRule } from '@openlinker/core/sales-documents';
+import { SalesDocumentRule, SalesDocumentView } from '@openlinker/core/sales-documents';
 
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { InvoicingModule } from '@openlinker/core/invoicing';
@@ -113,6 +113,17 @@ function connection(overrides: Partial<Connection> = {}): Connection {
     ...overrides,
   } as Connection;
 }
+
+/**
+ * Drops `matchedRule` without binding it, so the parity assertion below compares
+ * every other field. A rest-destructure would name a binding the linter then
+ * reports as unused.
+ */
+const withoutMatchedRule = (view: SalesDocumentView): Record<string, unknown> => {
+  const rest: Record<string, unknown> = { ...view };
+  delete rest.matchedRule;
+  return rest;
+};
 
 describe('SalesDocumentViewService', () => {
   let service: SalesDocumentViewService;
@@ -481,11 +492,9 @@ describe('SalesDocumentViewService', () => {
       // ONLY field the two reads may differ on, so every other field is
       // compared here rather than left to drift.
       expect(single).not.toBeNull();
-      const { matchedRule: _singleRule, ...singleRest } = single!;
       const batchedView = batched.get('ol_order_1');
       expect(batchedView).toBeDefined();
-      const { matchedRule: _batchedRule, ...batchedRest } = batchedView!;
-      expect(singleRest).toEqual(batchedRest);
+      expect(withoutMatchedRule(single!)).toEqual(withoutMatchedRule(batchedView!));
     });
 
     it('should report null for an order with no record at all', async () => {
