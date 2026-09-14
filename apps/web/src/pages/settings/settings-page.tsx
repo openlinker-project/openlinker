@@ -7,6 +7,7 @@ import { PosthogSettingsTile } from '../../features/posthog-settings/components/
 import { McpTokensTile } from '../../features/mcp-tokens/components/mcp-tokens-tile';
 import { SalesDocumentsTile } from '../../features/sales-documents';
 import { WhoDecidesTile } from '../../features/fulfillment-authority';
+import { SourcingRulesTile } from '../../features/oms';
 import { SyncPacingTile } from '../../features/settings';
 import { InventoryLocationsTile } from '../../features/inventory';
 import { PageLayout } from '../../shared/ui/page-layout';
@@ -31,6 +32,7 @@ export function SettingsPage(): ReactElement {
           {isAdmin ? <span className="toolbar-chip">Sales documents</span> : null}
           {/* Ungated, unlike its admin-gated neighbours — see `WhoDecidesTile`'s docblock. */}
           <span className="toolbar-chip">Who decides what</span>
+          {isAdmin ? <span className="toolbar-chip">Sourcing rules</span> : null}
           {isAdmin ? <span className="toolbar-chip">Sync pacing</span> : null}
           {/* Ungated — see `InventoryLocationsTile`'s docblock. */}
           <span className="toolbar-chip">Inventory locations</span>
@@ -114,6 +116,9 @@ export function SettingsPage(): ReactElement {
         {isAdmin ? <SalesDocumentsTile /> : null}
         {/* Deliberately NOT admin-gated — see `WhoDecidesTile`'s docblock. */}
         <WhoDecidesTile />
+
+        {/* ── Sourcing rules (admin-only, #3060) ────────────────────── */}
+        {isAdmin ? <SourcingRulesTile /> : null}
 
         {/* ── Sync pacing (admin-only, #2653) ───────────────────────── */}
         {isAdmin ? <SyncPacingTile /> : null}
