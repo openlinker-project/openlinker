@@ -56,8 +56,18 @@ export interface SourcingRulesTableProps {
    * FULL live set — the caller hands it to the reorder mutation verbatim.
    */
   onReorder: (ruleIds: string[]) => void;
-  /** Open the edit dialog (#3058). Never offered for an unrecognised rule. */
+  /** Open the edit dialog (#3058). Never reached for an unrecognised rule. */
   onEdit?: (rule: SourcingRule) => void;
+  /**
+   * Called INSTEAD of `onEdit` for a rule this build cannot evaluate (#3061).
+   *
+   * The control stays enabled deliberately. A `disabled` button cannot be
+   * focused in every browser and its `title` is not reliably announced, so the
+   * explanation would be unreachable for exactly the operator who needs it —
+   * and the remedy (delete and re-create) would go unsaid. Enabled-and-refusing
+   * is what lets the refusal carry its own copy and its own action.
+   */
+  onEditRefused?: (rule: SourcingRule) => void;
   /** Open the delete/retire flow (#3059). Offered for every rule. */
   onDelete?: (rule: SourcingRule) => void;
   /** Disables every control while a write is in flight. */
@@ -110,6 +120,7 @@ export function SourcingRulesTable({
   rules,
   onReorder,
   onEdit,
+  onEditRefused,
   onDelete,
   busy = false,
   now = new Date(),
@@ -235,7 +246,7 @@ export function SourcingRulesTable({
                 </td>
                 <td>
                   <div className="rule-actions">
-                    {renderEdit(rule, onEdit, busy)}
+                    {renderEdit(rule, onEdit, onEditRefused, busy)}
                     {onDelete === undefined ? null : (
                       <button
                         type="button"
@@ -263,18 +274,26 @@ export function SourcingRulesTable({
  * Edit is REFUSED, not hidden, for an unrecognised rule.
  *
  * The API rejects a patch on such a row outright — a successful edit would
- * imply it routes. A disabled control that says why is what sends the operator
- * to Delete; an absent one reads as a rendering bug.
+ * imply it routes. The control therefore stays ENABLED and routes to
+ * `onEditRefused` (#3061), which explains why and offers the one remedy there
+ * is. Disabling it instead would put the explanation somewhere an operator
+ * cannot reliably read it, and hiding it would read as a rendering bug.
+ *
+ * With no `onEditRefused` supplied the control falls back to disabled, so a
+ * caller that has not wired the explanation still cannot open the form on a
+ * rule the server will refuse.
  */
 function renderEdit(
   rule: SourcingRule,
   onEdit: ((rule: SourcingRule) => void) | undefined,
+  onEditRefused: ((rule: SourcingRule) => void) | undefined,
   busy: boolean
 ): ReactNode {
   if (onEdit === undefined) return null;
 
   const label = sourcingRuleNameLabel(rule.name);
-  const title = rule.recognised ? `Edit ${label}` : COPY.editLocked;
+  const refused = !rule.recognised;
+  const title = refused ? COPY.editLocked : `Edit ${label}`;
 
   return (
     <button
@@ -282,8 +301,8 @@ function renderEdit(
       className="button button--ghost button--icon button--sm"
       title={title}
       aria-label={title}
-      disabled={busy || !rule.recognised}
-      onClick={() => onEdit(rule)}
+      disabled={busy || (refused && onEditRefused === undefined)}
+      onClick={() => (refused ? onEditRefused?.(rule) : onEdit(rule))}
     >
       <span aria-hidden="true">✎</span>
     </button>

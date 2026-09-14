@@ -104,3 +104,27 @@ export const SOURCING_RULES_TABLE_COPY = {
   /** Shown instead of Edit on a rule this build cannot evaluate. */
   editLocked: 'Cannot edit — this rule is no longer recognised',
 } as const;
+
+/**
+ * The three read states (#3061).
+ *
+ * `empty` says what the ABSENCE means rather than merely that the list is
+ * empty: with no rule, the router narrows nothing, which is the fact an
+ * operator needs in order to decide whether to act.
+ *
+ * `error` says explicitly that nothing changed. A failed READ is the one
+ * failure an operator is most likely to mistake for a lost configuration.
+ */
+export const SOURCING_RULES_STATE_COPY = {
+  loadingTitle: 'Loading sourcing rules',
+  loadingMessage: 'Reading the rules that decide where an order ships from…',
+  errorTitle: 'Could not load sourcing rules',
+  errorMessage:
+    'Your sourcing rules could not be read just now. Nothing has changed — this is a loading problem, not a configuration one.',
+  errorRetry: 'Retry',
+  emptyEyebrow: 'No rules',
+  emptyTitle: 'Nothing decides where an order ships from yet',
+  emptyMessage:
+    'Without a rule, no location is ruled out and none is ranked. Add a rule to start narrowing down which locations qualify.',
+  addRule: 'Add rule',
+} as const;
