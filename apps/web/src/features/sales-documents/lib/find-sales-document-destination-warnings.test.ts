@@ -194,13 +194,13 @@ describe('findSalesDocumentDestinationWarnings', () => {
 describe('describeSalesDocumentDestinationWarningTitle', () => {
   it('should singularize for exactly one offending destination', () => {
     expect(describeSalesDocumentDestinationWarningTitle(1)).toBe(
-      'One destination is not issuing anything',
+      'One destination cannot route',
     );
   });
 
   it('should pluralize for more than one', () => {
     expect(describeSalesDocumentDestinationWarningTitle(2)).toBe(
-      '2 destinations are not issuing anything',
+      '2 destinations cannot route',
     );
   });
 });
