@@ -69,6 +69,27 @@ describe('Invoicing list (integration)', () => {
 
   beforeAll(async () => {
     harness = await getTestHarness();
+    // Reset BEFORE the first test, not only after each one. The first case
+    // below asserts a GLOBAL `total: 0`, so with an `afterEach`-only reset it
+    // inherits whatever the previous SUITE left in `invoice_records` and is
+    // silently order-dependent — and jest's suite order is not stable, since
+    // it derives from cached per-file timings. It surfaced when #2300 changed
+    // api boot time (no drain) and shrank this file's sibling, reshuffling the
+    // run: two leftover `ol_order_*` rows made this assert `total: 2`.
+    await resetTestHarness();
+  });
+
+  // The FIRST test asserts `total: 0` against a Postgres instance shared with
+  // every other int-spec file in this suite (single worker, no
+  // testSequencer) — an `afterEach`-only reset is a courtesy to the next
+  // file, not isolation for this one, so this file's first assertion can
+  // read whatever the previous file left behind.
+  // `invoice-record-offline-recovery-query.int-spec.ts`'s own
+  // `beforeEach`-only reset leaves its last test's rows in `invoice_records`
+  // after that file finishes, which is exactly what was observed failing
+  // this test in CI (#2986).
+  beforeEach(async () => {
+    await resetTestHarness();
   });
 
   afterEach(async () => {

@@ -66,6 +66,7 @@ export * from './domain/types/routing.types';
 export * from './domain/types/fulfillment-execution.types';
 
 export * from './domain/ports/fulfillment-router.port';
+export * from './domain/ports/fulfillment-router-resolver.port';
 export * from './domain/ports/fulfillment-executor.port';
 export * from './domain/ports/capabilities/fulfillment-status-source.capability';
 
@@ -91,11 +92,13 @@ export type {
   CreateFulfillmentWorkInput,
   CreateFulfillmentWorkLineInput,
   FulfillmentWorkTransaction,
+  ListTimedOutDispatchesInput,
   PlaceFulfillmentHoldInput,
   RecordFulfillmentAcceptanceInput,
   RecordFulfillmentLineProgressInput,
   RecordFulfillmentRejectionInput,
   ReleaseFulfillmentHoldInput,
+  TimedOutFulfillmentDispatch,
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
 } from './domain/ports/fulfillment-work-repository.port';
@@ -110,6 +113,15 @@ export { FulfillmentWorkUnassignedError } from './domain/exceptions/fulfillment-
 
 export * from './domain/types/fulfillment-progress-event.types';
 export * from './domain/types/routing-decision.types';
+export * from './domain/types/fulfillment-dispatch-enqueue.types';
+
+// #2869 R7 / M3 — the live-decision refusal. Ships with NO caller: the manual
+// route producer is #2869's and does not exist yet. Exported anyway because it
+// is permanent and guards a physical, unrecoverable event (two parcels, two
+// carriers, no compensating write). See the file header for the full argument,
+// including the fact that the obligation on #2869's producer to call it is
+// enforced socially rather than by a guard.
+export * from './domain/types/manual-route-admissibility.types';
 
 // #2396's held-order reason. Narrower than the issue text on purpose — see the
 // file header for the #2352 `sourcing-ambiguous` double-count it avoids.
@@ -175,6 +187,29 @@ export { MissingFulfillmentWorkActionFieldError } from './domain/exceptions/miss
 export { FulfillmentWorkVersionConflictError } from './domain/exceptions/fulfillment-work-version-conflict.error';
 export { FulfillmentWorkVersionMismatchError } from './domain/exceptions/fulfillment-work-version-mismatch.error';
 export { UnsupportedFulfillmentWorkActionError } from './domain/exceptions/unsupported-fulfillment-work-action.error';
+
+// Parcel verification at the pack bench (#2418). The SERVICE INTERFACE and its
+// vocabulary cross the barrel; `FulfillmentWorkRepositoryPort` still does not,
+// per the deny pattern. Note there is no `closeParcel` anywhere in what is
+// published, and that absence is decision D18 rather than an omission.
+export * from './domain/types/fulfillment-verification.types';
+export type { IFulfillmentVerificationService } from './application/interfaces/fulfillment-verification.service.interface';
+
+// ADR-054's timeout-as-rejection sweep (#2712). The SERVICE INTERFACE, its I/O
+// and the pure rules cross the barrel; `FulfillmentWorkRepositoryPort` still
+// does not, per the deny pattern. `TimedOutFulfillmentDispatch` and
+// `ListTimedOutDispatchesInput` are the read's INPUT/projection shapes and ride
+// on the same rule as the other exported repository input shapes above.
+export * from './domain/types/fulfillment-dispatch-timeout.types';
+export type { IFulfillmentDispatchTimeoutService } from './application/interfaces/fulfillment-dispatch-timeout.service.interface';
+export * from './application/types/fulfillment-dispatch-timeout-sweep.types';
+
+// The dispatch-relay reconcile pass (#2728). The pure rules, the read seam and
+// its I/O shapes; the re-drive itself is `orders`' `relayDispatch` and is
+// deliberately not reachable from here.
+export * from './domain/types/fulfillment-relay-reconcile.types';
+export type { IFulfillmentRelayReconcileService } from './application/interfaces/fulfillment-relay-reconcile.service.interface';
+export * from './application/types/fulfillment-relay-reconcile-sweep.types';
 
 export { FulfillmentModule } from './fulfillment.module';
 

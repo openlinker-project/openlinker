@@ -16,6 +16,8 @@ import { AutomationModule } from '@openlinker/core/automation';
 import { OperationalSettingsModule } from '@openlinker/core/operational-settings';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ReturnsModule } from '@openlinker/core/returns';
+import { AnalyticsModule as CoreAnalyticsModule } from '@openlinker/core/analytics';
+import { CurrencyModule } from '@openlinker/core/currency';
 import { ListingsModule } from '@openlinker/core/listings/services';
 import { ShippingModule } from '@openlinker/core/shipping';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
@@ -76,7 +78,10 @@ import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
 import { PendingRecoveryHandler } from './handlers/pending-recovery.handler';
 import { FulfillmentWorkDispatchHandler } from './handlers/fulfillment-work-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.handler';
+import { FulfillmentWorkRelaySweepHandler } from './handlers/fulfillment-work-relay-sweep.handler';
+import { FulfillmentWorkTimeoutSweepHandler } from './handlers/fulfillment-work-timeout-sweep.handler';
 import { PaymentStatusRefreshHandler } from './handlers/payment-status-refresh.handler';
+import { AnalyticsCurrencyRecalculateHandler } from './handlers/analytics-currency-recalculate.handler';
 import { HandlerRegistrationService } from './handlers/handler-registration.service';
 
 @Module({
@@ -101,6 +106,8 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     // for `automation.trigger.deadlineSweep`. OrdersModule imports AutomationModule too (for T5's
     // write-site emission) but does not re-export it, and Nest imports are not transitive.
     AutomationModule,
+    CoreAnalyticsModule, // #2468 — exposes ANALYTICS_REMEDIATION_RUN_SERVICE_TOKEN for the analytics.currency.recalculate handler
+    CurrencyModule, // #2468 — exposes REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN; OrdersModule imports it but does not re-export the token
   ],
   providers: [
     JobIntakeConsumer,
@@ -112,6 +119,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     MarketplaceOrderFxStampHandler,
     MarketplaceOrderFxStampSweepHandler,
     OrdersTaxRateBackfillHandler,
+    AnalyticsCurrencyRecalculateHandler,
     MarketplaceOfferQuantityUpdateHandler,
     MarketplaceOfferQuantityReconcileHandler,
     MarketplaceOfferFieldUpdateHandler,
@@ -158,6 +166,8 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     PaymentStatusRefreshHandler,
     FulfillmentWorkDispatchHandler,
     FulfillmentWorkRouteHandler,
+    FulfillmentWorkTimeoutSweepHandler,
+    FulfillmentWorkRelaySweepHandler,
     HandlerRegistrationService,
   ],
 })

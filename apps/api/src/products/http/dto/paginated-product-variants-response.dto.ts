@@ -5,15 +5,20 @@
  *
  * @module apps/api/src/products/http/dto
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProductVariantResponseDto } from './product-variant-response.dto';
 
 export class PaginatedProductVariantsResponseDto {
   @ApiProperty({ type: [ProductVariantResponseDto] })
   items!: ProductVariantResponseDto[];
 
-  @ApiProperty({ description: 'Total number of variants matching the filters' })
-  total!: number;
+  /**
+   * Absent - not `0` - when the caller passed `?withTotal=false` (#2944).
+   */
+  @ApiPropertyOptional({
+    description: 'Total number of variants matching the filters. Omitted when ?withTotal=false.',
+  })
+  total?: number;
 
   @ApiProperty({ description: 'Page size used for this response' })
   limit!: number;

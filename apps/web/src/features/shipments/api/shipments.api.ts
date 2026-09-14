@@ -76,6 +76,8 @@ function buildQuery(filters?: ShipmentFilters, pagination?: ShipmentPagination):
   if (filters?.connectionId) params.set('connectionId', filters.connectionId);
   if (filters?.shippingMethod) params.set('shippingMethod', filters.shippingMethod);
   if (filters?.hasTracking !== undefined) params.set('hasTracking', String(filters.hasTracking));
+  // #2073. Only ever sent as `true` — see the field's note in shipments.types.ts.
+  if (filters?.waybillRelayStuck === true) params.set('waybillRelayStuck', 'true');
   if (filters?.hasProviderShipmentId !== undefined)
     params.set('hasProviderShipmentId', String(filters.hasProviderShipmentId));
   if (filters?.createdFrom) params.set('createdFrom', filters.createdFrom);

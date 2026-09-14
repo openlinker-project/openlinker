@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 import type { ApiClient, CoreApiClient, PluginApiNamespaces } from '../app/api/api-client';
 import { ApiClientProvider } from '../app/api/api-client-provider';
 import { ApiError } from '../shared/api/api-error';
+import type { BenchApi } from '../features/bench/api/bench-work.api';
 import type { Connection } from '../features/connections/api/connections.types';
 import type { EanCategoryMatchStreamEvent } from '../features/listings/api/listings.types';
 import { createNoopSessionAdapter } from '../shared/auth/noop-session-adapter';
@@ -105,6 +106,67 @@ async function* emptyResolveCategoryStream(): AsyncGenerator<
   };
 }
 
+/**
+ * Derive the two-stage reads from a namespace's `list` mock (#2947).
+ *
+ * The four expensive lists fetch their rows (`listRows`) and their total
+ * (`count`) separately. Hundreds of existing tests mock only `list`, and
+ * mechanically editing every one of them would be churn that proves nothing -
+ * worse, a test still asserting on a `list` spy the page no longer calls would
+ * pass for the wrong reason.
+ *
+ * So the two stages are DERIVED from whatever `list` answers, which is exactly
+ * the relationship the real API has: the same page, split in two. A test that
+ * needs the two to diverge - a count that fails while the rows succeed, say -
+ * overrides `listRows` / `count` explicitly, and an explicit override wins.
+ *
+ * Two consequences to know before reaching for the derived form:
+ *
+ * - The derived `count` CALLS the same `list` spy, so `list` is invoked twice
+ *   per render. An `expect(list).toHaveBeenCalledTimes(n)` will be off, and a
+ *   `mockResolvedValueOnce` CHAIN becomes a race between the rows and the count
+ *   for one queue.
+ * - A test asserting on a `list` spy for one of these four namespaces is
+ *   asserting on a function the PAGE no longer calls, so it can pass for the
+ *   wrong reason.
+ *
+ * Either case means the test wants the two stages apart: mock `listRows` and
+ * `count` explicitly. The listings tab-count tests hit the first one and do
+ * exactly that.
+ */
+function withTwoStageReads<T extends Record<string, unknown>>(namespace: T): T {
+  const list = namespace.list;
+  if (typeof list !== 'function') return namespace;
+  const call = list as (...args: unknown[]) => Promise<{
+    items: unknown[];
+    total: number;
+    limit: number;
+    offset: number;
+  }>;
+  return {
+    listRows:
+      namespace.listRows ??
+      vi.fn(async (...args: unknown[]) => {
+        const page = await call(...args);
+        return { items: page.items, limit: page.limit, offset: page.offset };
+      }),
+    count:
+      namespace.count ??
+      vi.fn(async (filters?: unknown) => {
+        // Everything the page carries EXCEPT the page itself. `/listings/count`
+        // answers with `lifecycleCounts` beside `total`, and dropping it here
+        // would leave the tab bar permanently unlabelled in every test.
+        const page = await call(filters);
+        const rest: Record<string, unknown> = { ...page };
+        delete rest.items;
+        delete rest.limit;
+        delete rest.offset;
+        return rest;
+      }),
+    ...namespace,
+  };
+}
+
 export function createMockApiClient(
   overrides: DeepPartialApiClient = {},
   mockApiNamespaces: readonly PluginMockApiNamespacesFactory[] = IN_TREE_MOCK_API_NAMESPACES,
@@ -173,6 +235,7 @@ export function createMockApiClient(
           averageOrderValue: 0,
           medianOrderValue: 0,
           unitsSold: 0,
+          unconvertedUnitsSold: 0,
           cancelledCount: 0,
           cancelledValue: 0,
           unconvertedCount: 0,
@@ -193,12 +256,76 @@ export function createMockApiClient(
         unresolvedProductCount: 0,
         coverageGapAvailable: true,
       }),
+      getCoverage: vi.fn().mockResolvedValue({
+        categories: [
+          { category: 'currency', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+          { category: 'tax-a', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+          { category: 'tax-b', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+          { category: 'tax-c', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+          { category: 'product-matching', status: 'open', affectedCount: 0, sampleOrderIds: [] },
+        ],
+      }),
+      recalculateCurrency: vi.fn().mockResolvedValue({
+        id: 'ol_remrun_test',
+        category: 'currency',
+        status: 'in-progress',
+        detail: null,
+        affectedCount: 0,
+        triggeredByUserId: 'user-1',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
+      getCurrencyRemediationStatus: vi.fn().mockResolvedValue({
+        id: 'ol_remrun_test',
+        category: 'currency',
+        status: 'in-progress',
+        detail: null,
+        affectedCount: 0,
+        triggeredByUserId: 'user-1',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
+      getCurrencyMismatchOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      cancelStuckCurrencyRun: vi.fn().mockResolvedValue({
+        id: 'ol_remrun_test',
+        category: 'currency',
+        status: 'failed',
+        detail: 'Cancelled by operator - previous attempt did not resolve',
+        affectedCount: 0,
+        triggeredByUserId: 'user-1',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      }),
+      getTaxCoverageOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      getCoverageByConnection: vi.fn().mockResolvedValue({
+        categories: [
+          { category: 'currency', rows: [] },
+          { category: 'tax-a', rows: [] },
+          { category: 'tax-b', rows: [] },
+          { category: 'tax-c', rows: [] },
+        ],
+      }),
+      rerunTaxBackfill: vi.fn().mockResolvedValue({ scanned: 0, updated: 0 }),
+      getProductMatchingOrders: vi.fn().mockResolvedValue({ items: [], total: 0 }),
       getTopProductVariantSales: vi.fn().mockResolvedValue({
         productId: '',
         variants: [],
       }),
       ...overrides.analytics,
     } as ApiClient['analytics'],
+    analyticsSettings: {
+      getSettings: vi.fn().mockResolvedValue({
+        displayCurrency: 'EUR',
+        displayCurrencySource: 'default',
+        rateBasis: 'current',
+        includeBackfilledTaxRatesInNetSales: false,
+        netGrossBasis: 'gross',
+        updatedAt: null,
+        updatedByUserId: null,
+      }),
+      updateSettings: vi.fn().mockResolvedValue(undefined),
+      ...overrides.analyticsSettings,
+    } as ApiClient['analyticsSettings'],
     analyticsTrust: {
       getTrust: vi.fn().mockResolvedValue({
         generatedAt: '2026-01-01T00:00:00.000Z',
@@ -320,7 +447,7 @@ export function createMockApiClient(
       }),
       ...overrides.cursors,
     } as ApiClient['cursors'],
-    customers: {
+    customers: withTwoStageReads({
       list: vi.fn().mockResolvedValue({
         items: [],
         total: 0,
@@ -329,7 +456,7 @@ export function createMockApiClient(
       }),
       getById: vi.fn().mockResolvedValue(null),
       ...overrides.customers,
-    } as ApiClient['customers'],
+    }) as ApiClient['customers'],
     fiscalization: {
       // #1909 — empty list default: the normal never-registered state, never a
       // 404 (OpenLinker never asserts an order requires a receipt).
@@ -411,6 +538,9 @@ export function createMockApiClient(
         .mockRejectedValue(
           new ApiError('No content snapshot', 409, { message: 'No content snapshot' }),
         ),
+      // #2558 — default so a rejected-clearance resend affordance doesn't hit
+      // `undefined` in a test that doesn't override it.
+      resendToKsef: vi.fn().mockResolvedValue(null),
       ...overrides.invoicing,
     } as ApiClient['invoicing'],
     operationalSettings: {
@@ -492,7 +622,7 @@ export function createMockApiClient(
       update: vi.fn().mockResolvedValue(undefined),
       ...overrides.operationalSettings,
     } as ApiClient['operationalSettings'],
-    orders: {
+    orders: withTwoStageReads({
       list: vi.fn().mockResolvedValue({
         items: [],
         total: 0,
@@ -528,8 +658,8 @@ export function createMockApiClient(
         jobType: '',
       }),
       ...overrides.orders,
-    } as ApiClient['orders'],
-    listings: {
+    }) as ApiClient['orders'],
+    listings: withTwoStageReads({
       list: vi.fn().mockResolvedValue({
         items: [],
         total: 0,
@@ -624,7 +754,7 @@ export function createMockApiClient(
       // produces. Tests that exercise the Resolve step override it.
       resolveCategoriesStream: vi.fn(() => emptyResolveCategoryStream()),
       ...overrides.listings,
-    } as ApiClient['listings'],
+    }) as ApiClient['listings'],
     mailerSettings: {
       get: vi.fn().mockResolvedValue({
         transport: 'console',
@@ -667,7 +797,7 @@ export function createMockApiClient(
       clearCredentials: vi.fn().mockResolvedValue(undefined),
       ...overrides.posthogSettings,
     } as ApiClient['posthogSettings'],
-    products: {
+    products: withTwoStageReads({
       list: vi.fn().mockResolvedValue({
         items: [],
         total: 0,
@@ -680,7 +810,7 @@ export function createMockApiClient(
       // care about the SKU/EAN tags.
       getVariant: vi.fn().mockRejectedValue(new ApiError('Variant not found', 404, null)),
       ...overrides.products,
-    } as ApiClient['products'],
+    }) as ApiClient['products'],
     promptTemplates: {
       list: vi.fn().mockResolvedValue([]),
       get: vi.fn().mockResolvedValue(null),
@@ -724,6 +854,79 @@ export function createMockApiClient(
     // #2411. The default answers the SHAPE the parse layer returns (a page
     // object), never a bare array — a mock returning `[]` would let the panel
     // read `.works` as undefined and pass, while the real client never can.
+    // #2416. Defaulted to the SHAPE the parse layer returns, never a bare
+    // array or `undefined` — a bench test whose mock omitted `routing` would
+    // read `routing.ready` as a crash from inside a render, which looks like a
+    // defect in the surface rather than a missing mock. `ready: true` is the
+    // ordinary install, so a test that cares about the not-routed empty state
+    // has to say so explicitly.
+    // #2905. Every member is defaulted, the `as` cast is gone, AND every
+    // `vi.fn()` is parameterised with the member's own signature.
+    //
+    // Two of the eight were defaulted behind a cast, which is the shape
+    // `fulfillment` below already avoids: an absent member fails as
+    // `apiClient.bench.getParcel is not a function` from inside a render — an
+    // inscrutable crash that reads as a defect in the surface rather than as a
+    // missing mock — and the cast is what let the other six stay absent.
+    //
+    // Dropping the cast bought member-NAME presence and nothing more: a bare
+    // `vi.fn()` is `Mock<any>`, so `mockResolvedValue` accepted any payload at
+    // all and the `getDocuments` default was in fact three fields short of
+    // `BenchDocuments` with a `label.state` outside its own union — which made
+    // `label.shipmentId` undefined and walked `bench-documents.tsx`'s
+    // `=== null` guard straight into `downloadLabel(undefined)`. The
+    // `vi.fn<BenchApi['x']>()` parameter is what turns a future drift into a
+    // compile error rather than a payload that merely looks plausible.
+    bench: {
+      listWork: vi.fn<BenchApi['listWork']>().mockResolvedValue({
+        works: [],
+        executorName: null,
+        routing: { ready: true, reason: null },
+        total: 0,
+      }),
+      setExpedited: vi.fn<BenchApi['setExpedited']>().mockResolvedValue(undefined),
+      getParcel: vi
+        .fn<BenchApi['getParcel']>()
+        .mockRejectedValue(new Error('bench.getParcel not stubbed')),
+      verifyUnit: vi
+        .fn<BenchApi['verifyUnit']>()
+        .mockRejectedValue(new Error('bench.verifyUnit not stubbed')),
+      reopenParcel: vi
+        .fn<BenchApi['reopenParcel']>()
+        .mockRejectedValue(new Error('bench.reopenParcel not stubbed')),
+      // The neutral "no paper exists yet" answer: an unissued invoice and a
+      // box no label was ever bought for. Every nullable field is spelled out
+      // rather than omitted, so a surface reading one gets `null` — the value
+      // the API would really send — and not `undefined`.
+      getDocuments: vi.fn<BenchApi['getDocuments']>().mockResolvedValue({
+        workId: 'work-unstubbed',
+        invoice: {
+          state: 'missing',
+          invoiceId: null,
+          documentNumber: null,
+          issuedAt: null,
+          blockReason: null,
+          unresolvedReason: null,
+        },
+        label: {
+          state: 'none',
+          shipmentId: null,
+          carrier: null,
+          trackingNumber: null,
+          providerCode: null,
+          carrierMessage: null,
+          carrierMessageRedacted: false,
+          failedAt: null,
+        },
+      }),
+      downloadInvoice: vi
+        .fn<BenchApi['downloadInvoice']>()
+        .mockRejectedValue(new Error('bench.downloadInvoice not stubbed')),
+      listUnlabelledParcels: vi
+        .fn<BenchApi['listUnlabelledParcels']>()
+        .mockResolvedValue({ parcels: [], total: 0, truncated: false }),
+      ...overrides.bench,
+    },
     fulfillment: {
       listByOrder: vi.fn().mockResolvedValue({ works: [], total: 0, limit: 50, offset: 0 }),
       // #2410. `list` and `get` are defaulted HERE rather than in the specs
@@ -778,6 +981,9 @@ export function createMockApiClient(
       // #2383 — the order detail page reads this on every render. Defaulted to
       // the no-returns case so every existing order test keeps its behaviour.
       listReturnEventsForOrder: vi.fn().mockResolvedValue([]),
+      // #2646 — the return detail reads this on every render. Defaulted to the
+      // no-activity case so every existing returns test keeps its behaviour.
+      listReturnEventsForReturn: vi.fn().mockResolvedValue([]),
       ...overrides.returns,
     } as ApiClient['returns'],
     shipments: {

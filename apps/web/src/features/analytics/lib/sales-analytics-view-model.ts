@@ -157,7 +157,7 @@ export function groupChannelTotalsByCurrency(channels: ChannelSalesAnalytics[]):
       revenue,
       orderCount,
       averageOrderValue: orderCount === 0 ? 0 : revenue / orderCount,
-      unitsSold: sum(contributing, (c) => c.unitsSold),
+      unitsSold: sum(contributing, (c) => c.unitsSold + c.unconvertedUnitsSold),
       revenueShare: sum(contributing, (c) => c.revenueShare),
       netRevenue,
       netAverageOrderValue: netOrderCount === 0 ? 0 : netRevenue / netOrderCount,

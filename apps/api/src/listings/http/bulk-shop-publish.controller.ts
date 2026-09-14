@@ -32,6 +32,7 @@ import {
 import type { BulkShopPublishBatchSummary } from '@openlinker/core/listings';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { BulkPublishProductRequestDto } from './dto/publish-product.dto';
@@ -101,6 +102,7 @@ export class BulkShopPublishController {
     }
   }
 
+  @AnyRole()
   @Get(':batchId')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'batchId', format: 'uuid' })

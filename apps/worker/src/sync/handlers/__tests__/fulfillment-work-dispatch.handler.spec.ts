@@ -20,7 +20,8 @@ describe('FulfillmentWorkDispatchHandler', () => {
   let handler: FulfillmentWorkDispatchHandler;
   let handshake: { dispatch: jest.Mock };
   let integrations: { getCapabilityAdapter: jest.Mock };
-  let orderRecords: { getOrderRecord: jest.Mock };
+  let orderRecords: { getOrderRecord: jest.Mock; markOmsAttention: jest.Mock };
+  let timeouts: { recomputeAcceptanceAttention: jest.Mock };
 
   const executor = { requestFulfillment: jest.fn(), requestCancellation: jest.fn() };
 
@@ -68,12 +69,22 @@ describe('FulfillmentWorkDispatchHandler', () => {
       }),
     };
     integrations = { getCapabilityAdapter: jest.fn().mockResolvedValue(executor) };
-    orderRecords = { getOrderRecord: jest.fn().mockResolvedValue(readyRecord()) };
+    orderRecords = {
+      getOrderRecord: jest.fn().mockResolvedValue(readyRecord()),
+      // #2712: the handler refreshes the order's A3-X state after every
+      // handshake outcome. Stubbed rather than asserted here — that behaviour
+      // has its own spec; this one must simply not blow up on it.
+      markOmsAttention: jest.fn().mockResolvedValue(undefined),
+    };
+    timeouts = {
+      recomputeAcceptanceAttention: jest.fn().mockResolvedValue({ kind: 'none' }),
+    };
 
     handler = new FulfillmentWorkDispatchHandler(
       handshake as never,
       integrations as never,
-      orderRecords as never
+      orderRecords as never,
+      timeouts as never
     );
   });
 

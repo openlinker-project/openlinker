@@ -29,6 +29,25 @@ import { Column, Entity, Index, PrimaryColumn } from 'typeorm';
 
 @Entity('fulfillment_progress_claims')
 @Index('IDX_fulfillment_progress_claims_claimed_at', ['claimedAt'])
+/**
+ * The #2728 reconcile frontier's index.
+ *
+ * PARTIAL, and NON-UNIQUE — which is what keeps the `orIgnore()` precondition in
+ * the header above intact: that precondition is about UNIQUENESS declarations, and
+ * this adds none, so the bare `ON CONFLICT` still targets the composite PK.
+ *
+ * It exists because `fulfillment_works."dispatchRelayedAt" IS NULL` is true of
+ * nearly every work row and is therefore not the selective half of that sweep's
+ * predicate; this is. The residual is stated rather than hidden: a work that HAS
+ * been relayed still has its claim row in this index and is filtered out by the
+ * join rather than excluded by the index, so the scan lengthens with history. The
+ * honest fix if that ever bites is a `shippedAt` column on `fulfillment_works` —
+ * declined for now because it would make a sixth writer on that table and a second
+ * source of truth for one fact (see `UnrelayedShippedDispatch`).
+ */
+@Index('IDX_fulfillment_progress_claims_shipped', ['claimedAt'], {
+  where: `"eventKind" = 'shipped'`,
+})
 export class FulfillmentProgressClaimOrmEntity {
   /** References `fulfillment_works.id`. FK declared in the migration (see above). */
   @PrimaryColumn({ type: 'text', primaryKeyConstraintName: 'PK_fulfillment_progress_claims' })

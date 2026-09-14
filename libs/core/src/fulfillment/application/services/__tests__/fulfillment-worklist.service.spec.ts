@@ -27,8 +27,12 @@ const workAt = (over: Partial<FulfillmentWork> = {}): FulfillmentWork => ({
   version: 7,
   cancelledAt: null,
   dispatchRelayedAt: new Date('2026-08-01T00:00:00Z'),
+  expeditedAt: null,
   acceptedAt: null,
   externalWorkId: null,
+  parcelClosedAt: null,
+  packedByUserId: null,
+  packedByService: null,
   lines: [
     {
       id: 'line-1',

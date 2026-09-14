@@ -245,6 +245,19 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // Sales-document settings/order/panel states, end to end against the
+      // real mockup + backend (#2563 M10). Seeds its own fixed set of
+      // connections/orders/routing directly in Postgres (the ONE exception to
+      // this package's HTTP-only rule — see `src/support/sales-document-*-seed.ts`),
+      // so `retries: 0`: a retry would re-seed mid-run and could read a row
+      // the previous attempt half-wrote.
+      name: 'sales-documents',
+      testMatch: /sales-documents\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Order-ingestion behaviour asserted against a real source (#2277 — the
       // per-order currency). MUTATING: each spec synthesizes PrestaShop orders
       // through the webservice (customer, address, cart, order), so `retries: 0`
@@ -315,6 +328,21 @@ export default defineConfig({
       testMatch: /label-download-errors\/.*\.spec\.ts/,
       retries: 1,
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      // Analytics mockup-parity: screenshots + content assertions comparing the
+      // real, running /analytics page against the repo-committed mockup
+      // (docs/plans/mockups/analytics-display-currency-picker.html), state by
+      // state (#2482). MUTATING: synthesizes PrestaShop orders and, for the
+      // currency-mismatch states, temporarily flips the system-wide reporting
+      // currency (restored in `afterAll`) — never run this against a shared
+      // stack another session is reading `/analytics` on. `retries: 0`: a
+      // silent retry could re-flip the reporting currency mid-run.
+      name: 'analytics',
+      testMatch: /analytics\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
   ],
 });

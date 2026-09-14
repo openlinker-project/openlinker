@@ -13,8 +13,9 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 // a separate `import type` line from this module back into the value import
 // (see the same note in `offer-mapping-response.dto.ts`).
 import { OfferLifecycleValues, type OfferLifecycle } from '@openlinker/core/listings';
+import { PaginatedReadQueryDto } from '../../../common/dto/paginated-read-query.dto';
 
-export class ListOfferMappingsQueryDto {
+export class ListOfferMappingsQueryDto extends PaginatedReadQueryDto {
   @ApiPropertyOptional({ description: 'Filter by connection ID' })
   @IsOptional()
   @IsString()
@@ -88,9 +89,7 @@ export class ListOfferMappingsQueryDto {
       'must not pay for one.',
   })
   @IsOptional()
-  @Transform(({ value }): unknown =>
-    value === 'true' ? true : value === 'false' ? false : value
-  )
+  @Transform(({ value }): unknown => (value === 'true' ? true : value === 'false' ? false : value))
   @IsBoolean()
   includeLifecycleCounts?: boolean = false;
 

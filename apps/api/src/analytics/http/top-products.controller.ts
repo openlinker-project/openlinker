@@ -15,9 +15,17 @@
  * field on the list rows above: see `ITopProductsService`'s doc for why.
  *
  * @module apps/api/src/analytics/http
+ *
+ * **`@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413).** See
+ * `sales-analytics.controller.ts` for the reasoning shared by every analytics
+ * read.
  */
 import { BadRequestException, Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN,
+  type IAnalyticsDisplaySettingsService,
+} from '@openlinker/core/analytics';
 import { TopProductsQueryDto } from './dto/top-products-query.dto';
 import { TopProductsResponseDto } from './dto/top-products-response.dto';
 import { SalesAnalyticsQueryDto } from './dto/sales-analytics-query.dto';
@@ -26,6 +34,7 @@ import {
   TOP_PRODUCTS_SERVICE_TOKEN,
   type ITopProductsService,
 } from '../application/services/top-products.service.interface';
+import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiBearerAuth()
 @ApiTags('analytics')
@@ -33,9 +42,12 @@ import {
 export class TopProductsController {
   constructor(
     @Inject(TOP_PRODUCTS_SERVICE_TOKEN)
-    private readonly topProductsService: ITopProductsService
+    private readonly topProductsService: ITopProductsService,
+    @Inject(ANALYTICS_DISPLAY_SETTINGS_SERVICE_TOKEN)
+    private readonly displaySettings: IAnalyticsDisplaySettingsService
   ) {}
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('top-products')
   @ApiOperation({
     summary:
@@ -51,16 +63,25 @@ export class TopProductsController {
       throw new BadRequestException('to must be after from');
     }
 
-    return this.topProductsService.getTopProducts({
-      from,
-      to,
-      sourceConnectionId: query.sourceConnectionId,
-      sortBy: query.sortBy ?? 'revenue',
-      limit: query.limit ?? 20,
-      offset: query.offset ?? 0,
-    });
+    // Read fresh on every request (#2469): the setting is an operator toggle
+    // whose whole point is that it takes effect on the next query, and `orders`
+    // cannot read it itself without an `orders -> analytics` edge.
+    const { includeBackfilledTaxRatesInNetSales } = await this.displaySettings.getSettings();
+
+    return this.topProductsService.getTopProducts(
+      {
+        from,
+        to,
+        sourceConnectionId: query.sourceConnectionId,
+        sortBy: query.sortBy ?? 'revenue',
+        limit: query.limit ?? 20,
+        offset: query.offset ?? 0,
+      },
+      includeBackfilledTaxRatesInNetSales
+    );
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('top-products/:productId/variants')
   @ApiParam({ name: 'productId', description: 'Internal product id' })
   @ApiOperation({

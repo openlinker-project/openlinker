@@ -1,4 +1,5 @@
 const path = require('path');
+const { ESM_DEPS_TRANSFORM_IGNORE_PATTERN, esmDepsJsTransform } = require('../../jest.esm-deps.cjs');
 
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
@@ -6,8 +7,12 @@ module.exports = {
   testRegex: '.*\\.spec\\.ts$',
   testSequencer: '<rootDir>/../test/openlinker.sequencer.cjs',
   transform: {
-    '^.+\\.(t|j)s$': 'ts-jest',
+    '^.+\\.ts$': 'ts-jest',
+    // ESM-only htmlparser2 chain pulled in transitively by sanitize-html
+    // >=2.17.6 via @openlinker/shared/html — see jest.esm-deps.cjs.
+    '^.+\\.js$': esmDepsJsTransform,
   },
+  transformIgnorePatterns: [ESM_DEPS_TRANSFORM_IGNORE_PATTERN],
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: '../coverage',
   testEnvironment: 'node',

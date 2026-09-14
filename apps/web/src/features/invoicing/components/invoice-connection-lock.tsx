@@ -99,6 +99,15 @@ export function InvoiceConnectionLock({
 }: InvoiceConnectionLockProps): ReactElement {
   const { t } = useTranslation();
   const glyph = status === 'failed' && !isStale ? '↻' : '🔒';
+  const hint = resolveHint(status, isStale, t);
+  // #2807 review — the mockup keeps the routing/lock rationale for a SETTLED
+  // document behind a collapsed "Why this document?" disclosure (secondary,
+  // sitting beside the correction/override actions), not as an always-visible
+  // paragraph competing with the primary content. Every OTHER hint here is
+  // operational status the operator needs to see without an extra click
+  // (a running attempt, a failed retry's numbering note, an in-doubt caution,
+  // a stale connection's limitation) — those stay visible.
+  const isSettled = !isStale && status !== 'pending' && status !== 'issuing' && status !== 'failed' && status !== 'in-doubt';
 
   return (
     <div
@@ -114,7 +123,14 @@ export function InvoiceConnectionLock({
         {connectionName}
         <span className="invoice-connection-lock__tag mono-text">{tag}</span>
       </span>
-      <span className="invoice-connection-lock__hint">{resolveHint(status, isStale, t)}</span>
+      {isSettled ? (
+        <details className="sales-document-panel__routing-disclosure invoice-connection-lock__why">
+          <summary>{t('salesDocument.panel.whyThisDocument', 'Why this document?')}</summary>
+          <span className="invoice-connection-lock__hint">{hint}</span>
+        </details>
+      ) : (
+        <span className="invoice-connection-lock__hint">{hint}</span>
+      )}
     </div>
   );
 }

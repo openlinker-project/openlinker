@@ -33,6 +33,7 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 import { ListPickupPointsQueryDto } from './dto/list-pickup-points-query.dto';
 import { PickupPointResponseDto } from './dto/pickup-point-response.dto';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
 @ApiBearerAuth()
 @ApiTags('pickup-points')
@@ -45,6 +46,7 @@ export class PickupPointController {
     private readonly lookup: IPickupPointLookupService,
   ) {}
 
+  @AnyRole()
   @Get()
   @ApiOperation({ summary: "Search a connection's pickup points (live; results cached by id)" })
   @ApiResponse({ status: 200, type: [PickupPointResponseDto] })
@@ -68,6 +70,7 @@ export class PickupPointController {
   // Connection-agnostic: paczkomat ids are a single national namespace, so the
   // cache key needs no connectionId. A miss returns 404 — there is no live
   // by-id fall-through (the finder is search-only); re-search to re-warm.
+  @AnyRole()
   @Get(':providerId')
   @ApiOperation({ summary: 'Get a cached pickup point by provider id' })
   @ApiResponse({ status: 200, type: PickupPointResponseDto })

@@ -61,6 +61,11 @@ const TABLES = [
   // #2399's append-only rejection ledger.
   'fulfillment_work_rejections',
   'fulfillment_progress_claims',
+  // #2418's verification ledger. It carries a PARTIAL index and a FK, which is
+  // exactly what this file's `indexdef` and CASCADE comparisons exist to catch —
+  // a predicate differing between the migration and the entity would let the
+  // count read return voided units in production and not in tests.
+  'fulfillment_work_verifications',
   'routing_decisions',
   // Waves 1b/1c/2, added under review of PR #2675: their migrations were as
   // unexercised as the fulfilment ones were before #2392 - the harness builds
@@ -78,6 +83,14 @@ const TABLES = [
   'automation_rules',
   'automation_runs',
   'automation_trigger_firings',
+  // #2727's line-grain shipment read model. Both tables carry a CASCADE FK that
+  // `synchronize` never builds (no `@ManyToOne`), and `shipment_lines` carries
+  // the capacity CHECK that is the DB twin of the pure
+  // `checkShipmentLineCapacity` — so this file is the only place either can be
+  // verified. They join it rather than getting a sibling spec, for the reason
+  // stated above: the expensive part is the migration chain, already run once.
+  'shipment_lines',
+  'shipment_line_events',
 ] as const;
 
 const COLUMNS_SQL = `
@@ -389,6 +402,28 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     expect(checkNames).toEqual(expect.arrayContaining([
       'CHK_fulfillment_holds_actor',
       'CHK_fulfillment_work_lines_capacity',
+      // #2413. Named here rather than left to the definition diff because this
+      // file's prose reasons about it: it is the one CHECK in the slice that
+      // deliberately DIVERGES from the holds XOR it otherwise mirrors (at-most-
+      // one, not exactly-one — a work is created unpacked). A silent drop would
+      // otherwise leave both sides matching and both wrong.
+      'CHK_fulfillment_works_packed_actor',
+      // #2890. Named for the same reason and one stronger: it is the SECOND
+      // `@Check` on this table, departing from the one-per-table habit the rest
+      // of `libs/core` keeps, so a later tidy-up folding it into its sibling is
+      // a plausible edit — and one that would leave both schemas matching and
+      // the constraint's own name gone.
+      'CHK_fulfillment_works_closed_parcel_actor',
+      // #2727. Named here rather than left to the definition diff because this
+      // file's prose reasons about it: it deliberately OMITS the obvious
+      // `"shippedQuantity" <= "quantity"` clause (re-ingestion rewrites the
+      // order snapshot, and a dispatch retry reuses one shipment row, so both
+      // paths legitimately exceed the frozen quantity). A later reader
+      // "completing" it would break ordinary operation inside a best-effort
+      // catch, and a silent drop of the whole constraint would leave both
+      // schemas matching and both wrong.
+      'CHK_shipment_lines_capacity',
+      'CHK_shipment_line_events_quantity_positive',
     ]));
 
     // The capacity predicate spelled out clause by clause, so a weakening
@@ -405,6 +440,78 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       expect(capacity).toContain(clause);
     }
 
+    // #2727's capacity predicate, clause by clause for the same reason — and
+    // additionally asserting the clause that must NOT be there. That omission is
+    // load-bearing: `"shippedQuantity" <= "quantity"` looks like a missing
+    // clause and is a trap, because re-ingestion rewrites `orderSnapshot`
+    // wholesale and `ShipmentDispatchService` reuses one shipment row across
+    // retries, so both paths legitimately produce a shipped total above the
+    // frozen quantity. Adding it would raise inside the reconcile's best-effort
+    // catch and silently stop the read model converging — a failure whose only
+    // signal is a warn line. A negative assertion is the only thing that can
+    // stop a later reader "completing" the constraint.
+    const lineCapacity = checksOf(fromMigration).find((entry) =>
+      entry.startsWith('CHK_shipment_lines_capacity')
+    );
+    expect(lineCapacity).toBeDefined();
+    // NOTE THE UNQUOTED `quantity`. `pg_get_constraintdef` renders an
+    // all-lowercase identifier without quotes and a camelCase one with them, so
+    // the expected substrings are asymmetric. This is not cosmetic: the negative
+    // assertion below was first written as `'"shippedQuantity" <= "quantity"'`,
+    // which Postgres can never emit — so it was a check that COULD NOT FAIL and
+    // would have passed happily with the forbidden clause present.
+    for (const clause of [
+      'quantity >= 0',
+      '"shippedQuantity" >= 0',
+      '"deliveredQuantity" >= 0',
+      '"cancelledQuantity" >= 0',
+      // The load-bearing clause: it is what makes the NET shipped quantity
+      // (`shipped - cancelled`) non-negative by construction, and that net is
+      // the number every derivation reads.
+      '"cancelledQuantity" <= "shippedQuantity"',
+      '"deliveredQuantity" <= "shippedQuantity"',
+    ]) {
+      expect(lineCapacity).toContain(clause);
+    }
+    expect(lineCapacity).not.toContain('"shippedQuantity" <= quantity');
+
+    // Same treatment for the packing actor (#2413), for the same reason: a
+    // predicate weakened on BOTH sides at once passes the parity diff. Both
+    // column names must appear, and the operator must be `AND` under a `NOT` —
+    // an `OR` there would forbid exactly the both-NULL state the router needs.
+    const packedActor = checksOf(fromMigration).find((entry) =>
+      entry.startsWith('CHK_fulfillment_works_packed_actor')
+    );
+    expect(packedActor).toBeDefined();
+    for (const clause of ['"packedByUserId" IS NOT NULL', '"packedByService" IS NOT NULL', 'NOT']) {
+      expect(packedActor).toContain(clause);
+    }
+    expect(packedActor).not.toContain(' OR ');
+
+    // And the sibling that makes it conditional-on-closure (#2890). All three
+    // columns must appear, or the predicate has stopped being about closure or
+    // has stopped covering one of the two actors — both of which weaken it in
+    // a way the definition diff above cannot see, since that diff only proves
+    // the two SCHEMAS agree, not that either is right.
+    //
+    // Deliberately NO `not.toContain(' OR ')` here. That ban is meaningful for
+    // the constraint above, where an `OR` would forbid the both-NULL state the
+    // router needs. For THIS predicate the natural spelling
+    // (`"parcelClosedAt" IS NULL OR <actor set>`) is a correct equivalent, so
+    // banning `OR` would encode a rule that means nothing.
+    const closedParcelActor = checksOf(fromMigration).find((entry) =>
+      entry.startsWith('CHK_fulfillment_works_closed_parcel_actor')
+    );
+    expect(closedParcelActor).toBeDefined();
+    for (const clause of [
+      '"parcelClosedAt" IS NOT NULL',
+      '"packedByUserId" IS NULL',
+      '"packedByService" IS NULL',
+      'NOT',
+    ]) {
+      expect(closedParcelActor).toContain(clause);
+    }
+
     const foreignKeys = fromMigration.filter((r) => r.contype === 'f');
     // Containment, not an exhaustive roster — the same trap the `TABLES`-derived
     // assertion above names. The four fulfilment FKs are the ones this file's
@@ -415,6 +522,9 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       'FK_fulfillment_progress_claims_work',
       'FK_fulfillment_work_lines_work',
       'FK_fulfillment_work_rejections_work',
+      // #2418's verification ledger. A verification is a PART of its work, so
+      // deleting the work must take it — the same reading as the three above.
+      'FK_fulfillment_work_verifications_work',
     ]));
     // Each FK's DELETE RULE asserted individually, because they are not one
     // rule: the fulfilment children CASCADE with their parent work, a return's
@@ -427,7 +537,12 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       FK_fulfillment_progress_claims_work: 'ON DELETE CASCADE',
       FK_fulfillment_work_lines_work: 'ON DELETE CASCADE',
       FK_fulfillment_work_rejections_work: 'ON DELETE CASCADE',
+      FK_fulfillment_work_verifications_work: 'ON DELETE CASCADE',
       FK_return_lines_return: 'ON DELETE CASCADE',
+      // #2727: a line is part of its shipment and an act part of its line, so
+      // deleting a shipment must take both.
+      FK_shipment_lines_shipment: 'ON DELETE CASCADE',
+      FK_shipment_line_events_line: 'ON DELETE CASCADE',
       FK_inventory_locations_owner_connection: 'ON DELETE SET NULL',
       FK_reservations_inventory_item: 'ON DELETE RESTRICT',
     };
@@ -453,6 +568,11 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       'FK_fulfillment_progress_claims_work',
       'FK_fulfillment_work_lines_work',
       'FK_fulfillment_work_rejections_work',
+      // #2727: neither shipment-line entity declares a `@ManyToOne`, so
+      // `synchronize` builds neither FK — which is precisely why CASCADE for
+      // these two is unexercisable by any other int-spec.
+      'FK_shipment_lines_shipment',
+      'FK_shipment_line_events_line',
     ]) {
       expect(syncForeignKeys.map((r) => r.conname)).not.toContain(name);
     }

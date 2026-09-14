@@ -266,17 +266,27 @@ function toDocumentKind(decision: SalesDocumentDecision | null): SalesDocumentKi
  * source asserted the buyer has none) - `buyerTaxIdState` is the only intended
  * read of the column, because a bare `!== null` test reports true for the
  * asserted-none row.
+ *
+ * `taxTreatment` reads `record.totalTaxTreatment ?? record.taxTreatment`
+ * (#2829/#2832), the SAME fallback `toSalesDocumentOrderFacts` applies from
+ * the live `Order` - this is the `totalGross` field's own inclusivity, which
+ * can diverge from the line-price/subtotal `taxTreatment` (a PrestaShop order
+ * prices lines net but its total gross). Reading `record.taxTreatment` alone
+ * here would report every PrestaShop order as `net-priced` to the operator
+ * while the gate itself resolves it as gross, and the two must agree - see
+ * the country-address comment above, whose argument binds identically here.
  */
 function toOrderFacts(record: OrderRecord): SalesDocumentOrderFacts | null {
   const country = readDeliveryCountry(record.orderSnapshot);
   if (country === null || record.totalAmount === null || record.currency === null) {
     return null;
   }
+  const totalTaxTreatment = record.totalTaxTreatment ?? record.taxTreatment;
   return {
     country,
     totalGross: record.totalAmount,
     currency: record.currency,
-    ...(isTaxTreatment(record.taxTreatment) ? { taxTreatment: record.taxTreatment } : {}),
+    ...(isTaxTreatment(totalTaxTreatment) ? { taxTreatment: totalTaxTreatment } : {}),
     buyerHasTaxId: buyerHasTaxId(record.buyerTaxIdState),
   };
 }

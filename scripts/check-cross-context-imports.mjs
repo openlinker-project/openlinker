@@ -305,19 +305,11 @@ const ALLOW_LIST = new Map([
 
   // apps → webhooks.WebhookDeliveryRepositoryPort — rewire via IWebhooksService
   //
-  // `webhook-to-job.handler.ts` was deleted by #2280 (routing moved to ingress).
-  // Its coupling transferred verbatim to the one-shot upgrade drain that
-  // replaced it — same repository, same `upsert` call, and the file is itself
-  // scheduled for deletion a release later, so it inherits the entry rather
-  // than justifying a new service seam.
-  [
-    'apps/api/src/webhooks/application/handlers/legacy-inbound-webhook-drain.ts',
-    new Set(['WebhookDeliveryRepositoryPort']),
-  ],
-  [
-    'apps/api/src/webhooks/application/handlers/legacy-inbound-webhook-drain.spec.ts',
-    new Set(['WebhookDeliveryRepositoryPort']),
-  ],
+  // `webhook-to-job.handler.ts` was deleted by #2280 (routing moved to ingress)
+  // and its coupling transferred to the one-shot upgrade drain that replaced
+  // it. #2300 deleted that drain too, so both of those rows are gone — the
+  // remaining pair below is the delivery-query read surface, which is a real
+  // rewire target rather than a scheduled deletion.
   [
     'apps/api/src/webhooks/application/services/webhook-delivery-query.service.ts',
     new Set(['WebhookDeliveryRepositoryPort']),
@@ -429,6 +421,22 @@ const ALLOW_LIST = new Map([
     new Set(['CustomerProjectionRepositoryPort']),
   ],
 
+  // #2944 — ONE int-spec asserts, for all five split reads, that `countMany`
+  // and `findManyRows` describe the same set as `findMany`. It reaches the
+  // repository ports on purpose: the claim IS about repository behaviour under
+  // real SQL, so unlike the rewire debt below this entry has no rewire target
+  // and must NOT be dropped when #722 lands.
+  [
+    'apps/api/test/integration/paginated-total-split.int-spec.ts',
+    new Set([
+      'OrderRecordRepositoryPort',
+      'CustomerProjectionRepositoryPort',
+      'ProductRepositoryPort',
+      'ProductVariantRepositoryPort',
+      'OfferMappingRepositoryPort',
+    ]),
+  ],
+
   // apps → orders.OrderRecordRepositoryPort — rewire via IOrdersService
   ['apps/api/src/orders/http/orders.controller.ts', new Set(['OrderRecordRepositoryPort'])],
   ['apps/api/src/orders/http/orders.controller.spec.ts', new Set(['OrderRecordRepositoryPort'])],
@@ -469,6 +477,14 @@ const ALLOW_LIST = new Map([
     new Set(['OrderRecordRepositoryPort']),
   ],
   [
+    'apps/api/test/integration/orders/tax-coverage-net-excluded.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
+  [
+    'apps/api/test/integration/analytics/tax-inclusion-setting.int-spec.ts',
+    new Set(['OrderRecordRepositoryPort']),
+  ],
+  [
     'apps/api/test/integration/find-recently-listed-variant-ids.int-spec.ts',
     new Set(['OfferMappingRepositoryPort', 'ShopProductMappingRepositoryPort']),
   ],
@@ -489,6 +505,17 @@ const ALLOW_LIST = new Map([
   [
     'apps/api/test/integration/erli/erli-offers-vertical-slice.int-spec.ts',
     new Set(['OfferStatusSnapshotRepositoryPort']),
+  ],
+
+  // apps → listings.PriceChangeEpisodeRepositoryPort (#3142, ADR-072) — the vertical
+  // slice asserts the episode-pattern conflict-arm write (`upsertOpen`'s
+  // `ON CONFLICT DO UPDATE` against the partial `UQ_price_change_episodes_open`
+  // index) and the reopen-vs-rival-episode race, both of which only the repository
+  // can drive against a real Postgres. Rewire via a read/application service once
+  // #3162's `PriceChangesService` lands (#722).
+  [
+    'apps/api/test/integration/listings-price-change-episode.int-spec.ts',
+    new Set(['PriceChangeEpisodeRepositoryPort']),
   ],
 
   // apps → webhooks.WebhookDeliveryRepositoryPort (#1916) - the status

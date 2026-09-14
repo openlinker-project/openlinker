@@ -97,16 +97,20 @@ describe('ReturnWritesController', () => {
       expect(roles).toEqual(['admin', 'operator']);
     });
 
-    it('should NOT role-gate the correction-proposal preview', () => {
-      // A read. Reads on this resource are authenticated by the global guard and
-      // not role-gated — the posture the #2334 read controller established.
+    it('should exclude a packer from the correction-proposal preview', () => {
+      // A read, but a FISCAL one, and reachable: the DTO carries an invoice id,
+      // its document number, a currency and a per-line tax rate, and a return id
+      // is one `listReturns` away for the same session. #2413's principle is
+      // that the bench reaches a parcel through its work and is excluded from
+      // every register; this is that register one context over. Narrowed from
+      // `@AnyRole()` by the #2905 review — `viewer` keeps it, `packer` does not.
       const roles = Reflect.getMetadata(
         ROLES_KEY,
         (ReturnWritesController.prototype as unknown as Record<string, object>)
           .previewCorrectionProposal
       );
 
-      expect(roles).toBeUndefined();
+      expect(roles).toEqual(['admin', 'operator', 'viewer']);
     });
   });
 

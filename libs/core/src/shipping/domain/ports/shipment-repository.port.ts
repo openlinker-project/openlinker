@@ -25,6 +25,7 @@ import type {
   CreateShipmentInput,
   UpdateShipmentInput,
 } from '../types/shipment.types';
+import type { RecordWaybillRelayFailureInput } from '../types/waybill-relay-failure.types';
 
 export interface ShipmentRepositoryPort {
   /**
@@ -69,6 +70,30 @@ export interface ShipmentRepositoryPort {
    * the reverse.
    */
   findActiveByOrderId(orderId: string, direction: ShipmentDirection): Promise<Shipment | null>;
+
+  /**
+   * Every shipment linked to any of `workIds` IN ONE DIRECTION, ordered by
+   * `createdAt ASC`. The first reader of `shipments.fulfillmentWorkId`, which
+   * #2402 added and left with no query behind it (#2418).
+   *
+   * BATCHED across the whole set on purpose: the pack bench asks three
+   * questions at once for a page of work — has this parcel shipped (the reopen
+   * refusal), what state is its label in, and which packed works are still
+   * unlabelled — and a per-work query would be one round trip per row. Served
+   * by `IDX_shipments_fulfillmentWorkId` (#2402), so no index is added here.
+   *
+   * An empty `workIds` returns `[]` WITHOUT touching the database: `IN ()` is a
+   * Postgres syntax error rather than an empty set, and an empty ask has an
+   * answer that needs no query.
+   *
+   * `direction` is REQUIRED for the reason given on `findByOrderId` above —
+   * a return label linked to the same work must not be read as the outbound
+   * parcel having shipped.
+   */
+  findByFulfillmentWorkIds(
+    workIds: readonly string[],
+    direction: ShipmentDirection,
+  ): Promise<readonly Shipment[]>;
 
   findByProviderShipmentId(providerShipmentId: string): Promise<Shipment | null>;
 
@@ -206,7 +231,40 @@ export interface ShipmentRepositoryPort {
 
   /**
    * Release a claim taken by {@link claimWaybillRelay} so a later tick can
-   * retry. Idempotent: releasing an already-released row is a no-op.
+   * retry, AND record the failure that caused the release. Idempotent:
+   * releasing an already-released row is a no-op.
+   *
+   * **One statement, so a release without a count is not expressible** (#2073).
+   * Before this, a relay that failed on every tick released the claim forever
+   * and reported the fact only to the log. Folding the counter into the release
+   * rather than writing it beside adds NO new failure mode - the release was
+   * already an un-caught `await` on both failure paths - while making the
+   * accounting structurally complete. Both callers are failure paths in
+   * `ShipmentStatusSyncService.relayWaybillToParticipants`; there is no third
+   * caller that could count a non-failure.
+   *
+   * `failure` is REQUIRED, not optional. An optional argument would be a silent
+   * decline: a caller that omitted it would release the claim and record
+   * nothing, which is exactly the invisibility this parameter removes.
+   *
+   * @see clearWaybillRelayFailures for the reset half.
    */
-  releaseWaybillRelay(id: string): Promise<void>;
+  releaseWaybillRelay(id: string, failure: RecordWaybillRelayFailureInput): Promise<void>;
+
+  /**
+   * Clear the failure history after a SUCCESSFUL relay (#2073) - the reset that
+   * keeps the escalation from becoming an alarm that never goes off.
+   *
+   * Conditional on `waybillRelayFailureCount > 0`, so the healthy case matches
+   * zero rows and costs nothing. Idempotent.
+   *
+   * **There is deliberately no time-based auto-clear**, which is where the
+   * `webhook_auth_rejections` precedent (#1814) must NOT be copied. That
+   * counter needs a freshness window because it is an unbounded rolling count
+   * over a connection's whole life with no natural reset, so staleness is the
+   * only way it can go quiet. This one has an explicit reset on success; a
+   * window here would silence the signal while the waybill still never reached
+   * the marketplace, which is the defect being fixed.
+   */
+  clearWaybillRelayFailures(id: string): Promise<void>;
 }

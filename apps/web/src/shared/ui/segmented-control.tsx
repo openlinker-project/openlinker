@@ -28,7 +28,17 @@ export interface SegmentedControlOption<T extends string> {
 export interface SegmentedControlProps<T extends string>
   extends Omit<ComponentPropsWithoutRef<'div'>, 'onChange'> {
   options: readonly SegmentedControlOption<T>[];
-  value: T;
+  /**
+   * The selected option, or `null` for "no answer yet".
+   *
+   * `null` renders the group with NO option checked, which the roving-tabindex
+   * logic below already supports (`hasActive`). It exists for a caller whose
+   * value has a persisted default still in flight (#2668 review, finding 3/6):
+   * pre-selecting one option there asserts an answer the caller does not have,
+   * and the operator watches the selection move under them when the real one
+   * arrives. Pair it with `aria-busy` and disabled options on the wrapper.
+   */
+  value: T | null;
   onChange: (value: T) => void;
 }
 

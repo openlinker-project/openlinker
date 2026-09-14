@@ -22,16 +22,24 @@ The guide is organized around the left-navigation groups in the admin UI:
 4. **[Invoices](./04-invoices.md)**
    Issuing invoices per order, the Invoices list and detail pages, regulatory (KSeF) clearance status, and fiscal-safety retry rules.
 
+   - **[Fiscal receipts](./04a-fiscal-receipts.md)**
+     Registering a Polish fiscal e-receipt for an order through eparagony.pl.
+   - **[Sales documents (routing)](./04b-sales-documents.md)**
+     Configuring per-market rules, country defaults, and the ★ Rest of world fallback that decide which document (invoice or receipt) an order gets and through which connection — plus reading the per-order Sales document panel.
+
 5. **[Listings & Offers](./05-listings.md)**
    Listings list, offer status chips, and the offer-creation wizard end-to-end: category, parameters, GPSR, seller policies, AI description, submit.
 
 6. **[Orders](./06-orders.md)**
    Orders list, order detail, status timeline, line items, and the shipment panel.
 
-7. **[Diagnostics](./07-diagnostics.md)**
+7. **[Analytics](./07-analytics.md)**
+   The revenue dashboard: date range, display currency, Net/Gross basis, KPI definitions, channel and product tables, Needs Attention, and the Data Coverage panel's five remediation flows.
+
+8. **[Diagnostics](./08-diagnostics.md)**
    Jobs & Logs, Webhooks, and Cursors — how to inspect and unblock a stalled sync.
 
-8. **[Settings & Admin](./08-settings-and-admin.md)**
+9. **[Settings & Admin](./09-settings-and-admin.md)**
    General settings, AI provider configuration, prompt templates, and the Adapters registry.
 
 ---

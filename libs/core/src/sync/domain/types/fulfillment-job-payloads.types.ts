@@ -106,3 +106,49 @@ export interface FulfillmentWorkRoutePayloadV1 {
   readonly schemaVersion: 1;
   readonly orderId: string;
 }
+
+/**
+ * Reap fulfilment dispatches nobody answered (#2712, ADR-054).
+ *
+ * Carries a page limit and nothing else. The pass is **frontier-as-query** — the
+ * candidate set is `requestStatus = 'submitted' AND updatedAt < cutoff` and
+ * every page consumes its own selection — so there is deliberately no cursor and
+ * no offset: an offset over a shrinking set steps over rows, which here means a
+ * work that is never reaped at all.
+ *
+ * The DEADLINE is likewise absent by design. It is resolved once per run by the
+ * handler through `resolveFulfillmentDispatchTimeoutMs`, the single resolution
+ * path (AC3), so a payload-carried value could only ever be a second, drifting
+ * copy of a number an operator reads back off the rejection row.
+ *
+ * Global scope: the work index carries no connection axis and a stalled dispatch
+ * is stalled whoever holds it, so the job runs once for the deployment under the
+ * nil-UUID system connection id — the `inventory.reservations.*` precedent.
+ */
+export interface FulfillmentWorkTimeoutSweepPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly pageLimit?: number;
+}
+
+/**
+ * `fulfillment.work.relaySweep` (#2728).
+ *
+ * Same shape and the same reading as its timeout-sweep sibling above: a
+ * scheduler tick carries only `schemaVersion`, and `pageLimit` exists so an
+ * operator draining a backlog can widen ONE run without moving the default.
+ *
+ * There is no cursor field and there must not be one. The pass is
+ * frontier-as-query — a repaired work leaves the candidate set by acquiring
+ * `dispatchRelayedAt` — so an offset would step over rows, which here means a
+ * work whose source is never told it shipped.
+ *
+ * The two age bounds are deliberately NOT on the payload. They are resolved from
+ * the environment through one path each (`resolveFulfillmentRelayGraceMs` /
+ * `resolveFulfillmentRelayStuckAfterMs`), and a payload override would be a
+ * second source for a number an operator reads back on the escalation it
+ * produced - the reported-versus-enforced gap #2229 exists to close.
+ */
+export interface FulfillmentWorkRelaySweepPayloadV1 {
+  readonly schemaVersion: 1;
+  readonly pageLimit?: number;
+}

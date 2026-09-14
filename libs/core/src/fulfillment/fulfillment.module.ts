@@ -24,20 +24,26 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { FulfillmentDispatchTimeoutService } from './application/services/fulfillment-dispatch-timeout.service';
 import { FulfillmentHandshakeService } from './application/services/fulfillment-handshake.service';
 import { FulfillmentProgressService } from './application/services/fulfillment-progress.service';
 import { FulfillmentRelayGateService } from './application/services/fulfillment-relay-gate.service';
+import { FulfillmentRelayReconcileService } from './application/services/fulfillment-relay-reconcile.service';
+import { FulfillmentVerificationService } from './application/services/fulfillment-verification.service';
 import { RoutingCommitService } from './application/services/routing-commit.service';
 import {
+  FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN,
   FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
   FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN,
   FULFILLMENT_PROGRESS_SERVICE_TOKEN,
   FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
+  FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
   FULFILLMENT_WORK_REPOSITORY_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
   ROUTING_DECISION_REPOSITORY_TOKEN,
   FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
   FULFILLMENT_WORKLIST_SERVICE_TOKEN,
+  FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
 } from './fulfillment.tokens';
 import { FulfillmentProgressClaimOrmEntity } from './infrastructure/persistence/entities/fulfillment-progress-claim.orm-entity';
 import { FulfillmentProgressClaimRepository } from './infrastructure/persistence/repositories/fulfillment-progress-claim.repository';
@@ -45,6 +51,7 @@ import { FulfillmentHoldOrmEntity } from './infrastructure/persistence/entities/
 import { FulfillmentWorkLineOrmEntity } from './infrastructure/persistence/entities/fulfillment-work-line.orm-entity';
 import { FulfillmentWorkRejectionOrmEntity } from './infrastructure/persistence/entities/fulfillment-work-rejection.orm-entity';
 import { FulfillmentWorkOrmEntity } from './infrastructure/persistence/entities/fulfillment-work.orm-entity';
+import { FulfillmentWorkVerificationOrmEntity } from './infrastructure/persistence/entities/fulfillment-work-verification.orm-entity';
 import { RoutingDecisionOrmEntity } from './infrastructure/persistence/entities/routing-decision.orm-entity';
 import { FulfillmentWorkRepository } from './infrastructure/persistence/repositories/fulfillment-work.repository';
 import { FulfillmentWorkQueryService } from './application/services/fulfillment-work-query.service';
@@ -59,6 +66,7 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
       FulfillmentHoldOrmEntity,
       FulfillmentWorkRejectionOrmEntity,
       FulfillmentProgressClaimOrmEntity,
+      FulfillmentWorkVerificationOrmEntity,
       RoutingDecisionOrmEntity,
     ]),
   ],
@@ -67,6 +75,11 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     { provide: FULFILLMENT_WORK_REPOSITORY_TOKEN, useExisting: FulfillmentWorkRepository },
     FulfillmentHandshakeService,
     { provide: FULFILLMENT_HANDSHAKE_SERVICE_TOKEN, useExisting: FulfillmentHandshakeService },
+    FulfillmentDispatchTimeoutService,
+    {
+      provide: FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN,
+      useExisting: FulfillmentDispatchTimeoutService,
+    },
     FulfillmentProgressClaimRepository,
     {
       provide: FULFILLMENT_PROGRESS_CLAIM_REPOSITORY_TOKEN,
@@ -78,6 +91,11 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     { provide: ROUTING_DECISION_REPOSITORY_TOKEN, useExisting: RoutingDecisionRepository },
     FulfillmentRelayGateService,
     { provide: FULFILLMENT_RELAY_GATE_SERVICE_TOKEN, useExisting: FulfillmentRelayGateService },
+    FulfillmentRelayReconcileService,
+    {
+      provide: FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
+      useExisting: FulfillmentRelayReconcileService,
+    },
     FulfillmentWorkQueryService,
     {
       provide: FULFILLMENT_WORK_QUERY_SERVICE_TOKEN,
@@ -87,12 +105,22 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     { provide: ROUTING_COMMIT_SERVICE_TOKEN, useExisting: RoutingCommitService },
     FulfillmentWorklistService,
     { provide: FULFILLMENT_WORKLIST_SERVICE_TOKEN, useExisting: FulfillmentWorklistService },
+    FulfillmentVerificationService,
+    {
+      provide: FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
+      useExisting: FulfillmentVerificationService,
+    },
   ],
   exports: [
     FULFILLMENT_WORK_REPOSITORY_TOKEN,
     FULFILLMENT_HANDSHAKE_SERVICE_TOKEN,
+    // Exported for the worker's timeout sweep (#2712), which reaches the
+    // aggregate through this interface and never through the repository port.
+    FULFILLMENT_DISPATCH_TIMEOUT_SERVICE_TOKEN,
     FULFILLMENT_PROGRESS_SERVICE_TOKEN,
     FULFILLMENT_RELAY_GATE_SERVICE_TOKEN,
+    // Exported for the worker's dispatch-relay reconcile sweep (#2728).
+    FULFILLMENT_RELAY_RECONCILE_SERVICE_TOKEN,
     ROUTING_DECISION_REPOSITORY_TOKEN,
     // Exported for `ShippingModule` (#2402): the shipment bridge resolves an
     // order's work through this interface, never through the repository port.
@@ -102,6 +130,9 @@ import { RoutingDecisionRepository } from './infrastructure/persistence/reposito
     // model. `apps/api` reaches the aggregate through this interface and never
     // through `FulfillmentWorkRepositoryPort`, which stays off the barrel.
     FULFILLMENT_WORKLIST_SERVICE_TOKEN,
+    // Exported for `BenchApiModule` (#2418): the pack bench verifies a parcel
+    // through this interface. The repository port stays off the barrel.
+    FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
   ],
 })
 export class FulfillmentModule {}

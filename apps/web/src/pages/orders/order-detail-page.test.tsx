@@ -645,3 +645,91 @@ describe('OrderDetailPage — returns activity on the timeline (#2383)', () => {
     expect(await screen.findByText('Activity')).toBeInTheDocument();
   });
 });
+
+/**
+ * #2640 — the order-detail returns panel. Asserts MOUNTING, one level up from
+ * the component test (docs/lessons.md § "is this MOUNTED?").
+ */
+describe('OrderDetailPage — the returns panel (#2640)', () => {
+  it('renders the order\u2019s returns, scoped to this order', async () => {
+    const list = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'ol_return_1',
+          sourceConnectionId: 'conn-1',
+          externalReturnId: 'RET-1',
+          internalOrderId: 'ol_order_abc123',
+          externalOrderId: 'ORD-1',
+          origin: 'source_ingested',
+          bucket: 'attributed',
+          rawStatus: 'CREATED',
+          openedAt: '2026-01-02T10:00:00.000Z',
+          authorizedAt: null,
+          declinedAt: null,
+          closedAt: null,
+          createdAt: '2026-01-02T11:00:00.000Z',
+          updatedAt: '2026-01-02T11:00:00.000Z',
+          counters: {
+            lineCount: 1,
+            notReturnedLineCount: 0,
+            quantityAdvised: 2,
+            notReturnedQuantityAdvised: 0,
+            quantityReceived: 0,
+            quantityRestocked: 0,
+            quantityScrapped: 0,
+          },
+          restockBlocked: null,
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+      counts: { total: 1, orphan: 0, attributed: 1 },
+      stageCounts: null,
+      segmentCounts: null,
+      droppedCount: 0,
+      envelopeUnreadable: false,
+    });
+
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: { getById: vi.fn().mockResolvedValue(sampleConnection) },
+      returns: { list },
+    });
+
+    renderDetail(api);
+
+    expect(await screen.findByRole('link', { name: 'RET-1' })).toBeInTheDocument();
+    expect(list).toHaveBeenCalledWith(
+      { internalOrderId: 'ol_order_abc123' },
+      expect.objectContaining({ offset: 0 }),
+    );
+  });
+
+  it('renders a distinguishable empty state when the order has no returns', async () => {
+    // Never absent (which would read as "this order cannot have returns") and
+    // never a failure (which would read as "we could not tell").
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: { getById: vi.fn().mockResolvedValue(sampleConnection) },
+    });
+
+    renderDetail(api);
+
+    expect(await screen.findByText('No returns on this order')).toBeInTheDocument();
+    expect(screen.queryByText('Returns could not be loaded')).not.toBeInTheDocument();
+  });
+
+  it('renders a FAILED returns read as a failure, not as an empty order', async () => {
+    const api = createMockApiClient({
+      orders: { getById: vi.fn().mockResolvedValue(sampleOrder) },
+      connections: { getById: vi.fn().mockResolvedValue(sampleConnection) },
+      returns: { list: vi.fn().mockRejectedValue(new Error('offline')) },
+    });
+
+    renderDetail(api);
+
+    expect(await screen.findByText('Returns could not be loaded')).toBeInTheDocument();
+    expect(screen.queryByText('No returns on this order')).not.toBeInTheDocument();
+  });
+});

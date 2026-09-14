@@ -170,6 +170,27 @@ export interface IProductsService {
   ): Promise<PaginatedProducts>;
 
   /**
+   * The page of {@link listProducts} WITHOUT its total (#2944).
+   *
+   * A paged read stops after its `LIMIT`; the `COUNT` beside it cannot stop at
+   * all, so under the name / SKU `ILIKE` search the count scans the table
+   * however small the page is. Pair with {@link countProducts}, which applies
+   * the identical predicate.
+   */
+  listProductRows(
+    filters: ProductListFilters,
+    pagination: ProductPagination,
+    sort?: ProductListSort
+  ): Promise<Product[]>;
+
+  /**
+   * The total of {@link listProducts} WITHOUT its page (#2944). Takes neither
+   * pagination nor sort - the answer depends on the filters alone, which is
+   * what makes it cacheable per filter combination.
+   */
+  countProducts(filters: ProductListFilters): Promise<number>;
+
+  /**
    * Count variants per product for the given product IDs (#1720 - list-page
    * display enrichment). Returns a Map<productId, count>; products with zero
    * variants are omitted. Empty input returns an empty Map without a DB
@@ -192,6 +213,19 @@ export interface IProductsService {
     filters: ProductVariantListFilters,
     pagination: ProductPagination
   ): Promise<PaginatedProductVariants>;
+
+  /**
+   * The page of {@link listVariants} WITHOUT its total (#2944) - same rule as
+   * {@link listProductRows}, here under the SKU / EAN / GTIN `ILIKE` search.
+   * Pair with {@link countVariants}.
+   */
+  listVariantRows(
+    filters: ProductVariantListFilters,
+    pagination: ProductPagination
+  ): Promise<ProductVariant[]>;
+
+  /** The total of {@link listVariants} WITHOUT its page (#2944). */
+  countVariants(filters: ProductVariantListFilters): Promise<number>;
 
   /**
    * Soft-mark every live variant of `productId` NOT in `keepVariantIds` as

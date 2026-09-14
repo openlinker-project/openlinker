@@ -34,6 +34,18 @@ export interface OrderLineItemRepositoryPort {
   findByOrderId(orderRecordId: string): Promise<OrderLineItem[]>;
 
   /**
+   * Batch read: every line item for the given order ids, in ONE query,
+   * grouped into a `Map` keyed by `orderRecordId` (each value ordered by
+   * `lineNumber`, mirroring {@link findByOrderId}) — the real batch a
+   * cross-cutting read needs, as opposed to a `Promise.all` fan-out over
+   * {@link findByOrderId} (#2826, mirrors `RefundRecordRepositoryPort
+   * .summarizeByOrderIds`'s doc comment). An order id with no line items is
+   * simply absent from the returned Map. Returns an empty `Map` immediately
+   * for an empty `orderRecordIds` input, without issuing a query.
+   */
+  findByOrderIds(orderRecordIds: string[]): Promise<Map<string, OrderLineItem[]>>;
+
+  /**
    * Units sold per source connection for the sales & channel analytics read
    * (#1987) — `SUM(quantity)` grouped by `sourceConnectionId`, joined back to
    * the parent `order_records` row to apply the same `recordStatus = 'ready'
@@ -75,10 +87,18 @@ export interface OrderLineItemRepositoryPort {
    * rather than mixed in — same rule {@link
    * OrderRecordRepositoryPort.getDailyOrderAggregates} applies at the order
    * level.
+   * `includeBackfilledPreRollout` (#2469) is the operator's Net-Sales opt-in
+   * for backfilled pre-rollout tax rates — see
+   * `OrderRecordRepositoryPort.getDailyOrderAggregates` for why it arrives as
+   * a parameter rather than being read here, and `netSalesEraEligibleSql` for
+   * exactly what `true` admits. This read applies it at LINE grain, which is a
+   * pre-existing grain difference against the order-level aggregates rather
+   * than something the flag introduces.
    */
   getTopProductRanking(
     filters: TopProductFilters,
-    reportingCurrency: string
+    reportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
   ): Promise<{ rows: ProductRankingRow[]; total: number }>;
 
   /**
@@ -88,12 +108,13 @@ export interface OrderLineItemRepositoryPort {
    * set) to keep this query's cost bounded by page size, not catalogue size.
    * `reportingCurrency` is the CURRENT system reporting currency — same
    * meaning and same bugfix as {@link getTopProductRanking}'s parameter of
-   * the same name.
+   * the same name; `includeBackfilledPreRollout` likewise.
    */
   getProductChannelBreakdown(
     productIds: string[],
     filters: SalesAnalyticsFilters,
-    reportingCurrency: string
+    reportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
   ): Promise<ProductChannelBreakdownRow[]>;
 
   /**
@@ -156,4 +177,22 @@ export interface OrderLineItemRepositoryPort {
     id: string,
     patch: { taxRate: string; taxSource: 'backfill'; taxRateReadAt: Date }
   ): Promise<void>;
+
+  /**
+   * Every distinct (productId, variantId) pair an order's lines touch,
+   * batched across every id in `orderRecordIds` in a single query (#2799,
+   * corrected per #2799 review BLOCKING 1) — the Data Coverage `'currency'`
+   * category drill-down's cross-reference into `TopProductRow.productId`
+   * must annotate EVERY product a multi-product order affects, not just one
+   * — a single "representative" line (the pre-fix shape) silently
+   * under-counted every product past the first. Batched rather than
+   * `findByOrderId` in a loop, which would turn a bounded page read into an
+   * N+1. An order absent from the returned Map carries no line items at all
+   * (should not happen for a `recordStatus = 'ready'` order per #1985, but
+   * the caller must not assume presence); an order present always maps to a
+   * non-empty array.
+   */
+  findProductRefsByOrderIds(
+    orderRecordIds: string[]
+  ): Promise<Map<string, Array<{ productId: string; variantId: string | null }>>>;
 }

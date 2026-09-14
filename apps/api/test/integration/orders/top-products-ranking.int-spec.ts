@@ -520,4 +520,102 @@ describe('Top products ranking — currency correctness against real Postgres (#
       expect(plnChannel!.unconvertedCurrency).toBe('PLN');
     }
   );
+  it(
+    'grosses up an exclusive (net-priced) order\'s line via its tax rate, so the product row\'s ' +
+      'gross revenue matches the headline\'s contribution (#2668 review, BLOCKING 1)',
+    async () => {
+      const dataSource = harness.getDataSource();
+      const conn = await createTestConnection(dataSource, {
+        platformType: 'prestashop',
+        name: 'Net-priced shop',
+        adapterKey: 'prestashop.test.unused-exclusive',
+      });
+
+      // PrestaShop and WooCommerce both emit `taxTreatment: 'exclusive'`, i.e.
+      // `unitPrice` is VAT-EXCLUSIVE. 100 net at 23% VAT -> 123 gross, which is
+      // what the KPI strip's GMV reports for this same order (#2892). Before
+      // #2668 this read summed the raw `unitPrice * quantity`, so the Top
+      // Products table reported 100 directly beneath a headline reporting 123 —
+      // two differently-labelled totals on one page, the #2908 symptom on the
+      // gross-up axis.
+      await createTestOrderRecord(dataSource, {
+        internalOrderId: 'ol_order_tp_excl_1',
+        sourceConnectionId: conn.id,
+        orderSnapshot: { items: [] },
+        recordStatus: 'ready',
+        cancelledAt: null,
+        placedAt: new Date('2026-08-02T00:00:00.000Z'),
+        currency: 'EUR',
+        taxTreatment: 'exclusive',
+        totalAmount: 123,
+        reportingCurrency: 'EUR',
+        reportingTotalAmount: 123,
+      });
+      await seedLineItem(dataSource, {
+        orderRecordId: 'ol_order_tp_excl_1',
+        productId: 'ol_product_excl',
+        sourceConnectionId: conn.id,
+        quantity: 1,
+        unitPrice: 100,
+        taxRate: '23',
+        placedAt: new Date('2026-08-02T00:00:00.000Z'),
+      });
+
+      const result = await orderRecordService.getTopProducts(filters);
+
+      expect(result.items).toHaveLength(1);
+      const product = result.items[0];
+      expect(product.productId).toBe('ol_product_excl');
+      // 123, never 100 (the net line value) — and the seed distinguishes the
+      // right answer from BOTH plausible wrong ones, since the gross figure
+      // also happens to equal the order total here only because this order
+      // carries no shipping.
+      expect(product.revenue).toBeCloseTo(123, 5);
+      expect(product.netRevenue).toBeCloseTo(100, 5);
+    }
+  );
+
+  it(
+    'grosses up an exclusive order\'s UNCONVERTED line the same way, so the disclosed native figure ' +
+      'is not the net one (#2668 review, BLOCKING 1)',
+    async () => {
+      const dataSource = harness.getDataSource();
+      const conn = await createTestConnection(dataSource, {
+        platformType: 'woocommerce',
+        name: 'Unstamped net-priced shop',
+        adapterKey: 'woocommerce.test.unused-exclusive',
+      });
+
+      await createTestOrderRecord(dataSource, {
+        internalOrderId: 'ol_order_tp_excl_2',
+        sourceConnectionId: conn.id,
+        orderSnapshot: { items: [] },
+        recordStatus: 'ready',
+        cancelledAt: null,
+        placedAt: new Date('2026-08-03T00:00:00.000Z'),
+        currency: 'PLN',
+        taxTreatment: 'exclusive',
+        totalAmount: 123,
+        reportingCurrency: null,
+        reportingTotalAmount: null,
+      });
+      await seedLineItem(dataSource, {
+        orderRecordId: 'ol_order_tp_excl_2',
+        productId: 'ol_product_excl_unconverted',
+        sourceConnectionId: conn.id,
+        quantity: 1,
+        unitPrice: 100,
+        taxRate: '23',
+        placedAt: new Date('2026-08-03T00:00:00.000Z'),
+      });
+
+      const result = await orderRecordService.getTopProducts(filters);
+
+      expect(result.items).toHaveLength(1);
+      const product = result.items[0];
+      expect(product.revenue).toBeCloseTo(0, 5);
+      expect(product.unconvertedRevenue).toBeCloseTo(123, 5);
+      expect(product.unconvertedCurrency).toBe('PLN');
+    }
+  );
 });

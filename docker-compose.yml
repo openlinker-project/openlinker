@@ -74,10 +74,11 @@ services:
     #
     # Sizing: `jobs.sync` is bounded by AGE, not count, so total footprint cannot
     # be derived from the caps table — at 50k jobs/day its 14-day horizon is
-    # ~700k entries (~350 MB) by itself, and `events.inbound.webhooks` holds up
-    # to 50k entries whose payloads run 2–5 KB (~100–250 MB). 2 GB is a floor
-    # with headroom, not a measured value; raise it before widening any
+    # ~700k entries (~350 MB) by itself, and it dominates the total. 2 GB is a
+    # floor with headroom, not a measured value; raise it before widening any
     # `maxAgeMs` in libs/shared/src/redis/stream-retention.ts.
+    # (`events.inbound.webhooks` counted toward this floor until #2300 retired
+    # it; a stack that never ran the one-time `DEL` still holds that residue.)
     command:
       - redis-server
       - --maxmemory

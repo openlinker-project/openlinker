@@ -44,6 +44,7 @@ import {
 import type { ListingCreationRecord } from '@openlinker/core/listings';
 
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { AnyRole } from '../../auth/decorators/any-role.decorator';
 import { PublishProductRequestDto } from './dto/publish-product.dto';
 import {
   ListingCreationRecordResponseDto,
@@ -102,6 +103,7 @@ export class ShopPublishController {
     return { jobId, listingCreationRecordId: listingCreationRecord.id };
   }
 
+  @AnyRole()
   @Get('categories')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -115,15 +117,16 @@ export class ShopPublishController {
     description: 'Parent category id; omit for root-level categories.',
   })
   @ApiResponse({ status: 200, description: 'Category nodes', type: [ShopCategoryResponseDto] })
-  // 404 / 409 were declared here until #2085 and are now unreachable: scope
-  // resolution probes the destination kind through a swallowing try/catch, so
-  // an unknown connection, a disabled one, and a missing browse capability all
-  // arrive as the same 422. Declaring them would document a contract the route
-  // cannot honour.
+  // Restored in #2146: 404 / 409 were removed here in #2085 because scope
+  // resolution swallowed every failure from its capability probe, including
+  // connection-level ones. It now rethrows ConnectionNotFoundException /
+  // ConnectionDisabledException, so those are distinguishable again.
+  @ApiResponse({ status: 404, description: 'Connection not found' })
+  @ApiResponse({ status: 409, description: 'Connection disabled' })
   @ApiResponse({
     status: 422,
     description:
-      'No taxonomy source could be resolved for the connection — it does not exist, is disabled, or exposes no category browser (TaxonomySourceUnavailableException). The body shape also changed in #2085: `error` now carries the domain exception name rather than the generic "Unprocessable Entity".',
+      'No taxonomy source could be resolved for the connection — it exists and is active, but exposes no ShopCategoryBrowser capability (TaxonomySourceUnavailableException). The body shape changed in #2085: `error` carries the domain exception name rather than the generic "Unprocessable Entity".',
   })
   async browseCategories(
     @Param('connectionId') connectionId: string,
@@ -133,6 +136,7 @@ export class ShopPublishController {
     return categories.map((c) => ({ id: c.id, name: c.name, parentId: c.parentId }));
   }
 
+  @AnyRole()
   @Get('attributes')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -151,6 +155,7 @@ export class ShopPublishController {
     return attributes.map((a) => ({ id: a.id, name: a.name, slug: a.slug }));
   }
 
+  @AnyRole()
   @Get('attributes/:attributeId/terms')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'attributeId', description: 'Destination-native global-attribute id.' })
@@ -171,6 +176,7 @@ export class ShopPublishController {
     return terms.map((t) => ({ id: t.id, name: t.name, slug: t.slug }));
   }
 
+  @AnyRole()
   @Get(':recordId')
   @HttpCode(HttpStatus.OK)
   @ApiParam({ name: 'recordId', format: 'uuid' })

@@ -94,6 +94,18 @@ const harness = createIntegrationTestHarness({
     // unlisted, a rule leaks into the next case and collides on
     // UQ_oms_routing_rules_live_name.
     'oms_routing_rules',
+    // customer_projections and its two satellites (#2957 review round 3). None
+    // of the three carries an ORM foreign key the CASCADE-closure walk can
+    // reach - `customer_address_projections` and `destination_address_mappings`
+    // hold indexed text references by value, the same choice as
+    // invoice_records / refund_records - so nothing removes them and a prior
+    // case's customers leak into the next one's aggregate. That went unnoticed
+    // until a spec asserted an EXACT count over them; it passed only because
+    // each int-spec file gets its own container and the seed re-upserts three
+    // fixed ids. Children first.
+    'customer_address_projections',
+    'destination_address_mappings',
+    'customer_projections',
     'order_records',
     // order_line_items (#1985) — the per-line analytics projection. No
     // ORM/migration FK to order_records (plain indexed text column, same
@@ -192,6 +204,13 @@ const harness = createIntegrationTestHarness({
     // row. No FK, so it never cascades; a row written by one case would
     // otherwise change every later case's resolved budgets.
     'operational_settings',
+    // analytics_remediation_runs (#2468) — the Data Coverage remediation audit
+    // ledger. No FK anywhere (its `triggered_by` is a plain text user id, the
+    // invoice_records precedent), so nothing cascades into it — and its partial
+    // unique index admits only ONE open run per category, so a run left behind
+    // by one case makes every later case's `openRun` throw
+    // OpenRemediationRunExistsError. Truncate explicitly.
+    'analytics_remediation_runs',
     // product_content_field FKs to both products + connections, so it goes
     // before them.
     'product_content_field',
@@ -213,6 +232,16 @@ const harness = createIntegrationTestHarness({
     'mcp_tokens',
     'product_variants',
     'products',
+    // shipment_line_events / shipment_lines (#2727) — the line-grain read model.
+    // Both FKs (events -> lines, lines -> shipments, both ON DELETE CASCADE)
+    // live in the MIGRATION rather than the ORM decorators, so the
+    // synchronize-built test schema has no FK at all and `truncateTables`'
+    // CASCADE closure walk can reach NEITHER child from `shipments`. Listed
+    // explicitly, children first, or a line written by one case is still
+    // counted by the next — exactly how `fulfillment_work_verifications` was
+    // found the hard way.
+    'shipment_line_events',
+    'shipment_lines',
     // shipments (#763 / #835) — order- + connection-scoped; truncate before
     // connections so the dispatch int-spec starts each case with no rows.
     'shipments',
@@ -233,6 +262,19 @@ const harness = createIntegrationTestHarness({
     // FK to fulfillment_works is migration-only too, so it is likewise
     // unreachable by the closure walk. Before `fulfillment_works`, being a child.
     'fulfillment_progress_claims',
+    // fulfillment_work_verifications (#2418) — the pack bench's ledger. Same
+    // shape as its neighbours above: the FK to `fulfillment_works` is
+    // migration-only, so the closure walk cannot reach it. Found the hard way —
+    // a verification written by one case was still counted by the next.
+    'fulfillment_work_verifications',
+    // fulfillment_work_rejections (#2399) — the append-only exclusion ledger.
+    // Same migration-only FK as every neighbour above, so the closure walk
+    // cannot reach it either. Listed with #2712, whose timeout sweep is the
+    // first thing to write rejection rows from a pass over the WHOLE table:
+    // until then only a per-work read existed, so leftovers were invisible.
+    // A future spec counting rejections unscoped would otherwise see another
+    // case's rows — the way `fulfillment_work_verifications` was found.
+    'fulfillment_work_rejections',
     'fulfillment_works',
     // routing_decisions (#2394) — the routing INTENT row. Carries no FK at all
     // (both its references are cross-aggregate by value), so nothing cascades

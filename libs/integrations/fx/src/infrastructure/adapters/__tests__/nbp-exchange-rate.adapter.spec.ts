@@ -10,6 +10,10 @@ import {
   RateUnavailableTransientError,
   RateUnsupportedPairError,
 } from '@openlinker/core/currency';
+import {
+  PUBLICATION_DAY_CONTRACT_REAL_CALENDAR_FIXTURES,
+  runPublicationDayContract,
+} from '@openlinker/core/currency/testing';
 import type { FetchLike } from '@openlinker/shared/http';
 import { NbpExchangeRateAdapter } from '../nbp-exchange-rate.adapter';
 
@@ -52,6 +56,15 @@ function nbpBody(mid: number, effectiveDate: string, no = '149/A/NBP/2026'): str
 function ok(body: string): StubResponse {
   return { status: 200, body };
 }
+
+/**
+ * A `FetchLike` that throws if ever invoked - used below to prove
+ * `resolveExpectedPublicationDay` makes no HTTP call, the port's own "Pure,
+ * synchronous, no I/O" guarantee.
+ */
+const neverFetch: FetchLike = (() => {
+  throw new Error('resolveExpectedPublicationDay must not perform I/O');
+}) as unknown as FetchLike;
 
 /** The rate-lookup error a call rejected with, typed for its own fields. */
 type RateError = Error & { from: string; to: string; reason: string };
@@ -151,6 +164,25 @@ describe('NbpExchangeRateAdapter', () => {
       expect(rate.rateDate).toBe('2026-06-11');
     });
   });
+
+  // The shared port-contract suite (#2800 review, finding 2) - the weekday
+  // and weekend cases fold the two hand-written cases this block used to
+  // carry, plus a Sunday case and the Corpus Christi divergence neither one
+  // covered. `neverFetch` proves the same "no HTTP call" property those two
+  // hand-written cases asserted, now enforced for every case rather than
+  // two of them.
+  //
+  // NBP's own Polish working-day calendar treats 2026-06-04 (Corpus
+  // Christi) as a non-publication day, so unlike ECB it correctly walks
+  // back - `fetchRate`'s own hand-written test above (`nbpBody(4.2383,
+  // '2026-06-03')`) already pins that this is the first URL NBP requests
+  // for that candidate; this asserts the pure resolver agrees before any
+  // request is made.
+  runPublicationDayContract(
+    () => new NbpExchangeRateAdapter({ fetchImpl: neverFetch }),
+    { ...PUBLICATION_DAY_CONTRACT_REAL_CALENDAR_FIXTURES, corpusChristi2026Expected: '2026-06-03' },
+    { subject: 'NbpExchangeRateAdapter', expectDeclared: true }
+  );
 
   describe('direct resolution (X -> PLN)', () => {
     it('should return the published mid verbatim at 8 decimal places', async () => {

@@ -61,6 +61,21 @@ describe('PrestashopQueryBuilder', () => {
       }
     });
 
+    it('should build an exclusive id lower-bound filter for the id-only fallback (#2877)', () => {
+      const query = PrestashopQueryBuilder.buildQuery('orders', { idAfter: 42 });
+      expect(query).toContain('filter[id]=>[42]');
+    });
+
+    it('should not add date=1 for an idAfter filter, since id is not a date column', () => {
+      const query = PrestashopQueryBuilder.buildQuery('orders', { idAfter: 42 });
+      expect(query).not.toContain('date=1');
+    });
+
+    it('should omit the id filter entirely when idAfter is not provided', () => {
+      const query = PrestashopQueryBuilder.buildQuery('orders', {});
+      expect(query).not.toContain('filter[id]=>');
+    });
+
     it('should emit a sort clause in the order given', () => {
       const query = PrestashopQueryBuilder.buildQuery('orders', {
         sort: ['date_upd_ASC', 'id_ASC'],

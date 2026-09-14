@@ -55,6 +55,17 @@ function resolveBy(entry: ReturnTimelineEntry, sessionUserId: string | null): st
   }
 
   if (entry.source === 'record_status') {
+    // Keyed on the ACTOR'S PRESENCE, never on the kind (#2646).
+    //
+    // Most header columns carry no actor — `opened` and `declined` are a SOURCE
+    // claim or nothing. `matched` is an operator's own act (#2372) and `returns`
+    // persists who performed it. A kind ALLOW-LIST would fail closed to the
+    // source claim, so the next actor-bearing column would credit an operator's
+    // act to the channel — the confident false attribution
+    // `REFUND_EXECUTED_BY_COPY` exists to prevent. Presence fails safe.
+    if (entry.actorUserId !== null) {
+      return entry.actorUserId === sessionUserId ? COPY.byYou : COPY.byAnotherOperator;
+    }
     if (entry.returnOrigin === 'operator_authored') return COPY.byOperator;
     return entry.sourceConnectionName ?? COPY.byUnknownConnection;
   }
@@ -67,8 +78,14 @@ function resolveTitle(entry: ReturnTimelineEntry): string {
   switch (entry.kind) {
     case 'opened':
       return COPY.opened;
+    case 'authorized':
+      return COPY.authorized;
     case 'declined':
       return COPY.declined;
+    case 'closed':
+      return COPY.closed;
+    case 'matched':
+      return COPY.matched;
     case 'receive':
       return COPY.receive;
     case 'dispose':

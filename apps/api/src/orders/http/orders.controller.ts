@@ -5,6 +5,38 @@
  * for listing order records with filters and retrieving individual orders.
  *
  * @module apps/api/src/orders/http
+ *
+ * ## The reads are `@Roles('admin', 'operator', 'viewer')`, not `@AnyRole()` (#2413)
+ *
+ * **This is the route that decides whether story A5 is real.** `OrderRecordResponseDto.
+ * orderSnapshot` is emitted by the shared `toDto` on both `GET /orders` and
+ * `GET /orders/:internalOrderId`, and under the default `OL_STORE_PII=true`
+ * that snapshot carries the buyer's name, email and both un-redacted addresses
+ * (`OrderRecordService` redacts only when PII storage is off). So a `packer`
+ * left on `@AnyRole()` here would reach a **superset** of `GET /customers/:id`,
+ * and narrowing `CustomersController` alone would have made A5 nominal rather
+ * than true — the customer register closed and the same data reachable one
+ * route over. Found by review, not by the acceptance criterion, which names the
+ * customer register only.
+ *
+ * The three summary routes carry no PII, and are narrowed with the rest for one
+ * reason: the exclusion is **the order REGISTER**, not a per-field judgement
+ * about each of its projections, and a register split down the middle is a rule
+ * nobody can apply to the next route added here.
+ *
+ * ## What the bench reads instead
+ *
+ * The packer needs the parcel in front of them. They reach it **through the
+ * work**, not through this register: #2416/#2418 own a work-scoped read that
+ * projects only what a bench must see. That is the same shape as the invoice
+ * consequence recorded on `InvoicingController`, and it is the right one — a
+ * narrow role reaching an order through the work it is packing cannot enumerate
+ * the order book. Until that read exists, the bench sees no order data at all,
+ * which is the fail-closed direction and costs nothing today because the bench
+ * body is still a placeholder.
+ *
+ * See `docs/plans/implementation-plan-bench-packer-role-idle-lock-handover.md`
+ * § 2.3 and § 2.4.
  */
 import {
   Controller,
@@ -24,7 +56,13 @@ import {
   Inject,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiExcludeEndpoint,
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
@@ -48,11 +86,14 @@ import {
   HoldReleaseNoteRequiredError,
   HoldReleaseNotPermittedError,
   deriveSlaState,
-
   IOrderHoldService,
-  IOrderProvisioningResumeService} from '@openlinker/core/orders';
+  IOrderProvisioningResumeService,
+  ORDER_TEST_FIXTURE_SERVICE_TOKEN,
+  IOrderTestFixtureService,
+  TestFixturesDisabledException} from '@openlinker/core/orders';
 import type {
   OrderRecord,
+  OrderRecordFilters,
   OrderSyncStatus,
   SyncAttempt,
   OrderHold,
@@ -88,7 +129,10 @@ import {
   deriveOrderLifecyclePhase,
   DEFAULT_LIFECYCLE_AUTHORITY,
 } from '@openlinker/core/order-lifecycle';
+import type { OrderLifecyclePhase } from '@openlinker/core/order-lifecycle';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+import { CountOrdersQueryDto } from './dto/count-orders-query.dto';
+import { PaginatedTotalResponseDto } from '../../common/dto/paginated-total-response.dto';
 import { OrderHealthSummaryQueryDto } from './dto/order-health-summary-query.dto';
 import { OrderHealthSummaryResponseDto } from './dto/order-health-summary-response.dto';
 import { OrderSlaSummaryResponseDto } from './dto/order-sla-summary-response.dto';
@@ -100,6 +144,7 @@ import type { SyncAttemptResponseDto } from './dto/sync-attempt-response.dto';
 import { PaginatedOrdersResponseDto } from './dto/paginated-orders-response.dto';
 import { RetryOrderDestinationResponseDto } from './dto/retry-order-destination-response.dto';
 import { PlaceOrderHoldRequestDto } from './dto/place-order-hold-request.dto';
+import { MarkPreRolloutEraResponseDto } from './dto/mark-pre-rollout-era-response.dto';
 import { ReleaseOrderHoldRequestDto } from './dto/release-order-hold-request.dto';
 import type {
   OrderHoldDto,
@@ -116,6 +161,79 @@ import {
 } from './dto/sales-document-view-response.dto';
 import type { OrderDeliveryResolutionDto } from './dto/order-delivery-resolution.dto';
 import type { OrderDeliveryRiderDto } from './dto/order-delivery-rider.dto';
+
+/**
+ * The one DTO-to-filters mapping this list has (#2944).
+ *
+ * Shared by `GET /orders` and `GET /orders/count`, so the count cannot apply a
+ * different filter set than the page. `OmitType` already keeps the two query
+ * SURFACES identical and `buildFilteredQuery` keeps the two SQL predicates
+ * identical; this closes the step in between, which was a hand-copied second
+ * object literal and therefore the same drift class one layer up.
+ *
+ * Three params are renamed on the way through, each because the repository
+ * filter names the full axis while the query param carries the operator-facing
+ * short form: `phase` -> `lifecyclePhase` (#2309), `attention` -> `omsAttention`
+ * (#2353), `hold` -> `activeHoldReason` (#2342).
+ *
+ * `sort` and `dir` are read off the query rather than dropped, because the
+ * repository takes them on the same object; `countMany` ignores them, which is
+ * why `CountOrdersQueryDto` may accept them harmlessly.
+ */
+function toOrderRecordFilters(
+  query: CountOrdersQueryDto & Partial<Pick<ListOrdersQueryDto, 'sort' | 'dir'>>
+): OrderRecordFilters {
+  return {
+    sourceConnectionId: query.sourceConnectionId,
+    syncStatus: query.syncStatus,
+    customerId: query.customerId,
+    createdFrom: query.createdFrom ? new Date(query.createdFrom) : undefined,
+    createdTo: query.createdTo ? new Date(query.createdTo) : undefined,
+    recordStatus: query.recordStatus,
+    health: query.health,
+    sort: query.sort,
+    dir: query.dir,
+    dueBefore: query.dueBefore ? new Date(query.dueBefore) : undefined,
+    slaState: query.slaState,
+    fulfillmentState: query.fulfillmentState,
+    salesDocumentBlocked: query.salesDocumentBlocked,
+    cancelled: query.cancelled,
+    lifecyclePhase: query.phase,
+    taxRateConflict: query.taxRateConflict,
+    omsAttention: query.attention,
+    activeHoldReason: query.hold,
+  };
+}
+
+/**
+ * #2441 review I-1 - `?cancelled=` (#2306) and `?phase=` (#2309) are two filters over
+ * the SAME fact: the lifecycle `CASE`'s top arm is `cancelledAt IS NOT NULL`, so
+ * `phase=cancelled` IS `cancelled=true`. ANDed, a contradictory pair is structurally
+ * empty for every row in the table - which reads to an operator as "no orders match"
+ * rather than "these two filters cannot both hold", and beside a non-zero summary count
+ * it is exactly the "the number and the rows disagree" failure the wave's
+ * `total = Sigma buckets` design exists to prevent. Reject naming the conflict instead.
+ *
+ * Shared by `GET /orders` and `GET /orders/count` (#2944): the two must refuse the
+ * identical pairs, or the list would 400 while the count answered a number for a
+ * filter combination that can never match a row.
+ */
+function assertCancelledPhaseAgree(
+  cancelled: boolean | undefined,
+  phase: OrderLifecyclePhase | undefined
+): void {
+  if (cancelled === undefined || phase === undefined) return;
+  const phaseIsCancelled = phase === 'cancelled';
+  if (phaseIsCancelled === cancelled) return;
+  throw new BadRequestException(
+    phaseIsCancelled
+      ? '?phase=cancelled contradicts ?cancelled=false: the cancelled phase IS the cancelled ' +
+        'set, so this pair can never match a row. Omit ?cancelled, or pass ?cancelled=true.'
+      : `?phase=${phase} contradicts ?cancelled=true: only ?phase=cancelled can match a ` +
+        'cancelled order, so this pair can never match a row. Omit ?cancelled, or pass ' +
+        '?cancelled=false.'
+  );
+}
 
 @ApiBearerAuth()
 @ApiTags('orders')
@@ -150,15 +268,23 @@ export class OrdersController {
     @Inject(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN)
     private readonly provisioningResume: IOrderProvisioningResumeService,
     @Inject(SALES_DOCUMENT_VIEW_SERVICE_TOKEN)
-    private readonly salesDocumentView: ISalesDocumentViewService
+    private readonly salesDocumentView: ISalesDocumentViewService,
+    // #2855 — test-fixture-only writes, never called against real order data.
+    @Inject(ORDER_TEST_FIXTURE_SERVICE_TOKEN)
+    private readonly testFixtureService: IOrderTestFixtureService
   ) {}
 
+  @Roles('admin', 'operator', 'viewer')
   @Get()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'List order records',
     description:
-      'Returns a paginated list of order records. Supports filtering by sourceConnectionId, syncStatus, customerId, and date range.',
+      'Returns a paginated list of order records. Supports filtering by sourceConnectionId, ' +
+      'syncStatus, customerId, and date range. ' +
+      'Set `?withTotal=false` to get the page WITHOUT its total: the `total` field is omitted ' +
+      'entirely (never `0`) and the jsonb-containment count this list cannot serve from an index ' +
+      'is skipped. Fetch the number separately from `GET /orders/count` (#2944).',
   })
   @ApiResponse({
     status: 200,
@@ -167,83 +293,40 @@ export class OrdersController {
   })
   @ApiResponse({ status: 403, description: 'Insufficient permissions' })
   async listOrders(@Query() query: ListOrdersQueryDto): Promise<PaginatedOrdersResponseDto> {
-    const {
-      sourceConnectionId,
-      syncStatus,
-      customerId,
-      createdFrom,
-      createdTo,
-      recordStatus,
-      health,
-      sort,
-      dir,
-      dueBefore,
-      slaState,
-      fulfillmentState,
-      salesDocumentBlocked,
-      cancelled,
-      phase,
-      taxRateConflict,
-      attention,
-      hold,
-      limit = 20,
-      offset = 0,
-    } = query;
+    // Only what this handler reads directly. Every FILTER now travels through
+    // `toOrderRecordFilters`, so re-listing them here would be a third place
+    // the DTO's field names appear and a third place they can drift.
+    const { cancelled, phase, withTotal, limit = 20, offset = 0 } = query;
 
-    // #2441 review I-1 — `?cancelled=` (#2306) and `?phase=` (#2309) are two filters over
-    // the SAME fact: the lifecycle `CASE`'s top arm is `cancelledAt IS NOT NULL`, so
-    // `phase=cancelled` IS `cancelled=true`. ANDed, a contradictory pair is structurally
-    // empty for every row in the table — which reads to an operator as "no orders match"
-    // rather than "these two filters cannot both hold", and beside a non-zero summary count
-    // it is exactly the "the number and the rows disagree" failure the wave's
-    // `total = Σ buckets` design exists to prevent. Reject naming the conflict instead.
-    if (cancelled !== undefined && phase !== undefined) {
-      const phaseIsCancelled = phase === 'cancelled';
-      if (phaseIsCancelled !== cancelled) {
-        throw new BadRequestException(
-          phaseIsCancelled
-            ? '?phase=cancelled contradicts ?cancelled=false: the cancelled phase IS the cancelled ' +
-              'set, so this pair can never match a row. Omit ?cancelled, or pass ?cancelled=true.'
-            : `?phase=${phase} contradicts ?cancelled=true: only ?phase=cancelled can match a ` +
-              'cancelled order, so this pair can never match a row. Omit ?cancelled, or pass ' +
-              '?cancelled=false.'
-        );
-      }
+    assertCancelledPhaseAgree(cancelled, phase);
+
+    const filters = toOrderRecordFilters(query);
+
+    // `?withTotal=false` skips the COUNT entirely and the response OMITS
+    // `total` rather than reporting 0 (#2944) - an absent total and a genuine
+    // zero must stay distinguishable, or a client renders "0 orders" for a
+    // number it simply did not ask for. This is the read #2843 measured: at a
+    // million rows the count was 142 ms of a 149 ms request, because a paged
+    // read stops after twenty matches and a count cannot stop at all. The
+    // second stage is `GET /orders/count`.
+    //
+    // The two branches are kept apart rather than sharing a `total?: number`
+    // local, so the response object literally does NOT CARRY the key when it
+    // was not asked for. `JSON.stringify` would drop an `undefined` either
+    // way, but "the key is absent" is a stronger and more testable property
+    // than "the key holds undefined", and it is the one every one of these
+    // four routes now has.
+    let items: OrderRecord[];
+    let total: number | undefined;
+    let omitTotal = false;
+    if (withTotal === false) {
+      items = await this.orderRecordRepository.findManyRows(filters, { limit, offset });
+      omitTotal = true;
+    } else {
+      const page = await this.orderRecordRepository.findMany(filters, { limit, offset });
+      items = page.items;
+      total = page.total;
     }
-
-    const { items, total } = await this.orderRecordRepository.findMany(
-      {
-        sourceConnectionId,
-        syncStatus,
-        customerId,
-        createdFrom: createdFrom ? new Date(createdFrom) : undefined,
-        createdTo: createdTo ? new Date(createdTo) : undefined,
-        recordStatus,
-        health,
-        sort,
-        dir,
-        dueBefore: dueBefore ? new Date(dueBefore) : undefined,
-        slaState,
-        fulfillmentState,
-        salesDocumentBlocked,
-        cancelled,
-        // #2309 — the query param is `phase`; the repository filter names the
-        // full axis, since `OrderRecordFilters` already carries several
-        // orthogonal ones.
-        lifecyclePhase: phase,
-        taxRateConflict,
-        // #2353 - the query param is `attention` (the operator-facing word the
-        // FE chip uses); the repository filter names the full axis, the same
-        // `phase` -> `lifecyclePhase` split, which exists precisely because
-        // `OrderRecordFilters` already carries several orthogonal ones.
-        omsAttention: attention,
-        // #2342 — the query param is the short `hold`; the repository filter
-        // names the column it reads, matching the `phase` -> `lifecyclePhase`
-        // precedent two lines up.
-        activeHoldReason: hold,
-      },
-      { limit, offset }
-    );
 
     // Batch the invoice projection for the whole page (#1713): one query, not an
     // N+1 of per-row `getLatestInvoiceForOrder`. Orders with no invoice are
@@ -308,12 +391,40 @@ export class OrdersController {
         }
         return dto;
       }),
-      total,
+      ...(omitTotal ? {} : { total }),
       limit,
       offset,
     };
   }
 
+  @Roles('admin', 'operator', 'viewer')
+  @Get('count')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Count order records matching the filters',
+    description:
+      'The total for the same filters `GET /orders` accepts, without a page. Paired with ' +
+      '`GET /orders?withTotal=false` so the list renders its rows without waiting for a count ' +
+      'that cannot stop early - #2843 measured that count at 142 ms of a 149 ms request against ' +
+      'a million orders (#2944). Takes no limit/offset: the answer depends on the filters alone, ' +
+      'which is what makes it cacheable per filter combination. `sort` and `dir` are accepted ' +
+      'and ignored - a count cannot be ordered, but they travel inside this list\'s filter ' +
+      'object, so refusing them would 400 every client that reuses one query builder.',
+  })
+  @ApiResponse({ status: 200, description: 'Row count', type: PaginatedTotalResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions' })
+  async countOrders(@Query() query: CountOrdersQueryDto): Promise<PaginatedTotalResponseDto> {
+    assertCancelledPhaseAgree(query.cancelled, query.phase);
+
+    // The SAME mapper the list uses. `OmitType` keeps the query surfaces from
+    // drifting and `buildFilteredQuery` keeps the SQL from drifting; without
+    // this, the DTO-to-filters step in between was a hand-copied second
+    // mapping - the identical drift class, one layer up.
+    const total = await this.orderRecordRepository.countMany(toOrderRecordFilters(query));
+    return { total };
+  }
+
+  @Roles('admin', 'operator', 'viewer')
   @Get('status-summary')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -344,6 +455,7 @@ export class OrdersController {
     };
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('sla-summary')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -370,6 +482,7 @@ export class OrdersController {
     });
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get('lifecycle-summary')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -397,6 +510,7 @@ export class OrdersController {
     });
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get(':internalOrderId')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get order record by internal order ID' })
@@ -462,6 +576,7 @@ export class OrdersController {
     return dto;
   }
 
+  @Roles('admin', 'operator', 'viewer')
   @Get(':internalOrderId/sales-document')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -795,6 +910,75 @@ export class OrdersController {
       hold: this.toHoldDto(released),
       provisioningResume: this.toProvisioningResumeDto(resume),
     };
+  }
+
+  @Roles('admin')
+  @Post(':internalOrderId/test-fixtures/mark-pre-rollout-era')
+  @HttpCode(HttpStatus.OK)
+  // Kept out of the published OpenAPI document (#3127 review). The route is
+  // inert on any production install — it refuses unconditionally under
+  // NODE_ENV=production — so advertising a "MUST NEVER be called against real
+  // order data" endpoint that always 403s there is disclosure with no reader
+  // it could serve. The @ApiOperation below is retained deliberately: it is
+  // the description a developer reads in source, and it comes back the moment
+  // this line is removed for a local Swagger run.
+  @ApiExcludeEndpoint()
+  @ApiOperation({
+    summary: 'TEST-FIXTURE-ONLY: stamp taxRateEra=pre-rollout on an order',
+    description:
+      'Exists ONLY to let a non-production install reach the tax-a / tax-c analytics coverage ' +
+      'states (#2482) with a fresh, flow-seeded order — no real ingestion path ever writes ' +
+      'taxRateEra (it was set exactly once, by a historical backfill migration), so those states ' +
+      'are otherwise unreachable. Triple-gated: @Roles(admin) here, OL_ALLOW_TEST_FIXTURES must ' +
+      'be true in the process env, and NODE_ENV must not be production (refused unconditionally, ' +
+      'even with the env var set). The acting admin is recorded in the audit log. MUST NEVER be ' +
+      'called against real order data — it silently excludes the order from Net Sales figures via ' +
+      'the pre-rollout tax-rate-era rule.',
+  })
+  @ApiResponse({ status: 200, description: 'Stamp applied (or already present)', type: MarkPreRolloutEraResponseDto })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions, or TEST_FIXTURES_DISABLED' })
+  @ApiResponse({ status: 404, description: 'Order not found' })
+  async markPreRolloutEra(
+    @Param('internalOrderId') internalOrderId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<MarkPreRolloutEraResponseDto> {
+    // The feature-flag gate is checked BEFORE the DB pre-read: on a production
+    // deployment (the default — the flag defaults off) this route is entirely
+    // inert, and it should cost no read before that is established.
+    try {
+      this.testFixtureService.assertTestFixturesAllowed();
+    } catch (error) {
+      if (error instanceof TestFixturesDisabledException) {
+        throw new ForbiddenException({
+          statusCode: HttpStatus.FORBIDDEN,
+          error: 'TEST_FIXTURES_DISABLED',
+          message: error.message,
+        });
+      }
+      throw error;
+    }
+
+    const order = await this.orderRecordRepository.findById(internalOrderId);
+    if (!order) {
+      throw new NotFoundException(`Order not found: ${internalOrderId}`);
+    }
+
+    try {
+      const applied = await this.testFixtureService.markPreRolloutEraForTesting(
+        internalOrderId,
+        user.id
+      );
+      return { applied };
+    } catch (error) {
+      if (error instanceof TestFixturesDisabledException) {
+        throw new ForbiddenException({
+          statusCode: HttpStatus.FORBIDDEN,
+          error: 'TEST_FIXTURES_DISABLED',
+          message: error.message,
+        });
+      }
+      throw error;
+    }
   }
 
   /** TypeORM may hand back a string for a timestamptz; `toDto` guards the same way. */

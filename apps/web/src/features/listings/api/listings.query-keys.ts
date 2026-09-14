@@ -8,6 +8,24 @@ export const listingsQueryKeys = {
   lists: () => ['listings', 'list'] as const,
   list: (filters?: ListingsFilters, pagination?: ListingsPagination) =>
     ['listings', 'list', filters ?? {}, pagination ?? {}] as const,
+  /**
+   * The rows-only page (#2947) - a different response shape, so a different key.
+   *
+   * `includeLifecycleCounts` is stripped (#2957 review, S3): the buckets are
+   * `count()`'s job now and the rows route declines the flag, so leaving it in
+   * would split one page's cache across two keys over a parameter that changes
+   * nothing about the response.
+   */
+  rows: (filters?: ListingsFilters, pagination?: ListingsPagination) =>
+    ['listings', 'rows', listingRowFilters(filters), pagination ?? {}] as const,
+  /**
+   * The two-stage total, and the tab-bar buckets it is derived from (#2947).
+   *
+   * Carries no pagination - the answer depends on the filters alone - and the
+   * caller additionally keys it without `lifecycle`, so switching tabs is a
+   * cache hit rather than a refetch that blanks the tab bar (#2029).
+   */
+  count: (filters?: ListingsFilters) => ['listings', 'count', filters ?? {}] as const,
   detail: (id: string) => ['listings', 'detail', id] as const,
   marketplaceOffer: (mappingId: string) => ['listings', 'marketplaceOffer', mappingId] as const,
   offerCreationStatus: (connectionId: string, offerCreationRecordId: string) =>
@@ -76,3 +94,49 @@ export const listingsQueryKeys = {
   publishedVariants: (connectionId: string, variantIds: readonly string[]) =>
     ['listings', 'publishedVariants', connectionId, [...variantIds].sort()] as const,
 };
+
+/**
+ * A rows-only request's filters: everything except `includeLifecycleCounts`.
+ *
+ * The buckets moved to `count()` in #2943 and the rows route declines the flag
+ * under `?withTotal=false`, so carrying it splits one page's cache across two
+ * keys over a parameter that changes nothing about the response (#2957 review,
+ * S3). Exported so the key and the URL narrow through one function.
+ */
+export function listingRowFilters(
+  filters?: ListingsFilters,
+): Omit<ListingsFilters, 'includeLifecycleCounts'> {
+  if (!filters) return {};
+  const rowFilters: Omit<ListingsFilters, 'includeLifecycleCounts'> = { ...filters };
+  delete (rowFilters as Partial<ListingsFilters>).includeLifecycleCounts;
+  return rowFilters;
+}
+
+/**
+ * A COUNT request's filters: everything that decides membership, plus the
+ * buckets, minus the tab.
+ *
+ * `lifecycle` is omitted so switching tabs is a cache hit rather than a
+ * refetch that blanks the tab bar (#2029), and `includeLifecycleCounts` is
+ * forced on because this one request answers both aggregates.
+ *
+ * Written as OMISSION rather than enumeration (#2957 review round 3, I5).
+ * Every field of `ListingsFilters` is optional, so an enumerating version
+ * compiles cleanly when a sixth membership filter is added and silently drops
+ * it from the count - the pager and the whole tab bar would then answer for a
+ * broader set, presented as `known`. That is the authoritative-wrong-number
+ * failure this epic exists to prevent.
+ *
+ * Omission here is NOT sufficient on its own, and an earlier version of this
+ * docblock implied it was (#2957 review round 4, I1). `buildQuery` in
+ * `listings.api.ts` turns these filters into the request and enumerates, so a
+ * new field would reach the cache key and never the URL - strictly worse than
+ * enumerating in both places, because one un-narrowed answer would then be
+ * cached under many filter-specific keys. `LISTINGS_FILTER_KEYS` beside that
+ * function is what closes it, by failing to compile.
+ */
+export function listingCountFilters(filters: ListingsFilters): ListingsFilters {
+  const countFilters: ListingsFilters = { ...filters, includeLifecycleCounts: true };
+  delete countFilters.lifecycle;
+  return countFilters;
+}

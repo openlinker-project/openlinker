@@ -58,7 +58,7 @@ export function AnalyticsTrustHeader({ connections }: AnalyticsTrustHeaderProps)
     <article className="panel panel--dense">
       <div className="panel__header">
         <div className="trust-header__title-group">
-          <h3 className="section-title">Data coverage</h3>
+          <h3 className="section-title">Synchronization</h3>
           <Popover>
             <PopoverTrigger asChild>
               <button

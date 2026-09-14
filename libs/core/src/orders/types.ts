@@ -79,3 +79,17 @@ export { RefundReasonValues } from './domain/types/refund-record.types';
 export type { RefundReason } from './domain/types/refund-record.types';
 export type { BuyerTaxId } from './domain/types/buyer-tax-id.types';
 export { readBuyerTaxId, buyerHasTaxId } from './domain/types/buyer-tax-id.types';
+
+/**
+ * `CoverageResolutionStatus` (epic #2452) — the `analytics_remediation_runs`
+ * ledger's lifecycle reuses this union rather than minting a parallel one, so
+ * the ledger and the orders-side detector it reports on cannot drift (see
+ * `AnalyticsRemediationRunRepository`). `analytics` has zero outbound edges
+ * to sibling core contexts otherwise, and this sub-barrel is what keeps that
+ * edge from pulling in `OrdersModule` — the value export is still a real
+ * `require()` (the runtime `isCoverageResolutionStatus` guard needs the
+ * array), so the `analytics --> orders` edge is narrower than type-only, not
+ * absent.
+ */
+export { CoverageResolutionStatusValues } from './domain/types/coverage-detection.types';
+export type { CoverageResolutionStatus } from './domain/types/coverage-detection.types';

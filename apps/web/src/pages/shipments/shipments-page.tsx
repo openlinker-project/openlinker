@@ -28,6 +28,7 @@ import { Input } from '../../shared/ui/input';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { usePermission } from '../../shared/auth/use-permission';
 import { ShipmentStatusBadge } from '../../features/shipments/components/shipment-status-badge';
+import { WaybillRelayStuckBadge } from '../../features/shipments/components/waybill-relay-stuck-badge';
 import { ProcessorBadge } from '../../features/shipments/components/processor-badge';
 import { ShipmentTriageStrip } from '../../features/shipments/components/shipment-triage-strip';
 import { ShipmentRowDetail } from '../../features/shipments/components/shipment-row-detail';
@@ -111,6 +112,11 @@ function ShipmentStatusCell({ shipment, canWrite }: { shipment: Shipment; canWri
   return (
     <div className="shipment-status-cell">
       <ShipmentStatusBadge status={shipment.status} />
+      {/* #2073. BESIDE the status badge, never folded into it or into the
+          severity word: a stuck relay is orthogonal to both, and a `delivered`
+          shipment can carry one - the parcel arrived and the channel was still
+          never told. Renders nothing unless the backend says `stuck`. */}
+      <WaybillRelayStuckBadge waybillRelay={shipment.waybillRelay} />
       {showError ? (
         <span className="shipment-status-cell__error">
           <span className="shipment-status-cell__error-message" title={canWrite ? (shipment.errorMessage ?? undefined) : undefined}>
@@ -152,6 +158,9 @@ export function ShipmentsPage(): ReactElement {
   // processor filter is set) so users can't put the BE filters in a
   // contradictory state.
   const processor = parseProcessorFilter(searchParams.get('processor'));
+  // #2073. Present-and-'true' is the only meaningful state: there is no "not
+  // stuck" cohort worth selecting, so the param is either on or absent.
+  const waybillRelayStuck = searchParams.get('waybillRelayStuck') === 'true' ? true : undefined;
   const createdFrom = searchParams.get('createdFrom') ?? undefined;
   const createdTo = searchParams.get('createdTo') ?? undefined;
   const offset = Number(searchParams.get('offset') ?? '0');
@@ -160,6 +169,7 @@ export function ShipmentsPage(): ReactElement {
     status,
     connectionId,
     hasTracking,
+    waybillRelayStuck,
     createdFrom,
     createdTo: createdTo ? inclusiveEndOfDay(createdTo) : undefined,
     // Spread the processor filter LAST so it overrides any raw `shippingMethod`
@@ -238,6 +248,7 @@ export function ShipmentsPage(): ReactElement {
         'processor',
         'connectionId',
         'hasTracking',
+        'waybillRelayStuck',
         'createdFrom',
         'createdTo',
         'offset',
@@ -254,6 +265,7 @@ export function ShipmentsPage(): ReactElement {
       processor ||
       connectionId ||
       hasTracking !== undefined ||
+      waybillRelayStuck !== undefined ||
       createdFrom ||
       createdTo,
   );
@@ -519,6 +531,18 @@ export function ShipmentsPage(): ReactElement {
           <option value="">Any tracking</option>
           <option value="true">With tracking</option>
           <option value="false">Without tracking</option>
+        </Select>
+
+        {/* #2073. Two options, not three: there is no "not stuck" cohort worth
+            offering, because a shipment with no failures and one that has failed
+            twice are equally not-escalated. The empty value clears the filter. */}
+        <Select
+          aria-label="Filter by tracking relay"
+          value={waybillRelayStuck === true ? 'true' : ''}
+          onChange={(e) => { setFilter('waybillRelayStuck', e.target.value); }}
+        >
+          <option value="">Any relay state</option>
+          <option value="true">Tracking not sent to channel</option>
         </Select>
 
         <Select

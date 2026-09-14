@@ -31,6 +31,7 @@ import { ProductsModule } from '@openlinker/core/products';
 import { InventoryModule } from '@openlinker/core/inventory';
 import { SyncModule } from '@openlinker/core/sync';
 import { FulfillmentModule } from '@openlinker/core/fulfillment';
+import { FulfillmentRouterBindingModule } from './fulfillment/fulfillment-router-binding.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { SyncWorkerModule } from './sync/sync-worker.module';
 import { EventsConsumerModule } from './events/events-consumer.module';
@@ -71,6 +72,13 @@ export class AppModule {
         // would be invisible to `autoLoadEntities` under any other role set,
         // so the tables would exist for some workers and not others.
         FulfillmentModule,
+        // #2408: binds FULFILLMENT_ROUTER_RESOLVER_TOKEN for BOTH worker call sites
+        // (the ingestion intercept and the `fulfillment.work.route` handler, both
+        // under `jobs`). SHARED rather than per-role: a @Global() module must be in
+        // the graph to be global, it costs one factory call, and every context
+        // module it imports is already SHARED — so ADR-051's "a role that is off
+        // contributes no providers" is untouched.
+        FulfillmentRouterBindingModule,
         ...roles.map((role) => ROLE_MODULES[role]),
       ],
       providers: [WorkerHeartbeatService],

@@ -1,7 +1,7 @@
 /**
  * useAcknowledgeSalesDocumentCountryMutation (#2189)
  *
- * Backs the routing dialog's "Mark as no sales document" banner action
+ * Backs the routing dialog's "Confirm - nothing needed here" banner action
  * (`PUT /sales-documents/countries/:country/acknowledgment`, #2186). Invalidates
  * the whole `sales-document-rules` domain rather than a narrower key — the
  * `countries()` list (driving both the index's Status column and this

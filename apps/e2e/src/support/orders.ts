@@ -115,6 +115,14 @@ export async function waitForOrderByExternalId(
     timeoutMs?: number;
     intervalMs?: number;
     /**
+     * Which `recordStatus` value(s) count as "arrived". Defaults to
+     * `['ready']` — every existing caller wants a normally-mapped order. A
+     * caller deliberately seeding an unmappable item (e.g. the analytics
+     * `product-matching` fixture, #2482) passes `['awaiting_mapping',
+     * 'source_deleted']` instead, since such an order never reaches `ready`.
+     */
+    recordStatuses?: OrderRecord['recordStatus'][];
+    /**
      * Re-run the source's ingestion poll before each probe. One up-front
      * trigger is not enough on a loaded stack: the enqueued poll waits behind
      * the scheduler's own backlog, and a cursor-paged feed can need several
@@ -125,6 +133,7 @@ export async function waitForOrderByExternalId(
     retriggerPoll?: () => Promise<unknown>;
   },
 ): Promise<OrderRecord> {
+  const acceptedStatuses = new Set(options.recordStatuses ?? ['ready']);
   const found = await pollUntil<OrderRecord | undefined>(
     async () => {
       if (options.retriggerPoll) {
@@ -135,7 +144,7 @@ export async function waitForOrderByExternalId(
         limit: 100,
       });
       return page.items.find(
-        (o) => o.recordStatus === 'ready' && matchesExternalOrderId(o, options.externalOrderId),
+        (o) => acceptedStatuses.has(o.recordStatus) && matchesExternalOrderId(o, options.externalOrderId),
       );
     },
     (order) => order !== undefined,

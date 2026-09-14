@@ -20,13 +20,35 @@ export {
   SHIPMENT_STATUS,
   TerminalShipmentStatusValues,
 } from './domain/types/shipment-status.types';
+// "The goods left the building" (#2347). On the barrel since #2418, whose
+// reopen refusal (spec D19) asks the identical question of the identical set —
+// a box that has gone cannot be reopened in software. Shared rather than
+// restated: a second departure vocabulary is how the two answers start to
+// disagree about a parcel somebody is holding.
+export { ReservationConsumeCandidateStatusValues } from './domain/types/shipment-status.types';
 export type {
+  ReservationConsumeCandidateStatus,
   ShipmentStatus,
   TerminalShipmentStatus,
 } from './domain/types/shipment-status.types';
 
 export { ShipmentDirectionValues } from './domain/types/shipment-direction.types';
 export type { ShipmentDirection } from './domain/types/shipment-direction.types';
+// #2073 — the waybill-relay failure vocabulary and its two pure rules. The
+// threshold constants are deliberately NOT exported: only
+// `resolveWaybillRelayAlertThreshold` may produce the number a caller compares
+// against, so a second call site cannot reopen the reported-vs-enforced gap.
+export {
+  WaybillRelayFailureReasonValues,
+  readWaybillRelayFailureReason,
+  resolveWaybillRelayAlertThreshold,
+  isWaybillRelayStuck,
+} from './domain/types/waybill-relay-failure.types';
+export type {
+  WaybillRelayFailureReason,
+  WaybillRelayFailure,
+  RecordWaybillRelayFailureInput,
+} from './domain/types/waybill-relay-failure.types';
 
 export { ShippingMethodValues, SHIPPING_METHOD } from './domain/types/shipping-method.types';
 export type { ShippingMethod } from './domain/types/shipping-method.types';
@@ -207,3 +229,32 @@ export type {
   FulfillmentStatusSyncResult,
 } from './application/types/fulfillment-status-sync.types';
 export { DEFAULT_UPDATED_SINCE_DAYS } from './application/types/fulfillment-status-sync.types';
+
+// Domain + application — line-grain shipment read model (#2727,
+// `DECISION-oms-fulfilment-grain` option C). Contracts and the pure capacity
+// rule only; the service is injected via SHIPMENT_LINE_SERVICE_TOKEN and the
+// repository via SHIPMENT_LINE_REPOSITORY_TOKEN (both exported above by
+// `export * from './shipping.tokens'`).
+//
+// The ORM entities are deliberately NOT here: they are TypeORM-decorated
+// infrastructure, private to `ShippingModule` per engineering-standards
+// §"ORM ↔ Domain Mapping".
+export { ShipmentLineActKindValues } from './domain/types/shipment-line.types';
+export type {
+  ShipmentLine,
+  ShipmentLineAct,
+  ShipmentLineActKind,
+  ShipmentLineCapacityInput,
+  FulfillmentQuantityCoverage,
+} from './domain/types/shipment-line.types';
+export {
+  checkShipmentLineCapacity,
+  netShippedQuantity,
+} from './domain/types/shipment-line.types';
+export type {
+  ShipmentLineRepositoryPort,
+  UpsertShipmentLineInput,
+  RecordShipmentLineActInput,
+  OrderLineQuantities,
+} from './domain/ports/shipment-line-repository.port';
+export type { IShipmentLineService } from './application/interfaces/shipment-line.service.interface';

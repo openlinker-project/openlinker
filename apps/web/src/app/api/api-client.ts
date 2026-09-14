@@ -26,6 +26,26 @@ import {
 } from '../../features/ai-provider-settings/api/ai-provider-settings.api';
 import { createAnalyticsApi, type AnalyticsApi } from '../../features/analytics/api/sales-analytics.api';
 import {
+  createAnalyticsCoverageApi,
+  type AnalyticsCoverageApi,
+} from '../../features/analytics/api/analytics-coverage.api';
+import {
+  createAnalyticsRemediationApi,
+  type AnalyticsRemediationApi,
+} from '../../features/analytics/api/analytics-remediation.api';
+import {
+  createAnalyticsTaxCoverageApi,
+  type AnalyticsTaxCoverageApi,
+} from '../../features/analytics/api/analytics-tax-coverage.api';
+import {
+  createAnalyticsMatchingCoverageApi,
+  type AnalyticsMatchingCoverageApi,
+} from '../../features/analytics/api/analytics-matching-coverage.api';
+import {
+  createAnalyticsSettingsApi,
+  type AnalyticsSettingsApi,
+} from '../../features/analytics/api/analytics-settings.api';
+import {
   createAnalyticsTrustApi,
   type AnalyticsTrustApi,
 } from '../../features/analytics/api/analytics-trust.api';
@@ -71,6 +91,10 @@ import {
   createFulfillmentAuthorityApi,
   type FulfillmentAuthorityApi,
 } from '../../features/fulfillment-authority/api/who-decides.api';
+import {
+  createBenchApi,
+  type BenchApi,
+} from '../../features/bench/api/bench-work.api';
 import {
   createFulfillmentApi,
   type FulfillmentApi,
@@ -171,7 +195,13 @@ export interface PluginApiNamespaces {}
 export interface CoreApiClient {
   adapters: AdaptersApi;
   aiProviderSettings: AiProviderSettingsApi;
-  analytics: AnalyticsApi & TopProductsApi;
+  analytics: AnalyticsApi &
+    TopProductsApi &
+    AnalyticsCoverageApi &
+    AnalyticsRemediationApi &
+    AnalyticsTaxCoverageApi &
+    AnalyticsMatchingCoverageApi;
+  analyticsSettings: AnalyticsSettingsApi;
   analyticsTrust: AnalyticsTrustApi;
   auth: AuthApi;
   connections: ConnectionsApi;
@@ -200,6 +230,7 @@ export interface CoreApiClient {
   salesDocumentRules: SalesDocumentRulesApi;
   fulfillmentAuthority: FulfillmentAuthorityApi;
   fulfillment: FulfillmentApi;
+  bench: BenchApi;
   shipments: ShipmentsApi;
   syncJobs: SyncJobsApi;
   system: SystemApi;
@@ -396,7 +427,15 @@ export function createApiClient({
   const core: CoreApiClient = {
     adapters: createAdaptersApi(request),
     aiProviderSettings: createAiProviderSettingsApi(request),
-    analytics: { ...createAnalyticsApi(request), ...createTopProductsApi(request) },
+    analytics: {
+      ...createAnalyticsApi(request),
+      ...createTopProductsApi(request),
+      ...createAnalyticsCoverageApi(request),
+      ...createAnalyticsRemediationApi(request),
+      ...createAnalyticsTaxCoverageApi(request),
+      ...createAnalyticsMatchingCoverageApi(request),
+    },
+    analyticsSettings: createAnalyticsSettingsApi(request),
     analyticsTrust: createAnalyticsTrustApi(request),
     auth: createAuthApi(request),
     connections: createConnectionsApi(request),
@@ -424,6 +463,7 @@ export function createApiClient({
     automations: createAutomationsApi(request),
     fulfillmentAuthority: createFulfillmentAuthorityApi(request),
     fulfillment: createFulfillmentApi(request),
+    bench: createBenchApi(request, requestBlob),
     returns: createReturnsApi(request),
     shipments: createShipmentsApi(request, requestBlob),
     syncJobs: createSyncJobsApi(request),

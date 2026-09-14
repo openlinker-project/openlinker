@@ -282,6 +282,16 @@ export interface OrderRecord {
   salesDocumentUnresolvedReason?: string | null;
   /** PII-free elaboration of the block reason (ids and counts only). */
   salesDocumentBlockDetail?: string | null;
+  /**
+   * The batched per-order sales-document projection (#2516/#2552, ADR-065).
+   * Optional/loosely-typed here — this suite only reads a handful of fields
+   * off it and is not the FE-001 contract mirror for the full shape.
+   */
+  salesDocument?: {
+    documentKind: string | null;
+    document: { kind: string; regulatoryStatus?: string | null } | null;
+    otherRecords?: unknown[];
+  };
 }
 
 /**
@@ -818,4 +828,153 @@ export interface DescriptionFormatView {
   maxBytes: number | null;
   declared: boolean;
   resolvedVia: 'OfferManager' | 'ProductPublisher' | null;
+}
+
+// ── Analytics (#2482) ───────────────────────────────────────────────────
+//
+// Narrowed to what the mockup-parity spec reads. `tax-a`/`tax-c` (both keyed
+// on `order_records.taxRateEra = 'pre-rollout'`, written only by a one-time
+// historical backfill migration and never by ingestion) are typed here for
+// completeness of `CoverageCategory` but have no seed path in this suite —
+// see the follow-up issue referenced from `tests/analytics/mockup-parity.spec.ts`.
+
+export type CoverageCategory = 'currency' | 'tax-a' | 'tax-b' | 'tax-c' | 'product-matching';
+export type CoverageResolutionStatus = 'open' | 'in-progress' | 'resolved' | 'failed';
+
+/** GET /analytics/settings response. */
+export interface AnalyticsSettingsView {
+  displayCurrency: string;
+  displayCurrencySource: 'setting' | 'default';
+  rateBasis: 'current-rate' | 'order-date';
+  includeBackfilledTaxRatesInNetSales: boolean;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+}
+
+/** PUT /analytics/settings request body. */
+export interface UpdateAnalyticsSettingsInput {
+  displayCurrency?: string | null;
+  rateBasis?: 'current-rate' | 'order-date';
+  includeBackfilledTaxRatesInNetSales?: boolean;
+}
+
+export interface CoverageCategoryRow {
+  category: CoverageCategory;
+  status: CoverageResolutionStatus;
+  affectedCount: number;
+  sampleOrderIds: string[];
+  /** Only ever set on the `'currency'` row, and only while `status === 'in-progress'`. */
+  activeRunId?: string | null;
+}
+
+/** GET /analytics/coverage (and /coverage/by-connection) response. */
+export interface AnalyticsCoverageView {
+  categories: CoverageCategoryRow[];
+}
+
+/** GET /analytics/coverage/currency/status/:runId and POST .../recalculate response. */
+export interface AnalyticsRemediationRun {
+  id: string;
+  category: string;
+  status: CoverageResolutionStatus;
+  detail: string | null;
+  affectedCount: number;
+  triggeredByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnalyticsRangeQuery {
+  from: string;
+  to: string;
+  sourceConnectionId?: string;
+}
+
+/** GET /analytics/coverage/currency/orders item (detail-currency modal row). */
+export interface CurrencyMismatchOrder {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  nativeCurrency: string | null;
+  stampedCurrency: string | null;
+  stampedAt: string | null;
+  lineProducts: { productId: string; variantId: string | null }[];
+}
+
+/** GET /analytics/coverage/tax/orders item (detail-tax / detail-novat / detail-postrollout modal row). */
+export interface TaxCoverageLineRateObservation {
+  productId: string;
+  variantId: string | null;
+  rateCode: string | null;
+  state: 'known' | 'no-rate' | 'not-checked';
+  unknownReason?: 'ambiguous' | 'unreadable' | 'not-configured' | null;
+}
+
+export interface TaxCoverageOrder {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  placedAt: string | null;
+  lineRates: TaxCoverageLineRateObservation[];
+}
+
+/** GET /analytics/coverage/matching/orders item (detail-mapping modal row). */
+export interface ProductMatchingOrder {
+  internalOrderId: string;
+  sourceConnectionId: string;
+  recordStatus: 'awaiting_mapping' | 'source_deleted';
+  mappingFailureReason: string | null;
+  createdAt: string;
+}
+
+/** POST /analytics/coverage/tax/rerun-backfill response. */
+export interface TaxRerunBackfillResult {
+  scanned: number;
+  updated: number;
+}
+
+/** GET /currency-settings response — narrowed to what the suite reads. */
+export interface CurrencySettingsView {
+  reportingCurrency: string;
+  source: 'setting' | 'env' | 'default';
+  supportedCurrencies: string[];
+}
+
+// ── Sales-document markets (#2563 M10, ADR-066) ─────────────────────────────
+// Mirrored from `apps/api/src/sales-documents/http/dto/sales-document-market-response.dto.ts`.
+
+export interface SalesDocumentMarketOutcome {
+  kind: 'route' | 'aggregate' | 'unresolved' | 'acknowledged';
+  documentKind?: string | null;
+  connectionId?: string;
+  reason?: string;
+}
+
+export interface SalesDocumentMarketRow {
+  /** ISO 3166-1 alpha-2, or '*' for Rest of world. */
+  country: string;
+  /** Orders in the discovery window, or null when the country is configured-only. */
+  orderCount: number | null;
+  hasTemplate: boolean;
+  ruleCount: number;
+  invoiceDefaultConnectionId: string | null;
+  receiptDefaultConnectionId: string | null;
+  acknowledgedNoDocumentAt: string | null;
+  outcome: SalesDocumentMarketOutcome;
+}
+
+export interface SalesDocumentMarketsResponse {
+  windowDays: number;
+  since: string;
+  markets: SalesDocumentMarketRow[];
+}
+
+export interface SalesDocumentCountryDefault {
+  id: string;
+  country: string;
+  documentKind: string;
+  connectionId: string;
+}
+
+export interface SalesDocumentCountryAcknowledgment {
+  country: string;
+  acknowledgedAt: string;
 }

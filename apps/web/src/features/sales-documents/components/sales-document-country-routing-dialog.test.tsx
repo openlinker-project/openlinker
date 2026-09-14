@@ -56,9 +56,9 @@ function makeCountrySummary(
   };
 }
 
-function tierNumbers(): (string | undefined)[] {
-  const headings = screen.getAllByRole('heading', { name: /^Tier \d/ });
-  return headings.map((heading) => heading.textContent?.match(/Tier (\d)/)?.[1]);
+function tierNumbers(): string[] {
+  const badges = document.querySelectorAll('.sales-document-tier__number');
+  return Array.from(badges).map((badge) => badge.textContent ?? '');
 }
 
 describe('SalesDocumentCountryRoutingDialog', () => {
@@ -319,8 +319,9 @@ describe('SalesDocumentCountryRoutingDialog', () => {
   });
 });
 
-describe('SalesDocumentCountryRoutingDialog — acknowledgment banner (#2189)', () => {
-  it('should render the "Mark as no sales document" banner when the country has zero rules and zero defaults', async () => {
+describe('SalesDocumentCountryRoutingDialog — close-time acknowledgment gate (#2189, review reversal)', () => {
+  it('should require confirmation via a second modal when closing a country with zero rules and zero defaults', async () => {
+    const onOpenChange = vi.fn();
     const apiClient = createMockApiClient({
       salesDocumentRules: {
         listRules: vi.fn().mockResolvedValue([]),
@@ -333,18 +334,62 @@ describe('SalesDocumentCountryRoutingDialog — acknowledgment banner (#2189)', 
         open
         country="DE"
         cameFrom={null}
-        onOpenChange={vi.fn()}
+        onOpenChange={onOpenChange}
         onNavigate={vi.fn()}
       />,
       { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
     );
 
+    await screen.findByText(/Rules for DE/i);
+    // Inline body carries no acknowledge button anymore — the gate lives in
+    // the close-time confirm modal only.
+    expect(screen.queryByRole('button', { name: 'Confirm - nothing needed here' })).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    // The gate intercepted the close — the parent's onOpenChange(false) was
+    // never called, and a SECOND modal appeared asking to confirm.
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(await screen.findByText('Leave DE unconfigured?')).toBeInTheDocument();
     expect(
-      await screen.findByRole('button', { name: 'Mark as no sales document' }),
+      screen.getByRole('button', { name: 'Confirm - nothing needed here' }),
     ).toBeInTheDocument();
   });
 
-  it('should not render the banner when the country has a rule', async () => {
+  it('"Go back" cancels the gate and leaves the routing dialog open, unchanged', async () => {
+    const onOpenChange = vi.fn();
+    const apiClient = createMockApiClient({
+      salesDocumentRules: {
+        listRules: vi.fn().mockResolvedValue([]),
+        listCountryDefaults: vi.fn().mockResolvedValue([]),
+        listConfiguredCountries: vi.fn().mockResolvedValue([]),
+      },
+    });
+    renderWithProviders(
+      <SalesDocumentCountryRoutingDialog
+        open
+        country="DE"
+        cameFrom={null}
+        onOpenChange={onOpenChange}
+        onNavigate={vi.fn()}
+      />,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
+    );
+
+    await screen.findByText(/Rules for DE/i);
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await screen.findByText('Leave DE unconfigured?');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Go back' }));
+
+    expect(screen.queryByText('Leave DE unconfigured?')).toBeNull();
+    expect(onOpenChange).not.toHaveBeenCalled();
+    // The routing dialog itself is still open and untouched.
+    expect(screen.getByText(/Rules for DE/i)).toBeInTheDocument();
+  });
+
+  it('should close without any gate when the country has a rule', async () => {
+    const onOpenChange = vi.fn();
     const apiClient = createMockApiClient({
       salesDocumentRules: {
         listRules: vi.fn().mockResolvedValue([makeRule('r1')]),
@@ -359,17 +404,21 @@ describe('SalesDocumentCountryRoutingDialog — acknowledgment banner (#2189)', 
         open
         country="DE"
         cameFrom={null}
-        onOpenChange={vi.fn()}
+        onOpenChange={onOpenChange}
         onNavigate={vi.fn()}
       />,
       { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
     );
 
     await screen.findByText(/Rules for DE/i);
-    expect(screen.queryByRole('button', { name: 'Mark as no sales document' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByText('Leave DE unconfigured?')).toBeNull();
   });
 
-  it('should not render the banner when the country has a country default', async () => {
+  it('should close without any gate when the country has a country default', async () => {
+    const onOpenChange = vi.fn();
     const defaults: SalesDocumentCountryDefault[] = [
       { id: 'd1', country: 'DE', documentKind: 'invoice', connectionId: 'conn_1' },
     ];
@@ -387,17 +436,21 @@ describe('SalesDocumentCountryRoutingDialog — acknowledgment banner (#2189)', 
         open
         country="DE"
         cameFrom={null}
-        onOpenChange={vi.fn()}
+        onOpenChange={onOpenChange}
         onNavigate={vi.fn()}
       />,
       { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
     );
 
     await screen.findByText(/Rules for DE/i);
-    expect(screen.queryByRole('button', { name: 'Mark as no sales document' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(screen.queryByText('Leave DE unconfigured?')).toBeNull();
   });
 
-  it('should acknowledge the country and flip the banner to "Acknowledged" with an Undo action', async () => {
+  it('confirming the gate acknowledges the country AND closes the dialog', async () => {
+    const onOpenChange = vi.fn();
     let acknowledgedAt: string | null = null;
     const acknowledgeNoDocument = vi.fn((country: string) => {
       acknowledgedAt = '2026-02-03T10:00:00.000Z';
@@ -422,27 +475,28 @@ describe('SalesDocumentCountryRoutingDialog — acknowledgment banner (#2189)', 
         open
         country="DE"
         cameFrom={null}
-        onOpenChange={vi.fn()}
+        onOpenChange={onOpenChange}
         onNavigate={vi.fn()}
       />,
       { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
     );
 
-    const markButton = await screen.findByRole('button', { name: 'Mark as no sales document' });
-    await userEvent.click(markButton);
+    await screen.findByText(/Rules for DE/i);
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await screen.findByText('Leave DE unconfigured?');
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm - nothing needed here' }));
 
-    expect(acknowledgeNoDocument).toHaveBeenCalledWith('DE');
-    expect(await screen.findByText(/Acknowledged/i)).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Mark as no sales document' })).toBeNull();
+    await waitFor(() => expect(acknowledgeNoDocument).toHaveBeenCalledWith('DE'));
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
   });
 
-  it('should undo the acknowledgment and flip the banner back to the offering state', async () => {
+  it('reopening an acknowledged country shows the settled inline banner with Undo, and Undo re-arms the gate', async () => {
     let acknowledgedAt: string | null = '2026-02-03T10:00:00.000Z';
     const clearAcknowledgment = vi.fn(() => {
       acknowledgedAt = null;
       return Promise.resolve(undefined);
     });
+    const onOpenChange = vi.fn();
     const apiClient = createMockApiClient({
       salesDocumentRules: {
         listRules: vi.fn().mockResolvedValue([]),
@@ -462,7 +516,7 @@ describe('SalesDocumentCountryRoutingDialog — acknowledgment banner (#2189)', 
         open
         country="DE"
         cameFrom={null}
-        onOpenChange={vi.fn()}
+        onOpenChange={onOpenChange}
         onNavigate={vi.fn()}
       />,
       { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() },
@@ -470,12 +524,13 @@ describe('SalesDocumentCountryRoutingDialog — acknowledgment banner (#2189)', 
 
     const undoButton = await screen.findByRole('button', { name: 'Undo' });
     await userEvent.click(undoButton);
-
     expect(clearAcknowledgment).toHaveBeenCalledWith('DE');
-    expect(
-      await screen.findByRole('button', { name: 'Mark as no sales document' }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull());
+
+    // Now unacknowledged again — closing must re-trigger the gate.
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(await screen.findByText('Leave DE unconfigured?')).toBeInTheDocument();
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 });
 
@@ -659,22 +714,28 @@ describe('SalesDocumentCountryRoutingDialog — Reset country (#2189)', () => {
     expect(clearAcknowledgment).not.toHaveBeenCalled();
 
     // Post-reset state matches a never-touched country: no rules, no
-    // defaults, the acknowledgment banner back in its offering shape, and
-    // "Reset country" disabled again.
+    // defaults, "Reset country" disabled again, and the close-time gate
+    // re-armed (never inline anymore — see the close-time gate describe
+    // block above).
     await screen.findByText(/No rules yet for this country/i);
-    expect(
-      await screen.findByRole('button', { name: 'Mark as no sales document' }),
-    ).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Reset country' })).toBeDisabled();
     });
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(
+      await screen.findByRole('button', { name: 'Confirm - nothing needed here' }),
+    ).toBeInTheDocument();
   });
 
   it('should offer an explicit "Done" close action so the operator does not rely on Escape or a backdrop click', async () => {
     const onOpenChange = vi.fn();
+    // A configured country (a rule present) — Done closes directly with no
+    // close-time acknowledgment gate (that gate is exercised separately,
+    // above, for the zero-rules/zero-defaults/unacknowledged case).
+    const rules = [makeRule('r1', { country: 'DE' })];
     const apiClient = createMockApiClient({
       salesDocumentRules: {
-        listRules: vi.fn().mockResolvedValue([]),
+        listRules: vi.fn().mockResolvedValue(rules),
         listCountryDefaults: vi.fn().mockResolvedValue([]),
       },
     });

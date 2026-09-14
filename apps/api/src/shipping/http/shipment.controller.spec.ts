@@ -85,6 +85,8 @@ function makeShipment(overrides: Partial<Shipment> = {}): Shipment {
     overrides.direction ?? 'outbound',
     overrides.reservationConsumedAt ?? null,
     overrides.fulfillmentWorkId ?? null,
+    // #2073 waybill-relay failure history — none by default.
+    overrides.waybillRelayFailure ?? null,
   );
 }
 
@@ -114,6 +116,7 @@ describe('ShipmentController', () => {
       list: jest.fn(),
       getById: jest.fn(),
       getActiveByOrderId: jest.fn(),
+      findByFulfillmentWorkIds: jest.fn(),
       hasConsumedReservations: jest.fn(),
     };
     dispatch = { dispatch: jest.fn() };
@@ -144,8 +147,12 @@ describe('ShipmentController', () => {
       getTopProducts: jest.fn(),
       findDispatchDeadlineCandidates: jest.fn(),
       countOrdersWithOmsAttention: jest.fn(),
+      markOmsAttention: jest.fn(),
       getTopProductVariantSales: jest.fn(),
       discoverSalesDocumentMarkets: jest.fn(),
+      getCurrencyMismatchOrders: jest.fn(),
+      getCurrencyMismatchOrdersByConnection: jest.fn(),
+      getProductMatchingErrorOrders: jest.fn(),
     };
     controller = new ShipmentController(
       query,

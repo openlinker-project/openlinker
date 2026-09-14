@@ -146,6 +146,46 @@ export interface ProductVariantRepositoryPort {
   ): Promise<PaginatedProductVariants>;
 
   /**
+   * The page WITHOUT its total (#2944).
+   *
+   * A paged read stops after its `LIMIT`; the `COUNT` beside it cannot stop at
+   * all, so under a predicate no plain index serves - here the SKU / EAN / GTIN `ILIKE` search - the count
+   * scans the table however small the page is. This read pays only for the page.
+   *
+   * It applies the identical predicate to {@link countMany}: both are built by
+   * one private `buildFilteredQuery`, so the total can never describe a
+   * different set than the page.
+   *
+   * {@link findMany} deliberately does NOT delegate to this method plus
+   * {@link countMany}. It keeps the single `getManyAndCount()` it already had,
+   * so `?withTotal=true` - the default, and every caller not yet migrated -
+   * emits exactly the two statements it emitted before #2944, on the one query
+   * runner it emitted them on. Composing would be a second, unmeasured change
+   * (two pool connections per list request) smuggled into a change about
+   * something else.
+   *
+   * Note what that does NOT claim. Read against typeorm@0.3.17 rather than
+   * assumed: `getManyAndCount` runs `executeEntitiesAndRawResults` and then
+   * `executeCountQuery` unconditionally and sequentially. There is no
+   * short-page branch and no `lazyCount` - the identifier does not exist in
+   * that version. The count always runs, which is the argument FOR splitting
+   * it out, not against.
+   */
+  findManyRows(
+    filters: ProductVariantListFilters,
+    pagination: ProductPagination
+  ): Promise<ProductVariant[]>;
+
+  /**
+   * The total WITHOUT its page (#2944) - the second half of {@link findManyRows}.
+   *
+   * Takes no pagination, which is the point: the answer depends on the filters
+   * alone, so a caller may cache it per filter combination and paging through a
+   * result set never recomputes it.
+   */
+  countMany(filters: ProductVariantListFilters): Promise<number>;
+
+  /**
    * Soft-mark every live variant of `productId` NOT in `keepVariantIds` as
    * stale (#1599 — deleted at the master). An empty keep-set marks all live
    * variants (the product-fully-deleted / 404 path). Returns the ids actually

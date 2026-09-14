@@ -171,3 +171,39 @@ describe('deriveSupportedActions', () => {
     });
   });
 });
+
+describe('the expedite pair (#2416, spec D22)', () => {
+  it('should offer exactly ONE direction, never both', () => {
+    // The whole reason expedite is two verbs: the server says which way the
+    // control points, so no client ever derives it.
+    expect(derive({ isExpedited: false })).toContain('expedite');
+    expect(derive({ isExpedited: false })).not.toContain('release_expedite');
+
+    expect(derive({ isExpedited: true })).toContain('release_expedite');
+    expect(derive({ isExpedited: true })).not.toContain('expedite');
+  });
+
+  it('should treat an ABSENT flag as not expedited', () => {
+    // A caller compiled against the pre-#2416 shape passes nothing. It must
+    // degrade to offering the forward verb, whose write is then refused by its
+    // own state guard — never to offering the reverse of the truth.
+    expect(derive({})).toContain('expedite');
+    expect(derive({})).not.toContain('release_expedite');
+  });
+
+  it('should still offer it on a HELD parcel', () => {
+    // A hold will be released, and the ordering should already be right when it
+    // is. Suppressing it would make an operator release the hold to reorder.
+    const held = derive({ activeHoldCount: 1, isExpedited: false });
+    expect(held).toContain('expedite');
+  });
+
+  it('should offer NEITHER on a terminal parcel', () => {
+    // Reordering work that will never be packed is noise on a row whose only
+    // honest state is "do not pack this".
+    for (const status of TERMINAL_FULFILLMENT_WORK_STATUSES) {
+      expect(derive({ status, isExpedited: false })).not.toContain('expedite');
+      expect(derive({ status, isExpedited: true })).not.toContain('release_expedite');
+    }
+  });
+});

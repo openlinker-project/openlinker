@@ -21,7 +21,7 @@ export interface EventPublisherPort {
   /**
    * Publish an event to the specified stream
    *
-   * @param streamName - The name of the stream to publish to (e.g., 'events.inbound.webhooks')
+   * @param streamName - The name of the stream to publish to (e.g., 'events.master.deletion')
    * @param event - The event envelope to publish
    * @returns Promise resolving to the message ID assigned by the event bus
    * @throws Error if publishing fails

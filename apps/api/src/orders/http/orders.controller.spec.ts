@@ -17,6 +17,7 @@ import {
   ORDER_DESTINATION_RETRY_SERVICE_TOKEN,
   ORDER_RECORD_SERVICE_TOKEN,
   SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
+  ORDER_TEST_FIXTURE_SERVICE_TOKEN,
   OrderRecord,
   OrderRecordNotFoundException,
   OrderDestinationNotFoundException,
@@ -27,6 +28,7 @@ import {
   OrderAlreadyOnHoldError,
   HoldAlreadyReleasedError,
   HoldReleaseNoteRequiredError,
+  TestFixturesDisabledException,
 } from '@openlinker/core/orders';
 import type {
   OrderRecordRepositoryPort,
@@ -36,6 +38,7 @@ import type {
   IOrderProvisioningResumeService,
   OrderHold,
   ISalesDocumentViewService,
+  IOrderTestFixtureService,
 } from '@openlinker/core/orders';
 import type { SalesDocumentView } from '@openlinker/core/sales-documents';
 import { INVOICE_SERVICE_TOKEN } from '@openlinker/core/invoicing';
@@ -62,6 +65,7 @@ describe('OrdersController', () => {
   let holdService: jest.Mocked<IOrderHoldService>;
   let provisioningResume: jest.Mocked<IOrderProvisioningResumeService>;
   let salesDocumentView: jest.Mocked<ISalesDocumentViewService>;
+  let testFixtureService: jest.Mocked<IOrderTestFixtureService>;
 
   const mockOrder = new OrderRecord(
     'ol_order_001',
@@ -93,6 +97,8 @@ describe('OrdersController', () => {
       upsertWithLineItems: jest.fn(),
       updateSyncStatus: jest.fn(),
       findMany: jest.fn(),
+      findManyRows: jest.fn(),
+      countMany: jest.fn(),
       countByHealth: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),
       countBySla: jest.fn(),
@@ -118,6 +124,14 @@ describe('OrdersController', () => {
       patchSnapshotTaxRates: jest.fn(),
       getNetMedianOrderValue: jest.fn(),
       findDispatchDeadlineCandidates: jest.fn(),
+      findCurrencyMismatchOrders: jest.fn(),
+      findCurrencyMismatchOrdersByConnection: jest.fn(),
+      findNetExcludedOrderCandidatesPage: jest.fn(),
+      findProductMatchingErrorOrders: jest.fn(),
+      findCurrencyMismatchOrderRefsAfter: jest.fn(),
+      clearFxStampForRestatement: jest.fn(),
+      countRemainingCurrencyMismatch: jest.fn(),
+      stampPreRolloutEraForTesting: jest.fn(),
     };
 
     const mockOrderRecordService = {
@@ -188,6 +202,10 @@ describe('OrdersController', () => {
       getForOrders: jest.fn().mockResolvedValue(new Map()),
       getForOrder: jest.fn().mockResolvedValue(null),
     };
+    const mockTestFixtureService: jest.Mocked<IOrderTestFixtureService> = {
+      markPreRolloutEraForTesting: jest.fn().mockResolvedValue(true),
+      assertTestFixturesAllowed: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [OrdersController],
@@ -232,6 +250,10 @@ describe('OrdersController', () => {
           provide: SALES_DOCUMENT_VIEW_SERVICE_TOKEN,
           useValue: mockSalesDocumentView,
         },
+        {
+          provide: ORDER_TEST_FIXTURE_SERVICE_TOKEN,
+          useValue: mockTestFixtureService,
+        },
       ],
     }).compile();
 
@@ -245,6 +267,7 @@ describe('OrdersController', () => {
     holdService = module.get(ORDER_HOLD_SERVICE_TOKEN);
     provisioningResume = module.get(ORDER_PROVISIONING_RESUME_SERVICE_TOKEN);
     salesDocumentView = module.get(SALES_DOCUMENT_VIEW_SERVICE_TOKEN);
+    testFixtureService = module.get(ORDER_TEST_FIXTURE_SERVICE_TOKEN);
   });
 
   describe('listOrders', () => {
@@ -1434,6 +1457,127 @@ describe('OrdersController', () => {
       const result = await controller.getOrder('ol_order_001');
 
       expect(result.salesDocument?.documentKind).toBe('fiscal-receipt');
+    });
+  });
+
+  describe('the two-stage read (#2944)', () => {
+    it('reads the page ALONE and omits total when withTotal=false', async () => {
+      repository.findManyRows.mockResolvedValue([]);
+
+      const result = await controller.listOrders({ withTotal: false, limit: 5, offset: 40 });
+
+      expect(repository.findManyRows).toHaveBeenCalledTimes(1);
+      // The page WINDOW, not only the filters (#2957 review round 6, I5). Every
+      // `withTotal=false` assertion in the repo passed `offset: 0`, so
+      // `{ limit, offset }` -> `{ limit, offset: 0 }` survived the whole suite -
+      // page 2 showing page 1's rows under a correct total, with Next enabled.
+      expect(repository.findManyRows.mock.calls[0][1]).toStrictEqual({ limit: 5, offset: 40 });
+      expect(repository.findMany).not.toHaveBeenCalled();
+      expect('total' in result).toBe(false);
+      expect(result.total).toBeUndefined();
+    });
+
+    it('maps the DTO to filters with ONE function, so list and count cannot drift', async () => {
+      repository.findManyRows.mockResolvedValue([]);
+      repository.countMany.mockResolvedValue(9);
+      const query = {
+        health: 'needs_attention' as const,
+        syncStatus: 'failed' as const,
+        hold: 'fraud-review' as const,
+        attention: true,
+        phase: 'held' as const,
+      };
+
+      await controller.listOrders({ ...query, withTotal: false, limit: 20, offset: 0 });
+      await controller.countOrders({ ...query });
+
+      const listFilters = repository.findManyRows.mock.calls[0][0];
+      const countFilters = repository.countMany.mock.calls[0][0];
+      expect(countFilters).toEqual(listFilters);
+      // And the renames are actually applied, not merely equal to each other.
+      expect(countFilters).toMatchObject({
+        lifecyclePhase: 'held',
+        omsAttention: true,
+        activeHoldReason: 'fraud-review',
+      });
+    });
+
+    it('ACCEPTS sort and dir on the count rather than 400-ing on them', async () => {
+      // They travel inside this list's filter object, so a client reusing one
+      // query builder sends them to the count too. Refusing them would 400 the
+      // orders total on every request carrying the default triage sort - which
+      // is every request the list page makes.
+      repository.countMany.mockResolvedValue(9);
+
+      await expect(
+        controller.countOrders({ sort: 'dispatchBy', dir: 'asc', health: 'synced' })
+      ).resolves.toEqual({ total: 9 });
+    });
+
+    it('refuses a contradictory cancelled/phase pair on the COUNT too', async () => {
+      // The same guard the list applies, through the same shared function. If
+      // only the list refused, the count would answer a number for a pair that
+      // can never match a row.
+      await expect(
+        controller.countOrders({ cancelled: false, phase: 'cancelled' })
+      ).rejects.toThrow(/contradicts/);
+      expect(repository.countMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('markPreRolloutEra (#2855, TEST-FIXTURE-ONLY)', () => {
+    const USER = { id: 'user-1', username: 'op', role: 'admin' } as never;
+
+    it('checks the env gate BEFORE reading the order, and refuses fast when closed', async () => {
+      testFixtureService.assertTestFixturesAllowed.mockImplementation(() => {
+        throw new TestFixturesDisabledException();
+      });
+
+      await expect(controller.markPreRolloutEra('ol_order_001', USER)).rejects.toMatchObject({
+        response: expect.objectContaining({ error: 'TEST_FIXTURES_DISABLED' }),
+      });
+      expect(repository.findById).not.toHaveBeenCalled();
+      expect(testFixtureService.markPreRolloutEraForTesting).not.toHaveBeenCalled();
+    });
+
+    it('404s without calling the service when the order does not exist', async () => {
+      repository.findById.mockResolvedValue(null);
+
+      await expect(
+        controller.markPreRolloutEra('ol_order_missing', USER)
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(testFixtureService.markPreRolloutEraForTesting).not.toHaveBeenCalled();
+    });
+
+    it('returns { applied } from the service when the order exists, threading the actor', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      testFixtureService.markPreRolloutEraForTesting.mockResolvedValue(true);
+
+      await expect(controller.markPreRolloutEra('ol_order_001', USER)).resolves.toEqual({
+        applied: true,
+      });
+      expect(testFixtureService.markPreRolloutEraForTesting).toHaveBeenCalledWith(
+        'ol_order_001',
+        'user-1'
+      );
+    });
+
+    it('maps TestFixturesDisabledException to a 403 with a machine-readable code', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      testFixtureService.markPreRolloutEraForTesting.mockRejectedValue(
+        new TestFixturesDisabledException()
+      );
+
+      await expect(controller.markPreRolloutEra('ol_order_001', USER)).rejects.toMatchObject({
+        response: expect.objectContaining({ error: 'TEST_FIXTURES_DISABLED' }),
+      });
+    });
+
+    it('re-throws an unmodelled error rather than swallowing it', async () => {
+      repository.findById.mockResolvedValue(mockOrder);
+      testFixtureService.markPreRolloutEraForTesting.mockRejectedValue(new Error('boom'));
+
+      await expect(controller.markPreRolloutEra('ol_order_001', USER)).rejects.toThrow('boom');
     });
   });
 });

@@ -90,7 +90,22 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       // PrestaShop's line prices (`order_details.product_price`, mapped onto
       // `OrderItem.price` above) are net — `specific_price` and every catalogue
       // read this adapter does elsewhere already treat them that way (#2440).
+      // This governs `convertGrossToNet` (destination-side line pinning) and
+      // the ADR-063 net-sales tax-rate path — do NOT flip it to describe
+      // `total`, which is a different, genuinely gross figure (#2829).
+      //
+      // #2835: this net-priced-lines fact is why `invoicing`/`fiscalization`
+      // permanently refuse a PrestaShop order (`describeNetPricedOrderRefusal`,
+      // `@openlinker/core/sales-documents`) — `total` being genuinely gross
+      // (below) does not change that the LINES this guard cares about are net,
+      // and core may never compute tax to convert them.
       taxTreatment: 'exclusive',
+      // `total` (above, from `total_paid_tax_incl`) IS genuinely gross —
+      // unlike `subtotal`/line prices, it is never net for a PrestaShop order.
+      // Asserted independently of `taxTreatment` so an `orderTotalGross`
+      // sales-document rule condition can trust it without also relabeling
+      // the (still net) line prices as gross (#2829).
+      totalTaxTreatment: 'inclusive',
     };
 
     return {

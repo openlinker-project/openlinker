@@ -105,6 +105,42 @@ Stated so absence is not read as oversight:
   than a screen of its own.
 - **B5's expedited marker** — the expedite story was added to the spec after these were drawn.
 
+### Known gaps against the shipped surface
+
+Recorded when Surfaces D/E/F were built (#2418), so the difference reads as a
+deliberate omission rather than a rendering bug.
+
+`BenchDocuments.dc.html` shows two facts about a label that **no data model
+carries**, and the shipped surface therefore does not render either:
+
+- **`fetched 14:29`** — when the label was retrieved. `Shipment` has no such
+  column, and `failedAt` (the only label timestamp OpenLinker holds) records the
+  opposite event.
+- **`tried 3 times`** — how many attempts the carrier has had. Nothing counts
+  them; a shipment records its current state, not a history of attempts.
+
+Adding either would mean a schema change plus a backfill, so the shipped panel
+states what it knows — the carrier, the tracking number, and the carrier's own
+refusal where a caller is allowed to see it — and invents nothing.
+
+Two mockup controls are also absent, for the standing reason that a control
+wired to nothing is worse than a missing one:
+
+- **"Put the box on the problem shelf"** — nothing records a shelf.
+- **"Try the label again"** — on this panel there is nothing to try. A label
+  that EXISTS is reported `ready`, where the Print control re-fetches it every
+  time it is pressed, so a transient fetch failure is already retried by
+  pressing that. The `unlabelled` state is reached only when no label was ever
+  produced, and buying one needs the buyer's address and the box measurements —
+  precisely the data this surface is shaped not to hold. The panel names
+  dispatch as the owner instead.
+
+And one field renders differently by role: the carrier's own words
+(*"Parcel locker 4471 is full"*) are gated on `shipments:write`, which no packer
+holds, because the raw rejection text may embed address fragments. A packer sees
+the carrier's short code, and — where even that is absent — is told the reason is
+withheld rather than that the carrier gave none.
+
 ## Provenance and drift
 
 Drawn 2026-09-03 against the **OpenLinker UI** design system (45 components synced from

@@ -492,6 +492,8 @@ export class SchedulerService implements OnModuleDestroy {
       // capability and no connection at all.
       this.registerInventoryProvenanceBackfillTask();
       this.registerReservationSweepTasks();
+      this.registerFulfillmentTimeoutSweepTask();
+      this.registerFulfillmentRelaySweepTask();
       this.registerOrderHoldReconcileTask();
 
       // Drain plugin-contributed tasks — populated at `onModuleInit`, complete
@@ -1055,6 +1057,88 @@ export class SchedulerService implements OnModuleDestroy {
       generatePayload: () => ({ schemaVersion: 1 }),
       generateIdempotencyKey: (_connection, timestamp) =>
         `inventory:reservations:shortfall:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register ADR-054's timeout-as-rejection sweep (#2712).
+   *
+   * Its own method rather than a line inside `registerReservationSweepTasks`,
+   * for that method's own stated reason: coupling a task's REGISTRATION to a
+   * foreign concern's flag is how switching one thing off silently switches
+   * another off. Each sweep's own `enabledEnvVar` is honoured per tick.
+   *
+   * Global scope under the nil-UUID system connection id, like the reservation
+   * sweeps and for the same kind of reason: `IDX_fulfillment_works_request_status`
+   * carries no connection axis, and a dispatch nobody answered is stalled
+   * whoever holds it.
+   *
+   * **Default ON**, and safe to be. It makes no platform call and writes only
+   * OL-owned rows; and it is INERT on every install that has not opted into
+   * fulfilment routing, because routing is opt-in and an OMS connection is never
+   * seeded (ADR-055), so `fulfillment_works` is empty and the frontier returns
+   * nothing. What it replaces is a silent stall; what it creates is a visible,
+   * actionable state.
+   *
+   * Hourly, offset from the reservation expiry sweep's `15 * * * *` so two
+   * system-scoped `bulk` passes do not contend for the same lane slot on the
+   * same minute. The cadence is the TICK, not a cycle: this pass has no cursor,
+   * so each tick simply takes the oldest page of whatever is still stalled.
+   */
+  private registerFulfillmentTimeoutSweepTask(): void {
+    const systemConnection = this.buildSystemConnection();
+
+    this.tasks.push({
+      taskId: 'fulfillment-timeout-sweep',
+      jobType: 'fulfillment.work.timeoutSweep',
+      cronExpression: '35 * * * *',
+      enabledEnvVar: 'OL_FULFILLMENT_TIMEOUT_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `fulfillment:work:timeout-sweep:${timestamp}`,
+    });
+  }
+
+  /**
+   * Register the dispatch-relay reconcile sweep (#2728).
+   *
+   * Its own method beside the timeout sweep's, for that method's own stated
+   * reason: coupling a task's REGISTRATION to a foreign concern's flag is how
+   * switching one thing off silently switches another off.
+   *
+   * Global scope under the nil-UUID system connection id. The frontier joins
+   * `fulfillment_progress_claims` and carries no connection axis, and a work whose
+   * source was never told it shipped is unrelayed whoever holds it.
+   *
+   * **Default ON**, and safe to be. It writes no OL row of its own; what it does is
+   * re-enter a relay OL already decided to send, through the SAME
+   * `claimDispatchRelay` an ordinary progress event would take, so the worst a
+   * spurious run can do is answer `already-relayed`. It is also INERT on every
+   * install today: `IFulfillmentProgressService.record` has no production caller,
+   * so no `shipped` progress claim exists and the frontier returns nothing. What it
+   * replaces is a marketplace that silently never learns an order shipped.
+   *
+   * Hourly at `50 * * * *`, offset from the timeout sweep's `35` for that task's own
+   * reason — both are system-scoped `bulk` passes and would otherwise contend for
+   * the same per-scope lane slot on the same minute. The cadence is the TICK, not a
+   * cycle: this pass has no cursor, so each tick takes the oldest page of whatever
+   * is still unrelayed.
+   */
+  private registerFulfillmentRelaySweepTask(): void {
+    const systemConnection = this.buildSystemConnection();
+
+    this.tasks.push({
+      taskId: 'fulfillment-relay-sweep',
+      jobType: 'fulfillment.work.relaySweep',
+      cronExpression: '50 * * * *',
+      enabledEnvVar: 'OL_FULFILLMENT_RELAY_SWEEP_ENABLED',
+      enabledDefault: true,
+      connectionFilter: () => Promise.resolve([systemConnection]),
+      generatePayload: () => ({ schemaVersion: 1 }),
+      generateIdempotencyKey: (_connection, timestamp) =>
+        `fulfillment:work:relay-sweep:${timestamp}`,
     });
   }
 

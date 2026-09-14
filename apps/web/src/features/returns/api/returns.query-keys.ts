@@ -16,4 +16,7 @@ export const returnsQueryKeys = {
   // #2383 — keyed by ORDER, not by return: one order spans many returns.
   orderEvents: (internalOrderId: string) =>
     ['returns', 'order-events', internalOrderId] as const,
+  // #2646 — keyed by RETURN. A distinct namespace from `orderEvents`: the two
+  // reads answer different questions and an orphan has no order key at all.
+  returnEvents: (returnId: string) => ['returns', 'return-events', returnId] as const,
 };

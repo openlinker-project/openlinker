@@ -18,11 +18,13 @@
  * | `locationId` / `deliveryMethod` | `create` | **insert-only** — the router is the single producer. If re-routing mints a NEW row these are never updated; if it ever updates in place, a round-trip from a stale read would silently revert the re-route. Insert-only forces #2395 to choose explicitly |
  * | `assignedConnectionId` | `create`, `assignHolder`, `clearHolder` | settable at insert (ADR-054 R1 creates work ALREADY ASSIGNED, in one transaction); afterwards only the two narrow claims move it |
  * | `status` | `create`, `transitionStatus`, `cancel` | |
- * | `requestStatus` | `create`, `transitionRequestStatus`, `claimDispatchAttempt`, `recordAcceptance`, `recordRejection` | the handshake (#2399) owns it; the router holds a stale copy by construction. A NAMED additional writer is this table's convention (`status` and `assignedConnectionId` each already list three); an UNNAMED one is the defect it guards against |
+ * | `requestStatus` | `create`, `transitionRequestStatus`, `claimDispatchAttempt`, `recordAcceptance`, `recordRejection` | the handshake (#2399) owns it; the router holds a stale copy by construction. A NAMED additional writer is this table's convention (`status` and `assignedConnectionId` each already list three); an UNNAMED one is the defect it guards against. **#2712's timeout sweep adds NO writer here** — it reaps THROUGH `recordRejection`, deliberately, so the guarded `submitted -> rejected` transition and the rejection row stay one statement pair with one owner |
  * | `assignmentAttempt` | `claimDispatchAttempt` (#2399) | monotonic; a round-trip would reset the idempotency key's stability. #2392's `incrementAssignmentAttempt` is REPLACED, not supplemented: its `WHERE` was `"id" = :id` alone, so any caller could bump the counter out from under a live `submitted` dispatch and invalidate an in-flight key |
  * | `acceptedAt` / `externalWorkId` | `recordAcceptance` (#2399) | ADR-054's at-most-once acceptance CLAIM (`WHERE "acceptedAt" IS NULL`); round-tripping a `null` would re-open the claim |
  * | `dispatchRelayedAt` | `claimDispatchRelay`, `releaseDispatchRelay` (#2401) | at-most-once marker; round-tripping a `null` re-opens the relay. The release is a NAMED second writer — this table's convention (`status` and `requestStatus` each list several); it is the unnamed writer that is the defect |
  * | `cancelledAt` / `cancellationReason` | `cancel` | the `order_records.cancelledAt` precedent |
+ * | `expeditedAt` | `setExpedited` (#2416) | one writer, both directions — the instant expedites and `null` releases, guarded `IS NULL` / `IS NOT NULL` so a replay cannot re-stamp a fresh instant and silently reorder two already-expedited parcels against each other |
+ * | `parcelClosedAt` / `packedByUserId` | `claimParcelClose`, `reopenParcel` (#2418) | one pair, one statement each way. The close is guarded `IS NULL` and the reopen `IS NOT NULL`, so neither can double-apply and the loser of a race never rewrites the attribution. `packedByService` is cleared by the reopen and written by neither — a bench close always has a user, and `CHK_fulfillment_works_packed_actor` makes the two mutually exclusive while `CHK_fulfillment_works_closed_parcel_actor` (#2890) refuses a close that names neither |
  * | `version` | every applied HEADER transition | computed in SQL (`version + 1`), never from a caller's read |
  * | `fulfilledQuantity` / `cancelledQuantity` | `recordLineProgress` (#2400) | a create carries zeros and would erase real progress |
  * | `updatedAt` | every applied transition | written IMPLICITLY by TypeORM's `@UpdateDateColumn` injection, and explicitly by `recordLineProgress`. Named here because it has a real downstream consumer — `IDX_fulfillment_works_request_status` and ADR-054's timeout sweep both read it — and a column whose writer is a framework default is exactly the one a writer table must not omit |
@@ -56,7 +58,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, IsNull, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, In, IsNull, LessThan, QueryFailedError, Repository } from 'typeorm';
 import type { EntityManager, UpdateQueryBuilder } from 'typeorm';
 
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
@@ -72,14 +74,23 @@ import { FulfillmentWorkNotFoundError } from '../../../domain/exceptions/fulfill
 import type {
   CancelFulfillmentWorkInput,
   ClaimFulfillmentDispatchInput,
+  ClaimParcelCloseInput,
   CreateFulfillmentWorkInput,
   FulfillmentWorkRepositoryPort,
   FulfillmentWorkTransaction,
+  ListUnrelayedShippedDispatchesInput,
+  UnrelayedShippedDispatch,
+  ListTimedOutDispatchesInput,
+  ParcelVerifiedCount,
   PlaceFulfillmentHoldInput,
   RecordFulfillmentAcceptanceInput,
   RecordFulfillmentLineProgressInput,
   RecordFulfillmentRejectionInput,
+  RecordParcelVerificationInput,
   ReleaseFulfillmentHoldInput,
+  ReopenParcelWriteInput,
+  SetFulfillmentWorkExpeditedInput,
+  TimedOutFulfillmentDispatch,
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
 } from '../../../domain/ports/fulfillment-work-repository.port';
@@ -107,6 +118,8 @@ import type {
   FulfillmentWork,
   FulfillmentWorkLine,
 } from '../../../domain/types/fulfillment-work.types';
+import { FulfillmentProgressClaimOrmEntity } from '../entities/fulfillment-progress-claim.orm-entity';
+import { FulfillmentWorkVerificationOrmEntity } from '../entities/fulfillment-work-verification.orm-entity';
 import { FulfillmentHoldOrmEntity } from '../entities/fulfillment-hold.orm-entity';
 import { FulfillmentWorkLineOrmEntity } from '../entities/fulfillment-work-line.orm-entity';
 import { FulfillmentWorkRejectionOrmEntity } from '../entities/fulfillment-work-rejection.orm-entity';
@@ -183,6 +196,8 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     private readonly holds: Repository<FulfillmentHoldOrmEntity>,
     @InjectRepository(FulfillmentWorkRejectionOrmEntity)
     private readonly rejections: Repository<FulfillmentWorkRejectionOrmEntity>,
+    @InjectRepository(FulfillmentWorkVerificationOrmEntity)
+    private readonly verifications: Repository<FulfillmentWorkVerificationOrmEntity>,
     @InjectDataSource()
     private readonly dataSource: DataSource
   ) {}
@@ -218,6 +233,9 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     header.cancellationReason = null;
     header.cancelledAt = null;
     header.dispatchRelayedAt = null;
+    // Never expedited at creation: an expedite is an operator act, and the
+    // router that creates work has no opinion about it.
+    header.expeditedAt = null;
     header.acceptedAt = null;
     header.externalWorkId = null;
     header.version = 0;
@@ -422,7 +440,7 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     // holder on the strength of an answer another writer had already superseded.
     try {
       return await this.dataSource.transaction(async (em) => {
-        const result = await em
+        const update = em
           .createQueryBuilder()
           .update(FulfillmentWorkOrmEntity)
           .set({
@@ -430,8 +448,19 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
             version: () => '"version" + 1',
           })
           .where('"id" = :id', { id: input.workId })
-          .andWhere('"requestStatus" = :from', { from: 'submitted' })
-          .execute();
+          .andWhere('"requestStatus" = :from', { from: 'submitted' });
+
+        // #2712: a DELAYED actor (the timeout sweep) additionally pins the
+        // attempt it read, so a row that left and re-entered `submitted` in the
+        // window is not rejected under an attempt that is no longer live. Absent
+        // for the handshake, whose claim IS the attempt.
+        if (input.expectedAssignmentAttempt !== undefined) {
+          update.andWhere('"assignmentAttempt" = :expectedAssignmentAttempt', {
+            expectedAssignmentAttempt: input.expectedAssignmentAttempt,
+          });
+        }
+
+        const result = await update.execute();
 
         if ((result.affected ?? 0) === 0) return false;
 
@@ -450,6 +479,99 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       });
     } catch (error) {
       throw new FulfillmentPersistenceError('recordRejection', error);
+    }
+  }
+
+  async listTimedOutDispatches(
+    input: ListTimedOutDispatchesInput
+  ): Promise<TimedOutFulfillmentDispatch[]> {
+    try {
+      // Header columns only — no line join. The sweep reaps through
+      // `recordRejection`, which needs four scalars; see the port's
+      // `TimedOutFulfillmentDispatch` for why `listWorks` is not extended.
+      const rows = await this.works.find({
+        select: ['id', 'orderId', 'assignedConnectionId', 'assignmentAttempt', 'updatedAt'],
+        where: {
+          requestStatus: 'submitted' satisfies FulfillmentRequestStatus,
+          updatedAt: LessThan(input.idleBefore),
+        },
+        // Oldest-idle first, matching `IDX_fulfillment_works_request_status`.
+        order: { updatedAt: 'ASC' },
+        take: input.limit,
+      });
+
+      return rows.map((row) => ({
+        workId: row.id,
+        orderId: row.orderId,
+        assignedConnectionId: row.assignedConnectionId,
+        assignmentAttempt: row.assignmentAttempt,
+        idleSince: row.updatedAt,
+      }));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listTimedOutDispatches', error);
+    }
+  }
+
+  async listUnrelayedShippedDispatches(
+    input: ListUnrelayedShippedDispatchesInput
+  ): Promise<UnrelayedShippedDispatch[]> {
+    try {
+      // Driven from the CLAIMS side deliberately. `dispatchRelayedAt IS NULL` is
+      // true of nearly every row on `fulfillment_works` (a work only acquires the
+      // stamp once it has shipped AND relayed), so it is not the selective
+      // predicate; `("claimedAt") WHERE "eventKind" = 'shipped'` is, and it is
+      // indexed for exactly this scan and its ordering.
+      //
+      // `getRawMany`, never `getMany`: the latter materialises entities and
+      // silently DROPS a raw `addSelect`, which would leave `shippedAt` undefined
+      // on every row (docs/lessons.md).
+      const rows = await this.works
+        .createQueryBuilder('work')
+        .innerJoin(
+          FulfillmentProgressClaimOrmEntity,
+          'claim',
+          'claim.workId = work.id AND claim.eventKind = :shippedKind'
+        )
+        // `alias.property` throughout, never raw-quoted SQL — the form the rest
+        // of this file uses (`countParcelVerifications`, `listWorks`), and the
+        // one TypeORM resolves through entity metadata rather than passing
+        // through verbatim.
+        .select('work.id', 'workId')
+        .addSelect('work.orderId', 'orderId')
+        .addSelect('claim.claimedAt', 'shippedAt')
+        .where('work.dispatchRelayedAt IS NULL')
+        .andWhere('claim.claimedAt < :shippedBefore')
+        .setParameters({
+          // A LITERAL, matched against a column deliberately left unconstrained
+          // `text`. An adapter that spells its kind differently therefore simply
+          // does not match — the fail-closed direction, since the cost is a relay
+          // this pass does not re-drive rather than a relay it wrongly re-drives.
+          shippedKind: 'shipped',
+          shippedBefore: input.shippedBefore,
+        })
+        .orderBy('claim.claimedAt', 'ASC')
+        // `limit`, not `take`: `take` plus a join makes TypeORM resolve every
+        // ORDER BY term back to column metadata through a distinct-id subquery
+        // (docs/lessons.md), which is neither needed nor wanted for a raw read.
+        .limit(input.limit)
+        .getRawMany<{ workId: string; orderId: string; shippedAt: Date }>();
+
+      // Dedupe keeping the FIRST occurrence, which the ASC ordering makes the
+      // oldest `shipped` claim — see the port for why the limit is applied to
+      // claim rows rather than to an aggregate.
+      const byWorkId = new Map<string, UnrelayedShippedDispatch>();
+      for (const row of rows) {
+        if (!byWorkId.has(row.workId)) {
+          byWorkId.set(row.workId, {
+            workId: row.workId,
+            orderId: row.orderId,
+            shippedAt: row.shippedAt,
+          });
+        }
+      }
+      return [...byWorkId.values()];
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listUnrelayedShippedDispatches', error);
     }
   }
 
@@ -536,6 +658,66 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         });
       return this.withVersionGuard(guarded, input.expectedVersion);
     });
+  }
+
+  async setExpedited(input: SetFulfillmentWorkExpeditedInput): Promise<boolean> {
+    // The state guard is the OPPOSITE of what is being written, so the two
+    // directions are one statement with one predicate shape. Expediting an
+    // already-expedited work reports not-applied rather than re-stamping: the
+    // instant is the tiebreak between two expedited parcels, and re-stamping it
+    // would move this one behind every parcel pushed since — silently, under a
+    // packer, which is exactly what D22 says a list must never do.
+    //
+    // Terminal statuses are excluded for the same reason `deriveSupportedActions`
+    // withholds both verbs there: reordering work that will never be packed is
+    // noise on a row whose only honest state is "do not pack this". Reading the
+    // exported vocabulary rather than a literal makes a fourth terminal status
+    // enrol itself here (the `cancel` precedent above).
+    const expediting = input.expeditedAt !== null;
+    return this.applyGuardedUpdate('setExpedited', (qb) => {
+      const guarded = qb
+        .set({ expeditedAt: input.expeditedAt, version: () => '"version" + 1' })
+        .where('"id" = :id', { id: input.workId })
+        .andWhere(expediting ? '"expeditedAt" IS NULL' : '"expeditedAt" IS NOT NULL')
+        .andWhere('"status" NOT IN (:...terminal)', {
+          terminal: [...TERMINAL_FULFILLMENT_WORK_STATUSES],
+        });
+      return this.withVersionGuard(guarded, input.expectedVersion);
+    });
+  }
+
+  async listWorkIdsByOrderIds(orderIds: readonly string[]): Promise<Map<string, string[]>> {
+    const byOrder = new Map<string, string[]>();
+    // `IN ()` is a syntax error, not an empty set — and an empty ask has an
+    // empty answer, so it never reaches the database.
+    if (orderIds.length === 0) return byOrder;
+
+    try {
+      // Ids and the order id ONLY: this answers "how many parcels does this
+      // order have, and which one is this" and nothing else, so hydrating the
+      // aggregates would be a second worklist read for a number.
+      const rows = await this.works
+        .createQueryBuilder('work')
+        .select(['work.id', 'work.orderId'])
+        .where('work.orderId IN (:...orderIds)', { orderIds: [...orderIds] })
+        // The same `createdAt, id` pair `listWorks` uses, and for the same
+        // reason: `createdAt` alone is not unique, so without the tiebreak two
+        // parcels created in the same millisecond could swap places between two
+        // reads and a packer would see "parcel 1 of 2" become "parcel 2 of 2"
+        // for the box in their hands.
+        .orderBy('work.createdAt', 'ASC')
+        .addOrderBy('work.id', 'ASC')
+        .getMany();
+
+      for (const row of rows) {
+        const bucket = byOrder.get(row.orderId);
+        if (bucket === undefined) byOrder.set(row.orderId, [row.id]);
+        else bucket.push(row.id);
+      }
+      return byOrder;
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listWorkIdsByOrderIds', error);
+    }
   }
 
   async recordLineProgress(input: RecordFulfillmentLineProgressInput): Promise<boolean> {
@@ -775,13 +957,41 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       if (filter.orderId !== undefined) {
         qb.andWhere('work.orderId = :orderId', { orderId: filter.orderId });
       }
+      if (filter.assignedConnectionId !== undefined) {
+        // An EMPTY list means "these zero connections", never "any" — see the
+        // filter's own docblock. `IN ()` is a Postgres syntax error rather than
+        // an empty set, so it is spelled as an always-false predicate instead of
+        // being dropped: dropping it would widen the page to every executor's
+        // work, which for the bench caller is the one wrong answer.
+        if (filter.assignedConnectionId.length === 0) {
+          qb.andWhere('1 = 0');
+        } else {
+          qb.andWhere('work.assignedConnectionId IN (:...assignedConnectionId)', {
+            assignedConnectionId: [...filter.assignedConnectionId],
+          });
+        }
+      }
+      if (filter.parcelClosed !== undefined) {
+        // Three-state: absent selects both. `true` is the bench's
+        // packed-but-unlabelled predicate (#2418, story F4).
+        qb.andWhere(
+          filter.parcelClosed
+            ? 'work.parcelClosedAt IS NOT NULL'
+            : 'work.parcelClosedAt IS NULL'
+        );
+      }
 
       // `createdAt` alone is not unique, so a page boundary landing inside a
       // same-timestamp run would drop or repeat rows between pages. The id is
       // the tiebreak that makes the page stable.
+      //
+      // The direction is the caller's (#2416) and defaults to DESC, which is
+      // what this read has always done. It decides WHICH rows a truncated page
+      // contains, not merely their order — see `FulfillmentWorkListFilter.orderBy`.
+      const direction = filter.orderBy === 'createdAt_ASC' ? 'ASC' : 'DESC';
       const [headers, total] = await qb
-        .orderBy('work.createdAt', 'DESC')
-        .addOrderBy('work.id', 'DESC')
+        .orderBy('work.createdAt', direction)
+        .addOrderBy('work.id', direction)
         .take(limit)
         .skip(offset)
         .getManyAndCount();
@@ -982,8 +1192,12 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       version: Number(header.version),
       cancelledAt: header.cancelledAt,
       dispatchRelayedAt: header.dispatchRelayedAt,
+      expeditedAt: header.expeditedAt,
       acceptedAt: header.acceptedAt,
       externalWorkId: header.externalWorkId,
+      parcelClosedAt: header.parcelClosedAt,
+      packedByUserId: header.packedByUserId,
+      packedByService: header.packedByService,
       lines: lines.map((line) => this.toLineDomain(line)),
       createdAt: header.createdAt,
       updatedAt: header.updatedAt,
@@ -1021,5 +1235,194 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       releasedByUserId: entity.releasedByUserId,
       releaseNote: entity.releaseNote,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Parcel verification at the pack bench (#2418, spec § 2.5)
+  // ---------------------------------------------------------------------------
+
+  async lockWorkForVerification(
+    workId: string,
+    transaction: FulfillmentWorkTransaction
+  ): Promise<FulfillmentWork | null> {
+    const manager = transaction as EntityManager;
+    try {
+      // `SELECT … FOR UPDATE` on the PARENT row, which is the whole of what
+      // makes the per-line over-pack cap (E3) enforceable: the cap is greater
+      // than one, so no unique index can express it, and the row that would
+      // conflict is a phantom until it exists. That is the identical
+      // adjudication `fulfillment_holds` already carries for its ≤10
+      // active-hold cap, one table over.
+      const header = await manager
+        .createQueryBuilder(FulfillmentWorkOrmEntity, 'work')
+        .setLock('pessimistic_write')
+        .where('work.id = :workId', { workId })
+        .getOne();
+      if (header === null) return null;
+
+      // Lines are re-read INSIDE the lock, never carried in from an earlier
+      // read: `cancelledQuantity` moves independently of packing and the close
+      // predicate is computed from it.
+      const lines = await manager.find(FulfillmentWorkLineOrmEntity, {
+        where: { fulfillmentWorkId: workId },
+        order: { createdAt: 'ASC' },
+      });
+      return this.toDomain(header, lines);
+    } catch (error) {
+      throw new FulfillmentPersistenceError('lockWorkForVerification', error);
+    }
+  }
+
+  async recordParcelVerification(
+    input: RecordParcelVerificationInput,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<boolean> {
+    const manager = transaction as EntityManager | undefined;
+    const repo =
+      manager === undefined
+        ? this.verifications
+        : manager.getRepository(FulfillmentWorkVerificationOrmEntity);
+    try {
+      // `ON CONFLICT DO NOTHING` against the gesture index, never a
+      // read-then-insert: at READ COMMITTED the conflicting row cannot be
+      // locked before it exists. The conflict target is NAMED rather than left
+      // bare, so a second unique index added later cannot report an unrelated
+      // collision as "already recorded" and silently swallow a real unit.
+      const result = await repo
+        .createQueryBuilder()
+        .insert()
+        .into(FulfillmentWorkVerificationOrmEntity)
+        .values({
+          fulfillmentWorkId: input.workId,
+          workLineId: input.workLineId,
+          gestureId: input.gestureId,
+          verifiedByUserId: input.verifiedByUserId,
+          verifiedAt: input.verifiedAt,
+          voidedAt: null,
+          voidedByUserId: null,
+        })
+        .onConflict('("fulfillmentWorkId", "gestureId") DO NOTHING')
+        .returning('id')
+        .execute();
+      const raw: unknown = result.raw;
+      return Array.isArray(raw) && raw.length > 0;
+    } catch (error) {
+      throw new FulfillmentPersistenceError('recordParcelVerification', error);
+    }
+  }
+
+  async countParcelVerifications(
+    workId: string,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<ParcelVerifiedCount[]> {
+    const manager = transaction as EntityManager | undefined;
+    const repo =
+      manager === undefined
+        ? this.verifications
+        : manager.getRepository(FulfillmentWorkVerificationOrmEntity);
+    try {
+      const rows = await repo
+        .createQueryBuilder('verification')
+        .select('verification.workLineId', 'workLineId')
+        .addSelect('COUNT(*)', 'verifiedQuantity')
+        .where('verification.fulfillmentWorkId = :workId', { workId })
+        // Voided rows are history: a reopen takes its units back out of the box
+        // (E6). This is the predicate the partial index serves.
+        .andWhere('verification.voidedAt IS NULL')
+        .groupBy('verification.workLineId')
+        .getRawMany<{ workLineId: string; verifiedQuantity: string }>();
+      return rows.map((row) => ({
+        workLineId: row.workLineId,
+        verifiedQuantity: Number(row.verifiedQuantity),
+      }));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('countParcelVerifications', error);
+    }
+  }
+
+  async claimParcelClose(
+    input: ClaimParcelCloseInput,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<boolean> {
+    const manager = transaction as EntityManager | undefined;
+    try {
+      const base =
+        manager === undefined
+          ? this.works.createQueryBuilder().update(FulfillmentWorkOrmEntity)
+          : manager.createQueryBuilder().update(FulfillmentWorkOrmEntity);
+      const result = await base
+        .set({
+          parcelClosedAt: input.closedAt,
+          packedByUserId: input.packedByUserId,
+          // `version` counts STATE CHANGES, and a client polling this parcel
+          // must see the close as one. Every other header write on this
+          // repository bumps it; a close that did not would make the optimistic
+          // token lie about the row.
+          version: () => '"version" + 1',
+        })
+        .where('"id" = :id', { id: input.workId })
+        // The at-most-once claim (the `recordAcceptance` / `claimWaybillRelay`
+        // idiom): two completing verifications race, exactly one wins, and the
+        // loser never rewrites `packedByUserId`.
+        .andWhere('"parcelClosedAt" IS NULL')
+        .execute();
+      return (result.affected ?? 0) > 0;
+    } catch (error) {
+      throw new FulfillmentPersistenceError('claimParcelClose', error);
+    }
+  }
+
+  async reopenParcel(
+    input: ReopenParcelWriteInput,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<boolean> {
+    const run = async (manager: EntityManager): Promise<boolean> => {
+      const update = manager
+        .createQueryBuilder()
+        .update(FulfillmentWorkOrmEntity)
+        .set({
+          parcelClosedAt: null,
+          packedByUserId: null,
+          packedByService: null,
+          version: () => '"version" + 1',
+        })
+        .where('"id" = :id', { id: input.workId })
+        // The mirror of the close claim, which is what makes the service's
+        // `not-closed` refusal race-safe rather than a pre-read.
+        .andWhere('"parcelClosedAt" IS NOT NULL');
+      const guarded =
+        input.expectedVersion === undefined
+          ? update
+          : update.andWhere('"version" = :expectedVersion', {
+              expectedVersion: input.expectedVersion,
+            });
+      const result = await guarded.execute();
+      if ((result.affected ?? 0) === 0) return false;
+
+      // Voiding, never deleting: these two columns ARE the reopen audit — who
+      // and when — which is why no `lastReopenedAt` column exists on the work.
+      // And voiding, never KEEPING: a closed parcel's counts are by definition
+      // full, so keeping them would re-shut the box on the next recount and
+      // "verification resumes" would be unexpressible.
+      await manager
+        .createQueryBuilder()
+        .update(FulfillmentWorkVerificationOrmEntity)
+        .set({ voidedAt: input.reopenedAt, voidedByUserId: input.reopenedByUserId })
+        .where('"fulfillmentWorkId" = :workId', { workId: input.workId })
+        .andWhere('"voidedAt" IS NULL')
+        .execute();
+      return true;
+    };
+
+    try {
+      const manager = transaction as EntityManager | undefined;
+      // Both writes or neither: a cleared `parcelClosedAt` beside a full ledger
+      // would re-close the parcel on the very next scan.
+      return manager === undefined
+        ? await this.dataSource.transaction(async (m) => run(m))
+        : await run(manager);
+    } catch (error) {
+      throw new FulfillmentPersistenceError('reopenParcel', error);
+    }
   }
 }

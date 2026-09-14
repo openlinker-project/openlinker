@@ -30,6 +30,8 @@ import { AmbiguousReservationPositionError } from '@openlinker/core/inventory';
 import type { IFulfillmentRoutingService } from '@openlinker/core/mappings';
 import type {
   FulfillmentBlockReason,
+  FulfillmentRouterPort,
+  FulfillmentRouterResolverPort,
   IRoutingCommitService,
   RoutingCommitOutcome,
 } from '@openlinker/core/fulfillment';
@@ -42,13 +44,15 @@ import type { OrderRecord } from '../../../domain/entities/order-record.entity';
 // reachable in a unit test; on every real installation it answers `null`, which
 // is why the production default below is `null` too and every pre-existing spec
 // keeps asserting the pass-through.
-jest.mock('../fulfillment-router-resolution', () => ({
-  resolveFulfillmentRouter: jest.fn().mockResolvedValue(null),
-}));
-import { resolveFulfillmentRouter } from '../fulfillment-router-resolution';
-const resolveRouterMock = resolveFulfillmentRouter as jest.MockedFunction<
-  typeof resolveFulfillmentRouter
->;
+// #2408 — the ONE router-resolution seam, now an injected port rather than a
+// module function. Mocked so the `selected` arm is reachable in a unit test; on
+// every installation that has not adopted OMS routing the real resolver answers
+// `null`, which is why the default below is `null` too and every pre-existing
+// spec keeps asserting the pass-through.
+const resolveRouterMock = jest.fn<Promise<FulfillmentRouterPort | null>, [string]>();
+const routerResolver: FulfillmentRouterResolverPort = {
+  resolve: resolveRouterMock,
+};
 
 describe('OrderIngestionService', () => {
   let service: OrderIngestionService;
@@ -83,6 +87,11 @@ describe('OrderIngestionService', () => {
   const cursorKey = 'allegro.orders.lastEventId';
 
   beforeEach(() => {
+    // The router-less default, restated here because the resolver is now an
+    // injected mock rather than a module mock carrying its own default.
+    resolveRouterMock.mockReset();
+    resolveRouterMock.mockResolvedValue(null);
+
     orderSource = {
       listOrderFeed: jest.fn(),
       getOrder: jest.fn(),
@@ -216,7 +225,8 @@ describe('OrderIngestionService', () => {
       reservationService,
       fulfillmentRouting,
       routingCommit,
-      connections as unknown as ConnectionPort
+      connections as unknown as ConnectionPort,
+      routerResolver
     );
   });
 
@@ -2195,7 +2205,7 @@ describe('OrderIngestionService', () => {
         routingCommit.route.mockResolvedValue({
           status: 'routed',
           decisionId: 'dec-1',
-          workIds: ['w-1'],
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
         });
 
         const results = await service.syncOrderFromSource(connectionId, externalOrderId);
@@ -2210,7 +2220,7 @@ describe('OrderIngestionService', () => {
         routingCommit.route.mockResolvedValue({
           status: 'routed',
           decisionId: 'dec-1',
-          workIds: ['w-1'],
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
         });
 
         await service.syncOrderFromSource(connectionId, externalOrderId);
@@ -2218,6 +2228,97 @@ describe('OrderIngestionService', () => {
         for (const [, block] of markBlock().mock.calls) {
           expect(block).toBeNull();
         }
+      });
+
+      // #2955 — the FIRST producer of `fulfillment.work.dispatch`.
+      describe('dispatching the routed work (#2955)', () => {
+        const routed = (works: { workId: string; assignedConnectionId: string | null }[]) => {
+          routingCommit.route.mockResolvedValue({ status: 'routed', decisionId: 'dec-1', works });
+        };
+
+        // One enqueue PER WORK, so a mid-fan-out failure is reported against
+        // the single work it happened to.
+        const dispatchRequests = () =>
+          jobQueue.enqueue.mock.calls
+            .map(([request]) => request)
+            .filter((request) => request.type === 'fulfillment.work.dispatch');
+
+        it('should enqueue one dispatch job per assigned work when the order is routed', async () => {
+          routed([
+            { workId: 'w-1', assignedConnectionId: 'holder-1' },
+            { workId: 'w-2', assignedConnectionId: 'holder-2' },
+          ]);
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(dispatchRequests()).toEqual([
+            {
+              type: 'fulfillment.work.dispatch',
+              // The work's OWN holder, never a synthetic id (#2609).
+              connectionId: 'holder-1',
+              // The fixture's REAL internal order id: `expect.any(String)` would
+              // pass if the implementation put the connection id here, and
+              // `orderId` is what the dispatch handler loads the snapshot by.
+              payload: { workId: 'w-1', orderId: 'ol_order_int', expectedAssignmentAttempt: null },
+              options: { dedupeKey: 'fulfillment:dispatch:w-1' },
+            },
+            {
+              type: 'fulfillment.work.dispatch',
+              connectionId: 'holder-2',
+              payload: { workId: 'w-2', orderId: 'ol_order_int', expectedAssignmentAttempt: null },
+              options: { dedupeKey: 'fulfillment:dispatch:w-2' },
+            },
+          ]);
+        });
+
+        it('should skip the work when it carries no holder', async () => {
+          routed([{ workId: 'w-1', assignedConnectionId: null }]);
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(dispatchRequests()).toEqual([]);
+        });
+
+        // The per-intent catch: one failed enqueue must not cost its siblings
+        // their dispatch.
+        it('should keep dispatching the remaining works when one enqueue fails', async () => {
+          routed([
+            { workId: 'w-1', assignedConnectionId: 'holder-1' },
+            { workId: 'w-2', assignedConnectionId: 'holder-2' },
+          ]);
+          jobQueue.enqueue.mockRejectedValueOnce(new Error('redis blip'));
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(dispatchRequests().map((request) => request.payload)).toEqual([
+            { workId: 'w-1', orderId: 'ol_order_int', expectedAssignmentAttempt: null },
+            { workId: 'w-2', orderId: 'ol_order_int', expectedAssignmentAttempt: null },
+          ]);
+        });
+
+        // THE guard. `enqueueRoutedDispatchJobs` runs inside
+        // `interceptFulfillmentRouting`'s fail-open try, whose catch returns
+        // `{held: false}` — so an unguarded throw would mirror to every
+        // destination an order whose work rows are already committed, i.e.
+        // fulfil it twice.
+        it('should still HOLD the order when the dispatch enqueue fails', async () => {
+          routed([{ workId: 'w-1', assignedConnectionId: 'holder-1' }]);
+          jobQueue.enqueue.mockRejectedValue(new Error('redis is down'));
+
+          const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+          expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+          expect(results).toEqual([]);
+        });
+
+        it('should enqueue no dispatch job when routing did not produce work', async () => {
+          routingCommit.route.mockResolvedValue({ status: 'contended' });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(dispatchRequests()).toEqual([]);
+        });
       });
 
       // Typed as the real union, NOT `as never`: an `as never` table would
@@ -2286,7 +2387,7 @@ describe('OrderIngestionService', () => {
         routingCommit.route.mockResolvedValue({
           status: 'routed',
           decisionId: 'dec-9',
-          workIds: ['w-9'],
+          works: [{ workId: 'w-9', assignedConnectionId: 'dest-1' }],
         });
         await service.syncOrderFromSource(connectionId, externalOrderId);
 
@@ -2354,7 +2455,7 @@ describe('OrderIngestionService', () => {
         routingCommit.route.mockResolvedValue({
           status: 'routed',
           decisionId: 'dec-1',
-          workIds: ['w-1'],
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
         });
 
         await service.syncOrderFromSource(connectionId, externalOrderId);

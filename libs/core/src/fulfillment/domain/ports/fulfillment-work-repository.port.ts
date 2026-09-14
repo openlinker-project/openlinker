@@ -129,6 +129,20 @@ export interface TransitionFulfillmentRequestStatusInput {
 }
 
 /** Force-close or negotiated cancel. ADR-054 requires a reason on every one. */
+/**
+ * Input for `setExpedited` (#2416, spec D22).
+ *
+ * `expeditedAt` doubles as the DIRECTION: an instant expedites, `null`
+ * releases. One field rather than a boolean plus a timestamp, so the two can
+ * never disagree about what is being written.
+ */
+export interface SetFulfillmentWorkExpeditedInput {
+  readonly workId: string;
+  readonly expeditedAt: Date | null;
+  /** See `CancelFulfillmentWorkInput.expectedVersion`. */
+  readonly expectedVersion?: number;
+}
+
 export interface CancelFulfillmentWorkInput {
   readonly workId: string;
   readonly reason: FulfillmentCancellationReason;
@@ -243,6 +257,174 @@ export interface RecordFulfillmentRejectionInput {
   readonly detail: string | null;
   /** OL's observation instant — this one IS ours, unlike `acceptedAt`. */
   readonly rejectedAt: Date;
+  /**
+   * Attempt-scoping precondition (#2712). When present the conditional UPDATE
+   * additionally carries `"assignmentAttempt" = :expectedAssignmentAttempt`.
+   *
+   * **Optional and NEW** — this input carried `assignmentAttempt` alone before
+   * #2712 — so the handshake (#2399) stays byte-identical by omitting it. The
+   * object shape is what makes that purely additive, exactly as this port's
+   * header reserved for `expectedVersion`.
+   *
+   * The timeout sweep passes it because it is a DELAYED actor by definition: it
+   * reads a page, then writes. A work sitting at `submitted` cannot have its
+   * counter moved by the shipped dispatch path — `claimDispatchAttempt` takes
+   * its precondition as an argument and the handshake's `CLAIMABLE_FROM` is
+   * `['unsubmitted','rejected']`, so `submitted` is not claimable — but that is
+   * a property of ONE caller's argument, not of the method, which is exactly
+   * why the sweep does not rely on it. A row that left and re-entered
+   * `submitted` inside the window would otherwise take a rejection naming an
+   * attempt that is no longer live: the same hazard #2399's `claimOrResume`
+   * refuses by comparing the expected attempt.
+   */
+  readonly expectedAssignmentAttempt?: number;
+}
+
+/**
+ * One `submitted` work whose holder has not answered (#2712, ADR-054).
+ *
+ * A NARROW PROJECTION, not the aggregate: the sweep reaps through
+ * `recordRejection`, which needs four scalars, so hydrating lines and holds for
+ * every candidate would be a join for nothing on a pass that exists to be cheap.
+ *
+ * **`listWorks` is deliberately not extended to serve this.** It already filters
+ * `requestStatus[]`, which makes widening it the obvious move and the wrong one:
+ * it backs the operator worklist (#2406), returns a hydrated
+ * `FulfillmentWorkPage`, and its `FulfillmentWorkListFilter` is an
+ * operator-API-facing type whose `orderBy` offers only
+ * `createdAt_DESC | createdAt_ASC`. Adding an idle cutoff and an
+ * `updatedAt_ASC` ordering would widen an operator's filter vocabulary with an
+ * axis no operator uses.
+ */
+export interface TimedOutFulfillmentDispatch {
+  readonly workId: string;
+  readonly orderId: string;
+  /**
+   * The holder that was offered the work. `null` is not reachable through the
+   * dispatch path (`FulfillmentHandshakeService` throws
+   * `FulfillmentWorkUnassignedError` before claiming), but the column is
+   * nullable, so the sweep SKIPS such a row rather than writing a rejection that
+   * names nobody — a rejection that does not say who excludes nobody.
+   */
+  readonly assignedConnectionId: string | null;
+  readonly assignmentAttempt: number;
+  /** The row's `updatedAt` — see {@link ListTimedOutDispatchesInput.idleBefore}. */
+  readonly idleSince: Date;
+}
+
+export interface ListTimedOutDispatchesInput {
+  /**
+   * Reap works whose `updatedAt` is strictly older than this.
+   *
+   * **The clock is "IDLE SINCE", not "submitted since", and the distinction is
+   * stated rather than papered over.** `updatedAt` moves on any applied write
+   * (`recordLineProgress` writes it explicitly), so a work something is actively
+   * touching resets its own clock. That is the SAFE direction: it can only ever
+   * DELAY a reap, never accelerate one, and a work a holder is reporting
+   * progress on is precisely one that should not be reaped. A dedicated
+   * `submittedAt` column would be more literal and would cost a migration for a
+   * strictly worse failure direction.
+   */
+  readonly idleBefore: Date;
+  readonly limit: number;
+}
+
+/**
+ * One work that a holder reported SHIPPED and whose dispatch relay never landed
+ * (#2728).
+ *
+ * ## Why "shipped" is read off the progress claim rather than off the work row
+ *
+ * `FulfillmentProgressService.apply`'s `shipped` arm writes NOTHING to
+ * `fulfillment_works` — `fulfillment-progress-event.types.ts` says so in terms:
+ * *"`shipped` writes no status at all. Only the `eventKind` stamped on the (burnt)
+ * claim row records which arrived."* So the claim row is the SOLE trace, and this
+ * read has no alternative source.
+ *
+ * That narrows, rather than contradicts,
+ * `FulfillmentProgressClaimRepositoryPort`'s *"for forensics. Never read as
+ * state"*: the state that note protects is the WORK's, which the two axes own. A
+ * claim row is EVIDENCE OF WHAT ARRIVED — the ORM entity says exactly that — and
+ * "a shipped event was recorded for this work" is the one question it can answer.
+ *
+ * The alternative, a `shippedAt` column on `fulfillment_works`, is worse on three
+ * axes: it adds a SIXTH writer to a table whose repository header names five and
+ * warns against an unnamed one; it makes a second source of truth for one fact;
+ * and it can only be backfilled from `eventKind = 'shipped'` anyway, so the same
+ * read happens once in a migration while every work shipped before that migration
+ * stays permanently invisible to the sweep — which is precisely the silently
+ * unrelayable state this pass exists to remove.
+ */
+export interface UnrelayedShippedDispatch {
+  readonly workId: string;
+  readonly orderId: string;
+  /**
+   * When the earliest `shipped` progress event for this work was RECORDED — the
+   * claim row's `claimedAt`, i.e. OL's own observation instant, never a holder's.
+   *
+   * Earliest rather than latest, so a work that reported shipped twice is aged
+   * from the first report: the operator-facing harm is how long the source has
+   * been uninformed, which started then.
+   */
+  readonly shippedAt: Date;
+}
+
+export interface ListUnrelayedShippedDispatchesInput {
+  /**
+   * Consider only works whose earliest `shipped` claim is strictly older than
+   * this — the grace window (`resolveFulfillmentRelayGraceMs`).
+   *
+   * Required rather than optional: omitting it would make the sweep race every
+   * live relay, and a caller that forgot would get that behaviour silently.
+   */
+  readonly shippedBefore: Date;
+  readonly limit: number;
+}
+
+/**
+ * One verified unit (#2418, story E1).
+ *
+ * NAMES A LINE AND NOTHING ELSE. There is no barcode here and no `source`,
+ * because D20 requires a hand-confirmed unit to be recorded identically to a
+ * scanned one — and a shape that cannot express the difference is a guarantee,
+ * where a convention is a hope. The scanned value is resolved to a line before
+ * this call and then discarded.
+ */
+export interface RecordParcelVerificationInput {
+  readonly workId: string;
+  readonly workLineId: string;
+  /** #2416's durable per-gesture id. The uniqueness key; see the unique index. */
+  readonly gestureId: string;
+  readonly verifiedByUserId: string | null;
+  readonly verifiedAt: Date;
+}
+
+/** How many ACTIVE units are recorded against each line of a work. */
+export interface ParcelVerifiedCount {
+  readonly workLineId: string;
+  readonly verifiedQuantity: number;
+}
+
+/** Shutting the box on the last verification (#2418, D18). */
+export interface ClaimParcelCloseInput {
+  readonly workId: string;
+  readonly closedAt: Date;
+  /** The LAST verifier owns the parcel (D13). `null` where none is attributable. */
+  readonly packedByUserId: string | null;
+}
+
+/** Opening it again (#2418, E6/D19). */
+export interface ReopenParcelWriteInput {
+  readonly workId: string;
+  readonly reopenedByUserId: string | null;
+  readonly reopenedAt: Date;
+  /**
+   * The optimistic token, as `cancel` / `setExpedited` / `transitionStatus` and
+   * both hold methods all take one. A reopen issued against a stale view is
+   * exactly D21's scenario — the work moved underneath the packer — so the token
+   * is honoured here rather than trusted.
+   */
+  readonly expectedVersion?: number;
 }
 
 export interface FulfillmentWorkRepositoryPort {
@@ -291,6 +473,23 @@ export interface FulfillmentWorkRepositoryPort {
    * between pages. The id is the tiebreak that makes the page stable.
    */
   listWorks(filter: FulfillmentWorkListFilter): Promise<FulfillmentWorkPage>;
+
+  /**
+   * The ids of every work object covering each of these orders, ordered
+   * `createdAt, id`, keyed by order id (#2416).
+   *
+   * Exists so a caller can say *"parcel 1 of 2"* truthfully. The denominator is
+   * EVERY work for the order — whatever its status, whoever holds it — because
+   * a filtered read cannot answer it: a sibling parcel that is closed, routed to
+   * another executor or not yet accepted is absent from such a page, so the
+   * count would be wrong precisely on the split orders the number exists for,
+   * while reading authoritative.
+   *
+   * Ids only, and BATCHED across the whole page: hydrating sibling aggregates
+   * would be a second worklist read, and asking per row would be an N+1 on the
+   * bench's hottest read. An order with no works is simply absent from the map.
+   */
+  listWorkIdsByOrderIds(orderIds: readonly string[]): Promise<Map<string, string[]>>;
 
   transitionStatus(input: TransitionFulfillmentWorkStatusInput): Promise<boolean>;
   transitionRequestStatus(input: TransitionFulfillmentRequestStatusInput): Promise<boolean>;
@@ -342,11 +541,49 @@ export interface FulfillmentWorkRepositoryPort {
   recordRejection(input: RecordFulfillmentRejectionInput): Promise<boolean>;
 
   /**
+   * One page of `submitted` works nobody has answered for, oldest-idle first.
+   *
+   * Ordered `updatedAt ASC` so the longest-stalled work is reaped first — the
+   * fairness rule `inventory.reservations.expire` (#2346) uses — and matching
+   * `IDX_fulfillment_works_request_status` (`['requestStatus','updatedAt']`),
+   * which #2392 created for this sweep by name.
+   *
+   * Scans EVERY connection: a stalled dispatch is a stalled dispatch whoever
+   * holds it, and the index carries no connection axis.
+   */
+  listTimedOutDispatches(
+    input: ListTimedOutDispatchesInput
+  ): Promise<TimedOutFulfillmentDispatch[]>;
+
+  /**
    * The holders excluded from re-sourcing this work, most recent first.
    *
    * This slice RECORDS and EXPOSES the exclusion; selecting on it is #2395's.
    */
   listBlockingRejections(workId: string): Promise<FulfillmentWorkRejection[]>;
+
+  /**
+   * The #2728 reconcile frontier: works a holder reported SHIPPED whose dispatch
+   * relay never landed, oldest first.
+   *
+   * **Frontier-as-query, with no cursor** — a repaired work leaves the set by
+   * acquiring `dispatchRelayedAt`, so an advancing scan offset would step over
+   * rows, which here means a work whose source is never told and a marketplace
+   * that keeps asking for a tracking number (#1947, one grain up). The same
+   * distinction `bounded-sweep.ts` draws in its own header, and the same reading
+   * `listTimedOutDispatches` above already takes.
+   *
+   * **The page is deduplicated by `workId`**, keeping the oldest `shippedAt`. A
+   * work with two `shipped` claims is legitimate (a holder may re-report), and
+   * two candidates for one work would spend a second relay call to be told
+   * `already-relayed`. Because the LIMIT is applied to CLAIM rows before that
+   * dedupe, a page may yield fewer distinct works than `limit` — the frontier
+   * simply re-reads them next tick, and the honest alternative (an aggregate
+   * before the limit) would force a full grouping of the table on every run.
+   */
+  listUnrelayedShippedDispatches(
+    input: ListUnrelayedShippedDispatchesInput
+  ): Promise<UnrelayedShippedDispatch[]>;
 
   /** At-most-once claim, `WHERE "dispatchRelayedAt" IS NULL`. #2401 is the caller. */
   claimDispatchRelay(workId: string, at: Date): Promise<boolean>;
@@ -370,6 +607,19 @@ export interface FulfillmentWorkRepositoryPort {
   releaseDispatchRelay(workId: string): Promise<void>;
 
   cancel(input: CancelFulfillmentWorkInput): Promise<boolean>;
+
+  /**
+   * Push a work ahead of ordinary deadline order, or take it back (#2416, D22).
+   *
+   * `expeditedAt` is the instant for an expedite and `null` for a release; the
+   * conditional UPDATE carries the matching state guard (`IS NULL` / `IS NOT
+   * NULL`) so a replay is refused rather than silently re-stamping a new instant
+   * and re-ordering two already-expedited parcels against each other.
+   *
+   * Answers `false` when nothing was applied — the port's convention — which the
+   * worklist service then explains as a stale token or an illegal action.
+   */
+  setExpedited(input: SetFulfillmentWorkExpeditedInput): Promise<boolean>;
 
   recordLineProgress(input: RecordFulfillmentLineProgressInput): Promise<boolean>;
 
@@ -395,4 +645,115 @@ export interface FulfillmentWorkRepositoryPort {
    * than present with an empty array, so a caller must default.
    */
   listActiveHoldsForWorks(workIds: readonly string[]): Promise<Map<string, FulfillmentHold[]>>;
+
+  /**
+   * Take a row lock on the work and read it with its lines, inside `transaction`
+   * (#2418, stories E3/E5).
+   *
+   * **This is what makes over-packing enforceable.** The cap is per line and
+   * greater than one, so no unique index can express it: at READ COMMITTED two
+   * concurrent verifications each count `n`, each insert, and the line lands at
+   * `n + 2` against a cap of `n + 1` with nothing raised anywhere. The
+   * conflicting row is a PHANTOM, so it cannot be locked before it exists and a
+   * `SELECT` guard enforces nothing — only the parent row serialises
+   * count-then-insert. That is the identical adjudication `fulfillment_holds`
+   * already carries for its ≤10 active-hold cap, one table over, and the reason
+   * a trigger was rejected there applies here too: the integration harness
+   * builds schema by `synchronize`, which emits none.
+   *
+   * It is also the serialisation point between a completing verification and a
+   * concurrent reopen, which would otherwise re-shut a box the reopener had
+   * just opened.
+   *
+   * Returns `null` when there is no such work.
+   */
+  lockWorkForVerification(
+    workId: string,
+    transaction: FulfillmentWorkTransaction
+  ): Promise<FulfillmentWork | null>;
+
+  /**
+   * Record one verified unit at the pack bench (#2418, story E1).
+   *
+   * Answers `true` when a row was written and `false` when this exact gesture
+   * was already recorded — a retry, a sleeping tablet, a reflex double-trigger
+   * on ONE physical action. The discrimination is
+   * `UQ_fulfillment_work_verifications_gesture` and an `ON CONFLICT DO NOTHING`,
+   * never a read-then-insert: at READ COMMITTED the conflicting row is a phantom
+   * that cannot be locked before it exists, so a `SELECT` guard enforces nothing
+   * (the `fulfillment_progress_claims` reasoning, one table over).
+   *
+   * `false` is therefore an ordinary, successful outcome and never an error.
+   */
+  recordParcelVerification(
+    input: RecordParcelVerificationInput,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<boolean>;
+
+  /**
+   * Active verified units per line, for ONE work.
+   *
+   * Reads only rows with `voidedAt IS NULL`, which is what the partial index
+   * serves. A line with no verified unit is ABSENT from the array rather than
+   * present with a zero, so a caller must default — the `listActiveHoldsForWorks`
+   * convention.
+   *
+   * Takes the transaction handle so the recount that decides whether to shut the
+   * box sees the row the same transaction just inserted, and so two concurrent
+   * verifications cannot both read a pre-insert count and both decide they were
+   * not the last (see `FulfillmentVerificationService`).
+   */
+  countParcelVerifications(
+    workId: string,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<ParcelVerifiedCount[]>;
+
+  /**
+   * Shut the box (#2418, D18) — `parcelClosedAt` and `packedByUserId` in ONE
+   * guarded UPDATE (`WHERE "parcelClosedAt" IS NULL`).
+   *
+   * The guard is the at-most-once claim, the `claimWaybillRelay` /
+   * `recordAcceptance` idiom: two concurrent completing verifications race here
+   * and exactly one wins, so a parcel is never closed twice and
+   * `packedByUserId` is never rewritten by the loser.
+   *
+   * It bumps `version` like every other header write on this port, because that
+   * token counts STATE CHANGES and a client polling the parcel must see the
+   * close as one.
+   *
+   * `packedByService` is deliberately NOT written: `CHK_fulfillment_works_packed_actor`
+   * makes the two mutually exclusive, and a bench close always has a user.
+   *
+   * *Always* is now enforced rather than assumed (#2890): a
+   * `ClaimParcelCloseInput.packedByUserId` of `null` writes a closed row naming
+   * nobody, which `CHK_fulfillment_works_closed_parcel_actor` refuses. The
+   * shipped route cannot supply one — `BenchVerifyUnitInput.verifiedByUserId` is
+   * a non-nullable `string` — so the constraint is the backstop for a caller
+   * that does not exist yet rather than a condition anything hits.
+   */
+  claimParcelClose(
+    input: ClaimParcelCloseInput,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<boolean>;
+
+  /**
+   * Open it again (#2418, E6) — clear `parcelClosedAt` and the attribution, and
+   * VOID every active verification, in one transaction.
+   *
+   * Voiding rather than deleting is what makes the reopen auditable: the rows'
+   * `voidedAt` / `voidedByUserId` ARE the record of who reopened it and when, so
+   * no second table and no `lastReopenedAt` column exists.
+   *
+   * Voiding rather than KEEPING the counts is forced: a closed parcel's counts
+   * are by definition full, so keeping them would re-shut the box on the next
+   * recount and "verification resumes" would be unexpressible.
+   *
+   * Guarded on `"parcelClosedAt" IS NOT NULL`; answers `false` when there was
+   * nothing to reopen. Refusing a SHIPPED parcel is the service's, because the
+   * fact lives in a sibling context this leaf may not read.
+   */
+  reopenParcel(
+    input: ReopenParcelWriteInput,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<boolean>;
 }

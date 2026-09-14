@@ -480,6 +480,14 @@ export class ReturnWritesController {
     }
   }
 
+  // NOT `@AnyRole()` (#2905 review). The DTO carries `invoiceRecordId`,
+  // `invoiceConnectionId`, `invoiceDocumentNumber`, `currency` and a per-line
+  // `taxRate` — and it is WALKABLE, because `ReturnsController.listReturns` is
+  // reachable by the same session, so a return id is one request away. #2413's
+  // principle is that the bench reaches a parcel through its work and is
+  // excluded from every register; a fiscal document reached by enumerating
+  // returns is that trap one context over, and it caught `/orders` once already.
+  @Roles('admin', 'operator', 'viewer')
   @Get(':returnId/correction-proposal')
   @ApiOperation({
     summary: 'Preview the credit-note correction proposal',

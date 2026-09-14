@@ -46,7 +46,15 @@ describe('PlaceOrderHoldDialog (#2342)', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Put on hold' }));
 
-    expect(await screen.findByText(/label may already have been created/i)).toBeInTheDocument();
+    // Radix Toast mirrors the description into a visually-hidden aria-live
+    // status region for screen readers, so the text legitimately appears
+    // twice in the DOM — assert presence via getAllByText rather than the
+    // single-match getByText/findByText.
+    await waitFor(() => {
+      expect(screen.getAllByText(/label may already have been created/i).length).toBeGreaterThan(
+        0,
+      );
+    });
   });
 
   it('should report a plain success when no dispatch was in flight', async () => {

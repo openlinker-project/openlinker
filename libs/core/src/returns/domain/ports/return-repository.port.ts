@@ -514,6 +514,25 @@ export interface ReturnRepositoryPort {
   findTimelineEntriesForOrder(internalOrderId: string): Promise<ReturnTimelineEntriesForOrder>;
 
   /**
+   * Every return act on ONE return, oldest first (#2646) — the return-detail
+   * activity timeline.
+   *
+   * The SAME query and the SAME projection as {@link
+   * ReturnRepositoryPort.findTimelineEntriesForOrder}, differing only in the
+   * `WHERE`, so the two surfaces speak one vocabulary by construction.
+   *
+   * **Keyed on the return, which is what makes it work for an ORPHAN**: an
+   * orphan has no `internalOrderId` at all, so the order-scoped read cannot
+   * serve it — and an orphan being matched to an order is precisely the act
+   * #2372 needs rendered.
+   *
+   * Returns empty collections for a return id that names nothing; the caller
+   * decides whether that is a 404 (it is — a nonexistent return is a fact about
+   * the id, not an empty history).
+   */
+  findTimelineEntriesForReturn(returnId: string): Promise<ReturnTimelineEntriesForOrder>;
+
+  /**
    * Claim the return's refundable lines for ONE refund attempt (#2371, ADR-056).
    *
    * **This single statement is the whole guard.** A conditional UPDATE over the

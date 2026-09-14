@@ -30,6 +30,7 @@ import {
 import type { Shipment, DeliveryIntent } from '@openlinker/core/shipping';
 import type { OrderSummary } from '@openlinker/core/orders';
 import { OrderSummaryProjectionDto } from '../../../orders/http/dto/order-summary-projection.dto';
+import { WaybillRelayResponseDto } from './waybill-relay-response.dto';
 
 /** Mirrors the FE's redaction placeholder (`shipments-page.tsx`,
  *  `shipment-row-detail.tsx`) so the copy is identical regardless of which
@@ -134,6 +135,14 @@ export class ShipmentResponseDto {
   })
   orderSummary!: OrderSummaryProjectionDto | null;
 
+  @ApiProperty({
+    nullable: true,
+    type: WaybillRelayResponseDto,
+    description:
+      "Consecutive waybill-relay failures (#2073) — null when this shipment's relay has never failed, or when a successful relay cleared the history. Carries a server-derived `stuck` flag; filter the escalated bucket with `?waybillRelayStuck=true`.",
+  })
+  waybillRelay!: WaybillRelayResponseDto | null;
+
   /**
    * @param canWrite Whether the requester holds `shipments:write` (resolved
    *   by the controller from `@CurrentUser()`'s role via `ROLE_PERMISSIONS`).
@@ -144,11 +153,19 @@ export class ShipmentResponseDto {
    *   when not resolved for this call site. Also required (not defaulted) so
    *   a future read path can't silently omit it.
    */
+  /**
+   * `waybillRelayAlertThreshold` is REQUIRED (#2073), like `canWrite` beside
+   * it and for the same reason: an optional parameter with a default would let
+   * a call site silently render a different escalation rule from the one the
+   * list filter selected rows with. Every caller resolves it through
+   * `resolveWaybillRelayThresholdFromEnv()`, the single reader of the variable.
+   */
   static fromDomain(
     shipment: Shipment,
     customerId: string | null,
     canWrite: boolean,
     orderSummary: OrderSummary | null,
+    waybillRelayAlertThreshold: number,
   ): ShipmentResponseDto {
     const dto = new ShipmentResponseDto();
     dto.id = shipment.id;
@@ -175,6 +192,10 @@ export class ShipmentResponseDto {
     dto.createdAt = shipment.createdAt.toISOString();
     dto.updatedAt = shipment.updatedAt.toISOString();
     dto.orderSummary = orderSummary ? OrderSummaryProjectionDto.fromSummary(orderSummary) : null;
+    dto.waybillRelay = WaybillRelayResponseDto.fromDomain(
+      shipment.waybillRelayFailure,
+      waybillRelayAlertThreshold,
+    );
     return dto;
   }
 }

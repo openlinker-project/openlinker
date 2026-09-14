@@ -8,7 +8,16 @@
  */
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDateString, IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  Min,
+} from 'class-validator';
 import {
   ReturnBucketValues,
   ReturnMoneyStateValues,
@@ -44,6 +53,21 @@ export class ListReturnsQueryDto {
   @IsOptional()
   @IsIn(ReturnBucketValues)
   bucket?: ReturnBucket;
+
+  /**
+   * One order's returns (#2640) — the order-detail returns panel.
+   *
+   * `@IsString`, deliberately NOT `@IsUUID`: an internal order id is an
+   * OpenLinker-minted `ol_order_*` string from `formatInternalId`, not a bare
+   * uuid, so a uuid validator would reject every real value.
+   */
+  @ApiPropertyOptional({
+    description:
+      "Filter by the OpenLinker internal order id. Returns only that order's returns; an orphan return (no internal order id) is never matched. Omitted returns every order's.",
+  })
+  @IsOptional()
+  @IsString()
+  internalOrderId?: string;
 
   /**
    * One derived operator stage (#2377, spec § 4.3).

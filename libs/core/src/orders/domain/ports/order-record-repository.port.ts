@@ -32,6 +32,15 @@ import type { OrderFxIntent, OrderFxStamp } from '../types/order-fx.types';
 import type { StampedReportingCurrencyCount } from '../types/order-fx-read.types';
 import type { OrderAmendmentChange } from '../order-amendment-diff';
 import type { DailyOrderAggregateRow, SalesAnalyticsFilters } from '../types/order-sales-analytics.types';
+import type {
+  CoverageDetectionPagination,
+  PaginatedCurrencyMismatchOrders,
+  NetExcludedOrderCandidateCursor,
+  NetExcludedOrderCandidatePage,
+  PaginatedProductMatchingErrorOrders,
+  CoverageConnectionAggregateRow,
+} from '../types/coverage-detection.types';
+import type { FxRestatementRemainingSummary } from '../types/order-fx-restatement.types';
 
 export interface OrderRecordRepositoryPort {
   /**
@@ -166,6 +175,63 @@ export interface OrderRecordRepositoryPort {
   ): Promise<PaginatedOrderRecords>;
 
   /**
+   * The page WITHOUT its total (#2944).
+   *
+   * A paged read stops after its `LIMIT`; the `COUNT` beside it cannot stop at
+   * all, so under a predicate no plain index serves - here the `syncStatus @>`
+   * jsonb containment, which #2843 measured at 155x the paged read beside it -
+   * the count scans the table however small the page is. This read pays only
+   * for the page.
+   *
+   * It applies the identical predicate to {@link countMany}: both are built by
+   * one private `buildFilteredQuery`, so the total can never describe a
+   * different set than the page.
+   *
+   * With ONE exception, stated because it is the only way the split can be
+   * observed as a disagreement (#2957 review round 5). `slaState` compares
+   * `dispatchByAt` against `new Date()`, minted per call - so a page request
+   * and a count request bind two different instants, and an order that crosses
+   * its deadline between them is in the rows and not in the total. Every other
+   * filter is a pure function of its arguments.
+   *
+   * OpenLinker's own list UI MITIGATES this by enabling Next when the rows
+   * overrun the total - it does not remove it, and this port must not claim it
+   * does (#2957 review round 6, I2). A row is still unreachable when the stale
+   * total falls exactly on a page boundary, and the mitigation lives in a React
+   * component while `GET /orders/count` is a public route also reached by MCP
+   * tooling and curl. A caller that needs the two to agree exactly must pass
+   * ONE instant into both, which this port does not yet accept.
+   *
+   * {@link findMany} deliberately does NOT delegate to this method plus
+   * {@link countMany}. It keeps the single `getManyAndCount()` it already had,
+   * so `?withTotal=true` - the default, and every caller not yet migrated -
+   * emits exactly the two statements it emitted before #2944, on the one query
+   * runner it emitted them on. Composing would be a second, unmeasured change
+   * (two pool connections per list request) smuggled into a change about
+   * something else.
+   *
+   * Note what that does NOT claim. Read against typeorm@0.3.17 rather than
+   * assumed: `getManyAndCount` runs `executeEntitiesAndRawResults` and then
+   * `executeCountQuery` unconditionally and sequentially. There is no
+   * short-page branch and no `lazyCount` - the identifier does not exist in
+   * that version. The count always runs, which is the argument FOR splitting
+   * it out, not against.
+   */
+  findManyRows(
+    filters: OrderRecordFilters,
+    pagination: OrderRecordPagination
+  ): Promise<OrderRecord[]>;
+
+  /**
+   * The total WITHOUT its page (#2944) - the second half of {@link findManyRows}.
+   *
+   * Takes no pagination, which is the point: the answer depends on the filters
+   * alone, so a caller may cache it per filter combination and paging through a
+   * result set never recomputes it.
+   */
+  countMany(filters: OrderRecordFilters): Promise<number>;
+
+  /**
    * Count order records per derived health bucket (#929).
    *
    * Single aggregate query partitioning every record in scope into exactly one
@@ -236,19 +302,159 @@ export interface OrderRecordRepositoryPort {
    * the unconverted bucket alongside never-stamped rows — both report via
    * `unconvertedCount`/`unconvertedValue` (native `totalAmount`,
    * informational, may mix currencies) rather than being silently summed
-   * into `revenue` or silently dropped. `cancelledValue` stays on native
-   * `totalAmount`, unchanged.
+   * into `revenue` or silently dropped. `cancelledValue` follows the same
+   * currency-safety split, restricted to current-era-stamped, cancelled
+   * orders, with the unstamped remainder reported separately as
+   * `cancelledUnconvertedCount`/`cancelledUnconvertedValue`. `cancelledValue`
+   * is ALSO net-of-VAT and shipping-excluded (#2910) — computed via the same
+   * per-line net machinery as `netRevenue`, restricted to the cancelled
+   * cohort; a cancelled order with an unresolvable rate is excluded and
+   * reported instead via `cancelledNetExcludedCount`/
+   * `cancelledNetExcludedValue`.
    *
    * `unconvertedCurrency` (#1987 scope, not an FX-epic deliverable —
    * `order_records.currency` predates #2049) labels `unconvertedValue` with
    * the one native currency shared by every unconverted, non-cancelled order
    * this day/connection, or `null` when that set mixes currencies, contains
    * a row with no recorded native currency, or is empty — nothing to label.
+   *
+   * `includeBackfilledPreRollout` (#2469) is the operator's org-wide
+   * Net-Sales opt-in for backfilled pre-rollout tax rates
+   * (`analytics_display_settings.include_backfilled_tax_rates_in_net_sales`,
+   * #2461 / ADR-063's amendment for #2456). Threaded in as a plain parameter
+   * from the `apps/api` layer, exactly as `currentReportingCurrency` is:
+   * `orders` must not import `analytics` (that would create a needless
+   * `analytics <-> orders` cycle, since `analytics` already type-imports
+   * `CoverageResolutionStatus` from here), and reading it per request is what
+   * makes "the toggle changes the very next query" true with no cache to
+   * invalidate. Optional and defaulting to `false` so every pre-#2469 caller
+   * and test is byte-identical; see `netSalesEraEligibleSql` for what `true`
+   * does and, importantly, what it does NOT do.
    */
   getDailyOrderAggregates(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
   ): Promise<DailyOrderAggregateRow[]>;
+
+  /**
+   * Data Coverage 'currency' category drill-down (#2464) — the paginated
+   * list of orders backing {@link getDailyOrderAggregates}' combined
+   * `unconvertedCount`/`unconvertedValue` figure. Same scope as
+   * {@link getDailyOrderAggregates} (`recordStatus = 'ready'`, resolvable
+   * `placedAt`/`totalAmount`, `[filters.from, filters.to)`, optional
+   * connection narrowing, non-cancelled) and the IDENTICAL currency-mismatch
+   * predicate: `reportingCurrency IS NULL OR reportingCurrency !=
+   * currentReportingCurrency`. That predicate already covers both
+   * populations the mockup's `detail-currency` state needs to show under one
+   * combined count - a never-stamped row (`stampedCurrency: null`) and a
+   * stamped-but-stale row (a prior reporting-currency era, ADR-040 - Decision
+   * 7's restatement case) - so `total` here is exactly
+   * `unconvertedCount` summed over the same filters, which the #2464 tests
+   * assert as a regression guard.
+   */
+  findCurrencyMismatchOrders(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedCurrencyMismatchOrders>;
+
+  /**
+   * Data Coverage `'currency'` category aggregate-by-connection (#2713) —
+   * the `GROUP BY sourceConnectionId` counterpart of
+   * {@link findCurrencyMismatchOrders}, reusing the IDENTICAL predicate (same
+   * `cancelledAt IS NULL`, same currency-mismatch condition, same
+   * {@link applySalesAnalyticsScope}-equivalent scope) so the two reads can
+   * never silently diverge on what counts as a mismatch. Returns one row per
+   * connection that has at least one mismatch; a connection with none is
+   * simply absent — see {@link CoverageConnectionAggregateRow}. No
+   * pagination: the result is already bounded by the number of
+   * `OrderSource`-capable connections, unlike the order-list read this
+   * replaces for the per-connection-count use case.
+   */
+  findCurrencyMismatchOrdersByConnection(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<CoverageConnectionAggregateRow[]>;
+
+  /**
+   * Data Coverage tax A/B/C detector's base population, ONE BOUNDED PAGE at
+   * a time (#2465, re-bounded by #2834) — every order EXCLUDED from
+   * `getDailyOrderAggregates`' `net_excluded_count` figure, i.e. the
+   * IDENTICAL predicate mirrored from `netExcludedAndNotCancelled` there:
+   * `recordStatus = 'ready'`, resolvable `placedAt`/`totalAmount`,
+   * `[filters.from, filters.to)`, optional connection narrowing,
+   * non-cancelled, current-era stamped (`reportingCurrency =
+   * currentReportingCurrency`), and `NOT netSalesOrderNetEligibleSql(...)`.
+   * Kept as the SAME predicate on purpose so the SUM of every page's
+   * `items.length` is exactly `netExcludedCount` summed over the same
+   * filters — the #2465 regression guard, now proven across a
+   * multi-page population by the #2834 int-spec.
+   *
+   * Keyset-paginated by `(placedAt DESC, internalOrderId DESC)` — the same
+   * order the pre-#2834 unbounded read already sorted by, with
+   * `internalOrderId` added purely as a deterministic tiebreak for rows
+   * sharing a `placedAt`. `placedAt` is guaranteed non-null in scope (see
+   * {@link NetExcludedOrderCandidateCursor}'s doc comment), so no
+   * null-ordering special case is needed. `cursor: null` starts from the
+   * beginning; `page.nextCursor === null` means this was the last page.
+   *
+   * #2834 replaces the pre-existing unbounded `findNetExcludedOrderCandidates`
+   * (a single `getRawMany()` with no `LIMIT`, whose row count scaled
+   * linearly with total net-excluded order history for the filter window —
+   * currently up to 400 days). Bounding it here does NOT, on its own,
+   * change what a caller can compute: `TaxCoverageDetectionService.classify()`
+   * drives this method in a loop and appends each page's classification
+   * result, which is provably equivalent to classifying the whole unbounded
+   * set at once — see that service's doc comment for why (per-order
+   * classification never depends on any OTHER order's state or on its
+   * position in the population).
+   *
+   * `includeBackfilledPreRollout` (#2469) is the same operator opt-in
+   * {@link getDailyOrderAggregates} documents, and threading it here is a
+   * correctness requirement rather than consistency for its own sake: with the
+   * setting ON a backfilled pre-rollout order becomes net-ELIGIBLE, so it must
+   * leave this candidate population too — otherwise the Data Coverage panel
+   * keeps reporting as `tax-a` an order that is already inside Net Sales.
+   *
+   * `limit` defaults to the repository's own page-size constant when
+   * omitted. It exists so test code can pass a smaller value to exercise
+   * multi-page behaviour without seeding a large fixture — no production
+   * caller passes it; `TaxCoverageDetectionService.classify()` always omits
+   * it and takes the default.
+   *
+   * NOT a consistent snapshot across the whole loop: `classify()` calls this
+   * page by page rather than inside one transaction, so a row whose FX stamp
+   * (or any other predicate input) changes mid-loop can enter or leave the
+   * population between pages and be double-counted or skipped once. That is
+   * an accepted property of a diagnostic panel read on every page load —
+   * `getDailyOrderAggregates`'s `net_excluded_count` has the identical
+   * caveat for the same reason — and would matter only for a caller needing
+   * a point-in-time-consistent total, which this port does not promise.
+   */
+  findNetExcludedOrderCandidatesPage(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout?: boolean,
+    cursor?: NetExcludedOrderCandidateCursor | null,
+    limit?: number
+  ): Promise<NetExcludedOrderCandidatePage>;
+
+  /**
+   * Data Coverage `'product-matching'` category drill-down (#2466) — orders
+   * stuck `recordStatus IN ('awaiting_mapping', 'source_deleted')`, the SAME
+   * predicate `countByHealth`'s `awaiting_mapping` + `source_deleted`
+   * buckets already partition (so `total` here always matches their sum for
+   * the same filters). Deliberately keyed on {@link OrderHealthSummaryFilters}
+   * (`createdAt`-scoped), NOT {@link SalesAnalyticsFilters} (`placedAt`-scoped)
+   * — #1985 populates `placedAt`/`totalAmount` only for `recordStatus =
+   * 'ready'` records, so a product-matching row's `placedAt` is always
+   * `null` and would be silently excluded by a `placedAt` range filter.
+   */
+  findProductMatchingErrorOrders(
+    filters: OrderHealthSummaryFilters,
+    pagination: CoverageDetectionPagination
+  ): Promise<PaginatedProductMatchingErrorOrders>;
 
   /**
    * Headline median order value for the sales & channel analytics read
@@ -273,10 +479,13 @@ export interface OrderRecordRepositoryPort {
    * not pre-rollout history (ADR-063 § Consequences) and carry a resolvable
    * tax-rate fraction on every line. `null` on an empty ordered-set, same
    * convention as the gross median.
+   * `includeBackfilledPreRollout` carries the same meaning as in
+   * {@link getDailyOrderAggregates}.
    */
   getNetMedianOrderValue(
     filters: SalesAnalyticsFilters,
-    currentReportingCurrency: string
+    currentReportingCurrency: string,
+    includeBackfilledPreRollout?: boolean
   ): Promise<number | null>;
 
   /**
@@ -635,4 +844,117 @@ export interface OrderRecordRepositoryPort {
     connectionId: string,
     input: { windowEnd: Date; now: Date; limit: number; offset: number }
   ): Promise<OrderRecord[]>;
+
+  /**
+   * Currency-restatement enumeration page (#2468) — the ids of mismatched
+   * orders in `filters`' scope, walked by KEYSET on `internalOrderId`.
+   *
+   * Same scope + same mismatch predicate as
+   * {@link findCurrencyMismatchOrders}, so the population an operator
+   * authorised a repair over is exactly the population that gets repaired.
+   * The ordering, however, is deliberately DIFFERENT: that read orders
+   * `placedAt DESC` for a human drill-down list, while this one orders
+   * `internalOrderId ASC` and takes an exclusive lower bound, because the
+   * caller MUTATES the rows it reads. Clearing a stamp leaves
+   * `reportingCurrency IS NULL`, which still satisfies the mismatch
+   * predicate — so an offset walk would re-read the same page forever and
+   * the enumeration would never terminate. A strictly-increasing key can
+   * only move forward.
+   *
+   * Returns bare ids, not a `{ internalOrderId, sourceConnectionId }` ref
+   * (#2776 review): the caller used to need `sourceConnectionId` to file a
+   * child `marketplace.order.fxStamp` job under the order's own connection,
+   * but the page now clears-and-stamps each order in-process via
+   * `IOrderFxStampService.stamp`, which re-reads the full `OrderRecord`
+   * (connection included) itself. Selecting a column nothing consumes was a
+   * real, if small, per-row cost.
+   */
+  findCurrencyMismatchOrderRefsAfter(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string,
+    page: { afterOrderId: string | null; limit: number }
+  ): Promise<string[]>;
+
+  /**
+   * Clear one order's ADR-040 FX stamp so the stamp pipeline can re-answer it
+   * (#2468). Returns `true` when a row was actually cleared.
+   *
+   * THE ONLY WRITER THAT MOVES A STAMP, and the exception ADR-040's
+   * immutability rule carries — reachable solely from
+   * `OrderFxRestatementService` inside an `analytics_remediation_runs` row.
+   * See that service for why the exception is acceptable.
+   *
+   * SIX COLUMNS MOVE TOGETHER, exactly as in the
+   * `1840000000000-reset-fx-stamp-for-mislabelled-prestashop-orders`
+   * migration, and every one of them is load-bearing:
+   *   - `reportingCurrency`     — the sweep predicate and all three write guards
+   *   - `reportingTotalAmount`  — required with the above by `ck_order_records_fx_group`
+   *   - `exchangeRateId`        — same CHECK arm; legitimately NULL on the
+   *                               same-currency path, so it must be cleared too
+   *   - `fxStampedAt`           — otherwise the row waits out the 7-day
+   *                               terminal-retry cooldown before re-admission
+   *   - `fxIntendedCurrency`    — THE SUBTLE ONE. `resolveIntent` re-pins the
+   *                               persisted intent and never consults the
+   *                               settings service, so leaving it behind
+   *                               re-stamps the SAME stale currency: the bug
+   *                               looks fixed and is not
+   *   - `fxRule`                — written as a pair with the intent by
+   *                               `claimFxIntentIfAbsent`
+   *
+   * Guarded on `reportingCurrency IS NOT NULL OR fxIntendedCurrency IS NOT
+   * NULL OR fxStampedAt IS NOT NULL` (#2775) so it is idempotent under a
+   * re-delivered driver job and can never touch a row carrying NO FX STATE AT
+   * ALL — a virgin order is in the mismatch population too, and needs only the
+   * enqueue.
+   *
+   * The guard is deliberately NOT "was this row ever stamped". Two ordinary
+   * shapes carry a pinned intent while carrying no figure, and both are inside
+   * {@link findCurrencyMismatchOrderRefsAfter}'s population:
+   *   - DEFERRED       — an intent was pinned, then the rate provider blipped
+   *   - TERMINAL-MARKED — `fxStampedAt` set with `reportingCurrency` still
+   *                      `NULL`, which {@link countRemainingCurrencyMismatch}
+   *                      counts explicitly as `terminalMarked`
+   * A figure-only guard skipped exactly those rows, left the stale intent
+   * standing, and had the child job re-stamp the currency the operator just
+   * moved away from — so the run's completion poll could never reach zero and
+   * closed `failed` blaming rate resolution.
+   */
+  clearFxStampForRestatement(internalOrderId: string): Promise<boolean>;
+
+  /**
+   * TEST-FIXTURE-ONLY (#2855). Stamps `taxRateEra = 'pre-rollout'` on one
+   * order so a non-production install can reach the `tax-a` / `tax-c`
+   * analytics coverage states with a fresh, flow-seeded order — no ingestion
+   * path writes this column going forward (it was set exactly once, by a
+   * historical backfill migration), so without this seam those states are
+   * structurally unreachable by any real order.
+   *
+   * Guarded on `"taxRateEra" IS DISTINCT FROM 'pre-rollout'`, the same
+   * idempotency shape {@link clearFxStampForRestatement} uses: a row already
+   * in the target state matches nothing and reports `false`, so a repeated
+   * call is a no-op rather than a second, redundant write.
+   *
+   * Deliberately NOT role/env-aware — this is a dumb, narrow conditional
+   * writer, same as its precedent. The `@Roles('admin')` + `OL_ALLOW_TEST_FIXTURES`
+   * double gate lives in `OrderTestFixtureService`, one layer up.
+   */
+  stampPreRolloutEraForTesting(internalOrderId: string): Promise<boolean>;
+
+  /**
+   * The mismatched population still remaining in `filters`' scope,
+   * partitioned by whether the FX pipeline already reached a terminal answer
+   * (#2468) — what a restatement run's completion poll reads to decide
+   * `resolved` vs `failed`, and what a `failed` run's `detail` is built from.
+   *
+   * The partition is `fxStampedAt IS NOT NULL` over rows that still carry no
+   * figure. That marker is the ONLY durable evidence of a terminal FX answer:
+   * the reason itself (`FX_STAMP_TERMINAL_REASONS`) is logged by
+   * `marketplace.order.fxStamp` and never persisted, so a run's failure
+   * detail reports these counts and names that job rather than asserting a
+   * specific reason it cannot prove.
+   */
+  countRemainingCurrencyMismatch(
+    filters: SalesAnalyticsFilters,
+    currentReportingCurrency: string
+  ): Promise<FxRestatementRemainingSummary>;
 }

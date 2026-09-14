@@ -28,9 +28,11 @@ import {
 import { Logger } from '@openlinker/shared/logging';
 import type {
   ITaxRateBackfillService,
+  TaxRateBackfillOrdersResult,
   TaxRateBackfillPageInput,
   TaxRateBackfillPageResult,
 } from './tax-rate-backfill.service.interface';
+import { resolveNetSalesTaxRate } from '../../domain/types/net-sales-tax-rate.types';
 import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { ORDER_LINE_ITEM_REPOSITORY_TOKEN, ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
@@ -65,6 +67,43 @@ export class TaxRateBackfillService implements ITaxRateBackfillService {
       lines.length === input.limit ? lines[lines.length - 1].id : null;
 
     return { scanned: lines.length, updated, nextCursor };
+  }
+
+  /**
+   * On-demand, order-scoped backfill (#2469) — the same
+   * {@link backfillOneLine} resolution the sweep uses, reached through the
+   * order's own lines rather than the connection's rate-less frontier.
+   *
+   * Reuses `findByOrderId` and filters in application code rather than adding
+   * an order-scoped repository read: the set is one page of a UI drill-down
+   * (bounded by the caller), an order carries a handful of lines, and a new
+   * query would be a second definition of "rate-less" to keep in step with
+   * `findPageWithNoTaxRate`. The filter is `resolveNetSalesTaxRate(...)
+   * === 'unknown'` rather than a bare `taxRate IS NULL`, so a line carrying a
+   * value net-sales cannot use (fractional notation, out of range) is retried
+   * too — that is exactly the population the coverage panel counts.
+   */
+  async backfillOrders(internalOrderIds: string[]): Promise<TaxRateBackfillOrdersResult> {
+    let scanned = 0;
+    let updated = 0;
+
+    for (const internalOrderId of internalOrderIds) {
+      const lines = await this.orderLineItemRepository.findByOrderId(internalOrderId);
+      const unresolved = lines.filter(
+        (line) => resolveNetSalesTaxRate(line.taxRate).kind === 'unknown'
+      );
+      scanned += unresolved.length;
+      for (const line of unresolved) {
+        const wasUpdated = await this.backfillOneLine(line);
+        if (wasUpdated) updated += 1;
+      }
+    }
+
+    this.logger.log(
+      `Tax-rate backfill (on demand): orders=${internalOrderIds.length} ` +
+        `scanned=${scanned} updated=${updated}`
+    );
+    return { scanned, updated };
   }
 
   /**

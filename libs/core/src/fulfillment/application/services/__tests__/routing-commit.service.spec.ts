@@ -399,7 +399,9 @@ describe('RoutingCommitService', () => {
       const handles: unknown[] = [];
       works.create.mockImplementation((_input: unknown, transaction: unknown) => {
         handles.push(transaction);
-        return Promise.resolve({ id: 'ol_work_1' });
+        // #2955: the created row's holder is what the routed outcome reports,
+        // so the mock has to carry one or the propagation is untested.
+        return Promise.resolve({ id: 'ol_work_1', assignedConnectionId: 'holder-1' });
       });
       decisions.terminalise.mockImplementation((arg: { transaction?: unknown }) => {
         handles.push(arg.transaction);
@@ -408,7 +410,12 @@ describe('RoutingCommitService', () => {
 
       const outcome = await service.route(input());
 
-      expect(outcome).toMatchObject({ status: 'routed', workIds: ['ol_work_1'] });
+      // The HOLDER travels with the id (#2955) — the dispatch producer reads it
+      // for `SyncJob.connectionId` and must not re-read the row.
+      expect(outcome).toMatchObject({
+        status: 'routed',
+        works: [{ workId: 'ol_work_1', assignedConnectionId: 'holder-1' }],
+      });
       expect(works.runInTransaction).toHaveBeenCalledTimes(1);
       // Both writes received the SAME handle — this is ADR-054 R1.
       expect(handles).toHaveLength(2);
@@ -444,7 +451,7 @@ describe('RoutingCommitService', () => {
       const outcome = await service.route(input());
 
       // ADR-054: splits exist ONLY at the work grain.
-      expect(outcome).toMatchObject({ status: 'routed', workIds: ['ol_work_a', 'ol_work_b'] });
+      expect(outcome).toMatchObject({ status: 'routed', works: [{ workId: 'ol_work_a' }, { workId: 'ol_work_b' }] });
       expect(works.create).toHaveBeenCalledTimes(2);
     });
 

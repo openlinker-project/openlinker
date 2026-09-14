@@ -6,8 +6,9 @@
  * `WebhookService` and the `sync_jobs` work row commits in the same Postgres
  * transaction as the `webhook_deliveries` gate row (`WebhookJobGateRepository`).
  * The always-on stream consumer and its dedicated blocking Redis client are
- * retired; `LegacyInboundWebhookDrain` runs once at boot to recover any
- * pre-upgrade backlog, and is itself removed in a follow-up release.
+ * retired, and since #2300 so is the one-shot `LegacyInboundWebhookDrain` that
+ * recovered the pre-#2280 stream backlog: this module now touches no Redis
+ * stream at all.
  *
  * @module apps/api/src/webhooks
  */
@@ -32,7 +33,6 @@ import { InboundWebhookRoutingService } from './application/services/inbound-web
 import { INBOUND_WEBHOOK_ROUTING_SERVICE_TOKEN } from './application/interfaces/inbound-webhook-routing.service.interface';
 import { WebhookJobGateRepository } from './infrastructure/persistence/webhook-job-gate.repository';
 import { WEBHOOK_JOB_GATE_SERVICE_TOKEN } from './application/interfaces/webhook-job-gate.service.interface';
-import { LegacyInboundWebhookDrain } from './application/handlers/legacy-inbound-webhook-drain';
 
 /**
  * Note: Raw body capture for webhook signature verification is handled at the
@@ -63,9 +63,6 @@ import { LegacyInboundWebhookDrain } from './application/handlers/legacy-inbound
     { provide: INBOUND_WEBHOOK_ROUTING_SERVICE_TOKEN, useExisting: InboundWebhookRoutingService },
     WebhookJobGateRepository,
     { provide: WEBHOOK_JOB_GATE_SERVICE_TOKEN, useExisting: WebhookJobGateRepository },
-    // One-shot recovery of the pre-#2280 stream backlog (shared Redis client,
-    // non-blocking reads only).
-    LegacyInboundWebhookDrain,
   ],
 })
 export class WebhooksModule {}

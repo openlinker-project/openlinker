@@ -23,6 +23,201 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A claim about a dependency's internals must be read against the installed version
+
+**Context**: #2957 split a paginated read into a fast page and a separate total. The change had to
+say why `findMany` was left on a single `getManyAndCount()` rather than composed from the two new
+methods, and the answer given was TypeORM's `lazyCount` fast path: `getManyAndCount` supposedly
+infers the total with no count query at all when a page comes back short, so composing would add a
+statement on every small install.
+
+**Problem**: there is no such fast path. The pinned version is `typeorm@0.3.17`, where
+`getManyAndCount` awaits `executeEntitiesAndRawResults` and then `executeCountQuery`,
+unconditionally and sequentially - and the identifier `lazyCount` does not appear anywhere in the
+installed package. The claim reached **eight code comments, one engineering standard, and the PR
+body** before a reviewer opened the file. It was not a typo: it was load-bearing, cited as the third
+of four "not negotiable" properties of the repository shape, and it would have governed every future
+paginated read in the codebase. It also pointed the wrong way - because the count ALWAYS runs, the
+true reading is an argument FOR moving it off the page's critical path, which is the change being
+made.
+
+The plausibility is the hazard. `lazyCount` is exactly what such an optimisation would be called,
+the behaviour is exactly what a reasonable ORM might do, and no test can fail over a comment.
+
+**Rule**: before a claim about third-party runtime behaviour justifies a design decision, open the
+implementation at the pinned version and quote it. `node_modules/.pnpm/<pkg>@<version>/node_modules/<pkg>/...`
+is two commands away, and `grep -rl <identifier>` over the package settles whether a named mechanism
+exists at all. The version matters: a behaviour documented on a project's website is documented for
+its current release, not for the one in `pnpm-lock.yaml`. Where the claim survives review, cite the
+version in the comment (`Read against typeorm@0.3.17: ...`) so the next reader knows what was
+checked and when it stops being true.
+
+**Applies to**: any code comment, docblock or engineering standard that asserts what a dependency
+does internally - ORM query builders, HTTP clients, query caches, validation pipelines. Especially
+where the assertion is the stated reason for a structural choice.
+
+**Source**: #2957 (review round 2), which corrected all nine sites.
+
+---
+
+## Never derive a currency-conversion rate by dividing two figures that don't share a population
+
+**Context**: wiring the ADR-064 display-currency picker to figures beyond the one the backend
+actually converts (GMV). `SalesAnalyticsHeadline.displayCurrencyConversion.convertedRevenue` is a
+real, backend-computed converted number for GMV — it looked reasonable to derive an implied
+exchange rate as `convertedRevenue / revenue` and apply that rate client-side to every other
+same-currency figure (Net sales, AOV, median, cancelled value, the channel table, Top Products).
+
+**Problem**: in "current rate" mode, `convertedRevenue` is not `revenue` converted — it is `revenue`
+(the stamped bucket) PLUS the separate `unconvertedValue` pool (not-yet-stamped or prior-era money),
+both converted and summed (`SalesAnalyticsController.buildNativeCurrencyAmounts`). The two addends
+come from different populations of orders, so `convertedRevenue / revenue` is not the real exchange
+rate — it's contaminated by however much unconverted money happens to exist that day. This shipped
+briefly and produced a real wrong number in review: 29 000 PLN rendered as ~20 000 "EUR" instead of
+the correct ~6 700 EUR (a genuine rate is ~0.23, the derived one came out ~0.69). A wrong number that
+looks plausible is worse than an honest gap, because nothing about the UI signals it's wrong.
+
+**Rule**: never derive a rate, ratio, or multiplier from two aggregate figures unless they are
+guaranteed to sum over the *exact same population* of rows. When a backend field converts figure A
+but not figure B, and A and B don't share a population, there is no safe client-side shortcut —
+either extend the backend to convert B directly, or leave B in its native currency with an honest
+"not converted yet" state. Record the rejected shortcut in code (see
+`display-currency.lib.ts`'s "REJECTED APPROACH" doc comment) so a later contributor doesn't
+reach for the same shortcut without reading the history first.
+
+**Applies to**: any client-side derivation over a backend aggregate that mixes more than one
+population (e.g. a stamped bucket + an unconverted/unresolved bucket) — currently
+`apps/web/src/features/analytics/lib/display-currency.lib.ts` and its four consumers
+(`AnalyticsKpiStrip`, `ChannelSalesTable`, `ProductSalesTable`, `AnalyticsConvertNote`).
+
+**Source**: PR #2781, epic #2452 (ADR-064 display-currency conversion)
+
+---
+
+## A `@Global()` module publishes its EXPORTS, and an optional token hides the host that forgot it
+
+**Context**: wiring OpenLinker's fulfilment router (#2408). The router is resolved through a token
+bound host-side in a `@Global()` module, and injected by `OrderIngestionService`, which is declared
+in `OrdersModule`.
+
+**Problem**: three ways to wire it that all type-check, all pass unit tests, and all do nothing.
+
+- **`providers` without `exports`.** `@Global()` publishes a module's *exports*, not its providers.
+  Without the `exports: [TOKEN]` line the token is invisible outside the module, so the injection
+  resolves from somewhere else or not at all.
+- **Importing the bare `PluginRegistryModule`.** It is a `@Module({})` shell with a static
+  `forRoot`; importing the class yields an *empty* module, so any token a plugin exports through it
+  never resolves. Calling `forRoot` a second time is worse - it double-registers every plugin. The
+  established route is the HOST's own `IntegrationsModule` wrapper, which re-exports it.
+- **`@Optional()` on a token whose absence is a valid state.** A router-less install is a silent,
+  fully-specified pass-through, so a host that FORGOT the binding is indistinguishable from one
+  deliberately running without a router - and nothing fails to say so.
+- **Importing a host WRAPPER that re-exports nothing.** This is the one that actually shipped, and
+  it shipped because the bullet above generalises and the generalisation is false. `apps/api`'s
+  `IntegrationsModule` really does re-export `PluginRegistryModule`; `apps/api`'s `InventoryModule`
+  imports core's module for its two controllers and declares **no `exports` array at all**. Both are
+  "the host's own wrapper", and only one of them hands you a token. Read the wrapper's `exports`
+  before importing it for a token - never infer it from a sibling wrapper's behaviour.
+
+**Rule**: a `@Global()` binding module must `exports` its token, and must import the host's
+`IntegrationsModule` rather than `PluginRegistryModule`. Make the injection **required** whenever
+the degenerate behaviour is silent, so a missing binding is a boot failure rather than a feature
+that quietly does nothing - and pin it with a spec that resolves the token from the CONSUMING
+module's injector (`app.select(OrdersModule).get(TOKEN)`), never the root injector, which passes
+even when the consumer cannot see it.
+
+**No unit test can catch any of this, which is the half that decides the gate.** `pnpm test` never
+builds the Nest graph and the pre-commit hook runs no integration tests, so a required-injection
+wiring error passes lint, type-check, `pnpm test` and the whole commit path, then fails EVERY
+integration suite in the app at boot. For a change whose subject is host-side DI wiring, the
+integration suite is the gate rather than an extra - run the relevant int-spec with
+`--runTestsByPath` before calling the work done, and if Docker is down, say the gate did not run
+instead of reporting the unit gate as if it covered this.
+
+**Applies to**: any `@Global()` provider binding in `apps/api/src/**` or `apps/worker/src/**`; any
+core service injecting a token a host supplies.
+
+**Source**: #2408. `/tech-review` and `/pre-implement` both flagged the first three traps before
+implementation; the fourth was found only by running the int-spec, after CI went red on a diff whose
+unit gate was green.
+
+---
+
+## A schema assertion must be written against what Postgres RENDERS, not what you typed
+
+**Context**: #2727 added `CHK_shipment_lines_capacity` to
+`fulfillment-work-migration-parity.int-spec.ts`, asserting each clause is present and — the point of
+the exercise — that `"shippedQuantity" <= "quantity"` is **absent**, because that clause looks like a
+missing invariant and is in fact a trap (re-ingestion and the dispatch retry both exceed the frozen
+`quantity` in ordinary operation).
+
+**Problem**: `pg_get_constraintdef` renders an all-lowercase identifier **unquoted** and a camelCase
+one quoted, so the constraint reads `((quantity >= 0) AND ("shippedQuantity" >= 0) …)`. The positive
+assertion for `'"quantity" >= 0'` failed loudly, which was fine. The **negative** assertion was
+written `not.toContain('"shippedQuantity" <= "quantity"')` — a string Postgres can never emit — so it
+was a check that COULD NOT FAIL. Had someone later "completed" the constraint, the guard protecting
+that decision would have passed happily.
+
+A positive assertion that is spelled wrong fails and gets fixed. A negative one spelled wrong is
+indistinguishable from a passing test forever.
+
+**Rule**: when asserting on a catalogue-rendered string (`pg_get_constraintdef`, `pg_indexes.indexdef`,
+`information_schema` defaults), copy the expected substring from a REAL rendered value rather than
+from the DDL you wrote. For a `not.toContain`, additionally prove the assertion can fail — flip it to
+`toContain` once against a schema that really has the clause, or assert a sibling substring you know
+is present — before trusting it.
+
+**Applies to**: `apps/api/test/integration/fulfillment-work-migration-parity.int-spec.ts` and any
+future schema-parity spec; more generally any negative assertion over a normalised string.
+
+**Source**: #2727.
+
+---
+
+## A branch-1 shipment row is unique per (order, connection, direction) — seed history with provider ids
+
+**Context**: #2727's backfill int-spec seeds a cancel-and-reissue history — two or three shipments for
+one order — and ran them through the real migration.
+
+**Problem**: every seeded row left `providerShipmentId` NULL, so the second insert violated
+`UQ_shipments_branch_one_per_order_conn` (#2373), which is
+`UNIQUE (orderId, connectionId, direction) WHERE "providerShipmentId" IS NULL`. The index was right
+and the fixture was modelling the wrong thing: a branch-1 row is the ONE observed projection of an
+OMP-fulfilled order, and there cannot be two. A cancel-and-reissue is two real dispatched labels,
+each with its own carrier-assigned id.
+
+**Rule**: when seeding more than one `shipments` row for a single `(orderId, connectionId, direction)`,
+give each a distinct `providerShipmentId`. A NULL there is a positive claim that the row is the
+branch-1 projection, not merely an unset column.
+
+**Applies to**: any int-spec inserting into `shipments`.
+
+**Source**: #2727 / #2373.
+
+---
+
+## A cross-table FK needs matching column TYPES, and only the parity spec will tell you
+
+**Context**: #2727 added `shipment_line_events.shipmentLineId` referencing `shipment_lines.id`.
+
+**Problem**: the child column was declared `text` by analogy with its sibling
+`shipment_lines.shipmentId` (which is correctly `text`, because `shipments.id` is an
+`ol_shipment_*` internal id). But `shipment_lines.id` is a generated **uuid**, so Postgres refused the
+constraint outright: `foreign key constraint "FK_shipment_line_events_line" cannot be implemented`.
+Nothing else in the tree would have caught it — the integration harness builds schema by
+`synchronize`, which creates no FKs at all, so every other int-spec passed.
+
+**Rule**: when adding an FK, check the referenced column's type at its declaration rather than
+inferring it from a neighbouring column, and add both tables to
+`fulfillment-work-migration-parity.int-spec.ts` — it is the only thing in this repository that runs a
+migration.
+
+**Applies to**: any new migration declaring a `REFERENCES` clause.
+
+**Source**: #2727.
+
+---
+
 ## Before a surface asserts a behaviour, read the code that implements it
 
 **Context**: redesigning the three sales-document surfaces (#2513). The design was worked out from
@@ -413,14 +608,18 @@ decision 3 (#2165, epic #2162)
 
 ## An exact dependency pin whose reason lives only in a source comment will be lifted by the next upgrade PR
 
-**Symptom.** `libs/shared` pins `sanitize-html` to `2.17.5` exactly - no caret - on the library that IS the XSS boundary. A dependency-bump PR (or Dependabot) touches `package.json`, not `libs/shared/src/html/sanitize-stored-html.ts`, so the person best placed to break it never sees why it is pinned.
+**Symptom.** `libs/shared` pinned `sanitize-html` to `2.17.5` exactly - no caret - on the library that IS the XSS boundary. A dependency-bump PR (or Dependabot) touches `package.json`, not `libs/shared/src/html/sanitize-stored-html.ts`, so the person best placed to break it never saw why it was pinned.
 
-**Cause.** From `2.17.6` it depends on `htmlparser2@^12`, which is ESM-only; Jest 29 loads the repo's CJS build, so the bump turns every `libs/shared` spec red with a module-resolution error rather than a test failure - a symptom that reads like a broken test, not a deliberate constraint.
+**Cause.** From `2.17.6` it depends on `htmlparser2@^12`, which is ESM-only; Jest 29 loads the repo's CJS build, so the bump turned every `libs/shared` spec red with a module-resolution error rather than a test failure - a symptom that reads like a broken test, not a deliberate constraint.
 
-**Rule.** A pin that exists for a reason belongs in this file as well as in a header comment, and the header should cite the entry. The pin is not a preference: it is a liability, so lift it immediately if an advisory lands on `2.17.5` - re-check `pnpm audit` first, and expect to have to solve the ESM/CJS question in the same change rather than deferring it.
+**Rule.** A pin that exists for a reason belongs in this file as well as in a header comment, and the header should cite the entry. The pin is not a preference: it is a liability, so lift it immediately if an advisory lands on the pinned version - re-check `pnpm audit` first, and expect to have to solve the ESM/CJS question in the same change rather than deferring it.
 
-**Applies to**: `libs/shared/package.json`, `libs/shared/src/html/sanitize-stored-html.ts`, and any future exact pin on a security-relevant transitive.
-**Tracked**: [#2233](https://github.com/openlinker-project/openlinker/issues/2233) - the periodic `pnpm audit` re-check against `2.17.5`, so the pin is somebody's assigned item and not only a rule in this file.
+**Resolution (#2233, 2026-09-02).** `pnpm audit` found GHSA-g8qq-57p8-ggw5 (stored XSS via SVG SMIL) against every `sanitize-html` version up to and including `2.17.6`, patched in `2.17.7` - so per the rule above the pin was lifted immediately rather than left for a future PR. `2.17.7` still depends on `htmlparser2@^12` (ESM-only, and so is its whole transitive closure: `domutils`, `dom-serializer`, `domhandler`, `domelementtype`, `entities`), so the ESM/Jest question had to be solved in the same change. Every jest config whose module graph can reach `@openlinker/shared/html` now routes `.js` files through `babel-jest` (repo-root `babel.esm-deps.cjs`, `@babel/preset-env` targeting `node: current`) instead of leaving them untransformed, with a `transformIgnorePatterns` override naming exactly those six packages (matched against pnpm's `.pnpm/<pkg>@<version>/...` store layout, not the naive `node_modules/(?!pkg)/` recipe, which never matches a pnpm-nested path). `sanitize-html` now carries a normal caret range (`^2.17.7`).
+
+**Fan-out (2026-09-03, PR #2812 review).** The merge is shared via the repo-root `jest.esm-deps.cjs` — that module, not this entry, is the source of truth for the exact ESM-only package list and for which jest configs must consume it. `libs/oms/jest.config.mjs` was initially missed despite `libs/oms` depending on `@openlinker/shared`; `scripts/check-jest-esm-deps.mjs` (chained into `pnpm check:invariants`) now fails the build if a jest config under a package that declares `@openlinker/shared` as a dependency does not merge the fragment in.
+
+**Applies to**: `libs/shared/package.json`, every jest config reachable from `@openlinker/shared` (see `jest.esm-deps.cjs`'s own docblock and `scripts/check-jest-esm-deps.mjs`), `babel.esm-deps.cjs`, `libs/shared/src/html/sanitize-stored-html.ts`, and any future exact pin on a security-relevant transitive.
+**Tracked**: [#2233](https://github.com/openlinker-project/openlinker/issues/2233) - closed by this resolution.
 
 ## A gating primitive built for write affordances does not gate content — check which policy demo mode needs before reusing it
 
@@ -991,3 +1190,111 @@ media queries evaluate against, which at a boundary inverts the reading.
   `resolveSalesDocumentRouting`, and the `check-*-mirror.mjs` family that exists for the same
   class of split-brain.
 - **Source**: #2666 (plan-stage `/tech-review`, escalated to BLOCKING before implementation).
+
+---
+
+## Grep the live `@Controller` prefixes and the DTO class names before adding a route — neither collision fails anything
+
+**Context**: #2953 added an operator CRUD surface for the OL fulfilment router's ruleset. The
+natural prefix was `connections/:connectionId/routing-rules`, and the natural response class was
+`RoutingRuleResponseDto`. Both were already taken by
+`apps/api/src/mappings/http/fulfillment-routing.controller.ts` — the ADR-012 *dispatch* surface
+(#836), which answers a different question over a different table.
+
+**Problem**: two silent collisions, neither of which any gate in this repo detects.
+
+- **Duplicate route path.** NestJS registers both handlers for `GET /connections/:id/routing-rules`
+  and the first-registered wins. Depending on module order in `app.module.ts`, either the dispatch
+  rules or the sourcing rules become unreachable — no boot error, no failing test.
+  `route-authorization-coverage.spec.ts` walks every controller but checks **decorators**, not path
+  uniqueness, so it stays green either way.
+- **Duplicate DTO class name.** `@nestjs/swagger` keys schema definitions by CLASS NAME, so a
+  second `RoutingRuleResponseDto` in a different folder silently overwrites the first in the
+  generated OpenAPI document. Both classes compile, both are type-correct, and the published
+  contract ends up describing one surface with the other's fields.
+
+**Rule**: before adding a controller, run `grep -rn "@Controller('" apps/api/src` and confirm the
+prefix is unclaimed; before naming a DTO, grep the class name across `apps/api/src/**/dto`. Prefer
+a prefix that names the **question the surface answers** (`sourcing-rules`) over one that names the
+mechanism (`routing-rules`), because the mechanism word is the one two unrelated features
+independently reach for. Where the two surfaces are deliberately kept apart by an ADR, say so in
+each controller's docblock and point at the other.
+
+**Applies to**: any new `apps/api` controller or request/response DTO — especially in a domain
+where an adjacent context already owns similar vocabulary (`routing`, `fulfillment`, `mapping`,
+`status`).
+
+**Source**: #2953 (caught by `/pre-implement` before implementation; both collisions were in the
+first draft of the plan).
+
+---
+
+## Format only the touched files with the workspace's own pinned prettier binary — never `npx prettier`
+
+**Context**: #3031 touched ten files. A convenience pass over all of them with `npx prettier
+--write` (intending to just clean up the new hunks) reformatted every one **in full** — hundreds of
+unrelated lines, stripping trailing commas from every multi-line call/array/constructor across
+files nobody was asked to touch.
+
+**Problem**: `npx prettier` resolves (and may fetch) a prettier build outside this pnpm workspace's
+`node_modules`, so it does not reliably pick up the repo's pinned `prettier@3.2.5` or apply
+`.prettierrc` (`trailingComma: "es5"`) the way the workspace's own tooling does. The result reads
+like an intentional whole-file reformat and is easy to miss in a large diff — `git diff --stat`
+before-and-after is the tell (a 12-line intended change became 700+ lines across 5 files). Re-running
+the SAME command with the LOCAL binary (`node_modules/.bin/prettier` / `pnpm exec prettier`)
+reproduced the identical mass-reformat, which ruled out a version mismatch and confirmed the
+project's own quality gate (`pnpm lint` → `.eslintrc.js`'s `extends: ['prettier']` is
+`eslint-config-prettier`, which only *disables* conflicting stylistic ESLint rules — it does **not**
+run `eslint-plugin-prettier`) never enforces prettier formatting as a lint error, and CI has no
+separate `format:check` step either. So running prettier at all here bought nothing the gate needed
+and cost a large, unreviewable diff.
+
+**Rule**: don't run prettier as a formatting pass on a diff unless the task is specifically a
+formatting task. When touching a handful of files, format by hand to match the surrounding style
+(the existing lines are the spec) and verify with `git diff --stat` that only the intended lines
+changed. If prettier must run, target the exact files with the local pinned binary
+(`node_modules/.bin/prettier --config .prettierrc --write <files>`), never `npx prettier`, and
+`git diff --stat` immediately after to catch a whole-file reformat before it's mixed into a commit.
+
+**Applies to**: any edit to existing `*.ts`/`*.tsx` files in this repo, especially a small,
+surgical change to a large pre-existing file.
+
+**Source**: #3031 (caught before commit by comparing `git diff --stat` line counts against the
+size of the intended change).
+
+---
+
+## A more destructive reset needs its own audit before it is made global — do not just copy the sibling suite's fix
+
+**Context**: #2999, the worker-side twin of #2986/PR #2996. `apps/worker/test/integration`
+holds 27 int-specs sharing one Testcontainers Postgres + Redis at `maxWorkers: 1`, and
+`jest-integration.cjs` declared no `setupFilesAfterEnv` at all — so six specs
+(`automation-dispatch-boot`, `automation-emission-boot`, `fulfillment-no-injection-boot`,
+`fulfillment-router-binding-boot`, `invoicing-auto-issue-boot`, `oms-module-boot`) reset
+nothing between their own test cases, and 21 more only reset in `afterEach`, which is a
+courtesy to the next FILE, not isolation for the current one.
+
+**Problem**: the api's fix (root `beforeEach`/`afterEach` via `setupFilesAfterEnv`) could not
+be copied blindly. The worker's `reset()` is materially more destructive — alongside
+Postgres `TRUNCATE`s it calls `redisClient.flushDb()`, wiping ALL of Redis, and the worker
+harness boots a real background consumer (`MasterDeletionToJobHandler`, gated by neither of
+the two env vars the harness already forces off for this reason) holding live stream
+consumer groups and Pending Entries Lists. Registering the global hook without first
+checking whether any spec creates a consumer group / dedup key / lock in `beforeAll` and
+reads it back from a LATER `it()` in the same file would have risked breaking exactly the
+kind of test the fix should never touch, and the failure would have looked like a consumer
+bug rather than a harness one.
+
+**Rule**: before making a MORE destructive reset (one that clears more than a plain table
+truncate — a full cache flush, a stream wipe, anything shared infrastructure depends on)
+unconditional between every test case, audit every file in the suite for what it creates
+OUTSIDE its own test body (`beforeAll`) and reads back INSIDE a later, sibling test body.
+Record the audit in the PR/commit rather than asserting safety from the sibling suite's
+precedent — a fix that was safe for Postgres-only truncation is not automatically safe for
+a whole-Redis flush.
+
+**Applies to**: `apps/worker/test/integration/**`, wired in
+`apps/worker/test/jest-integration.cjs` via `setup-each.ts` (which carries the full
+per-spec audit) and guarded by `harness-isolation.int-spec.ts`.
+
+**Source**: #2999.

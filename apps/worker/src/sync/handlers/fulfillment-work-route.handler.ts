@@ -14,20 +14,20 @@
  * ADR-053's own rule — "order data enters as arguments" — and it is exactly the
  * shape #2399's `FulfillmentWorkDispatchHandler` established.
  *
- * ## There is no router to call yet, and that is the specified behaviour
+ * ## The router is resolved through a port; `null` is still the default
  *
  * `FulfillmentRouter` is deliberately absent from `CoreCapabilityValues` and
- * from every manifest (#2393/#2403 — A2 is `config-only`), and `@openlinker/oms`
- * ships `supportedCapabilities: []` with an empty dispatch table until
- * #2408/#2409 inject the first router. So the shared `resolveFulfillmentRouter`
- * answers `null` on every installation today and this handler completes as a
- * no-op. That seam is shared with #2396's ingestion intercept deliberately: two
- * copies would let one site route while the other mirrors, which is a double
- * shipment (see the function's own header).
+ * from every manifest (#2393/#2403 — A2 is `config-only`), so the router is
+ * never resolved through `getCapabilityAdapter`. It arrives instead through
+ * `FulfillmentRouterResolverPort` — the ONE seam, shared with #2396's ingestion
+ * intercept deliberately: two copies would let one site route while the other
+ * mirrors, which is a double shipment (see the port's own header).
  *
- * That is not unfinished work. ADR-054: *"with no router configured the layer is
- * a degenerate pass-through: no work objects, today's path byte-identical — the
- * property that survives the Wave-5 kill."*
+ * `null` remains the answer for any connection that is not an OMS one, and on
+ * every installation that has not adopted OMS routing this handler still
+ * completes as a no-op. That is not unfinished work. ADR-054: *"with no router
+ * configured the layer is a degenerate pass-through: no work objects, today's
+ * path byte-identical — the property that survives the Wave-5 kill."*
  *
  * ## Nothing enqueues this job type yet, and no outcome is surfaced yet
  *
@@ -66,9 +66,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import {
+  FULFILLMENT_ROUTER_RESOLVER_TOKEN,
   ROUTING_COMMIT_SERVICE_TOKEN,
   buildRoutingShipTo,
+  deriveFulfillmentDispatchEnqueueIntents,
+  findUndispatchableWorkIds,
+  type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
+  type RoutingCommitOutcome,
   type RoutingInputLine,
   type RoutingShipTo,
 } from '@openlinker/core/fulfillment';
@@ -82,7 +87,6 @@ import {
   ORDER_RECORD_SERVICE_TOKEN,
   OrderSnapshotUnavailableError,
   orderFromReadySnapshot,
-  resolveFulfillmentRouter,
   type IOrderRecordService,
 } from '@openlinker/core/orders';
 import type {
@@ -91,7 +95,13 @@ import type {
   SyncJobHandler,
   SyncJobHandlerResult,
 } from '@openlinker/core/sync';
-import { SYNC_LOCK_TOKEN, SyncJobExecutionError, type SyncLockPort } from '@openlinker/core/sync';
+import {
+  JOB_ENQUEUE_TOKEN,
+  SYNC_LOCK_TOKEN,
+  SyncJobExecutionError,
+  type JobEnqueuePort,
+  type SyncLockPort,
+} from '@openlinker/core/sync';
 import { getEnvBoolean } from '@openlinker/shared/config';
 import { Logger } from '@openlinker/shared/logging';
 
@@ -107,7 +117,16 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orderRecords: IOrderRecordService,
     @Inject(SYNC_LOCK_TOKEN)
-    private readonly lock: SyncLockPort
+    private readonly lock: SyncLockPort,
+    // #2408: the ONE seam shared with #2396's ingestion intercept. REQUIRED, so
+    // a worker that lost its binding fails to boot rather than quietly routing
+    // nothing — see the port's header.
+    @Inject(FULFILLMENT_ROUTER_RESOLVER_TOKEN)
+    private readonly routerResolver: FulfillmentRouterResolverPort,
+    // #2955: this host's enqueue seam. NOT `SyncJobQueuePort` — no worker
+    // handler injects that; the worker's fan-out port is `JobEnqueuePort`.
+    @Inject(JOB_ENQUEUE_TOKEN)
+    private readonly jobEnqueue: JobEnqueuePort
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -130,7 +149,7 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
       return { outcome: 'ok' };
     }
 
-    const router = await resolveFulfillmentRouter(selection.holder);
+    const router = await this.routerResolver.resolve(selection.holder);
     if (router === null) {
       // The degenerate pass-through — see this file's header. Not an error.
       this.logger.log(
@@ -164,19 +183,83 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
       },
     });
 
+    await this.enqueueRoutedDispatchJobs(payload.orderId, outcome);
+
     return this.toJobResult(job, payload.orderId, outcome);
+  }
+
+  /**
+   * Offer every routed work object to its holder (#2955).
+   *
+   * The same ONE derivation `OrderIngestionService` uses
+   * (`deriveFulfillmentDispatchEnqueueIntents`), mapped onto this host's own
+   * enqueue port — the two hosts reach DIFFERENT ports with incompatible request
+   * shapes (`JobEnqueuePort.enqueueJob` here, `SyncJobQueuePort.enqueueBulk`
+   * there), which is why the derivation returns a neutral intent rather than a
+   * request. One decision, two mappings.
+   *
+   * **This branch is unreachable today, deliberately.** `fulfillment.work.route`
+   * has no producer of its own, so nothing calls this handler in production.
+   * Wiring it anyway is not oversight: the handler is registered and may gain a
+   * producer, and a route handler that silently fails to dispatch is strictly
+   * worse than an unexercised branch — the #2400 posture. Do not "clean this up"
+   * as dead code without also giving `fulfillment.work.route` a producer.
+   *
+   * Never throws. A retry re-enters `route()`, which answers `already-routed`
+   * and reaches no enqueue, so rethrowing would burn the retry ladder and still
+   * dispatch nothing; the loud `error` log naming the work ids is the signal.
+   */
+  private async enqueueRoutedDispatchJobs(
+    orderId: string,
+    outcome: RoutingCommitOutcome
+  ): Promise<void> {
+    if (outcome.status !== 'routed') return;
+
+    const unassigned = findUndispatchableWorkIds(outcome.works);
+    if (unassigned.length > 0) {
+      this.logger.warn(
+        `Not dispatching fulfilment work with no assigned holder: ` +
+          `orderId=${orderId} work=[${unassigned.join(',')}]`
+      );
+    }
+
+    const intents = deriveFulfillmentDispatchEnqueueIntents(outcome.works, orderId);
+
+    for (const intent of intents) {
+      try {
+        await this.jobEnqueue.enqueueJob({
+          jobType: 'fulfillment.work.dispatch',
+          connectionId: intent.connectionId,
+          payload: {
+            workId: intent.workId,
+            orderId: intent.orderId,
+            // Always `null`, and REQUIRED to be — `claimDispatchAttempt` bumps
+            // the counter itself, so a pre-claim value would make this
+            // producer's own retry refuse to resume.
+            expectedAssignmentAttempt: null,
+          },
+          idempotencyKey: intent.dedupeKey,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Failed to enqueue fulfilment dispatch job; the work is routed but was ` +
+            `NOT offered to its holder: orderId=${orderId} workId=${intent.workId}`,
+          error instanceof Error ? error.stack : undefined
+        );
+      }
+    }
   }
 
   private toJobResult(
     job: SyncJob,
     orderId: string,
-    outcome: Awaited<ReturnType<IRoutingCommitService['route']>>
+    outcome: RoutingCommitOutcome
   ): SyncJobHandlerResult {
     switch (outcome.status) {
       case 'routed':
         this.logger.log(
           `Routed order ${orderId}: decisionId=${outcome.decisionId} ` +
-            `work=[${outcome.workIds.join(',')}]`
+            `work=[${outcome.works.map((work) => work.workId).join(',')}]`
         );
         return { outcome: 'ok' };
 

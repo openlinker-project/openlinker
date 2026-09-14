@@ -16,6 +16,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { BulkShipmentDispatchResult, PerOrderDispatchResult } from '@openlinker/core/shipping';
 import { ShipmentResponseDto } from './shipment-response.dto';
+import { resolveWaybillRelayThresholdFromEnv } from '../waybill-relay-threshold';
 
 export class PerOrderDispatchResultDto {
   @ApiProperty({ enum: ['dispatched', 'omp_fulfilled', 'failed'] })
@@ -41,7 +42,13 @@ export class PerOrderDispatchResultDto {
       // `canWrite: true` — POST /shipments/bulk/generate-labels is
       // `@Roles('admin', 'operator')`-gated, so the caller already holds
       // `shipments:write` and there is nothing to redact (#1826).
-      dto.shipment = ShipmentResponseDto.fromDomain(result.shipment, null, true, null);
+      dto.shipment = ShipmentResponseDto.fromDomain(
+        result.shipment,
+        null,
+        true,
+        null,
+        resolveWaybillRelayThresholdFromEnv(),
+      );
     } else if (result.kind === 'failed') {
       dto.error = result.error;
     }

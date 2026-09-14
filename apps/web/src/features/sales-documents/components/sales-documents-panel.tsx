@@ -146,7 +146,11 @@ export function SalesDocumentsPanel(): ReactElement {
   }
 
   return (
-    <div className="page-section">
+    <div className="page-section" style={{ marginTop: 'var(--space-6)' }}>
+      <header style={{ marginBottom: 'var(--space-4)' }}>
+        <h3 className="detail-section__title">Connected providers</h3>
+      </header>
+
       {conflict ? (
         <Alert tone="error" title={CONFLICT_COPY[conflict].title}>
           {CONFLICT_COPY[conflict].body}

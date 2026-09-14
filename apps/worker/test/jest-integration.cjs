@@ -1,4 +1,8 @@
 const path = require('path');
+const {
+  ESM_DEPS_TRANSFORM_IGNORE_PATTERN,
+  esmDepsJsTransform,
+} = require('../../../jest.esm-deps.cjs');
 
 module.exports = {
   rootDir: '..',
@@ -6,8 +10,12 @@ module.exports = {
   testEnvironment: 'node',
   testRegex: 'test/integration/.*\\.int-spec\\.ts$',
   transform: {
-    '^.+\\.(t|j)s$': 'ts-jest',
+    '^.+\\.ts$': 'ts-jest',
+    // ESM-only htmlparser2 chain pulled in transitively by sanitize-html
+    // >=2.17.6 via @openlinker/shared/html — see jest.esm-deps.cjs.
+    '^.+\\.js$': esmDepsJsTransform,
   },
+  transformIgnorePatterns: [ESM_DEPS_TRANSFORM_IGNORE_PATTERN],
   // Explicit, in-workspace transform cache so CI can persist it between
   // runs. A cold cache costs the run's FIRST suite ~32 s on CI (measured:
   // 6.4 s warm vs 76.3 s cold locally for the same file) because every
@@ -25,6 +33,14 @@ module.exports = {
   // green locally (dev stack on :5432/:6379) but ECONNREFUSED in CI (#786).
   globalSetup: '<rootDir>/test/integration/setup-global.ts',
   globalTeardown: '<rootDir>/test/integration/teardown.ts',
+  // Reset the shared harness around EVERY test case of EVERY int-spec, so a
+  // spec is isolated by omission rather than by its author remembering to
+  // call resetTestHarness(). 21 of the 27 specs here reset in `afterEach`
+  // only and six reset nowhere, which left a file's first assertion reading
+  // whatever the previous file happened to leave behind. The audit of what a
+  // reset (including its `flushDb()`) is safe to do between every test case,
+  // and why, lives in setup-each.ts.
+  setupFilesAfterEnv: ['<rootDir>/test/integration/setup-each.ts'],
   moduleNameMapper: {
     '^@openlinker/core$': path.resolve(__dirname, '../../../libs/core/src/index.ts'),
     '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../../libs/core/src/$1'),

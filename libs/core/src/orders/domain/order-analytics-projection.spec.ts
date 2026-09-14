@@ -28,7 +28,7 @@ describe('orderAnalyticsProjection', () => {
   });
 
   describe('deriveOrderAnalyticsScalars', () => {
-    it('derives all 4 scalars when the order carries them', () => {
+    it('derives all 5 scalars when the order carries them', () => {
       const order = { ...baseOrder(), placedAt: new Date('2026-08-01T09:00:00.000Z') };
 
       expect(deriveOrderAnalyticsScalars(order)).toEqual({
@@ -36,7 +36,26 @@ describe('orderAnalyticsProjection', () => {
         currency: 'PLN',
         taxTreatment: 'inclusive',
         totalAmount: 32,
+        totalTaxTreatment: null,
       });
+    });
+
+    it('derives totalTaxTreatment when the source scopes it to the total alone (#2829)', () => {
+      const order = baseOrder();
+      order.totals.taxTreatment = 'exclusive';
+      order.totals.totalTaxTreatment = 'inclusive';
+
+      expect(deriveOrderAnalyticsScalars(order)).toMatchObject({
+        taxTreatment: 'exclusive',
+        totalTaxTreatment: 'inclusive',
+      });
+    });
+
+    it('returns totalTaxTreatment: null when the source did not diverge from taxTreatment', () => {
+      const order = baseOrder();
+      expect(order.totals.totalTaxTreatment).toBeUndefined();
+
+      expect(deriveOrderAnalyticsScalars(order).totalTaxTreatment).toBeNull();
     });
 
     it('returns placedAt: null when the order does not carry one', () => {
