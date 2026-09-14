@@ -152,10 +152,18 @@ export function findSalesDocumentDestinationWarnings(
   return [...warningsByConnectionId.values()];
 }
 
+/**
+ * The heading above a mixed alert, so it must hold for every reason the list can
+ * carry — not just the common one. "is not issuing anything" is true of a
+ * role-less destination and FALSE of the other two: a `not-active` connection may
+ * carry a perfectly good role, and `unknown-connection` says nothing about roles
+ * at all, so that wording contradicted the per-warning sentences beneath it
+ * (review finding). "cannot route" is the property all three share.
+ */
 export function describeSalesDocumentDestinationWarningTitle(count: number): string {
   return count === 1
-    ? 'One destination is not issuing anything'
-    : `${count} destinations are not issuing anything`;
+    ? 'One destination cannot route'
+    : `${count} destinations cannot route`;
 }
 
 const INACTIVE_STATUS_COPY: Record<InactiveConnectionStatus, { state: string; remedy: string }> = {
