@@ -654,6 +654,8 @@ Defaults (FE-002):
 | Analytics trust-header row (`.trust-header__row`) | auto, ~52 px | `var(--space-3) var(--space-4)` padding. Per-connection freshness list, denser than a status banner because it repeats per row. Collapses to one column, auto height on mobile. |
 | Who-decides question row (`.who-decides-row`, #2354) | auto, ~76 px | Documented **non-`DataTable`** carve-out — question + answer + why-line + optional extras + badge. See the carve-out below. |
 | Sales-document market row (`.sales-document-market-row`, #2540) | `4.25 rem` min | Settings list row, not a `DataTable` row. Status dot + market identity (name + meta line) + outcome (headline + optional reason line) + one action, in a 4-column grid; the floor keeps a one-line row the same height as a row carrying a reason, so the list does not step as rows resolve. Collapses to a single column, auto height below 768 px. |
+| Source pricing rollup row (`.pricing-rollup__row`, #3150) | auto, ~52 px | Documented **non-`DataTable`** carve-out — a read-only two-line row on a SOURCE connection's page: destination name + `Manage` on the first line, the rule summary on the second. `var(--space-3)` padding, `var(--space-2)` between the lines. Not a `DataTable` row because the list is a settings summary of at most a handful of destinations, with one action each. |
+| Price-changes queue mobile card (`.price-changes-queue` `tbody tr` below 768 px, #3223) | auto — content-driven, no measured figure | Documented **non-`DataTable`** carve-out — below 768 px each `<tr>` becomes a two-column CSS-grid card: checkbox, product identity, four labelled blocks, action footer. Desktop and tablet keep the scrolled full table, which has no entry here yet (#3147's debt). See the carve-out below. |
 
 Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
 
@@ -761,6 +763,35 @@ Three mechanics are load-bearing rather than incidental:
 Three primitives support it and belong in `shared/ui`: `DocumentKindGlyph` (a distinct silhouette per kind — a folded page for an invoice, a till slip for a receipt — carrying its own accessible name, since kind is an entity axis and must never take a status hue), `DocumentHeadline` (the same glyph-and-word treatment at reading size, used by the order-detail panel so the panel and the list describe one document identically), and `DocumentLifecycle` (a short horizontal trail for an invoice's two persisted axes). The trail renders **one step per stored state and no more** — an earlier attempt narrated three fiscal-printer phases OpenLinker cannot observe, and a fiscal receipt has no second axis so it gets no trail rather than a padded one.
 
 Gap this carve-out depended on, now closed: `DataTableSkeleton` used to render fixed 36 px rows, so a table using this cell grew on load - measured at ~61 px skeleton against 65-100 px loaded. Tracked as #2152 and closed by #2538, which made the 36 px a floor and had the skeleton read `DataTableColumn.lines`; a table adopting this cell must declare `lines` on the column that sets the height, or the growth comes back.
+
+**Documented carve-out — the price-changes queue mobile card (#3223).** Below 768 px `/price-changes`'s
+review queue stops being a table: `tbody` becomes a flex column of cards and each `<tr>` a two-column CSS
+grid — the selection checkbox in column 1, the product identity beside it, then one `data-label`-ed block
+per remaining column stacked full width, then the action strip as a full-width footer. It is registered as
+a **non-`DataTable`** row for the same reason `.who-decides-row` and `.sales-document-market-row` are: it
+is a row shape with its own composition and its own height, and this section's standing instruction is to
+register one before shipping it.
+
+Four things are worth knowing before copying it:
+
+- **No height is quoted because none was measured.** The card takes its height from six stacked blocks, and
+  how many of them wrap depends on the connection names and price strings in the row. What is fixed is the
+  tap-target floor below, not a row height — so this entry registers the SHAPE, and anyone quoting a number
+  should measure it first.
+- **The 44 px floor is applied per control and is keyed on WIDTH.** The global `≥ 44 px` rule fires under
+  `(hover: none) and (pointer: coarse)` — a POINTER test — so a 767 px desktop window gets nothing from it,
+  while § Responsive's requirement is unconditional. The branch therefore raises the action button *and* the
+  selection checkbox itself. The two per-card links stay uncovered; that is inherited from the global rule,
+  not introduced here.
+- **The desktop row treatments have to be neutralised by name, never by a reset.** `tbody td { border: 0 }`
+  is specificity (0,2,2) and every `tr.is-<state> td` rule is (0,3,3) — a media query adds none — so the
+  group-start hairline, the grouped accent (a `box-shadow`, which no `border` value clears at any
+  specificity) and the resolved/flagged tints each need an explicit override inside the branch. The two
+  tints additionally move from the cell to the card, or they paint per-cell rectangles with the card's own
+  surface showing through the grid gutters, on exactly the rows an operator triages.
+- **It is hand-rolled rather than `DataTableCardView`** because the primitive hard-codes its `<tr>` classes
+  with no per-row hook, and this table hangs both its grouping treatment and its `data-state` handles on the
+  row element. The migration is tracked as #3237 and is blocked on the primitive, not merely unscheduled.
 
 Registered selection-row surfaces:
 
