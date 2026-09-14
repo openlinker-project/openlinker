@@ -24,7 +24,7 @@
  *
  * @module apps/web/src/features/oms/__tests__
  */
-import { readdirSync } from 'node:fs';
+import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -55,44 +55,63 @@ const WITHOUT_OWN_TEST: Readonly<Record<string, string>> = {
     'covered by sourcing-rules-page.test.tsx, where its two gates are observable',
 };
 
-function sourceModules(): string[] {
-  const found: string[] = [];
-  for (const dir of WALKED) {
-    let entries: string[];
-    try {
-      entries = readdirSync(join(FEATURE_ROOT, dir));
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (!/\.tsx?$/.test(entry)) continue;
-      if (/\.test\.tsx?$/.test(entry)) continue;
-      found.push(`${dir}/${entry}`);
-    }
-  }
-  return found.sort();
-}
+const isTest = (path: string): boolean => /\.test\.tsx?$/.test(path);
 
-function testFiles(): Set<string> {
-  const found = new Set<string>();
-  for (const dir of WALKED) {
-    let entries: string[];
-    try {
-      entries = readdirSync(join(FEATURE_ROOT, dir));
-    } catch {
+/**
+ * Every `.ts`/`.tsx` file under `dir`, RECURSIVELY and relative to the feature
+ * root.
+ *
+ * Both properties are load-bearing. A one-level walk cannot see
+ * `components/priority/location-picker.tsx`, so the first module a later slice
+ * nests would ship untested with this guard still green - the "check that
+ * cannot fail" shape one directory down, which is exactly what this file exists
+ * to prevent. And the absence of a `WALKED` directory is deliberately NOT
+ * caught: a directory renamed away must throw here rather than silently shrink
+ * the walk to its surviving siblings.
+ */
+function walk(dir: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(join(FEATURE_ROOT, dir), { withFileTypes: true })) {
+    const relative = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      found.push(...walk(relative));
       continue;
     }
-    for (const entry of entries) {
-      if (/\.test\.tsx?$/.test(entry)) found.add(`${dir}/${entry}`);
-    }
+    if (!/\.tsx?$/.test(entry.name)) continue;
+    found.push(relative);
   }
   return found;
 }
 
+function modulesIn(dir: string): string[] {
+  return walk(dir).filter((path) => !isTest(path));
+}
+
+function sourceModules(): string[] {
+  return WALKED.flatMap((dir) => modulesIn(dir)).sort();
+}
+
+function testFiles(): Set<string> {
+  return new Set(WALKED.flatMap((dir) => walk(dir)).filter(isTest));
+}
+
 describe('features/oms test coverage (#3062)', () => {
   it('walks a non-empty set of modules', () => {
-    // A guard that matched nothing would report green forever.
+    // A guard that matched nothing would report green forever. Coarse on its
+    // own - the per-directory assertion below is what stops the walk shrinking.
     expect(sourceModules().length).toBeGreaterThan(10);
+  });
+
+  it('walks every declared directory, and each one still holds a module', () => {
+    // The total floor above survives losing a whole directory, because its
+    // siblings carry the count on their own. Asserting each `WALKED` entry
+    // exists AND contributes turns both shapes of shrinkage into one loud
+    // failure: a directory renamed away, and one emptied of modules while the
+    // exemption list keeps naming files it no longer holds.
+    for (const dir of WALKED) {
+      expect(statSync(join(FEATURE_ROOT, dir)).isDirectory()).toBe(true);
+      expect(modulesIn(dir).length).toBeGreaterThan(0);
+    }
   });
 
   it('every module has a colocated test, or a named reason not to', () => {

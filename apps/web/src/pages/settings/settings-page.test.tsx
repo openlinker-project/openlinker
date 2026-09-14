@@ -147,6 +147,40 @@ describe('SettingsPage', () => {
     expect(screen.queryByText('PostHog', { selector: '.toolbar-chip' })).not.toBeInTheDocument();
   });
 
+  /**
+   * #3060 mounts the tile as `{isAdmin ? <SourcingRulesTile /> : null}`, and that
+   * gate is at the mount site - `sourcing-rules-tile.test.tsx` renders the
+   * component directly and therefore cannot see it. Without an entry here the
+   * file reads as an exhaustive list of gated tiles while silently omitting one.
+   */
+  it('shows the Sourcing rules tile for an admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Sourcing rules' })).toBeInTheDocument();
+    expect(screen.getByText('Sourcing rules', { selector: '.toolbar-chip' })).toBeInTheDocument();
+  });
+
+  it('never renders the Sourcing rules tile for a non-admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_2',
+        username: 'viewer',
+        email: 'viewer@example.com',
+        role: 'viewer',
+        permissions: [],
+        analyticsConsent: true,
+      }),
+    });
+
+    expect(await screen.findByText('viewer@example.com')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sourcing rules' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Sourcing rules', { selector: '.toolbar-chip' })
+    ).not.toBeInTheDocument();
+  });
+
   it('never renders an analytics consent control, in demo mode or out of it (#1938)', async () => {
     // The demo's consent decision moved to registration and the /consent page;
     // Settings offers no way to switch analytics off any more.
