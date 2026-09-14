@@ -40,7 +40,6 @@ import type { PriceChangeEpisode } from '../../domain/entities/price-change-epis
 import { PriceChangeEpisodeRepositoryPort } from '../../domain/ports/price-change-episode-repository.port';
 import { PriceChangeAutoAppliedLogRepositoryPort } from '../../domain/ports/price-change-auto-applied-log-repository.port';
 import { BulkListingBatchRepositoryPort } from '../../domain/ports/bulk-listing-batch-repository.port';
-import type { PriceChangeAutoAppliedLogEntry } from '../../domain/entities/price-change-auto-applied-log-entry.entity';
 import type { PriceChangeEpisodeFilters } from '../../domain/types/price-change-episode.types';
 import { readConnectionCurrency } from '../../domain/types/price-change-block.types';
 import {
@@ -71,6 +70,7 @@ import type {
   PriceChangeQueueItem,
   PriceChangeQueuePage,
 } from '../types/price-change-queue-item.types';
+import type { PriceChangeAutoAppliedView } from '../types/price-change-auto-applied-view.types';
 
 const JOB_TYPE = 'pricing.propagateToMarketplaces';
 
@@ -413,8 +413,44 @@ export class PriceChangesService implements IPriceChangesService {
     };
   }
 
-  async listAutoApplied(limit: number): Promise<readonly PriceChangeAutoAppliedLogEntry[]> {
-    return this.autoAppliedLog.findRecent(limit);
+  async listAutoApplied(limit: number): Promise<readonly PriceChangeAutoAppliedView[]> {
+    const entries = await this.autoAppliedLog.findRecent(limit);
+    if (entries.length === 0) return [];
+
+    const variantIds = Array.from(new Set(entries.map((e) => e.productVariantId)));
+    const variants = await this.productsService.getVariantsByIds(variantIds);
+    const variantsById = new Map(variants.map((v) => [v.id, v]));
+
+    const productIds = Array.from(
+      new Set(variants.map((v) => v.productId).filter((id): id is string => !!id))
+    );
+    const products = await this.productsService.getProductsByIds(productIds);
+    const productsById = new Map(products.map((p) => [p.id, p]));
+
+    return entries.map((entry) => {
+      const variant = variantsById.get(entry.productVariantId);
+      const product = variant ? productsById.get(variant.productId) : undefined;
+      return {
+        id: entry.id,
+        productVariantId: entry.productVariantId,
+        // Absence is a fact for the FE to render, not a core-owned sentence
+        // (#3168 review — operator copy belongs to the frontend and must
+        // pass `check-ui-vocabulary`, which a backend string never enters).
+        // `null` covers both "the variant was never found" (variant and
+        // product both unresolved) and "the variant resolved but its
+        // product did not" — the FE can tell the two apart itself by
+        // checking `variantLabel`/`sku` alongside `productName`.
+        productName: product?.name ?? null,
+        variantLabel: this.variantLabel(variant),
+        sku: variant?.sku ?? null,
+        destinationConnectionId: entry.destinationConnectionId,
+        sourceConnectionId: entry.sourceConnectionId,
+        oldAmount: entry.oldAmount,
+        newAmount: entry.newAmount,
+        currency: entry.currency,
+        appliedAt: entry.appliedAt,
+      };
+    });
   }
 
   /**
