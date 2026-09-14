@@ -104,6 +104,15 @@ export interface PricingAndSyncSectionProps {
    * unrelated edit on that page persisted it. Intent now travels in the URL:
    * `?source=` looks, `?source=&override=1` creates. A caller that means the
    * second must say so.
+   *
+   * **It has no producer yet, and that is a known gap rather than an
+   * oversight** (#3167 approval, SUGGESTION). `&override=1` is emitted by
+   * nothing in the tree: the queue table's two links use the neutral form,
+   * the rollup's "Manage" is neutral by design, and the "Set a rule just for
+   * this source" permalink the split was drawn around does not exist in
+   * `edit-price-change-dialog.tsx` at all. So this half is reachable only by
+   * typing the URL. It errs safe — nothing pre-arms a write — but half the
+   * mechanism is unexercised in the product until that permalink is built.
    */
   initialCreateOverrideForSourceId?: string;
 }
