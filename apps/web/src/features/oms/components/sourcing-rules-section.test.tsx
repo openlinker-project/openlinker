@@ -84,7 +84,7 @@ describe('SourcingRulesSection (#3061)', () => {
 
     await screen.findByRole('table');
     await userEvent.click(
-      screen.getByRole('button', { name: 'Cannot edit — this rule is no longer recognised' })
+      screen.getByRole('button', { name: 'Why this rule cannot be edited' })
     );
 
     const locked = await screen.findByRole('dialog');
@@ -134,5 +134,44 @@ describe('SourcingRulesSection (#3061)', () => {
 
     expect(await screen.findByText(/Could not save the new order/)).toBeInTheDocument();
     expect(screen.getByText(/The list has been refreshed/)).toBeInTheDocument();
+
+    // Dismissed by hand, never on the next settled read: a 409 invalidates the
+    // list, so an auto-clear would pull the explanation away about as fast as
+    // the refreshed rows arrive.
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() => {
+      expect(screen.queryByText(/Could not save the new order/)).toBeNull();
+    });
+  });
+
+  it('replaces the error card with the loading one while a retry is in flight', async () => {
+    // A retry must not leave the operator looking at an unchanged card with a
+    // button that appears dead. It does not, because `refetch()` puts the query
+    // back to `pending` and the loading branch is read FIRST — which is a
+    // property of the branch ORDER, so it is pinned here rather than assumed.
+    let settleSecond: (() => void) | undefined;
+    const list = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError('boom', 503, {}))
+      .mockImplementationOnce(
+        (): Promise<SourcingRule[]> =>
+          new Promise<SourcingRule[]>((resolve) => {
+            settleSecond = (): void => resolve([]);
+          })
+      );
+    renderSection({ list });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+
+    expect(await screen.findByText('Loading sourcing rules')).toBeInTheDocument();
+    expect(screen.queryByText('Could not load sourcing rules')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    // And still no claim about the operator's configuration mid-retry.
+    expect(screen.queryByText(/Nothing decides where an order ships from/)).toBeNull();
+
+    settleSecond?.();
+    expect(
+      await screen.findByText('Nothing decides where an order ships from yet')
+    ).toBeInTheDocument();
   });
 });

@@ -24,12 +24,24 @@
  * successful edit would imply it routes. Offering a button that answers 400 is
  * worse than saying why it is absent.
  *
- * ## Deleting the rule that currently limits splitting is called out
+ * ## Removing the rule that currently limits splitting is called out
  *
- * That is the one deletion whose consequence is invisible from the row: the
+ * That is the one removal whose consequence is invisible from the row: the
  * ruleset's ceiling moves, and orders may start splitting more than they do
  * today. The warning is derived from #3057's ceiling over the ruleset WITHOUT
  * this rule, so it states the answer rather than this rule's own value.
+ *
+ * It names BOTH routes, because the consequence is identical for both:
+ * `resolveSplitCeiling` counts only ACTIVE rules, and retiring writes
+ * `effectiveTo: <now>`, which drops the rule out of that set just as deleting
+ * it does. Copy pointing at Delete alone would send an operator who read the
+ * warning to the button that sounds safer and produces the same loosening.
+ *
+ * The sentence is unconditional rather than gated on whether Retire is on
+ * offer: `resolveSplitCeiling` counts only active rules, so a removal that
+ * loosens is by definition the removal of an ACTIVE rule, and an active rule is
+ * the one state `retireUnavailableReason` never blocks. A gate here would be a
+ * branch that cannot be taken.
  *
  * @module apps/web/src/features/oms/components
  */
@@ -65,13 +77,32 @@ export interface SourcingRuleDeleteDialogProps {
   now?: Date;
 }
 
-/** Why "Retire instead" is not on offer, or `null` when it is. */
+/**
+ * Why "Retire instead" is not on offer, or `null` when it is.
+ *
+ * One arm per state `resolveSourcingRuleStatus` can answer, because retiring is
+ * `PATCH { effectiveTo: <now> }` and three of the four states make that patch
+ * one the API refuses:
+ *
+ * - `unrecognised` - `assertRoutable` refuses the PATCH outright, since a
+ *   successful edit would imply the rule routes.
+ * - `retired` - the end date is already in the past; there is nothing to stop.
+ * - `scheduled` - `assertEffectiveWindow` validates the MERGED window, so a
+ *   `now` end date against a future start date is always `to < from` and always
+ *   answers 400. This is the arm an operator is most likely to reach, since a
+ *   rule that has not started is exactly the kind you change your mind about.
+ */
 function retireUnavailableReason(rule: SourcingRule, now: Date): string | null {
-  if (!rule.recognised) {
-    return 'This rule cannot be retired because this version of OpenLinker no longer recognises it — it is already being ignored. Deleting is the only way to remove it.';
+  const { status } = resolveSourcingRuleStatus(rule, now);
+
+  if (status === 'unrecognised') {
+    return 'This rule cannot be retired because this version of OpenLinker no longer recognises it - it is already being ignored. Deleting is the only way to remove it.';
   }
-  if (resolveSourcingRuleStatus(rule, now).status === 'retired') {
+  if (status === 'retired') {
     return 'This rule is already retired, so it is not being evaluated. Deleting removes it and its history for good.';
+  }
+  if (status === 'scheduled') {
+    return 'This rule has not started yet, so there is nothing to retire: it is not deciding any orders, and an end date before its start date is refused. Delete it, or change its start date in Edit.';
   }
   return null;
 }
@@ -157,9 +188,10 @@ export function SourcingRuleDeleteDialog({
 
           {removalLoosens ? (
             <Alert tone="warning">
-              Deleting this removes your only limit on splitting: orders could start splitting more
-              than they do today (up to {sourcingAfterActionLabel(ceilingAfter)}). No other active
-              rule currently prevents that.
+              Removing this rule lifts your only limit on splitting: orders could start splitting
+              more than they do today (up to {sourcingAfterActionLabel(ceilingAfter)}). No other
+              active rule currently prevents that. Retiring has the same effect as deleting here,
+              because a retired rule is not evaluated either.
             </Alert>
           ) : null}
 

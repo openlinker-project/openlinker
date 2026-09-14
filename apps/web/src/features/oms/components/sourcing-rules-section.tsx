@@ -23,6 +23,24 @@
  * the write is in flight so a second click cannot build a list from a set the
  * server is already changing.
  *
+ * ## The reorder refusal is dismissed by hand
+ *
+ * A 409 invalidates the list, so clearing the banner on the next settled read
+ * would take the sentence away roughly as fast as the refreshed list arrives:
+ * the operator sees a row snap back to where it was with no surviving
+ * explanation. The banner therefore stays until it is dismissed, or until the
+ * next reorder replaces it.
+ *
+ * ## Retry needs no in-flight guard of its own
+ *
+ * In TanStack Query v5 a `refetch()` of an errored query resets `status` to
+ * `pending` and clears `error` for the duration, so the branch order below
+ * swaps the whole error card for the loading one the moment Retry is pressed —
+ * the button is gone rather than sitting inert, and the change is announced.
+ * That is a property of the ORDER of these branches, not a coincidence, which
+ * is why the section test pins it: read `error` first and the same click would
+ * leave a dead-looking button under an unchanged card.
+ *
  * @module apps/web/src/features/oms/components
  */
 import { useState, type ReactElement } from 'react';
@@ -101,7 +119,14 @@ export function SourcingRulesSection({
   return (
     <>
       {reorderMutation.error ? (
-        <Alert tone="error">
+        <Alert
+          tone="error"
+          action={
+            <Button tone="secondary" onClick={() => reorderMutation.reset()}>
+              {COPY.dismissReorderError}
+            </Button>
+          }
+        >
           {reorderConflict === null
             ? describeSourcingRuleError(reorderMutation.error, 'The new order could not be saved.')
             : `Could not save the new order. ${reorderConflict.message} The list has been refreshed.`}

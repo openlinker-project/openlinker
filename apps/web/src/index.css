@@ -23494,6 +23494,22 @@ legend.analytics-settings-dialog__label {
    than a sort affordance.
    ============================================================ */
 
+.sourcing-rules-table__caption {
+  caption-side: top;
+  text-align: left;
+  padding: 0 0 var(--space-3);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sourcing-rules-table__caption-hint {
+  display: block;
+  font-weight: 400;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
 .rule-position {
   display: flex;
   align-items: center;
@@ -23532,6 +23548,16 @@ legend.analytics-settings-dialog__label {
   line-height: 0;
 }
 
+/* The mockup (`docs/plans/mockups/sourcing-rules-3055.html`) reveals both
+   control groups only on `:hover`/`:focus-within`. They are permanently
+   visible here instead: a ruleset is reordered from a touch device as readily
+   as from a mouse, and a hover-revealed control does not exist on one. */
+.rule-position__jump {
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 0;
+}
+
 .rule-cell__kind {
   display: flex;
   align-items: center;
@@ -23547,7 +23573,14 @@ legend.analytics-settings-dialog__label {
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-default);
   color: var(--text-secondary);
-  background: var(--bg-subtle);
+  /* `--bg-subtle` was never declared anywhere (#3228 review) — an undeclared
+     custom property resolves to nothing, so this chip and the governing-row
+     highlight below both painted transparent. `check-design-tokens.mjs` is
+     one-directional (catalog -> CSS), so lint stayed green over it.
+     `--bg-surface-muted` is the catalogued subtle fill and already carries a
+     light and a dark definition, so reusing it fixes both sites without
+     minting a token whose colour would need defending in two themes. */
+  background: var(--bg-surface-muted);
 }
 
 .rule-cell__label {
@@ -23613,7 +23646,10 @@ legend.analytics-settings-dialog__label {
 }
 
 .sourcing-rule-row--governing {
-  background: var(--bg-subtle);
+  /* See the note on `.rule-cell__kind-badge` above. This is the site the
+     review calls out as operator-visible: the governing rule is the whole
+     story of the table, and it had no affordance at all. */
+  background: var(--bg-surface-muted);
 }
 
 /* ============================================================

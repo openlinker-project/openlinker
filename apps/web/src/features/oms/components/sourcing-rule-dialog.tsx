@@ -103,7 +103,15 @@ export interface SourcingRuleDialogProps {
   connectionId: string;
   /** Every rule currently on screen — for the claimed-name check and the preview. */
   rules: readonly SourcingRule[];
-  /** Absent = create. */
+  /**
+   * Absent = create.
+   *
+   * The CALLER owns the unrecognised gate. #3057's table disables Edit for
+   * `recognised === false`, and this dialog trusts it: the draft it builds for
+   * the splitting preview is `recognised: true` unconditionally, so mounting the
+   * dialog on an unrecognised rule would count a rule the router ignores as
+   * governing the ceiling.
+   */
   rule?: SourcingRule;
   /**
    * Locations the priority list may rank. An EMPTY array is not an error here:
@@ -120,11 +128,54 @@ const NAMES_BY_KIND: Readonly<Record<SourcingRuleKind, readonly string[]>> = {
   sort: SOURCING_SORT_NAME_VALUES,
 };
 
-function defaultValues(rule: SourcingRule | undefined): SourcingRuleFormValues {
+/**
+ * One string, two consumers: the field's visible label and the picker group's
+ * own accessible name. A group named differently from the label above it reads
+ * as two separate controls, so the two may not drift.
+ */
+const PRIORITY_FIELD_LABEL = 'Location order (highest priority first)';
+
+/** `(kind, name)` pairs a live sibling already holds, mapped to its row number. */
+function claimedNameRows(
+  rules: readonly SourcingRule[],
+  excludeRuleId: string | undefined,
+  now: Date
+): Map<string, number> {
+  const claimed = new Map<string, number>();
+  rules.forEach((candidate, index) => {
+    if (candidate.id === excludeRuleId) return;
+    if (!isLiveSourcingRule(candidate, now)) return;
+    claimed.set(`${candidate.kind}:${candidate.name}`, index + 1);
+  });
+  return claimed;
+}
+
+/**
+ * The first name of `kind` that no live sibling holds.
+ *
+ * Seeding with a claimed name opens the dialog on a DISABLED option, and
+ * browsers skip disabled options - so the operator cannot navigate away and back
+ * to it, and the only way out is a save that 409s. Falls back to the first name
+ * when every one is claimed: the control always needs a value, and there the
+ * refusal is the honest answer.
+ */
+function firstUnclaimedName(
+  kind: SourcingRuleKind,
+  claimed: ReadonlyMap<string, number>
+): string {
+  const names = NAMES_BY_KIND[kind] ?? [];
+  return names.find((candidate) => !claimed.has(`${kind}:${candidate}`)) ?? names[0] ?? '';
+}
+
+function defaultValues(
+  rule: SourcingRule | undefined,
+  rules: readonly SourcingRule[],
+  now: Date
+): SourcingRuleFormValues {
   if (rule === undefined) {
     return {
       kind: 'filter',
-      name: SOURCING_FILTER_NAME_VALUES[0],
+      name: firstUnclaimedName('filter', claimedNameRows(rules, undefined, now)),
       afterAction: 'line-split',
       priorityLocationIds: [],
       effectiveFrom: '',
@@ -160,7 +211,7 @@ export function SourcingRuleDialog({
   const [pendingLoosen, setPendingLoosen] = useState<SourcingRuleFormSubmission | null>(null);
 
   const form = useForm<SourcingRuleFormValues, undefined, SourcingRuleFormSubmission>({
-    defaultValues: defaultValues(rule),
+    defaultValues: defaultValues(rule, rules, now),
     resolver: zodResolver(sourcingRuleFormSchema),
   });
 
@@ -169,7 +220,7 @@ export function SourcingRuleDialog({
   // previous rule's values.
   useEffect(() => {
     if (open) {
-      form.reset(defaultValues(rule));
+      form.reset(defaultValues(rule, rules, now));
       setPendingLoosen(null);
       createMutation.reset();
       updateMutation.reset();
@@ -183,17 +234,18 @@ export function SourcingRuleDialog({
   const name = form.watch('name');
   const afterAction = form.watch('afterAction');
   const priorityLocationIds = form.watch('priorityLocationIds');
+  // Watched rather than read through `getValues`: the splitting preview and the
+  // loosening gate below are computed from the window, and under RHF's default
+  // `onSubmit` mode an unwatched field triggers no re-render at all - so
+  // retiring the governing rule by typing a past end date would lift the
+  // ruleset's ceiling with no confirmation and no correct preview.
+  const effectiveFrom = form.watch('effectiveFrom');
+  const effectiveTo = form.watch('effectiveTo');
 
-  /** `(kind, name)` pairs a live sibling already holds. */
-  const claimedNames = useMemo(() => {
-    const claimed = new Map<string, number>();
-    rules.forEach((candidate, index) => {
-      if (candidate.id === rule?.id) return;
-      if (!isLiveSourcingRule(candidate, now)) return;
-      claimed.set(`${candidate.kind}:${candidate.name}`, index + 1);
-    });
-    return claimed;
-  }, [rules, rule?.id, now]);
+  const claimedNames = useMemo(
+    () => claimedNameRows(rules, rule?.id, now),
+    [rules, rule?.id, now]
+  );
 
   const draft = useMemo<SourcingRule>(
     () => ({
@@ -204,13 +256,23 @@ export function SourcingRuleDialog({
       name,
       afterAction,
       priorityLocationIds: [...priorityLocationIds],
-      effectiveFrom: toEffectiveInstant(form.getValues('effectiveFrom')),
-      effectiveTo: toEffectiveInstant(form.getValues('effectiveTo')),
+      effectiveFrom: toEffectiveInstant(effectiveFrom),
+      effectiveTo: toEffectiveInstant(effectiveTo),
       createdAt: rule?.createdAt ?? new Date(0).toISOString(),
       updatedAt: rule?.updatedAt ?? new Date(0).toISOString(),
       recognised: true,
     }),
-    [rule, connectionId, rules.length, kind, name, afterAction, priorityLocationIds, form]
+    [
+      rule,
+      connectionId,
+      rules.length,
+      kind,
+      name,
+      afterAction,
+      priorityLocationIds,
+      effectiveFrom,
+      effectiveTo,
+    ]
   );
 
   const ceilingBefore = resolveSplitCeiling(rules, now).ceiling;
@@ -300,7 +362,7 @@ export function SourcingRuleDialog({
                     form.setValue('kind', nextKind, { shouldValidate: false });
                     // The name vocabulary is kind-specific, so a stale name
                     // would be a pair the server refuses.
-                    form.setValue('name', (NAMES_BY_KIND[nextKind]?.[0] ?? '') as never, {
+                    form.setValue('name', firstUnclaimedName(nextKind, claimedNames) as never, {
                       shouldValidate: false,
                     });
                     form.setValue('priorityLocationIds', [], { shouldValidate: false });
@@ -351,7 +413,7 @@ export function SourcingRuleDialog({
                   name="priorityLocationIds"
                   render={({ field }) => (
                     <FormField
-                      label="Location order (highest priority first)"
+                      label={PRIORITY_FIELD_LABEL}
                       name="priorityLocationIds"
                       error={form.formState.errors.priorityLocationIds?.message}
                       description="Any location you do not add here is used last, after everything on this list."
@@ -360,6 +422,7 @@ export function SourcingRuleDialog({
                         locations={locations}
                         selectedIds={field.value}
                         onChange={field.onChange}
+                        aria-label={PRIORITY_FIELD_LABEL}
                       />
                     </FormField>
                   )}
@@ -458,6 +521,7 @@ interface PriorityLocationPickerProps {
   selectedIds: string[];
   onChange: (next: string[]) => void;
   id?: string;
+  'aria-label'?: string;
   'aria-describedby'?: string;
   'aria-invalid'?: boolean;
 }
@@ -493,7 +557,13 @@ function PriorityLocationPicker({
   }
 
   return (
-    <div className="priority-picker" {...controlProps}>
+    // `role="group"` plus a name of its own, because `FormField` labels its
+    // child with `<label htmlFor>` and a `<div>` is not a labelable element: the
+    // `for` never resolves, so without these the field has no accessible name
+    // and the cloned `aria-describedby` - which carries both the description and
+    // the validation error - hangs off an element with no role and is never
+    // announced.
+    <div className="priority-picker" role="group" {...controlProps}>
       <ul className="priority-picker__rows">
         {selectedIds.map((id, index) => {
           const location = locations.find((candidate) => candidate.id === id);

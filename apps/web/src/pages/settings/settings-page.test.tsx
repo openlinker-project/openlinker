@@ -121,6 +121,44 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows the Sourcing rules tile for an admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Sourcing rules' })).toBeInTheDocument();
+    expect(screen.getByText('Sourcing rules', { selector: '.toolbar-chip' })).toBeInTheDocument();
+  });
+
+  /**
+   * The gate is the `{isAdmin ? … : null}` at the MOUNT SITE, so it can only be
+   * asserted here. `sourcing-rules-tile.test.tsx` renders the tile in isolation
+   * and would pass with the gate deleted.
+   *
+   * Admin-gated rather than ungated like `WhoDecidesTile` above, because the
+   * sourcing-rules API carries a class-level `@Roles('admin')` covering its
+   * reads too (#2953) — a non-admin reaching the page meets a 403, not a
+   * read-only view.
+   */
+  it('never renders the Sourcing rules tile for a non-admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_4',
+        username: 'viewer',
+        email: 'viewer3@example.com',
+        role: 'viewer',
+        permissions: [],
+        analyticsConsent: true,
+      }),
+    });
+
+    expect(await screen.findByText('viewer3@example.com')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Sourcing rules' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Sourcing rules', { selector: '.toolbar-chip' }),
+    ).not.toBeInTheDocument();
+  });
+
   it('shows the PostHog tile for an admin session', async () => {
     renderWithProviders(<SettingsPage />, {
       sessionAdapter: createAuthenticatedSessionAdapter(),
