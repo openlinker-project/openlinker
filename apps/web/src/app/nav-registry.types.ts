@@ -110,28 +110,31 @@ export interface LiveNavItem {
    */
   requiresPermission?: Permission;
   /**
-   * Declarative ROLE gate for a single item (#3076 review IMPORTANT finding).
+   * Declarative ROLE gate for a single item (#3076 review IMPORTANT finding;
+   * widened to an array by #3108).
    *
-   * Deliberately narrower than `LiveNavGroup.requiresRole` — `'admin'` only,
-   * NOT `Role` — for a group whose *other* items are open to every role:
-   * `Diagnostics` is otherwise admin+operator+viewer, while
-   * `/duplicate-positions`'s backing endpoints are `@Roles('admin')`. Minting
-   * a whole-group gate would hide the three siblings from operators/viewers
-   * too; minting a new `Permission` for one read-only diagnostic page would
-   * widen that vocabulary for a population of one.
+   * An array, not a single `Role`, because two different items need to admit
+   * more than one role at once: `/duplicate-positions` is
+   * admin-only (`@Roles('admin')`), while "Pack bench" needs to admit every
+   * role its own API accepts (`@Roles('admin', 'operator', 'packer')` on
+   * `BenchWorkController` et al.) — i.e. everyone except `viewer` — which a
+   * single-value gate can't express. `packer` (#3107, ADR-071/#2413) also
+   * carries a deliberately EMPTY `ROLE_PERMISSIONS` grant on the backend, so
+   * no `Permission` exists to gate on for a packer-inclusive item — the only
+   * axis is the role itself.
    *
-   * `buildNavGroups`'s item filter (`nav-registry.ts`) only ever tests
-   * `requiresRole === 'admin'`, so a `LiveNavGroup`-style `Role` value here
-   * would silently type-check and then be filtered out for EVERY session,
-   * including admins — the opposite of what the group-level gate does with
-   * the same value. Narrowing the type to `'admin'` turns that mismatch into
-   * a compile error instead of an invisible one; widen it to `Role` only once
-   * the filter is taught to resolve `'operator'` too.
+   * Deliberately narrower than nothing else needs to be true here any more:
+   * `isNavItemVisible` (`nav-registry.ts`) tests membership against this
+   * array directly, so a value that type-checks is honoured for every
+   * session it names — unlike `LiveNavGroup.requiresRole` below, which stays
+   * an equality test against `'admin'` and is typed {@link GroupRoleGate}
+   * accordingly.
    *
-   * An item declaring nothing is visible to every authenticated session, the
-   * pre-existing behaviour.
+   * An item declaring nothing is visible to every authenticated session
+   * (unchanged pre-existing behaviour); an item declaring both
+   * `requiresPermission` and `requiresRole` must satisfy both.
    */
-  requiresRole?: 'admin';
+  requiresRole?: readonly Role[];
   to: string;
 }
 
