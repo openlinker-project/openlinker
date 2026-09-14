@@ -94,7 +94,7 @@ describe('InvoiceTimeline — clearance lane', () => {
     expect(screen.queryByText(/regulatory clearance/i)).toBeNull();
   });
 
-  it('pending-submission ⇒ Awaiting submission (active), NEVER a "Submitted" done node (#1585)', () => {
+  it('pending-submission ⇒ Awaiting submission (active), NEVER a "Submitted" done node (#1585, regulator-neutral #3181/#3183)', () => {
     const { container } = renderWithProviders(
       <InvoiceTimeline invoice={makeInvoice({ regulatoryStatus: 'pending-submission' })} />,
     );

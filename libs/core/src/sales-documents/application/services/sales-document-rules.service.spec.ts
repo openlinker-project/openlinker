@@ -87,7 +87,7 @@ function existingRule(): SalesDocumentRule {
     [{ field: 'buyerHasTaxId', op: 'eq', value: false }],
     'hash-abc',
     'fiscal-receipt',
-    'conn-eparagony',
+    'conn-receipt-only',
     new Date('2020-01-01'),
     null,
     null,
@@ -139,7 +139,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.create.mockResolvedValue(existingRule());
 
       await expect(
-        service.createRule(baseInput({ connectionId: 'conn-eparagony' })),
+        service.createRule(baseInput({ connectionId: 'conn-receipt-only' })),
       ).resolves.toBeDefined();
     });
 

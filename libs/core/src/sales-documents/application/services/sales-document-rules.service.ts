@@ -4,11 +4,12 @@
  * Owns the write-path conflict guard, threshold-ref validation, and the
  * read-side assembly that feeds the pure `evaluateSalesDocumentRules`. Injects
  * ONLY this concern's own four repository ports — no `IIntegrationsService`,
- * no connection lookup, no capability check. That check (a rule pointing
- * `Invoice → eparagony.pl` must be rejected because eparagony.pl carries no
- * `Invoicing` capability) is deliberately NOT done here: doing so would inject
- * a cross-context token into a concern this repo's architecture doc pins as a
- * zero-outbound-CORE-context-edge leaf. It is done at the API layer instead
+ * no connection lookup, no capability check. That check (a rule pointing an
+ * invoice-kind document at a connection must be rejected when that
+ * connection's adapter carries no `Invoicing` capability) is deliberately NOT
+ * done here: doing so would inject a cross-context token into a concern this
+ * repo's architecture doc pins as a zero-outbound-CORE-context-edge leaf. It
+ * is done at the API layer instead
  * (`apps/api/src/sales-documents/`), which already has `IIntegrationsService`
  * in scope and wraps this service's `createRule` / `upsertCountryDefault`.
  *
@@ -100,8 +101,11 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
    * `normaliseCountry` (`libs/core/src/inventory/application/services/`),
    * `normalizeCountryCode`
    * (`libs/integrations/woocommerce/src/infrastructure/provisioners/woocommerce-provisioner.helpers.ts`)
-   * and `normalizeCountryIso2`
-   * (`apps/web/src/plugins/ksef/lib/ksef-seller-config.ts`). Deliberately NOT
+   * and `normalizeCountryIso2`, in the seller-config module of a provider
+   * plugin under `apps/web/src/plugins/`. That last one is cited by role
+   * rather than by path because this context's neutral-vocabulary sweep is
+   * prose-inclusive, so spelling the provider's directory here would make the
+   * comment an offender under the very rule it explains. Deliberately NOT
    * a shared helper or a `check-*-mirror.mjs`: the browser bundle cannot
    * import `@openlinker/core` (#591) and a plugin helper must not import a
    * sibling core context, so three of the four could not consume one

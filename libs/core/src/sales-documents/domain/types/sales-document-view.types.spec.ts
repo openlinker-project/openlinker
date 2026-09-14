@@ -62,7 +62,7 @@ describe('SalesDocumentView', () => {
         failureCode: null,
         failureReason: null,
         regulatoryStatus: 'rejected',
-        clearanceReference: 'KSEF-REF-1',
+        clearanceReference: 'CLEARANCE-REF-1',
         identity,
       };
 
@@ -84,7 +84,7 @@ describe('SalesDocumentView', () => {
         failureMode: null,
         failureReason: null,
         artefactCount: 0,
-        identity: { ...identity, recordId: 'fis-1', providerType: 'eparagony' },
+        identity: { ...identity, recordId: 'fis-1', providerType: 'fiscal-provider' },
       };
 
       // The compiler does the work here: a receipt cannot carry an authority
@@ -111,7 +111,7 @@ describe('SalesDocumentView', () => {
           failureCode: null,
           failureReason: null,
           regulatoryStatus: 'cleared',
-          clearanceReference: 'KSEF-REF-2',
+          clearanceReference: 'CLEARANCE-REF-2',
           identity,
         },
         {
