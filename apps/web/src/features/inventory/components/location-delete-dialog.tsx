@@ -79,12 +79,12 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
       showToast({
         tone: 'success',
         title: `"${location.name}" retired`,
-        // Not "can be re-activated later" — nothing in the product exposes
-        // that yet (#3068 tech-review: `toUpdateInput` never sends `status`
-        // back to `'active'`, and the list renders no Reactivate action), so
-        // stating only what actually happened rather than a capability the
-        // UI doesn't offer.
-        description: 'Existing positions keep pointing at it.',
+        // #3068 dropped "can be re-activated later" because nothing in the
+        // product exposed it then. #3066 ships the Reactivate row action, so
+        // the clause is true again - and it is the mockup's own sentence
+        // (`inventory-locations-3063.html:795`), which is also the stated
+        // reason retiring needs no confirm step. #3198 review.
+        description: 'Existing positions keep pointing at it, and it can be reactivated later.',
       });
       onClose();
     } catch {
@@ -114,11 +114,12 @@ export function LocationDeleteDialog({ location, onClose }: LocationDeleteDialog
           {/* Distinct from `description` above on purpose — the description
               says WHY delete was refused, this says what retiring actually
               does, so the two don't restate the same fact (#3068
-              tech-review). No "can be re-activated later" — see the
-              matching note on the retire success toast. */}
+              tech-review). Carries the reversibility clause for the same
+              reason the success toast above does - see that note. */}
           {isInUse ? (
             <Alert tone="warning" title="Retire instead">
-              Retiring keeps the row and its history intact — nothing is deleted.
+              Retiring keeps the row and its history intact — nothing is deleted, and it can be
+              reactivated later.
             </Alert>
           ) : null}
           {genericError ? (

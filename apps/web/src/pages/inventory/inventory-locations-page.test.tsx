@@ -113,6 +113,28 @@ describe('InventoryLocationsPage', () => {
     expect(listLocations).toHaveBeenCalledTimes(2);
   });
 
+  // Regression (#3198 review): the CTA used `mutate()`, which swallows the
+  // rejection, so a failed bootstrap left the operator on an unchanged empty
+  // state with no signal at all - indistinguishable from never having clicked.
+  it('reports a failed bootstrap instead of leaving the empty state unchanged', async () => {
+    const listLocations = vi.fn().mockResolvedValue(page([]));
+    const bootstrapLocations = vi
+      .fn()
+      .mockRejectedValue(new ApiError('Insufficient permissions', 403, {}));
+    const apiClient = createMockApiClient({ inventory: { listLocations, bootstrapLocations } });
+    renderWithProviders(<InventoryLocationsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Create first location' }));
+
+    expect(await screen.findByText('Could not create the location')).toBeInTheDocument();
+    // The server's own reason, not a flattened "try again" - the reachable
+    // failures here are distinguishable and actionable.
+    expect(screen.getByText('Insufficient permissions')).toBeInTheDocument();
+  });
+
   it('turning the Show retired toggle off filters to status=active', async () => {
     const listLocations = vi.fn().mockResolvedValue(page());
     const apiClient = createMockApiClient({ inventory: { listLocations } });

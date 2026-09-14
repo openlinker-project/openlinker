@@ -156,10 +156,40 @@ export function InventoryLocationsPage(): ReactElement {
       showToast({
         tone: 'success',
         title: `"${location.name}" retired`,
-        description: 'Existing positions keep pointing at it.',
+        // #3198 review: reversibility is the stated reason this action has no
+        // confirm step, and the mockup says it out loud, so the operator was
+        // the one party never told. The earlier #3068 note that removed this
+        // clause was correct at the time - nothing then exposed reactivation
+        // - and expired the moment `handleReactivate` above shipped.
+        description: 'Existing positions keep pointing at it, and it can be reactivated later.',
       });
     } catch {
       showToast({ tone: 'error', title: 'Retire failed', description: 'Try again.' });
+    }
+  }
+
+  // #3198 review: `mutate()` swallows the rejection, so a failed bootstrap
+  // left the operator on an unchanged empty state with no toast and no
+  // banner - on the single action that zero state exists to offer. The other
+  // consumer of this same hook (`router-readiness-panel.tsx`) already reports
+  // the failure; two consumers of one hook must not disagree about that.
+  // The server message is carried through rather than flattened to "try
+  // again" because the reachable failures are distinguishable and actionable
+  // (a non-admin session answers 403, #2316).
+  //
+  // Deliberately no success toast: success replaces this zero state with the
+  // created row, and a concurrent re-run reports its code in `existingCodes`
+  // having created nothing (#2407) - announcing that as a creation would be
+  // a positive claim this surface cannot support.
+  async function handleBootstrap(): Promise<void> {
+    try {
+      await bootstrapMutation.mutateAsync();
+    } catch (error) {
+      showToast({
+        tone: 'error',
+        title: 'Could not create the location',
+        description: error instanceof Error ? error.message : 'Try again.',
+      });
     }
   }
 
@@ -423,7 +453,7 @@ export function InventoryLocationsPage(): ReactElement {
                 <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
                   <Button
                     disabled={write.demoReadOnly || bootstrapMutation.isPending}
-                    onClick={() => bootstrapMutation.mutate()}
+                    onClick={() => void handleBootstrap()}
                   >
                     Create first location
                   </Button>

@@ -4,9 +4,11 @@
  * HTTP REST CRUD over the operator-authored inventory locations of ADR-058
  * decision (1) — the interface layer on top of the #2313 core slice.
  *
- * Auth: the global `JwtAuthGuard` covers every route; the three write routes
- * additionally carry `@Roles('admin')`. Reads carry no `@Roles`, which in this
- * repo means "any authenticated user".
+ * Auth: the global `JwtAuthGuard` covers every route; the four write routes
+ * carry `@Roles('admin')` and the two reads `@Roles('admin', 'operator',
+ * 'viewer')` - see the note further down for why the reads are not
+ * `@AnyRole()`. Both halves are asserted against `ROLE_PERMISSIONS` by the
+ * lockstep block in `inventory-locations.controller.spec.ts`.
  *
  * **Two paths reach 404, deliberately.** `GET /:id` returns the repository's
  * `null` as a `NotFoundException` here, because the read contract is
