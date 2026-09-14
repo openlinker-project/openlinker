@@ -12,8 +12,15 @@
  *
  * @module libs/core/src/fiscalization/application/mappers
  */
+// Value imports come from the `@openlinker/core/orders/types` cycle-breaker
+// sub-barrel, never the main barrel: that one re-exports `OrdersModule`, whose
+// own module file value-imports `@openlinker/core/fiscalization`, so a value
+// import here closes a `fiscalization -> orders -> fiscalization` CJS load
+// cycle and leaves `FISCAL_REGISTRATION_SERVICE_TOKEN` undefined at the
+// `@Inject()` decorator in `SalesDocumentViewService`. `Order` / `OrderItem`
+// are type-only and erase, so they may come from either.
 import type { Order, OrderItem } from '@openlinker/core/orders';
-import { decodeBuyerTaxIdColumn } from '@openlinker/core/orders';
+import { decodeBuyerTaxIdColumn } from '@openlinker/core/orders/types';
 import {
   describeNetPricedOrderRefusal,
   minorUnitExponentFor,
