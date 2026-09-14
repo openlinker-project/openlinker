@@ -4,11 +4,12 @@
  *
  * Document type stays EXACTLY two-valued — Invoice / Receipt — never a third
  * "Receipt with NIP" option (the independent-review correction the mockup's
- * own tab 02 documents): "include the buyer's tax ID on the receipt" is a
- * checkbox on the Receipt outcome, shown disabled with a caveat, since
- * eparagony.pl's `RegisterTransactionCommand` carries no `buyerTaxId` field
- * yet. The checkbox therefore submits NOTHING today — it exists so the
- * composer's shape doesn't need to change once that adapter gap closes.
+ * own tab 02 documents). There is no "include the buyer's tax ID on the
+ * receipt" toggle (#3182, epic #3173 tab 05): if the order carries a tax ID
+ * it goes to the adapter unconditionally, so no property on the rule or the
+ * routing decision was ever needed — the value travels with the order the
+ * way the currency does. `Customer tax ID` survives purely as a condition
+ * (`buyerHasTaxId` above).
  *
  * Always opened from `SalesDocumentRulesList`, which in turn only ever
  * renders inside `SalesDocumentCountryRoutingDialog` (#2188) - so this
@@ -51,12 +52,12 @@ import { useConnectionsQuery } from '../../connections';
 import { selectInvoicingCandidates } from '../../invoicing';
 import { selectFiscalizationCandidates } from '../../fiscalization';
 import { useCreateSalesDocumentRuleMutation } from '../hooks/use-create-sales-document-rule-mutation';
-import { useSalesDocumentThresholdsQuery } from '../hooks/use-sales-document-thresholds-query';
 import type {
   CreateSalesDocumentRuleInput,
   SalesDocumentConditionInput,
 } from '../api/sales-document-rules.types';
 import type { SalesDocumentKind } from '../api/sales-documents.types';
+import { describeSalesDocumentRuleDraft } from '../lib/describe-sales-document-rule-draft';
 
 interface SalesDocumentRuleComposerDialogProps {
   country: string;
@@ -71,11 +72,34 @@ interface ConditionDraft {
   boolValue: boolean;
   stringValue: string;
   op: 'gte' | 'lt';
-  thresholdRef: string;
+  /**
+   * Typed by the operator, kept as the STRING they typed (#3189). Never parsed
+   * into a number on the way through: the value is persisted as a decimal
+   * string and shown back verbatim, so rounding it here would change what the
+   * rule says without telling anyone.
+   */
+  amount: string;
+  currency: string;
 }
 
 function newConditionDraft(): ConditionDraft {
-  return { kind: 'buyerHasTaxId', boolValue: false, stringValue: '', op: 'gte', thresholdRef: '' };
+  return {
+    kind: 'buyerHasTaxId',
+    // `true`, not `false` (#3189). `buyerHasTaxId` reads `false` only for a
+    // buyer positively asserted to have NO tax id, and no shipped order source
+    // can produce that state - an absent or blank value is *unknown*, which
+    // compares unequal to both. A draft defaulting to `false` therefore starts
+    // every operator on a condition that cannot match a real order, which is
+    // the same defect the dead `no-tax-id` starter rule had, one surface over.
+    boolValue: true,
+    stringValue: '',
+    op: 'gte',
+    amount: '',
+    // No default currency. Guessing one would put a market's currency on a rule
+    // the operator did not write it for, and a mismatched currency silently
+    // never matches - the exact failure this composer exists to make visible.
+    currency: '',
+  };
 }
 
 function toConditionInput(draft: ConditionDraft): SalesDocumentConditionInput {
@@ -85,7 +109,12 @@ function toConditionInput(draft: ConditionDraft): SalesDocumentConditionInput {
   if (draft.kind === 'orderCountry') {
     return { field: 'orderCountry', op: 'eq', stringValue: draft.stringValue };
   }
-  return { field: 'orderTotalGross', op: draft.op, thresholdRef: draft.thresholdRef };
+  return {
+    field: 'orderTotalGross',
+    op: draft.op,
+    amount: draft.amount.trim(),
+    currency: draft.currency.trim().toUpperCase(),
+  };
 }
 
 /** A small triangle-in-circle glyph — the trigger for a per-row caveat tooltip, never a full-width banner. */
@@ -138,7 +167,6 @@ export function SalesDocumentRuleComposerDialog({
   onOpenChange,
 }: SalesDocumentRuleComposerDialogProps): ReactElement {
   const connectionsQuery = useConnectionsQuery();
-  const thresholdsQuery = useSalesDocumentThresholdsQuery();
   const createRule = useCreateSalesDocumentRuleMutation();
 
   const [conditions, setConditions] = useState<ConditionDraft[]>([newConditionDraft()]);
@@ -148,7 +176,6 @@ export function SalesDocumentRuleComposerDialog({
   const [effectiveTo, setEffectiveTo] = useState('');
 
   const connections = connectionsQuery.data ?? [];
-  const thresholds = thresholdsQuery.data ?? [];
   const candidates =
     documentKind === 'invoice'
       ? selectInvoicingCandidates(connections)
@@ -276,24 +303,34 @@ export function SalesDocumentRuleComposerDialog({
                       <option value="gte">≥</option>
                       <option value="lt">&lt;</option>
                     </Select>
-                    <Select
-                      aria-label="Threshold"
-                      value={condition.thresholdRef}
+                    <Input
+                      aria-label="Order total amount"
+                      inputMode="decimal"
+                      placeholder="450.00"
+                      value={condition.amount}
                       onChange={(event) =>
                         setConditions((prev) =>
                           prev.map((c, i) =>
-                            i === index ? { ...c, thresholdRef: event.target.value } : c,
+                            i === index ? { ...c, amount: event.target.value } : c,
                           ),
                         )
                       }
-                    >
-                      <option value="">Select a threshold…</option>
-                      {thresholds.map((t) => (
-                        <option key={t.ref} value={t.ref}>
-                          {t.ref} ({t.amount} {t.currency})
-                        </option>
-                      ))}
-                    </Select>
+                    />
+                    <Input
+                      aria-label="Order total currency"
+                      placeholder="PLN"
+                      maxLength={3}
+                      value={condition.currency}
+                      onChange={(event) =>
+                        setConditions((prev) =>
+                          prev.map((c, i) =>
+                            i === index
+                              ? { ...c, currency: event.target.value.toUpperCase() }
+                              : c,
+                          ),
+                        )
+                      }
+                    />
                   </div>
                 ) : null}
 
@@ -354,19 +391,6 @@ export function SalesDocumentRuleComposerDialog({
               </Select>
             </div>
           </div>
-
-          {documentKind === 'fiscal-receipt' ? (
-            <div className="ack-row rule-composer-section__footnote-row">
-              <input type="checkbox" id="sd-rule-taxid-toggle" disabled />
-              <label htmlFor="sd-rule-taxid-toggle">
-                Include the buyer&apos;s tax ID on the receipt, where the destination supports it
-                <span className="muted-text" style={{ display: 'block', marginTop: 2 }}>
-                  A property of the Receipt outcome, not a separate document type. Not workable
-                  today — eparagony.pl&apos;s adapter has no tax-id field yet.
-                </span>
-              </label>
-            </div>
-          ) : null}
         </section>
 
         <section className="rule-composer-section">
@@ -398,6 +422,40 @@ export function SalesDocumentRuleComposerDialog({
             </div>
           </div>
         </section>
+
+        {/*
+          The whole rule in one sentence (#3189). The composer collects it
+          across three sections and nothing showed the assembled result, so a
+          rule with an unset currency or a window opening tomorrow could be
+          saved and only discovered when orders started falling through. It
+          fills no gap in - an unchosen value says so.
+
+          Deliberately NOT a fourth `.rule-composer-section`: the mockup frames
+          it as its own accent block beside the three steps ("the accent stays
+          where it should be rare - on the save button and the readback
+          frame"), and the section count is asserted, so a fourth card would
+          both misread the design and break that assertion.
+        */}
+        <div className="rule-composer-readback">
+          <p className="eyebrow rule-composer-readback__eyebrow">This rule says</p>
+          <p data-testid="rule-readback" className="rule-composer-readback__sentence">
+            {describeSalesDocumentRuleDraft({
+              conditions: conditions.map(toConditionInput),
+              documentKind,
+              connectionName: candidates.find((c) => c.id === connectionId)?.name ?? null,
+              effectiveFrom,
+              effectiveTo,
+            })}
+          </p>
+          {/*
+            Stated once, here, rather than on every currency control: an amount
+            is compared and never converted, so an order priced in another
+            currency does not match and falls through to the next tier.
+          */}
+          <p className="muted-text rule-composer-readback__hint">
+            Orders priced in another currency do not match this rule.
+          </p>
+        </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
           <Button

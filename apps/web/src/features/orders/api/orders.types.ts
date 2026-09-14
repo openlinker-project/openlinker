@@ -226,6 +226,43 @@ export interface SalesDocumentOtherRecord {
   readonly blocksFurtherIssuance: boolean;
 }
 
+/**
+ * One condition of a matched routing rule (#3186) — hand-mirrored from the
+ * backend's `SalesDocumentConditionDto` wire shape, matching
+ * `SalesDocumentConditionInput` in `features/sales-documents/api` (kept as a
+ * separate local mirror rather than a cross-feature import, following this
+ * file's own established "hand-mirrored from the BE DTO" convention above).
+ *
+ * `field` mirrors core's `SalesDocumentConditionFieldValues` and is held to it
+ * by `scripts/check-sales-document-condition-field-mirror.mjs`.
+ */
+export interface SalesDocumentMatchedRuleCondition {
+  readonly field: 'buyerHasTaxId' | 'orderCountry' | 'orderTotalGross';
+  readonly op: 'eq' | 'gte' | 'lt';
+  readonly boolValue?: boolean;
+  readonly stringValue?: string;
+  /**
+   * Decimal string (`'450.00'`) on an `orderTotalGross` condition (#3189).
+   * Never a number: it round-trips through jsonb and is shown back verbatim.
+   */
+  readonly amount?: string;
+  /** ISO 4217 on an `orderTotalGross` condition. Compared, never converted. */
+  readonly currency?: string;
+}
+
+/**
+ * The rule that decided this order's document kind (#3186). `null` covers
+ * BOTH "no rule ever decided this order's kind" and "one did, but it has
+ * since been deleted" — a surface must not tell the two apart.
+ */
+export interface SalesDocumentMatchedRuleView {
+  readonly id: string;
+  readonly country: string;
+  readonly conditions: readonly SalesDocumentMatchedRuleCondition[];
+  readonly documentKind: string;
+  readonly connectionId: string;
+}
+
 /** Everything a surface needs about one order's sales document (ADR-065). */
 export interface SalesDocumentView {
   readonly orderId: string;
@@ -244,6 +281,13 @@ export interface SalesDocumentView {
   /** Free-text elaboration the gate stored; never parsed, only displayed. */
   readonly blockDetail: string | null;
   readonly otherRecords: readonly SalesDocumentOtherRecord[];
+  /**
+   * The rule that decided this order's document kind (#3186); `null` when none
+   * did. DETAIL-ONLY (#3186 review): the backend leaves it `null` on the paged
+   * `/orders` list, so only the order-detail panel may render an explanation
+   * from it — a row must never read `null` here as "no rule decided this".
+   */
+  readonly matchedRule: SalesDocumentMatchedRuleView | null;
 }
 
 // ── Mapping-aware delivery (epic #1776) ─────────────────────────────────────
@@ -415,6 +459,31 @@ export interface OrderRecord {
    * for a `'ready'` record. Optional for graceful degradation on older payloads.
    */
   mappingFailureReason?: string | null;
+  /**
+   * Buyer tax id as the source asserted it (#2599/#3180) — THREE states on
+   * the wire, not two:
+   *
+   * - the key is ABSENT (`undefined`) — the source asserted nothing. This is
+   *   also what a deployment running `OL_STORE_PII=false` always reads, since
+   *   nothing is persisted there — byte-identical to an ordinary unasserted
+   *   value, never a false "asserted none".
+   * - `null` — the source POSITIVELY asserted the buyer has no tax id.
+   * - a non-empty string — the id, verbatim and unformatted. Render it
+   *   exactly as received: never reformat, strip, or prefix a country code.
+   *
+   * "Has none" and "we don't know" decide different fiscal documents, so
+   * collapsing them into one rendering is the exact bug this field exists to
+   * prevent. Switch on presence-then-nullness, never on truthiness.
+   *
+   * **Detail read only** — attached by `GET /orders/:id`, never by the paged
+   * list, where a buyer-identifying value with no reader has no business on
+   * every row. That makes the absent state ENDPOINT-dependent in a way the
+   * other optional fields here are not: on a list row the key is always absent,
+   * which is not the source saying nothing. Render it from a detail read or not
+   * at all — a list row must never be fed to `OrderBuyerTaxIdValue`, which would
+   * state "Not asserted by the source" about an order nobody asked about.
+   */
+  buyerTaxId?: string | null;
   /**
    * Why OpenLinker issued no sales document for this order (#2100, #2156).
    * `null` when nothing is blocking it. Independent of `recordStatus` — an

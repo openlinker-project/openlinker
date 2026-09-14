@@ -140,6 +140,30 @@ describe('EparagonyFiscalizationAdapter', () => {
       expect(options.idempotent).toBe(true);
     });
 
+    it('carries the buyer tax number from the command all the way to the HTTP body (#3187)', async () => {
+      const client = makeClient([CONFIRMED]);
+      await makeAdapter(client).registerTransaction(
+        makeCommand({ buyerTaxId: '5213796333' }),
+      );
+
+      const [, body] = client.post.mock.calls[0] as [
+        string,
+        { eReceipt: { metadata: { consumerTIN?: string } } },
+      ];
+      expect(body.eReceipt.metadata.consumerTIN).toBe('5213796333');
+    });
+
+    it('omits consumerTIN from the HTTP body when the command carries no buyer tax id', async () => {
+      const client = makeClient([CONFIRMED]);
+      await makeAdapter(client).registerTransaction(makeCommand());
+
+      const [, body] = client.post.mock.calls[0] as [
+        string,
+        { eReceipt: { metadata: Record<string, unknown> } },
+      ];
+      expect('consumerTIN' in body.eReceipt.metadata).toBe(false);
+    });
+
     it('should poll until the document is confirmed when the first read is still pending', async () => {
       jest.useFakeTimers();
       try {
@@ -190,6 +214,25 @@ describe('EparagonyFiscalizationAdapter', () => {
 
       await expect(makeAdapter(client).registerTransaction(makeCommand())).rejects.toMatchObject({
         failureMode: 'rejected',
+      });
+    });
+
+    it('surfaces a refused consumerTIN as rejected, naming the provider code verbatim (#3187)', async () => {
+      // No pre-judging: core sends whatever it is given, and a value the
+      // vendor's own regex rejects surfaces through the SAME generic
+      // rejection path every other 4xx does — no consumerTIN-specific
+      // handling exists or is needed. `reason` is core's structural read of
+      // `EparagonyApiError.reason`, which names the provider's own code.
+      const client = makeClient([CONFIRMED]);
+      client.post.mockRejectedValue(
+        new EparagonyApiError('rejected', 400, { errorCode: 41, statusCode: 400 }),
+      );
+
+      await expect(
+        makeAdapter(client).registerTransaction(makeCommand({ buyerTaxId: '5213796ZZZ' })),
+      ).rejects.toMatchObject({
+        failureMode: 'rejected',
+        reason: expect.stringContaining('41'),
       });
     });
 

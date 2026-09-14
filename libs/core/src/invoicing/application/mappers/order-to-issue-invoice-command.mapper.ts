@@ -40,7 +40,15 @@ const SHIPPING_LINE_NAME = 'Shipping';
 export interface OrderToIssueInvoiceCommandInput {
   order: Order;
   connectionId: string;
-  /** Scheme-tagged, caller-supplied (the `Order` has none). `null`/absent = B2C. */
+  /**
+   * Caller-supplied (the `Order` has none). `null`/absent = B2C.
+   *
+   * The `scheme` is OPTIONAL (#3224): the HTTP path supplies a tagged
+   * identifier the operator chose, while the auto-issue path holds only the
+   * bare number persisted on `order_records.buyerTaxId` and may not mint a tag
+   * (ADR-073 decision 1). Both shapes are valid here; tagging an untagged one
+   * is the adapter's job.
+   */
   buyerTaxId?: TaxIdentifier | null;
   /** Pass-through ONLY; the adapter derives when absent. */
   documentType?: string;
@@ -171,7 +179,13 @@ function buildBuyerProfile(order: Order, buyerTaxId: TaxIdentifier | null): Buye
     );
   }
 
-  const type: BuyerType = buyerTaxId ? 'company' : 'private';
+  // Driven by the PRESENCE OF A VALUE, not by object truthiness: since #3224 a
+  // `TaxIdentifier` may arrive untagged, so `{ value: '' }` is a representable
+  // shape and would read as a company under a bare truthiness test. The tag is
+  // never consulted — an untagged number still identifies a business.
+  const type: BuyerType = buyerTaxId !== null && buyerTaxId.value.trim().length > 0
+    ? 'company'
+    : 'private';
   const name = deriveBuyerName(order, source);
   const address = toBuyerAddress(source);
 

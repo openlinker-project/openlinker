@@ -2,7 +2,10 @@
  * Sales-Document Threshold ORM Entity (#2170, ADR-041 decision 5 — "regime pack")
  *
  * `ref` is the primary key (a mono string) rather than a generated id — rules
- * reference it directly via `thresholdRef`.
+ * reference it directly via `thresholdRef` — until #3189 inlined the amount
+ * onto the condition, after which NOTHING in the evaluation path reads this
+ * table. It is retained (with its read endpoint) rather than dropped, which is
+ * a separate decision; it is no longer load-bearing for routing.
  *
  * @module libs/core/src/sales-documents/infrastructure/persistence/entities
  */
