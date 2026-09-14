@@ -11,7 +11,8 @@ import { InvoiceRecord } from '@openlinker/core/invoicing';
 import { FISCAL_REGISTRATION_SERVICE_TOKEN } from '@openlinker/core/fiscalization';
 import { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
 import { SALES_DOCUMENT_RULES_SERVICE_TOKEN } from '@openlinker/core/sales-documents';
-import { SalesDocumentRule, SalesDocumentView } from '@openlinker/core/sales-documents';
+import type { SalesDocumentView } from '@openlinker/core/sales-documents';
+import { SalesDocumentRule } from '@openlinker/core/sales-documents';
 
 import { FiscalizationModule } from '@openlinker/core/fiscalization';
 import { InvoicingModule } from '@openlinker/core/invoicing';
