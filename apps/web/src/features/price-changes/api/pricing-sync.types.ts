@@ -34,3 +34,16 @@ export interface UpdatePricingSyncInput {
   default: PricingSyncSetting;
   sourceOverrides: Record<string, PricingSyncSetting>;
 }
+
+/**
+ * One destination-connection row of a SOURCE connection's read-only rollup
+ * (`GET /connections/:id/pricing-sync/as-source`, #3150) — "how does each
+ * place I sell adjust MY price".
+ */
+export interface ConnectionAsSourceEntry {
+  destinationConnectionId: string;
+  destinationLabel: string;
+  effectiveMode: PriceSyncMode;
+  effectiveRuleSummary: PricingRule;
+  isCustomOverride: boolean;
+}

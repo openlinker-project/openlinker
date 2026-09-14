@@ -654,6 +654,7 @@ Defaults (FE-002):
 | Analytics trust-header row (`.trust-header__row`) | auto, ~52 px | `var(--space-3) var(--space-4)` padding. Per-connection freshness list, denser than a status banner because it repeats per row. Collapses to one column, auto height on mobile. |
 | Who-decides question row (`.who-decides-row`, #2354) | auto, ~76 px | Documented **non-`DataTable`** carve-out — question + answer + why-line + optional extras + badge. See the carve-out below. |
 | Sales-document market row (`.sales-document-market-row`, #2540) | `4.25 rem` min | Settings list row, not a `DataTable` row. Status dot + market identity (name + meta line) + outcome (headline + optional reason line) + one action, in a 4-column grid; the floor keeps a one-line row the same height as a row carrying a reason, so the list does not step as rows resolve. Collapses to a single column, auto height below 768 px. |
+| Source pricing rollup row (`.pricing-rollup__row`, #3150) | auto, ~52 px | Documented **non-`DataTable`** carve-out — a read-only two-line row on a SOURCE connection's page: destination name + `Manage` on the first line, the rule summary on the second. `var(--space-3)` padding, `var(--space-2)` between the lines. Not a `DataTable` row because the list is a settings summary of at most a handful of destinations, with one action each. |
 
 Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
 

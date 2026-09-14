@@ -103,12 +103,12 @@ describe('EditPriceChangeDialog', () => {
     expect(onConfirm).toHaveBeenCalledWith(1234.56);
   });
 
-  it("clamps a manual price to the CURRENCY's minor units, not the storage column's precision", async () => {
-    // The episode publishes in PLN, so the operator confirms the number that
-    // will actually go out — 2 decimals — rather than one that merely
-    // survives `numeric(14,4)` and then reappears rounded wherever the amount
-    // is next formatted. The old expectation (399.1235) asserted the
-    // behaviour the code deliberately replaced.
+  // The component clamps to the DESTINATION CURRENCY's own minor-unit
+  // exponent (`clampToStorablePrecision`, via `minorUnitExponentFor`), not
+  // the raw `numeric(14,4)` storage column — `ITEM.destinationCurrency` is
+  // `'PLN'` (2 decimal places), so `399.123456` clamps to `399.12`, the
+  // number that will actually publish, per the dialog's own docblock.
+  it("clamps a manual price to the destination currency's minor-unit precision", async () => {
     const { onConfirm } = renderDialog();
 
     const input = screen.getByLabelText('Price to publish');

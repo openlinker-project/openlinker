@@ -37,3 +37,20 @@ export function isPricingDestination(connection: {
     connection.enabledCapabilities.includes(capability),
   );
 }
+
+/**
+ * True when `/connections/:id/pricing-sync` has anything to show for this
+ * connection — i.e. when the detail page should offer the link.
+ *
+ * WIDER than `isPricingDestination` on purpose (#3167 round-3 review): that
+ * page renders the editable settings for a DESTINATION *and* the read-only
+ * "how your prices get adjusted" rollup for a SOURCE. Gating the button on
+ * the destination half alone left a `ProductMaster`-only connection unable to
+ * reach its own rollup from its own detail page — the surface #3150 exists
+ * to give it.
+ */
+export function hasPricingSyncPage(connection: {
+  enabledCapabilities: readonly string[];
+}): boolean {
+  return isPricingDestination(connection) || connection.enabledCapabilities.includes('ProductMaster');
+}
