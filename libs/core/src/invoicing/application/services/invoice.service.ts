@@ -454,7 +454,7 @@ export class InvoiceService implements IInvoiceService {
    * there, and re-checking them here would break the idempotent replay of an
    * already-`issued` row. The CROSS-kind check has NO such exemption, not even
    * for the requested connection itself — deliberately so, and not merely
-   * because it never mattered: since ADR-072 decision 3 a single connection
+   * because it never mattered: since ADR-073 decision 3 a single connection
    * may hold BOTH the invoicing and fiscalization roles, so an invoicing
    * connection id CAN be the identical value as a fiscalization connection
    * id's. Exempting "the requested connection" here — the way the SAME-kind

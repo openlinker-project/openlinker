@@ -385,7 +385,7 @@ describe('FiscalRegistrationService', () => {
       expect(adapter.registerTransaction).toHaveBeenCalledTimes(1);
     });
 
-    // #3184, ADR-072 decision 3: a connection may hold BOTH the invoicing and
+    // #3184, ADR-073 decision 3: a connection may hold BOTH the invoicing and
     // fiscalization roles, so the blocking invoice's connectionId can be the
     // EXACT SAME value as the fiscalization connection now requesting a
     // registration. The cross-kind check must refuse regardless — this is

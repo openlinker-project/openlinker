@@ -758,7 +758,7 @@ export class OrderIngestionService implements IOrderIngestionService {
         // already-ingested uninvoiced order became un-issuable under strict
         // enforcement.
         existing?.taxRateEra ?? null,
-        // #3187, ADR-072 decision 1: the OPPOSITE read from taxRateEra above -
+        // #3187, ADR-073 decision 1: the OPPOSITE read from taxRateEra above -
         // `persisted`, not `existing`. `buyerTaxId` is computed fresh by
         // `persistOrder` from THIS transition's order, so a first-seen order
         // (`existing === null`) still carries its correct three-state value on

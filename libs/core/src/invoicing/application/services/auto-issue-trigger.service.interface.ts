@@ -43,7 +43,7 @@ export interface IAutoIssueTriggerService {
    *   rate on any line and no catalogue edit can add one after the sale
    *   (ADR-063 § Consequences).
    * @param buyerTaxId - The order's persisted `order_records.buyerTaxId`
-   *   COLUMN (#3187, ADR-072 decision 1) - the raw three-state value, decoded
+   *   COLUMN (#3187, ADR-073 decision 1) - the raw three-state value, decoded
    *   only where it is composed onto a `fiscal-receipt` command. Passed in as
    *   an ARGUMENT for the same one-way-edge reason as `taxRateEra`: the caller
    *   already holds the just-persisted record and this method must not inject
