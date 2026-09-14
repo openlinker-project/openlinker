@@ -24,6 +24,13 @@ const VARIANT_ID = 'ol_variant_price_change_1';
 // `uuid` column, so a malformed id (e.g. a non-uuid string) fails at the SQL
 // boundary before the repository's "no matching row" semantics ever apply.
 const UNKNOWN_EPISODE_ID = '99999999-9999-4999-8999-999999999999';
+// The same rule one column over: `sourceConnectionId` is a `uuid` too, so a
+// no-match assertion has to be spelled as a well-formed uuid or it asserts a
+// SQL type error rather than the empty result the port promises. Every real
+// caller is uuid-validated before it gets here (`ParseUUIDPipe` on the route,
+// `@IsUUID()` on the source-override keys), so the port is only ever asked
+// about well-formed ids in production.
+const UNKNOWN_CONNECTION_ID = '88888888-8888-4888-8888-888888888888';
 
 describe('Price Change Episode Repository Integration', () => {
   let harness: IntegrationTestHarness;
@@ -298,7 +305,41 @@ describe('Price Change Episode Repository Integration', () => {
     const bySource = await repository.countOpenBySource(DEST_CONNECTION_ID);
     expect(bySource.get(SRC_CONNECTION_ID)).toBe(1);
     expect(bySource.get(otherSourceId)).toBe(1);
-    expect(bySource.has('no-such-source')).toBe(false);
+    expect(bySource.has(UNKNOWN_CONNECTION_ID)).toBe(false);
+  });
+
+  it('listOpenDestinationConnectionIds() reports distinct destination ids for a source, deduplicated across variants (#3163 review)', async () => {
+    const otherDestId = '77777777-7777-4777-8777-777777777777';
+    await repository.upsertOpen({
+      ...baseInput,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      computedOldAmount: 427,
+      computedNewAmount: 399,
+    });
+    await repository.upsertOpen({
+      ...baseInput,
+      productVariantId: 'ol_variant_price_change_2',
+      destinationConnectionId: otherDestId,
+      sourceOldAmount: 100,
+      sourceNewAmount: 90,
+      computedOldAmount: 120,
+      computedNewAmount: 108,
+    });
+    // A second variant against the SAME destination must not duplicate the id.
+    await repository.upsertOpen({
+      ...baseInput,
+      productVariantId: 'ol_variant_price_change_3',
+      sourceOldAmount: 50,
+      sourceNewAmount: 45,
+      computedOldAmount: 60,
+      computedNewAmount: 54,
+    });
+
+    const destinationIds = await repository.listOpenDestinationConnectionIds(SRC_CONNECTION_ID);
+    expect([...destinationIds].sort()).toEqual([DEST_CONNECTION_ID, otherDestId].sort());
+
+    expect(await repository.listOpenDestinationConnectionIds(UNKNOWN_CONNECTION_ID)).toEqual([]);
   });
 
   it('round-trips a null computedOldAmount (a brand-new mapping with no baseline) and excludes it from direction filtering (#3159 review)', async () => {
