@@ -104,6 +104,7 @@ describe('evaluateSalesDocumentRules (#2170)', () => {
         kind: 'route',
         documentKind: 'fiscal-receipt',
         connectionId: 'conn-receipt-only',
+        ruleId: 'rule-1',
       });
     });
 
