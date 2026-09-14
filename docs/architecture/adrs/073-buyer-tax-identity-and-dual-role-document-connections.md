@@ -44,6 +44,7 @@ Both gaps invite the same mistake — letting a regime's vocabulary into `libs/c
 - A provider refusal is only as legible as the provider's own message.
 
 **Migration path:**
+- **`Status: Accepted` refers to the decision, not to shippability.** Decision 3 carries a prerequisite — the operator-configured tier must answer the kind question explicitly before a dual role may ship — and the ADR template's taxonomy has no state for *decided but gated*. `Accepted` is the right value because the decision is made and the prerequisite is part of it; a reader skimming decision 3 should not read the status as clearance to build. (ADR-041 stays `Proposed` for the converse reason, spelled out in its own amendment.)
 - Connection roles are stamped at create and never back-filled: an existing connection does not silently gain a second capability.
 - Fiscalization's neutral-vocabulary sweep already fails the build on a provider name in prose; `sales-documents` and `invoicing` gain the same guard (#3183).
 
