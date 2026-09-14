@@ -121,6 +121,34 @@ describe('SettingsPage', () => {
     ).toBeInTheDocument();
   });
 
+  /**
+   * Same deviation, same reason: `InventoryLocationsController`'s reads are
+   * `@Roles('admin', 'operator', 'viewer')` and the sidebar nav entry is
+   * already gated on `inventory:read`, not on being an admin — gating this
+   * link-out tile to admin-only would make it LESS reachable than the nav
+   * item pointing at the same page.
+   */
+  it('always renders the Inventory locations tile, including for a non-admin session', async () => {
+    renderWithProviders(<SettingsPage />, {
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_4',
+        username: 'viewer',
+        email: 'viewer3@example.com',
+        role: 'viewer',
+        permissions: ['inventory:read'],
+        analyticsConsent: true,
+      }),
+    });
+
+    expect(await screen.findByText('viewer3@example.com')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Inventory locations' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Inventory locations', { selector: '.toolbar-chip' }),
+    ).toBeInTheDocument();
+  });
+
   it('shows the PostHog tile for an admin session', async () => {
     renderWithProviders(<SettingsPage />, {
       sessionAdapter: createAuthenticatedSessionAdapter(),
