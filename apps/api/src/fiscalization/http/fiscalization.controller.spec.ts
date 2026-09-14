@@ -129,6 +129,7 @@ describe('FiscalizationController', () => {
       getRegistrationProgress: jest.fn(),
       getByOrderId: jest.fn(),
       getByOrderIds: jest.fn().mockResolvedValue([]),
+      listRecentByConnectionId: jest.fn().mockResolvedValue([]),
       getById: jest.fn(),
       reconcileInDoubt: jest.fn(),
       getInFlightRegistration: jest.fn().mockResolvedValue(null),

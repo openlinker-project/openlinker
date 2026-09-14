@@ -372,12 +372,35 @@ export interface ConnectionSyncStatus {
   historyWindowMs: number;
 }
 
+/**
+ * The three activity sources `GET /connections/:id/diagnostics` folds together
+ * (#3179). Mirrors `ConnectionDiagnosticsSourceValues` on the API side; the
+ * browser cannot import `@openlinker/core` (#591).
+ */
+export const ConnectionDiagnosticsSourceValues = [
+  'syncJobs',
+  'fiscalRegistrations',
+  'invoices',
+] as const;
+export type ConnectionDiagnosticsSource = (typeof ConnectionDiagnosticsSourceValues)[number];
+
 export interface ConnectionDiagnostics {
   connectionId: string;
   connectionName: string;
   connectionStatus: string;
   lastSucceededAt: string | null;
   lastFailedAt: string | null;
+  /** Newest-first across all three sources, not grouped by source. */
   recentErrors: string[];
   recentJobs: RecentJobSummary[];
+  /**
+   * Sources that could NOT be read for this response. While it is non-empty a
+   * null timestamp is unknown, never a confirmed "Never", and `recentErrors`
+   * is only what the readable sources reported.
+   *
+   * Optional because an API predating #3179 omits it entirely; absent is read
+   * as "nothing to report", which is exactly how that API behaved — it had no
+   * per-source degradation to report in the first place.
+   */
+  unreadableSources?: ConnectionDiagnosticsSource[];
 }

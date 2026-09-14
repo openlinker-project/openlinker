@@ -14,7 +14,6 @@ import { ConnectionService } from '../application/services/connection.service';
 import { Connection } from '@openlinker/core/identifier-mapping';
 import { ConnectionResponseDto } from './dto/connection-response.dto';
 import { ConnectionDiagnosticsResponseDto } from './dto/connection-diagnostics-response.dto';
-import { SYNC_JOB_REPOSITORY_TOKEN } from '@openlinker/core/sync';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
   WEBHOOK_SECRET_SERVICE_TOKEN,
@@ -22,23 +21,26 @@ import {
 } from '@openlinker/core/integrations';
 import { WEBHOOK_STATUS_SERVICE_TOKEN } from '../application/interfaces/webhook-status.service.interface';
 import { RATE_LIMIT_STATUS_SERVICE_TOKEN } from '../application/interfaces/rate-limit-status.service.interface';
-import type { SyncJobRepositoryPort } from '@openlinker/core/sync';
-import { SyncJobEntity as SyncJob } from '@openlinker/core/sync';
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import {
   DEMO_MODE_SERVICE_TOKEN,
   type IDemoModeService,
 } from '../../auth/demo-mode.service.interface';
+import {
+  CONNECTION_DIAGNOSTICS_SERVICE_TOKEN,
+  type IConnectionDiagnosticsService,
+} from '../application/interfaces/connection-diagnostics.service.interface';
+import type { ConnectionDiagnosticsReads } from '../application/types/connection-diagnostics.types';
 
 describe('ConnectionController', () => {
   let controller: ConnectionController;
   let service: jest.Mocked<ConnectionService>;
-  let syncJobRepository: jest.Mocked<SyncJobRepositoryPort>;
   let demoModeService: jest.Mocked<IDemoModeService>;
   let webhookSecretService: { rotate: jest.Mock; set: jest.Mock };
   let webhookStatusService: { getStatus: jest.Mock };
   let rateLimitStatusService: { getStatus: jest.Mock };
   let integrationsService: { resolveAdapterMetadata: jest.Mock };
+  let connectionDiagnosticsService: jest.Mocked<IConnectionDiagnosticsService>;
 
   const mockConnection = new Connection(
     'connection-123',
@@ -56,23 +58,16 @@ describe('ConnectionController', () => {
 
   const mockAdminUser: AuthenticatedUser = { id: 'user-1', username: 'admin', role: 'admin' };
 
-  const makeSyncJob = (overrides: Partial<SyncJob> = {}): SyncJob =>
-    new SyncJob(
-      /* id           */ overrides.id ?? 'job-1',
-      /* jobType      */ overrides.jobType ?? 'marketplace.orders.poll',
-      /* connectionId */ 'connection-123',
-      /* payload      */ {},
-      /* status       */ overrides.status ?? 'succeeded',
-      /* idempotencyKey */ overrides.idempotencyKey ?? 'key-1',
-      /* attempts     */ overrides.attempts ?? 1,
-      /* maxAttempts  */ 10,
-      /* nextRunAt    */ new Date('2025-01-01T10:00:00Z'),
-      /* lockedAt     */ null,
-      /* lockedBy     */ null,
-      /* lastError    */ overrides.lastError ?? null,
-      /* createdAt    */ overrides.createdAt ?? new Date('2025-01-01T10:00:00Z'),
-      /* updatedAt    */ overrides.updatedAt ?? new Date('2025-01-01T10:01:00Z')
-    );
+  const diagnosticsReads = (
+    overrides: Partial<ConnectionDiagnosticsReads> = {}
+  ): ConnectionDiagnosticsReads => ({
+    connection: mockConnection,
+    recentJobs: [],
+    recentFiscalRegistrations: [],
+    recentInvoices: [],
+    unreadableSources: [],
+    ...overrides,
+  });
 
   beforeEach(async () => {
     const mockService = {
@@ -89,38 +84,12 @@ describe('ConnectionController', () => {
       disable: jest.fn(),
     } as unknown as jest.Mocked<ConnectionService>;
 
-    const mockSyncJobRepository: jest.Mocked<SyncJobRepositoryPort> = {
-      createIfNotExistsByIdempotencyKey: jest.fn(),
-      findAndLockDueJobs: jest.fn(),
-      findAndLockDueJobsForLane: jest.fn(),
-      findById: jest.fn(),
-      findByIdempotencyKey: jest.fn(),
-      findMany: jest.fn(),
-      markSucceeded: jest.fn(),
-      markFailed: jest.fn(),
-      markDead: jest.fn(),
-      requeueStuckJobs: jest.fn(),
-      requeueDeadJob: jest.fn(),
-      requeueDeadByIdempotencyKey: jest.fn(),
-      findRecentByConnectionId: jest.fn(),
-      findGroupedByStatus: jest.fn(),
-      requeueDeadJobsInGroup: jest.fn(),
-      heartbeat: jest.fn(),
-      requeueWithoutPenalty: jest.fn(),
-      findLastSucceededByConnectionAndJobType: jest.fn(),
-      getConnectionBacklogStats: jest.fn(),
-    };
-
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ConnectionController],
       providers: [
         {
           provide: ConnectionService,
           useValue: mockService,
-        },
-        {
-          provide: SYNC_JOB_REPOSITORY_TOKEN,
-          useValue: mockSyncJobRepository,
         },
         {
           provide: INTEGRATIONS_SERVICE_TOKEN,
@@ -161,17 +130,24 @@ describe('ConnectionController', () => {
           provide: DEMO_MODE_SERVICE_TOKEN,
           useValue: { isDemoModeEnabled: jest.fn().mockReturnValue(false) },
         },
+        {
+          // One composed read, mocked whole (#3179): the three-source fan-out
+          // and its degradation policy are the service's own behaviour and are
+          // tested in connection-diagnostics.service.spec.ts.
+          provide: CONNECTION_DIAGNOSTICS_SERVICE_TOKEN,
+          useValue: { getDiagnostics: jest.fn() },
+        },
       ],
     }).compile();
 
     controller = module.get<ConnectionController>(ConnectionController);
     service = module.get(ConnectionService);
-    syncJobRepository = module.get(SYNC_JOB_REPOSITORY_TOKEN);
     demoModeService = module.get(DEMO_MODE_SERVICE_TOKEN);
     webhookSecretService = module.get(WEBHOOK_SECRET_SERVICE_TOKEN);
     webhookStatusService = module.get(WEBHOOK_STATUS_SERVICE_TOKEN);
     rateLimitStatusService = module.get(RATE_LIMIT_STATUS_SERVICE_TOKEN);
     integrationsService = module.get(INTEGRATIONS_SERVICE_TOKEN);
+    connectionDiagnosticsService = module.get(CONNECTION_DIAGNOSTICS_SERVICE_TOKEN);
   });
 
   describe('setWebhookSecret', () => {
@@ -517,62 +493,37 @@ describe('ConnectionController', () => {
   });
 
   describe('getDiagnostics', () => {
-    it('should return diagnostics DTO for existing connection', async () => {
-      const succeededJob = makeSyncJob({
-        status: 'succeeded',
-        updatedAt: new Date('2025-01-01T10:01:00Z'),
-      });
-      service.get.mockResolvedValue(mockConnection);
-      syncJobRepository.findRecentByConnectionId.mockResolvedValue([succeededJob]);
+    it('delegates the whole three-source read to ConnectionDiagnosticsService', async () => {
+      connectionDiagnosticsService.getDiagnostics.mockResolvedValue(diagnosticsReads());
 
       const result = await controller.getDiagnostics('connection-123');
 
+      expect(connectionDiagnosticsService.getDiagnostics).toHaveBeenCalledWith('connection-123');
       expect(result).toBeInstanceOf(ConnectionDiagnosticsResponseDto);
       expect(result.connectionId).toBe('connection-123');
       expect(result.connectionName).toBe('Test Connection');
       expect(result.connectionStatus).toBe('active');
-      expect(result.lastSucceededAt).toBe('2025-01-01T10:01:00.000Z');
-      expect(result.lastFailedAt).toBeNull();
-      expect(result.recentJobs).toHaveLength(1);
-      expect(syncJobRepository.findRecentByConnectionId).toHaveBeenCalledWith('connection-123', 10);
+    });
+
+    it('carries unreadableSources through to the response verbatim', async () => {
+      connectionDiagnosticsService.getDiagnostics.mockResolvedValue(
+        diagnosticsReads({ unreadableSources: ['fiscalRegistrations'] })
+      );
+
+      const result = await controller.getDiagnostics('connection-123');
+
+      expect(result.unreadableSources).toEqual(['fiscalRegistrations']);
+      expect(result.lastSucceededAt).toBeNull();
     });
 
     it('should throw NotFoundException for unknown connection', async () => {
-      service.get.mockRejectedValue(new NotFoundException('Connection not found'));
+      connectionDiagnosticsService.getDiagnostics.mockRejectedValue(
+        new NotFoundException('Connection not found')
+      );
 
       await expect(controller.getDiagnostics('unknown-id')).rejects.toBeInstanceOf(
         NotFoundException
       );
-    });
-
-    it('should derive lastFailedAt from retrying job with lastError (markFailed sets status queued)', async () => {
-      // markFailed() re-queues jobs as 'queued', so 'failed' status never appears.
-      // The filter uses lastError !== null to capture retrying failures.
-      const retryingJob = makeSyncJob({
-        status: 'queued',
-        lastError: 'Timeout',
-        updatedAt: new Date('2025-01-01T11:00:00Z'),
-      });
-      service.get.mockResolvedValue(mockConnection);
-      syncJobRepository.findRecentByConnectionId.mockResolvedValue([retryingJob]);
-
-      const result = await controller.getDiagnostics('connection-123');
-
-      expect(result.lastFailedAt).toBe('2025-01-01T11:00:00.000Z');
-      expect(result.lastSucceededAt).toBeNull();
-      expect(result.recentErrors).toEqual(['Timeout']);
-    });
-
-    it('should return empty diagnostics when no jobs exist', async () => {
-      service.get.mockResolvedValue(mockConnection);
-      syncJobRepository.findRecentByConnectionId.mockResolvedValue([]);
-
-      const result = await controller.getDiagnostics('connection-123');
-
-      expect(result.recentJobs).toHaveLength(0);
-      expect(result.lastSucceededAt).toBeNull();
-      expect(result.lastFailedAt).toBeNull();
-      expect(result.recentErrors).toHaveLength(0);
     });
   });
 

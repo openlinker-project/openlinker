@@ -202,6 +202,21 @@ export interface IInvoiceService {
   listInvoicesForOrders(orderIds: string[]): Promise<InvoiceRecord[]>;
 
   /**
+   * Recent `InvoiceRecord`s for ONE connection, newest-first, capped at
+   * `limit` (#3179). Projection read - NEVER queries the provider/adapter.
+   * Backs the connection health/diagnostics read alongside
+   * `IFiscalRegistrationService.listRecentByConnectionId`: an issued document
+   * is real activity on that connection even when the `sync_jobs` row that
+   * dispatched it has aged out of that read's own recency window.
+   *
+   * Deliberately NOT {@link listInvoices} with a `{ connectionId }` filter -
+   * see the port docblock for why a discarded `COUNT` is the thing being
+   * avoided, and for the selection-clock caveat the caller inherits. Returns
+   * `[]` for a connection with no records.
+   */
+  listRecentByConnectionId(connectionId: string, limit: number): Promise<InvoiceRecord[]>;
+
+  /**
    * Read-only AC-6 list (#1119) of OL's OWN `InvoiceRecord` projection, filtered
    * + paginated. The cross-context list seam the HTTP layer calls — apps/** reach
    * the invoice projection through this service interface, NEVER the repository
