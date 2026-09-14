@@ -14,6 +14,7 @@ import {
   renderWithProviders,
   sampleConnection,
 } from '../test/test-utils';
+import type { SessionUser } from '../shared/auth/session.types';
 import { CommandPaletteProvider, useCommandPalette } from './command-palette-provider';
 
 const captureDemoEvent = vi.fn();
@@ -32,13 +33,23 @@ function OpenButton() {
   );
 }
 
-function renderPalette() {
+function renderPalette(user?: SessionUser) {
   return renderWithProviders(
     <CommandPaletteProvider>
       <OpenButton />
     </CommandPaletteProvider>,
-    { sessionAdapter: createAuthenticatedSessionAdapter() },
+    { sessionAdapter: createAuthenticatedSessionAdapter(user) },
   );
+}
+
+function userWithRole(role: string): SessionUser {
+  return {
+    id: 'user_role_fixture',
+    username: role,
+    email: role + '@example.com',
+    role,
+    permissions: [],
+  };
 }
 
 describe('CommandPaletteProvider', () => {
@@ -208,6 +219,38 @@ describe('CommandPaletteProvider', () => {
       expect(captureDemoEvent).toHaveBeenCalledWith('demo_command_palette_result_selected', {
         source: 'connections',
       });
+    });
+  });
+
+  describe('role-gated nav items (#3108)', () => {
+    // `SessionProvider` starts at the anonymous session and resolves the real
+    // one asynchronously (`isReady` starts `false`) — nav items gated on
+    // `session.user?.role` are therefore absent on the very first render
+    // regardless of which role is about to load. `findByText` waits for that
+    // resolution; a bare synchronous `getByText`/`queryByText` right after
+    // `keyDown` would read the pre-resolution state and hide every
+    // role-gated item no matter the fixture. For the negative case, first
+    // await the connections source (an existing, independent async signal
+    // this file already uses) to know the whole provider has settled before
+    // asserting an absence — otherwise "not found yet" and "correctly
+    // excluded" are indistinguishable.
+    it('shows "Pack bench" for a packer session', async () => {
+      renderPalette(userWithRole('packer'));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      expect(await screen.findByText('Pack bench')).toBeInTheDocument();
+    });
+
+    it('shows "Pack bench" for an operator session', async () => {
+      renderPalette(userWithRole('operator'));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      expect(await screen.findByText('Pack bench')).toBeInTheDocument();
+    });
+
+    it('does not show "Pack bench" for a viewer session — the bench API refuses that role', async () => {
+      renderPalette(userWithRole('viewer'));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      await screen.findByText(sampleConnection.name);
+      expect(screen.queryByText('Pack bench')).toBeNull();
     });
   });
 });
