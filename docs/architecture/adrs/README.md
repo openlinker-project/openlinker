@@ -164,6 +164,7 @@ One pointer per section, identical format every time.
 | [ADR-070](./070-sales-document-market-discovery.md) | Market discovery, and what OpenLinker may recommend | Proposed | 2026-08-26 |
 | [ADR-071](./071-pack-station-principal.md) | The pack station has no principal of its own | Proposed | 2026-09-02 |
 | [ADR-072](./072-recurring-price-propagation.md) | Recurring price propagation is opt-in, destination-owned, and cost-blind by necessity | Proposed | 2026-09-10 |
+| [ADR-073](./073-buyer-tax-identity-and-dual-role-document-connections.md) | Buyer tax identity, the fiscalization/invoicing split, and dual-role connections | Accepted | 2026-09-11 |
 
 > *Dates for pre-trail ADRs (001, 004) are approximate to the month — the underlying decisions predate the project's current git history. Other dates are merge-date of the cited PR.*
 
