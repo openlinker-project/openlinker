@@ -149,3 +149,76 @@ export const SOURCING_RULES_STATE_COPY = {
    */
   dismissReorderError: 'Dismiss',
 } as const;
+
+/** The `/settings` entry point (#3060). */
+export const SOURCING_RULES_TILE_COPY = {
+  eyebrow: 'Platform',
+  title: 'Sourcing rules',
+  description:
+    'Decide which of your locations may fulfil an order, and in what order they are preferred.',
+  linkLabel: 'Manage sourcing rules',
+} as const;
+
+/**
+ * The two page-level gates (#3060).
+ *
+ * Both are states an operator can act on, not errors: a ruleset authored on the
+ * wrong connection would never be read, and one authored with no location to
+ * rank would decide nothing.
+ */
+export const SOURCING_RULES_PAGE_COPY = {
+  backToSettings: 'Settings',
+  crumbGroup: 'Platform',
+  crumbTitle: 'Sourcing rules',
+  description:
+    'Rules run in order. Filters rule locations out; sorts rank whatever is left.',
+  wrongConnectionTitle: 'This is not your OpenLinker OMS connection',
+  wrongConnectionMessage:
+    'Sourcing rules only apply to your OpenLinker OMS connection — anything set up here would never be used. Enable the OMS, then manage its rules from that connection.',
+  noOmsTitle: 'The OpenLinker OMS is not enabled',
+  noOmsMessage:
+    'Sourcing rules belong to the OpenLinker OMS connection, and there is not one yet. Enable the OMS first; its rules are managed from here afterwards.',
+  noLocationsTitle: 'No locations to route to yet',
+  /**
+   * The remedy is the BOOTSTRAP, not a link to a locations screen.
+   *
+   * There is no locations screen yet (#3063 is unmerged), so a button reading
+   * “Manage locations” would land the operator back on the page they came from
+   * with nothing about locations on it. `POST /inventory/locations/bootstrap`
+   * (#2407) was designed as exactly this offer — idempotent, taken by hand,
+   * never seeded — so the blocking state hands over the remedy it has rather
+   * than naming a destination the app does not have.
+   */
+  noLocationsMessage:
+    'Sourcing rules choose between your locations, and there are none active. Create one before authoring rules — until then every rule would rank an empty set.',
+  createLocation: 'Create a location',
+  creatingLocation: 'Creating…',
+  /**
+   * Says what the button does and what it does NOT do. A minted location holds
+   * no stock — `locationId IS NULL` on a position permanently means the master
+   * declines to locate its stock (ADR-058 decision 2) — so promising that rules
+   * will now find somewhere to send an order would be untrue.
+   */
+  createLocationHint:
+    'Creates a single warehouse location, MAIN. Running it again creates nothing. It starts empty, so stock still has to be assigned to it before an order can actually be sent there, and its country is left blank on purpose — the rules read it, and a guessed country is worse than a missing one.',
+  createLocationAdminOnly: 'Creating an inventory location requires an administrator account.',
+  createLocationErrorTitle: 'Could not create the location',
+  loadingTitle: 'Opening sourcing rules',
+  loadingMessage: 'Reading your connections and locations…',
+  errorTitle: 'Could not open sourcing rules',
+  errorMessage:
+    'Your connections or locations could not be read just now. Nothing has changed — this is a loading problem, not a configuration one.',
+  errorRetry: 'Retry',
+  notAvailableEyebrow: 'Not available here',
+  noLocationsEyebrow: 'No locations',
+  goToConnections: 'Go to connections',
+  /**
+   * The picker reads ONE page. A bounded read that reports healthy while being
+   * half-complete is the failure mode, not the bound (ADR-048 decision 5), so
+   * the truncation is stated rather than left to be discovered by an operator
+   * who cannot find a warehouse they know exists.
+   */
+  locationsTruncatedTitle: 'Not every location is listed',
+  locationsTruncated: (shown: number, total: number): string =>
+    `Showing ${String(shown)} of ${String(total)} locations. A priority rule can only rank the ones listed here, so a location past that point cannot be picked yet.`,
+} as const;

@@ -43,6 +43,14 @@ export type {
   SourcingRuleLocationOption,
 } from './components/sourcing-rule-dialog';
 
+// #3060 - the /settings entry point.
+export { SourcingRulesTile } from './components/sourcing-rules-tile';
+export {
+  useInventoryLocationsForRulesQuery,
+  SOURCING_RULE_LOCATION_PAGE_SIZE,
+} from './hooks/use-inventory-locations-for-rules-query';
+export type { SourcingRuleLocationsPage } from './hooks/use-inventory-locations-for-rules-query';
+
 // #3061 - the composed section: states + table + dialogs.
 export { SourcingRulesSection } from './components/sourcing-rules-section';
 export type { SourcingRulesSectionProps } from './components/sourcing-rules-section';
@@ -68,6 +76,8 @@ export {
   sourcingRuleNameLabel,
   SOURCING_RULES_TABLE_COPY,
   SOURCING_RULES_STATE_COPY,
+  SOURCING_RULES_TILE_COPY,
+  SOURCING_RULES_PAGE_COPY,
 } from './lib/sourcing-rule.copy';
 export {
   AFTER_ACTION_PERMISSIVENESS,

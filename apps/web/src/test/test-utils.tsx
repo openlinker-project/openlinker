@@ -497,6 +497,15 @@ export function createMockApiClient(
         limit: 20,
         offset: 0,
       }),
+      // #3060. The default is an install with no locations, which is the
+      // honest zero-config state — a test that needs one opts in, rather than
+      // inheriting a warehouse it never declared. `listActiveLocations` is the
+      // separate probe the sourcing-rules gate reads (`total` only), so the two
+      // are defaulted together or a test would set one and silently keep the
+      // other's stale answer.
+      listLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 200 }),
+      listActiveLocations: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 1 }),
+      bootstrapLocations: vi.fn().mockResolvedValue({ created: [], existingCodes: [] }),
       ...overrides.inventory,
     } as ApiClient['inventory'],
     invoicing: {
