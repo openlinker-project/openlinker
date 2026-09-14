@@ -311,6 +311,20 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     return null;
   }
 
+  async findRecentByConnectionId(connectionId: string, limit: number): Promise<InvoiceRecord[]> {
+    // Bounded recency read for the connection diagnostics panel (#3179).
+    // `find` + `take`, never the paginated `findMany`: that one ends in
+    // `getManyAndCount()`, whose COUNT always runs in `typeorm@0.3.17`, and
+    // this caller discards the total. Same newest-first ordering and `id`
+    // tiebreak as `findAllByOrderId`, so the page is deterministic.
+    const entities = await this.repository.find({
+      where: { connectionId },
+      order: { createdAt: 'DESC', id: 'DESC' },
+      take: limit,
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   /**
    * Read-only AC-6 list (#1119). One `andWhere` per PRESENT filter only —
    * absent filters never constrain the query. The `issuedFrom`/`issuedTo`

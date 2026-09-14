@@ -194,17 +194,39 @@ national specifics in the provider adapter, and a `NIP` rule in `libs/core` is p
 `sanitizeAddress` drops it from the snapshot and a `OL_STORE_PII=false` deployment stores no scalar either -
 which reads back as *not asserted*, i.e. the safe state rather than a false "has none".
 
-**Coverage was one source; #2822 widened it to all four.** PrestaShop supplies it from `ps_address.vat_number`;
-Allegro and Erli only from a buyer's VAT-invoice request at checkout; WooCommerce only when the store runs a
-VAT-number plugin writing an allowlisted `meta_data` key. Every path is conditional, so an order carrying no
-qualifying signal is still *not asserted*, never *known to have none* - no shipped adapter emits the asserted-none
-state at all. A rule keyed on `buyerHasTaxId === false` therefore still matches almost nothing in practice, for a
-data-coverage reason rather than a contract one.
+**Coverage is one source.** PrestaShop supplies it from `ps_address.vat_number`. Neither the Allegro nor the
+WooCommerce order source reads one (Allegro's checkout-form invoice block carries a company tax id that OL's
+own type does not model; WooCommerce's `billing` block has no tax field at all), so an order from either is
+*not asserted*, never *known to have none*. A rule keyed on `buyerHasTaxId === false` therefore still matches
+almost nothing in practice, for a data-coverage reason rather than a contract one.
 
 **`'missing-required-tax-id'` is still declared and never written**, and turning it on is a separate decision -
-it needs a gate that acts on the fact, and on this coverage a refusal keyed to it would block every order none
-of the four sources happened to report on. That is a routing-policy choice to take deliberately, not a wiring
-step that fell out of #2599.
+it needs a gate that acts on the fact, and on this coverage a refusal keyed to it would block the two sources
+that simply do not report. That is a routing-policy choice to take deliberately, not a wiring step that fell
+out of #2599.
+
+## Amendment (#2822, 2026-09-04): coverage widened to all four order sources, and every path is conditional
+
+The **Coverage is one source** paragraph in the #2599 amendment above no longer holds. #2822 wired the field
+onto the three remaining order sources, so all four supply it now. What did **not** change is the reason a rule
+keyed on `buyerHasTaxId === false` still matches almost nothing: every path is *conditional*, so the widening
+moves orders from *not asserted* into *present*, never into *asserted none*.
+
+| source | where the value comes from | when it is present |
+|---|---|---|
+| PrestaShop | `ps_address.vat_number`, via the shared `hydrateAddress` used for both the billing and the shipping address | whenever the address carries one |
+| Allegro | `invoice.address.company` (`ids?.[0]?.value ?? company.taxId`) | only on a buyer's VAT-invoice request at checkout |
+| Erli | `mapAddress` reads `address.nip` under `options.isInvoiceAddress` | only on a buyer's VAT-invoice request at checkout |
+| WooCommerce | an allowlisted `meta_data` key (`WOOCOMMERCE_VAT_META_KEY_ALLOWLIST`) | only when the store runs a VAT-number plugin |
+
+**No shipped adapter emits the asserted-none middle state**, and that is structural rather than merely observed:
+the shared `readSourceBuyerTaxId` coercer cannot return `null` - a missing key, a JSON `null` and a blank string
+all yield `undefined`. The three-state contract stands; only two of its states are reachable from a source today.
+
+So **`'missing-required-tax-id'` is still declared and never written**, for the same reason and in the same shape
+as before - on this coverage a refusal keyed to it would block every order that none of the four sources happened
+to report on. Wider coverage does not turn enabling it into a wiring step; it remains the routing-policy choice
+#2599 deferred.
 
 ## Alternatives considered
 
@@ -270,13 +292,15 @@ Decision 5 above specifies the threshold as a **`thresholdRef`** — "a named am
 
 **The migration is the load-bearing part.** `isSalesDocumentCondition` returns `null` on a shape mismatch and callers read that as *"never matches"*. Shipping the new shape without migrating persisted `sales_document_rules.conditions` (and their `conditions_hash`) therefore makes every existing rule **silently stop matching**, with orders held and nothing logged. The model change and the data migration ship in one release, never two. The starter-template catalogue is a separate, additional migration — it is not a substitute for migrating operator-authored rules.
 
+**On this ADR's status.** The amendment is settled, not provisional: decision 5's rule engine is shipped (#2170/#2173), so the `thresholdRef` it retires is a live model this change edits rather than a proposal it revises. It does **not** move the parent's status — ADR-041 stays `Proposed` because decision 1's router and decision 8's aggregation mechanics are still unbuilt, which is what that status is about; a settled amendment to one decision does not make the rest of the document accepted.
+
 **Unchanged by this amendment:** the gross-amount evaluation and the `exclusive`-resolves-`unresolved` rule, the currency-mismatch rule, and decision 6's treatment of two matches as a conflict rather than a tie-break.
 
 
 ## References
 
-- Related PRs: #2055 (this ADR)
-- Related issues: #2051, #2009, #2047, #1908, #2054, #1902, #1841, #2599 (buyer tax id on the order contract)
-- Related ADRs: [ADR-026](./026-country-agnostic-invoicing-domain.md) (invoicing domain; policy-above-the-port, and the VAT-rate annex proposed under #2009), [ADR-002](./002-capability-ports-with-sub-capabilities.md) (capability decomposition), [ADR-007](./007-syncjob-status-vs-outcome-split.md) (job status vs outcome), [ADR-014](./014-source-authoritative-order-pricing.md) (source-authoritative amounts; note its live text *rejects* a per-line tax rate as destination-catalog knowledge - the supersession that would carry the VAT rate through is proposed in #2054, not settled here)
+- Related PRs: #2055 (this ADR), #3200 (the #3189 threshold amendment)
+- Related issues: #2051, #2009, #2047, #1908, #2054, #1902, #1841, #2599 (buyer tax id on the order contract), #3175 (the epic issue this amendment ships under), #3189 (inline threshold amount)
+- Related ADRs: [ADR-073](./073-buyer-tax-identity-and-dual-role-document-connections.md) (buyer tax identity and dual-role connections; its decision 3 lands a guard on decision 3a's single-primary pool), [ADR-026](./026-country-agnostic-invoicing-domain.md) (invoicing domain; policy-above-the-port, and the VAT-rate annex proposed under #2009), [ADR-002](./002-capability-ports-with-sub-capabilities.md) (capability decomposition), [ADR-007](./007-syncjob-status-vs-outcome-split.md) (job status vs outcome), [ADR-014](./014-source-authoritative-order-pricing.md) (source-authoritative amounts; note its live text *rejects* a per-line tax rate as destination-catalog knowledge - the supersession that would carry the VAT rate through is proposed in #2054, not settled here)
 - Primary doc section: [docs/architecture-overview.md](../../architecture-overview.md) § 14 Invoicing, § Cross-context dependencies in core
 - Spec: [`docs/specs/product-spec-1902-eparagony-e-receipts.md`](../../specs/product-spec-1902-eparagony-e-receipts.md)

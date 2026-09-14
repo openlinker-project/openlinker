@@ -398,7 +398,13 @@ describe('FiscalRegistrationService', () => {
         status: 'issued',
       } as unknown as Awaited<ReturnType<IInvoiceService['findBlockingInvoiceForOrder']>>);
 
-      await expect(service.register(command())).rejects.toMatchObject({
+      const promise = service.register(command());
+
+      // The class is asserted before the payload because `toMatchObject` alone
+      // would pass for ANY error carrying these three fields - it pins what the
+      // refusal says without pinning that it is this guard's refusal.
+      await expect(promise).rejects.toBeInstanceOf(OrderAlreadyHasInvoiceException);
+      await expect(promise).rejects.toMatchObject({
         invoicingConnectionId: CONNECTION_ID,
         requestedConnectionId: CONNECTION_ID,
         blockingInvoiceId: 'invoice-on-dual-role-conn',

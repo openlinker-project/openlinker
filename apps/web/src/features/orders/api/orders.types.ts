@@ -232,6 +232,9 @@ export interface SalesDocumentOtherRecord {
  * `SalesDocumentConditionInput` in `features/sales-documents/api` (kept as a
  * separate local mirror rather than a cross-feature import, following this
  * file's own established "hand-mirrored from the BE DTO" convention above).
+ *
+ * `field` mirrors core's `SalesDocumentConditionFieldValues` and is held to it
+ * by `scripts/check-sales-document-condition-field-mirror.mjs`.
  */
 export interface SalesDocumentMatchedRuleCondition {
   readonly field: 'buyerHasTaxId' | 'orderCountry' | 'orderTotalGross';
@@ -272,7 +275,12 @@ export interface SalesDocumentView {
   /** Free-text elaboration the gate stored; never parsed, only displayed. */
   readonly blockDetail: string | null;
   readonly otherRecords: readonly SalesDocumentOtherRecord[];
-  /** The rule that decided this order's document kind (#3186); `null` when none did. */
+  /**
+   * The rule that decided this order's document kind (#3186); `null` when none
+   * did. DETAIL-ONLY (#3186 review): the backend leaves it `null` on the paged
+   * `/orders` list, so only the order-detail panel may render an explanation
+   * from it — a row must never read `null` here as "no rule decided this".
+   */
   readonly matchedRule: SalesDocumentMatchedRuleView | null;
 }
 
@@ -460,6 +468,14 @@ export interface OrderRecord {
    * "Has none" and "we don't know" decide different fiscal documents, so
    * collapsing them into one rendering is the exact bug this field exists to
    * prevent. Switch on presence-then-nullness, never on truthiness.
+   *
+   * **Detail read only** — attached by `GET /orders/:id`, never by the paged
+   * list, where a buyer-identifying value with no reader has no business on
+   * every row. That makes the absent state ENDPOINT-dependent in a way the
+   * other optional fields here are not: on a list row the key is always absent,
+   * which is not the source saying nothing. Render it from a detail read or not
+   * at all — a list row must never be fed to `OrderBuyerTaxIdValue`, which would
+   * state "Not asserted by the source" about an order nobody asked about.
    */
   buyerTaxId?: string | null;
   /**

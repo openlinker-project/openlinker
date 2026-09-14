@@ -9,6 +9,7 @@
 import { cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, it, expect } from 'vitest';
 import { renderWithProviders } from '../../../test/test-utils';
+import { LocaleProvider } from '../../../shared/i18n';
 import { RegulatoryStatusBadge } from './regulatory-status-badge';
 
 afterEach(cleanup);
@@ -46,5 +47,29 @@ describe('RegulatoryStatusBadge', () => {
       <RegulatoryStatusBadge status="rejected" labelOverrides={{ accepted: 'KSeF: accepted' }} />,
     );
     expect(screen.getByText('Rejected')).toBeInTheDocument();
+  });
+
+  // Pins the ordering the override depends on: `t(key, fallback)` returns the
+  // CATALOG hit, so an override handed to `t()` as its fallback argument would
+  // silently lose the day `invoice.regulatory.*` — the regulator-NEUTRAL key —
+  // is populated. The host catalog is empty today, so only this test, which
+  // populates it, can catch that regression.
+  it('override outranks a POPULATED neutral catalog entry for the same status', () => {
+    renderWithProviders(
+      <LocaleProvider catalog={{ 'invoice.regulatory.accepted': 'Accepted by the authority' }}>
+        <RegulatoryStatusBadge status="accepted" labelOverrides={{ accepted: 'KSeF: accepted' }} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText('KSeF: accepted').closest('.status-badge')).toBeInTheDocument();
+    expect(screen.queryByText('Accepted by the authority')).toBeNull();
+  });
+
+  it('renders the catalog entry over the neutral fallback when no override is given', () => {
+    renderWithProviders(
+      <LocaleProvider catalog={{ 'invoice.regulatory.accepted': 'Accepted by the authority' }}>
+        <RegulatoryStatusBadge status="accepted" />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText('Accepted by the authority')).toBeInTheDocument();
   });
 });

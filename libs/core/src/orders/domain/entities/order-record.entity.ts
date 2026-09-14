@@ -381,11 +381,13 @@ export class OrderRecord {
      * kind while issuance is still blocked for an unrelated reason, so the two
      * columns are never coupled to one another's null-ness.
      *
-     * Level-triggered like the three `salesDocumentBlock*` fields above:
-     * `AutoIssueTriggerService` re-decides it on every order transition and
-     * `updateSalesDocumentBlock` writes the answer through, `null` included —
-     * so an edited or deleted rule stops being named as the reason on the
-     * very next transition rather than outliving the decision it made. No FK:
+     * Level-triggered like the three `salesDocumentBlock*` fields above, but by
+     * ONE caller: `AutoIssueTriggerService` re-decides it on every order
+     * transition and `updateSalesDocumentBlock` writes the answer through,
+     * `null` included — so an edited or deleted rule stops being named as the
+     * reason on the very next transition rather than outliving the decision it
+     * made. A caller that decided only the block (the manual-issue clear) says
+     * `{action: 'preserve'}` instead and leaves this column untouched. No FK:
      * a reference by value, like every other cross-aggregate reference in this
      * tree (`order_changes.orderId`, `refund_records`'s siblings).
      *

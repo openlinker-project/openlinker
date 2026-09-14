@@ -26,6 +26,18 @@ export function matchedRuleReadsBuyerTaxId(
 }
 
 function describeCondition(condition: SalesDocumentMatchedRuleCondition, t: Translate): string {
+  // Captured before the narrowing below so the fallback can still echo it. This
+  // union is a HAND-WRITTEN mirror of `SalesDocumentConditionFieldValues` in
+  // `libs/core` - the browser bundle does not depend on `@openlinker/core`
+  // (#591), so the vocabulary is re-declared here rather than imported. Drift is
+  // a BUILD failure now: `scripts/check-sales-document-condition-field-mirror.mjs`
+  // (under `pnpm check:invariants`) compares the two, so a fourth field added in
+  // core can no longer reach this function while the type here still says three.
+  // The echo arm below stays regardless - that guard aligns the two SOURCE
+  // trees, it cannot stop a deployed API running ahead of this bundle from
+  // sending a value neither side knows about yet.
+  const field: string = condition.field;
+
   if (condition.field === 'buyerHasTaxId') {
     return condition.boolValue
       ? t('salesDocument.matchedRule.hasTaxId', 'has a tax ID')
@@ -37,14 +49,23 @@ function describeCondition(condition: SalesDocumentMatchedRuleCondition, t: Tran
       condition.stringValue ?? '?',
     );
   }
-  // orderTotalGross — the threshold's own amount/currency is not part of this
-  // projection (it lives in `sales_document_thresholds`, versioned separately
-  // per ADR-041 decision 5), so the comparison is named generically rather
-  // than resolved through a second query this disclosure does not otherwise
-  // need.
-  return condition.op === 'gte'
-    ? t('salesDocument.matchedRule.totalAtLeast', 'total at or above the configured threshold')
-    : t('salesDocument.matchedRule.totalUnder', 'total under the configured threshold');
+  if (condition.field === 'orderTotalGross') {
+    // The threshold's own amount/currency is not part of this projection (it
+    // lives in `sales_document_thresholds`, versioned separately per ADR-041
+    // decision 5), so the comparison is named generically rather than resolved
+    // through a second query this disclosure does not otherwise need.
+    return condition.op === 'gte'
+      ? t('salesDocument.matchedRule.totalAtLeast', 'total at or above the configured threshold')
+      : t('salesDocument.matchedRule.totalUnder', 'total under the configured threshold');
+  }
+
+  // Tested explicitly rather than left as the fall-through arm (#3186 review):
+  // an unrecognised field rendered as "total under the configured threshold"
+  // is a confident FALSE statement about the operator's own rule — the exact
+  // failure `#2240`'s `unknown-category-result` records. Echo the raw field,
+  // the same honesty `describeDocumentKind` below already applies to an
+  // open-world kind, so the value survives into a support ticket.
+  return field;
 }
 
 /** Plain-language label for an open-world document kind (mirrors the panel's own `salesDocument.kind.*` keys). */
