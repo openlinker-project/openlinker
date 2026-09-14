@@ -171,7 +171,7 @@ describe('ReservationRepository', () => {
       await h.repository.claimHeld([claim({ quantity: 3 })]).catch(() => undefined);
 
       const lockIndex = h.statements.findIndex(
-        (s) => s.sql.includes('"inventory_items"') && s.sql.includes('FOR UPDATE'),
+        (s) => s.sql.includes('"inventory_items"') && s.sql.includes('FOR NO KEY UPDATE'),
       );
       const guardIndex = h.statements.findIndex((s) => s.sql.includes('+ $3'));
       expect(lockIndex).toBeGreaterThanOrEqual(0);
@@ -180,6 +180,15 @@ describe('ReservationRepository', () => {
       // The lock names the position this claim is about — locking the wrong row
       // serialises nothing.
       expect(h.statements[lockIndex].params).toEqual(['inv-b']);
+      // The MODE is load-bearing, not incidental (#3245). `reservations` has an
+      // FK to `inventory_items`, so a concurrent claimer's INSERT already holds
+      // `FOR KEY SHARE` on this row until it commits — and `FOR UPDATE` is the
+      // one mode that conflicts with it, so two claimers each wait on the
+      // other's FK lock and one is killed by the deadlock detector. Ordering the
+      // claims cannot help: both are already at the same row. `FOR NO KEY
+      // UPDATE` is the strength the guarded UPDATE takes anyway, so it
+      // serialises the claimers without conflicting with the FK.
+      expect(h.statements[lockIndex].sql).not.toContain('FOR UPDATE');
     });
 
     it('should apply the full quantity as the delta when the row is newly inserted', async () => {

@@ -441,7 +441,22 @@ export class ReservationRepository implements ReservationRepositoryPort {
     // started only once we hold the lock — so its subquery snapshot is taken
     // after any concurrent committer has already released it, and therefore
     // does see their committed reservation.
-    await this.raw(manager, `SELECT 1 FROM "inventory_items" WHERE "id" = $1 FOR UPDATE`, [
+    //
+    // `FOR NO KEY UPDATE`, never `FOR UPDATE` (#3245). `reservations` carries a
+    // foreign key to `inventory_items`, so EVERY insert of a reservation takes a
+    // `FOR KEY SHARE` lock on the position row for its FK check, held to commit.
+    // `FOR KEY SHARE` is shared, so two concurrent claimers both hold it — and
+    // `FOR UPDATE` is the one row-lock mode that conflicts with it, so each then
+    // waits for the other's FK lock and the deadlock detector kills one. Ordering
+    // the claims cannot prevent that: both transactions are already AT the same
+    // row, in the same order, when they deadlock.
+    //
+    // `FOR NO KEY UPDATE` is exactly the strength the guarded UPDATE below takes
+    // on its own (it writes no key column), so this statement introduces no
+    // conflict class the transaction did not already have. It still conflicts
+    // with ITSELF, which is the whole requirement — a second claimer waits here
+    // and starts its guarded UPDATE only once the first has committed.
+    await this.raw(manager, `SELECT 1 FROM "inventory_items" WHERE "id" = $1 FOR NO KEY UPDATE`, [
       claim.inventoryItemId,
     ]);
 
