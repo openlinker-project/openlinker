@@ -12,13 +12,19 @@
  *
  * NOT a spec file, so `libs/core/jest.config.js`'s `testRegex` (`.*\.spec\.ts$`)
  * never collects it as a suite. It lives outside every context directory, so
- * no context's own sweep scans it either.
+ * no context's own sweep scans it either - which is also what lets the worked
+ * examples below be spelled out as literal text.
+ *
+ * Its own behaviour is pinned by `neutral-vocabulary-sweep.spec.ts` beside it.
+ * That spec is the only thing standing between the three passes below and the
+ * silent coincidence that no forbidden term happens to take a shape a deleted
+ * pass was the sole reader of.
  *
  * WHAT IS DELIBERATELY NOT SHARED: the matcher is used by `sales-documents` and
  * `invoicing` but NOT by `fiscalization`, which keeps a plain lowercased
  * `.includes()`. The two are not equivalent and unifying them would be a
  * behaviour change in one direction or the other - see
- * {@link containsForbiddenTerm}'s own note for the exact residual difference
+ * {@link matchForbiddenTerm}'s own note for the exact residual difference
  * and why resolving it is an owner decision rather than a refactor.
  *
  * @module libs/core/src/__tests__
@@ -26,8 +32,18 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** The sweep spec's own filename - never swept, in any context. */
-const SWEEP_SPEC_FILE_NAME = 'neutral-vocabulary.spec.ts';
+/**
+ * Each context's own sweep spec, relative to its root. Excluded because its
+ * `FORBIDDEN_TERMS` array names every banned term, so sweeping it would flag
+ * every context as an offender against itself.
+ *
+ * Matched as a full PATH under the context root rather than by bare filename:
+ * a filename test skips any file anywhere in the tree that happens to carry
+ * this name, which is a wider exemption than the reason for it supports, and
+ * a real one the day a context grows a second, differently-scoped sweep beside
+ * a fixture of the same name.
+ */
+const SWEEP_SPEC_RELATIVE_PATH = ['__tests__', 'neutral-vocabulary.spec.ts'] as const;
 
 export interface SweepScope {
   /**
@@ -45,22 +61,30 @@ export interface SweepScope {
  * flag every file as an offender).
  */
 export function collectSweepFiles(contextRoot: string, scope: SweepScope): string[] {
-  const found: string[] = [];
-  for (const entry of readdirSync(contextRoot)) {
-    const full = join(contextRoot, entry);
-    if (statSync(full).isDirectory()) {
-      found.push(...collectSweepFiles(full, scope));
-      continue;
+  // Resolved once against the ROOT, so the recursion below compares against the
+  // one file the exemption is about rather than against a name.
+  const ownSweepSpec = join(contextRoot, ...SWEEP_SPEC_RELATIVE_PATH);
+
+  const walk = (dir: string): string[] => {
+    const found: string[] = [];
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) {
+        found.push(...walk(full));
+        continue;
+      }
+      if (!entry.endsWith('.ts') || full === ownSweepSpec) {
+        continue;
+      }
+      if (!scope.includeTests && (entry.endsWith('.spec.ts') || entry.endsWith('.int-spec.ts'))) {
+        continue;
+      }
+      found.push(full);
     }
-    if (!entry.endsWith('.ts') || entry === SWEEP_SPEC_FILE_NAME) {
-      continue;
-    }
-    if (!scope.includeTests && (entry.endsWith('.spec.ts') || entry.endsWith('.int-spec.ts'))) {
-      continue;
-    }
-    found.push(full);
-  }
-  return found;
+    return found;
+  };
+
+  return walk(contextRoot);
 }
 
 /**
@@ -113,9 +137,17 @@ export function stripCommentsAndStringLiterals(source: string): string {
   return out;
 }
 
+/** Which of {@link matchForbiddenTerm}'s three passes saw the term. */
+export type ForbiddenTermMatch = 'boundary' | 'leading' | 'hump';
+
 /**
- * True if `text` mentions `term` as a standalone token, as the LEADING segment
- * of a longer identifier, or as a capitalized/all-caps "hump" inside one.
+ * The pass that matched `term` in `text` - a standalone token, the LEADING
+ * segment of a longer identifier, or a capitalized/all-caps "hump" inside one -
+ * or `null` when none does.
+ *
+ * Reports WHICH pass rather than a bare boolean so each pass is separately
+ * pinnable: three shapes are visible to exactly one pass each, and the sweeps'
+ * own boolean could never tell a live pass from a deleted one.
  *
  * Why not a plain `.includes()`, the way `fiscalization` matches its own five
  * terms: those five are rare enough as substrings never to collide, but
@@ -155,18 +187,30 @@ export function stripCommentsAndStringLiterals(source: string): string {
  * ordinary English. Reconciling them needs a per-term policy, which is an
  * owner decision, not a refactor.
  */
-export function containsForbiddenTerm(text: string, term: string): boolean {
+export function matchForbiddenTerm(text: string, term: string): ForbiddenTermMatch | null {
   const titled = term.charAt(0).toUpperCase() + term.slice(1);
   const allCaps = term.toUpperCase();
 
   const boundary = new RegExp(`(?<![a-zA-Z])${term}(?![a-zA-Z])`, 'i');
-  if (boundary.test(text)) return true;
+  if (boundary.test(text)) return 'boundary';
 
   const leading = new RegExp(`(?<![a-zA-Z])(?:${term}|${titled}|${allCaps})(?![a-z])`);
-  if (leading.test(text)) return true;
+  if (leading.test(text)) return 'leading';
 
   const camelHump = new RegExp(`(?<=[a-z])(?:${titled}|${allCaps})(?![a-z])`);
-  return camelHump.test(text);
+  return camelHump.test(text) ? 'hump' : null;
+}
+
+/**
+ * The three sweeps' own predicate: any pass matching is an offender.
+ *
+ * Kept as the consumed API so a sweep never has to care WHICH pass fired -
+ * only `neutral-vocabulary-sweep.spec.ts` does, and it needs to, because a
+ * boolean cannot distinguish "the boundary pass caught this" from "the leading
+ * pass did" and therefore cannot fail when a pass is deleted.
+ */
+export function containsForbiddenTerm(text: string, term: string): boolean {
+  return matchForbiddenTerm(text, term) !== null;
 }
 
 export interface SweepRead {
