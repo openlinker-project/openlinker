@@ -35,6 +35,7 @@ import {
   SHIPPING_METHOD_LABEL,
 } from '../../features/shipments';
 import { OrderCustomerCard } from '../../features/orders/components/order-customer-card';
+import { OrderBuyerTaxIdValue } from '../../features/orders/components/order-buyer-tax-id-value';
 import { OrderActivityTimeline } from '../../features/orders/components/order-activity-timeline';
 import { useSubjectAutomationRunsQuery } from '../../features/automation';
 import { OrderPackedControl } from '../../features/orders/components/order-packed-control';
@@ -321,6 +322,15 @@ export function OrderDetailPage(): ReactElement {
           },
         ]
       : []),
+    // Buyer tax id (#2599/#3180) — appended last, and rendered UNCONDITIONALLY:
+    // the column carries three answers and two of them ("asserted none" vs
+    // "not asserted") are easy to confuse, so the row is never omitted the way
+    // an absent optional fact elsewhere in this list is.
+    {
+      id: 'buyerTaxId',
+      label: 'Buyer tax ID',
+      value: <OrderBuyerTaxIdValue buyerTaxId={order.buyerTaxId} />,
+    },
   ];
 
   return (

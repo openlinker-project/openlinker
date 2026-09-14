@@ -218,6 +218,10 @@ describe('ConnectionService', () => {
     const mockLocations = {
       countActiveLocations: jest.fn().mockResolvedValue(1),
       bootstrapDefaultLocations: jest.fn(),
+      // #3206 — `validateStockLocationOverride` only calls this when the
+      // config key is present, so a `null` default costs nothing for every
+      // existing test that never sets `stockLocationOverride`.
+      getLocation: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<ILocationService>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -987,6 +991,116 @@ describe('ConnectionService', () => {
 
         await expect(service.update('connection-123', { config })).resolves.toEqual(mockConnection);
         expect(connectionPort.update).toHaveBeenCalledWith('connection-123', { config });
+      });
+    });
+
+    describe('stockLocationOverride validation (#3206)', () => {
+      it('should accept a create whose override names an existing location', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+        locations.getLocation.mockResolvedValue({
+          id: 'ol_location_main',
+          status: 'active',
+        } as never);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 'ol_location_main' },
+          })
+        ).resolves.toEqual(mockConnection);
+        expect(locations.getLocation).toHaveBeenCalledWith('ol_location_main');
+        expect(connectionPort.create).toHaveBeenCalled();
+      });
+
+      it('should reject a create whose override names an unknown location', async () => {
+        locations.getLocation.mockResolvedValue(null);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 'ol_location_ghost' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should reject a non-string override value', async () => {
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 42 as unknown as string },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      it('should leave an absent override untouched and never call the location lookup', async () => {
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await expect(service.create(payload)).resolves.toEqual(mockConnection);
+        expect(locations.getLocation).not.toHaveBeenCalled();
+      });
+
+      it('should reject the same unknown-location value on update', async () => {
+        connectionPort.get.mockResolvedValue(mockConnection);
+        locations.getLocation.mockResolvedValue(null);
+
+        await expect(
+          service.update('connection-123', {
+            config: { baseUrl: 'https://shop.example.com', stockLocationOverride: 'ol_location_ghost' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.update).not.toHaveBeenCalled();
+      });
+
+      // An inactive location is retired: the fulfilment router filters
+      // `status: 'active'`, so an override naming it writes a config that
+      // decides nothing — the #2407 shape this refusal exists to prevent.
+      it('should reject a create whose override names a retired location', async () => {
+        locations.getLocation.mockResolvedValue({
+          id: 'ol_location_retired',
+          status: 'inactive',
+        } as never);
+
+        await expect(
+          service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 'ol_location_retired' },
+          })
+        ).rejects.toThrow(BadRequestException);
+        expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      // Transition-scoped, mirroring `assertRouterEnablementPreconditions`:
+      // `config` is replaced wholesale, so every unrelated patch re-asserts the
+      // stored override. A location retired AFTER the override was set must not
+      // make the connection un-editable.
+      it('should not re-validate an unchanged override on update', async () => {
+        connectionPort.get.mockResolvedValue(
+          new Connection(
+            'connection-123',
+            'prestashop',
+            'Test Connection',
+            'active',
+            { baseUrl: 'https://example.com', stockLocationOverride: 'ol_location_retired' },
+            'cred_123',
+            new Date(),
+            new Date(),
+            undefined,
+            ['ProductMaster']
+          )
+        );
+        connectionPort.update.mockResolvedValue(mockConnection);
+
+        await expect(
+          service.update('connection-123', {
+            config: {
+              baseUrl: 'https://shop.example.com',
+              stockLocationOverride: 'ol_location_retired',
+            },
+          })
+        ).resolves.toBeDefined();
+        expect(locations.getLocation).not.toHaveBeenCalled();
       });
     });
   });

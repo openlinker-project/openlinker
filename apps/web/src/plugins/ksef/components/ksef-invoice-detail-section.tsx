@@ -8,7 +8,9 @@
  * `platformType` literals here.
  *
  * Displays the KSeF-specific regulatory region using the mockup's `.slot-row` layout:
- *   - Clearance status badge (via neutral `RegulatoryStatusBadge`)
+ *   - Clearance status badge (the shared, regulator-neutral
+ *     `RegulatoryStatusBadge`, branded with the KSeF-specific
+ *     `labelOverrides` — #3181, since this surface is KSeF's own)
  *   - KSeF number (`clearanceReference` → fallback `providerInvoiceNumber`)
  *   - Official receipt (UPO): download + inline preview (#1234, B3), gated on
  *     `regulatoryStatus === 'accepted'`
@@ -29,6 +31,7 @@ import {
   useKsefFa3,
 } from '../../../features/invoicing';
 import { KsefFa3View } from './ksef-fa3-view';
+import { KSEF_REGULATORY_STATUS_LABELS } from '../lib/ksef-regulatory-status-labels';
 import { Button } from '../../../shared/ui/button';
 import {
   Dialog,
@@ -152,7 +155,10 @@ export function KsefInvoiceDetailSection({
                 {t('invoice.ksef.clearanceStatus', 'Clearance status')}
               </div>
             </div>
-            <RegulatoryStatusBadge status={invoice.regulatoryStatus} />
+            <RegulatoryStatusBadge
+              status={invoice.regulatoryStatus}
+              labelOverrides={KSEF_REGULATORY_STATUS_LABELS}
+            />
           </div>
         ) : null}
 

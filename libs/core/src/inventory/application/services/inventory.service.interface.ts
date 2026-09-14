@@ -107,4 +107,26 @@ export interface IInventoryService {
     locatedVariantKeys: readonly (string | null)[],
     scope: ProvenanceScope
   ): Promise<PruneStaleVariantsResult>;
+
+  /**
+   * The MIRROR of `staleLocationlessPositionsForSource` (#3206): soft-stale the
+   * SAME source's own located rows for the variants it just reported WITHOUT a
+   * location, since a located row left behind by a source that stopped locating
+   * double-counts the same stock in `global` scope (#2321).
+   *
+   * `scope` is required — see the port docblock. Emits no event: re-pooling is
+   * not a deletion, and firing `master.variant.stale` off this count would
+   * pause live offers (#1689).
+   *
+   * @param productId internal OpenLinker product ID
+   * @param pooledVariantKeys variant keys reported without a location, with any
+   *   variant also reported located in the same payload already subtracted
+   * @param scope the claiming connection's provenance restriction
+   * @returns rows newly marked stale + the distinct non-null variant ids
+   */
+  staleLocatedPositionsForSource(
+    productId: string,
+    pooledVariantKeys: readonly (string | null)[],
+    scope: ProvenanceScope
+  ): Promise<PruneStaleVariantsResult>;
 }

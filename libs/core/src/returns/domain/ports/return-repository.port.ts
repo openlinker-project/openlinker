@@ -204,6 +204,28 @@ export interface ReturnRepositoryPort {
   ): Promise<boolean>;
 
   /**
+   * Claim a line's resolved order line (#3171) — the `orderSnapshot.items[].id`
+   * it came from.
+   *
+   * Fill-in-when-NULL, never a correction, and for the same reason
+   * `claimAttribution` is monotonic: a failed or later re-resolve must not be
+   * able to un-resolve a line that already carries an answer. The predicate IS
+   * the guarantee, so nothing reads the column and then decides in application
+   * code.
+   *
+   * `false` is an ordinary outcome, not an error — it means the line already
+   * held a resolution (a concurrent claim, or a re-ingestion arriving after the
+   * first resolve). Deliberately NOT reported as a failure, because the desired
+   * end state was reached either way (the #2332 `alreadyAttributed` counter's
+   * reasoning).
+   *
+   * Note the column stays absent from BOTH halves of `upsertFromSource`: it is
+   * core-resolved and must never be echoed from a source payload, which is why
+   * this is its own narrow write rather than a field on the upsert input.
+   */
+  claimOrderLineResolution(returnLineId: string, orderLineId: string): Promise<boolean>;
+
+  /**
    * Stamp `authorizedAt` at most once (#2372).
    *
    * Conditional on `"authorizedAt" IS NULL` — the `claimDeclinedAt` /

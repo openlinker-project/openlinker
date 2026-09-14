@@ -96,6 +96,7 @@ describe('MarketplaceReturnsPollHandler', () => {
 
 describe('MarketplaceReturnSyncHandler', () => {
   let ingestion: { ingestReturns: jest.Mock; syncReturnFromSource: jest.Mock };
+  let orderLineResolver: { resolveForReturn: jest.Mock };
   let handler: MarketplaceReturnSyncHandler;
 
   beforeEach(() => {
@@ -105,7 +106,8 @@ describe('MarketplaceReturnSyncHandler', () => {
         .fn()
         .mockResolvedValue({ returnId: 'ol_return_1', attributed: true }),
     };
-    handler = new MarketplaceReturnSyncHandler(ingestion as never);
+    orderLineResolver = { resolveForReturn: jest.fn().mockResolvedValue(undefined) };
+    handler = new MarketplaceReturnSyncHandler(ingestion as never, orderLineResolver as never);
   });
 
   it('should hydrate the named return and report ok', async () => {
@@ -115,6 +117,28 @@ describe('MarketplaceReturnSyncHandler', () => {
 
     expect(ingestion.syncReturnFromSource).toHaveBeenCalledWith(connectionId, 'r-1');
     expect(result).toEqual({ outcome: 'ok' });
+  });
+
+  it('should resolve the persisted return order lines (#3171)', async () => {
+    await handler.execute(
+      job('marketplace.return.sync', { schemaVersion: 1, externalReturnId: 'r-1' })
+    );
+
+    expect(orderLineResolver.resolveForReturn).toHaveBeenCalledWith('ol_return_1');
+  });
+
+  it('should not resolve order lines when ingestion failed terminally', async () => {
+    // The join runs only past a successful persist: there is no return to
+    // resolve against otherwise, and calling it would log a phantom id.
+    ingestion.syncReturnFromSource.mockRejectedValue(
+      new ReturnObservationMissingExternalIdError('conn-1', 'AL-ORD-1')
+    );
+
+    await handler.execute(
+      job('marketplace.return.sync', { schemaVersion: 1, externalReturnId: 'r-1' })
+    );
+
+    expect(orderLineResolver.resolveForReturn).not.toHaveBeenCalled();
   });
 
   it('should report a TERMINAL business_failure for an unkeyed observation', async () => {

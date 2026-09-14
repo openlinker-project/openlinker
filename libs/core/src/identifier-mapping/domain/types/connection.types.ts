@@ -98,14 +98,21 @@ export interface ConnectionConfig {
    * shapes are read through `readPricingRuleConfig` /
    * `readPricingRuleForSource`, which coerce a legacy flat `PricingRule` into
    * `{ default: <that rule>, sourceOverrides: {} }` at read time — no
-   * backfill migration. `default` is optional in the nested shape (rather
-   * than required) so a HEADLESS `{ sourceOverrides }` container — one
-   * carrying per-source overrides but no destination-level default — round-
-   * trips: `readPricingRuleConfig` recognises the shape by `'default' in
-   * candidate || 'sourceOverrides' in candidate`, so this type must admit
-   * the same set the reader (and its validator counterpart in
-   * `ConnectionService`) actually accept, or a legitimate config value fails
-   * to type-check (PR #3158 review, BLOCKING fix).
+   * backfill migration. `default` is BOTH optional AND nullable in the
+   * nested shape: optional so a HEADLESS `{ sourceOverrides }` container —
+   * one carrying per-source overrides but no destination-level default —
+   * round-trips (`readPricingRuleConfig` recognises the shape by `'default'
+   * in candidate || 'sourceOverrides' in candidate`, so this type must admit
+   * the same set the reader — and its validator counterpart in
+   * `ConnectionService` — actually accept, or a legitimate config value
+   * fails to type-check; PR #3158 review, BLOCKING fix), and nullable
+   * because a stored `null` means "no rule configured", the honest
+   * storage-side reflection of `PricingRuleConfig`'s own type
+   * (`pricing-rule.types.ts`) — writing a synthesized `{type: 'passthrough'}`
+   * in place of `null` would be a real behaviour change (`applyPricingRule`
+   * applies rounding for a configured `passthrough` rule but not for
+   * `null`), so this type must accept `null` or a caller cannot honestly
+   * persist "unconfigured" (#3163 review, finding 3).
    */
   pricingRule?:
     | PricingRule
@@ -155,6 +162,30 @@ export interface ConnectionConfig {
   salesDocument?: {
     documentKind?: string;
   };
+  /**
+   * Operator-declared location for this connection's currently-unlocated
+   * stock (#3206). Neither shipped `InventoryMasterPort` adapter reports a
+   * `locationId` (PrestaShop only via the rarely-enabled Advanced Stock
+   * Management module; WooCommerce has no native multi-location at all), so
+   * ADR-058 decision (2) means every position from such a master is
+   * permanently pooled (`locationId IS NULL`) — which makes the OMS
+   * fulfilment router structurally sterile even once locations exist,
+   * because it skips every pooled row.
+   *
+   * This is NOT the sync inventing a location the master declined to give —
+   * that remains forbidden. It is the OPERATOR supplying, once and
+   * explicitly, the fact the master will never supply: "all of this
+   * connection's currently-unlocated stock physically lives here." A real
+   * adapter-reported location always wins over this value; see
+   * `readStockLocationOverride` (`@openlinker/core/inventory`'s
+   * `stock-location-override.types.ts`) for where it is consumed and why
+   * that ordering is enforced in exactly one place.
+   *
+   * An operator with genuinely multiple physical warehouses behind one
+   * connection must NOT use this — it asserts a single location for ALL of
+   * that connection's stock, which would misattribute the rest.
+   */
+  stockLocationOverride?: string;
   [key: string]: unknown;
 }
 
@@ -220,6 +251,3 @@ export interface ConnectionFilters {
   platformType?: PlatformType;
   status?: ConnectionStatus;
 }
-
-
-

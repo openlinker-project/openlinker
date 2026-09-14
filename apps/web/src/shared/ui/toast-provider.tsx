@@ -11,7 +11,13 @@ import {
 } from 'react';
 import type { AlertTone } from './alert';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface Toast {
+  action?: ToastAction;
   description: string;
   durationMs: number;
   id: number;
@@ -20,6 +26,8 @@ interface Toast {
 }
 
 interface ShowToastOptions {
+  /** An inline action (e.g. "Undo") rendered alongside the dismiss button (#3148). */
+  action?: ToastAction;
   description: string;
   durationMs?: number;
   title?: string;
@@ -51,12 +59,12 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
   }, []);
 
   const showToast = useCallback(
-    ({ description, durationMs = 4000, title, tone = 'info' }: ShowToastOptions) => {
+    ({ action, description, durationMs = 4000, title, tone = 'info' }: ShowToastOptions) => {
       const id = nextIdRef.current++;
       const effectiveDurationMs = IS_TEST_ENV ? TEST_ENV_DURATION_MS : durationMs;
       setToasts((current) => [
         ...current,
-        { description, durationMs: effectiveDurationMs, id, title, tone },
+        { action, description, durationMs: effectiveDurationMs, id, title, tone },
       ]);
     },
     [],
@@ -86,6 +94,20 @@ export function ToastProvider({ children }: PropsWithChildren): ReactElement {
                 {toast.description}
               </RadixToast.Description>
             </div>
+            {toast.action ? (
+              <RadixToast.Action asChild altText={toast.action.label}>
+                <button
+                  type="button"
+                  className="toast__action"
+                  onClick={() => {
+                    toast.action?.onClick();
+                    removeToast(toast.id);
+                  }}
+                >
+                  {toast.action.label}
+                </button>
+              </RadixToast.Action>
+            ) : null}
             <RadixToast.Close
               aria-label={`Dismiss ${toast.title ?? 'notification'}`}
               className="toast__dismiss"

@@ -156,10 +156,20 @@ export interface SalesDocumentBlock {
  *   error, which may be permanent). The caller LEAVES THE PERSISTED VALUE ALONE.
  *   Clearing here would delete a true reason and replace it with nothing, which
  *   is precisely the silent decline ADR-041 §54 forbids.
+ *
+ * `matchedRuleId` (#3186) — present on `none`/`blocked` when a
+ * `sales_document_rules` row decided this order's document kind
+ * (`SalesDocumentDecision.route.ruleId`), absent otherwise (no rule engine
+ * match: a country default, the pre-#2170 single-primary fallback, or no
+ * route resolved at all). It is level-triggered exactly like `block` — the
+ * caller writes it on EVERY transition, `undefined` included, which is what
+ * lets a later rule edit/deletion self-correct the persisted value instead of
+ * outliving the decision that produced it. Absent on `indeterminate` because
+ * that arm is never persisted at all.
  */
 export type SalesDocumentBlockOutcome =
-  | { kind: 'none' }
-  | { kind: 'blocked'; block: SalesDocumentBlock }
+  | { kind: 'none'; matchedRuleId?: string }
+  | { kind: 'blocked'; block: SalesDocumentBlock; matchedRuleId?: string }
   | { kind: 'indeterminate' };
 
 /**

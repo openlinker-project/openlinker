@@ -126,6 +126,23 @@ export class InvoiceRecord {
      * numbering audit read model. Immutable once assigned.
      */
     public readonly allocatedSeq: number | null = null,
+    /**
+     * The buyer tax identity as it stood when this document was issued (#3188),
+     * three-state encoded exactly as `order_records.buyerTaxId` is: `null` =
+     * the source asserted nothing, `''` = it asserted the buyer has none,
+     * otherwise the id the document carries.
+     *
+     * FROZEN, not joined. An invoice is an immutable fiscal document, while the
+     * order's own column is rewritten by every re-ingestion — reading the order
+     * live would let this list show a number the issued document does not
+     * carry. `hasBuyerTaxId` above stays the filter's predicate; this is the
+     * value that filter was hiding.
+     *
+     * Read it through `decodeBuyerTaxIdColumn`, never with a bare `!== null`,
+     * which reports true for the asserted-none row. `null` on every row issued
+     * before this column existed — there is nothing to backfill it from.
+     */
+    public readonly buyerTaxId: string | null = null,
   ) {}
 
   /** Pure derivation: the document was successfully issued by the provider. */

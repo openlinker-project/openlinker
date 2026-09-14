@@ -94,15 +94,18 @@ describe('InvoiceTimeline — clearance lane', () => {
     expect(screen.queryByText(/regulatory clearance/i)).toBeNull();
   });
 
-  it('pending-submission ⇒ Awaiting KSeF (active), NEVER a "Submitted" done node (#1585)', () => {
-    renderWithProviders(
+  it('pending-submission ⇒ Awaiting submission (active), NEVER a "Submitted" done node (#1585, regulator-neutral #3181/#3183)', () => {
+    const { container } = renderWithProviders(
       <InvoiceTimeline invoice={makeInvoice({ regulatoryStatus: 'pending-submission' })} />,
     );
     expect(screen.getByText(/regulatory clearance/i)).toBeInTheDocument();
-    const awaitingNode = screen.getByText(/awaiting ksef submission/i).closest('li');
+    const awaitingNode = screen.getByText(/awaiting submission/i).closest('li');
     expect(awaitingNode).toHaveClass('invoice-tl-node--active');
     // Nothing was transmitted — the lane must NOT claim a "Submitted" step.
     expect(screen.queryByText('Submitted')).toBeNull();
+    // This shared lane also renders for an inFakt or Subiekt invoice and has no
+    // per-provider override seam, so it must name no regulator (#3181).
+    expect(container.textContent).not.toMatch(/KSeF/i);
   });
 
   it('submitted ⇒ Submitted (done) + Awaiting acceptance (active)', () => {

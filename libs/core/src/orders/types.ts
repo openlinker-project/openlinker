@@ -78,7 +78,15 @@ export type { OrderRecordStatus } from './domain/types/order-record.types';
 export { RefundReasonValues } from './domain/types/refund-record.types';
 export type { RefundReason } from './domain/types/refund-record.types';
 export type { BuyerTaxId } from './domain/types/buyer-tax-id.types';
-export { readBuyerTaxId, buyerHasTaxId } from './domain/types/buyer-tax-id.types';
+export {
+  readBuyerTaxId,
+  buyerHasTaxId,
+  // #3224: the auto-issue gate holds the raw three-state column and must
+  // decode it without reaching the main `orders` barrel, which re-exports
+  // `OrdersModule` and would close the CJS cycle this sub-barrel exists to
+  // break. Dependency-free leaf, same as its two siblings above.
+  decodeBuyerTaxIdColumn,
+} from './domain/types/buyer-tax-id.types';
 
 /**
  * `CoverageResolutionStatus` (epic #2452) — the `analytics_remediation_runs`

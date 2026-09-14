@@ -17,6 +17,7 @@ import type {
   OrderRecordPagination,
   OrderRecordStatus,
   PaginatedOrderRecords,
+  SalesDocumentMatchedRuleWrite,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
@@ -238,6 +239,29 @@ export interface IOrderRecordService {
   markCancelled(internalOrderId: string, cancelledAt: Date): Promise<void>;
 
   /**
+   * Durably record that a cancellation arrived for an order OL has not yet
+   * ingested (#2069). Called by
+   * `OrderIngestionService.handleSourceCancellation` when
+   * `IIdentifierMappingService.getInternalId` resolves nothing — there is no
+   * internal order id yet for `markCancelled` to hit, so the signal is keyed
+   * on `(sourceConnectionId, externalOrderId)` instead. See
+   * `OrderCancellationSignalRepositoryPort` for why no internal id is minted
+   * here (minting one would point every downstream trigger at a phantom
+   * order — the #2328 lesson for returns attribution).
+   *
+   * Consumed by `persistIncomingSnapshot` the moment the order is genuinely
+   * first (or later) ingested, and applied through the same first-write-wins
+   * `markCancelled` pipeline this cancellation-observation path already uses.
+   * First-write-wins here too: a redelivered cancel event is a harmless
+   * no-op.
+   */
+  recordEarlyCancellationSignal(
+    sourceConnectionId: string,
+    externalOrderId: string,
+    cancelledAt: Date
+  ): Promise<void>;
+
+  /**
    * Record — or clear — why OpenLinker issued no fiscal document for this order
    * (#2100, ADR-041 decision 11: a block is never log-only).
    *
@@ -253,10 +277,20 @@ export interface IOrderRecordService {
    * per `docs/architecture-overview.md § "Cross-context dependencies in core"`),
    * and `AutoIssueTriggerService` must not inject this token either (its one-way
    * edge, F3). Invoicing REPORTS the block; orders WRITES it.
+   *
+   * `matchedRule` (#3186) names the `sales_document_rules` row that decided this
+   * order's document kind. It is a SEPARATE decision from the block and the
+   * instruction is REQUIRED, never defaulted (#3186 review): the gate decides
+   * both and passes `{action: 'set'}` — level-triggered exactly like `block`, so
+   * a later rule edit or deletion self-corrects the persisted value instead of
+   * outliving the decision that produced it — while the manual-issue clear path
+   * above decides only the block and passes `{action: 'preserve'}`, because
+   * clearing a badge must not also erase why the kind was chosen.
    */
   markSalesDocumentBlock(
     internalOrderId: string,
-    block: SalesDocumentBlock | null
+    block: SalesDocumentBlock | null,
+    matchedRule: SalesDocumentMatchedRuleWrite
   ): Promise<void>;
 
   /**

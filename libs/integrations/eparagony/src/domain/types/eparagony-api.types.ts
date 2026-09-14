@@ -92,6 +92,14 @@ export interface EparagonyReceiptMetadata {
   currency?: string;
   orderId?: string;
   merchantDocumentId?: string;
+  /**
+   * Buyer's tax number - the field that makes a receipt under the threshold
+   * count as a simplified invoice in some regimes. A three-branch `oneOf`,
+   * regex-only, no checksum, and its third branch carries an explicit
+   * "no validation guarantee" disclaimer - so this adapter sends whatever it is
+   * given and never pre-judges the shape.
+   */
+  consumerTIN?: string;
 }
 
 export interface EparagonyReceiptBody {

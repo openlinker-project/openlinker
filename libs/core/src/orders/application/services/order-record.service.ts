@@ -16,6 +16,7 @@ import {
 } from '../../domain/types/buyer-tax-id.types';
 import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repository.port';
 import { OrderLineItemRepositoryPort } from '../../domain/ports/order-line-item-repository.port';
+import { OrderCancellationSignalRepositoryPort } from '../../domain/ports/order-cancellation-signal-repository.port';
 import { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { OrderSyncStatus, SyncAttempt } from '../../domain/types/order-sync.types';
 import type { IOrderRecordService } from '../interfaces/order-record.service.interface';
@@ -28,6 +29,7 @@ import type {
   OrderRecordPagination,
   OrderRecordStatus,
   PaginatedOrderRecords,
+  SalesDocumentMatchedRuleWrite,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
@@ -59,6 +61,7 @@ import {
   ORDER_FX_STAMP_SERVICE_TOKEN,
   ORDER_LINE_ITEM_REPOSITORY_TOKEN,
   ORDER_RECORD_REPOSITORY_TOKEN,
+  ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN,
 } from '../../orders.tokens';
 import { deriveOrderAnalyticsScalars, deriveOrderLineItems } from '../../domain/order-analytics-projection';
 import { buildOrderAutomationFacts } from '../../domain/order-automation-facts-projection';
@@ -94,7 +97,9 @@ export class OrderRecordService implements IOrderRecordService {
     @Inject(REPORTING_CURRENCY_SETTINGS_SERVICE_TOKEN)
     private readonly reportingCurrencySettings: IReportingCurrencySettingsService,
     @Inject(AUTOMATION_TRIGGER_EMISSION_SERVICE_TOKEN)
-    private readonly automationEmission: IAutomationTriggerEmissionService
+    private readonly automationEmission: IAutomationTriggerEmissionService,
+    @Inject(ORDER_CANCELLATION_SIGNAL_REPOSITORY_TOKEN)
+    private readonly cancellationSignalRepository: OrderCancellationSignalRepositoryPort
   ) {}
 
   /**
@@ -441,10 +446,25 @@ export class OrderRecordService implements IOrderRecordService {
     // stamping here would be work repeated moments later for the overwhelming
     // majority of orders. An order that never leaves `awaiting_mapping` still
     // carries `totals` in this snapshot and is picked up by the reconcile sweep.
+    //
+    // Consume the early-cancellation signal (#2069) HERE, after the row above
+    // is durably persisted, never before: a failure here leaves the signal
+    // row untouched (a DELETE that throws commits nothing), so a retry — or
+    // simply the next ordinary poll/webhook for this order, since this call
+    // runs unconditionally on every invocation, not only the first — picks it
+    // up again. Consuming before the upsert would risk losing the signal
+    // forever if the upsert itself then failed. `persistOrder` never needs
+    // the same check: its own `upsertWithLineItems()` excludes `cancelledAt`
+    // from its column list, so whatever this write sets here survives it
+    // untouched.
+    const earlySignalAt = await this.cancellationSignalRepository.consume(
+      sourceConnectionId,
+      incoming.externalOrderId
+    );
     const cancellationWrote = await this.recordCancellationIfNeeded(
       internalOrderId,
-      incoming.status === 'cancelled',
-      now
+      incoming.status === 'cancelled' || earlySignalAt !== null,
+      earlySignalAt ?? now
     );
 
     return cancellationWrote ? (await this.repository.findById(internalOrderId)) ?? saved : saved;
@@ -682,6 +702,18 @@ export class OrderRecordService implements IOrderRecordService {
     await this.repository.markCancelled(internalOrderId, cancelledAt);
   }
 
+  async recordEarlyCancellationSignal(
+    sourceConnectionId: string,
+    externalOrderId: string,
+    cancelledAt: Date
+  ): Promise<void> {
+    await this.cancellationSignalRepository.record(
+      sourceConnectionId,
+      externalOrderId,
+      cancelledAt
+    );
+  }
+
   async getSalesAndChannelAnalytics(
     filters: SalesAnalyticsFilters,
     includeBackfilledPreRollout = false
@@ -852,17 +884,24 @@ export class OrderRecordService implements IOrderRecordService {
   }
 
   /**
-   * Record or clear the sales-document block (#2100). Thin pass-through to the
-   * repository's narrow absolute-set — see
-   * {@link OrderRecordRepositoryPort.updateSalesDocumentBlock}. `null` clears,
-   * and is the ordinary path: the auto-issue gate is level-evaluated, so this is
-   * called on every transition with the current answer.
+   * Record or clear the sales-document block (#2100), and the rule that decided
+   * this order's document kind (#3186). Thin pass-through to the repository's
+   * narrow absolute-set — see
+   * {@link OrderRecordRepositoryPort.updateSalesDocumentBlock}. `null` clears
+   * `block`, the ordinary path: the auto-issue gate is level-evaluated, so this
+   * is called on every transition with the current answer.
+   *
+   * `matchedRule` carries no default (#3186 review) so that every caller states
+   * whether it decided the rule at all — `{action: 'set'}` for the gate, which
+   * re-decides both, and `{action: 'preserve'}` for a caller that decided only
+   * the block.
    */
   async markSalesDocumentBlock(
     internalOrderId: string,
-    block: SalesDocumentBlock | null
+    block: SalesDocumentBlock | null,
+    matchedRule: SalesDocumentMatchedRuleWrite
   ): Promise<void> {
-    await this.repository.updateSalesDocumentBlock(internalOrderId, block);
+    await this.repository.updateSalesDocumentBlock(internalOrderId, block, matchedRule);
   }
 
   /**

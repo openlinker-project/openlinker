@@ -311,6 +311,20 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     return null;
   }
 
+  async findRecentByConnectionId(connectionId: string, limit: number): Promise<InvoiceRecord[]> {
+    // Bounded recency read for the connection diagnostics panel (#3179).
+    // `find` + `take`, never the paginated `findMany`: that one ends in
+    // `getManyAndCount()`, whose COUNT always runs in `typeorm@0.3.17`, and
+    // this caller discards the total. Same newest-first ordering and `id`
+    // tiebreak as `findAllByOrderId`, so the page is deterministic.
+    const entities = await this.repository.find({
+      where: { connectionId },
+      order: { createdAt: 'DESC', id: 'DESC' },
+      take: limit,
+    });
+    return entities.map((entity) => this.toDomain(entity));
+  }
+
   /**
    * Read-only AC-6 list (#1119). One `andWhere` per PRESENT filter only —
    * absent filters never constrain the query. The `issuedFrom`/`issuedTo`
@@ -546,6 +560,9 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
     // A freshly-created `pending` row holds no in-flight lease (#1200).
     entity.leaseExpiresAt = null;
     entity.hasBuyerTaxId = input.hasBuyerTaxId ?? false;
+    // `?? null` rather than a falsy coalesce: `''` is the asserted-none state
+    // and must survive as itself (#3188).
+    entity.buyerTaxId = input.buyerTaxId ?? null;
     entity.documentContent = input.documentContent ?? null;
     entity.sourceDocument = input.sourceDocument ?? null;
     entity.issuedLineSnapshot = input.issuedLineSnapshot ?? null;
@@ -582,6 +599,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.numberingSeriesId,
       entity.documentNumber,
       entity.allocatedSeq,
+      entity.buyerTaxId,
     );
   }
 }

@@ -364,7 +364,10 @@ export class OrdersController {
     // list row is what lets the `/orders` cell state the routed document kind
     // and the persisted block reason without a second request per row - and
     // it is the SAME shape the detail endpoint serves, so the row and the
-    // panel cannot disagree about one order.
+    // panel cannot disagree about one order. The one field it deliberately
+    // leaves `null` is `matchedRule` (#3186 review): the "Why this kind?"
+    // disclosure is detail-only, so no row carries a conditions array and no
+    // page pays the extra rule read for a sentence it never renders.
     const salesDocumentByOrderId = await this.salesDocumentView.getForOrders(
       items.map((order) => order.internalOrderId)
     );
@@ -525,6 +528,19 @@ export class OrdersController {
       throw new NotFoundException(`Order not found: ${internalOrderId}`);
     }
     const dto = this.toDto(order);
+    // Buyer tax id (#3180). DETAIL READ ONLY — off the shared `toDto`, so the
+    // paged list never carries it. Unlike `activeHold` below this costs no extra
+    // query (the column is already loaded); it is scoped for DATA MINIMISATION.
+    // It is the first buyer-identifying value on this DTO — `customerId` is an
+    // internal id — it is PII-gated at persistence exactly like `customerEmail`
+    // (#2599: for a sole trader the tax id identifies a natural person), and no
+    // list surface reads it. `GET /orders` is the hottest order read in the
+    // product; a value with no consumer does not belong on every row of it.
+    //
+    // The entity getter is the only intended read of the raw column, decoding it
+    // through `decodeBuyerTaxIdColumn` so this DTO never has to remember that
+    // `''` means "asserted none" rather than absence.
+    dto.buyerTaxId = order.buyerTaxIdState;
     // Invoice projection (#1224): the FE invoice panel reads a neutral `invoice`
     // sub-tree off the snapshot. The list endpoint now shares the same projection
     // via a batch read (`getLatestInvoicesForOrders`, one query per page — #1713);
@@ -568,7 +584,9 @@ export class OrdersController {
     dto.holdHistory = holds.map((hold) => this.toHoldDto(hold));
     dto.activeHold = dto.holdHistory.find((hold) => hold.releasedAt === null) ?? null;
     // Same projection the list carries (#2517) - one shape, so the panel never
-    // interprets a field differently from the row it was opened from.
+    // interprets a field differently from the row it was opened from. This read
+    // additionally resolves `matchedRule`, which the list path leaves `null`
+    // (#3186 review) because only this panel renders it.
     const salesDocument = await this.salesDocumentView.getForOrder(order.internalOrderId);
     if (salesDocument) {
       dto.salesDocument = toSalesDocumentViewDto(salesDocument);
@@ -586,7 +604,9 @@ export class OrdersController {
       'axis belonging to that kind (both invoice axes, or the single fiscal one), the persisted block ' +
       'and unresolved reasons VERBATIM, and any record held on another connection. Read-only - it ' +
       'issues, registers, routes and configures nothing. The same shape is carried on every row of ' +
-      'GET /orders, so the detail panel needs this endpoint only when it is opened directly.',
+      'GET /orders, so the detail panel needs this endpoint only when it is opened directly - with ' +
+      'one exception: `matchedRule` is resolved HERE only and is always `null` on the list, so a ' +
+      'client must read this endpoint before concluding no rule decided an order\'s kind.',
   })
   @ApiResponse({ status: 200, description: 'Sales-document projection', type: SalesDocumentViewResponseDto })
   @ApiResponse({ status: 404, description: 'Order not found' })
@@ -1030,6 +1050,8 @@ export class OrdersController {
       syncAttempts: order.syncAttempts.map((a) => this.toSyncAttemptDto(a)),
       recordStatus: order.recordStatus,
       mappingFailureReason: order.mappingFailureReason,
+      // `buyerTaxId` is deliberately NOT here (#3180) - it is set by `getOrder`
+      // alone. See the assignment there for why.
       salesDocumentBlockReason: order.salesDocumentBlockReason,
       salesDocumentUnresolvedReason: order.salesDocumentUnresolvedReason,
       salesDocumentBlockDetail: order.salesDocumentBlockDetail,

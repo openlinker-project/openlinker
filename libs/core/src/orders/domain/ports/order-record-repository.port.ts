@@ -18,6 +18,7 @@ import type {
   OrderLifecyclePhaseSummary,
   OrderRecordStatus,
   FailedSyncValueSummary,
+  SalesDocumentMatchedRuleWrite,
 } from '../types/order-record.types';
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
@@ -530,22 +531,36 @@ export interface OrderRecordRepositoryPort {
 
   /**
    * Set — or clear — the reason OpenLinker issued no fiscal document for this
-   * order (#2100, ADR-041 decision 11). Narrow absolute-set on the three
-   * `salesDocumentBlock*` columns only, mirroring
+   * order (#2100, ADR-041 decision 11), and the `sales_document_rules` row
+   * that decided its document kind, when a rule engine match produced it
+   * (#3186). Narrow absolute-set on the FOUR `salesDocumentBlock*` /
+   * `salesDocumentMatchedRuleId` columns only, mirroring
    * {@link updateItemResolutionFailure}, so it can't clobber a concurrent write
    * to any other column on the same row.
    *
-   * Passing `null` CLEARS all three columns, and that is the primary path, not an
-   * edge case: the auto-issue gate is level-evaluated, so this is called on
-   * every order transition with whatever the current answer is. Last write
-   * wins by design — the newest evaluation is the truthful one.
+   * Passing `null` for `block` CLEARS the three block columns — the primary
+   * path, not an edge case: the auto-issue gate is level-evaluated, so this is
+   * called on every order transition with whatever the current answer is. Last
+   * write wins by design — the newest evaluation is the truthful one.
+   *
+   * `matchedRule` moves INDEPENDENTLY of `block`: a rule can decide the
+   * document kind while issuance is still blocked for an unrelated reason
+   * (e.g. a missing tax rate, or a `manual` trigger model), so the two are
+   * never coupled to one another's null-ness — and the instruction is
+   * REQUIRED, never defaulted, so a caller that decided only the block has to
+   * say so ({@link SalesDocumentMatchedRuleWrite}). `{action: 'set'}` writes
+   * the column, `null` included, which is what lets an edited or deleted rule
+   * stop being named on the very next transition; `{action: 'preserve'}` omits
+   * it from the statement altogether, so no read-then-write is needed and
+   * nothing can race.
    *
    * No-op (no throw) when the order row doesn't exist, mirroring
    * {@link updateFulfillmentState}'s residual-race tolerance.
    */
   updateSalesDocumentBlock(
     internalOrderId: string,
-    block: SalesDocumentBlock | null
+    block: SalesDocumentBlock | null,
+    matchedRule: SalesDocumentMatchedRuleWrite
   ): Promise<void>;
 
   /**
