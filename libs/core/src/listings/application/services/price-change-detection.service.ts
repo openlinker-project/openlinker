@@ -231,10 +231,14 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
       }
     }
 
-    // NOTE (#3159 review, unowned by this pass): nothing here ever RESOLVES
-    // an automatic-mode episode — that's the downstream apply job's job
-    // (#3161/#3162 territory) — so every auto-applied change still leaves an
-    // open row inflating the review-queue's `countOpen` badges until it does.
+    // Nothing here RESOLVES an automatic-mode episode, and nothing should:
+    // that is the apply job's, which now lives in this same diff (#3159
+    // absorbed #3161). `PriceChangeApplyService.applyPriceChange` loads the
+    // episode from the payload's `episodeId` — which `enqueueAutomaticApply`
+    // above always supplies — and, after a successful publish, resolves it
+    // `accepted`. So an auto-applied change does not leave an open row
+    // inflating `countOpen`; an earlier revision of this note said it did,
+    // written while the apply job was still a sibling branch.
   }
 
   /**
