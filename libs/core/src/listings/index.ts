@@ -385,6 +385,7 @@ export type {
   PriceChangeBlockReason,
   UpsertOpenPriceChangeEpisodeInput,
   PriceChangeEpisodeFilters,
+  PriceChangeEpisodeClaimOutcome,
 } from './domain/types/price-change-episode.types';
 // `PriceChangeEpisodeRepositoryPort` stays on the main barrel — the SAME
 // sanctioned round-trip exception `OfferMappingRepositoryPort` /
@@ -412,6 +413,26 @@ export type {
   PriceChangeApplyResult,
 } from './domain/types/price-change-apply.types';
 export type { IPriceChangeApplyService } from './application/services/price-change-apply.service.interface';
+export { PriceChangeEpisodeNotFoundException } from './domain/exceptions/price-change-episode-not-found.exception';
+export { PriceChangeEpisodeAlreadyResolvedException } from './domain/exceptions/price-change-episode-already-resolved.exception';
+export { PriceChangeEpisodeStaleException } from './domain/exceptions/price-change-episode-stale.exception';
+export { PriceChangeEpisodeBlockedException } from './domain/exceptions/price-change-episode-blocked.exception';
+export { PriceChangeEpisodeInFlightException } from './domain/exceptions/price-change-episode-in-flight.exception';
+export type {
+  PriceChangeQueueItem,
+  PriceChangeQueueItemRuleSummary,
+  PriceChangeQueuePage,
+} from './application/types/price-change-queue-item.types';
+export type { PriceChangeAutoAppliedView } from './application/types/price-change-auto-applied-view.types';
+export type {
+  IPriceChangesService,
+  AcceptPriceChangeInput,
+  EditPriceChangeInput,
+  BulkAcceptItemInput,
+  BulkAcceptResult,
+  PriceChangeConnectionPair,
+  PriceChangeResolutionResult,
+} from './application/services/price-changes.service.interface';
 export { OfferCommercialSnapshot } from './domain/entities/offer-commercial-snapshot.entity';
 export type {
   OfferCommercialSnapshotProps,
@@ -645,3 +666,13 @@ export type {
 
 // Tokens
 export * from './listings.tokens';
+export {
+  checkPriceOverrideBound,
+  PRICE_OVERRIDE_MAX_FACTOR,
+  PriceOverrideBoundOutcomeValues,
+} from './domain/types/price-override-bound.types';
+export type {
+  PriceOverrideBoundOutcome,
+  PriceOverrideBoundResult,
+} from './domain/types/price-override-bound.types';
+export { PriceChangeOverrideOutOfRangeException } from './domain/exceptions/price-change-override-out-of-range.exception';
