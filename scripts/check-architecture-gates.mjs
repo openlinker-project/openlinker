@@ -104,6 +104,10 @@ const KNOWN_CONFIG_KNOBS = new Map([
     { helper: 'readPricingRule', key: 'config.pricingRule' },
   ],
   [
+    'libs/core/src/identifier-mapping/domain/types/price-sync-mode.types.ts',
+    { helper: 'readPriceSyncModeConfig', key: 'config.priceSyncMode' },
+  ],
+  [
     'libs/core/src/sales-documents/domain/types/sales-document-kind.types.ts',
     {
       helper: 'readSalesDocumentRouting',
@@ -223,7 +227,34 @@ const NON_KNOBS = new Map([
  * NEXT unrelated knob (the seventh) fires this gate again with zero headroom,
  * and #2169 remains the tracked consolidation.
  *
- * **Contributing raise — #3206, 7 -> 8.** The gate fired on
+ * **Contributing raise — #3142 (ADR-072, recurring price propagation), the
+ * seventh knob, 7 -> 8.** `readPriceSyncModeConfig` (`config.priceSyncMode`)
+ * is registered above rather than exempted: it genuinely is per-connection
+ * JSONB coercion of exactly the counted shape, on the DESTINATION connection,
+ * and suppressing it would make the count lie in the direction that matters.
+ * The gate firing here is not dismissed — it is deferred on the same grounds
+ * #2305 and #2304 were:
+ *
+ * 1. `price-sync-mode.types.ts` is a types-and-pure-helpers file with no
+ *    persistence and no binding; a shared per-connection rules model needs
+ *    both, which this slice must not grow ahead of the design owning it.
+ * 2. The knob is required by the design, not accreted casually: ADR-072
+ *    decision 3 keeps `priceSyncMode` a SEPARATE key from `pricingRule`
+ *    (rather than folding "whether to auto-apply" into the pricing rule)
+ *    because the two axes — how to compute the price, and whether to ask
+ *    before publishing it — are independently operator-set per (destination,
+ *    feeding source) pair.
+ * 3. The consolidation already has an owner (#2169). Raising the bar by one
+ *    buys exactly one more knob before the gate fires again — the eighth
+ *    knob re-opens this same conversation with no further headroom.
+ *
+ * A reviewer who disagrees should push back on this raise specifically. Note
+ * `pricing-rule.types.ts` was ALSO widened by #3142 (ADR-072 decision 2, the
+ * per-source-override shape) — that is the SAME registered knob getting a
+ * richer shape, not a second one, and does not itself contribute to this
+ * raise.
+ *
+ * **Contributing raise — #3206, the eighth knob, 8 -> 9.** The gate fired on
  * `readStockLocationOverride`, and it is registered rather than exempted
  * because it genuinely is per-connection JSONB coercion. It is NOT the kind of
  * knob the #1032/#2169 consolidation is aimed at, though: every prior entry
@@ -242,8 +273,13 @@ const NON_KNOBS = new Map([
  *
  * The rung is raised by exactly one, so the NEXT unrelated knob still stops and
  * has this conversation. #2169 remains the tracked revisit.
+ *
+ * Merge note: #3142 took the 7 -> 8 step on `main` while this branch was open,
+ * for a different helper. Both raises are real and independent, so both
+ * paragraphs stand and the threshold lands on 9 rather than either side
+ * silently overwriting the other back to 8.
  */
-const KNOB_THRESHOLD = 8;
+const KNOB_THRESHOLD = 9;
 
 /** Ladder rungs (ADR-048): sub-capabilities that declare master freshness. */
 const KNOWN_RUNGS = new Set(['modified-product-lister.capability.ts']);
