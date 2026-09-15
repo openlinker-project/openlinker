@@ -13,26 +13,27 @@
  * never fires the page's own queries, so a non-admin never reaches the raw
  * 403 `ErrorState` the backing endpoint would otherwise produce.
  *
- * `session.user?.role === 'admin'` (never a helper) matches the existing
- * `isAdmin` derivation in `app-shell.tsx` / `command-palette-provider.tsx` —
- * `role` is typed `string` there too, so this stays consistent with the
- * codebase's one established admin-check shape rather than inventing a
- * second one.
+ * Uses `useIsAdmin()` (`shared/auth/use-permission.ts`) rather than an inline
+ * `session.user?.role === 'admin'` check — `role` is typed `string`, so that
+ * comparison compiles with a typo and silently evaluates false. `useIsAdmin`
+ * is documented as "the one place the admin role name is spelled" for exactly
+ * this case: a route guarded by `@Roles('admin')` with no permission to gate
+ * on instead.
  *
  * @module apps/web/src/app/routes
  */
 import type { ReactElement, ReactNode } from 'react';
+import { useIsAdmin } from '../../shared/auth/use-permission';
 import { useSession } from '../../shared/auth/use-session';
 import { ErrorState } from '../../shared/ui/feedback-state';
 
 export function RequireAdmin({ children }: { children: ReactNode }): ReactElement | null {
-  const session = useSession();
+  const { isReady } = useSession();
+  const isAdmin = useIsAdmin();
 
-  if (!session.isReady) {
+  if (!isReady) {
     return null;
   }
-
-  const isAdmin = session.status === 'authenticated' && session.user?.role === 'admin';
 
   if (!isAdmin) {
     return (
