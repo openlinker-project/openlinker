@@ -22,15 +22,17 @@ module.exports = {
   // and apps/worker. Default worker count oversubscribes CPU/memory:
   // bcrypt-heavy auth tests starve each other and trip the 5s timeout,
   // and random workers get OOM-killed (SIGKILL). Cap workers and raise
-  // timeout to match the other packages. Under CI the cap is 8 (#3271) — the
-  // runner is a 64-core / 251 GB box — while off CI it stays 2, because
-  // `.husky/pre-commit` -> `pnpm smart-test` reaches this same file on a
-  // contributor's machine. `testTimeout` stays raised: it is the other half of
-  // the bcrypt-starvation fix and 8 concurrent workers need it more, not less.
-  maxWorkers: process.env.CI ? 8 : 2,
-  // No `workerIdleMemoryLimit` — see the note in libs/core/jest.config.js: a
-  // ceiling below a package's real working set costs far more than it saves,
-  // and the whole job peaks at 32.4 GB of 251 GB (#3271).
+  // timeout to match the other packages.
+  //
+  // The cap was raised to 8 under CI (#3271) and reverted, and the sentence
+  // above is exactly why. On the real runner that doubled this package
+  // (80.0 s -> 163.0 s) and reproduced the SIGKILL the comment warns about:
+  // `analytics/http/dto/sales-analytics-query.dto.spec.ts` died with
+  // `signal=SIGKILL, exitCode=null`. The lab measurement that justified the
+  // raise was taken on an IDLE runner; the real one shares the machine with
+  // seven other concurrent CI jobs, so 2 packages x 8 workers oversubscribes
+  // it exactly as described.
+  maxWorkers: 2,
   testTimeout: 10000,
   moduleNameMapper: {
     '^@openlinker/api/(.*)$': path.resolve(__dirname, 'src/$1'),

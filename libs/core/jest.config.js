@@ -12,20 +12,22 @@ module.exports = {
   // parallel with apps/web vitest and libs/shared jest. Jest's default
   // (CPU-count-minus-one workers) oversubscribes memory and triggers
   // kernel OOM kills on worker processes, aborting random test suites.
-  // Capped to 2 off CI — this file is also reached by `.husky/pre-commit`
-  // -> `pnpm smart-test`, which falls back to a bare `pnpm test` on a
-  // contributor's own machine. Under CI the cap is 8 (#3271): the runner is a
-  // 64-core / 251 GB box where `cores-1` would be 63, and the whole job's
-  // measured peak RSS at 8 workers was 32.4 GB.
-  maxWorkers: process.env.CI ? 8 : 2,
-  // Deliberately NO `workerIdleMemoryLimit` here (#3271). A '512MB' ceiling was
+  // The cap stays 2 (#3271). It was raised to 8 under CI against a lab
+  // measurement taken on an IDLE runner, and reverted after measuring the real
+  // job: 8 workers here starve whatever package runs beside it under
+  // `--workspace-concurrency=2`, and this package's own gain was only 73.0 s ->
+  // 64.5 s while `apps/api` went 80.0 s -> 163.0 s and one of its workers was
+  // OOM-killed. A lab number from an idle box is not a CI number: the real
+  // runner shares the machine with seven other concurrent jobs.
+  //
+  // Deliberately NO `workerIdleMemoryLimit` here either. A '512MB' ceiling was
   // tried and reverted: this package's workers legitimately peak around 2.8 GB,
   // so the limit recycled a worker after almost every file, re-spawning the
   // process and rebuilding the whole module graph each time. On the real runner
-  // that took the package from 74 s to over 17 minutes. There is also nothing to
-  // guard against - the whole job's measured peak RSS at 8 workers was 32.4 GB
-  // of the runner's 251 GB. If a ceiling is ever wanted here, size it above the
-  // package's real working set, not by copying prestashop's number.
+  // that took the package from 74 s to over 17 minutes. If a ceiling is ever
+  // wanted here, size it above the package's real working set, not by copying
+  // prestashop's number.
+  maxWorkers: 2,
   transform: {
     '^.+\\.ts$': [
       'ts-jest',

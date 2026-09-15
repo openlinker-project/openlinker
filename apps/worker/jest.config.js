@@ -20,9 +20,9 @@ module.exports = {
   // Self-hosted CI (added via 444244f) runs this package's jest in
   // parallel with the other workspace packages. Cap workers and raise
   // timeout to match apps/api and libs/core — same reasoning, including the
-  // CI-only raise to 8 (#3271) and the deliberate absence of an idle-memory
-  // ceiling (see the note in libs/core/jest.config.js).
-  maxWorkers: process.env.CI ? 8 : 2,
+  // CI-only raise to 8 that #3271 tried and reverted (measured here at
+  // 93.2 s -> 142.9 s; see the note in apps/api/jest.config.js).
+  maxWorkers: 2,
   testTimeout: 10000,
   moduleNameMapper: {
     '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../libs/core/src/$1'),
