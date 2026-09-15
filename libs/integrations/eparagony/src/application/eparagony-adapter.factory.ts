@@ -2,13 +2,29 @@
  * eparagony.pl Adapter Factory
  *
  * Resolves a connection's credentials from the host secrets store, resolves its
- * two hosts, and constructs an `EparagonyFiscalizationAdapter` bound to that one
- * connection.
+ * two hosts, and constructs the connection's capability adapters - the receipt
+ * lane (`EparagonyFiscalizationAdapter`) and the invoice lane
+ * (`EparagonyInvoicingAdapter`) - bound to that one connection.
+ *
+ * ONE `EparagonyHttpClient` SERVES BOTH, and that is the reason this is a
+ * single method returning a bag rather than one method per capability (#3192).
+ * The client owns the OAuth token cache and the single-in-flight-token collapse;
+ * the vendor rate-limits `/auth/token` per IP. Two clients per connection would
+ * mean two cold token caches racing the same endpoint, for no gain - the scope
+ * set (`document_create printer_get ecommerce`) already covers both lanes, so
+ * one token authorises everything either adapter does.
  *
  * Deliberately fails LOUD and EARLY on a connection that cannot work at all -
  * missing credentials, missing `posId`. A registration that reached the adapter
  * and then failed on a missing `posId` would cost a persisted in-doubt record
  * and an operator investigation; failing at construction costs a clear error.
+ *
+ * `merchantTIN` is NOT one of those checks, and that asymmetry is deliberate.
+ * It is mandatory on an invoice and meaningless on a receipt, and every
+ * connection that exists today is receipts-only, so refusing construction
+ * without it would stop those connections registering a single sale. The
+ * invoice mapper refuses pre-call instead, naming the remedy, which keeps the
+ * failure on the lane that needs the value.
  *
  * @module libs/integrations/eparagony/src/application
  * @implements {IEparagonyAdapterFactory}
@@ -23,16 +39,20 @@ import { readEparagonyConnectionConfig } from '../domain/policies/connection-con
 import { resolveEparagonyHosts } from '../domain/policies/eparagony-hosts.policy';
 import type { EparagonyCredentials } from '../domain/types/eparagony-credentials.types';
 import { EparagonyFiscalizationAdapter } from '../infrastructure/adapters/eparagony-fiscalization.adapter';
+import { EparagonyInvoicingAdapter } from '../infrastructure/adapters/eparagony-invoicing.adapter';
 import { EparagonyHttpClient } from '../infrastructure/http/eparagony-http-client';
-import type { IEparagonyAdapterFactory } from './interfaces/eparagony-adapter.factory.interface';
+import type {
+  EparagonyAdapters,
+  IEparagonyAdapterFactory,
+} from './interfaces/eparagony-adapter.factory.interface';
 
 export class EparagonyAdapterFactory implements IEparagonyAdapterFactory {
-  async createFiscalizationAdapter(
+  async createAdapters(
     connection: Connection,
     credentialsResolver: CredentialsResolverPort,
     logger: LoggerPort,
     fetchImpl: FetchLike,
-  ): Promise<EparagonyFiscalizationAdapter> {
+  ): Promise<EparagonyAdapters> {
     if (!connection.credentialsRef) {
       throw new EparagonyConfigException(
         `eparagony.pl connection ${connection.id} has no credentialsRef`,
@@ -77,6 +97,9 @@ export class EparagonyAdapterFactory implements IEparagonyAdapterFactory {
       fetchImpl,
     );
 
-    return new EparagonyFiscalizationAdapter(connection.id, httpClient, logger, config);
+    return {
+      fiscalization: new EparagonyFiscalizationAdapter(connection.id, httpClient, logger, config),
+      invoicing: new EparagonyInvoicingAdapter(connection.id, httpClient, logger, config),
+    };
   }
 }

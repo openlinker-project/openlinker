@@ -29,6 +29,21 @@ import {
   EparagonyTaxRateCodeValues,
 } from '../../domain/types/eparagony-config.types';
 
+/**
+ * Seller-address parts the vendor requires on every `EntityAddress`. `apartment`
+ * is the one optional part and is checked separately, so it is absent here.
+ */
+const REQUIRED_MERCHANT_ADDRESS_PARTS = [
+  'street',
+  'number',
+  'postalCode',
+  'city',
+  'country',
+] as const;
+
+/** ISO 3166-1 alpha-2, which is what `EparagonySellerAddress.country` declares. */
+const ISO_ALPHA2_PATTERN = /^[A-Za-z]{2}$/;
+
 export class EparagonyConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
 {
@@ -103,6 +118,44 @@ export class EparagonyConnectionConfigShapeValidatorAdapter
       issues.push({ path: 'fiscalDeviceUniqueNumber', message: 'must be a non-empty string' });
     }
 
+    // The invoice lane's four keys (#3192). ALL FOUR ARE OPTIONAL and must stay
+    // so: every connection that exists today is receipts-only and carries none
+    // of them, and `ConnectionService` re-validates the whole config on every
+    // save - so promoting one to required would refuse an existing connection's
+    // own stored config the next time an operator touched an unrelated field.
+    // What the invoice lane actually needs is enforced where it is needed, by
+    // `composeInvoiceDocument` refusing pre-call.
+    //
+    // Non-empty rather than merely string-typed, for `merchantTIN` and
+    // `merchantName` alike: the mapper reads both through `readNonEmpty`, so a
+    // blank one is silently treated as absent. Refusing it here turns
+    // configured-but-ignored into a form error the operator can see.
+    if (
+      config.merchantTIN !== undefined &&
+      config.merchantTIN !== null &&
+      (typeof config.merchantTIN !== 'string' || config.merchantTIN.trim().length === 0)
+    ) {
+      issues.push({ path: 'merchantTIN', message: 'must be a non-empty string' });
+    }
+
+    if (
+      config.merchantName !== undefined &&
+      config.merchantName !== null &&
+      (typeof config.merchantName !== 'string' || config.merchantName.trim().length === 0)
+    ) {
+      issues.push({ path: 'merchantName', message: 'must be a non-empty string' });
+    }
+
+    this.validateMerchantAddress(config.merchantAddress, issues);
+
+    if (
+      config.eInvoicingHubEnabled !== undefined &&
+      config.eInvoicingHubEnabled !== null &&
+      typeof config.eInvoicingHubEnabled !== 'boolean'
+    ) {
+      issues.push({ path: 'eInvoicingHubEnabled', message: 'must be a boolean' });
+    }
+
     this.validateUrl(config.apiBaseUrl, 'apiBaseUrl', issues);
     this.validateUrl(config.authBaseUrl, 'authBaseUrl', issues);
 
@@ -135,6 +188,57 @@ export class EparagonyConnectionConfigShapeValidatorAdapter
       if (typeof value !== 'string' || value.trim().length === 0) {
         issues.push({ path: `taxRates.${key}`, message: 'must be a non-empty string' });
       }
+    }
+  }
+
+  /**
+   * The seller's own address, in the vendor's five-part shape.
+   *
+   * Every part is validated here because NOTHING downstream does:
+   * `toSellerEntityAddress` copies the operator's object across field by field
+   * with no interpretation, which is deliberate (OpenLinker must not guess where
+   * a building number ends) and leaves this the only gate. That is the asymmetry
+   * with the BUYER's address, which core hands over already typed - its country
+   * arrives as `countryIso2`, while this one is free text an operator typed.
+   *
+   * Partial is refused rather than tolerated: an address missing its postcode is
+   * not a partial address the vendor completes, it is a rejected document, and
+   * `toIssuedDocumentSeller` reports a seller block only when name, tax number
+   * and address are all present anyway.
+   *
+   * The country check is a SHAPE check, not a canonicalisation - this port
+   * returns `Promise<void>` and cannot write a normalised value back, so it
+   * accepts either case and leaves the vendor the authority on that. It still
+   * catches the mistake worth catching, a country spelled out in full.
+   */
+  private validateMerchantAddress(raw: unknown, issues: FlatValidationIssue[]): void {
+    if (raw === undefined || raw === null) return;
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      issues.push({ path: 'merchantAddress', message: 'must be an object' });
+      return;
+    }
+    const address = raw as Record<string, unknown>;
+
+    for (const part of REQUIRED_MERCHANT_ADDRESS_PARTS) {
+      const value = address[part];
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        issues.push({ path: `merchantAddress.${part}`, message: 'must be a non-empty string' });
+      }
+    }
+
+    if (typeof address.country === 'string' && !ISO_ALPHA2_PATTERN.test(address.country.trim())) {
+      issues.push({
+        path: 'merchantAddress.country',
+        message: 'must be a two-letter ISO 3166-1 alpha-2 country code',
+      });
+    }
+
+    if (
+      address.apartment !== undefined &&
+      address.apartment !== null &&
+      (typeof address.apartment !== 'string' || address.apartment.trim().length === 0)
+    ) {
+      issues.push({ path: 'merchantAddress.apartment', message: 'must be a non-empty string' });
     }
   }
 
