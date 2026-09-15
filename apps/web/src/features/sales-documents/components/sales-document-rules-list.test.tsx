@@ -19,6 +19,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  createAuthenticatedSessionAdapter,
   createMockApiClient,
   renderWithProviders,
   sampleConnection,
@@ -174,6 +175,10 @@ describe('SalesDocumentRulesList', () => {
       const user = userEvent.setup();
       renderWithProviders(<SalesDocumentRulesList country="PL" />, {
         apiClient: apiWithCollision(),
+        // `+ Add rule` is `disabled={!write.canWrite}` and the default session
+        // adapter is ANONYMOUS - the button renders but the click is a no-op,
+        // so the composer never opens and every assertion below times out.
+        sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
       await user.click(await screen.findByRole('button', { name: '+ Add rule' }));
@@ -193,6 +198,10 @@ describe('SalesDocumentRulesList', () => {
       const user = userEvent.setup();
       renderWithProviders(<SalesDocumentRulesList country="PL" />, {
         apiClient: apiWithCollision(),
+        // `+ Add rule` is `disabled={!write.canWrite}` and the default session
+        // adapter is ANONYMOUS - the button renders but the click is a no-op,
+        // so the composer never opens and every assertion below times out.
+        sessionAdapter: createAuthenticatedSessionAdapter(),
       });
 
       await user.click(await screen.findByRole('button', { name: '+ Add rule' }));
