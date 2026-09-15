@@ -3,8 +3,8 @@
  *
  * Covers the descriptor seam: the static manifest shape, the static === runtime
  * manifest identity (no-drift invariant, #575), the side-registrations, the
- * capability dispatch, and the connection-bound outbound transport (#1810) the
- * descriptor must thread into every adapter it constructs.
+ * capability dispatch for BOTH lanes (#3192), and the connection-bound outbound
+ * transport (#1810) the descriptor must thread into every adapter it constructs.
  *
  * @module libs/integrations/eparagony/src/__tests__
  */
@@ -14,6 +14,7 @@ import {
   createEparagonyPlugin,
   eparagonyAdapterManifest,
   EparagonyFiscalizationAdapter,
+  EparagonyInvoicingAdapter,
 } from '../index';
 
 const connection: Connection = {
@@ -31,6 +32,16 @@ const connection: Connection = {
 
 interface Registry {
   register: jest.Mock;
+}
+
+/**
+ * Both adapters keep the connection they were built for on a private field.
+ * Reading it is how the hoisted-factory test proves the factory holds no
+ * per-connection state - the alternative, asserting two calls returned two
+ * different objects, is true of any implementation including a broken one.
+ */
+function connectionIdOf(adapter: unknown): unknown {
+  return (adapter as { connectionId: unknown }).connectionId;
 }
 
 function makeHost(): {
@@ -61,12 +72,14 @@ function makeHost(): {
 
 describe('createEparagonyPlugin', () => {
   describe('manifest', () => {
-    it('should declare the fiscalization capability under its own adapter key', () => {
+    it('should declare both lanes and their sub-capabilities under its own adapter key', () => {
       expect(eparagonyAdapterManifest.adapterKey).toBe('eparagony.documents.v3');
       expect(eparagonyAdapterManifest.platformType).toBe('eparagony');
       expect(eparagonyAdapterManifest.supportedCapabilities).toEqual([
         'Fiscalization',
         'FiscalRegistrationLocator',
+        'Invoicing',
+        'RegulatoryStatusReader',
       ]);
     });
 
@@ -85,6 +98,15 @@ describe('createEparagonyPlugin', () => {
       ).rejects.toThrow();
     });
 
+    it('should advertise the clearance reader without dispatching it by name', async () => {
+      // Same rule on the invoice lane: `isRegulatoryStatusReader` narrows the
+      // dispatched Invoicing adapter, and the registry refuses the name.
+      const { host } = makeHost();
+      await expect(
+        createEparagonyPlugin().createCapabilityAdapter(connection, 'RegulatoryStatusReader', host),
+      ).rejects.toThrow();
+    });
+
     it('should return the same manifest reference at runtime so static and runtime cannot drift', () => {
       expect(createEparagonyPlugin().manifest).toBe(eparagonyAdapterManifest);
     });
@@ -93,6 +115,19 @@ describe('createEparagonyPlugin', () => {
       // The printer sits below the vendor's own boundary; `print`/`fiscalize`
       // are booleans on the document, not device operations (#1910 not planned).
       expect(eparagonyAdapterManifest.supportedCapabilities).not.toContain('FiscalDeviceOperator');
+    });
+
+    it('should not declare corrections, which this adapter cannot compose yet', () => {
+      // The vendor models a correction as its own `eCorrectiveInvoice` document
+      // kind (#3193). Advertising the name would promise a document the invoice
+      // adapter refuses pre-call.
+      expect(eparagonyAdapterManifest.supportedCapabilities).not.toContain('CorrectionIssuer');
+    });
+
+    it('should not declare regulatory transmission, which this vendor performs on the seller behalf', () => {
+      // The vendor RELAYS to the hub; OpenLinker holds no authority session, so
+      // the adapter reads clearance and never submits.
+      expect(eparagonyAdapterManifest.supportedCapabilities).not.toContain('RegulatoryTransmitter');
     });
   });
 
@@ -133,11 +168,50 @@ describe('createEparagonyPlugin', () => {
       expect(http.forConnection).toHaveBeenCalledWith(connection);
     });
 
+    it('should build the invoicing adapter over the connection-bound transport', async () => {
+      const { host, http } = makeHost();
+      const adapter = await createEparagonyPlugin().createCapabilityAdapter(
+        connection,
+        'Invoicing',
+        host,
+      );
+
+      expect(adapter).toBeInstanceOf(EparagonyInvoicingAdapter);
+      expect(http.forConnection).toHaveBeenCalledWith(connection);
+    });
+
+    it('should take one transport and resolve credentials once per capability resolution', async () => {
+      // Both adapters are built together over one client, so resolving a
+      // capability must not cost two transports or two credential reads.
+      const { host, http } = makeHost();
+      await createEparagonyPlugin().createCapabilityAdapter(connection, 'Invoicing', host);
+
+      expect(http.forConnection).toHaveBeenCalledTimes(1);
+      expect(host.credentialsResolver.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('should serve several connections from one plugin instance', async () => {
+      // The factory is hoisted to the plugin's lifetime, so it must hold no
+      // per-connection state: the connection is an argument, never a field.
+      const plugin = createEparagonyPlugin();
+      const { host: hostA } = makeHost();
+      const { host: hostB } = makeHost();
+      const other: Connection = { ...connection, id: 'conn-eparagony-2' };
+
+      const first = await plugin.createCapabilityAdapter(connection, 'Fiscalization', hostA);
+      const second = await plugin.createCapabilityAdapter(other, 'Invoicing', hostB);
+
+      expect(first).toBeInstanceOf(EparagonyFiscalizationAdapter);
+      expect(second).toBeInstanceOf(EparagonyInvoicingAdapter);
+      expect(connectionIdOf(first)).toBe('conn-eparagony-1');
+      expect(connectionIdOf(second)).toBe('conn-eparagony-2');
+    });
+
     it('should refuse a capability this plugin does not implement', async () => {
       const { host } = makeHost();
       await expect(
-        createEparagonyPlugin().createCapabilityAdapter(connection, 'Invoicing', host),
-      ).rejects.toThrow(/Invoicing/);
+        createEparagonyPlugin().createCapabilityAdapter(connection, 'ProductMaster', host),
+      ).rejects.toThrow(/ProductMaster/);
     });
   });
 });

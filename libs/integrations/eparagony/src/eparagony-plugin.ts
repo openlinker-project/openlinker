@@ -2,19 +2,32 @@
  * eparagony.pl Plugin Descriptor
  *
  * Framework-neutral `AdapterPlugin` for the eparagony.pl Documents REST API v3
- * integration. Capability: `'Fiscalization'` (ADR-042) - `EparagonyFiscalizationAdapter`
- * implements `FiscalizationPort` plus the `FiscalRegistrationLocator`
- * sub-capability.
+ * integration. TWO capabilities on ONE connection (#3192): `'Fiscalization'`
+ * (ADR-042) via `EparagonyFiscalizationAdapter`, and `'Invoicing'` (ADR-026) via
+ * `EparagonyInvoicingAdapter`. The vendor issues both a receipt and an invoice
+ * through the same `POST /documents` endpoint, under the same OAuth scopes, so
+ * an operator configures the provider once and enables the lanes they want.
  *
- * `supportedCapabilities` lists `Fiscalization` plus `FiscalRegistrationLocator`,
- * advertised-without-dispatch (ADR-042 decision 5, the same pattern as
- * `CategoryBrowser` / `OfferCreator` / `ShopCategoryBrowser`): the locator is
- * ALWAYS narrowed at the call site with `isFiscalRegistrationLocator`, never
- * resolved by name from the registry - asking `getCapabilityAdapter` for it
- * would pass this manifest gate and then throw inside `dispatchCapability`,
- * since the dispatch table below only has a `Fiscalization` entry. The manifest
- * entry exists purely so host/FE discovery (the connection response) can tell
- * this connection is reconcilable before an operator ever sees an in-doubt row.
+ * `supportedCapabilities` lists those two plus their sub-capabilities,
+ * `FiscalRegistrationLocator` and `RegulatoryStatusReader`, both
+ * advertised-without-dispatch (ADR-042 decision 5 / the KSeF
+ * `OfflineResubmitter` precedent, and the same pattern as `CategoryBrowser` /
+ * `OfferCreator` / `ShopCategoryBrowser`): a sub-capability is ALWAYS narrowed
+ * at the call site with its `is*` guard, never resolved by name from the
+ * registry - asking `getCapabilityAdapter` for one would pass this manifest gate
+ * and then throw inside `dispatchCapability`, since the dispatch table below
+ * carries only the two base capabilities. Those manifest entries exist purely so
+ * host/FE discovery (the connection response) can tell that this connection is
+ * reconcilable before an operator ever sees an in-doubt row, and that its
+ * invoices report a clearance status. Neither is a `CoreCapability`, so neither
+ * renders as an operator-tickable toggle.
+ *
+ * Adding `Invoicing` here does NOT grant it to any existing connection.
+ * `enabledCapabilities` is stamped at create and never retro-filled (#2085), so
+ * every connection that exists today stays receipts-only until an operator ticks
+ * the new capability on the connection page. That is the intended path, not an
+ * oversight: the invoice lane needs seller configuration (`merchantTIN` at
+ * minimum) that no existing connection carries.
  *
  * NOT declared, and each for a stated reason:
  *   - `FiscalDeviceOperator` (#1910, closed `not_planned`) - the fiscal printer
@@ -22,9 +35,15 @@
  *     service. The vendor exposes `print` and `fiscalize` as booleans inside the
  *     document payload, not as device operations, so there is no device surface
  *     to implement here.
- *   - Any invoicing capability - this vendor also relays invoices to KSeF, but
- *     that regime is `InvoicingPort`'s (ADR-042 decision 1) and is out of scope
- *     for #1908.
+ *   - `CorrectionIssuer` - the vendor models a correction as its own
+ *     `eCorrectiveInvoice` document kind with its own before/after metadata
+ *     pair, which `EparagonyInvoicingAdapter` does not compose (#3193). It
+ *     refuses a correction command pre-call instead, so advertising the name
+ *     would promise a document this plugin cannot produce.
+ *   - `RegulatoryTransmitter` - this vendor RELAYS to the national e-invoicing
+ *     hub on the seller's behalf rather than OpenLinker holding the authority
+ *     session, which is why the adapter reads clearance (`RegulatoryStatusReader`)
+ *     and never submits. Same split `InfaktInvoicingAdapter` sits on.
  *
  * Side-registrations land in `register(host)`: the config + credentials shape
  * validators, the retry classifier and the auth-failure classifier, so a
@@ -53,20 +72,43 @@ import { EparagonyRetryClassifierAdapter } from './infrastructure/adapters/epara
 export const eparagonyAdapterManifest: AdapterMetadata = {
   adapterKey: EPARAGONY_ADAPTER_KEY,
   platformType: EPARAGONY_PROVIDER_TYPE,
-  supportedCapabilities: ['Fiscalization', 'FiscalRegistrationLocator'],
+  supportedCapabilities: [
+    'Fiscalization',
+    'FiscalRegistrationLocator',
+    'Invoicing',
+    'RegulatoryStatusReader',
+  ],
   displayName: 'eparagony.pl Documents API v3',
   version: '1.0.0',
   isDefault: true,
   // No `defaultRateLimit`. A manifest default exists for merchant-hosted
   // platforms whose remote is the operator's own box; this is multi-tenant SaaS
   // publishing no request ceiling for the documents API. It matters more than
-  // usual here that we do NOT invent one: `registerTransaction` blocks on a
-  // status poll, and a cap that starves those reads turns a sale the device DID
-  // register into an in-doubt record parked for manual review. Absent means
-  // unlimited until the operator sets `config.rateLimit`.
+  // usual here that we do NOT invent one: both `registerTransaction` and
+  // `issueInvoice` block on a status poll, and a cap that starves those reads
+  // turns a document the vendor DID create into an in-doubt record parked for
+  // manual review. Absent means unlimited until the operator sets
+  // `config.rateLimit`.
 };
 
 export function createEparagonyPlugin(): AdapterPlugin {
+  // One factory for the lifetime of the plugin rather than one per capability
+  // resolution (the #2592 hoist, mirroring `createPrestashopPlugin`). Safe
+  // because the factory holds no per-connection state: it takes no constructor
+  // arguments and the connection is a parameter of `createAdapters`.
+  //
+  // Be precise about what this does and does not buy here. It does NOT make the
+  // OAuth token cache outlive a capability resolution - that cache lives on the
+  // `EparagonyHttpClient`, which `createAdapters` still builds per call, so two
+  // resolutions for one connection still fetch two tokens. What it buys is the
+  // seam: the factory is now the only place a per-connection client could be
+  // cached, and caching one is a separate decision that owes an invalidation
+  // story (rotated credentials, a changed host override) of the kind
+  // `PrestashopAdapterFactory.dropCachesOnShopIdentityChange` carries. The
+  // doubling this slice had to avoid is the one WITHIN a resolution: both
+  // adapters ride the single client `createAdapters` builds.
+  const factory = new EparagonyAdapterFactory();
+
   return {
     manifest: eparagonyAdapterManifest,
 
@@ -107,8 +149,7 @@ export function createEparagonyPlugin(): AdapterPlugin {
       host: HostServices,
     ): Promise<T> {
       const logger = host.logger(`Eparagony:${connection.id}`);
-      const factory = new EparagonyAdapterFactory();
-      const fiscalizationAdapter = await factory.createFiscalizationAdapter(
+      const adapters = await factory.createAdapters(
         connection,
         host.credentialsResolver,
         logger,
@@ -118,7 +159,10 @@ export function createEparagonyPlugin(): AdapterPlugin {
       );
       return dispatchCapability<T>(
         capability,
-        { Fiscalization: () => fiscalizationAdapter },
+        {
+          Fiscalization: () => adapters.fiscalization,
+          Invoicing: () => adapters.invoicing,
+        },
         EPARAGONY_BRAND,
       );
     },

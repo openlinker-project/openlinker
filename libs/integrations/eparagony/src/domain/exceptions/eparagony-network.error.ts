@@ -20,11 +20,11 @@ export class EparagonyNetworkError extends Error {
    * core will render it.
    */
   readonly reason =
-    'The e-receipt provider could not be reached or did not answer in time; the sale may or may not have been registered.';
+    'The provider could not be reached or did not answer in time; the sale may or may not have been registered.';
 
   constructor(
     message: string,
-    readonly cause?: unknown,
+    readonly cause?: unknown
   ) {
     super(message);
     this.name = 'EparagonyNetworkError';

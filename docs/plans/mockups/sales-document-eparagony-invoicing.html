@@ -895,7 +895,7 @@ body.show-hooks .app [data-testid]::after {
         <tr><td>E3-2</td><td><b>Widen the routing model to a multi-kind candidate</b> — config key, coercer, <code>SalesDocumentRoutingCandidate</code>, <code>resolveSalesDocumentRouting</code>, <code>AutoIssueTriggerService</code>, settings view. <i>Gates "Both" only.</i></td><td>—</td></tr>
         <tr><td>E3-3</td><td><code>EparagonyInvoicingAdapter</code> implementing <code>InvoicingPort</code> over <code>eInvoice</code></td><td>—</td></tr>
         <tr><td>E3-4</td><td><code>upsertCustomer</code> — <b>identity echo</b>, following the KSeF adapter's precedent: a deterministic id derived from the buyer's tax id, no network call. Not a no-op, not a throw</td><td>E3-3</td></tr>
-        <tr><td>E3-5</td><td><code>RegulatoryStatusReader</code>: map <code>OFFLINE → pending-submission</code>, <code>CONFIRMED+KSEF → cleared</code>, <code>CONFIRMED+NONE → not-applicable</code></td><td>E3-3</td></tr>
+        <tr><td>E3-5</td><td><code>RegulatoryStatusReader</code>: map <code>OFFLINE → pending-submission</code>, <code>CONFIRMED+KSEF → accepted</code>, <code>CONFIRMED+NONE → not-applicable</code></td><td>E3-3</td></tr>
         <tr><td>E3-6</td><td><code>CorrectionIssuer</code> over <code>eCorrectiveInvoice</code></td><td>E3-3</td></tr>
         <tr><td>E3-7</td><td>Manifest advertises <code>Invoicing</code>. Required, not cosmetic — the connection service validates the name against the adapter's list</td><td>E3-3</td></tr>
         <tr><td>E3-8</td><td>FE: capabilities block renders two roles</td><td>E3-7</td></tr>
