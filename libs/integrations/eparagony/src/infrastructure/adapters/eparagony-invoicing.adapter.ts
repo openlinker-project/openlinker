@@ -14,7 +14,7 @@
  * progress) and NOT `RegulatoryTransmitter` (which is for a provider OpenLinker
  * submits to directly) - the same split `InfaktInvoicingAdapter` sits on.
  *
- * THREE BEHAVIOURS DESERVE THE READER'S ATTENTION.
+ * FOUR BEHAVIOURS DESERVE THE READER'S ATTENTION.
  *
  * 1. **`issueInvoice` blocks on a bounded status poll**, exactly as
  *    `registerTransaction` does. The create answers `202 Accepted` before the
@@ -32,8 +32,17 @@
  *
  * 3. **Every composition failure happens BEFORE the boundary.** An unresolvable
  *    tax rate, a currency that would need an exchange rate, a connection with no
- *    seller tax number: all `EparagonyConfigException`, `failureMode: 'rejected'`,
- *    nothing sent and therefore nothing issued.
+ *    seller tax number, a document kind this adapter does not issue: all
+ *    `EparagonyConfigException`, `failureMode: 'rejected'`, nothing sent and
+ *    therefore nothing issued.
+ *
+ * 4. **The document's own per-line figures come back with it.** The neutral
+ *    `IssueInvoiceResult.documentLines` carries the net, tax and gross this
+ *    adapter put on each line, keyed by the line's position in the command.
+ *    Omitting it would leave core falling back to a per-line
+ *    `round(gross / (1 + r))`, which is exactly the arithmetic the mapper
+ *    rejects - so OpenLinker's own contents card would disagree by a grosz with
+ *    the document it describes on any order that needed a residual absorbed.
  *
  * The adapter is a PURE MECHANISM: it never deduplicates and holds no state.
  * Idempotency, persistence and the exactly-once guarantee belong to core.
@@ -54,6 +63,7 @@ import type {
   InvoicingPort,
   IssueInvoiceCommand,
   IssueInvoiceResult,
+  IssuedDocumentLineAmounts,
   RegulatoryClearanceResult,
   RegulatoryStatusReader,
   UpsertCustomerCommand,
@@ -63,6 +73,7 @@ import { InvoiceRecord } from '@openlinker/core/invoicing';
 
 import { EPARAGONY_ISSUE_DEADLINE_MS, EPARAGONY_PROVIDER_TYPE } from '../../eparagony.constants';
 import { EparagonyApiError } from '../../domain/exceptions/eparagony-api.error';
+import { EparagonyConfigException } from '../../domain/exceptions/eparagony-config.exception';
 import { EparagonyNetworkError } from '../../domain/exceptions/eparagony-network.error';
 import {
   deriveDocumentToken,
@@ -74,16 +85,17 @@ import {
   EPARAGONY_STATUS_CONFIRMED,
   EPARAGONY_STATUS_ERROR,
   EPARAGONY_STATUS_OFFLINE,
+  type EparagonyCreateInvoiceRequest,
   type EparagonyDocumentStatusResponse,
 } from '../../domain/types/eparagony-api.types';
 import type { EparagonyConnectionConfig } from '../../domain/types/eparagony-config.types';
 import type { IEparagonyHttpClient } from '../http/eparagony-http-client.interface';
 import { readDocumentStatus } from './eparagony-document.mapper';
 import {
+  composeInvoiceDocument,
   readDocumentUrl,
   readInvoiceNumber,
   resolveBuyerHandleSchemeTag,
-  toCreateInvoiceRequest,
   toIssuedDocumentSeller,
   toRegulatoryClearanceResult,
 } from './eparagony-invoice.mapper';
@@ -116,7 +128,7 @@ if (MAX_STATUS_POLL_TIMEOUT_MS >= EPARAGONY_ISSUE_DEADLINE_MS) {
   throw new Error(
     `eparagony.pl fiscal-safety invariant violated: MAX_STATUS_POLL_TIMEOUT_MS ` +
       `(${MAX_STATUS_POLL_TIMEOUT_MS}ms) must stay below EPARAGONY_ISSUE_DEADLINE_MS ` +
-      `(${EPARAGONY_ISSUE_DEADLINE_MS}ms).`,
+      `(${EPARAGONY_ISSUE_DEADLINE_MS}ms).`
   );
 }
 
@@ -136,17 +148,19 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
     private readonly connectionId: string,
     private readonly http: IEparagonyHttpClient,
     private readonly logger: LoggerPort,
-    private readonly config: EparagonyConnectionConfig,
+    private readonly config: EparagonyConnectionConfig
   ) {}
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
+    this.assertIssuableDocument(cmd);
+
     const registrationKey = this.resolveRegistrationKey(cmd);
     const documentToken = deriveDocumentToken(this.connectionId, registrationKey);
     const transactionToken = deriveTransactionToken(this.connectionId, registrationKey);
 
     // Composition failures throw `EparagonyConfigException`
     // (`failureMode: 'rejected'`) BEFORE anything crosses the boundary.
-    const body = toCreateInvoiceRequest({
+    const { request, documentLines } = composeInvoiceDocument({
       command: cmd,
       config: this.config,
       documentToken,
@@ -155,10 +169,57 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
 
     const deadline = Date.now() + EPARAGONY_ISSUE_DEADLINE_MS;
 
-    await this.createDocument(body, documentToken, cmd.orderId);
+    await this.createDocument(request, documentToken, cmd.orderId);
     const status = await this.pollToSettledIssuance(documentToken, deadline, cmd.orderId);
 
-    return this.toIssueResult(cmd, status, documentToken);
+    return this.toIssueResult(cmd, status, documentToken, documentLines);
+  }
+
+  /**
+   * Refuse a document this adapter does not issue, before anything is composed.
+   *
+   * `getSupportedDocumentTypes()` declares `['invoice']` and NOTHING ENFORCES IT
+   * on this path: `InvoiceService.issueInvoice` does not gate on the declaration
+   * (only `AutoIssueTriggerService` performs an adapter-level check), so
+   * `POST /invoices` reaches here unguarded. Left alone, a caller asking for
+   * another kind would get a plain VAT invoice at the vendor while the persisted
+   * record was stamped with the type it asked for - two documents disagreeing
+   * about what was issued, one of them transmitted to a tax authority.
+   *
+   * A correction is the concrete case and the reason this exists: the vendor
+   * models one as its own `eCorrectiveInvoice` document with its own
+   * before/after metadata pair, which this adapter does not compose (#3193), and
+   * `cmd.correction` is read nowhere else here - so without this guard the
+   * linkage would be silently dropped. Refusing makes the #3193 boundary
+   * explicit rather than implicit.
+   *
+   * `EparagonyConfigException` for both, so `failureMode` is `'rejected'` with
+   * nothing sent - which is exactly true here, and makes re-attempting safe once
+   * the caller asks for a document this adapter issues.
+   */
+  private assertIssuableDocument(cmd: IssueInvoiceCommand): void {
+    if (cmd.correction !== undefined) {
+      throw new EparagonyConfigException(
+        `eparagony.pl cannot issue a correction for order ${cmd.orderId}: a correction is the ` +
+          `vendor's own eCorrectiveInvoice document, which this adapter does not compose`,
+        'This connection cannot issue correction documents yet, only original invoices.',
+        this.connectionId
+      );
+    }
+
+    const documentType = cmd.documentType;
+    // Widened to `string[]` because the command's `documentType` is open-world
+    // while `DocumentType` is a closed union - the comparison is the point, and
+    // narrowing the caller's value first would be the check writing its own answer.
+    const supported: readonly string[] = SUPPORTED_DOCUMENT_TYPES;
+    if (documentType !== undefined && !supported.includes(documentType)) {
+      throw new EparagonyConfigException(
+        `eparagony.pl cannot issue document type "${documentType}" for order ${cmd.orderId}: ` +
+          `this adapter issues ${supported.join(', ')} only`,
+        'This connection cannot issue the requested document type; it issues invoices only.',
+        this.connectionId
+      );
+    }
   }
 
   /**
@@ -215,7 +276,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
     if (documentToken === null || documentToken.trim().length === 0) {
       this.logger.warn(
         `eparagony.pl cannot read clearance for invoice record ${record.id}: it carries no ` +
-          `document token [connectionId=${this.connectionId}]`,
+          `document token [connectionId=${this.connectionId}]`
       );
       return {
         regulatoryStatus: record.regulatoryStatus,
@@ -230,7 +291,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
       // as the no-id branch: report no change rather than terminalising.
       this.logger.warn(
         `eparagony.pl holds no document ${documentToken} for invoice record ${record.id} ` +
-          `[connectionId=${this.connectionId}]`,
+          `[connectionId=${this.connectionId}]`
       );
       return {
         regulatoryStatus: record.regulatoryStatus,
@@ -246,9 +307,9 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
   // -------------------------------------------------------------------------
 
   private async createDocument(
-    body: ReturnType<typeof toCreateInvoiceRequest>,
+    body: EparagonyCreateInvoiceRequest,
     documentToken: string,
-    orderId: string,
+    orderId: string
   ): Promise<void> {
     try {
       await this.http.post<unknown>(DOCUMENTS_PATH, body, {
@@ -265,7 +326,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
       });
       this.logger.log(
         `eparagony.pl accepted the invoice for order ${orderId} as ${documentToken} ` +
-          `[connectionId=${this.connectionId}]`,
+          `[connectionId=${this.connectionId}]`
       );
     } catch (error) {
       if (
@@ -277,7 +338,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
         // error: the status read below resolves what actually happened.
         this.logger.warn(
           `eparagony.pl already holds document ${documentToken} for order ${orderId}; ` +
-            `reading its status instead of re-creating [connectionId=${this.connectionId}]`,
+            `reading its status instead of re-creating [connectionId=${this.connectionId}]`
         );
         return;
       }
@@ -301,7 +362,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
   private async pollToSettledIssuance(
     documentToken: string,
     deadline: number,
-    orderId: string,
+    orderId: string
   ): Promise<EparagonyDocumentStatusResponse> {
     let delay = STATUS_POLL_INITIAL_DELAY_MS;
     const pollUntil = Math.min(deadline, Date.now() + this.resolvePollTimeoutMs());
@@ -328,7 +389,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
         // is always `in-doubt`, which is exactly right: a document may exist.
         throw new EparagonyNetworkError(
           `eparagony.pl did not settle invoice document ${documentToken} for order ${orderId} ` +
-            `within the poll budget (last status "${lastStatus ?? 'unknown'}")`,
+            `within the poll budget (last status "${lastStatus ?? 'unknown'}")`
         );
       }
       await sleep(Math.min(delay, remaining));
@@ -350,7 +411,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
   private toTerminalRejection(
     body: EparagonyDocumentStatusResponse,
     documentToken: string,
-    orderId: string,
+    orderId: string
   ): EparagonyApiError {
     const errorCode = typeof body.errorCode === 'number' ? body.errorCode : null;
     // The vendor's `errorDescription` can echo a submitted line name, so it is
@@ -360,7 +421,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
     this.logger.warn(
       `eparagony.pl reported a terminal invoicing error for document ${documentToken} ` +
         `(order ${orderId}, code ${errorCode ?? 'none'}): ${description} ` +
-        `[connectionId=${this.connectionId}]`,
+        `[connectionId=${this.connectionId}]`
     );
     return new EparagonyApiError(
       `eparagony.pl reported a terminal invoicing error for document ${documentToken} ` +
@@ -373,7 +434,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
         failureMode: 'rejected',
         reason:
           'The invoicing provider reported an error and did not issue the invoice. Fix the reported problem, then issue again under a new key.',
-      },
+      }
     );
   }
 
@@ -386,16 +447,16 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
    */
   private async readStatus(
     documentToken: string,
-    options: { treatUnknownDocumentAsMissing: boolean },
+    options: { treatUnknownDocumentAsMissing: boolean }
   ): Promise<EparagonyDocumentStatusResponse | null> {
     try {
       const { data } = await this.http.get<EparagonyDocumentStatusResponse>(
-        `${DOCUMENTS_PATH}/${encodeURIComponent(documentToken)}/status`,
+        `${DOCUMENTS_PATH}/${encodeURIComponent(documentToken)}/status`
       );
       // A body that is not an object at all is a contract break, not a status.
       if (data === null || typeof data !== 'object' || Array.isArray(data)) {
         throw new EparagonyNetworkError(
-          `eparagony.pl returned a non-object status body for document ${documentToken}`,
+          `eparagony.pl returned a non-object status body for document ${documentToken}`
         );
       }
       return data;
@@ -420,6 +481,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
     cmd: IssueInvoiceCommand,
     status: EparagonyDocumentStatusResponse,
     documentToken: string,
+    documentLines: IssuedDocumentLineAmounts[]
   ): IssueInvoiceResult {
     const clearance = toRegulatoryClearanceResult(status);
     const now = new Date();
@@ -450,11 +512,14 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
       cmd.issuedAt ?? now,
       null,
       now,
-      now,
+      now
     );
 
     const seller = toIssuedDocumentSeller(this.config);
-    return seller === null ? { record } : { record, seller };
+    // `documentLines` is ALWAYS reported: this adapter composes the figures
+    // itself, so there is never a line it cannot state. `seller` stays optional
+    // because it genuinely depends on what the connection configures.
+    return seller === null ? { record, documentLines } : { record, seller, documentLines };
   }
 
   /**

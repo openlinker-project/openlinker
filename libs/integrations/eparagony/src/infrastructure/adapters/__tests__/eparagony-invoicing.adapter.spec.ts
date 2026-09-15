@@ -60,7 +60,7 @@ function makeCommand(overrides: Partial<IssueInvoiceCommand> = {}): IssueInvoice
         postalCode: '20-601',
         countryIso2: 'PL',
       },
-      'company',
+      'company'
     ),
     currency: 'PLN',
     lines: [{ name: 'T-shirt', quantity: 2, unitPriceGross: 49.2, taxRate: '23' }],
@@ -123,7 +123,7 @@ interface FakeClient extends IEparagonyHttpClient {
 
 function makeClient(
   statuses: Array<EparagonyDocumentStatusResponse | Error>,
-  postBehaviour?: Error,
+  postBehaviour?: Error
 ): FakeClient {
   const queue = [...statuses];
   return {
@@ -132,7 +132,7 @@ function makeClient(
       .mockImplementation(() =>
         postBehaviour === undefined
           ? Promise.resolve({ status: 202, data: {} } as EparagonyHttpResponse<unknown>)
-          : Promise.reject(postBehaviour),
+          : Promise.reject(postBehaviour)
       ),
     get: jest.fn().mockImplementation(() => {
       const next = queue.length > 1 ? queue.shift() : queue[0];
@@ -148,7 +148,7 @@ function makeClient(
 
 function makeAdapter(
   client: IEparagonyHttpClient,
-  config: EparagonyConnectionConfig = makeConfig(),
+  config: EparagonyConnectionConfig = makeConfig()
 ): EparagonyInvoicingAdapter {
   return new EparagonyInvoicingAdapter(CONNECTION_ID, client, logger, config);
 }
@@ -156,7 +156,7 @@ function makeAdapter(
 function makeRecord(
   providerInvoiceId: string | null,
   regulatoryStatus: RegulatoryStatus = 'pending-submission',
-  clearanceReference: string | null = null,
+  clearanceReference: string | null = null
 ): InvoiceRecord {
   const now = new Date('2026-09-15T10:00:00Z');
   return new InvoiceRecord(
@@ -175,7 +175,7 @@ function makeRecord(
     now,
     null,
     now,
-    now,
+    now
   );
 }
 
@@ -199,6 +199,51 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
     expect(record.regulatoryStatus).toBe('pending-submission');
     expect(record.clearanceReference).toBeNull();
     expect(record.errorMessage).toBeNull();
+  });
+
+  it("hands core the document's own per-line figures rather than letting it recompute them", async () => {
+    // `IssueInvoiceResult.documentLines` is what stops
+    // `InvoiceService.buildContent` falling back to a per-line
+    // `round(gross / (1 + r))`. On a residual-absorbing order that fallback
+    // states a net the issued document does not carry.
+    const client = makeClient([OFFLINE]);
+    const { documentLines } = await makeAdapter(client).issueInvoice(makeCommand());
+
+    expect(documentLines).toBeDefined();
+    // 1-based and in command order, which is how `buildContent` pairs them.
+    expect(documentLines?.map((line) => line.lineNumber)).toEqual([1]);
+  });
+
+  it('refuses a correction, because this adapter issues originals only', async () => {
+    // `getSupportedDocumentTypes()` declares `['invoice']`, but core does not
+    // gate on it - `InvoiceService` passes `documentType` straight through and
+    // only logs whether a correction was present. Without this guard the manual
+    // `POST /invoices` path would issue a plain original and persist it under a
+    // correction label. #3193 is where corrections arrive.
+    const client = makeClient([OFFLINE]);
+    await expect(
+      makeAdapter(client).issueInvoice(
+        makeCommand({
+          correction: {
+            originalClearanceReference: 'ref',
+            originalDocumentNumber: 'FV/1',
+            originalIssueDate: '2026-09-01',
+            reason: 'price correction',
+            correctedLines: [],
+          },
+        })
+      )
+    ).rejects.toThrow(EparagonyConfigException);
+    // Refused BEFORE the boundary: nothing was sent.
+    expect(client.post).not.toHaveBeenCalled();
+  });
+
+  it('refuses a document kind it does not issue rather than mislabelling an original', async () => {
+    const client = makeClient([OFFLINE]);
+    await expect(
+      makeAdapter(client).issueInvoice(makeCommand({ documentType: 'credit-note' }))
+    ).rejects.toThrow(EparagonyConfigException);
+    expect(client.post).not.toHaveBeenCalled();
   });
 
   it('sends the derived token pair and uses the token as the vendor idempotency key', async () => {
@@ -230,7 +275,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
     const { record } = await makeAdapter(client).issueInvoice(command);
 
     expect(record.providerInvoiceId).toBe(
-      deriveDocumentToken(CONNECTION_ID, `invoice:${CONNECTION_ID}:ol_order_1`),
+      deriveDocumentToken(CONNECTION_ID, `invoice:${CONNECTION_ID}:ol_order_1`)
     );
     // Nothing to echo on the record - core supplied no key.
     expect(record.idempotencyKey).toBeNull();
@@ -252,7 +297,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
     expect(record.providerInvoiceNumber).toBe('OL-POC/2026/NOHUB/1');
   });
 
-  it("returns as soon as the document exists and never waits for the hub", async () => {
+  it('returns as soon as the document exists and never waits for the hub', async () => {
     // Relay to the authority has no bounded duration; blocking issuance on it
     // would hold core's in-flight lease open for something `getClearanceStatus`
     // exists to reconcile.
@@ -282,7 +327,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
     expect(record.issuedAt?.toISOString()).toBe(issuedAt.toISOString());
   });
 
-  it("reports the seller the connection configures, supplying the scheme tag itself", async () => {
+  it('reports the seller the connection configures, supplying the scheme tag itself', async () => {
     const client = makeClient([OFFLINE]);
     const result = await makeAdapter(
       client,
@@ -295,7 +340,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
           city: 'Warszawa',
           country: 'PL',
         },
-      }),
+      })
     ).issueInvoice(makeCommand());
 
     expect(result.seller).toMatchObject({
@@ -315,7 +360,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice failures', () => {
   it('refuses a composition failure BEFORE anything crosses the boundary', async () => {
     const client = makeClient([OFFLINE]);
     await expect(
-      makeAdapter(client, makeConfig({ merchantTIN: undefined })).issueInvoice(makeCommand()),
+      makeAdapter(client, makeConfig({ merchantTIN: undefined })).issueInvoice(makeCommand())
     ).rejects.toBeInstanceOf(EparagonyConfigException);
     // Nothing was sent, so nothing was issued - which is what makes the
     // `rejected` classification safe to re-attempt after a fix.
@@ -351,7 +396,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice failures', () => {
     try {
       const client = makeClient([PENDING]);
       const promise = makeAdapter(client, makeConfig({ statusPollTimeoutMs: 5_000 })).issueInvoice(
-        makeCommand(),
+        makeCommand()
       );
       const assertion = expect(promise).rejects.toBeInstanceOf(EparagonyNetworkError);
       await jest.advanceTimersByTimeAsync(10_000);
@@ -381,14 +426,14 @@ describe('EparagonyInvoicingAdapter - issueInvoice failures', () => {
 });
 
 describe('EparagonyInvoicingAdapter - getClearanceStatus', () => {
-  it('reads the relay progress off the record\'s own document token', async () => {
+  it("reads the relay progress off the record's own document token", async () => {
     const client = makeClient([CLEARED]);
     const result = await makeAdapter(client).getClearanceStatus(
-      makeRecord(EXPECTED_DOCUMENT_TOKEN),
+      makeRecord(EXPECTED_DOCUMENT_TOKEN)
     );
 
     expect(client.get).toHaveBeenCalledWith(
-      `documents/${encodeURIComponent(EXPECTED_DOCUMENT_TOKEN)}/status`,
+      `documents/${encodeURIComponent(EXPECTED_DOCUMENT_TOKEN)}/status`
     );
     expect(result).toEqual({
       regulatoryStatus: 'accepted',
@@ -399,7 +444,7 @@ describe('EparagonyInvoicingAdapter - getClearanceStatus', () => {
   it('still reports awaiting submission while the document sits at OFFLINE', async () => {
     const client = makeClient([OFFLINE]);
     const result = await makeAdapter(client).getClearanceStatus(
-      makeRecord(EXPECTED_DOCUMENT_TOKEN),
+      makeRecord(EXPECTED_DOCUMENT_TOKEN)
     );
     expect(result).toEqual({ regulatoryStatus: 'pending-submission', clearanceReference: null });
   });
@@ -419,7 +464,7 @@ describe('EparagonyInvoicingAdapter - getClearanceStatus', () => {
     const unknownDocument = new EparagonyApiError('unknown token', 404, { errorCode: 92 });
     const client = makeClient([unknownDocument]);
     const result = await makeAdapter(client).getClearanceStatus(
-      makeRecord(EXPECTED_DOCUMENT_TOKEN, 'accepted', 'ref-1'),
+      makeRecord(EXPECTED_DOCUMENT_TOKEN, 'accepted', 'ref-1')
     );
     expect(result).toEqual({ regulatoryStatus: 'accepted', clearanceReference: 'ref-1' });
   });
@@ -428,7 +473,7 @@ describe('EparagonyInvoicingAdapter - getClearanceStatus', () => {
     const transport = new EparagonyNetworkError('connection reset');
     const client = makeClient([transport]);
     await expect(
-      makeAdapter(client).getClearanceStatus(makeRecord(EXPECTED_DOCUMENT_TOKEN)),
+      makeAdapter(client).getClearanceStatus(makeRecord(EXPECTED_DOCUMENT_TOKEN))
     ).rejects.toBe(transport);
   });
 });
@@ -456,8 +501,14 @@ describe('EparagonyInvoicingAdapter - upsertCustomer', () => {
     return new BuyerProfile(
       'Firma Polska sc.',
       taxId,
-      { line1: 'Pl. Obroncow Lublina 73', line2: null, city: 'Warszawa', postalCode: '20-601', countryIso2: 'PL' },
-      taxId === null ? 'private' : 'company',
+      {
+        line1: 'Pl. Obroncow Lublina 73',
+        line2: null,
+        city: 'Warszawa',
+        postalCode: '20-601',
+        countryIso2: 'PL',
+      },
+      taxId === null ? 'private' : 'company'
     );
   }
 

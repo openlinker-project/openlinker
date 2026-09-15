@@ -341,13 +341,6 @@ export const EPARAGONY_PROCESSING_MODE_KSEF = 'KSEF';
 export const EPARAGONY_PROCESSING_MODE_NONE = 'NONE';
 
 /**
- * `documentType` on an invoice status. The CORRECTIVE value is how a reader
- * tells a correction from an original; nothing in this slice issues one (#3193).
- */
-export const EPARAGONY_DOCUMENT_TYPE_INVOICE = 'INVOICE';
-export const EPARAGONY_DOCUMENT_TYPE_CORRECTIVE_INVOICE = 'CORRECTIVE_INVOICE';
-
-/**
  * The hub-side detail block, read tolerantly.
  *
  * Its contents DIFFER BY STATUS and the difference is the whole signal:

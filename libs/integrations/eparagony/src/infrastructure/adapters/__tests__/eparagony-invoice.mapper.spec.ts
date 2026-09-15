@@ -33,7 +33,7 @@ import {
   readKsefInvoice,
   resolveBuyerHandleSchemeTag,
   splitStreetAndNumber,
-  toCreateInvoiceRequest,
+  composeInvoiceDocument,
   toIssuedDocumentSeller,
   toRegimeCalendarDate,
   toRegulatoryClearanceResult,
@@ -64,7 +64,12 @@ function makeAddress(overrides: Partial<BuyerAddress> = {}): BuyerAddress {
 }
 
 function makeBuyer(taxId: TaxIdentifier | null = null, address = makeAddress()): BuyerProfile {
-  return new BuyerProfile('Firma Polska sc.', taxId, address, taxId === null ? 'private' : 'company');
+  return new BuyerProfile(
+    'Firma Polska sc.',
+    taxId,
+    address,
+    taxId === null ? 'private' : 'company'
+  );
 }
 
 function makeCommand(overrides: Partial<IssueInvoiceCommand> = {}): IssueInvoiceCommand {
@@ -79,11 +84,11 @@ function makeCommand(overrides: Partial<IssueInvoiceCommand> = {}): IssueInvoice
   };
 }
 
-function compose(
+function composeDocument(
   command: IssueInvoiceCommand = makeCommand(),
-  config: EparagonyConnectionConfig = makeConfig(),
-): ReturnType<typeof toCreateInvoiceRequest> {
-  return toCreateInvoiceRequest({
+  config: EparagonyConnectionConfig = makeConfig()
+): ReturnType<typeof composeInvoiceDocument> {
+  return composeInvoiceDocument({
     command,
     config,
     documentToken: DOCUMENT_TOKEN,
@@ -91,12 +96,20 @@ function compose(
   });
 }
 
+/** The wire body alone, for the many assertions that do not care about the report. */
+function compose(
+  command: IssueInvoiceCommand = makeCommand(),
+  config: EparagonyConnectionConfig = makeConfig()
+): ReturnType<typeof composeInvoiceDocument>['request'] {
+  return composeDocument(command, config).request;
+}
+
 /** Sum the per-rate map, whatever subset of codes it carries. */
 function sumRateMap(map: Partial<Record<EparagonyInvoiceTaxRate, number>>): number {
   return Object.values(map).reduce<number>((sum, value) => sum + (value ?? 0), 0);
 }
 
-describe('toCreateInvoiceRequest - the shape the live sandbox accepted', () => {
+describe('composeInvoiceDocument - the shape the live sandbox accepted', () => {
   it('reproduces the POC body field for field for a single 23% line', () => {
     const request = compose();
 
@@ -137,7 +150,7 @@ describe('toCreateInvoiceRequest - the shape the live sandbox accepted', () => {
   });
 });
 
-describe('toCreateInvoiceRequest - the arithmetic reconciles exactly', () => {
+describe('composeInvoiceDocument - the arithmetic reconciles exactly', () => {
   it('derives net once per RATE GROUP so net plus tax is the gross the buyer paid', () => {
     const lines: InvoiceLine[] = [
       { name: 'Alpha', quantity: 1, unitPriceGross: 12.3, taxRate: '23' },
@@ -152,14 +165,20 @@ describe('toCreateInvoiceRequest - the arithmetic reconciles exactly', () => {
     expect(metadata.taxValueByTaxRate).toEqual({ '23': 690, '5': 50 });
     // The invariant, stated as arithmetic rather than as a comment.
     expect(sumRateMap(metadata.netValueByTaxRate) + sumRateMap(metadata.taxValueByTaxRate)).toBe(
-      metadata.grossSaleValue,
+      metadata.grossSaleValue
     );
   });
 
-  it('emits lines grouped by rate, in first-seen rate order, so the body is deterministic', () => {
-    // Two identical commands must produce byte-identical bodies, or a replay of
-    // the same idempotency key looks to the vendor like the same key with
-    // different data.
+  it('emits lines in the ORDER THE COMMAND GAVE, not grouped by rate', () => {
+    // Load-bearing, not cosmetic. Core persists `issuedLineSnapshot.lines` as
+    // `cmd.lines` verbatim and `CorrectionLine.originalLineNumber` names a line
+    // BY ITS POSITION, so a document whose lines were reordered would have
+    // #3193 credit the wrong line on a transmitted fiscal document.
+    // `InvoiceService.buildContent` pairs `documentLines` by `index + 1` over
+    // the same array. The ARITHMETIC still groups by rate; only the emitted
+    // array does not.
+    //
+    // Determinism is unaffected: command order is as deterministic as rate order.
     const lines: InvoiceLine[] = [
       { name: 'Alpha', quantity: 1, unitPriceGross: 12.3, taxRate: '23' },
       { name: 'Beta', quantity: 1, unitPriceGross: 10.5, taxRate: '5' },
@@ -169,13 +188,61 @@ describe('toCreateInvoiceRequest - the arithmetic reconciles exactly', () => {
 
     expect(request.eInvoice.lines.map((line) => line.productOrServiceName)).toEqual([
       'Alpha',
-      'Gamma',
       'Beta',
+      'Gamma',
     ]);
     expect(JSON.stringify(compose(makeCommand({ lines })))).toBe(JSON.stringify(request));
   });
 
-  it("makes the LAST line of a group absorb the rounding residual", () => {
+  it('reports documentLines that match the wire body line for line', () => {
+    // Without these, `InvoiceService.buildContent` recomputes each line as
+    // `round(gross / (1 + r))` INDEPENDENTLY - the exact arithmetic this mapper
+    // exists to avoid - so OpenLinker's contents card would state
+    // [0.01, 0.01, 0.01] net against a document that says [0.01, 0.01, 0.00].
+    const lines: InvoiceLine[] = [
+      { name: 'One', quantity: 1, unitPriceGross: 0.01, taxRate: '23' },
+      { name: 'Two', quantity: 1, unitPriceGross: 0.01, taxRate: '23' },
+      { name: 'Three', quantity: 1, unitPriceGross: 0.01, taxRate: '23' },
+    ];
+    const { request, documentLines } = composeDocument(makeCommand({ lines }));
+
+    // 1-based and in command order, which is what `buildContent` keys on.
+    expect(documentLines.map((line) => line.lineNumber)).toEqual([1, 2, 3]);
+    // Major units on the neutral report, minor units on the wire.
+    expect(documentLines.map((line) => line.net)).toEqual([0.01, 0.01, 0]);
+    expect(documentLines.map((line) => line.tax)).toEqual([0, 0, 0.01]);
+    expect(documentLines.map((line) => line.gross)).toEqual([0.01, 0.01, 0.01]);
+    request.eInvoice.lines.forEach((wireLine, index) => {
+      expect(documentLines[index].net * 100).toBeCloseTo(wireLine.netTotalLineValue, 6);
+      expect(documentLines[index].tax * 100).toBeCloseTo(wireLine.taxValue, 6);
+    });
+  });
+
+  it('never emits a negative net when the group residual exceeds the last line', () => {
+    // Ten lines of one grosz at 23%: the group's net is 8 while the first nine
+    // lines round up to 1 each, so a bare `netGroup - allocated` would hand the
+    // tenth line -1 and put a negative net on a fiscal document. The residual is
+    // borrowed back from lines that have capacity instead, which leaves the
+    // group sum untouched.
+    const lines: InvoiceLine[] = Array.from({ length: 10 }, (_unused, index) => ({
+      name: `L${index + 1}`,
+      quantity: 1,
+      unitPriceGross: 0.01,
+      taxRate: '23' as const,
+    }));
+    const { metadata, lines: wire } = compose(makeCommand({ lines })).eInvoice;
+
+    expect(wire.every((line) => line.netTotalLineValue >= 0)).toBe(true);
+    expect(wire.every((line) => line.taxValue >= 0)).toBe(true);
+    expect(wire.reduce((sum, line) => sum + line.netTotalLineValue, 0)).toBe(
+      metadata.netValueByTaxRate['23']
+    );
+    expect(sumRateMap(metadata.netValueByTaxRate) + sumRateMap(metadata.taxValueByTaxRate)).toBe(
+      metadata.grossSaleValue
+    );
+  });
+
+  it('makes the LAST line of a group absorb the rounding residual', () => {
     // Three lines of one grosz at 23%: rounded independently each line's net is
     // 1, summing to 3, while the group's own net is 2. Without the absorption
     // the document's lines would contradict its own summary by a grosz.
@@ -211,8 +278,24 @@ describe('toCreateInvoiceRequest - the arithmetic reconciles exactly', () => {
       expect(tax).toBe(metadata.taxValueByTaxRate[code]);
     }
     expect(sumRateMap(metadata.netValueByTaxRate) + sumRateMap(metadata.taxValueByTaxRate)).toBe(
-      metadata.grossSaleValue,
+      metadata.grossSaleValue
     );
+  });
+
+  it('sends an EMPTY tax map when every line is exempt, which the vendor has never been asked', () => {
+    // Pinning current behaviour rather than asserting it is right. The wire
+    // contract lists `taxValueByTaxRate` as required; present-but-empty probably
+    // satisfies that, but the POC exercised taxed lines only, so this is
+    // unverified against the vendor and is recorded as such on the PR.
+    const lines: InvoiceLine[] = [
+      { name: 'Exempt', quantity: 1, unitPriceGross: 20, taxRate: 'zw' },
+      { name: 'Reverse charge', quantity: 1, unitPriceGross: 30, taxRate: 'oo' },
+    ];
+    const { metadata } = compose(makeCommand({ lines })).eInvoice;
+
+    expect(metadata.taxValueByTaxRate).toEqual({});
+    expect(metadata.netValueByTaxRate).toEqual({ EP: 2000, RCP: 3000 });
+    expect(metadata.grossSaleValue).toBe(5000);
   });
 
   it('carries a zero-rated group in the net map ONLY, never in the tax map', () => {
@@ -232,13 +315,13 @@ describe('toCreateInvoiceRequest - the arithmetic reconciles exactly', () => {
   });
 });
 
-describe('toCreateInvoiceRequest - the buyer', () => {
+describe('composeInvoiceDocument - the buyer', () => {
   it('sends the buyer tax number verbatim, with no validation or reformatting', () => {
     // ADR-073 decision 5: core never pre-judges which identifiers a provider
     // accepts. This one IS checksum-verified on the vendor's side, so the
     // refusal is reachable - and it must arrive from the vendor, not from here.
     const request = compose(
-      makeCommand({ buyer: makeBuyer({ scheme: 'pl-nip', value: '6460558758' }) }),
+      makeCommand({ buyer: makeBuyer({ scheme: 'pl-nip', value: '6460558758' }) })
     );
     expect(request.eInvoice.metadata.consumerTIN).toBe('6460558758');
 
@@ -268,7 +351,7 @@ describe('toCreateInvoiceRequest - the buyer', () => {
     const request = compose(
       makeCommand({
         buyer: makeBuyer(null, makeAddress({ line1: 'ul. Grzybowska 2', line2: 'lok. 45' })),
-      }),
+      })
     );
     expect(request.eInvoice.metadata.consumerAddress).toEqual({
       street: 'ul. Grzybowska',
@@ -291,14 +374,14 @@ describe('toCreateInvoiceRequest - the buyer', () => {
     const request = compose(
       makeCommand({
         buyer: makeBuyer(null, makeAddress({ postalCode: 'SW1A 1AA', countryIso2: 'GB' })),
-      }),
+      })
     );
     expect(request.eInvoice.metadata.consumerAddress.postalCode).toBe('SW1A 1AA');
     expect(request.eInvoice.metadata.consumerAddress.country).toBe('GB');
   });
 });
 
-describe('toCreateInvoiceRequest - the seller', () => {
+describe('composeInvoiceDocument - the seller', () => {
   it('omits the seller name and address when the connection configures none', () => {
     const request = compose();
     expect('merchantName' in request.eInvoice.metadata).toBe(false);
@@ -317,7 +400,7 @@ describe('toCreateInvoiceRequest - the seller', () => {
           city: 'Warszawa',
           country: 'PL',
         },
-      }),
+      })
     );
     expect(request.eInvoice.metadata.merchantName).toBe('OpenLinker POC Sp. z o.o.');
     expect(request.eInvoice.metadata.merchantAddress).toEqual({
@@ -330,7 +413,7 @@ describe('toCreateInvoiceRequest - the seller', () => {
   });
 });
 
-describe('toCreateInvoiceRequest - optional metadata', () => {
+describe('composeInvoiceDocument - optional metadata', () => {
   it('carries the order id so a support conversation can find the document', () => {
     expect(compose().eInvoice.metadata.orderId).toBe('ol_order_1');
   });
@@ -363,22 +446,22 @@ describe('toCreateInvoiceRequest - optional metadata', () => {
 
   it('passes a calendar sale date through and ignores a malformed one', () => {
     expect(compose(makeCommand({ saleDate: '2026-09-15' })).eInvoice.metadata.saleEndDate).toBe(
-      '2026-09-15',
+      '2026-09-15'
     );
-    expect('saleEndDate' in compose(makeCommand({ saleDate: '15/09/2026' })).eInvoice.metadata).toBe(
-      false,
-    );
+    expect(
+      'saleEndDate' in compose(makeCommand({ saleDate: '15/09/2026' })).eInvoice.metadata
+    ).toBe(false);
   });
 });
 
-describe('toCreateInvoiceRequest - refusals before anything is sent', () => {
+describe('composeInvoiceDocument - refusals before anything is sent', () => {
   it('refuses a currency it would need an exchange rate for', () => {
     // ADR-040: OpenLinker's own FX stamp is analytics-only and must never
     // supply a fiscal document's rate, and there is no other source.
     expect(() => compose(makeCommand({ currency: 'EUR' }))).toThrow(EparagonyConfigException);
   });
 
-  it("words the currency refusal so core resolves it to the currency failure code", () => {
+  it('words the currency refusal so core resolves it to the currency failure code', () => {
     // `CURRENCY_REJECTION_MARKERS` is matched case-insensitively against the
     // adapter's own OL-authored reason - a reword here silently degrades the
     // operator's failure code to the generic one.
@@ -388,7 +471,7 @@ describe('toCreateInvoiceRequest - refusals before anything is sent', () => {
     } catch (error) {
       expect(error).toBeInstanceOf(EparagonyConfigException);
       expect((error as EparagonyConfigException).reason.toLowerCase()).toContain(
-        'unsupported currency',
+        'unsupported currency'
       );
       expect((error as EparagonyConfigException).failureMode).toBe('rejected');
     }
@@ -402,22 +485,44 @@ describe('toCreateInvoiceRequest - refusals before anything is sent', () => {
     // Mandatory on every invoice, and validated against the vendor account, so
     // a wrong or missing value fails every invoice rather than one order.
     expect(() => compose(makeCommand(), makeConfig({ merchantTIN: undefined }))).toThrow(
-      EparagonyConfigException,
+      EparagonyConfigException
     );
     expect(() => compose(makeCommand(), makeConfig({ merchantTIN: '  ' }))).toThrow(
-      EparagonyConfigException,
+      EparagonyConfigException
     );
+  });
+
+  it('words the seller-tax-number refusal so core does NOT read it as a buyer problem', () => {
+    // Core's `TAX_ID_REJECTION_MARKERS` are ['tax id','tax-id','taxid',
+    // 'tax identifier']. A reword to "seller tax ID" would classify a missing
+    // CONNECTION field as `buyer-tax-id-invalid` and send the operator to
+    // correct the BUYER's data instead. "tax number" is deliberate.
+    let reason = '';
+    try {
+      compose(makeCommand(), makeConfig({ merchantTIN: undefined }));
+    } catch (error) {
+      reason = (error as EparagonyConfigException).reason;
+    }
+
+    expect(reason).toContain('seller tax number');
+    for (const marker of ['tax id', 'tax-id', 'taxid', 'tax identifier']) {
+      expect(reason.toLowerCase()).not.toContain(marker);
+    }
   });
 
   it('refuses a line whose rate is not an invoice rate in this regime', () => {
     expect(() =>
-      compose(makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: 10, taxRate: '7' }] })),
+      compose(
+        makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: 10, taxRate: '7' }] })
+      )
     ).toThrow(EparagonyConfigException);
   });
 
   it('refuses a line with no rate rather than substituting one', () => {
     try {
-      compose(makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: 10, taxRate: '' }] }));
+      compose(
+        makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: 10, taxRate: '' }] })
+      );
       throw new Error('expected a refusal');
     } catch (error) {
       expect(error).toBeInstanceOf(EparagonyConfigException);
@@ -428,16 +533,16 @@ describe('toCreateInvoiceRequest - refusals before anything is sent', () => {
   it('refuses a non-invoiceable quantity', () => {
     expect(() =>
       compose(
-        makeCommand({ lines: [{ name: 'X', quantity: 0, unitPriceGross: 10, taxRate: '23' }] }),
-      ),
+        makeCommand({ lines: [{ name: 'X', quantity: 0, unitPriceGross: 10, taxRate: '23' }] })
+      )
     ).toThrow(EparagonyConfigException);
   });
 
   it('refuses a negative line, because a credit is a correction document and not a line', () => {
     expect(() =>
       compose(
-        makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: -10, taxRate: '23' }] }),
-      ),
+        makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: -10, taxRate: '23' }] })
+      )
     ).toThrow(EparagonyConfigException);
   });
 
@@ -499,13 +604,33 @@ describe('toRegulatoryClearanceResult', () => {
     });
   });
 
-  it("reports a CONFIRMED hub document as cleared, carrying the authority's own number", () => {
+  it("reports a CONFIRMED hub document as ACCEPTED, carrying the authority's own number", () => {
     // NOT observable in the sandbox - coded from the vendor's contract, where
     // `ksefNumber` is required at CONFIRMED and absent at OFFLINE.
+    //
+    // `accepted`, never the reserved `cleared`: that value is absent from core's
+    // `TerminalRegulatoryStatusValues`, so it would leave a finished document
+    // polled for ever. The `CLEARED` fixture name below is the VENDOR's concept
+    // (the authority cleared the document), not the neutral status.
     expect(toRegulatoryClearanceResult(CLEARED)).toEqual({
       regulatoryStatus: 'accepted',
       clearanceReference: '5265877635-20250626-010080DD2B5E-26',
     });
+  });
+
+  it('terminalises a CONFIRMED document whose processing mode is unreadable', () => {
+    // Arm 1 has already returned for an explicit NONE, so anything still here is
+    // a relayed document. Requiring `processingMode === KSEF` as well would send
+    // a CONFIRMED document with a missing or unrecognised mode to
+    // `pending-submission`, which is NON-terminal and STABLE - the #1121 sweep
+    // would poll it for ever and it could never self-heal, because unlike an
+    // unrecognised STATUS the mode does not change on the next read.
+    expect(toRegulatoryClearanceResult({ ...CLEARED, processingMode: undefined })).toMatchObject({
+      regulatoryStatus: 'accepted',
+    });
+    expect(
+      toRegulatoryClearanceResult({ ...CLEARED, processingMode: 'SOMETHING_NEW' })
+    ).toMatchObject({ regulatoryStatus: 'accepted' });
   });
 
   it('reports a transient PENDING as awaiting submission rather than as submitted', () => {
@@ -533,9 +658,9 @@ describe('toRegulatoryClearanceResult', () => {
   });
 
   it('keeps an unrecognised status non-terminal so the reconciliation self-heals', () => {
-    expect(
-      toRegulatoryClearanceResult({ ...OFFLINE, status: 'SOMETHING_NEW' }),
-    ).toMatchObject({ regulatoryStatus: 'pending-submission' });
+    expect(toRegulatoryClearanceResult({ ...OFFLINE, status: 'SOMETHING_NEW' })).toMatchObject({
+      regulatoryStatus: 'pending-submission',
+    });
   });
 
   it('degrades to awaiting submission when the response carries no mode at all', () => {
@@ -558,7 +683,7 @@ describe('status readers', () => {
     // Unlike a receipt, an invoice at OFFLINE is already issued with legal
     // effect and its visualisation carries the authority's offline codes.
     expect(readDocumentUrl({ status: 'OFFLINE', documentUrl: 'https://hub/view/x' })).toBe(
-      'https://hub/view/x',
+      'https://hub/view/x'
     );
   });
 
@@ -583,9 +708,9 @@ describe('toIssuedDocumentSeller', () => {
     country: 'PL',
   };
 
-  it("supplies the scheme tag itself, because core holds a bare number and may not mint one", () => {
+  it('supplies the scheme tag itself, because core holds a bare number and may not mint one', () => {
     const seller = toIssuedDocumentSeller(
-      makeConfig({ merchantName: 'OpenLinker POC Sp. z o.o.', merchantAddress: ADDRESS }),
+      makeConfig({ merchantName: 'OpenLinker POC Sp. z o.o.', merchantAddress: ADDRESS })
     );
     expect(seller).toEqual({
       name: 'OpenLinker POC Sp. z o.o.',

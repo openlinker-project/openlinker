@@ -7,7 +7,8 @@
  * status read, and share no field, no rate vocabulary and no arithmetic.
  *
  * Two directions:
- *   - {@link toCreateInvoiceRequest} - neutral command -> `POST /documents` body.
+ *   - {@link composeInvoiceDocument} - neutral command -> `POST /documents` body,
+ *     plus the same per-line figures in the neutral vocabulary.
  *   - {@link toRegulatoryClearanceResult} - document status -> neutral clearance.
  *
  * THE ARITHMETIC IS THE HARD PART, so it is stated here once.
@@ -32,6 +33,20 @@
  * own lines by a grosz, which is the defect ADR-063 records against FA(3) and
  * names an adapter bug.
  *
+ * THE GROUPING IS THE ARITHMETIC, NEVER THE DOCUMENT'S LINE ORDER. The emitted
+ * `eInvoice.lines` array is in the order `command.lines` carries, because core
+ * persists that array VERBATIM as the issued-line snapshot and pairs both
+ * `IssuedDocumentLineAmounts.lineNumber` and a later correction's
+ * `CorrectionLine.originalLineNumber` by 1-based position over it - so emitting
+ * in rate-group order would have #3193's correction credit the wrong line on a
+ * document already transmitted to a tax authority.
+ *
+ * AND THE FIGURES COME BACK OUT. Composition returns the per-line net, tax and
+ * gross it put on the wire as {@link IssuedDocumentLineAmounts}; core's fallback
+ * when an adapter reports nothing is a per-line `round(gross / (1 + r))`, i.e.
+ * exactly the arithmetic rejected above, so OpenLinker's own contents card would
+ * disagree with the paper on every order that needed a residual absorbed.
+ *
  * EVERY UNMAPPABLE INPUT THROWS BEFORE ANYTHING IS SENT, as
  * {@link EparagonyConfigException} (`failureMode: 'rejected'`, nothing crossed the
  * boundary). What it does NOT do is pre-judge a value the vendor is the judge of:
@@ -46,6 +61,7 @@ import type {
   BuyerAddress,
   InvoiceLine,
   IssueInvoiceCommand,
+  IssuedDocumentLineAmounts,
   IssuedDocumentSeller,
   RegulatoryClearanceResult,
 } from '@openlinker/core/invoicing';
@@ -61,7 +77,6 @@ import {
   EPARAGONY_CALCULATION_VALIDATION_NONE,
   EPARAGONY_EINVOICING_HUB_KSEF,
   EPARAGONY_INVOICE_TYPE_VAT,
-  EPARAGONY_PROCESSING_MODE_KSEF,
   EPARAGONY_PROCESSING_MODE_NONE,
   EPARAGONY_STATUS_CONFIRMED,
   EPARAGONY_STATUS_ERROR,
@@ -92,6 +107,14 @@ import type {
  * the only alternative to inventing one.
  */
 const SETTLEMENT_CURRENCY = 'PLN';
+
+/**
+ * Minor units in one major unit of {@link SETTLEMENT_CURRENCY}. Declared here
+ * rather than borrowed from `money.policy.ts` for the same reason
+ * {@link roundMinorUnits} is: this is regime arithmetic on amounts that are
+ * already converted, not the package-wide unit conversion.
+ */
+const MINOR_UNITS_PER_MAJOR = 100;
 
 /**
  * The regime's own zone, used to render an issuance instant as the calendar date
@@ -128,24 +151,50 @@ export interface CreateInvoiceRequestInput {
   transactionToken: string;
 }
 
+/**
+ * What one composition pass produces: the wire body, and the SAME per-line
+ * figures expressed in the neutral vocabulary.
+ *
+ * Both come out of one pass deliberately. Recomputing the neutral half from the
+ * command would reintroduce the per-line rounding this file's arithmetic exists
+ * to avoid, and recomputing it from the wire body would need the rate fractions
+ * a second time - one pass makes "what we sent" and "what we report" the same
+ * numbers by construction rather than by agreement.
+ */
+export interface ComposedInvoiceDocument {
+  request: EparagonyCreateInvoiceRequest;
+  /**
+   * Per-line amounts as the issued document states them, in MAJOR units (the
+   * neutral type's money idiom) and keyed by 1-based position in
+   * `command.lines`, which is the position the document carries.
+   */
+  documentLines: IssuedDocumentLineAmounts[];
+}
+
 /** One line priced in minor units and resolved onto a vendor rate code. */
 interface PricedInvoiceLine {
   line: InvoiceLine;
+  /**
+   * Zero-based position in `command.lines`, carried through the rate grouping
+   * so the emitted array can be put back into the order the command gave. See
+   * the module docblock: the grouping is an arithmetic device, and core pairs
+   * everything downstream by document position.
+   */
+  index: number;
   code: EparagonyInvoiceTaxRate;
   quantity: string;
   grossMinor: number;
 }
 
 /**
- * Compose the `POST /documents` body for a VAT invoice.
+ * Compose the `POST /documents` body for a VAT invoice, and the neutral per-line
+ * figures that body states.
  *
  * @throws {EparagonyConfigException} when the sale cannot be expressed as an
  * invoice at all: a currency that would need an exchange rate, a connection with
  * no seller tax number, an unresolvable rate, or a non-registrable amount.
  */
-export function toCreateInvoiceRequest(
-  input: CreateInvoiceRequestInput,
-): EparagonyCreateInvoiceRequest {
+export function composeInvoiceDocument(input: CreateInvoiceRequestInput): ComposedInvoiceDocument {
   const { command, config, documentToken, transactionToken } = input;
 
   const currency = command.currency.trim().toUpperCase();
@@ -156,7 +205,7 @@ export function toCreateInvoiceRequest(
       // "unsupported currency" is one of core's CURRENCY_REJECTION_MARKERS, so
       // this refusal reaches the operator as `invalid-currency` rather than as
       // the generic provider-rejected copy.
-      `Unsupported currency for this invoicing connection: it issues in ${SETTLEMENT_CURRENCY} only.`,
+      `Unsupported currency for this invoicing connection: it issues in ${SETTLEMENT_CURRENCY} only.`
     );
   }
 
@@ -165,21 +214,45 @@ export function toCreateInvoiceRequest(
     throw new EparagonyConfigException(
       `eparagony.pl cannot invoice order ${command.orderId}: the connection declares no seller ` +
         `tax number, which is mandatory on every invoice`,
-      "This connection has no seller tax number set, which every invoice requires. Set it on the connection and re-issue.",
+      // THIS REMEDY COPY IS LOG-ONLY ON THE INVOICE LANE, and is authored anyway.
+      // `InvoiceService.deriveFailureReason` builds the operator-facing sentence
+      // from the neutral `InvoiceFailureCode` and never from this text, and there
+      // is no code for "a connection-config field is missing" - so what the
+      // operator reads is "The invoicing provider rejected the request.", which
+      // the `InvoiceFailureCode` docblock itself calls out as copy that asserts
+      // the provider rejected a request it never saw. The receipt lane behaves
+      // the opposite way (`FiscalRegistrationService.deriveFailureReason` surfaces
+      // the adapter's reason verbatim), so the gap belongs to the lane rather
+      // than to this adapter. The real fix is a neutral code plus its marker -
+      // `seller-tax-id-required` / `connection-config-required`, the shape #3031
+      // used for `sale-classification-required` - which is a core change and gets
+      // its own slice. Until then the text still reaches the log and the record's
+      // `errorMessage`, which is where a support conversation finds it.
+      //
+      // The wording says "tax NUMBER" on purpose, and a spec pins that: core's
+      // `TAX_ID_REJECTION_MARKERS` would read "tax id" here and classify a
+      // missing CONNECTION field as `buyer-tax-id-invalid`, sending the operator
+      // to correct the buyer's data instead.
+      'This connection has no seller tax number set, which every invoice requires. Set it on the connection and re-issue.'
     );
   }
 
   if (command.lines.length === 0) {
     throw new EparagonyConfigException(
       `eparagony.pl cannot invoice order ${command.orderId}: it has no lines`,
-      'The order has no lines, so there is nothing to invoice.',
+      'The order has no lines, so there is nothing to invoice.'
     );
   }
 
-  const priced = command.lines.map((line) => toPricedLine(line, command.orderId));
+  const priced = command.lines.map((line, index) => toPricedLine(line, index, command.orderId));
   const groups = groupByRate(priced);
 
-  const lines: EparagonyInvoiceLine[] = [];
+  // Each line's share of its rate group's net, indexed by the line's ORIGINAL
+  // position. Filled by the rate-group pass and read back by the emit pass -
+  // which is the whole mechanism that keeps the ARITHMETIC per group while the
+  // emitted document stays in the order the command gave. Pre-filled rather
+  // than grown, so the emit pass reads a value for every line by construction.
+  const netByIndex = priced.map(() => 0);
   const netValueByTaxRate: Partial<Record<EparagonyInvoiceTaxRate, number>> = {};
   const taxValueByTaxRate: Partial<Record<EparagonyTaxedInvoiceRate, number>> = {};
   let grossSaleValue = 0;
@@ -198,25 +271,39 @@ export function toCreateInvoiceRequest(
       taxValueByTaxRate[code] = taxGroup;
     }
 
-    let allocatedNet = 0;
-    members.forEach((member, index) => {
-      const isLast = index === members.length - 1;
-      // The last line absorbs the residual, so the group's lines sum back to the
-      // group's own summary exactly rather than to within a grosz of it.
-      const lineNet = isLast
-        ? netGroup - allocatedNet
-        : roundMinorUnits(member.grossMinor / (1 + fraction));
-      allocatedNet += lineNet;
+    const allocation = allocateGroupNet(members, netGroup, fraction);
+    members.forEach((member, memberIndex) => {
+      netByIndex[member.index] = allocation[memberIndex];
+    });
+  }
 
-      lines.push({
-        productOrServiceName: member.line.name,
-        quantity: member.quantity,
-        netUnitPrice: resolveNetUnitPrice(lineNet, member.line.quantity),
-        netTotalLineValue: lineNet,
-        taxRate: code,
-        // Required on every line, including a zero-rated one, where it is 0.
-        taxValue: member.grossMinor - lineNet,
-      });
+  // Emitted in the order `command.lines` carries, NOT in rate-group order - see
+  // the module docblock. `documentLines` is built in the same pass from the same
+  // numbers, so the reported figures cannot drift from the transmitted ones.
+  const lines: EparagonyInvoiceLine[] = [];
+  const documentLines: IssuedDocumentLineAmounts[] = [];
+  for (const member of priced) {
+    const lineNet = netByIndex[member.index];
+    const netUnitPrice = resolveNetUnitPrice(lineNet, member.line.quantity);
+    // Required on every line, including a zero-rated one, where it is 0.
+    const taxValue = member.grossMinor - lineNet;
+
+    lines.push({
+      productOrServiceName: member.line.name,
+      quantity: member.quantity,
+      netUnitPrice,
+      netTotalLineValue: lineNet,
+      taxRate: member.code,
+      taxValue,
+    });
+    documentLines.push({
+      // 1-based position on the document, which is the position in
+      // `command.lines` - the key core pairs `IssuedDocumentContent.lines` on.
+      lineNumber: member.index + 1,
+      unitNet: toMajorUnits(netUnitPrice),
+      net: toMajorUnits(lineNet),
+      tax: toMajorUnits(taxValue),
+      gross: toMajorUnits(member.grossMinor),
     });
   }
 
@@ -284,7 +371,10 @@ export function toCreateInvoiceRequest(
     eInvoice.eInvoicingHub = EPARAGONY_EINVOICING_HUB_KSEF;
   }
 
-  return { posId: config.posId, documentToken, transactionToken, eInvoice };
+  return {
+    request: { posId: config.posId, documentToken, transactionToken, eInvoice },
+    documentLines,
+  };
 }
 
 /**
@@ -297,7 +387,7 @@ export function toCreateInvoiceRequest(
  * address the operator has no way to read as "not configured".
  */
 export function toIssuedDocumentSeller(
-  config: EparagonyConnectionConfig,
+  config: EparagonyConnectionConfig
 ): IssuedDocumentSeller | null {
   const name = readNonEmpty(config.merchantName);
   const taxId = readNonEmpty(config.merchantTIN);
@@ -363,9 +453,20 @@ export function resolveBuyerHandleSchemeTag(scheme: string | undefined, value: s
  *      no clearance to wait for and the invoice is complete. Tested first
  *      precisely because it is true at any status.
  *   2. `status: ERROR` -> `rejected`.
- *   3. `status: CONFIRMED` (with a hub relay) -> `accepted`, carrying the
- *      authority's own number as the neutral `clearanceReference`.
- *   4. anything else with a hub relay -> `pending-submission`.
+ *   3. `status: CONFIRMED` -> `accepted`, carrying the authority's own number
+ *      as the neutral `clearanceReference`.
+ *   4. anything else -> `pending-submission`.
+ *
+ * Arm 3 deliberately does NOT re-test the processing mode. Arm 1 has already
+ * returned for `NONE`, so a `CONFIRMED` document reaching arm 3 either relays to
+ * the hub or carries a mode this build cannot read - and re-testing would send
+ * that second case to arm 4, where `pending-submission` is non-terminal AND
+ * STABLE: `CONFIRMED` is the vendor's terminal status, so it never moves again
+ * and the #1121 reconciliation polls a finished document for ever. The
+ * self-healing argument below holds for an unrecognised STATUS, which will
+ * change; it does not hold for an unrecognised MODE on a settled one. Such a
+ * document reports `clearanceReference: null`, which is the honest reading -
+ * no hub number was there to read.
  *
  * Arm 4 deliberately swallows `OFFLINE`, `PENDING` and any status this build does
  * not recognise into ONE answer, for two reasons. `OFFLINE` is the state the
@@ -394,7 +495,7 @@ export function resolveBuyerHandleSchemeTag(scheme: string | undefined, value: s
  * state between submission and final acceptance. This is not one.
  */
 export function toRegulatoryClearanceResult(
-  body: EparagonyDocumentStatusResponse,
+  body: EparagonyDocumentStatusResponse
 ): RegulatoryClearanceResult {
   const processingMode = readUpper(body.processingMode);
   if (processingMode === EPARAGONY_PROCESSING_MODE_NONE) {
@@ -407,7 +508,7 @@ export function toRegulatoryClearanceResult(
   }
 
   const clearanceReference = readClearanceReference(body);
-  if (status === EPARAGONY_STATUS_CONFIRMED && processingMode === EPARAGONY_PROCESSING_MODE_KSEF) {
+  if (status === EPARAGONY_STATUS_CONFIRMED) {
     return { regulatoryStatus: 'accepted', clearanceReference };
   }
 
@@ -442,7 +543,7 @@ export function readDocumentUrl(body: EparagonyDocumentStatusResponse): string |
 
 /** The hub detail block, when the response carries a readable one. */
 export function readKsefInvoice(
-  body: EparagonyDocumentStatusResponse,
+  body: EparagonyDocumentStatusResponse
 ): EparagonyKsefInvoiceDetails | null {
   const raw = body.ksefInvoice;
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -455,7 +556,7 @@ export function readKsefInvoice(
 // Lines and money
 // ---------------------------------------------------------------------------
 
-function toPricedLine(line: InvoiceLine, orderId: string): PricedInvoiceLine {
+function toPricedLine(line: InvoiceLine, index: number, orderId: string): PricedInvoiceLine {
   const code = resolveInvoiceTaxRateCode(line.taxRate);
   if (code === null) {
     throw new EparagonyConfigException(
@@ -463,7 +564,7 @@ function toPricedLine(line: InvoiceLine, orderId: string): PricedInvoiceLine {
         `"${line.taxRate}", which is not an invoice tax rate in this regime`,
       line.taxRate.trim().length === 0
         ? 'At least one order line carries no tax rate, and an invoice cannot state one on its behalf. Set the rate on the product and re-issue.'
-        : 'At least one order line carries a tax rate that cannot be expressed on an invoice in this regime.',
+        : 'At least one order line carries a tax rate that cannot be expressed on an invoice in this regime.'
     );
   }
 
@@ -471,7 +572,7 @@ function toPricedLine(line: InvoiceLine, orderId: string): PricedInvoiceLine {
   if (quantity === null) {
     throw new EparagonyConfigException(
       `eparagony.pl cannot invoice order ${orderId}: line "${line.name}" has a non-invoiceable quantity ${line.quantity}`,
-      'At least one order line has a quantity that cannot be invoiced.',
+      'At least one order line has a quantity that cannot be invoiced.'
     );
   }
 
@@ -482,21 +583,24 @@ function toPricedLine(line: InvoiceLine, orderId: string): PricedInvoiceLine {
     // negative line on an original.
     throw new EparagonyConfigException(
       `eparagony.pl cannot invoice order ${orderId}: line "${line.name}" has a non-invoiceable total`,
-      'At least one order line has a total that cannot be invoiced.',
+      'At least one order line has a total that cannot be invoiced.'
     );
   }
 
-  return { line, code, quantity, grossMinor };
+  return { line, index, code, quantity, grossMinor };
 }
 
 /**
- * Group priced lines by rate code, preserving FIRST-SEEN order so the emitted
- * document is a deterministic function of the command - two identical commands
- * must produce byte-identical bodies, or the vendor's replay check on a repeated
+ * Group priced lines by rate code, preserving FIRST-SEEN order.
+ *
+ * The order no longer decides the LINE order - lines are emitted in command
+ * order - but it still decides the KEY order of the two per-rate summary maps,
+ * and therefore the bytes of the serialized body. Two identical commands must
+ * produce byte-identical bodies, or the vendor's replay check on a repeated
  * idempotency key would see "the same key with different data".
  */
 function groupByRate(
-  priced: PricedInvoiceLine[],
+  priced: PricedInvoiceLine[]
 ): Map<EparagonyInvoiceTaxRate, PricedInvoiceLine[]> {
   const groups = new Map<EparagonyInvoiceTaxRate, PricedInvoiceLine[]>();
   for (const member of priced) {
@@ -508,6 +612,63 @@ function groupByRate(
     }
   }
   return groups;
+}
+
+/**
+ * Split a rate group's net across its members, in minor units.
+ *
+ * The LAST member absorbs the residual - each earlier line rounds independently
+ * and the last is whatever is left - so the group's lines sum back to the
+ * group's own summary exactly rather than to within a grosz of it. That is the
+ * rule, and the residual lands on the last member OF THIS GROUP, which is not
+ * in general the last line of the document.
+ *
+ * THE SUBTRACTION CAN COMPUTE NEGATIVE, which is the one case the rule alone
+ * does not cover. Ten lines of one grosz at 23%: the group's gross is 10, its
+ * tax rounds to 2 and its net is 8, while the first nine lines each round to 1,
+ * so the tenth computes `8 - 9 = -1`. A negative net in a fiscal invoice body
+ * would contradict this file's own promise that an input it cannot express
+ * refuses before anything is sent - and refusing here would be the worse answer,
+ * because this IS expressible: it is a real, paid order, and a permanent domain
+ * rejection of one is the failure shape ANALYSIS-1032 names a defect.
+ *
+ * So the shortfall is borrowed back from the nearest earlier lines, taking at
+ * most what each one holds so none of them goes negative either. The repair
+ * cannot run out: the allocation always sums to `netGroup`, which is never
+ * negative, so a negative last entry means the others hold strictly more than
+ * the shortfall. The group's total is untouched either way, which is what the
+ * summary reconciles against.
+ */
+function allocateGroupNet(
+  members: readonly PricedInvoiceLine[],
+  netGroup: number,
+  fraction: number
+): number[] {
+  const allocation: number[] = [];
+  let allocatedNet = 0;
+  members.forEach((member, index) => {
+    const isLast = index === members.length - 1;
+    const lineNet = isLast
+      ? netGroup - allocatedNet
+      : roundMinorUnits(member.grossMinor / (1 + fraction));
+    allocation.push(lineNet);
+    allocatedNet += lineNet;
+  });
+
+  // A group always has at least one member, so this index exists.
+  const lastIndex = allocation.length - 1;
+  let shortfall = -allocation[lastIndex];
+  if (shortfall <= 0) {
+    return allocation;
+  }
+
+  allocation[lastIndex] = 0;
+  for (let index = lastIndex - 1; index >= 0 && shortfall > 0; index -= 1) {
+    const borrowed = Math.min(allocation[index], shortfall);
+    allocation[index] -= borrowed;
+    shortfall -= borrowed;
+  }
+  return allocation;
 }
 
 /**
@@ -525,6 +686,18 @@ function resolveNetUnitPrice(lineNet: number, quantity: number): number {
     return lineNet;
   }
   return roundMinorUnits(lineNet / quantity);
+}
+
+/**
+ * Render an integer minor-unit amount as the major-unit decimal the neutral
+ * vocabulary carries.
+ *
+ * {@link IssuedDocumentLineAmounts} is a plain `number` in major units, and a
+ * bare division leaves binary dust on most values, so the quotient is collapsed
+ * at the currency's own precision rather than passed on raw.
+ */
+function toMajorUnits(minor: number): number {
+  return Number((minor / MINOR_UNITS_PER_MAJOR).toFixed(2));
 }
 
 /**
