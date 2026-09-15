@@ -19,17 +19,29 @@ import {
   PRODUCTS_SERVICE_TOKEN,
 } from '@openlinker/core/products';
 import type { Product } from '@openlinker/core/products';
-import { AVAILABILITY_SERVICE_TOKEN, INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
+import {
+  ConnectionNotFoundException,
+  ConnectionPort,
+  CONNECTION_PORT_TOKEN,
+} from '@openlinker/core/identifier-mapping';
+import {
+  AVAILABILITY_SERVICE_TOKEN,
+  INVENTORY_REPOSITORY_TOKEN,
+  LOCATION_SERVICE_TOKEN,
+} from '../../inventory.tokens';
 import { IAvailabilityService } from './availability.service.interface';
+import { ILocationService } from './location.service.interface';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
-import type {
-  InventoryFilters,
-  InventoryPagination,
-  VariantAvailability,
-  VariantStockRow,
-  ProductStockAggregate,
-  DuplicatePositionReport,
+import {
+  LEGACY_SOURCE_CONNECTION_ID,
+  type InventoryFilters,
+  type InventoryPagination,
+  type VariantAvailability,
+  type VariantStockRow,
+  type ProductStockAggregate,
+  type DuplicatePositionGroup,
+  type DuplicatePositionReport,
 } from '../../domain/types/inventory.types';
 import type {
   InventoryItemView,
@@ -63,7 +75,11 @@ export class InventoryQueryService implements IInventoryQueryService {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly productsService: IProductsService,
     @Inject(AVAILABILITY_SERVICE_TOKEN)
-    private readonly availabilityService: IAvailabilityService
+    private readonly availabilityService: IAvailabilityService,
+    @Inject(LOCATION_SERVICE_TOKEN)
+    private readonly locationService: ILocationService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort
   ) {}
 
   async listInventoryItems(
@@ -161,7 +177,90 @@ export class InventoryQueryService implements IInventoryQueryService {
         `getDuplicatePositionReport accepts at most ${String(MAX_DUPLICATE_POSITION_GROUPS)} groups per call (got ${String(maxGroups)})`
       );
     }
-    return this.inventoryRepository.findDuplicatePositions(maxGroups);
+    const report = await this.inventoryRepository.findDuplicatePositions(maxGroups);
+    if (report.groups.length === 0) return report;
+    return { ...report, groups: await this.enrichDuplicatePositionGroups(report.groups) };
+  }
+
+  /**
+   * Resolves display names for a duplicate-position report's groups (#3239).
+   *
+   * Batched across the UNIQUE ids in the whole `groups[]` array, never per
+   * group — the same shape `buildProductMap` already uses for the composed
+   * inventory-item view, and the `getEarliestOrderDateByConnection` (#2083)
+   * precedent for a single batched read ahead of any per-row loop.
+   *
+   * `locationId`/`sourceConnectionId` have no batched-by-id read on their own
+   * services today (`ILocationService.getLocation` and `ConnectionPort.get`
+   * are both single-id) — the id sets here are bounded by the number of
+   * DISTINCT locations/connections in the report, not by row or group count,
+   * so a small bounded `Promise.all` is the right shape rather than adding a
+   * batch method to either service for this one caller.
+   */
+  private async enrichDuplicatePositionGroups(
+    groups: DuplicatePositionGroup[]
+  ): Promise<DuplicatePositionGroup[]> {
+    const productIds = groups.map((g) => g.productId);
+    const locationIds = [
+      ...new Set(groups.map((g) => g.locationId).filter((id): id is string => id !== null)),
+    ];
+    // null and the #2317 'legacy' sentinel both mean "not yet backfilled" —
+    // neither names a real connection, so neither is ever resolved.
+    const connectionIds = [
+      ...new Set(
+        groups
+          .map((g) => g.sourceConnectionId)
+          .filter((id): id is string => id !== null && id !== LEGACY_SOURCE_CONNECTION_ID)
+      ),
+    ];
+
+    const [productMap, locationNameMap, connectionNameMap] = await Promise.all([
+      this.buildProductMap(productIds),
+      this.buildLocationNameMap(locationIds),
+      this.buildConnectionNameMap(connectionIds),
+    ]);
+
+    return groups.map((group) => {
+      const product = productMap.get(group.productId) ?? null;
+      return {
+        ...group,
+        productName: product?.name ?? null,
+        sku: product?.sku ?? null,
+        locationName: group.locationId ? (locationNameMap.get(group.locationId) ?? null) : null,
+        connectionName:
+          group.sourceConnectionId && group.sourceConnectionId !== LEGACY_SOURCE_CONNECTION_ID
+            ? (connectionNameMap.get(group.sourceConnectionId) ?? null)
+            : null,
+      };
+    });
+  }
+
+  private async buildLocationNameMap(locationIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    await Promise.all(
+      locationIds.map(async (id) => {
+        const location = await this.locationService.getLocation(id);
+        if (location) map.set(id, location.name);
+      })
+    );
+    return map;
+  }
+
+  private async buildConnectionNameMap(connectionIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    await Promise.all(
+      connectionIds.map(async (id) => {
+        try {
+          const connection = await this.connectionPort.get(id);
+          map.set(id, connection.name);
+        } catch (error) {
+          // A deleted/unresolvable connection reports no name rather than
+          // failing the whole report — the raw id is still shown.
+          if (!(error instanceof ConnectionNotFoundException)) throw error;
+        }
+      })
+    );
+    return map;
   }
 
   private async buildProductMap(productIds: string[]): Promise<Map<string, Product>> {

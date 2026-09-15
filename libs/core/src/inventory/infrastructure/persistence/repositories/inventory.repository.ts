@@ -793,6 +793,11 @@ export class InventoryRepository implements InventoryRepositoryPort {
           rowCount: Number(row.rowCount),
           liveRowCount: Number(row.liveRowCount),
           rows: [],
+          // Enrichment (#3239) is resolved by InventoryQueryService, never here.
+          productName: null,
+          sku: null,
+          connectionName: null,
+          locationName: null,
         };
         byKey.set(key, group);
         groups.push(group);

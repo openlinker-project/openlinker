@@ -12,17 +12,24 @@ import { InventoryQueryService } from '../inventory-query.service';
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
 import type { IProductsService, Product } from '@openlinker/core/products';
+import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import type { IAvailabilityService } from '../availability.service.interface';
+import type { ILocationService } from '../location.service.interface';
 
 // Only the products-service method the SUT actually calls — keeps the
 // mock surface tight per #718 review.
 type ProductsServiceMock = Pick<IProductsService, 'getProductsByIds'>;
+type LocationServiceMock = Pick<ILocationService, 'getLocation'>;
+type ConnectionPortMock = Pick<ConnectionPort, 'get'>;
 
 describe('InventoryQueryService', () => {
   let service: InventoryQueryService;
   let inventoryRepository: jest.Mocked<InventoryRepositoryPort>;
   let productsService: jest.Mocked<ProductsServiceMock>;
   let availabilityService: jest.Mocked<IAvailabilityService>;
+  let locationService: jest.Mocked<LocationServiceMock>;
+  let connectionPort: jest.Mocked<ConnectionPortMock>;
 
   const itemA = new InventoryItem(
     'inv-a',
@@ -112,10 +119,15 @@ describe('InventoryQueryService', () => {
       getAppliedReserve: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<IAvailabilityService>;
 
+    locationService = { getLocation: jest.fn().mockResolvedValue(null) };
+    connectionPort = { get: jest.fn().mockRejectedValue(new ConnectionNotFoundException('n/a')) };
+
     service = new InventoryQueryService(
       inventoryRepository,
       productsService as unknown as IProductsService,
       availabilityService,
+      locationService as unknown as ILocationService,
+      connectionPort as unknown as ConnectionPort,
     );
   });
 
@@ -330,7 +342,7 @@ describe('InventoryQueryService', () => {
       expect(inventoryRepository.findDuplicatePositions).not.toHaveBeenCalled();
     });
 
-    it('returns the repository report verbatim, including uncapped totals', async () => {
+    it('preserves the repository totals verbatim, including uncapped ones, while enriching groups', async () => {
       // groupCount is the #2325 gate and must survive the service layer
       // untouched even when the detail was truncated.
       const truncated = {
@@ -346,13 +358,152 @@ describe('InventoryQueryService', () => {
             rowCount: 4,
             liveRowCount: 2,
             rows: [],
+            productName: null,
+            sku: null,
+            connectionName: null,
+            locationName: null,
           },
         ],
         truncated: true,
       };
       inventoryRepository.findDuplicatePositions.mockResolvedValue(truncated);
+      productsService.getProductsByIds.mockResolvedValue([]);
 
-      await expect(service.getDuplicatePositionReport(1)).resolves.toBe(truncated);
+      const result = await service.getDuplicatePositionReport(1);
+
+      expect(result.groupCount).toBe(3);
+      expect(result.rowCount).toBe(9);
+      expect(result.excessRowCount).toBe(6);
+      expect(result.truncated).toBe(true);
+      expect(result.groups).toEqual(truncated.groups);
+    });
+
+    describe('enrichment (#3239)', () => {
+      it('resolves productName/sku, connectionName and locationName, batched across unique ids', async () => {
+        const report = {
+          groupCount: 2,
+          rowCount: 4,
+          excessRowCount: 2,
+          groups: [
+            {
+              productId: 'prod-1',
+              productVariantId: 'var-1',
+              locationId: 'loc-1',
+              sourceConnectionId: 'conn-1',
+              rowCount: 2,
+              liveRowCount: 2,
+              rows: [],
+              productName: null,
+              sku: null,
+              connectionName: null,
+              locationName: null,
+            },
+            {
+              // A second group sharing the same product/location/connection —
+              // the point of the assertion below is that each is resolved
+              // exactly once, not once per group.
+              productId: 'prod-1',
+              productVariantId: 'var-2',
+              locationId: 'loc-1',
+              sourceConnectionId: 'conn-1',
+              rowCount: 2,
+              liveRowCount: 2,
+              rows: [],
+              productName: null,
+              sku: null,
+              connectionName: null,
+              locationName: null,
+            },
+          ],
+          truncated: false,
+        };
+        inventoryRepository.findDuplicatePositions.mockResolvedValue(report);
+        productsService.getProductsByIds.mockResolvedValue([product1]);
+        locationService.getLocation.mockResolvedValue({
+          id: 'loc-1',
+          name: 'Main Warehouse',
+        } as never);
+        connectionPort.get.mockResolvedValue({ id: 'conn-1', name: 'Allegro — Primary' } as never);
+
+        const result = await service.getDuplicatePositionReport();
+
+        expect(result.groups[0].productName).toBe(product1.name);
+        expect(result.groups[0].sku).toBe(product1.sku);
+        expect(result.groups[0].locationName).toBe('Main Warehouse');
+        expect(result.groups[0].connectionName).toBe('Allegro — Primary');
+        expect(result.groups[1].locationName).toBe('Main Warehouse');
+        expect(result.groups[1].connectionName).toBe('Allegro — Primary');
+        // Batched, not per-group: one call per unique id, regardless of how
+        // many groups reference it.
+        expect(productsService.getProductsByIds).toHaveBeenCalledTimes(1);
+        expect(productsService.getProductsByIds).toHaveBeenCalledWith(['prod-1']);
+        expect(locationService.getLocation).toHaveBeenCalledTimes(1);
+        expect(connectionPort.get).toHaveBeenCalledTimes(1);
+      });
+
+      it('never resolves a name for the null or legacy provenance sentinel, or a null location', async () => {
+        const report = {
+          groupCount: 1,
+          rowCount: 2,
+          excessRowCount: 1,
+          groups: [
+            {
+              productId: 'prod-1',
+              productVariantId: null,
+              locationId: null,
+              sourceConnectionId: 'legacy',
+              rowCount: 2,
+              liveRowCount: 0,
+              rows: [],
+              productName: null,
+              sku: null,
+              connectionName: null,
+              locationName: null,
+            },
+          ],
+          truncated: false,
+        };
+        inventoryRepository.findDuplicatePositions.mockResolvedValue(report);
+        productsService.getProductsByIds.mockResolvedValue([]);
+
+        const result = await service.getDuplicatePositionReport();
+
+        expect(result.groups[0].connectionName).toBeNull();
+        expect(result.groups[0].locationName).toBeNull();
+        expect(connectionPort.get).not.toHaveBeenCalled();
+        expect(locationService.getLocation).not.toHaveBeenCalled();
+      });
+
+      it('reports null rather than throwing when a connection has been deleted', async () => {
+        const report = {
+          groupCount: 1,
+          rowCount: 2,
+          excessRowCount: 1,
+          groups: [
+            {
+              productId: 'prod-1',
+              productVariantId: null,
+              locationId: null,
+              sourceConnectionId: 'deleted-conn',
+              rowCount: 2,
+              liveRowCount: 2,
+              rows: [],
+              productName: null,
+              sku: null,
+              connectionName: null,
+              locationName: null,
+            },
+          ],
+          truncated: false,
+        };
+        inventoryRepository.findDuplicatePositions.mockResolvedValue(report);
+        productsService.getProductsByIds.mockResolvedValue([]);
+        connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('deleted-conn'));
+
+        const result = await service.getDuplicatePositionReport();
+
+        expect(result.groups[0].connectionName).toBeNull();
+      });
     });
   });
 });
