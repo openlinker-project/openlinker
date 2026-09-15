@@ -892,7 +892,21 @@ Measured on `libs/integrations/prestashop` at 2 workers, content byte-identical 
 
 **The stamp is a necessary condition, not a sufficient one, and on this pipeline it is not yet a demonstrated win.** The cache directory is per runner *container*, and the pool holds four. Four consecutive `Test` runs during #3271 landed on four different containers (`e34966fddf6c`, `82d63762f74b`, `ea742a154a4e`, `blockydevs-buildserver-dev-01`), so every one of them still ran cold — an attempt to measure cold-versus-warm by running the same commit twice measured nothing of the kind, and the difference it appeared to show (`apps/api` 260.6 s -> 163.0 s) is attributable to host load, since the second run started after the rest of the workflow had finished.
 
-So a job reads a warm cache only when it lands on a container that has already transformed the same content. The stamp is what makes that possible at all — before it, no container could ever hit, which is why they had accumulated 33 GB of unreadable entries — but the benefit accrues per container as the pool warms, rather than on the next run. When claiming a figure for it, check `Runner name:` in both job logs first; two runs on different containers are two cold runs.
+So a job reads a warm cache only when it lands on a container that has already transformed the same content. When claiming a figure for it, check `Runner name:` in both job logs first; two runs on different containers are two cold runs.
+
+Two that *did* share a container settle it. Same runner (`blockydevs-buildserver-dev-01`), same worker settings, 14 214 tests either way, content differing only under `docs/` — so every cache key for transformed source is identical:
+
+| package | first run on that container | the next one |
+|---|---|---|
+| prestashop | 199.4 s | **65.2 s** |
+| allegro | 83.5 s | **12.5 s** |
+| dpd-polska | 76.1 s | **11.5 s** |
+| infakt | 29.1 s | **3.9 s** |
+| libs/core | 73.3 s | **48.2 s** |
+| apps/api | 79.3 s | **46.0 s** |
+| **whole `Test` job** | **13m46s** | **8m10s** |
+
+Every one of the nineteen packages got faster, most by 70-87%. Against the pre-#3271 baseline of 15m02s-15m30s, a container running this branch for the first time costs 13m46s and every run after that on the same container costs 8m10s, so the steady state is reached per container as the pool warms rather than on the next run.
 
 The fix is `scripts/normalize-source-mtimes.mjs`, run in the `test` job right after `actions/setup-node`: it walks the working tree (skipping `node_modules`) and stamps every file with one fixed instant, so unchanged content produces an unchanged key across runs *and* across branches. It walks rather than calling `git ls-files` on purpose — **some self-hosted runners carry no git binary**, `actions/checkout` succeeds through its API path, and a git-based listing there returns nothing while still exiting 0. **This is safe, and that was verified rather than assumed** — a one-word edit preserving the file's exact byte length, with mtime rolled back to the same stamp, still failed 21 suites. mtime decides only whether jest re-examines a file, never what it believes the file contains.
 

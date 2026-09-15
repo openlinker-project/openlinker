@@ -1645,4 +1645,10 @@ proves otherwise.
 **Applies to**: any per-host cache on self-hosted CI — jest, ts-jest, pnpm store,
 docker layers, compiler output.
 
+**Postscript**: the controlled repeat — two runs that did share a container —
+confirmed the mechanism outright: the whole job went 13m46s -> 8m10s, every one
+of the nineteen packages faster, most by 70-87%. The withdrawal was still right.
+The first result was true by accident, and a number arrived at by accident cannot
+be relied on the next time.
+
 **Source**: #3271.
