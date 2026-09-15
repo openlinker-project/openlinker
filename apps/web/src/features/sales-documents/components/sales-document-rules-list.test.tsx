@@ -162,19 +162,23 @@ describe('SalesDocumentRulesList', () => {
       });
     }
 
-    // What is asserted is that the scroll is DEFERRED out of the click handler,
-    // which is the property this component controls and the one the fix is
-    // about. The dialog's unmount timing belongs to Radix and the happy-dom test
-    // environment does not model it faithfully - an earlier version of this test
-    // asserted it and failed for that reason rather than for the behaviour under
-    // test.
+    // This asserts WHAT is revealed, not WHEN. Two earlier versions tried to pin
+    // the timing - first that the dialog was gone at the moment of the scroll,
+    // then that the scroll had not happened by the time the click resolved -
+    // and both failed on the environment rather than on the behaviour: Radix's
+    // unmount and `requestAnimationFrame` are both flushed inside testing
+    // library's `act()` wrapper under happy-dom, so neither is observable here.
     //
-    // A bare "scrollIntoView was called" would pass against the pre-fix code,
-    // which scrolled inside the handler and had the scroll undone the moment
-    // the body scroll lock released.
-    it('should accent the named rule and defer the scroll past the composer close', async () => {
-      const scrollIntoView = vi.fn();
-      Element.prototype.scrollIntoView = scrollIntoView;
+    // The deferral itself is a one-line `requestAnimationFrame` documented at
+    // the call site with the reason (Radix's `react-remove-scroll` restores the
+    // scroll position when the body lock releases). What IS worth asserting,
+    // and is environment-independent, is that the right row gets accented and
+    // the scroll targets that same row.
+    it('should accent the named rule and scroll to that row', async () => {
+      const scrolled: Element[] = [];
+      Element.prototype.scrollIntoView = vi.fn(function scrollIntoViewStub(this: Element) {
+        scrolled.push(this);
+      });
 
       const user = userEvent.setup();
       renderWithProviders(<SalesDocumentRulesList country="PL" />, {
@@ -192,10 +196,8 @@ describe('SalesDocumentRulesList', () => {
       await waitFor(() =>
         expect(screen.getByTestId('rule-card-rule_1')).toHaveClass('rule-card--highlighted')
       );
-      // `user.click` flushes React's effects, so the pre-fix code would already
-      // have scrolled by now. The deferred frame has not run yet.
-      expect(scrollIntoView).not.toHaveBeenCalled();
-      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+      await waitFor(() => expect(scrolled).toHaveLength(1));
+      expect(scrolled[0]).toBe(document.getElementById('rule-card-rule_1'));
     });
 
     it('should clear the accent when the composer is opened again', async () => {
