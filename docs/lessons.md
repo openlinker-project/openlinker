@@ -1546,8 +1546,9 @@ catch branch continues as if nothing happened.
 
 ## Do not bundle an unmeasured safety knob with a measured change
 
-**Context**: #3271 raised `maxWorkers` from 2 to 8 under CI, measured end to end
-(whole job 753.9 s -> 538.1 s). A review suggested also adding
+**Context**: #3271 raised `maxWorkers` from 2 to 8 under CI on the strength of a
+lab run (whole job 753.9 s -> 538.1 s; that raise was itself later reverted for
+most packages — see the next entry). A review suggested also adding
 `workerIdleMemoryLimit: '512MB'` to the three packages newly taking 4x the
 workers, since only prestashop and allegro had a ceiling. It sounded prudent, so
 it shipped alongside — untested.
@@ -1560,8 +1561,10 @@ of the change was fine; the unmeasured "precaution" bundled with it was the
 regression, and because they shipped together the first CI run could not say
 which half was at fault.
 
-There was also nothing to protect against — the whole job's peak RSS at 8 workers
-had been measured at 32.4 GB of the runner's 251 GB.
+There was also nothing to protect against at the time — the whole job's peak RSS
+at 8 workers had been measured at 32.4 GB of the runner's 251 GB, on an idle box.
+Under the real job an `apps/api` worker was later OOM-killed anyway, which is the
+next entry's subject.
 
 **Rule**: ship the measured change alone. A knob nobody measured is a change,
 not a safeguard, and bundling it destroys the attribution the measurement was
@@ -1570,5 +1573,41 @@ working set — never by copying a neighbour's number.
 
 **Applies to**: `workerIdleMemoryLimit`, worker/concurrency caps, timeouts, pool
 sizes — any tuning value copied from one package to another.
+
+**Source**: #3271.
+
+---
+
+## A lab number from an idle machine is not a CI number
+
+**Context**: #3271 needed to know whether raising jest's `maxWorkers` from 2 to 8
+would speed the `Test` job up. The self-hosted runner was available, so the whole
+job was run there directly, twice, at each setting — the real hardware, the real
+suite, the real commit. It measured 753.9 s -> 538.1 s cold and 490.3 s ->
+256.8 s warm, and the change shipped on that evidence.
+
+**Problem**: the lab runs had the machine to themselves. The real `Test` job runs
+alongside seven other jobs of the same workflow — Build, Lint, Type Check, Docker
+Build Smoke, PHP Unit Tests, Integration Tests — spread across the same four
+long-lived runner containers on one host. Re-measured there, the raise was net
+harmful: it helped only the three largest packages and made everything else
+slower, doubling `apps/api` (80.0 s -> 163.0 s) and reproducing the
+`signal=SIGKILL, exitCode=null` OOM its own config comment had warned about since
+444244f. Two packages at eight workers each is sixteen processes competing with
+whatever else the host is running, and on an empty box that contention does not
+exist to be measured.
+
+The mistake was not using a lab. It was treating "same hardware, same suite" as
+"same conditions", when the variable under test — contention for a shared
+machine — was precisely the one the lab removed.
+
+**Rule**: before trusting a resource-contention measurement, ask what else is
+running in production that was not running in the lab. If the answer is anything,
+the lab bounds the *best* case only; confirm on the real pipeline before drawing
+a conclusion, and treat a result that contradicts an existing in-code warning as
+the warning being right until proven otherwise.
+
+**Applies to**: worker/concurrency/pool sizing, memory ceilings, timeouts,
+rate-limit tuning — anything whose behaviour depends on what else shares the box.
 
 **Source**: #3271.

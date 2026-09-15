@@ -856,8 +856,21 @@ Tests:       339 passed, 339 total          ← zero test failures
 **Solution** (already applied to the heavy `prestashop` + `allegro` packages):
 1. **Per-package worker + memory caps** — `maxWorkers` and `workerIdleMemoryLimit: '512MB'`, spread into the package's `jest.config.mjs` from the shared `jest.ci-stability.mjs` at the repo root (one source for every heavy package). The memory limit recycles a worker before the OS kills it; an absolute worker cap (not `'50%'`, which scales with unknown runner cores) bounds peak memory deterministically. Tune the ceiling down (e.g. `256MB`) if the runner is tight.
 
-   The cap is **`process.env.CI ? 8 : 2`** (#3271), and the split matters: `maxWorkers` lives in `jest.config.*`, not in a CI-only overlay, so `.husky/pre-commit` → `pnpm smart-test` reaches the same value on a contributor's own machine. `8` is sized for the self-hosted runner measured at 64 cores / 251 GB, where the whole job's peak RSS at 8 workers was 32.4 GB; `2` off CI keeps a laptop survivable. The original flat `2` was chosen against a fan-out where every package took jest's default `cores - 1` — which on that runner is **63**, not the handful #976 assumed.
-2. **Cross-package fan-out bound** — `test:ci` runs `pnpm -r --workspace-concurrency=2 test`. pnpm's default `workspace-concurrency` is **4**, so the bound must be set *below* 4 to actually throttle how many packages' Jests run at once. Keep it at `2`: raising it to `4` is not a looser bound, it is **no bound**, and measurement puts the whole cost of keeping it at 2-11% of wall time (#3271).
+   The cap is **`process.env.CI ? 8 : 2`** (#3271) for the two packages that read this file, and **flat `2`** everywhere else. That asymmetry is measured, not stylistic. Under `--workspace-concurrency=2` two packages run at once, so a package's worker count is also a claim on its neighbour's CPU, and only a package big enough to use eight workers earns the right to deny them:
+
+   | package | 2 workers | 8 workers |
+   |---|---|---|
+   | prestashop (890 tests) | 297.6 s | **198.1 s** |
+   | allegro (706 tests) | 151.4 s | **81.7 s** |
+   | libs/core (6749 tests) | 73.0 s | 64.5 s |
+   | apps/worker (765 tests) | 93.2 s | **142.9 s** |
+   | apps/api (2161 tests) | 80.0 s | **163.0 s**, one suite OOM-killed |
+   | twelve smaller packages | — | **+38% to +88%** |
+
+   The raise was first applied to `libs/core`, `apps/api` and `apps/worker` too, on the strength of a lab run, and reverted. **A lab number from an idle runner is not a CI number**: the measurement was taken with the test job alone on the box, while the real job shares those containers with seven other concurrent jobs, so `2 packages × 8 workers` oversubscribes exactly as the `apps/api` comment had warned since 444244f — including reproducing its `signal=SIGKILL, exitCode=null`.
+
+   The `CI ?` split matters separately: `maxWorkers` lives in `jest.config.*`, not in a CI-only overlay, so `.husky/pre-commit` → `pnpm smart-test` reaches the same value on a contributor's own machine, where `2` keeps a laptop survivable.
+2. **Cross-package fan-out bound** — `test:ci` runs `pnpm -r --workspace-concurrency=2 test`. pnpm's default `workspace-concurrency` is **4**, so the bound must be set *below* 4 to actually throttle how many packages' Jests run at once. Keep it at `2`: raising it to `4` is not a looser bound, it is **no bound**.
 3. **Split oversized spec files** — a single multi-thousand-line spec pins all its state in one worker. Splitting per method/area (sharing setup via a `__tests__/mocks/*.factory.ts`) lowers peak per-worker memory and improves parallelism. Keep the total test count unchanged when splitting.
 
 To confirm it's OOM (not a leak), run with `--logHeapUsage` and watch for monotonic per-worker growth; the runner's `dmesg` / container OOM log is the definitive signal.
@@ -876,6 +889,16 @@ Measured on `libs/integrations/prestashop` at 2 workers, content byte-identical 
 | after restoring the same mtimes | 74.9 s |
 
 `pnpm install --frozen-lockfile` and `pnpm -r build` do **not** invalidate it; only mtime does.
+
+Confirmed on the real job by running the same commit twice (#3271). The first run writes the full set of entries under the fixed stamps and the second reads them; only the two packages whose transform cost dominates their wall time moved, which is what a transform cache is expected to do:
+
+| package | run 1 (writes cache) | run 2 (reads it) |
+|---|---|---|
+| apps/api | 260.6 s | 163.0 s |
+| apps/worker | 242.0 s | 142.9 s |
+| the other seventeen | — | flat within ±4% |
+
+Both runs were taken at the since-reverted 8-worker setting, so read those two figures as a cold-versus-warm delta rather than as absolute package times.
 
 The fix is `scripts/normalize-source-mtimes.mjs`, run in the `test` job right after `actions/setup-node`: it walks the working tree (skipping `node_modules`) and stamps every file with one fixed instant, so unchanged content produces an unchanged key across runs *and* across branches. It walks rather than calling `git ls-files` on purpose — **some self-hosted runners carry no git binary**, `actions/checkout` succeeds through its API path, and a git-based listing there returns nothing while still exiting 0. **This is safe, and that was verified rather than assumed** — a one-word edit preserving the file's exact byte length, with mtime rolled back to the same stamp, still failed 21 suites. mtime decides only whether jest re-examines a file, never what it believes the file contains.
 

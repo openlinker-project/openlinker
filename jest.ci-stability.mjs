@@ -10,11 +10,18 @@
  *
  *  - `maxWorkers` — absolute (not '50%'), so peak memory is deterministic
  *    regardless of the runner's core count. Raised 2 -> 8 under CI only
- *    (#3271): the self-hosted runner is a 64-core / 251 GB box, and the whole
- *    job's measured peak RSS at 8 workers was 32.4 GB. The original `2` was
- *    sized against a fan-out where every package took jest's default
- *    `cores-1` — which on this machine is 63, not the handful assumed in
- *    #976. OFF CI the value stays 2, because this file is also reached by
+ *    (#3271), and the raise is deliberately scoped to THIS file, i.e. to
+ *    prestashop and allegro alone. Measured on the real runner, not a lab box:
+ *    prestashop 297.6 s -> 198.1 s and allegro 151.4 s -> 81.7 s. The same
+ *    raise applied to `libs/core`, `apps/api` and `apps/worker` was REVERTED —
+ *    there it starved the package running beside it under
+ *    `--workspace-concurrency=2` and took apps/api from 80.0 s to 163.0 s with
+ *    an OOM SIGKILL on one suite. Those two packages are big enough to use
+ *    eight workers; a package with a handful of test files is not, and only
+ *    denies them to its co-runner. Do not lift this value into a shared
+ *    default without measuring the package it would apply to.
+ *
+ *    OFF CI the value stays 2, because this file is also reached by
  *    `.husky/pre-commit` -> `pnpm smart-test`, which falls back to a bare
  *    `pnpm test` on a contributor's own machine.
  *  - `workerIdleMemoryLimit` — Jest recycles a worker once its heap crosses the
@@ -25,8 +32,7 @@
  * `pnpm -r --workspace-concurrency=2` in the root `test:ci` script. That `2`
  * is load-bearing and must not drift to `4`: pnpm's own default IS 4, so the
  * bound has to sit below it to throttle anything at all (see
- * `docs/testing-guide.md` and the #976 implementation plan). Measured cost of
- * keeping it while raising `maxWorkers`: 2-11% of wall time (#3271).
+ * `docs/testing-guide.md` and the #976 implementation plan).
  */
 export const ciStabilityConfig = {
   maxWorkers: process.env.CI ? 8 : 2,
