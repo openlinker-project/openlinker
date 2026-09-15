@@ -210,7 +210,7 @@ export function SalesDocumentRuleComposerDialog({
       effectiveFrom,
       effectiveTo: effectiveTo.trim().length > 0 ? effectiveTo : null,
     },
-    open && conditionsAreAnswerable,
+    open && conditionsAreAnswerable
   );
   // Rival copy names the operator's own rule text rather than an opaque id.
   // This read is the one the list behind the dialog already made, so it is a
@@ -298,7 +298,7 @@ export function SalesDocumentRuleComposerDialog({
                   onChange={(event) => {
                     const kind = event.target.value as ConditionKind;
                     setConditions((prev) =>
-                      prev.map((c, i) => (i === index ? { ...newConditionDraft(), kind } : c)),
+                      prev.map((c, i) => (i === index ? { ...newConditionDraft(), kind } : c))
                     );
                   }}
                 >
@@ -314,8 +314,8 @@ export function SalesDocumentRuleComposerDialog({
                     onChange={(event) =>
                       setConditions((prev) =>
                         prev.map((c, i) =>
-                          i === index ? { ...c, boolValue: event.target.value === 'true' } : c,
-                        ),
+                          i === index ? { ...c, boolValue: event.target.value === 'true' } : c
+                        )
                       )
                     }
                   >
@@ -332,10 +332,8 @@ export function SalesDocumentRuleComposerDialog({
                     onChange={(event) =>
                       setConditions((prev) =>
                         prev.map((c, i) =>
-                          i === index
-                            ? { ...c, stringValue: event.target.value.toUpperCase() }
-                            : c,
-                        ),
+                          i === index ? { ...c, stringValue: event.target.value.toUpperCase() } : c
+                        )
                       )
                     }
                   />
@@ -349,8 +347,8 @@ export function SalesDocumentRuleComposerDialog({
                       onChange={(event) =>
                         setConditions((prev) =>
                           prev.map((c, i) =>
-                            i === index ? { ...c, op: event.target.value as 'gte' | 'lt' } : c,
-                          ),
+                            i === index ? { ...c, op: event.target.value as 'gte' | 'lt' } : c
+                          )
                         )
                       }
                     >
@@ -365,8 +363,8 @@ export function SalesDocumentRuleComposerDialog({
                       onChange={(event) =>
                         setConditions((prev) =>
                           prev.map((c, i) =>
-                            i === index ? { ...c, amount: event.target.value } : c,
-                          ),
+                            i === index ? { ...c, amount: event.target.value } : c
+                          )
                         )
                       }
                     />
@@ -378,10 +376,8 @@ export function SalesDocumentRuleComposerDialog({
                       onChange={(event) =>
                         setConditions((prev) =>
                           prev.map((c, i) =>
-                            i === index
-                              ? { ...c, currency: event.target.value.toUpperCase() }
-                              : c,
-                          ),
+                            i === index ? { ...c, currency: event.target.value.toUpperCase() } : c
+                          )
                         )
                       }
                     />
@@ -517,7 +513,7 @@ export function SalesDocumentRuleComposerDialog({
               <p>
                 {describeSalesDocumentOverlapConflict(
                   conflicts.map((hit) => hit.ruleId),
-                  rivals,
+                  rivals
                 )}
               </p>
               {onOpenRule !== undefined ? (
@@ -550,7 +546,7 @@ export function SalesDocumentRuleComposerDialog({
                   {describeSalesDocumentOverlapClear(
                     hit.reason,
                     rivals.find((r) => r.ruleId === hit.ruleId),
-                    hit.ruleId,
+                    hit.ruleId
                   )}
                 </p>
               ))}
@@ -563,6 +559,31 @@ export function SalesDocumentRuleComposerDialog({
           than instead of them: an undecided pair is not reassurance, and
           folding it into silence is the exact failure this check removes.
         */}
+        {/*
+          The FOURTH state, and the one an empty verdict silently impersonates:
+          the check could not run at all. `verdict` is then `undefined` and all
+          three arrays fall back to `[]`, which renders as no banner - i.e. as
+          "no conflict", the single answer this check exists to make
+          impossible. Absence and failure must not be the same pixel (the rule
+          the returns surfaces already hold: an empty array is never a positive
+          claim).
+
+          It does NOT block the save, matching the undecided banner beside it:
+          a failed check is not evidence of a collision, and the runtime still
+          holds an ambiguous order either way. What it must not do is stay
+          quiet.
+        */}
+        {overlapQuery.isError ? (
+          <div data-testid="rule-overlap-unavailable">
+            <Alert tone="warning" title="We could not run the overlap check">
+              <p>
+                This rule has not been compared against the others in this market. Saving is still
+                allowed, and an order matched by two rules is held rather than given the wrong
+                document.
+              </p>
+            </Alert>
+          </div>
+        ) : null}
         {undecided.length > 0 ? (
           <div data-testid="rule-overlap-undecided">
             <Alert tone="warning" title="We could not check every rule">
@@ -571,7 +592,7 @@ export function SalesDocumentRuleComposerDialog({
                   {describeSalesDocumentOverlapUndecided(
                     hit.reason,
                     rivals.find((r) => r.ruleId === hit.ruleId),
-                    hit.ruleId,
+                    hit.ruleId
                   )}
                 </p>
               ))}

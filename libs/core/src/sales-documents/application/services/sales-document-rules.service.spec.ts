@@ -76,7 +76,7 @@ function countryDefault(overrides: {
     overrides.documentKind,
     overrides.connectionId,
     new Date(),
-    new Date(),
+    new Date()
   );
 }
 
@@ -92,7 +92,7 @@ function existingRule(): SalesDocumentRule {
     null,
     null,
     new Date(),
-    new Date(),
+    new Date()
   );
 }
 
@@ -121,7 +121,12 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
     countryDefaultRepo = makeCountryDefaultRepo();
     thresholdRepo = makeThresholdRepo();
     acknowledgmentRepo = makeAcknowledgmentRepo();
-    service = new SalesDocumentRulesService(ruleRepo, countryDefaultRepo, thresholdRepo, acknowledgmentRepo);
+    service = new SalesDocumentRulesService(
+      ruleRepo,
+      countryDefaultRepo,
+      thresholdRepo,
+      acknowledgmentRepo
+    );
   });
 
   describe('createRule — conflict guard', () => {
@@ -129,7 +134,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([existingRule()]);
 
       await expect(service.createRule(baseInput())).rejects.toBeInstanceOf(
-        SalesDocumentRuleConflictException,
+        SalesDocumentRuleConflictException
       );
       expect(ruleRepo.create).not.toHaveBeenCalled();
     });
@@ -139,7 +144,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.create.mockResolvedValue(existingRule());
 
       await expect(
-        service.createRule(baseInput({ connectionId: 'conn-receipt-only' })),
+        service.createRule(baseInput({ connectionId: 'conn-receipt-only' }))
       ).resolves.toBeDefined();
     });
 
@@ -158,13 +163,13 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
         new Date('2025-12-31'),
         null,
         new Date(),
-        new Date(),
+        new Date()
       );
       ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([closedExisting]);
       ruleRepo.create.mockResolvedValue(closedExisting);
 
       await expect(
-        service.createRule(baseInput({ effectiveFrom: new Date('2026-01-01') })),
+        service.createRule(baseInput({ effectiveFrom: new Date('2026-01-01') }))
       ).resolves.toBeDefined();
     });
   });
@@ -184,7 +189,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       });
 
       await expect(service.createRule(input)).rejects.toBeInstanceOf(
-        SalesDocumentInvalidConditionException,
+        SalesDocumentInvalidConditionException
       );
       expect(ruleRepo.findByCountryAndConditionsHash).not.toHaveBeenCalled();
       expect(ruleRepo.create).not.toHaveBeenCalled();
@@ -198,7 +203,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       });
 
       await expect(service.createRule(input)).rejects.toBeInstanceOf(
-        SalesDocumentInvalidConditionException,
+        SalesDocumentInvalidConditionException
       );
       expect(ruleRepo.create).not.toHaveBeenCalled();
     });
@@ -224,7 +229,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       await service.createRule(
         baseInput({
           conditions: [{ field: 'orderTotalGross', op: 'lt', amount: '450.00', currency: 'PLN' }],
-        }),
+        })
       );
 
       expect(thresholdRepo.findByRefs).not.toHaveBeenCalled();
@@ -359,7 +364,11 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.countRulesByCountry.mockResolvedValue(new Map());
       countryDefaultRepo.findAll.mockResolvedValue([
         countryDefault({ country: 'DE', documentKind: 'invoice', connectionId: 'conn-invoice' }),
-        countryDefault({ country: 'DE', documentKind: 'fiscal-receipt', connectionId: 'conn-receipt' }),
+        countryDefault({
+          country: 'DE',
+          documentKind: 'fiscal-receipt',
+          connectionId: 'conn-receipt',
+        }),
       ]);
       acknowledgmentRepo.findAll.mockResolvedValue([]);
 
@@ -442,7 +451,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.findByCountry.mockResolvedValue([]);
       countryDefaultRepo.findByCountry.mockResolvedValue([]);
       acknowledgmentRepo.upsert.mockResolvedValue(
-        new SalesDocumentCountryAcknowledgment('IT', acknowledgedAt),
+        new SalesDocumentCountryAcknowledgment('IT', acknowledgedAt)
       );
 
       const result = await service.acknowledgeNoDocument('IT');
@@ -456,7 +465,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       countryDefaultRepo.findByCountry.mockResolvedValue([]);
 
       await expect(service.acknowledgeNoDocument('PL')).rejects.toBeInstanceOf(
-        SalesDocumentCountryAlreadyConfiguredException,
+        SalesDocumentCountryAlreadyConfiguredException
       );
       expect(acknowledgmentRepo.upsert).not.toHaveBeenCalled();
     });
@@ -468,7 +477,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ]);
 
       await expect(service.acknowledgeNoDocument('DE')).rejects.toBeInstanceOf(
-        SalesDocumentCountryAlreadyConfiguredException,
+        SalesDocumentCountryAlreadyConfiguredException
       );
       expect(acknowledgmentRepo.upsert).not.toHaveBeenCalled();
     });
@@ -491,7 +500,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.findByCountryAndConditionsHash.mockResolvedValue([existingRule()]);
 
       await expect(service.createRule(baseInput({ country: 'PL' }))).rejects.toBeInstanceOf(
-        SalesDocumentRuleConflictException,
+        SalesDocumentRuleConflictException
       );
 
       expect(acknowledgmentRepo.delete).not.toHaveBeenCalled();
@@ -499,7 +508,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
 
     it('should auto-clear the acknowledgment when a country default is upserted for that country', async () => {
       countryDefaultRepo.upsert.mockResolvedValue(
-        countryDefault({ country: 'NL', documentKind: 'invoice', connectionId: 'conn-nl' }),
+        countryDefault({ country: 'NL', documentKind: 'invoice', connectionId: 'conn-nl' })
       );
 
       await service.upsertCountryDefault({
@@ -519,7 +528,10 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
 
       await service.createRule(baseInput({ country: 'pl' }));
 
-      expect(ruleRepo.findByCountryAndConditionsHash).toHaveBeenCalledWith('PL', expect.any(String));
+      expect(ruleRepo.findByCountryAndConditionsHash).toHaveBeenCalledWith(
+        'PL',
+        expect.any(String)
+      );
       expect(ruleRepo.create).toHaveBeenCalledWith(expect.objectContaining({ country: 'PL' }));
       expect(acknowledgmentRepo.delete).toHaveBeenCalledWith('PL');
 
@@ -529,7 +541,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
 
     it('should uppercase a mixed-case country before every country-default lookup and write', async () => {
       countryDefaultRepo.upsert.mockResolvedValue(
-        countryDefault({ country: 'PL', documentKind: 'invoice', connectionId: 'conn-pl' }),
+        countryDefault({ country: 'PL', documentKind: 'invoice', connectionId: 'conn-pl' })
       );
 
       await service.upsertCountryDefault({
@@ -539,7 +551,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       });
 
       expect(countryDefaultRepo.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({ country: 'PL' }),
+        expect.objectContaining({ country: 'PL' })
       );
       expect(acknowledgmentRepo.delete).toHaveBeenCalledWith('PL');
 
@@ -551,7 +563,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.findByCountry.mockResolvedValue([]);
       countryDefaultRepo.findByCountry.mockResolvedValue([]);
       acknowledgmentRepo.upsert.mockResolvedValue(
-        new SalesDocumentCountryAcknowledgment('PL', new Date()),
+        new SalesDocumentCountryAcknowledgment('PL', new Date())
       );
 
       await service.acknowledgeNoDocument(' pl ');
@@ -563,7 +575,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
 
     it('should resolve routing for an order whose delivery-address country is lowercase against an uppercase rule scope', async () => {
       ruleRepo.findByCountry.mockImplementation((country) =>
-        Promise.resolve(country === 'PL' ? [existingRule()] : []),
+        Promise.resolve(country === 'PL' ? [existingRule()] : [])
       );
       countryDefaultRepo.findByCountry.mockResolvedValue([]);
       thresholdRepo.findAll.mockResolvedValue([]);
@@ -592,7 +604,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ruleRepo.create.mockResolvedValue(existingRule());
 
       await service.createRule(
-        baseInput({ conditions: [{ field: 'orderCountry', op: 'eq', value: 'pl' }] }),
+        baseInput({ conditions: [{ field: 'orderCountry', op: 'eq', value: 'pl' }] })
       );
 
       // The evaluator compares `order.country === condition.value` and
@@ -601,7 +613,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       expect(ruleRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
           conditions: [{ field: 'orderCountry', op: 'eq', value: 'PL' }],
-        }),
+        })
       );
 
       // Ordering matters: the hash is a column of
@@ -612,7 +624,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ]);
       expect(ruleRepo.findByCountryAndConditionsHash).toHaveBeenCalledWith('PL', expectedHash);
       expect(ruleRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ conditionsHash: expectedHash }),
+        expect.objectContaining({ conditionsHash: expectedHash })
       );
     });
 
@@ -623,7 +635,7 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
         new Map([
           ['PL', 2],
           ['pl', 1],
-        ]),
+        ])
       );
       countryDefaultRepo.findAll.mockResolvedValue([
         countryDefault({ country: 'pl', documentKind: 'invoice', connectionId: 'conn-infakt' }),
@@ -691,6 +703,24 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       ]);
     });
 
+    // The repository matches `country` case-sensitively and `createRule`
+    // uppercases what it writes, so an unnormalised country would read zero
+    // rivals and answer an empty verdict - a FALSE "no conflict", which is the
+    // one answer this check exists to make impossible. The browser always
+    // sends a normalised country; the admin API can send anything.
+    it('normalises the country and the condition values before comparing, as createRule does', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([]);
+
+      await service.detectRuleOverlap({
+        country: '  pl ',
+        conditions: [{ field: 'orderCountry', op: 'eq', value: 'de' }],
+        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+        effectiveTo: null,
+      });
+
+      expect(ruleRepo.findByCountry).toHaveBeenCalledWith('PL');
+    });
+
     it('never writes - it is a read, and the engine still holds an ambiguous order', async () => {
       ruleRepo.findByCountry.mockResolvedValue([existingRule()]);
 
@@ -704,5 +734,4 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       expect(ruleRepo.create).not.toHaveBeenCalled();
     });
   });
-
 });

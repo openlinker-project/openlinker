@@ -135,7 +135,6 @@ export interface AdoptSalesDocumentTemplateInput {
   selections: { slot: string; connectionId: string }[];
 }
 
-
 /**
  * Overlap-check result (#3190). Three outcomes, never two: `undecided` is
  * surfaced rather than folded into `disjoint`, because silence reads as "no

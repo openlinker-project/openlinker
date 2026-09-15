@@ -30,14 +30,18 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { createMockApiClient, renderWithProviders, sampleConnection } from '../../../test/test-utils';
+import {
+  createMockApiClient,
+  renderWithProviders,
+  sampleConnection,
+} from '../../../test/test-utils';
 import { SalesDocumentRuleComposerDialog } from './sales-document-rule-composer-dialog';
 
 function renderComposer(overrides: Parameters<typeof createMockApiClient>[0] = {}) {
   const apiClient = createMockApiClient(overrides);
   renderWithProviders(
     <SalesDocumentRuleComposerDialog country="PL" open onOpenChange={vi.fn()} />,
-    { apiClient },
+    { apiClient }
   );
   return apiClient;
 }
@@ -116,6 +120,26 @@ describe('SalesDocumentRuleComposerDialog', () => {
       expect(undecided).toHaveTextContent('could not tell');
       expect(within(root).queryByTestId('rule-no-conflict')).not.toBeInTheDocument();
       expect(within(root).queryByTestId('rule-conflict')).not.toBeInTheDocument();
+    });
+
+    // The FOURTH state. `verdict` is `undefined` on a failed request and all
+    // three arrays fall back to `[]`, which renders as no banner - i.e. as "no
+    // conflict". Absence and failure must not be the same pixel.
+    it('says the check could not run, rather than rendering as no conflict', async () => {
+      renderComposer({
+        salesDocumentRules: {
+          checkRuleOverlap: vi.fn().mockRejectedValue(new Error('network down')),
+        },
+      });
+      const root = await dialog();
+
+      const unavailable = await within(root).findByTestId('rule-overlap-unavailable');
+      expect(unavailable).toHaveTextContent('has not been compared');
+      expect(within(root).queryByTestId('rule-no-conflict')).not.toBeInTheDocument();
+      expect(within(root).queryByTestId('rule-conflict')).not.toBeInTheDocument();
+      expect(within(root).queryByTestId('rule-overlap-undecided')).not.toBeInTheDocument();
+      // A failed check is not evidence of a collision, so it must not block.
+      expect(within(root).getByTestId('rule-save')).toBeInTheDocument();
     });
   });
 
@@ -211,7 +235,9 @@ describe('SalesDocumentRuleComposerDialog', () => {
 
     const connectionSelect = within(root).getByLabelText('Integration');
     await waitFor(() =>
-      expect(within(connectionSelect as HTMLSelectElement).getAllByRole('option').length).toBeGreaterThan(1),
+      expect(
+        within(connectionSelect as HTMLSelectElement).getAllByRole('option').length
+      ).toBeGreaterThan(1)
     );
     const firstReal = within(connectionSelect as HTMLSelectElement)
       .getAllByRole('option')

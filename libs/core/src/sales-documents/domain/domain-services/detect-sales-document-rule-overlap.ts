@@ -114,7 +114,7 @@ export function salesDocumentRuleWindowsOverlap(
   aFrom: Date,
   aTo: Date | null,
   bFrom: Date,
-  bTo: Date | null,
+  bTo: Date | null
 ): boolean {
   const aEnd = aTo ?? new Date(8640000000000000);
   const bEnd = bTo ?? new Date(8640000000000000);
@@ -143,6 +143,20 @@ function reduceToBounds(conditions: readonly unknown[]): BoundsResult {
       return { ok: false, reason: 'unreadable-condition' };
     }
     const condition: SalesDocumentCondition = raw;
+    // `buyerHasTaxId` and `orderCountry` are LAST-ONE-WINS, deliberately
+    // unlike the amount bounds below (conjunctive) and `currency` (a
+    // contradiction there is reported as `multi-currency-rule`). Both are
+    // single-valued equalities, so two of the same field either repeat - in
+    // which case last-one-wins is the conjunction - or contradict, and a
+    // contradictory rule matches no order at all.
+    //
+    // Reporting a third undecided reason for that would describe a rule the
+    // composer should not have let the operator write, and both outcomes here
+    // are already fail-safe: against a rival with the same value the pair is
+    // reported overlapping (a false WARNING, never a false clear), and against
+    // the opposite value it is reported disjoint - which is true, reached by
+    // the wrong reasoning. Neither can produce the answer this detector exists
+    // to make impossible. Refusing a duplicate field belongs in the composer.
     if (condition.field === 'buyerHasTaxId') {
       bounds = { ...bounds, buyerHasTaxId: condition.value };
       continue;
@@ -158,13 +172,15 @@ function reduceToBounds(conditions: readonly unknown[]): BoundsResult {
     // the conjunction, not the last one written.
     if (condition.op === 'gte') {
       const lower =
-        bounds.lower === undefined || compareDecimalAmountStrings(condition.amount, bounds.lower) > 0
+        bounds.lower === undefined ||
+        compareDecimalAmountStrings(condition.amount, bounds.lower) > 0
           ? condition.amount
           : bounds.lower;
       bounds = { ...bounds, currency: condition.currency, lower };
     } else {
       const upper =
-        bounds.upper === undefined || compareDecimalAmountStrings(condition.amount, bounds.upper) < 0
+        bounds.upper === undefined ||
+        compareDecimalAmountStrings(condition.amount, bounds.upper) < 0
           ? condition.amount
           : bounds.upper;
       bounds = { ...bounds, currency: condition.currency, upper };
@@ -185,7 +201,11 @@ function disjointReason(a: RuleBounds, b: RuleBounds): SalesDocumentOverlapDisjo
   ) {
     return 'buyer-tax-id';
   }
-  if (a.orderCountry !== undefined && b.orderCountry !== undefined && a.orderCountry !== b.orderCountry) {
+  if (
+    a.orderCountry !== undefined &&
+    b.orderCountry !== undefined &&
+    a.orderCountry !== b.orderCountry
+  ) {
     return 'order-country';
   }
   if (a.currency !== undefined && b.currency !== undefined) {
@@ -196,14 +216,22 @@ function disjointReason(a: RuleBounds, b: RuleBounds): SalesDocumentOverlapDisjo
     const upper = pickTighter(a.upper, b.upper, 'min');
     // `gte lower` is inclusive and `lt upper` exclusive, so the intersection
     // is non-empty exactly while lower < upper.
-    if (lower !== undefined && upper !== undefined && compareDecimalAmountStrings(lower, upper) >= 0) {
+    if (
+      lower !== undefined &&
+      upper !== undefined &&
+      compareDecimalAmountStrings(lower, upper) >= 0
+    ) {
       return 'amount-range';
     }
   }
   return null;
 }
 
-function pickTighter(a: string | undefined, b: string | undefined, mode: 'max' | 'min'): string | undefined {
+function pickTighter(
+  a: string | undefined,
+  b: string | undefined,
+  mode: 'max' | 'min'
+): string | undefined {
   if (a === undefined) return b;
   if (b === undefined) return a;
   const cmp = compareDecimalAmountStrings(a, b);
@@ -213,7 +241,7 @@ function pickTighter(a: string | undefined, b: string | undefined, mode: 'max' |
 
 export function detectSalesDocumentRuleOverlap(
   candidate: SalesDocumentRuleOverlapCandidate,
-  existing: readonly SalesDocumentRuleOverlapSubject[],
+  existing: readonly SalesDocumentRuleOverlapSubject[]
 ): SalesDocumentRuleOverlapVerdict {
   const overlapping: SalesDocumentOverlapHit[] = [];
   const disjoint: SalesDocumentDisjointHit[] = [];
@@ -229,7 +257,7 @@ export function detectSalesDocumentRuleOverlap(
         candidate.effectiveFrom,
         candidate.effectiveTo,
         subject.effectiveFrom,
-        subject.effectiveTo,
+        subject.effectiveTo
       )
     ) {
       disjoint.push({ ruleId: subject.id, reason: 'effective-window' });

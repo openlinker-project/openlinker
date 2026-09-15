@@ -80,7 +80,7 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     @Inject(SALES_DOCUMENT_THRESHOLD_REPOSITORY_TOKEN)
     private readonly thresholdRepository: SalesDocumentThresholdRepositoryPort,
     @Inject(SALES_DOCUMENT_COUNTRY_ACKNOWLEDGMENT_REPOSITORY_TOKEN)
-    private readonly acknowledgmentRepository: SalesDocumentCountryAcknowledgmentRepositoryPort,
+    private readonly acknowledgmentRepository: SalesDocumentCountryAcknowledgmentRepositoryPort
   ) {}
 
   /**
@@ -132,12 +132,32 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
    * entry is known to carry a string `value`.
    */
   private normaliseConditionCountries(
-    conditions: readonly SalesDocumentCondition[],
+    conditions: readonly SalesDocumentCondition[]
   ): readonly SalesDocumentCondition[] {
     return conditions.map((condition) =>
       condition.field === 'orderCountry'
         ? { ...condition, value: this.normaliseCountry(condition.value) }
-        : condition,
+        : condition
+    );
+  }
+
+  /**
+   * The {@link normaliseConditionCountries} twin for a DRAFT, whose conditions
+   * are `unknown[]` rather than a validated array.
+   *
+   * It must stay that way. The detector reports an unrecognised entry as
+   * `unreadable-condition`, which is one of its three outcomes; narrowing or
+   * filtering here would silently drop that entry and turn "could not decide"
+   * into a clean answer about a rule the operator did not write. So anything
+   * this does not recognise is passed through UNTOUCHED, and only a
+   * well-formed `orderCountry` value is folded to the casing the repository
+   * and the persisted rules use.
+   */
+  private normaliseDraftConditionCountries(conditions: readonly unknown[]): readonly unknown[] {
+    return conditions.map((condition) =>
+      isSalesDocumentCondition(condition) && condition.field === 'orderCountry'
+        ? { ...condition, value: this.normaliseCountry(condition.value) }
+        : condition
     );
   }
 
@@ -159,7 +179,13 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     // own amount now, so there is no ref left to resolve.
 
     const conditionsHash = computeSalesDocumentConditionsHash(input.conditions);
-    await this.assertNoConflict(input.country, conditionsHash, input.effectiveFrom, input.effectiveTo, input.connectionId);
+    await this.assertNoConflict(
+      input.country,
+      conditionsHash,
+      input.effectiveFrom,
+      input.effectiveTo,
+      input.connectionId
+    );
 
     const rule = await this.ruleRepository.create({ ...input, conditionsHash });
     // A real configuration and a "no document, by design" acknowledgment can
@@ -188,7 +214,7 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
   }
 
   async upsertCountryDefault(
-    rawInput: SalesDocumentCountryDefaultInput,
+    rawInput: SalesDocumentCountryDefaultInput
   ): Promise<SalesDocumentCountryDefault> {
     const input = { ...rawInput, country: this.normaliseCountry(rawInput.country) };
     const countryDefault = await this.countryDefaultRepository.upsert(input);
@@ -209,7 +235,10 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     return this.thresholdRepository.findAll();
   }
 
-  async resolveRouting(rawOrder: SalesDocumentOrderFacts, now: Date = new Date()): Promise<SalesDocumentDecision> {
+  async resolveRouting(
+    rawOrder: SalesDocumentOrderFacts,
+    now: Date = new Date()
+  ): Promise<SalesDocumentDecision> {
     // Normalised once, here, and threaded through both the lookup and the
     // evaluator (#3176) — `order.country` otherwise reaches a case-sensitive
     // `country = :country` match against rows written under a normalised
@@ -249,7 +278,7 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
    */
   async resolveRoutingBatch(
     rawOrders: readonly SalesDocumentOrderFacts[],
-    now: Date = new Date(),
+    now: Date = new Date()
   ): Promise<SalesDocumentDecision[]> {
     if (rawOrders.length === 0) {
       return [];
@@ -257,7 +286,10 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
 
     // Same normalisation `resolveRouting` applies, and for the same reason
     // (#3176) — done once per order here rather than at each lookup site.
-    const orders = rawOrders.map((order) => ({ ...order, country: this.normaliseCountry(order.country) }));
+    const orders = rawOrders.map((order) => ({
+      ...order,
+      country: this.normaliseCountry(order.country),
+    }));
     const countries = new Set<string>(orders.map((order) => order.country));
     // `★ Rest of world` is always loaded: tier 3 applies to every order whose
     // own country carries no configuration, so leaving it out would answer
@@ -284,7 +316,7 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
         restOfWorldRules,
         restOfWorldDefaults,
         now,
-      }),
+      })
     );
   }
 
@@ -321,7 +353,10 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
       const key = this.normaliseCountry(countryDefault.country);
       const slots =
         defaultSlotsByCountry.get(key) ??
-        ({ invoiceDefaultConnectionId: null, receiptDefaultConnectionId: null } satisfies CountryDefaultSlots);
+        ({
+          invoiceDefaultConnectionId: null,
+          receiptDefaultConnectionId: null,
+        } satisfies CountryDefaultSlots);
       if (countryDefault.documentKind === 'invoice') {
         slots.invoiceDefaultConnectionId = countryDefault.connectionId;
       } else if (countryDefault.documentKind === 'fiscal-receipt') {
@@ -334,7 +369,7 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     for (const acknowledgment of acknowledgments) {
       acknowledgedAtByCountry.set(
         this.normaliseCountry(acknowledgment.country),
-        acknowledgment.acknowledgedAt,
+        acknowledgment.acknowledgedAt
       );
     }
 
@@ -418,12 +453,21 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
    * `*` rule and a `PL` rule are separate tiers and never compete.
    */
   async detectRuleOverlap(
-    input: SalesDocumentRuleOverlapCheckInput,
+    input: SalesDocumentRuleOverlapCheckInput
   ): Promise<SalesDocumentRuleOverlapVerdict> {
-    const existing = await this.ruleRepository.findByCountry(input.country);
+    // Normalised on BOTH axes, exactly as `createRule` normalises what it
+    // writes (#3176). The repository matches `country` case-sensitively and the
+    // detector compares `orderCountry` condition values verbatim, so a draft
+    // arriving lowercase from the direct API would read zero rivals and answer
+    // an empty verdict - a FALSE "no conflict", which is the one answer this
+    // check exists to make impossible. The browser never sends an unnormalised
+    // country; the admin API can.
+    const country = this.normaliseCountry(input.country);
+    const conditions = this.normaliseDraftConditionCountries(input.conditions);
+    const existing = await this.ruleRepository.findByCountry(country);
     return detectSalesDocumentRuleOverlap(
       {
-        conditions: input.conditions,
+        conditions,
         effectiveFrom: input.effectiveFrom,
         effectiveTo: input.effectiveTo,
         excludeRuleId: input.excludeRuleId,
@@ -435,7 +479,7 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
         conditions: rule.conditions,
         effectiveFrom: rule.effectiveFrom,
         effectiveTo: rule.effectiveTo,
-      })),
+      }))
     );
   }
 
@@ -468,12 +512,22 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     conditionsHash: string,
     effectiveFrom: Date,
     effectiveTo: Date | null,
-    connectionId: string,
+    connectionId: string
   ): Promise<void> {
-    const candidates = await this.ruleRepository.findByCountryAndConditionsHash(country, conditionsHash);
+    const candidates = await this.ruleRepository.findByCountryAndConditionsHash(
+      country,
+      conditionsHash
+    );
     for (const candidate of candidates) {
       if (candidate.connectionId === connectionId) continue;
-      if (salesDocumentRuleWindowsOverlap(effectiveFrom, effectiveTo, candidate.effectiveFrom, candidate.effectiveTo)) {
+      if (
+        salesDocumentRuleWindowsOverlap(
+          effectiveFrom,
+          effectiveTo,
+          candidate.effectiveFrom,
+          candidate.effectiveTo
+        )
+      ) {
         throw new SalesDocumentRuleConflictException(candidate.id, candidate.connectionId);
       }
     }
@@ -484,7 +538,9 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
  * Index country-scoped rows by their own `country`, so the batched resolve
  * can slice one shared read per order without re-filtering the whole list.
  */
-function groupByCountry<T extends { readonly country: string }>(rows: readonly T[]): Map<string, T[]> {
+function groupByCountry<T extends { readonly country: string }>(
+  rows: readonly T[]
+): Map<string, T[]> {
   const byCountry = new Map<string, T[]>();
   for (const row of rows) {
     const existing = byCountry.get(row.country);

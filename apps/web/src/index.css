@@ -4789,8 +4789,11 @@ a.delivery-rider-banner__button:focus-visible {
   margin: 0;
 }
 
-/* A rival rule the composer just named (#3190): brief, non-destructive accent
-   so the operator's eye lands on the row the warning was about. */
+/* A rival rule the composer just named (#3190): a non-destructive accent so
+   the operator's eye lands on the row the warning was about. It marks one
+   arrival rather than the rule itself, so the list clears it the next time the
+   composer opens - not on a timer, which would race the scroll that reveals
+   the row in the first place. */
 .rule-card--highlighted {
   outline: 2px solid var(--status-warning);
   outline-offset: 2px;

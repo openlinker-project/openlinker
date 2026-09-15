@@ -14,9 +14,7 @@ import type {
 import type { SalesDocumentDecision } from '../../domain/types/sales-document-decision.types';
 import type { SalesDocumentOrderFacts } from '../../domain/types/sales-document-order-facts.types';
 import type { SalesDocumentCountrySummary } from '../../domain/types/sales-document-country-summary.types';
-import type {
-  SalesDocumentRuleOverlapVerdict,
-} from '../../domain/domain-services/detect-sales-document-rule-overlap';
+import type { SalesDocumentRuleOverlapVerdict } from '../../domain/domain-services/detect-sales-document-rule-overlap';
 
 export interface ISalesDocumentRulesService {
   listRules(country: string): Promise<SalesDocumentRule[]>;
@@ -44,7 +42,9 @@ export interface ISalesDocumentRulesService {
    * knowingly save an overlapping pair through the API, and the runtime keeps
    * failing safe.
    */
-  detectRuleOverlap(input: SalesDocumentRuleOverlapCheckInput): Promise<SalesDocumentRuleOverlapVerdict>;
+  detectRuleOverlap(
+    input: SalesDocumentRuleOverlapCheckInput
+  ): Promise<SalesDocumentRuleOverlapVerdict>;
 
   deleteRule(id: string): Promise<void>;
 
@@ -63,7 +63,7 @@ export interface ISalesDocumentRulesService {
    * as part of the same write (#2186) — see `createRule`.
    */
   upsertCountryDefault(
-    input: SalesDocumentCountryDefaultInput,
+    input: SalesDocumentCountryDefaultInput
   ): Promise<SalesDocumentCountryDefault>;
 
   deleteCountryDefault(id: string): Promise<void>;
@@ -95,7 +95,7 @@ export interface ISalesDocumentRulesService {
    */
   resolveRoutingBatch(
     orders: readonly SalesDocumentOrderFacts[],
-    now?: Date,
+    now?: Date
   ): Promise<SalesDocumentDecision[]>;
 
   /**
@@ -119,7 +119,6 @@ export interface ISalesDocumentRulesService {
   /** Idempotent — clearing an already-unacknowledged country is a no-op. */
   clearAcknowledgment(country: string): Promise<void>;
 }
-
 
 /** The draft a composer is about to save, plus the row it is editing (if any). */
 export interface SalesDocumentRuleOverlapCheckInput {
