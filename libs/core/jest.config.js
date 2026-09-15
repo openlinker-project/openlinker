@@ -18,11 +18,14 @@ module.exports = {
   // 64-core / 251 GB box where `cores-1` would be 63, and the whole job's
   // measured peak RSS at 8 workers was 32.4 GB.
   maxWorkers: process.env.CI ? 8 : 2,
-  // Added with that raise (#3271): this package had no idle-memory ceiling at
-  // all, and it is the heaviest per worker in the repo (~2.8 GB peak). Jest
-  // recycles a worker once its heap crosses the limit, before the OS does it
-  // with a SIGKILL that reads like a test failure.
-  workerIdleMemoryLimit: '512MB',
+  // Deliberately NO `workerIdleMemoryLimit` here (#3271). A '512MB' ceiling was
+  // tried and reverted: this package's workers legitimately peak around 2.8 GB,
+  // so the limit recycled a worker after almost every file, re-spawning the
+  // process and rebuilding the whole module graph each time. On the real runner
+  // that took the package from 74 s to over 17 minutes. There is also nothing to
+  // guard against - the whole job's measured peak RSS at 8 workers was 32.4 GB
+  // of the runner's 251 GB. If a ceiling is ever wanted here, size it above the
+  // package's real working set, not by copying prestashop's number.
   transform: {
     '^.+\\.ts$': [
       'ts-jest',
