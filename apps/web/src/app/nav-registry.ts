@@ -64,6 +64,7 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       { to: '/jobs-logs', label: 'Jobs & Logs', countKey: 'jobsFailed' },
       { to: '/webhook-deliveries', label: 'Webhooks', countKey: 'webhooksFailed' },
       { to: '/cursors', label: 'Cursors' },
+      { to: '/duplicate-positions', label: 'Duplicate stock positions' },
     ],
   },
   {
