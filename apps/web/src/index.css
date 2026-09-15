@@ -4565,11 +4565,6 @@ a.delivery-rider-banner__button:focus-visible {
   flex-wrap: wrap;
 }
 
-.duplicate-positions-remediation-steps__copy-note {
-  font-size: 0.6875rem;
-  color: var(--status-success-fg);
-  font-weight: 500;
-}
 
 .duplicate-positions-remediation-steps__sql-hint {
   font-size: 0.6875rem;

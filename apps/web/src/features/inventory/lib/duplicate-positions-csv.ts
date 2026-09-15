@@ -36,8 +36,22 @@ const CSV_COLUMNS = [
   'updatedAt',
 ] as const;
 
+/**
+ * Cells that begin with `=`, `+`, `-`, `@`, tab, or CR are interpreted as
+ * formulas by Excel/Sheets/LibreOffice on open ("CSV/formula injection").
+ * `productName`/`sku`/`connectionName`/`locationName` ultimately come from
+ * an external shop's own catalog, not from anything the OpenLinker operator
+ * authored, so they're untrusted for this purpose — prefixing with a `'`
+ * (Excel's own "treat as text" escape) neutralizes the formula without
+ * changing what the operator reads in a plain text/CSV viewer.
+ */
+const FORMULA_PREFIX_PATTERN = /^[=+\-@\t\r]/;
+
 function csvCell(value: string | number | boolean | null): string {
-  const raw = value === null ? '' : String(value);
+  let raw = value === null ? '' : String(value);
+  if (FORMULA_PREFIX_PATTERN.test(raw)) {
+    raw = `'${raw}`;
+  }
   return /[",\n]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
 }
 

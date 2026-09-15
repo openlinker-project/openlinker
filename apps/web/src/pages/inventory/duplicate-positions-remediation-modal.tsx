@@ -21,7 +21,10 @@ import {
 import { Button } from '../../shared/ui/button';
 import { Textarea } from '../../shared/ui/textarea';
 import { Alert } from '../../shared/ui/alert';
-import { buildRemediationDeleteSql } from '../../features/inventory/lib/duplicate-positions-remediation';
+import {
+  buildRemediationDeleteSql,
+  type RemediationDeletion,
+} from '../../features/inventory/lib/duplicate-positions-remediation';
 import type { DuplicatePositionGroup } from '../../features/inventory/api/inventory.types';
 
 const REMEDIATION_RUNBOOK_PATH = 'docs/operations/inventory-duplicate-positions.md';
@@ -33,11 +36,23 @@ export interface DuplicatePositionsRemediationModalProps {
   group: DuplicatePositionGroup | null;
 }
 
-export function DuplicatePositionsRemediationModal({
-  open,
-  onOpenChange,
+/**
+ * The survivor call-out + generated `DELETE` block, rendered only when a
+ * specific group was opened. Its own component so the Copy affordance's
+ * accessible name — not a sibling status text — is what announces the copy
+ * to assistive tech, matching `shared/ui/copyable-id.tsx` (and
+ * `entity-label.tsx` / `raw-payload-panel.tsx` / `structured-error-list.tsx`):
+ * the button's own `aria-label` toggles between "Copy …" and "Copied …"
+ * rather than relying on a plain visible `<span>` nobody's screen reader is
+ * told about.
+ */
+function RemediationDeleteBlock({
   group,
-}: DuplicatePositionsRemediationModalProps): ReactElement {
+  deletion,
+}: {
+  group: DuplicatePositionGroup;
+  deletion: RemediationDeletion;
+}): ReactElement {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -46,12 +61,53 @@ export function DuplicatePositionsRemediationModal({
     return () => window.clearTimeout(timer);
   }, [copied]);
 
-  const deletion = group ? buildRemediationDeleteSql(group) : null;
-
   const handleCopy = useCallback(() => {
-    if (!deletion?.sql) return;
+    if (!deletion.sql) return;
     void navigator.clipboard.writeText(deletion.sql).then(() => setCopied(true));
   }, [deletion]);
+
+  if (!deletion.sql) return <></>;
+
+  const survivorNotePrefix =
+    group.liveRowCount > 0
+      ? 'Survivor (live, newest):'
+      : 'No live row in this group — keeping the newest overall per step 2:';
+  const copyLabel = `Copy DELETE statement for ${deletion.losers.length} loser row${deletion.losers.length === 1 ? '' : 's'}`;
+
+  return (
+    <>
+      <p className="duplicate-positions-remediation-steps__note">
+        {survivorNotePrefix} <code>{deletion.survivor?.id}</code>
+      </p>
+      <p className="duplicate-positions-remediation-steps__sql-label">
+        DELETE for the {deletion.losers.length} loser row
+        {deletion.losers.length === 1 ? '' : 's'} in this group
+      </p>
+      <Textarea readOnly rows={3} value={deletion.sql} />
+      <div className="duplicate-positions-remediation-steps__sql-actions">
+        <Button
+          tone="secondary"
+          className="button--sm"
+          onClick={handleCopy}
+          aria-label={copied ? `Copied ${copyLabel.replace(/^Copy /, '')}` : copyLabel}
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
+        <span className="duplicate-positions-remediation-steps__sql-hint">
+          Nothing on this page runs this — re-confirm these ids are still current (re-run the
+          scan), then run it yourself.
+        </span>
+      </div>
+    </>
+  );
+}
+
+export function DuplicatePositionsRemediationModal({
+  open,
+  onOpenChange,
+  group,
+}: DuplicatePositionsRemediationModalProps): ReactElement {
+  const deletion = group ? buildRemediationDeleteSql(group) : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -95,38 +151,7 @@ export function DuplicatePositionsRemediationModal({
         </Alert>
 
         {group && deletion?.sql ? (
-          ((): ReactElement => {
-            const survivorNotePrefix =
-              group.liveRowCount > 0
-                ? 'Survivor (live, newest):'
-                : 'No live row in this group — keeping the newest overall per step 2:';
-            return (
-              <>
-                <p className="duplicate-positions-remediation-steps__note">
-                  {survivorNotePrefix} <code>{deletion.survivor?.id}</code>
-                </p>
-                <p className="duplicate-positions-remediation-steps__sql-label">
-                  DELETE for the {deletion.losers.length} loser row
-                  {deletion.losers.length === 1 ? '' : 's'} in this group
-                </p>
-                <Textarea readOnly rows={3} value={deletion.sql} />
-                <div className="duplicate-positions-remediation-steps__sql-actions">
-                  <Button tone="secondary" className="button--sm" onClick={handleCopy}>
-                    Copy
-                  </Button>
-                  {copied ? (
-                    <span className="duplicate-positions-remediation-steps__copy-note">
-                      ✓ Copied
-                    </span>
-                  ) : null}
-                  <span className="duplicate-positions-remediation-steps__sql-hint">
-                    Nothing on this page runs this — re-confirm these ids are still current
-                    (re-run the scan), then run it yourself.
-                  </span>
-                </div>
-              </>
-            );
-          })()
+          <RemediationDeleteBlock group={group} deletion={deletion} />
         ) : group ? null : (
           <p className="duplicate-positions-remediation-steps__note">
             Open this from a specific group&rsquo;s row instead to get a ready-to-review{' '}

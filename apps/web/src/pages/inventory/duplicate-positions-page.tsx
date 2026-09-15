@@ -58,6 +58,17 @@ import {
 } from '../../features/inventory/lib/duplicate-positions-remediation';
 import { DuplicatePositionsRemediationModal } from './duplicate-positions-remediation-modal';
 
+/**
+ * Mirrors `DEFAULT_DUPLICATE_POSITION_GROUPS` / `MAX_DUPLICATE_POSITION_GROUPS`
+ * from `libs/core/src/inventory/application/services/inventory-query.service.ts`
+ * (re-exported by the backend as `INVENTORY_DUPLICATE_POSITIONS_MAX_GROUPS`,
+ * `apps/api/src/inventory/http/dto/get-duplicate-positions-query.dto.ts`, for
+ * exactly this purpose). `apps/web` can't import `@openlinker/core` (#591)
+ * and there's no generated client for this endpoint, so this is a plain
+ * duplicated literal — the server's `@Max`/`@Min` on `GetDuplicatePositionsQueryDto`
+ * is the real backstop; this ceiling only shapes the operator-facing input.
+ * If either backend value ever changes, update both here.
+ */
 const DEFAULT_MAX_GROUPS = 100;
 const MAX_GROUPS_CEILING = 500;
 
@@ -278,10 +289,14 @@ function GroupRowDetail({
                 <td>
                   <span className="mono-text duplicate-positions-detail__row-id">{row.id}</span>
                   {row.id === survivorId ? (
-                    <span className="duplicate-positions-survivor-badge">✓ likely survivor</span>
+                    <span className="duplicate-positions-survivor-badge">
+                      <span aria-hidden="true">✓</span> likely survivor
+                    </span>
                   ) : null}
                   {row.id !== survivorId && row.reservedQuantity > 0 ? (
-                    <span className="duplicate-positions-reserved-badge">⛔ reserved</span>
+                    <span className="duplicate-positions-reserved-badge">
+                      <span aria-hidden="true">⛔</span> reserved
+                    </span>
                   ) : null}
                 </td>
                 <td className="tabular">{row.availableQuantity}</td>

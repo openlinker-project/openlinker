@@ -485,8 +485,16 @@ describe('DuplicatePositionsPage', () => {
     expect(
       screen.getByText(/Reservation risk — do not blindly follow the survivor badge/)
     ).toBeInTheDocument();
-    expect(screen.getByText('✓ likely survivor')).toBeInTheDocument();
-    expect(screen.getByText('⛔ reserved')).toBeInTheDocument();
+    // The badge's icon is wrapped in its own aria-hidden span (a11y — the
+    // glyph must not be read aloud literally by a screen reader), so the
+    // full label is split across elements and needs a text-content matcher
+    // rather than an exact string match.
+    expect(
+      screen.getByText((_, element) => element?.textContent?.trim() === '✓ likely survivor')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => element?.textContent?.trim() === '⛔ reserved')
+    ).toBeInTheDocument();
   });
 
   it('should open the remediation modal generically from the not-ready banner', async () => {

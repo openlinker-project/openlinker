@@ -46,6 +46,12 @@ export function reservationRiskRows(
   return group.rows.filter((row) => row.id !== survivorId && row.reservedQuantity > 0);
 }
 
+export interface RemediationDeletion {
+  survivor: DuplicatePositionRow | null;
+  losers: DuplicatePositionRow[];
+  sql: string | null;
+}
+
 /**
  * The ready-to-review `DELETE` for a group's loser rows (everything but the
  * survivor). Deliberately keyed on primary key (`id IN (...)`) only — a
@@ -54,11 +60,7 @@ export function reservationRiskRows(
  * to be copied and run by an operator after re-confirming the ids are still
  * current (per the runbook's own warning).
  */
-export function buildRemediationDeleteSql(group: DuplicatePositionGroup): {
-  survivor: DuplicatePositionRow | null;
-  losers: DuplicatePositionRow[];
-  sql: string | null;
-} {
+export function buildRemediationDeleteSql(group: DuplicatePositionGroup): RemediationDeletion {
   const survivor = group.rows.find((row) => !row.isStale) ?? group.rows[0] ?? null;
   if (survivor === null) {
     return { survivor: null, losers: [], sql: null };
