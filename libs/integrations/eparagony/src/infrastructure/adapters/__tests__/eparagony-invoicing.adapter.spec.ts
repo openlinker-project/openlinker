@@ -1,0 +1,501 @@
+/**
+ * eparagony.pl Invoicing Adapter - unit tests (#3192)
+ *
+ * Drives the whole issuance lifecycle against a fake transport: the create, the
+ * bounded status poll, the three clearance answers, and the failure taxonomy -
+ * which is the part that matters most, because a wrong `rejected` invites a
+ * re-issue and a second invoice for one sale is a legal event for the seller.
+ *
+ * @module libs/integrations/eparagony/src/infrastructure/adapters/__tests__
+ */
+import type { LoggerPort } from '@openlinker/shared/logging';
+import { BuyerProfile, InvoiceRecord } from '@openlinker/core/invoicing';
+import type { IssueInvoiceCommand, RegulatoryStatus } from '@openlinker/core/invoicing';
+
+import { EparagonyApiError } from '../../../domain/exceptions/eparagony-api.error';
+import { EparagonyConfigException } from '../../../domain/exceptions/eparagony-config.exception';
+import { EparagonyNetworkError } from '../../../domain/exceptions/eparagony-network.error';
+import {
+  deriveDocumentToken,
+  deriveTransactionToken,
+} from '../../../domain/policies/document-token.policy';
+import type { EparagonyDocumentStatusResponse } from '../../../domain/types/eparagony-api.types';
+import type { EparagonyConnectionConfig } from '../../../domain/types/eparagony-config.types';
+import type { IEparagonyHttpClient } from '../../http/eparagony-http-client.interface';
+import type { EparagonyHttpResponse } from '../../http/eparagony-http-client.types';
+import { EparagonyInvoicingAdapter } from '../eparagony-invoicing.adapter';
+
+const CONNECTION_ID = 'conn-eparagony-1';
+const IDEMPOTENCY_KEY = 'invoice:conn-eparagony-1:ol_order_1';
+const EXPECTED_DOCUMENT_TOKEN = deriveDocumentToken(CONNECTION_ID, IDEMPOTENCY_KEY);
+
+const logger: LoggerPort = {
+  log: jest.fn(),
+  debug: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+};
+
+function makeConfig(overrides: Partial<EparagonyConnectionConfig> = {}): EparagonyConnectionConfig {
+  return {
+    environment: 'sandbox',
+    posId: 'openlinker',
+    merchantTIN: '5252556107',
+    eInvoicingHubEnabled: true,
+    ...overrides,
+  };
+}
+
+function makeCommand(overrides: Partial<IssueInvoiceCommand> = {}): IssueInvoiceCommand {
+  return {
+    connectionId: CONNECTION_ID,
+    orderId: 'ol_order_1',
+    buyer: new BuyerProfile(
+      'Firma Polska sc.',
+      { scheme: 'pl-nip', value: '6460558758' },
+      {
+        line1: 'Pl. Obroncow Lublina 73',
+        line2: null,
+        city: 'Warszawa',
+        postalCode: '20-601',
+        countryIso2: 'PL',
+      },
+      'company',
+    ),
+    currency: 'PLN',
+    lines: [{ name: 'T-shirt', quantity: 2, unitPriceGross: 49.2, taxRate: '23' }],
+    idempotencyKey: IDEMPOTENCY_KEY,
+    ...overrides,
+  };
+}
+
+const OFFLINE: EparagonyDocumentStatusResponse = {
+  status: 'OFFLINE',
+  documentType: 'INVOICE',
+  processingMode: 'KSEF',
+  invoiceNumber: 'OL-POC/2026/B2B/1',
+  documentUrl: 'https://hub.sandbox.eparagony.pl/view/abc',
+  ksefInvoice: {
+    issueDate: '2026-09-15',
+    invoiceHash: 'Gg3ukLWP07vsjm8Jv7vZBhdrCqACxATu8vCBXO/aKDk=',
+    invoiceUrl: 'https://qr-demo.ksef.mf.gov.pl/client-app/invoice/5252556107/15-09-2026/x',
+    issuerVerificationUrl: 'https://qr-test.ksef.mf.gov.pl/certificate/Nip/5252556107/y',
+  },
+};
+
+const NO_HUB: EparagonyDocumentStatusResponse = {
+  status: 'CONFIRMED',
+  documentType: 'INVOICE',
+  processingMode: 'NONE',
+  invoiceNumber: 'OL-POC/2026/NOHUB/1',
+  documentUrl: 'https://hub.sandbox.eparagony.pl/view/def',
+};
+
+const CLEARED: EparagonyDocumentStatusResponse = {
+  status: 'CONFIRMED',
+  documentType: 'INVOICE',
+  processingMode: 'KSEF',
+  invoiceNumber: 'OL-POC/2026/B2B/1',
+  ksefInvoice: { ksefNumber: '5265877635-20250626-010080DD2B5E-26', invoiceHash: 'abc' },
+};
+
+const PENDING: EparagonyDocumentStatusResponse = {
+  status: 'PENDING',
+  documentType: 'INVOICE',
+  processingMode: 'KSEF',
+  invoiceNumber: 'OL-POC/2026/B2B/1',
+};
+
+const ERRORED: EparagonyDocumentStatusResponse = {
+  status: 'ERROR',
+  documentType: 'INVOICE',
+  processingMode: 'KSEF',
+  errorCode: 41,
+  errorDescription: 'Incorrect merchantTIN for line "Red t-shirt"',
+};
+
+interface FakeClient extends IEparagonyHttpClient {
+  post: jest.Mock;
+  get: jest.Mock;
+  invalidateToken: jest.Mock;
+  ensureToken: jest.Mock;
+}
+
+function makeClient(
+  statuses: Array<EparagonyDocumentStatusResponse | Error>,
+  postBehaviour?: Error,
+): FakeClient {
+  const queue = [...statuses];
+  return {
+    post: jest
+      .fn()
+      .mockImplementation(() =>
+        postBehaviour === undefined
+          ? Promise.resolve({ status: 202, data: {} } as EparagonyHttpResponse<unknown>)
+          : Promise.reject(postBehaviour),
+      ),
+    get: jest.fn().mockImplementation(() => {
+      const next = queue.length > 1 ? queue.shift() : queue[0];
+      if (next instanceof Error) {
+        return Promise.reject(next);
+      }
+      return Promise.resolve({ status: 200, data: next } as EparagonyHttpResponse<unknown>);
+    }),
+    invalidateToken: jest.fn(),
+    ensureToken: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
+function makeAdapter(
+  client: IEparagonyHttpClient,
+  config: EparagonyConnectionConfig = makeConfig(),
+): EparagonyInvoicingAdapter {
+  return new EparagonyInvoicingAdapter(CONNECTION_ID, client, logger, config);
+}
+
+function makeRecord(
+  providerInvoiceId: string | null,
+  regulatoryStatus: RegulatoryStatus = 'pending-submission',
+  clearanceReference: string | null = null,
+): InvoiceRecord {
+  const now = new Date('2026-09-15T10:00:00Z');
+  return new InvoiceRecord(
+    'rec-1',
+    CONNECTION_ID,
+    'ol_order_1',
+    'eparagony',
+    'invoice',
+    'issued',
+    providerInvoiceId,
+    'OL-POC/2026/B2B/1',
+    regulatoryStatus,
+    clearanceReference,
+    IDEMPOTENCY_KEY,
+    null,
+    now,
+    null,
+    now,
+    now,
+  );
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+});
+
+describe('EparagonyInvoicingAdapter - issueInvoice', () => {
+  it('issues the invoice and projects the neutral record once the document is issued', async () => {
+    const client = makeClient([OFFLINE]);
+    const { record } = await makeAdapter(client).issueInvoice(makeCommand());
+
+    expect(record.status).toBe('issued');
+    expect(record.providerType).toBe('eparagony');
+    expect(record.documentType).toBe('invoice');
+    // The vendor's only document key, and ours - deterministic, so a later
+    // clearance read re-derives it from the same registration key.
+    expect(record.providerInvoiceId).toBe(EXPECTED_DOCUMENT_TOKEN);
+    expect(record.providerInvoiceNumber).toBe('OL-POC/2026/B2B/1');
+    expect(record.idempotencyKey).toBe(IDEMPOTENCY_KEY);
+    expect(record.regulatoryStatus).toBe('pending-submission');
+    expect(record.clearanceReference).toBeNull();
+    expect(record.errorMessage).toBeNull();
+  });
+
+  it('sends the derived token pair and uses the token as the vendor idempotency key', async () => {
+    const client = makeClient([OFFLINE]);
+    await makeAdapter(client).issueInvoice(makeCommand());
+
+    const [path, body, options] = client.post.mock.calls[0] as [
+      string,
+      { documentToken: string; transactionToken: string; eInvoice: { invoiceType: string } },
+      { headers: Record<string, string>; idempotent: boolean },
+    ];
+    expect(path).toBe('documents');
+    expect(body.documentToken).toBe(EXPECTED_DOCUMENT_TOKEN);
+    // Required whenever `documentToken` is sent, and derived under its own
+    // namespace so the two can never collide.
+    expect(body.transactionToken).toBe(deriveTransactionToken(CONNECTION_ID, IDEMPOTENCY_KEY));
+    expect(body.transactionToken).not.toBe(body.documentToken);
+    expect(body.eInvoice.invoiceType).toBe('VAT');
+    // The vendor's header rejects OL's colon-bearing raw key, so the derived
+    // token stands in - which is what makes a transport re-issue safe.
+    expect(options.headers['Idempotency-Key']).toBe(EXPECTED_DOCUMENT_TOKEN);
+    expect(options.idempotent).toBe(true);
+  });
+
+  it('derives a per-order key when the command supplies none, so the token is still deterministic', async () => {
+    const client = makeClient([OFFLINE]);
+    const command = makeCommand();
+    delete command.idempotencyKey;
+    const { record } = await makeAdapter(client).issueInvoice(command);
+
+    expect(record.providerInvoiceId).toBe(
+      deriveDocumentToken(CONNECTION_ID, `invoice:${CONNECTION_ID}:ol_order_1`),
+    );
+    // Nothing to echo on the record - core supplied no key.
+    expect(record.idempotencyKey).toBeNull();
+  });
+
+  it('carries the issued document link even at OFFLINE, unlike the receipt lane', async () => {
+    // An invoice at OFFLINE is issued with legal effect and its visualisation
+    // carries the authority's own offline verification codes.
+    const client = makeClient([OFFLINE]);
+    const { record } = await makeAdapter(client).issueInvoice(makeCommand());
+    expect(record.pdfUrl).toBe('https://hub.sandbox.eparagony.pl/view/abc');
+  });
+
+  it('reports a document issued outside the hub as needing no clearance at all', async () => {
+    const client = makeClient([NO_HUB]);
+    const { record } = await makeAdapter(client).issueInvoice(makeCommand());
+
+    expect(record.regulatoryStatus).toBe('not-applicable');
+    expect(record.providerInvoiceNumber).toBe('OL-POC/2026/NOHUB/1');
+  });
+
+  it("returns as soon as the document exists and never waits for the hub", async () => {
+    // Relay to the authority has no bounded duration; blocking issuance on it
+    // would hold core's in-flight lease open for something `getClearanceStatus`
+    // exists to reconcile.
+    const client = makeClient([OFFLINE]);
+    await makeAdapter(client).issueInvoice(makeCommand());
+    expect(client.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps polling past a transient PENDING', async () => {
+    jest.useFakeTimers();
+    try {
+      const client = makeClient([PENDING, OFFLINE]);
+      const promise = makeAdapter(client).issueInvoice(makeCommand());
+      await jest.advanceTimersByTimeAsync(3_000);
+      const { record } = await promise;
+      expect(client.get).toHaveBeenCalledTimes(2);
+      expect(record.regulatoryStatus).toBe('pending-submission');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('uses the single issuance instant core supplied rather than its own clock', async () => {
+    const issuedAt = new Date('2026-09-15T08:00:00Z');
+    const client = makeClient([OFFLINE]);
+    const { record } = await makeAdapter(client).issueInvoice(makeCommand({ issuedAt }));
+    expect(record.issuedAt?.toISOString()).toBe(issuedAt.toISOString());
+  });
+
+  it("reports the seller the connection configures, supplying the scheme tag itself", async () => {
+    const client = makeClient([OFFLINE]);
+    const result = await makeAdapter(
+      client,
+      makeConfig({
+        merchantName: 'OpenLinker POC Sp. z o.o.',
+        merchantAddress: {
+          street: 'ul. Grzybowska',
+          number: '2',
+          postalCode: '00-131',
+          city: 'Warszawa',
+          country: 'PL',
+        },
+      }),
+    ).issueInvoice(makeCommand());
+
+    expect(result.seller).toMatchObject({
+      name: 'OpenLinker POC Sp. z o.o.',
+      taxId: { scheme: 'pl-nip', value: '5252556107' },
+    });
+  });
+
+  it('omits the seller entirely when the connection configures none', async () => {
+    const client = makeClient([OFFLINE]);
+    const result = await makeAdapter(client).issueInvoice(makeCommand());
+    expect('seller' in result).toBe(false);
+  });
+});
+
+describe('EparagonyInvoicingAdapter - issueInvoice failures', () => {
+  it('refuses a composition failure BEFORE anything crosses the boundary', async () => {
+    const client = makeClient([OFFLINE]);
+    await expect(
+      makeAdapter(client, makeConfig({ merchantTIN: undefined })).issueInvoice(makeCommand()),
+    ).rejects.toBeInstanceOf(EparagonyConfigException);
+    // Nothing was sent, so nothing was issued - which is what makes the
+    // `rejected` classification safe to re-attempt after a fix.
+    expect(client.post).not.toHaveBeenCalled();
+    expect(client.get).not.toHaveBeenCalled();
+  });
+
+  it('classifies a terminal vendor ERROR as rejected, not as in-doubt', async () => {
+    const client = makeClient([ERRORED]);
+    try {
+      await makeAdapter(client).issueInvoice(makeCommand());
+      throw new Error('expected a rejection');
+    } catch (error) {
+      expect(error).toBeInstanceOf(EparagonyApiError);
+      expect((error as EparagonyApiError).failureMode).toBe('rejected');
+    }
+  });
+
+  it("never promotes the vendor's error text into the operator-facing reason", async () => {
+    // `errorDescription` quotes the printer and can echo a submitted line name.
+    const client = makeClient([ERRORED]);
+    try {
+      await makeAdapter(client).issueInvoice(makeCommand());
+      throw new Error('expected a rejection');
+    } catch (error) {
+      expect((error as EparagonyApiError).reason).not.toContain('Red t-shirt');
+      expect((error as EparagonyApiError).reason).toContain('did not issue the invoice');
+    }
+  });
+
+  it('leaves an unsettled poll IN DOUBT, because the vendor may still issue the document', async () => {
+    jest.useFakeTimers();
+    try {
+      const client = makeClient([PENDING]);
+      const promise = makeAdapter(client, makeConfig({ statusPollTimeoutMs: 5_000 })).issueInvoice(
+        makeCommand(),
+      );
+      const assertion = expect(promise).rejects.toBeInstanceOf(EparagonyNetworkError);
+      await jest.advanceTimersByTimeAsync(10_000);
+      await assertion;
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('reads the status instead of re-creating when the vendor already holds our document', async () => {
+    // Our token is deterministic, so "already exists" means OUR earlier attempt
+    // landed. Reporting a rejection here would be the wrong-direction error.
+    const alreadyExists = new EparagonyApiError('already exists', 409, { errorCode: 118 });
+    const client = makeClient([OFFLINE], alreadyExists);
+    const { record } = await makeAdapter(client).issueInvoice(makeCommand());
+
+    expect(record.status).toBe('issued');
+    expect(client.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('propagates any other create failure untouched, with its own classification', async () => {
+    const rejected = new EparagonyApiError('bad request', 400, { errorCode: 41 });
+    const client = makeClient([OFFLINE], rejected);
+    await expect(makeAdapter(client).issueInvoice(makeCommand())).rejects.toBe(rejected);
+    expect(client.get).not.toHaveBeenCalled();
+  });
+});
+
+describe('EparagonyInvoicingAdapter - getClearanceStatus', () => {
+  it('reads the relay progress off the record\'s own document token', async () => {
+    const client = makeClient([CLEARED]);
+    const result = await makeAdapter(client).getClearanceStatus(
+      makeRecord(EXPECTED_DOCUMENT_TOKEN),
+    );
+
+    expect(client.get).toHaveBeenCalledWith(
+      `documents/${encodeURIComponent(EXPECTED_DOCUMENT_TOKEN)}/status`,
+    );
+    expect(result).toEqual({
+      regulatoryStatus: 'cleared',
+      clearanceReference: '5265877635-20250626-010080DD2B5E-26',
+    });
+  });
+
+  it('still reports awaiting submission while the document sits at OFFLINE', async () => {
+    const client = makeClient([OFFLINE]);
+    const result = await makeAdapter(client).getClearanceStatus(
+      makeRecord(EXPECTED_DOCUMENT_TOKEN),
+    );
+    expect(result).toEqual({ regulatoryStatus: 'pending-submission', clearanceReference: null });
+  });
+
+  it('ECHOES the record rather than claiming not-applicable when there is no token to read', async () => {
+    // `not-applicable` is TERMINAL, so claiming it would stop the
+    // reconciliation looking at a document whose relay may be perfectly
+    // healthy, on the strength of a missing id.
+    const client = makeClient([CLEARED]);
+    const result = await makeAdapter(client).getClearanceStatus(makeRecord(null));
+
+    expect(result).toEqual({ regulatoryStatus: 'pending-submission', clearanceReference: null });
+    expect(client.get).not.toHaveBeenCalled();
+  });
+
+  it('echoes the record when the vendor holds no document under our token', async () => {
+    const unknownDocument = new EparagonyApiError('unknown token', 404, { errorCode: 92 });
+    const client = makeClient([unknownDocument]);
+    const result = await makeAdapter(client).getClearanceStatus(
+      makeRecord(EXPECTED_DOCUMENT_TOKEN, 'cleared', 'ref-1'),
+    );
+    expect(result).toEqual({ regulatoryStatus: 'cleared', clearanceReference: 'ref-1' });
+  });
+
+  it('propagates a transport failure so the reconciliation retries it', async () => {
+    const transport = new EparagonyNetworkError('connection reset');
+    const client = makeClient([transport]);
+    await expect(
+      makeAdapter(client).getClearanceStatus(makeRecord(EXPECTED_DOCUMENT_TOKEN)),
+    ).rejects.toBe(transport);
+  });
+});
+
+describe('EparagonyInvoicingAdapter - the rest of the port', () => {
+  it('answers null for getInvoice, which core serves from its own projection', async () => {
+    const client = makeClient([OFFLINE]);
+    await expect(makeAdapter(client).getInvoice({ orderId: 'ol_order_1' })).resolves.toBeNull();
+    expect(client.get).not.toHaveBeenCalled();
+  });
+
+  it('declares only the invoice document type, because corrections are a separate document', () => {
+    expect(makeAdapter(makeClient([OFFLINE])).getSupportedDocumentTypes()).toEqual(['invoice']);
+  });
+
+  it('returns a fresh array so a caller cannot mutate the declared set', () => {
+    const adapter = makeAdapter(makeClient([OFFLINE]));
+    adapter.getSupportedDocumentTypes().push('receipt');
+    expect(adapter.getSupportedDocumentTypes()).toEqual(['invoice']);
+  });
+});
+
+describe('EparagonyInvoicingAdapter - upsertCustomer', () => {
+  function buyer(taxId: { scheme?: string; value: string } | null): BuyerProfile {
+    return new BuyerProfile(
+      'Firma Polska sc.',
+      taxId,
+      { line1: 'Pl. Obroncow Lublina 73', line2: null, city: 'Warszawa', postalCode: '20-601', countryIso2: 'PL' },
+      taxId === null ? 'private' : 'company',
+    );
+  }
+
+  it('echoes a stable handle derived from the buyer tax id, with no network call', async () => {
+    const client = makeClient([OFFLINE]);
+    const result = await makeAdapter(client).upsertCustomer({
+      connectionId: CONNECTION_ID,
+      buyer: buyer({ scheme: 'pl-nip', value: '6460558758' }),
+    });
+
+    expect(result.providerCustomerId).toBe('eparagony:pl-nip:6460558758');
+    expect(client.post).not.toHaveBeenCalled();
+    expect(client.get).not.toHaveBeenCalled();
+  });
+
+  it('gives ONE buyer ONE handle whether the tax id arrived tagged or untagged', async () => {
+    // `scheme` is optional since ADR-073, so interpolating it raw would render
+    // `eparagony:undefined:...` and split one buyer across two handles
+    // depending on which path issued.
+    const adapter = makeAdapter(makeClient([OFFLINE]));
+    const tagged = await adapter.upsertCustomer({
+      connectionId: CONNECTION_ID,
+      buyer: buyer({ scheme: 'pl-nip', value: '6460558758' }),
+    });
+    const untagged = await adapter.upsertCustomer({
+      connectionId: CONNECTION_ID,
+      buyer: buyer({ value: '6460558758' }),
+    });
+
+    expect(untagged.providerCustomerId).toBe(tagged.providerCustomerId);
+    expect(untagged.providerCustomerId).not.toContain('undefined');
+  });
+
+  it('falls back to a connection-scoped guest handle for a buyer with no tax id', async () => {
+    const result = await makeAdapter(makeClient([OFFLINE])).upsertCustomer({
+      connectionId: CONNECTION_ID,
+      buyer: buyer(null),
+    });
+    expect(result.providerCustomerId).toBe(`eparagony:${CONNECTION_ID}:guest`);
+  });
+});

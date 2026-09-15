@@ -2,7 +2,13 @@
  * eparagony.pl Wire Types
  *
  * Request and response shapes for the Documents REST API v3, transcribed from
- * the vendor's OpenAPI contract.
+ * the vendor's OpenAPI contract (spec revision `20260311`).
+ *
+ * ONE ENDPOINT, SEVERAL DOCUMENT KINDS. `POST /documents` serves receipts and
+ * invoices alike; the kind is chosen by WHICH object the body carries
+ * (`eReceipt` | `eInvoice` | `eCorrectiveInvoice` | ...), and they are mutually
+ * exclusive in one request. `GET /documents/{documentToken}/status` serves both
+ * with the same token, which is why one tolerant status type covers both lanes.
  *
  * TWO RULES GOVERN EVERY TYPE HERE, and both come from the vendor stating that
  * the contract is not frozen:
@@ -120,6 +126,183 @@ export interface EparagonyCreateReceiptRequest {
   eReceipt: EparagonyReceiptBody;
 }
 
+// ---------------------------------------------------------------------------
+// Create document (invoice)
+// ---------------------------------------------------------------------------
+
+/**
+ * Tax-rate vocabulary an INVOICE line takes. Deliberately NOT the receipt's
+ * device-slot letters: an invoice names the rate itself, a receipt names the
+ * slot the seller's device has that rate programmed into. The two are different
+ * vocabularies for different documents and share no mapping.
+ *
+ * `23`/`8`/`5`/`3` are percentages. The rest are the regime's zero-rate and
+ * out-of-scope markers:
+ *   - `ZRD`   zero rate, domestic - the vendor names this the DEFAULT 0%.
+ *   - `ZRICS` zero rate, intra-community supply.
+ *   - `ZRE`   zero rate, export.
+ *   - `EP`    exempt.
+ *   - `RCP`   reverse charge (the buyer accounts for the tax).
+ *   - `NS1`   not subject to tax, procedure I (the general case).
+ *   - `NS2`   not subject to tax, procedure II (a narrow statutory case).
+ */
+export const EparagonyInvoiceTaxRateValues = [
+  '23',
+  '8',
+  '5',
+  '3',
+  'ZRD',
+  'ZRICS',
+  'ZRE',
+  'EP',
+  'RCP',
+  'NS1',
+  'NS2',
+] as const;
+export type EparagonyInvoiceTaxRate = (typeof EparagonyInvoiceTaxRateValues)[number];
+
+/**
+ * The subset of {@link EparagonyInvoiceTaxRateValues} that may key
+ * `metadata.taxValueByTaxRate`.
+ *
+ * This is a CONTRACT ASYMMETRY, not an oversight: `netValueByTaxRate` declares
+ * all eleven codes, `taxValueByTaxRate` declares only the four percentages.
+ * A zero-rated or out-of-scope group carries net value and no tax, so writing a
+ * `ZRD: 0` key would be sending a property the schema does not declare - and
+ * rule 2 of this module is that request types are exact.
+ */
+export const EparagonyTaxedInvoiceRateValues = ['23', '8', '5', '3'] as const;
+export type EparagonyTaxedInvoiceRate = (typeof EparagonyTaxedInvoiceRateValues)[number];
+
+/**
+ * `EntityAddress`. Every one of the five fields below is required by the vendor;
+ * `apartment` is the one optional field this adapter populates (the neutral
+ * `BuyerAddress.line2` has nowhere else to go).
+ *
+ * `postalCode` carries a Polish-only pattern (`00-000`) on the vendor's side. It
+ * is deliberately NOT pre-validated here - refusing a foreign buyer on our own
+ * authority would decide something the vendor is the judge of (ADR-073 decision
+ * 5); its rejection arrives as an ordinary `EparagonyApiError`.
+ */
+export interface EparagonyEntityAddress {
+  street: string;
+  number: string;
+  apartment?: string;
+  postalCode: string;
+  city: string;
+  country: string;
+}
+
+/**
+ * One invoice line. NET-shaped, which is what `vatCalculationMethod:
+ * 'SUM_OF_RATES_NET'` requires - see {@link EPARAGONY_VAT_CALCULATION_SUM_OF_RATES_NET}.
+ * Amounts are integer **minor units**; `taxValue` is required on every line,
+ * including a zero-rated one, where it is `0`.
+ */
+export interface EparagonyInvoiceLine {
+  productOrServiceName: string;
+  /** Decimal string, precision (22,8) - the same shape the receipt line uses. */
+  quantity: string;
+  netUnitPrice: number;
+  netTotalLineValue: number;
+  taxRate: EparagonyInvoiceTaxRate;
+  taxValue: number;
+}
+
+/**
+ * Declared summary method.
+ *
+ * The vendor offers four (`SUM_OF_LINES_*` / `SUM_OF_RATES_*`, each NET or
+ * GROSS) and they change WHICH line fields become required. `SUM_OF_RATES_NET`
+ * is the one this adapter sends, for two reasons.
+ *
+ * First, it is the shape that was verified live against the sandbox - the other
+ * three are documented and unexercised, and a conditional required-field rule is
+ * exactly the kind of thing to verify rather than infer.
+ *
+ * Second, the per-RATE summary is the arithmetic that reconciles exactly:
+ * `netValueByTaxRate` and `taxValueByTaxRate` are required on every invoice
+ * whatever the method, so net has to be derived from the buyer-paid gross in any
+ * case, and deriving it once per rate GROUP (rather than once per line and then
+ * summing) is what keeps `net + tax === gross` true to the grosz.
+ */
+export const EPARAGONY_VAT_CALCULATION_SUM_OF_RATES_NET = 'SUM_OF_RATES_NET';
+
+/**
+ * The only value the vendor currently accepts. It documents that no in-document
+ * arithmetic is validated yet, and exists so the default can be tightened later
+ * without breaking existing integrations.
+ */
+export const EPARAGONY_CALCULATION_VALIDATION_NONE = 'NONE';
+
+/** `invoiceType` discriminator for `PDVatInvoice` - a constant. */
+export const EPARAGONY_INVOICE_TYPE_VAT = 'VAT';
+
+/**
+ * The only e-invoicing hub the vendor relays to. It sits on the `eInvoice`
+ * object itself (the `PDInvoice` base), NOT inside `extensions` - a natural
+ * place to look for it, and the wrong one.
+ */
+export const EPARAGONY_EINVOICING_HUB_KSEF = 'KSEF';
+
+export interface EparagonyInvoiceMetadata {
+  vatCalculationMethod: typeof EPARAGONY_VAT_CALCULATION_SUM_OF_RATES_NET;
+  calculationValidation: typeof EPARAGONY_CALCULATION_VALIDATION_NONE;
+  /** Integer minor units. */
+  grossSaleValue: number;
+  /**
+   * The SELLER's tax number. Validated against the taxpayer registered on the
+   * vendor account rather than by checksum, so a wrong value fails every invoice
+   * on the connection rather than one order - which is what makes it connection
+   * configuration and not order data.
+   */
+  merchantTIN: string;
+  merchantName?: string;
+  merchantAddress?: EparagonyEntityAddress;
+  consumerName: string;
+  consumerAddress: EparagonyEntityAddress;
+  /**
+   * The BUYER's tax number. Optional; absent means B2C and the hub receives its
+   * own "no identifier" marker. Unlike the receipt's field this one IS
+   * checksum-verified when the buyer's country is `PL`, so a malformed value is
+   * a reachable rejection rather than a theoretical one.
+   */
+  consumerTIN?: string;
+  netValueByTaxRate: Partial<Record<EparagonyInvoiceTaxRate, number>>;
+  /** Always in PLN grosze, even on a foreign-currency invoice. */
+  taxValueByTaxRate: Partial<Record<EparagonyTaxedInvoiceRate, number>>;
+  /** ISO-4217. Anything other than `PLN` additionally requires `exchangeRate`. */
+  currency?: string;
+  /** Omitted when OL does not allocate the number; the vendor then generates one. */
+  invoiceNumber?: string;
+  /** Issue date, `YYYY-MM-DD`. Defaults to the vendor's clock when omitted. */
+  invoiceDate?: string;
+  /** Date of supply, `YYYY-MM-DD`. Defaults to the vendor's clock when omitted. */
+  saleEndDate?: string;
+  /** ISO-8601 with an explicit offset or a trailing `Z`. */
+  orderTime?: string;
+  orderId?: string;
+}
+
+/** `PDVatInvoice` - the `eInvoice` object on the create body. */
+export interface EparagonyInvoiceBody {
+  invoiceType: typeof EPARAGONY_INVOICE_TYPE_VAT;
+  /** Present asks for a hub relay; absent issues outside the hub entirely. */
+  eInvoicingHub?: typeof EPARAGONY_EINVOICING_HUB_KSEF;
+  metadata: EparagonyInvoiceMetadata;
+  lines: EparagonyInvoiceLine[];
+}
+
+/** `POST /documents` body for an invoice (`CreateVatInvoiceDocumentPayload`). */
+export interface EparagonyCreateInvoiceRequest {
+  posId: string;
+  /** Caller-supplied UUIDv4; supplying it is what makes the status read locatable. */
+  documentToken: string;
+  /** Required whenever `documentToken` is supplied. */
+  transactionToken: string;
+  eInvoice: EparagonyInvoiceBody;
+}
+
 /** `CreateDocumentSuccess` - returned on both `200` and `202`. */
 export interface EparagonyCreateDocumentResponse {
   transactionToken?: unknown;
@@ -133,15 +316,57 @@ export interface EparagonyCreateDocumentResponse {
 // ---------------------------------------------------------------------------
 
 /**
- * Statuses the receipt lane reports. `RECEIVED` and the KSeF-only `OFFLINE` are
- * not receipt-lane values, so they are not modelled - an unrecognised status
- * string is treated as non-terminal by the poll rather than mapped, which is why
- * this stays a plain string on the response type.
+ * Statuses the two document lanes report. An unrecognised status string is
+ * treated as non-terminal by both polls rather than mapped, which is why this
+ * stays a plain string on the response type.
+ *
+ * `CONFIRMED` and `ERROR` are shared. `READY` is receipt-only (the printer
+ * executed the commands but the repository has not accepted the e-document yet).
+ * `OFFLINE` is invoice-only and means the document IS issued, with legal effect,
+ * and is waiting to reach the hub. `PENDING` occurs on both, transiently.
  */
 export const EPARAGONY_STATUS_CONFIRMED = 'CONFIRMED';
 export const EPARAGONY_STATUS_READY = 'READY';
 export const EPARAGONY_STATUS_PENDING = 'PENDING';
 export const EPARAGONY_STATUS_ERROR = 'ERROR';
+export const EPARAGONY_STATUS_OFFLINE = 'OFFLINE';
+
+/**
+ * `processingMode` on an invoice status. `KSEF` means a hub relay was requested
+ * and is under way or done; `NONE` means the invoice was issued outside the hub
+ * entirely, which is a complete and successful outcome rather than a pending one.
+ * (The receipt lane reports `FISCALIZATION` here, which this adapter never reads.)
+ */
+export const EPARAGONY_PROCESSING_MODE_KSEF = 'KSEF';
+export const EPARAGONY_PROCESSING_MODE_NONE = 'NONE';
+
+/**
+ * `documentType` on an invoice status. The CORRECTIVE value is how a reader
+ * tells a correction from an original; nothing in this slice issues one (#3193).
+ */
+export const EPARAGONY_DOCUMENT_TYPE_INVOICE = 'INVOICE';
+export const EPARAGONY_DOCUMENT_TYPE_CORRECTIVE_INVOICE = 'CORRECTIVE_INVOICE';
+
+/**
+ * The hub-side detail block, read tolerantly.
+ *
+ * Its contents DIFFER BY STATUS and the difference is the whole signal:
+ * at `OFFLINE` it carries `issueDate`, `invoiceHash` and the two verification
+ * URLs and NO `ksefNumber` (the authority has not assigned one yet); at
+ * `CONFIRMED` the number is present. Absent entirely when `processingMode` is
+ * `NONE`.
+ */
+export interface EparagonyKsefInvoiceDetails {
+  ksefNumber?: unknown;
+  referenceNumber?: unknown;
+  sessionReferenceNumber?: unknown;
+  invoiceHash?: unknown;
+  issueDate?: unknown;
+  invoicingDate?: unknown;
+  acquisitionDate?: unknown;
+  invoiceUrl?: unknown;
+  issuerVerificationUrl?: unknown;
+}
 
 /** `GET /documents/{documentToken}/status` body, read tolerantly. */
 export interface EparagonyDocumentStatusResponse {
@@ -167,6 +392,10 @@ export interface EparagonyDocumentStatusResponse {
   endTime?: unknown;
   errorCode?: unknown;
   errorDescription?: unknown;
+  /** Invoice lane: the legal document number, vendor-generated unless we sent one. */
+  invoiceNumber?: unknown;
+  /** Invoice lane: {@link EparagonyKsefInvoiceDetails}, absent outside a hub relay. */
+  ksefInvoice?: unknown;
 }
 
 // ---------------------------------------------------------------------------
