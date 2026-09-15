@@ -667,4 +667,42 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
       expect(upper).toEqual(lower);
     });
   });
+  describe('detectRuleOverlap (#3190)', () => {
+    it('asks only about the draft country and reports the rival', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([existingRule()]);
+
+      const verdict = await service.detectRuleOverlap({
+        country: 'PL',
+        conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: false }],
+        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+        effectiveTo: null,
+      });
+
+      // Country-scoped on purpose: two rules in different markets are already
+      // disjoint by the engine's own tiering, so widening the read would spend
+      // a scan to rediscover that.
+      expect(ruleRepo.findByCountry).toHaveBeenCalledWith('PL');
+      expect(verdict.overlapping).toEqual([
+        {
+          ruleId: existingRule().id,
+          connectionId: existingRule().connectionId,
+          documentKind: existingRule().documentKind,
+        },
+      ]);
+    });
+
+    it('never writes - it is a read, and the engine still holds an ambiguous order', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([existingRule()]);
+
+      await service.detectRuleOverlap({
+        country: 'PL',
+        conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: true }],
+        effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+        effectiveTo: null,
+      });
+
+      expect(ruleRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
 });

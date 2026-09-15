@@ -134,3 +134,27 @@ export interface SalesDocumentStarterTemplate {
 export interface AdoptSalesDocumentTemplateInput {
   selections: { slot: string; connectionId: string }[];
 }
+
+
+/**
+ * Overlap-check result (#3190). Three outcomes, never two: `undecided` is
+ * surfaced rather than folded into `disjoint`, because silence reads as "no
+ * conflict" and that is the false reassurance the check exists to remove.
+ */
+export interface SalesDocumentRuleOverlapVerdict {
+  readonly overlapping: readonly {
+    readonly ruleId: string;
+    readonly connectionId: string;
+    readonly documentKind: string;
+  }[];
+  readonly disjoint: readonly { readonly ruleId: string; readonly reason: string }[];
+  readonly undecided: readonly { readonly ruleId: string; readonly reason: string }[];
+}
+
+export interface CheckSalesDocumentRuleOverlapInput {
+  readonly country: string;
+  readonly conditions: SalesDocumentConditionInput[];
+  readonly effectiveFrom: string;
+  readonly effectiveTo?: string | null;
+  readonly excludeRuleId?: string;
+}
