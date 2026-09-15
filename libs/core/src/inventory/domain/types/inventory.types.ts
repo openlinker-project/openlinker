@@ -462,6 +462,31 @@ export interface DuplicatePositionReport {
 }
 
 /**
+ * Live status of the #2317 provenance backfill (`inventory.provenance.backfill`
+ * — {@link LEGACY_SOURCE_CONNECTION_ID}) (#3240).
+ *
+ * This is the SECOND, independent readiness condition for the #2325
+ * `SET NOT NULL` + unique-index migration — {@link DuplicatePositionReport}'s
+ * `groupCount: 0` is the first. A scan taken while the backfill is still
+ * mid-run can read `groupCount: 0` and then flip non-zero once NULL rows
+ * collapse to `'legacy'` and reveal a collision the scan could not see yet,
+ * so #2325 must not proceed on `groupCount: 0` alone.
+ *
+ * **Always resolved LIVE, on every call — never a stored/cached flag.** The
+ * backfill itself re-derives its remaining work from the table on every tick
+ * rather than tracking a cursor (see `inventory-provenance-backfill.service.ts`
+ * and `sync/domain/types/inventory-job-payloads.types.ts`), so a persisted
+ * "done" bit here could go stale the moment a later mutation reintroduces a
+ * NULL row — reading it live is what keeps the two answers unable to drift.
+ */
+export interface ProvenanceBackfillStatus {
+  /** UNCAPPED count of `inventory_items` rows still missing provenance. */
+  remainingNull: number;
+  /** `remainingNull === 0`. */
+  completed: boolean;
+}
+
+/**
  * One live inventory position a reservation could be taken against (#2344).
  *
  * The resolution counterpart to {@link VariantStockRow}, and deliberately NOT a
