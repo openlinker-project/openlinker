@@ -22,12 +22,40 @@
  * invoices report a clearance status. Neither is a `CoreCapability`, so neither
  * renders as an operator-tickable toggle.
  *
- * Adding `Invoicing` here does NOT grant it to any existing connection.
+ * Adding `Invoicing` here does NOT grant it to any EXISTING connection.
  * `enabledCapabilities` is stamped at create and never retro-filled (#2085), so
  * every connection that exists today stays receipts-only until an operator ticks
  * the new capability on the connection page. That is the intended path, not an
  * oversight: the invoice lane needs seller configuration (`merchantTIN` at
  * minimum) that no existing connection carries.
+ *
+ * It DOES change what a NEW connection is born with, and that needed a decision
+ * rather than a default. `ConnectionService.create` falls back to this manifest's
+ * whole supported set when a caller omits `enabledCapabilities`, so from this
+ * change on the guided wizard - which collects an environment, a POS id and
+ * credentials, and no seller invoicing configuration at all - would mint a
+ * connection claiming it can invoice. Two consequences are visible rather than
+ * cosmetic: `selectInvoicingCandidates` filters on that array, so a second
+ * candidate beside an existing inFakt/KSeF connection turns that install's
+ * one-click issue into a must-ask pick; and `deriveSalesDocumentRows` tests
+ * `'Invoicing'` before `'Fiscalization'`, so a receipts connection would render
+ * as an Invoicing row in Settings -> Sales documents. The wizard therefore sends
+ * `enabledCapabilities: ['Fiscalization']` explicitly
+ * (`eparagony-setup.schema.ts`), which keeps the invoice lane opt-in on every
+ * path into the product, and matches the rule applied to `CorrectionIssuer`
+ * below: a capability is claimed together with the ability to deliver it.
+ *
+ * Note what an explicit set cannot carry. `CreateConnectionDto` validates it
+ * with `@IsIn(CoreCapabilityValues, { each: true })`, and `FiscalRegistrationLocator`
+ * / `RegulatoryStatusReader` are deliberately not core capabilities - passing
+ * either would 400. Nothing reads those two names off `enabledCapabilities`
+ * anywhere (both are narrowed from the dispatched adapter with their `is*`
+ * guard), and `ConnectionCapabilitiesPanel` saves the `isCoreCapability`-filtered
+ * set, so a connection created the omitted way used to persist both and then
+ * silently lose them on the operator's first capability toggle. Sending
+ * `['Fiscalization']` is where such a connection lands either way; the
+ * manifest, not `enabledCapabilities`, is what makes the two sub-capabilities
+ * discoverable.
  *
  * NOT declared, and each for a stated reason:
  *   - `FiscalDeviceOperator` (#1910, closed `not_planned`) - the fiscal printer
