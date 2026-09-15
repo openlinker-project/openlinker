@@ -334,6 +334,13 @@ export function DuplicatePositionsPage(): ReactElement {
             ) : null}
           </Alert>
 
+          {report.truncated ? (
+            <Alert tone="info" title="Detail truncated">
+              The totals above cover the whole table. The table below lists only the largest{' '}
+              {report.groups.length} group(s) — some duplicate groups are not shown.
+            </Alert>
+          ) : null}
+
           <div className="ds-grid ds-grid--4">
             <KpiCard
               label="Duplicate groups"
