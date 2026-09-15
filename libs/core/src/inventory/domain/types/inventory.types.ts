@@ -417,6 +417,23 @@ export interface DuplicatePositionGroup {
   /** Rows on this key with `isStale = false`. */
   liveRowCount: number;
   rows: DuplicatePositionRow[];
+  /**
+   * Display enrichment (#3239) — resolved by `InventoryQueryService` from the
+   * raw ids above, batched across the whole report's unique ids. The
+   * repository never sets these; they exist so a real product/connection/
+   * location name reaches the operator without a second query per row.
+   *
+   * `null` on `productName`/`sku` means the product could not be resolved
+   * (e.g. deleted). `connectionName` and `locationName` stay `null` for the
+   * documented sentinel states — `sourceConnectionId === null | 'legacy'`
+   * (not yet backfilled by #2317) and `locationId === null` (ADR-058
+   * decision 2, the master declines to locate) — which must never be
+   * resolved to a fabricated name.
+   */
+  productName: string | null;
+  sku: string | null;
+  connectionName: string | null;
+  locationName: string | null;
 }
 
 /**
