@@ -12,8 +12,21 @@ module.exports = {
   // parallel with apps/web vitest and libs/shared jest. Jest's default
   // (CPU-count-minus-one workers) oversubscribes memory and triggers
   // kernel OOM kills on worker processes, aborting random test suites.
-  // Capping to 2 workers keeps memory headroom without materially
-  // affecting wall time on reasonable hosts.
+  // The cap stays 2 (#3271). It was raised to 8 under CI against a lab
+  // measurement taken on an IDLE runner, and reverted after measuring the real
+  // job: 8 workers here starve whatever package runs beside it under
+  // `--workspace-concurrency=2`, and this package's own gain was only 73.0 s ->
+  // 64.5 s while `apps/api` went 80.0 s -> 163.0 s and one of its workers was
+  // OOM-killed. A lab number from an idle box is not a CI number: the real
+  // runner shares the machine with seven other concurrent jobs.
+  //
+  // Deliberately NO `workerIdleMemoryLimit` here either. A '512MB' ceiling was
+  // tried and reverted: this package's workers legitimately peak around 2.8 GB,
+  // so the limit recycled a worker after almost every file, re-spawning the
+  // process and rebuilding the whole module graph each time. On the real runner
+  // that took the package from 74 s to over 17 minutes. If a ceiling is ever
+  // wanted here, size it above the package's real working set, not by copying
+  // prestashop's number.
   maxWorkers: 2,
   transform: {
     '^.+\\.ts$': [

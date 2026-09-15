@@ -19,7 +19,9 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/../jest.setup.ts'],
   // Self-hosted CI (added via 444244f) runs this package's jest in
   // parallel with the other workspace packages. Cap workers and raise
-  // timeout to match apps/api and libs/core — same reasoning.
+  // timeout to match apps/api and libs/core — same reasoning, including the
+  // CI-only raise to 8 that #3271 tried and reverted (measured here at
+  // 93.2 s -> 142.9 s; see the note in apps/api/jest.config.js).
   maxWorkers: 2,
   testTimeout: 10000,
   moduleNameMapper: {

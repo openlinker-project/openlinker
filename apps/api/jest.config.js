@@ -23,6 +23,15 @@ module.exports = {
   // bcrypt-heavy auth tests starve each other and trip the 5s timeout,
   // and random workers get OOM-killed (SIGKILL). Cap workers and raise
   // timeout to match the other packages.
+  //
+  // The cap was raised to 8 under CI (#3271) and reverted, and the sentence
+  // above is exactly why. On the real runner that doubled this package
+  // (80.0 s -> 163.0 s) and reproduced the SIGKILL the comment warns about:
+  // `analytics/http/dto/sales-analytics-query.dto.spec.ts` died with
+  // `signal=SIGKILL, exitCode=null`. The lab measurement that justified the
+  // raise was taken on an IDLE runner; the real one shares the machine with
+  // seven other concurrent CI jobs, so 2 packages x 8 workers oversubscribes
+  // it exactly as described.
   maxWorkers: 2,
   testTimeout: 10000,
   moduleNameMapper: {
