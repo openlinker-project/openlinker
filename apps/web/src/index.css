@@ -4401,6 +4401,186 @@ a.delivery-rider-banner__button:focus-visible {
   font-size: 0.75rem;
 }
 
+/* ── Duplicate-positions mockup-parity additions (#3077-v2, #3071) ──
+   Header meta row (generatedAt + re-run-before-acting caution). */
+.duplicate-positions-meta-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.duplicate-positions-meta-row__timestamp {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.duplicate-positions-meta-row__caution {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  max-width: 64ch;
+  margin: 0;
+}
+
+/* A generic muted dash / label — scoped to this feature rather than a bare
+   `.text-muted` utility, which this codebase does not define globally. */
+.duplicate-positions-muted {
+  color: var(--text-muted);
+}
+
+/* `locationId === null` / `sourceConnectionId === null | 'legacy'` sentinel
+   labels (ADR-058 decision 2 / #2317) — styled distinctly from a plain
+   missing value so an operator reads them as a real, permanent fact rather
+   than absent data. The dotted underline + `title` tooltip mirrors the
+   mockup's `.provenance-flag`. */
+.duplicate-positions-provenance-flag {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  border-bottom: 1px dotted var(--border-strong);
+  cursor: help;
+}
+
+/* Group detail panel (survivor hint, distortion/reservation alerts, table,
+   remediation link) — replaces the bare `<table>` the expandable detail used
+   to render directly. */
+.duplicate-positions-detail {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.duplicate-positions-detail__hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.duplicate-positions-detail__neutral-note {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.duplicate-positions-detail__neutral-note strong {
+  color: var(--text-primary);
+}
+
+.duplicate-positions-detail__remediation-link {
+  margin: 0;
+}
+
+/* The detail table's Row ID + badges wrapped to 3 lines and crushed together
+   on a narrow mobile card, since a plain <table> has no reflow of its own.
+   Scroll it horizontally instead — the "tables may be wider, each in its own
+   overflow-x: auto container" rule — and keep the id on one line so the
+   scrollbar is what handles overflow, not word-wrap. */
+.duplicate-positions-detail__table-scroll {
+  overflow-x: auto;
+}
+
+.duplicate-positions-detail__row-id {
+  white-space: nowrap;
+}
+
+/* Per-row badges inside the group detail table — survivor pick vs a loser
+   still holding an open reservation. Two distinct tones so neither reads as
+   the other at a glance. */
+.duplicate-positions-survivor-badge,
+.duplicate-positions-reserved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: var(--space-2);
+  padding: 0 5px;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.duplicate-positions-survivor-badge {
+  background: var(--status-success-soft);
+  border: 1px solid var(--status-success-border);
+  color: var(--status-success-fg);
+}
+
+.duplicate-positions-reserved-badge {
+  background: var(--status-error-soft);
+  border: 1px solid var(--status-error-border);
+  color: var(--status-error-fg);
+}
+
+/* Truncated-report maxGroups control (#3075 follow-up). */
+.duplicate-positions-maxgroups-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.duplicate-positions-maxgroups-form label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.duplicate-positions-maxgroups-form input {
+  width: 4.5rem;
+}
+
+/* Remediation modal (duplicate-positions-remediation-modal.tsx). */
+.duplicate-positions-remediation-steps {
+  margin: 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.duplicate-positions-remediation-steps strong {
+  color: var(--text-primary);
+}
+
+.duplicate-positions-remediation-steps__note {
+  font-size: 0.8125rem;
+  margin: 0;
+}
+
+.duplicate-positions-remediation-steps__sql-label {
+  font-size: 0.6875rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.duplicate-positions-remediation-steps__sql-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+
+.duplicate-positions-remediation-steps__sql-hint {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.duplicate-positions-remediation-steps__footer-hint {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.duplicate-positions-remediation-steps__footer-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
 /* Detail field grid — shared by the desktop accordion and the mobile card.
    Inset "drawer" (#1713): a recessed panel (the muted surface token reads
    recessed in both light and dark, matching the mobile facts grid) with side
