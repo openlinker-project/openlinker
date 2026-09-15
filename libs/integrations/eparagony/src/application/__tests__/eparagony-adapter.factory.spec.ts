@@ -15,6 +15,7 @@ import type { FetchLike } from '@openlinker/shared/http';
 import { EparagonyAdapterFactory } from '../eparagony-adapter.factory';
 import { EparagonyConfigException } from '../../domain/exceptions/eparagony-config.exception';
 import { EparagonyFiscalizationAdapter } from '../../infrastructure/adapters/eparagony-fiscalization.adapter';
+import { EparagonyHttpClient } from '../../infrastructure/http/eparagony-http-client';
 import { EparagonyInvoicingAdapter } from '../../infrastructure/adapters/eparagony-invoicing.adapter';
 
 /**
@@ -42,6 +43,34 @@ function makeConnection(overrides: Partial<Connection> = {}): Connection {
     updatedAt: new Date(),
     ...overrides,
   };
+}
+
+/**
+ * The smallest command `issueInvoice` will carry as far as composition, which is
+ * where a connection with no `merchantTIN` is refused. Typed loosely on purpose:
+ * this spec is about the construction seam, and the command's full shape is the
+ * mapper spec's subject.
+ */
+function makeIssueCommand(): Parameters<EparagonyInvoicingAdapter['issueInvoice']>[0] {
+  return {
+    connectionId: 'conn-eparagony-1',
+    orderId: 'ol_order_1',
+    buyer: {
+      name: 'Firma Polska sc.',
+      taxId: null,
+      address: {
+        line1: 'Pl. Obroncow Lublina 73',
+        line2: null,
+        city: 'Warszawa',
+        postalCode: '20-601',
+        countryIso2: 'PL',
+      },
+      kind: 'private',
+    },
+    currency: 'PLN',
+    lines: [{ name: 'T-shirt', quantity: 1, unitPriceGross: 49.2, taxRate: '23' }],
+    idempotencyKey: 'invoice:conn-eparagony-1:ol_order_1',
+  } as unknown as Parameters<EparagonyInvoicingAdapter['issueInvoice']>[0];
 }
 
 function makeLogger(): LoggerPort {
@@ -83,6 +112,11 @@ describe('EparagonyAdapterFactory', () => {
         fetchImpl,
       );
 
+      // Asserted DEFINED before asserted EQUAL. `transportOf` reads a private
+      // field by name, so renaming that field makes both sides `undefined` and
+      // `toBe` passes vacuously - the test that names the invariant would stop
+      // failing at exactly the moment it stopped being able to read it.
+      expect(transportOf(adapters.fiscalization)).toBeInstanceOf(EparagonyHttpClient);
       expect(transportOf(adapters.invoicing)).toBe(transportOf(adapters.fiscalization));
     });
 
@@ -114,17 +148,33 @@ describe('EparagonyAdapterFactory', () => {
       expect(client.fetchImpl).toBe(fetchImpl);
     });
 
-    it('should build a receipts-only connection, which carries no seller invoice configuration', async () => {
+    it('should build the invoice lane for a receipts-only connection and refuse at CALL time', async () => {
       // The asymmetry is deliberate: `merchantTIN` is mandatory on an invoice
       // and meaningless on a receipt, and every connection shipped before #3192
-      // is receipts-only. Refusing construction without it would stop those
-      // connections registering a single sale; the invoice mapper refuses
-      // pre-call instead.
+      // is receipts-only. Refusing CONSTRUCTION without it would stop those
+      // connections registering a single sale, so the refusal has to sit one
+      // step later - which is what this asserts, rather than merely re-running
+      // the default construction and checking it resolved.
+      //
+      // The refusal is driven for real: `issueInvoice` runs
+      // `assertIssuableDocument` and `composeInvoiceDocument` before anything
+      // touches the transport, so `fetchImpl` is never called and this stays a
+      // construction-seam test.
       const connection = makeConnection({ config: { environment: 'sandbox', posId: 'pos-10' } });
 
-      await expect(
-        factory.createAdapters(connection, makeCredentialsResolver(), makeLogger(), fetchImpl),
-      ).resolves.toBeDefined();
+      const adapters = await factory.createAdapters(
+        connection,
+        makeCredentialsResolver(),
+        makeLogger(),
+        fetchImpl,
+      );
+
+      expect(adapters.invoicing).toBeInstanceOf(EparagonyInvoicingAdapter);
+
+      await expect(adapters.invoicing.issueInvoice(makeIssueCommand())).rejects.toBeInstanceOf(
+        EparagonyConfigException,
+      );
+      expect(fetchImpl).not.toHaveBeenCalled();
     });
 
     it('should refuse a connection with no stored credentials reference', async () => {

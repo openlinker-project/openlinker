@@ -338,7 +338,17 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
   if (merchantName !== null) {
     metadata.merchantName = merchantName;
   }
-  if (config.merchantAddress !== undefined) {
+  // `!= null`, NOT `!== undefined`: the config-shape validator blesses an
+  // explicit `null` here as "absent" - which is the repo's own cleared-knob
+  // convention (#2610: clearing a knob writes an explicit `null` rather than
+  // deleting the key, and every reader treats it exactly like absent), and is
+  // what the seller form writes when an operator clears the address. A guard
+  // that tested `undefined` alone let that value through to
+  // `toSellerEntityAddress`, whose first statement dereferences it - a raw
+  // `TypeError` on the live issue path, which core cannot classify and defaults
+  // to `in-doubt`, blocking that order from EVERY sales document on every
+  // connection for a request that never crossed the network.
+  if (config.merchantAddress != null) {
     metadata.merchantAddress = toSellerEntityAddress(config.merchantAddress);
   }
 
@@ -392,7 +402,12 @@ export function toIssuedDocumentSeller(
   const name = readNonEmpty(config.merchantName);
   const taxId = readNonEmpty(config.merchantTIN);
   const address = config.merchantAddress;
-  if (name === null || taxId === null || address === undefined) {
+  // `== null` for the same reason the composer uses `!= null`, and it has to
+  // move in the SAME change: this runs inside `toIssueResult`, AFTER
+  // `createDocument` and its status poll have succeeded, so a guard fixed only
+  // upstream would relocate the crash to a point where the vendor has already
+  // created a legally-issued document that OpenLinker then loses.
+  if (name === null || taxId === null || address == null) {
     return null;
   }
   return {

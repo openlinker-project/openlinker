@@ -152,6 +152,26 @@ describe('EparagonyConnectionConfigShapeValidatorAdapter', () => {
       });
     });
 
+    it('should reject a padded country code, because the padded value is what ships', async () => {
+      // `toSellerEntityAddress` copies `country` across untouched, so a
+      // validator that trimmed before testing would bless a four-character
+      // value into a field declared as ISO 3166-1 alpha-2 and then send it on
+      // every invoice. What is validated is what goes out.
+      await expect(
+        validator.validate({ ...base, merchantAddress: { ...address, country: ' PL ' } }),
+      ).rejects.toMatchObject({
+        errors: expect.arrayContaining([
+          expect.objectContaining({ path: 'merchantAddress.country' }),
+        ]),
+      });
+    });
+
+    it('should still accept either case, which the vendor is left to decide', async () => {
+      await expect(
+        validator.validate({ ...base, merchantAddress: { ...address, country: 'pl' } }),
+      ).resolves.toBeUndefined();
+    });
+
     it('should accept an apartment, the one optional part of the address', async () => {
       await expect(
         validator.validate({ ...base, merchantAddress: { ...address, apartment: '4B' } }),

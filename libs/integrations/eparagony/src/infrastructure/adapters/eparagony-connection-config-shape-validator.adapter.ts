@@ -130,6 +130,17 @@ export class EparagonyConnectionConfigShapeValidatorAdapter
     // `merchantName` alike: the mapper reads both through `readNonEmpty`, so a
     // blank one is silently treated as absent. Refusing it here turns
     // configured-but-ignored into a form error the operator can see.
+    //
+    // `merchantTIN` gets NO format check, and the omission is deliberate rather
+    // than an oversight: the mapper hard-stamps `scheme: 'pl-nip'` and this
+    // adapter settles in PLN only, so "ten digits" is a true statement about a
+    // NIP - but it is not a statement about what the VENDOR accepts, and this
+    // package has no declaration of that. A mirror stricter than the gate it
+    // mirrors refuses configuration the provider would have taken (#2240), and a
+    // digit-count rule would refuse `PL5252556107` and `525-255-61-07`, both of
+    // which a provider may well normalise itself. That is the asymmetry with the
+    // country check below, which enforces a width THIS package declares on its
+    // own type.
     if (
       config.merchantTIN !== undefined &&
       config.merchantTIN !== null &&
@@ -210,6 +221,15 @@ export class EparagonyConnectionConfigShapeValidatorAdapter
    * returns `Promise<void>` and cannot write a normalised value back, so it
    * accepts either case and leaves the vendor the authority on that. It still
    * catches the mistake worth catching, a country spelled out in full.
+   *
+   * It tests the RAW value rather than a trimmed copy, precisely BECAUSE it
+   * cannot normalise: `toSellerEntityAddress` copies `country` across untouched,
+   * so accepting `' PL '` here would put a four-character value in a field this
+   * package's own type declares as ISO 3166-1 alpha-2, on every invoice the
+   * connection issues. Validating one value and shipping another is the gap
+   * worth closing; what is validated is what goes out. Deliberately not extended
+   * to the other parts - whitespace around a street name is cosmetic, whereas a
+   * country code has a declared width.
    */
   private validateMerchantAddress(raw: unknown, issues: FlatValidationIssue[]): void {
     if (raw === undefined || raw === null) return;
@@ -226,7 +246,7 @@ export class EparagonyConnectionConfigShapeValidatorAdapter
       }
     }
 
-    if (typeof address.country === 'string' && !ISO_ALPHA2_PATTERN.test(address.country.trim())) {
+    if (typeof address.country === 'string' && !ISO_ALPHA2_PATTERN.test(address.country)) {
       issues.push({
         path: 'merchantAddress.country',
         message: 'must be a two-letter ISO 3166-1 alpha-2 country code',
