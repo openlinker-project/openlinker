@@ -64,6 +64,42 @@ describe('RegulatoryStatusBadge', () => {
     expect(screen.queryByText('Accepted by the authority')).toBeNull();
   });
 
+  // #3192 - the hook is gated on the ONE waiting state, so a spec asserting
+  // it is asserting that state and not merely that a badge rendered.
+  describe('waiting hook (#3192)', () => {
+    it('names the badge while the document awaits submission', () => {
+      renderWithProviders(<RegulatoryStatusBadge status="pending-submission" />);
+
+      const badge = screen.getByTestId('sales-document-status-waiting');
+      expect(badge).toHaveTextContent('Awaiting submission');
+      expect(badge).toHaveClass('status-badge--warning');
+    });
+
+    it('withholds the hook from every other clearance state', () => {
+      const others = ['not-applicable', 'submitted', 'cleared', 'accepted', 'rejected'] as const;
+      for (const status of others) {
+        cleanup();
+        renderWithProviders(<RegulatoryStatusBadge status={status} />);
+        expect(screen.queryByTestId('sales-document-status-waiting')).toBeNull();
+      }
+    });
+
+    // A provider may brand the WORD without moving the hook: the hook names
+    // the state, the label names it in that provider's own vocabulary.
+    it('keeps the hook under a provider label override', () => {
+      renderWithProviders(
+        <RegulatoryStatusBadge
+          status="pending-submission"
+          labelOverrides={{ 'pending-submission': 'Awaiting the authority' }}
+        />,
+      );
+
+      expect(screen.getByTestId('sales-document-status-waiting')).toHaveTextContent(
+        'Awaiting the authority',
+      );
+    });
+  });
+
   it('renders the catalog entry over the neutral fallback when no override is given', () => {
     renderWithProviders(
       <LocaleProvider catalog={{ 'invoice.regulatory.accepted': 'Accepted by the authority' }}>

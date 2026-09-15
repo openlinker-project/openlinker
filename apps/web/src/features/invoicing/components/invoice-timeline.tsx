@@ -22,6 +22,10 @@
  *     only KSeF's, so its copy names no regulator — a per-provider surface
  *     wanting branded wording contributes its own component the way the KSeF
  *     plugin's `KsefInvoiceDetailSection` does for `RegulatoryStatusBadge`.
+ *     That same lane carries the `clearance-ladder-waiting` /
+ *     `clearance-node-waiting` hooks (#3192), emitted for `pending-submission`
+ *     and nothing else. They are hooks on the SHIPPED lane, deliberately not a
+ *     second ladder drawn beside it.
  *
  * @module apps/web/src/features/invoicing/components
  */
@@ -43,7 +47,22 @@ interface TlNode {
   subLabel?: string;
   timestamp?: string | null;
   state: NodeState;
+  /**
+   * Test hook for a node whose PRESENCE is the assertion (#3192). Set on the
+   * waiting node alone: a hook on every node would name a position in a list
+   * rather than a state, and the lane's shape changes per status.
+   */
+  testId?: string;
 }
+
+/**
+ * The clearance lane while a document sits with its provider, issued and not
+ * yet sent on (#3192). Both hooks are emitted only for `pending-submission`,
+ * so a spec asserting either is asserting the state and not merely that a
+ * lane exists.
+ */
+const CLEARANCE_WAITING_LADDER_TEST_ID = 'clearance-ladder-waiting';
+const CLEARANCE_WAITING_NODE_TEST_ID = 'clearance-node-waiting';
 
 /** Bullet marker rendered as a small inline-svg circle icon. */
 function TlBullet({ state }: { state: NodeState }): ReactElement {
@@ -88,7 +107,10 @@ function TlBullet({ state }: { state: NodeState }): ReactElement {
 
 function TlNodeRow({ node }: { node: TlNode }): ReactElement {
   return (
-    <li className={`invoice-tl-node invoice-tl-node--${node.state}`}>
+    <li
+      className={`invoice-tl-node invoice-tl-node--${node.state}`}
+      data-testid={node.testId}
+    >
       <TlBullet state={node.state} />
       <div className="invoice-tl-node__content">
         <span className="invoice-tl-node__label">{node.label}</span>
@@ -216,6 +238,7 @@ function buildClearanceLane(
         ),
         timestamp: invoice.updatedAt,
         state: 'active',
+        testId: CLEARANCE_WAITING_NODE_TEST_ID,
       },
     ];
   }
@@ -277,6 +300,7 @@ export function InvoiceTimeline({ invoice, className }: InvoiceTimelineProps): R
 
   const issuanceNodes = buildIssuanceLane(invoice, t);
   const clearanceNodes = buildClearanceLane(invoice, t);
+  const awaitingSubmission = invoice?.regulatoryStatus === 'pending-submission';
 
   return (
     <div className={`invoice-timeline ${className ?? ''}`.trim()}>
@@ -299,6 +323,7 @@ export function InvoiceTimeline({ invoice, className }: InvoiceTimelineProps): R
           <ol
             className="invoice-tl-list"
             aria-label={t('invoice.tl.clearanceLane', 'Regulatory clearance')}
+            data-testid={awaitingSubmission ? CLEARANCE_WAITING_LADDER_TEST_ID : undefined}
           >
             {clearanceNodes.map((node, i) => (
               <TlNodeRow key={i} node={node} />
