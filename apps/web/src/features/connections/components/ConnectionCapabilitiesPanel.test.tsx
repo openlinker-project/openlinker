@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createAuthenticatedSessionAdapter,
@@ -6,7 +6,10 @@ import {
   renderWithProviders,
   sampleConnection,
 } from '../../../test/test-utils';
-import { ConnectionCapabilitiesPanel } from './ConnectionCapabilitiesPanel';
+import {
+  ConnectionCapabilitiesPanel,
+  capabilityToggleTestId,
+} from './ConnectionCapabilitiesPanel';
 import type { Connection } from '../api/connections.types';
 
 describe('ConnectionCapabilitiesPanel', () => {
@@ -171,6 +174,128 @@ describe('ConnectionCapabilitiesPanel', () => {
     expect(screen.getByRole('checkbox', { name: /CategoryProvisioner/ })).not.toBeChecked();
     expect(screen.getByText(/1 of 2 enabled/)).toBeInTheDocument();
     expect(screen.queryByText(/no capabilities available to toggle/)).not.toBeInTheDocument();
+  });
+
+  // #3192 - the hooks and the note a sales-document connection's edit page is
+  // driven by. `renderWithProviders` defaults to an ANONYMOUS session; none of
+  // these is permission-gated, and the two that would be (the checkboxes) are
+  // already exercised ungated by the tests above.
+  describe('sales-document surfaces (#3192)', () => {
+    const dualRoleConnection: Connection = {
+      ...sampleConnection,
+      supportedCapabilities: ['Fiscalization', 'Invoicing'],
+      enabledCapabilities: ['Fiscalization', 'Invoicing'],
+    };
+
+    it('names each toggle by its capability, lowercased', () => {
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={dualRoleConnection} />);
+
+      expect(screen.getByTestId('capability-toggle-fiscalization')).toBeChecked();
+      expect(screen.getByTestId('capability-toggle-invoicing')).toBeChecked();
+      // The helper and the rendered attribute are one rule, not two.
+      expect(capabilityToggleTestId('Invoicing')).toBe('capability-toggle-invoicing');
+    });
+
+    it('carries the enabled count under a stable hook', () => {
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={dualRoleConnection} />);
+
+      expect(screen.getByTestId('capability-count')).toHaveTextContent('2 of 2 enabled');
+    });
+
+    it('drives the toggle it names', async () => {
+      const update = vi.fn().mockResolvedValue({ ...sampleConnection });
+      const apiClient = createMockApiClient({ connections: { update } });
+      renderWithProviders(
+        <ConnectionCapabilitiesPanel
+          connection={{ ...dualRoleConnection, enabledCapabilities: ['Fiscalization'] }}
+        />,
+        { apiClient },
+      );
+
+      fireEvent.click(screen.getByTestId('capability-toggle-invoicing'));
+
+      await waitFor(() =>
+        expect(update).toHaveBeenCalledWith(
+          dualRoleConnection.id,
+          expect.objectContaining({
+            enabledCapabilities: expect.arrayContaining(['Fiscalization', 'Invoicing']),
+          }),
+        ),
+      );
+    });
+
+    it('states that enabling a role routes nothing to it', () => {
+      renderWithProviders(<ConnectionCapabilitiesPanel connection={dualRoleConnection} />);
+
+      const note = screen.getByTestId('capability-routing-note');
+      expect(note).toHaveTextContent('Enabling a role does not route anything to it');
+      expect(note).toHaveTextContent('per country');
+      expect(within(note).getByRole('link', { name: 'Sales documents' })).toHaveAttribute(
+        'href',
+        '/settings/sales-documents',
+      );
+    });
+
+    // Keyed on SUPPORTED, not ENABLED: the note answers "what does turning
+    // this on do", which is asked before it is turned on.
+    it('shows the note on a connection that supports the role but has it off', () => {
+      renderWithProviders(
+        <ConnectionCapabilitiesPanel
+          connection={{ ...dualRoleConnection, enabledCapabilities: [] }}
+        />,
+      );
+
+      expect(screen.getByTestId('capability-routing-note')).toBeInTheDocument();
+    });
+
+    // "issue invoices" would be plainly false on a receipts-only connection,
+    // which is what a fiscalization provider's connection is until an operator
+    // enables its second role.
+    it('names what the connection would actually issue', () => {
+      renderWithProviders(
+        <ConnectionCapabilitiesPanel
+          connection={{
+            ...sampleConnection,
+            supportedCapabilities: ['Fiscalization'],
+            enabledCapabilities: ['Fiscalization'],
+          }}
+        />,
+      );
+
+      const note = screen.getByTestId('capability-routing-note');
+      expect(note).toHaveTextContent('eligible to issue fiscal receipts');
+      expect(note.textContent).not.toMatch(/eligible to issue invoices/);
+    });
+
+    it('names invoices on an invoicing-only connection', () => {
+      renderWithProviders(
+        <ConnectionCapabilitiesPanel
+          connection={{
+            ...sampleConnection,
+            supportedCapabilities: ['Invoicing'],
+            enabledCapabilities: ['Invoicing'],
+          }}
+        />,
+      );
+
+      expect(screen.getByTestId('capability-routing-note')).toHaveTextContent(
+        'eligible to issue invoices',
+      );
+    });
+
+    it('withholds the note from a connection that holds no sales-document role', () => {
+      renderWithProviders(
+        <ConnectionCapabilitiesPanel
+          connection={{
+            ...sampleConnection,
+            supportedCapabilities: ['ProductMaster', 'OrderSource'],
+            enabledCapabilities: ['ProductMaster'],
+          }}
+        />,
+      );
+
+      expect(screen.queryByTestId('capability-routing-note')).toBeNull();
+    });
   });
 
   // The hint is behind `AccessGate` on `connections:write` (#1993), so these

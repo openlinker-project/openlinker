@@ -15,6 +15,13 @@ interface AlertProps {
   className?: string;
   title?: ReactNode;
   tone?: AlertTone;
+  /**
+   * For test introspection (the `Combobox` convention). Lands on the alert
+   * root so a spec can name ONE notice without a wrapper element - an alert
+   * is routinely a flex/grid child, so a spare `<div>` around it would change
+   * where it sits rather than only what it is called.
+   */
+  'data-testid'?: string;
 }
 
 export function Alert({
@@ -23,11 +30,12 @@ export function Alert({
   className = '',
   title,
   tone = 'info',
+  'data-testid': dataTestId,
 }: AlertProps): ReactElement {
   const classes = ['alert', `alert--${tone}`, className].filter(Boolean).join(' ');
 
   return (
-    <div className={classes} role={tone === 'error' ? 'alert' : 'status'}>
+    <div className={classes} role={tone === 'error' ? 'alert' : 'status'} data-testid={dataTestId}>
       <div className="alert__content">
         {title ? <strong className="alert__title">{title}</strong> : null}
         <div className="alert__description">{children}</div>
