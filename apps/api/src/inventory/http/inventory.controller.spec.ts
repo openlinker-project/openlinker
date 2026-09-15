@@ -60,6 +60,7 @@ describe('InventoryController', () => {
       findAvailabilityByVariantIds: jest.fn(),
       getProductStockAggregates: jest.fn(),
       getDuplicatePositionReport: jest.fn(),
+      getProvenanceBackfillStatus: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

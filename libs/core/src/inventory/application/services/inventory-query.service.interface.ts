@@ -16,6 +16,7 @@ import type {
   VariantStockRow,
   ProductStockAggregate,
   DuplicatePositionReport,
+  ProvenanceBackfillStatus,
 } from '../../domain/types/inventory.types';
 import type { PaginatedInventoryView } from '../types/inventory-view.types';
 
@@ -108,4 +109,12 @@ export interface IInventoryQueryService {
    * @throws Error when `maxGroups` is out of range
    */
   getDuplicatePositionReport(maxGroups?: number): Promise<DuplicatePositionReport>;
+
+  /**
+   * Live status of the #2317 provenance backfill (#3240) — the second,
+   * independent readiness condition for #2325 alongside
+   * {@link getDuplicatePositionReport}'s `groupCount`. See
+   * {@link ProvenanceBackfillStatus} for why this is always a live read.
+   */
+  getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatus>;
 }
