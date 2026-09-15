@@ -27,4 +27,10 @@ export const inventoryQueryKeys = {
   locations: (filters?: InventoryLocationFilters, pagination?: InventoryLocationListPagination) =>
     ['inventory', 'locations', 'list', filters ?? {}, pagination ?? {}] as const,
   locationDetail: (id: string) => ['inventory', 'locations', 'detail', id] as const,
+  // #2319/#3072 — the diagnostic reads only `maxGroups`, no connection axis
+  // (the readiness gate is install-wide, not per connection).
+  duplicatePositions: (maxGroups?: number) =>
+    ['inventory', 'duplicate-positions', maxGroups ?? null] as const,
+  // #3240 — install-wide live read, same axis-free shape as duplicatePositions.
+  provenanceBackfillStatus: () => ['inventory', 'provenance-backfill-status'] as const,
 };
