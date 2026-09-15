@@ -17,8 +17,7 @@
  *
  * `groupCount` / `rowCount` / `excessRowCount` are UNCAPPED — they always
  * describe the whole table, even when `groups[]` (and therefore the table
- * below) is truncated to the largest `maxGroups` groups (the truncated-report
- * banner is added in #3075).
+ * below) is truncated to the largest `maxGroups` groups.
  *
  * The backing endpoints are `@Roles('admin')`-gated server-side, and the
  * page gates itself the same way — rendering an access-denied state for a
@@ -34,12 +33,145 @@ import { KpiCard } from '../../shared/ui/kpi-card';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { StatusBadge } from '../../shared/ui/status-badge';
-import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
+import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
+import { LoadingState, ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { formatDateTime } from '../../shared/format/format-date';
 import { useSession } from '../../shared/auth/use-session';
 import { useIsAdmin } from '../../shared/auth/use-permission';
 import { useDuplicatePositionsQuery } from '../../features/inventory/hooks/use-duplicate-positions-query';
 import { useProvenanceBackfillStatusQuery } from '../../features/inventory/hooks/use-provenance-backfill-status-query';
+import type { DuplicatePositionGroup } from '../../features/inventory/api/inventory.types';
+
+function IdCell({ value }: { value: string | null }): ReactElement {
+  if (value === null) {
+    return <span className="text-muted">—</span>;
+  }
+  return <span className="mono-text">{value}</span>;
+}
+
+/**
+ * `productName`/`sku` (#3239) are `null` only when the product could not be
+ * resolved (e.g. deleted) — raw id is the honest fallback, never a fabricated
+ * name.
+ */
+function ProductCell({ group }: { group: DuplicatePositionGroup }): ReactElement {
+  if (group.productName === null) {
+    return <span className="mono-text">{group.productId}</span>;
+  }
+  return (
+    <span className="duplicate-positions-product-cell">
+      <span>{group.productName}</span>
+      {group.sku !== null ? (
+        <span className="mono-text text-muted duplicate-positions-product-cell__sku">{group.sku}</span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * ADR-058 decision 2 — `locationId === null` permanently means "the master
+ * declines to locate its stock", never a location named "default". A
+ * resolved id with no `locationName` (#3239) falls back to the raw id rather
+ * than fabricating a name.
+ */
+function LocationCell({ id, name }: { id: string | null; name: string | null }): ReactElement {
+  if (id === null) {
+    return <span className="text-muted">—</span>;
+  }
+  return name !== null ? <span>{name}</span> : <span className="mono-text">{id}</span>;
+}
+
+/**
+ * `null` and the #2317 `'legacy'` sentinel both mean "not yet backfilled" —
+ * neither is ever resolved to a `connectionName` (#3239), so neither ever
+ * renders one.
+ */
+function ConnectionCell({ id, name }: { id: string | null; name: string | null }): ReactElement {
+  if (id === null || id === 'legacy') {
+    return <span className="text-muted">Not backfilled</span>;
+  }
+  return name !== null ? <span>{name}</span> : <span className="mono-text">{id}</span>;
+}
+
+const GROUP_COLUMNS: DataTableColumn<DuplicatePositionGroup>[] = [
+  {
+    id: 'productId',
+    header: 'Product',
+    cell: (g) => <ProductCell group={g} />,
+  },
+  {
+    id: 'productVariantId',
+    header: 'Variant',
+    cell: (g) => <IdCell value={g.productVariantId} />,
+    hideBelow: 1024,
+  },
+  {
+    id: 'locationId',
+    header: 'Location',
+    cell: (g) => <LocationCell id={g.locationId} name={g.locationName} />,
+    hideBelow: 768,
+  },
+  {
+    id: 'sourceConnectionId',
+    header: 'Source connection',
+    cell: (g) => <ConnectionCell id={g.sourceConnectionId} name={g.connectionName} />,
+    hideBelow: 768,
+  },
+  {
+    id: 'rowCount',
+    header: 'Rows',
+    accessor: (g) => g.rowCount,
+    cell: (g) => <span className="mono-text tabular">{g.rowCount}</span>,
+    sortable: true,
+  },
+  {
+    id: 'liveRowCount',
+    header: 'Live rows',
+    accessor: (g) => g.liveRowCount,
+    cell: (g) => <span className="mono-text tabular">{g.liveRowCount}</span>,
+    sortable: true,
+  },
+];
+
+function GroupRowDetail({ group }: { group: DuplicatePositionGroup }): ReactElement {
+  return (
+    <table className="data-table__detail-table">
+      <caption className="sr-only">Individual inventory_items rows for this position key</caption>
+      <thead>
+        <tr>
+          <th scope="col">Row ID</th>
+          <th scope="col">Available</th>
+          <th scope="col">Reserved</th>
+          <th scope="col">Status</th>
+          <th scope="col">Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {group.rows.map((row) => (
+          <tr key={row.id} className={row.isStale ? 'data-table__detail-row--stale' : undefined}>
+            <td>
+              <span className="mono-text">{row.id}</span>
+            </td>
+            <td className="tabular">{row.availableQuantity}</td>
+            <td className="tabular">{row.reservedQuantity}</td>
+            <td>
+              {row.isStale ? (
+                <StatusBadge tone="neutral" withDot>
+                  Stale
+                </StatusBadge>
+              ) : (
+                <StatusBadge tone="success" withDot>
+                  Live
+                </StatusBadge>
+              )}
+            </td>
+            <td title={row.updatedAt}>{formatDateTime(row.updatedAt)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 export function DuplicatePositionsPage(): ReactElement {
   const { isReady: isSessionReady } = useSession();
@@ -201,6 +333,37 @@ export function DuplicatePositionsPage(): ReactElement {
               }
             />
           </div>
+
+          {report.groups.length === 0 ? (
+            <EmptyState
+              liveRegion="off"
+              title="No duplicate positions"
+              message="Every inventory position key is unique. Nothing to review."
+            />
+          ) : (
+            <DataTable
+              caption="Duplicate inventory positions"
+              columns={GROUP_COLUMNS}
+              rows={report.groups}
+              rowKey={(g) =>
+                `${g.productId}:${g.productVariantId ?? ''}:${g.locationId ?? ''}:${g.sourceConnectionId ?? ''}`
+              }
+              expandable={{
+                renderDetail: (g) => <GroupRowDetail group={g} />,
+                toggleLabel: (g, expanded) =>
+                  expanded
+                    ? `Collapse rows for product ${g.productName ?? g.productId}`
+                    : `Expand rows for product ${g.productName ?? g.productId}`,
+              }}
+              cardView={{
+                title: (g) => g.productName ?? g.productId,
+                subtitle: (g) => g.sku ?? g.productVariantId ?? undefined,
+                meta: (g) => `${g.rowCount} rows (${g.liveRowCount} live)`,
+                collapsibleDetail: true,
+                detail: (g) => <GroupRowDetail group={g} />,
+              }}
+            />
+          )}
         </>
       ) : null}
     </PageLayout>

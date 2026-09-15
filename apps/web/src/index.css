@@ -4384,6 +4384,52 @@ a.delivery-rider-banner__button:focus-visible {
   padding: var(--space-4) var(--space-4) var(--space-4) 2.75rem;
 }
 
+/* ── Duplicate-position group detail table (#3074, #3071) ──
+   A per-row nested table of raw inventory_items rows inside the duplicate
+   position group's expandable detail drawer. Reuses the detail-drawer's own
+   muted surface rather than adding a second background. */
+.data-table__detail-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table__detail-table th,
+.data-table__detail-table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.data-table__detail-table th {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.data-table__detail-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table__detail-row--stale {
+  opacity: 0.6;
+}
+
+/* ── Duplicate-positions product cell (#3074, #3239) ──
+   productName stacked over its sku, both display-enriched fields — falls
+   back to the raw mono-text id when the product could not be resolved. */
+.duplicate-positions-product-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.duplicate-positions-product-cell__sku {
+  font-size: 0.75rem;
+}
+
 /* Detail field grid — shared by the desktop accordion and the mobile card.
    Inset "drawer" (#1713): a recessed panel (the muted surface token reads
    recessed in both light and dark, matching the mobile facts grid) with side
