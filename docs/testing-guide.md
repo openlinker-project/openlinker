@@ -890,15 +890,9 @@ Measured on `libs/integrations/prestashop` at 2 workers, content byte-identical 
 
 `pnpm install --frozen-lockfile` and `pnpm -r build` do **not** invalidate it; only mtime does.
 
-Confirmed on the real job by running the same commit twice (#3271). The first run writes the full set of entries under the fixed stamps and the second reads them; only the two packages whose transform cost dominates their wall time moved, which is what a transform cache is expected to do:
+**The stamp is a necessary condition, not a sufficient one, and on this pipeline it is not yet a demonstrated win.** The cache directory is per runner *container*, and the pool holds four. Four consecutive `Test` runs during #3271 landed on four different containers (`e34966fddf6c`, `82d63762f74b`, `ea742a154a4e`, `blockydevs-buildserver-dev-01`), so every one of them still ran cold — an attempt to measure cold-versus-warm by running the same commit twice measured nothing of the kind, and the difference it appeared to show (`apps/api` 260.6 s -> 163.0 s) is attributable to host load, since the second run started after the rest of the workflow had finished.
 
-| package | run 1 (writes cache) | run 2 (reads it) |
-|---|---|---|
-| apps/api | 260.6 s | 163.0 s |
-| apps/worker | 242.0 s | 142.9 s |
-| the other seventeen | — | flat within ±4% |
-
-Both runs were taken at the since-reverted 8-worker setting, so read those two figures as a cold-versus-warm delta rather than as absolute package times.
+So a job reads a warm cache only when it lands on a container that has already transformed the same content. The stamp is what makes that possible at all — before it, no container could ever hit, which is why they had accumulated 33 GB of unreadable entries — but the benefit accrues per container as the pool warms, rather than on the next run. When claiming a figure for it, check `Runner name:` in both job logs first; two runs on different containers are two cold runs.
 
 The fix is `scripts/normalize-source-mtimes.mjs`, run in the `test` job right after `actions/setup-node`: it walks the working tree (skipping `node_modules`) and stamps every file with one fixed instant, so unchanged content produces an unchanged key across runs *and* across branches. It walks rather than calling `git ls-files` on purpose — **some self-hosted runners carry no git binary**, `actions/checkout` succeeds through its API path, and a git-based listing there returns nothing while still exiting 0. **This is safe, and that was verified rather than assumed** — a one-word edit preserving the file's exact byte length, with mtime rolled back to the same stamp, still failed 21 suites. mtime decides only whether jest re-examines a file, never what it believes the file contains.
 
