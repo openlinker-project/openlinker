@@ -22,8 +22,13 @@ module.exports = {
   // and apps/worker. Default worker count oversubscribes CPU/memory:
   // bcrypt-heavy auth tests starve each other and trip the 5s timeout,
   // and random workers get OOM-killed (SIGKILL). Cap workers and raise
-  // timeout to match the other packages.
-  maxWorkers: 2,
+  // timeout to match the other packages. Under CI the cap is 8 (#3271) — the
+  // runner is a 64-core / 251 GB box — while off CI it stays 2, because
+  // `.husky/pre-commit` -> `pnpm smart-test` reaches this same file on a
+  // contributor's machine. `testTimeout` stays raised: it is the other half of
+  // the bcrypt-starvation fix and 8 concurrent workers need it more, not less.
+  maxWorkers: process.env.CI ? 8 : 2,
+  workerIdleMemoryLimit: '512MB',
   testTimeout: 10000,
   moduleNameMapper: {
     '^@openlinker/api/(.*)$': path.resolve(__dirname, 'src/$1'),
