@@ -3,7 +3,8 @@
  *
  * Raised when a connection cannot be turned into a working client at all -
  * missing credentials, an unusable host override - or when the sale as composed
- * cannot legally be expressed as a receipt (an unresolvable tax rate).
+ * cannot legally be expressed as the document being issued - a receipt or an
+ * invoice - such as an unresolvable tax rate.
  *
  * `failureMode` is `'rejected'`: nothing crossed the provider boundary, so
  * nothing was registered and re-attempting after the operator fixes the
@@ -20,7 +21,7 @@ export class EparagonyConfigException extends Error {
     message: string,
     /** Short, PII-free operator-facing summary; core persists it verbatim. */
     readonly reason: string,
-    readonly connectionId?: string,
+    readonly connectionId?: string
   ) {
     super(message);
     this.name = 'EparagonyConfigException';
