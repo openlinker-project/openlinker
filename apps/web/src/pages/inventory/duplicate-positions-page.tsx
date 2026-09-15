@@ -20,6 +20,14 @@
  * below) is truncated to the largest `maxGroups` groups (the truncated-report
  * banner is added in #3075).
  *
+ * The backing endpoint (`GET /inventory/duplicate-positions`) is
+ * `@Roles('admin')`-gated server-side. This page has no route/nav entry yet
+ * — whichever PR wires one (#3074) MUST gate its `requiresRole: 'admin'` nav
+ * contribution (or wrap the route) so a non-admin session never reaches a
+ * bare 403 `ErrorState` here; backend authorization is a separate axis from
+ * frontend visibility (`docs/frontend-architecture.md` § Access Control And
+ * UI Visibility).
+ *
  * @module apps/web/src/pages/inventory
  */
 import type { ReactElement } from 'react';
@@ -97,16 +105,15 @@ export function DuplicatePositionsPage(): ReactElement {
                 </StatusBadge>
                 <span>
                   {backfillComplete
-                    ? '#2317 provenance backfill complete'
-                    : `#2317 provenance backfill still running (${String(provenance.remainingNull)} row(s) remaining)`}
+                    ? 'Provenance backfill complete'
+                    : `Provenance backfill still running (${String(provenance.remainingNull)} row(s) remaining)`}
                 </span>
               </li>
             </ul>
             {!isReady ? (
               <p className="duplicate-positions-checklist__footnote">
-                Both conditions must hold before the stricter uniqueness index (#2325) can be
-                built. See docs/operations/inventory-duplicate-positions.md for the remediation
-                procedure.
+                Both conditions must hold before the stricter uniqueness index can be built. See
+                docs/operations/inventory-duplicate-positions.md for the remediation procedure.
               </p>
             ) : null}
           </Alert>
@@ -128,7 +135,7 @@ export function DuplicatePositionsPage(): ReactElement {
               label="Provenance rows remaining"
               value={provenance.remainingNull}
               tone={backfillComplete ? 'success' : 'warning'}
-              description="#2317 inventory_items rows still missing sourceConnectionId."
+              description="inventory_items rows still missing sourceConnectionId."
             />
           </div>
         </>
