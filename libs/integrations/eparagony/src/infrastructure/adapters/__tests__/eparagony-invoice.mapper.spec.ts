@@ -503,7 +503,7 @@ describe('toRegulatoryClearanceResult', () => {
     // NOT observable in the sandbox - coded from the vendor's contract, where
     // `ksefNumber` is required at CONFIRMED and absent at OFFLINE.
     expect(toRegulatoryClearanceResult(CLEARED)).toEqual({
-      regulatoryStatus: 'cleared',
+      regulatoryStatus: 'accepted',
       clearanceReference: '5265877635-20250626-010080DD2B5E-26',
     });
   });

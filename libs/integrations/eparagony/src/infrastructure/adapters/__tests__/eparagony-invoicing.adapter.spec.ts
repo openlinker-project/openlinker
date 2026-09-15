@@ -391,7 +391,7 @@ describe('EparagonyInvoicingAdapter - getClearanceStatus', () => {
       `documents/${encodeURIComponent(EXPECTED_DOCUMENT_TOKEN)}/status`,
     );
     expect(result).toEqual({
-      regulatoryStatus: 'cleared',
+      regulatoryStatus: 'accepted',
       clearanceReference: '5265877635-20250626-010080DD2B5E-26',
     });
   });
@@ -419,9 +419,9 @@ describe('EparagonyInvoicingAdapter - getClearanceStatus', () => {
     const unknownDocument = new EparagonyApiError('unknown token', 404, { errorCode: 92 });
     const client = makeClient([unknownDocument]);
     const result = await makeAdapter(client).getClearanceStatus(
-      makeRecord(EXPECTED_DOCUMENT_TOKEN, 'cleared', 'ref-1'),
+      makeRecord(EXPECTED_DOCUMENT_TOKEN, 'accepted', 'ref-1'),
     );
-    expect(result).toEqual({ regulatoryStatus: 'cleared', clearanceReference: 'ref-1' });
+    expect(result).toEqual({ regulatoryStatus: 'accepted', clearanceReference: 'ref-1' });
   });
 
   it('propagates a transport failure so the reconciliation retries it', async () => {

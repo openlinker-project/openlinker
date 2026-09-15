@@ -363,7 +363,7 @@ export function resolveBuyerHandleSchemeTag(scheme: string | undefined, value: s
  *      no clearance to wait for and the invoice is complete. Tested first
  *      precisely because it is true at any status.
  *   2. `status: ERROR` -> `rejected`.
- *   3. `status: CONFIRMED` (with a hub relay) -> `cleared`, carrying the
+ *   3. `status: CONFIRMED` (with a hub relay) -> `accepted`, carrying the
  *      authority's own number as the neutral `clearanceReference`.
  *   4. anything else with a hub relay -> `pending-submission`.
  *
@@ -377,12 +377,21 @@ export function resolveBuyerHandleSchemeTag(scheme: string | undefined, value: s
  * is non-terminal, so the reconciliation keeps polling and the answer self-heals,
  * whereas any terminal guess would stop it looking.
  *
- * NOTE for a reader tracing a record that never stops being polled: `cleared` is
- * NOT in the neutral terminal set (`accepted` / `rejected` / `not-applicable`), so
- * arm 3 leaves the record on the reconciliation's non-terminal predicate for good.
- * That is what this issue's status table specifies and is implemented as
- * specified; it is the same shape inFakt's #1293 finding recorded, and closing it
- * is a decision about the neutral vocabulary rather than about this mapper.
+ * A CONFIRMED document relayed to the authority maps to `accepted`, NOT to
+ * `cleared`, deliberately and against an earlier draft of this issue's status
+ * table. Three independent facts in the tree say `cleared` is the wrong value.
+ * It is absent from `TerminalRegulatoryStatusValues`, so the #1121
+ * reconciliation would poll a finished document for ever - the shape inFakt's
+ * #1293 finding recorded. The invoice list filters it out by name as "a reserved
+ * status no provider emits". And KSeF's OWN adapter maps that same authority's
+ * terminal success to `accepted`, commenting it "Cleared; KSeF assigned a
+ * number" - so `accepted` already MEANS cleared-with-a-number in this
+ * vocabulary. eparagony relays to the same authority KSeF talks to directly;
+ * two adapters reaching one authority must not report its terminal success
+ * under two different neutral values.
+ *
+ * `cleared` stays reserved for a split-clearance regime that genuinely needs a
+ * state between submission and final acceptance. This is not one.
  */
 export function toRegulatoryClearanceResult(
   body: EparagonyDocumentStatusResponse,
@@ -399,7 +408,7 @@ export function toRegulatoryClearanceResult(
 
   const clearanceReference = readClearanceReference(body);
   if (status === EPARAGONY_STATUS_CONFIRMED && processingMode === EPARAGONY_PROCESSING_MODE_KSEF) {
-    return { regulatoryStatus: 'cleared', clearanceReference };
+    return { regulatoryStatus: 'accepted', clearanceReference };
   }
 
   return { regulatoryStatus: 'pending-submission', clearanceReference };
