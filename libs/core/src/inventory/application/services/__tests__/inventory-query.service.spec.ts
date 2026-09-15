@@ -506,4 +506,22 @@ describe('InventoryQueryService', () => {
       });
     });
   });
+
+  describe('getProvenanceBackfillStatus (#3240)', () => {
+    it('reports completed when nothing remains', async () => {
+      inventoryRepository.countMissingProvenance.mockResolvedValue(0);
+
+      const result = await service.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({ remainingNull: 0, completed: true });
+    });
+
+    it('reports not-completed and passes the count through verbatim when rows remain', async () => {
+      inventoryRepository.countMissingProvenance.mockResolvedValue(1_200);
+
+      const result = await service.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({ remainingNull: 1_200, completed: false });
+    });
+  });
 });
