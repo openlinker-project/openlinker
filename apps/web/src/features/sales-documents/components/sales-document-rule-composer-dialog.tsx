@@ -58,11 +58,24 @@ import type {
 } from '../api/sales-document-rules.types';
 import type { SalesDocumentKind } from '../api/sales-documents.types';
 import { describeSalesDocumentRuleDraft } from '../lib/describe-sales-document-rule-draft';
+import { useSalesDocumentRuleOverlapQuery } from '../hooks/use-sales-document-rule-overlap-query';
+import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-query';
+import {
+  describeSalesDocumentOverlapClear,
+  describeSalesDocumentOverlapConflict,
+  describeSalesDocumentOverlapUndecided,
+} from '../lib/describe-sales-document-overlap';
 
 interface SalesDocumentRuleComposerDialogProps {
   country: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Reveal an existing rule in the list behind the dialog (#3190). Optional,
+   * and the "Open that rule" affordance renders ONLY when it is supplied - a
+   * control the surrounding page cannot serve is dead code that type-checks.
+   */
+  onOpenRule?: (ruleId: string) => void;
 }
 
 type ConditionKind = 'buyerHasTaxId' | 'orderCountry' | 'orderTotalGross';
@@ -165,6 +178,7 @@ export function SalesDocumentRuleComposerDialog({
   country,
   open,
   onOpenChange,
+  onOpenRule,
 }: SalesDocumentRuleComposerDialogProps): ReactElement {
   const connectionsQuery = useConnectionsQuery();
   const createRule = useCreateSalesDocumentRuleMutation();
@@ -174,6 +188,46 @@ export function SalesDocumentRuleComposerDialog({
   const [connectionId, setConnectionId] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState(() => new Date().toISOString().slice(0, 10));
   const [effectiveTo, setEffectiveTo] = useState('');
+
+  // #3190. The engine has no priorities: two matching rules HOLD the order
+  // rather than one winning, and today that is discovered days later as a
+  // hanging order. Asked here, while there is still somebody to tell.
+  //
+  // Only asked once the draft is answerable: a half-typed amount, or an
+  // amount with no currency yet, describes no order set at all, so checking it
+  // would produce a verdict about a rule the operator has not written.
+  const conditionsAreAnswerable = conditions.every((condition) => {
+    if (condition.kind === 'orderTotalGross') {
+      return condition.amount.trim() !== '' && condition.currency.trim() !== '';
+    }
+    if (condition.kind === 'orderCountry') return condition.stringValue.trim() !== '';
+    return true;
+  });
+  const overlapQuery = useSalesDocumentRuleOverlapQuery(
+    {
+      country,
+      conditions: conditions.map(toConditionInput),
+      effectiveFrom,
+      effectiveTo: effectiveTo.trim().length > 0 ? effectiveTo : null,
+    },
+    open && conditionsAreAnswerable
+  );
+  // Rival copy names the operator's own rule text rather than an opaque id.
+  // This read is the one the list behind the dialog already made, so it is a
+  // cache hit rather than a second round trip.
+  const rulesQuery = useSalesDocumentRulesQuery(country);
+  const rivals = (rulesQuery.data ?? []).map((rule) => ({
+    ruleId: rule.id,
+    conditions: rule.conditions,
+    documentKind: rule.documentKind,
+  }));
+  const verdict = overlapQuery.data;
+  const conflicts = verdict?.overlapping ?? [];
+  const undecided = verdict?.undecided ?? [];
+  const clears = verdict?.disjoint ?? [];
+  // Mutually exclusive by construction: a proven collision outranks a proven
+  // non-collision, so the two banners can never both render.
+  const hasConflict = conflicts.length > 0;
 
   const connections = connectionsQuery.data ?? [];
   const candidates =
@@ -244,7 +298,7 @@ export function SalesDocumentRuleComposerDialog({
                   onChange={(event) => {
                     const kind = event.target.value as ConditionKind;
                     setConditions((prev) =>
-                      prev.map((c, i) => (i === index ? { ...newConditionDraft(), kind } : c)),
+                      prev.map((c, i) => (i === index ? { ...newConditionDraft(), kind } : c))
                     );
                   }}
                 >
@@ -260,8 +314,8 @@ export function SalesDocumentRuleComposerDialog({
                     onChange={(event) =>
                       setConditions((prev) =>
                         prev.map((c, i) =>
-                          i === index ? { ...c, boolValue: event.target.value === 'true' } : c,
-                        ),
+                          i === index ? { ...c, boolValue: event.target.value === 'true' } : c
+                        )
                       )
                     }
                   >
@@ -278,10 +332,8 @@ export function SalesDocumentRuleComposerDialog({
                     onChange={(event) =>
                       setConditions((prev) =>
                         prev.map((c, i) =>
-                          i === index
-                            ? { ...c, stringValue: event.target.value.toUpperCase() }
-                            : c,
-                        ),
+                          i === index ? { ...c, stringValue: event.target.value.toUpperCase() } : c
+                        )
                       )
                     }
                   />
@@ -295,8 +347,8 @@ export function SalesDocumentRuleComposerDialog({
                       onChange={(event) =>
                         setConditions((prev) =>
                           prev.map((c, i) =>
-                            i === index ? { ...c, op: event.target.value as 'gte' | 'lt' } : c,
-                          ),
+                            i === index ? { ...c, op: event.target.value as 'gte' | 'lt' } : c
+                          )
                         )
                       }
                     >
@@ -311,8 +363,8 @@ export function SalesDocumentRuleComposerDialog({
                       onChange={(event) =>
                         setConditions((prev) =>
                           prev.map((c, i) =>
-                            i === index ? { ...c, amount: event.target.value } : c,
-                          ),
+                            i === index ? { ...c, amount: event.target.value } : c
+                          )
                         )
                       }
                     />
@@ -324,10 +376,8 @@ export function SalesDocumentRuleComposerDialog({
                       onChange={(event) =>
                         setConditions((prev) =>
                           prev.map((c, i) =>
-                            i === index
-                              ? { ...c, currency: event.target.value.toUpperCase() }
-                              : c,
-                          ),
+                            i === index ? { ...c, currency: event.target.value.toUpperCase() } : c
+                          )
                         )
                       }
                     />
@@ -457,6 +507,99 @@ export function SalesDocumentRuleComposerDialog({
           </p>
         </div>
 
+        {hasConflict ? (
+          <div data-testid="rule-conflict">
+            <Alert tone="error" title="This could match the same order as an existing rule">
+              <p>
+                {describeSalesDocumentOverlapConflict(
+                  conflicts.map((hit) => hit.ruleId),
+                  rivals
+                )}
+              </p>
+              {onOpenRule !== undefined ? (
+                <Button
+                  tone="secondary"
+                  className="button--sm"
+                  data-testid="rule-conflict-open-existing"
+                  onClick={() => {
+                    onOpenRule(conflicts[0].ruleId);
+                    onOpenChange(false);
+                  }}
+                >
+                  Open that rule
+                </Button>
+              ) : null}
+            </Alert>
+          </div>
+        ) : null}
+
+        {/*
+          The positive statement, and only when nothing collides - two rules in
+          different currencies provably cannot both match, which an operator
+          cannot otherwise tell from an absent warning.
+        */}
+        {!hasConflict && clears.length > 0 ? (
+          <div data-testid="rule-no-conflict">
+            <Alert tone="info">
+              {clears.map((hit) => (
+                <p key={hit.ruleId}>
+                  {describeSalesDocumentOverlapClear(
+                    hit.reason,
+                    rivals.find((r) => r.ruleId === hit.ruleId),
+                    hit.ruleId
+                  )}
+                </p>
+              ))}
+            </Alert>
+          </div>
+        ) : null}
+
+        {/*
+          The third outcome. Rendered beside either of the two above rather
+          than instead of them: an undecided pair is not reassurance, and
+          folding it into silence is the exact failure this check removes.
+        */}
+        {/*
+          The FOURTH state, and the one an empty verdict silently impersonates:
+          the check could not run at all. `verdict` is then `undefined` and all
+          three arrays fall back to `[]`, which renders as no banner - i.e. as
+          "no conflict", the single answer this check exists to make
+          impossible. Absence and failure must not be the same pixel (the rule
+          the returns surfaces already hold: an empty array is never a positive
+          claim).
+
+          It does NOT block the save, matching the undecided banner beside it:
+          a failed check is not evidence of a collision, and the runtime still
+          holds an ambiguous order either way. What it must not do is stay
+          quiet.
+        */}
+        {overlapQuery.isError ? (
+          <div data-testid="rule-overlap-unavailable">
+            <Alert tone="warning" title="We could not run the overlap check">
+              <p>
+                This rule has not been compared against the others in this market. Saving is still
+                allowed, and an order matched by two rules is held rather than given the wrong
+                document.
+              </p>
+            </Alert>
+          </div>
+        ) : null}
+        {undecided.length > 0 ? (
+          <div data-testid="rule-overlap-undecided">
+            <Alert tone="warning" title="We could not check every rule">
+              {undecided.map((hit) => (
+                <p key={hit.ruleId}>
+                  {describeSalesDocumentOverlapUndecided(
+                    hit.reason,
+                    rivals.find((r) => r.ruleId === hit.ruleId),
+                    hit.ruleId
+                  )}
+                </p>
+              ))}
+            </Alert>
+          </div>
+        ) : null}
+
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
           <Button
             tone="secondary"
@@ -468,9 +611,15 @@ export function SalesDocumentRuleComposerDialog({
           >
             Cancel
           </Button>
+          {/*
+            The testid swaps with the state, matching the mockup: a blocked
+            save is a different thing to assert on than an available one, and
+            an e2e that only ever saw `rule-save` could not tell them apart.
+          */}
           <Button
             className="button--sm"
-            disabled={createRule.isPending || connectionId === ''}
+            data-testid={hasConflict ? 'rule-save-blocked' : 'rule-save'}
+            disabled={createRule.isPending || connectionId === '' || hasConflict}
             onClick={() => void handleSave()}
           >
             {createRule.isPending ? 'Saving…' : 'Save rule'}

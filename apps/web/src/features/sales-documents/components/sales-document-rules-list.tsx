@@ -8,7 +8,7 @@
  *
  * @module apps/web/src/features/sales-documents/components
  */
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { useConnectionsQuery } from '../../connections';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -41,11 +41,40 @@ function ruleResultLabel(rule: SalesDocumentRule): string {
   return rule.documentKind === 'invoice' ? 'Invoice' : 'Receipt';
 }
 
+/** One place minting the row's DOM id, so the anchor and the lookup cannot drift. */
+function ruleCardDomId(ruleId: string): string {
+  return `rule-card-${ruleId}`;
+}
+
 export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps): ReactElement {
   const rulesQuery = useSalesDocumentRulesQuery(country);
   const connectionsQuery = useConnectionsQuery();
   const deleteRule = useDeleteSalesDocumentRuleMutation();
   const [composerOpen, setComposerOpen] = useState(false);
+  const [highlightedRuleId, setHighlightedRuleId] = useState<string | null>(null);
+
+  // Scroll only once the composer has closed AND the browser has painted that
+  // close. Radix locks the body with `react-remove-scroll`, which restores the
+  // scroll position when the lock releases, so a scroll issued inside the click
+  // handler - or even in the effect that follows it - can be undone. One frame
+  // later the dialog is gone and the lock with it.
+  useEffect(() => {
+    if (composerOpen || highlightedRuleId === null) return undefined;
+    const frame = requestAnimationFrame(() => {
+      document
+        .getElementById(ruleCardDomId(highlightedRuleId))
+        ?.scrollIntoView({ block: 'center' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [composerOpen, highlightedRuleId]);
+
+  // The accent is an attention cue for one arrival, not a persistent mark on
+  // the row: a highlight that never clears reads as a property of the rule.
+  // Cleared when the composer opens again, so the next rival starts from a
+  // list with nothing already accented.
+  useEffect(() => {
+    if (composerOpen) setHighlightedRuleId(null);
+  }, [composerOpen]);
   const demoMode = useDemoMode();
   const write = useWriteAccess('connections:write', demoMode);
 
@@ -73,7 +102,11 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
           Rules for {country === '*' ? '★ Rest of world' : country}
         </p>
         <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-          <Button className="button--sm" disabled={!write.canWrite} onClick={() => setComposerOpen(true)}>
+          <Button
+            className="button--sm"
+            disabled={!write.canWrite}
+            onClick={() => setComposerOpen(true)}
+          >
             + Add rule
           </Button>
         </ReadOnlyLock>
@@ -85,21 +118,29 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
 
       {taxIdRuleCount > 0 ? (
         <Alert tone="warning" title={describeBuyerTaxIdRuleCount(taxIdRuleCount)}>
-          A buyer-tax-ID condition matches only an order whose source actually recorded that
-          fact. PrestaShop reports it only when the buyer filled in a VAT number on the address;
-          Allegro and Erli report it only when the buyer requested a VAT invoice; WooCommerce
-          reports it only if the store runs a supported VAT-number plugin. An order whose source
-          didn&apos;t assert a tax ID never matches this rule.
+          A buyer-tax-ID condition matches only an order whose source actually recorded that fact.
+          PrestaShop reports it only when the buyer filled in a VAT number on the address; Allegro
+          and Erli report it only when the buyer requested a VAT invoice; WooCommerce reports it
+          only if the store runs a supported VAT-number plugin. An order whose source didn&apos;t
+          assert a tax ID never matches this rule.
         </Alert>
       ) : null}
 
       {rules.map((rule) => {
-        const connectionName = connections.find((c) => c.id === rule.connectionId)?.name ?? rule.connectionId;
+        const connectionName =
+          connections.find((c) => c.id === rule.connectionId)?.name ?? rule.connectionId;
         const isDeletingThisRule = deleteRule.isPending && deleteRule.variables === rule.id;
         const deleteFailedForThisRule =
           deleteRule.isError && deleteRule.variables === rule.id ? deleteRule.error : null;
         return (
-          <div key={rule.id} className="rule-card">
+          <div
+            key={rule.id}
+            id={ruleCardDomId(rule.id)}
+            data-testid={`rule-card-${rule.id}`}
+            className={
+              highlightedRuleId === rule.id ? 'rule-card rule-card--highlighted' : 'rule-card'
+            }
+          >
             <div className="rule-card__flow">
               {rule.conditions.map((condition, index) => (
                 <span key={index} className="condition-chip">
@@ -114,7 +155,9 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
               </span>
             </div>
             <div className="rule-card__meta">
-              {rule.provenance ? <span className="provenance-tag">from: {rule.provenance}</span> : null}
+              {rule.provenance ? (
+                <span className="provenance-tag">from: {rule.provenance}</span>
+              ) : null}
               {usesBuyerTaxIdCondition(rule) ? (
                 <span
                   className="provenance-tag"
@@ -159,7 +202,23 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
 
       {rules.length === 0 ? <p className="muted-text">No rules yet for this country.</p> : null}
 
-      <SalesDocumentRuleComposerDialog country={country} open={composerOpen} onOpenChange={setComposerOpen} />
+      <SalesDocumentRuleComposerDialog
+        country={country}
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        onOpenRule={(ruleId) => {
+          // Reveal the rival the composer just named (#3190). Highlight AND
+          // scroll: on a long list the row is usually off-screen, and a
+          // highlight nobody can see is the same as no affordance at all.
+          //
+          // Scrolling here would be wasted. The dialog is still mounted, and
+          // Radix locks the body with `react-remove-scroll`, which restores the
+          // scroll position when the lock releases - so a scroll issued now is
+          // either a no-op or undone a frame later. Record the intent; the
+          // effect below scrolls once the dialog has actually closed.
+          setHighlightedRuleId(ruleId);
+        }}
+      />
     </div>
   );
 }

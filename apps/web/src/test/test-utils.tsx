@@ -975,6 +975,13 @@ export function createMockApiClient(
       listRules: vi.fn().mockResolvedValue([]),
       createRule: vi.fn().mockResolvedValue(null),
       deleteRule: vi.fn().mockResolvedValue(undefined),
+      // #3190. The empty verdict is the DEFAULT so a composer test that does
+      // not opt in renders neither banner: an "overlapping" default would put
+      // a conflict warning on every unrelated test, and a "disjoint" one would
+      // claim a non-collision nothing checked.
+      checkRuleOverlap: vi
+        .fn()
+        .mockResolvedValue({ overlapping: [], disjoint: [], undecided: [] }),
       listCountryDefaults: vi.fn().mockResolvedValue([]),
       upsertCountryDefault: vi.fn().mockResolvedValue(null),
       deleteCountryDefault: vi.fn().mockResolvedValue(undefined),

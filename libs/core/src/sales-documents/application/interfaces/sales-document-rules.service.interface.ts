@@ -14,6 +14,7 @@ import type {
 import type { SalesDocumentDecision } from '../../domain/types/sales-document-decision.types';
 import type { SalesDocumentOrderFacts } from '../../domain/types/sales-document-order-facts.types';
 import type { SalesDocumentCountrySummary } from '../../domain/types/sales-document-country-summary.types';
+import type { SalesDocumentRuleOverlapVerdict } from '../../domain/domain-services/detect-sales-document-rule-overlap';
 
 export interface ISalesDocumentRulesService {
   listRules(country: string): Promise<SalesDocumentRule[]>;
@@ -30,6 +31,20 @@ export interface ISalesDocumentRulesService {
    * real configuration and an acknowledgment can never coexist.
    */
   createRule(input: SalesDocumentRuleInput): Promise<SalesDocumentRule>;
+
+  /**
+   * Would this draft rule match the same order as one already saved (#3190)?
+   *
+   * A READ - it persists nothing and refuses nothing. The engine holding an
+   * order on two matching rules is correct behaviour (ADR-041 never silently
+   * picks one); what was missing is anyone finding out before the save. The
+   * write path is deliberately NOT gated on this: an operator may still
+   * knowingly save an overlapping pair through the API, and the runtime keeps
+   * failing safe.
+   */
+  detectRuleOverlap(
+    input: SalesDocumentRuleOverlapCheckInput
+  ): Promise<SalesDocumentRuleOverlapVerdict>;
 
   deleteRule(id: string): Promise<void>;
 
@@ -48,7 +63,7 @@ export interface ISalesDocumentRulesService {
    * as part of the same write (#2186) — see `createRule`.
    */
   upsertCountryDefault(
-    input: SalesDocumentCountryDefaultInput,
+    input: SalesDocumentCountryDefaultInput
   ): Promise<SalesDocumentCountryDefault>;
 
   deleteCountryDefault(id: string): Promise<void>;
@@ -80,7 +95,7 @@ export interface ISalesDocumentRulesService {
    */
   resolveRoutingBatch(
     orders: readonly SalesDocumentOrderFacts[],
-    now?: Date,
+    now?: Date
   ): Promise<SalesDocumentDecision[]>;
 
   /**
@@ -103,4 +118,14 @@ export interface ISalesDocumentRulesService {
 
   /** Idempotent — clearing an already-unacknowledged country is a no-op. */
   clearAcknowledgment(country: string): Promise<void>;
+}
+
+/** The draft a composer is about to save, plus the row it is editing (if any). */
+export interface SalesDocumentRuleOverlapCheckInput {
+  readonly country: string;
+  readonly conditions: readonly unknown[];
+  readonly effectiveFrom: Date;
+  readonly effectiveTo: Date | null;
+  /** Set when editing, so a rule is never reported as colliding with itself. */
+  readonly excludeRuleId?: string;
 }
