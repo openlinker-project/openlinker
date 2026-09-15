@@ -245,4 +245,29 @@ describe('InventoryController', () => {
       expect(result.truncated).toBe(false);
     });
   });
+
+  describe('getProvenanceBackfillStatus (#3240)', () => {
+    it('passes the service answer through verbatim when the backfill is complete', async () => {
+      queryService.getProvenanceBackfillStatus.mockResolvedValue({
+        remainingNull: 0,
+        completed: true,
+      });
+
+      const result = await controller.getProvenanceBackfillStatus();
+
+      expect(queryService.getProvenanceBackfillStatus).toHaveBeenCalledWith();
+      expect(result).toEqual({ remainingNull: 0, completed: true });
+    });
+
+    it('reports the count and false when rows are still missing provenance', async () => {
+      queryService.getProvenanceBackfillStatus.mockResolvedValue({
+        remainingNull: 37,
+        completed: false,
+      });
+
+      const result = await controller.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({ remainingNull: 37, completed: false });
+    });
+  });
 });
