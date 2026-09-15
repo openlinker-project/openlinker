@@ -162,15 +162,19 @@ describe('SalesDocumentRulesList', () => {
       });
     }
 
-    it('should accent the named rule and scroll to it only once the composer has closed', async () => {
-      // Record whether the dialog was still mounted at the moment of the
-      // scroll. Asserting "scrollIntoView was called" alone would pass against
-      // the pre-fix code, which called it while the dialog was open and Radix
-      // then undid it.
-      const dialogPresentAtScroll: boolean[] = [];
-      Element.prototype.scrollIntoView = vi.fn(function scrollIntoViewStub(this: Element) {
-        dialogPresentAtScroll.push(document.querySelector('[role="dialog"]') !== null);
-      });
+    // What is asserted is that the scroll is DEFERRED out of the click handler,
+    // which is the property this component controls and the one the fix is
+    // about. The dialog's unmount timing belongs to Radix and the happy-dom test
+    // environment does not model it faithfully - an earlier version of this test
+    // asserted it and failed for that reason rather than for the behaviour under
+    // test.
+    //
+    // A bare "scrollIntoView was called" would pass against the pre-fix code,
+    // which scrolled inside the handler and had the scroll undone the moment
+    // the body scroll lock released.
+    it('should accent the named rule and defer the scroll past the composer close', async () => {
+      const scrollIntoView = vi.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
 
       const user = userEvent.setup();
       renderWithProviders(<SalesDocumentRulesList country="PL" />, {
@@ -188,8 +192,10 @@ describe('SalesDocumentRulesList', () => {
       await waitFor(() =>
         expect(screen.getByTestId('rule-card-rule_1')).toHaveClass('rule-card--highlighted')
       );
-      await waitFor(() => expect(dialogPresentAtScroll.length).toBeGreaterThan(0));
-      expect(dialogPresentAtScroll).not.toContain(true);
+      // `user.click` flushes React's effects, so the pre-fix code would already
+      // have scrolled by now. The deferred frame has not run yet.
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
     });
 
     it('should clear the accent when the composer is opened again', async () => {

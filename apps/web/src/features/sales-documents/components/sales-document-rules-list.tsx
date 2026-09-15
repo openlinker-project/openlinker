@@ -53,11 +53,19 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
   const [composerOpen, setComposerOpen] = useState(false);
   const [highlightedRuleId, setHighlightedRuleId] = useState<string | null>(null);
 
-  // Scroll only once the composer has unmounted and Radix has released the
-  // body scroll lock, or the position it restores overwrites ours.
+  // Scroll only once the composer has closed AND the browser has painted that
+  // close. Radix locks the body with `react-remove-scroll`, which restores the
+  // scroll position when the lock releases, so a scroll issued inside the click
+  // handler - or even in the effect that follows it - can be undone. One frame
+  // later the dialog is gone and the lock with it.
   useEffect(() => {
-    if (composerOpen || highlightedRuleId === null) return;
-    document.getElementById(ruleCardDomId(highlightedRuleId))?.scrollIntoView({ block: 'center' });
+    if (composerOpen || highlightedRuleId === null) return undefined;
+    const frame = requestAnimationFrame(() => {
+      document
+        .getElementById(ruleCardDomId(highlightedRuleId))
+        ?.scrollIntoView({ block: 'center' });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [composerOpen, highlightedRuleId]);
 
   // The accent is an attention cue for one arrival, not a persistent mark on
