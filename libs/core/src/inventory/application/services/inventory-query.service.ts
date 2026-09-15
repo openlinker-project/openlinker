@@ -42,6 +42,7 @@ import {
   type ProductStockAggregate,
   type DuplicatePositionGroup,
   type DuplicatePositionReport,
+  type ProvenanceBackfillStatus,
 } from '../../domain/types/inventory.types';
 import type {
   InventoryItemView,
@@ -205,6 +206,15 @@ export class InventoryQueryService implements IInventoryQueryService {
     const report = await this.inventoryRepository.findDuplicatePositions(maxGroups);
     if (report.groups.length === 0) return report;
     return { ...report, groups: await this.enrichDuplicatePositionGroups(report.groups) };
+  }
+
+  async getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatus> {
+    // Live on every call, deliberately — see the ProvenanceBackfillStatus
+    // docblock. The backfill itself has no cursor to read a cached answer
+    // from, so caching one here would just invent staleness that does not
+    // exist upstream.
+    const remainingNull = await this.inventoryRepository.countMissingProvenance();
+    return { remainingNull, completed: remainingNull === 0 };
   }
 
   /**
