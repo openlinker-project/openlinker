@@ -1611,3 +1611,38 @@ the warning being right until proven otherwise.
 rate-limit tuning — anything whose behaviour depends on what else shares the box.
 
 **Source**: #3271.
+
+---
+
+## Two runs on different machines are two cold runs, not a cache experiment
+
+**Context**: #3271 pinned every source file's mtime so jest's transform cache
+could stop missing. To confirm it worked on the real pipeline, the same commit
+was run twice — once to write the entries under the new stable stamps, once to
+read them back. `apps/api` came in at 260.6 s and then 163.0 s, `apps/worker` at
+242.0 s and then 142.9 s, and everything else stayed flat. That reads exactly
+like a transform cache doing its job on the two packages with the largest
+compile graphs, and it was written up as the confirmation.
+
+**Problem**: the jest cache directory is per runner *container*, and this pool
+holds four. Checking `Runner name:` in the job logs afterwards showed four
+consecutive runs on four different containers. Both halves of the "cold versus
+warm" comparison were cold. The difference was host load: the second run started
+after the rest of the workflow had finished, so it had the machine to itself —
+the same confound as the idle-lab entry above, arrived at from a different
+direction.
+
+What made it convincing was that the result *matched the hypothesis*. A
+transform cache should move exactly the packages with the biggest compile graphs
+and leave the rest flat, and it did. Plausibility is not evidence.
+
+**Rule**: a cache measurement has to establish that both runs shared the cache,
+not just that they ran the same code. Identify the host, or count what the second
+run *writes* — zero new entries is a hit, a full new set means the key moved or
+the store was empty. On a multi-runner pool, assume a fresh store unless the log
+proves otherwise.
+
+**Applies to**: any per-host cache on self-hosted CI — jest, ts-jest, pnpm store,
+docker layers, compiler output.
+
+**Source**: #3271.
