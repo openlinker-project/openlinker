@@ -1509,3 +1509,66 @@ to rule out, it is not evidence.
 any "is this stale?" guard.
 
 **Source**: #3271.
+
+---
+
+## A skipped step must fail loudly, or it reads as a passing one
+
+**Context**: #3271 added a CI step that stamps every source file with a fixed
+mtime so the jest cache can hit. The first version asked the VCS for the file
+list, and wrapped that call so an unavailable binary degraded to a no-op with a
+printed message and exit 0 — reasoning that a step which only *accelerates* a
+build must never *break* one.
+
+**Problem**: the runner has no git binary (`actions/checkout` succeeds through
+its tarball/API path — a condition `ci.yml` already documents elsewhere). So the
+step ran, printed `version-control listing unavailable, skipping`, exited 0, and
+stamped nothing. The job showed a green tick beside a step that did nothing at
+all, and the change looked deployed while being entirely inert. It was caught
+only because someone noticed the job was slower than before, not because
+anything reported a problem.
+
+The "safe" degradation was the bug: it converted a hard dependency into an
+invisible one.
+
+**Rule**: when a step degrades instead of failing, the degradation must be
+impossible to mistake for success — fail the step, or emit a `::warning::` that
+surfaces in the job summary. Better still, remove the dependency: here, walking
+the working tree needs no external binary and cannot silently return an empty
+list.
+
+**Applies to**: CI steps that optimise rather than verify; any `try/catch` whose
+catch branch continues as if nothing happened.
+
+**Source**: #3271.
+
+---
+
+## Do not bundle an unmeasured safety knob with a measured change
+
+**Context**: #3271 raised `maxWorkers` from 2 to 8 under CI, measured end to end
+(whole job 753.9 s -> 538.1 s). A review suggested also adding
+`workerIdleMemoryLimit: '512MB'` to the three packages newly taking 4x the
+workers, since only prestashop and allegro had a ceiling. It sounded prudent, so
+it shipped alongside — untested.
+
+**Problem**: `libs/core`'s workers legitimately peak near **2.8 GB**, five times
+that ceiling. Jest recycles a worker whenever its heap crosses the limit, so the
+package re-spawned a process and rebuilt its whole module graph after almost
+every file: **74 s became over 17 minutes** on the real runner. The measured part
+of the change was fine; the unmeasured "precaution" bundled with it was the
+regression, and because they shipped together the first CI run could not say
+which half was at fault.
+
+There was also nothing to protect against — the whole job's peak RSS at 8 workers
+had been measured at 32.4 GB of the runner's 251 GB.
+
+**Rule**: ship the measured change alone. A knob nobody measured is a change,
+not a safeguard, and bundling it destroys the attribution the measurement was
+for. If a ceiling is genuinely wanted, size it above the package's observed
+working set — never by copying a neighbour's number.
+
+**Applies to**: `workerIdleMemoryLimit`, worker/concurrency caps, timeouts, pool
+sizes — any tuning value copied from one package to another.
+
+**Source**: #3271.

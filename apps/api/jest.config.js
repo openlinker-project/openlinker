@@ -28,7 +28,9 @@ module.exports = {
   // contributor's machine. `testTimeout` stays raised: it is the other half of
   // the bcrypt-starvation fix and 8 concurrent workers need it more, not less.
   maxWorkers: process.env.CI ? 8 : 2,
-  workerIdleMemoryLimit: '512MB',
+  // No `workerIdleMemoryLimit` — see the note in libs/core/jest.config.js: a
+  // ceiling below a package's real working set costs far more than it saves,
+  // and the whole job peaks at 32.4 GB of 251 GB (#3271).
   testTimeout: 10000,
   moduleNameMapper: {
     '^@openlinker/api/(.*)$': path.resolve(__dirname, 'src/$1'),

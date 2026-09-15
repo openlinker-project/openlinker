@@ -31,14 +31,17 @@
  * it from - and it buys nothing here, because content already carries the
  * identity the key needs.
  *
- * Deliberately scoped to tracked files: everything under `node_modules` comes
- * from pnpm's content-addressed store and is not ours to restamp.
+ * Walks the working tree directly rather than asking the VCS for a file list -
+ * some self-hosted runners carry no git binary, where `actions/checkout`
+ * succeeds through its API path and any `git ls-files` call returns nothing.
+ * `node_modules` is skipped: it comes from pnpm's content-addressed store and is
+ * not ours to restamp.
  *
  * @module scripts
  */
 
-import { execFileSync } from 'node:child_process';
-import { utimesSync, statSync } from 'node:fs';
+import { readdirSync, utimesSync } from 'node:fs';
+import { join } from 'node:path';
 
 /**
  * One fixed instant, in seconds since the epoch: 2020-01-01T00:00:00Z.
@@ -51,53 +54,53 @@ import { utimesSync, statSync } from 'node:fs';
 const FIXED_MTIME_SECONDS = 1577836800;
 
 /**
- * Tracked files, or `null` when the VCS cannot answer.
+ * Directories never descended into.
  *
- * Some self-hosted runners carry no VCS binary at all — `actions/checkout` then
- * falls back to its tarball/API path and the checkout still succeeds (the same
- * condition the migration-ordering guard in this workflow already tolerates).
- * This step only ACCELERATES a build, so an unavailable binary must degrade to
- * a no-op, never fail the job.
+ * `node_modules` is pnpm's content-addressed store and is not ours to restamp;
+ * the rest are build output or VCS metadata that no transform reads.
  */
-function listTrackedFiles() {
+const SKIP_DIRECTORIES = new Set(['node_modules', '.git', 'dist', 'coverage', '.next', '.turbo']);
+
+/**
+ * Walks the working tree rather than asking the VCS for its file list.
+ *
+ * This deliberately does NOT shell out to `git ls-files` (#3271, second
+ * attempt). Some self-hosted runners carry no git binary at all -
+ * `actions/checkout` then succeeds through its tarball/API path, which is the
+ * condition `ci.yml`'s migration-ordering guard already documents. The first
+ * version of this script asked git for the list and degraded to a no-op when
+ * git was absent: on the real runner it printed "version-control listing
+ * unavailable" and stamped nothing, so the whole step was inert while reading
+ * as successful. A filesystem walk has no such dependency.
+ */
+function* walk(dir) {
+  let entries;
   try {
-    const out = execFileSync('git', ['ls-files', '-z'], {
-      encoding: 'buffer',
-      maxBuffer: 256 * 1024 * 1024,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    return out
-      .toString('utf8')
-      .split('\0')
-      .filter((entry) => entry.length > 0);
+    entries = readdirSync(dir, { withFileTypes: true });
   } catch {
-    return null;
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (SKIP_DIRECTORIES.has(entry.name)) continue;
+      yield* walk(join(dir, entry.name));
+    } else if (entry.isFile()) {
+      yield join(dir, entry.name);
+    }
   }
 }
 
 function main() {
-  const files = listTrackedFiles();
-  if (files === null) {
-    console.log(
-      'normalize-source-mtimes: version-control listing unavailable, skipping (jest cache runs cold)',
-    );
-    return;
-  }
   let stamped = 0;
   let skipped = 0;
 
-  for (const file of files) {
+  for (const file of walk(process.cwd())) {
     try {
-      // A tracked path can be absent from the working tree (sparse checkout) or
-      // be a directory entry for a submodule; both are skipped rather than
-      // failing the step, which must never break a build it only accelerates.
-      if (!statSync(file).isFile()) {
-        skipped += 1;
-        continue;
-      }
       utimesSync(file, FIXED_MTIME_SECONDS, FIXED_MTIME_SECONDS);
       stamped += 1;
     } catch {
+      // A file can vanish or be read-only mid-walk. This step only ACCELERATES
+      // a build, so it must never fail one.
       skipped += 1;
     }
   }

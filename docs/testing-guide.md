@@ -877,7 +877,7 @@ Measured on `libs/integrations/prestashop` at 2 workers, content byte-identical 
 
 `pnpm install --frozen-lockfile` and `pnpm -r build` do **not** invalidate it; only mtime does.
 
-The fix is `scripts/normalize-source-mtimes.mjs`, run in the `test` job right after `actions/setup-node`: it stamps every tracked file with one fixed instant, so unchanged content produces an unchanged key across runs *and* across branches. **This is safe, and that was verified rather than assumed** — a one-word edit preserving the file's exact byte length, with mtime rolled back to the same stamp, still failed 21 suites. mtime decides only whether jest re-examines a file, never what it believes the file contains.
+The fix is `scripts/normalize-source-mtimes.mjs`, run in the `test` job right after `actions/setup-node`: it walks the working tree (skipping `node_modules`) and stamps every file with one fixed instant, so unchanged content produces an unchanged key across runs *and* across branches. It walks rather than calling `git ls-files` on purpose — **some self-hosted runners carry no git binary**, `actions/checkout` succeeds through its API path, and a git-based listing there returns nothing while still exiting 0. **This is safe, and that was verified rather than assumed** — a one-word edit preserving the file's exact byte length, with mtime rolled back to the same stamp, still failed 21 suites. mtime decides only whether jest re-examines a file, never what it believes the file contains.
 
 A per-file stamp derived from commit history (`git-restore-mtime`) would also be stable, but `actions/checkout` clones shallow by default, so there is no history to derive one from — and it buys nothing, since content already carries the identity the key needs.
 
