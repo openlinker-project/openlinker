@@ -7,12 +7,18 @@
  * in demo mode.
  */
 import { describe, expect, it } from 'vitest';
-import { buildNavGroups } from './nav-registry';
-import type { NavGroup } from './nav-registry.types';
+import { BASE_NAV_GROUPS, buildNavGroups, isNavItemVisible, navRoleOf } from './nav-registry';
+import { RoleValues } from './nav-registry.types';
+import type { LiveNavGroup, NavGroup } from './nav-registry.types';
 import { NAV_DEMO_RESTRICTED_MESSAGE } from '../shared/config/demo-mode';
+import { ANONYMOUS_SESSION } from '../shared/auth/session.types';
+import type { Session } from '../shared/auth/session.types';
 
 const byLabel = (groups: NavGroup[], label: string): NavGroup | undefined =>
   groups.find((g) => g.label === label);
+
+const itemLabels = (group: NavGroup | undefined): string[] =>
+  group?.kind === 'live' ? (group as LiveNavGroup).items.map((i) => i.label) : [];
 
 describe('buildNavGroups', () => {
   describe('normal mode (demoMode: false)', () => {
@@ -57,6 +63,126 @@ describe('buildNavGroups', () => {
     it('keeps the always-live Operations group live in demo mode', () => {
       const groups = buildNavGroups({ isAdmin: false, demoMode: true });
       expect(byLabel(groups, 'Operations')?.kind).toBe('live');
+    });
+  });
+
+  // #3107 — the FE chrome's own role union widened to include `packer`
+  // (narrower than `operator`, ADR-071/#2413). No behavioural change is
+  // expected from the widening alone; #3108 adds the first actual consumer,
+  // the "Pack bench" item-level `requiresRole` gate.
+  describe('packer role (#3107)', () => {
+    it('is a member of RoleValues', () => {
+      expect(RoleValues).toContain('packer');
+    });
+
+    // Replaces a `does not crash buildNavGroups when no role is passed` test
+    // that could not fail for the reason it named (#3107 review): at this point
+    // in the stack `buildNavGroups` does not read a role at all, so it passed
+    // identically before the widening.
+    //
+    // This one can. The GROUP-level gate is `requiresRole === 'admin'` and
+    // nothing else, so a group declaring any other role is an inert, fail-OPEN
+    // gate — visible to everyone. `GroupRoleGate` makes that a compile error
+    // for new declarations; this pins the same fact about the data that ships,
+    // so a value smuggled past the type (a cast, a widening of
+    // `GroupRoleGate` without its gate) fails here rather than silently
+    // exposing a group.
+    it('declares no group role gate other than admin, which is the only one honoured', () => {
+      const declared = BASE_NAV_GROUPS.filter(
+        (group): group is Extract<typeof group, { requiresRole?: unknown }> =>
+          'requiresRole' in group && group.requiresRole !== undefined,
+      ).map((group) => group.requiresRole);
+
+      expect(declared.length).toBeGreaterThan(0);
+      expect(declared.every((role) => role === 'admin')).toBe(true);
+    });
+  });
+
+  // #3108 — "Pack bench" is visible to every role the bench API itself
+  // accepts (`@Roles('admin', 'operator', 'packer')`) and hidden from any
+  // other role (today, only `viewer`).
+  describe('"Pack bench" item-level role gate (#3108)', () => {
+    it.each(['admin', 'operator', 'packer'])('is visible to a %s session', (role) => {
+      const groups = buildNavGroups({ isAdmin: role === 'admin', demoMode: false, role });
+      expect(itemLabels(byLabel(groups, 'Operations'))).toContain('Pack bench');
+    });
+
+    it('is hidden from a viewer session', () => {
+      const groups = buildNavGroups({ isAdmin: false, demoMode: false, role: 'viewer' });
+      expect(itemLabels(byLabel(groups, 'Operations'))).not.toContain('Pack bench');
+    });
+
+    it('is hidden when no role is known yet (session not resolved)', () => {
+      const groups = buildNavGroups({ isAdmin: false, demoMode: false });
+      expect(itemLabels(byLabel(groups, 'Operations'))).not.toContain('Pack bench');
+    });
+
+    it('does not drop its sibling items in the same group for a role-gated absence', () => {
+      const groups = buildNavGroups({ isAdmin: false, demoMode: false, role: 'viewer' });
+      const labels = itemLabels(byLabel(groups, 'Operations'));
+      expect(labels).toContain('Orders');
+      expect(labels).toContain('Analytics');
+    });
+  });
+
+  // #3108 review — the visibility RULE was shared but its INPUT was spelled
+  // twice, and not identically: the shell had an extra `isReady &&` the palette
+  // did not. `navRoleOf` is the one derivation both now call.
+  describe('navRoleOf', () => {
+    const authenticated = (role: string): Session => ({
+      status: 'authenticated',
+      accessToken: 'token',
+      user: { id: 'u1', username: 'u', email: null, role, permissions: [] },
+    });
+
+    it('returns the role of an authenticated session', () => {
+      expect(navRoleOf(authenticated('packer'))).toBe('packer');
+    });
+
+    // The unresolved-session case, which is why no `isReady` parameter is
+    // needed: the provider starts at ANONYMOUS_SESSION, so "not resolved yet"
+    // already reaches `isNavItemVisible` as `undefined` and fails CLOSED.
+    it('returns undefined for the anonymous session the provider starts at', () => {
+      expect(navRoleOf(ANONYMOUS_SESSION)).toBeUndefined();
+      expect(isNavItemVisible({ to: '/bench', label: 'Pack bench', requiresRole: ['packer'] }, {
+        role: navRoleOf(ANONYMOUS_SESSION),
+      })).toBe(false);
+    });
+
+    it('returns undefined when an authenticated session carries no user', () => {
+      expect(navRoleOf({ status: 'authenticated', accessToken: 't', user: null })).toBeUndefined();
+    });
+  });
+
+  describe('isNavItemVisible', () => {
+    const item = { to: '/bench', label: 'Pack bench', requiresRole: ['admin', 'operator', 'packer'] } as const;
+
+    it('is visible when the role matches', () => {
+      expect(isNavItemVisible(item, { role: 'packer' })).toBe(true);
+    });
+
+    it('is hidden when the role does not match', () => {
+      expect(isNavItemVisible(item, { role: 'viewer' })).toBe(false);
+    });
+
+    it('is hidden when no role is supplied at all', () => {
+      expect(isNavItemVisible(item, {})).toBe(false);
+    });
+
+    it('an item declaring neither gate is always visible', () => {
+      expect(isNavItemVisible({ to: '/orders', label: 'Orders' }, {})).toBe(true);
+    });
+
+    it('an item declaring both gates must satisfy both', () => {
+      const both = {
+        to: '/automations',
+        label: 'Automations',
+        requiresPermission: 'automations:read',
+        requiresRole: ['admin'],
+      } as const;
+      expect(isNavItemVisible(both, { permissions: ['automations:read'], role: 'operator' })).toBe(false);
+      expect(isNavItemVisible(both, { permissions: [], role: 'admin' })).toBe(false);
+      expect(isNavItemVisible(both, { permissions: ['automations:read'], role: 'admin' })).toBe(true);
     });
   });
 });

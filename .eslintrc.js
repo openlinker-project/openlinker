@@ -145,7 +145,12 @@ module.exports = {
       // The unified `OpenLinkerPlugin` shape necessarily references types that
       // live in `app/` and `features/`:
       //   - `Connection`, `EditConnectionFormValues` — platform-side bag shapes (#578/#579)
-      //   - `Role` — declarative role gate on `NavContribution` (#610)
+      //   - `GroupRoleGate` — declarative role gate on `NavContribution` (#610,
+      //     narrowed from `Role` by #3107's review). REPLACES the `Role` pinhole
+      //     rather than joining it: `merge-nav-contributions.ts` honours only
+      //     `'admin'`, so a plugin declaring any other role got a gate that
+      //     silently showed the contribution to everyone. Keeping `Role`
+      //     importable here would leave that fail-open declaration expressible.
       //   - `ApiRequest`, `PluginApiNamespaces` — build-side `apiNamespaces` factory (#604/#605)
       //   - `CreateOfferRequest` — `OfferCreationWizardProps.initialValues` (#608)
       //   - `InvoiceRecord` — `invoiceDetailSection` / `invoiceCorrectionFlow` slot props (#1240)
@@ -162,9 +167,9 @@ module.exports = {
               {
                 group: ['**/features/**', '**/pages/**', '**/app/**'],
                 importNamePattern:
-                  '^(?!Connection$|EditConnectionFormValues$|Role$|ApiRequest$|PluginApiNamespaces$|CreateOfferRequest$|InvoiceRecord$).+',
+                  '^(?!Connection$|EditConnectionFormValues$|GroupRoleGate$|ApiRequest$|PluginApiNamespaces$|CreateOfferRequest$|InvoiceRecord$).+',
                 message:
-                  'shared/plugins/ may only type-import a narrow set of contract surface types (Connection, EditConnectionFormValues, Role, ApiRequest, PluginApiNamespaces, CreateOfferRequest, InvoiceRecord) from features/app. All other feature/app imports remain banned.',
+                  'shared/plugins/ may only type-import a narrow set of contract surface types (Connection, EditConnectionFormValues, GroupRoleGate, ApiRequest, PluginApiNamespaces, CreateOfferRequest, InvoiceRecord) from features/app. All other feature/app imports remain banned.',
               },
             ],
           },
