@@ -12,9 +12,17 @@ module.exports = {
   // parallel with apps/web vitest and libs/shared jest. Jest's default
   // (CPU-count-minus-one workers) oversubscribes memory and triggers
   // kernel OOM kills on worker processes, aborting random test suites.
-  // Capping to 2 workers keeps memory headroom without materially
-  // affecting wall time on reasonable hosts.
-  maxWorkers: 2,
+  // Capped to 2 off CI — this file is also reached by `.husky/pre-commit`
+  // -> `pnpm smart-test`, which falls back to a bare `pnpm test` on a
+  // contributor's own machine. Under CI the cap is 8 (#3271): the runner is a
+  // 64-core / 251 GB box where `cores-1` would be 63, and the whole job's
+  // measured peak RSS at 8 workers was 32.4 GB.
+  maxWorkers: process.env.CI ? 8 : 2,
+  // Added with that raise (#3271): this package had no idle-memory ceiling at
+  // all, and it is the heaviest per worker in the repo (~2.8 GB peak). Jest
+  // recycles a worker once its heap crosses the limit, before the OS does it
+  // with a SIGKILL that reads like a test failure.
+  workerIdleMemoryLimit: '512MB',
   transform: {
     '^.+\\.ts$': [
       'ts-jest',

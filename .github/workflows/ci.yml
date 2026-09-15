@@ -157,6 +157,24 @@ jobs:
         with:
           node-version: '22'
           cache: 'pnpm'
+      # `actions/checkout` writes every file afresh, so each run sees new mtimes
+      # for byte-identical content. Jest's transform-cache key is a function of
+      # BOTH content and mtime, so without this step every run mints a complete
+      # new set of keys: the previous run's entries become unreadable and a full
+      # new set is written beside them. The runner containers are long-lived and
+      # jest applies no TTL or size cap to its cache directory, so `/tmp/jest_rt`
+      # had reached 33 GB across ~2M entries that nothing could ever read.
+      #
+      # Pinning one constant mtime makes an unchanged file produce an unchanged
+      # key across runs and across branches. Measured on this runner (#3271):
+      # whole job 753.9 s -> 490.3 s from this step alone; combined with the
+      # raised worker caps, 256.8 s.
+      #
+      # Safe because the key also includes the content hash — verified directly,
+      # not assumed: a one-word edit preserving the file's exact byte length,
+      # with mtime rolled back to the same stamp, still failed 21 suites.
+      - name: Normalize source mtimes so the jest cache can hit (#3271)
+        run: node scripts/normalize-source-mtimes.mjs
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       # No explicit libs build: `pnpm test:ci` already runs

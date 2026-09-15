@@ -854,11 +854,32 @@ Tests:       339 passed, 339 total          ← zero test failures
 `signal=SIGKILL` / `exitCode=null` is an **OS OOM-kill**, not an assertion failure. `pnpm -r test` runs every package's Jest concurrently and each defaults to ~`cores − 1` workers, so on a memory-constrained (self-hosted) runner the combined fan-out can exhaust RAM. **Do not reflexively re-run** — a green re-run hides the real cause, which is exactly how a genuine regression eventually slips through unnoticed.
 
 **Solution** (already applied to the heavy `prestashop` + `allegro` packages):
-1. **Per-package worker + memory caps** — `maxWorkers: 2` and `workerIdleMemoryLimit: '512MB'`, spread into the package's `jest.config.mjs` from the shared `jest.ci-stability.mjs` at the repo root (one source for every heavy package). The memory limit recycles a worker before the OS kills it; the absolute worker cap (not `'50%'`, which scales with unknown runner cores) bounds peak memory deterministically. Tune the ceiling down (e.g. `256MB`) if the runner is tight.
-2. **Cross-package fan-out bound** — `test:ci` runs `pnpm -r --workspace-concurrency=2 test`. pnpm's default `workspace-concurrency` is **4**, so the bound must be set *below* 4 to actually throttle how many packages' Jests run at once.
+1. **Per-package worker + memory caps** — `maxWorkers` and `workerIdleMemoryLimit: '512MB'`, spread into the package's `jest.config.mjs` from the shared `jest.ci-stability.mjs` at the repo root (one source for every heavy package). The memory limit recycles a worker before the OS kills it; an absolute worker cap (not `'50%'`, which scales with unknown runner cores) bounds peak memory deterministically. Tune the ceiling down (e.g. `256MB`) if the runner is tight.
+
+   The cap is **`process.env.CI ? 8 : 2`** (#3271), and the split matters: `maxWorkers` lives in `jest.config.*`, not in a CI-only overlay, so `.husky/pre-commit` → `pnpm smart-test` reaches the same value on a contributor's own machine. `8` is sized for the self-hosted runner measured at 64 cores / 251 GB, where the whole job's peak RSS at 8 workers was 32.4 GB; `2` off CI keeps a laptop survivable. The original flat `2` was chosen against a fan-out where every package took jest's default `cores - 1` — which on that runner is **63**, not the handful #976 assumed.
+2. **Cross-package fan-out bound** — `test:ci` runs `pnpm -r --workspace-concurrency=2 test`. pnpm's default `workspace-concurrency` is **4**, so the bound must be set *below* 4 to actually throttle how many packages' Jests run at once. Keep it at `2`: raising it to `4` is not a looser bound, it is **no bound**, and measurement puts the whole cost of keeping it at 2-11% of wall time (#3271).
 3. **Split oversized spec files** — a single multi-thousand-line spec pins all its state in one worker. Splitting per method/area (sharing setup via a `__tests__/mocks/*.factory.ts`) lowers peak per-worker memory and improves parallelism. Keep the total test count unchanged when splitting.
 
 To confirm it's OOM (not a leak), run with `--logHeapUsage` and watch for monotonic per-worker growth; the runner's `dmesg` / container OOM log is the definitive signal.
+
+### Unit tests — the job is slow and the jest cache never helps
+
+A long-lived runner can hold a large, fully warm jest cache and still run every job at cold speed. The cache key is a function of the file's content **and** its mtime, and `actions/checkout` rewrites every file on every run — so each run mints a complete new set of keys, cannot read the previous run's entries, and appends a full new set beside them. Jest applies no TTL, size cap or eviction to that directory, so it only ever grows: the openlinker runners' `/tmp/jest_rt` had reached **33 GB across ~2M entries**, none of them readable (#3271).
+
+Measured on `libs/integrations/prestashop` at 2 workers, content byte-identical throughout:
+
+| state | wall |
+|---|---|
+| cold cache (`--clearCache`) | 248.3 s |
+| warm cache, stable mtimes | 73-82 s |
+| after a bare `touch` of `libs/core/**/*.ts` | 168.7-169.7 s, **1030 new cache entries** |
+| after restoring the same mtimes | 74.9 s |
+
+`pnpm install --frozen-lockfile` and `pnpm -r build` do **not** invalidate it; only mtime does.
+
+The fix is `scripts/normalize-source-mtimes.mjs`, run in the `test` job right after `actions/setup-node`: it stamps every tracked file with one fixed instant, so unchanged content produces an unchanged key across runs *and* across branches. **This is safe, and that was verified rather than assumed** — a one-word edit preserving the file's exact byte length, with mtime rolled back to the same stamp, still failed 21 suites. mtime decides only whether jest re-examines a file, never what it believes the file contains.
+
+A per-file stamp derived from commit history (`git-restore-mtime`) would also be stable, but `actions/checkout` clones shallow by default, so there is no history to derive one from — and it buys nothing, since content already carries the identity the key needs.
 
 ---
 

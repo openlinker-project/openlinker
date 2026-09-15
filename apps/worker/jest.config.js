@@ -19,8 +19,10 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/../jest.setup.ts'],
   // Self-hosted CI (added via 444244f) runs this package's jest in
   // parallel with the other workspace packages. Cap workers and raise
-  // timeout to match apps/api and libs/core — same reasoning.
-  maxWorkers: 2,
+  // timeout to match apps/api and libs/core — same reasoning, including the
+  // CI-only raise to 8 and the idle-memory ceiling added in #3271.
+  maxWorkers: process.env.CI ? 8 : 2,
+  workerIdleMemoryLimit: '512MB',
   testTimeout: 10000,
   moduleNameMapper: {
     '^@openlinker/core/(.*)$': path.resolve(__dirname, '../../libs/core/src/$1'),

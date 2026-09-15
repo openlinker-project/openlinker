@@ -1445,3 +1445,67 @@ pattern — currently `libs/core/src/inventory/infrastructure/persistence/reposi
 `applyGuardedAdd`.
 
 **Source**: PR #3035 CI failure, fixed same-branch.
+
+---
+
+## A cache that exists is not a cache that hits — measure the key, not the directory
+
+**Context**: #3271 investigated why the `Test` job takes 14m54s. The self-hosted
+runner's containers are long-lived and their jest cache directory held **33 GB
+across ~2M files**, written to daily. Every surface reading suggested a healthy,
+warm cache, so "add caching" was rejected as already done.
+
+**Problem**: the cache was never read back. Jest's transform-cache key is a
+function of the file's content **and** its mtime, and `actions/checkout` rewrites
+every file on every run. Each run therefore minted a complete new set of keys,
+could not match the previous run's entries, and appended a full new set beside
+them. Jest applies no TTL, size cap or eviction to that directory, so it only
+grew. Measured on `libs/integrations/prestashop` with content byte-identical
+throughout: warm 73-82 s, after a bare `touch` of `libs/core/**/*.ts` 168.7 s
+**and 1030 freshly written cache entries**. `pnpm install` and `pnpm -r build`
+invalidated nothing; only mtime did.
+
+The size of the directory was actively misleading: it was large *because* it was
+never hit, and reading it as evidence of warmth inverted the diagnosis.
+
+**Rule**: to decide whether a cache helps, measure a repeat run against a cold
+one and count the entries the repeat *writes*. Zero new entries means a hit; a
+full new set means the key moved. Never infer hit-rate from the cache's presence,
+age or size.
+
+**Applies to**: any CI cache — jest transform cache, ts-jest, pnpm store, build
+output — especially on long-lived self-hosted runners where a stale cache never
+disappears on its own.
+
+**Source**: #3271.
+
+---
+
+## A safety test must vary the exact dimension the mechanism keys on
+
+**Context**: #3271 pins every tracked file to one fixed mtime so the jest cache
+can hit. That is only sound if a *changed* file still misses the cache, so the
+change was gated on a safety test: break a file, roll its mtime back to the
+identical stamp, confirm the suites fail.
+
+**Problem**: the first version of that test appended a line. It failed the suites
+as hoped — but it had changed the file's **size** as well as its content, and
+jest's file-metadata check is `(mtime, size)`. The test therefore proved nothing
+about the case that actually matters: content that changes while both mtime and
+size stay identical, which a one-character edit produces routinely. Had the key
+been `(mtime, size)` rather than content-derived, the test would still have
+passed and the change would have shipped a CI that silently runs stale code.
+
+The corrected test replaced one word with another of equal length, preserving the
+byte count exactly (20069 → 20069), and still failed 21 suites — which is what
+established the key is content-derived.
+
+**Rule**: when a change is gated on a safety property, write the test so that
+every dimension the suspected mechanism could key on is held constant except the
+one under test. If the test would still pass under the hypothesis you are trying
+to rule out, it is not evidence.
+
+**Applies to**: cache-invalidation work, memoization, content-addressed storage,
+any "is this stale?" guard.
+
+**Source**: #3271.
