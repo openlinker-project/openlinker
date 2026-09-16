@@ -45,6 +45,24 @@
  *   API with `OL_DEMO_MODE=true`, log in as a `viewer`-role user instead of
  *   admin, open the same connection's edit page, and screenshot
  *   `.form-actions`.
+ *
+ * The `record()` id sequence also skips S15, S16 and S25 — not dropped
+ * scenarios, but ones absorbed into a later, more useful shot during the
+ * actual run (#3268 review):
+ *
+ *   S15 (save pending) / S16 (save success toast) — the original catalog
+ *   captured these as their own moment on the FIRST save. In the shipped run
+ *   every later save cycle (the all-filled pass, the all-cleared pass, the
+ *   isolated Print round-trip) also clicks "Save changes" and waits for the
+ *   post-save navigation, so the transition is exercised repeatedly without
+ *   being screenshotted in isolation — a "Saving…"/toast moment adds nothing
+ *   the reload-and-verify shots don't already prove.
+ *
+ *   S25 (fallback slot set, save+reload, collapsed summary shows "Slot B") —
+ *   folded into the "all 8 fields filled -> reload" composite shot
+ *   (g02-all-filled-after-reload), which already shows the fallback group
+ *   collapsed on "Slot B" alongside the other seven fields, so a dedicated
+ *   single-field version would duplicate what that shot already covers.
  */
 import { chromium } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
@@ -268,13 +286,22 @@ try {
   await shot(page, 'e07-diagnostics-collapsed-customised', { locator: diagDisclosure });
   record('S36', 'Fiscal device number filled -> collapsed summary "Customised"', 'e07-diagnostics-collapsed-customised');
 
-  // both invalid simultaneously
+  // Only the poll timeout is actually invalid here — fiscalDeviceUniqueNumber
+  // is `unboundedText` with no `.min(1)`, so clearing it is a legitimate
+  // "unset" state, not an error. This step therefore shows ONE problem
+  // ("1 problem to fix"), not two; there is no second invalid state to
+  // trigger in this group at all (#3268 review corrected this caption —
+  // it previously claimed "both fields invalid").
   await pollInput.fill('0');
   await pollInput.blur();
   await page.getByLabel('Fiscal device number').fill('');
   await page.getByLabel('Fiscal device number').blur();
   await shot(page, 'e08-diagnostics-problem-count', { locator: diagDisclosure });
-  record('S37', 'Both diagnostics fields invalid -> problem count in summary', 'e08-diagnostics-problem-count');
+  record(
+    'S37',
+    'Poll timeout invalid (0), fiscal device number legitimately cleared -> "1 problem to fix"',
+    'e08-diagnostics-problem-count',
+  );
   // restore to a valid, non-empty state for later save passes
   await pollInput.fill('30000');
   await page.getByLabel('Fiscal device number').fill('ABC123456890');

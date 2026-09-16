@@ -38,7 +38,7 @@ device sub-capability to call. See [ADR-042 § Decision 5](../../../docs/archite
 
 ## Credentials & config
 
-Eight of the eleven config keys below have a form field on the connection's Edit page
+Ten of the eleven config keys below have a form field on the connection's Edit page
 (`apps/web/src/plugins/eparagony/`, #3266) — `environment` / `posId` on the guided setup
 wizard, and `print` / `paymentForm` / `paymentName` / `defaultTaxRateCode` /
 `statusPollTimeoutMs` / `fiscalDeviceUniqueNumber` / `apiBaseUrl` / `authBaseUrl` on the

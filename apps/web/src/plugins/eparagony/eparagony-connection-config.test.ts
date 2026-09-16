@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import {
   eparagonyConnectionConfig,
   readUnrecognisedEnumValue,
+  readUnrecognisedPrintValue,
 } from './eparagony-connection-config';
 import {
   EPARAGONY_PAYMENT_FORM_VALUES,
@@ -138,6 +139,19 @@ describe('eparagonyConnectionConfig', () => {
       expect(readUnrecognisedEnumValue({ paymentForm: 7 }, 'paymentForm', EPARAGONY_PAYMENT_FORM_VALUES)).toBe(
         '7',
       );
+    });
+  });
+
+  describe('readUnrecognisedPrintValue', () => {
+    it('should report a stored print value this build does not recognise', () => {
+      expect(readUnrecognisedPrintValue({ print: 'yes' })).toBe('yes');
+      expect(readUnrecognisedPrintValue({ print: 1 })).toBe('1');
+    });
+
+    it('should report nothing for a recognised, absent or cleared value', () => {
+      for (const config of [{ print: true }, { print: false }, {}, { print: null }]) {
+        expect(readUnrecognisedPrintValue(config)).toBeNull();
+      }
     });
   });
 

@@ -54,6 +54,7 @@ and honours neither `WEB_BASE` nor `OL_ADMIN_*`.
 | `listings-mockup-shots.mjs` | Listings redesign mockup (#1965) at the three style-guide widths, both themes | `OUT_DIR`, `THEME` — **no server at all**, reads a local HTML file over `file://` |
 | `infakt-invoice.mjs` | inFakt invoice + clearance | `INFAKT_CONNECTION_ID`, `ORDER_ID`, `CLEARANCE_POLL_MS` |
 | `connection-enable.mjs` | Connection disable → enable round trip (#1940) | `CONNECTION_ID`, `WEB_BASE`, `OUT_DIR`, `HEADED` |
+| `eparagony-connection-config.mjs` | eparagony.pl connection-config form fields, incl. the null-vs-delete persistence proof (#3266/#3268) | `WEB_BASE` (default `http://localhost:5199`), `OL_ADMIN_USERNAME`, `OL_ADMIN_PASSWORD`, `SHOT_DIR` |
 | `annotate.mjs` | Shared image-annotation helper | (imported by other scripts) |
 
 `connection-enable.mjs` asserts as it goes: every step waits for the control it

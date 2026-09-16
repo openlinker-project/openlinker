@@ -45,7 +45,10 @@ import {
   type EparagonyPaymentFormValue,
   type EparagonyPrintState,
 } from '../eparagony-config.types';
-import { readUnrecognisedEnumValue } from '../eparagony-connection-config';
+import {
+  readUnrecognisedEnumValue,
+  readUnrecognisedPrintValue,
+} from '../eparagony-connection-config';
 import {
   EPARAGONY_TAX_FALLBACK_HAZARD_NOTES,
   TAX_FALLBACK_FIELD_DESCRIPTION,
@@ -91,6 +94,7 @@ function summarise(value: string, problems: number): string {
  * to report - the host already locks every control in that state.
  */
 function useUnrecognisedValues(configText: string): {
+  print: string | null;
   paymentForm: string | null;
   defaultTaxRateCode: string | null;
 } {
@@ -99,13 +103,14 @@ function useUnrecognisedValues(configText: string): {
     try {
       parsed = JSON.parse(configText) as unknown;
     } catch {
-      return { paymentForm: null, defaultTaxRateCode: null };
+      return { print: null, paymentForm: null, defaultTaxRateCode: null };
     }
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return { paymentForm: null, defaultTaxRateCode: null };
+      return { print: null, paymentForm: null, defaultTaxRateCode: null };
     }
     const config = parsed as Record<string, unknown>;
     return {
+      print: readUnrecognisedPrintValue(config),
       paymentForm: readUnrecognisedEnumValue(
         config,
         'paymentForm',
@@ -172,9 +177,13 @@ export function EparagonyStructuredSection({
           Paper receipt
         </span>
         <p className="form-field__description" id={PRINT_DESCRIPTION_ID}>
-          Asks eparagony.pl’s print service to also produce a paper receipt. An online sale has no
-          counter and nobody waiting at one, so the default is no paper. “Not set” and “Do not
-          print” produce the same receipt — picking “Do not print” records that it was a decision.
+          {unrecognised.print === null
+            ? 'Asks eparagony.pl’s print service to also produce a paper receipt. An online sale has no counter and nobody waiting at one, so the default is no paper. “Not set” and “Do not print” produce the same receipt — picking “Do not print” records that it was a decision.'
+            : // Same treatment as paymentForm / defaultTaxRateCode below: never
+              // render an unrecognised stored value as one of the three real
+              // states, and never leave the operator to discover the refusal
+              // only as an opaque 400 on save (#3268 review).
+              `The saved value (${unrecognised.print}) is not true or false, so saving this connection will be refused until you pick one below.`}
         </p>
         <SegmentedControl
           aria-labelledby="eparagonyPrint-label"

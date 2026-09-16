@@ -204,6 +204,21 @@ function readEnum(config: Record<string, unknown>, key: string, values: readonly
  * `null` (the cleared state this file writes) and absent are both "nothing
  * stored", never "an unrecognised value" - reporting them would put a warning on
  * every unset field.
+ *
+ * KNOWN LIMITATION (#3268 review): an unrecognised value hydrates the RHF
+ * field - and hence the controlled `<select>` - to `''`, which is also the
+ * value of the recommended "Not set" option. Clicking that already-selected
+ * option therefore fires no `onChange` (neither the DOM nor React consider it
+ * a change), so `configText` keeps carrying the stale unrecognised value and
+ * a save fails identically. The warning itself does not disappear - it is
+ * reactively derived from `configText`, so an attentive operator gets a clue
+ * that nothing changed - but the "pick one below" instruction silently does
+ * not work for the one option most likely to be tried first (it reads as the
+ * recommendation). Picking any OTHER option still clears it correctly, since
+ * that is a genuine value change. Not fixed here: the fix would mean detecting
+ * this case and forcing a write regardless of the select's rendered state,
+ * which is a real behaviour change rather than the read-side fix this
+ * function makes.
  */
 export function readUnrecognisedEnumValue(
   config: Record<string, unknown>,
@@ -213,6 +228,28 @@ export function readUnrecognisedEnumValue(
   const value = config[key];
   if (value === undefined || value === null) return null;
   if (typeof value === 'string' && values.includes(value)) return null;
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
+/**
+ * The stored value of `print` when this build does not recognise it, or
+ * `null` when there is nothing to report.
+ *
+ * A dedicated function rather than a `readUnrecognisedEnumValue` call: that
+ * one's vocabulary is a `readonly string[]`, but `print`'s two legal values
+ * are booleans, not strings - the same "not a string enum" reason `readPrint`
+ * is its own function rather than a `readEnum` call. `print` is otherwise the
+ * exact same hazard as `paymentForm` / `defaultTaxRateCode`: the backend
+ * validator rejects a non-boolean `print` (`must be a boolean`) precisely like
+ * it rejects an unrecognised enum value, so a hand-typed `"yes"` in the raw
+ * editor deserves the identical treatment - reported in the field's own
+ * description, never silently narrowed to "unset" with no explanation
+ * (#3268 review).
+ */
+export function readUnrecognisedPrintValue(config: Record<string, unknown>): string | null {
+  const value = config.print;
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'boolean') return null;
   return typeof value === 'string' ? value : JSON.stringify(value);
 }
 

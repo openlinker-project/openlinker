@@ -6,15 +6,25 @@ Give an eparagony.pl connection's config fields real, typed form controls on the
 connection edit page, so an operator never has to hand-edit the raw **Config JSON**
 textarea to set a fiscal setting.
 
-**Layer**: Frontend (Interface). No CORE change, no Integration change, no migration.
+**Layer**: Primarily Frontend (Interface). No CORE change, no migration. One small,
+backward-compatible Integration-layer fix landed in review (see below) as a direct
+consequence of the frontend's null-persistence approach — see §4 step 2.
 
 **Non-goals**
 
 - The guided setup wizard keeps its current shape (`environment` + `posId` + credentials).
 - `taxRates` (the seven A..G slot overrides) stays raw-JSON-only — see §3.5.
 - Erli's identical raw-JSON split is a sibling issue, not this one.
-- No backend behaviour change. `EparagonyConnectionConfigShapeValidatorAdapter` already
-  validates every field this exposes (verified — see §2).
+- No behaviour change to `EparagonyConnectionConfigShapeValidatorAdapter` — it already
+  validates every field this exposes, including `null` on all eight (verified — see §2).
+  The Integration-layer fix mentioned above is narrower than "no backend change" implied
+  in an earlier draft of this plan: `EparagonyConnectionConfig`'s eight optional fields
+  were widened from (e.g.) `paymentName?: string` to `paymentName?: string | null`, and
+  `eparagony-document.mapper.ts`'s payment-name guard was changed from an
+  `undefined`-only check to a nullish one — without it, a cleared field's persisted
+  `null` would have been spread straight onto a live fiscal-receipt request as
+  `paymentName: null`. Both are additive/widening changes with no migration and no
+  effect on an unrelated caller.
 
 ## 2. Research findings
 

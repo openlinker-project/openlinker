@@ -279,6 +279,28 @@ describe('EparagonyStructuredSection', () => {
     expect(screen.queryByText(/is not one eparagony\.pl accepts/)).not.toBeInTheDocument();
   });
 
+  it('should report an unrecognised print value the same way as the two enum fields', () => {
+    // `print` is the same hazard as `paymentForm` / `defaultTaxRateCode`: the
+    // backend validator rejects a non-boolean `print` exactly like it rejects
+    // an unrecognised enum value, so a hand-typed `"yes"` in the raw editor
+    // deserves the identical warning rather than silently rendering as
+    // "Not set" (#3268 review).
+    renderWithProviders(
+      <Harness defaultValues={{ configText: JSON.stringify({ print: 'yes' }) }} />,
+    );
+    expect(screen.getByText(/The saved value \(yes\) is not true or false/)).toBeInTheDocument();
+  });
+
+  it('should not warn about a cleared print value', () => {
+    renderWithProviders(<Harness defaultValues={{ configText: JSON.stringify({ print: null }) }} />);
+    expect(screen.queryByText(/is not true or false/)).not.toBeInTheDocument();
+  });
+
+  it('should not warn about an absent print value', () => {
+    renderWithProviders(<Harness />);
+    expect(screen.queryByText(/is not true or false/)).not.toBeInTheDocument();
+  });
+
   it('should not offer the tax rate slot table, but must say where it lives', () => {
     // Contributing a structured section put the raw-JSON editor behind a toggle
     // it was not behind before, and `taxRates` is the more dangerous of the two
