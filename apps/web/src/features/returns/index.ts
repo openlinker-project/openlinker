@@ -103,6 +103,10 @@ export { ReturnWriteResultUnreadableError } from './api/return-write.schema';
 export { useAuthorizeReturnMutation } from './hooks/use-authorize-return-mutation';
 export { useMatchReturnToOrderMutation } from './hooks/use-match-return-to-order-mutation';
 export { useRecordReturnMutation } from './hooks/use-record-return-mutation';
+// The worklist itself (#3081) — two labelled groups, one primary action per
+// row, each routing to the return's own detail page rather than opening a
+// dialog here (see the component docblock for why).
+export { OrphanReturnsWorklist } from './components/orphan-returns-worklist';
 export { ReturnDeclineAction } from './components/return-decline-action';
 export { ReturnLineStateChip } from './components/return-line-state-chips';
 export { ReturnLinesTable } from './components/return-lines-table';
