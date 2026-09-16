@@ -11,7 +11,31 @@ module.exports = {
   testEnvironment: 'node',
   testRegex: 'test/integration/.*\\.int-spec\\.ts$',
   transform: {
-    '^.+\\.ts$': 'ts-jest',
+    // Transpile-only, and it is the single biggest lever on this tier (#3263).
+    //
+    // ts-jest's default builds a TypeScript program and type-checks it, and Jest
+    // resets the module registry per FILE - so that work happened 187 times per
+    // run. Measured on an EMPTY spec (no imports, one `expect(1).toBe(1)`, a
+    // minimal config with no containers and no setup files): 11.9 s with the
+    // default, 0.5 s transpile-only. That floor, not the tests, was the tier.
+    //
+    // Measured A/B on the full 190-file suite, same machine, 8 workers:
+    // 620 s wall / 4793 s summed-suite against 198 s / 742 s - 3.1x on the
+    // clock, 6.5x on the work. Both runs lost suites to container flakiness on
+    // a loaded box (3 against 1); nothing failed to COMPILE under isolation,
+    // which is what this option risks.
+    //
+    // `diagnostics: false` alone is NOT the lever and was measured separately:
+    // it silences errors while still building the program, and its own run came
+    // back SLOWER. `isolatedModules` is what switches ts-jest to
+    // `ts.transpileModule`.
+    //
+    // The cost is real and is paid elsewhere: test files lose type-checking
+    // here, and `tsconfig.type-check.json` excludes `test`, so they had no
+    // other checker. `tsconfig.test-check.json` + the Type Check job's second
+    // step is where that coverage now lives - it runs in parallel, so it costs
+    // nothing on the clock.
+    '^.+\\.ts$': ['ts-jest', { isolatedModules: true, diagnostics: false }],
     // ESM-only htmlparser2 chain pulled in transitively by sanitize-html
     // >=2.17.6 via @openlinker/shared/html — see jest.esm-deps.cjs.
     '^.+\\.js$': esmDepsJsTransform,

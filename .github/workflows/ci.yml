@@ -140,6 +140,19 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm type-check
+      - name: Type-check the integration tests
+        # `tsconfig.type-check.json` excludes `test`, so until #3263 the only
+        # thing type-checking these files was ts-jest doing it on every run -
+        # the 11.9 s per-file floor that change removes. Without this step the
+        # tests would be type-checked nowhere at all.
+        #
+        # A separate step rather than a widened `pnpm type-check`, so a failure
+        # here names the test tier rather than looking like a src regression.
+        # It runs in this already-parallel job, so it costs nothing on the
+        # critical path.
+        run: |
+          pnpm --filter @openlinker/api exec tsc -p tsconfig.test-check.json
+          pnpm --filter @openlinker/worker exec tsc -p tsconfig.test-check.json
 
   test:
     name: Test
