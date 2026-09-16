@@ -183,6 +183,13 @@ export function RecordReturnDialog({
             <Input
               placeholder={COPY.orderFieldPlaceholder}
               list={DATALIST_ID}
+              // Chrome's own history-based autocomplete competes with the
+              // intentional <datalist> suggestions and, inside a dialog, can
+              // force the page to scroll to keep its popup visible — the
+              // field appears to "run away" upward as the operator types.
+              // `off` leaves the datalist as the only suggestion source (the
+              // match-return-dialog.tsx precedent, #3082).
+              autoComplete="off"
               {...form.register('internalOrderId', {
                 onChange: () => {
                   if (fieldError?.field === 'internalOrderId') setFieldError(null);
@@ -232,7 +239,16 @@ export function RecordReturnDialog({
             label={COPY.itemFieldLabel}
             error={form.formState.errors.itemName?.message}
           >
-            <Input placeholder={COPY.itemFieldPlaceholder} {...form.register('itemName')} />
+            {/* Same reasoning as the order field above: a plain text input
+                with no `autoComplete="off"` invites Chrome's own history
+                dropdown, which can shift the dialog's layout as the operator
+                types. This field has no <datalist> of its own, so the fix is
+                the same one line. */}
+            <Input
+              placeholder={COPY.itemFieldPlaceholder}
+              autoComplete="off"
+              {...form.register('itemName')}
+            />
           </FormField>
 
           <FormField
