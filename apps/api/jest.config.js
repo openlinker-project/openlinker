@@ -32,7 +32,7 @@ module.exports = {
   // raise was taken on an IDLE runner; the real one shares the machine with
   // seven other concurrent CI jobs, so 2 packages x 8 workers oversubscribes
   // it exactly as described.
-  maxWorkers: process.env.CI ? 4 : 2,
+  maxWorkers: 2,
   testTimeout: 10000,
   moduleNameMapper: {
     '^@openlinker/api/(.*)$': path.resolve(__dirname, 'src/$1'),

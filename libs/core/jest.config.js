@@ -53,8 +53,19 @@ module.exports = {
   // And the host has a blind spot that matters: that 3 x 8 row looks fine and
   // took 17m12s on real CI, because the lab run has no `Test (web)` at 8
   // workers, no Integration Tests and no Lint beside it. The lab UNDERSTATES
-  // what a high worker count costs. Hence 4, not 8.
-  maxWorkers: process.env.CI ? 4 : 2,
+  // what a high worker count costs.
+  //
+  // So the lab's winner was tried on CI too, and lost. Every raise has now been
+  // measured against the real job, and the answer is monotonic:
+  //
+  //   2 workers   4m07s, 4m21s
+  //   4 workers   4m48s          <- the lab said this was 12% FASTER
+  //   8 workers   13m01s, 17m12s, 18m45s (one runner died)
+  //
+  // The value is 2 and the question is closed. The lab is useful for
+  // correctness questions and useless for this one, because the load it cannot
+  // see is the whole effect.
+  maxWorkers: 2,
   transform: {
     '^.+\\.ts$': [
       'ts-jest',
