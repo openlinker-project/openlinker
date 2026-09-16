@@ -900,6 +900,21 @@ describe('toIssuedDocumentSeller', () => {
     expect(toIssuedDocumentSeller(makeConfig({ merchantAddress: ADDRESS }))).toBeNull();
   });
 
+  it('reads an explicitly cleared address as absent rather than dereferencing it', () => {
+    // This runs AFTER `createDocument` has succeeded, so an unguarded `null`
+    // here loses a document the vendor legally created rather than merely
+    // failing the call (#3274). `merchantTIN` is always set by `makeConfig`, so
+    // this is the reachable shape: a name, a tax number and a cleared address.
+    expect(
+      toIssuedDocumentSeller(
+        makeConfig({
+          merchantName: 'OpenLinker POC Sp. z o.o.',
+          merchantAddress: null as unknown as undefined,
+        }),
+      ),
+    ).toBeNull();
+  });
+
   it('reports nothing when the name and address are there but the tax number is not', () => {
     // Reachable only through `toIssuedDocumentSeller` on its own - the compose
     // path refuses a TIN-less connection several lines earlier - and the neutral
@@ -930,6 +945,26 @@ describe('toIssuedDocumentSeller', () => {
 });
 
 describe('composeInvoiceDocument - an incomplete seller address', () => {
+  it('reads an explicitly cleared seller address as absent, agreeing with the validator', () => {
+    // The counterpart to `eparagony-shape-validators.spec.ts`'s "should treat an
+    // explicit null as absent". That test blesses `merchantAddress: null` into
+    // persistence, so the mapper has to agree or the validator is green about a
+    // config that crashes the live issue path (#3274). Written with an explicit
+    // cast because the declared type is `merchantAddress?: EparagonySellerAddress`
+    // and `null` is exactly the value the type does not admit but the raw JSON
+    // config editor, curl and the cleared-knob convention (#2610) all produce.
+    const request = compose(
+      makeCommand(),
+      makeConfig({
+        merchantName: 'OpenLinker POC Sp. z o.o.',
+        merchantAddress: null as unknown as undefined,
+      }),
+    );
+
+    expect(request.eInvoice.metadata.merchantName).toBe('OpenLinker POC Sp. z o.o.');
+    expect('merchantAddress' in request.eInvoice.metadata).toBe(false);
+  });
+
   it('omits merchantAddress entirely rather than transmitting a half-filled one', () => {
     const partial = {
       street: 'ul. Grzybowska',

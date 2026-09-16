@@ -11,17 +11,6 @@
  * registered, and by then the operator is looking at an unregistered order
  * rather than a form error.
  *
- * THE INVOICE KEYS ARE HELD TO THE SAME RULE (#3192), and for a sharper reason:
- * `merchantTIN`, `merchantName` and `merchantAddress` are transmitted onto a
- * fiscal document AND persisted into the issued-document snapshot core keeps, so
- * a half-filled `merchantAddress` would put `"undefined undefined"` on a stored
- * seller party, and a STRING `"true"` for `eInvoicingHubEnabled` fails the
- * adapter's `=== true` test and silently issues outside the national hub - no
- * error, and a legally different document. `config` is JSONB, so the TypeScript
- * type is no runtime guarantee, and the connection form emits only
- * `{environment, posId}` - the raw JSON editor is the operator's route to every
- * key below, which is exactly the bypass #2610 requires a server-side check for.
- *
  * Hand-rolled (no class-validator), matching the Infakt/KSeF precedent, and
  * never echoing a submitted value back in an error message.
  *
@@ -39,6 +28,21 @@ import {
   EparagonyPaymentFormValues,
   EparagonyTaxRateCodeValues,
 } from '../../domain/types/eparagony-config.types';
+
+/**
+ * Seller-address parts the vendor requires on every `EntityAddress`. `apartment`
+ * is the one optional part and is checked separately, so it is absent here.
+ */
+const REQUIRED_MERCHANT_ADDRESS_PARTS = [
+  'street',
+  'number',
+  'postalCode',
+  'city',
+  'country',
+] as const;
+
+/** ISO 3166-1 alpha-2, which is what `EparagonySellerAddress.country` declares. */
+const ISO_ALPHA2_PATTERN = /^[A-Za-z]{2}$/;
 
 export class EparagonyConnectionConfigShapeValidatorAdapter
   implements ConnectionConfigShapeValidatorPort
@@ -114,22 +118,53 @@ export class EparagonyConnectionConfigShapeValidatorAdapter
       issues.push({ path: 'fiscalDeviceUniqueNumber', message: 'must be a non-empty string' });
     }
 
-    this.validateNonEmptyString(config.merchantTIN, 'merchantTIN', issues);
-    this.validateNonEmptyString(config.merchantName, 'merchantName', issues);
-    this.validateSellerAddress(config.merchantAddress, issues);
+    // The invoice lane's four keys (#3192). ALL FOUR ARE OPTIONAL and must stay
+    // so: every connection that exists today is receipts-only and carries none
+    // of them, and `ConnectionService` re-validates the whole config on every
+    // save - so promoting one to required would refuse an existing connection's
+    // own stored config the next time an operator touched an unrelated field.
+    // What the invoice lane actually needs is enforced where it is needed, by
+    // `composeInvoiceDocument` refusing pre-call.
+    //
+    // Non-empty rather than merely string-typed, for `merchantTIN` and
+    // `merchantName` alike: the mapper reads both through `readNonEmpty`, so a
+    // blank one is silently treated as absent. Refusing it here turns
+    // configured-but-ignored into a form error the operator can see.
+    //
+    // `merchantTIN` gets NO format check, and the omission is deliberate rather
+    // than an oversight: the mapper hard-stamps `scheme: 'pl-nip'` and this
+    // adapter settles in PLN only, so "ten digits" is a true statement about a
+    // NIP - but it is not a statement about what the VENDOR accepts, and this
+    // package has no declaration of that. A mirror stricter than the gate it
+    // mirrors refuses configuration the provider would have taken (#2240), and a
+    // digit-count rule would refuse `PL5252556107` and `525-255-61-07`, both of
+    // which a provider may well normalise itself. That is the asymmetry with the
+    // country check below, which enforces a width THIS package declares on its
+    // own type.
+    if (
+      config.merchantTIN !== undefined &&
+      config.merchantTIN !== null &&
+      (typeof config.merchantTIN !== 'string' || config.merchantTIN.trim().length === 0)
+    ) {
+      issues.push({ path: 'merchantTIN', message: 'must be a non-empty string' });
+    }
+
+    if (
+      config.merchantName !== undefined &&
+      config.merchantName !== null &&
+      (typeof config.merchantName !== 'string' || config.merchantName.trim().length === 0)
+    ) {
+      issues.push({ path: 'merchantName', message: 'must be a non-empty string' });
+    }
+
+    this.validateMerchantAddress(config.merchantAddress, issues);
 
     if (
       config.eInvoicingHubEnabled !== undefined &&
       config.eInvoicingHubEnabled !== null &&
       typeof config.eInvoicingHubEnabled !== 'boolean'
     ) {
-      // Not coerced. A string "true" here would read as false at the adapter's
-      // `=== true` test and issue OUTSIDE the hub, which is a different document
-      // with no error anywhere - so the operator is told rather than guessed for.
-      issues.push({
-        path: 'eInvoicingHubEnabled',
-        message: 'must be a boolean (true or false, not the strings "true" / "false")',
-      });
+      issues.push({ path: 'eInvoicingHubEnabled', message: 'must be a boolean' });
     }
 
     this.validateUrl(config.apiBaseUrl, 'apiBaseUrl', issues);
@@ -168,40 +203,62 @@ export class EparagonyConnectionConfigShapeValidatorAdapter
   }
 
   /**
-   * A seller party the vendor stamps on the document and core persists.
+   * The seller's own address, in the vendor's five-part shape.
    *
-   * Every part is checked individually rather than the object as a whole,
-   * because a PARTIAL address is the dangerous shape: the invoice mapper renders
-   * `line1` as `` `${street} ${number}` ``, so a missing half becomes the literal
-   * `"undefined undefined"` inside the issued-document snapshot, where an
-   * operator reads it as the seller's real address.
+   * Every part is validated here because NOTHING downstream does:
+   * `toSellerEntityAddress` copies the operator's object across field by field
+   * with no interpretation, which is deliberate (OpenLinker must not guess where
+   * a building number ends) and leaves this the only gate. That is the asymmetry
+   * with the BUYER's address, which core hands over already typed - its country
+   * arrives as `countryIso2`, while this one is free text an operator typed.
+   *
+   * Partial is refused rather than tolerated: an address missing its postcode is
+   * not a partial address the vendor completes, it is a rejected document, and
+   * `toIssuedDocumentSeller` reports a seller block only when name, tax number
+   * and address are all present anyway.
+   *
+   * The country check is a SHAPE check, not a canonicalisation - this port
+   * returns `Promise<void>` and cannot write a normalised value back, so it
+   * accepts either case and leaves the vendor the authority on that. It still
+   * catches the mistake worth catching, a country spelled out in full.
+   *
+   * It tests the RAW value rather than a trimmed copy, precisely BECAUSE it
+   * cannot normalise: `toSellerEntityAddress` copies `country` across untouched,
+   * so accepting `' PL '` here would put a four-character value in a field this
+   * package's own type declares as ISO 3166-1 alpha-2, on every invoice the
+   * connection issues. Validating one value and shipping another is the gap
+   * worth closing; what is validated is what goes out. Deliberately not extended
+   * to the other parts - whitespace around a street name is cosmetic, whereas a
+   * country code has a declared width.
    */
-  private validateSellerAddress(raw: unknown, issues: FlatValidationIssue[]): void {
+  private validateMerchantAddress(raw: unknown, issues: FlatValidationIssue[]): void {
     if (raw === undefined || raw === null) return;
     if (typeof raw !== 'object' || Array.isArray(raw)) {
       issues.push({ path: 'merchantAddress', message: 'must be an object' });
       return;
     }
     const address = raw as Record<string, unknown>;
-    for (const field of ['street', 'number', 'postalCode', 'city', 'country'] as const) {
-      const value = address[field];
+
+    for (const part of REQUIRED_MERCHANT_ADDRESS_PARTS) {
+      const value = address[part];
       if (typeof value !== 'string' || value.trim().length === 0) {
-        issues.push({
-          path: `merchantAddress.${field}`,
-          message: 'must be a non-empty string',
-        });
+        issues.push({ path: `merchantAddress.${part}`, message: 'must be a non-empty string' });
       }
     }
-    // The one genuinely optional part - a seller with no apartment is ordinary -
-    // but an empty one would be transmitted as a blank line on the document.
-    this.validateNonEmptyString(address.apartment, 'merchantAddress.apartment', issues);
-  }
 
-  /** An optional string that is transmitted verbatim, so blanks are refused too. */
-  private validateNonEmptyString(raw: unknown, path: string, issues: FlatValidationIssue[]): void {
-    if (raw === undefined || raw === null) return;
-    if (typeof raw !== 'string' || raw.trim().length === 0) {
-      issues.push({ path, message: 'must be a non-empty string' });
+    if (typeof address.country === 'string' && !ISO_ALPHA2_PATTERN.test(address.country)) {
+      issues.push({
+        path: 'merchantAddress.country',
+        message: 'must be a two-letter ISO 3166-1 alpha-2 country code',
+      });
+    }
+
+    if (
+      address.apartment !== undefined &&
+      address.apartment !== null &&
+      (typeof address.apartment !== 'string' || address.apartment.trim().length === 0)
+    ) {
+      issues.push({ path: 'merchantAddress.apartment', message: 'must be a non-empty string' });
     }
   }
 

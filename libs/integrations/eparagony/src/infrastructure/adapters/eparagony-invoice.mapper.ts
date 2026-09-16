@@ -893,6 +893,23 @@ function toEntityAddress(address: BuyerAddress, orderId: string): EparagonyEntit
  * and a connection configured before the validator shipped was never checked at
  * all. The five parts are required on the vendor's own type, so a missing one is
  * not a degraded address - it is not an address.
+ *
+ * AN EXPLICIT `null` READS AS ABSENT, and that half is load-bearing on its own.
+ * The shape validator blesses `null` here - the repo's cleared-knob convention
+ * (#2610: clearing a knob writes an explicit `null` rather than deleting the
+ * key, and every reader treats it exactly like absent), and what the seller form
+ * writes when an operator clears the address. A guard testing `undefined` alone
+ * let that value through to a field-by-field copy whose first statement
+ * dereferences it: a raw `TypeError` on the live issue path, which core cannot
+ * classify and therefore defaults to `in-doubt`, blocking that order from EVERY
+ * sales document on every connection for a request that never crossed the
+ * network (#3274).
+ *
+ * BOTH CALLERS read through this ONE function for that reason.
+ * `toIssuedDocumentSeller` runs inside `toIssueResult`, AFTER `createDocument`
+ * and its status poll have succeeded, so a guard fixed only in the composer
+ * would relocate the same crash to a point where the vendor has already created
+ * a legally-issued document that OpenLinker then loses.
  */
 function readSellerEntityAddress(
   address: EparagonySellerAddress | undefined,

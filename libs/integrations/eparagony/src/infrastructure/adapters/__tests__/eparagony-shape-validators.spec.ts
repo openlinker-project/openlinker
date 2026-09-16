@@ -57,110 +57,157 @@ describe('EparagonyConnectionConfigShapeValidatorAdapter', () => {
     ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
   });
 
-  // The invoicing keys (#3192). Every one of them is transmitted onto a fiscal
-  // document AND persisted into the issued-document snapshot, and the connection
-  // form emits only `{environment, posId}` - so the raw JSON editor is the
-  // operator's route to all four and this validator is the only check in front
-  // of it.
-  const BASE = { environment: 'sandbox', posId: 'p' } as const;
-  const ADDRESS = {
-    street: 'ul. Grzybowska',
-    number: '2',
-    postalCode: '00-131',
-    city: 'Warszawa',
-    country: 'PL',
-  } as const;
+  // The invoice lane's four keys (#3192).
+  describe('invoice lane configuration', () => {
+    const base = { environment: 'sandbox', posId: 'p' };
+    const address = {
+      street: 'Testowa',
+      number: '1',
+      postalCode: '00-001',
+      city: 'Warszawa',
+      country: 'PL',
+    };
 
-  it('should accept a fully configured seller party', async () => {
-    await expect(
-      validator.validate({
-        ...BASE,
-        merchantTIN: '5252556107',
-        merchantName: 'OpenLinker POC Sp. z o.o.',
-        merchantAddress: { ...ADDRESS, apartment: '45' },
-        eInvoicingHubEnabled: true,
-      }),
-    ).resolves.toBeUndefined();
-  });
+    it('should accept a receipts-only config that carries none of the invoice keys', async () => {
+      // THE REGRESSION THIS GUARDS. Every connection shipped before #3192 is
+      // receipts-only, and `ConnectionService` re-validates the whole config on
+      // every save - so a key promoted to required would refuse an existing
+      // connection's own stored config the next time an operator touched an
+      // unrelated field on it.
+      await expect(validator.validate({ ...base })).resolves.toBeUndefined();
+    });
 
-  it('should accept a connection that configures no invoicing keys at all', async () => {
-    // Every connection that exists today is receipts-only and carries none of
-    // them; the invoice mapper is what refuses at issue time.
-    await expect(validator.validate({ ...BASE })).resolves.toBeUndefined();
-  });
-
-  it('should reject a blank seller tax number rather than transmitting whitespace', async () => {
-    await expect(validator.validate({ ...BASE, merchantTIN: '   ' })).rejects.toBeInstanceOf(
-      InvalidConnectionConfigException,
-    );
-    await expect(validator.validate({ ...BASE, merchantTIN: 5252556107 })).rejects.toBeInstanceOf(
-      InvalidConnectionConfigException,
-    );
-  });
-
-  it('should reject a blank seller name', async () => {
-    await expect(validator.validate({ ...BASE, merchantName: '' })).rejects.toBeInstanceOf(
-      InvalidConnectionConfigException,
-    );
-  });
-
-  it.each(['street', 'number', 'postalCode', 'city', 'country'])(
-    'should reject a seller address missing %s, because a partial one renders "undefined" onto the document',
-    async (field) => {
-      const partial: Record<string, unknown> = { ...ADDRESS };
-      delete partial[field];
+    it('should accept a fully configured invoice lane', async () => {
       await expect(
-        validator.validate({ ...BASE, merchantAddress: partial }),
+        validator.validate({
+          ...base,
+          merchantTIN: '5213796333',
+          merchantName: 'Sprzedawca Sp. z o.o.',
+          merchantAddress: address,
+          eInvoicingHubEnabled: true,
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should treat an explicit null as absent, the way an operator-authored blob carries one', async () => {
+      await expect(
+        validator.validate({
+          ...base,
+          merchantTIN: null,
+          merchantName: null,
+          merchantAddress: null,
+          eInvoicingHubEnabled: null,
+        }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should reject a blank seller tax number rather than silently ignoring it', async () => {
+      // The mapper reads it through `readNonEmpty`, so a blank one is treated as
+      // absent and refuses the invoice pre-call. Catching it at save time turns
+      // configured-but-ignored into something the operator can see.
+      await expect(
+        validator.validate({ ...base, merchantTIN: '   ' }),
       ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
-    },
-  );
+    });
 
-  it('should name the missing address part rather than only the object', async () => {
-    const error = await validator
-      .validate({ ...BASE, merchantAddress: { ...ADDRESS, city: '' } })
-      .then(() => null)
-      .catch((e: unknown) => e as InvalidConnectionConfigException);
-    expect(error?.errors.map((issue) => issue.path)).toContain('merchantAddress.city');
-  });
+    it('should reject a blank seller name', async () => {
+      await expect(validator.validate({ ...base, merchantName: '' })).rejects.toBeInstanceOf(
+        InvalidConnectionConfigException,
+      );
+    });
 
-  it('should reject a seller address that is not an object', async () => {
-    await expect(
-      validator.validate({ ...BASE, merchantAddress: 'ul. Grzybowska 2' }),
-    ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
-    await expect(validator.validate({ ...BASE, merchantAddress: [] })).rejects.toBeInstanceOf(
-      InvalidConnectionConfigException,
-    );
-  });
+    it('should reject a seller address that is not an object', async () => {
+      await expect(
+        validator.validate({ ...base, merchantAddress: 'Testowa 1, Warszawa' }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
 
-  it('should reject a blank apartment while accepting an absent one', async () => {
-    await expect(
-      validator.validate({ ...BASE, merchantAddress: { ...ADDRESS, apartment: '  ' } }),
-    ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
-    await expect(
-      validator.validate({ ...BASE, merchantAddress: ADDRESS }),
-    ).resolves.toBeUndefined();
-  });
+    it('should reject a partial seller address, naming the missing part', async () => {
+      // `toSellerEntityAddress` copies the operator's object across field by
+      // field with no interpretation, so this validator is the only gate - and
+      // the vendor rejects the whole document over a missing part.
+      const withoutPostalCode = {
+        street: address.street,
+        number: address.number,
+        city: address.city,
+        country: address.country,
+      };
 
-  it('should reject a STRING hub flag, which would silently issue outside the hub', async () => {
-    // The adapter tests `=== true`, so "true" reads as false: the invoice is
-    // issued outside the national hub with no error anywhere - a legally
-    // different document. Refusing is the only way the operator learns.
-    await expect(
-      validator.validate({ ...BASE, eInvoicingHubEnabled: 'true' }),
-    ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
-    await expect(validator.validate({ ...BASE, eInvoicingHubEnabled: 1 })).rejects.toBeInstanceOf(
-      InvalidConnectionConfigException,
-    );
+      await expect(
+        validator.validate({ ...base, merchantAddress: withoutPostalCode }),
+      ).rejects.toMatchObject({
+        errors: expect.arrayContaining([
+          expect.objectContaining({ path: 'merchantAddress.postalCode' }),
+        ]),
+      });
+    });
+
+    it('should reject a country spelled out in full rather than as its two-letter code', async () => {
+      await expect(
+        validator.validate({ ...base, merchantAddress: { ...address, country: 'Poland' } }),
+      ).rejects.toMatchObject({
+        errors: expect.arrayContaining([
+          expect.objectContaining({ path: 'merchantAddress.country' }),
+        ]),
+      });
+    });
+
+    it('should reject a padded country code, because the padded value is what ships', async () => {
+      // `toSellerEntityAddress` copies `country` across untouched, so a
+      // validator that trimmed before testing would bless a four-character
+      // value into a field declared as ISO 3166-1 alpha-2 and then send it on
+      // every invoice. What is validated is what goes out.
+      await expect(
+        validator.validate({ ...base, merchantAddress: { ...address, country: ' PL ' } }),
+      ).rejects.toMatchObject({
+        errors: expect.arrayContaining([
+          expect.objectContaining({ path: 'merchantAddress.country' }),
+        ]),
+      });
+    });
+
+    it('should still accept either case, which the vendor is left to decide', async () => {
+      await expect(
+        validator.validate({ ...base, merchantAddress: { ...address, country: 'pl' } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should accept an apartment, the one optional part of the address', async () => {
+      await expect(
+        validator.validate({ ...base, merchantAddress: { ...address, apartment: '4B' } }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should reject a non-boolean hub flag', async () => {
+      // A truthy string would read as "relay to the hub" to a caller testing
+      // truthiness, while the mapper's `=== true` leaves it off - the two
+      // readings disagree about whether an invoice reaches the authority.
+      await expect(
+        validator.validate({ ...base, eInvoicingHubEnabled: 'yes' }),
+      ).rejects.toBeInstanceOf(InvalidConnectionConfigException);
+    });
+
+    it('should accept the hub flag switched off explicitly', async () => {
+      await expect(
+        validator.validate({ ...base, eInvoicingHubEnabled: false }),
+      ).resolves.toBeUndefined();
+    });
   });
 
   it('should never echo a submitted seller value back in the issue list', async () => {
     // The issues reach the operator's browser as a 400 body, so they name the
     // PATH and never the value - the rule the credentials validator holds too.
     const error = await validator
-      .validate({ ...BASE, merchantTIN: '   ', merchantName: 'Secret Trading Sp. z o.o.' })
+      .validate({
+        environment: 'sandbox',
+        posId: 'p',
+        merchantTIN: '   ',
+        merchantName: 'Secret Trading Sp. z o.o.',
+      })
       .then(() => null)
       .catch((e: unknown) => e as InvalidConnectionConfigException);
     const rendered = `${error?.message} ${JSON.stringify(error?.errors)}`;
+
     expect(rendered).not.toContain('Secret Trading');
     expect(error?.errors.map((issue) => issue.path)).toContain('merchantTIN');
   });
