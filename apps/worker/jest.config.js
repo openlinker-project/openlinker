@@ -1,6 +1,8 @@
 const path = require('path');
 const { ESM_DEPS_TRANSFORM_IGNORE_PATTERN, esmDepsJsTransform } = require('../../jest.esm-deps.cjs');
 
+const { resolveUnitTestWorkers } = require('../../jest.unit-workers.cjs');
+
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: 'src',
@@ -17,12 +19,11 @@ module.exports = {
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
   setupFilesAfterEnv: ['<rootDir>/../jest.setup.ts'],
-  // Self-hosted CI (added via 444244f) runs this package's jest in
-  // parallel with the other workspace packages. Cap workers and raise
-  // timeout to match apps/api and libs/core — same reasoning, including the
-  // CI-only raise to 8 that #3271 tried and reverted (measured here at
-  // 93.2 s -> 142.9 s; see the note in apps/api/jest.config.js).
-  maxWorkers: 2,
+  // Worker count comes from the one resolver at the repo root (#3271).
+  // See `jest.unit-workers.cjs`, and `libs/core/jest.config.js` for the full
+  // history of the number. Measured here during the reverted 8-worker attempt:
+  // 93.2 s -> 142.9 s.
+  maxWorkers: resolveUnitTestWorkers(),
   // Recycle a worker once its heap passes this, so a long-lived worker cannot
   // drift into GC thrashing (#3271). Measured on the runner host, interleaved
   // over two rounds against an otherwise identical config: 91 s / 92 s with it,

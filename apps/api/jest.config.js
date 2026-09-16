@@ -1,6 +1,8 @@
 const path = require('path');
 const { ESM_DEPS_TRANSFORM_IGNORE_PATTERN, esmDepsJsTransform } = require('../../jest.esm-deps.cjs');
 
+const { resolveUnitTestWorkers } = require('../../jest.unit-workers.cjs');
+
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: 'src',
@@ -17,22 +19,14 @@ module.exports = {
   coverageDirectory: '../coverage',
   testEnvironment: 'node',
   forceExit: true,
-  // Self-hosted CI (added via 444244f) runs this package's jest in
-  // parallel with libs/core, libs/shared, libs/integrations/*, apps/web,
-  // and apps/worker. Default worker count oversubscribes CPU/memory:
-  // bcrypt-heavy auth tests starve each other and trip the 5s timeout,
-  // and random workers get OOM-killed (SIGKILL). Cap workers and raise
-  // timeout to match the other packages.
-  //
-  // The cap was raised to 8 under CI (#3271) and reverted, and the sentence
-  // above is exactly why. On the real runner that doubled this package
-  // (80.0 s -> 163.0 s) and reproduced the SIGKILL the comment warns about:
+  // Worker count comes from the one resolver at the repo root (#3271).
+  // See `jest.unit-workers.cjs`, and `libs/core/jest.config.js` for the full
+  // history of the number. This package is the one that made the 8-worker
+  // attempt fail loudest: it went 80.0 s -> 163.0 s and
   // `analytics/http/dto/sales-analytics-query.dto.spec.ts` died with
-  // `signal=SIGKILL, exitCode=null`. The lab measurement that justified the
-  // raise was taken on an IDLE runner; the real one shares the machine with
-  // seven other concurrent CI jobs, so 2 packages x 8 workers oversubscribes
-  // it exactly as described.
-  maxWorkers: 2,
+  // `signal=SIGKILL, exitCode=null` - the container's own cgroup killing it,
+  // not the host running out of memory.
+  maxWorkers: resolveUnitTestWorkers(),
   // Recycle a worker once its heap passes this, so a long-lived worker cannot
   // drift into GC thrashing (#3271). Measured on the runner host, interleaved
   // over two rounds against an otherwise identical config: 91 s / 92 s with it,

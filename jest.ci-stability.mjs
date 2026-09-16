@@ -9,21 +9,17 @@
  * test failure.
  *
  *  - `maxWorkers` — absolute (not '50%'), so peak memory is deterministic
- *    regardless of the runner's core count. Raised 2 -> 8 under CI only
- *    (#3271), and the raise is deliberately scoped to THIS file, i.e. to
- *    prestashop and allegro alone. Measured on the real runner, not a lab box:
- *    prestashop 297.6 s -> 198.1 s and allegro 151.4 s -> 81.7 s. The same
- *    raise applied to `libs/core`, `apps/api` and `apps/worker` was REVERTED —
- *    there it starved the package running beside it under
- *    `--workspace-concurrency=2` and took apps/api from 80.0 s to 163.0 s with
- *    an OOM SIGKILL on one suite. Those two packages are big enough to use
- *    eight workers; a package with a handful of test files is not, and only
- *    denies them to its co-runner. Do not lift this value into a shared
- *    default without measuring the package it would apply to.
+ *    regardless of the runner's core count, and resolved by the ONE resolver
+ *    at the repo root (#3271) so prestashop and allegro cannot drift from the
+ *    rest of the unit tier. See `jest.unit-workers.cjs` for the number, the
+ *    8-CPU/24-GiB container fact behind it, and the local-vs-CI split.
  *
- *    OFF CI the value stays 2, because this file is also reached by
- *    `.husky/pre-commit` -> `pnpm smart-test`, which falls back to a bare
- *    `pnpm test` on a contributor's own machine.
+ *    This file briefly carried its own CI-only `8`, measured at
+ *    prestashop 297.6 s -> 198.1 s and allegro 151.4 s -> 81.7 s. Those gains
+ *    were real in isolation and are the reason the shared number is not 2; what
+ *    they did not price in is the other three packages running beside them
+ *    under `--workspace-concurrency`, which is the whole subject of the
+ *    resolver's comment.
  *  - `workerIdleMemoryLimit` — Jest recycles a worker once its heap crosses the
  *    ceiling, before the OS OOM-kills it. Tune down (e.g. '256MB') if a runner
  *    is tight.
@@ -36,7 +32,11 @@
  * its own config. Raising either number again without re-measuring the WHOLE
  * job is how this went wrong three times; see `libs/core/jest.config.js`.
  */
+import { createRequire } from 'node:module';
+
+const { resolveUnitTestWorkers } = createRequire(import.meta.url)('./jest.unit-workers.cjs');
+
 export const ciStabilityConfig = {
-  maxWorkers: process.env.CI ? 8 : 2,
+  maxWorkers: resolveUnitTestWorkers(),
   workerIdleMemoryLimit: '512MB',
 };
