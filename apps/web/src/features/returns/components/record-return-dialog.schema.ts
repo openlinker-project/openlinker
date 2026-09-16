@@ -43,9 +43,11 @@ export const recordReturnDialogSchema = z.object({
       'Select a reason.',
     ),
   // `@IsInt() @Min(1)` on the backend. `z.coerce` because a native
-  // `<input type="number">` value arrives as a string.
+  // `<input type="number">` value arrives as a string. An empty/non-numeric
+  // input coerces to `NaN`, which `.int()` refuses with its own message —
+  // Zod 4 dropped the `invalid_type_error` option `z.number()` took in v3.
   quantityAdvised: z.coerce
-    .number({ invalid_type_error: 'Quantity must be a whole number.' })
+    .number()
     .int('Quantity must be a whole number.')
     .min(1, 'Quantity must be at least 1.'),
 });
