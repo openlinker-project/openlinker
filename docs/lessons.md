@@ -1652,3 +1652,42 @@ The first result was true by accident, and a number arrived at by accident canno
 be relied on the next time.
 
 **Source**: #3271.
+
+---
+
+## Measure the whole thing, interleaved, or the drift measures you
+
+**Context**: #3271 needed to choose a `maxWorkers` / `--workspace-concurrency`
+pair for the CI test job. Three attempts to raise workers had already been
+reverted off real CI runs, so the next round moved to the runner host itself.
+
+**Problem, twice over.** The first lab pass measured ONE package at a time and
+reported that `libs/core` goes 70 s -> 26 s at 8 workers and `apps/api`
+47 s -> 21 s. Both true, both useless for the decision: the whole backend
+command at 8 workers then took 17m12s on real CI, because a single package on a
+quiet box is not the same question as twenty packages beside `Test (web)`,
+`Integration Tests` and `Lint`.
+
+The second pass measured the whole command, which was right, but ran the
+candidates in sequence while the host's load average happened to fall from 85
+to 45. Every later candidate got a quieter machine than the one before it, and
+the config that ran last "won". Running them interleaved over two rounds
+reversed part of the ordering and produced a stable answer instead
+(`4 x 2` 90/97 s, `4 x 4` 82/83 s, `3 x 8` 88/91 s).
+
+**Rule**: measure the same unit of work the decision is about, not a component
+of it; and when the environment can drift, interleave the candidates rather
+than running A then B. A one-percent spread across interleaved repeats is
+evidence. A single ordered sweep on a busy host is a ranking of when each
+candidate happened to run.
+
+**And know what your harness cannot see.** The lab still understates high
+worker counts, because it runs without the sibling CI jobs. A measurement
+environment that is missing a load source will always flatter the option that
+consumes the most of it.
+
+**Applies to**: performance tuning of any kind on shared hardware, A/B timing
+comparisons, benchmark harnesses that model one process out of many.
+
+**Source**: #3271.
+

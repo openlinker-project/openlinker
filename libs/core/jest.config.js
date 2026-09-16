@@ -41,11 +41,20 @@ module.exports = {
   // 47 s / 21 s / 45 s. So a package really does scale with workers - the count
   // per package was never the problem, the PRODUCT was.
   //
-  // Hence 8 workers together with `--workspace-concurrency=3` rather than 4:
-  // peak ~24 processes against the ~20 that is known to pass and the ~40 that
-  // killed a runner. If this is raised again, raise it against the host budget,
-  // not against what `nproc` reports inside a container.
-  maxWorkers: process.env.CI ? 8 : 2,
+  // That per-package reading was still misleading, and the correction is the
+  // useful part. Measured with the WHOLE backend command instead of one
+  // package, on the same host, interleaved over two rounds so a drifting load
+  // hits every candidate equally:
+  //
+  //   concurrency 4 x 2 workers   90 s, 97 s
+  //   concurrency 4 x 4 workers   82 s, 83 s   <- consistent winner
+  //   concurrency 3 x 8 workers   88 s, 91 s
+  //
+  // And the host has a blind spot that matters: that 3 x 8 row looks fine and
+  // took 17m12s on real CI, because the lab run has no `Test (web)` at 8
+  // workers, no Integration Tests and no Lint beside it. The lab UNDERSTATES
+  // what a high worker count costs. Hence 4, not 8.
+  maxWorkers: process.env.CI ? 4 : 2,
   transform: {
     '^.+\\.ts$': [
       'ts-jest',
