@@ -28,11 +28,13 @@
  *    ceiling, before the OS OOM-kills it. Tune down (e.g. '256MB') if a runner
  *    is tight.
  *
- * The cross-package fan-out itself is bounded separately by
- * `pnpm -r --workspace-concurrency=2` in the root `test:ci` script. That `2`
- * is load-bearing and must not drift to `4`: pnpm's own default IS 4, so the
- * bound has to sit below it to throttle anything at all (see
- * `docs/testing-guide.md` and the #976 implementation plan).
+ * The cross-package fan-out itself is bounded separately in the root `test:ci`
+ * script, which is now `--no-sort --workspace-concurrency=4` (#3271). The
+ * bound was `2` for #976; `4` is pnpm's own default, so on its own it throttles
+ * nothing — what actually protects the box is that `apps/web` moved to its own
+ * CI job and every remaining package declares an absolute worker cap here or in
+ * its own config. Raising either number again without re-measuring the WHOLE
+ * job is how this went wrong three times; see `libs/core/jest.config.js`.
  */
 export const ciStabilityConfig = {
   maxWorkers: process.env.CI ? 8 : 2,

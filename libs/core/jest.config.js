@@ -20,14 +20,7 @@ module.exports = {
   // OOM-killed. A lab number from an idle box is not a CI number: the real
   // runner shares the machine with seven other concurrent jobs.
   //
-  // Deliberately NO `workerIdleMemoryLimit` here either. A '512MB' ceiling was
-  // tried and reverted: this package's workers legitimately peak around 2.8 GB,
-  // so the limit recycled a worker after almost every file, re-spawning the
-  // process and rebuilding the whole module graph each time. On the real runner
-  // that took the package from 74 s to over 17 minutes. If a ceiling is ever
-  // wanted here, size it above the package's real working set, not by copying
-  // prestashop's number.
-  // 8 under CI, and this value's history is the whole lesson (#3271).
+  // The history of this one value is the whole lesson (#3271).
   //
   // It was raised to 8 twice and reverted twice, both times because the job got
   // slower and the second time because the runner DIED. Both of those raises
