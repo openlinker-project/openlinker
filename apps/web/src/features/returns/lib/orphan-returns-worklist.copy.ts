@@ -1,0 +1,63 @@
+/**
+ * Orphan Returns Worklist copy (#3078/#3081)
+ *
+ * Every operator sentence this component renders, in one place — the
+ * `order-returns-panel.copy.ts` precedent, and a filename
+ * `scripts/check-ui-vocabulary.mjs` actually scans (`features/returns` is one
+ * of its three watched folders).
+ *
+ * Two groups, two vocabularies, deliberately never blended into one:
+ *
+ * - **Needs an order** — an orphan return (`bucket === 'orphan'`). Nothing
+ *   downstream (restock, refund, invoice correction) can happen until it is
+ *   linked to an order, and the copy says so rather than leaving the group
+ *   heading to imply a softer "unmatched" state.
+ * - **Waiting for your OK** — an operator-authored return the operator has
+ *   not yet approved (`origin === 'operator_authored' && authorizedAt ===
+ *   null`). Approving is an audit stamp, never a gate on restock/refund, which
+ *   already act on the return's own state — the copy is careful not to imply
+ *   otherwise.
+ *
+ * @module apps/web/src/features/returns/lib
+ */
+export const ORPHAN_RETURNS_WORKLIST_COPY = {
+  sectionTitle: 'Needs your attention',
+
+  needsOrderTitle: 'Needs an order',
+  needsOrderDescription:
+    "OpenLinker can't restock, refund or correct the invoice for these until they're linked to an order.",
+  needsOrderAction: 'Match to an order',
+
+  needsApprovalTitle: 'Waiting for your OK',
+  needsApprovalDescription:
+    'You recorded these yourself. Approving is an audit stamp confirming it really happened — it does not hold up restock or refund.',
+  needsApprovalAction: 'Review and approve',
+
+  /** The read failed. Never conflated with "nothing needs attention". */
+  errorTitle: 'Could not be loaded',
+  errorMessage: 'OpenLinker could not read this list just now. This is not a statement about it.',
+  retry: 'Try again',
+
+  /** The envelope itself could not be parsed: zero rows and zero drops. */
+  unreadableTitle: 'Could not be read',
+  unreadableMessage:
+    'The response did not match what this version of OpenLinker expects, so nothing is shown here. This is not evidence there is nothing.',
+
+  /** The read succeeded and answered zero — a positive, confirmed claim. */
+  needsOrderEmpty: 'Nothing is waiting to be matched to an order.',
+  needsApprovalEmpty: 'Nothing is waiting for your approval.',
+
+  loading: 'Checking…',
+
+  viewReturn: 'View return',
+
+  /**
+   * The approval scan reads one bounded page and disclosed truthfully rather
+   * than trimmed quietly — the same rule `order-returns-panel.copy.ts`
+   * states. Phrased as a caveat rather than a precise count: the scan filters
+   * client-side for `operator_authored` + unapproved, so a truncated page
+   * cannot say how many of the REMAINING rows would also qualify.
+   */
+  approvalScanTruncated:
+    'Showing what fits on one page — check the full returns list if you expect more.',
+} as const;
