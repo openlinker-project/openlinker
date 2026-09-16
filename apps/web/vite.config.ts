@@ -43,6 +43,23 @@ export default defineConfig(({ mode }) => {
       // failing visibly while accommodating the runner.
       testTimeout: 10000,
       teardownTimeout: 10000,
+      // Bound vitest's own pool (#3271). Vitest defaults maxForks to
+      // `cores - 1`, which on the self-hosted runner is 63 - and this package
+      // is one of several running at once under
+      // `pnpm -r --workspace-concurrency`, where every jest package already
+      // declares an absolute worker cap for exactly that reason. Uncapped, one
+      // vitest run can claim the whole box and starve its neighbours.
+      //
+      // 8 is not a throttle here: the run's own profile shows ~1070 cpu-seconds
+      // finishing in ~163 s wall, i.e. an effective parallelism of about 6.6,
+      // so 63 forks were never being used. Off CI the default is left alone -
+      // a contributor's machine has few enough cores that `cores - 1` is
+      // already a sane number.
+      //
+      // `maxWorkers` is top-level: vitest 4 removed `poolOptions`, and the old
+      // nesting is accepted-and-ignored with only a DEPRECATED line in the
+      // output, so writing it that way caps nothing while looking like it does.
+      ...(process.env.CI ? { maxWorkers: 8 } : {}),
       setupFiles: './src/test/setup.ts',
       css: true,
       coverage: {
