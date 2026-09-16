@@ -9,7 +9,14 @@
  * @module plugins/eparagony
  */
 import { describe, expect, it } from 'vitest';
-import { eparagonyConnectionConfig } from './eparagony-connection-config';
+import {
+  eparagonyConnectionConfig,
+  readUnrecognisedEnumValue,
+} from './eparagony-connection-config';
+import {
+  EPARAGONY_PAYMENT_FORM_VALUES,
+  EPARAGONY_TAX_RATE_CODE_VALUES,
+} from './eparagony-config.types';
 
 const { readConfigToForm, applyToConfig, schemaShape } = eparagonyConnectionConfig;
 
@@ -73,13 +80,133 @@ describe('eparagonyConnectionConfig', () => {
         '',
       );
     });
+
+    it('should read an explicit null back as unset on every field', () => {
+      // `null` is the CLEARED state `applyToConfig` writes (it must, so the
+      // clear survives EditConnectionForm's pre-submit merge). Hydration has to
+      // read it back as empty, or a cleared connection would reload with the
+      // field looking broken rather than blank.
+      expect(
+        readConfigToForm({
+          print: null,
+          paymentForm: null,
+          paymentName: null,
+          defaultTaxRateCode: null,
+          statusPollTimeoutMs: null,
+          fiscalDeviceUniqueNumber: null,
+          apiBaseUrl: null,
+          authBaseUrl: null,
+        }),
+      ).toEqual({
+        eparagonyPrint: '',
+        eparagonyPaymentForm: '',
+        eparagonyPaymentName: '',
+        eparagonyDefaultTaxRateCode: '',
+        eparagonyStatusPollTimeoutMs: '',
+        eparagonyFiscalDeviceUniqueNumber: '',
+        eparagonyApiBaseUrl: '',
+        eparagonyAuthBaseUrl: '',
+      });
+    });
+  });
+
+  describe('readUnrecognisedEnumValue', () => {
+    it('should report a stored value this build does not recognise', () => {
+      expect(
+        readUnrecognisedEnumValue({ paymentForm: 'Bitcoin' }, 'paymentForm', EPARAGONY_PAYMENT_FORM_VALUES),
+      ).toBe('Bitcoin');
+      expect(
+        readUnrecognisedEnumValue(
+          { defaultTaxRateCode: 'Z' },
+          'defaultTaxRateCode',
+          EPARAGONY_TAX_RATE_CODE_VALUES,
+        ),
+      ).toBe('Z');
+    });
+
+    it('should report nothing for a recognised, absent or cleared value', () => {
+      // `null` is the cleared state, absent is never-set. Neither is a value
+      // the operator has to go and find, so neither may raise a warning.
+      for (const config of [{ paymentForm: 'Karta' }, {}, { paymentForm: null }]) {
+        expect(
+          readUnrecognisedEnumValue(config, 'paymentForm', EPARAGONY_PAYMENT_FORM_VALUES),
+        ).toBeNull();
+      }
+    });
+
+    it('should render a non-string stored value rather than dropping it', () => {
+      expect(readUnrecognisedEnumValue({ paymentForm: 7 }, 'paymentForm', EPARAGONY_PAYMENT_FORM_VALUES)).toBe(
+        '7',
+      );
+    });
   });
 
   describe('applyToConfig', () => {
     it('should write all three print states distinctly', () => {
       expect(applyToConfig({}, { eparagonyPrint: 'true' })).toEqual({ print: true });
       expect(applyToConfig({}, { eparagonyPrint: 'false' })).toEqual({ print: false });
-      expect(applyToConfig({ print: true }, { eparagonyPrint: '' })).toEqual({});
+    });
+
+    it('should write an explicit null for every cleared field, never delete the key', () => {
+      // THE key assertion of this file (#3268 review). `EditConnectionForm`
+      // merges `{ ...fresh.config, ...input.config }` against a pre-submit
+      // refetch, and a shallow spread can only override a key PRESENT on the
+      // right side - so a deleted key is silently restored from the refetch and
+      // the clear never reaches the server. Reading `'print' in result` rather
+      // than the value alone is what makes that difference assertable at all:
+      // `toEqual` treats an absent key and `undefined` alike.
+      const cleared = applyToConfig(
+        {
+          print: true,
+          paymentForm: 'Karta',
+          paymentName: 'Visa',
+          defaultTaxRateCode: 'B',
+          statusPollTimeoutMs: 45000,
+          fiscalDeviceUniqueNumber: 'DEV-1',
+          apiBaseUrl: 'https://api.test',
+          authBaseUrl: 'https://login.test',
+        },
+        {
+          eparagonyPrint: '',
+          eparagonyPaymentForm: '',
+          eparagonyPaymentName: '   ',
+          eparagonyDefaultTaxRateCode: '',
+          eparagonyStatusPollTimeoutMs: '',
+          eparagonyFiscalDeviceUniqueNumber: '',
+          eparagonyApiBaseUrl: '',
+          eparagonyAuthBaseUrl: '',
+        },
+      );
+
+      expect(cleared).toEqual({
+        print: null,
+        paymentForm: null,
+        paymentName: null,
+        defaultTaxRateCode: null,
+        statusPollTimeoutMs: null,
+        fiscalDeviceUniqueNumber: null,
+        apiBaseUrl: null,
+        authBaseUrl: null,
+      });
+      // `toEqual` above cannot tell an absent key from one holding `undefined`,
+      // and the whole defect is about a key being absent - so assert presence.
+      expect(Object.keys(cleared).sort()).toEqual([
+        'apiBaseUrl',
+        'authBaseUrl',
+        'defaultTaxRateCode',
+        'fiscalDeviceUniqueNumber',
+        'paymentForm',
+        'paymentName',
+        'print',
+        'statusPollTimeoutMs',
+      ]);
+    });
+
+    it('should round-trip a cleared field back to unset rather than to its old value', () => {
+      // The property the three-state print control is staked on: an explicit
+      // choice and an unset knob must round-trip APART.
+      const cleared = applyToConfig({ print: true }, { eparagonyPrint: '' });
+      expect(readConfigToForm(cleared).eparagonyPrint).toBe('');
     });
 
     it('should parse the poll timeout into a number', () => {
@@ -88,18 +215,42 @@ describe('eparagonyConnectionConfig', () => {
       });
     });
 
-    it('should delete rather than write NaN for a half-typed poll timeout', () => {
+    it('should clear rather than write NaN for a half-typed poll timeout', () => {
       // The schema reports the error; the config must stay a shape the backend
       // would accept if the operator saved mid-edit.
-      expect(applyToConfig({ statusPollTimeoutMs: 45000 }, { eparagonyStatusPollTimeoutMs: '-' }))
-        .toEqual({});
+      expect(
+        applyToConfig({ statusPollTimeoutMs: 45000 }, { eparagonyStatusPollTimeoutMs: '-' }),
+      ).toEqual({ statusPollTimeoutMs: null });
     });
 
-    it('should trim a text leaf and delete it when cleared', () => {
+    it('should clear rather than write a non-positive poll timeout the backend would refuse', () => {
+      for (const typed of ['0', '-5']) {
+        expect(applyToConfig({}, { eparagonyStatusPollTimeoutMs: typed })).toEqual({
+          statusPollTimeoutMs: null,
+        });
+      }
+    });
+
+    it('should keep a decimal poll timeout intact rather than silently truncating it', () => {
+      // `Number.parseInt('1000.5')` is 1000 and `parseInt('12abc')` is 12 - both
+      // would write a number the operator never typed. The backend accepts any
+      // positive finite number, so a decimal is preserved and a partial value is
+      // refused outright.
+      expect(applyToConfig({}, { eparagonyStatusPollTimeoutMs: '1000.5' })).toEqual({
+        statusPollTimeoutMs: 1000.5,
+      });
+      expect(applyToConfig({}, { eparagonyStatusPollTimeoutMs: '12abc' })).toEqual({
+        statusPollTimeoutMs: null,
+      });
+    });
+
+    it('should trim a text leaf and clear it to null when emptied', () => {
       expect(applyToConfig({}, { eparagonyPaymentName: '  Visa  ' })).toEqual({
         paymentName: 'Visa',
       });
-      expect(applyToConfig({ paymentName: 'Visa' }, { eparagonyPaymentName: '   ' })).toEqual({});
+      expect(applyToConfig({ paymentName: 'Visa' }, { eparagonyPaymentName: '   ' })).toEqual({
+        paymentName: null,
+      });
     });
 
     it('should preserve an unknown operator-authored key through a single-field patch', () => {
@@ -176,6 +327,15 @@ describe('eparagonyConnectionConfig', () => {
     it('should refuse a non-numeric or zero poll timeout', () => {
       expect(schemaShape.eparagonyStatusPollTimeoutMs?.safeParse('soon').success).toBe(false);
       expect(schemaShape.eparagonyStatusPollTimeoutMs?.safeParse('0').success).toBe(false);
+      expect(schemaShape.eparagonyStatusPollTimeoutMs?.safeParse('-5').success).toBe(false);
+    });
+
+    it('should accept a stored decimal poll timeout, which the backend treats as valid', () => {
+      // The resolver is FORM-WIDE, so an integer-only rule would let one legal
+      // persisted value (`statusPollTimeoutMs: 1000.5`, which the validator
+      // accepts) block every unrelated edit on the connection until the operator
+      // retyped a field they may never have set (#3268 review).
+      expect(schemaShape.eparagonyStatusPollTimeoutMs?.safeParse('1000.5').success).toBe(true);
     });
 
     it('should refuse a non-https host override', () => {

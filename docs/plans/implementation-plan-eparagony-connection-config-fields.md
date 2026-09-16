@@ -107,22 +107,26 @@ set* and *Don't print* produce the same receipt today — the mapper tests
 `plugins/infakt/components/infakt-structured-section.tsx` is the usage precedent.
 
 1. **Receipt** (open) — `print`, `paymentForm`, `paymentName`
-2. **Tax rate fallback** (collapsed) — `defaultTaxRateCode` + hazard infotip
+2. **Fallback tax rate** (collapsed) — `defaultTaxRateCode` + hazard infotip
 3. **Diagnostics and timing** (collapsed) — `statusPollTimeoutMs`, `fiscalDeviceUniqueNumber`
 4. **Testing overrides** (collapsed) — `apiBaseUrl`, `authBaseUrl`
 
 ### 3.3 The `defaultTaxRateCode` hazard infotip
 
-A local `EparagonyHazardInfotip` in the plugin, built on `shared/ui/popover` and reusing
-the shipped `.section-infotip` / `.infotip-popover` / `.infotip-def*` classes.
-**Click-to-open, not hover** — Radix `Tooltip` returns early on `pointerType === 'touch'`,
-so a hover-only explanation never reaches a phone (the reason
-`features/analytics/components/analytics-infotip.tsx` gives for the same choice).
+Shipped as the shared `Infotip` primitive at `shared/ui/infotip.tsx`, built on
+`shared/ui/popover` and reusing the shipped `.section-infotip` / `.infotip-popover` /
+`.infotip-def*` classes. **Click-to-open, not hover** — Radix `Tooltip` returns early on
+`pointerType === 'touch'`, so a hover-only explanation never reaches a phone (the reason
+`features/analytics/components/analytics-infotip.tsx` gave for the same choice, before
+this issue's review promoted it).
 
-It is a **local component, not an import from `features/analytics`**: a plugin reaching
-into another feature for a presentational helper is the wrong edge, and promoting the
-analytics one to `shared/ui` is a refactor this issue should not carry. Noted as the
-obvious follow-up once a third consumer appears.
+The plan below still says "a local component, not an import from `features/analytics`",
+which was this issue's original intent and did not hold up: the PR review (#3268)
+promoted the two into one shared primitive the first time a second consumer actually
+appeared, rather than deferring it as "the obvious follow-up" — `AnalyticsInfotip` is now
+a thin re-export of `Infotip` so neither surface owns a second copy of the popover markup,
+and the previously-unnamed `role="dialog"` needed fixing in exactly one place instead of
+two.
 
 Copy covers four points (§2 above supplies the verified facts): what the slot is, how it
 is supposed to work (fix the rate in the catalogue; empty means a rate-less line is
@@ -146,21 +150,39 @@ editor. Accepted to keep the form to the settings an operator actually changes.
 
 ## 4. Steps
 
-1. `apps/web/src/plugins/eparagony/eparagony-config.constants.ts` — mirrored vocabularies,
-   clamp bounds, human labels for the 10 payment forms and the 7 rate codes.
+1. `apps/web/src/plugins/eparagony/eparagony-config.types.ts` — mirrored vocabularies,
+   clamp bounds, human labels for the 10 payment forms and the 7 rate codes. Named
+   `.types.ts` rather than the originally-planned `.constants.ts`: the file follows the
+   documented `as const` + derived-union pattern this repo already names that way, and
+   `.constants.ts` would have been a new, single-use suffix.
 2. `apps/web/src/plugins/eparagony/eparagony-connection-config.ts` — `declare module`
    block, `schemaShape` (no stricter than the backend), `readConfigToForm`,
-   `applyToConfig`.
-3. `apps/web/src/plugins/eparagony/components/eparagony-hazard-infotip.tsx`.
+   `applyToConfig`. Every clear writes an explicit `null`, never a `delete` — the
+   pre-submit merge in `EditConnectionForm.onSubmit` (`{ ...fresh.config,
+   ...input.config }`) can only override a key present on the right side, so a deleted
+   key is silently restored from the refetch and the clear never persists.
+3. `apps/web/src/shared/ui/infotip.tsx` — the shared primitive (promoted from a
+   plugin-local component during review, see §3.3).
 4. `apps/web/src/plugins/eparagony/components/eparagony-structured-section.tsx` — four
-   groups, every input gated on `configIsParseable`.
+   groups, every input gated on `configIsParseable`. The paper-receipt radiogroup is
+   rendered as raw `.form-field` markup rather than through `FormField`, which clones an
+   `id` onto its single child and points a `<label htmlFor>` at it — `SegmentedControl`
+   spreads onto a non-labelable `<div role="radiogroup">`, so that association would
+   silently do nothing.
 5. `apps/web/src/plugins/eparagony/index.ts` — register both; correct the header docblock.
-6. `scripts/check-eparagony-config-mirror.mjs` + wire into `check:invariants`.
+6. `scripts/check-eparagony-config-mirror.mjs` + wire into `check:invariants`. Also
+   guards the default payment form, the `OL_TAX_RATE_STRICT_ENABLED` spelling quoted in
+   the infotip, and the wizard's separately-declared environment vocabulary.
 7. Tests:
    - `eparagony-connection-config.test.ts` — round-trip per field, unknown-key
-     preservation, `print` three-state, number conversion, delete-on-empty.
+     preservation, `print` three-state, number conversion, null-on-clear (not
+     delete-on-empty).
    - `eparagony-structured-section.test.tsx` — renders, disabled on unparseable JSON,
-     closed selects, three-state switch, infotip opens on click.
+     closed selects, three-state switch, infotip opens on click, unrecognised-value
+     warning, collapsed-group problem counts.
+   - `EditConnectionForm.test.tsx` — the eparagony counterpart of the #2016 `rateLimit`
+     regression test: a cleared field must persist `null` even though the pre-submit
+     refetch still returns the old value.
 
 ## 5. Validation
 

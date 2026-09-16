@@ -2,15 +2,17 @@
  * EparagonyStructuredSection tests (#3266)
  *
  * Renders the plugin-owned structured section the way EditConnectionForm does.
- * Pins the three things a regression would hide rather than break loudly: the
- * sync routing per field, the unparseable-JSON lock (an enabled control there
- * discards the edit silently), and the three-state print switch.
+ * Pins the things a regression would hide rather than break loudly: the sync
+ * routing per field, the unparseable-JSON lock (an enabled control there
+ * discards the edit silently), the three-state print switch, and — since the
+ * #3268 review — the accessibility wiring of the radiogroup, the collapsed
+ * groups' error reflection, and the unrecognised-stored-value warning.
  *
  * @module plugins/eparagony/components
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- test harness wraps RHF with a flexible form type */
-import type { ReactElement } from 'react';
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { useEffect, type ReactElement } from 'react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, sampleConnection } from '../../../test/test-utils';
@@ -30,15 +32,18 @@ interface HarnessProps {
   configIsParseable?: boolean;
   syncStructuredToJson?: (field: string, value: string) => void;
   defaultValues?: Record<string, unknown>;
+  errors?: Record<string, { type: string; message: string }>;
 }
 
 function Harness({
   configIsParseable = true,
   syncStructuredToJson = vi.fn(),
   defaultValues = {},
+  errors,
 }: HarnessProps): ReactElement {
   const form = useForm<any>({
     defaultValues: {
+      configText: '{}',
       eparagonyPrint: '',
       eparagonyPaymentForm: '',
       eparagonyPaymentName: '',
@@ -50,6 +55,19 @@ function Harness({
       ...defaultValues,
     },
   });
+  // `setError` synchronously (well, on the next tick) puts real entries into
+  // `formState.errors`, so the collapsed-group summaries can be asserted
+  // against a real RHF error state rather than a hand-stubbed one. Done in an
+  // effect, not during render, because `setError` schedules a state update.
+  useEffect(() => {
+    if (!errors) return;
+    for (const [field, error] of Object.entries(errors)) {
+      form.setError(field as never, error);
+    }
+    // Runs once per mount — `form` and `errors` are harness props that never
+    // change identity across a single test, so an empty dependency array is
+    // intentional rather than an omission.
+  }, []);
   return (
     <EparagonyStructuredSection
       connection={eparagonyConnection}
@@ -60,6 +78,13 @@ function Harness({
   );
 }
 
+/** Open a collapsed `<details>` group by its summary text. */
+function openGroup(labelStart: string): void {
+  const summary = screen.getByText(labelStart).closest('summary');
+  if (!summary) throw new Error(`No disclosure summary matching ${labelStart}`);
+  fireEvent.click(summary);
+}
+
 afterEach(cleanup);
 
 describe('EparagonyStructuredSection', () => {
@@ -68,6 +93,16 @@ describe('EparagonyStructuredSection', () => {
     expect(screen.getByRole('radiogroup', { name: 'Paper receipt' })).toBeInTheDocument();
     expect(screen.getByLabelText('Payment form on the receipt')).toBeInTheDocument();
     expect(screen.getByLabelText('Payment name')).toBeInTheDocument();
+  });
+
+  it('should wire the print radiogroup to its own description', () => {
+    // `SegmentedControl` spreads onto a `<div role="radiogroup">`, which is not
+    // a labelable element — so this group is deliberately NOT rendered through
+    // `FormField` (whose `<label htmlFor>` would silently associate with
+    // nothing). The name and description have to be asserted directly.
+    renderWithProviders(<Harness />);
+    const group = screen.getByRole('radiogroup', { name: 'Paper receipt' });
+    expect(group).toHaveAccessibleDescription(/produce a paper receipt/i);
   });
 
   it('should offer every vendor payment form plus a default option', () => {
@@ -118,21 +153,45 @@ describe('EparagonyStructuredSection', () => {
     }
   });
 
-  it('should summarise the fallback slot on the collapsed disclosure', () => {
+  it('should summarise the fallback slot on the collapsed disclosure, naming what a set slot does', () => {
     renderWithProviders(<Harness />);
-    expect(screen.getByText('Not set (recommended)')).toBeInTheDocument();
+    expect(screen.getByText('Not set — a line with no rate is refused')).toBeInTheDocument();
 
     cleanup();
     renderWithProviders(<Harness defaultValues={{ eparagonyDefaultTaxRateCode: 'B' }} />);
-    // Scoped to the summary: the same text is also an <option> inside the
-    // select this disclosure wraps.
+    // A bare "Slot B" is indistinguishable at a glance from the safe state; the
+    // summary says what having one set actually means.
     expect(
-      screen.getByText('Slot B', { selector: '.inline-disclosure__value' }),
+      screen.getByText('Slot B — used when a line has no rate', {
+        selector: '.inline-disclosure__value',
+      }),
     ).toBeInTheDocument();
   });
 
+  it('should name a problem count on a collapsed group so the operator knows which to open', async () => {
+    // Five of eight fields sit in a `<details>` that starts closed, and
+    // `FormErrorSummary` renders bare message strings with no field name and no
+    // anchor — so without this the operator gets a message at the top of the
+    // page and an apparently empty form below it.
+    renderWithProviders(
+      <Harness
+        errors={{
+          eparagonyApiBaseUrl: { type: 'custom', message: 'Must be a valid https:// URL.' },
+          eparagonyAuthBaseUrl: { type: 'custom', message: 'Must be a valid https:// URL.' },
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/2 problems to fix/)).toBeInTheDocument();
+    });
+  });
+
   it('should explain the fallback hazard on demand, including that it can fire by default', () => {
+    // The trigger lives inside a `<details>` that is closed by default. jsdom
+    // does not implement content-hiding, so clicking without opening the group
+    // would exercise something a real browser has collapsed.
     renderWithProviders(<Harness />);
+    openGroup('Fallback tax rate:');
     fireEvent.click(
       screen.getByRole('button', { name: 'What the fallback tax rate does, and why it is risky' }),
     );
@@ -142,9 +201,25 @@ describe('EparagonyStructuredSection', () => {
     ).toBeInTheDocument();
   });
 
+  it('should name the hazard popover, not just its trigger', () => {
+    // Radix renders `role="dialog"` on the popover content; an unnamed dialog
+    // is an axe `aria-dialog-name` failure.
+    renderWithProviders(<Harness />);
+    openGroup('Fallback tax rate:');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'What the fallback tax rate does, and why it is risky' }),
+    );
+    expect(
+      screen.getByRole('dialog', { name: 'What the fallback tax rate does, and why it is risky' }),
+    ).toBeInTheDocument();
+  });
+
   it('should sync the diagnostic and testing fields under their own names', () => {
     const sync = vi.fn();
     renderWithProviders(<Harness syncStructuredToJson={sync} />);
+
+    fireEvent.change(screen.getByLabelText('Fallback device slot'), { target: { value: 'B' } });
+    expect(sync).toHaveBeenCalledWith('eparagonyDefaultTaxRateCode', 'B');
 
     fireEvent.change(screen.getByLabelText('Device wait time (ms)'), {
       target: { value: '30000' },
@@ -171,19 +246,47 @@ describe('EparagonyStructuredSection', () => {
   });
 
   it('should keep the infotip out of the fallback select’s accessible name', () => {
-    // The infotip button sits next to the label. `FormField` renders the label
-    // as `<label htmlFor>`, and an accessible name is computed from that
-    // label's subtree — so a button placed inside it would fold its own
-    // `aria-label` into the select's name and leave the control announced as
-    // "Fallback device slot What the fallback tax rate does, and why it is
-    // risky". This pins the name to the field's own words.
+    // The infotip sits in the field's DESCRIPTION, not its label. `FormField`
+    // renders the label as `<label htmlFor>`, and a control's accessible name is
+    // computed from that label's subtree — so a button placed inside it would
+    // fold its own `aria-label` into the select's name and leave the control
+    // announced as "Fallback device slot What the fallback tax rate does, and
+    // why it is risky". Asserted as the computed NAME rather than via
+    // `getByLabelText`, which matches label text content and would pass either
+    // way for the wrong reason.
     renderWithProviders(<Harness />);
-    expect(screen.getByLabelText('Fallback device slot')).toBeInTheDocument();
+    expect(screen.getByLabelText('Fallback device slot')).toHaveAccessibleName(
+      'Fallback device slot',
+    );
   });
 
-  it('should not offer the tax rate slot table, which stays raw-JSON-only', () => {
+  it('should report a stored value outside the vocabulary rather than showing it as the default', () => {
+    // Narrowing an unrecognised value to `''` makes the select render it as
+    // "Use the default", which is a false statement about the operator's own
+    // data — and the 400 they get on save names a key the form shows as unset.
+    renderWithProviders(
+      <Harness defaultValues={{ configText: JSON.stringify({ paymentForm: 'Bitcoin' }) }} />,
+    );
+    expect(screen.getByText(/The saved value \(Bitcoin\) is not one eparagony\.pl accepts/)).toBeInTheDocument();
+  });
+
+  it('should not warn about a cleared or absent value', () => {
+    // `null` is the CLEARED state the apply path writes. Reporting it would put
+    // a warning on every field an operator has deliberately emptied.
+    renderWithProviders(
+      <Harness defaultValues={{ configText: JSON.stringify({ paymentForm: null }) }} />,
+    );
+    expect(screen.queryByText(/is not one eparagony\.pl accepts/)).not.toBeInTheDocument();
+  });
+
+  it('should not offer the tax rate slot table, but must say where it lives', () => {
+    // Contributing a structured section put the raw-JSON editor behind a toggle
+    // it was not behind before, and `taxRates` is the more dangerous of the two
+    // keys: left unset the adapter assumes the standard Polish slots, so a
+    // differently-programmed device registers real sales at the wrong rate.
     renderWithProviders(<Harness />);
     expect(screen.queryByLabelText(/slot a rate/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/tax rates/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Show raw config JSON/)).toBeInTheDocument();
   });
 });

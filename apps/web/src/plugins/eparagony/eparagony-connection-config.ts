@@ -10,13 +10,28 @@
  *   - `schemaShape` - the Zod fragment merged into the edit-connection schema.
  *     Deliberately no stricter than `EparagonyConnectionConfigShapeValidatorAdapter`
  *     (#2240): that validator puts no length bound on `paymentName` or
- *     `fiscalDeviceUniqueNumber` and no upper bound on `statusPollTimeoutMs`, so
+ *     `fiscalDeviceUniqueNumber`, no upper bound on `statusPollTimeoutMs`, and
+ *     accepts any positive finite number there rather than an integer - so
  *     neither does this. A form that refuses what the backend accepts is worse
  *     than one that lets the backend answer.
  *   - `readConfigToForm` - hydration, every leaf falling back to `''`.
  *   - `applyToConfig` - per-keystroke partial-patch assembly. Touches only the
  *     keys present on the patch, so untouched siblings and the operator's own
  *     unknown raw-JSON keys survive.
+ *
+ * CLEARING A FIELD WRITES AN EXPLICIT `null`, NEVER A DELETE (#3268 review).
+ * `EditConnectionForm.onSubmit` refetches the connection immediately before
+ * saving and merges `{ ...fresh.config, ...input.config }`. A shallow spread can
+ * only override a key PRESENT on the right side, so a deleted key is restored
+ * from that refetch and the clear silently does not persist - `true -> unset`
+ * reads back as `true`. That is the same failure the `rateLimit` (#2016),
+ * `stockPolicy` and `pricingRule` (#2610) clauses in `edit-connection.schema.ts`
+ * already write `null` to avoid, and it matters most on `defaultTaxRateCode`,
+ * whose own copy tells the operator to leave it empty. `null` is safe on every
+ * one of the eight keys: the backend validator guards each with
+ * `=== undefined || === null`, and every reader treats `null` exactly like
+ * absent (see `eparagony-config.types.ts`, where the eight are typed `| null`
+ * for that reason).
  *
  * `taxRates` is deliberately absent - see the plan's §3.5. It is the seller's
  * physical device programming rather than a product's VAT rate, and stays on the
@@ -36,7 +51,7 @@ import {
   EPARAGONY_PAYMENT_FORM_VALUES,
   EPARAGONY_PRINT_STATES,
   EPARAGONY_TAX_RATE_CODE_VALUES,
-} from './eparagony-config.constants';
+} from './eparagony-config.types';
 
 declare module '../../shared/plugins/plugin.types' {
   interface PluginEditConnectionFields {
@@ -65,12 +80,16 @@ declare module '../../shared/plugins/plugin.types' {
 }
 
 /**
- * Trim-and-bound a free-text leaf with NO maximum, matching the backend.
+ * Trim a free-text leaf with NO maximum, matching the backend.
+ *
+ * `z.string().trim()` already accepts `''`, so there is deliberately no
+ * `z.literal('')` arm here - unlike the two enum fields below, where the empty
+ * string is not a member of the vocabulary and the arm IS load-bearing.
  *
  * Written as a helper rather than inlined so the "no max here, on purpose"
  * decision has one place to be read and reversed.
  */
-const unboundedText = z.union([z.string().trim(), z.literal('')]).optional();
+const unboundedText = z.string().trim().optional();
 
 // The explicit annotation keeps TS's excess-property check live (the KSeF
 // precedent): an un-annotated const referenced at `schemaShape:` would silently
@@ -78,24 +97,32 @@ const unboundedText = z.union([z.string().trim(), z.literal('')]).optional();
 // `register()` path.
 const eparagonySchemaShape: ConnectionConfigContribution['schemaShape'] = {
   eparagonyPrint: z.enum(EPARAGONY_PRINT_STATES).optional(),
-  eparagonyPaymentForm: z
-    .union([z.enum(EPARAGONY_PAYMENT_FORM_VALUES), z.literal('')])
-    .optional(),
+  eparagonyPaymentForm: z.union([z.enum(EPARAGONY_PAYMENT_FORM_VALUES), z.literal('')]).optional(),
   eparagonyPaymentName: unboundedText,
   eparagonyDefaultTaxRateCode: z
     .union([z.enum(EPARAGONY_TAX_RATE_CODE_VALUES), z.literal('')])
     .optional(),
-  // Positive whole milliseconds, mirroring the backend's "positive number" rule.
+  // A positive number of milliseconds, mirroring the backend's "positive finite
+  // number" rule and nothing more.
+  //
   // No UPPER bound: the adapter clamps to 5-90 s rather than rejecting, so a
   // form maximum would refuse a value the backend accepts and would describe a
   // clamp as a validation error.
+  //
+  // A DECIMAL is accepted for a less obvious reason (#3268 review). The
+  // validator's rule is `typeof === 'number' && isFinite && > 0`, so
+  // `statusPollTimeoutMs: 1000.5` is a legal PERSISTED value, and this resolver
+  // is form-wide: an integer-only rule would let one such stored value block
+  // every other edit on the connection - a rename, a rate limit, a payment form
+  // - until the operator retyped a field they may never have set. That is a
+  // mirror stricter than the gate with page-wide blast radius.
   eparagonyStatusPollTimeoutMs: z
     .union([
       z
         .string()
         .trim()
-        .regex(/^\d+$/, 'Poll timeout must be a whole number of milliseconds.')
-        .refine((value) => Number.parseInt(value, 10) > 0, {
+        .regex(/^\d+(\.\d+)?$/, 'Poll timeout must be a number of milliseconds.')
+        .refine((value) => Number(value) > 0, {
           message: 'Poll timeout must be greater than zero.',
         }),
       z.literal(''),
@@ -116,15 +143,11 @@ const eparagonySchemaShape: ConnectionConfigContribution['schemaShape'] = {
  */
 function httpsUrlField(): z.ZodTypeAny {
   return z
-    .union([
-      z
-        .string()
-        .trim()
-        .refine((value) => value === '' || isHttpsUrl(value), {
-          message: 'Must be a valid https:// URL.',
-        }),
-      z.literal(''),
-    ])
+    .string()
+    .trim()
+    .refine((value) => value === '' || isHttpsUrl(value), {
+      message: 'Must be a valid https:// URL.',
+    })
     .optional();
 }
 
@@ -161,17 +184,46 @@ function readNumberAsString(config: Record<string, unknown>, key: string): strin
  * Read a closed-vocabulary leaf, narrowing to `''` when the stored value is not
  * one this build recognises - so an unknown value shows as unset rather than
  * being pre-selected into a `<select>` that cannot render it.
+ *
+ * Narrowing alone would still RENDER an unrecognised value as a known one (the
+ * "use the default" option), which is rule 1 of the style guide's unknown-value
+ * section: never render an unrecognised value as a known one.
+ * `readUnrecognisedEnumValue` below is the other half - the section surfaces the
+ * stored value in the field's description so the operator can find and remove
+ * it, rather than getting a 400 naming a key the form shows as unset.
  */
-function readEnum(
-  config: Record<string, unknown>,
-  key: string,
-  values: readonly string[],
-): string {
+function readEnum(config: Record<string, unknown>, key: string, values: readonly string[]): string {
   const value = config[key];
   return typeof value === 'string' && values.includes(value) ? value : '';
 }
 
-/** Set a trimmed string leaf, or delete the key when the operator cleared it. */
+/**
+ * The stored value of a closed-vocabulary leaf when this build does not
+ * recognise it, or `null` when there is nothing to report.
+ *
+ * `null` (the cleared state this file writes) and absent are both "nothing
+ * stored", never "an unrecognised value" - reporting them would put a warning on
+ * every unset field.
+ */
+export function readUnrecognisedEnumValue(
+  config: Record<string, unknown>,
+  key: string,
+  values: readonly string[],
+): string | null {
+  const value = config[key];
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string' && values.includes(value)) return null;
+  return typeof value === 'string' ? value : JSON.stringify(value);
+}
+
+/**
+ * Set a trimmed string leaf, or write an explicit `null` when the operator
+ * cleared it.
+ *
+ * `null` rather than `delete` for the pre-submit-merge reason in this file's
+ * header: a deleted key is restored from `onSubmit`'s refetch, so the clear
+ * would never reach the server.
+ */
 function applyTextLeaf(
   target: Record<string, unknown>,
   patch: Record<string, unknown>,
@@ -181,8 +233,7 @@ function applyTextLeaf(
   const raw = readOptionalConfigString(patch, formField);
   if (raw === undefined) return;
   const trimmed = raw.trim();
-  if (trimmed.length === 0) delete target[configKey];
-  else target[configKey] = trimmed;
+  target[configKey] = trimmed.length === 0 ? null : trimmed;
 }
 
 /**
@@ -204,30 +255,31 @@ function applyEparagonyConfig(
   if (print !== undefined) {
     if (print === 'true') next.print = true;
     else if (print === 'false') next.print = false;
-    else delete next.print;
+    else next.print = null;
   }
 
   const paymentForm = readOptionalConfigString(patch, 'eparagonyPaymentForm');
   if (paymentForm !== undefined) {
-    if (paymentForm.length === 0) delete next.paymentForm;
-    else next.paymentForm = paymentForm;
+    next.paymentForm = paymentForm.length === 0 ? null : paymentForm;
   }
 
   const defaultTaxRateCode = readOptionalConfigString(patch, 'eparagonyDefaultTaxRateCode');
   if (defaultTaxRateCode !== undefined) {
-    if (defaultTaxRateCode.length === 0) delete next.defaultTaxRateCode;
-    else next.defaultTaxRateCode = defaultTaxRateCode;
+    next.defaultTaxRateCode = defaultTaxRateCode.length === 0 ? null : defaultTaxRateCode;
   }
 
   const pollTimeout = readOptionalConfigString(patch, 'eparagonyStatusPollTimeoutMs');
   if (pollTimeout !== undefined) {
     const trimmed = pollTimeout.trim();
-    const parsed = Number.parseInt(trimmed, 10);
-    // A half-typed value (`''`, or a stray `-`) deletes rather than writing
-    // `NaN`: the schema reports the error, and the config must stay a shape the
-    // backend would accept if the operator saved mid-edit.
-    if (trimmed.length === 0 || !Number.isFinite(parsed)) delete next.statusPollTimeoutMs;
-    else next.statusPollTimeoutMs = parsed;
+    // `Number`, not `Number.parseInt`: parseInt reads `'1000.5'` as 1000 and
+    // `'12abc'` as 12, so a decimal or half-typed value would be silently
+    // TRUNCATED into the config rather than reported. `Number('')` is 0, which
+    // the `> 0` test rejects along with `'-5'` - the config must stay a shape
+    // the backend would accept if the operator saved mid-edit, and a
+    // non-positive value is one the validator refuses.
+    const parsed = Number(trimmed);
+    const usable = trimmed.length > 0 && Number.isFinite(parsed) && parsed > 0;
+    next.statusPollTimeoutMs = usable ? parsed : null;
   }
 
   applyTextLeaf(next, patch, 'eparagonyPaymentName', 'paymentName');

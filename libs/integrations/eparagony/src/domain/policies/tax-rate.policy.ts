@@ -79,7 +79,11 @@ export function resolveTaxRateTable(
 export function resolveTaxRateCode(
   neutralRate: string,
   table: EparagonyTaxRateTable,
-  fallback?: EparagonyTaxRateCode,
+  // `| null` because the connection form persists an explicit `null` for a
+  // CLEARED `defaultTaxRateCode` (#3268 review) - `fallback ?? null` below
+  // already treats it exactly like absent, which is the direction that keeps an
+  // un-rated line refused rather than guessed at.
+  fallback?: EparagonyTaxRateCode | null,
 ): EparagonyTaxRateCode | null {
   const raw = neutralRate.trim();
 

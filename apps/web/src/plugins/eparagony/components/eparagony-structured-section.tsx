@@ -13,7 +13,11 @@
  * `environment` and `posId` are NOT edited here - they belong to the guided
  * setup wizard. `taxRates` is deliberately absent and stays on the raw JSON
  * editor: it is the seller's physical device programming rather than a product's
- * VAT rate.
+ * VAT rate. Contributing a section also puts that editor behind the host's
+ * "Show raw config JSON" toggle, which it was not before (`hasStructuredInputs`
+ * in `EditConnectionForm`), so the fallback group SAYS where `taxRates` went -
+ * it is the more dangerous of the two keys, and leaving it one silent click
+ * further away would be the wrong trade (#3268 review).
  *
  * Every control is disabled while the raw JSON is unparseable, because the host
  * serializer early-returns in that state and an enabled control would silently
@@ -21,9 +25,11 @@
  *
  * @module plugins/eparagony/components
  */
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
+import { FieldError } from '../../../shared/ui/field-error';
 import { FormField } from '../../../shared/ui/form-field';
 import { InlineDisclosure } from '../../../shared/ui/inline-disclosure';
+import { Infotip } from '../../../shared/ui/infotip';
 import { Input } from '../../../shared/ui/input';
 import { SegmentedControl } from '../../../shared/ui/segmented-control';
 import { Select } from '../../../shared/ui/select';
@@ -38,9 +44,13 @@ import {
   EPARAGONY_TAX_RATE_CODE_VALUES,
   type EparagonyPaymentFormValue,
   type EparagonyPrintState,
-} from '../eparagony-config.constants';
-import { TAX_FALLBACK_FIELD_DESCRIPTION } from './eparagony-tax-fallback-copy';
-import { EparagonyTaxFallbackInfotip } from './eparagony-tax-fallback-infotip';
+} from '../eparagony-config.types';
+import { readUnrecognisedEnumValue } from '../eparagony-connection-config';
+import {
+  EPARAGONY_TAX_FALLBACK_HAZARD_NOTES,
+  TAX_FALLBACK_FIELD_DESCRIPTION,
+  TAX_FALLBACK_INFOTIP_LABEL,
+} from './eparagony-tax-fallback-copy';
 
 const PRINT_OPTIONS: readonly { value: EparagonyPrintState; label: string }[] = [
   { value: '', label: 'Not set' },
@@ -48,10 +58,66 @@ const PRINT_OPTIONS: readonly { value: EparagonyPrintState; label: string }[] = 
   { value: 'false', label: 'Do not print' },
 ];
 
+const PRINT_DESCRIPTION_ID = 'eparagonyPrint-description';
+const PRINT_ERROR_ID = 'eparagonyPrint-error';
+
 const MS_PER_SECOND = 1000;
 
 function seconds(ms: number): string {
   return `${ms / MS_PER_SECOND} s`;
+}
+
+/**
+ * Append a problem count to a collapsed group's summary.
+ *
+ * Five of the eight fields sit inside a native `<details>` that starts closed,
+ * and `FormErrorSummary` renders bare message strings with no field name and no
+ * anchor - so a bad value in a collapsed group produces a message at the top of
+ * the page and an apparently empty form below it (`docs/lessons.md`). Naming the
+ * count in the summary is what tells the operator which group to open. Opening
+ * the group automatically would need a controlled `InlineDisclosure`.
+ */
+function summarise(value: string, problems: number): string {
+  if (problems === 0) return value;
+  return `${value} — ${problems} problem${problems === 1 ? '' : 's'} to fix`;
+}
+
+/**
+ * The stored value of a closed-vocabulary key this build does not recognise.
+ *
+ * Read from the LIVE `configText` rather than `connection.config`, so the
+ * warning disappears the moment the operator picks a real value instead of
+ * standing until the page is reloaded. Unparseable JSON means there is nothing
+ * to report - the host already locks every control in that state.
+ */
+function useUnrecognisedValues(configText: string): {
+  paymentForm: string | null;
+  defaultTaxRateCode: string | null;
+} {
+  return useMemo(() => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(configText) as unknown;
+    } catch {
+      return { paymentForm: null, defaultTaxRateCode: null };
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return { paymentForm: null, defaultTaxRateCode: null };
+    }
+    const config = parsed as Record<string, unknown>;
+    return {
+      paymentForm: readUnrecognisedEnumValue(
+        config,
+        'paymentForm',
+        EPARAGONY_PAYMENT_FORM_VALUES,
+      ),
+      defaultTaxRateCode: readUnrecognisedEnumValue(
+        config,
+        'defaultTaxRateCode',
+        EPARAGONY_TAX_RATE_CODE_VALUES,
+      ),
+    };
+  }, [configText]);
 }
 
 export function EparagonyStructuredSection({
@@ -66,25 +132,55 @@ export function EparagonyStructuredSection({
   const apiBaseUrl = form.watch('eparagonyApiBaseUrl') ?? '';
   const authBaseUrl = form.watch('eparagonyAuthBaseUrl') ?? '';
 
-  const diagnosticsSummary =
-    pollTimeout === '' && deviceNumber === '' ? 'Defaults' : 'Customised';
-  const overridesSummary = apiBaseUrl === '' && authBaseUrl === '' ? 'None' : 'Custom hosts';
+  const unrecognised = useUnrecognisedValues(form.watch('configText') ?? '');
+
+  const errors = form.formState.errors;
+  const printError = errors.eparagonyPrint?.message;
+
+  const fallbackProblems = errors.eparagonyDefaultTaxRateCode ? 1 : 0;
+  const diagnosticsProblems =
+    (errors.eparagonyStatusPollTimeoutMs ? 1 : 0) +
+    (errors.eparagonyFiscalDeviceUniqueNumber ? 1 : 0);
+  const overrideProblems =
+    (errors.eparagonyApiBaseUrl ? 1 : 0) + (errors.eparagonyAuthBaseUrl ? 1 : 0);
+
+  const fallbackSummary =
+    taxSlot === ''
+      ? 'Not set — a line with no rate is refused'
+      : `Slot ${taxSlot} — used when a line has no rate`;
+  const diagnosticsSummary = pollTimeout === '' && deviceNumber === '' ? 'Defaults' : 'Customised';
+  const overridesSummary =
+    apiBaseUrl === '' && authBaseUrl === ''
+      ? 'Using the environment’s own hosts'
+      : 'Overriding the environment’s hosts';
 
   return (
     <>
-      <FormField
-        label="Paper receipt"
-        name="eparagonyPrint"
-        error={form.formState.errors.eparagonyPrint?.message}
-        description={
-          'Asks eparagony.pl’s print service to also produce a paper receipt. An online sale ' +
-          'has no counter and nobody waiting at one, so the default is no paper. “Not set” and ' +
-          '“Do not print” produce the same receipt — picking “Do not print” records that it was ' +
-          'a decision.'
-        }
-      >
+      {/*
+        Rendered as `.form-field` markup directly rather than through
+        `FormField`, which clones `id` onto its single child and points a
+        `<label htmlFor>` at it. `SegmentedControl` spreads onto a
+        `<div role="radiogroup">`, and a div is not a labelable element - the
+        `for` association silently does nothing, so clicking the visible label
+        moves no focus and the group ends up named twice (#3268 review). Both
+        shipped `SegmentedControl`-in-a-form precedents avoid `FormField` for
+        exactly this: `features/orders/components/generate-label-form.tsx` and
+        `features/returns/components/return-dispose-form.tsx`.
+      */}
+      <div className="form-field">
+        <span className="form-field__label" id="eparagonyPrint-label">
+          Paper receipt
+        </span>
+        <p className="form-field__description" id={PRINT_DESCRIPTION_ID}>
+          Asks eparagony.pl’s print service to also produce a paper receipt. An online sale has no
+          counter and nobody waiting at one, so the default is no paper. “Not set” and “Do not
+          print” produce the same receipt — picking “Do not print” records that it was a decision.
+        </p>
         <SegmentedControl
-          aria-label="Paper receipt"
+          aria-labelledby="eparagonyPrint-label"
+          aria-describedby={PRINT_DESCRIPTION_ID}
+          aria-invalid={printError ? true : undefined}
+          aria-errormessage={printError ? PRINT_ERROR_ID : undefined}
           value={printValue}
           options={PRINT_OPTIONS.map((option) => ({
             ...option,
@@ -95,19 +191,28 @@ export function EparagonyStructuredSection({
           }))}
           onChange={(value) => syncStructuredToJson('eparagonyPrint', value)}
         />
-      </FormField>
+        <FieldError id={PRINT_ERROR_ID} message={printError} />
+      </div>
 
       <FormField
         label="Payment form on the receipt"
         name="eparagonyPaymentForm"
-        error={form.formState.errors.eparagonyPaymentForm?.message}
-        description={`How the payment is described on the receipt. Only the label is configurable — the amount is always the sale total. Defaults to ${EPARAGONY_DEFAULT_PAYMENT_FORM}, the honest description of a prepaid online order.`}
+        error={errors.eparagonyPaymentForm?.message}
+        description={
+          unrecognised.paymentForm === null
+            ? `How the payment is described on the receipt. Only the label is configurable — the amount is always the sale total. Defaults to ${EPARAGONY_DEFAULT_PAYMENT_FORM}, the honest description of a prepaid online order.`
+            : // Never render an unrecognised stored value as a known one: the
+              // select can only show it as “use the default”, which is a false
+              // statement about the operator's own data, and the 400 they get
+              // on save names a key the form shows as unset (#3268 review).
+              `The saved value (${unrecognised.paymentForm}) is not one eparagony.pl accepts, so saving this connection will be refused until you pick one below.`
+        }
       >
         <Select
           value={form.watch('eparagonyPaymentForm') ?? ''}
           onChange={(event) => syncStructuredToJson('eparagonyPaymentForm', event.target.value)}
           disabled={!configIsParseable}
-          invalid={Boolean(form.formState.errors.eparagonyPaymentForm)}
+          invalid={Boolean(errors.eparagonyPaymentForm)}
         >
           <option value="">Use the default ({EPARAGONY_DEFAULT_PAYMENT_FORM})</option>
           {EPARAGONY_PAYMENT_FORM_VALUES.map((value: EparagonyPaymentFormValue) => (
@@ -121,7 +226,7 @@ export function EparagonyStructuredSection({
       <FormField
         label="Payment name"
         name="eparagonyPaymentName"
-        error={form.formState.errors.eparagonyPaymentName?.message}
+        error={errors.eparagonyPaymentName?.message}
         description="Optional free text describing the payment — a card scheme or payment provider, for example. Descriptive only."
       >
         <Input
@@ -130,18 +235,18 @@ export function EparagonyStructuredSection({
           placeholder="Visa"
           autoComplete="off"
           disabled={!configIsParseable}
-          invalid={Boolean(form.formState.errors.eparagonyPaymentName)}
+          invalid={Boolean(errors.eparagonyPaymentName)}
         />
       </FormField>
 
       <InlineDisclosure
         label="Fallback tax rate:"
-        value={taxSlot === '' ? 'Not set (recommended)' : `Slot ${taxSlot}`}
+        value={summarise(fallbackSummary, fallbackProblems)}
       >
         <FormField
           label="Fallback device slot"
           name="eparagonyDefaultTaxRateCode"
-          error={form.formState.errors.eparagonyDefaultTaxRateCode?.message}
+          error={errors.eparagonyDefaultTaxRateCode?.message}
           // The infotip belongs to the DESCRIPTION, not the label. `FormField`
           // renders the label as `<label htmlFor>`, and a control's accessible
           // name is computed from that label's subtree - a button placed there
@@ -151,7 +256,13 @@ export function EparagonyStructuredSection({
           // instead, which is also where an explanation belongs.
           description={
             <>
-              {TAX_FALLBACK_FIELD_DESCRIPTION} <EparagonyTaxFallbackInfotip />
+              {unrecognised.defaultTaxRateCode === null
+                ? TAX_FALLBACK_FIELD_DESCRIPTION
+                : `The saved value (${unrecognised.defaultTaxRateCode}) is not a slot this fiscal device exposes, so saving this connection will be refused until you pick one below.`}{' '}
+              <Infotip
+                ariaLabel={TAX_FALLBACK_INFOTIP_LABEL}
+                definitions={EPARAGONY_TAX_FALLBACK_HAZARD_NOTES}
+              />
             </>
           }
         >
@@ -161,7 +272,7 @@ export function EparagonyStructuredSection({
               syncStructuredToJson('eparagonyDefaultTaxRateCode', event.target.value)
             }
             disabled={!configIsParseable}
-            invalid={Boolean(form.formState.errors.eparagonyDefaultTaxRateCode)}
+            invalid={Boolean(errors.eparagonyDefaultTaxRateCode)}
           >
             <option value="">Not set — refuse a line with no rate (recommended)</option>
             {EPARAGONY_TAX_RATE_CODE_VALUES.map((code) => (
@@ -171,13 +282,30 @@ export function EparagonyStructuredSection({
             ))}
           </Select>
         </FormField>
+
+        {/*
+          What each slot letter MEANS on the seller's own device is the
+          `taxRates` table, which has no control here on purpose - it is device
+          programming, not a product's VAT rate. Naming it is not optional
+          politeness: left unconfigured the adapter assumes the standard Polish
+          layout, and a device programmed differently registers real sales under
+          the wrong rate with no error at all.
+        */}
+        <p className="form-field__description">
+          What each slot means on your device is the <code>taxRates</code> table, which has no
+          field here — it is device programming rather than a product’s VAT rate. Edit it under
+          “Show raw config JSON” below. Left unset, eparagony.pl assumes the standard Polish slots.
+        </p>
       </InlineDisclosure>
 
-      <InlineDisclosure label="Diagnostics and timing:" value={diagnosticsSummary}>
+      <InlineDisclosure
+        label="Diagnostics and timing:"
+        value={summarise(diagnosticsSummary, diagnosticsProblems)}
+      >
         <FormField
           label="Device wait time (ms)"
           name="eparagonyStatusPollTimeoutMs"
-          error={form.formState.errors.eparagonyStatusPollTimeoutMs?.message}
+          error={errors.eparagonyStatusPollTimeoutMs?.message}
           description={`How long to wait for the fiscal device to finish before the result is recorded as unknown. Defaults to ${seconds(EPARAGONY_POLL_TIMEOUT_DEFAULT_MS)}. Values outside ${seconds(EPARAGONY_POLL_TIMEOUT_MIN_MS)}–${seconds(EPARAGONY_POLL_TIMEOUT_MAX_MS)} are accepted and then brought into that range.`}
         >
           <Input
@@ -188,14 +316,14 @@ export function EparagonyStructuredSection({
             placeholder={String(EPARAGONY_POLL_TIMEOUT_DEFAULT_MS)}
             inputMode="numeric"
             disabled={!configIsParseable}
-            invalid={Boolean(form.formState.errors.eparagonyStatusPollTimeoutMs)}
+            invalid={Boolean(errors.eparagonyStatusPollTimeoutMs)}
           />
         </FormField>
 
         <FormField
           label="Fiscal device number"
           name="eparagonyFiscalDeviceUniqueNumber"
-          error={form.formState.errors.eparagonyFiscalDeviceUniqueNumber?.message}
+          error={errors.eparagonyFiscalDeviceUniqueNumber?.message}
           description="Diagnostic only. It is never sent on a receipt — eparagony.pl routes to the device itself. Filling it in lets “Test connection” also report whether the device has been seen alive."
         >
           <Input
@@ -206,16 +334,19 @@ export function EparagonyStructuredSection({
             placeholder="ABC123456890"
             autoComplete="off"
             disabled={!configIsParseable}
-            invalid={Boolean(form.formState.errors.eparagonyFiscalDeviceUniqueNumber)}
+            invalid={Boolean(errors.eparagonyFiscalDeviceUniqueNumber)}
           />
         </FormField>
       </InlineDisclosure>
 
-      <InlineDisclosure label="Testing overrides:" value={overridesSummary}>
+      <InlineDisclosure
+        label="Testing overrides:"
+        value={summarise(overridesSummary, overrideProblems)}
+      >
         <FormField
           label="API host"
           name="eparagonyApiBaseUrl"
-          error={form.formState.errors.eparagonyApiBaseUrl?.message}
+          error={errors.eparagonyApiBaseUrl?.message}
           description="For testing only. Leave empty so the environment chosen during setup decides the host. Must be https."
         >
           <Input
@@ -224,14 +355,14 @@ export function EparagonyStructuredSection({
             placeholder="https://sandbox.eparagony.pl"
             autoComplete="off"
             disabled={!configIsParseable}
-            invalid={Boolean(form.formState.errors.eparagonyApiBaseUrl)}
+            invalid={Boolean(errors.eparagonyApiBaseUrl)}
           />
         </FormField>
 
         <FormField
           label="Sign-in host"
           name="eparagonyAuthBaseUrl"
-          error={form.formState.errors.eparagonyAuthBaseUrl?.message}
+          error={errors.eparagonyAuthBaseUrl?.message}
           description="For testing only. Leave empty so the environment chosen during setup decides the host. Must be https."
         >
           <Input
@@ -240,7 +371,7 @@ export function EparagonyStructuredSection({
             placeholder="https://login.sandbox.eparagony.pl"
             autoComplete="off"
             disabled={!configIsParseable}
-            invalid={Boolean(form.formState.errors.eparagonyAuthBaseUrl)}
+            invalid={Boolean(errors.eparagonyAuthBaseUrl)}
           />
         </FormField>
       </InlineDisclosure>

@@ -16,7 +16,17 @@
  *   - a rate slot added or removed desynchronises the fallback select;
  *   - the clamp bounds are STATED in the field's description, so a drifted copy
  *     makes that sentence a false claim about what the adapter does - the
- *     "reported drifts from enforced" failure #2229 names.
+ *     "reported drifts from enforced" failure #2229 names;
+ *   - the DEFAULT payment form is rendered to the operator twice, as the option
+ *     label "Use the default (Przelew)" and as "Defaults to Przelew". Change the
+ *     mapper's default and an unguarded mirror would keep asserting the old word
+ *     about a label stamped on a fiscal receipt (#3268 review);
+ *   - `OL_TAX_RATE_STRICT_ENABLED` is NAMED in the tax-fallback infotip, and
+ *     core exports `TAX_RATE_STRICT_ENV_VAR` precisely "so the rollout runbook
+ *     and the code cannot drift on the spelling". A sentence naming a variable
+ *     that no longer switches anything is worse than no sentence;
+ *   - the wizard's `EparagonyEnvironmentValues` is a third copy of the same
+ *     vocabulary and was previously unguarded.
  *
  * Both sides are parsed TEXTUALLY so this stays a zero-dependency
  * `check:invariants` step like its siblings. Run with `--self-check` to
@@ -32,7 +42,13 @@ const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 const BACKEND_TYPES = 'libs/integrations/eparagony/src/domain/types/eparagony-config.types.ts';
 const BACKEND_ADAPTER =
   'libs/integrations/eparagony/src/infrastructure/adapters/eparagony-fiscalization.adapter.ts';
-const FRONTEND = 'apps/web/src/plugins/eparagony/eparagony-config.constants.ts';
+const BACKEND_MAPPER =
+  'libs/integrations/eparagony/src/infrastructure/adapters/eparagony-document.mapper.ts';
+const CORE_TAX_ENFORCEMENT =
+  'libs/core/src/sales-documents/domain/types/tax-rate-enforcement.types.ts';
+const FRONTEND = 'apps/web/src/plugins/eparagony/eparagony-config.types.ts';
+const FRONTEND_COPY = 'apps/web/src/plugins/eparagony/components/eparagony-tax-fallback-copy.ts';
+const FRONTEND_WIZARD = 'apps/web/src/features/connections/components/eparagony-setup.schema.ts';
 
 /**
  * Extract the string members of a `const <name> = [ ... ] as const;` array.
@@ -51,12 +67,41 @@ export function parseStringArrayConst(source, name) {
 /**
  * Extract a numeric `const <name> = 12_345;` value, tolerating the underscore
  * separators both sides use.
+ *
+ * Anchored on `const` and TERMINATED by `;`, following
+ * `check-price-override-bound-mirror.mjs`. Unanchored and unterminated, this
+ * read `= 90_000 - 5_000` as `90000` and passed a wrong mirror green (#3268
+ * review); the self-check below pins that case.
  */
 export function parseNumericConst(source, name) {
-  const match = source.match(new RegExp(`\\b${name}\\s*(?::[^=]+)?=\\s*([0-9_]+)`));
+  const match = new RegExp(`(?:export\\s+)?const\\s+${name}\\s*(?::[^=]+)?=\\s*([0-9_]+)\\s*;`).exec(
+    source,
+  );
   if (!match) return null;
   const parsed = Number.parseInt(match[1].replace(/_/g, ''), 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Extract a single-quoted `const <name> = 'value';` string value.
+ *
+ * Same anchoring rule as `parseNumericConst`, and the same `null`-means-failure
+ * contract as `parseStringArrayConst`: a renamed constant must read as drift
+ * rather than as "nothing to compare".
+ */
+export function parseStringConst(source, name) {
+  const match = new RegExp(
+    `(?:export\\s+)?const\\s+${name}\\s*(?::[^=]+)?=\\s*['"]([^'"]*)['"]\\s*;`,
+  ).exec(source);
+  return match ? match[1] : null;
+}
+
+/** Compare two strings, reporting a readable difference. */
+export function diffStrings(label, backend, frontend) {
+  if (backend === null) return `${label}: could not be parsed from the backend source`;
+  if (frontend === null) return `${label}: could not be parsed from the frontend mirror`;
+  if (backend === frontend) return null;
+  return `${label} drifted. backend: ${backend}, frontend: ${frontend}`;
 }
 
 /** Compare two ordered lists, reporting the first difference in a readable form. */
@@ -82,11 +127,18 @@ export function diffNumbers(label, backend, frontend) {
 }
 
 async function run() {
-  const [types, adapter, frontend] = await Promise.all([
-    readFile(join(ROOT, BACKEND_TYPES), 'utf8'),
-    readFile(join(ROOT, BACKEND_ADAPTER), 'utf8'),
-    readFile(join(ROOT, FRONTEND), 'utf8'),
-  ]);
+  const [types, adapter, mapper, taxEnforcement, frontend, frontendCopy, frontendWizard] =
+    await Promise.all(
+      [
+        BACKEND_TYPES,
+        BACKEND_ADAPTER,
+        BACKEND_MAPPER,
+        CORE_TAX_ENFORCEMENT,
+        FRONTEND,
+        FRONTEND_COPY,
+        FRONTEND_WIZARD,
+      ].map((path) => readFile(join(ROOT, path), 'utf8')),
+    );
 
   const failures = [
     diffLists(
@@ -114,6 +166,21 @@ async function run() {
       parseNumericConst(adapter, 'DEFAULT_STATUS_POLL_TIMEOUT_MS'),
       parseNumericConst(frontend, 'EPARAGONY_POLL_TIMEOUT_DEFAULT_MS')
     ),
+    diffStrings(
+      'Default payment form',
+      parseStringConst(mapper, 'DEFAULT_PAYMENT_FORM'),
+      parseStringConst(frontend, 'EPARAGONY_DEFAULT_PAYMENT_FORM')
+    ),
+    diffStrings(
+      'Tax-rate strict env var',
+      parseStringConst(taxEnforcement, 'TAX_RATE_STRICT_ENV_VAR'),
+      parseStringConst(frontendCopy, 'TAX_RATE_STRICT_ENV_VAR')
+    ),
+    diffLists(
+      'Environment vocabulary',
+      parseStringArrayConst(types, 'EparagonyEnvironmentValues'),
+      parseStringArrayConst(frontendWizard, 'EparagonyEnvironmentValues')
+    ),
   ].filter(Boolean);
 
   if (failures.length > 0) {
@@ -121,7 +188,11 @@ async function run() {
     for (const failure of failures) console.error(`  ${failure}\n`);
     console.error(`  backend : ${BACKEND_TYPES}`);
     console.error(`            ${BACKEND_ADAPTER}`);
+    console.error(`            ${BACKEND_MAPPER}`);
+    console.error(`            ${CORE_TAX_ENFORCEMENT}`);
     console.error(`  frontend: ${FRONTEND}`);
+    console.error(`            ${FRONTEND_COPY}`);
+    console.error(`            ${FRONTEND_WIZARD}`);
     process.exit(1);
   }
 }
@@ -153,8 +224,37 @@ function selfCheck() {
     'parseNumericConst should strip underscore separators'
   );
   expect(
+    parseNumericConst('export const N: number = 90_000;', 'N') === 90000,
+    'parseNumericConst should skip an export keyword and a type annotation'
+  );
+  expect(
     parseNumericConst('const N = 5000;', 'Other') === null,
     'parseNumericConst should return null for an absent declaration'
+  );
+  expect(
+    parseNumericConst('const N = 90_000 - 5_000;', 'N') === null,
+    'parseNumericConst should refuse an expression rather than read its first operand'
+  );
+  expect(
+    parseNumericConst('const OTHER_N = 1;', 'N') === null,
+    'parseNumericConst should not match a constant whose name merely ends with the one asked for'
+  );
+
+  expect(
+    parseStringConst("const S = 'Przelew';", 'S') === 'Przelew',
+    'parseStringConst should read a single-quoted value'
+  );
+  expect(
+    parseStringConst('export const S: Form = "Karta";', 'S') === 'Karta',
+    'parseStringConst should skip an export keyword and a type annotation'
+  );
+  expect(
+    parseStringConst("const S = 'x';", 'Missing') === null,
+    'parseStringConst should return null for an absent declaration'
+  );
+  expect(
+    parseStringConst("const S = prefix + 'x';", 'S') === null,
+    'parseStringConst should refuse a concatenation rather than read one operand'
   );
 
   expect(diffLists('L', ['A'], ['A']) === null, 'diffLists should pass identical lists');
@@ -167,6 +267,11 @@ function selfCheck() {
   expect(diffNumbers('N', 1, 1) === null, 'diffNumbers should pass identical values');
   expect(diffNumbers('N', 1, 2) !== null, 'diffNumbers should fail different values');
   expect(diffNumbers('N', null, 1) !== null, 'diffNumbers should fail an unparseable backend');
+
+  expect(diffStrings('S', 'a', 'a') === null, 'diffStrings should pass identical values');
+  expect(diffStrings('S', 'a', 'b') !== null, 'diffStrings should fail different values');
+  expect(diffStrings('S', null, 'a') !== null, 'diffStrings should fail an unparseable backend');
+  expect(diffStrings('S', 'a', null) !== null, 'diffStrings should fail an unparseable mirror');
 
   if (problems.length > 0) {
     console.error('check-eparagony-config-mirror self-check failed:');

@@ -16,14 +16,23 @@
  * reassure an operator about a receipt that really can go out at a rate nobody
  * confirmed.
  *
+ * The environment variable is quoted from `TAX_RATE_STRICT_ENV_VAR`
+ * (`libs/core/src/sales-documents/domain/types/tax-rate-enforcement.types.ts`),
+ * which exists "so the rollout runbook and the code cannot drift on the
+ * spelling". `apps/web` cannot import it (#591), so the copy below is a mirror
+ * and `scripts/check-eparagony-config-mirror.mjs` fails the build if the two
+ * spellings diverge - a sentence naming a variable that no longer switches
+ * anything is worse than no sentence.
+ *
  * @module plugins/eparagony/components
  */
+import type { InfotipDefinition } from '../../../shared/ui/infotip';
 
-export interface EparagonyHazardNote {
-  term: string;
-  text: string;
-  caveat?: string;
-}
+/**
+ * The env var whose absence makes this fallback reachable. Mirrored, guarded -
+ * see the module docblock.
+ */
+export const TAX_RATE_STRICT_ENV_VAR = 'OL_TAX_RATE_STRICT_ENABLED';
 
 export const TAX_FALLBACK_INFOTIP_LABEL = 'What the fallback tax rate does, and why it is risky';
 
@@ -32,7 +41,7 @@ export const TAX_FALLBACK_FIELD_DESCRIPTION =
   'Leave this empty. It is only used for an order line that arrives with no tax rate at ' +
   'all, and an empty setting makes OpenLinker refuse such a line instead of guessing.';
 
-export const EPARAGONY_TAX_FALLBACK_HAZARD_NOTES: readonly EparagonyHazardNote[] = [
+export const EPARAGONY_TAX_FALLBACK_HAZARD_NOTES: readonly InfotipDefinition[] = [
   {
     term: 'What this is',
     text:
@@ -60,7 +69,7 @@ export const EPARAGONY_TAX_FALLBACK_HAZARD_NOTES: readonly EparagonyHazardNote[]
     text:
       'Only for a line with a blank rate. OpenLinker can refuse those before this connection ' +
       'ever sees them, but that strict check is off unless someone switched it on ' +
-      '(OL_TAX_RATE_STRICT_ENABLED).',
+      `(${TAX_RATE_STRICT_ENV_VAR}).`,
     caveat: 'On a standard installation it is off, so this fallback can fire.',
   },
 ];

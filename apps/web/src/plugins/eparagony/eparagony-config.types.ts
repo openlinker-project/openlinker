@@ -1,8 +1,9 @@
 /**
- * eparagony.pl Connection-Config Constants (#3266)
+ * eparagony.pl Connection-Config Types (#3266)
  *
  * The frontend's copy of the vendor vocabularies and adapter bounds the
- * connection form needs. `apps/web` cannot import
+ * connection form needs, as `as const` arrays plus the unions derived from them
+ * - the documented pattern for a closed vocabulary. `apps/web` cannot import
  * `@openlinker/integrations-eparagony` (#591), so these are a mirror, and a
  * drifted mirror is not cosmetic here: the payment-form select would offer a
  * value the backend rejects, and the poll-timeout copy would state a clamp the
