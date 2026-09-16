@@ -9,6 +9,7 @@ import {
 } from '../../test/test-utils';
 import { ApiError } from '../../shared/api/api-error';
 import {
+  MATCH_RETURN_DIALOG_COPY,
   RETURN_ACTIVITY_COPY,
   RETURN_ORPHAN_BANNER_COPY,
   ReturnDetailUnreadableError,
@@ -223,6 +224,18 @@ describe('ReturnDetailPage', () => {
       ).toBeInTheDocument();
       // Visible AND disabled — a missing button is indistinguishable from a bug.
       expect(screen.getByRole('button', { name: 'Decline return' })).toBeDisabled();
+    });
+
+    it('should open the match dialog from the orphan banner (#3078/#3085)', async () => {
+      setup({
+        detail: makeDetail({ bucket: 'orphan', internalOrderId: null }),
+      });
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: RETURN_ORPHAN_BANNER_COPY.matchAction }),
+      );
+
+      expect(await screen.findByText(MATCH_RETURN_DIALOG_COPY.title)).toBeInTheDocument();
     });
   });
 

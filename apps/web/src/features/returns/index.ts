@@ -109,8 +109,10 @@ export { useRecordReturnMutation } from './hooks/use-record-return-mutation';
 export { OrphanReturnsWorklist } from './components/orphan-returns-worklist';
 export { ORPHAN_RETURNS_WORKLIST_COPY } from './lib/orphan-returns-worklist.copy';
 // The match-to-order dialog (#3082) — the destination the worklist's
-// "Match to an order" link routes toward, once mounted on the detail page.
+// "Match to an order" link routes toward. Mounted on the return detail
+// page's orphan banner (#3085).
 export { MatchReturnDialog } from './components/match-return-dialog';
+export { MATCH_RETURN_DIALOG_COPY } from './lib/match-return-dialog.copy';
 // The approve dialog (#3083) — mounted inline by the worklist itself, since
 // this write carries no form to defer to a detail-page destination for.
 export { AuthorizeReturnDialog } from './components/authorize-return-dialog';
