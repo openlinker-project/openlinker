@@ -11,6 +11,17 @@
  * registered, and by then the operator is looking at an unregistered order
  * rather than a form error.
  *
+ * THE INVOICE KEYS ARE HELD TO THE SAME RULE (#3192), and for a sharper reason:
+ * `merchantTIN`, `merchantName` and `merchantAddress` are transmitted onto a
+ * fiscal document AND persisted into the issued-document snapshot core keeps, so
+ * a half-filled `merchantAddress` would put `"undefined undefined"` on a stored
+ * seller party, and a STRING `"true"` for `eInvoicingHubEnabled` fails the
+ * adapter's `=== true` test and silently issues outside the national hub - no
+ * error, and a legally different document. `config` is JSONB, so the TypeScript
+ * type is no runtime guarantee, and the connection form emits only
+ * `{environment, posId}` - the raw JSON editor is the operator's route to every
+ * key below, which is exactly the bypass #2610 requires a server-side check for.
+ *
  * Hand-rolled (no class-validator), matching the Infakt/KSeF precedent, and
  * never echoing a submitted value back in an error message.
  *
@@ -103,6 +114,24 @@ export class EparagonyConnectionConfigShapeValidatorAdapter
       issues.push({ path: 'fiscalDeviceUniqueNumber', message: 'must be a non-empty string' });
     }
 
+    this.validateNonEmptyString(config.merchantTIN, 'merchantTIN', issues);
+    this.validateNonEmptyString(config.merchantName, 'merchantName', issues);
+    this.validateSellerAddress(config.merchantAddress, issues);
+
+    if (
+      config.eInvoicingHubEnabled !== undefined &&
+      config.eInvoicingHubEnabled !== null &&
+      typeof config.eInvoicingHubEnabled !== 'boolean'
+    ) {
+      // Not coerced. A string "true" here would read as false at the adapter's
+      // `=== true` test and issue OUTSIDE the hub, which is a different document
+      // with no error anywhere - so the operator is told rather than guessed for.
+      issues.push({
+        path: 'eInvoicingHubEnabled',
+        message: 'must be a boolean (true or false, not the strings "true" / "false")',
+      });
+    }
+
     this.validateUrl(config.apiBaseUrl, 'apiBaseUrl', issues);
     this.validateUrl(config.authBaseUrl, 'authBaseUrl', issues);
 
@@ -135,6 +164,44 @@ export class EparagonyConnectionConfigShapeValidatorAdapter
       if (typeof value !== 'string' || value.trim().length === 0) {
         issues.push({ path: `taxRates.${key}`, message: 'must be a non-empty string' });
       }
+    }
+  }
+
+  /**
+   * A seller party the vendor stamps on the document and core persists.
+   *
+   * Every part is checked individually rather than the object as a whole,
+   * because a PARTIAL address is the dangerous shape: the invoice mapper renders
+   * `line1` as `` `${street} ${number}` ``, so a missing half becomes the literal
+   * `"undefined undefined"` inside the issued-document snapshot, where an
+   * operator reads it as the seller's real address.
+   */
+  private validateSellerAddress(raw: unknown, issues: FlatValidationIssue[]): void {
+    if (raw === undefined || raw === null) return;
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      issues.push({ path: 'merchantAddress', message: 'must be an object' });
+      return;
+    }
+    const address = raw as Record<string, unknown>;
+    for (const field of ['street', 'number', 'postalCode', 'city', 'country'] as const) {
+      const value = address[field];
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        issues.push({
+          path: `merchantAddress.${field}`,
+          message: 'must be a non-empty string',
+        });
+      }
+    }
+    // The one genuinely optional part - a seller with no apartment is ordinary -
+    // but an empty one would be transmitted as a blank line on the document.
+    this.validateNonEmptyString(address.apartment, 'merchantAddress.apartment', issues);
+  }
+
+  /** An optional string that is transmitted verbatim, so blanks are refused too. */
+  private validateNonEmptyString(raw: unknown, path: string, issues: FlatValidationIssue[]): void {
+    if (raw === undefined || raw === null) return;
+    if (typeof raw !== 'string' || raw.trim().length === 0) {
+      issues.push({ path, message: 'must be a non-empty string' });
     }
   }
 

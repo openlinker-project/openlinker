@@ -75,7 +75,7 @@ export class EparagonyApiError extends Error {
     // extracted - a generic `JSON.stringify(err)` upstream must never be able
     // to leak it back out.
     responseBody: EparagonyErrorBody | string | null,
-    options?: { failureMode?: EparagonyFailureMode; reason?: string }
+    options?: { failureMode?: EparagonyFailureMode; reason?: string },
   ) {
     super(message);
     this.name = 'EparagonyApiError';
@@ -83,7 +83,7 @@ export class EparagonyApiError extends Error {
     this.failureMode = options?.failureMode ?? defaultFailureMode(statusCode, this.errorCode);
     this.reason = (options?.reason ?? defaultReason(statusCode, this.errorCode)).slice(
       0,
-      MAX_REASON_LENGTH
+      MAX_REASON_LENGTH,
     );
     Error.captureStackTrace(this, this.constructor);
   }
@@ -105,7 +105,10 @@ export class EparagonyApiError extends Error {
 /** 4xx codes that mean "may have been seen", never a clean refusal. */
 const AMBIGUOUS_CLIENT_ERROR_CODES: readonly number[] = [408, 409, 422, 425, 429];
 
-function defaultFailureMode(statusCode: number, errorCode: number | null): EparagonyFailureMode {
+function defaultFailureMode(
+  statusCode: number,
+  errorCode: number | null,
+): EparagonyFailureMode {
   const isClientError = statusCode >= 400 && statusCode < 500;
   if (!isClientError) {
     return 'in-doubt';
