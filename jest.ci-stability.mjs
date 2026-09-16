@@ -36,7 +36,30 @@ import { createRequire } from 'node:module';
 
 const { resolveUnitTestWorkers } = createRequire(import.meta.url)('./jest.unit-workers.cjs');
 
+/**
+ * The one measured departure from the shared unit-tier count (#3271).
+ *
+ * The shared default is 2, because this job runs four packages at once and the
+ * container allows about 8 CPUs - see `jest.unit-workers.cjs`. These two
+ * packages measured better than that on the real runner, twice the length of
+ * anything else in the tier and almost entirely CPU-bound:
+ *
+ *   prestashop  297.6 s -> 198.1 s
+ *   allegro     151.4 s ->  81.7 s
+ *
+ * That figure is from the configuration this branch actually shipped green at
+ * 3m59s, which had these two at 8 and `libs/core` / `apps/api` / `apps/worker`
+ * at 2. Lowering it to the shared default would be an unmeasured change riding
+ * along with a measured one, which is the exact mistake `docs/lessons.md`
+ * records from the '512MB' episode.
+ *
+ * It is passed as an argument rather than written as a bare number so the
+ * departure is visible to anyone reading the resolver, and so the local rule,
+ * the override env var and the ceiling still come from one place.
+ */
+const PRESTASHOP_ALLEGRO_CI_WORKERS = 8;
+
 export const ciStabilityConfig = {
-  maxWorkers: resolveUnitTestWorkers(),
+  maxWorkers: resolveUnitTestWorkers(PRESTASHOP_ALLEGRO_CI_WORKERS),
   workerIdleMemoryLimit: '512MB',
 };

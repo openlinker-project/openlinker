@@ -12,12 +12,44 @@ import { createOgMetaPlugin } from './src/build-time/og-meta';
 // and only one of those makes a cwd-relative env lookup find `.env*`.
 const CONFIG_DIR = fileURLToPath(new URL('.', import.meta.url));
 
-// The unit-tier worker count, from the one resolver at the repo root (#3271),
-// so this package cannot drift from the five jest packages beside it. Required
-// rather than imported: it is CJS, and this file is ESM TypeScript.
-const { resolveUnitTestWorkers } = createRequire(import.meta.url)(
-  '../../jest.unit-workers.cjs',
-) as { resolveUnitTestWorkers: () => number };
+/**
+ * The measured departure from the shared unit-tier count, for this package.
+ *
+ * The shared default is 2 because the backend job runs four packages against a
+ * container that allows about 8 CPUs. This package does not run in that job at
+ * all - since #3271 it has `Test (web)` to itself, so the whole budget is its
+ * own and the arithmetic that produces 2 does not apply.
+ *
+ * Measured on the same runner, same commit shape, only this number changed:
+ *
+ *   8 workers   2m59s
+ *   6 workers   3m16s
+ *
+ * so the shared number is not merely inapplicable here, it is slower.
+ */
+const WEB_CI_WORKERS = 8;
+
+/**
+ * The unit-tier worker count, from the one resolver at the repo root (#3271),
+ * so this package cannot drift from the five jest packages beside it.
+ *
+ * Resolved LAZILY, and that is not a style choice. This file is the
+ * PRODUCTION build config as well as the test config, and the production image
+ * copies a curated file list that deliberately does not include a test-only
+ * helper from the repo root. A top-level require here took the Docker build
+ * down with `Cannot find module '../../jest.unit-workers.cjs'` before Vite had
+ * read a single line of application code - a test setting breaking a shipped
+ * artefact, which is the wrong direction for a dependency to run.
+ *
+ * Required rather than imported because the resolver is CJS and this file is
+ * ESM TypeScript.
+ */
+function unitTestWorkers(): number {
+  const { resolveUnitTestWorkers } = createRequire(import.meta.url)(
+    '../../jest.unit-workers.cjs',
+  ) as { resolveUnitTestWorkers: (measuredCiDefault?: number) => number };
+  return resolveUnitTestWorkers(WEB_CI_WORKERS);
+}
 
 export default defineConfig(({ mode }) => {
   // #2174: every OG token is resolved HERE rather than through Vite's native
@@ -82,7 +114,7 @@ export default defineConfig(({ mode }) => {
       // `maxWorkers` is top-level: vitest 4 removed `poolOptions`, and the old
       // nesting is accepted-and-ignored with only a DEPRECATED line in the
       // output, so writing it that way caps nothing while looking like it does.
-      ...(process.env.CI ? { maxWorkers: resolveUnitTestWorkers() } : {}),
+      ...(process.env.CI ? { maxWorkers: unitTestWorkers() } : {}),
       setupFiles: './src/test/setup.ts',
       css: true,
       coverage: {
