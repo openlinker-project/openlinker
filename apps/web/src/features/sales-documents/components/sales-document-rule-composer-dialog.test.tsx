@@ -21,7 +21,12 @@
  *     tax ID it always reaches the adapter, so no property exists to gate.
  *  4. Save is refused until a destination connection is picked.
  *  5. Overlap (#3190): `rule-conflict` and `rule-no-conflict` are mutually
- *     exclusive, and the save is inert while a collision stands.
+ *     exclusive, and the save is inert while a collision stands - AND while
+ *     the check has not answered about the draft on screen, which is the state
+ *     the shipped version could not tell from a clean verdict. Those cases
+ *     resolve the mock by hand rather than `await`ing a banner, because every
+ *     `findByTestId` first settles the query and so can only ever observe the
+ *     at-rest state.
  *  6. The readback (#3189) states the assembled rule and never fills a gap in
  *     - the mockup's primary assertion target. The sentence itself is pinned
  *     by `describe-sales-document-rule-draft.test.ts`; what is asserted HERE
@@ -120,6 +125,104 @@ describe('SalesDocumentRuleComposerDialog', () => {
       expect(undecided).toHaveTextContent('could not tell');
       expect(within(root).queryByTestId('rule-no-conflict')).not.toBeInTheDocument();
       expect(within(root).queryByTestId('rule-conflict')).not.toBeInTheDocument();
+    });
+
+    // IN FLIGHT. Every assertion above starts by awaiting a banner, which
+    // settles the query first - so none of them can see the window in which
+    // the check has been asked and not answered. That window is the one the
+    // shipped version rendered as "no conflict" with an ENABLED save, on every
+    // keystroke, with no network fault required.
+    it('withholds the save while the check is still running, and says so', async () => {
+      let resolveCheck: ((verdict: unknown) => void) | undefined;
+      renderComposer({
+        salesDocumentRules: {
+          checkRuleOverlap: vi.fn().mockImplementation(
+            () =>
+              new Promise((resolve) => {
+                resolveCheck = resolve;
+              })
+          ),
+        },
+      });
+      const root = await dialog();
+
+      const save = await within(root).findByTestId('rule-save');
+      expect(save).toBeDisabled();
+      expect(save).toHaveAttribute('data-overlap-state', 'pending');
+      expect(save).toHaveTextContent('Checking…');
+      expect(within(root).getByTestId('rule-save-hint')).toHaveTextContent('Checking this draft');
+      // The point of the test: silence here is not reassurance.
+      expect(within(root).queryByTestId('rule-no-conflict')).not.toBeInTheDocument();
+
+      resolveCheck?.({ overlapping: [], disjoint: [], undecided: [] });
+      await waitFor(() =>
+        expect(within(root).getByTestId('rule-save')).toHaveAttribute(
+          'data-overlap-state',
+          'known'
+        )
+      );
+    });
+
+    // A draft the server would 400 is never sent, and the save it would fail
+    // is never offered. Before this the gate tested non-emptiness, so typing
+    // `PLN` one character at a time sent `"P"` then `"PL"` and the first 400
+    // painted the "could not run the check" banner.
+    it('never asks about - or offers to save - a draft the server would refuse', async () => {
+      const user = userEvent.setup();
+      const apiClient = renderComposer();
+      const root = await dialog();
+      // The default draft (`buyerHasTaxId`) is itself checkable, so mounting
+      // already fires one request. Cleared here so what is asserted below is
+      // "changing to an unfinished condition sends no FURTHER request", not
+      // "no request is ever sent".
+      await waitFor(() => expect(apiClient.salesDocumentRules.checkRuleOverlap).toHaveBeenCalled());
+      vi.mocked(apiClient.salesDocumentRules.checkRuleOverlap).mockClear();
+
+      await user.selectOptions(
+        within(root).getByLabelText('Condition field'),
+        'orderTotalGross'
+      );
+      await user.type(within(root).getByLabelText('Order total amount'), '450');
+      await user.type(within(root).getByLabelText('Order total currency'), 'PL');
+
+      const save = within(root).getByTestId('rule-save');
+      expect(save).toBeDisabled();
+      expect(save).toHaveAttribute('data-overlap-state', 'incomplete');
+      expect(within(root).getByTestId('rule-save-hint')).toHaveTextContent('Finish every condition');
+      expect(apiClient.salesDocumentRules.checkRuleOverlap).not.toHaveBeenCalled();
+    });
+
+    // The detector's own comment says refusing a duplicate field "belongs in
+    // the composer", and nothing did it: such a rule saves happily and matches
+    // no order at all.
+    it('refuses a draft bounding the total in two currencies', async () => {
+      const user = userEvent.setup();
+      const apiClient = renderComposer();
+      const root = await dialog();
+
+      await user.selectOptions(
+        within(root).getByLabelText('Condition field'),
+        'orderTotalGross'
+      );
+      await user.type(within(root).getByLabelText('Order total amount'), '450');
+      await user.type(within(root).getByLabelText('Order total currency'), 'PLN');
+      // The single valid condition above IS checkable and fires once. The
+      // assertion below is about the SECOND condition making the pair
+      // uncheckable, not about whether anything was ever asked.
+      await waitFor(() => expect(apiClient.salesDocumentRules.checkRuleOverlap).toHaveBeenCalled());
+      vi.mocked(apiClient.salesDocumentRules.checkRuleOverlap).mockClear();
+
+      await user.click(within(root).getByRole('button', { name: '+ Add condition' }));
+      const fields = within(root).getAllByLabelText('Condition field');
+      await user.selectOptions(fields[1], 'orderTotalGross');
+      await user.type(within(root).getAllByLabelText('Order total amount')[1], '100');
+      await user.type(within(root).getAllByLabelText('Order total currency')[1], 'EUR');
+
+      expect(within(root).getByTestId('rule-save')).toBeDisabled();
+      expect(within(root).getByTestId('rule-save-hint')).toHaveTextContent(
+        'more than one currency'
+      );
+      expect(apiClient.salesDocumentRules.checkRuleOverlap).not.toHaveBeenCalled();
     });
 
     // The FOURTH state. `verdict` is `undefined` on a failed request and all

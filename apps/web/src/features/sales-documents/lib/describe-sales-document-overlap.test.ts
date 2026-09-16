@@ -8,8 +8,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  SALES_DOCUMENT_OVERLAP_CONSEQUENCE,
   describeSalesDocumentOverlapClear,
-  describeSalesDocumentOverlapConflict,
+  describeSalesDocumentOverlapConflictRival,
   describeSalesDocumentOverlapUndecided,
   type SalesDocumentOverlapRival,
 } from './describe-sales-document-overlap';
@@ -23,19 +24,25 @@ const rival: SalesDocumentOverlapRival = {
   documentKind: 'fiscal-receipt',
 };
 
-describe('describeSalesDocumentOverlapConflict', () => {
-  it('names the rival in the operator\'s own rule text and states the consequence', () => {
-    const sentence = describeSalesDocumentOverlapConflict(['rule-1'], [rival]);
+describe('describeSalesDocumentOverlapConflictRival', () => {
+  it('names the rival in the operator\'s own rule text', () => {
+    const sentence = describeSalesDocumentOverlapConflictRival(rival, 'rule-1');
 
     expect(sentence).toContain('customer has a tax ID and total < 450.00 PLN');
-    // The half an operator cannot infer: nothing wins, the order is held.
-    expect(sentence).toContain('hold the order instead of one winning');
   });
 
   it('falls back to the id when the rival is not among the loaded rules', () => {
     // The list read can legitimately be stale or still loading; a sentence
     // naming nothing at all would be worse than one naming an id.
-    expect(describeSalesDocumentOverlapConflict(['rule-9'], [])).toContain('rule rule-9');
+    expect(describeSalesDocumentOverlapConflictRival(undefined, 'rule-9')).toContain('rule rule-9');
+  });
+
+  // The half an operator cannot infer: nothing wins, the order is held. Stated
+  // once by the caller (the composer renders it beside every conflict list),
+  // never per rival - which is why it is its own exported constant rather than
+  // folded into the per-rival sentence above.
+  it('the consequence names what an operator cannot infer', () => {
+    expect(SALES_DOCUMENT_OVERLAP_CONSEQUENCE).toContain('hold the order instead of one winning');
   });
 });
 

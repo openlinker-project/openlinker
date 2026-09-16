@@ -10,6 +10,7 @@ import type { SalesDocumentCountryAcknowledgment } from '../../domain/entities/s
 import type {
   SalesDocumentCountryDefaultInput,
   SalesDocumentRuleInput,
+  SalesDocumentRuleOverlapCheckInput,
 } from '../../domain/types/sales-document-rule-write.types';
 import type { SalesDocumentDecision } from '../../domain/types/sales-document-decision.types';
 import type { SalesDocumentOrderFacts } from '../../domain/types/sales-document-order-facts.types';
@@ -38,9 +39,10 @@ export interface ISalesDocumentRulesService {
    * A READ - it persists nothing and refuses nothing. The engine holding an
    * order on two matching rules is correct behaviour (ADR-041 never silently
    * picks one); what was missing is anyone finding out before the save. The
-   * write path is deliberately NOT gated on this: an operator may still
-   * knowingly save an overlapping pair through the API, and the runtime keeps
-   * failing safe.
+   * write path is deliberately NOT gated on this, and the asymmetry with the
+   * browser (which refuses the save outright) is intentional - see the
+   * `#3190` paragraph in `docs/architecture-overview.md` for why a held order
+   * is not the class of silent-wrong-outcome that #2610 made server-side.
    */
   detectRuleOverlap(
     input: SalesDocumentRuleOverlapCheckInput
@@ -118,14 +120,4 @@ export interface ISalesDocumentRulesService {
 
   /** Idempotent — clearing an already-unacknowledged country is a no-op. */
   clearAcknowledgment(country: string): Promise<void>;
-}
-
-/** The draft a composer is about to save, plus the row it is editing (if any). */
-export interface SalesDocumentRuleOverlapCheckInput {
-  readonly country: string;
-  readonly conditions: readonly unknown[];
-  readonly effectiveFrom: Date;
-  readonly effectiveTo: Date | null;
-  /** Set when editing, so a rule is never reported as colliding with itself. */
-  readonly excludeRuleId?: string;
 }

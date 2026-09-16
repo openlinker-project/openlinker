@@ -74,9 +74,18 @@ export class SalesDocumentConditionDto {
       return { field: 'buyerHasTaxId', op: 'eq', value: dto.boolValue };
     }
     if (dto.field === 'orderCountry') {
-      if (typeof dto.stringValue !== 'string' || dto.stringValue.length === 0) {
+      // Blank-after-TRIM, not merely empty (#3190 review). `'   '` is length 3
+      // and passed the old check, and the service then normalises it to `''` -
+      // which the rule repository's own `toDomain` filters out on read, leaving
+      // a rule with no conditions at all. `evaluateScope` treats that as
+      // vacuously true, so the rule matches EVERY order in the market and holds
+      // each one against any sibling rule. `SalesDocumentRulesService.createRule`
+      // re-asserts the same invariant on the normalised array, which is the
+      // durable guard; this one is the boundary's own, so the caller gets a
+      // named 400 instead of a generic invalid-condition index.
+      if (typeof dto.stringValue !== 'string' || dto.stringValue.trim().length === 0) {
         throw new BadRequestException(
-          `Condition field "orderCountry" requires a non-empty "stringValue"`,
+          `Condition field "orderCountry" requires a non-blank "stringValue"`,
         );
       }
       return { field: 'orderCountry', op: 'eq', value: dto.stringValue };

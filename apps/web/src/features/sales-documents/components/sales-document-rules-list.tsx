@@ -58,12 +58,21 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
   // scroll position when the lock releases, so a scroll issued inside the click
   // handler - or even in the effect that follows it - can be undone. One frame
   // later the dialog is gone and the lock with it.
+  //
+  // Focus MOVES to the row, in the same frame (#3190 review). Scroll plus an
+  // outline is a sighted-only, colour-only affordance: Radix returns focus to
+  // the `+ Add rule` trigger on close, so a keyboard or screen-reader user
+  // ended up exactly where they started with nothing to say anything had
+  // happened. `preventScroll` because `scrollIntoView` above has already
+  // chosen the position - letting focus scroll again would fight it. The
+  // `connection-mappings-page.tsx` reveal is the in-repo precedent for the
+  // pair.
   useEffect(() => {
     if (composerOpen || highlightedRuleId === null) return undefined;
     const frame = requestAnimationFrame(() => {
-      document
-        .getElementById(ruleCardDomId(highlightedRuleId))
-        ?.scrollIntoView({ block: 'center' });
+      const row = document.getElementById(ruleCardDomId(highlightedRuleId));
+      row?.scrollIntoView({ block: 'center' });
+      row?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [composerOpen, highlightedRuleId]);
@@ -137,6 +146,11 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
             key={rule.id}
             id={ruleCardDomId(rule.id)}
             data-testid={`rule-card-${rule.id}`}
+            // Programmatically focusable, never in the tab order (#3190
+            // review): the reveal effect above moves focus here so the row is
+            // announced, and a row is not a control an operator should have to
+            // tab through on the way to the next one.
+            tabIndex={-1}
             className={
               highlightedRuleId === rule.id ? 'rule-card rule-card--highlighted' : 'rule-card'
             }
@@ -207,8 +221,8 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
         open={composerOpen}
         onOpenChange={setComposerOpen}
         onOpenRule={(ruleId) => {
-          // Reveal the rival the composer just named (#3190). Highlight AND
-          // scroll: on a long list the row is usually off-screen, and a
+          // Reveal the rival the composer just named (#3190). Highlight, scroll
+          // AND focus: on a long list the row is usually off-screen, and a
           // highlight nobody can see is the same as no affordance at all.
           //
           // Scrolling here would be wasted. The dialog is still mounted, and

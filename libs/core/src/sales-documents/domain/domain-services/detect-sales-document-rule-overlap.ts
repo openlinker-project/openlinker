@@ -18,6 +18,19 @@
  * than folded into either neighbour: silence would read as "no conflict",
  * which is the false reassurance this whole check exists to remove.
  *
+ * Of the two undecided reasons, only `multi-currency-rule` is reachable
+ * through the shipped wiring today, and that is worth stating rather than
+ * leaving a reader to discover: `SalesDocumentRuleRepository.toDomain` already
+ * FILTERS a malformed persisted condition out before a rival reaches this
+ * function, and `SalesDocumentConditionDto.toDomain` answers 400 for a
+ * malformed draft, so `unreadable-condition` is exercised by this function's
+ * own spec and by nothing else. What actually happens to a malformed persisted
+ * condition is that the rule is silently WIDENED - consistently here and in
+ * `evaluateSalesDocumentRules`, which reads the same filtered array, so
+ * nothing is unsound. The value stays because it is this function's contract
+ * with any future caller that hands it unfiltered rows, and because the day
+ * the repository surfaces its drop count is the day it becomes reachable.
+ *
  * **Decidable only because the vocabulary is closed and the composer is
  * AND-only.** Every condition is a bound on one field and a rule is their
  * conjunction, so two rules intersect iff every field's bounds intersect. An

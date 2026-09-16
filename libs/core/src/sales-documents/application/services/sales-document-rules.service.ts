@@ -17,10 +17,7 @@
  * @implements {ISalesDocumentRulesService}
  */
 import { Inject, Injectable } from '@nestjs/common';
-import type {
-  ISalesDocumentRulesService,
-  SalesDocumentRuleOverlapCheckInput,
-} from '../interfaces/sales-document-rules.service.interface';
+import type { ISalesDocumentRulesService } from '../interfaces/sales-document-rules.service.interface';
 import {
   SALES_DOCUMENT_COUNTRY_ACKNOWLEDGMENT_REPOSITORY_TOKEN,
   SALES_DOCUMENT_COUNTRY_DEFAULT_REPOSITORY_TOKEN,
@@ -38,6 +35,7 @@ import type { SalesDocumentCountryAcknowledgment } from '../../domain/entities/s
 import type {
   SalesDocumentCountryDefaultInput,
   SalesDocumentRuleInput,
+  SalesDocumentRuleOverlapCheckInput,
 } from '../../domain/types/sales-document-rule-write.types';
 import {
   computeSalesDocumentConditionsHash,
@@ -175,6 +173,18 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
       country: this.normaliseCountry(rawInput.country),
       conditions: this.normaliseConditionCountries(rawInput.conditions),
     };
+    // ...and AGAIN, on the normalised array, before anything downstream reads
+    // it (#3190 review). Normalisation can invalidate a condition the raw
+    // check passed: `orderCountry eq '   '` satisfies `isSalesDocumentCondition`
+    // (length 3 > 0) and trims to `''`, which the repository's own
+    // `toDomain` then FILTERS OUT on read - leaving a rule with `conditions:
+    // []`, which `evaluateScope` treats as vacuously true and so matches EVERY
+    // order in the market. On a market carrying any other rule that is a
+    // permanent `conflicting-rules-equal-priority` hold, with nothing said to
+    // anyone. The invariant this line buys is that no normaliser can invalidate
+    // a condition on its way to the column, whatever normalisers are added
+    // later.
+    this.assertConditionsWellFormed(input.conditions);
     // `assertThresholdRefsResolve` is gone with #3189 - a condition carries its
     // own amount now, so there is no ref left to resolve.
 
@@ -462,6 +472,16 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
     // an empty verdict - a FALSE "no conflict", which is the one answer this
     // check exists to make impossible. The browser never sends an unnormalised
     // country; the admin API can.
+    //
+    // Dates are passed through UNTRUNCATED, deliberately. `SalesDocumentRule`
+    // persists `effectiveFrom` / `effectiveTo` as date-only strings, so the
+    // check answers about a draft whose window can carry a time-of-day the
+    // stored row will not - but `assertNoConflict`, the WRITE-path guard,
+    // compares the same untruncated values through the same
+    // `salesDocumentRuleWindowsOverlap`. Truncating only here would make the
+    // advisory check and the guard disagree about one pair, which is a worse
+    // defect than a residual of at most one midnight instant in a direction
+    // that can only ever over-report.
     const country = this.normaliseCountry(input.country);
     const conditions = this.normaliseDraftConditionCountries(input.conditions);
     const existing = await this.ruleRepository.findByCountry(country);

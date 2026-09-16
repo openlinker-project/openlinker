@@ -39,6 +39,16 @@
  *     never duplicated as a wall of orange boxes. The fact represented is
  *     unchanged - only its density is.
  *
+ * OVERLAP GATE (#3190, and its review): the save is inert unless the check has
+ * ANSWERED about the draft on screen. That is one sentence and it was the
+ * whole defect - the first version derived its gate from `overlapQuery.data`
+ * alone, so any keystroke changed the query key, reset `data` to `undefined`,
+ * emptied all three verdict arrays and re-rendered the button as enabled with
+ * no banner. A colliding rule saved on the common path, no network fault
+ * required. The states are named in `use-sales-document-rule-overlap-query.ts`
+ * and every one of them that is not an answer withholds the save, except
+ * `unavailable` - a failed check is not evidence of a collision.
+ *
  * @module apps/web/src/features/sales-documents/components
  */
 import { useState, type ReactElement } from 'react';
@@ -61,8 +71,9 @@ import { describeSalesDocumentRuleDraft } from '../lib/describe-sales-document-r
 import { useSalesDocumentRuleOverlapQuery } from '../hooks/use-sales-document-rule-overlap-query';
 import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-query';
 import {
+  SALES_DOCUMENT_OVERLAP_CONSEQUENCE,
   describeSalesDocumentOverlapClear,
-  describeSalesDocumentOverlapConflict,
+  describeSalesDocumentOverlapConflictRival,
   describeSalesDocumentOverlapUndecided,
 } from '../lib/describe-sales-document-overlap';
 
@@ -95,6 +106,60 @@ interface ConditionDraft {
   currency: string;
 }
 
+/**
+ * The server's OWN shapes, mirrored (#3190 review, the reported-is-enforced
+ * discipline of #2229).
+ *
+ * `apps/web` cannot import `@openlinker/core` (#591), so these are copies of
+ * `isDecimalAmountString` / `isCurrencyCode`
+ * (`libs/core/src/sales-documents/domain/types/sales-document-condition.types.ts`),
+ * which `SalesDocumentConditionDto.toDomain` throws a 400 on. Testing
+ * non-emptiness instead - what this gate did before - meant that typing `PLN`
+ * one character at a time sent `"P"` then `"PL"`, each a 400, and with the
+ * production client's `retry: false` the first failure painted a banner saying
+ * the check could not RUN. That is a false statement about infrastructure when
+ * the real cause is an unfinished field.
+ *
+ * Deliberately no `check-*-mirror.mjs`: these are the two shapes the DTO's own
+ * 400 message quotes back verbatim, so a drift surfaces as that message rather
+ * than as silence - and a mirror STRICTER than the gate would refuse a draft
+ * the server accepts, which is the failure #2240 records.
+ */
+const DECIMAL_AMOUNT_PATTERN = /^\d+(\.\d+)?$/;
+const CURRENCY_CODE_PATTERN = /^[A-Z]{3}$/;
+
+/** Would the server accept this condition, or 400 it? */
+function conditionIsWellFormed(draft: ConditionDraft): boolean {
+  if (draft.kind === 'orderTotalGross') {
+    return (
+      DECIMAL_AMOUNT_PATTERN.test(draft.amount.trim()) &&
+      CURRENCY_CODE_PATTERN.test(draft.currency.trim().toUpperCase())
+    );
+  }
+  if (draft.kind === 'orderCountry') return draft.stringValue.trim() !== '';
+  return true;
+}
+
+/**
+ * Two amount conditions in different currencies (#3190 review).
+ *
+ * `detect-sales-document-rule-overlap.ts` says in as many words that refusing
+ * this "belongs in the composer", and nothing did it: `+ Add condition`
+ * appended with no duplicate-field guard, so an operator could author a rule
+ * the server accepts and that matches NO order at all - the detector answering
+ * `multi-currency-rule` once per rival, a sentence that reads as though the
+ * rival were at fault.
+ */
+function draftHasMixedCurrencies(conditions: readonly ConditionDraft[]): boolean {
+  const currencies = new Set(
+    conditions
+      .filter((c) => c.kind === 'orderTotalGross')
+      .map((c) => c.currency.trim().toUpperCase())
+      .filter((currency) => currency !== '')
+  );
+  return currencies.size > 1;
+}
+
 function newConditionDraft(): ConditionDraft {
   return {
     kind: 'buyerHasTaxId',
@@ -120,7 +185,13 @@ function toConditionInput(draft: ConditionDraft): SalesDocumentConditionInput {
     return { field: 'buyerHasTaxId', op: 'eq', boolValue: draft.boolValue };
   }
   if (draft.kind === 'orderCountry') {
-    return { field: 'orderCountry', op: 'eq', stringValue: draft.stringValue };
+    // Trimmed, for parity with the amount branch below (#3190 review). A
+    // whitespace-only value passed the server's old non-empty check, was then
+    // normalised to `''`, and the rule repository's own `toDomain` filtered the
+    // condition out on read - leaving a rule with no conditions, which matches
+    // EVERY order in the market. The server refuses it now; this stops the
+    // browser being the thing that sends it.
+    return { field: 'orderCountry', op: 'eq', stringValue: draft.stringValue.trim() };
   }
   return {
     field: 'orderTotalGross',
@@ -193,24 +264,22 @@ export function SalesDocumentRuleComposerDialog({
   // rather than one winning, and today that is discovered days later as a
   // hanging order. Asked here, while there is still somebody to tell.
   //
-  // Only asked once the draft is answerable: a half-typed amount, or an
-  // amount with no currency yet, describes no order set at all, so checking it
-  // would produce a verdict about a rule the operator has not written.
-  const conditionsAreAnswerable = conditions.every((condition) => {
-    if (condition.kind === 'orderTotalGross') {
-      return condition.amount.trim() !== '' && condition.currency.trim() !== '';
-    }
-    if (condition.kind === 'orderCountry') return condition.stringValue.trim() !== '';
-    return true;
-  });
-  const overlapQuery = useSalesDocumentRuleOverlapQuery(
+  // Only asked once the draft is a rule the server would accept AND one that
+  // could match an order at all: a half-typed amount describes no order set,
+  // and an amount bounded in two currencies matches nothing whatever the
+  // rivals say, so either would produce a verdict about a rule the operator
+  // has not written.
+  const draftIsWellFormed = conditions.every(conditionIsWellFormed);
+  const mixedCurrencies = draftHasMixedCurrencies(conditions);
+  const draftIsCheckable = draftIsWellFormed && !mixedCurrencies;
+  const overlap = useSalesDocumentRuleOverlapQuery(
     {
       country,
       conditions: conditions.map(toConditionInput),
       effectiveFrom,
       effectiveTo: effectiveTo.trim().length > 0 ? effectiveTo : null,
     },
-    open && conditionsAreAnswerable
+    open && draftIsCheckable
   );
   // Rival copy names the operator's own rule text rather than an opaque id.
   // This read is the one the list behind the dialog already made, so it is a
@@ -221,13 +290,28 @@ export function SalesDocumentRuleComposerDialog({
     conditions: rule.conditions,
     documentKind: rule.documentKind,
   }));
-  const verdict = overlapQuery.data;
+  const { verdict, state: overlapState } = overlap;
   const conflicts = verdict?.overlapping ?? [];
   const undecided = verdict?.undecided ?? [];
   const clears = verdict?.disjoint ?? [];
   // Mutually exclusive by construction: a proven collision outranks a proven
   // non-collision, so the two banners can never both render.
-  const hasConflict = conflicts.length > 0;
+  //
+  // The asymmetry with `overlapState` is the point, and it is one rule: a
+  // WARNING drawn from the last verdict stays on screen while the next check
+  // runs, and REASSURANCE does not. A conflict banner that blinks out on every
+  // keystroke is the hole this feature was shipped with; a "these cannot
+  // collide" banner left standing over a draft that has since changed is a
+  // claim nothing has checked.
+  const checkAnswered = overlapState === 'known';
+  const overlapBlocksSave = checkAnswered && conflicts.length > 0;
+  // `unavailable` deliberately does NOT block - a failed check is not evidence
+  // of a collision, and the runtime holds an ambiguous order either way. Every
+  // other non-answer does, because on those the draft simply has not been
+  // checked yet and an enabled save is the defect, not the feature.
+  const overlapWithholdsSave =
+    overlapState === 'incomplete' || overlapState === 'settling' || overlapState === 'pending';
+  const recheckInFlight = overlapState === 'settling' || overlapState === 'pending';
 
   const connections = connectionsQuery.data ?? [];
   const candidates =
@@ -243,6 +327,22 @@ export function SalesDocumentRuleComposerDialog({
     setEffectiveTo('');
     createRule.reset();
   }
+
+  /**
+   * The one sentence explaining a withheld save, or `null` when the save is
+   * available or the reason is already a banner.
+   *
+   * A conflict is NOT named here - it has its own error `Alert` naming the
+   * rival - and neither is a missing connection, which the `Integration` select
+   * states by sitting on its placeholder.
+   */
+  const saveWithheldReason: string | null = mixedCurrencies
+    ? 'This rule bounds the order total in more than one currency, so it would never match an order. Use one currency.'
+    : !draftIsWellFormed
+      ? 'Finish every condition before saving - an amount needs a number and a three-letter currency, and a country needs a code.'
+      : recheckInFlight
+        ? 'Checking this draft against the other rules in this market…'
+        : null;
 
   async function handleSave(): Promise<void> {
     const input: CreateSalesDocumentRuleInput = {
@@ -507,28 +607,40 @@ export function SalesDocumentRuleComposerDialog({
           </p>
         </div>
 
-        {hasConflict ? (
+        {conflicts.length > 0 ? (
           <div data-testid="rule-conflict">
             <Alert tone="error" title="This could match the same order as an existing rule">
-              <p>
-                {describeSalesDocumentOverlapConflict(
-                  conflicts.map((hit) => hit.ruleId),
-                  rivals
-                )}
-              </p>
-              {onOpenRule !== undefined ? (
-                <Button
-                  tone="secondary"
-                  className="button--sm"
-                  data-testid="rule-conflict-open-existing"
-                  onClick={() => {
-                    onOpenRule(conflicts[0].ruleId);
-                    onOpenChange(false);
-                  }}
-                >
-                  Open that rule
-                </Button>
-              ) : null}
+              {/*
+                One row per rival, each with its OWN reveal control. A single
+                sentence naming three rivals beside a button that opened only
+                the first was a claim the control could not honour.
+              */}
+              <ul className="rule-conflict-list">
+                {conflicts.map((hit) => (
+                  <li key={hit.ruleId} className="rule-conflict-list__item">
+                    <span>
+                      {describeSalesDocumentOverlapConflictRival(
+                        rivals.find((r) => r.ruleId === hit.ruleId),
+                        hit.ruleId
+                      )}
+                    </span>
+                    {onOpenRule !== undefined ? (
+                      <Button
+                        tone="secondary"
+                        className="button--sm"
+                        data-testid="rule-conflict-open-existing"
+                        onClick={() => {
+                          onOpenRule(hit.ruleId);
+                          onOpenChange(false);
+                        }}
+                      >
+                        Show that rule
+                      </Button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              <p>{SALES_DOCUMENT_OVERLAP_CONSEQUENCE}</p>
             </Alert>
           </div>
         ) : null}
@@ -538,7 +650,7 @@ export function SalesDocumentRuleComposerDialog({
           different currencies provably cannot both match, which an operator
           cannot otherwise tell from an absent warning.
         */}
-        {!hasConflict && clears.length > 0 ? (
+        {checkAnswered && !overlapBlocksSave && clears.length > 0 ? (
           <div data-testid="rule-no-conflict">
             <Alert tone="info">
               {clears.map((hit) => (
@@ -573,7 +685,7 @@ export function SalesDocumentRuleComposerDialog({
           holds an ambiguous order either way. What it must not do is stay
           quiet.
         */}
-        {overlapQuery.isError ? (
+        {overlapState === 'unavailable' ? (
           <div data-testid="rule-overlap-unavailable">
             <Alert tone="warning" title="We could not run the overlap check">
               <p>
@@ -600,6 +712,18 @@ export function SalesDocumentRuleComposerDialog({
           </div>
         ) : null}
 
+        {/*
+          Why the save is inert, when the reason is not a banner (#3190
+          review). A disabled button with no sentence beside it is the same
+          dead end as a missing check: the operator can see they cannot save
+          and not what to do about it.
+        */}
+        {saveWithheldReason !== null ? (
+          <p className="muted-text" data-testid="rule-save-hint">
+            {saveWithheldReason}
+          </p>
+        ) : null}
+
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
           <Button
             tone="secondary"
@@ -615,14 +739,20 @@ export function SalesDocumentRuleComposerDialog({
             The testid swaps with the state, matching the mockup: a blocked
             save is a different thing to assert on than an available one, and
             an e2e that only ever saw `rule-save` could not tell them apart.
+            Two values, not five - the other reasons a save is withheld are
+            carried by `data-overlap-state` and the hint above, so a selector
+            written against the shipped vocabulary keeps working.
           */}
           <Button
             className="button--sm"
-            data-testid={hasConflict ? 'rule-save-blocked' : 'rule-save'}
-            disabled={createRule.isPending || connectionId === '' || hasConflict}
+            data-testid={overlapBlocksSave ? 'rule-save-blocked' : 'rule-save'}
+            data-overlap-state={overlapState}
+            disabled={
+              createRule.isPending || connectionId === '' || overlapWithholdsSave || overlapBlocksSave
+            }
             onClick={() => void handleSave()}
           >
-            {createRule.isPending ? 'Saving…' : 'Save rule'}
+            {createRule.isPending ? 'Saving…' : recheckInFlight ? 'Checking…' : 'Save rule'}
           </Button>
         </div>
       </DialogContent>
