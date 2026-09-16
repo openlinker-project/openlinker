@@ -40,11 +40,22 @@ const MAX_TEST_WORKERS = 15;
  * env, or any second workflow silently fell back to serial while looking
  * configured.
  *
- * 8 rather than the host's core count: the self-hosted runner shares one box
- * with five siblings, so sizing to `os.cpus()` would have each concurrent job
- * claim the whole machine.
+ * 6, lowered from 8 (#3263). The runner is not the host: each CI job runs
+ * inside a container capped at 24 GiB and 8 CPUs, and the host's 251 GiB is
+ * not available to it. At 8 workers that container was measured sitting at
+ * 24GiB/24GiB and 800% of its 800% CPU, and the kernel then killed processes
+ * inside its cgroup - which is what the `exit=137` on Postgres and Redis was,
+ * and why no host-level OOM ever appeared in any log.
+ *
+ * 8 was green before the transform change and stopped being green after it,
+ * with neither change wrong on its own: transpile-only removed an 11.9 s
+ * per-file stall, so the same peak demand now arrives in a quarter of the
+ * time instead of being spread out by the compiler.
+ *
+ * 6 leaves two of the eight CPUs for the Postgres, Redis and PrestaShop
+ * containers that share the same cap, which 8 did not.
  */
-const DEFAULT_TEST_WORKERS = 8;
+const DEFAULT_TEST_WORKERS = 6;
 
 /**
  * Resolve the integration-suite worker count.
