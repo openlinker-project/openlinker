@@ -41,7 +41,7 @@ module.exports = {
   //
   // Do not raise this a third time without first measuring what the HOST is
   // doing, not what the container can see.
-  maxWorkers: 2,
+  maxWorkers: 8,
   transform: {
     '^.+\\.ts$': [
       'ts-jest',
