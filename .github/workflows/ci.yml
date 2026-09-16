@@ -259,13 +259,6 @@ jobs:
       # containers on its own — the orphan-sweep step below is the
       # compensating control.
       TESTCONTAINERS_RYUK_DISABLED: 'true'
-      # Each jest worker owns its own Postgres database and Redis logical DB
-      # (libs/test-kit/src/containers.ts), which is what makes a count above 1
-      # safe - before that, a peer worker's `TRUNCATE ... CASCADE` reset would
-      # wipe data mid-test. Read by BOTH integration jest configs (maxWorkers)
-      # and by containers.ts (how many databases to create); see
-      # jest.test-workers.cjs for why that number has one source.
-      OL_TEST_MAX_WORKERS: '4'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v2

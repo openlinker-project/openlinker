@@ -31,19 +31,37 @@
 const MAX_TEST_WORKERS = 15;
 
 /**
- * Resolve the integration-suite worker count from `OL_TEST_MAX_WORKERS`.
+ * The worker count the integration suites run at.
  *
- * Defaults to 1, so an integration run with no env var set behaves exactly as
- * it did before this seam existed. A non-numeric, non-finite or sub-1 value
- * also resolves to 1 rather than throwing: a mistyped env var must not take
- * the suite down.
+ * A literal, not an env var. The count was briefly carried by
+ * `OL_TEST_MAX_WORKERS` set in `ci.yml`, which made the single most important
+ * number in this change invisible at the place that reads it and unset
+ * everywhere else - so a local run, a `workflow_dispatch` that forgot the
+ * env, or any second workflow silently fell back to serial while looking
+ * configured.
+ *
+ * 8 rather than the host's core count: the self-hosted runner shares one box
+ * with five siblings, so sizing to `os.cpus()` would have each concurrent job
+ * claim the whole machine.
+ */
+const DEFAULT_TEST_WORKERS = 8;
+
+/**
+ * Resolve the integration-suite worker count.
+ *
+ * `OL_TEST_MAX_WORKERS` survives as an OVERRIDE, for bisecting a
+ * parallelism-sensitive failure (`OL_TEST_MAX_WORKERS=1` restores the old
+ * serial behaviour) - never as the source of the default. A non-numeric,
+ * non-finite or sub-1 value resolves to the default rather than throwing: a
+ * mistyped override must not take the suite down, and must not silently
+ * serialise it either.
  */
 function resolveTestWorkers() {
-  const raw = Number(process.env.OL_TEST_MAX_WORKERS ?? '1');
+  const raw = Number(process.env.OL_TEST_MAX_WORKERS ?? DEFAULT_TEST_WORKERS);
   if (!Number.isFinite(raw) || raw < 1) {
-    return 1;
+    return DEFAULT_TEST_WORKERS;
   }
   return Math.min(Math.floor(raw), MAX_TEST_WORKERS);
 }
 
-module.exports = { MAX_TEST_WORKERS, resolveTestWorkers };
+module.exports = { DEFAULT_TEST_WORKERS, MAX_TEST_WORKERS, resolveTestWorkers };
