@@ -10,6 +10,7 @@ import { ToastProvider } from '../shared/ui/toast-provider';
 import { LocaleProvider } from '../shared/i18n';
 import { PluginRegistryProvider } from '../shared/plugins';
 import { plugins as inTreePlugins } from '../plugins';
+import { APP_VERSION } from '../shared/config/app-version';
 
 interface RenderAppResult {
   router: ReturnType<typeof createMemoryRouter>;
@@ -59,7 +60,7 @@ describe('App', () => {
       'href',
       '/connections',
     );
-    expect(screen.getAllByText(/^(Dev|Development)$/)).not.toHaveLength(0);
+    expect(screen.getAllByText(`v${APP_VERSION}`)).not.toHaveLength(0);
   });
 
   it('renders orders list page from the primary navigation', async () => {

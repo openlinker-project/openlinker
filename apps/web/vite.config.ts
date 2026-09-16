@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { defineConfig } from 'vitest/config';
@@ -10,6 +11,16 @@ import { createOgMetaPlugin } from './src/build-time/og-meta';
 // invoked both from the package dir (`pnpm --filter`) and from the repo root,
 // and only one of those makes a cwd-relative env lookup find `.env*`.
 const CONFIG_DIR = fileURLToPath(new URL('.', import.meta.url));
+
+// The product release version lives on the ROOT package.json (release-please
+// is configured with a single "." package, see release-please-config.json) —
+// not apps/web/package.json, which release-please never touches. Read it at
+// build time so the version shown in the app is always the one the release
+// line actually cut, with no manual sync step.
+const ROOT_PACKAGE_JSON_PATH = fileURLToPath(new URL('../../package.json', import.meta.url));
+const APP_VERSION = (
+  JSON.parse(readFileSync(ROOT_PACKAGE_JSON_PATH, 'utf-8')) as { version: string }
+).version;
 
 export default defineConfig(({ mode }) => {
   // #2174: every OG token is resolved HERE rather than through Vite's native
@@ -30,6 +41,9 @@ export default defineConfig(({ mode }) => {
     // unit-tested (this module reads `import.meta.url`, which is not a `file:`
     // URL under the test environment, so a spec cannot import it).
     plugins: [react(), createOgMetaPlugin(env)],
+    define: {
+      __APP_VERSION__: JSON.stringify(APP_VERSION),
+    },
     server: {
       port: 4173,
     },

@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { env } from '../config/env';
+import { APP_VERSION } from '../config/app-version';
 
 type EnvironmentTone = 'info' | 'neutral' | 'review' | 'success' | 'warning';
 
@@ -66,21 +67,25 @@ export function getEnvironmentMeta(appEnv: string): EnvironmentMeta {
 
 interface EnvironmentBadgeProps {
   appEnv?: string;
-  compact?: boolean;
+  /** Release version to show instead of the environment name, e.g. `"0.10.0"`. */
+  version?: string;
   className?: string;
 }
 
 export function EnvironmentBadge({
   appEnv = env.VITE_APP_ENV,
-  compact = false,
+  version = APP_VERSION,
   className = '',
 }: EnvironmentBadgeProps): ReactElement {
   const environment = getEnvironmentMeta(appEnv);
   const classes = ['context-chip', `context-chip--${environment.tone}`, className].filter(Boolean).join(' ');
+  // The badge's colour (tone) still carries the environment signal; the text
+  // is the release version instead of the environment name (was "Dev"/"Stg").
+  const text = `v${version}`;
 
   return (
-    <span className={classes} aria-label={`Environment ${environment.label}`}>
-      {compact ? environment.shortLabel : environment.label}
+    <span className={classes} aria-label={`Environment ${environment.label}, version ${version}`}>
+      {text}
     </span>
   );
 }
