@@ -884,7 +884,13 @@ Tests:       339 passed, 339 total          ← zero test failures
    00:40:45  libs/core finishes  (48 s of actual work)
    ```
 
-   Test scripts have no ordering requirement — the `pnpm -r --filter "./libs/**" build` that precedes them is a separate command and keeps its own (sorted) run — so `test:ci` passes `--no-sort` and lets all twenty packages schedule freely against the concurrency limit. Do not add `--no-sort` to the build half.
+   Test scripts have no ordering requirement — the `pnpm -r --filter "./libs/**" build` that precedes them is a separate command and keeps its own (sorted) run — so `test:ci` passes `--no-sort` and lets the packages schedule freely against the concurrency limit. Do not add `--no-sort` to the build half.
+
+4. **`apps/web` runs as its own CI job** (`Test (web)`, `pnpm test:ci:web`), and `test:ci` excludes it. Sharing a runner with three jest packages starved it to 352-371 s against the 162 s it takes alone, and it is the package where that matters most: RTL tests assert on elapsed behaviour, so starvation surfaces as *test failures*, not as slowness. Two consecutive runs went red on two different timing-sensitive tests, neither of them about timing.
+
+   The split costs no extra runner time — it saves it, because neither side is starving the other, and the web job additionally skips the libs build (apps/web imports no `@openlinker` package, #591) and the mtime normalisation (that fixes **jest**'s transform cache; vitest keeps its own under `node_modules/.vite`, which is why apps/web was the one package unaffected by it: 167.7 s before, 162.6 s after).
+
+   The general rule this is an instance of: **a test suite that asserts on elapsed behaviour should not share a box with a suite that saturates it.** Putting them on separate runners is cheaper than making either one tolerant of the other.
 3. **Split oversized spec files** — a single multi-thousand-line spec pins all its state in one worker. Splitting per method/area (sharing setup via a `__tests__/mocks/*.factory.ts`) lowers peak per-worker memory and improves parallelism. Keep the total test count unchanged when splitting.
 
 To confirm it's OOM (not a leak), run with `--logHeapUsage` and watch for monotonic per-worker growth; the runner's `dmesg` / container OOM log is the definitive signal.
