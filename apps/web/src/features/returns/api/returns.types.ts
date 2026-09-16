@@ -614,6 +614,81 @@ export interface DeclineReturnResult {
 }
 
 /**
+ * How an authorize attempt ended — mirror of core's `AuthorizeReturnOutcomeValues`.
+ *
+ * `already-authorized` is a SUCCESS, not a refusal — the act is idempotent, so
+ * a caller must not render it as an error.
+ */
+export const AUTHORIZE_RETURN_OUTCOME_VALUES = ['authorized', 'already-authorized'] as const;
+export type AuthorizeReturnOutcome = (typeof AUTHORIZE_RETURN_OUTCOME_VALUES)[number];
+
+export interface AuthorizeReturnResult {
+  outcome: AuthorizeReturnOutcome | string;
+  /** The ADR-044 change-proposal row this act was recorded as. */
+  changeId: string | null;
+  /** OpenLinker's own instant — this write crosses no source boundary. */
+  authorizedAt: string | null;
+}
+
+export interface MatchReturnToOrderInput {
+  /**
+   * The internal OpenLinker order id, never a number an operator types. Proved
+   * through `identifier_mappings` — an id OpenLinker never minted is refused
+   * with `reason: 'unknown-order'` (400).
+   */
+  internalOrderId: string;
+}
+
+export interface MatchReturnToOrderResult {
+  returnId: string;
+  /**
+   * The attributed order. Attribution is MONOTONIC — there is no unmatch, so
+   * this value can be filled in once and never changed.
+   */
+  internalOrderId: string | null;
+  /** ISO-8601. Null when no operator matched it. */
+  matchedAt: string | null;
+}
+
+/**
+ * One line of an operator-authored return, mirroring `RecordReturnLineDto`.
+ *
+ * `reason` widens to `| string` even though the backend validates it against
+ * the closed `RefundReasonValues` — a caller composing this input already read
+ * the vocabulary off `ReturnLineReason`, and widening here only protects a
+ * value this build predates from failing to compile, never from failing the
+ * request.
+ */
+export interface RecordReturnLineInput {
+  sku?: string | null;
+  name?: string | null;
+  reason: ReturnLineReason | string;
+  quantityAdvised: number;
+  note?: string | null;
+}
+
+export interface RecordReturnInput {
+  /** The order this return is recorded against. */
+  internalOrderId: string;
+  /**
+   * The channel the return is recorded against. REQUIRED and validated
+   * server-side, never guessed — OpenLinker checks the order actually maps
+   * there.
+   */
+  sourceConnectionId: string;
+  lines: RecordReturnLineInput[];
+}
+
+export interface RecordReturnResult {
+  returnId: string;
+  internalOrderId: string | null;
+  /** Always `operator_authored` on this route. */
+  origin: ReturnOrigin | string;
+  /** ISO-8601. */
+  openedAt: string;
+}
+
+/**
  * One entry on the order timeline's returns half (#2383).
  *
  * `source` says WHERE it came from (`custody_act` | `record_status` | `refund`),
