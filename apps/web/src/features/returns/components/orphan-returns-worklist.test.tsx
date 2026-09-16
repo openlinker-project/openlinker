@@ -1,17 +1,21 @@
 /**
- * Orphan Returns Worklist (#3078/#3081)
+ * Orphan Returns Worklist (#3078/#3081, plus #3083's inline authorize wiring)
  *
  * The acceptance criteria this file exists for: orphan and pending-approval
- * returns render in two distinct, labelled groups, and each row has exactly
- * one primary action. Mounting is asserted one level up, wherever #3085
- * places the entry point (docs/lessons.md § "is this MOUNTED?").
+ * returns render in two distinct, labelled groups, each row has exactly one
+ * primary action, and — #3083's own criterion — confirming the approve
+ * dialog removes the row from the pending-approval group. Mounting on a real
+ * page is asserted one level up, wherever #3085 places the entry point
+ * (docs/lessons.md § "is this MOUNTED?").
  *
  * @module apps/web/src/features/returns/components
  */
 import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { OrphanReturnsWorklist } from './orphan-returns-worklist';
 import { ORPHAN_RETURNS_WORKLIST_COPY as COPY } from '../lib/orphan-returns-worklist.copy';
+import { AUTHORIZE_RETURN_DIALOG_COPY } from '../lib/authorize-return-dialog.copy';
 import type { ReturnListItem } from '../api/returns.types';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 
@@ -118,8 +122,10 @@ describe('OrphanReturnsWorklist', () => {
       }),
     });
 
-    const action = await screen.findByRole('link', { name: COPY.needsApprovalAction });
-    expect(action).toHaveAttribute('href', '/returns/r2');
+    // A BUTTON, not a link (#3083) — this write carries no form, so its
+    // primary action opens the authorize dialog inline rather than routing
+    // to a detail-page destination.
+    expect(await screen.findByRole('button', { name: COPY.needsApprovalAction })).toBeInTheDocument();
   });
 
   it('should EXCLUDE an already-authorized operator-authored return from "waiting for your OK"', async () => {
@@ -300,6 +306,47 @@ describe('OrphanReturnsWorklist', () => {
         { bucket: 'attributed' },
         expect.objectContaining({ offset: 0 }),
       );
+    });
+  });
+
+  it('should call authorize and remove the row from the pending-approval group (#3083)', async () => {
+    // A stateful list mock, so the refetch `useAuthorizeReturnMutation`
+    // triggers on success sees the row gone — exactly what the real backend
+    // would report once the write landed.
+    let approvalItems: ReturnListItem[] = [
+      item({
+        id: 'r2',
+        externalReturnId: null,
+        bucket: 'attributed',
+        origin: 'operator_authored',
+        internalOrderId: 'ol_order_1',
+        authorizedAt: null,
+      }),
+    ];
+    const apiClient = createMockApiClient();
+    const list = vi.fn(async (filters: { bucket?: string } = {}) => {
+      if (filters.bucket === 'orphan') return listResult();
+      return listResult({ items: approvalItems, total: approvalItems.length });
+    });
+    apiClient.returns.list = list as unknown as typeof apiClient.returns.list;
+    const authorize = vi.fn().mockImplementation(async () => {
+      approvalItems = [];
+      return { outcome: 'authorized', changeId: 'ol_change_1', authorizedAt: '2026-08-01T00:00:00.000Z' };
+    });
+    apiClient.returns.authorize = authorize as unknown as typeof apiClient.returns.authorize;
+
+    renderWithProviders(<OrphanReturnsWorklist />, { apiClient });
+
+    await userEvent.click(await screen.findByRole('button', { name: COPY.needsApprovalAction }));
+    await userEvent.click(
+      await screen.findByRole('button', { name: AUTHORIZE_RETURN_DIALOG_COPY.confirm }),
+    );
+
+    await waitFor(() => {
+      expect(authorize).toHaveBeenCalledWith('r2');
+    });
+    await waitFor(() => {
+      expect(screen.getByText(COPY.needsApprovalEmpty)).toBeInTheDocument();
     });
   });
 });
