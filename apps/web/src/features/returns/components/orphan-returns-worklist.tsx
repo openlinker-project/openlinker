@@ -25,13 +25,22 @@
  * every downstream trigger, so silently capping this group at one page would
  * let an operator believe the queue is clear while more sit unshown.
  *
- * **The primary action is a `Link` to the return's own detail page, never an
- * inline dialog.** `return-orphan-banner.tsx`'s docblock records that a match
- * action had nowhere to live before this epic; #3082/#3083 are what give the
- * detail page real match/approve affordances. Routing there rather than
- * duplicating those flows here means this component works today AND still
- * works, unchanged, once those two land — the destination gains the dialog,
- * not this list.
+ * **"Needs an order"'s primary action stays a `Link` to the return's own
+ * detail page.** `return-orphan-banner.tsx`'s docblock records that a match
+ * action had nowhere to live before this epic; #3082 is what gives the
+ * detail page a real match affordance. Routing there rather than duplicating
+ * that flow here means this row works today AND still works, unchanged, once
+ * #3082 lands — the destination gains the dialog, not this list.
+ *
+ * **"Waiting for your OK"'s primary action instead opens
+ * `AuthorizeReturnDialog` inline** (#3083) — that write carries no form
+ * (`POST .../authorize` takes nothing beyond the return id), so there is no
+ * detail-page destination this group needs to defer to. Confirming needs no
+ * manual row-removal here: `useAuthorizeReturnMutation`'s own `onSettled`
+ * invalidates `returnsQueryKeys.all`, so this group's own
+ * `bucket: 'attributed'` scan refetches and the now-approved return stops
+ * matching `authorizedAt === null` — the acceptance criterion is satisfied by
+ * cache invalidation, not by this component splicing an array.
  *
  * Two independent queries, two independent four-state reads (loading / error /
  * unreadable envelope / confirmed-empty) — matching `order-returns-panel.tsx`'s
@@ -41,13 +50,14 @@
  *
  * @module apps/web/src/features/returns/components
  */
-import type { ReactElement } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { useReturnsQuery } from '../hooks/use-returns-query';
 import { RETURNS_MAX_LIMIT, RETURNS_PAGE_SIZE } from '../api/returns.types';
 import type { ReturnListItem } from '../api/returns.types';
+import { AuthorizeReturnDialog } from './authorize-return-dialog';
 import { ORPHAN_RETURNS_WORKLIST_COPY as COPY } from '../lib/orphan-returns-worklist.copy';
 import { describeUnreadableRows } from '../lib/returns-list.copy';
 
@@ -70,6 +80,12 @@ interface WorklistGroupProps {
    */
   droppedCount: number;
   onRetry: () => void;
+  /**
+   * Overrides the default `Link`-to-detail row action. Only "Waiting for
+   * your OK" supplies one — the confirm-only authorize dialog has no
+   * detail-page destination to defer to.
+   */
+  renderAction?: (item: ReturnListItem) => ReactNode;
 }
 
 function WorklistGroup({
@@ -84,6 +100,7 @@ function WorklistGroup({
   truncationNote,
   droppedCount,
   onRetry,
+  renderAction,
 }: WorklistGroupProps): ReactElement {
   const titleId = `orphan-returns-worklist__group-title-${title.replace(/\s+/g, '-').toLowerCase()}`;
   // `droppedCount` and `truncationNote` are facts about the READ, not about the
@@ -119,12 +136,16 @@ function WorklistGroup({
               {items.map((item) => (
                 <li key={item.id} className="orphan-returns-worklist__row">
                   <span className="mono-text">{item.externalReturnId ?? item.id}</span>
-                  <Link
-                    to={`/returns/${item.id}`}
-                    className="button button--secondary button--sm"
-                  >
-                    {actionLabel}
-                  </Link>
+                  {renderAction ? (
+                    renderAction(item)
+                  ) : (
+                    <Link
+                      to={`/returns/${item.id}`}
+                      className="button button--secondary button--sm"
+                    >
+                      {actionLabel}
+                    </Link>
+                  )}
                 </li>
               ))}
             </ul>
@@ -142,6 +163,10 @@ function WorklistGroup({
 }
 
 export function OrphanReturnsWorklist(): ReactElement {
+  // The one return currently offered the authorize dialog, or null. A single
+  // slot is enough: only one row's dialog can be open at a time.
+  const [authorizingId, setAuthorizingId] = useState<string | null>(null);
+
   const needsOrderQuery = useReturnsQuery(
     { bucket: 'orphan' },
     { limit: RETURNS_PAGE_SIZE, offset: 0 },
@@ -215,7 +240,31 @@ export function OrphanReturnsWorklist(): ReactElement {
         onRetry={() => {
           void approvalScanQuery.refetch();
         }}
+        renderAction={(item) => (
+          <Button
+            tone="secondary"
+            className="button--sm"
+            onClick={() => {
+              setAuthorizingId(item.id);
+            }}
+          >
+            {COPY.needsApprovalAction}
+          </Button>
+        )}
       />
+
+      {authorizingId !== null ? (
+        <AuthorizeReturnDialog
+          returnId={authorizingId}
+          open
+          onOpenChange={(open) => {
+            if (!open) setAuthorizingId(null);
+          }}
+          onAuthorized={() => {
+            setAuthorizingId(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
