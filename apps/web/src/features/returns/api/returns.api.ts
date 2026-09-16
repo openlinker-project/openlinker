@@ -2,11 +2,13 @@
  * Returns API Client
  *
  * Typed client for the returns read surface (#2334), consumed by the returns
- * list (#2335).
+ * list (#2335), plus the three orphan/manual-return writes — `record`,
+ * `authorize`, `matchOrder` (#2372/#2376, wired here by #3079).
  *
- * Both reads run their response through the feature's Zod parse rather than
- * casting it, so a contract break surfaces as a reported dropped row instead of
- * an `undefined` rendered into a cell.
+ * Every response runs through the feature's Zod parse rather than a cast, so a
+ * contract break surfaces as a reported dropped row (reads) or a named
+ * `ReturnWriteResultUnreadableError` (writes) instead of an `undefined`
+ * rendered into a cell an operator then trusts.
  *
  * @module apps/web/src/features/returns/api
  */
@@ -21,11 +23,17 @@ import {
   parseMarkNotReturnedResult,
   parseReceiveReturnLineResult,
 } from './return-custody.schema';
+import {
+  parseAuthorizeReturnResult,
+  parseMatchReturnToOrderResult,
+  parseRecordReturnResult,
+} from './return-write.schema';
 import { RETURNS_MAX_LIMIT } from './returns.types';
 import type {
   AttestReturnLineStockInput,
   ReturnCorrectionProposalResult,
   AttestReturnLineStockResult,
+  AuthorizeReturnResult,
   ConfirmReturnRefundInput,
   ConfirmReturnRefundResult,
   DeclineReturnInput,
@@ -34,8 +42,12 @@ import type {
   DisposeReturnLineResult,
   MarkReturnLineNotReturnedInput,
   MarkReturnLineNotReturnedResult,
+  MatchReturnToOrderInput,
+  MatchReturnToOrderResult,
   ReceiveReturnLineInput,
   ReceiveReturnLineResult,
+  RecordReturnInput,
+  RecordReturnResult,
   PaginatedReturns,
   ReturnDetail,
   ReturnFilters,
@@ -186,6 +198,46 @@ export interface ReturnsApi {
    * never performs it.
    */
   getCorrectionProposal: (returnId: string) => Promise<ReturnCorrectionProposalResult>;
+
+  /**
+   * `POST /returns/:returnId/authorize` — authorize an operator-authored
+   * return (#2372/#2376).
+   *
+   * Restricted to `origin: 'operator_authored'` — a source-ingested return is
+   * refused 409 with `reason: 'source-ingested'`, which the caller gates
+   * against at the worklist level rather than discover here.
+   * `already-authorized` is a SUCCESS outcome, not a refusal — the act is
+   * idempotent.
+   */
+  authorize: (returnId: string) => Promise<AuthorizeReturnResult>;
+
+  /**
+   * `POST /returns/:returnId/match-order` — attribute an orphan return to an
+   * order (#2372/#2376).
+   *
+   * **Attribution is monotonic — there is no unmatch.** Refused 400 with
+   * `reason: 'unknown-order'` when OpenLinker never minted that order id
+   * (a request-payload fault), or 409 with `reason: 'already-attributed'`
+   * when the return already names one (including a lost race against a
+   * concurrent matcher). The caller must confirm before calling this — there
+   * is no corrective action for a mismatch.
+   */
+  matchOrder: (
+    returnId: string,
+    input: MatchReturnToOrderInput
+  ) => Promise<MatchReturnToOrderResult>;
+
+  /**
+   * `POST /returns/record` — open a return in OpenLinker against an order it
+   * already knows, for a channel with no returns feed at all (#2372/#2376).
+   *
+   * Declared as a literal `/returns/record` segment ahead of every
+   * `:returnId` route — this call addresses no existing return, so a refusal
+   * (`no-lines`, `invalid-quantity`, `unknown-order`,
+   * `order-not-on-connection`) is always 400: the payload is the entire
+   * request, not a conflict with a resource's state.
+   */
+  record: (input: RecordReturnInput) => Promise<RecordReturnResult>;
 
   /**
    * One order's return activity, oldest first (#2383) — the order timeline's
@@ -367,6 +419,43 @@ export function createReturnsApi(request: ApiRequest): ReturnsApi {
         `/returns/${encodeURIComponent(returnId)}/correction-proposal`
       );
       return parseCorrectionProposal(raw);
+    },
+
+    async authorize(returnId): Promise<AuthorizeReturnResult> {
+      const raw = await request<unknown>(`/returns/${encodeURIComponent(returnId)}/authorize`, {
+        method: 'POST',
+      });
+      return parseAuthorizeReturnResult(raw);
+    },
+
+    async matchOrder(returnId, input): Promise<MatchReturnToOrderResult> {
+      const raw = await request<unknown>(`/returns/${encodeURIComponent(returnId)}/match-order`, {
+        method: 'POST',
+        body: JSON.stringify({ internalOrderId: input.internalOrderId }),
+      });
+      return parseMatchReturnToOrderResult(raw);
+    },
+
+    async record(input): Promise<RecordReturnResult> {
+      const raw = await request<unknown>('/returns/record', {
+        method: 'POST',
+        body: JSON.stringify({
+          internalOrderId: input.internalOrderId,
+          sourceConnectionId: input.sourceConnectionId,
+          lines: input.lines.map((line) => ({
+            // Omitted rather than sent as `null`/`""`: an absent optional field
+            // is the server's own "not supplied", matching `noteBody`'s rule
+            // for the same reason — a typed-but-empty value would persist text
+            // the operator did not write.
+            ...(line.sku ? { sku: line.sku } : {}),
+            ...(line.name ? { name: line.name } : {}),
+            reason: line.reason,
+            quantityAdvised: line.quantityAdvised,
+            ...noteBody(line.note ?? undefined),
+          })),
+        }),
+      });
+      return parseRecordReturnResult(raw);
     },
   };
 }
