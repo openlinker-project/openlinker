@@ -27,21 +27,25 @@ module.exports = {
   // that took the package from 74 s to over 17 minutes. If a ceiling is ever
   // wanted here, size it above the package's real working set, not by copying
   // prestashop's number.
-  // Stays 2 (#3271). Raised to 8 TWICE and reverted twice - first against a lab
-  // measurement from an idle runner, then again after `apps/web` moved to its
-  // own CI job, on the reasoning that four backend packages at 2 workers only
-  // put eight of the host's cores to work. Both times the real job got
-  // materially slower; the second attempt was past 13 minutes against a 4m21s
-  // baseline when it was killed.
+  // 8 under CI, and this value's history is the whole lesson (#3271).
   //
-  // So the fan-out is NOT the limit here, and the free-core arithmetic is
-  // wrong: the runners are four containers on ONE host, sharing it with every
-  // other job of the same workflow - Integration Tests above all. Cores that
-  // look idle from inside one container are not idle.
+  // It was raised to 8 twice and reverted twice, both times because the job got
+  // slower and the second time because the runner DIED. Both of those raises
+  // came with `--workspace-concurrency=4`, so they meant four packages at eight
+  // workers: 32 jest processes, on a host that is not the container's to spend.
+  // `bd-build-server` carries all four runner containers plus everything else,
+  // and sits at load 27-41 with ~91 GB used before CI adds anything.
   //
-  // Do not raise this a third time without first measuring what the HOST is
-  // doing, not what the container can see.
-  maxWorkers: 2,
+  // Measured on that host, this package alone, back to back: 70 s at 2 workers,
+  // 26 s at 8, 50 s at 2 again as a drift control. `apps/api` the same way:
+  // 47 s / 21 s / 45 s. So a package really does scale with workers - the count
+  // per package was never the problem, the PRODUCT was.
+  //
+  // Hence 8 workers together with `--workspace-concurrency=3` rather than 4:
+  // peak ~24 processes against the ~20 that is known to pass and the ~40 that
+  // killed a runner. If this is raised again, raise it against the host budget,
+  // not against what `nproc` reports inside a container.
+  maxWorkers: process.env.CI ? 8 : 2,
   transform: {
     '^.+\\.ts$': [
       'ts-jest',

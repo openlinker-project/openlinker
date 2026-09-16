@@ -867,10 +867,21 @@ Tests:       339 passed, 339 total          ← zero test failures
    | apps/api (2161 tests) | 80.0 s | **163.0 s**, one suite OOM-killed |
    | twelve smaller packages | — | **+38% to +88%** |
 
-   The raise was first applied to `libs/core`, `apps/api` and `apps/worker` too, on the strength of a lab run, and reverted. **A lab number from an idle runner is not a CI number**: the measurement was taken with the test job alone on the box, while the real job shares those containers with seven other concurrent jobs, so `2 packages × 8 workers` oversubscribes exactly as the `apps/api` comment had warned since 444244f — including reproducing its `signal=SIGKILL, exitCode=null`.
+   **The number that matters is the PRODUCT, not either factor.** Measured on the runner host itself (`bd-build-server`, which carries every runner container and idles at load 27-41 with ~91 GB used), one package at a time, back to back with a drift control:
+
+   | package | 2 workers | 8 workers | 2 workers again |
+   |---|---|---|---|
+   | `libs/core` | 70 s | **26 s** | 50 s |
+   | `apps/api` | 47 s | **21 s** | 45 s |
+
+   So a package genuinely scales with workers. What broke CI twice was `4 packages × 8 workers = 32 jest processes` — the second attempt took a runner permanently offline. Peak process counts, measured: **~20 passes, ~40 kills a runner.** `concurrency 3 × 8 workers ≈ 24` is the current setting, chosen to sit between them.
+
+   Adding more CI *jobs* does not buy headroom here. The runners are containers on one host, so three test jobs running at once present the host with the sum of their processes. Splitting work across jobs changes scheduling, not capacity.
+
+   The raise was first applied to `libs/core`, `apps/api` and `apps/worker` on the strength of a lab run, and reverted. **A lab number from an idle runner is not a CI number**: the measurement was taken with the test job alone on the box, while the real job shares those containers with seven other concurrent jobs, so `2 packages × 8 workers` oversubscribes exactly as the `apps/api` comment had warned since 444244f — including reproducing its `signal=SIGKILL, exitCode=null`.
 
    The `CI ?` split matters separately: `maxWorkers` lives in `jest.config.*`, not in a CI-only overlay, so `.husky/pre-commit` → `pnpm smart-test` reaches the same value on a contributor's own machine, where `2` keeps a laptop survivable.
-2. **Cross-package fan-out bound** — `test:ci` runs `pnpm -r --workspace-concurrency=4 test`. pnpm's own default is also 4, so this line no longer throttles anything by itself, and that is deliberate (#3271): the throttling moved to where it can be reasoned about, namely an explicit absolute worker cap on **every** package. #976 set the bound to `2` when each package took jest's default `cores - 1` — 63 on this runner — so the only available lever was how many packages ran at once. With every package capped the arithmetic is bounded directly: at four concurrent packages the worst case is `2 x 8` (prestashop, allegro) `+ 2 x 2`, i.e. twenty workers on a 64-core box.
+2. **Cross-package fan-out bound** — `test:ci` runs `pnpm -r --workspace-concurrency=3 test`. pnpm's own default is also 4, so this line no longer throttles anything by itself, and that is deliberate (#3271): the throttling moved to where it can be reasoned about, namely an explicit absolute worker cap on **every** package. #976 set the bound to `2` when each package took jest's default `cores - 1` — 63 on this runner — so the only available lever was how many packages ran at once. With every package capped the arithmetic is bounded directly: at four concurrent packages the worst case is `2 x 8` (prestashop, allegro) `+ 2 x 2`, i.e. twenty workers on a 64-core box.
 
    **The cap has to be on every package for that to hold.** `apps/web` is the one that is not jest, and vitest defaults `maxWorkers` to `cores - 1` too, so it was capped in the same change; without that, one vitest run can claim the whole machine and starve the three packages beside it. Note vitest 4 removed `poolOptions` — the nested form is accepted, ignored, and reported only as a `DEPRECATED` line, so it caps nothing while looking like it does. Use the top-level `maxWorkers`.
 
