@@ -1,5 +1,5 @@
 /**
- * Unit-suite worker count — one resolver, four readers.
+ * Unit-suite worker count — one resolver, five readers.
  *
  * The sibling of `jest.test-workers.cjs` (#3263), deliberately a SECOND file
  * rather than a shared one: the two tiers are bounded by different things. The
@@ -10,9 +10,16 @@
  * one tier would silently move the other.
  *
  * This file is the single source of the unit worker count. It is required by
- * `libs/core`, `apps/api`, `apps/worker` and `jest.ci-stability.mjs` (which is
- * itself read by `libs/integrations/prestashop` and `libs/integrations/allegro`),
- * so every package that declares a cap declares the same one.
+ * `libs/core`, `apps/api`, `apps/worker`, `apps/web/vite.config.ts` and
+ * `jest.ci-stability.mjs` (which is itself read by
+ * `libs/integrations/prestashop` and `libs/integrations/allegro`), so every
+ * package that declares a cap declares the same one - vitest included, which
+ * is the point: `apps/web` is the one package that is not jest, and leaving it
+ * with its own number is how the tier drifts.
+ *
+ * `apps/web` applies the CI gate at ITS call site rather than taking this
+ * file's local value, and that is deliberate: off CI it keeps vitest's own
+ * `cores - 1` default, because `.husky/pre-commit` does not run it.
  *
  * CJS, and at the repo root, mirroring `jest.esm-deps.cjs` and
  * `jest.test-workers.cjs` — a jest config is CJS and cannot import from the

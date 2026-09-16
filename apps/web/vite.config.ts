@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 import { defineConfig } from 'vitest/config';
@@ -10,6 +11,13 @@ import { createOgMetaPlugin } from './src/build-time/og-meta';
 // invoked both from the package dir (`pnpm --filter`) and from the repo root,
 // and only one of those makes a cwd-relative env lookup find `.env*`.
 const CONFIG_DIR = fileURLToPath(new URL('.', import.meta.url));
+
+// The unit-tier worker count, from the one resolver at the repo root (#3271),
+// so this package cannot drift from the five jest packages beside it. Required
+// rather than imported: it is CJS, and this file is ESM TypeScript.
+const { resolveUnitTestWorkers } = createRequire(import.meta.url)(
+  '../../jest.unit-workers.cjs',
+) as { resolveUnitTestWorkers: () => number };
 
 export default defineConfig(({ mode }) => {
   // #2174: every OG token is resolved HERE rather than through Vite's native
@@ -52,23 +60,29 @@ export default defineConfig(({ mode }) => {
       // reading as a product defect.
       testTimeout: 20000,
       teardownTimeout: 10000,
-      // Bound vitest's own pool (#3271). Vitest defaults maxForks to
-      // `cores - 1`, which on the self-hosted runner is 63 - and this package
-      // is one of several running at once under
-      // `pnpm -r --workspace-concurrency`, where every jest package already
-      // declares an absolute worker cap for exactly that reason. Uncapped, one
-      // vitest run can claim the whole box and starve its neighbours.
+      // Bound vitest's own pool (#3271), at the same count as every jest
+      // package in the unit tier - see `jest.unit-workers.cjs`.
       //
-      // 8 is not a throttle here: the run's own profile shows ~1070 cpu-seconds
-      // finishing in ~163 s wall, i.e. an effective parallelism of about 6.6,
-      // so 63 forks were never being used. Off CI the default is left alone -
-      // a contributor's machine has few enough cores that `cores - 1` is
-      // already a sane number.
+      // Vitest defaults maxForks to `cores - 1`, which here is 63, and that
+      // number is the trap rather than the fix: `os.cpus()` reports the HOST's
+      // 64 cores, while the CI job runs inside a container whose cgroup allows
+      // it about 8 CPUs of quota (#3263 measured that container at 800% of its
+      // 800%). So the default does not spawn 63 workers across 63 cores, it
+      // spawns 63 processes to contend over 8 - and the run's own profile bears
+      // that out: ~1070 cpu-seconds finishing in ~163 s wall is an effective
+      // parallelism of about 6.6, so the extra forks were never doing anything.
+      //
+      // The CI gate stays at the call site rather than moving into the
+      // resolver, because off CI this package deliberately keeps vitest's own
+      // default: a contributor's laptop really does have few enough cores that
+      // `cores - 1` is the right number there, and the jest packages' local 2
+      // exists for a different reason (`.husky/pre-commit` runs them, it does
+      // not run this).
       //
       // `maxWorkers` is top-level: vitest 4 removed `poolOptions`, and the old
       // nesting is accepted-and-ignored with only a DEPRECATED line in the
       // output, so writing it that way caps nothing while looking like it does.
-      ...(process.env.CI ? { maxWorkers: 8 } : {}),
+      ...(process.env.CI ? { maxWorkers: resolveUnitTestWorkers() } : {}),
       setupFiles: './src/test/setup.ts',
       css: true,
       coverage: {
