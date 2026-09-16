@@ -15,6 +15,11 @@ import type { StartedRedisContainer } from '@testcontainers/redis';
 import { RedisContainer } from '@testcontainers/redis';
 import type { ContainerConfig, ContainerHandles } from './types';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires -- the resolver is CJS on purpose: the integration jest configs are CJS and must read the SAME number (see jest.test-workers.cjs).
+const { resolveTestWorkers } = require('../../../jest.test-workers.cjs') as {
+  resolveTestWorkers: () => number;
+};
+
 interface HarnessState {
   postgres: StartedPostgreSqlContainer;
   redis: StartedRedisContainer;
@@ -63,6 +68,66 @@ export function ciRunIdLabels(): Record<string, string> {
 const CONTAINERS_PRIMED_ENV_VAR = 'OL_TEST_KIT_CONTAINERS_PRIMED';
 
 /**
+ * Which jest worker this process is.
+ *
+ * `JEST_WORKER_ID` is 1-indexed and set in every worker process; it is absent
+ * in the `globalSetup` realm, which resolves to worker 1. The id is
+ * deliberately NOT clamped to the worker ceiling: clamping would hand two
+ * workers the same database and silently reinstate the cross-worker
+ * truncation this scheme exists to prevent. An out-of-range worker instead
+ * fails loudly on a database that was never created, which is the honest
+ * failure and names its own cause.
+ */
+function resolveWorkerId(): number {
+  const raw = Number(process.env.JEST_WORKER_ID ?? '1');
+  return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 1;
+}
+
+/**
+ * Point this process at its own database and its own Redis logical DB.
+ *
+ * Called on every `startContainers()` path, including the reuse paths, because
+ * a worker realm reaches only those: the container pair is primed once in the
+ * `globalSetup` realm and every worker then inherits its env.
+ *
+ * Applied BEFORE `applyEnvOverrides`, so a suite that explicitly sets
+ * `DB_DATABASE` in `config.env` still wins — an explicit choice outranks the
+ * automatic one.
+ */
+function applyWorkerScope(): void {
+  const id = resolveWorkerId();
+  process.env.DB_DATABASE = `${DEFAULT_DB_NAME}_${id}`;
+  process.env.REDIS_DB = String(id);
+}
+
+/**
+ * Create one database per worker slot inside the ONE Postgres container.
+ *
+ * The container count does not change: this adds databases inside the single
+ * server, which share its process and cost almost nothing. Creation runs once,
+ * in the realm that actually booted the container, against a freshly-started
+ * server where none of these names can already exist.
+ *
+ * Uses the container's own `psql` rather than a client library so `test-kit`
+ * takes no new dependency. Each statement needs its own `-c`: `CREATE DATABASE`
+ * cannot run inside a transaction block, and psql wraps a single multi-statement
+ * `-c` in one.
+ */
+async function createWorkerDatabases(postgres: StartedPostgreSqlContainer): Promise<void> {
+  const workers = resolveTestWorkers();
+  const args = ['psql', '-U', DEFAULT_DB_USER, '-d', DEFAULT_DB_NAME, '-v', 'ON_ERROR_STOP=1'];
+  for (let id = 1; id <= workers; id += 1) {
+    args.push('-c', `CREATE DATABASE "${DEFAULT_DB_NAME}_${id}"`);
+  }
+  const { exitCode, output } = await postgres.exec(args);
+  if (exitCode !== 0) {
+    throw new Error(
+      `test-kit: failed to create ${workers} per-worker database(s) (exit ${exitCode}): ${output}`,
+    );
+  }
+}
+
+/**
  * Start Postgres + Redis containers and populate connection env vars.
  *
  * Idempotent — a second call returns the existing handles without booting
@@ -85,11 +150,13 @@ const CONTAINERS_PRIMED_ENV_VAR = 'OL_TEST_KIT_CONTAINERS_PRIMED';
  */
 export async function startContainers(config?: ContainerConfig): Promise<ContainerHandles> {
   if (globalThis.__OL_TEST_KIT_CONTAINERS__) {
+    applyWorkerScope();
     applyEnvOverrides(config);
     return toHandles(globalThis.__OL_TEST_KIT_CONTAINERS__);
   }
 
   if (process.env[CONTAINERS_PRIMED_ENV_VAR] === 'true') {
+    applyWorkerScope();
     applyEnvOverrides(config);
     return handlesFromEnv();
   }
@@ -110,12 +177,15 @@ export async function startContainers(config?: ContainerConfig): Promise<Contain
   process.env.DB_USERNAME = DEFAULT_DB_USER;
   process.env.DB_PASSWORD = DEFAULT_DB_PASSWORD;
   process.env.DB_DATABASE = DEFAULT_DB_NAME;
+
+  await createWorkerDatabases(postgres);
   process.env.REDIS_HOST = redis.getHost();
   process.env.REDIS_PORT = String(redis.getPort());
   process.env.REDIS_PASSWORD = '';
   process.env.REDIS_DB = '0';
   process.env[CONTAINERS_PRIMED_ENV_VAR] = 'true';
 
+  applyWorkerScope();
   applyEnvOverrides(config);
 
   globalThis.__OL_TEST_KIT_CONTAINERS__ = { postgres, redis };
@@ -203,7 +273,10 @@ function toHandles(state: HarnessState): ContainerHandles {
     postgres: {
       host: state.postgres.getHost(),
       port: state.postgres.getPort(),
-      database: DEFAULT_DB_NAME,
+      // The per-worker database (see applyWorkerScope), never the template one
+      // the container was created with - a caller building a DataSource from
+      // these handles must reach the same database the env vars name.
+      database: process.env.DB_DATABASE ?? DEFAULT_DB_NAME,
       username: DEFAULT_DB_USER,
       password: DEFAULT_DB_PASSWORD,
     },

@@ -3,6 +3,7 @@ const {
   ESM_DEPS_TRANSFORM_IGNORE_PATTERN,
   esmDepsJsTransform,
 } = require('../../../jest.esm-deps.cjs');
+const { resolveTestWorkers } = require('../../../jest.test-workers.cjs');
 
 module.exports = {
   rootDir: '..',
@@ -21,7 +22,18 @@ module.exports = {
   // 6.4 s warm vs 76.3 s cold locally for the same file) because every
   // int-spec pulls the whole AppModule graph through ts-jest (#1920).
   cacheDirectory: path.resolve(__dirname, '../../../.jest-cache/worker-integration'),
-  maxWorkers: 1,
+  // Every worker owns its own Postgres database and Redis logical DB (see
+  // `libs/test-kit/src/containers.ts`), which is what makes a count above 1
+  // safe: before that, a second worker's `TRUNCATE ... CASCADE` + `flushDb()`
+  // reset would wipe a peer's data mid-test. Resolved from
+  // `OL_TEST_MAX_WORKERS`, defaulting to 1 - so a local run with no env set
+  // behaves exactly as it did before. See `jest.test-workers.cjs`.
+  maxWorkers: resolveTestWorkers(),
+  // Nothing in this repo caps a worker's heap, so a worker that grows runs
+  // until the kernel OOM-killer takes it - and the symptom ("Jest worker
+  // process crashed") reads like a broken test. Jest restarts a worker that
+  // passes this between files instead.
+  workerIdleMemoryLimit: '1GB',
   testTimeout: 120000,
   // Mirrors apps/api: the worker AppModule boots long-lived handles (scheduler
   // crons, JobIntake consumption loops) that onModuleDestroy stops but may not
