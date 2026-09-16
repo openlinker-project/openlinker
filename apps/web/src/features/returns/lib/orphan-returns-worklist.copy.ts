@@ -48,6 +48,7 @@ export const ORPHAN_RETURNS_WORKLIST_COPY = {
   needsApprovalEmpty: 'Nothing is waiting for your approval.',
 
   loading: 'Checking…',
+  loadingMessage: 'Reading the returns list.',
 
   viewReturn: 'View return',
 

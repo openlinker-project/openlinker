@@ -77,7 +77,7 @@ function WorklistGroup({
       <p className="text-muted orphan-returns-worklist__group-description">{description}</p>
 
       {isLoading ? (
-        <LoadingState liveRegion="off" title={COPY.loading} />
+        <LoadingState liveRegion="off" title={COPY.loading} message={COPY.loadingMessage} />
       ) : isError ? (
         <ErrorState
           title={COPY.errorTitle}
