@@ -1,0 +1,279 @@
+/**
+ * Record Return Dialog (#3078/#3084)
+ *
+ * Opens an operator-authored return for a channel with no returns feed at
+ * all (`POST /returns/record`) — the one write that addresses no EXISTING
+ * return, so every field is the entire request rather than a correction to
+ * one.
+ *
+ * **Single line, matching the reviewed mockup and every #3084 acceptance
+ * criterion.** `RecordReturnDto.lines` is an array; this dialog wraps its one
+ * set of fields into a one-element array at submit time
+ * (`record-return-dialog.schema.ts`'s own docblock states why).
+ *
+ * **The order field is the same bounded free-text + `<datalist>` shape
+ * `match-return-dialog.tsx` already ships**, for the identical reason: no
+ * order-search endpoint exists, and an order carries no buyer name on the FE
+ * contract at all.
+ *
+ * **The connection-mismatch warning is a step STRONGER than the reviewed
+ * mockup's**, not a copy of it. The mockup compared a coarse `channel` string
+ * because its fixtures had nothing else; this dialog compares the picked
+ * order's own `sourceConnectionId` — the actual mapping ground truth — against
+ * the picked connection, so the warning is authoritative rather than a
+ * heuristic. It is still only a WARNING, never a block: a return legitimately
+ * arriving via a different connection than the one that placed the order is
+ * one of the documented orphan causes (#2332), so the operator may know
+ * something this proactive check cannot.
+ *
+ * **Two refusals become field errors** (#3084's acceptance criterion):
+ * 400 `unknown-order` on the order field, 400 `order-not-on-connection` on
+ * the connection field. `no-lines` / `invalid-quantity` are handled
+ * defensively (the form's own Zod validation should already have caught
+ * them) and fall through to the generic message.
+ *
+ * @module apps/web/src/features/returns/components
+ */
+import { useState, type FormEvent, type ReactElement } from 'react';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { Alert } from '../../../shared/ui/alert';
+import { Button } from '../../../shared/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from '../../../shared/ui/dialog';
+import { FormField } from '../../../shared/ui/form-field';
+import { Input } from '../../../shared/ui/input';
+import { Select } from '../../../shared/ui/select';
+// Cross-feature imports go through each feature's own barrel — the
+// `match-return-dialog.tsx` / `return-money-panel.tsx` precedent.
+import { useConnectionsQuery } from '../../connections';
+import { useOrdersQuery } from '../../orders';
+import { useRecordReturnMutation } from '../hooks/use-record-return-mutation';
+import { RETURN_LINE_REASON_VALUES } from '../api/returns.types';
+import { readRecordRefusalReason } from '../lib/record-error';
+import { RECORD_RETURN_DIALOG_COPY as COPY } from '../lib/record-return-dialog.copy';
+import {
+  recordReturnDialogSchema,
+  RECORD_RETURN_DIALOG_DEFAULT_VALUES,
+  type RecordReturnDialogFormSubmission,
+  type RecordReturnDialogFormValues,
+} from './record-return-dialog.schema';
+
+/** Recent orders offered as suggestions — the same bound `match-return-dialog.tsx` uses. */
+const RECENT_ORDERS_LIMIT = 20;
+
+const DATALIST_ID = 'record-return-order-suggestions';
+
+interface RecordReturnDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Called once the return is recorded — the caller's cue to refresh its own view. */
+  onRecorded?: () => void;
+}
+
+export function RecordReturnDialog({
+  open,
+  onOpenChange,
+  onRecorded,
+}: RecordReturnDialogProps): ReactElement {
+  const [fieldError, setFieldError] = useState<{ field: 'internalOrderId' | 'sourceConnectionId'; message: string } | null>(
+    null,
+  );
+
+  const ordersQuery = useOrdersQuery(undefined, { limit: RECENT_ORDERS_LIMIT });
+  const orders = ordersQuery.data?.items ?? [];
+  const connectionsQuery = useConnectionsQuery();
+  const connections = connectionsQuery.data ?? [];
+
+  const mutation = useRecordReturnMutation();
+
+  const form = useForm<RecordReturnDialogFormValues, undefined, RecordReturnDialogFormSubmission>({
+    defaultValues: RECORD_RETURN_DIALOG_DEFAULT_VALUES,
+    resolver: zodResolver(recordReturnDialogSchema),
+  });
+
+  const watchedOrderId = form.watch('internalOrderId');
+  const watchedConnectionId = form.watch('sourceConnectionId');
+  const pickedOrder = orders.find((order) => order.internalOrderId === watchedOrderId) ?? null;
+  const pickedConnection = connections.find((connection) => connection.id === watchedConnectionId) ?? null;
+  const orderConnection =
+    pickedOrder !== null
+      ? connections.find((connection) => connection.id === pickedOrder.sourceConnectionId) ?? null
+      : null;
+  const showConnectionMismatch =
+    pickedOrder !== null &&
+    pickedConnection !== null &&
+    pickedOrder.sourceConnectionId !== pickedConnection.id;
+
+  function resetAndClose(): void {
+    form.reset(RECORD_RETURN_DIALOG_DEFAULT_VALUES);
+    setFieldError(null);
+    onOpenChange(false);
+  }
+
+  const onSubmit = form.handleSubmit((values) => {
+    if (mutation.isPending) return;
+    setFieldError(null);
+
+    mutation.mutate(
+      {
+        internalOrderId: values.internalOrderId,
+        sourceConnectionId: values.sourceConnectionId,
+        lines: [
+          {
+            name: values.itemName,
+            reason: values.reason,
+            quantityAdvised: values.quantityAdvised,
+          },
+        ],
+      },
+      {
+        onSuccess: () => {
+          resetAndClose();
+          onRecorded?.();
+        },
+        onError: (error) => {
+          const reason = readRecordRefusalReason(error);
+          if (reason === 'unknown-order') {
+            setFieldError({ field: 'internalOrderId', message: COPY.unknownOrder(values.internalOrderId) });
+            return;
+          }
+          if (reason === 'order-not-on-connection') {
+            setFieldError({ field: 'sourceConnectionId', message: COPY.orderNotOnConnection });
+            return;
+          }
+          // `no-lines` / `invalid-quantity` should already be unreachable past
+          // this form's own Zod validation, and anything else (404, 5xx,
+          // network) falls through to `mutation.error` below.
+        },
+      },
+    );
+  });
+
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>): void {
+    void onSubmit(event);
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!mutation.isPending) {
+          if (!next) resetAndClose();
+          else onOpenChange(next);
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogTitle>{COPY.title}</DialogTitle>
+        <DialogDescription>{COPY.description}</DialogDescription>
+
+        <form onSubmit={handleFormSubmit}>
+          <FormField
+            name="internalOrderId"
+            label={COPY.orderFieldLabel}
+            description={COPY.orderFieldDescription}
+            error={fieldError?.field === 'internalOrderId' ? fieldError.message : form.formState.errors.internalOrderId?.message}
+          >
+            <Input
+              placeholder={COPY.orderFieldPlaceholder}
+              list={DATALIST_ID}
+              {...form.register('internalOrderId', {
+                onChange: () => {
+                  if (fieldError?.field === 'internalOrderId') setFieldError(null);
+                },
+              })}
+            />
+          </FormField>
+          <datalist id={DATALIST_ID}>
+            {orders.map((order) => {
+              const label = order.syncStatus[0]?.externalOrderNumber ?? order.internalOrderId;
+              return (
+                <option key={order.internalOrderId} value={order.internalOrderId}>
+                  {label}
+                </option>
+              );
+            })}
+          </datalist>
+
+          <FormField
+            name="sourceConnectionId"
+            label={COPY.connectionFieldLabel}
+            description={COPY.connectionFieldDescription}
+            error={fieldError?.field === 'sourceConnectionId' ? fieldError.message : form.formState.errors.sourceConnectionId?.message}
+          >
+            <Select
+              {...form.register('sourceConnectionId', {
+                onChange: () => {
+                  if (fieldError?.field === 'sourceConnectionId') setFieldError(null);
+                },
+              })}
+            >
+              <option value="">{COPY.connectionPlaceholder}</option>
+              {connections.map((connection) => (
+                <option key={connection.id} value={connection.id}>
+                  {connection.name}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+
+          {showConnectionMismatch && orderConnection !== null ? (
+            <Alert tone="warning">{COPY.connectionMismatchWarning(orderConnection.name)}</Alert>
+          ) : null}
+
+          <FormField
+            name="itemName"
+            label={COPY.itemFieldLabel}
+            error={form.formState.errors.itemName?.message}
+          >
+            <Input placeholder={COPY.itemFieldPlaceholder} {...form.register('itemName')} />
+          </FormField>
+
+          <FormField
+            name="reason"
+            label={COPY.reasonFieldLabel}
+            error={form.formState.errors.reason?.message}
+          >
+            <Select {...form.register('reason')}>
+              <option value="">{COPY.reasonPlaceholder}</option>
+              {RETURN_LINE_REASON_VALUES.map((reason) => (
+                <option key={reason} value={reason}>
+                  {reason}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+
+          <FormField
+            name="quantityAdvised"
+            label={COPY.quantityFieldLabel}
+            error={form.formState.errors.quantityAdvised?.message}
+          >
+            <Input type="number" min={1} {...form.register('quantityAdvised')} />
+          </FormField>
+
+          <Alert tone="info">{COPY.note}</Alert>
+
+          {mutation.isError && readRecordRefusalReason(mutation.error) === null ? (
+            <Alert tone="error">{COPY.genericError}</Alert>
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" tone="secondary" disabled={mutation.isPending} onClick={resetAndClose}>
+              {COPY.cancel}
+            </Button>
+            <Button type="submit" disabled={mutation.isPending}>
+              {mutation.isPending ? COPY.confirming : COPY.confirm}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
