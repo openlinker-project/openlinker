@@ -402,98 +402,62 @@ jobs:
         run: |
           test -f libs/core/dist/identifier-mapping/index.js \
             || (echo "ERROR: libs/core/dist/identifier-mapping/index.js missing after build" && exit 1)
-      - name: Run integration tests (api + worker, in parallel)
-        # ONE job, both suites at once (#3263).
+      # The two tiers run in SEQUENCE deliberately. Running them concurrently in
+      # one step was tried and measured worse on this runner (#3263): 20m31s
+      # sequential against 30m+ concurrent, on an otherwise IDLE box, so it is
+      # not a contention artefact from a busy machine. The likely cause is that
+      # a runner slot gets a fraction of the shared host's CPU, so two tiers at
+      # `maxWorkers: 8` each oversubscribe it roughly 2x and both halves slow
+      # down by more than the 4m19s the worker tier would have saved. Two
+      # separate GitHub jobs would take a second slot on that same host and is
+      # rejected for the same reason. Re-test only with a measurement, not a
+      # hypothesis, and lower the worker count if you do.
+      - name: Run integration tests
+        run: pnpm --filter @openlinker/api test:integration
+        # Was 25 (PS container boot + module install + cache:warmup adds ~20-30s
+        # on Linux, #716). Raised for the OMS programme (waves 0-3a, PR #2675),
+        # which took this tier from 108 to 166 API int-specs (+54%). Both
+        # integration configs set `maxWorkers: 1`, so wall-clock is LINEAR in
+        # suite count - a 54% bigger tier is a 54% longer step, and the old cap
+        # killed a run that was still healthy (the last suites before the
+        # cut-off passed in ~5.5s each, no stall, no leaked container).
         #
-        # They ran back to back, so the job cost api + worker even though the
-        # two share nothing: separate jest configs, separate globalSetup, and
-        # since #3263 separate databases and Redis logical DBs. The worker tier
-        # is ~17% of the wall clock, so running it alongside the api tier
-        # removes that 17% outright.
+        # Measured: 18m29s wall / 1072s jest on a clean local box, 165/166
+        # passing. This runner is slower - the same tier passed at 820s on main
+        # (108 suites) and blew past 1512s here - so the realistic CI cost is
+        # ~26-28min. 40 gives ~1.5x headroom over that floor while the job cap
+        # below still bounds a genuine hang.
         #
-        # Deliberately NOT two GitHub jobs. Six runners share ONE physical box,
-        # so a second job takes a second slot on the same CPU: it helps on an
-        # idle machine and queues behind another PR on a busy one, which is the
-        # case that matters. In one step the box schedules both suites itself
-        # and no other PR's job is displaced.
-        #
-        # The `if: !cancelled()` the worker step used to carry (#786 - report a
-        # worker-only DI regression even when the api tier failed) is preserved
-        # structurally rather than by a condition: both suites start together,
-        # so neither can gate the other.
-        #
-        # Output is prefixed live (`[api]` / `[worker]`) so a 20-minute step is
-        # not 20 minutes of silence, and tee'd UNPREFIXED to per-suite files so
-        # a failure is readable and uploadable on its own.
-        run: |
-          set +e
-          set -uo pipefail
-
-          LOGDIR="$RUNNER_TEMP/integration-logs"
-          mkdir -p "$LOGDIR"
-
-          run_suite() {
-            local name="$1" filter="$2" start rc
-            start=$(date +%s)
-            pnpm --filter "$filter" test:integration 2>&1 \
-              | tee "$LOGDIR/$name.log" \
-              | sed -u "s/^/[$name] /"
-            # PIPESTATUS[0] rather than $?: the pipeline's status is tee's and
-            # sed's, which never fail, so $? would report every run as green.
-            rc=${PIPESTATUS[0]}
-            printf '%s\n' "$rc" > "$LOGDIR/$name.rc"
-            printf '%s\n' "$(( $(date +%s) - start ))" > "$LOGDIR/$name.sec"
-          }
-
-          run_suite api    "@openlinker/api"    & api_bg=$!
-          run_suite worker "@openlinker/worker" & worker_bg=$!
-          wait "$api_bg" "$worker_bg"
-
-          read_or() { cat "$LOGDIR/$1" 2>/dev/null || printf '%s' "$2"; }
-          api_rc=$(read_or api.rc 1);     api_sec=$(read_or api.sec 0)
-          worker_rc=$(read_or worker.rc 1); worker_sec=$(read_or worker.sec 0)
-
-          mark() { [ "$1" = "0" ] && printf 'passed' || printf '**FAILED** (exit %s)' "$1"; }
-
-          {
-            printf '### Integration tests\n\n'
-            printf '| suite | result | time |\n|---|---|---|\n'
-            printf '| api | %s | %sm %ss |\n'    "$(mark "$api_rc")"    "$((api_sec/60))"    "$((api_sec%60))"
-            printf '| worker | %s | %sm %ss |\n' "$(mark "$worker_rc")" "$((worker_sec/60))" "$((worker_sec%60))"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          for name in api worker; do
-            rc=$(read_or "$name.rc" 1)
-            [ "$rc" = "0" ] && continue
-            echo "::group::FAILED: $name (exit $rc) - failing suites and totals"
-            grep -E '^(FAIL |Tests: |Test Suites: )' "$LOGDIR/$name.log" || echo "(no jest summary in log - see the uploaded artifact)"
-            echo "::endgroup::"
-          done
-
-          echo "api=$api_rc (${api_sec}s)  worker=$worker_rc (${worker_sec}s)"
-          [ "$api_rc" = "0" ] && [ "$worker_rc" = "0" ]
-        # Bounds the whole step now that it carries both tiers. The api tier is
-        # the long pole and set this number (40) on its own; the worker tier
-        # runs inside it rather than after it, so the cap does not need raising.
+        # NOTE for whoever looks next: it is NOT one expensive spec. The
+        # slowest three are the pre-existing container suites
+        # (allegro-prestashop-carrier-mapping 310s, prestashop-webhook-
+        # provisioning 125s, woocommerce-inventory-propagation 101s), and
+        # fulfillment-work-migration-parity - which stands up a SECOND database
+        # with `migrationsRun: true` to run the full migration chain, because
+        # the ordinary harness uses `synchronize` and so CI had never executed a
+        # migration at all - costs only 14s. The growth is spread across ~50 new
+        # specs, so the next wave will move this number again.
         timeout-minutes: 40
         # Note: Docker is pre-installed on GitHub Actions runners, required for Testcontainers
-      - name: Upload integration logs
-        # Only on failure: the prefixed stream above is enough for a green run,
-        # and the per-suite files are what make a red one readable without
-        # untangling two interleaved suites.
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: integration-logs
-          path: ${{ runner.temp }}/integration-logs/*.log
-          retention-days: 7
-        # Container cleanup is unchanged and still in-process: apps/api and
-        # apps/worker each own a globalSetup/globalTeardown pair, plus each
-        # suite's own afterAll (the PrestaShop/WooCommerce container helpers).
-        # No post-job sweep here: this run's own status is still `in_progress`
-        # until the job finishes, so the pre-flight sweep's run-status check
-        # would not touch its containers anyway - the next run's pre-flight
-        # sweep picks up anything this run failed to clean up.
+      - name: Run worker integration tests
+        # Runs even if the API suite failed (!cancelled) so a worker-specific
+        # AppModule DI regression is reported independently — the point of #786.
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @openlinker/worker test:integration
+        # Was 10 ("worker suite runs ~80s locally"), which is stale: the worker
+        # tier grew 17 -> 26 int-specs on this branch and its LAST CI run took
+        # 577s against the 600s cap - it passed with 23s to spare and is the
+        # next step that would have gone red. 15 restores real headroom; the
+        # cap still guards a hung container boot.
+        timeout-minutes: 15
+        # This job's own containers are cleaned up in-process: apps/worker has
+        # its own globalSetup/globalTeardown pair (setup-global.ts / teardown.ts,
+        # independent of apps/api's), plus each suite's own afterAll (e.g. the
+        # PrestaShop/WooCommerce container helpers). No post-job sweep here:
+        # this run's own status is still `in_progress` until the job finishes,
+        # so the pre-flight sweep's run-status check wouldn't touch its
+        # containers anyway — the next run's pre-flight sweep picks up anything
+        # this run itself failed to clean up.
 
   test-php:
     name: PHP Unit Tests
