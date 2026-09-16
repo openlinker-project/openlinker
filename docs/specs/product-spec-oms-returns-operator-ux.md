@@ -496,10 +496,12 @@ answer, which is the opposite of "shown rather than resolved".
 **Unnecessary.** OpenLinker builds that invoice itself from the order's own items, in order
 (`order-to-issue-invoice-command.mapper.ts:113`), so invoice line *N* is `order.items[N-1]`; the
 return line already arrives carrying `offerId`, `sku` and `unitPrice`. The join exists at ingestion
-and was simply never persisted — `ReturnLine.resolvedOrderLineId` is hardcoded `null`
-(`returns.service.ts:444`). **#3171 / #3172 resolve it, and are a hard prerequisite for this
-section**: until they land nothing can pre-fill a quantity, and no frontend sub-issue of #3087
-should start.
+and was simply never persisted — `ReturnLine.resolvedOrderLineId` was hardcoded `null`.
+**#3171 / #3172 resolved it**: the field is populated at ingestion today and is trustworthy. What
+remains a hard prerequisite for this section is narrowing `return-correction-matching
+.domain-service.ts` onto that field instead of matching by product name — until it is narrowed, the
+matcher still emits `status: 'ambiguous'` with a `candidates` list, a shape this grid cannot render,
+and no frontend sub-issue of #3087 should start.
 
 **What replaces it.** A grid over the **invoice's own lines**, in document order — a recessed
 read-only *as invoiced* column, an editable *after correction* column carrying both the target

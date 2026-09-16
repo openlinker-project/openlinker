@@ -19,15 +19,19 @@
 
    Two things follow, and both are load-bearing rather than housekeeping.
 
-   #3172 IS A PREREQUISITE, NOT A NICE-TO-HAVE. `ReturnLine.resolvedOrderLineId`
-   is hardcoded `null` (`returns.service.ts:444`) and nothing in the tree
-   populates it. Until #3172 lands, OpenLinker cannot pre-fill a single
-   quantity in the grid below, so no frontend sub-issue of #3087 should start
-   ahead of it. Three further reads this sheet draws do not exist at all — the
-   refund figure beside the credit, per-line already-credited quantities, and
-   the shipping decision; each is named where it is used, in the "backend work
-   that does not exist yet" note further down. Nothing here claims they are
-   built.
+   THE JOIN HAS SHIPPED; THE MATCHER NARROWING HAS NOT, AND THAT IS THE REAL
+   PREREQUISITE. #3171/#3172 resolved `ReturnLine.resolvedOrderLineId` at
+   ingestion — `return-order-line-resolver.service.ts` runs on every
+   `marketplace.return.sync`, and the field is trustworthy today. What still
+   gates every frontend sub-issue of #3087 is that `return-correction-matching
+   .domain-service.ts` has not been narrowed onto it: the matcher still joins
+   by product name and still emits `status: 'ambiguous'` with a `candidates`
+   list, which this grid has no row shape for. Until that narrowing lands, a
+   `'proposed'` outcome can carry a line this sheet cannot render. Three
+   further reads this sheet draws do not exist at all — the refund figure
+   beside the credit, per-line already-credited quantities, and the shipping
+   decision; each is named where it is used, in the "backend work that does
+   not exist yet" note further down. Nothing here claims they are built.
 
    SPEC § 5.8 IS AMENDED, NOT IGNORED.
    `docs/specs/product-spec-oms-returns-operator-ux.md` § 5.8 described the
@@ -2256,11 +2260,15 @@ input:disabled, select:disabled { background: var(--bg-surface-muted); color: va
       to be guessed. That read is shipped. Four things it depends on are not.
     </p>
     <p>
-      <b>1. The join.</b> <b>ReturnLine.resolvedOrderLineId</b> is hardcoded <b>null</b> at
-      <b>returns.service.ts:444</b> and nothing in the tree populates it. Until it is, OpenLinker cannot
-      pre-fill a single quantity, because it does not know which invoice line a returned item belongs to.
-      The data is already in hand at ingestion &mdash; the return carries <b>offerId</b> and
-      <b>unitPrice</b>, and the invoice is built from <b>order.items</b> in order.
+      <b>1. The matcher narrowing.</b> The join itself is done &mdash; <b>ReturnLine.resolvedOrderLineId</b>
+      is resolved at ingestion (#3171/#3172) and is trustworthy. What is not done is narrowing
+      <b>return-correction-matching.domain-service.ts</b> onto it: the matcher still joins by product
+      name and can still emit <b>status: 'ambiguous'</b> with a <b>candidates</b> list for a line this
+      grid has no row shape for &mdash; a <b>'proposed'</b> outcome can carry one of those today. Until
+      the matcher is narrowed, OpenLinker cannot pre-fill a single quantity, because a name-joined
+      match is not trustworthy enough to act on. The data needed to do it is already in hand at
+      ingestion &mdash; the return carries <b>offerId</b> and <b>unitPrice</b>, and the invoice is built
+      from <b>order.items</b> in order.
     </p>
     <p>
       <b>2. The refund figure.</b> The reconciliation compares this credit against what the channel already
