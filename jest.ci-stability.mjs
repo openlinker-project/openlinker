@@ -35,6 +35,6 @@
  * `docs/testing-guide.md` and the #976 implementation plan).
  */
 export const ciStabilityConfig = {
-  maxWorkers: 8,
+  maxWorkers: process.env.CI ? 8 : 2,
   workerIdleMemoryLimit: '512MB',
 };

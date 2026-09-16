@@ -68,7 +68,7 @@ export default defineConfig(({ mode }) => {
       // `maxWorkers` is top-level: vitest 4 removed `poolOptions`, and the old
       // nesting is accepted-and-ignored with only a DEPRECATED line in the
       // output, so writing it that way caps nothing while looking like it does.
-      maxWorkers: 8,
+      ...(process.env.CI ? { maxWorkers: 8 } : {}),
       setupFiles: './src/test/setup.ts',
       css: true,
       coverage: {
