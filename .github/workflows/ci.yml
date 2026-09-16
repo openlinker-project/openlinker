@@ -175,23 +175,6 @@ jobs:
       # with mtime rolled back to the same stamp, still failed 21 suites.
       - name: Normalize source mtimes so the jest cache can hit (#3271)
         run: node scripts/normalize-source-mtimes.mjs
-      # The single most misunderstood number about this runner: a CI job does
-      # NOT get the host's 64 cores and 251 GiB, it gets its own cgroup. Every
-      # worker cap in this repo is sized against the numbers this prints, so
-      # print them rather than leaving four config comments quoting a fact
-      # nobody can check from a log (#3271/#3263).
-      - name: Report the container's real CPU and memory limits
-        run: |
-          echo "nproc                : $(nproc)"
-          echo "os.cpus().length     : $(node -p 'require("node:os").cpus().length')"
-          echo "os.totalmem          : $(node -p '(require("node:os").totalmem()/1024**3).toFixed(1)') GiB"
-          for f in /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.limit_in_bytes; do
-            [ -r "$f" ] && echo "cgroup mem ($f): $(cat "$f")"
-          done
-          for f in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/cpu/cpu.cfs_quota_us; do
-            [ -r "$f" ] && echo "cgroup cpu ($f): $(cat "$f")"
-          done
-          echo "loadavg              : $(cat /proc/loadavg)"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       # No explicit libs build: `pnpm test:ci` already runs
