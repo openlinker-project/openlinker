@@ -875,6 +875,16 @@ Tests:       339 passed, 339 total          ← zero test failures
    **The cap has to be on every package for that to hold.** `apps/web` is the one that is not jest, and vitest defaults `maxWorkers` to `cores - 1` too, so it was capped in the same change; without that, one vitest run can claim the whole machine and starve the three packages beside it. Note vitest 4 removed `poolOptions` — the nested form is accepted, ignored, and reported only as a `DEPRECATED` line, so it caps nothing while looking like it does. Use the top-level `maxWorkers`.
 
    If the fan-out ever needs throttling again, add it as a *number below 4*; leaving it at 4 while removing a per-package cap reinstates #976.
+
+3. **`--no-sort`, or the bound does nothing** — raising the concurrency alone changed the job by ten seconds, because `pnpm -r` runs scripts in **topological chunks with a barrier between them**, not as a free queue. Every package in a chunk must finish before any package in the next one starts, so the slowest member of a chunk sets its length whatever the concurrency is. `apps/web` has no workspace dependencies, which puts it in the first chunk, where its ~163 s held back the other eighteen packages:
+
+   ```
+   00:37:26  libs/test-kit finishes
+             ... 3m19s in which nothing finishes ...
+   00:40:45  libs/core finishes  (48 s of actual work)
+   ```
+
+   Test scripts have no ordering requirement — the `pnpm -r --filter "./libs/**" build` that precedes them is a separate command and keeps its own (sorted) run — so `test:ci` passes `--no-sort` and lets all twenty packages schedule freely against the concurrency limit. Do not add `--no-sort` to the build half.
 3. **Split oversized spec files** — a single multi-thousand-line spec pins all its state in one worker. Splitting per method/area (sharing setup via a `__tests__/mocks/*.factory.ts`) lowers peak per-worker memory and improves parallelism. Keep the total test count unchanged when splitting.
 
 To confirm it's OOM (not a leak), run with `--logHeapUsage` and watch for monotonic per-worker growth; the runner's `dmesg` / container OOM log is the definitive signal.
