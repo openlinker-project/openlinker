@@ -12,20 +12,13 @@ module.exports = {
   // parallel with apps/web vitest and libs/shared jest. Jest's default
   // (CPU-count-minus-one workers) oversubscribes memory and triggers
   // kernel OOM kills on worker processes, aborting random test suites.
-  // 8 under CI, 2 off it (#3271) - and this value has been 2, then 8, then 2,
-  // then 8 again, so the history is worth having in one place.
-  //
-  // The first raise was justified by a lab run on an IDLE runner and reverted:
-  // in the real job it starved the package running beside it and took
-  // `apps/api` from 80.0 s to 163.0 s with an OOM SIGKILL. What changed since
-  // is the arrangement, not the arithmetic. `apps/web` now has its own CI job
-  // rather than a share of this one, and `--no-sort` means the four heavy
-  // backend packages run together - at 2 workers each that is eight workers,
-  // and this package became the job's long pole at 140.9 s.
-  //
-  // So the raise is re-applied against the arrangement it was wrong for
-  // before. If it regresses again, revert THIS value rather than reaching for
-  // an idle-box measurement to defend it.
+  // The cap stays 2 (#3271). It was raised to 8 under CI against a lab
+  // measurement taken on an IDLE runner, and reverted after measuring the real
+  // job: 8 workers here starve whatever package runs beside it under
+  // `--workspace-concurrency=2`, and this package's own gain was only 73.0 s ->
+  // 64.5 s while `apps/api` went 80.0 s -> 163.0 s and one of its workers was
+  // OOM-killed. A lab number from an idle box is not a CI number: the real
+  // runner shares the machine with seven other concurrent jobs.
   //
   // Deliberately NO `workerIdleMemoryLimit` here either. A '512MB' ceiling was
   // tried and reverted: this package's workers legitimately peak around 2.8 GB,
@@ -34,7 +27,21 @@ module.exports = {
   // that took the package from 74 s to over 17 minutes. If a ceiling is ever
   // wanted here, size it above the package's real working set, not by copying
   // prestashop's number.
-  maxWorkers: process.env.CI ? 8 : 2,
+  // Stays 2 (#3271). Raised to 8 TWICE and reverted twice - first against a lab
+  // measurement from an idle runner, then again after `apps/web` moved to its
+  // own CI job, on the reasoning that four backend packages at 2 workers only
+  // put eight of the host's cores to work. Both times the real job got
+  // materially slower; the second attempt was past 13 minutes against a 4m21s
+  // baseline when it was killed.
+  //
+  // So the fan-out is NOT the limit here, and the free-core arithmetic is
+  // wrong: the runners are four containers on ONE host, sharing it with every
+  // other job of the same workflow - Integration Tests above all. Cores that
+  // look idle from inside one container are not idle.
+  //
+  // Do not raise this a third time without first measuring what the HOST is
+  // doing, not what the container can see.
+  maxWorkers: 2,
   transform: {
     '^.+\\.ts$': [
       'ts-jest',
