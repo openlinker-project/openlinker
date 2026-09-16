@@ -94,7 +94,7 @@ function resolveWorkerId(): number {
  * `DB_DATABASE` in `config.env` still wins — an explicit choice outranks the
  * automatic one.
  */
-function applyWorkerScope(): void {
+export function applyWorkerScope(): void {
   const id = resolveWorkerId();
   process.env.DB_DATABASE = `${DEFAULT_DB_NAME}_${id}`;
   process.env.REDIS_DB = String(id);
@@ -113,7 +113,7 @@ function applyWorkerScope(): void {
  * cannot run inside a transaction block, and psql wraps a single multi-statement
  * `-c` in one.
  */
-async function createWorkerDatabases(postgres: StartedPostgreSqlContainer): Promise<void> {
+export async function createWorkerDatabases(postgres: StartedPostgreSqlContainer): Promise<void> {
   const workers = resolveTestWorkers();
   const args = ['psql', '-U', DEFAULT_DB_USER, '-d', DEFAULT_DB_NAME, '-v', 'ON_ERROR_STOP=1'];
   for (let id = 1; id <= workers; id += 1) {

@@ -45,6 +45,11 @@ module.exports = {
   // green locally (dev stack on :5432/:6379) but ECONNREFUSED in CI (#786).
   globalSetup: '<rootDir>/test/integration/setup-global.ts',
   globalTeardown: '<rootDir>/test/integration/teardown.ts',
+  // Point each worker process at its own database and Redis logical DB before
+  // anything can read the env globalSetup wrote (#3263). `setupFiles` rather
+  // than `setupFilesAfterEnv`: this must land before the spec module graph is
+  // evaluated, and `setup-each.ts` already imports `./setup` at module load.
+  setupFiles: ['<rootDir>/test/integration/setup-worker-scope.ts'],
   // Reset the shared harness around EVERY test case of EVERY int-spec, so a
   // spec is isolated by omission rather than by its author remembering to
   // call resetTestHarness(). 21 of the 27 specs here reset in `afterEach`
