@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { listPendingGestures, resetGestureLogForTests } from '../lib/scanner-gesture-log';
 import { SCANNER_MAX_KEY_GAP_MS, SCANNER_MAX_LENGTH } from '../lib/scanner-gesture';
+import { atFrozenClock } from '../lib/scanner-burst.test-helper';
 import { useScannerInput, type ScannerGesture } from './use-scanner-input';
 
 /** Fire one keystroke at the document, optionally from inside an element. */
@@ -18,10 +19,22 @@ function key(char: string, target?: HTMLElement): void {
   (target ?? document).dispatchEvent(event);
 }
 
-/** Type `value` at scanner speed and terminate it. */
+/**
+ * Type `value` at scanner speed and terminate it.
+ *
+ * The clock is frozen for the burst (#3271) so "at scanner speed" is a
+ * property of the simulation rather than of how busy the machine is - a
+ * synchronous loop can still be descheduled past `SCANNER_MAX_KEY_GAP_MS`, and
+ * then the hook correctly prunes the early keystrokes and the test fails for a
+ * reason that has nothing to do with the hook. The slow-typing test below
+ * deliberately does NOT use this helper: it calls `key` around a real delay,
+ * which is the point of it.
+ */
 function scan(value: string, target?: HTMLElement): void {
-  for (const char of value) key(char, target);
-  key('Enter', target);
+  atFrozenClock(() => {
+    for (const char of value) key(char, target);
+    key('Enter', target);
+  });
 }
 
 describe('useScannerInput (#2416)', () => {

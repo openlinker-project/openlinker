@@ -41,7 +41,16 @@ export default defineConfig(({ mode }) => {
       // vitest default. Local runs complete in 2–3s per test; CI stretches
       // each transform/import pass by ~20×. Bumping to 10s keeps hangs
       // failing visibly while accommodating the runner.
-      testTimeout: 10000,
+      //
+      // Raised again to 20s (#3271) for a second, additive reason: this package
+      // no longer has the box to itself. `pnpm -r --no-sort
+      // --workspace-concurrency=4` means three other packages run alongside it,
+      // and a loaded runner stretched it from 163s to 371s in one measured run,
+      // so the headroom a single-tenant 10s bought is not the headroom a
+      // four-tenant one needs. 20s still fails a genuine hang quickly - nothing
+      // here legitimately takes ten seconds - it just stops CPU contention
+      // reading as a product defect.
+      testTimeout: 20000,
       teardownTimeout: 10000,
       // Bound vitest's own pool (#3271). Vitest defaults maxForks to
       // `cores - 1`, which on the self-hosted runner is 63 - and this package
