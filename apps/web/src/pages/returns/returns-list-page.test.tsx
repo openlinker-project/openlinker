@@ -4,7 +4,12 @@ import { afterEach, describe, it, expect, vi, type Mock } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
 import { mockMobileViewport } from '../../test/viewport';
 import { ReturnsListPage } from './returns-list-page';
-import type { ReturnListItem, ReturnListResult } from '../../features/returns';
+import {
+  ORPHAN_RETURNS_WORKLIST_COPY,
+  RECORD_RETURN_DIALOG_COPY,
+  type ReturnListItem,
+  type ReturnListResult,
+} from '../../features/returns';
 import type { Connection } from '../../features/connections/api/connections.types';
 
 function makeConnection(overrides: Partial<Connection> = {}): Connection {
@@ -498,6 +503,24 @@ describe('ReturnsListPage', () => {
       const select = await screen.findByLabelText('Filter by source connection');
       expect(select).toBeInTheDocument();
       expect(await screen.findByRole('option', { name: 'Allegro Main' })).toBeInTheDocument();
+    });
+  });
+
+  describe('entry point (#3085)', () => {
+    it('should render the orphan-returns worklist with no separate route', async () => {
+      setup();
+
+      expect(await screen.findByText(ORPHAN_RETURNS_WORKLIST_COPY.sectionTitle)).toBeInTheDocument();
+    });
+
+    it('should open the record-a-return dialog from the page action', async () => {
+      setup();
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: RECORD_RETURN_DIALOG_COPY.triggerLabel }),
+      );
+
+      expect(await screen.findByText(RECORD_RETURN_DIALOG_COPY.title)).toBeInTheDocument();
     });
   });
 

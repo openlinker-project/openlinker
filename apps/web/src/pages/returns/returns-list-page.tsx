@@ -28,7 +28,7 @@
  *
  * @module apps/web/src/pages/returns
  */
-import { useMemo, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
@@ -40,6 +40,7 @@ import { Chip } from '../../shared/ui/chip';
 import { Select } from '../../shared/ui/select';
 import { ConnectionEntityLabel, useConnectionsQuery } from '../../features/connections';
 import {
+  RECORD_RETURN_DIALOG_COPY,
   RETURNS_EMPTY_COPY,
   RETURNS_ERROR_COPY,
   RETURNS_FILTER_COPY,
@@ -47,6 +48,8 @@ import {
   RETURNS_PAGINATION_COPY,
   RETURNS_ROW_COPY,
   RETURNS_PAGE_SIZE,
+  OrphanReturnsWorklist,
+  RecordReturnDialog,
   ReturnIdentityCell,
   ReturnOpenedCell,
   ReturnOrderCell,
@@ -76,6 +79,9 @@ type BucketChoice = ReturnBucket | 'all';
 
 export function ReturnsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
+  // #3085 — the worklist's + record dialog's entry point. No new route: both
+  // live on this page, reachable from the existing Returns nav item.
+  const [isRecordDialogOpen, setIsRecordDialogOpen] = useState(false);
 
   const filters = useMemo(() => readReturnFilters(searchParams), [searchParams]);
   const offset = readReturnOffset(searchParams);
@@ -228,11 +234,27 @@ export function ReturnsListPage(): ReactElement {
     !availabilitySettled;
 
   return (
+    <>
     <PageLayout
       eyebrow={RETURNS_PAGE_COPY.eyebrow}
       title={RETURNS_PAGE_COPY.title}
       description={RETURNS_PAGE_COPY.description}
+      actions={
+        <Button
+          onClick={() => {
+            setIsRecordDialogOpen(true);
+          }}
+        >
+          {RECORD_RETURN_DIALOG_COPY.triggerLabel}
+        </Button>
+      }
     >
+      {/* #3078/#3081 — the two-group worklist, reachable from the existing
+          Returns nav item with no new route (#3085's own acceptance
+          criterion). Above the segment strip: it answers "what needs me
+          right now", the strip below answers "show me a filtered page". */}
+      <OrphanReturnsWorklist />
+
       <ReturnSegmentStrip
         counts={query.data?.segmentCounts ?? null}
         selected={filters.segment ?? null}
@@ -429,5 +451,13 @@ export function ReturnsListPage(): ReactElement {
         </>
       )}
     </PageLayout>
+    <RecordReturnDialog
+      open={isRecordDialogOpen}
+      onOpenChange={setIsRecordDialogOpen}
+      onRecorded={() => {
+        void query.refetch();
+      }}
+    />
+    </>
   );
 }
