@@ -25,6 +25,12 @@ import {
   CONNECTION_PORT_TOKEN,
 } from '@openlinker/core/identifier-mapping';
 import {
+  ISyncCursorsService,
+  SYNC_CURSORS_SERVICE_TOKEN,
+  masterSweepCompletedAtCursorKey,
+  type MasterSweepKind,
+} from '@openlinker/core/sync';
+import {
   AVAILABILITY_SERVICE_TOKEN,
   INVENTORY_REPOSITORY_TOKEN,
   LOCATION_SERVICE_TOKEN,
@@ -55,6 +61,15 @@ import type { IInventoryQueryService } from './inventory-query.service.interface
 // mirrors the 200-ID request cap on the variant-availability endpoint
 // (INVENTORY_AVAILABILITY_MAX_VARIANT_IDS).
 const MAX_STOCK_AGGREGATE_PRODUCT_IDS = 200;
+
+/**
+ * The sweep-key namespace `InventoryProvenanceBackfillHandler` owns, and the
+ * nil-UUID scope it runs the pass under — declared locally to match that
+ * handler's own convention (see its header) rather than imported, since
+ * neither is exported from a shared module.
+ */
+const PROVENANCE_BACKFILL_SWEEP_KIND: MasterSweepKind = 'inventory-provenance';
+const PROVENANCE_BACKFILL_SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
  * Hard cap on duplicate-position group DETAIL per call (#2319).
@@ -105,7 +120,9 @@ export class InventoryQueryService implements IInventoryQueryService {
     @Inject(LOCATION_SERVICE_TOKEN)
     private readonly locationService: ILocationService,
     @Inject(CONNECTION_PORT_TOKEN)
-    private readonly connectionPort: ConnectionPort
+    private readonly connectionPort: ConnectionPort,
+    @Inject(SYNC_CURSORS_SERVICE_TOKEN)
+    private readonly cursors: ISyncCursorsService
   ) {}
 
   async listInventoryItems(
@@ -209,12 +226,24 @@ export class InventoryQueryService implements IInventoryQueryService {
   }
 
   async getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatus> {
-    // Live on every call, deliberately — see the ProvenanceBackfillStatus
-    // docblock. The backfill itself has no cursor to read a cached answer
-    // from, so caching one here would just invent staleness that does not
-    // exist upstream.
-    const remainingNull = await this.inventoryRepository.countMissingProvenance();
-    return { remainingNull, completed: remainingNull === 0 };
+    // remainingNull is live on every call, deliberately — see the
+    // ProvenanceBackfillStatus docblock. latchedAt is the backfill's own
+    // persisted completion stamp (sweepCompletedAtCursorKey under the
+    // nil-UUID system connection, written by
+    // InventoryProvenanceBackfillHandler) — reading it alongside the live
+    // count is what makes "still draining" and "latched, and stuck" (a later
+    // mutation reintroduced a NULL row after completion) distinguishable.
+    const [remainingNull, latchedAt] = await Promise.all([
+      this.inventoryRepository.countMissingProvenance(),
+      this.cursors.getCursor(
+        PROVENANCE_BACKFILL_SYSTEM_CONNECTION_ID,
+        masterSweepCompletedAtCursorKey(
+          PROVENANCE_BACKFILL_SWEEP_KIND,
+          PROVENANCE_BACKFILL_SYSTEM_CONNECTION_ID
+        )
+      ),
+    ]);
+    return { remainingNull, completed: remainingNull === 0, latchedAt };
   }
 
   /**

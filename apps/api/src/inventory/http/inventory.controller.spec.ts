@@ -251,23 +251,29 @@ describe('InventoryController', () => {
       queryService.getProvenanceBackfillStatus.mockResolvedValue({
         remainingNull: 0,
         completed: true,
+        latchedAt: '2026-08-01T00:00:00.000Z',
       });
 
       const result = await controller.getProvenanceBackfillStatus();
 
       expect(queryService.getProvenanceBackfillStatus).toHaveBeenCalledWith();
-      expect(result).toEqual({ remainingNull: 0, completed: true });
+      expect(result).toEqual({
+        remainingNull: 0,
+        completed: true,
+        latchedAt: '2026-08-01T00:00:00.000Z',
+      });
     });
 
     it('reports the count and false when rows are still missing provenance', async () => {
       queryService.getProvenanceBackfillStatus.mockResolvedValue({
         remainingNull: 37,
         completed: false,
+        latchedAt: null,
       });
 
       const result = await controller.getProvenanceBackfillStatus();
 
-      expect(result).toEqual({ remainingNull: 37, completed: false });
+      expect(result).toEqual({ remainingNull: 37, completed: false, latchedAt: null });
     });
   });
 });
