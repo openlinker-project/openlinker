@@ -20,6 +20,11 @@ interface AlertProps {
    * root so a spec can name ONE notice without a wrapper element - an alert
    * is routinely a flex/grid child, so a spare `<div>` around it would change
    * where it sits rather than only what it is called.
+   *
+   * This is the third shared primitive to carry this prop (after `Combobox`
+   * and `StatusBadge`). If a fourth needs it, write the convention down
+   * explicitly (docs/frontend-architecture.md or a component-conventions
+   * note) rather than adding a fourth precedent silently.
    */
   'data-testid'?: string;
 }

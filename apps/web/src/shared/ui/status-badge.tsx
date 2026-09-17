@@ -31,6 +31,11 @@ interface StatusBadgeProps {
    * element - a wrapper `<span>` changes how the badge sits inside the flex
    * and grid parents this primitive is rendered into (KV rows, table cells,
    * panel headers).
+   *
+   * This is the third shared primitive to carry this prop (after `Combobox`
+   * and `Alert`). If a fourth needs it, write the convention down explicitly
+   * (docs/frontend-architecture.md or a component-conventions note) rather
+   * than adding a fourth precedent silently.
    */
   'data-testid'?: string;
 }
