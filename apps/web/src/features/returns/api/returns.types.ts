@@ -438,6 +438,16 @@ export interface ReturnCorrectionProposalResult {
   /** `proposed`, or a named reason there is nothing to correct. */
   outcome: string;
   proposal: ReturnCorrectionProposal | null;
+  /**
+   * The ADR-044 change-proposal row id. Always `null` on the GET preview (it
+   * persists nothing) and on any outcome with nothing to confirm.
+   */
+  changeId: string | null;
+  /**
+   * `false` when an identical open proposal was reused rather than opened.
+   * Meaningless on the GET preview, which never opens or reuses a row.
+   */
+  opened: boolean;
 }
 
 export interface ReturnDetail extends ReturnListItem {
