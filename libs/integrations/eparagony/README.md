@@ -1,7 +1,9 @@
 # @openlinker/integrations-eparagony
 
-eparagony.pl fiscalization adapter for OpenLinker — registers a completed sale as a
-Polish fiscal e-receipt with the seller's own online fiscal printer.
+eparagony.pl fiscalization **and invoicing** adapter for OpenLinker — registers a
+completed sale as a Polish fiscal e-receipt with the seller's own online fiscal
+printer, and (since #3192) can also issue a VAT invoice through the same vendor
+relaying it to KSeF (Poland's national e-invoicing hub).
 
 ## Adapter
 
@@ -10,7 +12,15 @@ Polish fiscal e-receipt with the seller's own online fiscal printer.
 | **Adapter key** | `eparagony.documents.v3` |
 | **Platform type** | `eparagony` |
 | **Package** | `@openlinker/integrations-eparagony` |
-| **Capability** | `Fiscalization` |
+| **Capabilities** | `Fiscalization`, `FiscalRegistrationLocator`, `Invoicing`, `RegulatoryStatusReader` |
+
+One connection can carry both the receipts lane and the invoicing lane — they share the
+same OAuth credentials and the same `POST /documents` endpoint, only the document kind
+in the request body differs (`eReceipt` vs `eInvoice`). Each lane is enabled
+independently on the connection (`enabledCapabilities` is stamped at connection create
+and never retro-filled, so an existing receipts-only connection does **not** silently
+gain the invoicing lane) — enabling one role never routes anything to it by itself; a
+sales-document routing rule still decides which orders reach which connection.
 
 ## What this adapter is, and is not
 
@@ -35,6 +45,32 @@ against the neutral `FiscalizationPort` in `libs/core/src/fiscalization/`.
 No device/peripheral sub-capability is implemented: `print` and `fiscalize` are booleans
 inside the `eReceipt` request payload, not separate endpoints, so there is nothing for a
 device sub-capability to call. See [ADR-042 § Decision 5](../../../docs/architecture/adrs/042-fiscalization-capability.md).
+
+**Invoicing**: `EparagonyInvoicingAdapter` implements `InvoicingPort` (`issueInvoice`,
+`getInvoice`, `upsertCustomer`) and `RegulatoryStatusReader` (`getClearanceStatus`) over
+the vendor's `eInvoice` document kind, relayed to KSeF via `eInvoicingHub: "KSEF"` on
+the document body. `upsertCustomer` is a pure identity echo — no network call, a
+deterministic id derived from the buyer's tax number (or a per-connection guest handle
+when absent), mirroring the KSeF adapter's own precedent. `CorrectionIssuer` (correcting
+an already-issued invoice) is **not yet implemented** on this adapter — see #3193.
+
+**Status mapping** (`RegulatoryStatusReader`):
+
+| vendor `status` | vendor `processingMode` | neutral `RegulatoryStatus` |
+|---|---|---|
+| `OFFLINE` | `KSEF` | `pending-submission` — KSeF relay accepted, not yet cleared |
+| `CONFIRMED` | `KSEF` | `accepted` — KSeF assigned a number (verified against the spec only; the sandbox never observed this arm reach it before staying `OFFLINE` indefinitely) |
+| `CONFIRMED` | `NONE` | `not-applicable` — no KSeF relay was requested for this document |
+
+`cleared` is deliberately never emitted here — that value is reserved for a genuine
+split-clearance regime, and eparagony relays to the same authority (KSeF) the KSeF
+adapter itself talks to directly, so both adapters must report KSeF's terminal success
+under the same neutral value (`accepted`).
+
+**No retry control on a `pending-submission`/`in-doubt` invoice.** The vendor's API has
+no call that triggers or re-triggers KSeF submission — an invoice waiting on the
+authority is a waiting state, not a failed one, and resubmitting a fiscal document is a
+legal event, not a safe "try again."
 
 ## Credentials & config
 
@@ -74,6 +110,20 @@ found it unenforced on GET requests, so a connection without it still works.
 | `statusPollTimeoutMs` | number (optional) | Bounded by the adapter to stay inside core's supported provider round-trip ceiling |
 | `fiscalDeviceUniqueNumber` | string (optional) | **Diagnostic only** — used by "Test connection" to report device liveness. Never sent on a document |
 | `apiBaseUrl` / `authBaseUrl` | https URL (optional) | Overrides for either host; intended for testing |
+| `merchantTIN` | string (optional, **required to issue an invoice**) | Seller NIP. Validated by the vendor against the taxpayer registered on the eparagony account, **not by checksum** — a wrong value fails every invoice on the connection, not one order. Connection config, never order data |
+| `merchantName` | string (optional, required to issue an invoice) | Seller legal name stamped on the invoice |
+| `merchantAddress` | `{ street, number, postalCode, city, country }` (optional, required to issue an invoice) | Seller address. A cleared value is stored as an explicit `null` and read as absent — never crashes document composition |
+| `eInvoicingHubEnabled` | boolean (optional) | Relay issued invoices to KSeF. Requires the KSeF permission grant below; without it, or with this off, the invoice is still issued but stays `not-applicable` on the regulatory axis |
+
+All four invoice-lane keys are optional at the shape validator, since every connection
+created before #3192 is receipts-only — what actually gates issuing an invoice is the
+adapter refusing pre-call (`EparagonyConfigException`) when a required field is
+missing, not the config validator.
+
+**Invoice line tax rate.** An invoice line uses a different vocabulary than a receipt
+line: `23`, `8`, `5`, `3`, `ZRD`, `ZRICS`, `ZRE`, `EP`, `RCP`, `NS1`, `NS2` — the
+receipt-side `taxRates`/`defaultTaxRateCode` letter-code table above does not apply to
+invoices.
 
 ## Notable implementation details
 

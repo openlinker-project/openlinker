@@ -54,6 +54,24 @@ directly.
   minutes or longer. If the vendor's dedup window ever turns out to be shorter
   than that, a retry could mint a second document; nothing in this codebase
   currently verifies the vendor's window length against our own retry span.
+- **An invoice request needs BOTH tokens, or the vendor rejects it (`errorCode: 41`,
+  `"documentToken" missing required peer "transactionToken"`).** A receipt request
+  never needed `transactionToken`; the invoice path derives and sends both. If you are
+  extending this adapter for a second document kind on one order, check whether it
+  should share the transaction token with a sibling document rather than minting its
+  own — the vendor's model allows several documents per transaction.
+- **An invoice's line tax rate uses a different vocabulary than a receipt's.** The
+  receipt-side letter codes (`A`-`G`) do not apply — an invoice line takes `23`, `8`,
+  `5`, `3`, `ZRD`, `ZRICS`, `ZRE`, `EP`, `RCP`, `NS1`, `NS2`.
+- **`merchantTIN` on an invoice is validated against the eparagony account's
+  registered taxpayer, not by checksum.** A wrong value fails EVERY invoice on the
+  connection with `errorCode: 41` / `"Incorrect merchantTIN"`, not one order — check
+  the connection config first, not the order.
+- **A KSeF-relayed invoice reaching `CONFIRMED` was never observed live in the
+  sandbox** — it stayed `OFFLINE` past eight minutes on every test run. Coded from the
+  vendor's own spec; if your production invoices never leave `pending-submission`
+  either, first confirm the KSeF Taxpayer-App permission grant (setup guide, Step 3)
+  is actually in place before assuming an adapter defect.
 
 ---
 
@@ -103,6 +121,17 @@ can be repeated.
 - **Repeat registrations of the same order 409.** This is correct, not a bug —
   the order already carries a non-`rejected` registration on some connection.
   See [ADR-042 decision 6](../../../../docs/architecture/adrs/042-fiscalization-capability.md).
+- **An invoice stays `pending-submission` with no retry button.** This is by design —
+  the vendor's API has no call that (re-)triggers KSeF submission, and a fiscal
+  document is a legal event that must not be resubmitted speculatively. If it never
+  advances, confirm the KSeF Taxpayer-App permission grant is actually in place
+  (setup guide, Step 3) before treating it as an adapter fault.
+- **An invoice fails with `errorCode: 41` naming `merchantTIN`.** The connection's
+  `merchantTIN` does not match the taxpayer registered on the eparagony account — fix
+  the connection config, not the order; every invoice on this connection is affected.
+- **An invoice fails with a missing-`transactionToken` error.** This would indicate a
+  regression in the adapter, not an operator misconfiguration — every invoice request
+  derives and sends both `documentToken` and `transactionToken` together. Report it.
 
 ## Rotating credentials
 
