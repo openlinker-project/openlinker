@@ -348,3 +348,53 @@ describe('CorrectionProposalPanel — record for review (#3092)', () => {
     expect(screen.queryByText(RETURN_PROPOSAL_COPY.recordedBadge)).not.toBeInTheDocument();
   });
 });
+
+describe('CorrectionProposalPanel — record for review (#3092)', () => {
+  it('should record the proposal and show a success toast on click', async () => {
+    const user = userEvent.setup();
+    const { recordCorrectionProposal } = renderPanel(proposal([line()]));
+
+    await user.click(screen.getByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction }));
+
+    await waitFor(() => expect(recordCorrectionProposal).toHaveBeenCalledWith(RETURN_ID));
+    expect(await screen.findByText(RETURN_PROPOSAL_COPY.recordSuccess)).toBeInTheDocument();
+  });
+
+  it('should disable the action while any line is ambiguous, with a reason beside it', () => {
+    renderPanel(proposal([line({ status: 'ambiguous', selectedOriginalLineNumber: null, candidates: [
+      { originalLineNumber: 1, name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '23' },
+      { originalLineNumber: 2, name: 'Widget', quantity: 1, unitPriceGross: 12, taxRate: '23' },
+    ] })]));
+
+    expect(screen.getByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction })).toBeDisabled();
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.recordBlockedAmbiguous)).toBeInTheDocument();
+  });
+
+  it('should render a persistent recorded badge and disable re-recording once changeId is set', () => {
+    renderPanel(proposal([line()]), { changeId: 'ol_order_change_1' });
+
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.recordedBadge)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction })).toBeDisabled();
+  });
+
+  it('should not render the action at all when write access is not visible', () => {
+    renderPanel(proposal([line()]), {
+      writeAccess: { canWrite: false, demoReadOnly: false, visible: false },
+    });
+
+    expect(
+      screen.queryByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('should show an error toast without leaving the recorded state on a failed attempt', async () => {
+    const user = userEvent.setup();
+    const recordCorrectionProposal = vi.fn().mockRejectedValue(new Error('network error'));
+    renderPanel(proposal([line()]), { recordCorrectionProposal });
+
+    await user.click(screen.getByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction }));
+
+    expect(await screen.findByText(RETURN_PROPOSAL_COPY.recordError)).toBeInTheDocument();
+    expect(screen.queryByText(RETURN_PROPOSAL_COPY.recordedBadge)).not.toBeInTheDocument();
+  });
+});
