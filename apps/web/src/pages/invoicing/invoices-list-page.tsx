@@ -39,6 +39,7 @@ import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
 import { DataTableSkeleton } from '../../shared/ui/data-table-skeleton';
 import { Alert } from '../../shared/ui/alert';
+import { Chip } from '../../shared/ui/chip';
 import { BulkActionBar } from '../../shared/ui/bulk-action-bar';
 import { ConfirmDialog } from '../../shared/ui/confirm-dialog';
 import { Button } from '../../shared/ui/button';
@@ -89,6 +90,28 @@ function isRegulatoryStatus(value: string | null): value is RegulatoryStatus {
 /** Widen-then-narrow guard for the `taxId` URL param. */
 function isTaxIdFilter(value: string | null): value is TaxIdFilter {
   return value !== null && (TAX_ID_VALUES as readonly string[]).includes(value);
+}
+
+/**
+ * Elapsed-time suffix for the "awaiting submission" chip (#3194).
+ *
+ * `oldestAt` is the OLDEST `updatedAt` among the currently loaded
+ * `pending-submission` rows — an ELAPSED measurement, never an ETA: nothing
+ * about a document sitting with the regulator lets OpenLinker predict when it
+ * clears (see `docs/plans/mockups/sales-document-eparagony-invoicing.html`
+ * "with provider for" note). Day/hour granularity, matching the sibling
+ * `blockedAgeSuffix` on `orders-list-page.tsx` — reimplemented locally rather
+ * than extracted to a shared helper, since that page's helper is private and
+ * unexported and this issue is scoped to the invoice list alone.
+ */
+function pendingSubmissionAgeSuffix(oldestAt: string | null): string {
+  if (!oldestAt) return '';
+  const since = new Date(oldestAt).getTime();
+  if (!Number.isFinite(since)) return '';
+  const days = Math.floor((Date.now() - since) / 86_400_000);
+  if (days >= 1) return ` · oldest ${String(days)} d`;
+  const hours = Math.floor((Date.now() - since) / 3_600_000);
+  return hours >= 1 ? ` · oldest ${String(hours)} h` : '';
 }
 
 export function InvoicesListPage(): ReactElement {
@@ -274,6 +297,15 @@ export function InvoicesListPage(): ReactElement {
       else p.set('offset', String(next));
       return p;
     });
+  }
+
+  /**
+   * #3194 — the "awaiting submission" chip toggles the SAME `regulatoryStatus`
+   * filter the Select above drives; it is a second affordance for one value,
+   * not a second filter dimension.
+   */
+  function toggleAwaitingSubmission(): void {
+    setFilter('regulatoryStatus', regulatoryStatus === 'pending-submission' ? '' : 'pending-submission');
   }
 
   const toggleRow = useCallback((id: string): void => {
@@ -471,6 +503,22 @@ export function InvoicesListPage(): ReactElement {
   const hasNext = offset + PAGE_SIZE < total;
   const hasFilters = Boolean(status || connectionId || regulatoryStatus || issuedFrom || issuedTo || taxId);
 
+  // #3194 — "awaiting submission" chip: count + elapsed age of the currently
+  // loaded `pending-submission` invoices. Scoped to THIS PAGE's fetched rows —
+  // there is no separate summary read for invoices (unlike the orders list's
+  // backend-aggregated `salesDocumentBlocked`), so the figure describes what
+  // is on screen rather than the whole install. `oldestAt` is the OLDEST
+  // `updatedAt` among them (the invoice that has waited longest), never the
+  // newest — an "oldest" label reporting the newest would understate the wait.
+  const pendingSubmissionItems = (query.data?.items ?? []).filter(
+    (r) => r.regulatoryStatus === 'pending-submission',
+  );
+  const pendingSubmissionCount = pendingSubmissionItems.length;
+  const pendingSubmissionOldestAt = pendingSubmissionItems.reduce<string | null>(
+    (oldest, r) => (oldest === null || r.updatedAt < oldest ? r.updatedAt : oldest),
+    null,
+  );
+
   return (
     <PageLayout
       eyebrow="Operations"
@@ -566,16 +614,22 @@ export function InvoicesListPage(): ReactElement {
         </Select>
 
         <Select
+          data-testid="invoices-filter-regulatory"
           aria-label={t('invoice.filter.regulatory', 'Filter by regulatory status')}
           value={regulatoryStatus ?? ''}
           onChange={(e) => setFilter('regulatoryStatus', e.target.value)}
         >
           <option value="">{t('invoice.filter.regulatory.all', 'All regulatory statuses')}</option>
-          {/* Drop `not-applicable` (absence of regulatory tracking — noise as a
-              filter) and `cleared` (reserved status no provider emits). */}
-          {RegulatoryStatusValues.filter(
-            (s) => s !== 'not-applicable' && s !== 'cleared',
-          ).map((s) => (
+          {/* #3194 REVERSES a prior deliberate exclusion: this filter used to
+              drop `not-applicable` (read as noise, since it meant "no
+              regulatory tracking") and `cleared` (believed to be a reserved
+              status no provider emitted). Both are now real, reachable
+              per-provider outcomes — a provider can report "no clearance
+              needed" as `not-applicable`, and `cleared` is a genuine
+              document-lifecycle terminal — so hiding them from the filter hid
+              states an operator can actually be triaging. All six
+              `RegulatoryStatusValues` are now selectable. */}
+          {RegulatoryStatusValues.map((s) => (
             <option key={s} value={s}>
               {/* Reuse the badge's label map (#1585 F7) so the filter never falls
                   back to the raw hyphenated slug next to nicely-labelled badges. */}
@@ -583,6 +637,25 @@ export function InvoicesListPage(): ReactElement {
             </option>
           ))}
         </Select>
+
+        {/* #3194 — count + elapsed age of invoices currently `pending-submission`
+            ("with provider for", per the mockup — never an ETA/completion-time
+            estimate, since OpenLinker has no basis for one). Hidden at zero
+            unless the filter it drives is already active, matching the
+            `salesDocumentBlocked` chip's rule on the orders list: a filter
+            an operator applied must stay clearable even once its count drops
+            to zero. */}
+        {pendingSubmissionCount > 0 || regulatoryStatus === 'pending-submission' ? (
+          <Chip
+            data-testid="invoices-chip-awaiting"
+            tone="warning"
+            active={regulatoryStatus === 'pending-submission'}
+            onClick={toggleAwaitingSubmission}
+          >
+            {t('invoice.chip.awaitingSubmission', 'Awaiting submission')} {pendingSubmissionCount}
+            {pendingSubmissionAgeSuffix(pendingSubmissionOldestAt)}
+          </Chip>
+        ) : null}
 
         <Select
           aria-label={t('invoice.filter.connection', 'Filter by connection')}
