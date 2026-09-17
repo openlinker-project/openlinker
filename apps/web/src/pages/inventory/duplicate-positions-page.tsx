@@ -20,13 +20,11 @@
  * below) is truncated to the largest `maxGroups` groups (the truncated-report
  * banner is added in #3075).
  *
- * The backing endpoint (`GET /inventory/duplicate-positions`) is
- * `@Roles('admin')`-gated server-side. This page has no route/nav entry yet
- * — whichever PR wires one (#3074) MUST gate its `requiresRole: 'admin'` nav
- * contribution (or wrap the route) so a non-admin session never reaches a
- * bare 403 `ErrorState` here; backend authorization is a separate axis from
- * frontend visibility (`docs/frontend-architecture.md` § Access Control And
- * UI Visibility).
+ * The backing endpoints are `@Roles('admin')`-gated server-side, and the
+ * page gates itself the same way — rendering an access-denied state for a
+ * non-admin session rather than relying on a sibling PR's nav gate, which
+ * covers only the nav affordance and not a direct navigation to this route
+ * (`docs/frontend-architecture.md` § Access Control And UI Visibility).
  *
  * @module apps/web/src/pages/inventory
  */
@@ -37,10 +35,14 @@ import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
+import { useSession } from '../../shared/auth/use-session';
+import { useIsAdmin } from '../../shared/auth/use-permission';
 import { useDuplicatePositionsQuery } from '../../features/inventory/hooks/use-duplicate-positions-query';
 import { useProvenanceBackfillStatusQuery } from '../../features/inventory/hooks/use-provenance-backfill-status-query';
 
 export function DuplicatePositionsPage(): ReactElement {
+  const { isReady: isSessionReady } = useSession();
+  const isAdmin = useIsAdmin();
   const duplicatesQuery = useDuplicatePositionsQuery();
   const provenanceQuery = useProvenanceBackfillStatusQuery();
 
@@ -64,6 +66,21 @@ export function DuplicatePositionsPage(): ReactElement {
     void provenanceQuery.refetch();
   };
 
+  if (isSessionReady && !isAdmin) {
+    return (
+      <PageLayout
+        eyebrow="Diagnostics"
+        title="Duplicate stock positions"
+        description="Admin-only access."
+      >
+        <ErrorState
+          title="Admin role required"
+          message="This diagnostic reads inventory_items directly — it requires an admin session."
+        />
+      </PageLayout>
+    );
+  }
+
   return (
     <PageLayout
       eyebrow="Diagnostics"
@@ -73,7 +90,7 @@ export function DuplicatePositionsPage(): ReactElement {
         'Detects duplicate stock positions — it never repairs them.'
       }
     >
-      {isLoading ? (
+      {!isSessionReady || isLoading ? (
         <LoadingState
           liveRegion="off"
           title="Loading duplicate-position report"
@@ -106,7 +123,7 @@ export function DuplicatePositionsPage(): ReactElement {
                 <span>
                   {backfillComplete
                     ? 'Provenance backfill complete'
-                    : `Provenance backfill still running (${String(provenance.remainingNull)} row(s) remaining)`}
+                    : `${String(provenance.remainingNull)} row(s) still missing provenance`}
                 </span>
               </li>
             </ul>
