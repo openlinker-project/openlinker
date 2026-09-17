@@ -6,6 +6,12 @@
 
 export const RETURN_PROPOSAL_COPY = {
   sectionTitle: 'Credit note proposal',
+
+  /** The headline metric — the acceptance criterion is that it needs no scroll. */
+  headlineLabel: 'Total credit',
+  breakdownAutomatic: 'Credited automatically',
+  breakdownNeedsPick: 'Needs your pick',
+  breakdownCantCredit: "Can't credit yet",
   /**
    * Leads the panel, and is the reason the panel exists rather than an
    * auto-issue: a transmitted correction is a fiscal document that cannot be

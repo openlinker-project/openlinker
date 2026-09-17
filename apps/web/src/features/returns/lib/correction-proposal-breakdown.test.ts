@@ -1,0 +1,93 @@
+/**
+ * `computeCorrectionProposalBreakdown` / `lineCredit` unit tests (#3090).
+ */
+import { describe, expect, it } from 'vitest';
+import { computeCorrectionProposalBreakdown, lineCredit } from './correction-proposal-breakdown';
+import type { ReturnCorrectionProposalLine } from '../api/returns.types';
+
+function line(
+  overrides: Partial<ReturnCorrectionProposalLine> = {},
+): ReturnCorrectionProposalLine {
+  return {
+    returnLineId: 'line-1',
+    lineIndex: 0,
+    name: 'Widget',
+    sku: 'SKU-1',
+    quantityDisposed: 1,
+    status: 'matched',
+    candidates: [
+      { originalLineNumber: 1, name: 'Widget', quantity: 2, unitPriceGross: 10, taxRate: '23' },
+    ],
+    selectedOriginalLineNumber: 1,
+    newQuantity: 1,
+    noMatchReason: null,
+    noMatchExplanation: null,
+    candidatesPriceOrRateDiffer: false,
+    ...overrides,
+  };
+}
+
+describe('lineCredit', () => {
+  it('should credit the delta between invoiced and after-correction quantity', () => {
+    expect(lineCredit(line())).toBe(10);
+  });
+
+  it('should credit nothing for an ambiguous line — nothing is selected to price against', () => {
+    expect(lineCredit(line({ status: 'ambiguous', selectedOriginalLineNumber: null }))).toBe(0);
+  });
+
+  it('should credit nothing for a no-match line', () => {
+    expect(lineCredit(line({ status: 'no-match', selectedOriginalLineNumber: null }))).toBe(0);
+  });
+
+  it('should credit nothing when the resolved quantity is not yet known', () => {
+    expect(lineCredit(line({ newQuantity: null }))).toBe(0);
+  });
+
+  it('should credit nothing when the full invoiced quantity survives the return', () => {
+    expect(lineCredit(line({ newQuantity: 2 }))).toBe(0);
+  });
+});
+
+describe('computeCorrectionProposalBreakdown', () => {
+  it('should sum credit across every matched line and count each status once', () => {
+    const result = computeCorrectionProposalBreakdown([
+      line(),
+      line({ returnLineId: 'l2', status: 'ambiguous', selectedOriginalLineNumber: null }),
+      line({ returnLineId: 'l3', status: 'no-match', selectedOriginalLineNumber: null }),
+    ]);
+
+    expect(result).toEqual({
+      totalCredit: 10,
+      automaticCount: 1,
+      needsPickCount: 1,
+      cantCreditCount: 1,
+    });
+  });
+
+  it('should report an all-zero breakdown for an empty proposal', () => {
+    expect(computeCorrectionProposalBreakdown([])).toEqual({
+      totalCredit: 0,
+      automaticCount: 0,
+      needsPickCount: 0,
+      cantCreditCount: 0,
+    });
+  });
+
+  it('should count a no-match/ambiguous-invoice-line residual as needsPick, not cantCredit (#3312)', () => {
+    // status: 'ambiguous' is retired — the matcher reports the same
+    // condition as `no-match` + this reason. It is still the operator's
+    // pick to make, never a closed exclusion.
+    const result = computeCorrectionProposalBreakdown([
+      line({
+        returnLineId: 'l2',
+        status: 'no-match',
+        selectedOriginalLineNumber: null,
+        noMatchReason: 'ambiguous-invoice-line',
+      }),
+    ]);
+
+    expect(result.needsPickCount).toBe(1);
+    expect(result.cantCreditCount).toBe(0);
+  });
+});

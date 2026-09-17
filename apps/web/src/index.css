@@ -22460,6 +22460,41 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-3);
 }
 
+/* Headline + breakdown (#3090) — must clear above the fold on desktop, so it
+   sits first and stays a simple flex row rather than something that could
+   wrap under the fold on a shorter viewport. */
+.returns-proposal-panel__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--space-4);
+}
+
+.returns-proposal-panel__breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0;
+  align-items: center;
+}
+
+.returns-proposal-panel__breakdown > div {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.returns-proposal-panel__breakdown dt {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.returns-proposal-panel__breakdown dd {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
 .returns-proposal-panel__lines {
   list-style: none;
   margin: 0;

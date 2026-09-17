@@ -29,7 +29,7 @@ export { useReturnsQuery } from './hooks/use-returns-query';
 export { useReturnIngestionAvailabilityQuery } from './hooks/use-return-ingestion-availability-query';
 export { ReturnCustodyPanel } from './components/return-custody-panel';
 export { ReturnMoneyPanel } from './components/return-money-panel';
-export { ReturnProposalPanel } from './components/return-proposal-panel';
+export { CorrectionProposalPanel } from './components/correction-proposal-panel';
 export { useReturnProposalQuery } from './hooks/use-return-proposal-query';
 // #2381 — the single home for every refused-restock string (returns spec § 5.4).
 // Exported here because the barrel is the ONLY way a cross-feature consumer can

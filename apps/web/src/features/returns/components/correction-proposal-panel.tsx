@@ -1,22 +1,28 @@
 /**
- * Credit-Note Proposal Panel (#2382, returns spec § 5.8)
+ * Credit-Note Correction Proposal Panel (#3090, returns spec § 5.8)
  *
- * **A proposal, never an issue.** Nothing here calls `CorrectionIssuer`; the
- * panel matches returned lines to the invoice, renders what it found, and hands
- * off to the provider's own correction flow on `/invoices/:invoiceId`. The
- * footer says so, because a reader should not have to infer it from the absence
- * of a button.
+ * Renders the preview — never issues anything. `CorrectionIssuer` is called
+ * nowhere here; the panel matches returned lines to the invoice, shows what
+ * it found, and hands off to the provider's own correction flow on
+ * `/invoices/:invoiceId`.
+ *
+ * **A headline before the detail.** The acceptance criterion this shape
+ * exists for: an operator must see what is at stake — the total credit and
+ * how many lines still need a decision — without scrolling, before reading a
+ * single line. The breakdown (automatic / needs your pick / can't credit) is
+ * the same three states § 5.8 describes, counted rather than only listed.
  *
  * **Ambiguity is the point, and it must be visible BEFORE the confirm.** The
  * matcher keys on `originalLineNumber`, a 1-based ARRAY POSITION into the
- * issued-line snapshot — so picking a candidate on a price coincidence stamps a
- * line number into a fiscal document that cannot be withdrawn. An `ambiguous`
- * line therefore lists every candidate and selects none, and the panel renders a
- * banner that differs from the clean case at a glance rather than only per row.
+ * issued-line snapshot — so picking a candidate on a price coincidence stamps
+ * a line number into a fiscal document that cannot be withdrawn. An
+ * `ambiguous` line therefore lists every candidate and selects none; nothing
+ * here is a picker an operator clicks — the pick happens on confirm, on the
+ * invoice's own correction flow.
  *
- * **`candidatesPriceOrRateDiffer` is evidence, never a tie-break.** Showing that
- * two candidates differ helps the operator choose; choosing for them on that
- * basis would be OpenLinker deciding which invoice line to correct.
+ * **`candidatesPriceOrRateDiffer` is evidence, never a tie-break.** Showing
+ * that two candidates differ helps the operator choose; choosing for them on
+ * that basis would be OpenLinker deciding which invoice line to correct.
  *
  * **A `no-match` line states its reason.** A line excluded silently is the
  * `disposition-not-confirmed` case — a refused restock (#2381) — vanishing
@@ -38,10 +44,13 @@ import { Link } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { MetricCard } from '../../../shared/ui/metric-card';
+import { formatAmount } from '../../../shared/format/format-amount';
 import { RETURN_PROPOSAL_COPY } from '../lib/return-proposal.copy';
+import { computeCorrectionProposalBreakdown, lineCredit } from '../lib/correction-proposal-breakdown';
 import type { ReturnCorrectionProposal } from '../api/returns.types';
 
-interface ReturnProposalPanelProps {
+interface CorrectionProposalPanelProps {
   proposal: ReturnCorrectionProposal | null;
   outcome: string;
 }
@@ -54,10 +63,10 @@ interface ReturnProposalPanelProps {
  */
 const NEEDS_ATTENTION_NO_MATCH_REASON = 'ambiguous-invoice-line';
 
-export function ReturnProposalPanel({
+export function CorrectionProposalPanel({
   proposal,
   outcome,
-}: ReturnProposalPanelProps): ReactElement {
+}: CorrectionProposalPanelProps): ReactElement {
   if (proposal === null) {
     return (
       <section className="returns-proposal-panel" id="correction">
@@ -73,12 +82,35 @@ export function ReturnProposalPanel({
     (line) =>
       line.status === 'ambiguous' || line.noMatchReason === NEEDS_ATTENTION_NO_MATCH_REASON
   );
+  const breakdown = computeCorrectionProposalBreakdown(proposal.lines);
 
   return (
     <section className="returns-proposal-panel" id="correction">
       <h2 className="section-title">{RETURN_PROPOSAL_COPY.sectionTitle}</h2>
 
-      {/* Leads the panel: what is at stake, before anything else. */}
+      {/* Leads the panel: what is at stake, before anything else — the
+          headline amount and its breakdown, both above the fold on desktop. */}
+      <div className="returns-proposal-panel__summary">
+        <MetricCard
+          label={RETURN_PROPOSAL_COPY.headlineLabel}
+          value={formatAmount(breakdown.totalCredit, proposal.currency)}
+        />
+        <dl className="returns-proposal-panel__breakdown">
+          <div>
+            <dt>{RETURN_PROPOSAL_COPY.breakdownAutomatic}</dt>
+            <dd className="tabular">{breakdown.automaticCount}</dd>
+          </div>
+          <div>
+            <dt>{RETURN_PROPOSAL_COPY.breakdownNeedsPick}</dt>
+            <dd className="tabular">{breakdown.needsPickCount}</dd>
+          </div>
+          <div>
+            <dt>{RETURN_PROPOSAL_COPY.breakdownCantCredit}</dt>
+            <dd className="tabular">{breakdown.cantCreditCount}</dd>
+          </div>
+        </dl>
+      </div>
+
       <Alert tone="warning">{RETURN_PROPOSAL_COPY.irreversible}</Alert>
 
       {/* The acceptance criterion: a clean and an ambiguous proposal must be
@@ -107,6 +139,8 @@ export function ReturnProposalPanel({
                       : 'neutral'
                 }
               >
+                {/* Plain language, never the raw enum — the issue's own
+                    acceptance criterion. */}
                 {line.status === 'matched'
                   ? RETURN_PROPOSAL_COPY.statusMatched
                   : line.status === 'ambiguous'
@@ -114,6 +148,12 @@ export function ReturnProposalPanel({
                     : RETURN_PROPOSAL_COPY.statusNoMatch}
               </StatusBadge>
             </div>
+
+            {line.status === 'matched' ? (
+              <p className="text-muted tabular">
+                {formatAmount(lineCredit(line), proposal.currency)}
+              </p>
+            ) : null}
 
             {/* EVERY candidate is listed, and none is preselected. */}
             {line.status === 'ambiguous' ? (
