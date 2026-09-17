@@ -173,14 +173,13 @@ jobs:
       # Safe because the key also includes the content hash — verified directly,
       # not assumed: a one-word edit preserving the file's exact byte length,
       # with mtime rolled back to the same stamp, still failed 21 suites.
-      # TEMPORARILY DISABLED to measure whether transpile-only made this step
-      # redundant (#3271). ts-jest folds an import's mtime into the transform
-      # cache key ONLY on the `!isolatedModules` branch, so the three converted
-      # packages no longer care about mtimes at all. If the job holds its time
-      # without this step, the step and its script are deleted; if it does not,
-      # this comment and the step come straight back.
-      # - name: Normalize source mtimes so the jest cache can hit (#3271)
-      #   run: node scripts/normalize-source-mtimes.mjs
+      # Removing this step was MEASURED, not reasoned about, and it cost more
+      # than double: same runner, 4m24s with it and 9m22s without (#3271). It
+      # stays. Transpile-only takes mtime out of the cache key for `libs/core`,
+      # `apps/api` and `apps/worker` only - the other sixteen packages, the two
+      # heavy ESM integrations among them, still key on it.
+      - name: Normalize source mtimes so the jest cache can hit (#3271)
+        run: node scripts/normalize-source-mtimes.mjs
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       # No explicit libs build: `pnpm test:ci` already runs
