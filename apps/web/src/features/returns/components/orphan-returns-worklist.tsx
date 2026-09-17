@@ -18,6 +18,13 @@
  * caveat rather than a precise count, because the client-side filter cannot
  * say how many of the rows past the page boundary would also qualify.
  *
+ * **"Needs an order" is an EXACT filter, so its truncation notice states both
+ * numbers — it must NOT skip disclosure just because the filter is precise.**
+ * `order-returns-panel.tsx` discloses the identical "single page, exact
+ * filter" shape (`result.total > PANEL_PAGE_SIZE`); an orphan return blocks
+ * every downstream trigger, so silently capping this group at one page would
+ * let an operator believe the queue is clear while more sit unshown.
+ *
  * **The primary action is a `Link` to the return's own detail page, never an
  * inline dialog.** `return-orphan-banner.tsx`'s docblock records that a match
  * action had nowhere to live before this epic; #3082/#3083 are what give the
@@ -39,12 +46,10 @@ import { Link } from 'react-router-dom';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { useReturnsQuery } from '../hooks/use-returns-query';
-import { RETURNS_MAX_LIMIT } from '../api/returns.types';
+import { RETURNS_MAX_LIMIT, RETURNS_PAGE_SIZE } from '../api/returns.types';
 import type { ReturnListItem } from '../api/returns.types';
 import { ORPHAN_RETURNS_WORKLIST_COPY as COPY } from '../lib/orphan-returns-worklist.copy';
-
-/** One page. Exact filter, so the count IS the whole story past this page. */
-const NEEDS_ORDER_LIMIT = 20;
+import { describeUnreadableRows } from '../lib/returns-list.copy';
 
 interface WorklistGroupProps {
   title: string;
@@ -56,6 +61,14 @@ interface WorklistGroupProps {
   isEnvelopeUnreadable: boolean;
   emptyMessage: string;
   truncationNote: string | null;
+  /**
+   * Rows this build could not parse individually — distinct from
+   * `truncationNote`, which discloses rows past the page boundary.
+   * `order-returns-panel.tsx` surfaces this whenever items exist; omitting
+   * it here would silently drop a row this component's own docblock
+   * elsewhere promises never to hide.
+   */
+  droppedCount: number;
   onRetry: () => void;
 }
 
@@ -69,6 +82,7 @@ function WorklistGroup({
   isEnvelopeUnreadable,
   emptyMessage,
   truncationNote,
+  droppedCount,
   onRetry,
 }: WorklistGroupProps): ReactElement {
   return (
@@ -103,6 +117,9 @@ function WorklistGroup({
               </li>
             ))}
           </ul>
+          {droppedCount > 0 ? (
+            <p className="text-muted">{describeUnreadableRows(droppedCount)}</p>
+          ) : null}
           {truncationNote !== null ? <p className="text-muted">{truncationNote}</p> : null}
         </>
       )}
@@ -113,7 +130,7 @@ function WorklistGroup({
 export function OrphanReturnsWorklist(): ReactElement {
   const needsOrderQuery = useReturnsQuery(
     { bucket: 'orphan' },
-    { limit: NEEDS_ORDER_LIMIT, offset: 0 },
+    { limit: RETURNS_PAGE_SIZE, offset: 0 },
   );
 
   // No server-side filter exists for "operator-authored, not yet approved" —
@@ -126,11 +143,19 @@ export function OrphanReturnsWorklist(): ReactElement {
 
   const needsOrderResult = needsOrderQuery.data ?? null;
   const needsOrderItems = needsOrderResult?.items ?? [];
+  // Result-shaped absence (`result === null`) reads as an error too, matching
+  // `order-returns-panel.tsx`'s `query.error !== null || result === null`
+  // guard: a settled, non-loading query with no data is not a confirmed empty.
+  const needsOrderIsError = needsOrderQuery.error !== null || (!needsOrderQuery.isLoading && needsOrderResult === null);
+  const needsOrderTruncated =
+    needsOrderResult !== null && needsOrderResult.total > needsOrderItems.length;
 
   const approvalScanResult = approvalScanQuery.data ?? null;
   const needsApprovalItems = (approvalScanResult?.items ?? []).filter(
     (item) => item.origin === 'operator_authored' && item.authorizedAt === null,
   );
+  const approvalScanIsError =
+    approvalScanQuery.error !== null || (!approvalScanQuery.isLoading && approvalScanResult === null);
   const approvalScanTruncated =
     approvalScanResult !== null && approvalScanResult.total > approvalScanResult.items.length;
 
@@ -144,10 +169,15 @@ export function OrphanReturnsWorklist(): ReactElement {
         actionLabel={COPY.needsOrderAction}
         items={needsOrderItems}
         isLoading={needsOrderQuery.isLoading}
-        isError={needsOrderQuery.error !== null}
+        isError={needsOrderIsError}
         isEnvelopeUnreadable={needsOrderResult?.envelopeUnreadable ?? false}
         emptyMessage={COPY.needsOrderEmpty}
-        truncationNote={null}
+        droppedCount={needsOrderResult?.droppedCount ?? 0}
+        truncationNote={
+          needsOrderResult !== null && needsOrderTruncated
+            ? COPY.needsOrderTruncated(needsOrderItems.length, needsOrderResult.total)
+            : null
+        }
         onRetry={() => {
           void needsOrderQuery.refetch();
         }}
@@ -159,9 +189,10 @@ export function OrphanReturnsWorklist(): ReactElement {
         actionLabel={COPY.needsApprovalAction}
         items={needsApprovalItems}
         isLoading={approvalScanQuery.isLoading}
-        isError={approvalScanQuery.error !== null}
+        isError={approvalScanIsError}
         isEnvelopeUnreadable={approvalScanResult?.envelopeUnreadable ?? false}
         emptyMessage={COPY.needsApprovalEmpty}
+        droppedCount={approvalScanResult?.droppedCount ?? 0}
         truncationNote={approvalScanTruncated ? COPY.approvalScanTruncated : null}
         onRetry={() => {
           void approvalScanQuery.refetch();

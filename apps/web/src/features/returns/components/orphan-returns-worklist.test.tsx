@@ -195,6 +195,32 @@ describe('OrphanReturnsWorklist', () => {
     expect(await screen.findByText(COPY.approvalScanTruncated)).toBeInTheDocument();
   });
 
+  it('should disclose a truncated needs-order page with both numbers, never trimming quietly', async () => {
+    renderWorklist({
+      needsOrder: listResult({
+        items: [item({ id: 'r6', externalReturnId: 'RET-6' })],
+        total: 45,
+        limit: 1,
+      }),
+      needsApproval: listResult(),
+    });
+
+    expect(await screen.findByText(COPY.needsOrderTruncated(1, 45))).toBeInTheDocument();
+  });
+
+  it('should disclose rows dropped for being unparseable, separately from a truncated page', async () => {
+    renderWorklist({
+      needsOrder: listResult({
+        items: [item({ id: 'r7', externalReturnId: 'RET-7' })],
+        total: 1,
+        droppedCount: 2,
+      }),
+      needsApproval: listResult(),
+    });
+
+    expect(await screen.findByText(/could not be read and/)).toBeInTheDocument();
+  });
+
   it('should scope each query by its own bucket filter', async () => {
     const { list } = renderWorklist({ needsOrder: listResult(), needsApproval: listResult() });
 
