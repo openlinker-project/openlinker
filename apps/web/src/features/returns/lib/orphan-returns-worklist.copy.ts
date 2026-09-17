@@ -61,4 +61,16 @@ export const ORPHAN_RETURNS_WORKLIST_COPY = {
    */
   approvalScanTruncated:
     'Showing what fits on one page — check the full returns list if you expect more.',
+
+  /**
+   * The "needs an order" read is an EXACT server-side filter, so — unlike
+   * the approval scan above — a truncation here can state both numbers
+   * precisely rather than only a caveat. `order-returns-panel.copy.ts`'s
+   * `truncated(shown, total)` is the precedent this mirrors: an exact-filter
+   * page still owes a truncation notice when `total` exceeds what is shown,
+   * or an operator who clears the visible rows would believe the group is
+   * empty while more sit past the page boundary.
+   */
+  needsOrderTruncated: (shown: number, total: number): string =>
+    `Showing ${shown} of ${total} — more are waiting to be matched.`,
 } as const;
