@@ -27,12 +27,28 @@ describe('getEnvironmentMeta', () => {
 });
 
 describe('EnvironmentBadge', () => {
-  it('renders the release version instead of the environment name', () => {
+  it('renders the environment name with the release version below it', () => {
     render(<EnvironmentBadge appEnv="production" version="1.4.0" />);
 
+    expect(screen.getByText('Production')).toBeInTheDocument();
     expect(screen.getByText('v1.4.0')).toBeInTheDocument();
     expect(screen.getByLabelText('Environment Production, version 1.4.0')).toHaveClass(
       'context-chip--success',
     );
+  });
+
+  it('renders the compact short label with the version below it', () => {
+    render(<EnvironmentBadge appEnv="production" compact version="1.4.0" />);
+
+    expect(screen.getByText('Prod')).toBeInTheDocument();
+    expect(screen.getByText('v1.4.0')).toBeInTheDocument();
+  });
+
+  it('omits the version line when no version is available', () => {
+    render(<EnvironmentBadge appEnv="production" version="" />);
+
+    expect(screen.getByText('Production')).toBeInTheDocument();
+    expect(screen.queryByText(/^v/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Environment Production')).toBeInTheDocument();
   });
 });

@@ -8,8 +8,11 @@
  * gitignored as a build-artifact guard, and no other file needs to see this
  * constant. `typeof` guards a context where the define never ran (e.g. a
  * stray script import outside the Vite/Vitest build graph) rather than
- * throwing a ReferenceError.
+ * throwing a ReferenceError. An empty string means "unknown" — the badge
+ * that renders this must omit the version line rather than render a
+ * plausible-looking fake version (was '0.0.0', a real-looking value that
+ * would misreport what's deployed).
  */
 declare const __APP_VERSION__: string;
 
-export const APP_VERSION: string = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
+export const APP_VERSION: string = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '';

@@ -67,25 +67,38 @@ export function getEnvironmentMeta(appEnv: string): EnvironmentMeta {
 
 interface EnvironmentBadgeProps {
   appEnv?: string;
-  /** Release version to show instead of the environment name, e.g. `"0.10.0"`. */
+  compact?: boolean;
+  /** Release version, shown as a smaller line below the environment label, e.g. `"0.10.0"`. */
   version?: string;
   className?: string;
 }
 
 export function EnvironmentBadge({
   appEnv = env.VITE_APP_ENV,
+  compact = false,
   version = APP_VERSION,
   className = '',
 }: EnvironmentBadgeProps): ReactElement {
   const environment = getEnvironmentMeta(appEnv);
-  const classes = ['context-chip', `context-chip--${environment.tone}`, className].filter(Boolean).join(' ');
-  // The badge's colour (tone) still carries the environment signal; the text
-  // is the release version instead of the environment name (was "Dev"/"Stg").
-  const text = `v${version}`;
+  const classes = [
+    'context-chip',
+    `context-chip--${environment.tone}`,
+    version ? 'environment-badge--stacked' : '',
+    className,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const label = compact ? environment.shortLabel : environment.label;
+  const ariaLabel = version
+    ? `Environment ${environment.label}, version ${version}`
+    : `Environment ${environment.label}`;
 
   return (
-    <span className={classes} aria-label={`Environment ${environment.label}, version ${version}`}>
-      {text}
+    <span className={classes} aria-label={ariaLabel}>
+      <span className="environment-badge__env">{label}</span>
+      {/* An empty APP_VERSION means the build-time inject never ran — omit
+          the line rather than render a fake-looking "v0.0.0". */}
+      {version ? <span className="environment-badge__version">v{version}</span> : null}
     </span>
   );
 }
