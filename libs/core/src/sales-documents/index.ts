@@ -58,6 +58,7 @@ export * from './domain/domain-services/resolve-sales-document-routing';
 export * from './domain/domain-services/evaluate-sales-document-rules';
 export * from './domain/domain-services/choose-sales-document-decision';
 export * from './domain/domain-services/detect-sales-document-rule-overlap';
+export * from './domain/domain-services/expand-sales-document-routing-candidates';
 export { SalesDocumentRule } from './domain/entities/sales-document-rule.entity';
 export { SalesDocumentCountryDefault } from './domain/entities/sales-document-country-default.entity';
 export { SalesDocumentThreshold } from './domain/entities/sales-document-threshold.entity';
