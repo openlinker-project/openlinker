@@ -638,21 +638,37 @@ function groupByRate(
  * rule, and the residual lands on the last member OF THIS GROUP, which is not
  * in general the last line of the document.
  *
- * THE SUBTRACTION CAN COMPUTE NEGATIVE, which is the one case the rule alone
- * does not cover. Ten lines of one grosz at 23%: the group's gross is 10, its
- * tax rounds to 2 and its net is 8, while the first nine lines each round to 1,
- * so the tenth computes `8 - 9 = -1`. A negative net in a fiscal invoice body
- * would contradict this file's own promise that an input it cannot express
- * refuses before anything is sent - and refusing here would be the worse answer,
- * because this IS expressible: it is a real, paid order, and a permanent domain
+ * THE SUBTRACTION CAN COMPUTE NEGATIVE OR ABOVE THE LINE'S OWN GROSS, which are
+ * the two cases the rule alone does not cover.
+ *
+ * Below zero: ten lines of one grosz at 23%: the group's gross is 10, its tax
+ * rounds to 2 and its net is 8, while the first nine lines each round to 1, so
+ * the tenth computes `8 - 9 = -1`. A negative net in a fiscal invoice body would
+ * contradict this file's own promise that an input it cannot express refuses
+ * before anything is sent - and refusing here would be the worse answer, because
+ * this IS expressible: it is a real, paid order, and a permanent domain
  * rejection of one is the failure shape ANALYSIS-1032 names a defect.
  *
- * So the shortfall is borrowed back from the nearest earlier lines, taking at
- * most what each one holds so none of them goes negative either. The repair
- * cannot run out: the allocation always sums to `netGroup`, which is never
- * negative, so a negative last entry means the others hold strictly more than
- * the shortfall. The group's total is untouched either way, which is what the
- * summary reconciles against.
+ * Above the line's own gross: three lines of 3, 3 and 1 grosz at 23%: the
+ * group's gross is 7, its tax rounds to 1, its net is 6, while the first two
+ * lines round to 2 each, so the third computes `6 - 4 = 2` against a gross of
+ * 1. The wire derives tax as `gross - net`, so an unclamped surplus emits a
+ * NEGATIVE `taxValue` onto a document bound for the tax authority - invisible
+ * to the summary checks, which reconcile perfectly either way, and not caught
+ * by the vendor either (`calculationValidation: NONE`). This is reachable on
+ * ordinary input, not a constructed edge: `toShippingLines` appends a per-rate
+ * share LAST while this function preserves first-seen order, so a shipping
+ * share is the last member of its group whenever its rate already appeared
+ * above it.
+ *
+ * So a shortfall is borrowed back from the nearest earlier lines and a surplus
+ * is lent to them, in both cases taking/giving at most what each one holds so
+ * none of them crosses zero or its own gross. Neither repair can run out: the
+ * allocation always sums to `netGroup`, so a negative last entry means the
+ * others hold strictly more than the shortfall, and the earlier headroom
+ * available to absorb a surplus is `taxGroup + surplus`, which is at least the
+ * surplus because `taxGroup` is never negative. The group's total is untouched
+ * either way, which is what the summary reconciles against.
  */
 function allocateGroupNet(
   members: readonly PricedInvoiceLine[],
@@ -672,6 +688,25 @@ function allocateGroupNet(
 
   // A group always has at least one member, so this index exists.
   const lastIndex = allocation.length - 1;
+  const lastGross = members[lastIndex].grossMinor;
+
+  // Above the line's own gross: `gross - net` is the tax the wire carries, so
+  // this is a NEGATIVE tax. The excess is lent to earlier lines that still have
+  // headroom.
+  let surplus = allocation[lastIndex] - lastGross;
+  if (surplus > 0) {
+    allocation[lastIndex] = lastGross;
+    for (let index = lastIndex - 1; index >= 0 && surplus > 0; index -= 1) {
+      const headroom = members[index].grossMinor - allocation[index];
+      const lent = Math.min(headroom, surplus);
+      allocation[index] += lent;
+      surplus -= lent;
+    }
+    return allocation;
+  }
+
+  // Below zero: a negative net. The shortfall is borrowed back from earlier
+  // lines, taking at most what each one holds so none of them goes negative.
   let shortfall = -allocation[lastIndex];
   if (shortfall <= 0) {
     return allocation;

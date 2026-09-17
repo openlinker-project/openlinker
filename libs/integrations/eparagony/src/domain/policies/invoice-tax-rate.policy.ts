@@ -135,7 +135,7 @@ export function resolveInvoiceTaxRateCode(neutralRate: string): EparagonyInvoice
 
   // `Number('')` is `0`, so a value that is nothing but a percent sign would
   // otherwise resolve to a zero rate. Strip first, then require something left.
-  const stripped = upper.replace('%', '').trim();
+  const stripped = normalizeDecimalSeparator(upper.replace('%', '').trim());
   const percent = Number(stripped);
   if (stripped.length > 0 && Number.isFinite(percent)) {
     if (percent === 0) {
@@ -166,4 +166,25 @@ export function isTaxedInvoiceRate(
 
 export function isInvoiceTaxRateCode(value: string): value is EparagonyInvoiceTaxRate {
   return (EparagonyInvoiceTaxRateValues as readonly string[]).includes(value);
+}
+
+/**
+ * Read a single comma as a decimal point, so `23,00` resolves rather than
+ * blocking the whole invoice.
+ *
+ * `Number('23,00')` is `NaN`, which fell through to the exemption lookup and
+ * then to a hard refusal, while core's own `parseTaxRatePercent` uses
+ * `parseFloat` and reads the same value as 23. No shipped `ProductMaster` is
+ * known to write comma decimals, so this closes a divergence rather than a
+ * reported defect - and it is deliberately NOT `parseFloat`, which reads `23,5`
+ * as 23 and would silently turn a 23.5% rate into a 23% one.
+ *
+ * Narrow on purpose: digits, one comma, and one or two digits to the end. A
+ * thousands separator (`1,000`) does not match and is left to fail the rate
+ * lookup as it should, rather than being read as `1.000`.
+ */
+const COMMA_DECIMAL_PATTERN = /^(\d+),(\d{1,2})$/;
+
+function normalizeDecimalSeparator(value: string): string {
+  return value.replace(COMMA_DECIMAL_PATTERN, '$1.$2');
 }

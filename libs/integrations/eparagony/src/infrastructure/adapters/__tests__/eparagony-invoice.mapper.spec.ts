@@ -218,28 +218,80 @@ describe('composeInvoiceDocument - the arithmetic reconciles exactly', () => {
     });
   });
 
-  it('never emits a negative net when the group residual exceeds the last line', () => {
-    // Ten lines of one grosz at 23%: the group's net is 8 while the first nine
-    // lines round up to 1 each, so a bare `netGroup - allocated` would hand the
-    // tenth line -1 and put a negative net on a fiscal document. The residual is
-    // borrowed back from lines that have capacity instead, which leaves the
-    // group sum untouched.
-    const lines: InvoiceLine[] = Array.from({ length: 10 }, (_unused, index) => ({
+  it.each<{ label: string; gross: number[] }>([
+    // The residual runs BELOW zero. Ten lines of one grosz at 23%: the group's
+    // net is 8 while the first nine lines round up to 1 each, so a bare
+    // `netGroup - allocated` would hand the tenth line -1.
+    { label: 'residual below zero', gross: Array.from({ length: 10 }, () => 0.01) },
+    // The residual runs ABOVE the last line's own gross, which a `>= 0` clamp
+    // alone misses: gross 3+3+1 at 23% gives a group net of 6, the first two
+    // lines round to 2 each, and the third computes 6-4=2 against a gross of 1
+    // - so `taxValue` is 1-2 = -1, a NEGATIVE VAT on a document bound for a tax
+    // authority, with every summary still reconciling. Not constructed:
+    // `toShippingLines` appends a small per-rate share LAST and `groupByRate`
+    // preserves first-seen order, so a shipping share is the last member of its
+    // group whenever its rate already appeared above it.
+    { label: 'residual above the last gross', gross: [0.03, 0.03, 0.01] },
+    {
+      label: 'residual above, longer group',
+      gross: [...Array.from({ length: 9 }, () => 0.03), 0.01],
+    },
+    {
+      label: 'residual above, realistic basket',
+      gross: [...Array.from({ length: 9 }, () => 1), 0.01],
+    },
+  ])(
+    'keeps every line inside 0 <= net <= gross, so no line carries a negative net or a negative tax ($label)',
+    ({ gross }) => {
+      const lines: InvoiceLine[] = gross.map((unitPriceGross, index) => ({
+        name: `L${index + 1}`,
+        quantity: 1,
+        unitPriceGross,
+        taxRate: '23' as const,
+      }));
+      const { metadata, lines: wire } = compose(makeCommand({ lines })).eInvoice;
+
+      // The real invariant, both bounds, per line. Only the lower half was held
+      // before, and only on the last member.
+      wire.forEach((line, index) => {
+        const lineGross = Math.round(gross[index] * 100);
+        expect(line.netTotalLineValue).toBeGreaterThanOrEqual(0);
+        expect(line.netTotalLineValue).toBeLessThanOrEqual(lineGross);
+        expect(line.taxValue).toBeGreaterThanOrEqual(0);
+        expect(line.netTotalLineValue + line.taxValue).toBe(lineGross);
+      });
+
+      // The repair moves net BETWEEN lines and never changes the group's total,
+      // which is what the summary reconciles against.
+      expect(wire.reduce((sum, line) => sum + line.netTotalLineValue, 0)).toBe(
+        metadata.netValueByTaxRate['23']
+      );
+      expect(wire.reduce((sum, line) => sum + line.taxValue, 0)).toBe(
+        metadata.taxValueByTaxRate['23']
+      );
+      expect(sumRateMap(metadata.netValueByTaxRate) + sumRateMap(metadata.taxValueByTaxRate)).toBe(
+        metadata.grossSaleValue
+      );
+    }
+  );
+
+  it('reports the same repaired figures to core that it put on the wire', () => {
+    // The surplus repair moves net between lines, so `documentLines` has to be
+    // built from the REPAIRED allocation - otherwise OpenLinker's contents card
+    // would state the pre-repair figures against a document carrying the others.
+    const lines: InvoiceLine[] = [0.03, 0.03, 0.01].map((unitPriceGross, index) => ({
       name: `L${index + 1}`,
       quantity: 1,
-      unitPriceGross: 0.01,
+      unitPriceGross,
       taxRate: '23' as const,
     }));
-    const { metadata, lines: wire } = compose(makeCommand({ lines })).eInvoice;
+    const { request, documentLines } = composeDocument(makeCommand({ lines }));
 
-    expect(wire.every((line) => line.netTotalLineValue >= 0)).toBe(true);
-    expect(wire.every((line) => line.taxValue >= 0)).toBe(true);
-    expect(wire.reduce((sum, line) => sum + line.netTotalLineValue, 0)).toBe(
-      metadata.netValueByTaxRate['23']
-    );
-    expect(sumRateMap(metadata.netValueByTaxRate) + sumRateMap(metadata.taxValueByTaxRate)).toBe(
-      metadata.grossSaleValue
-    );
+    expect(documentLines.map((line) => line.tax)).toEqual([0.01, 0, 0]);
+    request.eInvoice.lines.forEach((wireLine, index) => {
+      expect(Math.round(documentLines[index].net * 100)).toBe(wireLine.netTotalLineValue);
+      expect(Math.round(documentLines[index].tax * 100)).toBe(wireLine.taxValue);
+    });
   });
 
   it('makes the LAST line of a group absorb the rounding residual', () => {
