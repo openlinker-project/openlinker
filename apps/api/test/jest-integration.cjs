@@ -50,8 +50,12 @@ module.exports = {
   // `libs/test-kit/src/containers.ts`), which is what makes a count above 1
   // safe: before that, a second worker's `TRUNCATE ... CASCADE` + `flushDb()`
   // reset would wipe a peer's data mid-test. Resolved from
-  // `OL_TEST_MAX_WORKERS`, defaulting to 1 - so a local run with no env set
-  // behaves exactly as it did before. See `jest.test-workers.cjs`.
+  // `OL_TEST_MAX_WORKERS`, defaulting to `DEFAULT_TEST_WORKERS` (6, not
+  // gated on `CI` - unlike the unit tier, this only runs against Docker on a
+  // machine that already opted in). A local run with no env set therefore
+  // gets 6 workers too; `OL_TEST_MAX_WORKERS=1` is the escape hatch back to
+  // the old serial behaviour, for bisecting a parallelism-sensitive failure.
+  // See `jest.test-workers.cjs`.
   maxWorkers: resolveTestWorkers(),
   // Nothing in this repo caps a worker's heap, so a worker that grows runs
   // until the kernel OOM-killer takes it - and the symptom ("Jest worker

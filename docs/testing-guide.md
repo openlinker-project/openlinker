@@ -95,7 +95,7 @@ describe('ConnectionService', () => {
 **Characteristics**:
 - ⏱️ **Slower**: Require container startup, app boot, migrations (~10-15s)
 - 🐳 **Requires Docker**: Uses Testcontainers for PostgreSQL and Redis
-- 🔄 **Serial Execution**: Must run sequentially (`maxWorkers: 1`)
+- ⚡ **Parallel by default**: `DEFAULT_TEST_WORKERS` (6, see `jest.test-workers.cjs`) — each worker gets its own Postgres database and Redis logical DB, so this is safe up to `MAX_TEST_WORKERS` (15, capped by Redis's 16 logical DBs). Set `OL_TEST_MAX_WORKERS=1` to bisect a parallelism-sensitive failure back to the old serial behaviour.
 - 🎯 **Targeted**: Focus on critical vertical slices
 
 **What They Test**:
@@ -1004,7 +1004,7 @@ sudo systemctl start docker
    ```bash
    docker ps
    ```
-2. Verify `maxWorkers: 1` in `jest-integration.js` (prevents parallel execution conflicts)
+2. Try `OL_TEST_MAX_WORKERS=1` to rule out a parallelism-sensitive conflict (each worker has its own Postgres database and Redis logical DB, but a suspect flake is cheap to bisect this way — see `jest.test-workers.cjs`)
 3. Check for infinite loops or unresolved promises in test code
 4. Increase timeout:
    ```javascript

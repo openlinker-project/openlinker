@@ -289,12 +289,19 @@ jobs:
       # ts-jest keys entries by file content, so restoring an older cache is
       # safe: changed files simply miss and re-transform (#1920).
       #
-      # The key is scoped to what invalidates the whole cache wholesale (deps,
-      # base tsconfig, the jest configs) plus the run id, so a save still
-      # happens while unchanged-deps runs share one entry. Keying on
-      # `github.sha` instead minted a fresh multi-hundred-MB entry per commit,
-      # which would evict the pnpm store cache this same job restores above -
-      # the repo-wide budget is 10 GB with LRU eviction (PR #1923 review).
+      # The key is scoped to what invalidates the whole cache wholesale: deps,
+      # base tsconfig, the jest configs, AND `jest.test-workers.cjs` (#3263) -
+      # the worker count now decides how many per-worker databases exist, so a
+      # change to it belongs in the same cache-busting set as the configs that
+      # size the transform. No `github.run_id` or `github.sha` in the key: ts-jest
+      # keys its own entries by file content, so restoring an older cache is
+      # safe (unchanged files hit, changed ones re-transform, #1920) - and a
+      # run-scoped key could never actually be RESTORED (only ever saved fresh),
+      # so it was pure waste. Keying on `github.sha` instead minted a fresh
+      # multi-hundred-MB entry per commit, which would evict the pnpm store
+      # cache this same job restores above - the repo-wide budget is 10 GB with
+      # LRU eviction (PR #1923 review). The stable key here is what lets
+      # unchanged-deps runs share one entry instead of each minting their own.
       - name: Cache jest transform output
         uses: actions/cache@v4
         with:
