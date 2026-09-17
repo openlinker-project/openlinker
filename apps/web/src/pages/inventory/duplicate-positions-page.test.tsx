@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import {
+  renderWithProviders,
+  createMockApiClient,
+  createAuthenticatedSessionAdapter,
+} from '../../test/test-utils';
 import { DuplicatePositionsPage } from './duplicate-positions-page';
 import type {
   DuplicatePositionsReport,
@@ -39,7 +43,10 @@ describe('DuplicatePositionsPage', () => {
       },
     });
 
-    renderWithProviders(<DuplicatePositionsPage />, { apiClient });
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(screen.getByText('Loading duplicate-position report')).toBeInTheDocument();
   });
@@ -52,7 +59,10 @@ describe('DuplicatePositionsPage', () => {
       },
     });
 
-    renderWithProviders(<DuplicatePositionsPage />, { apiClient });
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(
       await screen.findByText('Unable to load the duplicate-position report')
@@ -68,7 +78,10 @@ describe('DuplicatePositionsPage', () => {
       },
     });
 
-    renderWithProviders(<DuplicatePositionsPage />, { apiClient });
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(
       await screen.findByText('Unable to load the duplicate-position report')
@@ -84,7 +97,10 @@ describe('DuplicatePositionsPage', () => {
       },
     });
 
-    renderWithProviders(<DuplicatePositionsPage />, { apiClient });
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(await screen.findByText('Ready')).toBeInTheDocument();
     expect(screen.getByText('No duplicate position groups')).toBeInTheDocument();
@@ -136,7 +152,10 @@ describe('DuplicatePositionsPage', () => {
       },
     });
 
-    renderWithProviders(<DuplicatePositionsPage />, { apiClient });
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(await screen.findByText('Not ready')).toBeInTheDocument();
     expect(screen.getByText('Duplicate groups')).toBeInTheDocument();
@@ -173,7 +192,10 @@ describe('DuplicatePositionsPage', () => {
       },
     });
 
-    renderWithProviders(<DuplicatePositionsPage />, { apiClient });
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(await screen.findByText('ol_product_a1')).toBeInTheDocument();
   });
@@ -182,18 +204,19 @@ describe('DuplicatePositionsPage', () => {
     const apiClient = createMockApiClient({
       inventory: {
         getDuplicatePositions: vi.fn().mockResolvedValue(buildReport()),
-        getProvenanceBackfillStatus: vi.fn().mockResolvedValue(
-          buildProvenanceStatus({ remainingNull: 42, completed: false })
-        ),
+        getProvenanceBackfillStatus: vi
+          .fn()
+          .mockResolvedValue(buildProvenanceStatus({ remainingNull: 42, completed: false })),
       },
     });
 
-    renderWithProviders(<DuplicatePositionsPage />, { apiClient });
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(await screen.findByText('Not ready')).toBeInTheDocument();
-    expect(
-      screen.getByText('Provenance backfill still running (42 row(s) remaining)')
-    ).toBeInTheDocument();
+    expect(screen.getByText('42 row(s) still missing provenance')).toBeInTheDocument();
     // The other condition is still independently reported as done.
     expect(screen.getByText('No duplicate position groups')).toBeInTheDocument();
   });
@@ -242,7 +265,10 @@ describe('DuplicatePositionsPage', () => {
       },
     });
 
-    renderWithProviders(<DuplicatePositionsPage />, { apiClient });
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     const toggle = await screen.findByRole('button', { name: /expand rows for product/i });
     await userEvent.click(toggle);
@@ -283,7 +309,10 @@ describe('DuplicatePositionsPage', () => {
       },
     });
 
-    renderWithProviders(<DuplicatePositionsPage />, { apiClient });
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     expect(await screen.findByText('Detail truncated')).toBeInTheDocument();
   });
