@@ -53,6 +53,7 @@ import {
   RETURN_DETAIL_HEADER_COPY,
   RETURN_LINES_COPY,
   RETURN_ORPHAN_BANNER_COPY,
+  RETURN_PROPOSAL_COPY,
   RETURN_SOURCE_PANEL_COPY,
   ReturnCustodyPanel,
   ReturnMoneyPanel,
@@ -351,10 +352,18 @@ export function ReturnDetailPage(): ReactElement {
 
       <ReturnMoneyPanel detail={detail} writeAccess={writeAccess} />
 
-      {/* Not fetched for an ORPHAN — the backend answers 409 (attribute it
-          first), and asking anyway would render an error for a state the page
-          already explains with its own banner. */}
-      {proposalQuery.data !== undefined ? (
+      {/* Section 5 of 8, at the shipped #correction anchor, between Money and
+          "What the channel says" (returns spec § 5.8). Not FETCHED for an
+          ORPHAN — the backend answers 409 (attribute it first) — but the
+          section still renders, with a fixed message rather than silently
+          disappearing: `credit-absent-orphan` keeps the page's section count
+          stable instead of making #correction a dead anchor. */}
+      {detail.bucket === 'orphan' ? (
+        <section className="returns-proposal-panel" id="correction">
+          <h2 className="section-title">{RETURN_PROPOSAL_COPY.sectionTitle}</h2>
+          <p className="text-muted">{RETURN_PROPOSAL_COPY.orphanAbsent}</p>
+        </section>
+      ) : proposalQuery.data !== undefined ? (
         <CorrectionProposalPanel
           returnId={returnId}
           outcome={proposalQuery.data.outcome}

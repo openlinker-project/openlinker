@@ -138,6 +138,7 @@ export {
   describeLineQuantity,
   describeUnreadableLines,
 } from './lib/return-detail.copy';
+export { RETURN_PROPOSAL_COPY } from './lib/return-proposal.copy';
 export { describeDeclineError, readBlockedTrigger } from './lib/decline-error';
 export {
   RETURNS_EMPTY_COPY,

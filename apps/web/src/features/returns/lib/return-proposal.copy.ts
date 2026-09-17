@@ -116,4 +116,12 @@ export const RETURN_PROPOSAL_COPY = {
    * than none.
    */
   recordWhatCameBack: 'Record what came back',
+
+  /**
+   * `credit-absent-orphan` (#3094). The page never REQUESTS a proposal for an
+   * orphan — the route answers 409 — so this is never a fetched outcome, only
+   * a fixed message keeping the section's place at #correction rather than
+   * leaving it silently absent.
+   */
+  orphanAbsent: 'No credit note is prepared for an unmatched return. Match it to an order first.',
 } as const;
