@@ -40,12 +40,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-type DocumentKind = 'invoice' | 'fiscal-receipt';
+type DocumentKind = 'invoice' | 'fiscal-receipt' | 'both';
 
 function readDocumentKind(config: Record<string, unknown>): DocumentKind | null {
   const salesDocument = isRecord(config.salesDocument) ? config.salesDocument : {};
   const raw = salesDocument.documentKind;
-  return raw === 'invoice' || raw === 'fiscal-receipt' ? raw : null;
+  return raw === 'invoice' || raw === 'fiscal-receipt' || raw === 'both' ? raw : null;
 }
 
 function readIsPrimary(config: Record<string, unknown>): boolean {
@@ -63,6 +63,7 @@ function isSalesDocumentCandidate(connection: Connection): boolean {
 const ISSUES_LABEL: Record<DocumentKind, string> = {
   invoice: 'Invoice',
   'fiscal-receipt': 'Fiscal receipt',
+  both: 'Either (invoice or fiscal receipt)',
 };
 
 export function SalesDocumentStatusSection({
