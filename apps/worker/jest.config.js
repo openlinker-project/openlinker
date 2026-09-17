@@ -3,13 +3,15 @@ const { ESM_DEPS_TRANSFORM_IGNORE_PATTERN, esmDepsJsTransform } = require('../..
 
 const { resolveUnitTestWorkers } = require('../../jest.unit-workers.cjs');
 
+const { transpileOnlyTsJest } = require('../../jest.ts-transform.cjs');
+
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: 'src',
   testRegex: '.*\\.spec\\.ts$',
   testSequencer: '<rootDir>/../test/openlinker.sequencer.cjs',
   transform: {
-    '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/../tsconfig.json' }],
+    '^.+\\.ts$': transpileOnlyTsJest(),
     // ESM-only htmlparser2 chain pulled in transitively by sanitize-html
     // >=2.17.6 via @openlinker/shared/html — see jest.esm-deps.cjs.
     '^.+\\.js$': esmDepsJsTransform,

@@ -5,6 +5,8 @@ const {
 
 const { resolveUnitTestWorkers } = require('../../jest.unit-workers.cjs');
 
+const { transpileOnlyTsJest } = require('../../jest.ts-transform.cjs');
+
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: 'src',
@@ -42,18 +44,15 @@ module.exports = {
   // unbounded growth, not to cap normal use.
   workerIdleMemoryLimit: '3GB',
   transform: {
-    '^.+\\.ts$': [
-      'ts-jest',
-      {
-        tsconfig: {
-            baseUrl: '../../',
-            paths: {
-                '@openlinker/core/*': ['libs/core/src/*'],
-                '@openlinker/shared/*': ['libs/shared/src/*'],
-              },
-        }
+    '^.+\\.ts$': transpileOnlyTsJest({
+      tsconfig: {
+        baseUrl: '../../',
+        paths: {
+          '@openlinker/core/*': ['libs/core/src/*'],
+          '@openlinker/shared/*': ['libs/shared/src/*'],
+        },
       },
-    ],
+    }),
     // ESM-only htmlparser2 chain pulled in transitively by sanitize-html
     // >=2.17.6 via @openlinker/shared/html — see jest.esm-deps.cjs.
     '^.+\\.js$': esmDepsJsTransform,
