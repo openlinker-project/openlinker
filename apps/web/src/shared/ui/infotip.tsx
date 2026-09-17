@@ -17,6 +17,11 @@
  * unnamed dialog. One label for both is correct here because the trigger's
  * label already says what the panel contains.
  *
+ * Re-exported from `shared/ui`'s public catalog (`index.ts`) deliberately,
+ * not as a side effect of the extraction (#3268 review) - a third consumer
+ * (a wizard, a plugin) composes against it the same way it composes against
+ * `Tooltip`.
+ *
  * @module shared/ui
  */
 import type { ReactElement, ReactNode } from 'react';

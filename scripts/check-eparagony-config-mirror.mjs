@@ -51,17 +51,34 @@ const FRONTEND_COPY = 'apps/web/src/plugins/eparagony/components/eparagony-tax-f
 const FRONTEND_WIZARD = 'apps/web/src/features/connections/components/eparagony-setup.schema.ts';
 
 /**
+ * Blank line/block comments to equal-length whitespace, preserving every
+ * newline, so a `]` inside a comment can never be mistaken for an array's
+ * real closing bracket (#3002). Blanking rather than deleting keeps offsets
+ * unchanged - not load-bearing here (this script reports no line numbers),
+ * but it is the shape `check-sales-document-reason-mirror.mjs` was fixed to,
+ * and diverging would leave two answers to the same problem in the tree.
+ */
+function blankComments(source) {
+  return source
+    .replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length))
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+}
+
+/**
  * Extract the string members of a `const <name> = [ ... ] as const;` array.
  *
- * Returns `null` when the declaration is absent, which the caller reports as a
- * failure rather than an empty match - a renamed constant must not read as "no
- * drift".
+ * Returns `null` when the declaration is absent OR parses to zero members
+ * (#3002) - both are reported as a failure rather than an empty match, since
+ * a renamed constant and a truncated parse must not read as "no drift", and
+ * a comparison of two empty arrays passes vacuously without ever comparing
+ * anything.
  */
 export function parseStringArrayConst(source, name) {
-  const match = source.match(new RegExp(`\\b${name}\\s*(?::[^=]+)?=\\s*\\[([\\s\\S]*?)\\]`));
+  const blanked = blankComments(source);
+  const match = blanked.match(new RegExp(`\\b${name}\\s*(?::[^=]+)?=\\s*\\[([\\s\\S]*?)\\]`));
   if (!match) return null;
   const members = [...match[1].matchAll(/['"]([^'"]*)['"]/g)].map((m) => m[1]);
-  return members;
+  return members.length > 0 ? members : null;
 }
 
 /**
@@ -217,6 +234,33 @@ function selfCheck() {
   expect(
     JSON.stringify(parseStringArrayConst(typed, 'Table')) === JSON.stringify(['X']),
     'parseStringArrayConst should skip a type annotation'
+  );
+
+  const lineCommentBracket = `export const Vals = [
+    // rejects one match, e.g. filter[]
+    'A',
+    'B',
+  ] as const;`;
+  expect(
+    JSON.stringify(parseStringArrayConst(lineCommentBracket, 'Vals')) ===
+      JSON.stringify(['A', 'B']),
+    'parseStringArrayConst should not truncate on a `]` inside a line comment (#3002)'
+  );
+
+  const blockCommentBracket = `export const Vals = [
+    /* legacy set was ['x'] */
+    'A',
+    'B',
+  ] as const;`;
+  expect(
+    JSON.stringify(parseStringArrayConst(blockCommentBracket, 'Vals')) ===
+      JSON.stringify(['A', 'B']),
+    'parseStringArrayConst should not truncate on a `]` inside a block comment (#3002)'
+  );
+
+  expect(
+    parseStringArrayConst('export const Vals = [] as const;', 'Vals') === null,
+    'parseStringArrayConst should fail (return null) on a declaration parsing to zero values, rather than pass a vacuous empty comparison (#3002)'
   );
 
   expect(
