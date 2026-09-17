@@ -114,7 +114,9 @@ export interface IInventoryQueryService {
    * Live status of the #2317 provenance backfill (#3240) — the second,
    * independent readiness condition for #2325 alongside
    * {@link getDuplicatePositionReport}'s `groupCount`. See
-   * {@link ProvenanceBackfillStatus} for why this is always a live read.
+   * {@link ProvenanceBackfillStatus} for why `remainingNull` is always a live
+   * read and what `latchedAt` reports about the backfill's own persisted
+   * completion stamp.
    */
   getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatus>;
 }
