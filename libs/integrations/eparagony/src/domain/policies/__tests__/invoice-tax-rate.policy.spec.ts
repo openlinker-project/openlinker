@@ -31,6 +31,20 @@ describe('invoice-tax-rate.policy', () => {
       expect(resolveInvoiceTaxRateCode(' 23 ')).toBe('23');
     });
 
+    it('should read a single comma as a decimal point rather than refusing the whole invoice', () => {
+      // `Number('23,00')` is `NaN`, which fell through to the exemption lookup
+      // and then to a hard refusal, while core's own `parseTaxRatePercent` reads
+      // the same value as 23 via `parseFloat`.
+      expect(resolveInvoiceTaxRateCode('23,00')).toBe('23');
+      expect(resolveInvoiceTaxRateCode('8,0')).toBe('8');
+    });
+
+    it('should not read a thousands separator as a decimal comma', () => {
+      // Narrow on purpose: one or two digits after the comma. `1,000` is left to
+      // fail the rate lookup rather than being read as `1.000`.
+      expect(resolveInvoiceTaxRateCode('1,000')).toBeNull();
+    });
+
     it("should resolve a zero rate to the vendor's own stated default zero code", () => {
       // The vendor's contract names ZRD "the default 0%"; a caller that means
       // intra-community supply or export says so with the specific code.
