@@ -336,8 +336,8 @@ export function DuplicatePositionsPage(): ReactElement {
 
           {report.truncated ? (
             <Alert tone="info" title="Detail truncated">
-              The totals above cover the whole table. The table below lists only the largest{' '}
-              {report.groups.length} group(s) — some duplicate groups are not shown.
+              The table below lists the largest {report.groups.length} of {report.groupCount}{' '}
+              duplicate group(s). The KPI totals below cover the whole table.
             </Alert>
           ) : null}
 
