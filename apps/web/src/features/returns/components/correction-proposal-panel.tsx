@@ -100,12 +100,25 @@ export function CorrectionProposalPanel({
   const record = useRecordCorrectionProposalMutation(returnId);
 
   if (proposal === null) {
+    const badge = RETURN_PROPOSAL_COPY.outcomeBadges[outcome];
     return (
       <section className="returns-proposal-panel" id="correction">
-        <h2 className="section-title">{RETURN_PROPOSAL_COPY.sectionTitle}</h2>
+        <header className="returns-proposal-panel__head">
+          <h2 className="section-title">{RETURN_PROPOSAL_COPY.sectionTitle}</h2>
+          {/* Each of the 4 non-proposing outcomes gets its own badge — the
+              acceptance criterion is that they be DISTINCT, not merely that
+              each have some text. An unrecognised outcome renders no badge
+              rather than a fabricated one. */}
+          {badge !== undefined ? <StatusBadge tone="neutral">{badge}</StatusBadge> : null}
+        </header>
         {/* A named outcome, never a blank. An unrecognised one falls through to
             its raw value so an operator can quote it rather than see nothing. */}
         <p className="text-muted">{RETURN_PROPOSAL_COPY.outcomes[outcome] ?? outcome}</p>
+        {/* The one outcome with a REAL, reachable remedy on this page — see
+            the copy's own note on why the other two get none. */}
+        {outcome === 'no-disposed-lines' ? (
+          <a href="#custody">{RETURN_PROPOSAL_COPY.recordWhatCameBack}</a>
+        ) : null}
       </section>
     );
   }

@@ -22535,6 +22535,15 @@ legend.analytics-settings-dialog__label {
   margin: 0;
 }
 
+/* Non-proposing outcome header (#3093) — the section title beside its
+   distinct badge, one per outcome. */
+.returns-proposal-panel__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* Record-for-review action (#3092) — button, its recorded badge and its
    blocked-reason note are independent parts (#2100), never one ternary. */
 .returns-proposal-panel__action {
