@@ -38,14 +38,11 @@ import { useUpsertSalesDocumentCountryDefaultMutation } from '../hooks/use-upser
 import { useDeleteSalesDocumentCountryDefaultMutation } from '../hooks/use-delete-sales-document-country-default-mutation';
 import { deriveSalesDocumentRows } from '../lib/derive-sales-document-rows';
 import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
-import type { SalesDocumentKind } from '../api/sales-documents.types';
+import type { ConcreteDocumentKind, SalesDocumentKind } from '../api/sales-documents.types';
 
 interface SalesDocumentCountryDefaultsProps {
   country: string;
 }
-
-/** A country default names exactly one concrete kind — never the `'both'` config sentinel. */
-type ConcreteDocumentKind = Exclude<SalesDocumentKind, 'both'>;
 
 interface CountryDefaultCandidate {
   connectionId: string;
@@ -140,6 +137,13 @@ export function SalesDocumentCountryDefaults({
   const candidates: CountryDefaultCandidate[] = rows
     .filter((row) => row.status === 'active' && row.documentKind !== null)
     .flatMap((row): CountryDefaultCandidate[] => {
+      // The `.filter` above already excludes `null`, but a plain boolean
+      // predicate doesn't narrow the element type for `.flatMap` — re-assert
+      // it here so `row.documentKind` below is `SalesDocumentKind`, not
+      // `SalesDocumentKind | null`.
+      if (row.documentKind === null) {
+        return [];
+      }
       if (row.documentKind === 'both') {
         return (['invoice', 'fiscal-receipt'] as const).map((documentKind) => ({
           connectionId: row.connectionId,

@@ -13,7 +13,7 @@
  *
  * @module apps/web/src/features/sales-documents/api
  */
-import type { SalesDocumentKind } from './sales-documents.types';
+import type { ConcreteDocumentKind, SalesDocumentKind } from './sales-documents.types';
 
 /** The `★ Rest of world` pseudo-country literal (mirrors `SALES_DOCUMENT_REST_OF_WORLD_COUNTRY`). */
 export const SALES_DOCUMENT_REST_OF_WORLD_COUNTRY = '*';
@@ -48,7 +48,8 @@ export interface SalesDocumentRule {
   id: string;
   country: string;
   conditions: SalesDocumentConditionInput[];
-  documentKind: SalesDocumentKind;
+  /** A saved rule always routes to ONE concrete kind — never the `'both'` config sentinel. */
+  documentKind: ConcreteDocumentKind;
   connectionId: string;
   effectiveFrom: string;
   effectiveTo: string | null;
@@ -60,7 +61,7 @@ export interface SalesDocumentRule {
 export interface CreateSalesDocumentRuleInput {
   country: string;
   conditions: SalesDocumentConditionInput[];
-  documentKind: SalesDocumentKind;
+  documentKind: ConcreteDocumentKind;
   connectionId: string;
   effectiveFrom: string;
   effectiveTo?: string | null;
@@ -70,13 +71,14 @@ export interface CreateSalesDocumentRuleInput {
 export interface SalesDocumentCountryDefault {
   id: string;
   country: string;
-  documentKind: SalesDocumentKind;
+  /** A country default always names ONE concrete kind — never `'both'`. */
+  documentKind: ConcreteDocumentKind;
   connectionId: string;
 }
 
 export interface UpsertSalesDocumentCountryDefaultInput {
   country: string;
-  documentKind: SalesDocumentKind;
+  documentKind: ConcreteDocumentKind;
   connectionId: string;
 }
 

@@ -32,6 +32,14 @@ export type SalesDocumentCapability = 'Invoicing' | 'Fiscalization' | 'Both';
 export const SALES_DOCUMENT_KIND_VALUES = ['invoice', 'fiscal-receipt', 'both'] as const;
 export type SalesDocumentKind = (typeof SALES_DOCUMENT_KIND_VALUES)[number];
 
+/**
+ * The kind a single fiscal document is actually issued as — never `'both'`.
+ * `'both'` is a CONNECTION-role config sentinel (#3195): a saved rule or a
+ * country default always names ONE concrete kind for a routing decision to
+ * resolve to, even when the connection it names may serve either.
+ */
+export type ConcreteDocumentKind = Exclude<SalesDocumentKind, 'both'>;
+
 /** One row of the centralized table: one connection, its routing config. */
 export interface SalesDocumentRow {
   connectionId: string;
