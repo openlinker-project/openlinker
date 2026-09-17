@@ -52,6 +52,19 @@ export interface LiveNavItem {
    * is the pre-existing behaviour of all other items.
    */
   requiresPermission?: Permission;
+  /**
+   * Declarative ROLE gate for a single item (#3076 review IMPORTANT finding).
+   *
+   * Mirrors `LiveNavGroup.requiresRole`, but at item granularity for a group
+   * whose *other* items are open to every role — `Diagnostics` is otherwise
+   * admin+operator+viewer, while `/duplicate-positions`'s backing endpoints
+   * are `@Roles('admin')`. Minting a whole-group gate would hide the three
+   * siblings from operators/viewers too; minting a new `Permission` for one
+   * read-only diagnostic page would widen that vocabulary for a population of
+   * one (see `RequireAdmin`'s docblock). An item declaring nothing is visible
+   * to every authenticated session, the pre-existing behaviour.
+   */
+  requiresRole?: Role;
   to: string;
 }
 
