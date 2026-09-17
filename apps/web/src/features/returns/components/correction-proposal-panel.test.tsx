@@ -1,22 +1,31 @@
 /**
- * Credit-Note Correction Proposal Panel (#3090, returns spec § 5.8)
+ * Credit-Note Correction Proposal Panel (#3090 headline, #3092 record action)
  *
- * Two acceptance criteria this file exists for: the headline credit amount
- * and its breakdown must be present (visible above the fold on desktop is a
- * layout property this test cannot assert, but their presence is), and each
- * line's status must render in plain language, not the raw enum value.
+ * Two acceptance criteria this file exists for from #3090: the headline
+ * credit amount and its breakdown must be present (visible above the fold on
+ * desktop is a layout property this test cannot assert, but their presence
+ * is), and each line's status must render in plain language, not the raw
+ * enum value. #3092 adds: the record action calls the mutation, disables
+ * while any line is ambiguous or already recorded, and the recorded state
+ * (driven by `changeId`, not local component state) survives a re-render.
  *
  * @module apps/web/src/features/returns/components
  */
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import { CorrectionProposalPanel } from './correction-proposal-panel';
 import { RETURN_PROPOSAL_COPY } from '../lib/return-proposal.copy';
+import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import type {
   ReturnCorrectionProposal,
   ReturnCorrectionProposalLine,
+  ReturnCorrectionProposalResult,
 } from '../api/returns.types';
+
+const RETURN_ID = 'ol_return_1';
+
+const WRITE_ACCESS = { canWrite: true, demoReadOnly: false, visible: true };
 
 function line(
   overrides: Partial<ReturnCorrectionProposalLine> = {},
@@ -42,7 +51,7 @@ function line(
 
 function proposal(lines: ReturnCorrectionProposalLine[]): ReturnCorrectionProposal {
   return {
-    returnId: 'ol_return_1',
+    returnId: RETURN_ID,
     internalOrderId: 'ol_order_1',
     invoiceRecordId: 'inv-1',
     invoiceConnectionId: 'conn-1',
@@ -52,15 +61,41 @@ function proposal(lines: ReturnCorrectionProposalLine[]): ReturnCorrectionPropos
   };
 }
 
-function renderPanel(p: ReturnCorrectionProposal | null, outcome = 'proposed') {
-  render(
-    <MemoryRouter>
-      <CorrectionProposalPanel outcome={outcome} proposal={p} />
-    </MemoryRouter>,
-  );
+function renderPanel(
+  p: ReturnCorrectionProposal | null,
+  overrides: {
+    outcome?: string;
+    changeId?: string | null;
+    writeAccess?: typeof WRITE_ACCESS;
+    recordCorrectionProposal?: Mock<(returnId: string) => Promise<ReturnCorrectionProposalResult>>;
+  } = {},
+) {
+  const recordCorrectionProposal =
+    overrides.recordCorrectionProposal ??
+    vi.fn().mockResolvedValue({
+      outcome: 'proposed',
+      proposal: p,
+      changeId: 'ol_order_change_1',
+      opened: true,
+    });
+  const apiClient = createMockApiClient({ returns: { recordCorrectionProposal } });
+
+  return {
+    recordCorrectionProposal,
+    ...renderWithProviders(
+      <CorrectionProposalPanel
+        returnId={RETURN_ID}
+        outcome={overrides.outcome ?? 'proposed'}
+        proposal={p}
+        changeId={overrides.changeId ?? null}
+        writeAccess={overrides.writeAccess ?? WRITE_ACCESS}
+      />,
+      { apiClient },
+    ),
+  };
 }
 
-describe('CorrectionProposalPanel (#3090)', () => {
+describe('CorrectionProposalPanel — headline + breakdown (#3090)', () => {
   it('should render a headline total and its automatic/pick/no-credit breakdown', () => {
     renderPanel(
       proposal([
@@ -74,8 +109,6 @@ describe('CorrectionProposalPanel (#3090)', () => {
     );
 
     expect(screen.getByText(RETURN_PROPOSAL_COPY.headlineLabel)).toBeInTheDocument();
-    // 1 matched (credits 10.00 PLN for the (2-1) unit delta at unit price 10),
-    // 1 ambiguous, 1 no-match.
     expect(screen.getByText(RETURN_PROPOSAL_COPY.breakdownAutomatic).nextElementSibling)
       .toHaveTextContent('1');
     expect(screen.getByText(RETURN_PROPOSAL_COPY.breakdownNeedsPick).nextElementSibling)
@@ -181,18 +214,69 @@ describe('CorrectionProposalPanel (#3090)', () => {
     expect(
       screen.getByRole('link', { name: RETURN_PROPOSAL_COPY.handoff }),
     ).toHaveAttribute('href', '/invoices/inv-1');
+    // "Record for review" exists; a literal "Issue" CTA must not.
     expect(screen.queryByRole('button', { name: /issue/i })).not.toBeInTheDocument();
   });
 
   it('should name a non-proposed outcome rather than rendering blank', () => {
-    renderPanel(null, 'no-invoice');
+    renderPanel(null, { outcome: 'no-invoice' });
 
     expect(screen.getByText(/No invoice has been issued/)).toBeInTheDocument();
   });
 
   it('should pass an unrecognised outcome through rather than blanking it', () => {
-    renderPanel(null, 'some-future-outcome');
+    renderPanel(null, { outcome: 'some-future-outcome' });
 
     expect(screen.getByText('some-future-outcome')).toBeInTheDocument();
+  });
+});
+
+describe('CorrectionProposalPanel — record for review (#3092)', () => {
+  it('should record the proposal and show a success toast on click', async () => {
+    const user = userEvent.setup();
+    const { recordCorrectionProposal } = renderPanel(proposal([line()]));
+
+    await user.click(screen.getByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction }));
+
+    await waitFor(() => expect(recordCorrectionProposal).toHaveBeenCalledWith(RETURN_ID));
+    expect(await screen.findByText(RETURN_PROPOSAL_COPY.recordSuccess)).toBeInTheDocument();
+  });
+
+  it('should disable the action while any line is ambiguous, with a reason beside it', () => {
+    renderPanel(proposal([line({ status: 'ambiguous', selectedOriginalLineNumber: null, candidates: [
+      { originalLineNumber: 1, name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '23' },
+      { originalLineNumber: 2, name: 'Widget', quantity: 1, unitPriceGross: 12, taxRate: '23' },
+    ] })]));
+
+    expect(screen.getByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction })).toBeDisabled();
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.recordBlockedAmbiguous)).toBeInTheDocument();
+  });
+
+  it('should render a persistent recorded badge and disable re-recording once changeId is set', () => {
+    renderPanel(proposal([line()]), { changeId: 'ol_order_change_1' });
+
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.recordedBadge)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction })).toBeDisabled();
+  });
+
+  it('should not render the action at all when write access is not visible', () => {
+    renderPanel(proposal([line()]), {
+      writeAccess: { canWrite: false, demoReadOnly: false, visible: false },
+    });
+
+    expect(
+      screen.queryByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('should show an error toast without leaving the recorded state on a failed attempt', async () => {
+    const user = userEvent.setup();
+    const recordCorrectionProposal = vi.fn().mockRejectedValue(new Error('network error'));
+    renderPanel(proposal([line()]), { recordCorrectionProposal });
+
+    await user.click(screen.getByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction }));
+
+    expect(await screen.findByText(RETURN_PROPOSAL_COPY.recordError)).toBeInTheDocument();
+    expect(screen.queryByText(RETURN_PROPOSAL_COPY.recordedBadge)).not.toBeInTheDocument();
   });
 });

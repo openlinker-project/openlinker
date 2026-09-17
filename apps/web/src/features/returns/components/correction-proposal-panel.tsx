@@ -44,32 +44,61 @@
  * issued amounts. `RETURN_PROPOSAL_COPY.headlineEstimateNote` says so next to
  * the figure, so it is never read as the number the document will carry.
  *
+ * **"Record for review" is not "issue".** The mockup's confirm-dialog CTA
+ * reads "Issue credit note", but nothing behind this panel calls
+ * `CorrectionIssuer` — the button here only records the ADR-044 change
+ * proposal an operator later confirms through the existing correction flow
+ * on the invoice page. Labelling it "Issue" here would contradict
+ * `RETURN_PROPOSAL_COPY.noAutoIssue` printed one line below it.
+ *
+ * **Recorded state lives in the query cache, not local state.** A successful
+ * record seeds the preview query with the response (#3089), so `changeId`
+ * arriving as a prop — sourced from that same cached read — is what survives
+ * a re-render or a remount, rather than a `useState` flag this component
+ * would lose the moment its parent unmounted it.
+ *
  * @module apps/web/src/features/returns/components
  */
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
+import { Button } from '../../../shared/ui/button';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { MetricCard } from '../../../shared/ui/metric-card';
 import { formatAmount } from '../../../shared/format/format-amount';
+import { useToast } from '../../../shared/ui/toast-provider';
 import { RETURN_PROPOSAL_COPY } from '../lib/return-proposal.copy';
 import {
   computeCorrectionProposalBreakdown,
   lineCredit,
   NEEDS_ATTENTION_NO_MATCH_REASON,
 } from '../lib/correction-proposal-breakdown';
+import { useRecordCorrectionProposalMutation } from '../hooks/use-record-correction-proposal-mutation';
 import type { ReturnCorrectionProposal } from '../api/returns.types';
 
 interface CorrectionProposalPanelProps {
+  returnId: string;
   proposal: ReturnCorrectionProposal | null;
   outcome: string;
+  /** `null` unless a prior record call (this session or a past one, replayed
+   *  through the cache) recorded a change proposal. Always `null` on a fresh
+   *  GET preview — see `ReturnCorrectionProposalResponseDto.changeId`. */
+  changeId: string | null;
+  writeAccess: { canWrite: boolean; demoReadOnly: boolean; visible: boolean };
 }
 
 export function CorrectionProposalPanel({
+  returnId,
   proposal,
   outcome,
+  changeId,
+  writeAccess,
 }: CorrectionProposalPanelProps): ReactElement {
+  const { showToast } = useToast();
+  const record = useRecordCorrectionProposalMutation(returnId);
+
   if (proposal === null) {
     return (
       <section className="returns-proposal-panel" id="correction">
@@ -86,6 +115,12 @@ export function CorrectionProposalPanel({
       line.status === 'ambiguous' || line.noMatchReason === NEEDS_ATTENTION_NO_MATCH_REASON
   );
   const breakdown = computeCorrectionProposalBreakdown(proposal.lines);
+  const isRecorded = changeId !== null;
+  // The picker this AC was written against is retired (#3091) — nothing in
+  // this build can resolve an unresolved line (`status: 'ambiguous'`, or its
+  // #3312 successor `no-match` / `ambiguous-invoice-line`), so "unresolved"
+  // is simply `hasAmbiguity`, permanently, for this proposal.
+  const recordDisabled = hasAmbiguity || isRecorded || record.isPending || writeAccess.demoReadOnly;
 
   return (
     <section className="returns-proposal-panel" id="correction">
@@ -116,6 +151,41 @@ export function CorrectionProposalPanel({
       </div>
 
       <Alert tone="warning">{RETURN_PROPOSAL_COPY.irreversible}</Alert>
+
+      {writeAccess.visible ? (
+        <div className="returns-proposal-panel__action">
+          <ReadOnlyLock active={writeAccess.demoReadOnly} message={RETURN_PROPOSAL_COPY.readOnly}>
+            <Button
+              onClick={() => {
+                record.mutate(undefined, {
+                  onSuccess: () => {
+                    showToast({ tone: 'success', description: RETURN_PROPOSAL_COPY.recordSuccess });
+                  },
+                  onError: () => {
+                    showToast({ tone: 'error', description: RETURN_PROPOSAL_COPY.recordError });
+                  },
+                });
+              }}
+              disabled={recordDisabled}
+            >
+              {record.isPending
+                ? RETURN_PROPOSAL_COPY.recordPending
+                : RETURN_PROPOSAL_COPY.recordAction}
+            </Button>
+          </ReadOnlyLock>
+          {isRecorded ? (
+            <StatusBadge tone="success" withDot>
+              {RETURN_PROPOSAL_COPY.recordedBadge}
+            </StatusBadge>
+          ) : null}
+          {/* Independent of the button, never folded into its disabled state
+              alone (#2100) — a disabled control with no explanation reads as
+              broken rather than as "you still have a pick to make". */}
+          {!isRecorded && hasAmbiguity ? (
+            <span className="text-muted">{RETURN_PROPOSAL_COPY.recordBlockedAmbiguous}</span>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* The acceptance criterion: a clean and an ambiguous proposal must be
           distinguishable at a glance, before any confirm. Different tone AND
