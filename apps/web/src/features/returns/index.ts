@@ -113,6 +113,10 @@ export { MatchReturnDialog } from './components/match-return-dialog';
 // The approve dialog (#3083) — mounted inline by the worklist itself, since
 // this write carries no form to defer to a detail-page destination for.
 export { AuthorizeReturnDialog } from './components/authorize-return-dialog';
+// The record-a-return-by-hand dialog (#3084) — for a channel with no
+// returns feed at all. Standalone entry point (#3078's own list of
+// sub-issues has it opened from the returns list, not from a row).
+export { RecordReturnDialog } from './components/record-return-dialog';
 export { ReturnDeclineAction } from './components/return-decline-action';
 export { ReturnLineStateChip } from './components/return-line-state-chips';
 export { ReturnLinesTable } from './components/return-lines-table';
