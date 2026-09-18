@@ -1,7 +1,13 @@
 import { cleanup, screen, waitFor, within, type RenderResult } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, it, expect, vi, type Mock } from 'vitest';
-import { renderWithProviders, createMockApiClient } from '../../test/test-utils';
+import {
+  createAuthenticatedSessionAdapter,
+  renderWithProviders,
+  createMockApiClient,
+} from '../../test/test-utils';
+import { createNoopSessionAdapter } from '../../shared/auth/noop-session-adapter';
+import type { SessionAdapter } from '../../shared/auth/session-adapter';
 import { mockMobileViewport } from '../../test/viewport';
 import { ReturnsListPage } from './returns-list-page';
 import {
@@ -88,6 +94,13 @@ interface SetupOptions {
   availabilityPending?: boolean;
   connections?: Connection[];
   route?: string;
+  /**
+   * Defaults to an `orders:write`-holding session — every pre-existing test
+   * in this file predates the #3285 write-access gate on "+ Record a
+   * return" and keeps exercising it as before. The gate's own negative
+   * cases pass a permission-less session explicitly.
+   */
+  sessionAdapter?: SessionAdapter;
 }
 
 interface SetupResult extends RenderResult {
@@ -112,6 +125,7 @@ function setup(options: SetupOptions = {}): SetupResult {
   const result = renderWithProviders(<ReturnsListPage />, {
     apiClient,
     route: options.route ?? '/returns',
+    sessionAdapter: options.sessionAdapter ?? createAuthenticatedSessionAdapter(),
   });
 
   return { ...result, listFn, availabilityFn };
@@ -521,6 +535,37 @@ describe('ReturnsListPage', () => {
       );
 
       expect(await screen.findByText(RECORD_RETURN_DIALOG_COPY.title)).toBeInTheDocument();
+    });
+
+    it('should hide "+ Record a return" for a session with no write permission', async () => {
+      // POST /returns/record is @Roles('admin', 'operator') — an enabled CTA
+      // for a viewer/packer session ends in an unactionable 403.
+      setup({ sessionAdapter: createNoopSessionAdapter() });
+
+      await screen.findByText(ORPHAN_RETURNS_WORKLIST_COPY.sectionTitle);
+      expect(
+        screen.queryByRole('button', { name: RECORD_RETURN_DIALOG_COPY.triggerLabel }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('should render "+ Record a return" DISABLED behind a ReadOnlyLock for a demo viewer with no write permission', async () => {
+      const listFn = vi.fn().mockResolvedValue(listResult());
+      const availabilityFn = vi.fn().mockResolvedValue({ configured: true, connectionIds: [] });
+      const apiClient = createMockApiClient({
+        returns: { list: listFn, getIngestionAvailability: availabilityFn },
+        connections: { list: vi.fn().mockResolvedValue([]) },
+        system: { getConfig: vi.fn().mockResolvedValue({ demoMode: true }) },
+      });
+
+      renderWithProviders(<ReturnsListPage />, {
+        apiClient,
+        route: '/returns',
+        sessionAdapter: createNoopSessionAdapter(),
+      });
+
+      const action = await screen.findByRole('button', { name: RECORD_RETURN_DIALOG_COPY.triggerLabel });
+      expect(action).toBeDisabled();
+      expect(action.closest('.read-only-lock')).not.toBeNull();
     });
   });
 

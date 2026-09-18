@@ -37,8 +37,11 @@ import { KeyValueList } from '../../shared/ui/key-value-list';
 import { EmptyState, ErrorState } from '../../shared/ui/feedback-state';
 import { Button } from '../../shared/ui/button';
 import { Chip } from '../../shared/ui/chip';
+import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { Select } from '../../shared/ui/select';
+import { useWriteAccess } from '../../shared/auth/use-permission';
 import { ConnectionEntityLabel, useConnectionsQuery } from '../../features/connections';
+import { useDemoMode } from '../../features/system';
 import {
   RECORD_RETURN_DIALOG_COPY,
   RETURNS_EMPTY_COPY,
@@ -82,6 +85,15 @@ export function ReturnsListPage(): ReactElement {
   // #3085 — the worklist's + record dialog's entry point. No new route: both
   // live on this page, reachable from the existing Returns nav item.
   const [isRecordDialogOpen, setIsRecordDialogOpen] = useState(false);
+
+  // `POST /returns/record` is `@Roles('admin', 'operator')` — the "+ Record a
+  // return" page action is a write affordance and must be gated exactly like
+  // the match button `return-detail-page.tsx` already gates in this same
+  // stack (tech-lead review on #3285, IMPORTANT). Hidden entirely for a
+  // session with no write access, disabled behind a `ReadOnlyLock` for a demo
+  // read-only viewer.
+  const demoMode = useDemoMode();
+  const writeAccess = useWriteAccess('orders:write', demoMode);
 
   const filters = useMemo(() => readReturnFilters(searchParams), [searchParams]);
   const offset = readReturnOffset(searchParams);
@@ -234,19 +246,23 @@ export function ReturnsListPage(): ReactElement {
     !availabilitySettled;
 
   return (
-    <>
     <PageLayout
       eyebrow={RETURNS_PAGE_COPY.eyebrow}
       title={RETURNS_PAGE_COPY.title}
       description={RETURNS_PAGE_COPY.description}
       actions={
-        <Button
-          onClick={() => {
-            setIsRecordDialogOpen(true);
-          }}
-        >
-          {RECORD_RETURN_DIALOG_COPY.triggerLabel}
-        </Button>
+        writeAccess.visible ? (
+          <ReadOnlyLock active={writeAccess.demoReadOnly} message={RETURNS_PAGE_COPY.recordActionReadOnly}>
+            <Button
+              disabled={writeAccess.demoReadOnly}
+              onClick={() => {
+                setIsRecordDialogOpen(true);
+              }}
+            >
+              {RECORD_RETURN_DIALOG_COPY.triggerLabel}
+            </Button>
+          </ReadOnlyLock>
+        ) : undefined
       }
     >
       {/* #3078/#3081 — the two-group worklist, reachable from the existing
@@ -450,14 +466,14 @@ export function ReturnsListPage(): ReactElement {
           </div>
         </>
       )}
+
+      <RecordReturnDialog
+        open={isRecordDialogOpen}
+        onOpenChange={setIsRecordDialogOpen}
+        // Cache invalidation is the mechanism (useRecordReturnMutation
+        // already invalidates on success) — no explicit refetch needed here
+        // (tech-lead review on #3285, SUGGESTION).
+      />
     </PageLayout>
-    <RecordReturnDialog
-      open={isRecordDialogOpen}
-      onOpenChange={setIsRecordDialogOpen}
-      onRecorded={() => {
-        void query.refetch();
-      }}
-    />
-    </>
   );
 }

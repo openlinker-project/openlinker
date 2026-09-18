@@ -237,6 +237,22 @@ describe('ReturnDetailPage', () => {
 
       expect(await screen.findByText(MATCH_RETURN_DIALOG_COPY.title)).toBeInTheDocument();
     });
+
+    it('should hide the match action entirely for a session with no write access (tech-lead review on #3285)', async () => {
+      // The same `orders:write` permission `POST /returns/:returnId/match-order`
+      // enforces server-side — pins the gate the way `return-decline-action.tsx`'s
+      // own "hide the action entirely for a session with no write access" test
+      // does, so a future refactor that drops `writeAccess.visible ?` stays red.
+      setup({
+        detail: makeDetail({ bucket: 'orphan', internalOrderId: null }),
+        authenticated: false,
+      });
+
+      await screen.findByText(RETURN_ORPHAN_BANNER_COPY.title);
+      expect(
+        screen.queryByRole('button', { name: RETURN_ORPHAN_BANNER_COPY.matchAction }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe('failure branches', () => {

@@ -41,7 +41,11 @@ import { ApiError } from '../../shared/api/api-error';
 import { ReadOnlyLock } from '../../shared/ui/read-only-lock';
 import { useWriteAccess } from '../../shared/auth/use-permission';
 import { ConnectionEntityLabel, useConnectionsQuery } from '../../features/connections';
-import { useDemoMode } from '../../features/system/hooks/use-demo-mode';
+// The barrel, not the deep hook path — every other in-tree consumer imports
+// it this way (`orphan-returns-worklist.tsx` among them), and `pages/` deep
+// imports are a documented gap, not an allowance (tech-lead review on
+// #3285, SUGGESTION).
+import { useDemoMode } from '../../features/system';
 import {
   RETURNS_ORPHAN_COPY,
   RETURNS_ROW_COPY,
@@ -285,39 +289,43 @@ export function ReturnDetailPage(): ReactElement {
         ) : null
       }
     >
+      {/* ONE `detail.bucket === 'orphan'` check for both the banner and its
+          dialog, folded into a single block — the two were adjacent, separate
+          conditions that could drift from each other for no reason (tech-lead
+          review on #3285, SUGGESTION). The dialog renders nothing while
+          `open` is false, so folding it in costs nothing. */}
       {detail.bucket === 'orphan' ? (
-        <ReturnOrphanBanner
-          externalOrderId={detail.externalOrderId}
-          action={
-            writeAccess.visible ? (
-              <ReadOnlyLock
-                active={writeAccess.demoReadOnly}
-                message={RETURN_ORPHAN_BANNER_COPY.matchActionReadOnly}
-              >
-                <Button
-                  tone="secondary"
-                  disabled={!writeAccess.canWrite}
-                  onClick={() => {
-                    setIsMatchDialogOpen(true);
-                  }}
+        <>
+          <ReturnOrphanBanner
+            externalOrderId={detail.externalOrderId}
+            action={
+              writeAccess.visible ? (
+                <ReadOnlyLock
+                  active={writeAccess.demoReadOnly}
+                  message={RETURN_ORPHAN_BANNER_COPY.matchActionReadOnly}
                 >
-                  {RETURN_ORPHAN_BANNER_COPY.matchAction}
-                </Button>
-              </ReadOnlyLock>
-            ) : null
-          }
-        />
-      ) : null}
-
-      {detail.bucket === 'orphan' ? (
-        <MatchReturnDialog
-          returnId={detail.id}
-          open={isMatchDialogOpen}
-          onOpenChange={setIsMatchDialogOpen}
-          onMatched={() => {
-            void query.refetch();
-          }}
-        />
+                  <Button
+                    tone="secondary"
+                    disabled={writeAccess.demoReadOnly}
+                    onClick={() => {
+                      setIsMatchDialogOpen(true);
+                    }}
+                  >
+                    {RETURN_ORPHAN_BANNER_COPY.matchAction}
+                  </Button>
+                </ReadOnlyLock>
+              ) : null
+            }
+          />
+          <MatchReturnDialog
+            returnId={detail.id}
+            open={isMatchDialogOpen}
+            onOpenChange={setIsMatchDialogOpen}
+            // Cache invalidation is the mechanism (useMatchReturnToOrderMutation
+            // already invalidates on settle) — no explicit refetch needed
+            // here (tech-lead review on #3285, SUGGESTION).
+          />
+        </>
       ) : null}
 
       <KeyValueList items={buildHeaderItems(detail, connection?.name ?? null)} />
