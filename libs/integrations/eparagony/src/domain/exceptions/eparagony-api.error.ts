@@ -129,21 +129,21 @@ function defaultFailureMode(
 function defaultReason(statusCode: number, errorCode: number | null): string {
   const suffix = errorCode === null ? '' : ` (code ${errorCode})`;
   if (statusCode === 401 || statusCode === 403) {
-    return `The e-receipt provider rejected the connection's credentials or granted scopes${suffix}.`;
+    return `The provider rejected the connection's credentials or granted scopes${suffix}.`;
   }
   if (statusCode === 422) {
-    return `The e-receipt provider reports this registration key was already used with different data${suffix}.`;
+    return `The provider reports this registration key was already used with different data${suffix}.`;
   }
   if (statusCode === 409) {
-    return `The e-receipt provider reports a conflict for this request; it may have already been registered${suffix}.`;
+    return `The provider reports a conflict for this request; it may have already been registered${suffix}.`;
   }
   if (statusCode === 429) {
-    return `The e-receipt provider rate-limited the request${suffix}.`;
+    return `The provider rate-limited the request${suffix}.`;
   }
   if (statusCode >= 500) {
-    return `The e-receipt provider returned a server error${suffix}.`;
+    return `The provider returned a server error${suffix}.`;
   }
-  return `The e-receipt provider rejected the document${suffix}.`;
+  return `The provider rejected the document${suffix}.`;
 }
 
 /**

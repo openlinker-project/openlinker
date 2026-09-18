@@ -58,3 +58,36 @@ describe('EparagonyAuthFailureClassifierAdapter', () => {
     expect(classifier.isCredentialRejected(new Error('elsewhere'))).toBe(false);
   });
 });
+
+describe('shared operator-facing copy stays lane-neutral', () => {
+  // These three classes are thrown by BOTH `EparagonyFiscalizationAdapter` and
+  // `EparagonyInvoicingAdapter` (#3192), so a sentence naming one lane is simply
+  // wrong on the other - an OAuth failure during invoice issuance would have
+  // read "the e-receipt provider issued no access token", and the poll-budget
+  // throw would have said "the sale may or may not have been registered" about
+  // an invoice. Nothing else in the tree asserts these strings, which is how
+  // they survived the generalisation pass.
+  const LANE_SPECIFIC_PHRASES = ['e-receipt', 'the sale may', 'receipt'];
+
+  function assertNeutral(reason: string): void {
+    for (const phrase of LANE_SPECIFIC_PHRASES) {
+      expect(reason.toLowerCase()).not.toContain(phrase);
+    }
+  }
+
+  it("should not name a single lane in a transport failure's reason", () => {
+    assertNeutral(new EparagonyNetworkError('down').reason);
+  });
+
+  it("should not name a single lane in any of the API error's default reasons", () => {
+    for (const statusCode of [401, 403, 409, 422, 429, 400, 500, 503]) {
+      assertNeutral(new EparagonyApiError('boom', statusCode, null).reason);
+    }
+  });
+
+  it('should not name a single lane in a composition refusal it was handed', () => {
+    // The adapter authors this one, so the class cannot enforce it - the check
+    // is here to keep the rule in one readable place.
+    assertNeutral(new EparagonyConfigException('bad', 'The provider refused the document.').reason);
+  });
+});
