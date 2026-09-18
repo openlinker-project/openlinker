@@ -67,6 +67,31 @@ export const MAX_DUPLICATE_POSITION_GROUPS = 500;
 /** Default duplicate-position group detail cap when the caller names none. */
 export const DEFAULT_DUPLICATE_POSITION_GROUPS = 100;
 
+/**
+ * In-flight ceiling for the location/connection display-name fan-out (#3249
+ * review). Distinct locations/connections are not bounded below group count
+ * — `MAX_DUPLICATE_POSITION_GROUPS` allows 500 groups at 500 distinct
+ * locations — so the id-set size alone is not a structural bound. Mirrors
+ * the declared, clamped-ceiling shape ADR-047/#2229 established
+ * (`resolveBatchConcurrency`) rather than relying on realistic cardinality.
+ */
+const DUPLICATE_POSITION_NAME_LOOKUP_CONCURRENCY = 10;
+
+/**
+ * Runs `worker` over `items` in fixed-size waves capped at `concurrency` —
+ * the next wave starts only once the previous one fully settles.
+ */
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  const cap = Math.max(1, concurrency);
+  for (let i = 0; i < items.length; i += cap) {
+    await Promise.all(items.slice(i, i + cap).map(worker));
+  }
+}
+
 @Injectable()
 export class InventoryQueryService implements IInventoryQueryService {
   constructor(
@@ -192,10 +217,13 @@ export class InventoryQueryService implements IInventoryQueryService {
    *
    * `locationId`/`sourceConnectionId` have no batched-by-id read on their own
    * services today (`ILocationService.getLocation` and `ConnectionPort.get`
-   * are both single-id) — the id sets here are bounded by the number of
-   * DISTINCT locations/connections in the report, not by row or group count,
-   * so a small bounded `Promise.all` is the right shape rather than adding a
-   * batch method to either service for this one caller.
+   * are both single-id), so each distinct id costs its own round trip. That
+   * distinct-id count is NOT bounded below group count — `maxGroups` allows
+   * up to `MAX_DUPLICATE_POSITION_GROUPS` groups at that many distinct
+   * locations/connections — so the fan-out is capped at
+   * `DUPLICATE_POSITION_NAME_LOOKUP_CONCURRENCY` in-flight lookups per axis
+   * (the `resolveBatchConcurrency` / ADR-047 precedent) rather than an
+   * unbounded `Promise.all` over the whole id set.
    */
   private async enrichDuplicatePositionGroups(
     groups: DuplicatePositionGroup[]
@@ -237,19 +265,23 @@ export class InventoryQueryService implements IInventoryQueryService {
 
   private async buildLocationNameMap(locationIds: string[]): Promise<Map<string, string>> {
     const map = new Map<string, string>();
-    await Promise.all(
-      locationIds.map(async (id) => {
+    await runWithConcurrency(
+      locationIds,
+      DUPLICATE_POSITION_NAME_LOOKUP_CONCURRENCY,
+      async (id) => {
         const location = await this.locationService.getLocation(id);
         if (location) map.set(id, location.name);
-      })
+      }
     );
     return map;
   }
 
   private async buildConnectionNameMap(connectionIds: string[]): Promise<Map<string, string>> {
     const map = new Map<string, string>();
-    await Promise.all(
-      connectionIds.map(async (id) => {
+    await runWithConcurrency(
+      connectionIds,
+      DUPLICATE_POSITION_NAME_LOOKUP_CONCURRENCY,
+      async (id) => {
         try {
           const connection = await this.connectionPort.get(id);
           map.set(id, connection.name);
@@ -258,7 +290,7 @@ export class InventoryQueryService implements IInventoryQueryService {
           // failing the whole report — the raw id is still shown.
           if (!(error instanceof ConnectionNotFoundException)) throw error;
         }
-      })
+      }
     );
     return map;
   }

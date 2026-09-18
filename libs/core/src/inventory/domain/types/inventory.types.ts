@@ -423,12 +423,16 @@ export interface DuplicatePositionGroup {
    * repository never sets these; they exist so a real product/connection/
    * location name reaches the operator without a second query per row.
    *
-   * `null` on `productName`/`sku` means the product could not be resolved
-   * (e.g. deleted). `connectionName` and `locationName` stay `null` for the
-   * documented sentinel states — `sourceConnectionId === null | 'legacy'`
-   * (not yet backfilled by #2317) and `locationId === null` (ADR-058
-   * decision 2, the master declines to locate) — which must never be
-   * resolved to a fabricated name.
+   * `null` on `productName` means the product could not be resolved (e.g.
+   * deleted) — `Product.name` is non-null, so `productName` alone carries
+   * the resolution signal. `sku` is `Product.sku`'s own `string | null`
+   * shape (a resolved product may genuinely carry no SKU), so `sku: null`
+   * does NOT by itself mean "product not found" — check `productName` for
+   * that. `connectionName` and `locationName` stay `null` for the documented
+   * sentinel states — `sourceConnectionId === null | 'legacy'` (not yet
+   * backfilled by #2317) and `locationId === null` (ADR-058 decision 2, the
+   * master declines to locate) — which must never be resolved to a
+   * fabricated name.
    */
   productName: string | null;
   sku: string | null;
