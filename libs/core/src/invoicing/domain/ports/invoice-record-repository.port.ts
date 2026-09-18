@@ -12,9 +12,17 @@ import type {
   CreateInvoiceRecordInput,
   InvoiceOutcomePatch,
   InvoiceRecordFilters,
+  InvoiceRecordKeysetCursor,
   InvoiceRecordPagination,
   PaginatedInvoiceRecords,
 } from '../types/invoicing.types';
+
+/** Page of {@link InvoiceRecordRepositoryPort.findManyKeyset}. */
+export interface InvoiceRecordKeysetPage {
+  items: InvoiceRecord[];
+  /** `null` means the filtered set is exhausted - there is no next page. */
+  nextCursor: InvoiceRecordKeysetCursor | null;
+}
 
 export interface InvoiceRecordRepositoryPort {
   /**
@@ -273,4 +281,24 @@ export interface InvoiceRecordRepositoryPort {
       cursor?: { updatedAt: Date; id: string };
     },
   ): Promise<{ items: InvoiceRecord[]; total: number }>;
+
+  /**
+   * Cross-order operational list (#3306) - the SAME filter surface as
+   * {@link findMany}, keyset-paginated on `(createdAt, id)` instead of
+   * `OFFSET`. Never a widening of `findMany` itself: that method's `OFFSET`
+   * pagination is a published contract of `GET /invoices` and stays untouched
+   * (`docs/engineering-standards.md` § When A Paginated Total Is Expensive).
+   * This sibling exists because a merged, financial-audit-adjacent list must
+   * not silently skip or duplicate a row when a new invoice is created between
+   * two page fetches - the failure mode plain `OFFSET` has under concurrent
+   * inserts.
+   *
+   * `opts.cursor` absent means "first page." `nextCursor` on the returned page
+   * is the last row's `(createdAt, id)` only when a FULL page was returned,
+   * else `null`.
+   */
+  findManyKeyset(
+    filter: InvoiceRecordFilters,
+    opts: { limit: number; cursor?: InvoiceRecordKeysetCursor },
+  ): Promise<InvoiceRecordKeysetPage>;
 }

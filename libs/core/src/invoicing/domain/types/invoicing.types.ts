@@ -1039,3 +1039,14 @@ export interface InvoiceOutcomePatch {
    */
   issuedLineSnapshot?: IssuedLineSnapshot | null;
 }
+
+/**
+ * Row-value keyset position for {@link InvoiceRecordRepositoryPort.findManyKeyset}
+ * (#3306) - `(createdAt, id)`, the same shape `findIssuedNonTerminal` already
+ * uses. `undefined` on the incoming request means "first page"; `null` on the
+ * outgoing page means "no more rows."
+ */
+export interface InvoiceRecordKeysetCursor {
+  createdAt: Date;
+  id: string;
+}

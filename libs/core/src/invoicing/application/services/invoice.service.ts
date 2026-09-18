@@ -37,7 +37,11 @@ import type { IFiscalRegistrationService } from '@openlinker/core/fiscalization'
 import type { FISCAL_REGISTRATION_SERVICE_TOKEN as FiscalRegistrationServiceTokenType } from '@openlinker/core/fiscalization';
 
 import type { IInvoiceService } from './invoice.service.interface';
-import { InvoiceRecordRepositoryPort } from '../../domain/ports/invoice-record-repository.port';
+import {
+  InvoiceRecordRepositoryPort,
+  type InvoiceRecordKeysetPage,
+} from '../../domain/ports/invoice-record-repository.port';
+import type { InvoiceRecordKeysetCursor } from '../../domain/types/invoicing.types';
 import { InvoiceNumberingSeriesRepositoryPort } from '../../domain/ports/invoice-numbering-series-repository.port';
 import {
   CORRECTION_NUMBERING_DOCUMENT_TYPE,
@@ -1268,6 +1272,15 @@ export class InvoiceService implements IInvoiceService {
     // Cross-context list seam (#1119): the HTTP layer reaches the invoice
     // projection through here, never the repository port. Pure projection read.
     return this.repo.findMany(filter, pagination);
+  }
+
+  async listInvoicesKeyset(
+    filter: InvoiceRecordFilters,
+    opts: { limit: number; cursor?: InvoiceRecordKeysetCursor },
+  ): Promise<InvoiceRecordKeysetPage> {
+    // Cross-context list seam (#3306): the HTTP layer reaches the invoice
+    // projection through here, never the repository port. Pure projection read.
+    return this.repo.findManyKeyset(filter, opts);
   }
 
   async applyRegulatoryClearance(
