@@ -72,14 +72,18 @@ export interface InventoryApi {
   /**
    * Read-only duplicate-position diagnostic (#2319, ADR-058 step (iii)). Admin
    * only server-side. `maxGroups` bounds the returned group DETAIL only — the
-   * report's totals are always computed over the whole table.
+   * report's totals are always computed over the whole table. The server
+   * rejects `maxGroups > 500` with 400 (`MAX_DUPLICATE_POSITION_GROUPS`) —
+   * the authority for the cap; this client does not enforce it.
    */
   getDuplicatePositions: (maxGroups?: number) => Promise<DuplicatePositionsReport>;
   /**
    * Live status of the #2317 provenance backfill (#3240) — the second,
    * independent readiness condition alongside `getDuplicatePositions`'s
-   * `groupCount`. Admin only server-side. Always resolved live — never
-   * cached, so callers should not poll it aggressively.
+   * `groupCount`. Admin only server-side. Always resolved live — the
+   * backfill's persisted `connection_cursors` count can go stale once the
+   * pass self-latches, so the server recounts on every call rather than
+   * trusting it — so callers should not poll this aggressively.
    */
   getProvenanceBackfillStatus: () => Promise<ProvenanceBackfillStatus>;
 }
@@ -157,8 +161,12 @@ export function createInventoryApi(request: ApiRequest): InventoryApi {
       return request<void>(`/inventory/locations/${id}`, { method: 'DELETE' });
     },
     getDuplicatePositions(maxGroups): Promise<DuplicatePositionsReport> {
-      const qs = maxGroups !== undefined ? `?maxGroups=${String(maxGroups)}` : '';
-      return request<DuplicatePositionsReport>(`/inventory/duplicate-positions${qs}`);
+      const params = new URLSearchParams();
+      if (maxGroups !== undefined) params.set('maxGroups', String(maxGroups));
+      const qs = params.toString();
+      return request<DuplicatePositionsReport>(
+        `/inventory/duplicate-positions${qs.length > 0 ? `?${qs}` : ''}`,
+      );
     },
     getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatus> {
       return request<ProvenanceBackfillStatus>('/inventory/provenance-backfill-status');
