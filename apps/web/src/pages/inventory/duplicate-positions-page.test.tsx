@@ -505,7 +505,16 @@ describe('DuplicatePositionsPage', () => {
     const createObjectURL = vi.fn().mockReturnValue('blob:mock');
     const revokeObjectURL = vi.fn();
     vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
-    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    // Read the filename the anchor is actually given, not just that a click
+    // happened — a test asserting only `createObjectURL`/`click` fired
+    // cannot catch the `-partial` suffix or the generatedAt-derived date
+    // part regressing (#3264 review).
+    let downloadedFilename: string | undefined;
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        downloadedFilename = this.download;
+      });
 
     const apiClient = createMockApiClient({
       inventory: {
@@ -553,6 +562,62 @@ describe('DuplicatePositionsPage', () => {
 
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(clickSpy).toHaveBeenCalledTimes(1);
+    // buildReport's default generatedAt is 2026-09-14T00:00:00.000Z and
+    // truncated is false — the filename must carry that date and no
+    // `-partial` suffix.
+    expect(downloadedFilename).toBe('duplicate-positions-2026-09-14.csv');
+  });
+
+  it('should suffix the CSV filename with -partial when the report is truncated (#3264 review)', async () => {
+    const createObjectURL = vi.fn().mockReturnValue('blob:mock');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
+    let downloadedFilename: string | undefined;
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement
+    ) {
+      downloadedFilename = this.download;
+    });
+
+    const apiClient = createMockApiClient({
+      inventory: {
+        getDuplicatePositions: vi.fn().mockResolvedValue(
+          buildReport({
+            groupCount: 5,
+            rowCount: 12,
+            excessRowCount: 7,
+            truncated: true,
+            generatedAt: '2026-09-15T10:30:00.000Z',
+            groups: [
+              {
+                productId: 'ol_product_a1',
+                productVariantId: null,
+                locationId: null,
+                sourceConnectionId: null,
+                rowCount: 1,
+                liveRowCount: 1,
+                productName: null,
+                sku: null,
+                connectionName: null,
+                locationName: null,
+                rows: [],
+              },
+            ],
+          })
+        ),
+        getProvenanceBackfillStatus: vi.fn().mockResolvedValue(buildProvenanceStatus()),
+      },
+    });
+
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const exportButton = await screen.findByRole('button', { name: 'Export CSV' });
+    await userEvent.click(exportButton);
+
+    expect(downloadedFilename).toBe('duplicate-positions-2026-09-15-partial.csv');
   });
 
   it('should render the Live qty at risk column as the sum of live (non-stale) rows only', async () => {
@@ -682,6 +747,75 @@ describe('DuplicatePositionsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('should render the neutral note, never the distortion alert, for exactly one live row (#3264 review BLOCKING finding)', async () => {
+    const apiClient = createMockApiClient({
+      inventory: {
+        getDuplicatePositions: vi.fn().mockResolvedValue(
+          buildReport({
+            groupCount: 1,
+            rowCount: 3,
+            excessRowCount: 2,
+            groups: [
+              {
+                productId: 'ol_product_a1',
+                productVariantId: null,
+                locationId: null,
+                sourceConnectionId: null,
+                rowCount: 3,
+                liveRowCount: 1,
+                productName: 'Wireless Mouse',
+                sku: 'WM-100',
+                connectionName: null,
+                locationName: null,
+                rows: [
+                  {
+                    id: 'ol_inventory_row_live',
+                    availableQuantity: 14,
+                    reservedQuantity: 0,
+                    isStale: false,
+                    updatedAt: '2026-09-14T00:00:00.000Z',
+                  },
+                  {
+                    id: 'ol_inventory_row_stale1',
+                    availableQuantity: 100,
+                    reservedQuantity: 0,
+                    isStale: true,
+                    updatedAt: '2026-06-01T00:00:00.000Z',
+                  },
+                  {
+                    id: 'ol_inventory_row_stale2',
+                    availableQuantity: 50,
+                    reservedQuantity: 0,
+                    isStale: true,
+                    updatedAt: '2026-05-01T00:00:00.000Z',
+                  },
+                ],
+              },
+            ],
+          })
+        ),
+        getProvenanceBackfillStatus: vi.fn().mockResolvedValue(buildProvenanceStatus()),
+      },
+    });
+
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const toggle = await screen.findByRole('button', { name: /expand rows for product/i });
+    await userEvent.click(toggle);
+
+    // A single live row's own figure IS the correct, undistorted quantity —
+    // asserting the neutral note, not the "Currently distorting
+    // available-to-promise" alert a naive `liveRowCount > 0` gate would show
+    // for this exact shape.
+    expect(screen.getByText('One live row — no oversell risk today.')).toBeInTheDocument();
+    expect(screen.queryByText('Currently distorting available-to-promise.')).not.toBeInTheDocument();
+    // The table's own badge must agree with the detail panel.
+    expect(screen.getByText('1 live')).toBeInTheDocument();
+  });
+
   it('should open the remediation modal generically from the not-ready banner', async () => {
     const apiClient = createMockApiClient({
       inventory: {
@@ -788,6 +922,17 @@ describe('DuplicatePositionsPage', () => {
     const sqlBox = screen.getByDisplayValue(/DELETE FROM "inventory_items"/);
     expect((sqlBox as HTMLTextAreaElement).value).toContain("'ol_inventory_row_loser'");
     expect((sqlBox as HTMLTextAreaElement).value).not.toContain("'ol_inventory_row_survivor'");
+
+    // happy-dom polyfills a real `navigator.clipboard` by default (unlike
+    // jsdom), so the regression this guards against — a real self-hosted
+    // `http://` deployment where `navigator.clipboard` is genuinely
+    // `undefined` — has to be stubbed explicitly, the same
+    // `Object.create(navigator, …)` shape `copyable-id.test.tsx` uses (kept
+    // restorable via `vi.unstubAllGlobals()` in this file's own `afterEach`).
+    // Without the `?.` guard this click throws a synchronous TypeError.
+    vi.stubGlobal('navigator', Object.create(navigator, { clipboard: { value: undefined } }));
+    const copyButton = screen.getByRole('button', { name: /^Copy DELETE statement/ });
+    await expect(userEvent.click(copyButton)).resolves.toBeUndefined();
   });
 
   it('should update maxGroups and re-request the report when Apply is clicked in the truncated state', async () => {

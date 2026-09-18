@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRemediationDeleteSql,
   findSurvivorId,
+  hasOversellRisk,
   liveExposureQuantity,
   reservationRiskRows,
 } from './duplicate-positions-remediation';
@@ -62,6 +63,31 @@ describe('liveExposureQuantity', () => {
       rows: [buildRow({ availableQuantity: 50, isStale: true })],
     });
     expect(liveExposureQuantity(group)).toBe(0);
+  });
+});
+
+describe('hasOversellRisk', () => {
+  it('should return false for exactly one live row plus any number of stale rows (#3264 review BLOCKING finding)', () => {
+    const group = buildGroup({
+      rows: [
+        buildRow({ id: 'live', isStale: false }),
+        buildRow({ id: 'stale1', isStale: true }),
+        buildRow({ id: 'stale2', isStale: true }),
+      ],
+    });
+    expect(hasOversellRisk(group)).toBe(false);
+  });
+
+  it('should return false when every row is stale', () => {
+    const group = buildGroup({ rows: [buildRow({ isStale: true })] });
+    expect(hasOversellRisk(group)).toBe(false);
+  });
+
+  it('should return true for two or more live rows', () => {
+    const group = buildGroup({
+      rows: [buildRow({ id: 'live1', isStale: false }), buildRow({ id: 'live2', isStale: false })],
+    });
+    expect(hasOversellRisk(group)).toBe(true);
   });
 });
 

@@ -55,6 +55,7 @@ import {
 } from '../../features/inventory/lib/duplicate-positions-csv';
 import {
   findSurvivorId,
+  hasOversellRisk,
   liveExposureQuantity,
   reservationRiskRows,
 } from '../../features/inventory/lib/duplicate-positions-remediation';
@@ -238,13 +239,13 @@ function buildGroupColumns(): DataTableColumn<DuplicatePositionGroup>[] {
       ),
       accessor: (g) => g.liveRowCount,
       cell: (g) =>
-        g.liveRowCount > 0 ? (
+        hasOversellRisk(g) ? (
           <StatusBadge tone="warning" withDot compact>
             {g.liveRowCount} live
           </StatusBadge>
         ) : (
           <StatusBadge tone="neutral" withDot compact>
-            all stale
+            {g.liveRowCount === 1 ? '1 live' : 'all stale'}
           </StatusBadge>
         ),
       sortable: true,
@@ -274,7 +275,7 @@ function GroupRowDetail({
         </p>
       ) : null}
 
-      {group.liveRowCount > 0 ? (
+      {hasOversellRisk(group) ? (
         <Alert tone="info">
           <strong>Currently distorting available-to-promise.</strong> This position&rsquo;s live
           rows sum to <strong>{exposure.toLocaleString('en-US')}</strong> available — the
@@ -285,10 +286,20 @@ function GroupRowDetail({
         </Alert>
       ) : (
         <p className="duplicate-positions-detail__neutral-note">
-          <strong>No live rows — no oversell risk today.</strong> Every
-          row here is already stale, so the normal availability read already excludes this
-          position. This group only blocks the stricter uniqueness migration; it is not an
-          active stock-accuracy problem.
+          {group.liveRowCount === 1 ? (
+            <>
+              <strong>One live row — no oversell risk today.</strong> Its own figure is already
+              the correct, undistorted quantity; only the stale rows in this group remain to be
+              deleted before the #2325 uniqueness index can build.
+            </>
+          ) : (
+            <>
+              <strong>No live rows — no oversell risk today.</strong> Every row here is already
+              stale, so the normal availability read already excludes this position. This group
+              only blocks the stricter uniqueness migration; it is not an active stock-accuracy
+              problem.
+            </>
+          )}
         </p>
       )}
 
@@ -390,7 +401,11 @@ export function DuplicatePositionsPage(): ReactElement {
   // the default on every one (#3264 review).
   const [searchParams, setSearchParams] = useSearchParams();
   const maxGroupsParam = searchParams.get('maxGroups');
-  const parsedMaxGroupsParam = maxGroupsParam === null ? NaN : Number(maxGroupsParam);
+  // `Number('')` is `0`, which is finite — so a present-but-empty
+  // `?maxGroups=` clamped to `1` instead of falling back to the default
+  // (#3264 review). Treat empty exactly like absent.
+  const parsedMaxGroupsParam =
+    maxGroupsParam === null || maxGroupsParam === '' ? NaN : Number(maxGroupsParam);
   const maxGroups = Number.isFinite(parsedMaxGroupsParam)
     ? clampMaxGroups(parsedMaxGroupsParam)
     : DEFAULT_MAX_GROUPS;
@@ -480,7 +495,9 @@ export function DuplicatePositionsPage(): ReactElement {
   };
 
   const applyMaxGroups = (): void => {
-    const parsed = Number(maxGroupsInput);
+    // Same empty-string-is-not-zero fix as the URL-param read above — a
+    // cleared input must fall back to the default, not clamp to 1.
+    const parsed = maxGroupsInput === '' ? NaN : Number(maxGroupsInput);
     const clamped = Number.isFinite(parsed) ? clampMaxGroups(parsed) : DEFAULT_MAX_GROUPS;
     setMaxGroupsInput(String(clamped));
     setSearchParams((prev) => {
