@@ -214,7 +214,13 @@ export function EparagonyStructuredSection({
               // select can only show it as “use the default”, which is a false
               // statement about the operator's own data, and the 400 they get
               // on save names a key the form shows as unset (#3268 review).
-              `The saved value (${unrecognised.paymentForm}) is not one eparagony.pl accepts, so saving this connection will be refused until you pick one below.`
+              //
+              // The instruction below cannot say "pick one below" unqualified:
+              // an unrecognised value hydrates this field to "" - the SAME
+              // value as "Use the default" - so re-selecting that option fires
+              // no change event and the save fails identically. Naming a
+              // DIFFERENT option first is the only remedy that actually works.
+              `The saved value (${unrecognised.paymentForm}) is not one eparagony.pl accepts, so saving this connection will be refused. Pick a different value below, then switch back to the default if that is what you meant — re-selecting the default without picking something else first will not clear this.`
         }
       >
         <Select
@@ -267,7 +273,11 @@ export function EparagonyStructuredSection({
             <>
               {unrecognised.defaultTaxRateCode === null
                 ? TAX_FALLBACK_FIELD_DESCRIPTION
-                : `The saved value (${unrecognised.defaultTaxRateCode}) is not a slot this fiscal device exposes, so saving this connection will be refused until you pick one below.`}{' '}
+                : // Same reselect-the-default no-op as `paymentForm` above:
+                  // the unrecognised value hydrates this field to "", which
+                  // is also the value of "Not set" (the recommended option),
+                  // so clicking it again changes nothing (#3268 review).
+                  `The saved value (${unrecognised.defaultTaxRateCode}) is not a slot this fiscal device exposes, so saving this connection will be refused. Pick a different slot below, then switch back to "Not set" if that is what you meant — re-selecting "Not set" without picking something else first will not clear this.`}{' '}
               <Infotip
                 ariaLabel={TAX_FALLBACK_INFOTIP_LABEL}
                 definitions={EPARAGONY_TAX_FALLBACK_HAZARD_NOTES}

@@ -116,12 +116,21 @@ const eparagonySchemaShape: ConnectionConfigContribution['schemaShape'] = {
   // every other edit on the connection - a rename, a rate limit, a payment form
   // - until the operator retyped a field they may never have set. That is a
   // mirror stricter than the gate with page-wide blast radius.
+  //
+  // Exponent notation is accepted for the same reason. `readNumberAsString`
+  // renders a stored value with `String(value)`, and JS renders a legally
+  // finite number like 1e-7 or 1e+21 that way - a plain `\d+(\.\d+)?` refused
+  // that rendering while the validator would accept the underlying number,
+  // one notation short of the trap this comment already describes.
   eparagonyStatusPollTimeoutMs: z
     .union([
       z
         .string()
         .trim()
-        .regex(/^\d+(\.\d+)?$/, 'Poll timeout must be a number of milliseconds.')
+        .regex(
+          /^\d+(\.\d+)?(e[+-]?\d+)?$/i,
+          'Poll timeout must be a number of milliseconds.',
+        )
         .refine((value) => Number(value) > 0, {
           message: 'Poll timeout must be greater than zero.',
         }),
@@ -212,13 +221,14 @@ function readEnum(config: Record<string, unknown>, key: string, values: readonly
  * a change), so `configText` keeps carrying the stale unrecognised value and
  * a save fails identically. The warning itself does not disappear - it is
  * reactively derived from `configText`, so an attentive operator gets a clue
- * that nothing changed - but the "pick one below" instruction silently does
- * not work for the one option most likely to be tried first (it reads as the
- * recommendation). Picking any OTHER option still clears it correctly, since
- * that is a genuine value change. Not fixed here: the fix would mean detecting
- * this case and forcing a write regardless of the select's rendered state,
- * which is a real behaviour change rather than the read-side fix this
- * function makes.
+ * that nothing changed. The section's warning copy now says so explicitly
+ * (pick a DIFFERENT option first, then switch back if the default was
+ * intended), rather than instructing "pick one below" unqualified - the
+ * copy-only fix a reviewer flagged. Picking any OTHER option still clears it
+ * correctly, since that is a genuine value change. Not fixed at the
+ * mechanism level: a real fix would mean detecting this case and forcing a
+ * write regardless of the select's rendered state, which is a behaviour
+ * change rather than the read-side fix this function makes.
  */
 export function readUnrecognisedEnumValue(
   config: Record<string, unknown>,

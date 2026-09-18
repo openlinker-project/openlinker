@@ -60,7 +60,7 @@ export const EPARAGONY_DEFAULT_TAX_RATES: EparagonyTaxRateTable = {
 
 /** Merge a partial operator override over the default slot table. */
 export function resolveTaxRateTable(
-  configured?: Partial<EparagonyTaxRateTable>,
+  configured?: Partial<EparagonyTaxRateTable> | null,
 ): EparagonyTaxRateTable {
   if (!configured) {
     return { ...EPARAGONY_DEFAULT_TAX_RATES };

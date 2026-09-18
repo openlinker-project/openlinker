@@ -63,7 +63,11 @@ export const EPARAGONY_PAYMENT_FORM_WIRE: Partial<Record<EparagonyPaymentForm, s
  * merges `{ ...fresh.config, ...input.config }`, a shallow spread that can only
  * override a key present on the right side, so a cleared field has to persist an
  * explicit `null` rather than delete the key or the clear never reaches the
- * server (the #2016 `rateLimit` rule).
+ * server (the #2016 `rateLimit` rule). `taxRates` is included even though the
+ * eight-field structured form has no control for it: the validator already
+ * accepted `null` there (raw-JSON editors clear keys this way too), so the
+ * type states what was already true rather than leaving one key silently
+ * narrower than its own runtime contract.
  *
  * Declaring that here rather than leaving these `?: string` is what makes every
  * reader's handling of the cleared state a TYPE question instead of an
@@ -87,7 +91,7 @@ export interface EparagonyConnectionConfig {
    * configuration, so an operator whose device is programmed differently must
    * override it - OL cannot observe the device.
    */
-  taxRates?: Partial<EparagonyTaxRateTable>;
+  taxRates?: Partial<EparagonyTaxRateTable> | null;
 
   /**
    * The connection's own device slot, declared by the operator.

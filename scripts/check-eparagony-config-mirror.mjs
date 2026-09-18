@@ -72,10 +72,20 @@ function blankComments(source) {
  * a renamed constant and a truncated parse must not read as "no drift", and
  * a comparison of two empty arrays passes vacuously without ever comparing
  * anything.
+ *
+ * The name match has BOTH boundaries (#3268 review): a leading `\b` alone
+ * still needs `=` to follow immediately (mod whitespace and a `:type`
+ * annotation), which is why a longer name such as
+ * `EparagonyPaymentFormValuesLegacy` does not silently match today - but
+ * that safety comes from the surrounding syntax, not from the pattern
+ * itself, so the explicit trailing boundary states the intent rather than
+ * leaning on it. The self-check below pins the correct-declaration case.
  */
 export function parseStringArrayConst(source, name) {
   const blanked = blankComments(source);
-  const match = blanked.match(new RegExp(`\\b${name}\\s*(?::[^=]+)?=\\s*\\[([\\s\\S]*?)\\]`));
+  const match = blanked.match(
+    new RegExp(`\\b${name}(?![A-Za-z0-9_])\\s*(?::[^=]+)?=\\s*\\[([\\s\\S]*?)\\]`),
+  );
   if (!match) return null;
   const members = [...match[1].matchAll(/['"]([^'"]*)['"]/g)].map((m) => m[1]);
   return members.length > 0 ? members : null;
@@ -261,6 +271,13 @@ function selfCheck() {
   expect(
     parseStringArrayConst('export const Vals = [] as const;', 'Vals') === null,
     'parseStringArrayConst should fail (return null) on a declaration parsing to zero values, rather than pass a vacuous empty comparison (#3002)'
+  );
+
+  const prefixCollision = `export const ValsLegacy = ['X'] as const;
+export const Vals = ['A', 'B'] as const;`;
+  expect(
+    JSON.stringify(parseStringArrayConst(prefixCollision, 'Vals')) === JSON.stringify(['A', 'B']),
+    'parseStringArrayConst should resolve the real declaration, not a longer name sharing this one’s prefix (#3268 review)'
   );
 
   expect(
