@@ -8,6 +8,7 @@ import {
 } from '../../test/test-utils';
 import { DuplicatePositionsPage } from './duplicate-positions-page';
 import type {
+  DuplicatePositionGroup,
   DuplicatePositionsReport,
   ProvenanceBackfillStatus,
 } from '../../features/inventory/api/inventory.types';
@@ -30,6 +31,24 @@ function buildProvenanceStatus(
   return {
     remainingNull: 0,
     completed: true,
+    latchedAt: null,
+    ...overrides,
+  };
+}
+
+function buildGroup(overrides: Partial<DuplicatePositionGroup> = {}): DuplicatePositionGroup {
+  return {
+    productId: 'ol_product_a1',
+    productVariantId: null,
+    locationId: null,
+    sourceConnectionId: null,
+    rowCount: 2,
+    liveRowCount: 2,
+    productName: null,
+    sku: null,
+    connectionName: null,
+    locationName: null,
+    rows: [],
     ...overrides,
   };
 }
@@ -89,6 +108,31 @@ describe('DuplicatePositionsPage', () => {
     expect(screen.getByText('Forbidden')).toBeInTheDocument();
   });
 
+  it('should retry BOTH reads when Retry is clicked', async () => {
+    const getDuplicatePositions = vi.fn().mockRejectedValue(new Error('Network error'));
+    const getProvenanceBackfillStatus = vi.fn().mockResolvedValue(buildProvenanceStatus());
+    const apiClient = createMockApiClient({
+      inventory: { getDuplicatePositions, getProvenanceBackfillStatus },
+    });
+
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    const retryButton = await screen.findByRole('button', { name: 'Retry' });
+    expect(getDuplicatePositions).toHaveBeenCalledTimes(1);
+    expect(getProvenanceBackfillStatus).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(retryButton);
+
+    // `retry` refetches both queries — a regression that only refetches the
+    // failing one would leave the provenance read permanently stale with no
+    // signal (#3262 review).
+    expect(getDuplicatePositions).toHaveBeenCalledTimes(2);
+    expect(getProvenanceBackfillStatus).toHaveBeenCalledTimes(2);
+  });
+
   it('should render a ready banner and success KPI tone when both readiness conditions hold', async () => {
     const apiClient = createMockApiClient({
       inventory: {
@@ -103,6 +147,7 @@ describe('DuplicatePositionsPage', () => {
     });
 
     expect(await screen.findByText('Ready')).toBeInTheDocument();
+    expect(screen.queryByText('Not ready')).not.toBeInTheDocument();
     expect(screen.getByText('No duplicate position groups')).toBeInTheDocument();
     expect(screen.getByText('Provenance backfill complete')).toBeInTheDocument();
     expect(screen.getByText('No duplicate positions')).toBeInTheDocument();
@@ -117,17 +162,9 @@ describe('DuplicatePositionsPage', () => {
             rowCount: 2,
             excessRowCount: 1,
             groups: [
-              {
-                productId: 'ol_product_a1',
-                productVariantId: null,
-                locationId: null,
-                sourceConnectionId: null,
-                rowCount: 2,
-                liveRowCount: 2,
+              buildGroup({
                 productName: 'Wireless Mouse',
                 sku: 'WM-100',
-                connectionName: null,
-                locationName: null,
                 rows: [
                   {
                     id: 'ol_inventory_row1',
@@ -144,7 +181,7 @@ describe('DuplicatePositionsPage', () => {
                     updatedAt: '2026-09-13T00:00:00.000Z',
                   },
                 ],
-              },
+              }),
             ],
           })
         ),
@@ -158,6 +195,7 @@ describe('DuplicatePositionsPage', () => {
     });
 
     expect(await screen.findByText('Not ready')).toBeInTheDocument();
+    expect(screen.queryByText('Ready')).not.toBeInTheDocument();
     expect(screen.getByText('Duplicate groups')).toBeInTheDocument();
     expect(screen.getByText('Wireless Mouse')).toBeInTheDocument();
     expect(screen.getByText('WM-100')).toBeInTheDocument();
@@ -171,21 +209,7 @@ describe('DuplicatePositionsPage', () => {
             groupCount: 1,
             rowCount: 1,
             excessRowCount: 0,
-            groups: [
-              {
-                productId: 'ol_product_a1',
-                productVariantId: null,
-                locationId: null,
-                sourceConnectionId: null,
-                rowCount: 1,
-                liveRowCount: 1,
-                productName: null,
-                sku: null,
-                connectionName: null,
-                locationName: null,
-                rows: [],
-              },
-            ],
+            groups: [buildGroup({ rowCount: 1, liveRowCount: 1 })],
           })
         ),
         getProvenanceBackfillStatus: vi.fn().mockResolvedValue(buildProvenanceStatus()),
@@ -221,7 +245,7 @@ describe('DuplicatePositionsPage', () => {
     expect(screen.getByText('No duplicate position groups')).toBeInTheDocument();
   });
 
-  it('should expand a group row to reveal its individual inventory_items rows', async () => {
+  it('should expand and collapse a group row to reveal/hide its individual inventory_items rows', async () => {
     const apiClient = createMockApiClient({
       inventory: {
         getDuplicatePositions: vi.fn().mockResolvedValue(
@@ -230,17 +254,10 @@ describe('DuplicatePositionsPage', () => {
             rowCount: 2,
             excessRowCount: 1,
             groups: [
-              {
-                productId: 'ol_product_a1',
-                productVariantId: null,
-                locationId: null,
-                sourceConnectionId: null,
-                rowCount: 2,
+              buildGroup({
                 liveRowCount: 1,
                 productName: 'Wireless Mouse',
                 sku: 'WM-100',
-                connectionName: null,
-                locationName: null,
                 rows: [
                   {
                     id: 'ol_inventory_row1',
@@ -257,7 +274,7 @@ describe('DuplicatePositionsPage', () => {
                     updatedAt: '2026-09-13T00:00:00.000Z',
                   },
                 ],
-              },
+              }),
             ],
           })
         ),
@@ -270,16 +287,29 @@ describe('DuplicatePositionsPage', () => {
       sessionAdapter: createAuthenticatedSessionAdapter(),
     });
 
+    // Nothing from the detail drawer is on screen before the toggle is
+    // clicked — otherwise a regression that always renders the detail (or
+    // defaults to expanded) would pass every assertion below unchallenged
+    // (#3262 review).
     const toggle = await screen.findByRole('button', { name: /expand rows for product/i });
+    expect(screen.queryByText('ol_inventory_row1')).not.toBeInTheDocument();
+    expect(screen.queryByText('ol_inventory_row2')).not.toBeInTheDocument();
+
     await userEvent.click(toggle);
 
     expect(screen.getByText('ol_inventory_row1')).toBeInTheDocument();
     expect(screen.getByText('ol_inventory_row2')).toBeInTheDocument();
     expect(screen.getByText('Stale')).toBeInTheDocument();
     expect(screen.getByText('Live')).toBeInTheDocument();
+
+    const collapseToggle = screen.getByRole('button', { name: /collapse rows for product/i });
+    await userEvent.click(collapseToggle);
+
+    expect(screen.queryByText('ol_inventory_row1')).not.toBeInTheDocument();
+    expect(screen.queryByText('ol_inventory_row2')).not.toBeInTheDocument();
   });
 
-  it('should show the truncated-report banner when the response is capped', async () => {
+  it('should show the truncated-report banner with both counts when the response is capped', async () => {
     const apiClient = createMockApiClient({
       inventory: {
         getDuplicatePositions: vi.fn().mockResolvedValue(
@@ -288,21 +318,7 @@ describe('DuplicatePositionsPage', () => {
             rowCount: 12,
             excessRowCount: 7,
             truncated: true,
-            groups: [
-              {
-                productId: 'ol_product_a1',
-                productVariantId: null,
-                locationId: null,
-                sourceConnectionId: null,
-                rowCount: 2,
-                liveRowCount: 2,
-                productName: null,
-                sku: null,
-                connectionName: null,
-                locationName: null,
-                rows: [],
-              },
-            ],
+            groups: [buildGroup()],
           })
         ),
         getProvenanceBackfillStatus: vi.fn().mockResolvedValue(buildProvenanceStatus()),
@@ -315,5 +331,54 @@ describe('DuplicatePositionsPage', () => {
     });
 
     expect(await screen.findByText('Detail truncated')).toBeInTheDocument();
+    // The number an operator acts on — how much was withheld — not just the
+    // banner's title (#3262 review): 1 group shown (`groups.length`) of 5
+    // total (`groupCount`).
+    expect(screen.getByText(/largest 1 of 5 duplicate groups/)).toBeInTheDocument();
+  });
+
+  it('should not show the truncated-report banner when the response is not capped', async () => {
+    const apiClient = createMockApiClient({
+      inventory: {
+        getDuplicatePositions: vi.fn().mockResolvedValue(buildReport()),
+        getProvenanceBackfillStatus: vi.fn().mockResolvedValue(buildProvenanceStatus()),
+      },
+    });
+
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('Ready');
+    expect(screen.queryByText('Detail truncated')).not.toBeInTheDocument();
+  });
+
+  it('should deny a non-admin session without ever calling getDuplicatePositions', async () => {
+    const getDuplicatePositions = vi.fn().mockResolvedValue(buildReport());
+    const getProvenanceBackfillStatus = vi.fn().mockResolvedValue(buildProvenanceStatus());
+    const apiClient = createMockApiClient({
+      inventory: { getDuplicatePositions, getProvenanceBackfillStatus },
+    });
+
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        id: 'user_1',
+        username: 'operator',
+        email: 'operator@example.com',
+        role: 'operator',
+        permissions: [],
+        analyticsConsent: true,
+      }),
+    });
+
+    // The page's own access-denied branch (`@Roles('admin')` on the backing
+    // endpoints) — this diagnostic reads `inventory_items` directly, so a
+    // non-admin must never reach the actual reads (#3262 review, and the
+    // duplicate-gate problem #3261 fixed).
+    expect(await screen.findByText('Admin role required')).toBeInTheDocument();
+    expect(getDuplicatePositions).not.toHaveBeenCalled();
+    expect(getProvenanceBackfillStatus).not.toHaveBeenCalled();
   });
 });
