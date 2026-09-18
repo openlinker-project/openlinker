@@ -22313,6 +22313,7 @@ legend.analytics-settings-dialog__label {
 
 .orphan-returns-worklist__row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
@@ -22320,6 +22321,15 @@ legend.analytics-settings-dialog__label {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--bg-surface);
+}
+
+/* A long `externalReturnId` must be allowed to wrap onto its own line rather
+   than compress the action beside it at phone width (tech-lead review on
+   #3280, SUGGESTION). `min-width: 0` is required for a flex child to actually
+   shrink/wrap instead of overflowing its flex line. */
+.orphan-returns-worklist__row .mono-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* The one horizontal member of the family: a chip and the sentence that says

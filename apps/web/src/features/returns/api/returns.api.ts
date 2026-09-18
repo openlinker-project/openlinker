@@ -266,6 +266,16 @@ function buildQuery(filters?: ReturnFilters, pagination?: ReturnPagination): str
   if (filters?.internalOrderId) params.set('internalOrderId', filters.internalOrderId);
   if (filters?.createdFrom) params.set('createdFrom', filters.createdFrom);
   if (filters?.createdTo) params.set('createdTo', filters.createdTo);
+  // #2378 — these five were silently dropped: the segment strip and the
+  // stage/money/reason/opened-range filters wrote their param into the URL and
+  // the page re-rendered with it, but the request sent to the server never
+  // carried it, so the list looked unfiltered no matter what was clicked.
+  if (filters?.segment) params.set('segment', filters.segment);
+  if (filters?.stage) params.set('stage', filters.stage);
+  if (filters?.money) params.set('money', filters.money);
+  if (filters?.reason) params.set('reason', filters.reason);
+  if (filters?.openedFrom) params.set('openedFrom', filters.openedFrom);
+  if (filters?.openedTo) params.set('openedTo', filters.openedTo);
   // Clamped rather than forwarded: the backend answers HTTP 400 above 100, so
   // an over-large caller value would fail the whole page instead of returning
   // the most it can. `RETURNS_MAX_LIMIT` is the mirror of that `@Max(100)`, and

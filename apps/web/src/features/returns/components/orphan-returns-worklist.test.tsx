@@ -187,12 +187,47 @@ describe('OrphanReturnsWorklist', () => {
       needsOrder: listResult(),
       needsApproval: listResult({
         items: [item({ id: 'r5', bucket: 'attributed', origin: 'operator_authored', authorizedAt: null })],
-        total: 40,
-        limit: 1,
+        total: 150,
+        limit: 100,
       }),
     });
 
     expect(await screen.findByText(COPY.approvalScanTruncated)).toBeInTheDocument();
+  });
+
+  it('should NOT disclose truncation for the approval scan when total is within the page ceiling', async () => {
+    // total: 40 with only one row surviving the client-side origin/authorizedAt
+    // filter must not be read as "40 - 1 more past the boundary" — the gate is
+    // the page-size ceiling (100), never the item/result-items count.
+    renderWorklist({
+      needsOrder: listResult(),
+      needsApproval: listResult({
+        items: [item({ id: 'r5b', bucket: 'attributed', origin: 'operator_authored', authorizedAt: null })],
+        total: 40,
+        limit: 100,
+      }),
+    });
+
+    await screen.findByRole('link', { name: COPY.needsApprovalAction });
+    expect(screen.queryByText(COPY.approvalScanTruncated)).not.toBeInTheDocument();
+  });
+
+  it('should render the truncation caveat INSTEAD OF a confirmed-empty claim when the scan was truncated and nothing survived the client-side filter', async () => {
+    // Guards the BLOCKING finding on #3280: a truncated page whose scanned
+    // rows all failed the client-side origin/authorizedAt filter must never
+    // render "Nothing is waiting for your approval." — that is a confirmed-empty
+    // claim the component is not entitled to make off a partial scan.
+    renderWorklist({
+      needsOrder: listResult(),
+      needsApproval: listResult({
+        items: [item({ id: 'r5c', bucket: 'attributed', origin: 'source_ingested', authorizedAt: null })],
+        total: 150,
+        limit: 100,
+      }),
+    });
+
+    expect(await screen.findByText(COPY.approvalScanTruncated)).toBeInTheDocument();
+    expect(screen.queryByText(COPY.needsApprovalEmpty)).not.toBeInTheDocument();
   });
 
   it('should disclose a truncated needs-order page with both numbers, never trimming quietly', async () => {
@@ -219,6 +254,38 @@ describe('OrphanReturnsWorklist', () => {
     });
 
     expect(await screen.findByText(/could not be read and/)).toBeInTheDocument();
+  });
+
+  it('should NOT report a truncated page when total matches drops + shown rows, only the page ceiling', async () => {
+    // Regression for the truncation-predicate finding on #3280: a page of 3
+    // rows, 2 unparseable, 1 shown — `total: 3` — must never be read as
+    // "more rows past the boundary" (it would double-report the same 2 rows
+    // as both unreadable AND a page limit that was never reached).
+    renderWorklist({
+      needsOrder: listResult({
+        items: [item({ id: 'r8', externalReturnId: 'RET-8' })],
+        total: 3,
+        droppedCount: 2,
+      }),
+      needsApproval: listResult(),
+    });
+
+    await screen.findByText(/could not be read and/);
+    expect(screen.queryByText(/more are waiting to be matched/)).not.toBeInTheDocument();
+  });
+
+  it('should render the dropped-rows notice INSTEAD OF a confirmed-empty claim when every row on the page was unreadable', async () => {
+    // Every scanned row failed to parse: `items: []`, `droppedCount > 0`. Must
+    // never render "Nothing is waiting to be matched to an order." — an orphan
+    // return blocks every downstream trigger, so a false "queue is clear" here
+    // is costlier than the same shape on `order-returns-panel.tsx`.
+    renderWorklist({
+      needsOrder: listResult({ items: [], total: 2, droppedCount: 2 }),
+      needsApproval: listResult(),
+    });
+
+    expect(await screen.findByText(/could not be read and/)).toBeInTheDocument();
+    expect(screen.queryByText(COPY.needsOrderEmpty)).not.toBeInTheDocument();
   });
 
   it('should scope each query by its own bucket filter', async () => {

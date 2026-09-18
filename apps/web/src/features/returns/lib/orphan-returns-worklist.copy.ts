@@ -50,17 +50,21 @@ export const ORPHAN_RETURNS_WORKLIST_COPY = {
   loading: 'Checking…',
   loadingMessage: 'Reading the returns list.',
 
-  viewReturn: 'View return',
-
   /**
-   * The approval scan reads one bounded page and disclosed truthfully rather
-   * than trimmed quietly — the same rule `order-returns-panel.copy.ts`
+   * The approval scan reads one bounded page and discloses that truthfully
+   * rather than trimming quietly — the same rule `order-returns-panel.copy.ts`
    * states. Phrased as a caveat rather than a precise count: the scan filters
    * client-side for `operator_authored` + unapproved, so a truncated page
    * cannot say how many of the REMAINING rows would also qualify.
+   *
+   * Names the DIRECTION of the approximation, not only that one exists
+   * (tech-lead review on #3280): the read is ordered newest-first, so an
+   * unapproved return ages OUT of the scanned window as newer attributed
+   * returns arrive — the longer something has waited, the more likely this
+   * scan misses it.
    */
   approvalScanTruncated:
-    'Showing what fits on one page — check the full returns list if you expect more.',
+    'Showing the 100 most recent attributed returns — an older one waiting for approval may not appear here.',
 
   /**
    * The "needs an order" read is an EXACT server-side filter, so — unlike
