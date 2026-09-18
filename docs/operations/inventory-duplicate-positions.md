@@ -105,6 +105,8 @@ curl -s \
       "liveRowCount": 2,
       "productName": "Merino Wool Beanie",  // #3239 — resolved from productId, batched
       "sku": "BEA-MER-001",                 // null when the product can't be resolved
+                                             // OR when a resolved product has no SKU —
+                                             // check productName to tell the two apart
       "connectionName": null,               // always null when sourceConnectionId is
                                              // null or 'legacy' (not yet backfilled)
       "locationName": null,                 // always null when locationId is null

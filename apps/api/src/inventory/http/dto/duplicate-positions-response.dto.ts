@@ -69,7 +69,9 @@ export class DuplicatePositionGroupResponseDto {
   @ApiProperty({
     nullable: true,
     type: String,
-    description: 'Product SKU (#3239). Null when the product could not be resolved.',
+    description:
+      'Product SKU (#3239). Null both when the product could not be resolved AND when a ' +
+      'resolved product simply carries no SKU — check `productName` to tell the two apart.',
   })
   sku!: string | null;
 
