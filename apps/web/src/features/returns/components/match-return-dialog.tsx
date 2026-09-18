@@ -26,10 +26,21 @@
  * resolved. Anything else (a 404, a 5xx, a network failure) falls through to
  * the generic sentence, mirroring `decline-error.ts`'s fallback discipline.
  *
+ * **The confirm-time warning has something to point at.** The `<datalist>`
+ * writes the raw internal id into the field's `value` and shows the
+ * human-readable order number only as suggestion TEXT, which the browser
+ * discards once a suggestion is picked — so at the moment "double-check the
+ * order before confirming" matters most, nothing readable was left on
+ * screen (tech-lead review on #3281, IMPORTANT). When the typed value
+ * matches a fetched order exactly, the resolved order's own number is
+ * echoed beneath the field, sourced from data already loaded for the
+ * `<datalist>` rather than a second read.
+ *
  * @module apps/web/src/features/returns/components
  */
-import { useState, type FormEvent, type ReactElement } from 'react';
+import { useMemo, useState, type FormEvent, type ReactElement } from 'react';
 import { Alert } from '../../../shared/ui/alert';
+import { isUnmappedApiError } from '../../../shared/api/api-error';
 import { Button } from '../../../shared/ui/button';
 import {
   Dialog,
@@ -77,6 +88,15 @@ export function MatchReturnDialog({
   const orders = ordersQuery.data?.items ?? [];
 
   const mutation = useMatchReturnToOrderMutation(returnId);
+
+  // Exact match only — a partial or case-mismatched id is exactly the typo
+  // the 400 `unknown-order` path exists to catch, so echoing a "resolved"
+  // order for it would be misleading rather than reassuring.
+  const trimmedValue = value.trim();
+  const resolvedOrder = useMemo(
+    () => orders.find((order) => order.internalOrderId === trimmedValue) ?? null,
+    [orders, trimmedValue],
+  );
 
   function resetAndClose(): void {
     setValue('');
@@ -182,9 +202,17 @@ export function MatchReturnDialog({
                 })}
               </datalist>
 
+              {resolvedOrder !== null ? (
+                <p className="text-muted match-return-dialog__resolved-order">
+                  {COPY.resolvedOrder(
+                    resolvedOrder.syncStatus[0]?.externalOrderNumber ?? resolvedOrder.internalOrderId,
+                  )}
+                </p>
+              ) : null}
+
               <Alert tone="warning">{COPY.warning}</Alert>
 
-              {mutation.isError && readMatchRefusalReason(mutation.error) === null ? (
+              {mutation.error && isUnmappedApiError(mutation.error, (e) => readMatchRefusalReason(e) !== null) ? (
                 <Alert tone="error">{COPY.genericError}</Alert>
               ) : null}
 

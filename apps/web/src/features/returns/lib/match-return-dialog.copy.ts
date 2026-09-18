@@ -24,12 +24,23 @@ export const MATCH_RETURN_DIALOG_COPY = {
   fieldPlaceholder: 'ol_order_… or pick from recent orders',
 
   /**
-   * `Field required` deliberately mirrors the decline dialog's phrasing for
-   * an empty required field, so the two writes read as one vocabulary.
+   * Field-specific rather than a mirror of anything in
+   * `return-detail.copy.ts` (tech-lead review on #3281, SUGGESTION —
+   * the previous comment here claimed a shared vocabulary that does
+   * not exist).
    */
   fieldRequired: 'Enter an order id, or pick one from the list.',
 
   warning: "This can't be undone — double-check the order before confirming.",
+
+  /**
+   * Renders only when the typed value exactly matches a fetched order — the
+   * thing left on screen to actually check against `warning` above, since
+   * the `<datalist>` option's readable text disappears once picked and the
+   * field itself holds only the opaque internal id (tech-lead review on
+   * #3281, IMPORTANT).
+   */
+  resolvedOrder: (orderNumber: string): string => `This will match to order ${orderNumber}.`,
 
   cancel: 'Cancel',
   confirm: 'Confirm match',
