@@ -93,7 +93,7 @@ describe('InvoiceDetailPage — page states', () => {
     // Both page-title and EmptyState title say "Invoice not found" — use getAllByText
     const headers = await screen.findAllByText(/invoice not found/i);
     expect(headers.length).toBeGreaterThan(0);
-    expect(screen.getByRole('link', { name: /back to invoices/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /back to sales documents/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
   });
 
