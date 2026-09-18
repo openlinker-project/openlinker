@@ -111,7 +111,7 @@ export function triggerDuplicatePositionsCsvDownload(csv: string, filename: stri
   // locale codepage rather than UTF-8 without a BOM, so a non-ASCII
   // `productName` — the column most likely to carry one — mojibakes on
   // open (#3264 review). The BOM is inert everywhere else that reads CSV.
-  const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = objectUrl;

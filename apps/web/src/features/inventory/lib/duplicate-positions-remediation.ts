@@ -54,6 +54,22 @@ export function hasOversellRisk(group: DuplicatePositionGroup): boolean {
 }
 
 /**
+ * `liveExposureQuantity`, gated by `hasOversellRisk` — `0` for a group that
+ * is not actually at risk (zero or exactly one live row), where the raw sum
+ * is either `0` or a single row's own correct, undistorted quantity, never
+ * an over-count. This is what the "Live qty at risk" column and the
+ * default group ranking must read: a naive sort on the raw sum ranks a
+ * healthy single-live-row group with a large quantity ABOVE a genuinely
+ * at-risk two-live-row group with a small one, in a table whose column is
+ * literally named "at risk" (#3264 review — the same class of bug
+ * `hasOversellRisk` fixed for the detail alert and the `Live rows` badge,
+ * left over here).
+ */
+export function atRiskExposureQuantity(group: DuplicatePositionGroup): number {
+  return hasOversellRisk(group) ? liveExposureQuantity(group) : 0;
+}
+
+/**
  * Default remediation rule (see the runbook): the newest LIVE row wins.
  * `rows` arrives newest-first (`DuplicatePositionRowResponseDto`'s own
  * documented order), so this is simply the first non-stale row; `null` when

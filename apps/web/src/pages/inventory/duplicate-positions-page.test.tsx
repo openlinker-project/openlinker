@@ -804,6 +804,16 @@ describe('DuplicatePositionsPage', () => {
     });
 
     const toggle = await screen.findByRole('button', { name: /expand rows for product/i });
+
+    // Before expanding: the collapsed row's own "Live qty at risk" cell must
+    // NOT show the row's raw quantity (14) as if it were at-risk exposure —
+    // a naive `liveExposureQuantity` read (unguarded by `hasOversellRisk`)
+    // would rank this healthy single-live-row group above a genuinely
+    // at-risk one (#3264 review). Asserted before the detail panel is open
+    // so the row's own "Available: 14" cell (a legitimate, unrelated 14)
+    // can't make this assertion pass for the wrong reason.
+    expect(screen.queryByText('14')).not.toBeInTheDocument();
+
     await userEvent.click(toggle);
 
     // A single live row's own figure IS the correct, undistorted quantity —

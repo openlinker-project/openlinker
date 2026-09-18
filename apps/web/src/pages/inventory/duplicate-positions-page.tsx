@@ -54,6 +54,7 @@ import {
   triggerDuplicatePositionsCsvDownload,
 } from '../../features/inventory/lib/duplicate-positions-csv';
 import {
+  atRiskExposureQuantity,
   findSurvivorId,
   hasOversellRisk,
   liveExposureQuantity,
@@ -213,15 +214,17 @@ function buildGroupColumns(): DataTableColumn<DuplicatePositionGroup>[] {
             <span tabIndex={0}>Live qty at risk</span>
           </TooltipTrigger>
           <TooltipContent>
-            Sum of availableQuantity across this group&rsquo;s LIVE (non-stale) rows — what&rsquo;s
-            currently over-counted for this position. Sorts only this truncated page — groups is
-            capped by maxGroups, largest first.
+            Sum of availableQuantity across this group&rsquo;s LIVE (non-stale) rows, when two or
+            more live rows exist — what&rsquo;s currently over-counted for this position. A single
+            live row is never at risk (its own figure is already correct), so it shows as
+            unaffected here. Sorts only this truncated page — groups is capped by maxGroups,
+            largest first.
           </TooltipContent>
         </Tooltip>
       ),
-      accessor: (g) => liveExposureQuantity(g),
+      accessor: (g) => atRiskExposureQuantity(g),
       cell: (g): ReactElement => {
-        const exposure = liveExposureQuantity(g);
+        const exposure = atRiskExposureQuantity(g);
         return (
           <span className="mono-text tabular">
             {exposure > 0 ? exposure.toLocaleString('en-US') : '—'}
@@ -464,12 +467,15 @@ export function DuplicatePositionsPage(): ReactElement {
     void provenanceQuery.refetch();
   };
 
-  // Ranked by live-stock exposure, not row count (see liveExposureQuantity's
-  // docblock) — this is the DEFAULT render order; DataTable's own client
-  // sort still lets an operator re-sort by any other sortable column.
+  // Ranked by AT-RISK live-stock exposure, not row count and not the raw
+  // exposure sum — a naive sort on the raw sum ranks a healthy
+  // single-live-row group with a large quantity above a genuinely at-risk
+  // two-live-row group with a small one (#3264 review). This is the
+  // DEFAULT render order; DataTable's own client sort still lets an
+  // operator re-sort by any other sortable column.
   const rankedGroups = useMemo(() => {
     if (!report) return [];
-    return [...report.groups].sort((a, b) => liveExposureQuantity(b) - liveExposureQuantity(a));
+    return [...report.groups].sort((a, b) => atRiskExposureQuantity(b) - atRiskExposureQuantity(a));
   }, [report]);
 
   const groupColumns = useMemo(() => buildGroupColumns(), []);
