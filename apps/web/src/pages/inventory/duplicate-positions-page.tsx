@@ -35,6 +35,7 @@ import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { StatusBadge } from '../../shared/ui/status-badge';
 import { LoadingState, ErrorState } from '../../shared/ui/feedback-state';
+import { formatDateTime } from '../../shared/format/format-date';
 import { useSession } from '../../shared/auth/use-session';
 import { useIsAdmin } from '../../shared/auth/use-permission';
 import { useDuplicatePositionsQuery } from '../../features/inventory/hooks/use-duplicate-positions-query';
@@ -60,6 +61,8 @@ export function DuplicatePositionsPage(): ReactElement {
     noDuplicateGroups !== undefined && backfillComplete !== undefined
       ? noDuplicateGroups && backfillComplete
       : undefined;
+
+  const isRefetching = duplicatesQuery.isFetching || provenanceQuery.isFetching;
 
   const retry = (): void => {
     void duplicatesQuery.refetch();
@@ -89,10 +92,16 @@ export function DuplicatePositionsPage(): ReactElement {
         'Read-only readiness check for the stricter inventory_items uniqueness index. ' +
         'Detects duplicate stock positions — it never repairs them.'
       }
+      actions={
+        report && provenance ? (
+          <Button onClick={retry} disabled={isRefetching}>
+            {isRefetching ? 'Refreshing…' : 'Refresh'}
+          </Button>
+        ) : undefined
+      }
     >
       {!isSessionReady || isLoading ? (
         <LoadingState
-          liveRegion="off"
           title="Loading duplicate-position report"
           message="Scanning inventory_items for colliding position keys and checking the provenance backfill..."
         />
@@ -104,6 +113,9 @@ export function DuplicatePositionsPage(): ReactElement {
         />
       ) : report && provenance ? (
         <>
+          <p className="duplicate-positions-generated-at">
+            As of {formatDateTime(report.generatedAt)}
+          </p>
           <Alert tone={isReady ? 'success' : 'warning'} title={isReady ? 'Ready' : 'Not ready'}>
             <ul className="duplicate-positions-checklist">
               <li>
@@ -129,8 +141,9 @@ export function DuplicatePositionsPage(): ReactElement {
             </ul>
             {!isReady ? (
               <p className="duplicate-positions-checklist__footnote">
-                Both conditions must hold before the stricter uniqueness index can be built. See
-                docs/operations/inventory-duplicate-positions.md for the remediation procedure.
+                Both conditions must hold before the stricter uniqueness index can be built.
+                Resolving duplicate groups is a manual database operation — ask an engineer to run
+                the remediation procedure, then refresh this page to re-check.
               </p>
             ) : null}
           </Alert>

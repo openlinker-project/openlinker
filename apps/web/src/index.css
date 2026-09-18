@@ -2931,6 +2931,12 @@ textarea,
   color: var(--text-secondary);
 }
 
+.duplicate-positions-generated-at {
+  margin: 0 0 var(--space-2);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
 /*
  * Carrier-fallback banner — surface-scoped margin between the banner
  * and the MappingPanel below it (#517). The banner is the same Alert
