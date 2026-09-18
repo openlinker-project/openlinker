@@ -214,7 +214,7 @@ function readEnum(config: Record<string, unknown>, key: string, values: readonly
  * stored", never "an unrecognised value" - reporting them would put a warning on
  * every unset field.
  *
- * KNOWN LIMITATION (#3268 review): an unrecognised value hydrates the RHF
+ * KNOWN LIMITATION (#3268 review, tracked as #3311): an unrecognised value hydrates the RHF
  * field - and hence the controlled `<select>` - to `''`, which is also the
  * value of the recommended "Not set" option. Clicking that already-selected
  * option therefore fires no `onChange` (neither the DOM nor React consider it
