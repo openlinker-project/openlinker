@@ -107,9 +107,12 @@ export { useRecordReturnMutation } from './hooks/use-record-return-mutation';
 // row, each routing to the return's own detail page rather than opening a
 // dialog here (see the component docblock for why).
 export { OrphanReturnsWorklist } from './components/orphan-returns-worklist';
+export { ORPHAN_RETURNS_WORKLIST_COPY } from './lib/orphan-returns-worklist.copy';
 // The match-to-order dialog (#3082) — the destination the worklist's
-// "Match to an order" link routes toward, once mounted on the detail page.
+// "Match to an order" link routes toward. Mounted on the return detail
+// page's orphan banner (#3085).
 export { MatchReturnDialog } from './components/match-return-dialog';
+export { MATCH_RETURN_DIALOG_COPY } from './lib/match-return-dialog.copy';
 // The approve dialog (#3083) — mounted inline by the worklist itself, since
 // this write carries no form to defer to a detail-page destination for.
 export { AuthorizeReturnDialog } from './components/authorize-return-dialog';
@@ -117,6 +120,7 @@ export { AuthorizeReturnDialog } from './components/authorize-return-dialog';
 // returns feed at all. Standalone entry point (#3078's own list of
 // sub-issues has it opened from the returns list, not from a row).
 export { RecordReturnDialog } from './components/record-return-dialog';
+export { RECORD_RETURN_DIALOG_COPY } from './lib/record-return-dialog.copy';
 export { ReturnDeclineAction } from './components/return-decline-action';
 export { ReturnLineStateChip } from './components/return-line-state-chips';
 export { ReturnLinesTable } from './components/return-lines-table';
