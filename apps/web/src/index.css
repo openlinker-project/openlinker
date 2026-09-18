@@ -2908,6 +2908,35 @@ textarea,
   color: inherit;
 }
 
+/* ── Duplicate-positions two-condition readiness checklist (#3073, #3240) ──
+   Two independent conditions (no duplicate groups AND the #2317 provenance
+   backfill drained) rendered as a list inside the readiness Alert, each
+   carrying its own StatusBadge rather than one combined sentence. */
+.duplicate-positions-checklist {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.duplicate-positions-checklist li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.duplicate-positions-checklist__footnote {
+  margin: var(--space-2) 0 0;
+  color: var(--text-secondary);
+}
+
+.duplicate-positions-generated-at {
+  margin: 0 0 var(--space-2);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
 /*
  * Carrier-fallback banner — surface-scoped margin between the banner
  * and the MappingPanel below it (#517). The banner is the same Alert
