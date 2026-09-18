@@ -272,6 +272,14 @@ export { IOrderRecordService } from './application/interfaces/order-record.servi
 export { OrderRecordService } from './application/services/order-record.service';
 export { ISalesDocumentViewService } from './application/interfaces/sales-document-view.service.interface';
 export { SalesDocumentViewService } from './application/services/sales-document-view.service';
+export type {
+  SalesDocumentListAmount,
+  SalesDocumentListCursor,
+  SalesDocumentListFilters,
+  SalesDocumentListItem,
+  SalesDocumentListPage,
+  SalesDocumentListPagination,
+} from './domain/types/sales-document-list.types';
 export type { IOrderFxStampService } from './application/interfaces/order-fx-stamp.service.interface';
 export type { IOrderFxRestatementService } from './application/interfaces/order-fx-restatement.service.interface';
 export type {

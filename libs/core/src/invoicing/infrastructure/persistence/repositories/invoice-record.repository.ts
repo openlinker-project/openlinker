@@ -20,11 +20,15 @@ import { InvoiceRecord } from '../../../domain/entities/invoice-record.entity';
 import { DuplicateInvoiceRecordException } from '../../../domain/exceptions/duplicate-invoice-record.exception';
 import { InvoiceRecordNotFoundException } from '../../../domain/exceptions/invoice-record-not-found.exception';
 import { SourceDocumentImmutableError } from '../../../domain/exceptions/source-document-immutable.error';
-import type { InvoiceRecordRepositoryPort } from '../../../domain/ports/invoice-record-repository.port';
+import type {
+  InvoiceRecordKeysetPage,
+  InvoiceRecordRepositoryPort,
+} from '../../../domain/ports/invoice-record-repository.port';
 import type {
   CreateInvoiceRecordInput,
   InvoiceOutcomePatch,
   InvoiceRecordFilters,
+  InvoiceRecordKeysetCursor,
   InvoiceRecordPagination,
   PaginatedInvoiceRecords,
 } from '../../../domain/types/invoicing.types';
@@ -326,17 +330,14 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
   }
 
   /**
-   * Read-only AC-6 list (#1119). One `andWhere` per PRESENT filter only —
-   * absent filters never constrain the query. The `issuedFrom`/`issuedTo`
-   * bounds are inclusive and apply to `inv.issuedAt`. Ordered newest-first by
-   * `createdAt` so the page is stable; `skip`/`take` carry the window.
+   * The `findMany` / `findManyKeyset` filter surface, applied identically to
+   * both. Extracted so the two pagination strategies can never quietly diverge
+   * on WHAT they filter, only on HOW they page.
    */
-  async findMany(
+  private applyListFilters(
+    qb: ReturnType<Repository<InvoiceRecordOrmEntity>['createQueryBuilder']>,
     filter: InvoiceRecordFilters,
-    pagination: InvoiceRecordPagination,
-  ): Promise<PaginatedInvoiceRecords> {
-    const qb = this.repository.createQueryBuilder('inv');
-
+  ): void {
     if (filter.status !== undefined) {
       qb.andWhere('inv.status = :status', { status: filter.status });
     }
@@ -359,11 +360,73 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
         hasBuyerTaxId: filter.taxId === 'with',
       });
     }
+    if (filter.search !== undefined && filter.search.trim().length > 0) {
+      qb.andWhere(
+        '(inv.orderId ILIKE :search OR inv.providerInvoiceNumber ILIKE :search OR inv.clearanceReference ILIKE :search)',
+        { search: `%${filter.search.trim()}%` },
+      );
+    }
+  }
 
+  /**
+   * Read-only AC-6 list (#1119). One `andWhere` per PRESENT filter only —
+   * absent filters never constrain the query. The `issuedFrom`/`issuedTo`
+   * bounds are inclusive and apply to `inv.issuedAt`. Ordered newest-first by
+   * `createdAt` so the page is stable; `skip`/`take` carry the window.
+   */
+  async findMany(
+    filter: InvoiceRecordFilters,
+    pagination: InvoiceRecordPagination,
+  ): Promise<PaginatedInvoiceRecords> {
+    const qb = this.repository.createQueryBuilder('inv');
+    this.applyListFilters(qb, filter);
     qb.orderBy('inv.createdAt', 'DESC').skip(pagination.offset).take(pagination.limit);
 
     const [entities, total] = await qb.getManyAndCount();
     return { items: entities.map((entity) => this.toDomain(entity)), total };
+  }
+
+  /**
+   * Cross-order operational list (#3306) - SAME filters as {@link findMany},
+   * keyset-paginated on `(createdAt, id)` rather than `OFFSET`. See the port
+   * docblock for why the two pagination strategies must not be conflated.
+   *
+   * Row-value keyset comparison at millisecond resolution - the same trick
+   * `findIssuedNonTerminal` uses (the column is Postgres `timestamptz`,
+   * microsecond precision; the cursor's `createdAt` round-trips through a JS
+   * `Date`, millisecond precision).
+   */
+  async findManyKeyset(
+    filter: InvoiceRecordFilters,
+    opts: { limit: number; cursor?: InvoiceRecordKeysetCursor },
+  ): Promise<InvoiceRecordKeysetPage> {
+    const CREATED_AT_MS = "date_trunc('milliseconds', inv.\"createdAt\")";
+    const qb = this.repository.createQueryBuilder('inv');
+    this.applyListFilters(qb, filter);
+    if (opts.cursor) {
+      // DESC walk (newest first): the next page is every row STRICTLY BEFORE
+      // the cursor in (createdAt, id).
+      qb.andWhere(`(${CREATED_AT_MS}, inv.id) < (:cursorCreatedAt, :cursorId)`, {
+        cursorCreatedAt: opts.cursor.createdAt,
+        cursorId: opts.cursor.id,
+      });
+    }
+
+    const entities = await qb
+      .orderBy(CREATED_AT_MS, 'DESC')
+      .addOrderBy('inv.id', 'DESC')
+      .take(opts.limit)
+      .getMany();
+
+    const items = entities.map((entity) => this.toDomain(entity));
+    const last = entities.at(-1);
+    // A full page MAY have more rows behind it; a short page cannot. Never a
+    // guess either way.
+    const nextCursor =
+      last && entities.length === opts.limit
+        ? { createdAt: last.createdAt, id: last.id }
+        : null;
+    return { items, nextCursor };
   }
 
   async findIssuedNonTerminal(

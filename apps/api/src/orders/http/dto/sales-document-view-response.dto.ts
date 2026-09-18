@@ -354,7 +354,13 @@ function toMatchedRuleViewDto(rule: SalesDocumentMatchedRuleView): SalesDocument
   };
 }
 
-function toRecordDto(
+/**
+ * Exported (#3306) so `sales-document-list-item-response.dto.ts` can project
+ * the merged operational list's rows through the SAME per-kind mapping this
+ * file already uses for the per-order projection - one mapping, never two
+ * that could quietly diverge on what a status/failure field means.
+ */
+export function toRecordDto(
   record: SalesDocumentRecordView
 ): SalesDocumentInvoiceViewDto | SalesDocumentReceiptViewDto {
   // Switching on the discriminant rather than testing for a field keeps the

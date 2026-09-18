@@ -21,8 +21,34 @@
  * @see docs/architecture/adrs/065-sales-document-read-surface.md
  */
 import type { SalesDocumentView } from '@openlinker/core/sales-documents';
+import type {
+  SalesDocumentListFilters,
+  SalesDocumentListPage,
+  SalesDocumentListPagination,
+} from '../../domain/types/sales-document-list.types';
 
 export interface ISalesDocumentViewService {
+  /**
+   * Cross-order operational list (#3306) - `GET /sales-documents`. Unlike
+   * {@link getForOrders}, which projects a caller-supplied set of order ids,
+   * this walks every order that has AT LEAST ONE invoice or
+   * fiscal-registration record, newest-first, keyset-paginated.
+   *
+   * Merges two independently keyset-paginated sources
+   * (`IInvoiceService.listInvoicesKeyset`,
+   * `IFiscalRegistrationService.listRegistrationsKeyset`) in application
+   * code - never a SQL `UNION` - via the pure
+   * `mergeSalesDocumentPages` helper, which is what keeps the merge correct
+   * under concurrent inserts (see that function's own docblock). Each
+   * returned row's duplicate-order signal
+   * (`SalesDocumentListItem.otherRecordCount`) reuses the SAME
+   * `groupRankedRecords` grouping `getForOrders` uses internally, batched
+   * over just the orders on this page.
+   */
+  listSalesDocuments(
+    filters: SalesDocumentListFilters,
+    pagination: SalesDocumentListPagination,
+  ): Promise<SalesDocumentListPage>;
   /**
    * The sales-document projection for each of `orderIds`, keyed by order id.
    *

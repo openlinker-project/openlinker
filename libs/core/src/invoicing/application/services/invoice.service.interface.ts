@@ -13,6 +13,7 @@
 import type {
   GetInvoiceByOrderQuery,
   InvoiceRecordFilters,
+  InvoiceRecordKeysetCursor,
   InvoiceRecordPagination,
   IssueCorrectionCommand,
   IssueInvoiceCommand,
@@ -22,6 +23,7 @@ import type {
 import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
 
 import type { InvoiceRecord } from '../../domain/entities/invoice-record.entity';
+import type { InvoiceRecordKeysetPage } from '../../domain/ports/invoice-record-repository.port';
 
 export interface IInvoiceService {
   /**
@@ -228,6 +230,20 @@ export interface IInvoiceService {
     filter: InvoiceRecordFilters,
     pagination: InvoiceRecordPagination,
   ): Promise<PaginatedInvoiceRecords>;
+
+  /**
+   * Cross-order operational list (#3306) - the SAME filter surface as
+   * {@link listInvoices}, keyset-paginated instead of `OFFSET`. Backs the
+   * merged `GET /sales-documents` read alongside
+   * `IFiscalRegistrationService.listRegistrationsKeyset` - see
+   * `libs/core/src/orders/application/services/sales-document-view.service.ts`
+   * for the merge. Delegates to `InvoiceRecordRepositoryPort.findManyKeyset`.
+   * NEVER queries the provider/adapter — this is a projection read.
+   */
+  listInvoicesKeyset(
+    filter: InvoiceRecordFilters,
+    opts: { limit: number; cursor?: InvoiceRecordKeysetCursor },
+  ): Promise<InvoiceRecordKeysetPage>;
 
   /**
    * Persist a refreshed regulatory-clearance outcome onto an existing record

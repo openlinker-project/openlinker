@@ -944,6 +944,11 @@ export interface InvoiceRecordFilters {
    * concept (not "nip"); maps to the denormalized `hasBuyerTaxId` column.
    */
   taxId?: 'with' | 'without';
+  /**
+   * Free-text match against `orderId`, `providerInvoiceNumber`, and
+   * `clearanceReference` (#3306). Case-insensitive, partial.
+   */
+  search?: string;
 }
 
 /** Pagination window for {@link InvoiceRecordRepositoryPort.findMany}. */
@@ -1038,4 +1043,15 @@ export interface InvoiceOutcomePatch {
    * single terminal `issued` patch. `null` when not captured.
    */
   issuedLineSnapshot?: IssuedLineSnapshot | null;
+}
+
+/**
+ * Row-value keyset position for {@link InvoiceRecordRepositoryPort.findManyKeyset}
+ * (#3306) - `(createdAt, id)`, the same shape `findIssuedNonTerminal` already
+ * uses. `undefined` on the incoming request means "first page"; `null` on the
+ * outgoing page means "no more rows."
+ */
+export interface InvoiceRecordKeysetCursor {
+  createdAt: Date;
+  id: string;
 }

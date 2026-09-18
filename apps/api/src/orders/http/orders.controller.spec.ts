@@ -171,6 +171,7 @@ describe('OrdersController', () => {
       issueCorrection: jest.fn(),
       listInvoices: jest.fn(),
       applyRegulatoryClearance: jest.fn(),
+      listInvoicesKeyset: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
     };
 
     const mockFulfillmentRouting: jest.Mocked<IFulfillmentRoutingService> = {
@@ -213,6 +214,10 @@ describe('OrdersController', () => {
     const mockSalesDocumentView: jest.Mocked<ISalesDocumentViewService> = {
       getForOrders: jest.fn().mockResolvedValue(new Map()),
       getForOrder: jest.fn().mockResolvedValue(null),
+      listSalesDocuments: jest.fn().mockResolvedValue({
+        items: [],
+        nextCursor: { invoice: null, fiscal: null },
+      }),
     };
     const mockTestFixtureService: jest.Mocked<IOrderTestFixtureService> = {
       markPreRolloutEraForTesting: jest.fn().mockResolvedValue(true),
