@@ -183,6 +183,10 @@ describe('InventoryController', () => {
             sourceConnectionId: null,
             rowCount: 2,
             liveRowCount: 1,
+            productName: 'Merino Wool Beanie',
+            sku: 'BEA-MER-001',
+            connectionName: null,
+            locationName: null,
             rows: [
               {
                 id: 'inv-1',
@@ -209,6 +213,12 @@ describe('InventoryController', () => {
       expect(result.groupCount).toBe(1);
       expect(result.excessRowCount).toBe(1);
       expect(result.groups[0].liveRowCount).toBe(1);
+      // Enrichment (#3239) is passed through the transport mapping verbatim —
+      // this controller never resolves names itself.
+      expect(result.groups[0].productName).toBe('Merino Wool Beanie');
+      expect(result.groups[0].sku).toBe('BEA-MER-001');
+      expect(result.groups[0].connectionName).toBeNull();
+      expect(result.groups[0].locationName).toBeNull();
       expect(result.groups[0].rows[0].updatedAt).toBe(updatedAt.toISOString());
       // Stale rows reach the transport layer — the report is deliberately
       // stricter than the availability read.

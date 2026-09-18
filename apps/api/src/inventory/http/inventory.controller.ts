@@ -134,6 +134,10 @@ export class InventoryController {
         sourceConnectionId: group.sourceConnectionId,
         rowCount: group.rowCount,
         liveRowCount: group.liveRowCount,
+        productName: group.productName,
+        sku: group.sku,
+        connectionName: group.connectionName,
+        locationName: group.locationName,
         rows: group.rows.map((row) => ({
           id: row.id,
           availableQuantity: row.availableQuantity,
