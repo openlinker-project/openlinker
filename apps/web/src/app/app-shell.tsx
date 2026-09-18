@@ -140,7 +140,7 @@ function SidebarBrand(): ReactElement {
         height={26}
       />
       <span className="shell-brand__name">OpenLinker</span>
-      <EnvironmentBadge compact />
+      <EnvironmentBadge />
     </div>
   );
 }

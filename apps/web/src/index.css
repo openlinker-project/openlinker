@@ -1185,6 +1185,29 @@ textarea,
   letter-spacing: -0.02em;
 }
 
+/* ── Environment badge: version line (#3287) ─────────────────────────
+ * The environment label (Dev/Stg/Prod) keeps its pre-existing single-line
+ * layout; when a build version is available the badge stacks a second,
+ * visibly smaller line below it rather than replacing the label.
+ */
+.context-chip.environment-badge--stacked {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+  padding-block: 3px;
+  gap: 1px;
+}
+
+.environment-badge__env {
+  font-weight: 600;
+}
+
+.environment-badge__version {
+  font-size: 0.6875rem;
+  font-weight: 400;
+}
+
 .shell-nav {
   flex: 1;
   overflow-y: auto;
