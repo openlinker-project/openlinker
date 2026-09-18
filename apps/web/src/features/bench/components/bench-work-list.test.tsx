@@ -15,6 +15,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import type { BenchWork, BenchWorkList as BenchWorkListData } from '../api/bench-work.types';
+import { dispatchScannerBurst } from '../lib/scanner-burst.test-helper';
 import { BenchWorkList } from './bench-work-list';
 
 function work(over: Partial<BenchWork> = {}): BenchWork {
@@ -164,10 +165,7 @@ describe('BenchWorkList (#2416)', () => {
     await screen.findByTestId('bench-work-list');
 
     // A scanner burst: fast characters terminated by Enter, with nothing focused.
-    for (const char of '5901234123457') {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-    }
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    dispatchScannerBurst('5901234123457');
 
     // "Distinctly" (C3) reaches a screen reader as an assertive announcement,
     // not a polite status line — a packer is looking at the box, not the screen.
