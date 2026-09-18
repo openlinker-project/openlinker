@@ -10,7 +10,7 @@
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer } from '@testcontainers/redis';
 import { StartedTestContainer } from 'testcontainers';
-import { ciRunIdLabels } from '@openlinker/test-kit';
+import { ciRunIdLabels, createWorkerDatabases } from '@openlinker/test-kit';
 
 type Harness = {
   postgres: StartedPostgreSqlContainer;
@@ -38,6 +38,20 @@ export async function startHarness(): Promise<void> {
     .withLabels(ciRunIdLabels())
     .start();
 
+  // One database per jest worker slot, inside the SAME container (#3263).
+  //
+  // This suite's `reset()` truncates every table AND calls `flushDb()`, and
+  // `setup-each.ts` runs it before and after every single test case. On one
+  // shared database that is fatal the moment `maxWorkers > 1`: worker A wipes
+  // the tables and the whole Redis logical DB while worker B is mid-test, which
+  // surfaces as deadlocks, foreign-key violations and `Connection not found`
+  // rather than as anything naming its own cause.
+  //
+  // Creation runs HERE, in the globalSetup realm, because it is the realm that
+  // booted the container and the only one that runs exactly once; each worker
+  // then points itself at its own database in `setup-worker-scope.ts`.
+  await createWorkerDatabases(postgres);
+
   // Start Redis container
   const redis = await new RedisContainer('redis:7-alpine').withLabels(ciRunIdLabels()).start();
 
@@ -46,6 +60,10 @@ export async function startHarness(): Promise<void> {
   process.env.DB_PORT = String(postgres.getPort());
   process.env.DB_USERNAME = 'postgres';
   process.env.DB_PASSWORD = 'postgres';
+  // The TEMPLATE database, deliberately not a per-worker one: this realm runs
+  // no test, and `setup-worker-scope.ts` overwrites both this and `REDIS_DB`
+  // inside each worker process. Leaving the template value here keeps a
+  // `maxWorkers: 1` run byte-identical to its pre-#3263 self.
   process.env.DB_DATABASE = 'openlinker_test';
   process.env.REDIS_HOST = redis.getHost();
   process.env.REDIS_PORT = String(redis.getMappedPort(6379));

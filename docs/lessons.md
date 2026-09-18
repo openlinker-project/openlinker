@@ -1691,3 +1691,33 @@ comparisons, benchmark harnesses that model one process out of many.
 
 **Source**: #3271.
 
+---
+
+## Raising a test-suite worker count turns a lazy-boot check-then-act into a race
+
+**Context**: #3263 raised the api integration suite from `maxWorkers: 1` to 6, made safe for
+Postgres/Redis by giving every worker its own database and logical DB. `startSharedPrestashopContainer()`
+was left as-is: `readLiveSharedRecord()` returns nothing on first use, so the caller boots a fresh
+container pair and writes the record only once the boot finishes.
+
+**Problem**: with several workers now able to reach that function inside the same ~90s boot
+window, "no record yet" is not the same fact as "nobody else is booting." A second worker sees the
+same absence and boots its own pair — a real Testcontainers boot cannot be prevented by rechecking
+the same file faster, only by a distinct claim the loser can observe *before* it starts booting.
+The two extra PS+MySQL pairs then compete for the same 24 GiB / 8-CPU cgroup cap this PR's own
+6-worker analysis was sized around, and only the last writer's ids survive to `globalTeardown`, so
+the others leak on the persistent CI runner (the #1285 failure mode, reopened one layer up).
+
+**Rule**: raising a suite's parallelism is not just "the shared containers already get per-worker
+databases" — audit every OTHER piece of cross-worker shared state for the same lazy
+check-then-act shape, and replace it with an atomic filesystem claim (`openSync(file, 'wx')`,
+which fails `EEXIST` if a peer already created it) rather than a plain existence check. A loser
+polls for the winner's completed record instead of retrying the boot; a stale claim (winner died
+mid-boot) needs its own age-based reclaim path or every later spec in the run polls out to a
+timeout for nothing.
+
+**Applies to**: any lazily-booted, cross-worker-shared Testcontainer or fixture whose dedup is a
+record file — currently `startSharedPrestashopContainer()` in
+`apps/api/test/integration/helpers/prestashop-container.helper.ts`.
+
+**Source**: PR #3276 review (piotrswierzy), fixed same-branch.
