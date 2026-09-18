@@ -95,7 +95,7 @@ export type {
   RecordReturnLineInput,
   RecordReturnResult,
 } from './api/returns.types';
-export { AUTHORIZE_RETURN_OUTCOME_VALUES } from './api/returns.types';
+export { AUTHORIZE_RETURN_OUTCOME_VALUES, isAuthorizeReturnOutcome } from './api/returns.types';
 // Public for the same reason `ReturnDetailUnreadableError` is above: a caller
 // needs to tell "the write may have landed, we just could not read the
 // result" apart from an ordinary network/validation failure.

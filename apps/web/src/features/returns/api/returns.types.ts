@@ -622,6 +622,23 @@ export interface DeclineReturnResult {
 export const AUTHORIZE_RETURN_OUTCOME_VALUES = ['authorized', 'already-authorized'] as const;
 export type AuthorizeReturnOutcome = (typeof AUTHORIZE_RETURN_OUTCOME_VALUES)[number];
 
+/**
+ * Coercion for a value read off the wire — `outcome` is parsed as `z.string()`
+ * (a build-predates-the-value must still round-trip; see
+ * `return-write.schema.ts`), so this is what lets a caller branch on
+ * `already-authorized` — a SUCCESS, never an error — without re-deriving the
+ * membership test at each call site.
+ */
+export function isAuthorizeReturnOutcome(
+  value: string | null | undefined,
+): value is AuthorizeReturnOutcome {
+  return (
+    value !== null &&
+    value !== undefined &&
+    (AUTHORIZE_RETURN_OUTCOME_VALUES as readonly string[]).includes(value)
+  );
+}
+
 export interface AuthorizeReturnResult {
   outcome: AuthorizeReturnOutcome | string;
   /** The ADR-044 change-proposal row this act was recorded as. */
