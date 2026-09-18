@@ -1,6 +1,6 @@
 {
   "name": "openlinker",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Open-source, modular, API-first e-commerce orchestration platform",
   "license": "Apache-2.0",
   "author": "OpenLinker",
@@ -19,7 +19,8 @@
     "build:prestashop": "pnpm --filter @openlinker/shared build && pnpm --filter @openlinker/core build && pnpm install && pnpm --filter @openlinker/integrations-prestashop build",
     "build:api": "pnpm --filter @openlinker/api exec nest build",
     "test": "pnpm -r test",
-    "test:ci": "pnpm -r --filter \"./libs/**\" build && pnpm -r --workspace-concurrency=2 test",
+    "test:ci": "pnpm -r --filter \"./libs/**\" build && pnpm -r --no-sort --workspace-concurrency=4 --filter='!@openlinker/web' test",
+    "test:ci:web": "pnpm --filter @openlinker/web test",
     "test:watch": "pnpm -r test:watch",
     "test:cov": "pnpm -r test:cov",
     "test:integration": "pnpm --filter @openlinker/api test:integration",
