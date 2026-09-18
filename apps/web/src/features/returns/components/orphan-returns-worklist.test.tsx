@@ -299,7 +299,10 @@ describe('OrphanReturnsWorklist', () => {
       }),
     });
 
-    await screen.findByRole('link', { name: COPY.needsApprovalAction });
+    // A BUTTON, not a link (#3083) — the default session in this file has
+    // write access, so this is the gated write affordance, not the no-access
+    // Link fallback.
+    await screen.findByRole('button', { name: COPY.needsApprovalAction });
     expect(screen.queryByText(COPY.approvalScanTruncated)).not.toBeInTheDocument();
   });
 
