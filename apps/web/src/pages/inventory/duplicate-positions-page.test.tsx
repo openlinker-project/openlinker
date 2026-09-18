@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Link } from 'react-router-dom';
 import {
   renderWithProviders,
   createMockApiClient,
@@ -754,6 +755,41 @@ describe('DuplicatePositionsPage', () => {
     expect(maxGroupsInput).toHaveValue(250);
     await waitFor(() => {
       expect(getDuplicatePositions).toHaveBeenLastCalledWith(250);
+    });
+  });
+
+  it('should resync the Groups-to-show input when maxGroups changes in the URL without going through Apply (tech-review fix)', async () => {
+    const getDuplicatePositions = vi.fn().mockResolvedValue(
+      buildReport({ groupCount: 5, rowCount: 12, excessRowCount: 7, truncated: true, groups: [] })
+    );
+    const apiClient = createMockApiClient({
+      inventory: {
+        getDuplicatePositions,
+        getProvenanceBackfillStatus: vi.fn().mockResolvedValue(buildProvenanceStatus()),
+      },
+    });
+
+    // A sibling link that navigates to a different `maxGroups` in the same
+    // pathname — the shape of a browser back/forward or a pasted link,
+    // never routed through the page's own `applyMaxGroups` setter.
+    renderWithProviders(
+      <>
+        <Link to="/?maxGroups=250">Jump to 250</Link>
+        <DuplicatePositionsPage />
+      </>,
+      { apiClient, sessionAdapter: createAuthenticatedSessionAdapter() }
+    );
+
+    expect(await screen.findByLabelText('Groups to show')).toHaveValue(100);
+
+    await userEvent.click(screen.getByRole('link', { name: 'Jump to 250' }));
+
+    // The maxGroups query key changes, so the report refetches and the
+    // whole report tree (including the input) unmounts/remounts through a
+    // loading state — re-query the label rather than reusing the stale
+    // reference from before the navigation.
+    await waitFor(() => {
+      expect(screen.getByLabelText('Groups to show')).toHaveValue(250);
     });
   });
 });
