@@ -17,7 +17,13 @@ import { OrphanReturnsWorklist } from './orphan-returns-worklist';
 import { ORPHAN_RETURNS_WORKLIST_COPY as COPY } from '../lib/orphan-returns-worklist.copy';
 import { AUTHORIZE_RETURN_DIALOG_COPY } from '../lib/authorize-return-dialog.copy';
 import type { ReturnListItem } from '../api/returns.types';
-import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import { createNoopSessionAdapter } from '../../../shared/auth/noop-session-adapter';
+import type { SessionAdapter } from '../../../shared/auth/session-adapter';
+import {
+  createAuthenticatedSessionAdapter,
+  createMockApiClient,
+  renderWithProviders,
+} from '../../../test/test-utils';
 
 function item(overrides: Partial<ReturnListItem> = {}): ReturnListItem {
   return {
@@ -64,10 +70,20 @@ function listResult(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** One mock, two behaviours keyed on the `bucket` filter each query passes. */
+/**
+ * One mock, two behaviours keyed on the `bucket` filter each query passes.
+ *
+ * Defaults to an `orders:write`-holding session (`createAuthenticatedSessionAdapter()`
+ * grants every permission), so every pre-existing test in this file keeps
+ * exercising the "Approve" button as it did before the write-access gate
+ * (#3283) — the gate's own negative case passes a permission-less session
+ * explicitly instead.
+ */
 function renderWorklist(options: {
   needsOrder?: ReturnType<typeof listResult> | Error;
   needsApproval?: ReturnType<typeof listResult> | Error;
+  sessionAdapter?: SessionAdapter;
+  demoMode?: boolean;
 }) {
   const apiClient = createMockApiClient();
   const list = vi.fn(async (filters: { bucket?: string } = {}) => {
@@ -76,8 +92,16 @@ function renderWorklist(options: {
     return result ?? listResult();
   });
   apiClient.returns.list = list as unknown as typeof apiClient.returns.list;
+  if (options.demoMode !== undefined) {
+    apiClient.system.getConfig = vi
+      .fn()
+      .mockResolvedValue({ demoMode: options.demoMode }) as unknown as typeof apiClient.system.getConfig;
+  }
 
-  renderWithProviders(<OrphanReturnsWorklist />, { apiClient });
+  renderWithProviders(<OrphanReturnsWorklist />, {
+    apiClient,
+    sessionAdapter: options.sessionAdapter ?? createAuthenticatedSessionAdapter(),
+  });
   return { list };
 }
 
@@ -126,6 +150,67 @@ describe('OrphanReturnsWorklist', () => {
     // primary action opens the authorize dialog inline rather than routing
     // to a detail-page destination.
     expect(await screen.findByRole('button', { name: COPY.needsApprovalAction })).toBeInTheDocument();
+  });
+
+  it('should hide the Approve button for a session with no write permission, and fall back to the detail Link (#3283)', async () => {
+    // `POST /returns/:returnId/authorize` is `@Roles('admin', 'operator')` —
+    // an enabled button for a `viewer`/`packer` session answers 403, which
+    // this dialog would then render as an unactionable "try again". Hidden
+    // entirely is the `return-decline-action.tsx` precedent for a session
+    // with no write access and no demo carve-out.
+    renderWorklist({
+      needsOrder: listResult(),
+      needsApproval: listResult({
+        items: [
+          item({
+            id: 'r2',
+            externalReturnId: null,
+            bucket: 'attributed',
+            origin: 'operator_authored',
+            internalOrderId: 'ol_order_1',
+            authorizedAt: null,
+          }),
+        ],
+        total: 1,
+      }),
+      sessionAdapter: createNoopSessionAdapter(),
+    });
+
+    // The row action falls back to the ordinary detail Link rather than
+    // vanishing entirely — navigation to a read surface needs no gate.
+    expect(await screen.findByRole('link', { name: COPY.needsApprovalAction })).toHaveAttribute(
+      'href',
+      '/returns/r2',
+    );
+    expect(screen.queryByRole('button', { name: COPY.needsApprovalAction })).not.toBeInTheDocument();
+  });
+
+  it('should render the Approve button DISABLED behind a ReadOnlyLock for a demo viewer with no write permission (#3283)', async () => {
+    renderWorklist({
+      needsOrder: listResult(),
+      needsApproval: listResult({
+        items: [
+          item({
+            id: 'r2',
+            externalReturnId: null,
+            bucket: 'attributed',
+            origin: 'operator_authored',
+            internalOrderId: 'ol_order_1',
+            authorizedAt: null,
+          }),
+        ],
+        total: 1,
+      }),
+      sessionAdapter: createNoopSessionAdapter(),
+      demoMode: true,
+    });
+
+    // `visible = canWrite || demoReadOnly`, so a demo viewer sees the WRITE
+    // affordance (never the read-only Link fallback) but cannot use it — the
+    // #1615 "advertise, don't hide" rule `return-decline-action.tsx` follows.
+    const action = await screen.findByRole('button', { name: COPY.needsApprovalAction });
+    expect(action).toBeDisabled();
+    expect(action.closest('.read-only-lock')).not.toBeNull();
   });
 
   it('should EXCLUDE an already-authorized operator-authored return from "waiting for your OK"', async () => {
@@ -335,7 +420,10 @@ describe('OrphanReturnsWorklist', () => {
     });
     apiClient.returns.authorize = authorize as unknown as typeof apiClient.returns.authorize;
 
-    renderWithProviders(<OrphanReturnsWorklist />, { apiClient });
+    renderWithProviders(<OrphanReturnsWorklist />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
 
     await userEvent.click(await screen.findByRole('button', { name: COPY.needsApprovalAction }));
     await userEvent.click(
