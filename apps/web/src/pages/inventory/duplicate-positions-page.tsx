@@ -145,7 +145,17 @@ const GROUP_COLUMNS: DataTableColumn<DuplicatePositionGroup>[] = [
 
 function GroupRowDetail({ group }: { group: DuplicatePositionGroup }): ReactElement {
   return (
-    <div className="duplicate-positions-detail-table__scroll">
+    // No cell in this table is focusable (spans and StatusBadges only), so
+    // without these attributes a keyboard-only user has no way to reach the
+    // overflowed columns on a narrow viewport — copied from the shared
+    // scrollable-container treatment `data-table.tsx` gives its own
+    // `plainScrollable` region (tech-review of #3255).
+    <div
+      className="duplicate-positions-detail-table__scroll"
+      tabIndex={0}
+      role="region"
+      aria-label="Individual inventory_items rows for this position key (scrollable)"
+    >
       <table className="duplicate-positions-detail-table">
         <caption className="sr-only">Individual inventory_items rows for this position key</caption>
         <thead>
@@ -350,8 +360,11 @@ export function DuplicatePositionsPage(): ReactElement {
           </div>
 
           {report.groups.length === 0 ? (
+            // Default `polite` (feedback-state.tsx) — this replaces the
+            // LoadingState as a transition when the scan comes back clean,
+            // so the all-clear should announce like the loading state that
+            // preceded it, not go silent (#3255 review).
             <EmptyState
-              liveRegion="off"
               title="No duplicate positions"
               message="Every inventory position key is unique. Nothing to review."
             />
