@@ -552,10 +552,28 @@ describe('InventoryQueryService', () => {
 
       await service.getProvenanceBackfillStatus();
 
+      // Hard-coded independently of the key builder — matching
+      // master-sweep-cursor.types.spec.ts's own reasoning: a format change,
+      // or picking the wrong sibling key in this same namespace (e.g.
+      // remainingNull's), must fail here rather than silently split reader
+      // from writer.
       expect(cursors.getCursor).toHaveBeenCalledWith(
         '00000000-0000-0000-0000-000000000000',
-        expect.stringContaining('inventory-provenance'),
+        'master.inventory-provenance.completedAt:connection:00000000-0000-0000-0000-000000000000',
       );
+    });
+
+    it('normalises an empty-string cursor row to latchedAt: null', async () => {
+      // The handler's own "latched" predicate treats '' identically to null
+      // (inventory-provenance-backfill.handler.ts's `execute()`); this reader
+      // must agree, or a non-latched pass reads as stuck and the docblock's
+      // prescribed remedy (delete the cursor row) fires on a healthy drain.
+      inventoryRepository.countMissingProvenance.mockResolvedValue(5);
+      cursors.getCursor.mockResolvedValue('');
+
+      const result = await service.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({ remainingNull: 5, completed: false, latchedAt: null });
     });
   });
 });

@@ -307,6 +307,12 @@ const harness = createIntegrationTestHarness({
     // the migration, not the ORM decorators, so the synchronize-built test
     // schema has no FK to cascade from `connections`.
     'fulfillment_routing_rules',
+    // connection_cursors carries no FK at all — `connectionId` is a bare uuid
+    // column, so nothing cascades into it from `connections`. Listed
+    // explicitly (#3240) or a #2317 provenance-backfill latch cursor written
+    // by one case is still there for the next, and this table is shared
+    // across the whole run via the cross-realm container reuse above.
+    'connection_cursors',
     'connections',
     'users',
   ],
