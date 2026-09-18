@@ -109,7 +109,28 @@ interface SetupResult extends RenderResult {
 }
 
 function setup(options: SetupOptions = {}): SetupResult {
-  const listFn = vi.fn().mockResolvedValue(options.list ?? listResult());
+  // `OrphanReturnsWorklist` (#3085) mounts on this same page and issues its
+  // OWN two `apiClient.returns.list` calls — always `{ bucket: 'orphan' }`
+  // and `{ bucket: 'attributed' }`, regardless of the operator's own filter
+  // selection — independent of the main table's own query. A single
+  // unconditional mock therefore serves the SAME fixture to both, so any
+  // test whose fixture includes an orphan/attributed-bucket item renders it
+  // TWICE (once in the worklist, once in the table) and every unscoped
+  // `findByText`/`getByText` in this file resolves ambiguously. None of the
+  // existing tests in this file exercise the worklist itself — that lives
+  // in `orphan-returns-worklist.test.tsx` — so a call is routed to the
+  // fixture only when its `bucket` matches what the URL/local filter state
+  // (`options.route`) is ACTUALLY driving for the table; the worklist's two
+  // fixed queries are a mismatch in every test that isn't itself already
+  // filtering the table to that same bucket, and get an empty page instead.
+  const routeBucket = new URLSearchParams((options.route ?? '/returns').split('?')[1] ?? '').get(
+    'bucket'
+  );
+  const listFn = vi.fn((filters: { bucket?: string } = {}) =>
+    Promise.resolve(
+      (filters.bucket ?? null) === routeBucket ? (options.list ?? listResult()) : listResult()
+    )
+  );
   const availabilityFn = options.availabilityPending
     ? vi.fn().mockReturnValue(new Promise(() => undefined))
     : vi.fn().mockResolvedValue({
