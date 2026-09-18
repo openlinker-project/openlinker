@@ -304,7 +304,8 @@ export function DuplicatePositionsPage(): ReactElement {
                 <span>
                   {noDuplicateGroups
                     ? 'No duplicate position groups'
-                    : `${String(report.groupCount)} duplicate position group(s) must be resolved`}
+                    : `${String(report.groupCount)} duplicate position ` +
+                      `${report.groupCount === 1 ? 'group' : 'groups'} must be resolved`}
                 </span>
               </li>
               <li>
@@ -334,13 +335,6 @@ export function DuplicatePositionsPage(): ReactElement {
             ) : null}
           </Alert>
 
-          {report.truncated ? (
-            <Alert tone="info" title="Detail truncated">
-              The table below lists the largest {report.groups.length} of {report.groupCount}{' '}
-              duplicate group(s). The KPI totals below cover the whole table.
-            </Alert>
-          ) : null}
-
           <div className="ds-grid ds-grid--4">
             <KpiCard
               label="Duplicate groups"
@@ -365,6 +359,14 @@ export function DuplicatePositionsPage(): ReactElement {
               }
             />
           </div>
+
+          {report.truncated ? (
+            <Alert tone="info" title="Detail truncated">
+              The KPI totals above count every duplicate position in the database. The table below
+              lists only the largest {report.groups.length} of {report.groupCount} duplicate{' '}
+              {report.groupCount === 1 ? 'group' : 'groups'}.
+            </Alert>
+          ) : null}
 
           {report.groups.length === 0 ? (
             // Default `polite` (feedback-state.tsx) — this replaces the
