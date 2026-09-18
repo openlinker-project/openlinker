@@ -52,6 +52,13 @@ export function DuplicatePositionsPage(): ReactElement {
 
   const isLoading = duplicatesQuery.isLoading || provenanceQuery.isLoading;
   const error = duplicatesQuery.error ?? provenanceQuery.error;
+  // A failed *refresh* of an already-loaded report must not blank the
+  // screen — TanStack Query keeps `data` from the last success while
+  // `error` is set on a refetch, so only route to the full-page ErrorState
+  // when there is no report to fall back on (tech-review of #3252).
+  const hasLoadedReport = report !== undefined && provenance !== undefined;
+  const initialLoadError = !hasLoadedReport ? error : undefined;
+  const refreshError = hasLoadedReport ? error : undefined;
 
   // Both reads must have settled before either readiness condition can be
   // stated — a single `undefined` here must never be read as "not ready".
@@ -61,8 +68,18 @@ export function DuplicatePositionsPage(): ReactElement {
     noDuplicateGroups !== undefined && backfillComplete !== undefined
       ? noDuplicateGroups && backfillComplete
       : undefined;
+  // `latchedAt` is the only field that tells "still draining" apart from
+  // "latched, and stuck" (see the field's own docblock in inventory.types.ts)
+  // — a backfill that stopped on its own needs an operator to re-arm it,
+  // while one still running just needs time. Collapsing both into "Pending"
+  // told the operator to wait on a number that would never move. Holding the
+  // timestamp itself (rather than a bare boolean) is what lets TypeScript
+  // narrow it below without a cast.
+  const stuckSinceLatchedAt: string | null =
+    provenance && provenance.remainingNull > 0 ? provenance.latchedAt : null;
+  const provenanceLatchedAndStuck = stuckSinceLatchedAt !== null;
 
-  const isRefetching = duplicatesQuery.isFetching || provenanceQuery.isFetching;
+  const isFetching = duplicatesQuery.isFetching || provenanceQuery.isFetching;
 
   const retry = (): void => {
     void duplicatesQuery.refetch();
@@ -93,9 +110,9 @@ export function DuplicatePositionsPage(): ReactElement {
         'Detects duplicate stock positions — it never repairs them.'
       }
       actions={
-        report && provenance ? (
-          <Button onClick={retry} disabled={isRefetching}>
-            {isRefetching ? 'Refreshing…' : 'Refresh'}
+        hasLoadedReport ? (
+          <Button onClick={retry} disabled={isFetching}>
+            {isFetching ? 'Refreshing…' : 'Refresh'}
           </Button>
         ) : undefined
       }
@@ -105,14 +122,19 @@ export function DuplicatePositionsPage(): ReactElement {
           title="Loading duplicate-position report"
           message="Scanning inventory_items for colliding position keys and checking the provenance backfill..."
         />
-      ) : error ? (
+      ) : initialLoadError ? (
         <ErrorState
           title="Unable to load the duplicate-position report"
-          message={error.message}
+          message={initialLoadError.message}
           action={<Button onClick={retry}>Retry</Button>}
         />
       ) : report && provenance ? (
         <>
+          {refreshError ? (
+            <Alert tone="error" title="Refresh failed">
+              {refreshError.message} — showing the last successful scan below.
+            </Alert>
+          ) : null}
           <p className="duplicate-positions-generated-at">
             As of {formatDateTime(report.generatedAt)}
           </p>
@@ -129,13 +151,20 @@ export function DuplicatePositionsPage(): ReactElement {
                 </span>
               </li>
               <li>
-                <StatusBadge tone={backfillComplete ? 'success' : 'warning'} withDot>
-                  {backfillComplete ? 'Done' : 'Pending'}
+                <StatusBadge
+                  tone={backfillComplete ? 'success' : provenanceLatchedAndStuck ? 'error' : 'warning'}
+                  withDot
+                >
+                  {backfillComplete ? 'Done' : provenanceLatchedAndStuck ? 'Stuck' : 'Pending'}
                 </StatusBadge>
                 <span>
                   {backfillComplete
                     ? 'Provenance backfill complete'
-                    : `${String(provenance.remainingNull)} row(s) still missing provenance`}
+                    : stuckSinceLatchedAt !== null
+                      ? `${String(provenance.remainingNull)} row(s) still missing provenance — the backfill ` +
+                        `latched on ${formatDateTime(stuckSinceLatchedAt)} and has stopped running. ` +
+                        'It will not resume on its own — ask an engineer to re-arm it.'
+                      : `${String(provenance.remainingNull)} row(s) still missing provenance`}
                 </span>
               </li>
             </ul>
@@ -164,8 +193,12 @@ export function DuplicatePositionsPage(): ReactElement {
             <KpiCard
               label="Provenance rows remaining"
               value={provenance.remainingNull}
-              tone={backfillComplete ? 'success' : 'warning'}
-              description="inventory_items rows still missing sourceConnectionId."
+              tone={backfillComplete ? 'success' : provenanceLatchedAndStuck ? 'error' : 'warning'}
+              description={
+                provenanceLatchedAndStuck
+                  ? 'inventory_items rows still missing sourceConnectionId — backfill latched, needs re-arming.'
+                  : 'inventory_items rows still missing sourceConnectionId.'
+              }
             />
           </div>
         </>
