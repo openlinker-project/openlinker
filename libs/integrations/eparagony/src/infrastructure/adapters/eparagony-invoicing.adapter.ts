@@ -81,7 +81,6 @@ import {
 } from '../../domain/policies/document-token.policy';
 import {
   EPARAGONY_ERROR_DOCUMENT_ALREADY_EXISTS,
-  EPARAGONY_ERROR_UNKNOWN_DOCUMENT,
   EPARAGONY_STATUS_CONFIRMED,
   EPARAGONY_STATUS_ERROR,
   EPARAGONY_STATUS_OFFLINE,
@@ -89,6 +88,16 @@ import {
   type EparagonyDocumentStatusResponse,
 } from '../../domain/types/eparagony-api.types';
 import type { EparagonyConnectionConfig } from '../../domain/types/eparagony-config.types';
+import {
+  EPARAGONY_DOCUMENTS_PATH,
+  MAX_STATUS_POLL_TIMEOUT_MS,
+  STATUS_POLL_BACKOFF_MULTIPLIER,
+  STATUS_POLL_INITIAL_DELAY_MS,
+  STATUS_POLL_MAX_DELAY_MS,
+  readEparagonyDocumentStatus,
+  resolveStatusPollTimeoutMs,
+  sleep,
+} from '../http/eparagony-document-status.reader';
 import type { IEparagonyHttpClient } from '../http/eparagony-http-client.interface';
 import { readDocumentStatus } from './eparagony-document.mapper';
 import {
@@ -100,35 +109,36 @@ import {
   toRegulatoryClearanceResult,
 } from './eparagony-invoice.mapper';
 
-const DOCUMENTS_PATH = 'documents';
-
 /** The only neutral document type this adapter issues today; corrections are #3193. */
 const SUPPORTED_DOCUMENT_TYPES: readonly DocumentType[] = ['invoice'];
 
 /**
- * Default ceiling on the issuance status poll. Well under
+ * Default ceiling on the issuance status poll. THIS LANE'S OWN BUDGET, which is
+ * why it did not move to the shared reader with the floor and the ceiling: a
+ * receipt is registered on a device and an invoice is composed and relayed, so
+ * one default would silently re-budget one of the two. Well under
  * {@link EPARAGONY_ISSUE_DEADLINE_MS} so the create (with its own transport
  * retries) fits inside the same budget.
  */
 const DEFAULT_STATUS_POLL_TIMEOUT_MS = 45_000;
 
-/** Floor on an operator-configured poll timeout. */
-const MIN_STATUS_POLL_TIMEOUT_MS = 5_000;
-
-/** Ceiling on an operator-configured poll timeout, so the deadline cannot be configured away. */
-const MAX_STATUS_POLL_TIMEOUT_MS = 90_000;
-
-const STATUS_POLL_INITIAL_DELAY_MS = 1_000;
-const STATUS_POLL_BACKOFF_MULTIPLIER = 1.6;
-const STATUS_POLL_MAX_DELAY_MS = 5_000;
+/**
+ * Cap on the vendor error sentence this adapter writes to the log. It echoes
+ * submitted values, which on this lane include the buyer's name, address and tax
+ * number - so it is bounded before it leaves the process, the same defence core
+ * applies to `invoice_records.errorMessage`.
+ */
+const MAX_LOGGED_DESCRIPTION_LENGTH = 300;
 
 // Fail loud at module load if the poll ceiling is ever raised past the whole-call
-// deadline, which would let one issuance outlive core's in-flight CAS lease.
+// deadline, which would let one issuance outlive core's in-flight CAS lease. The
+// ceiling is shared with the fiscalization lane; THIS assertion is not - each
+// adapter checks it against its own deadline.
 if (MAX_STATUS_POLL_TIMEOUT_MS >= EPARAGONY_ISSUE_DEADLINE_MS) {
   throw new Error(
     `eparagony.pl fiscal-safety invariant violated: MAX_STATUS_POLL_TIMEOUT_MS ` +
       `(${MAX_STATUS_POLL_TIMEOUT_MS}ms) must stay below EPARAGONY_ISSUE_DEADLINE_MS ` +
-      `(${EPARAGONY_ISSUE_DEADLINE_MS}ms).`
+      `(${EPARAGONY_ISSUE_DEADLINE_MS}ms).`,
   );
 }
 
@@ -148,7 +158,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
     private readonly connectionId: string,
     private readonly http: IEparagonyHttpClient,
     private readonly logger: LoggerPort,
-    private readonly config: EparagonyConnectionConfig
+    private readonly config: EparagonyConnectionConfig,
   ) {}
 
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
@@ -203,7 +213,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
         `eparagony.pl cannot issue a correction for order ${cmd.orderId}: a correction is the ` +
           `vendor's own eCorrectiveInvoice document, which this adapter does not compose`,
         'This connection cannot issue correction documents yet, only original invoices.',
-        this.connectionId
+        this.connectionId,
       );
     }
 
@@ -217,7 +227,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
         `eparagony.pl cannot issue document type "${documentType}" for order ${cmd.orderId}: ` +
           `this adapter issues ${supported.join(', ')} only`,
         'This connection cannot issue the requested document type; it issues invoices only.',
-        this.connectionId
+        this.connectionId,
       );
     }
   }
@@ -276,7 +286,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
     if (documentToken === null || documentToken.trim().length === 0) {
       this.logger.warn(
         `eparagony.pl cannot read clearance for invoice record ${record.id}: it carries no ` +
-          `document token [connectionId=${this.connectionId}]`
+          `document token [connectionId=${this.connectionId}]`,
       );
       return {
         regulatoryStatus: record.regulatoryStatus,
@@ -284,14 +294,16 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
       };
     }
 
-    const status = await this.readStatus(documentToken, { treatUnknownDocumentAsMissing: true });
+    const status = await readEparagonyDocumentStatus(this.http, documentToken, {
+      treatUnknownDocumentAsMissing: true,
+    });
     if (status === null) {
       // The vendor holds no document under a token we minted, which is a
       // statement about OUR record rather than about the relay. Same reasoning
       // as the no-id branch: report no change rather than terminalising.
       this.logger.warn(
         `eparagony.pl holds no document ${documentToken} for invoice record ${record.id} ` +
-          `[connectionId=${this.connectionId}]`
+          `[connectionId=${this.connectionId}]`,
       );
       return {
         regulatoryStatus: record.regulatoryStatus,
@@ -309,10 +321,10 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
   private async createDocument(
     body: EparagonyCreateInvoiceRequest,
     documentToken: string,
-    orderId: string
+    orderId: string,
   ): Promise<void> {
     try {
-      await this.http.post<unknown>(DOCUMENTS_PATH, body, {
+      await this.http.post<unknown>(EPARAGONY_DOCUMENTS_PATH, body, {
         // `documentToken`, NOT core's raw `idempotencyKey`: the vendor requires
         // this header to match `/^[0-9A-Za-z_-]+$/` and core's key carries
         // colons. The token is a deterministic derivation of the same pair,
@@ -326,7 +338,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
       });
       this.logger.log(
         `eparagony.pl accepted the invoice for order ${orderId} as ${documentToken} ` +
-          `[connectionId=${this.connectionId}]`
+          `[connectionId=${this.connectionId}]`,
       );
     } catch (error) {
       if (
@@ -338,7 +350,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
         // error: the status read below resolves what actually happened.
         this.logger.warn(
           `eparagony.pl already holds document ${documentToken} for order ${orderId}; ` +
-            `reading its status instead of re-creating [connectionId=${this.connectionId}]`
+            `reading its status instead of re-creating [connectionId=${this.connectionId}]`,
         );
         return;
       }
@@ -362,14 +374,14 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
   private async pollToSettledIssuance(
     documentToken: string,
     deadline: number,
-    orderId: string
+    orderId: string,
   ): Promise<EparagonyDocumentStatusResponse> {
     let delay = STATUS_POLL_INITIAL_DELAY_MS;
     const pollUntil = Math.min(deadline, Date.now() + this.resolvePollTimeoutMs());
     let lastStatus: string | null = null;
 
     for (;;) {
-      const body = await this.readStatus(documentToken, {
+      const body = await readEparagonyDocumentStatus(this.http, documentToken, {
         treatUnknownDocumentAsMissing: false,
       });
       // `treatUnknownDocumentAsMissing: false` never returns null.
@@ -389,7 +401,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
         // is always `in-doubt`, which is exactly right: a document may exist.
         throw new EparagonyNetworkError(
           `eparagony.pl did not settle invoice document ${documentToken} for order ${orderId} ` +
-            `within the poll budget (last status "${lastStatus ?? 'unknown'}")`
+            `within the poll budget (last status "${lastStatus ?? 'unknown'}")`,
         );
       }
       await sleep(Math.min(delay, remaining));
@@ -411,17 +423,28 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
   private toTerminalRejection(
     body: EparagonyDocumentStatusResponse,
     documentToken: string,
-    orderId: string
+    orderId: string,
   ): EparagonyApiError {
     const errorCode = typeof body.errorCode === 'number' ? body.errorCode : null;
-    // The vendor's `errorDescription` can echo a submitted line name, so it is
-    // logged but never promoted into the operator-facing reason core persists.
-    const description =
-      typeof body.errorDescription === 'string' ? body.errorDescription : 'no description';
+    // The vendor's `errorDescription` echoes submitted values, and on THIS lane
+    // the payload it echoes from carries `consumerName`, `consumerAddress` and
+    // `consumerTIN` - so a validation error naming the BUYER is likely here
+    // rather than theoretical, unlike the receipt lane where the same comment
+    // was written about a product name. Two things follow.
+    //
+    // It is never promoted into `reason`, which core persists and renders - that
+    // is the mitigation that matters, and a spec pins it.
+    //
+    // It IS logged, bounded, and that is a deliberate acceptance rather than an
+    // oversight: without the vendor's own sentence a rejected invoice is a bare
+    // numeric code, and the code alone does not tell an operator which field to
+    // correct. The log is the same sink the record's `errorMessage` already
+    // reaches, so this adds no new class of destination for buyer data.
+    const description = readBoundedDescription(body.errorDescription);
     this.logger.warn(
       `eparagony.pl reported a terminal invoicing error for document ${documentToken} ` +
         `(order ${orderId}, code ${errorCode ?? 'none'}): ${description} ` +
-        `[connectionId=${this.connectionId}]`
+        `[connectionId=${this.connectionId}]`,
     );
     return new EparagonyApiError(
       `eparagony.pl reported a terminal invoicing error for document ${documentToken} ` +
@@ -434,43 +457,8 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
         failureMode: 'rejected',
         reason:
           'The invoicing provider reported an error and did not issue the invoice. Fix the reported problem, then issue again under a new key.',
-      }
+      },
     );
-  }
-
-  /**
-   * Read one document status.
-   *
-   * `treatUnknownDocumentAsMissing` converts the vendor's "no such token"
-   * rejection into `null`. The issuance poll never asks for that, because a
-   * document that vanished mid-poll is not a clean absence and must stay in doubt.
-   */
-  private async readStatus(
-    documentToken: string,
-    options: { treatUnknownDocumentAsMissing: boolean }
-  ): Promise<EparagonyDocumentStatusResponse | null> {
-    try {
-      const { data } = await this.http.get<EparagonyDocumentStatusResponse>(
-        `${DOCUMENTS_PATH}/${encodeURIComponent(documentToken)}/status`
-      );
-      // A body that is not an object at all is a contract break, not a status.
-      if (data === null || typeof data !== 'object' || Array.isArray(data)) {
-        throw new EparagonyNetworkError(
-          `eparagony.pl returned a non-object status body for document ${documentToken}`
-        );
-      }
-      return data;
-    } catch (error) {
-      if (
-        options.treatUnknownDocumentAsMissing &&
-        error instanceof EparagonyApiError &&
-        error.errorCode !== null &&
-        EPARAGONY_ERROR_UNKNOWN_DOCUMENT.includes(error.errorCode)
-      ) {
-        return null;
-      }
-      throw error;
-    }
   }
 
   // -------------------------------------------------------------------------
@@ -481,7 +469,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
     cmd: IssueInvoiceCommand,
     status: EparagonyDocumentStatusResponse,
     documentToken: string,
-    documentLines: IssuedDocumentLineAmounts[]
+    documentLines: IssuedDocumentLineAmounts[],
   ): IssueInvoiceResult {
     const clearance = toRegulatoryClearanceResult(status);
     const now = new Date();
@@ -512,7 +500,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
       cmd.issuedAt ?? now,
       null,
       now,
-      now
+      now,
     );
 
     const seller = toIssuedDocumentSeller(this.config);
@@ -538,14 +526,29 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
 
   /** Clamp the operator's poll timeout into the range the deadline invariant allows. */
   private resolvePollTimeoutMs(): number {
-    const configured = this.config.statusPollTimeoutMs;
-    if (typeof configured !== 'number' || !Number.isFinite(configured)) {
-      return DEFAULT_STATUS_POLL_TIMEOUT_MS;
-    }
-    return Math.min(Math.max(configured, MIN_STATUS_POLL_TIMEOUT_MS), MAX_STATUS_POLL_TIMEOUT_MS);
+    return resolveStatusPollTimeoutMs(
+      this.config.statusPollTimeoutMs,
+      DEFAULT_STATUS_POLL_TIMEOUT_MS,
+    );
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Bound the vendor's own error sentence before it reaches a log.
+ *
+ * It echoes submitted values, and on the invoice lane those include the buyer's
+ * name, address and tax number, so the length is capped rather than trusted -
+ * the same defence core applies to `invoice_records.errorMessage`.
+ */
+function readBoundedDescription(raw: unknown): string {
+  if (typeof raw !== 'string') {
+    return 'no description';
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return 'no description';
+  }
+  return trimmed.length <= MAX_LOGGED_DESCRIPTION_LENGTH
+    ? trimmed
+    : `${trimmed.slice(0, MAX_LOGGED_DESCRIPTION_LENGTH)}…[truncated]`;
 }

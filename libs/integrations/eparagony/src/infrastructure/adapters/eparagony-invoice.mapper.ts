@@ -187,6 +187,36 @@ interface PricedInvoiceLine {
 }
 
 /**
+ * WHY EVERY REFUSAL BELOW REPEATS ITS REMEDY IN THE `message`, NOT ONLY IN `reason`.
+ *
+ * `reason` is read in exactly ONE place on this lane:
+ * `InvoiceService.classifyFailureCode` matches it against three marker lists and
+ * then discards it. The operator-facing sentence is built by
+ * `deriveFailureReason` from the resulting neutral `InvoiceFailureCode`, and
+ * `errorMessage` is built by `sanitizeError` from `error.message`. So an
+ * OL-authored `reason` that matches no marker reaches NOTHING - not
+ * `failureReason`, not `errorMessage`, not the log - and the operator reads
+ * "The invoicing provider rejected the request." for a request no provider saw.
+ *
+ * That is a lane gap, not an adapter one: the receipt lane's
+ * `FiscalRegistrationService.deriveFailureReason` surfaces the adapter's reason
+ * verbatim, with the same exception class. The real fix is a neutral code plus
+ * its marker - `seller-tax-id-required` / `connection-config-required`, the shape
+ * #3031 used for `sale-classification-required` - which is a core change with its
+ * own slice.
+ *
+ * Until then, putting the remedy in the `message` is what makes it reachable at
+ * all: `message` IS persisted, as `invoice_records.errorMessage`, and is what
+ * `getInvoice` shows an operator and what the failure log carries. Two refusals
+ * below have an operator remedy and repeat it there for that reason; the rest
+ * describe an order that cannot be invoiced at all, where there is no remedy to
+ * repeat.
+ *
+ * The `message` must stay clear of `TAX_ID_REJECTION_MARKERS` for the same reason
+ * `reason` does: `classifyFailureCode` falls back to `error.message` whenever
+ * `reason` is not a string, so the two texts are one haystack under refactoring.
+ */
+/**
  * Compose the `POST /documents` body for a VAT invoice, and the neutral per-line
  * figures that body states.
  *
@@ -205,42 +235,29 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
       // "unsupported currency" is one of core's CURRENCY_REJECTION_MARKERS, so
       // this refusal reaches the operator as `invalid-currency` rather than as
       // the generic provider-rejected copy.
-      `Unsupported currency for this invoicing connection: it issues in ${SETTLEMENT_CURRENCY} only.`
+      `Unsupported currency for this invoicing connection: it issues in ${SETTLEMENT_CURRENCY} only.`,
     );
   }
 
   const merchantTIN = readNonEmpty(config.merchantTIN);
   if (merchantTIN === null) {
     throw new EparagonyConfigException(
+      // THE REMEDY IS IN THE MESSAGE, not only in `reason`, and that placement is
+      // the whole mitigation - see the note above `composeInvoiceDocument`.
       `eparagony.pl cannot invoice order ${command.orderId}: the connection declares no seller ` +
-        `tax number, which is mandatory on every invoice`,
-      // THIS REMEDY COPY IS LOG-ONLY ON THE INVOICE LANE, and is authored anyway.
-      // `InvoiceService.deriveFailureReason` builds the operator-facing sentence
-      // from the neutral `InvoiceFailureCode` and never from this text, and there
-      // is no code for "a connection-config field is missing" - so what the
-      // operator reads is "The invoicing provider rejected the request.", which
-      // the `InvoiceFailureCode` docblock itself calls out as copy that asserts
-      // the provider rejected a request it never saw. The receipt lane behaves
-      // the opposite way (`FiscalRegistrationService.deriveFailureReason` surfaces
-      // the adapter's reason verbatim), so the gap belongs to the lane rather
-      // than to this adapter. The real fix is a neutral code plus its marker -
-      // `seller-tax-id-required` / `connection-config-required`, the shape #3031
-      // used for `sale-classification-required` - which is a core change and gets
-      // its own slice. Until then the text still reaches the log and the record's
-      // `errorMessage`, which is where a support conversation finds it.
-      //
-      // The wording says "tax NUMBER" on purpose, and a spec pins that: core's
-      // `TAX_ID_REJECTION_MARKERS` would read "tax id" here and classify a
-      // missing CONNECTION field as `buyer-tax-id-invalid`, sending the operator
-      // to correct the buyer's data instead.
-      'This connection has no seller tax number set, which every invoice requires. Set it on the connection and re-issue.'
+        `tax number, which is mandatory on every invoice. Set it on the connection and re-issue`,
+      // The wording says "tax NUMBER" on purpose, and a spec pins that on BOTH
+      // texts: core's `TAX_ID_REJECTION_MARKERS` would read "tax id" here and
+      // classify a missing CONNECTION field as `buyer-tax-id-invalid`, sending
+      // the operator to correct the buyer's data instead.
+      'This connection has no seller tax number set, which every invoice requires. Set it on the connection and re-issue.',
     );
   }
 
   if (command.lines.length === 0) {
     throw new EparagonyConfigException(
       `eparagony.pl cannot invoice order ${command.orderId}: it has no lines`,
-      'The order has no lines, so there is nothing to invoice.'
+      'The order has no lines, so there is nothing to invoice.',
     );
   }
 
@@ -313,7 +330,7 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
     grossSaleValue,
     merchantTIN,
     consumerName: command.buyer.name,
-    consumerAddress: toEntityAddress(command.buyer.address),
+    consumerAddress: toEntityAddress(command.buyer.address, command.orderId),
     netValueByTaxRate,
     taxValueByTaxRate,
     // Stamped explicitly rather than left to the vendor's account default - the
@@ -338,18 +355,14 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
   if (merchantName !== null) {
     metadata.merchantName = merchantName;
   }
-  // `!= null`, NOT `!== undefined`: the config-shape validator blesses an
-  // explicit `null` here as "absent" - which is the repo's own cleared-knob
-  // convention (#2610: clearing a knob writes an explicit `null` rather than
-  // deleting the key, and every reader treats it exactly like absent), and is
-  // what the seller form writes when an operator clears the address. A guard
-  // that tested `undefined` alone let that value through to
-  // `toSellerEntityAddress`, whose first statement dereferences it - a raw
-  // `TypeError` on the live issue path, which core cannot classify and defaults
-  // to `in-doubt`, blocking that order from EVERY sales document on every
-  // connection for a request that never crossed the network.
-  if (config.merchantAddress != null) {
-    metadata.merchantAddress = toSellerEntityAddress(config.merchantAddress);
+  // Only a COMPLETE address is stamped. `config` is JSONB and the raw editor is
+  // a route around the connection form, so a half-filled object is reachable
+  // even with the shape validator in front of it - and a blank `street` on a
+  // required field is a vendor rejection of a real paid order, while a rendered
+  // `"undefined"` is worse still because it succeeds.
+  const merchantAddress = readSellerEntityAddress(config.merchantAddress);
+  if (merchantAddress !== null) {
+    metadata.merchantAddress = merchantAddress;
   }
 
   // Present only when OpenLinker allocated the number. This adapter is not a
@@ -397,17 +410,17 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
  * address the operator has no way to read as "not configured".
  */
 export function toIssuedDocumentSeller(
-  config: EparagonyConnectionConfig
+  config: EparagonyConnectionConfig,
 ): IssuedDocumentSeller | null {
   const name = readNonEmpty(config.merchantName);
   const taxId = readNonEmpty(config.merchantTIN);
-  const address = config.merchantAddress;
-  // `== null` for the same reason the composer uses `!= null`, and it has to
-  // move in the SAME change: this runs inside `toIssueResult`, AFTER
-  // `createDocument` and its status poll have succeeded, so a guard fixed only
-  // upstream would relocate the crash to a point where the vendor has already
-  // created a legally-issued document that OpenLinker then loses.
-  if (name === null || taxId === null || address == null) {
+  // Read through the same completeness check the wire body uses, so what core
+  // PERSISTS and what the vendor RECEIVES can never describe different sellers.
+  // A partial object reads as no address at all: `${street} ${number}` on a
+  // half-filled one renders the literal "undefined undefined" into a snapshot
+  // core keeps forever, where an operator reads it as the seller's real address.
+  const address = readSellerEntityAddress(config.merchantAddress);
+  if (name === null || taxId === null || address === null) {
     return null;
   }
   return {
@@ -417,7 +430,7 @@ export function toIssuedDocumentSeller(
     taxId: { scheme: 'pl-nip', value: taxId },
     address: {
       line1: `${address.street} ${address.number}`.trim(),
-      line2: readNonEmpty(address.apartment),
+      line2: address.apartment ?? null,
       city: address.city,
       postalCode: address.postalCode,
       countryIso2: address.country,
@@ -510,7 +523,7 @@ export function resolveBuyerHandleSchemeTag(scheme: string | undefined, value: s
  * state between submission and final acceptance. This is not one.
  */
 export function toRegulatoryClearanceResult(
-  body: EparagonyDocumentStatusResponse
+  body: EparagonyDocumentStatusResponse,
 ): RegulatoryClearanceResult {
   const processingMode = readUpper(body.processingMode);
   if (processingMode === EPARAGONY_PROCESSING_MODE_NONE) {
@@ -558,7 +571,7 @@ export function readDocumentUrl(body: EparagonyDocumentStatusResponse): string |
 
 /** The hub detail block, when the response carries a readable one. */
 export function readKsefInvoice(
-  body: EparagonyDocumentStatusResponse
+  body: EparagonyDocumentStatusResponse,
 ): EparagonyKsefInvoiceDetails | null {
   const raw = body.ksefInvoice;
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -574,12 +587,23 @@ export function readKsefInvoice(
 function toPricedLine(line: InvoiceLine, index: number, orderId: string): PricedInvoiceLine {
   const code = resolveInvoiceTaxRateCode(line.taxRate);
   if (code === null) {
+    // The remedy rides in the MESSAGE as well as in `reason`, for the reason
+    // recorded above `composeInvoiceDocument`: `reason` matches none of core's
+    // three marker lists, so `classifyFailureCode` answers `provider-rejected`
+    // and the operator would otherwise read "the provider rejected the request"
+    // about a request no provider saw. This one is worth the words:
+    // `OL_TAX_RATE_STRICT_ENABLED` is OFF by default and `toShippingLines` emits
+    // `taxRate: ''` when the split is uncomputable, so on a catalogue with
+    // partial rate coverage this adapter refuses where inFakt, Subiekt and KSeF
+    // all issue - and the operator needs to be told WHICH product to fix.
+    const isRateless = line.taxRate.trim().length === 0;
     throw new EparagonyConfigException(
       `eparagony.pl cannot invoice order ${orderId}: line "${line.name}" carries tax rate ` +
-        `"${line.taxRate}", which is not an invoice tax rate in this regime`,
-      line.taxRate.trim().length === 0
+        `"${line.taxRate}", which is not an invoice tax rate in this regime` +
+        (isRateless ? '. Set the rate on the product and re-issue' : ''),
+      isRateless
         ? 'At least one order line carries no tax rate, and an invoice cannot state one on its behalf. Set the rate on the product and re-issue.'
-        : 'At least one order line carries a tax rate that cannot be expressed on an invoice in this regime.'
+        : 'At least one order line carries a tax rate that cannot be expressed on an invoice in this regime.',
     );
   }
 
@@ -587,7 +611,7 @@ function toPricedLine(line: InvoiceLine, index: number, orderId: string): Priced
   if (quantity === null) {
     throw new EparagonyConfigException(
       `eparagony.pl cannot invoice order ${orderId}: line "${line.name}" has a non-invoiceable quantity ${line.quantity}`,
-      'At least one order line has a quantity that cannot be invoiced.'
+      'At least one order line has a quantity that cannot be invoiced.',
     );
   }
 
@@ -598,7 +622,7 @@ function toPricedLine(line: InvoiceLine, index: number, orderId: string): Priced
     // negative line on an original.
     throw new EparagonyConfigException(
       `eparagony.pl cannot invoice order ${orderId}: line "${line.name}" has a non-invoiceable total`,
-      'At least one order line has a total that cannot be invoiced.'
+      'At least one order line has a total that cannot be invoiced.',
     );
   }
 
@@ -615,7 +639,7 @@ function toPricedLine(line: InvoiceLine, index: number, orderId: string): Priced
  * idempotency key would see "the same key with different data".
  */
 function groupByRate(
-  priced: PricedInvoiceLine[]
+  priced: PricedInvoiceLine[],
 ): Map<EparagonyInvoiceTaxRate, PricedInvoiceLine[]> {
   const groups = new Map<EparagonyInvoiceTaxRate, PricedInvoiceLine[]>();
   for (const member of priced) {
@@ -638,42 +662,52 @@ function groupByRate(
  * rule, and the residual lands on the last member OF THIS GROUP, which is not
  * in general the last line of the document.
  *
- * THE SUBTRACTION CAN COMPUTE NEGATIVE OR ABOVE THE LINE'S OWN GROSS, which are
- * the two cases the rule alone does not cover.
+ * THE RESIDUAL CAN LAND OUTSIDE WHAT ONE LINE CAN HOLD, IN EITHER DIRECTION,
+ * which is the one case the rule alone does not cover. The invariant every
+ * emitted line needs is `0 <= net_i <= gross_i`, because the wire carries the
+ * line's net AND its tax as `gross_i - net_i`, so a net below zero is a negative
+ * net and a net above the line's own gross is a NEGATIVE TAX - both onto a
+ * document bound for a tax authority, and both invisible to the summary checks,
+ * which reconcile perfectly either way. `calculationValidation: NONE` means the
+ * vendor does not catch them either.
  *
- * Below zero: ten lines of one grosz at 23%: the group's gross is 10, its tax
+ * Only the last member can violate it: every earlier entry is
+ * `round(g / (1 + f))` with `f >= 0`, which is in `[0, g]` by construction.
+ *
+ * Below zero. Ten lines of one grosz at 23%: the group's gross is 10, its tax
  * rounds to 2 and its net is 8, while the first nine lines each round to 1, so
- * the tenth computes `8 - 9 = -1`. A negative net in a fiscal invoice body would
- * contradict this file's own promise that an input it cannot express refuses
- * before anything is sent - and refusing here would be the worse answer, because
- * this IS expressible: it is a real, paid order, and a permanent domain
- * rejection of one is the failure shape ANALYSIS-1032 names a defect.
+ * the tenth computes `8 - 9 = -1`.
  *
- * Above the line's own gross: three lines of 3, 3 and 1 grosz at 23%: the
- * group's gross is 7, its tax rounds to 1, its net is 6, while the first two
- * lines round to 2 each, so the third computes `6 - 4 = 2` against a gross of
- * 1. The wire derives tax as `gross - net`, so an unclamped surplus emits a
- * NEGATIVE `taxValue` onto a document bound for the tax authority - invisible
- * to the summary checks, which reconcile perfectly either way, and not caught
- * by the vendor either (`calculationValidation: NONE`). This is reachable on
- * ordinary input, not a constructed edge: `toShippingLines` appends a per-rate
- * share LAST while this function preserves first-seen order, so a shipping
- * share is the last member of its group whenever its rate already appeared
- * above it.
+ * Above its own gross. Three lines of 3, 3 and 1 grosz at 23%: the group's gross
+ * is 7, its tax rounds to 1 and its net is 6, while the first two lines round to
+ * 2 each, so the third computes `6 - 4 = 2` against a gross of 1 - and the
+ * emitted `taxValue` is `1 - 2 = -1`. This is NOT a constructed edge:
+ * `toShippingLines` appends a small per-rate share LAST and {@link groupByRate}
+ * preserves first-seen order, so a shipping share is the last member of its
+ * group whenever its rate already appeared above it.
  *
- * So a shortfall is borrowed back from the nearest earlier lines and a surplus
- * is lent to them, in both cases taking/giving at most what each one holds so
- * none of them crosses zero or its own gross. Neither repair can run out: the
- * allocation always sums to `netGroup`, so a negative last entry means the
- * others hold strictly more than the shortfall, and the earlier headroom
- * available to absorb a surplus is `taxGroup + surplus`, which is at least the
- * surplus because `taxGroup` is never negative. The group's total is untouched
- * either way, which is what the summary reconciles against.
+ * Refusing either case would be the worse answer, because both ARE expressible:
+ * they are real, paid orders, and a permanent domain rejection of one is the
+ * failure shape ANALYSIS-1032 names a defect. So the excess is moved onto
+ * earlier members instead, nearest first, taking at most the headroom each one
+ * has (`g_i - a_i`) or at most what each one holds (`a_i`) depending on the
+ * direction. NEITHER REPAIR CAN RUN OUT. The allocation always sums to
+ * `netGroup`, so for the shortfall the others hold strictly more than it; and
+ * for the surplus the earlier headroom is `taxGroup + surplus`, which is at
+ * least the surplus because `taxGroup` is never negative.
+ *
+ * The group's total is untouched either way, which is what the summary
+ * reconciles against. What the repair DOES change is one line's effective rate:
+ * a line that lent its headroom can end at 0% and a line that was borrowed from
+ * can end at 100% (ten 1-grosz lines at 23% leave two lines at `net 0, tax 1`).
+ * That is a consequence of expressing sub-grosz VAT on a per-line document at
+ * all, and it is the honest version of it - the alternative is a figure the
+ * arithmetic cannot support.
  */
 function allocateGroupNet(
   members: readonly PricedInvoiceLine[],
   netGroup: number,
-  fraction: number
+  fraction: number,
 ): number[] {
   const allocation: number[] = [];
   let allocatedNet = 0;
@@ -732,6 +766,10 @@ function allocateGroupNet(
  * that must reconcile exactly, the per-rate summary, do.
  */
 function resolveNetUnitPrice(lineNet: number, quantity: number): number {
+  // UNREACHABLE today - `toPricedLine` refuses a non-positive or non-finite
+  // quantity several lines earlier, via `toQuantityString`. Kept so the division
+  // below cannot produce an infinity if that order ever changes, and noted so
+  // the next reader does not hunt for the input that reaches it.
   if (!Number.isFinite(quantity) || quantity <= 0) {
     return lineNet;
   }
@@ -762,10 +800,22 @@ function toMajorUnits(minor: number): number {
  * The `toFixed(4)` collapse is the same guard `toMinorUnits` documents: binary
  * floats leave dust a hair below the tie (`100.49999999999999` for a true
  * `100.5`), which would round the wrong way.
+ *
+ * A NON-FINITE INPUT THROWS rather than answering `0`. The branch is
+ * UNREACHABLE today - every amount reaching it has already been through
+ * `toMinorUnits`, which refuses a non-finite value, and every rate fraction is a
+ * table constant - so this is a defence and not a behaviour. But a silent `0`
+ * inside a VAT split is the worst possible answer: the group's net and tax would
+ * still add back to its gross, the summary would reconcile, nothing would be
+ * logged, and the document would understate the tax. Better to fail the whole
+ * composition before anything is sent.
  */
 function roundMinorUnits(value: number): number {
   if (!Number.isFinite(value)) {
-    return 0;
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot invoice: a tax split produced the non-finite amount ${value}`,
+      'This order produced an amount that cannot be stated on an invoice.',
+    );
   }
   const collapsed = Number(Math.abs(value).toFixed(4));
   const rounded = Math.sign(value) * Math.round(collapsed);
@@ -780,34 +830,115 @@ function roundMinorUnits(value: number): number {
  * Project the neutral buyer address onto the vendor's five-part entity address.
  *
  * The vendor splits street from building number; the neutral shape does not, so
- * the split is inferred from the line's trailing token. A mis-split is COSMETIC
- * and cannot lose data - `street` plus `number` always re-reads as the original
- * line - which is what makes inferring acceptable here where it would not be for
- * a tax rate or an identifier.
+ * the split is inferred from the line's trailing token. Concatenating `street`
+ * and `number` always re-reads as the original line, so nothing is LOST - but a
+ * mis-split can MIS-ASSIGN the building number, which is not the same claim: on
+ * the common Polish `ul. Kwiatowa 12 m. 8` form the apartment lands in the
+ * vendor's building-number field on a document bound for the national hub. That
+ * is still the right trade against refusing a real paid order over a formatting
+ * detail, and it is a weaker guarantee than a tax rate or an identifier gets,
+ * which both travel verbatim.
  */
-function toEntityAddress(address: BuyerAddress): EparagonyEntityAddress {
-  const { street, number } = splitStreetAndNumber(address.line1);
+function toEntityAddress(address: BuyerAddress, orderId: string): EparagonyEntityAddress {
+  // A PRESENCE check, not a validity one, which is why it does not contradict
+  // ADR-073 decision 5 (never pre-judge a value the vendor judges): `street`,
+  // `postalCode`, `city` and `country` are REQUIRED on the vendor's own type,
+  // and `BuyerAddress` guarantees none of them is non-empty. A blank `street`
+  // would be sent and rejected with an opaque validation code; the FORMAT of a
+  // present value still travels verbatim for the vendor to judge, as the foreign
+  // postcode spec pins.
+  //
+  // WHAT THIS DOES AND DOES NOT REACH ON A HASH-ONLY DEPLOYMENT. Under
+  // `OL_STORE_PII=false` core's `redactAddress` writes a non-empty placeholder
+  // into `address1`, `city` and `postalCode`, so those three still pass here and
+  // the placeholder reaches the document exactly as it did before - a
+  // pre-existing question for the wiring slice, not something this check
+  // changes. `country` is the exception: redaction writes `address.country ?? ''`,
+  // so an order whose source reported no country refuses here where it
+  // previously reached the vendor. That is the right direction - the field is
+  // required and the vendor would refuse it anyway, with a code the operator
+  // cannot act on.
+  const line1 = readNonEmpty(address.line1);
+  const postalCode = readNonEmpty(address.postalCode);
+  const city = readNonEmpty(address.city);
+  const country = readNonEmpty(address.countryIso2);
+  if (line1 === null || postalCode === null || city === null || country === null) {
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot invoice order ${orderId}: the buyer's address is missing a part an ` +
+        `invoice must state (street line, postcode, city or country). Complete the buyer's ` +
+        `address on the order and re-issue`,
+      "The buyer's address is missing a part every invoice must state. Complete it on the order and re-issue.",
+    );
+  }
+
+  const { street, number } = splitStreetAndNumber(line1);
   const apartment = readNonEmpty(address.line2);
   return {
     street,
     number,
     ...(apartment === null ? {} : { apartment }),
-    postalCode: address.postalCode,
-    city: address.city,
-    country: address.countryIso2,
+    postalCode,
+    city,
+    country,
   };
 }
 
-/** The operator's own configured seller address, copied across unchanged. */
-function toSellerEntityAddress(address: EparagonySellerAddress): EparagonyEntityAddress {
+/**
+ * The operator's own configured seller address, or `null` when it is absent or
+ * incomplete.
+ *
+ * Every required part is read rather than copied, which is the same defence the
+ * shape validator applies at the connection boundary rather than a replacement
+ * for it: `Connection.config` is JSONB, the raw JSON editor bypasses the form,
+ * and a connection configured before the validator shipped was never checked at
+ * all. The five parts are required on the vendor's own type, so a missing one is
+ * not a degraded address - it is not an address.
+ *
+ * AN EXPLICIT `null` READS AS ABSENT, and that half is load-bearing on its own.
+ * The shape validator blesses `null` here - the repo's cleared-knob convention
+ * (#2610: clearing a knob writes an explicit `null` rather than deleting the
+ * key, and every reader treats it exactly like absent), and what the seller form
+ * writes when an operator clears the address. A guard testing `undefined` alone
+ * let that value through to a field-by-field copy whose first statement
+ * dereferences it: a raw `TypeError` on the live issue path, which core cannot
+ * classify and therefore defaults to `in-doubt`, blocking that order from EVERY
+ * sales document on every connection for a request that never crossed the
+ * network (#3274).
+ *
+ * BOTH CALLERS read through this ONE function for that reason.
+ * `toIssuedDocumentSeller` runs inside `toIssueResult`, AFTER `createDocument`
+ * and its status poll have succeeded, so a guard fixed only in the composer
+ * would relocate the same crash to a point where the vendor has already created
+ * a legally-issued document that OpenLinker then loses.
+ */
+function readSellerEntityAddress(
+  address: EparagonySellerAddress | undefined,
+): EparagonyEntityAddress | null {
+  if (address === undefined || address === null || typeof address !== 'object') {
+    return null;
+  }
+  const street = readNonEmpty(address.street);
+  const number = readNonEmpty(address.number);
+  const postalCode = readNonEmpty(address.postalCode);
+  const city = readNonEmpty(address.city);
+  const country = readNonEmpty(address.country);
+  if (
+    street === null ||
+    number === null ||
+    postalCode === null ||
+    city === null ||
+    country === null
+  ) {
+    return null;
+  }
   const apartment = readNonEmpty(address.apartment);
   return {
-    street: address.street,
-    number: address.number,
+    street,
+    number,
     ...(apartment === null ? {} : { apartment }),
-    postalCode: address.postalCode,
-    city: address.city,
-    country: address.country,
+    postalCode,
+    city,
+    country,
   };
 }
 

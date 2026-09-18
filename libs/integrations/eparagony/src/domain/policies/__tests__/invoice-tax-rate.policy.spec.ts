@@ -177,3 +177,29 @@ describe('invoice-tax-rate.policy', () => {
     });
   });
 });
+
+describe('resolveInvoiceTaxRateCode - decimal separator', () => {
+  it('should read a comma decimal as a rate rather than blocking the whole invoice', () => {
+    // `Number('23,00')` is NaN, which fell through to the exemption lookup and
+    // then to a hard refusal, while core's own `parseTaxRatePercent` reads the
+    // same value as 23. Closing the divergence, not a reported defect.
+    expect(resolveInvoiceTaxRateCode('23,00')).toBe('23');
+    expect(resolveInvoiceTaxRateCode('8,0')).toBe('8');
+    expect(resolveInvoiceTaxRateCode('23,00%')).toBe('23');
+  });
+
+  it('should leave a thousands separator alone rather than reading it as a decimal', () => {
+    // `1,000` must not resolve as 1%. The pattern takes one or two digits after
+    // the comma, so this one is left to fail the rate lookup as it should.
+    expect(resolveInvoiceTaxRateCode('1,000')).toBeNull();
+  });
+
+  it('should carry the whole comma value through, not truncate it at the comma', () => {
+    // This is what makes the normalisation narrower than `parseFloat`, which
+    // reads `23,5` as 23 and would silently turn a 23.5% rate into a 23% one.
+    // Here it resolves to 23.5, which is not a rate in this regime, so the
+    // answer is an honest refusal rather than a wrong rate.
+    expect(resolveInvoiceTaxRateCode('23,5')).toBeNull();
+    expect(resolveInvoiceTaxRateCode('23,0')).toBe('23');
+  });
+});

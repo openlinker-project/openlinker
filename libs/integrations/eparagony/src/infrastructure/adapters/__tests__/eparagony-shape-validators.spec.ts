@@ -193,6 +193,24 @@ describe('EparagonyConnectionConfigShapeValidatorAdapter', () => {
       ).resolves.toBeUndefined();
     });
   });
+
+  it('should never echo a submitted seller value back in the issue list', async () => {
+    // The issues reach the operator's browser as a 400 body, so they name the
+    // PATH and never the value - the rule the credentials validator holds too.
+    const error = await validator
+      .validate({
+        environment: 'sandbox',
+        posId: 'p',
+        merchantTIN: '   ',
+        merchantName: 'Secret Trading Sp. z o.o.',
+      })
+      .then(() => null)
+      .catch((e: unknown) => e as InvalidConnectionConfigException);
+    const rendered = `${error?.message} ${JSON.stringify(error?.errors)}`;
+
+    expect(rendered).not.toContain('Secret Trading');
+    expect(error?.errors.map((issue) => issue.path)).toContain('merchantTIN');
+  });
 });
 
 describe('EparagonyConnectionCredentialsShapeValidatorAdapter', () => {

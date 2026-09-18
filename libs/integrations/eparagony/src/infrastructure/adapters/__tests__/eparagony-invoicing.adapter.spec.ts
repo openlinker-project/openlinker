@@ -60,7 +60,7 @@ function makeCommand(overrides: Partial<IssueInvoiceCommand> = {}): IssueInvoice
         postalCode: '20-601',
         countryIso2: 'PL',
       },
-      'company'
+      'company',
     ),
     currency: 'PLN',
     lines: [{ name: 'T-shirt', quantity: 2, unitPriceGross: 49.2, taxRate: '23' }],
@@ -123,7 +123,7 @@ interface FakeClient extends IEparagonyHttpClient {
 
 function makeClient(
   statuses: Array<EparagonyDocumentStatusResponse | Error>,
-  postBehaviour?: Error
+  postBehaviour?: Error,
 ): FakeClient {
   const queue = [...statuses];
   return {
@@ -132,7 +132,7 @@ function makeClient(
       .mockImplementation(() =>
         postBehaviour === undefined
           ? Promise.resolve({ status: 202, data: {} } as EparagonyHttpResponse<unknown>)
-          : Promise.reject(postBehaviour)
+          : Promise.reject(postBehaviour),
       ),
     get: jest.fn().mockImplementation(() => {
       const next = queue.length > 1 ? queue.shift() : queue[0];
@@ -148,7 +148,7 @@ function makeClient(
 
 function makeAdapter(
   client: IEparagonyHttpClient,
-  config: EparagonyConnectionConfig = makeConfig()
+  config: EparagonyConnectionConfig = makeConfig(),
 ): EparagonyInvoicingAdapter {
   return new EparagonyInvoicingAdapter(CONNECTION_ID, client, logger, config);
 }
@@ -156,7 +156,7 @@ function makeAdapter(
 function makeRecord(
   providerInvoiceId: string | null,
   regulatoryStatus: RegulatoryStatus = 'pending-submission',
-  clearanceReference: string | null = null
+  clearanceReference: string | null = null,
 ): InvoiceRecord {
   const now = new Date('2026-09-15T10:00:00Z');
   return new InvoiceRecord(
@@ -175,7 +175,7 @@ function makeRecord(
     now,
     null,
     now,
-    now
+    now,
   );
 }
 
@@ -231,8 +231,8 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
             reason: 'price correction',
             correctedLines: [],
           },
-        })
-      )
+        }),
+      ),
     ).rejects.toThrow(EparagonyConfigException);
     // Refused BEFORE the boundary: nothing was sent.
     expect(client.post).not.toHaveBeenCalled();
@@ -241,7 +241,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
   it('refuses a document kind it does not issue rather than mislabelling an original', async () => {
     const client = makeClient([OFFLINE]);
     await expect(
-      makeAdapter(client).issueInvoice(makeCommand({ documentType: 'credit-note' }))
+      makeAdapter(client).issueInvoice(makeCommand({ documentType: 'credit-note' })),
     ).rejects.toThrow(EparagonyConfigException);
     expect(client.post).not.toHaveBeenCalled();
   });
@@ -275,7 +275,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
     const { record } = await makeAdapter(client).issueInvoice(command);
 
     expect(record.providerInvoiceId).toBe(
-      deriveDocumentToken(CONNECTION_ID, `invoice:${CONNECTION_ID}:ol_order_1`)
+      deriveDocumentToken(CONNECTION_ID, `invoice:${CONNECTION_ID}:ol_order_1`),
     );
     // Nothing to echo on the record - core supplied no key.
     expect(record.idempotencyKey).toBeNull();
@@ -340,7 +340,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
           city: 'Warszawa',
           country: 'PL',
         },
-      })
+      }),
     ).issueInvoice(makeCommand());
 
     expect(result.seller).toMatchObject({
@@ -360,7 +360,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice failures', () => {
   it('refuses a composition failure BEFORE anything crosses the boundary', async () => {
     const client = makeClient([OFFLINE]);
     await expect(
-      makeAdapter(client, makeConfig({ merchantTIN: undefined })).issueInvoice(makeCommand())
+      makeAdapter(client, makeConfig({ merchantTIN: undefined })).issueInvoice(makeCommand()),
     ).rejects.toBeInstanceOf(EparagonyConfigException);
     // Nothing was sent, so nothing was issued - which is what makes the
     // `rejected` classification safe to re-attempt after a fix.
@@ -396,7 +396,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice failures', () => {
     try {
       const client = makeClient([PENDING]);
       const promise = makeAdapter(client, makeConfig({ statusPollTimeoutMs: 5_000 })).issueInvoice(
-        makeCommand()
+        makeCommand(),
       );
       const assertion = expect(promise).rejects.toBeInstanceOf(EparagonyNetworkError);
       await jest.advanceTimersByTimeAsync(10_000);
@@ -429,11 +429,11 @@ describe('EparagonyInvoicingAdapter - getClearanceStatus', () => {
   it("reads the relay progress off the record's own document token", async () => {
     const client = makeClient([CLEARED]);
     const result = await makeAdapter(client).getClearanceStatus(
-      makeRecord(EXPECTED_DOCUMENT_TOKEN)
+      makeRecord(EXPECTED_DOCUMENT_TOKEN),
     );
 
     expect(client.get).toHaveBeenCalledWith(
-      `documents/${encodeURIComponent(EXPECTED_DOCUMENT_TOKEN)}/status`
+      `documents/${encodeURIComponent(EXPECTED_DOCUMENT_TOKEN)}/status`,
     );
     expect(result).toEqual({
       regulatoryStatus: 'accepted',
@@ -444,27 +444,57 @@ describe('EparagonyInvoicingAdapter - getClearanceStatus', () => {
   it('still reports awaiting submission while the document sits at OFFLINE', async () => {
     const client = makeClient([OFFLINE]);
     const result = await makeAdapter(client).getClearanceStatus(
-      makeRecord(EXPECTED_DOCUMENT_TOKEN)
+      makeRecord(EXPECTED_DOCUMENT_TOKEN),
     );
     expect(result).toEqual({ regulatoryStatus: 'pending-submission', clearanceReference: null });
   });
 
-  it('ECHOES the record rather than claiming not-applicable when there is no token to read', async () => {
-    // `not-applicable` is TERMINAL, so claiming it would stop the
-    // reconciliation looking at a document whose relay may be perfectly
-    // healthy, on the strength of a missing id.
-    const client = makeClient([CLEARED]);
-    const result = await makeAdapter(client).getClearanceStatus(makeRecord(null));
+  it.each([null, '', '   '])(
+    'ECHOES the record rather than claiming not-applicable when the token is %p',
+    async (token) => {
+      // `not-applicable` is TERMINAL, so claiming it would stop the
+      // reconciliation looking at a document whose relay may be perfectly
+      // healthy, on the strength of a missing id.
+      //
+      // The record carries values that are NOT the defaults, deliberately: with
+      // `pending-submission` / `null` on both sides a hardcoded return would
+      // pass this test and prove nothing about echoing.
+      const client = makeClient([CLEARED]);
+      const result = await makeAdapter(client).getClearanceStatus(
+        makeRecord(token, 'submitted', 'ref-echo'),
+      );
 
-    expect(result).toEqual({ regulatoryStatus: 'pending-submission', clearanceReference: null });
-    expect(client.get).not.toHaveBeenCalled();
+      expect(result).toEqual({ regulatoryStatus: 'submitted', clearanceReference: 'ref-echo' });
+      expect(client.get).not.toHaveBeenCalled();
+    },
+  );
+
+  it('refuses a status body that is not an object at all, as in-doubt rather than as a verdict', async () => {
+    // A contract break, not a status. `EparagonyNetworkError` is always
+    // `in-doubt`, which is right: the document may exist perfectly well behind
+    // an unreadable answer, so nothing here may look like a rejection.
+    const client = makeClient([OFFLINE]);
+    client.get.mockResolvedValue({ status: 200, data: 'not an object' });
+    await expect(
+      makeAdapter(client).getClearanceStatus(makeRecord(EXPECTED_DOCUMENT_TOKEN)),
+    ).rejects.toBeInstanceOf(EparagonyNetworkError);
+
+    client.get.mockResolvedValue({ status: 200, data: [OFFLINE] });
+    await expect(
+      makeAdapter(client).getClearanceStatus(makeRecord(EXPECTED_DOCUMENT_TOKEN)),
+    ).rejects.toBeInstanceOf(EparagonyNetworkError);
+
+    client.get.mockResolvedValue({ status: 200, data: null });
+    await expect(
+      makeAdapter(client).getClearanceStatus(makeRecord(EXPECTED_DOCUMENT_TOKEN)),
+    ).rejects.toBeInstanceOf(EparagonyNetworkError);
   });
 
   it('echoes the record when the vendor holds no document under our token', async () => {
     const unknownDocument = new EparagonyApiError('unknown token', 404, { errorCode: 92 });
     const client = makeClient([unknownDocument]);
     const result = await makeAdapter(client).getClearanceStatus(
-      makeRecord(EXPECTED_DOCUMENT_TOKEN, 'accepted', 'ref-1')
+      makeRecord(EXPECTED_DOCUMENT_TOKEN, 'accepted', 'ref-1'),
     );
     expect(result).toEqual({ regulatoryStatus: 'accepted', clearanceReference: 'ref-1' });
   });
@@ -473,7 +503,7 @@ describe('EparagonyInvoicingAdapter - getClearanceStatus', () => {
     const transport = new EparagonyNetworkError('connection reset');
     const client = makeClient([transport]);
     await expect(
-      makeAdapter(client).getClearanceStatus(makeRecord(EXPECTED_DOCUMENT_TOKEN))
+      makeAdapter(client).getClearanceStatus(makeRecord(EXPECTED_DOCUMENT_TOKEN)),
     ).rejects.toBe(transport);
   });
 });
@@ -508,7 +538,7 @@ describe('EparagonyInvoicingAdapter - upsertCustomer', () => {
         postalCode: '20-601',
         countryIso2: 'PL',
       },
-      taxId === null ? 'private' : 'company'
+      taxId === null ? 'private' : 'company',
     );
   }
 

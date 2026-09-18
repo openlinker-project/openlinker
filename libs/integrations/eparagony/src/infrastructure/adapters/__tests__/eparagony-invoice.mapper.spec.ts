@@ -12,7 +12,7 @@
  *
  * @module libs/integrations/eparagony/src/infrastructure/adapters/__tests__
  */
-import { BuyerProfile } from '@openlinker/core/invoicing';
+import { BuyerProfile, CURRENCY_REJECTION_MARKERS } from '@openlinker/core/invoicing';
 import type {
   BuyerAddress,
   InvoiceLine,
@@ -68,7 +68,7 @@ function makeBuyer(taxId: TaxIdentifier | null = null, address = makeAddress()):
     'Firma Polska sc.',
     taxId,
     address,
-    taxId === null ? 'private' : 'company'
+    taxId === null ? 'private' : 'company',
   );
 }
 
@@ -86,7 +86,7 @@ function makeCommand(overrides: Partial<IssueInvoiceCommand> = {}): IssueInvoice
 
 function composeDocument(
   command: IssueInvoiceCommand = makeCommand(),
-  config: EparagonyConnectionConfig = makeConfig()
+  config: EparagonyConnectionConfig = makeConfig(),
 ): ReturnType<typeof composeInvoiceDocument> {
   return composeInvoiceDocument({
     command,
@@ -99,9 +99,22 @@ function composeDocument(
 /** The wire body alone, for the many assertions that do not care about the report. */
 function compose(
   command: IssueInvoiceCommand = makeCommand(),
-  config: EparagonyConnectionConfig = makeConfig()
+  config: EparagonyConnectionConfig = makeConfig(),
 ): ReturnType<typeof composeInvoiceDocument>['request'] {
   return composeDocument(command, config).request;
+}
+
+/** Run a composition that must refuse, and hand back the refusal itself. */
+function captureRefusal(run: () => unknown): EparagonyConfigException {
+  try {
+    run();
+  } catch (error) {
+    if (error instanceof EparagonyConfigException) {
+      return error;
+    }
+    throw error;
+  }
+  throw new Error('expected a refusal, but the composition succeeded');
 }
 
 /** Sum the per-rate map, whatever subset of codes it carries. */
@@ -110,7 +123,7 @@ function sumRateMap(map: Partial<Record<EparagonyInvoiceTaxRate, number>>): numb
 }
 
 describe('composeInvoiceDocument - the shape the live sandbox accepted', () => {
-  it('reproduces the POC body field for field for a single 23% line', () => {
+  it('emits the COMPLETE metadata the POC body carried, plus currency and orderId and nothing else', () => {
     const request = compose();
 
     expect(request.posId).toBe('openlinker');
@@ -118,13 +131,28 @@ describe('composeInvoiceDocument - the shape the live sandbox accepted', () => {
     // Required whenever `documentToken` is sent; omitting it is a 400.
     expect(request.transactionToken).toBe(TRANSACTION_TOKEN);
     expect(request.eInvoice.invoiceType).toBe('VAT');
-    expect(request.eInvoice.metadata).toMatchObject({
+    // `toEqual`, NOT `toMatchObject`: a parity assertion that passes over extra
+    // keys cannot support a parity claim, and the next field added to `metadata`
+    // would enter the wire silently. The two keys beyond the POC body -
+    // `currency` and `orderId` - are named here rather than tolerated, which is
+    // what makes this test the wire's real shape.
+    expect(request.eInvoice.metadata).toEqual({
       vatCalculationMethod: 'SUM_OF_RATES_NET',
       calculationValidation: 'NONE',
       grossSaleValue: 9840,
       merchantTIN: '5252556107',
+      consumerName: 'Firma Polska sc.',
+      consumerAddress: {
+        street: 'Pl. Obroncow Lublina',
+        number: '73',
+        postalCode: '20-601',
+        city: 'Warszawa',
+        country: 'PL',
+      },
       netValueByTaxRate: { '23': 8000 },
       taxValueByTaxRate: { '23': 1840 },
+      currency: 'PLN',
+      orderId: 'ol_order_1',
     });
     expect(request.eInvoice.lines).toEqual([
       {
@@ -165,7 +193,7 @@ describe('composeInvoiceDocument - the arithmetic reconciles exactly', () => {
     expect(metadata.taxValueByTaxRate).toEqual({ '23': 690, '5': 50 });
     // The invariant, stated as arithmetic rather than as a comment.
     expect(sumRateMap(metadata.netValueByTaxRate) + sumRateMap(metadata.taxValueByTaxRate)).toBe(
-      metadata.grossSaleValue
+      metadata.grossSaleValue,
     );
   });
 
@@ -223,14 +251,15 @@ describe('composeInvoiceDocument - the arithmetic reconciles exactly', () => {
     // net is 8 while the first nine lines round up to 1 each, so a bare
     // `netGroup - allocated` would hand the tenth line -1.
     { label: 'residual below zero', gross: Array.from({ length: 10 }, () => 0.01) },
-    // The residual runs ABOVE the last line's own gross, which a `>= 0` clamp
-    // alone misses: gross 3+3+1 at 23% gives a group net of 6, the first two
-    // lines round to 2 each, and the third computes 6-4=2 against a gross of 1
-    // - so `taxValue` is 1-2 = -1, a NEGATIVE VAT on a document bound for a tax
-    // authority, with every summary still reconciling. Not constructed:
-    // `toShippingLines` appends a small per-rate share LAST and `groupByRate`
-    // preserves first-seen order, so a shipping share is the last member of its
-    // group whenever its rate already appeared above it.
+    // The residual runs ABOVE the last line's own gross, which is the harder
+    // direction and the one a `>= 0` clamp alone misses: gross 3+3+1 at 23%
+    // gives a group net of 6, the first two lines round to 2 each, and the third
+    // computes 6-4=2 against a gross of 1 - so `taxValue` is 1-2 = -1, a
+    // NEGATIVE VAT on a document bound for a tax authority, with every summary
+    // still reconciling. Not constructed: `toShippingLines` appends a small
+    // per-rate share LAST and `groupByRate` preserves first-seen order, so a
+    // shipping share is the last member of its group whenever its rate already
+    // appeared above it.
     { label: 'residual above the last gross', gross: [0.03, 0.03, 0.01] },
     {
       label: 'residual above, longer group',
@@ -264,15 +293,15 @@ describe('composeInvoiceDocument - the arithmetic reconciles exactly', () => {
       // The repair moves net BETWEEN lines and never changes the group's total,
       // which is what the summary reconciles against.
       expect(wire.reduce((sum, line) => sum + line.netTotalLineValue, 0)).toBe(
-        metadata.netValueByTaxRate['23']
+        metadata.netValueByTaxRate['23'],
       );
       expect(wire.reduce((sum, line) => sum + line.taxValue, 0)).toBe(
-        metadata.taxValueByTaxRate['23']
+        metadata.taxValueByTaxRate['23'],
       );
       expect(sumRateMap(metadata.netValueByTaxRate) + sumRateMap(metadata.taxValueByTaxRate)).toBe(
-        metadata.grossSaleValue
+        metadata.grossSaleValue,
       );
-    }
+    },
   );
 
   it('reports the same repaired figures to core that it put on the wire', () => {
@@ -330,7 +359,7 @@ describe('composeInvoiceDocument - the arithmetic reconciles exactly', () => {
       expect(tax).toBe(metadata.taxValueByTaxRate[code]);
     }
     expect(sumRateMap(metadata.netValueByTaxRate) + sumRateMap(metadata.taxValueByTaxRate)).toBe(
-      metadata.grossSaleValue
+      metadata.grossSaleValue,
     );
   });
 
@@ -373,7 +402,7 @@ describe('composeInvoiceDocument - the buyer', () => {
     // accepts. This one IS checksum-verified on the vendor's side, so the
     // refusal is reachable - and it must arrive from the vendor, not from here.
     const request = compose(
-      makeCommand({ buyer: makeBuyer({ scheme: 'pl-nip', value: '6460558758' }) })
+      makeCommand({ buyer: makeBuyer({ scheme: 'pl-nip', value: '6460558758' }) }),
     );
     expect(request.eInvoice.metadata.consumerTIN).toBe('6460558758');
 
@@ -403,7 +432,7 @@ describe('composeInvoiceDocument - the buyer', () => {
     const request = compose(
       makeCommand({
         buyer: makeBuyer(null, makeAddress({ line1: 'ul. Grzybowska 2', line2: 'lok. 45' })),
-      })
+      }),
     );
     expect(request.eInvoice.metadata.consumerAddress).toEqual({
       street: 'ul. Grzybowska',
@@ -426,7 +455,7 @@ describe('composeInvoiceDocument - the buyer', () => {
     const request = compose(
       makeCommand({
         buyer: makeBuyer(null, makeAddress({ postalCode: 'SW1A 1AA', countryIso2: 'GB' })),
-      })
+      }),
     );
     expect(request.eInvoice.metadata.consumerAddress.postalCode).toBe('SW1A 1AA');
     expect(request.eInvoice.metadata.consumerAddress.country).toBe('GB');
@@ -452,7 +481,7 @@ describe('composeInvoiceDocument - the seller', () => {
           city: 'Warszawa',
           country: 'PL',
         },
-      })
+      }),
     );
     expect(request.eInvoice.metadata.merchantName).toBe('OpenLinker POC Sp. z o.o.');
     expect(request.eInvoice.metadata.merchantAddress).toEqual({
@@ -462,25 +491,6 @@ describe('composeInvoiceDocument - the seller', () => {
       city: 'Warszawa',
       country: 'PL',
     });
-  });
-
-  it('reads an explicitly cleared seller address as absent, agreeing with the validator', () => {
-    // The counterpart to `eparagony-shape-validators.spec.ts`'s "should treat an
-    // explicit null as absent". That test blesses `merchantAddress: null` into
-    // persistence, so the mapper has to agree or the validator is green about a
-    // config that crashes the live issue path (#3274). Written with an explicit
-    // cast because the declared type is `merchantAddress?: EparagonySellerAddress`
-    // and `null` is exactly the value the type does not admit but the raw JSON
-    // config editor, curl and the cleared-knob convention (#2610) all produce.
-    const config = makeConfig({
-      merchantName: 'OpenLinker POC Sp. z o.o.',
-      merchantAddress: null as unknown as undefined,
-    });
-
-    const request = compose(makeCommand(), config);
-
-    expect(request.eInvoice.metadata.merchantName).toBe('OpenLinker POC Sp. z o.o.');
-    expect('merchantAddress' in request.eInvoice.metadata).toBe(false);
   });
 });
 
@@ -517,10 +527,10 @@ describe('composeInvoiceDocument - optional metadata', () => {
 
   it('passes a calendar sale date through and ignores a malformed one', () => {
     expect(compose(makeCommand({ saleDate: '2026-09-15' })).eInvoice.metadata.saleEndDate).toBe(
-      '2026-09-15'
+      '2026-09-15',
     );
     expect(
-      'saleEndDate' in compose(makeCommand({ saleDate: '15/09/2026' })).eInvoice.metadata
+      'saleEndDate' in compose(makeCommand({ saleDate: '15/09/2026' })).eInvoice.metadata,
     ).toBe(false);
   });
 });
@@ -541,9 +551,13 @@ describe('composeInvoiceDocument - refusals before anything is sent', () => {
       throw new Error('expected a refusal');
     } catch (error) {
       expect(error).toBeInstanceOf(EparagonyConfigException);
-      expect((error as EparagonyConfigException).reason.toLowerCase()).toContain(
-        'unsupported currency'
-      );
+      // Asserted against CORE's published constant, not against a phrase copied
+      // here - `invoicing.types.ts` publishes it specifically so a core reword
+      // breaks this build rather than silently degrading the operator's failure
+      // code to the generic one. Pinning our own wording would prove nothing
+      // about core.
+      const haystack = (error as EparagonyConfigException).reason.toLowerCase();
+      expect(CURRENCY_REJECTION_MARKERS.some((marker) => haystack.includes(marker))).toBe(true);
       expect((error as EparagonyConfigException).failureMode).toBe('rejected');
     }
   });
@@ -556,10 +570,10 @@ describe('composeInvoiceDocument - refusals before anything is sent', () => {
     // Mandatory on every invoice, and validated against the vendor account, so
     // a wrong or missing value fails every invoice rather than one order.
     expect(() => compose(makeCommand(), makeConfig({ merchantTIN: undefined }))).toThrow(
-      EparagonyConfigException
+      EparagonyConfigException,
     );
     expect(() => compose(makeCommand(), makeConfig({ merchantTIN: '  ' }))).toThrow(
-      EparagonyConfigException
+      EparagonyConfigException,
     );
   });
 
@@ -568,31 +582,53 @@ describe('composeInvoiceDocument - refusals before anything is sent', () => {
     // 'tax identifier']. A reword to "seller tax ID" would classify a missing
     // CONNECTION field as `buyer-tax-id-invalid` and send the operator to
     // correct the BUYER's data instead. "tax number" is deliberate.
-    let reason = '';
-    try {
-      compose(makeCommand(), makeConfig({ merchantTIN: undefined }));
-    } catch (error) {
-      reason = (error as EparagonyConfigException).reason;
-    }
+    //
+    // Asserted on BOTH texts. `classifyFailureCode` prefers `reason` but falls
+    // back to `error.message` whenever `reason` is not a string, so under
+    // refactoring the two are one haystack.
+    const error = captureRefusal(() =>
+      compose(makeCommand(), makeConfig({ merchantTIN: undefined })),
+    );
 
-    expect(reason).toContain('seller tax number');
+    expect(error.reason).toContain('seller tax number');
     for (const marker of ['tax id', 'tax-id', 'taxid', 'tax identifier']) {
-      expect(reason.toLowerCase()).not.toContain(marker);
+      expect(error.reason.toLowerCase()).not.toContain(marker);
+      expect(error.message.toLowerCase()).not.toContain(marker);
     }
+  });
+
+  it('repeats the remedy in the MESSAGE, which is the only text this lane persists', () => {
+    // `InvoiceService.sanitizeError` builds `invoice_records.errorMessage` from
+    // `error.message`; `reason` is matched against three marker lists and then
+    // DISCARDED. So a remedy that lives only in `reason` reaches nothing - not
+    // `failureReason`, not `errorMessage`, not the log - and the operator reads
+    // "The invoicing provider rejected the request." about a request no provider
+    // saw. Both refusals that have an operator remedy repeat it in `message`.
+    expect(
+      captureRefusal(() => compose(makeCommand(), makeConfig({ merchantTIN: undefined }))).message,
+    ).toContain('Set it on the connection and re-issue');
+
+    expect(
+      captureRefusal(() =>
+        compose(
+          makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: 10, taxRate: '' }] }),
+        ),
+      ).message,
+    ).toContain('Set the rate on the product and re-issue');
   });
 
   it('refuses a line whose rate is not an invoice rate in this regime', () => {
     expect(() =>
       compose(
-        makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: 10, taxRate: '7' }] })
-      )
+        makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: 10, taxRate: '7' }] }),
+      ),
     ).toThrow(EparagonyConfigException);
   });
 
   it('refuses a line with no rate rather than substituting one', () => {
     try {
       compose(
-        makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: 10, taxRate: '' }] })
+        makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: 10, taxRate: '' }] }),
       );
       throw new Error('expected a refusal');
     } catch (error) {
@@ -604,21 +640,81 @@ describe('composeInvoiceDocument - refusals before anything is sent', () => {
   it('refuses a non-invoiceable quantity', () => {
     expect(() =>
       compose(
-        makeCommand({ lines: [{ name: 'X', quantity: 0, unitPriceGross: 10, taxRate: '23' }] })
-      )
+        makeCommand({ lines: [{ name: 'X', quantity: 0, unitPriceGross: 10, taxRate: '23' }] }),
+      ),
     ).toThrow(EparagonyConfigException);
   });
 
   it('refuses a negative line, because a credit is a correction document and not a line', () => {
     expect(() =>
       compose(
-        makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: -10, taxRate: '23' }] })
-      )
+        makeCommand({ lines: [{ name: 'X', quantity: 1, unitPriceGross: -10, taxRate: '23' }] }),
+      ),
     ).toThrow(EparagonyConfigException);
   });
 
   it('refuses an order with no lines', () => {
     expect(() => compose(makeCommand({ lines: [] }))).toThrow(EparagonyConfigException);
+  });
+
+  it.each(['line1', 'postalCode', 'city', 'countryIso2'] as const)(
+    'refuses a buyer address whose %s is blank rather than sending the blank',
+    (field) => {
+      // These four are REQUIRED on the vendor's entity address and `BuyerAddress`
+      // guarantees none of them is non-empty, so a blank one used to be sent and
+      // rejected with an opaque code - `splitStreetAndNumber('')` even yielded
+      // `street: ''` against a required field. This is a PRESENCE check; the
+      // FORMAT of a present value still travels verbatim (see the foreign
+      // postcode case above).
+      for (const blank of ['', '   ']) {
+        expect(() =>
+          compose(makeCommand({ buyer: makeBuyer(null, makeAddress({ [field]: blank })) })),
+        ).toThrow(EparagonyConfigException);
+      }
+    },
+  );
+
+  it('refuses a line whose total cannot be expressed in minor units at all', () => {
+    // The `grossMinor === null` arm, distinct from the `< 0` one beside it: a
+    // non-finite total has no minor-unit representation, so there is nothing to
+    // put on the wire and nothing to round.
+    expect(() =>
+      compose(
+        makeCommand({
+          lines: [{ name: 'X', quantity: 1, unitPriceGross: Number.NaN, taxRate: '23' }],
+        }),
+      ),
+    ).toThrow(EparagonyConfigException);
+    expect(() =>
+      compose(
+        makeCommand({
+          lines: [
+            { name: 'X', quantity: 1, unitPriceGross: Number.POSITIVE_INFINITY, taxRate: '23' },
+          ],
+        }),
+      ),
+    ).toThrow(EparagonyConfigException);
+  });
+});
+
+describe('composeInvoiceDocument - a fractional quantity', () => {
+  it('lets the unit price differ from the line total by a grosz while the SUMMARY stays exact', () => {
+    // The one case `resolveNetUnitPrice`'s own docblock admits can differ, and
+    // it was untested. `calculationValidation: NONE` is what makes the vendor
+    // tolerate it; the figures that must reconcile exactly - the per-rate
+    // summary and the line's own net plus tax - still do.
+    const lines: InvoiceLine[] = [
+      { name: 'Cable, per metre', quantity: 1.5, unitPriceGross: 10, taxRate: '23' },
+    ];
+    const { metadata, lines: wire } = compose(makeCommand({ lines })).eInvoice;
+
+    expect(metadata.grossSaleValue).toBe(1500);
+    expect(wire[0].netTotalLineValue + wire[0].taxValue).toBe(1500);
+    expect(wire[0].netTotalLineValue).toBe(metadata.netValueByTaxRate['23']);
+    expect(wire[0].taxValue).toBe(metadata.taxValueByTaxRate['23']);
+    // The tolerated drift: 1220 / 1.5 rounds to 813, and 813 x 1.5 is 1219.5.
+    expect(wire[0].quantity).toBe('1.5');
+    expect(Math.abs(wire[0].netUnitPrice * 1.5 - wire[0].netTotalLineValue)).toBeLessThanOrEqual(1);
   });
 });
 
@@ -700,7 +796,7 @@ describe('toRegulatoryClearanceResult', () => {
       regulatoryStatus: 'accepted',
     });
     expect(
-      toRegulatoryClearanceResult({ ...CLEARED, processingMode: 'SOMETHING_NEW' })
+      toRegulatoryClearanceResult({ ...CLEARED, processingMode: 'SOMETHING_NEW' }),
     ).toMatchObject({ regulatoryStatus: 'accepted' });
   });
 
@@ -754,7 +850,7 @@ describe('status readers', () => {
     // Unlike a receipt, an invoice at OFFLINE is already issued with legal
     // effect and its visualisation carries the authority's offline codes.
     expect(readDocumentUrl({ status: 'OFFLINE', documentUrl: 'https://hub/view/x' })).toBe(
-      'https://hub/view/x'
+      'https://hub/view/x',
     );
   });
 
@@ -781,7 +877,7 @@ describe('toIssuedDocumentSeller', () => {
 
   it('supplies the scheme tag itself, because core holds a bare number and may not mint one', () => {
     const seller = toIssuedDocumentSeller(
-      makeConfig({ merchantName: 'OpenLinker POC Sp. z o.o.', merchantAddress: ADDRESS })
+      makeConfig({ merchantName: 'OpenLinker POC Sp. z o.o.', merchantAddress: ADDRESS }),
     );
     expect(seller).toEqual({
       name: 'OpenLinker POC Sp. z o.o.',
@@ -814,9 +910,76 @@ describe('toIssuedDocumentSeller', () => {
         makeConfig({
           merchantName: 'OpenLinker POC Sp. z o.o.',
           merchantAddress: null as unknown as undefined,
-        })
-      )
+        }),
+      ),
     ).toBeNull();
+  });
+
+  it('reports nothing when the name and address are there but the tax number is not', () => {
+    // Reachable only through `toIssuedDocumentSeller` on its own - the compose
+    // path refuses a TIN-less connection several lines earlier - and the neutral
+    // `IssuedDocumentSeller.taxId` is required, so there is no half to report.
+    expect(
+      toIssuedDocumentSeller(
+        makeConfig({ merchantTIN: undefined, merchantName: 'A name', merchantAddress: ADDRESS }),
+      ),
+    ).toBeNull();
+  });
+
+  it.each(['street', 'number', 'postalCode', 'city', 'country'] as const)(
+    'reports nothing for an address missing %s, rather than rendering "undefined" into the snapshot',
+    (field) => {
+      // `config` is JSONB and the raw JSON editor bypasses the connection form,
+      // so a partial object is reachable even with the shape validator in front
+      // of it - and `${street} ${number}` on a half-filled one renders the
+      // literal "undefined undefined" into the issued-document snapshot core
+      // keeps, where an operator reads it as the seller's real address.
+      const partial = { ...ADDRESS, [field]: undefined } as unknown as typeof ADDRESS;
+      expect(
+        toIssuedDocumentSeller(
+          makeConfig({ merchantName: 'OpenLinker POC Sp. z o.o.', merchantAddress: partial }),
+        ),
+      ).toBeNull();
+    },
+  );
+});
+
+describe('composeInvoiceDocument - an incomplete seller address', () => {
+  it('reads an explicitly cleared seller address as absent, agreeing with the validator', () => {
+    // The counterpart to `eparagony-shape-validators.spec.ts`'s "should treat an
+    // explicit null as absent". That test blesses `merchantAddress: null` into
+    // persistence, so the mapper has to agree or the validator is green about a
+    // config that crashes the live issue path (#3274). Written with an explicit
+    // cast because the declared type is `merchantAddress?: EparagonySellerAddress`
+    // and `null` is exactly the value the type does not admit but the raw JSON
+    // config editor, curl and the cleared-knob convention (#2610) all produce.
+    const request = compose(
+      makeCommand(),
+      makeConfig({
+        merchantName: 'OpenLinker POC Sp. z o.o.',
+        merchantAddress: null as unknown as undefined,
+      }),
+    );
+
+    expect(request.eInvoice.metadata.merchantName).toBe('OpenLinker POC Sp. z o.o.');
+    expect('merchantAddress' in request.eInvoice.metadata).toBe(false);
+  });
+
+  it('omits merchantAddress entirely rather than transmitting a half-filled one', () => {
+    const partial = {
+      street: 'ul. Grzybowska',
+      postalCode: '00-131',
+      city: 'Warszawa',
+      country: 'PL',
+    } as unknown as NonNullable<EparagonyConnectionConfig['merchantAddress']>;
+    const request = compose(
+      makeCommand(),
+      makeConfig({ merchantName: 'OpenLinker POC Sp. z o.o.', merchantAddress: partial }),
+    );
+
+    expect('merchantAddress' in request.eInvoice.metadata).toBe(false);
+    // The name is unaffected - the two keys are independent on the wire.
+    expect(request.eInvoice.metadata.merchantName).toBe('OpenLinker POC Sp. z o.o.');
   });
 });
 
@@ -831,6 +994,27 @@ describe('splitStreetAndNumber', () => {
       number: '12/34',
     });
     expect(splitStreetAndNumber('Dluga 7a')).toEqual({ street: 'Dluga', number: '7a' });
+  });
+
+  it('MIS-ASSIGNS the building number on the "m." apartment form, which is the accepted cost', () => {
+    // Stated rather than hidden: on this common Polish form the apartment ends
+    // up in the vendor's building-number field on a document bound for the
+    // national hub. Concatenating still re-reads as the original line, so
+    // nothing is lost - but the claim is "cannot lose data", not "cannot
+    // mis-assign", and the docblock now says so.
+    expect(splitStreetAndNumber('Aleje Jerozolimskie 44 m. 8')).toEqual({
+      street: 'Aleje Jerozolimskie 44 m.',
+      number: '8',
+    });
+    // The two forms it does get right, for contrast.
+    expect(splitStreetAndNumber('ul. Kwiatowa 12/3')).toEqual({
+      street: 'ul. Kwiatowa',
+      number: '12/3',
+    });
+    expect(splitStreetAndNumber('Plac Zbawiciela 1A')).toEqual({
+      street: 'Plac Zbawiciela',
+      number: '1A',
+    });
   });
 
   it('keeps the whole line as the street when it names no building number', () => {

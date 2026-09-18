@@ -336,6 +336,15 @@ export const EPARAGONY_STATUS_OFFLINE = 'OFFLINE';
  * and is under way or done; `NONE` means the invoice was issued outside the hub
  * entirely, which is a complete and successful outcome rather than a pending one.
  * (The receipt lane reports `FISCALIZATION` here, which this adapter never reads.)
+ *
+ * ONLY `NONE` IS BRANCHED ON, and `KSEF` is declared anyway - the same posture
+ * {@link EPARAGONY_STATUS_READY} and {@link EPARAGONY_STATUS_PENDING} already
+ * hold in this file, which models the vendor's enums rather than only the values
+ * the code tests. `toRegulatoryClearanceResult` deliberately does NOT re-test the
+ * mode on a `CONFIRMED` document (a mode this build cannot read would then be
+ * routed to the non-terminal `pending-submission`, where the #1121
+ * reconciliation would poll a settled document for ever), so there is no
+ * comparison for `KSEF` to appear in and inventing one would change behaviour.
  */
 export const EPARAGONY_PROCESSING_MODE_KSEF = 'KSEF';
 export const EPARAGONY_PROCESSING_MODE_NONE = 'NONE';

@@ -125,8 +125,31 @@ line: `23`, `8`, `5`, `3`, `ZRD`, `ZRICS`, `ZRE`, `EP`, `RCP`, `NS1`, `NS2` — 
 receipt-side `taxRates`/`defaultTaxRateCode` letter-code table above does not apply to
 invoices.
 
+### Invoicing keys (#3192)
+
+Invoice-only. Every connection that exists today is receipts-only and carries none of
+them, which is why all four are optional on the type — making `merchantTIN` required
+would break the config shape of every shipped connection. **The connection form does not
+render these**, so today the raw JSON editor is the route to all four; the shape
+validator is the only check in front of it.
+
+| Field | Values | Notes |
+|---|---|---|
+| `merchantTIN` | non-empty string (optional) | **The SELLER's tax number, mandatory on every invoice.** Stamped on the document and validated against the registered account rather than by checksum, so a wrong value fails *every* invoice on the connection rather than one order. Absent, the adapter refuses before anything is sent, naming this field — it does not let the vendor answer with an opaque `errorCode: 41` |
+| `merchantName` | non-empty string (optional) | The seller's registered name. Absent, the vendor falls back to the name on the account. OpenLinker never derives it: the neutral issue command describes the buyer and the goods and carries no seller party at all |
+| `merchantAddress` | `{ street, number, postalCode, city, country }` + optional `apartment` (optional) | The seller's registered address, in the vendor's own five-part shape. **All five parts are required together** — a partial object is refused by the validator and ignored by the mapper, because `street` + `number` are concatenated into the persisted issued-document snapshot and a missing half would render there as literal text an operator reads as the real address |
+| `eInvoicingHubEnabled` | boolean (optional, default `false`) | Ask the vendor to relay every invoice to the national e-invoicing hub (KSeF). **Must be a real boolean** — the string `"true"` is refused rather than coerced, because it would read as `false` and issue the invoice *outside* the hub with no error anywhere, which is a legally different document. Relaying also requires the seller to have granted the vendor a permission in the authority's own app **and** activated the integration in the vendor's panel; OpenLinker can observe neither, and with the prerequisites missing the vendor refuses the document outright. With it off an invoice reports `not-applicable` clearance, which is a complete successful outcome and not a degraded one |
+
 ## Notable implementation details
 
+- **A vendor-side `ERROR` cannot be retried from the product.** The document token is a
+  pure function of `(connectionId, registrationKey)` and the vendor holds the failed
+  document under it forever, so every retry hits `DOCUMENT_ALREADY_EXISTS`, polls,
+  re-reads `ERROR` and throws the identical rejection. `failureMode: 'rejected'` means
+  "safe to re-attempt" (nothing was double-issued), **not** "a retry will behave
+  differently" — and the bulk retry path deliberately reuses `record.idempotencyKey`, so
+  no product surface mints a fresh key. Fix the reported problem and issue under a new
+  registration key.
 - **The vendor's contract is not frozen.** New fields may appear without notice on any
   response, and the documented error-code list is not exhaustive (`errorCode: 92` was
   observed live for a missing document, undocumented in the vendor's own spec). Every
