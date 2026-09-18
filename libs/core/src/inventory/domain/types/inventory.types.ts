@@ -466,6 +466,64 @@ export interface DuplicatePositionReport {
 }
 
 /**
+ * Live status of the #2317 provenance backfill (`inventory.provenance.backfill`
+ * — {@link LEGACY_SOURCE_CONNECTION_ID}) (#3240).
+ *
+ * This is the SECOND, independent readiness condition for the #2325
+ * `SET NOT NULL` + unique-index migration — {@link DuplicatePositionReport}'s
+ * `groupCount: 0` is the first. A scan taken while the backfill is still
+ * mid-run can read `groupCount: 0` and then flip non-zero once NULL rows
+ * collapse to `'legacy'` and reveal a collision the scan could not see yet,
+ * so #2325 must not proceed on `groupCount: 0` alone.
+ *
+ * **`remainingNull` is always resolved LIVE, on every call — never a
+ * stored/cached count.** The backfill's own scan is frontier-as-query, not a
+ * scan offset (see `inventory-provenance-backfill.handler.ts`'s header), so
+ * there is no offset here to go stale — but the pass DOES persist two
+ * `connection_cursors` keys under the nil-UUID system connection:
+ * `sweepRemainingCountCursorKey` (the last page's count, written for
+ * observability, never read back to answer this call) and
+ * `sweepCompletedAtCursorKey` (the LATCH — see `completed` below). Reading
+ * `remainingNull` live rather than from that first key is what keeps this
+ * count immune to the latch going stale.
+ *
+ * **`completed` is `remainingNull === 0` — a point-in-time observation, never
+ * a standing guarantee.** It is derived from the same live count above, so it
+ * inherits that count's staleness: a caller with no connection axis can
+ * insert a fresh provenance-less row a moment later, and #2325 must re-count
+ * immediately before it acts rather than trust a previously-observed `true`.
+ *
+ * `completed` on its own also cannot tell "still draining" apart from
+ * "latched, and stuck". The backfill handler self-latches: once it stamps
+ * `sweepCompletedAtCursorKey` it skips every future tick without re-counting,
+ * and that stamp is never cleared automatically. A later mutation can
+ * reintroduce a NULL row after the latch was set — the exact scenario that
+ * makes `remainingNull` worth reading live — leaving `remainingNull > 0` with
+ * the pass permanently latched off and nothing draining it. `latchedAt` is
+ * what distinguishes the two: present ⇒ latched, so
+ * `remainingNull > 0 && latchedAt !== null` means the pass needs to be
+ * re-armed — see the handler's own docblock for the operator escape hatch.
+ */
+export interface ProvenanceBackfillStatus {
+  /** UNCAPPED count of `inventory_items` rows still missing provenance. */
+  remainingNull: number;
+  /**
+   * `remainingNull === 0`. A point-in-time read of the same live count, not a
+   * durable guarantee — see the interface docblock.
+   */
+  completed: boolean;
+  /**
+   * The persisted `sweepCompletedAtCursorKey` stamp, or `null` if the backfill
+   * has never latched (an empty-string cursor row is normalised to `null` —
+   * it means the same thing to the handler that wrote it). Non-null while
+   * `remainingNull > 0` means the pass has stopped running and will not
+   * resume on its own — re-arm it by deleting the cursor row (see
+   * `inventory-provenance-backfill.handler.ts`).
+   */
+  latchedAt: string | null;
+}
+
+/**
  * One live inventory position a reservation could be taken against (#2344).
  *
  * The resolution counterpart to {@link VariantStockRow}, and deliberately NOT a

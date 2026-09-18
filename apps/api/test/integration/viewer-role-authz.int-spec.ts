@@ -313,6 +313,16 @@ describe('Viewer Role Authorization', () => {
         .expect(403);
     });
 
+    it('GET /inventory/provenance-backfill-status (#3240 — admin-only #2325 readiness gate)', async () => {
+      const { http, viewerToken } = await seeds();
+      // Same admin-only posture as its sibling diagnostic above — it is the
+      // second, independent readiness condition for the #2325 migration.
+      await http
+        .get('/v1/inventory/provenance-backfill-status')
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(403);
+    });
+
     // #2316 — all three location writes, not the create alone. RolesGuard is
     // declared per HANDLER here, so asserting one method says nothing about
     // the other two: a missing @Roles('admin') on PATCH or DELETE would let a

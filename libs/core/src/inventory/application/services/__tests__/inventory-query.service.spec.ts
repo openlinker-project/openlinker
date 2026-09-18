@@ -16,12 +16,14 @@ import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
 import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import type { IAvailabilityService } from '../availability.service.interface';
 import type { ILocationService } from '../location.service.interface';
+import type { ISyncCursorsService } from '@openlinker/core/sync';
 
 // Only the products-service method the SUT actually calls — keeps the
 // mock surface tight per #718 review.
 type ProductsServiceMock = Pick<IProductsService, 'getProductsByIds'>;
 type LocationServiceMock = Pick<ILocationService, 'getLocation'>;
 type ConnectionPortMock = Pick<ConnectionPort, 'get'>;
+type SyncCursorsServiceMock = Pick<ISyncCursorsService, 'getCursor'>;
 
 describe('InventoryQueryService', () => {
   let service: InventoryQueryService;
@@ -30,6 +32,7 @@ describe('InventoryQueryService', () => {
   let availabilityService: jest.Mocked<IAvailabilityService>;
   let locationService: jest.Mocked<LocationServiceMock>;
   let connectionPort: jest.Mocked<ConnectionPortMock>;
+  let cursors: jest.Mocked<SyncCursorsServiceMock>;
 
   const itemA = new InventoryItem(
     'inv-a',
@@ -121,6 +124,7 @@ describe('InventoryQueryService', () => {
 
     locationService = { getLocation: jest.fn().mockResolvedValue(null) };
     connectionPort = { get: jest.fn().mockRejectedValue(new ConnectionNotFoundException('n/a')) };
+    cursors = { getCursor: jest.fn().mockResolvedValue(null) };
 
     service = new InventoryQueryService(
       inventoryRepository,
@@ -128,6 +132,7 @@ describe('InventoryQueryService', () => {
       availabilityService,
       locationService as unknown as ILocationService,
       connectionPort as unknown as ConnectionPort,
+      cursors as unknown as ISyncCursorsService,
     );
   });
 
@@ -504,6 +509,71 @@ describe('InventoryQueryService', () => {
 
         expect(result.groups[0].connectionName).toBeNull();
       });
+    });
+  });
+
+  describe('getProvenanceBackfillStatus (#3240)', () => {
+    it('reports completed with no latch when nothing remains and the backfill never latched', async () => {
+      inventoryRepository.countMissingProvenance.mockResolvedValue(0);
+      cursors.getCursor.mockResolvedValue(null);
+
+      const result = await service.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({ remainingNull: 0, completed: true, latchedAt: null });
+    });
+
+    it('reports not-completed and passes the count through verbatim when rows remain', async () => {
+      inventoryRepository.countMissingProvenance.mockResolvedValue(1_200);
+      cursors.getCursor.mockResolvedValue(null);
+
+      const result = await service.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({ remainingNull: 1_200, completed: false, latchedAt: null });
+    });
+
+    it('reports the persisted latch even when rows remain — the stuck-pass state', async () => {
+      // A later mutation reintroduced a NULL row after the backfill already
+      // stamped its completion cursor. completed stays false (remainingNull
+      // > 0), but latchedAt tells a caller the pass is not draining it.
+      inventoryRepository.countMissingProvenance.mockResolvedValue(3);
+      cursors.getCursor.mockResolvedValue('2026-08-01T00:00:00.000Z');
+
+      const result = await service.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({
+        remainingNull: 3,
+        completed: false,
+        latchedAt: '2026-08-01T00:00:00.000Z',
+      });
+    });
+
+    it('reads the latch cursor under the nil-UUID system connection scope', async () => {
+      cursors.getCursor.mockResolvedValue(null);
+
+      await service.getProvenanceBackfillStatus();
+
+      // Hard-coded independently of the key builder — matching
+      // master-sweep-cursor.types.spec.ts's own reasoning: a format change,
+      // or picking the wrong sibling key in this same namespace (e.g.
+      // remainingNull's), must fail here rather than silently split reader
+      // from writer.
+      expect(cursors.getCursor).toHaveBeenCalledWith(
+        '00000000-0000-0000-0000-000000000000',
+        'master.inventory-provenance.completedAt:connection:00000000-0000-0000-0000-000000000000',
+      );
+    });
+
+    it('normalises an empty-string cursor row to latchedAt: null', async () => {
+      // The handler's own "latched" predicate treats '' identically to null
+      // (inventory-provenance-backfill.handler.ts's `execute()`); this reader
+      // must agree, or a non-latched pass reads as stuck and the docblock's
+      // prescribed remedy (delete the cursor row) fires on a healthy drain.
+      inventoryRepository.countMissingProvenance.mockResolvedValue(5);
+      cursors.getCursor.mockResolvedValue('');
+
+      const result = await service.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({ remainingNull: 5, completed: false, latchedAt: null });
     });
   });
 });
