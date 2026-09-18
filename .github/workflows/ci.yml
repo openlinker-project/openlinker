@@ -157,6 +157,29 @@ jobs:
         with:
           node-version: '22'
           cache: 'pnpm'
+      # `actions/checkout` writes every file afresh, so each run sees new mtimes
+      # for byte-identical content. Jest's transform-cache key is a function of
+      # BOTH content and mtime, so without this step every run mints a complete
+      # new set of keys: the previous run's entries become unreadable and a full
+      # new set is written beside them. The runner containers are long-lived and
+      # jest applies no TTL or size cap to its cache directory, so `/tmp/jest_rt`
+      # had reached 33 GB across ~2M entries that nothing could ever read.
+      #
+      # Pinning one constant mtime makes an unchanged file produce an unchanged
+      # key across runs and across branches. Measured on this runner (#3271):
+      # whole job 753.9 s -> 490.3 s from this step alone; combined with the
+      # raised worker caps, 256.8 s.
+      #
+      # Safe because the key also includes the content hash — verified directly,
+      # not assumed: a one-word edit preserving the file's exact byte length,
+      # with mtime rolled back to the same stamp, still failed 21 suites.
+      # Removing this step was MEASURED, not reasoned about, and it cost more
+      # than double: same runner, 4m24s with it and 9m22s without (#3271). It
+      # stays. Transpile-only takes mtime out of the cache key for `libs/core`,
+      # `apps/api` and `apps/worker` only - the other sixteen packages, the two
+      # heavy ESM integrations among them, still key on it.
+      - name: Normalize source mtimes so the jest cache can hit (#3271)
+        run: node scripts/normalize-source-mtimes.mjs
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       # No explicit libs build: `pnpm test:ci` already runs
@@ -164,6 +187,40 @@ jobs:
       # step here builds libs twice in this one job.
       - name: Run tests
         run: pnpm test:ci
+
+  # apps/web runs on its own runner, in parallel with `test` (#3271).
+  #
+  # It is the only vitest package and the only one with NO workspace
+  # dependencies, and it was the reason the combined job kept going red. Beside
+  # three jest packages under `--workspace-concurrency=4` it was starved to
+  # 352-371 s against the 162 s it takes with the box to itself, and RTL tests
+  # assert on elapsed behaviour - two consecutive runs failed on two DIFFERENT
+  # timing-sensitive tests, neither of which is about the thing it failed on.
+  #
+  # Splitting costs no extra runner time, it saves it: the two jobs together do
+  # less work than the one did, because neither side is starving the other. It
+  # also skips the libs build entirely, since apps/web imports no @openlinker
+  # package (#591), and it needs no mtime normalisation - that fixes jest's
+  # transform cache, and vitest keeps its own in node_modules/.vite.
+  test-web:
+    name: Test (web)
+    timeout-minutes: 30
+    runs-on: self-hosted
+    needs: changes
+    if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run web tests
+        run: pnpm test:ci:web
 
   test-integration:
     name: Integration Tests

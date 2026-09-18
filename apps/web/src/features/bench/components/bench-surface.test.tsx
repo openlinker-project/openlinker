@@ -28,6 +28,7 @@ import { useSession } from '../../../shared/auth/use-session';
 import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useScannerInput } from '../hooks/use-scanner-input';
 import { resetGestureLogForTests } from '../lib/scanner-gesture-log';
+import { dispatchScannerBurst } from '../lib/scanner-burst.test-helper';
 import { BenchSurface } from './bench-surface';
 
 /**
@@ -198,10 +199,7 @@ function ScannerStub({ seen }: { seen: string[] }): ReactElement {
 /** One completed scanner gesture, dispatched at the document as a real one is. */
 function scan(value: string): void {
   act(() => {
-    for (const char of value) {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-    }
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    dispatchScannerBurst(value);
   });
 }
 

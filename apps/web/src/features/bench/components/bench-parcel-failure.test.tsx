@@ -27,14 +27,12 @@ import {
   soundsDistinguishable,
 } from '../lib/bench-scan-sound';
 import { resetGestureLogForTests } from '../lib/scanner-gesture-log';
+import { dispatchScannerBurst } from '../lib/scanner-burst.test-helper';
 import { BenchParcelView } from './bench-parcel';
 
 function scan(value: string): void {
   act(() => {
-    for (const char of value) {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-    }
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    dispatchScannerBurst(value);
   });
 }
 
