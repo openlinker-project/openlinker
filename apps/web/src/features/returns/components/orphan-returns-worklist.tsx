@@ -85,9 +85,21 @@ function WorklistGroup({
   droppedCount,
   onRetry,
 }: WorklistGroupProps): ReactElement {
+  const titleId = `orphan-returns-worklist__group-title-${title.replace(/\s+/g, '-').toLowerCase()}`;
+  // `droppedCount` and `truncationNote` are facts about the READ, not about the
+  // rows, so they must survive a zero-row result — a truncated or
+  // partially-unreadable page must never render as a confirmed-empty list
+  // (tech-lead review on #3280, BLOCKING + IMPORTANT). The confirmed-empty
+  // message is therefore withheld whenever either fact is present: it asserts
+  // "nothing needs attention", and that claim is unavailable off a page this
+  // build knows was incomplete.
+  const isConfirmedEmpty = items.length === 0 && droppedCount === 0 && truncationNote === null;
+
   return (
-    <section className="orphan-returns-worklist__group" aria-label={title}>
-      <h3 className="orphan-returns-worklist__group-title">{title}</h3>
+    <section className="orphan-returns-worklist__group" aria-labelledby={titleId}>
+      <h3 id={titleId} className="orphan-returns-worklist__group-title">
+        {title}
+      </h3>
       <p className="text-muted orphan-returns-worklist__group-description">{description}</p>
 
       {isLoading ? (
@@ -100,23 +112,25 @@ function WorklistGroup({
         />
       ) : isEnvelopeUnreadable ? (
         <ErrorState title={COPY.unreadableTitle} message={COPY.unreadableMessage} />
-      ) : items.length === 0 ? (
-        <p className="text-muted">{emptyMessage}</p>
       ) : (
         <>
-          <ul className="orphan-returns-worklist__list">
-            {items.map((item) => (
-              <li key={item.id} className="orphan-returns-worklist__row">
-                <span className="mono-text">{item.externalReturnId ?? item.id}</span>
-                <Link
-                  to={`/returns/${item.id}`}
-                  className="button button--secondary button--sm"
-                >
-                  {actionLabel}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          {items.length > 0 ? (
+            <ul className="orphan-returns-worklist__list">
+              {items.map((item) => (
+                <li key={item.id} className="orphan-returns-worklist__row">
+                  <span className="mono-text">{item.externalReturnId ?? item.id}</span>
+                  <Link
+                    to={`/returns/${item.id}`}
+                    className="button button--secondary button--sm"
+                  >
+                    {actionLabel}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : isConfirmedEmpty ? (
+            <p className="text-muted">{emptyMessage}</p>
+          ) : null}
           {droppedCount > 0 ? (
             <p className="text-muted">{describeUnreadableRows(droppedCount)}</p>
           ) : null}
@@ -147,8 +161,12 @@ export function OrphanReturnsWorklist(): ReactElement {
   // `order-returns-panel.tsx`'s `query.error !== null || result === null`
   // guard: a settled, non-loading query with no data is not a confirmed empty.
   const needsOrderIsError = needsOrderQuery.error !== null || (!needsOrderQuery.isLoading && needsOrderResult === null);
-  const needsOrderTruncated =
-    needsOrderResult !== null && needsOrderResult.total > needsOrderItems.length;
+  // Gated on the PAGE SIZE this group asked for, never on `items.length` or
+  // `result.items.length`: an unreadable row is excluded from `items` and
+  // counted in `droppedCount`, so comparing against the item count would
+  // report the SAME row twice — once as unreadable and once as a page limit
+  // that was never reached (tech-lead review on #3280, IMPORTANT).
+  const needsOrderTruncated = needsOrderResult !== null && needsOrderResult.total > RETURNS_PAGE_SIZE;
 
   const approvalScanResult = approvalScanQuery.data ?? null;
   const needsApprovalItems = (approvalScanResult?.items ?? []).filter(
@@ -157,7 +175,7 @@ export function OrphanReturnsWorklist(): ReactElement {
   const approvalScanIsError =
     approvalScanQuery.error !== null || (!approvalScanQuery.isLoading && approvalScanResult === null);
   const approvalScanTruncated =
-    approvalScanResult !== null && approvalScanResult.total > approvalScanResult.items.length;
+    approvalScanResult !== null && approvalScanResult.total > RETURNS_MAX_LIMIT;
 
   return (
     <div className="orphan-returns-worklist">
