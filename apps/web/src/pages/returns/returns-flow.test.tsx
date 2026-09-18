@@ -24,15 +24,16 @@
  *
  * @module apps/web/src/pages/returns
  */
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
   renderWithProviders,
 } from '../../test/test-utils';
+import { createNoopSessionAdapter } from '../../shared/auth/noop-session-adapter';
 import {
   AUTHORIZE_RETURN_DIALOG_COPY,
   MATCH_RETURN_DIALOG_COPY,
@@ -124,16 +125,22 @@ function listResult(items: ReturnListItem[]) {
 }
 
 describe('returns flows (#3078/#3086)', () => {
-  afterEach(cleanup);
-
   it('should record a return, see it in the worklist, then approve it away', async () => {
     // The single source of truth every `returns.list` call reads from — one
     // array, mutated in place by the mocked writes, exactly as the real
-    // backend would be.
+    // backend would be. Keyed on `filters.bucket`, the same shape flow 2 (and
+    // `orphan-returns-worklist.test.tsx`'s own mock) already uses — the
+    // worklist issues two DISTINCT queries (`{ bucket: 'orphan' }` plus the
+    // approval scan), and answering both with the same unfiltered array would
+    // put an operator-authored, order-attributed return into "Needs an
+    // order" too — a group state the real backend can never produce
+    // (tech-lead review on #3286, SUGGESTION).
     let items: ReturnListItem[] = [];
 
     const apiClient = createMockApiClient();
-    apiClient.returns.list = vi.fn(async () => listResult(items)) as unknown as typeof apiClient.returns.list;
+    apiClient.returns.list = vi.fn(async (filters: { bucket?: string } = {}) =>
+      listResult(filters.bucket === 'orphan' ? [] : items),
+    ) as unknown as typeof apiClient.returns.list;
     apiClient.orders.list = vi
       .fn()
       .mockResolvedValue({ items: [order()], total: 1, limit: 20, offset: 0 }) as unknown as typeof apiClient.orders.list;
@@ -178,6 +185,8 @@ describe('returns flows (#3078/#3086)', () => {
       screen.getByLabelText(RECORD_RETURN_DIALOG_COPY.connectionFieldLabel),
       'conn_1',
     );
+    // Required (#3284): a line recorded without one can never be restocked.
+    await userEvent.type(screen.getByLabelText(RECORD_RETURN_DIALOG_COPY.skuFieldLabel), 'MUG-CER-01');
     await userEvent.type(screen.getByLabelText(RECORD_RETURN_DIALOG_COPY.itemFieldLabel), 'Ceramic mug');
     await userEvent.selectOptions(screen.getByLabelText(RECORD_RETURN_DIALOG_COPY.reasonFieldLabel), 'withdrawal');
     await userEvent.click(screen.getByRole('button', { name: RECORD_RETURN_DIALOG_COPY.confirm }));
@@ -211,6 +220,33 @@ describe('returns flows (#3078/#3086)', () => {
     await waitFor(() => {
       expect(screen.getByText(ORPHAN_RETURNS_WORKLIST_COPY.needsApprovalEmpty)).toBeInTheDocument();
     });
+  });
+
+  it('should make the record→approve journey unreachable for a session with no write access (tech-lead review on #3286)', async () => {
+    // The other two flows only prove the happy path works for an admin —
+    // they would pass identically for a `viewer`, since #3283's Approve
+    // action and #3285's "+ Record a return" CTA are gated on `orders:write`
+    // and a permission-less session simply never reaches either write. This
+    // is the one thing a page-level flow test can assert that the isolated
+    // component tests (which each construct their own gated/ungated session)
+    // cannot: the WHOLE journey, not just one affordance, is unreachable.
+    const apiClient = createMockApiClient();
+    apiClient.returns.list = vi.fn(async () => listResult([])) as unknown as typeof apiClient.returns.list;
+    apiClient.returns.record = vi.fn() as unknown as typeof apiClient.returns.record;
+    apiClient.connections.list = vi.fn().mockResolvedValue([connection()]) as unknown as typeof apiClient.connections.list;
+
+    renderWithProviders(<ReturnsListPage />, {
+      apiClient,
+      sessionAdapter: createNoopSessionAdapter(),
+    });
+
+    // The read half of the page renders normally — permission gates a write
+    // affordance, never the read surface it sits on.
+    await screen.findByText(ORPHAN_RETURNS_WORKLIST_COPY.sectionTitle);
+    expect(
+      screen.queryByRole('button', { name: RECORD_RETURN_DIALOG_COPY.triggerLabel }),
+    ).not.toBeInTheDocument();
+    expect(apiClient.returns.record).not.toHaveBeenCalled();
   });
 
   it('should match an orphan return to an order, navigating from the worklist to the detail page', async () => {
@@ -258,7 +294,9 @@ describe('returns flows (#3078/#3086)', () => {
       listResult(filters.bucket === 'orphan' ? [orphanItem] : []),
     ) as unknown as typeof apiClient.returns.list;
     apiClient.returns.get = vi.fn(async () => detail) as unknown as typeof apiClient.returns.get;
-    apiClient.returns.listReturnEventsForReturn = vi.fn().mockResolvedValue([]);
+    apiClient.returns.listReturnEventsForReturn = vi
+      .fn()
+      .mockResolvedValue([]) as unknown as typeof apiClient.returns.listReturnEventsForReturn;
     apiClient.returns.getCorrectionProposal = vi
       .fn()
       .mockResolvedValue({ outcome: 'no-invoice', proposal: null });
