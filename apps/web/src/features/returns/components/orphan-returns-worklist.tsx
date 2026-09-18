@@ -48,16 +48,31 @@
  * attention", which is a claim about the operator's own data this component is
  * not entitled to make on a failure.
  *
+ * **The "Approve" row action is gated on `orders:write`, the same permission
+ * `POST /returns/:returnId/authorize` enforces server-side** (tech-lead
+ * review on #3283, IMPORTANT). Without it, a `viewer`/`packer` session saw an
+ * enabled button that answered 403 as the generic "try again" error — advice
+ * that cannot work, because retrying does not change the session's role.
+ * `return-decline-action.tsx` is the precedent this mirrors: hidden entirely
+ * for a session with no write access at all, disabled with a `ReadOnlyLock`
+ * tooltip for a demo read-only viewer. "Needs an order"'s `Link` is left
+ * ungated — it is navigation to a read surface, not a write.
+ *
  * @module apps/web/src/features/returns/components
  */
 import { useState, type ReactElement, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { useReturnsQuery } from '../hooks/use-returns-query';
 import { RETURNS_MAX_LIMIT, RETURNS_PAGE_SIZE } from '../api/returns.types';
 import type { ReturnListItem } from '../api/returns.types';
 import { AuthorizeReturnDialog } from './authorize-return-dialog';
+// Cross-feature import goes through the system barrel — the same route
+// `price-changes-queue-table.tsx` already takes into `../../system`.
+import { useDemoMode } from '../../system';
 import { ORPHAN_RETURNS_WORKLIST_COPY as COPY } from '../lib/orphan-returns-worklist.copy';
 import { describeUnreadableRows } from '../lib/returns-list.copy';
 
@@ -167,6 +182,9 @@ export function OrphanReturnsWorklist(): ReactElement {
   // slot is enough: only one row's dialog can be open at a time.
   const [authorizingId, setAuthorizingId] = useState<string | null>(null);
 
+  const demoMode = useDemoMode();
+  const writeAccess = useWriteAccess('orders:write', demoMode);
+
   const needsOrderQuery = useReturnsQuery(
     { bucket: 'orphan' },
     { limit: RETURNS_PAGE_SIZE, offset: 0 },
@@ -240,21 +258,42 @@ export function OrphanReturnsWorklist(): ReactElement {
         onRetry={() => {
           void approvalScanQuery.refetch();
         }}
-        renderAction={(item) => (
-          <Button
-            tone="secondary"
-            className="button--sm"
-            onClick={() => {
-              setAuthorizingId(item.id);
-            }}
-          >
-            {COPY.needsApprovalAction}
-          </Button>
-        )}
+        // `undefined` when the session cannot write at all (and is not a demo
+        // viewer either) — `WorklistGroup` then falls back to its default
+        // `Link`-to-detail action, which is read-only navigation and needs no
+        // gate. Only when the session CAN write (or is a locked demo viewer)
+        // does this render the write affordance, wrapped for the demo case.
+        renderAction={
+          writeAccess.visible
+            ? (item) => (
+                <ReadOnlyLock active={writeAccess.demoReadOnly} message={COPY.approveReadOnly}>
+                  <Button
+                    tone="secondary"
+                    className="button--sm"
+                    disabled={writeAccess.demoReadOnly}
+                    onClick={() => {
+                      setAuthorizingId(item.id);
+                    }}
+                  >
+                    {COPY.needsApprovalAction}
+                  </Button>
+                </ReadOnlyLock>
+              )
+            : undefined
+        }
       />
 
       {authorizingId !== null ? (
         <AuthorizeReturnDialog
+          // Keyed on the return id: the mutation's error/success state is
+          // component-local, so without this React would reuse the same
+          // instance across two different rows opened in sequence and could
+          // paint a fresh row as already-refused (tech-lead review on #3283,
+          // SUGGESTION). Unreachable today — Radix's modal overlay makes the
+          // rows behind inert, so nothing can retarget the dialog without
+          // passing through `null` first — but this makes it a structural
+          // guarantee rather than a consequence of the overlay.
+          key={authorizingId}
           returnId={authorizingId}
           open
           onOpenChange={(open) => {
