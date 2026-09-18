@@ -37,12 +37,16 @@ import { Inject, Injectable } from '@nestjs/common';
 import { CONNECTION_PORT_TOKEN, ConnectionPort } from '@openlinker/core/identifier-mapping';
 import type { Connection } from '@openlinker/core/identifier-mapping';
 import { INVOICE_SERVICE_TOKEN, IInvoiceService } from '@openlinker/core/invoicing';
-import type { InvoiceRecord } from '@openlinker/core/invoicing';
+import type { InvoiceRecord, InvoiceRecordFilters, InvoiceStatus } from '@openlinker/core/invoicing';
 import {
   FISCAL_REGISTRATION_SERVICE_TOKEN,
   IFiscalRegistrationService,
 } from '@openlinker/core/fiscalization';
-import type { FiscalRegistrationRecord } from '@openlinker/core/fiscalization';
+import type {
+  FiscalRegistrationListFilters,
+  FiscalRegistrationRecord,
+  FiscalRegistrationStatus,
+} from '@openlinker/core/fiscalization';
 import {
   ISalesDocumentRulesService,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
@@ -68,6 +72,17 @@ import { OrderRecordRepositoryPort } from '../../domain/ports/order-record-repos
 import { ORDER_RECORD_REPOSITORY_TOKEN } from '../../orders.tokens';
 import { PriceTaxTreatmentValues } from '../../domain/types/order.types';
 import { buyerHasTaxId } from '../../domain/types/buyer-tax-id.types';
+import type {
+  SalesDocumentListFilters,
+  SalesDocumentListItem,
+  SalesDocumentListPage,
+  SalesDocumentListPagination,
+} from '../../domain/types/sales-document-list.types';
+import {
+  mergeSalesDocumentPages,
+  type MergeCandidate,
+  type SourcePage,
+} from '../../domain/sales-document-page-merge';
 
 /** Capability names a connection must enable to be a routing candidate at all. */
 const INVOICING_CAPABILITY = 'Invoicing';
@@ -103,6 +118,124 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
 
   async getForOrders(orderIds: readonly string[]): Promise<Map<string, SalesDocumentView>> {
     return this.buildViews(orderIds, false);
+  }
+
+  /**
+   * Cross-order operational list (#3306) - see the interface docblock. Four
+   * steps: fetch each source's own keyset page (skipping a source the `kind`
+   * filter excludes, or one already reported exhausted); merge them with the
+   * pure {@link mergeSalesDocumentPages}; batch-resolve the merged page's
+   * orders for their amount AND their full sibling-record set (reusing
+   * `groupRankedRecords`, the SAME grouping `getForOrders` uses, scoped to
+   * just this page's orders rather than a caller-supplied set); assemble the
+   * wire shape.
+   */
+  async listSalesDocuments(
+    filters: SalesDocumentListFilters,
+    pagination: SalesDocumentListPagination,
+  ): Promise<SalesDocumentListPage> {
+    const { limit } = pagination;
+    const incomingInvoiceCursor = pagination.cursor?.invoice;
+    const incomingFiscalCursor = pagination.cursor?.fiscal;
+
+    const wantInvoice = filters.kind !== 'fiscal-receipt' && incomingInvoiceCursor !== null;
+    const wantFiscal = filters.kind !== 'invoice' && incomingFiscalCursor !== null;
+
+    const [invoicePage, fiscalPage] = await Promise.all([
+      wantInvoice
+        ? this.invoices.listInvoicesKeyset(toInvoiceListFilter(filters), {
+            limit,
+            cursor: incomingInvoiceCursor ?? undefined,
+          })
+        : Promise.resolve({ items: [], nextCursor: null }),
+      wantFiscal
+        ? this.fiscalRegistrations.listRegistrationsKeyset(toFiscalListFilter(filters), {
+            limit,
+            cursor: incomingFiscalCursor ?? undefined,
+          })
+        : Promise.resolve({ items: [], nextCursor: null }),
+    ]);
+
+    type ListSource = 'invoice' | 'fiscal-receipt';
+    type ListMergeItem =
+      | (MergeCandidate<'invoice'> & { record: InvoiceRecord })
+      | (MergeCandidate<'fiscal-receipt'> & { record: FiscalRegistrationRecord });
+
+    const sourcePages: Record<ListSource, SourcePage<ListSource, ListMergeItem>> = {
+      invoice: {
+        items: invoicePage.items.map((record) => ({
+          source: 'invoice' as const,
+          createdAt: record.createdAt,
+          id: record.id,
+          record,
+        })),
+        ownNextCursor: invoicePage.nextCursor,
+      },
+      'fiscal-receipt': {
+        items: fiscalPage.items.map((record) => ({
+          source: 'fiscal-receipt' as const,
+          createdAt: record.createdAt,
+          id: record.id,
+          record,
+        })),
+        ownNextCursor: fiscalPage.nextCursor,
+      },
+    };
+
+    const merged = mergeSalesDocumentPages<ListSource, ListMergeItem>(
+      sourcePages,
+      { invoice: incomingInvoiceCursor, 'fiscal-receipt': incomingFiscalCursor },
+      limit,
+    );
+
+    const nextCursor = {
+      invoice: merged.nextCursor.invoice,
+      fiscal: merged.nextCursor['fiscal-receipt'],
+    };
+
+    if (merged.items.length === 0) {
+      return { items: [], nextCursor };
+    }
+
+    const orderIds = [...new Set(merged.items.map((item) => item.record.orderId))];
+    const [orderRecords, invoicesForOrders, fiscalForOrders] = await Promise.all([
+      this.orderRecords.findByIds(orderIds),
+      this.invoices.listInvoicesForOrders(orderIds),
+      this.fiscalRegistrations.getByOrderIds(orderIds),
+    ]);
+    const orderRecordById = new Map(orderRecords.map((record) => [record.internalOrderId, record]));
+    // Reuse the SAME grouping `buildViews` uses - the duplicate signal must
+    // never be computed a second, possibly-drifting way.
+    const rankedByOrderId = groupRankedRecords(invoicesForOrders, fiscalForOrders);
+
+    const items: SalesDocumentListItem[] = merged.items.map((mergedItem) => {
+      const ranked =
+        mergedItem.source === 'invoice'
+          ? toRankedInvoice(mergedItem.record)
+          : toRankedFiscal(mergedItem.record);
+      const orderId = mergedItem.record.orderId;
+      const orderRecord = orderRecordById.get(orderId) ?? null;
+      const siblings = rankedByOrderId.get(orderId) ?? [];
+      // "Other" = held on any OTHER connection than THIS row's own - a
+      // duplicate is a fact about the ORDER, not about which record happens
+      // to be this row's "winner" (unlike `otherRecords` on the per-order
+      // projection, which is relative to one designated winner).
+      const otherRecordCount = siblings.filter(
+        (sibling) => sibling.connectionId !== ranked.connectionId,
+      ).length;
+      return {
+        orderId,
+        connectionId: ranked.connectionId,
+        document: ranked.view,
+        amount:
+          orderRecord && orderRecord.totalAmount !== null && orderRecord.currency !== null
+            ? { value: orderRecord.totalAmount, currency: orderRecord.currency }
+            : null,
+        otherRecordCount,
+      };
+    });
+
+    return { items, nextCursor };
   }
 
   /**
@@ -510,5 +643,34 @@ function toOtherRecord(ranked: RankedRecord): SalesDocumentOtherRecord {
     connectionId: ranked.connectionId,
     kind: ranked.view.kind,
     blocksFurtherIssuance: ranked.blocksFurtherIssuance,
+  };
+}
+
+/**
+ * Project the merged list's neutral filters onto invoicing's own shape
+ * (#3306). `status` is passed through with an unsafe cast rather than
+ * validated against `InvoiceStatus` here - a value naming a fiscal-only
+ * status simply matches no invoice row, which is the documented,
+ * accepted behaviour (`SalesDocumentListFilters`'s own doc comment).
+ */
+function toInvoiceListFilter(filters: SalesDocumentListFilters): InvoiceRecordFilters {
+  return {
+    status: filters.status as InvoiceStatus | undefined,
+    connectionId: filters.connectionId,
+    issuedFrom: filters.issuedFrom,
+    issuedTo: filters.issuedTo,
+    taxId: filters.taxId,
+    search: filters.search,
+  };
+}
+
+/** The fiscal-side counterpart of {@link toInvoiceListFilter}. */
+function toFiscalListFilter(filters: SalesDocumentListFilters): FiscalRegistrationListFilters {
+  return {
+    status: filters.status as FiscalRegistrationStatus | undefined,
+    connectionId: filters.connectionId,
+    createdFrom: filters.issuedFrom,
+    createdTo: filters.issuedTo,
+    search: filters.search,
   };
 }

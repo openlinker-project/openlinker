@@ -13,6 +13,7 @@ import { MappingsModule as CoreMappingsModule } from '@openlinker/core/mappings'
 import { InventoryModule as CoreInventoryModule } from '@openlinker/core/inventory';
 import { OrdersController } from './http/orders.controller';
 import { RefundsController } from './http/refunds.controller';
+import { SalesDocumentsController } from './http/sales-documents.controller';
 
 @Module({
   // CoreMappingsModule (#1791) provides FULFILLMENT_ROUTING_SERVICE_TOKEN —
@@ -23,6 +24,6 @@ import { RefundsController } from './http/refunds.controller';
   // HERE, in the host app's interface layer, exactly as the invoice projection
   // already is: it adds no `orders -> inventory` edge inside `libs/core`.
   imports: [CoreOrdersModule, CoreInvoicingModule, CoreMappingsModule, CoreInventoryModule],
-  controllers: [OrdersController, RefundsController],
+  controllers: [OrdersController, RefundsController, SalesDocumentsController],
 })
 export class OrdersModule {}

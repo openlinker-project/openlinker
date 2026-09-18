@@ -360,6 +360,12 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
         hasBuyerTaxId: filter.taxId === 'with',
       });
     }
+    if (filter.search !== undefined && filter.search.trim().length > 0) {
+      qb.andWhere(
+        '(inv.orderId ILIKE :search OR inv.providerInvoiceNumber ILIKE :search OR inv.clearanceReference ILIKE :search)',
+        { search: `%${filter.search.trim()}%` },
+      );
+    }
   }
 
   /**

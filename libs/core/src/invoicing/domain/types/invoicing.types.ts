@@ -944,6 +944,11 @@ export interface InvoiceRecordFilters {
    * concept (not "nip"); maps to the denormalized `hasBuyerTaxId` column.
    */
   taxId?: 'with' | 'without';
+  /**
+   * Free-text match against `orderId`, `providerInvoiceNumber`, and
+   * `clearanceReference` (#3306). Case-insensitive, partial.
+   */
+  search?: string;
 }
 
 /** Pagination window for {@link InvoiceRecordRepositoryPort.findMany}. */
