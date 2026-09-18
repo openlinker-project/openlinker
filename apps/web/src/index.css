@@ -4400,6 +4400,14 @@ a.delivery-rider-banner__button:focus-visible {
   overflow-x: auto;
 }
 
+/* Matches `.data-table__container:focus-visible` (index.css:3887) — this
+   div carries the same `tabIndex={0}` / `role="region"` scrollable-region
+   treatment, so it needs the same visible focus ring (#3255 review). */
+.duplicate-positions-detail-table__scroll:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .duplicate-positions-detail-table {
   width: 100%;
   border-collapse: collapse;
