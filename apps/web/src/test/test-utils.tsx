@@ -971,6 +971,12 @@ export function createMockApiClient(
       applyAction: vi.fn().mockResolvedValue(null),
       ...overrides.fulfillment,
     } as ApiClient['fulfillment'],
+    // #3307 — the merged /sales-documents list. Default is an exhausted
+    // first page (both cursors `null`), the honest empty state.
+    salesDocumentList: {
+      list: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      ...overrides.salesDocumentList,
+    } as ApiClient['salesDocumentList'],
     salesDocumentRules: {
       listRules: vi.fn().mockResolvedValue([]),
       createRule: vi.fn().mockResolvedValue(null),

@@ -44,3 +44,14 @@ export type {
   SalesDocumentRecordTone,
   SalesDocumentRecordWord,
 } from './lib/resolve-sales-document-record-word';
+
+// #3307 — the merged, keyset-paginated /sales-documents list (#3306).
+export { useSalesDocumentsListQuery } from './hooks/use-sales-documents-list-query';
+export { SalesDocumentListCell } from './components/sales-document-list-cell';
+export type {
+  PaginatedSalesDocuments,
+  SalesDocumentListAmount,
+  SalesDocumentListFilters,
+  SalesDocumentListItem,
+  SalesDocumentListPagination,
+} from './api/sales-document-list.types';

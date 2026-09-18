@@ -78,6 +78,10 @@ import {
   type PriceChangesApi,
 } from '../../features/price-changes/api/price-changes.api';
 import {
+  createSalesDocumentListApi,
+  type SalesDocumentListApi,
+} from '../../features/sales-documents/api/sales-document-list.api';
+import {
   createPricingSyncApi,
   type PricingSyncApi,
 } from '../../features/price-changes/api/pricing-sync.api';
@@ -241,6 +245,7 @@ export interface CoreApiClient {
   requestBlob: ApiBlobRequest;
   requestStream: ApiStreamRequest;
   returns: ReturnsApi;
+  salesDocumentList: SalesDocumentListApi;
   salesDocumentRules: SalesDocumentRulesApi;
   sourcingRules: SourcingRulesApi;
   fulfillmentAuthority: FulfillmentAuthorityApi;
@@ -476,6 +481,7 @@ export function createApiClient({
     request,
     requestBlob,
     requestStream,
+    salesDocumentList: createSalesDocumentListApi(request),
     salesDocumentRules: createSalesDocumentRulesApi(request),
     sourcingRules: createSourcingRulesApi(request),
     automations: createAutomationsApi(request),

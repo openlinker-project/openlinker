@@ -31,6 +31,8 @@ export { FiscalReceiptStatusBadge } from './components/fiscal-receipt-status-bad
 export type { FiscalReceiptDisplayStatus } from './components/fiscal-receipt-status-badge';
 export { FiscalArtefactList } from './components/fiscal-artefact-list';
 export { useOrderFiscalRegistrationsQuery } from './hooks/use-order-fiscal-registrations-query';
+// #3307 — one record by id, backing the merged /sales-documents detail route.
+export { useFiscalRegistrationQuery } from './hooks/use-fiscal-registration-query';
 export { useFiscalRegistrationProgressQuery } from './hooks/use-fiscal-registration-progress-query';
 export { useRegisterFiscalReceiptMutation } from './hooks/use-register-fiscal-receipt-mutation';
 export { useReconcileFiscalRegistrationMutation } from './hooks/use-reconcile-fiscal-registration-mutation';
