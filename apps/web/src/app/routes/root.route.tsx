@@ -30,6 +30,7 @@ import { listingsRoute } from './listings.route';
 import { aiProviderSettingsRoute } from './ai-provider-settings.route';
 import { mcpTokensRoute } from './mcp-tokens.route';
 import { invoicesRoute } from './invoices.route';
+import { salesDocumentsListRoute } from './sales-documents-list.route';
 import { jobsLogsRoute } from './jobs-logs.route';
 import { newConnectionRoute } from './new-connection.route';
 import { advancedNewConnectionRoute } from './advanced-new-connection.route';
@@ -73,6 +74,7 @@ export const coreChildren: RouteObject[] = [
   fulfillmentRoute,
   automationsRoute,
   invoicesRoute,
+  salesDocumentsListRoute,
   connectionsRoute,
   inventoryLocationsRoute,
   adaptersRoute,

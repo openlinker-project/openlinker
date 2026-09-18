@@ -54,7 +54,7 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // entry gets a 403 on the first request the page makes. `automations:read`
       // is held by exactly admin + operator in `ROLE_PERMISSIONS`.
       { to: '/automations', label: 'Automations', requiresPermission: 'automations:read' },
-      { to: '/invoices', label: 'Invoices' },
+      { to: '/sales-documents', label: 'Sales documents' },
     ],
   },
   {

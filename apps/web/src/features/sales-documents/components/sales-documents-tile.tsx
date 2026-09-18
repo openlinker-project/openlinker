@@ -1,8 +1,11 @@
 /**
  * Sales Documents Tile (#2159)
  *
- * Admin-only settings tile linking to the Sales Documents page. Mirrors
- * `McpTokensTile` / `MailerSettingsTile`.
+ * Admin-only settings tile linking to the routing-configuration page
+ * (`/settings/sales-documents`, titled "Document routing" since #3307 —
+ * "Sales documents" now names the operator-facing `/sales-documents`
+ * operations list, not this settings page). Mirrors `McpTokensTile` /
+ * `MailerSettingsTile`.
  *
  * @module apps/web/src/features/sales-documents/components
  */
@@ -20,7 +23,7 @@ export function SalesDocumentsTile(): ReactElement {
       <div className="panel__header">
         <div>
           <p className="eyebrow">Fiscal</p>
-          <h3 className="section-title">Sales documents</h3>
+          <h3 className="section-title">Document routing</h3>
         </div>
         <span className="panel__meta">Admin only</span>
       </div>
