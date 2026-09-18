@@ -20,7 +20,15 @@ export class ProvenanceBackfillStatusResponseDto {
   })
   remainingNull!: number;
 
-  @ApiProperty({ description: 'remainingNull === 0' })
+  @ApiProperty({
+    description:
+      'remainingNull === 0. A point-in-time observation, not a standing guarantee — it is ' +
+      'derived from the same live count above, so it inherits that count\'s staleness: a ' +
+      'caller with no connection axis can insert a fresh provenance-less row a moment ' +
+      'later, and #2325 must re-count immediately before it acts rather than trust a ' +
+      'previously-observed true. See latchedAt to tell "still draining" apart from ' +
+      '"latched, and stuck".',
+  })
   completed!: boolean;
 
   @ApiProperty({

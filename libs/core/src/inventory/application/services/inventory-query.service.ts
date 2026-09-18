@@ -37,6 +37,7 @@ import {
 } from '../../inventory.tokens';
 import { IAvailabilityService } from './availability.service.interface';
 import { ILocationService } from './location.service.interface';
+import { SYSTEM_CONNECTION_ID } from './inventory.service';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
 import {
@@ -63,13 +64,16 @@ import type { IInventoryQueryService } from './inventory-query.service.interface
 const MAX_STOCK_AGGREGATE_PRODUCT_IDS = 200;
 
 /**
- * The sweep-key namespace `InventoryProvenanceBackfillHandler` owns, and the
- * nil-UUID scope it runs the pass under — declared locally to match that
- * handler's own convention (see its header) rather than imported, since
- * neither is exported from a shared module.
+ * The sweep-key namespace `InventoryProvenanceBackfillHandler` owns —
+ * declared locally to match that handler's own convention (see its header)
+ * rather than imported, since the handler's `BACKFILL_SWEEP_KIND` is not
+ * exported from a shared module. The nil-UUID scope the pass runs under IS
+ * shared, as `SYSTEM_CONNECTION_ID` from `./inventory.service` — reused here
+ * rather than re-declared, per `scripts/check-system-connection-id-mirror.mjs`
+ * (#2745): a fifth independent copy in this context would be the one instance
+ * that script cannot see drift on.
  */
 const PROVENANCE_BACKFILL_SWEEP_KIND: MasterSweepKind = 'inventory-provenance';
-const PROVENANCE_BACKFILL_SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
  * Hard cap on duplicate-position group DETAIL per call (#2319).
@@ -227,22 +231,26 @@ export class InventoryQueryService implements IInventoryQueryService {
 
   async getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatus> {
     // remainingNull is live on every call, deliberately — see the
-    // ProvenanceBackfillStatus docblock. latchedAt is the backfill's own
+    // ProvenanceBackfillStatus docblock. rawLatchedAt is the backfill's own
     // persisted completion stamp (sweepCompletedAtCursorKey under the
     // nil-UUID system connection, written by
     // InventoryProvenanceBackfillHandler) — reading it alongside the live
     // count is what makes "still draining" and "latched, and stuck" (a later
     // mutation reintroduced a NULL row after completion) distinguishable.
-    const [remainingNull, latchedAt] = await Promise.all([
+    const [remainingNull, rawLatchedAt] = await Promise.all([
       this.inventoryRepository.countMissingProvenance(),
       this.cursors.getCursor(
-        PROVENANCE_BACKFILL_SYSTEM_CONNECTION_ID,
-        masterSweepCompletedAtCursorKey(
-          PROVENANCE_BACKFILL_SWEEP_KIND,
-          PROVENANCE_BACKFILL_SYSTEM_CONNECTION_ID
-        )
+        SYSTEM_CONNECTION_ID,
+        masterSweepCompletedAtCursorKey(PROVENANCE_BACKFILL_SWEEP_KIND, SYSTEM_CONNECTION_ID)
       ),
     ]);
+    // The handler's own "latched" predicate (see its `execute()`) treats an
+    // empty-string cursor row identically to a null one — normalise here so
+    // reader and writer agree on what a stored value means. Passing '' through
+    // verbatim would report `latchedAt: ''` (non-null), which every consumer
+    // of this docblock's contract reads as "latched" and prescribes deleting
+    // a cursor row that is not stuck at all.
+    const latchedAt = rawLatchedAt !== null && rawLatchedAt.length > 0 ? rawLatchedAt : null;
     return { remainingNull, completed: remainingNull === 0, latchedAt };
   }
 
