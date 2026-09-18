@@ -18,6 +18,7 @@ import { createMockApiClient, renderWithProviders } from '../../../test/test-uti
 function renderDialog(options: {
   matchOrder?: ReturnType<typeof vi.fn>;
   onMatched?: () => void;
+  orders?: Array<{ internalOrderId: string; syncStatus: Array<{ externalOrderNumber: string | null }> }>;
 } = {}) {
   const apiClient = createMockApiClient();
   const matchOrder = options.matchOrder ?? vi.fn().mockResolvedValue({
@@ -26,6 +27,15 @@ function renderDialog(options: {
     matchedAt: '2026-08-01T00:00:00.000Z',
   });
   apiClient.returns.matchOrder = matchOrder as unknown as typeof apiClient.returns.matchOrder;
+
+  if (options.orders !== undefined) {
+    apiClient.orders.list = vi.fn().mockResolvedValue({
+      items: options.orders,
+      total: options.orders.length,
+      limit: 20,
+      offset: 0,
+    }) as unknown as typeof apiClient.orders.list;
+  }
 
   const onOpenChange = vi.fn();
   renderWithProviders(
@@ -137,6 +147,28 @@ describe('MatchReturnDialog', () => {
 
     expect(await screen.findByText(COPY.genericError)).toBeInTheDocument();
     expect(screen.queryByText(COPY.alreadyAttributedTitle)).not.toBeInTheDocument();
+  });
+
+  it('should echo the resolved order number when the typed value matches a fetched order exactly', async () => {
+    renderDialog({
+      orders: [{ internalOrderId: 'ol_order_1', syncStatus: [{ externalOrderNumber: '#12345' }] }],
+    });
+
+    const input = await screen.findByLabelText(COPY.fieldLabel);
+    await userEvent.type(input, 'ol_order_1');
+
+    expect(await screen.findByText(COPY.resolvedOrder('#12345'))).toBeInTheDocument();
+  });
+
+  it('should NOT echo a resolved order for a value that does not exactly match a fetched order', async () => {
+    renderDialog({
+      orders: [{ internalOrderId: 'ol_order_1', syncStatus: [{ externalOrderNumber: '#12345' }] }],
+    });
+
+    const input = await screen.findByLabelText(COPY.fieldLabel);
+    await userEvent.type(input, 'ol_order_1_typo');
+
+    expect(screen.queryByText(COPY.resolvedOrder('#12345'))).not.toBeInTheDocument();
   });
 
   it('should clear a stale field error once the operator edits the value', async () => {

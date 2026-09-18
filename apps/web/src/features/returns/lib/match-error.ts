@@ -16,6 +16,13 @@
  * nothing OpenLinker minted — the fix is in what was typed, which is why it
  * renders as a FIELD error naming that value, never a generic toast.
  *
+ * **`readMatchRefusalReason` deliberately never consults `error.status`.**
+ * The status pairing above is what the backend does today, but `reason` is
+ * the guaranteed discriminator — the same rule `readBlockedTrigger` follows
+ * for `ReturnNotAttributedError.trigger` — so this function degrades
+ * gracefully if that status mapping is ever revised, rather than requiring
+ * both fields to agree (tech-lead review on #3281, SUGGESTION).
+ *
  * @module apps/web/src/features/returns/lib
  */
 import { ApiError } from '../../../shared/api/api-error';
