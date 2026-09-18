@@ -32,7 +32,7 @@
  *
  * @module apps/web/src/pages/inventory
  */
-import { useId, useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { KpiCard } from '../../shared/ui/kpi-card';
@@ -397,6 +397,15 @@ export function DuplicatePositionsPage(): ReactElement {
   const [maxGroupsInput, setMaxGroupsInput] = useState<string>(String(maxGroups));
   const [remediationGroup, setRemediationGroup] = useState<DuplicatePositionGroup | null>(null);
   const [remediationOpen, setRemediationOpen] = useState(false);
+
+  // `maxGroups` is the URL-owned value; `maxGroupsInput` is a local draft so
+  // typing doesn't re-fetch on every keystroke. Without this effect the
+  // draft only ever tracks its own `applyMaxGroups` writes, so browser
+  // back/forward or a pasted `?maxGroups=…` link changes what's fetched
+  // without updating what the input displays (tech-review of #3264).
+  useEffect(() => {
+    setMaxGroupsInput(String(maxGroups));
+  }, [maxGroups]);
 
   const duplicatesQuery = useDuplicatePositionsQuery(maxGroups);
   const provenanceQuery = useProvenanceBackfillStatusQuery();
