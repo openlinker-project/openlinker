@@ -282,11 +282,18 @@ The container is **run-scoped, not suite-scoped** (#1920): the first PS spec to
 ask for it boots it, every later spec reuses it, and `globalTeardown` stops it.
 Two consequences a new spec has to respect:
 
-- **Nothing resets PS between specs.** Assert only over OL-side results, or
-  filter by ids your own spec created (`psOrderId`, `external_module_name`, …).
-  Orders and carts a previous file left behind are inert to that shape of
-  assertion, and re-running fixture helpers is safe, but a bare "count all
-  orders" assertion is not.
+- **Nothing resets PS between specs, and specs sharing this container can now
+  run CONCURRENTLY** (`OL_TEST_MAX_WORKERS`, #3263 — no longer the serial
+  `maxWorkers: 1` this section originally assumed). Assert only over OL-side
+  results, or filter by ids your own spec created (`psOrderId`,
+  `external_module_name`, …). Orders and carts a previous FILE left behind
+  are inert to that shape of assertion, and re-running fixture helpers is
+  safe — but under concurrency a peer spec's rows can now appear *during*
+  your spec's run, not merely before it, which widens the set of unsafe
+  assertions beyond "count all orders": reading a max/latest value, or
+  asserting the ABSENCE of something, is racy in a way it was not when the
+  suite ran one file at a time. A bare "count all orders" assertion is not
+  safe either way.
 - **The shared container is always OL-module-installed.** That satisfies the
   specs that don't need the module; the reverse does not hold.
 

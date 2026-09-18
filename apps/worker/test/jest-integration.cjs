@@ -4,6 +4,7 @@ const {
   esmDepsJsTransform,
 } = require('../../../jest.esm-deps.cjs');
 const { resolveTestWorkers } = require('../../../jest.test-workers.cjs');
+const { transpileOnlyTsJest } = require('../../../jest.ts-transform.cjs');
 
 module.exports = {
   rootDir: '..',
@@ -25,17 +26,25 @@ module.exports = {
     // a loaded box (3 against 1); nothing failed to COMPILE under isolation,
     // which is what this option risks.
     //
-    // `diagnostics: false` alone is NOT the lever and was measured separately:
-    // it silences errors while still building the program, and its own run came
-    // back SLOWER. `isolatedModules` is what switches ts-jest to
-    // `ts.transpileModule`.
+    // A bare `diagnostics: false` alone is NOT the lever and was measured
+    // separately: it silences errors while still building the program, and
+    // its own run came back SLOWER. `isolatedModules` is what switches
+    // ts-jest to `ts.transpileModule`.
     //
     // The cost is real and is paid elsewhere: test files lose type-checking
     // here, and `tsconfig.type-check.json` excludes `test`, so they had no
     // other checker. `tsconfig.test-check.json` + the Type Check job's second
     // step is where that coverage now lives - it runs in parallel, so it costs
     // nothing on the clock.
-    '^.+\\.ts$': ['ts-jest', { isolatedModules: true, diagnostics: false }],
+    //
+    // `transpileOnlyTsJest()` (jest.ts-transform.cjs) is the shared builder
+    // the unit tier uses for the same lever: it merges `moduleResolution:
+    // 'node'` into the tsconfig override rather than reaching for
+    // `diagnostics: false`, which fixes the underlying ts-jest/TS5110
+    // mismatch (ts-jest forces `module: CommonJS` against the base
+    // config's `moduleResolution: Node16`) instead of merely silencing it -
+    // a genuine syntactic error still surfaces at test time.
+    '^.+\\.ts$': transpileOnlyTsJest(),
     // ESM-only htmlparser2 chain pulled in transitively by sanitize-html
     // >=2.17.6 via @openlinker/shared/html — see jest.esm-deps.cjs.
     '^.+\\.js$': esmDepsJsTransform,
@@ -50,12 +59,11 @@ module.exports = {
   // `libs/test-kit/src/containers.ts`), which is what makes a count above 1
   // safe: before that, a second worker's `TRUNCATE ... CASCADE` + `flushDb()`
   // reset would wipe a peer's data mid-test. Resolved from
-  // `OL_TEST_MAX_WORKERS`, defaulting to `DEFAULT_TEST_WORKERS` (6, not
-  // gated on `CI` - unlike the unit tier, this only runs against Docker on a
-  // machine that already opted in). A local run with no env set therefore
-  // gets 6 workers too; `OL_TEST_MAX_WORKERS=1` is the escape hatch back to
-  // the old serial behaviour, for bisecting a parallelism-sensitive failure.
-  // See `jest.test-workers.cjs`.
+  // `OL_TEST_MAX_WORKERS`, defaulting to `DEFAULT_TEST_WORKERS` (6) on CI and
+  // to a CPU-bounded local default off it - a local run with no env set does
+  // NOT get 6 workers unless it has the cores to spare; `OL_TEST_MAX_WORKERS=1`
+  // is the escape hatch back to the old serial behaviour, for bisecting a
+  // parallelism-sensitive failure. See `jest.test-workers.cjs`.
   maxWorkers: resolveTestWorkers(),
   // Nothing in this repo caps a worker's heap, so a worker that grows runs
   // until the kernel OOM-killer takes it - and the symptom ("Jest worker

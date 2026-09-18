@@ -293,20 +293,27 @@ jobs:
       # base tsconfig, the jest configs, AND `jest.test-workers.cjs` (#3263) -
       # the worker count now decides how many per-worker databases exist, so a
       # change to it belongs in the same cache-busting set as the configs that
-      # size the transform. No `github.run_id` or `github.sha` in the key: ts-jest
-      # keys its own entries by file content, so restoring an older cache is
-      # safe (unchanged files hit, changed ones re-transform, #1920) - and a
-      # run-scoped key could never actually be RESTORED (only ever saved fresh),
-      # so it was pure waste. Keying on `github.sha` instead minted a fresh
-      # multi-hundred-MB entry per commit, which would evict the pnpm store
-      # cache this same job restores above - the repo-wide budget is 10 GB with
-      # LRU eviction (PR #1923 review). The stable key here is what lets
-      # unchanged-deps runs share one entry instead of each minting their own.
+      # size the transform.
+      #
+      # The PRIMARY key carries `github.run_id`, the ordinary rolling-cache
+      # shape `restore-keys` below already assumes: `actions/cache@v4` skips
+      # the save whenever the primary key already exists ("Cache already
+      # exists. Skipping save."), so a key with no run-scoped component is
+      # written ONCE and then frozen - every spec added or edited after that
+      # first save misses forever with nothing in the log to say so. An
+      # earlier version of this comment argued the run-scoped suffix was
+      # "pure waste" because it could never be restored; that reasoning
+      # ignored `restore-keys`, whose `jest-integration-<os>-<hash>-` prefix
+      # is exactly what restores the PREVIOUS run's entry by content, while
+      # this run still saves its own - the standard pattern, not a special
+      # case. ts-jest keys its own entries by file content, so restoring an
+      # older cache is safe regardless (unchanged files hit, changed ones
+      # re-transform, #1920).
       - name: Cache jest transform output
         uses: actions/cache@v4
         with:
           path: .jest-cache
-          key: jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs', 'jest.test-workers.cjs') }}
+          key: jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs', 'jest.test-workers.cjs') }}-${{ github.run_id }}
           restore-keys: |
             jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs', 'jest.test-workers.cjs') }}-
             jest-integration-${{ runner.os }}-

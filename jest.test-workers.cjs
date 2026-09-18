@@ -54,8 +54,42 @@ const MAX_TEST_WORKERS = 15;
  *
  * 6 leaves two of the eight CPUs for the Postgres, Redis and PrestaShop
  * containers that share the same cap, which 8 did not.
+ *
+ * That budget covers the SHARED PrestaShop pair - not the standalone one.
+ * `prestashop-webhook-provisioning.int-spec.ts` calls
+ * `startPrestashopContainer()` directly and boots its OWN PS + MySQL pair
+ * (the documented exception in `docs/testing-guide.md` § PrestaShop
+ * Testcontainer Pattern: call it directly only when the spec's subject IS the
+ * from-scratch install), so the realistic peak under this worker count is TWO
+ * PrestaShop + two MySQL containers alongside the shared pair, six Node
+ * workers, and Postgres/Redis, all inside the same 24 GiB / 8-CPU cgroup. At
+ * `maxWorkers: 1` the two pairs could never be up together; at 6 they can, on
+ * different workers. This has not bitten in CI, but the 6-worker sizing above
+ * does not account for it - a second PS+MySQL pair is exactly the kind of
+ * contention that presents as a container-boot timeout rather than as an
+ * obvious resource error. Either lower the standalone spec's own footprint or
+ * serialise it against the shared pair if this ever needs tightening further.
  */
 const DEFAULT_TEST_WORKERS = 6;
+
+const os = require('os');
+
+/**
+ * The fallback used OFF CI, when no override is set.
+ *
+ * `DEFAULT_TEST_WORKERS` is sized for the CI runner's 8-CPU cgroup - not for
+ * a contributor's laptop. Unlike the integration tier's earlier reasoning
+ * ("this only runs against Docker on a machine that already opted in"),
+ * "has Docker" and "has 8 cores to spare" are different facts, and this
+ * repo's own lessons already record local Docker degrading under long
+ * sessions. Bounded by `os.cpus().length - 1` (never below 1) so a local run
+ * leaves one core free for the OS and everything else on the box, mirroring
+ * the local-vs-CI split `jest.unit-workers.cjs` makes for the sibling tier.
+ */
+function resolveLocalDefault() {
+  const cpuBound = Math.max(1, os.cpus().length - 1);
+  return Math.min(DEFAULT_TEST_WORKERS, cpuBound);
+}
 
 /**
  * Resolve the integration-suite worker count.
@@ -66,11 +100,16 @@ const DEFAULT_TEST_WORKERS = 6;
  * non-finite or sub-1 value resolves to the default rather than throwing: a
  * mistyped override must not take the suite down, and must not silently
  * serialise it either.
+ *
+ * The default itself is `DEFAULT_TEST_WORKERS` on CI and the CPU-bounded
+ * `resolveLocalDefault()` off it - `process.env.CI` is set by every CI
+ * provider this project targets, including GitHub Actions.
  */
 function resolveTestWorkers() {
-  const raw = Number(process.env.OL_TEST_MAX_WORKERS ?? DEFAULT_TEST_WORKERS);
+  const fallback = process.env.CI ? DEFAULT_TEST_WORKERS : resolveLocalDefault();
+  const raw = Number(process.env.OL_TEST_MAX_WORKERS ?? fallback);
   if (!Number.isFinite(raw) || raw < 1) {
-    return DEFAULT_TEST_WORKERS;
+    return fallback;
   }
   return Math.min(Math.floor(raw), MAX_TEST_WORKERS);
 }

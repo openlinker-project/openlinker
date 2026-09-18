@@ -105,24 +105,66 @@ export function applyWorkerScope(): void {
  *
  * The container count does not change: this adds databases inside the single
  * server, which share its process and cost almost nothing. Creation runs once,
- * in the realm that actually booted the container, against a freshly-started
- * server where none of these names can already exist.
+ * in the realm that actually booted the container, and the two current call
+ * sites (below) both do so against a freshly-started server where none of
+ * these names can already exist.
+ *
+ * That precondition is NOT enforced by this function's own signature, and
+ * this function is `export`ed from `@openlinker/test-kit` (a plugin-author-
+ * facing package) - so it is not bound by the same premise its current
+ * callers are. Postgres has no `CREATE DATABASE IF NOT EXISTS`, so a naive
+ * `CREATE DATABASE` against a server that already has some of these names
+ * would abort on the first collision. The pre-check below (`SELECT datname
+ * FROM pg_database WHERE datname = ANY(...)`) makes the function idempotent
+ * against an already-primed server instead: only the missing names are
+ * created, and a second call against the same server is a no-op.
  *
  * Uses the container's own `psql` rather than a client library so `test-kit`
- * takes no new dependency. Each statement needs its own `-c`: `CREATE DATABASE`
- * cannot run inside a transaction block, and psql wraps a single multi-statement
- * `-c` in one.
+ * takes no new dependency. Each `CREATE DATABASE` needs its own `-c`: it
+ * cannot run inside a transaction block, and psql wraps a single
+ * multi-statement `-c` in one.
  */
 export async function createWorkerDatabases(postgres: StartedPostgreSqlContainer): Promise<void> {
   const workers = resolveTestWorkers();
+  const names = Array.from({ length: workers }, (_, i) => `${DEFAULT_DB_NAME}_${i + 1}`);
+
+  const existingResult = await postgres.exec([
+    'psql',
+    '-U',
+    DEFAULT_DB_USER,
+    '-d',
+    DEFAULT_DB_NAME,
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-tAc',
+    `SELECT datname FROM pg_database WHERE datname = ANY(ARRAY[${names
+      .map((name) => `'${name}'`)
+      .join(',')}])`,
+  ]);
+  if (existingResult.exitCode !== 0) {
+    throw new Error(
+      `test-kit: failed to check for existing per-worker database(s) (exit ${existingResult.exitCode}): ${existingResult.output}`,
+    );
+  }
+  const existing = new Set(
+    existingResult.output
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
+  const missing = names.filter((name) => !existing.has(name));
+  if (missing.length === 0) {
+    return;
+  }
+
   const args = ['psql', '-U', DEFAULT_DB_USER, '-d', DEFAULT_DB_NAME, '-v', 'ON_ERROR_STOP=1'];
-  for (let id = 1; id <= workers; id += 1) {
-    args.push('-c', `CREATE DATABASE "${DEFAULT_DB_NAME}_${id}"`);
+  for (const name of missing) {
+    args.push('-c', `CREATE DATABASE "${name}"`);
   }
   const { exitCode, output } = await postgres.exec(args);
   if (exitCode !== 0) {
     throw new Error(
-      `test-kit: failed to create ${workers} per-worker database(s) (exit ${exitCode}): ${output}`,
+      `test-kit: failed to create ${missing.length} per-worker database(s) (exit ${exitCode}): ${output}`,
     );
   }
 }
