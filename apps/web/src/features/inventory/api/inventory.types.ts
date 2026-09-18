@@ -82,8 +82,10 @@ export interface DuplicatePositionGroup {
   liveRowCount: number;
   rows: DuplicatePositionRow[];
   /**
-   * Display enrichment (#3239). `productName`/`sku` are `null` only when the
-   * product could not be resolved (e.g. deleted). `connectionName` and
+   * Display enrichment (#3239). `productName` is `null` only when the
+   * product could not be resolved (e.g. deleted). `sku` is `null` both then
+   * AND when the product resolved but simply carries no SKU — check
+   * `productName` to tell the two apart. `connectionName` and
    * `locationName` stay `null` for the documented sentinel states —
    * `sourceConnectionId === null | 'legacy'` (not yet backfilled by #2317)
    * and `locationId === null` (ADR-058 decision 2, the master declines to
@@ -110,9 +112,22 @@ export interface DuplicatePositionsReport {
  * `GET /inventory/provenance-backfill-status`. The second, independent
  * readiness condition for the #2325 stricter uniqueness index, alongside
  * `DuplicatePositionsReport.groupCount`. Always resolved live server-side —
- * never cached — since the backfill itself tracks no cursor.
+ * never cached. The backfill DOES track two `connection_cursors` keys
+ * (`sweepRemainingCountCursorKey` / `sweepCompletedAtCursorKey`), but a
+ * persisted count can go stale — the pass self-latches and stops
+ * recounting — which is exactly why this endpoint recounts live rather
+ * than reading the cursor back.
  */
 export interface ProvenanceBackfillStatus {
   remainingNull: number;
   completed: boolean;
+  /**
+   * The backfill's own persisted completion stamp (ISO timestamp), or null
+   * if it has never latched. Non-null while `remainingNull > 0` means the
+   * pass has stopped running on its own — a later mutation reintroduced a
+   * NULL row after completion — and needs an operator to re-arm it. This
+   * is the only field that tells "still draining" apart from "latched, and
+   * stuck".
+   */
+  latchedAt: string | null;
 }
