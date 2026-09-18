@@ -1,7 +1,5 @@
-import type { ReactElement } from 'react';
 import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../nav-registry.types';
-import { RequireAdmin } from './require-admin';
 
 const duplicatePositionsCrumb: RouteCrumbHandle = {
   crumb: { group: 'Diagnostics', title: 'Duplicate stock positions' },
@@ -17,17 +15,14 @@ export const duplicatePositionsRoute: RouteObject = {
         const { DuplicatePositionsPage } = await import(
           '../../pages/inventory/duplicate-positions-page'
         );
-        // Backend is @Roles('admin')-gated; RequireAdmin keeps a non-admin
-        // session from ever firing the page's queries and hitting a raw 403
-        // ErrorState (see require-admin.tsx's docblock).
-        function Guarded(): ReactElement {
-          return (
-            <RequireAdmin>
-              <DuplicatePositionsPage />
-            </RequireAdmin>
-          );
-        }
-        return { Component: Guarded };
+        // Backend is @Roles('admin')-gated. The page gates itself (its own
+        // docblock explains why: it renders an access-denied state INSIDE
+        // its own PageLayout, and its query hooks are `enabled: isAdmin`,
+        // which is what actually prevents the 403 round-trip). A second,
+        // route-level guard here (`RequireAdmin`, #3261 review IMPORTANT
+        // finding) made the page's own denial state unreachable dead code
+        // and rendered a frame-less denial with no PageLayout — removed.
+        return { Component: DuplicatePositionsPage };
       },
     },
   ],
