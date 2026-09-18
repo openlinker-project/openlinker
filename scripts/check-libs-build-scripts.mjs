@@ -49,6 +49,14 @@ const LIBS_PARENTS = ['libs', 'libs/integrations'];
  */
 const REQUIRED_SCRIPTS = ['build', 'lint', 'type-check', 'test'];
 
+/**
+ * A floor on how many workspace packages a run must have discovered
+ * (#2792). 17 exist under `LIBS_PARENTS` today; a small floor still catches
+ * the glob drifting (a typo, a moved directory) without needing a bump on
+ * every routine package addition or removal.
+ */
+const MIN_PACKAGES_CHECKED = 5;
+
 const errors = [];
 
 async function listChildPackageDirs(parent) {
@@ -100,6 +108,20 @@ async function main() {
     for (const msg of errors) {
       process.stderr.write(`check-libs-build-scripts: ${msg}\n`);
     }
+    process.exit(1);
+  }
+
+  // A run that discovered almost no packages is a broken run, not a clean
+  // tree (#2792) — most likely LIBS_PARENTS drifted from
+  // `pnpm-workspace.yaml`'s globs. 17 packages exist under these parents
+  // today; a floor well below that still catches a discovery that silently
+  // found next to nothing.
+  if (packagesChecked < MIN_PACKAGES_CHECKED) {
+    process.stderr.write(
+      `check-libs-build-scripts: only ${packagesChecked} package(s) were discovered under ` +
+        `${LIBS_PARENTS.join(', ')} (expected at least ${MIN_PACKAGES_CHECKED}). Re-sync ` +
+        `LIBS_PARENTS with pnpm-workspace.yaml.\n`,
+    );
     process.exit(1);
   }
 
