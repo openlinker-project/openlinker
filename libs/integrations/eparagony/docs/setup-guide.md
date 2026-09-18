@@ -145,7 +145,14 @@ Skip this step if you only want receipts.
    `pending-submission`/`accepted`.
 4. A routing rule (rule composer) decides which orders reach the Invoicing role versus
    the Fiscalization role on this connection — see the rule-composer guide.
-5. Once an invoice is issued, its detail page shows the same waiting/registered ladder
+5. **Intra-EU supply or export line?** A neutral `0%` line always invoices as the
+   vendor's domestic zero rate (`ZRD`). If a line is genuinely an intra-community
+   supply or an export, set that order's line-level tax rate to the vendor's own
+   code — `ZRICS` (intra-EU) or `ZRE` (export) — rather than `0`; either travels
+   through unchanged. A shop that only ever records a plain `0` for these lines
+   will invoice them as domestic zero-rated, which is not the same declaration
+   (#3192 review, S2).
+6. Once an invoice is issued, its detail page shows the same waiting/registered ladder
    the receipt panel uses — a `pending-submission` invoice has **no retry button**, on
    purpose (see the [runbook](./runbook.md)).
 

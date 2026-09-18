@@ -21,10 +21,9 @@ interface AlertProps {
    * is routinely a flex/grid child, so a spare `<div>` around it would change
    * where it sits rather than only what it is called.
    *
-   * This is the third shared primitive to carry this prop (after `Combobox`
-   * and `StatusBadge`). If a fourth needs it, write the convention down
-   * explicitly (docs/frontend-architecture.md or a component-conventions
-   * note) rather than adding a fourth precedent silently.
+   * See `docs/frontend-architecture.md` § Test-introspection `data-testid`
+   * prop for the convention and the running list of primitives that carry
+   * it — update that list rather than this comment when a new one adopts it.
    */
   'data-testid'?: string;
 }

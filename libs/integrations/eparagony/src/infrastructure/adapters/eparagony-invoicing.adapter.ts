@@ -123,6 +123,14 @@ const SUPPORTED_DOCUMENT_TYPES: readonly DocumentType[] = ['invoice'];
 const DEFAULT_STATUS_POLL_TIMEOUT_MS = 45_000;
 
 /**
+ * Floor on `createDocument`'s own transport timeout, derived from the
+ * remaining whole-call budget (#3192 review, I2). An already-exhausted budget
+ * still deserves one real attempt rather than an effectively-zero timeout
+ * that aborts before the request leaves the process.
+ */
+const MIN_CREATE_TIMEOUT_MS = 1_000;
+
+/**
  * Cap on the vendor error sentence this adapter writes to the log. It echoes
  * submitted values, which on this lane include the buyer's name, address and tax
  * number - so it is bounded before it leaves the process, the same defence core
@@ -179,7 +187,14 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
 
     const deadline = Date.now() + EPARAGONY_ISSUE_DEADLINE_MS;
 
-    await this.createDocument(request, documentToken, cmd.orderId);
+    // The create's own transport timeout must not exceed what is left of the
+    // WHOLE-CALL deadline (#3192 review, I2). Left uncapped, `createDocument`
+    // could consume `REQUEST_TIMEOUT_MS * (maxRetries + 1)` plus backoff on
+    // its own budget, independent of `deadline` - so the create-plus-poll
+    // worst case could outlive both this adapter's own deadline and core's
+    // in-flight CAS lease, which is exactly the invariant the module-load
+    // assertion below is meant to protect.
+    await this.createDocument(request, documentToken, cmd.orderId, deadline);
     const status = await this.pollToSettledIssuance(documentToken, deadline, cmd.orderId);
 
     return this.toIssueResult(cmd, status, documentToken, documentLines);
@@ -322,7 +337,17 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
     body: EparagonyCreateInvoiceRequest,
     documentToken: string,
     orderId: string,
+    deadline: number,
   ): Promise<void> {
+    // Derived from what is actually LEFT of the whole-call deadline, never a
+    // fixed budget of its own (#3192 review, I2) - the create's own transport
+    // layer otherwise retries and backs off on a clock that knows nothing
+    // about `EPARAGONY_ISSUE_DEADLINE_MS`. Floored rather than left able to
+    // reach zero or negative: an already-exhausted budget still deserves one
+    // real attempt (the http client's own abort then reports it honestly as a
+    // timeout) rather than a `setTimeout(0)` that aborts before the request
+    // leaves the process.
+    const timeoutMs = Math.max(MIN_CREATE_TIMEOUT_MS, deadline - Date.now());
     try {
       await this.http.post<unknown>(EPARAGONY_DOCUMENTS_PATH, body, {
         // `documentToken`, NOT core's raw `idempotencyKey`: the vendor requires
@@ -335,6 +360,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
         // header above: repeating a key with the same body cannot mint a second
         // document, and therefore cannot issue a second invoice.
         idempotent: true,
+        timeoutMs,
       });
       this.logger.log(
         `eparagony.pl accepted the invoice for order ${orderId} as ${documentToken} ` +
@@ -381,6 +407,19 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
     let lastStatus: string | null = null;
 
     for (;;) {
+      // Checked BEFORE the read, not only after (#3192 review, I2):
+      // `createDocument` may already have spent part of the shared budget, so
+      // entering this loop with the budget already exhausted must not still
+      // fire one more full status read - that would let the create-plus-poll
+      // worst case outlive both this adapter's own deadline and core's
+      // in-flight CAS lease.
+      if (Date.now() >= pollUntil) {
+        throw new EparagonyNetworkError(
+          `eparagony.pl did not settle invoice document ${documentToken} for order ${orderId} ` +
+            `within the poll budget (last status "${lastStatus ?? 'unknown'}")`,
+        );
+      }
+
       const body = await readEparagonyDocumentStatus(this.http, documentToken, {
         treatUnknownDocumentAsMissing: false,
       });

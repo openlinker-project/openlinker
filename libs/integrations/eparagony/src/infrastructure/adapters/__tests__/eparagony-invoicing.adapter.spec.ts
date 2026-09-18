@@ -12,6 +12,7 @@ import type { LoggerPort } from '@openlinker/shared/logging';
 import { BuyerProfile, InvoiceRecord } from '@openlinker/core/invoicing';
 import type { IssueInvoiceCommand, RegulatoryStatus } from '@openlinker/core/invoicing';
 
+import { EPARAGONY_ISSUE_DEADLINE_MS } from '../../../eparagony.constants';
 import { EparagonyApiError } from '../../../domain/exceptions/eparagony-api.error';
 import { EparagonyConfigException } from '../../../domain/exceptions/eparagony-config.exception';
 import { EparagonyNetworkError } from '../../../domain/exceptions/eparagony-network.error';
@@ -315,6 +316,41 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
       const { record } = await promise;
       expect(client.get).toHaveBeenCalledTimes(2);
       expect(record.regulatoryStatus).toBe('pending-submission');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('derives createDocument\'s own transport timeout from what is left of the whole-call deadline (#3192 review, I2)', async () => {
+    const client = makeClient([OFFLINE]);
+    await makeAdapter(client).issueInvoice(makeCommand());
+
+    const [, , options] = client.post.mock.calls[0] as [string, unknown, { timeoutMs: number }];
+    expect(options.timeoutMs).toBeGreaterThan(0);
+    expect(options.timeoutMs).toBeLessThanOrEqual(EPARAGONY_ISSUE_DEADLINE_MS);
+  });
+
+  it('does not fire one more status read when the create already exhausted the whole-call deadline (#3192 review, I2)', async () => {
+    jest.useFakeTimers();
+    try {
+      const client = makeClient([OFFLINE]);
+      // Simulate a create that alone consumes the whole-call budget - the
+      // poll must refuse before its first read rather than firing one more
+      // full round trip on a budget that is already gone.
+      client.post.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(
+              () => resolve({ status: 202, data: {} } as EparagonyHttpResponse<unknown>),
+              EPARAGONY_ISSUE_DEADLINE_MS + 5_000,
+            );
+          }),
+      );
+      const promise = makeAdapter(client).issueInvoice(makeCommand());
+      const assertion = expect(promise).rejects.toBeInstanceOf(EparagonyNetworkError);
+      await jest.advanceTimersByTimeAsync(EPARAGONY_ISSUE_DEADLINE_MS + 5_000);
+      await assertion;
+      expect(client.get).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }

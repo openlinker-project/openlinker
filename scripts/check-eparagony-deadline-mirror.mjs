@@ -35,6 +35,17 @@ const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 const PLUGIN_CONSTANTS_FILE = 'libs/integrations/eparagony/src/eparagony.constants.ts';
 
 /**
+ * A floor beneath which a lane's own deadline cannot plausibly complete a real
+ * round trip - the adapter's create step alone needs its own transport
+ * timeout plus the poll's `MIN_STATUS_POLL_TIMEOUT_MS` (5 s), so a value below
+ * this is a typo, not a tighter budget (#3192 review, S1). The upper-bound
+ * check above catches a deadline raised past core's ceiling; nothing caught
+ * one lowered into the range where every issuance times out before the
+ * transport has a chance to answer.
+ */
+const MIN_LANE_DEADLINE_MS = 10_000;
+
+/**
  * Each lane's plugin deadline, and the core ceiling it must stay strictly below.
  * The two core constants are separate declarations in separate services that
  * happen to hold the same value today; they are read independently so a change
@@ -95,6 +106,12 @@ export function checkLane({ lane, pluginName, pluginValue, coreName, coreValue }
       `issue the same sale twice`
     );
   }
+  if (pluginValue < MIN_LANE_DEADLINE_MS) {
+    return (
+      `${lane}: ${pluginName} (${pluginValue}ms) is implausibly low (< ${MIN_LANE_DEADLINE_MS}ms) - ` +
+      `every issuance would time out before a real round trip could complete`
+    );
+  }
   return null;
 }
 
@@ -119,6 +136,11 @@ function selfCheck() {
   expect(checkLane({ ...base, pluginValue: 130000, coreValue: 120000 }) !== null, 'above fails');
   expect(checkLane({ ...base, pluginValue: null, coreValue: 120000 }) !== null, 'unreadable fails');
   expect(checkLane({ ...base, pluginValue: 1, coreValue: null }) !== null, 'unreadable core fails');
+  expect(checkLane({ ...base, pluginValue: 100, coreValue: 120000 }) !== null, 'implausibly low fails');
+  expect(
+    checkLane({ ...base, pluginValue: MIN_LANE_DEADLINE_MS, coreValue: 120000 }) === null,
+    'exactly at the floor passes',
+  );
 
   if (failures.length > 0) {
     process.stderr.write(`check-eparagony-deadline-mirror self-check failed:\n`);
