@@ -30,11 +30,25 @@
  * 400 `unknown-order` on the order field, 400 `order-not-on-connection` on
  * the connection field. `no-lines` / `invalid-quantity` are handled
  * defensively (the form's own Zod validation should already have caught
- * them) and fall through to the generic message.
+ * them) and fall through to the generic message. Mapped through RHF's own
+ * `form.setError`, not a parallel `useState` — the mechanism the framework
+ * already offers for exactly this (tech-lead review on #3284, SUGGESTION).
+ *
+ * **`sku` is a required field here** (see `record-return-dialog.schema.ts`
+ * for why), and the reason `<select>` renders `describeRefundReason` labels
+ * rather than the raw wire vocabulary — the same labeller
+ * `return-money-panel.tsx` already imports from the `orders` barrel for the
+ * identical vocabulary (tech-lead review on #3284, IMPORTANT).
+ *
+ * **`note` is deliberately still not collected**, unlike `sku` above — issue
+ * #3084's Proposed Solution names both, but `note` has no downstream
+ * consequence the way an unrestockable line does, so it stays a follow-up
+ * rather than blocking this PR (tech-lead review on #3284, SUGGESTION —
+ * stated explicitly so the omission is a decision on the record).
  *
  * @module apps/web/src/features/returns/components
  */
-import { useState, type FormEvent, type ReactElement } from 'react';
+import type { FormEvent, ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { Alert } from '../../../shared/ui/alert';
@@ -52,7 +66,7 @@ import { Select } from '../../../shared/ui/select';
 // Cross-feature imports go through each feature's own barrel — the
 // `match-return-dialog.tsx` / `return-money-panel.tsx` precedent.
 import { useConnectionsQuery } from '../../connections';
-import { useOrdersQuery } from '../../orders';
+import { describeRefundReason, useOrdersQuery } from '../../orders';
 import { useRecordReturnMutation } from '../hooks/use-record-return-mutation';
 import { RETURN_LINE_REASON_VALUES } from '../api/returns.types';
 import { readRecordRefusalReason } from '../lib/record-error';
@@ -81,14 +95,16 @@ export function RecordReturnDialog({
   onOpenChange,
   onRecorded,
 }: RecordReturnDialogProps): ReactElement {
-  const [fieldError, setFieldError] = useState<{ field: 'internalOrderId' | 'sourceConnectionId'; message: string } | null>(
-    null,
-  );
-
   const ordersQuery = useOrdersQuery(undefined, { limit: RECENT_ORDERS_LIMIT });
   const orders = ordersQuery.data?.items ?? [];
   const connectionsQuery = useConnectionsQuery();
   const connections = connectionsQuery.data ?? [];
+  // The connection SELECT is required and the ONLY way to satisfy it is to
+  // pick a fetched option, so a failed read leaves the field unsatisfiable
+  // with nothing on screen to explain why (tech-lead review on #3284,
+  // IMPORTANT) — distinct from the orders `<datalist>`, where free text is
+  // still honoured and a failed read degrades acceptably on its own.
+  const connectionsUnavailable = connectionsQuery.isError;
 
   const mutation = useRecordReturnMutation();
 
@@ -112,13 +128,11 @@ export function RecordReturnDialog({
 
   function resetAndClose(): void {
     form.reset(RECORD_RETURN_DIALOG_DEFAULT_VALUES);
-    setFieldError(null);
     onOpenChange(false);
   }
 
   const onSubmit = form.handleSubmit((values) => {
     if (mutation.isPending) return;
-    setFieldError(null);
 
     mutation.mutate(
       {
@@ -126,6 +140,7 @@ export function RecordReturnDialog({
         sourceConnectionId: values.sourceConnectionId,
         lines: [
           {
+            sku: values.sku,
             name: values.itemName,
             reason: values.reason,
             quantityAdvised: values.quantityAdvised,
@@ -140,11 +155,11 @@ export function RecordReturnDialog({
         onError: (error) => {
           const reason = readRecordRefusalReason(error);
           if (reason === 'unknown-order') {
-            setFieldError({ field: 'internalOrderId', message: COPY.unknownOrder(values.internalOrderId) });
+            form.setError('internalOrderId', { message: COPY.unknownOrder(values.internalOrderId) });
             return;
           }
           if (reason === 'order-not-on-connection') {
-            setFieldError({ field: 'sourceConnectionId', message: COPY.orderNotOnConnection });
+            form.setError('sourceConnectionId', { message: COPY.orderNotOnConnection });
             return;
           }
           // `no-lines` / `invalid-quantity` should already be unreachable past
@@ -178,7 +193,7 @@ export function RecordReturnDialog({
             name="internalOrderId"
             label={COPY.orderFieldLabel}
             description={COPY.orderFieldDescription}
-            error={fieldError?.field === 'internalOrderId' ? fieldError.message : form.formState.errors.internalOrderId?.message}
+            error={form.formState.errors.internalOrderId?.message}
           >
             <Input
               placeholder={COPY.orderFieldPlaceholder}
@@ -190,11 +205,7 @@ export function RecordReturnDialog({
               // `off` leaves the datalist as the only suggestion source (the
               // match-return-dialog.tsx precedent, #3082).
               autoComplete="off"
-              {...form.register('internalOrderId', {
-                onChange: () => {
-                  if (fieldError?.field === 'internalOrderId') setFieldError(null);
-                },
-              })}
+              {...form.register('internalOrderId')}
             />
           </FormField>
           <datalist id={DATALIST_ID}>
@@ -212,16 +223,12 @@ export function RecordReturnDialog({
             name="sourceConnectionId"
             label={COPY.connectionFieldLabel}
             description={COPY.connectionFieldDescription}
-            error={fieldError?.field === 'sourceConnectionId' ? fieldError.message : form.formState.errors.sourceConnectionId?.message}
+            error={form.formState.errors.sourceConnectionId?.message}
           >
-            <Select
-              {...form.register('sourceConnectionId', {
-                onChange: () => {
-                  if (fieldError?.field === 'sourceConnectionId') setFieldError(null);
-                },
-              })}
-            >
-              <option value="">{COPY.connectionPlaceholder}</option>
+            <Select disabled={connectionsQuery.isPending || connectionsUnavailable} {...form.register('sourceConnectionId')}>
+              <option value="">
+                {connectionsQuery.isPending ? COPY.connectionLoadingPlaceholder : COPY.connectionPlaceholder}
+              </option>
               {connections.map((connection) => (
                 <option key={connection.id} value={connection.id}>
                   {connection.name}
@@ -230,9 +237,24 @@ export function RecordReturnDialog({
             </Select>
           </FormField>
 
+          {connectionsUnavailable ? <Alert tone="error">{COPY.connectionsLoadFailed}</Alert> : null}
+
           {showConnectionMismatch && orderConnection !== null ? (
             <Alert tone="warning">{COPY.connectionMismatchWarning(orderConnection.name)}</Alert>
           ) : null}
+
+          <FormField
+            name="sku"
+            label={COPY.skuFieldLabel}
+            description={COPY.skuFieldDescription}
+            error={form.formState.errors.sku?.message}
+          >
+            <Input
+              placeholder={COPY.skuFieldPlaceholder}
+              autoComplete="off"
+              {...form.register('sku')}
+            />
+          </FormField>
 
           <FormField
             name="itemName"
@@ -260,7 +282,7 @@ export function RecordReturnDialog({
               <option value="">{COPY.reasonPlaceholder}</option>
               {RETURN_LINE_REASON_VALUES.map((reason) => (
                 <option key={reason} value={reason}>
-                  {reason}
+                  {describeRefundReason(reason)}
                 </option>
               ))}
             </Select>
@@ -284,7 +306,7 @@ export function RecordReturnDialog({
             <Button type="button" tone="secondary" disabled={mutation.isPending} onClick={resetAndClose}>
               {COPY.cancel}
             </Button>
-            <Button type="submit" disabled={mutation.isPending}>
+            <Button type="submit" disabled={mutation.isPending || connectionsUnavailable}>
               {mutation.isPending ? COPY.confirming : COPY.confirm}
             </Button>
           </DialogFooter>
