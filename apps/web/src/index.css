@@ -4515,13 +4515,9 @@ a.delivery-rider-banner__button:focus-visible {
 
 /* The detail table's Row ID + badges wrapped to 3 lines and crushed together
    on a narrow mobile card, since a plain <table> has no reflow of its own.
-   Scroll it horizontally instead — the "tables may be wider, each in its own
-   overflow-x: auto container" rule — and keep the id on one line so the
-   scrollbar is what handles overflow, not word-wrap. */
-.duplicate-positions-detail__table-scroll {
-  overflow-x: auto;
-}
-
+   The table is already scrolled horizontally by the pre-existing
+   `.duplicate-positions-detail-table__scroll` wrapper (#3074) — keep the id
+   on one line here so the scrollbar is what handles overflow, not word-wrap. */
 .duplicate-positions-detail__row-id {
   white-space: nowrap;
 }
