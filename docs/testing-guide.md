@@ -854,11 +854,90 @@ Tests:       339 passed, 339 total          ← zero test failures
 `signal=SIGKILL` / `exitCode=null` is an **OS OOM-kill**, not an assertion failure. `pnpm -r test` runs every package's Jest concurrently and each defaults to ~`cores − 1` workers, so on a memory-constrained (self-hosted) runner the combined fan-out can exhaust RAM. **Do not reflexively re-run** — a green re-run hides the real cause, which is exactly how a genuine regression eventually slips through unnoticed.
 
 **Solution** (already applied to the heavy `prestashop` + `allegro` packages):
-1. **Per-package worker + memory caps** — `maxWorkers: 2` and `workerIdleMemoryLimit: '512MB'`, spread into the package's `jest.config.mjs` from the shared `jest.ci-stability.mjs` at the repo root (one source for every heavy package). The memory limit recycles a worker before the OS kills it; the absolute worker cap (not `'50%'`, which scales with unknown runner cores) bounds peak memory deterministically. Tune the ceiling down (e.g. `256MB`) if the runner is tight.
-2. **Cross-package fan-out bound** — `test:ci` runs `pnpm -r --workspace-concurrency=2 test`. pnpm's default `workspace-concurrency` is **4**, so the bound must be set *below* 4 to actually throttle how many packages' Jests run at once.
+1. **Per-package worker + memory caps, from one resolver** — every unit package's `maxWorkers` comes from `resolveUnitTestWorkers()` in the single `jest.unit-workers.cjs` at the repo root (#3271), so a package departing from the shared default has to say so at its own call site, with its own figures, rather than keeping a private constant that drifts. The shared default is `2`, both on CI and off it, because this job runs **four packages concurrently** (`--workspace-concurrency=4`) inside a runner container capped at **8 CPUs and 24 GiB** — not the 64-core, 251-GiB host itself, which is the single most-misread fact behind three reverted raises to this number. `jest.unit-workers.cjs`'s own comment carries the measured table that settled it (2 and 4 workers-per-package ran green at `4x2=8` and `4x4=16` processes; 6 and 8 both ran RED, and 8 took a runner offline for good).
+
+   Two packages measured a genuine win above that shared default and say so explicitly, by passing their own figure as the resolver's `measuredCiDefault` argument:
+
+   | package | 2 workers | 8 workers |
+   |---|---|---|
+   | prestashop (890 tests) | 297.6 s | **198.1 s** |
+   | allegro (706 tests) | 151.4 s | **81.7 s** |
+
+   `jest.ci-stability.mjs` passes `8` for just those two, alongside `workerIdleMemoryLimit: '512MB'`. `apps/web` is a third declared departure (`WEB_CI_WORKERS = 8` in `vite.config.ts`), but it no longer competes for the same 8-CPU budget at all — it runs as its own CI job (see point 4), so its worker count answers a different question than the shared default does.
+
+   `libs/core`, `apps/api` and `apps/worker` keep the shared `2` and add `workerIdleMemoryLimit: '3GB'` instead of `512MB` — sized above these packages' real ~2.8 GB working set rather than below it, after an earlier `512MB` attempt on these three cost `libs/core` a 15x slowdown by recycling a worker after almost every file (see `docs/lessons.md`, "Do not bundle an unmeasured safety knob with a measured change"). Measured with nothing else changed: 91 s / 92 s with the 3 GB ceiling against 100 s / 106 s without it.
+
+   So a package genuinely scales with workers, but only up to what the shared container can host: `4 packages × 8 workers = 32 jest processes` broke CI twice, and the second attempt took a runner permanently offline. Peak process counts, measured: **~20 passes, ~40 kills a runner.**
+
+   Adding more CI *jobs* does not buy headroom here. The runners are containers on one host, so three test jobs running at once present the host with the sum of their processes. Splitting work across jobs changes scheduling, not capacity.
+
+   The raise was first applied to `libs/core`, `apps/api` and `apps/worker` on the strength of a lab run, and reverted. **A lab number from an idle runner is not a CI number**: the measurement was taken with the test job alone on the box, while the real job shares those containers with seven other concurrent jobs, so `2 packages × 8 workers` oversubscribes exactly as the `apps/api` comment had warned since 444244f — including reproducing its `signal=SIGKILL, exitCode=null`.
+
+   The local-vs-CI split matters separately: `maxWorkers` lives in `jest.config.*`, not in a CI-only overlay, so `.husky/pre-commit` → `pnpm smart-test` reaches the SAME resolver on a contributor's own machine, where `LOCAL_UNIT_TEST_WORKERS = 2` keeps a laptop survivable.
+
+   **Transpile-only type-checking rides alongside the worker cap for the same three packages.** `libs/core`, `apps/api` and `apps/worker` also set `isolatedModules: true` via the shared `transpileOnlyTsJest()` builder in `jest.ts-transform.cjs`, so ts-jest transpiles each spec instead of building and re-checking a full TypeScript program per file. Measured cold, same spec, only this option changed: `libs/core` 84.5 s → 8.2 s, `apps/api` 64.5 s → 10.4 s. **The cost**: transpile-only cannot type-check, so a type error in a spec is no longer caught by the test run — it is caught by the parallel `Type Check` job instead, which costs nothing on the clock. That is safe **only for a package whose tsconfig includes its own spec files** in type-check scope; `libs/shared` and `libs/test-kit` exclude their specs from their tsconfig and are therefore deliberately **not** converted, since doing so would remove the only checking those specs have. Verify a package's specs are in scope before adding it here. See `jest.ts-transform.cjs`'s own header comment for the `moduleResolution: 'node'` override this requires and its interaction with the mtime fix below — transpile-only drops mtime from ts-jest's own cache key, which is the root cause `normalize-source-mtimes.mjs` works around for every package, converted or not.
+
+2. **Cross-package fan-out bound** — `test:ci` runs `pnpm -r --no-sort --workspace-concurrency=4 --filter='!@openlinker/web' test`. `4` is pnpm's own default, so this line no longer throttles anything by itself, and that is deliberate (#3271): the throttling moved to where it can be reasoned about, namely an explicit absolute worker cap on **every** package. #976 set the bound to `2` when each package took jest's default `cores - 1` — 63 on this runner — so the only available lever was how many packages ran at once. With every package capped the arithmetic is bounded directly: at four concurrent packages the worst case today is `2 x 8` (prestashop, allegro) `+ 2 x 2` (two of `libs/core` / `apps/api` / `apps/worker`), i.e. twenty processes against the container's own 8-CPU budget — never a 64-core one.
+
+   **The cap has to be on every package for that to hold.** `apps/web` is the one that is not jest, and vitest defaults `maxWorkers` to `cores - 1` too, so it was capped in the same change; without that, one vitest run can claim the whole machine and starve the three packages beside it. Note vitest 4 removed `poolOptions` — the nested form is accepted, ignored, and reported only as a `DEPRECATED` line, so it caps nothing while looking like it does. Use the top-level `maxWorkers`.
+
+   If the fan-out ever needs throttling again, add it as a *number below 4*; leaving it at 4 while removing a per-package cap reinstates #976.
+
+3. **`--no-sort`, or the bound does nothing** — raising the concurrency alone changed the job by ten seconds, because `pnpm -r` runs scripts in **topological chunks with a barrier between them**, not as a free queue. Every package in a chunk must finish before any package in the next one starts, so the slowest member of a chunk sets its length whatever the concurrency is. `apps/web` has no workspace dependencies, which puts it in the first chunk, where its ~163 s held back the other eighteen packages:
+
+   ```
+   00:37:26  libs/test-kit finishes
+             ... 3m19s in which nothing finishes ...
+   00:40:45  libs/core finishes  (48 s of actual work)
+   ```
+
+   Test scripts have no ordering requirement — the `pnpm -r --filter "./libs/**" build` that precedes them is a separate command and keeps its own (sorted) run — so `test:ci` passes `--no-sort` and lets the packages schedule freely against the concurrency limit. Do not add `--no-sort` to the build half.
+
+4. **`apps/web` runs as its own CI job** (`Test (web)`, `pnpm test:ci:web`), and `test:ci` excludes it. Sharing a runner with three jest packages starved it to 352-371 s against the 162 s it takes alone, and it is the package where that matters most: RTL tests assert on elapsed behaviour, so starvation surfaces as *test failures*, not as slowness. Two consecutive runs went red on two different timing-sensitive tests, neither of them about timing.
+
+   The split costs no extra runner time — it saves it, because neither side is starving the other, and the web job additionally skips the libs build (apps/web imports no `@openlinker` package, #591) and the mtime normalisation (that fixes **jest**'s transform cache; vitest keeps its own under `node_modules/.vite`, which is why apps/web was the one package unaffected by it: 167.7 s before, 162.6 s after).
+
+   The general rule this is an instance of: **a test suite that asserts on elapsed behaviour should not share a box with a suite that saturates it.** Putting them on separate runners is cheaper than making either one tolerant of the other.
 3. **Split oversized spec files** — a single multi-thousand-line spec pins all its state in one worker. Splitting per method/area (sharing setup via a `__tests__/mocks/*.factory.ts`) lowers peak per-worker memory and improves parallelism. Keep the total test count unchanged when splitting.
 
 To confirm it's OOM (not a leak), run with `--logHeapUsage` and watch for monotonic per-worker growth; the runner's `dmesg` / container OOM log is the definitive signal.
+
+### Unit tests — the job is slow and the jest cache never helps
+
+A long-lived runner can hold a large, fully warm jest cache and still run every job at cold speed. The cache key is a function of the file's content **and** its mtime, and `actions/checkout` rewrites every file on every run — so each run mints a complete new set of keys, cannot read the previous run's entries, and appends a full new set beside them. Jest applies no TTL, size cap or eviction to that directory, so it only ever grows: the openlinker runners' `/tmp/jest_rt` had reached **33 GB across ~2M entries**, none of them readable (#3271).
+
+Measured on `libs/integrations/prestashop` at 2 workers, content byte-identical throughout:
+
+| state | wall |
+|---|---|
+| cold cache (`--clearCache`) | 248.3 s |
+| warm cache, stable mtimes | 73-82 s |
+| after a bare `touch` of `libs/core/**/*.ts` | 168.7-169.7 s, **1030 new cache entries** |
+| after restoring the same mtimes | 74.9 s |
+
+`pnpm install --frozen-lockfile` and `pnpm -r build` do **not** invalidate it; only mtime does.
+
+**The stamp is a necessary condition, not a sufficient one, and on this pipeline it is not yet a demonstrated win.** The cache directory is per runner *container*, and the pool holds four. Four consecutive `Test` runs during #3271 landed on four different containers (`e34966fddf6c`, `82d63762f74b`, `ea742a154a4e`, `blockydevs-buildserver-dev-01`), so every one of them still ran cold — an attempt to measure cold-versus-warm by running the same commit twice measured nothing of the kind, and the difference it appeared to show (`apps/api` 260.6 s -> 163.0 s) is attributable to host load, since the second run started after the rest of the workflow had finished.
+
+So a job reads a warm cache only when it lands on a container that has already transformed the same content. When claiming a figure for it, check `Runner name:` in both job logs first; two runs on different containers are two cold runs.
+
+Two that *did* share a container settle it. Same runner (`blockydevs-buildserver-dev-01`), same worker settings, 14 214 tests either way, content differing only under `docs/` — so every cache key for transformed source is identical:
+
+| package | first run on that container | the next one |
+|---|---|---|
+| prestashop | 199.4 s | **65.2 s** |
+| allegro | 83.5 s | **12.5 s** |
+| dpd-polska | 76.1 s | **11.5 s** |
+| infakt | 29.1 s | **3.9 s** |
+| libs/core | 73.3 s | **48.2 s** |
+| apps/api | 79.3 s | **46.0 s** |
+| **whole `Test` job** | **13m46s** | **8m10s** |
+
+Every one of the nineteen packages got faster, most by 70-87%. Against the pre-#3271 baseline of 15m02s-15m30s, a container running this branch for the first time costs 13m46s and every run after that on the same container costs 8m10s, so the steady state is reached per container as the pool warms rather than on the next run.
+
+The fix is `scripts/normalize-source-mtimes.mjs`, run in the `test` job right after `actions/setup-node`: it walks the working tree (skipping `node_modules`) and stamps every file with one fixed instant, so unchanged content produces an unchanged key across runs *and* across branches. It walks rather than calling `git ls-files` on purpose — **some self-hosted runners carry no git binary**, `actions/checkout` succeeds through its API path, and a git-based listing there returns nothing while still exiting 0. **This is safe, and that was verified rather than assumed** — a one-word edit preserving the file's exact byte length, with mtime rolled back to the same stamp, still failed 21 suites. mtime decides only whether jest re-examines a file, never what it believes the file contains.
+
+A per-file stamp derived from commit history (`git-restore-mtime`) would also be stable, but `actions/checkout` clones shallow by default, so there is no history to derive one from — and it buys nothing, since content already carries the identity the key needs.
 
 ---
 

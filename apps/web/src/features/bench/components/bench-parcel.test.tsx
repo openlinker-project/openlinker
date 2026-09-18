@@ -21,15 +21,13 @@ import type {
   BenchVerificationResult,
 } from '../api/bench-parcel.types';
 import { resetGestureLogForTests } from '../lib/scanner-gesture-log';
+import { dispatchScannerBurst } from '../lib/scanner-burst.test-helper';
 import { BenchParcelView } from './bench-parcel';
 
 /** Type a barcode at scanner speed and terminate it, exactly as #2416's hook expects. */
 function scan(value: string): void {
   act(() => {
-    for (const char of value) {
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-    }
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    dispatchScannerBurst(value);
   });
 }
 
