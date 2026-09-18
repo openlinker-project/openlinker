@@ -92,13 +92,52 @@ export function parseInterfaceFields(content, name) {
   return { line, fields };
 }
 
-/** Literals of `export const <name> = [...] as const;`. */
+/**
+ * Blank `//` and `/* ... *\/` comments to spaces (newlines preserved), so a `]`
+ * written inside a comment can never be mistaken for an array's real closing
+ * bracket. Length-preserving: any index found in the blanked string is a valid
+ * index into the original.
+ */
+function blankComments(source) {
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += '  ';
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
+ * Literals of `export const <name> = [...] as const;`. The closing bracket is
+ * located on a comment-BLANKED copy of the content, or a `]` written inside a
+ * comment between the real brackets is mistaken for the declaration's own
+ * close and truncates everything after it (#3002).
+ */
 export function parseConstArray(content, name) {
   const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\[`);
   const m = declRe.exec(content);
   if (!m) return null;
   const open = m.index + m[0].length - 1;
-  const close = content.indexOf(']', open);
+  const close = blankComments(content).indexOf(']', open);
   if (close === -1) return null;
   const body = content
     .slice(open + 1, close)
@@ -166,6 +205,36 @@ function selfCheck() {
   if (parseResolvedViaUnion('  somethingElse: string;\n') !== null) {
     throw new Error('resolvedVia parser regression: matched a file with no union');
   }
+
+  // #3002: a `]` inside a comment BETWEEN the real brackets must not truncate
+  // parseConstArray. Red-first against the pre-fix `indexOf(']', open)` on raw
+  // content: that stopped at the comment's own `]`.
+  const arrFile = (entries) => `/** h */\nexport const X = [\n${entries}\n] as const;\n`;
+  const withLineComment = parseConstArray(
+    arrFile("  'a', // e.g. resolvedVia: []\n  'b',"),
+    'X',
+  );
+  if (withLineComment === null || withLineComment.join(',') !== 'a,b') {
+    throw new Error(
+      `parseConstArray regression: a "]" inside a line comment truncated the array, got ${JSON.stringify(withLineComment)}`,
+    );
+  }
+  const withBlockComment = parseConstArray(
+    arrFile("  'a', /* e.g. resolvedVia: [] */\n  'b',"),
+    'X',
+  );
+  if (withBlockComment === null || withBlockComment.join(',') !== 'a,b') {
+    throw new Error(
+      `parseConstArray regression: a "]" inside a block comment truncated the array, got ${JSON.stringify(withBlockComment)}`,
+    );
+  }
+  const zeroValues = parseConstArray(arrFile("  // 'a',"), 'X');
+  if (zeroValues === null || zeroValues.length !== 0) {
+    throw new Error(
+      `parseConstArray regression: expected zero parsed values, got ${JSON.stringify(zeroValues)}`,
+    );
+  }
+
   console.log('check-description-format-mirror: self-check passed');
 }
 
@@ -213,6 +282,11 @@ async function main() {
   // and this half of the mirror compared nothing for its whole life.
   if (backendValues === null) {
     issues.push(`DescriptionFormatSourceValues not found in ${BACKEND_FILE}`);
+  } else if (backendValues.length === 0) {
+    issues.push(
+      `DescriptionFormatSourceValues in ${BACKEND_FILE} parsed to ZERO values - the PARSER is ` +
+        'broken (a bracket inside a comment likely truncated the array), not the union legitimately empty',
+    );
   } else if (frontendValues === null) {
     issues.push(
       `the 'resolvedVia' union was not found in ${FRONTEND_FILE} — it carries the frontend's ` +
