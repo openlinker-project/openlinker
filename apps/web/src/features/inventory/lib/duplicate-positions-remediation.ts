@@ -21,9 +21,36 @@ import type { DuplicatePositionGroup, DuplicatePositionRow } from '../api/invent
  * "Largest" for triage purposes means highest live-stock exposure, not row
  * count: a group with 5 stale rows and 0 live ones is cosmetic cleanup for
  * the #2325 gate, not an active oversell risk.
+ *
+ * NOTE: this sum is only evidence of an oversell when it aggregates TWO OR
+ * MORE live rows (see `hasOversellRisk` below). With exactly one live row
+ * this value equals that row's own `availableQuantity` — the correct,
+ * undistorted figure, not an over-count — so callers deciding "is this
+ * currently distorting available-to-promise" must gate on `hasOversellRisk`,
+ * never on `exposure > 0` alone (#3264 review).
  */
 export function liveExposureQuantity(group: DuplicatePositionGroup): number {
   return group.rows.filter((row) => !row.isStale).reduce((sum, row) => sum + row.availableQuantity, 0);
+}
+
+/**
+ * Whether this position's live rows actually distort available-to-promise
+ * today. Availability reads already exclude stale positions (#1478/#2345),
+ * so with exactly one live row and any number of stale ones the sum across
+ * live positions IS the survivor's own figure — there is no over-count and
+ * nothing to reconcile, only cosmetic stale rows to delete before the
+ * #2325 uniqueness index can build. Distortion requires summing at least
+ * TWO live rows over the same position (#3264 review — the prior boundary
+ * of `liveRowCount > 0` told an operator a perfectly healthy single-live-row
+ * group was actively overselling).
+ *
+ * Derived from `group.rows` rather than the server's own `liveRowCount`
+ * field so the table badge, this alert gate, and `liveExposureQuantity`'s
+ * sum can never disagree about what counts as "live" — one source, not two
+ * (#3264 review).
+ */
+export function hasOversellRisk(group: DuplicatePositionGroup): boolean {
+  return group.rows.filter((row) => !row.isStale).length >= 2;
 }
 
 /**

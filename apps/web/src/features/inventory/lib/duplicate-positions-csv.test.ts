@@ -6,8 +6,11 @@
  * `inventory_items` row — since nothing else in the tree inspects the CSV
  * this module builds.
  */
-import { describe, expect, it } from 'vitest';
-import { buildDuplicatePositionsCsv } from './duplicate-positions-csv';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  buildDuplicatePositionsCsv,
+  triggerDuplicatePositionsCsvDownload,
+} from './duplicate-positions-csv';
 import type { DuplicatePositionGroup } from '../api/inventory.types';
 
 function buildGroup(overrides: Partial<DuplicatePositionGroup> = {}): DuplicatePositionGroup {
@@ -106,6 +109,25 @@ describe('buildDuplicatePositionsCsv', () => {
     expect(csv).toContain('"Widget, ""Deluxe"""');
   });
 
+  it('should quote a cell containing a bare CR (#3264 review)', () => {
+    const csv = buildDuplicatePositionsCsv([
+      buildGroup({
+        productName: 'Widget\rDeluxe',
+        rows: [
+          {
+            id: 'ol_inventory_row1',
+            availableQuantity: 1,
+            reservedQuantity: 0,
+            isStale: false,
+            updatedAt: '2026-09-14T00:00:00.000Z',
+          },
+        ],
+      }),
+    ]);
+
+    expect(csv).toContain('"Widget\rDeluxe"');
+  });
+
   it('should prefix a formula-triggering STRING cell with a single quote', () => {
     const csv = buildDuplicatePositionsCsv([
       buildGroup({
@@ -184,5 +206,32 @@ describe('buildDuplicatePositionsCsv', () => {
     expect(dataLine).toBe(
       'ol_product_a1,,,,,,,,1,1,ol_inventory_row1,1,0,false,2026-09-14T00:00:00.000Z'
     );
+  });
+});
+
+describe('triggerDuplicatePositionsCsvDownload', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('should prepend a UTF-8 BOM so Excel does not mojibake a non-ASCII productName (#3264 review)', async () => {
+    let blob: Blob | undefined;
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: vi.fn((b: Blob) => {
+        blob = b;
+        return 'blob:mock';
+      }),
+      revokeObjectURL: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    triggerDuplicatePositionsCsvDownload('header\nvalue', 'test.csv');
+
+    expect(blob).toBeDefined();
+    const text = await blob!.text();
+    expect(text.charCodeAt(0)).toBe(0xfeff);
+    expect(text).toBe('﻿header\nvalue');
   });
 });

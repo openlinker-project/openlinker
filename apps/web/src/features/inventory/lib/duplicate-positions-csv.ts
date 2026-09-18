@@ -56,7 +56,13 @@ function csvCell(value: string | number | boolean | null): string {
   // threat model above is external shop catalogue strings, never a number
   // this app itself computed.
   const escaped = typeof value === 'string' && FORMULA_PREFIX_PATTERN.test(raw) ? `'${raw}` : raw;
-  return /[",\n]/.test(escaped) ? `"${escaped.replace(/"/g, '""')}"` : escaped;
+  // `\r` is quoted alongside `"`/`,`/`\n` even though it can never itself
+  // trigger the formula-injection guard above by construction — the
+  // FORMULA_PREFIX_PATTERN only tests the first character, so `\r` matters
+  // there only when it OPENS a cell, while here a bare `\r` embedded
+  // anywhere in a value would otherwise reach the output unquoted and land
+  // mid-line against this module's own `\n` line endings (#3264 review).
+  return /["\r\n,]/.test(escaped) ? `"${escaped.replace(/"/g, '""')}"` : escaped;
 }
 
 /**
@@ -101,7 +107,11 @@ export function buildDuplicatePositionsCsv(groups: readonly DuplicatePositionGro
  * revoked synchronously after `click()`.
  */
 export function triggerDuplicatePositionsCsvDownload(csv: string, filename: string): void {
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  // Excel (unlike Sheets/LibreOffice) sniffs plain "text/csv" as the system
+  // locale codepage rather than UTF-8 without a BOM, so a non-ASCII
+  // `productName` — the column most likely to carry one — mojibakes on
+  // open (#3264 review). The BOM is inert everywhere else that reads CSV.
+  const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' });
   const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = objectUrl;
