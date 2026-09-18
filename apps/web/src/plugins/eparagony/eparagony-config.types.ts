@@ -86,6 +86,25 @@ export const EPARAGONY_POLL_TIMEOUT_MAX_MS = 90_000;
 export const EPARAGONY_POLL_TIMEOUT_DEFAULT_MS = 60_000;
 
 /**
+ * `statusPollTimeoutMs` is ONE config key read by TWO adapters, and the two
+ * disagree on its default (#3192 review, I3 / #3268 review, I1). The
+ * fiscalization (receipt) lane defaults to
+ * {@link EPARAGONY_POLL_TIMEOUT_DEFAULT_MS} (60s); the invoicing lane - added
+ * in a sibling PR, `eparagony-invoicing.adapter.ts` - deliberately keeps its
+ * own, tighter default of 45s, because a receipt is registered on a device
+ * while an invoice is composed and relayed, and one shared default would
+ * silently re-budget one of the two lanes.
+ *
+ * Mirrors `DEFAULT_STATUS_POLL_TIMEOUT_MS` in `eparagony-invoicing.adapter.ts`
+ * - checked by `check-eparagony-config-mirror.mjs` ONLY when that file
+ * exists, since the invoicing lane may not have landed on this branch yet;
+ * the value is hardcoded here rather than left undeclared so the field
+ * description below can name it unconditionally, and the guard still catches
+ * drift the moment both lanes are present on the same checkout.
+ */
+export const EPARAGONY_POLL_TIMEOUT_INVOICING_DEFAULT_MS = 45_000;
+
+/**
  * The `print` field's three form states.
  *
  * Three rather than two because #2610's rule holds here as well: an operator's

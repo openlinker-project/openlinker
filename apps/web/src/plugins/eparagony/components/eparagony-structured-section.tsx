@@ -39,6 +39,7 @@ import {
   EPARAGONY_PAYMENT_FORM_LABELS,
   EPARAGONY_PAYMENT_FORM_VALUES,
   EPARAGONY_POLL_TIMEOUT_DEFAULT_MS,
+  EPARAGONY_POLL_TIMEOUT_INVOICING_DEFAULT_MS,
   EPARAGONY_POLL_TIMEOUT_MAX_MS,
   EPARAGONY_POLL_TIMEOUT_MIN_MS,
   EPARAGONY_TAX_RATE_CODE_VALUES,
@@ -126,10 +127,27 @@ function useUnrecognisedValues(configText: string): {
 }
 
 export function EparagonyStructuredSection({
+  connection,
   form,
   configIsParseable,
   syncStructuredToJson,
 }: StructuredConfigSectionProps): ReactElement {
+  // `statusPollTimeoutMs` is ONE config key, read by TWO adapters with two
+  // different defaults once the invoicing lane is enabled on this connection
+  // (#3192 review, I3 / #3268 review, I1) — stating only the receipt-lane
+  // default would be a false claim about what the field does on a dual-role
+  // connection.
+  const invoicingEnabled = connection.enabledCapabilities.includes('Invoicing');
+  const pollTimeoutDescription = invoicingEnabled
+    ? `How long to wait for the fiscal device or the invoicing provider to finish before ` +
+      `the result is recorded as unknown. Defaults to ${seconds(EPARAGONY_POLL_TIMEOUT_DEFAULT_MS)} ` +
+      `for e-receipts, ${seconds(EPARAGONY_POLL_TIMEOUT_INVOICING_DEFAULT_MS)} for e-invoices. ` +
+      `Values outside ${seconds(EPARAGONY_POLL_TIMEOUT_MIN_MS)}–${seconds(EPARAGONY_POLL_TIMEOUT_MAX_MS)} ` +
+      `are accepted and then brought into that range.`
+    : `How long to wait for the fiscal device to finish before the result is recorded as ` +
+      `unknown. Defaults to ${seconds(EPARAGONY_POLL_TIMEOUT_DEFAULT_MS)}. Values outside ` +
+      `${seconds(EPARAGONY_POLL_TIMEOUT_MIN_MS)}–${seconds(EPARAGONY_POLL_TIMEOUT_MAX_MS)} are ` +
+      `accepted and then brought into that range.`;
   const printValue = (form.watch('eparagonyPrint') ?? '') as EparagonyPrintState;
   const taxSlot = form.watch('eparagonyDefaultTaxRateCode') ?? '';
   const pollTimeout = form.watch('eparagonyStatusPollTimeoutMs') ?? '';
@@ -325,7 +343,7 @@ export function EparagonyStructuredSection({
           label="Device wait time (ms)"
           name="eparagonyStatusPollTimeoutMs"
           error={errors.eparagonyStatusPollTimeoutMs?.message}
-          description={`How long to wait for the fiscal device to finish before the result is recorded as unknown. Defaults to ${seconds(EPARAGONY_POLL_TIMEOUT_DEFAULT_MS)}. Values outside ${seconds(EPARAGONY_POLL_TIMEOUT_MIN_MS)}–${seconds(EPARAGONY_POLL_TIMEOUT_MAX_MS)} are accepted and then brought into that range.`}
+          description={pollTimeoutDescription}
         >
           <Input
             value={pollTimeout}

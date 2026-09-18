@@ -26,7 +26,11 @@
  *     and the code cannot drift on the spelling". A sentence naming a variable
  *     that no longer switches anything is worse than no sentence;
  *   - the wizard's `EparagonyEnvironmentValues` is a third copy of the same
- *     vocabulary and was previously unguarded.
+ *     vocabulary and was previously unguarded;
+ *   - `statusPollTimeoutMs` is ONE config key read by TWO adapters (receipts
+ *     and, once the sibling PR lands, invoicing), each with its own default -
+ *     a description naming only one is a false claim about the other lane
+ *     (#3192 review, I3 / #3268 review, I1).
  *
  * Both sides are parsed TEXTUALLY so this stays a zero-dependency
  * `check:invariants` step like its siblings. Run with `--self-check` to
@@ -42,6 +46,12 @@ const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 const BACKEND_TYPES = 'libs/integrations/eparagony/src/domain/types/eparagony-config.types.ts';
 const BACKEND_ADAPTER =
   'libs/integrations/eparagony/src/infrastructure/adapters/eparagony-fiscalization.adapter.ts';
+// OPTIONAL: the invoicing lane (#3192) may not exist on this branch yet. Read
+// only if present - a missing file is "not yet applicable", never a failure -
+// so this guard degrades gracefully before that lane lands and starts
+// enforcing the cross-lane default the moment it does (#3268 review, I1).
+const BACKEND_INVOICING_ADAPTER =
+  'libs/integrations/eparagony/src/infrastructure/adapters/eparagony-invoicing.adapter.ts';
 const BACKEND_MAPPER =
   'libs/integrations/eparagony/src/infrastructure/adapters/eparagony-document.mapper.ts';
 const CORE_TAX_ENFORCEMENT =
@@ -153,6 +163,21 @@ export function diffNumbers(label, backend, frontend) {
   return `${label} drifted. backend: ${backend}, frontend: ${frontend}`;
 }
 
+/**
+ * Read a file, or `null` when it does not exist. Only ENOENT is swallowed -
+ * any other error (permissions, a directory where a file was expected) still
+ * throws, since silently treating THAT as "not yet present" would hide a real
+ * problem behind the same "skip" path a missing sibling PR is meant to take.
+ */
+async function readFileIfExists(path) {
+  try {
+    return await readFile(join(ROOT, path), 'utf8');
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
 async function run() {
   const [types, adapter, mapper, taxEnforcement, frontend, frontendCopy, frontendWizard] =
     await Promise.all(
@@ -166,6 +191,7 @@ async function run() {
         FRONTEND_WIZARD,
       ].map((path) => readFile(join(ROOT, path), 'utf8')),
     );
+  const invoicingAdapter = await readFileIfExists(BACKEND_INVOICING_ADAPTER);
 
   const failures = [
     diffLists(
@@ -208,6 +234,17 @@ async function run() {
       parseStringArrayConst(types, 'EparagonyEnvironmentValues'),
       parseStringArrayConst(frontendWizard, 'EparagonyEnvironmentValues')
     ),
+    // #3192 review I3 / #3268 review I1: `statusPollTimeoutMs` is one config
+    // key governing two adapters with two different defaults. Only checked
+    // once the invoicing lane exists on this branch - see
+    // `readFileIfExists` above.
+    invoicingAdapter === null
+      ? null
+      : diffNumbers(
+          'Poll timeout default (invoicing lane)',
+          parseNumericConst(invoicingAdapter, 'DEFAULT_STATUS_POLL_TIMEOUT_MS'),
+          parseNumericConst(frontend, 'EPARAGONY_POLL_TIMEOUT_INVOICING_DEFAULT_MS')
+        ),
   ].filter(Boolean);
 
   if (failures.length > 0) {
@@ -215,6 +252,7 @@ async function run() {
     for (const failure of failures) console.error(`  ${failure}\n`);
     console.error(`  backend : ${BACKEND_TYPES}`);
     console.error(`            ${BACKEND_ADAPTER}`);
+    if (invoicingAdapter !== null) console.error(`            ${BACKEND_INVOICING_ADAPTER}`);
     console.error(`            ${BACKEND_MAPPER}`);
     console.error(`            ${CORE_TAX_ENFORCEMENT}`);
     console.error(`  frontend: ${FRONTEND}`);

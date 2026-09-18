@@ -62,3 +62,11 @@ expects and throws if the state is wrong, so a green run is evidence the flow
 works, not just that screenshots exist. It leaves the connection `active`, the
 state it found it in. It does talk to a real API — unlike `demo-consent.mjs`,
 which stubs one.
+
+`eparagony-connection-config.mjs` is the opposite despite its "proof" wording
+in the table above: it is a plain capture script with **no assertions at
+all** — the null-vs-delete persistence behaviour it demonstrates is pinned by
+the real Vitest suite (`eparagony-connection-config.test.ts`,
+`EditConnectionForm.test.tsx`), not by this script. Treat its screenshots as
+manual visual review only, and never as coverage for that behaviour
+(#3268 review, S1).

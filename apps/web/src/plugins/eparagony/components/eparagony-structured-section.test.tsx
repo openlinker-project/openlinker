@@ -33,6 +33,7 @@ interface HarnessProps {
   syncStructuredToJson?: (field: string, value: string) => void;
   defaultValues?: Record<string, unknown>;
   errors?: Record<string, { type: string; message: string }>;
+  enabledCapabilities?: string[];
 }
 
 function Harness({
@@ -40,6 +41,7 @@ function Harness({
   syncStructuredToJson = vi.fn(),
   defaultValues = {},
   errors,
+  enabledCapabilities,
 }: HarnessProps): ReactElement {
   const form = useForm<any>({
     defaultValues: {
@@ -70,7 +72,11 @@ function Harness({
   }, []);
   return (
     <EparagonyStructuredSection
-      connection={eparagonyConnection}
+      connection={
+        enabledCapabilities === undefined
+          ? eparagonyConnection
+          : { ...eparagonyConnection, enabledCapabilities }
+      }
       form={form as any}
       configIsParseable={configIsParseable}
       syncStructuredToJson={syncStructuredToJson}
@@ -93,6 +99,19 @@ describe('EparagonyStructuredSection', () => {
     expect(screen.getByRole('radiogroup', { name: 'Paper receipt' })).toBeInTheDocument();
     expect(screen.getByLabelText('Payment form on the receipt')).toBeInTheDocument();
     expect(screen.getByLabelText('Payment name')).toBeInTheDocument();
+  });
+
+  it('should state only the receipt-lane default on a connection with no Invoicing capability (#3192 review I3 / #3268 review I1)', () => {
+    renderWithProviders(<Harness enabledCapabilities={[]} />);
+    expect(screen.getByText(/Defaults to 60 s\. Values outside/)).toBeInTheDocument();
+    expect(screen.queryByText(/45 s/)).not.toBeInTheDocument();
+  });
+
+  it('should state BOTH lane defaults once Invoicing is enabled on the connection (#3192 review I3 / #3268 review I1)', () => {
+    renderWithProviders(<Harness enabledCapabilities={['Fiscalization', 'Invoicing']} />);
+    expect(
+      screen.getByText(/Defaults to 60 s for e-receipts, 45 s for e-invoices\./)
+    ).toBeInTheDocument();
   });
 
   it('should wire the print radiogroup to its own description', () => {
