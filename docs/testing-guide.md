@@ -95,7 +95,7 @@ describe('ConnectionService', () => {
 **Characteristics**:
 - ⏱️ **Slower**: Require container startup, app boot, migrations (~10-15s)
 - 🐳 **Requires Docker**: Uses Testcontainers for PostgreSQL and Redis
-- 🔄 **Serial Execution**: Must run sequentially (`maxWorkers: 1`)
+- ⚡ **Parallel by default**: `DEFAULT_TEST_WORKERS` (6, see `jest.test-workers.cjs`) — each worker gets its own Postgres database and Redis logical DB, so this is safe up to `MAX_TEST_WORKERS` (15, capped by Redis's 16 logical DBs). Set `OL_TEST_MAX_WORKERS=1` to bisect a parallelism-sensitive failure back to the old serial behaviour.
 - 🎯 **Targeted**: Focus on critical vertical slices
 
 **What They Test**:
@@ -282,11 +282,18 @@ The container is **run-scoped, not suite-scoped** (#1920): the first PS spec to
 ask for it boots it, every later spec reuses it, and `globalTeardown` stops it.
 Two consequences a new spec has to respect:
 
-- **Nothing resets PS between specs.** Assert only over OL-side results, or
-  filter by ids your own spec created (`psOrderId`, `external_module_name`, …).
-  Orders and carts a previous file left behind are inert to that shape of
-  assertion, and re-running fixture helpers is safe, but a bare "count all
-  orders" assertion is not.
+- **Nothing resets PS between specs, and specs sharing this container can now
+  run CONCURRENTLY** (`OL_TEST_MAX_WORKERS`, #3263 — no longer the serial
+  `maxWorkers: 1` this section originally assumed). Assert only over OL-side
+  results, or filter by ids your own spec created (`psOrderId`,
+  `external_module_name`, …). Orders and carts a previous FILE left behind
+  are inert to that shape of assertion, and re-running fixture helpers is
+  safe — but under concurrency a peer spec's rows can now appear *during*
+  your spec's run, not merely before it, which widens the set of unsafe
+  assertions beyond "count all orders": reading a max/latest value, or
+  asserting the ABSENCE of something, is racy in a way it was not when the
+  suite ran one file at a time. A bare "count all orders" assertion is not
+  safe either way.
 - **The shared container is always OL-module-installed.** That satisfies the
   specs that don't need the module; the reverse does not hold.
 
@@ -1004,7 +1011,7 @@ sudo systemctl start docker
    ```bash
    docker ps
    ```
-2. Verify `maxWorkers: 1` in `jest-integration.js` (prevents parallel execution conflicts)
+2. Try `OL_TEST_MAX_WORKERS=1` to rule out a parallelism-sensitive conflict (each worker has its own Postgres database and Redis logical DB, but a suspect flake is cheap to bisect this way — see `jest.test-workers.cjs`)
 3. Check for infinite loops or unresolved promises in test code
 4. Increase timeout:
    ```javascript
