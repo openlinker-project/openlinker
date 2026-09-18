@@ -69,7 +69,33 @@ export function toCreateConnectionInput(
       ...(integrationId && integrationId.length > 0 ? { integrationId } : {}),
     },
     config: { environment: values.environment, posId: values.posId },
-    // enabledCapabilities OMITTED on purpose - the server defaults to the
-    // adapter manifest's supported set, matching the Erli/PrestaShop precedent.
+    // SENT EXPLICITLY, and the explicitness is the point (#3192 slice 2).
+    //
+    // Omitting it makes `ConnectionService.create` default to the adapter
+    // manifest's supported set, which now carries `'Invoicing'` - so a wizard
+    // that collects an environment, a POS id and credentials, and no seller
+    // invoicing configuration at all, would mint a connection that claims it
+    // can issue invoices. That is the same rule the plugin applies to
+    // `CorrectionIssuer` one layer down: a capability is advertised together
+    // with the ability to deliver it, never ahead of it. It is also visible
+    // rather than cosmetic - `selectInvoicingCandidates` filters on this array,
+    // so a second candidate appearing beside an existing inFakt/KSeF connection
+    // turns that install's one-click issue into a must-ask pick; and
+    // `deriveSalesDocumentRows` tests `'Invoicing'` BEFORE `'Fiscalization'`,
+    // so a receipts connection would render as an Invoicing row in Settings ->
+    // Sales documents.
+    //
+    // `'Fiscalization'` ALONE, not the manifest's four: the create DTO validates
+    // this array with `@IsIn(CoreCapabilityValues, { each: true })`, and neither
+    // `'FiscalRegistrationLocator'` nor `'RegulatoryStatusReader'` is a
+    // `CoreCapability` - sending either would 400. Nothing reads those two names
+    // off `enabledCapabilities` anywhere (both are narrowed from the dispatched
+    // adapter with their `is*` guard), and `ConnectionCapabilitiesPanel` saves
+    // the `isCoreCapability`-filtered set, so this is exactly where the
+    // connection lands after the operator's first toggle either way.
+    //
+    // The operator turns the invoice lane on from the connection page, which is
+    // where the seller fields are configured too.
+    enabledCapabilities: ['Fiscalization'],
   };
 }

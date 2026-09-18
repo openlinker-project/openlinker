@@ -402,7 +402,7 @@ export class EparagonyHttpClient implements IEparagonyHttpClient {
         'eparagony.pl token response carried no access_token',
         response.status,
         null,
-        { failureMode: 'rejected', reason: 'The e-receipt provider issued no access token.' },
+        { failureMode: 'rejected', reason: 'The provider issued no access token.' },
       );
     }
 
