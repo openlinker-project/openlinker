@@ -12,6 +12,25 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.12.0](https://github.com/openlinker-project/openlinker/compare/v0.11.0...v0.12.0) (2026-09-18)
+
+
+### Features
+
+* **sales-documents:** refuse a colliding rule in the composer, before the save ([#3253](https://github.com/openlinker-project/openlinker/issues/3253)) ([3da1c3a](https://github.com/openlinker-project/openlinker/commit/3da1c3afe99cb537273c6db14753f962b51276e1))
+* **web:** show release version instead of static "DEV" text in top-left badge ([#3288](https://github.com/openlinker-project/openlinker/issues/3288)) ([e1ae0ae](https://github.com/openlinker-project/openlinker/commit/e1ae0aecece5b6e0105b91be52b8cb0706c7bcc8))
+
+
+### Bug Fixes
+
+* **invariants:** stop the mirror-guard array parser truncating on a bracket inside a comment ([#3305](https://github.com/openlinker-project/openlinker/issues/3305)) ([4486f3e](https://github.com/openlinker-project/openlinker/commit/4486f3e3e34295d35f60376709905a2de10d7217)), closes [#3002](https://github.com/openlinker-project/openlinker/issues/3002)
+
+
+### Performance Improvements
+
+* **ci:** three fixes for the Integration Tests job - per-worker databases, duplicate type-checking, and an oversized worker count (about 3x faster) ([#3276](https://github.com/openlinker-project/openlinker/issues/3276)) ([c3db337](https://github.com/openlinker-project/openlinker/commit/c3db3378a0b0e8292a689ac22366575dbeeef9b0))
+* **ci:** three fixes for the Test job (unit tests) - cache, queueing, and a starved frontend (about 4x faster) ([#3275](https://github.com/openlinker-project/openlinker/issues/3275)) ([b89bf7c](https://github.com/openlinker-project/openlinker/commit/b89bf7c06d6a4cbb37ba18b5a58552c3cd0f4550))
+
 ## [0.11.0](https://github.com/openlinker-project/openlinker/compare/v0.10.0...v0.11.0) (2026-09-15)
 
 
