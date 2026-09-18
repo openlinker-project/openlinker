@@ -22,6 +22,7 @@ import { connectionPricingSyncRoute } from './connection-pricing-sync.route';
 import { editConnectionRoute } from './edit-connection.route';
 import { connectionsRoute } from './connections.route';
 import { cursorsRoute } from './cursors.route';
+import { duplicatePositionsRoute } from './duplicate-positions.route';
 import { customersRoute } from './customers.route';
 import { devUiRoute } from './dev-ui.route';
 import { insightsRoute } from './insights.route';
@@ -66,6 +67,7 @@ export const coreChildren: RouteObject[] = [
   ordersRoute,
   productsRoute,
   cursorsRoute,
+  duplicatePositionsRoute,
   customersRoute,
   listingsRoute,
   shipmentsRoute,
