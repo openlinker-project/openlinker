@@ -7,11 +7,13 @@ import { ApiError } from '../../../shared/api/api-error';
 import type { SalesDocumentMarketsResponse } from './sales-document-markets.types';
 import type {
   AdoptSalesDocumentTemplateInput,
+  CheckSalesDocumentRuleOverlapInput,
   CreateSalesDocumentRuleInput,
   SalesDocumentCountryAcknowledgment,
   SalesDocumentCountryDefault,
   SalesDocumentCountrySummary,
   SalesDocumentRule,
+  SalesDocumentRuleOverlapVerdict,
   SalesDocumentStarterTemplate,
   SalesDocumentThreshold,
   UpsertSalesDocumentCountryDefaultInput,
@@ -21,6 +23,13 @@ export interface SalesDocumentRulesApi {
   listRules: (country: string) => Promise<SalesDocumentRule[]>;
   createRule: (input: CreateSalesDocumentRuleInput) => Promise<SalesDocumentRule>;
   deleteRule: (id: string) => Promise<void>;
+  /**
+   * POST /sales-documents/rules/overlap-check (#3190) - a READ despite the
+   * verb: it carries a draft body and persists nothing.
+   */
+  checkRuleOverlap: (
+    input: CheckSalesDocumentRuleOverlapInput,
+  ) => Promise<SalesDocumentRuleOverlapVerdict>;
   listCountryDefaults: (country: string) => Promise<SalesDocumentCountryDefault[]>;
   upsertCountryDefault: (
     input: UpsertSalesDocumentCountryDefaultInput,
@@ -54,6 +63,12 @@ export function createSalesDocumentRulesApi(request: ApiRequest): SalesDocumentR
     },
     createRule(input): Promise<SalesDocumentRule> {
       return request<SalesDocumentRule>('/sales-documents/rules', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    checkRuleOverlap(input): Promise<SalesDocumentRuleOverlapVerdict> {
+      return request<SalesDocumentRuleOverlapVerdict>('/sales-documents/rules/overlap-check', {
         method: 'POST',
         body: JSON.stringify(input),
       });

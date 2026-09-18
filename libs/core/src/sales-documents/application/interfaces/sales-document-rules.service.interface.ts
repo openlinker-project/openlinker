@@ -10,10 +10,12 @@ import type { SalesDocumentCountryAcknowledgment } from '../../domain/entities/s
 import type {
   SalesDocumentCountryDefaultInput,
   SalesDocumentRuleInput,
+  SalesDocumentRuleOverlapCheckInput,
 } from '../../domain/types/sales-document-rule-write.types';
 import type { SalesDocumentDecision } from '../../domain/types/sales-document-decision.types';
 import type { SalesDocumentOrderFacts } from '../../domain/types/sales-document-order-facts.types';
 import type { SalesDocumentCountrySummary } from '../../domain/types/sales-document-country-summary.types';
+import type { SalesDocumentRuleOverlapVerdict } from '../../domain/domain-services/detect-sales-document-rule-overlap';
 
 export interface ISalesDocumentRulesService {
   listRules(country: string): Promise<SalesDocumentRule[]>;
@@ -30,6 +32,21 @@ export interface ISalesDocumentRulesService {
    * real configuration and an acknowledgment can never coexist.
    */
   createRule(input: SalesDocumentRuleInput): Promise<SalesDocumentRule>;
+
+  /**
+   * Would this draft rule match the same order as one already saved (#3190)?
+   *
+   * A READ - it persists nothing and refuses nothing. The engine holding an
+   * order on two matching rules is correct behaviour (ADR-041 never silently
+   * picks one); what was missing is anyone finding out before the save. The
+   * write path is deliberately NOT gated on this, and the asymmetry with the
+   * browser (which refuses the save outright) is intentional - see the
+   * `#3190` paragraph in `docs/architecture-overview.md` for why a held order
+   * is not the class of silent-wrong-outcome that #2610 made server-side.
+   */
+  detectRuleOverlap(
+    input: SalesDocumentRuleOverlapCheckInput
+  ): Promise<SalesDocumentRuleOverlapVerdict>;
 
   deleteRule(id: string): Promise<void>;
 
@@ -48,7 +65,7 @@ export interface ISalesDocumentRulesService {
    * as part of the same write (#2186) — see `createRule`.
    */
   upsertCountryDefault(
-    input: SalesDocumentCountryDefaultInput,
+    input: SalesDocumentCountryDefaultInput
   ): Promise<SalesDocumentCountryDefault>;
 
   deleteCountryDefault(id: string): Promise<void>;
@@ -80,7 +97,7 @@ export interface ISalesDocumentRulesService {
    */
   resolveRoutingBatch(
     orders: readonly SalesDocumentOrderFacts[],
-    now?: Date,
+    now?: Date
   ): Promise<SalesDocumentDecision[]>;
 
   /**
