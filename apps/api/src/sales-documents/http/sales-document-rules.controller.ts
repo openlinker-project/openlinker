@@ -44,6 +44,10 @@ import {
   SalesDocumentThresholdNotFoundException,
 } from '@openlinker/core/sales-documents';
 import { CreateSalesDocumentRuleDto } from './dto/create-sales-document-rule.dto';
+import {
+  CheckSalesDocumentRuleOverlapDto,
+  SalesDocumentRuleOverlapResponseDto,
+} from './dto/check-sales-document-rule-overlap.dto';
 import { SalesDocumentConditionDto } from './dto/sales-document-condition.dto';
 import { SalesDocumentRuleResponseDto } from './dto/sales-document-rule-response.dto';
 import { UpsertSalesDocumentCountryDefaultDto } from './dto/upsert-sales-document-country-default.dto';
@@ -95,6 +99,32 @@ export class SalesDocumentRulesController {
     } catch (error) {
       throw this.toHttpException(error);
     }
+  }
+
+  @Post('rules/overlap-check')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Would this draft rule match the same order as one already saved?',
+    description:
+      'A READ despite the verb - it carries a draft body and persists nothing. The engine has no ' +
+      'priorities, so two matching rules HOLD the order rather than one winning; this answers that ' +
+      'question while there is still somebody to tell. Three outcomes, never two: a pair provably ' +
+      'can both match, provably cannot, or this build could not decide - the last is reported rather ' +
+      'than folded into "no conflict".',
+  })
+  @ApiResponse({ status: 200, type: SalesDocumentRuleOverlapResponseDto })
+  async checkRuleOverlap(
+    @Body() dto: CheckSalesDocumentRuleOverlapDto,
+  ): Promise<SalesDocumentRuleOverlapResponseDto> {
+    this.assertValidCountryParam(dto.country);
+    const verdict = await this.service.detectRuleOverlap({
+      country: dto.country,
+      conditions: dto.conditions.map((c) => SalesDocumentConditionDto.toDomain(c)),
+      effectiveFrom: new Date(dto.effectiveFrom),
+      effectiveTo: dto.effectiveTo ? new Date(dto.effectiveTo) : null,
+      excludeRuleId: dto.excludeRuleId,
+    });
+    return SalesDocumentRuleOverlapResponseDto.fromDomain(verdict);
   }
 
   @Delete('rules/:id')
