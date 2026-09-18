@@ -35,3 +35,12 @@ export type {
   SalesDocumentGateReasonCopy,
   SalesDocumentReasonTone,
 } from './lib/sales-document-reason-copy';
+
+// #3307 — one word/tone rule for an EXISTING record, shared between the
+// /orders row (via features/orders/lib/sales-document-cell-state.ts) and the
+// merged /sales-documents list.
+export { resolveSalesDocumentRecordWord } from './lib/resolve-sales-document-record-word';
+export type {
+  SalesDocumentRecordTone,
+  SalesDocumentRecordWord,
+} from './lib/resolve-sales-document-record-word';
