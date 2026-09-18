@@ -11,6 +11,8 @@ import type {
   InventoryPagination,
   PaginatedInventory,
   InventoryAvailabilityResponse,
+  DuplicatePositionsReport,
+  ProvenanceBackfillStatus,
 } from './inventory.types';
 import { normalizeCountryIso2 } from './inventory-locations.types';
 import type {
@@ -67,6 +69,23 @@ export interface InventoryApi {
    * issues the request.
    */
   deleteLocation: (id: string) => Promise<void>;
+  /**
+   * Read-only duplicate-position diagnostic (#2319, ADR-058 step (iii)). Admin
+   * only server-side. `maxGroups` bounds the returned group DETAIL only — the
+   * report's totals are always computed over the whole table. The server
+   * rejects `maxGroups > 500` with 400 (`MAX_DUPLICATE_POSITION_GROUPS`) —
+   * the authority for the cap; this client does not enforce it.
+   */
+  getDuplicatePositions: (maxGroups?: number) => Promise<DuplicatePositionsReport>;
+  /**
+   * Live status of the #2317 provenance backfill (#3240) — the second,
+   * independent readiness condition alongside `getDuplicatePositions`'s
+   * `groupCount`. Admin only server-side. Always resolved live — the
+   * backfill's persisted `connection_cursors` count can go stale once the
+   * pass self-latches, so the server recounts on every call rather than
+   * trusting it — so callers should not poll this aggressively.
+   */
+  getProvenanceBackfillStatus: () => Promise<ProvenanceBackfillStatus>;
 }
 
 interface ApiRequest {
@@ -140,6 +159,17 @@ export function createInventoryApi(request: ApiRequest): InventoryApi {
     },
     deleteLocation(id): Promise<void> {
       return request<void>(`/inventory/locations/${id}`, { method: 'DELETE' });
+    },
+    getDuplicatePositions(maxGroups): Promise<DuplicatePositionsReport> {
+      const params = new URLSearchParams();
+      if (maxGroups !== undefined) params.set('maxGroups', String(maxGroups));
+      const qs = params.toString();
+      return request<DuplicatePositionsReport>(
+        `/inventory/duplicate-positions${qs.length > 0 ? `?${qs}` : ''}`,
+      );
+    },
+    getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatus> {
+      return request<ProvenanceBackfillStatus>('/inventory/provenance-backfill-status');
     },
   };
 }
