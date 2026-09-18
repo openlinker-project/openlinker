@@ -44,7 +44,7 @@ import type { DuplicatePositionGroup } from '../../features/inventory/api/invent
 
 function IdCell({ value }: { value: string | null }): ReactElement {
   if (value === null) {
-    return <span className="text-muted">—</span>;
+    return <span className="duplicate-positions-muted">—</span>;
   }
   return <span className="mono-text">{value}</span>;
 }
@@ -62,7 +62,9 @@ function ProductCell({ group }: { group: DuplicatePositionGroup }): ReactElement
     <span className="duplicate-positions-product-cell">
       <span>{group.productName}</span>
       {group.sku !== null ? (
-        <span className="mono-text text-muted duplicate-positions-product-cell__sku">{group.sku}</span>
+        <span className="mono-text duplicate-positions-muted duplicate-positions-product-cell__sku">
+          {group.sku}
+        </span>
       ) : null}
     </span>
   );
@@ -76,7 +78,7 @@ function ProductCell({ group }: { group: DuplicatePositionGroup }): ReactElement
  */
 function LocationCell({ id, name }: { id: string | null; name: string | null }): ReactElement {
   if (id === null) {
-    return <span className="text-muted">—</span>;
+    return <span className="duplicate-positions-muted">—</span>;
   }
   return name !== null ? <span>{name}</span> : <span className="mono-text">{id}</span>;
 }
@@ -88,7 +90,7 @@ function LocationCell({ id, name }: { id: string | null; name: string | null }):
  */
 function ConnectionCell({ id, name }: { id: string | null; name: string | null }): ReactElement {
   if (id === null || id === 'legacy') {
-    return <span className="text-muted">Not backfilled</span>;
+    return <span className="duplicate-positions-muted">Not backfilled</span>;
   }
   return name !== null ? <span>{name}</span> : <span className="mono-text">{id}</span>;
 }
@@ -119,14 +121,22 @@ const GROUP_COLUMNS: DataTableColumn<DuplicatePositionGroup>[] = [
   },
   {
     id: 'rowCount',
-    header: 'Rows',
+    header: (
+      <span title="Sorts only this truncated page — groups is capped by maxGroups, largest first">
+        Rows
+      </span>
+    ),
     accessor: (g) => g.rowCount,
     cell: (g) => <span className="mono-text tabular">{g.rowCount}</span>,
     sortable: true,
   },
   {
     id: 'liveRowCount',
-    header: 'Live rows',
+    header: (
+      <span title="Sorts only this truncated page — groups is capped by maxGroups, largest first">
+        Live rows
+      </span>
+    ),
     accessor: (g) => g.liveRowCount,
     cell: (g) => <span className="mono-text tabular">{g.liveRowCount}</span>,
     sortable: true,
@@ -135,41 +145,46 @@ const GROUP_COLUMNS: DataTableColumn<DuplicatePositionGroup>[] = [
 
 function GroupRowDetail({ group }: { group: DuplicatePositionGroup }): ReactElement {
   return (
-    <table className="data-table__detail-table">
-      <caption className="sr-only">Individual inventory_items rows for this position key</caption>
-      <thead>
-        <tr>
-          <th scope="col">Row ID</th>
-          <th scope="col">Available</th>
-          <th scope="col">Reserved</th>
-          <th scope="col">Status</th>
-          <th scope="col">Updated</th>
-        </tr>
-      </thead>
-      <tbody>
-        {group.rows.map((row) => (
-          <tr key={row.id} className={row.isStale ? 'data-table__detail-row--stale' : undefined}>
-            <td>
-              <span className="mono-text">{row.id}</span>
-            </td>
-            <td className="tabular">{row.availableQuantity}</td>
-            <td className="tabular">{row.reservedQuantity}</td>
-            <td>
-              {row.isStale ? (
-                <StatusBadge tone="neutral" withDot>
-                  Stale
-                </StatusBadge>
-              ) : (
-                <StatusBadge tone="success" withDot>
-                  Live
-                </StatusBadge>
-              )}
-            </td>
-            <td title={row.updatedAt}>{formatDateTime(row.updatedAt)}</td>
+    <div className="duplicate-positions-detail-table__scroll">
+      <table className="duplicate-positions-detail-table">
+        <caption className="sr-only">Individual inventory_items rows for this position key</caption>
+        <thead>
+          <tr>
+            <th scope="col">Row ID</th>
+            <th scope="col">Available</th>
+            <th scope="col">Reserved</th>
+            <th scope="col">Status</th>
+            <th scope="col">Updated</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {group.rows.map((row) => (
+            <tr
+              key={row.id}
+              className={row.isStale ? 'duplicate-positions-detail-table__row--stale' : undefined}
+            >
+              <td>
+                <span className="mono-text">{row.id}</span>
+              </td>
+              <td className="tabular">{row.availableQuantity}</td>
+              <td className="tabular">{row.reservedQuantity}</td>
+              <td>
+                {row.isStale ? (
+                  <StatusBadge tone="neutral" withDot>
+                    Stale
+                  </StatusBadge>
+                ) : (
+                  <StatusBadge tone="success" withDot>
+                    Live
+                  </StatusBadge>
+                )}
+              </td>
+              <td title={row.updatedAt}>{formatDateTime(row.updatedAt)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -346,7 +361,7 @@ export function DuplicatePositionsPage(): ReactElement {
               columns={GROUP_COLUMNS}
               rows={report.groups}
               rowKey={(g) =>
-                `${g.productId}:${g.productVariantId ?? ''}:${g.locationId ?? ''}:${g.sourceConnectionId ?? ''}`
+                JSON.stringify([g.productId, g.productVariantId, g.locationId, g.sourceConnectionId])
               }
               expandable={{
                 renderDetail: (g) => <GroupRowDetail group={g} />,
