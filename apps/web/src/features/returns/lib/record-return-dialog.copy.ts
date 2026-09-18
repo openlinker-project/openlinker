@@ -21,6 +21,22 @@ export const RECORD_RETURN_DIALOG_COPY = {
   connectionFieldLabel: 'From which connection?',
   connectionFieldDescription: 'OpenLinker uses this to work out where the item is actually mapped.',
   connectionPlaceholder: 'Select the channel this return came in on',
+  /** Rendered as the select's one option while the read is in flight. */
+  connectionLoadingPlaceholder: 'Loading connections…',
+  /**
+   * The required connection field is otherwise unsatisfiable with no
+   * explanation when the read fails — the operator would fill the rest of
+   * the form and only learn something was wrong from a validation message
+   * about a list they never saw the state of (tech-lead review on #3284,
+   * IMPORTANT).
+   */
+  connectionsLoadFailed:
+    'The list of connections could not be loaded, so this return cannot be recorded right now.',
+
+  skuFieldLabel: 'SKU',
+  skuFieldDescription:
+    "OpenLinker restocks by SKU. Without one, this return's units can never be added back to stock.",
+  skuFieldPlaceholder: 'SKU',
 
   itemFieldLabel: 'What came back?',
   itemFieldPlaceholder: 'Item name',

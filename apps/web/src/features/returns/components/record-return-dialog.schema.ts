@@ -17,6 +17,16 @@
  * at validation time (`refine`), against the FE's own mirrored
  * `RETURN_LINE_REASON_VALUES`, exactly as `isReturnLineReason` already does.
  *
+ * **`sku` is REQUIRED here even though `RecordReturnLineDto.sku` is optional
+ * on the wire** (tech-lead review on #3284, BLOCKING). `ReturnCustodyService
+ * .resolveRestockTarget` resolves the restock target BY SKU and refuses
+ * outright with `unresolved-product` when a line carries none — and there is
+ * no line-edit write anywhere in the returns API, so a line recorded without
+ * one is permanently un-restockable. The DTO stays lenient for the ingestion
+ * path (a source may genuinely report none), but an operator opening a
+ * return by hand is exactly the caller who CAN supply it, so this form does
+ * not offer the dead end.
+ *
  * @module apps/web/src/features/returns/components
  */
 import { z } from 'zod';
@@ -31,6 +41,11 @@ export const recordReturnDialogSchema = z.object({
     .string()
     .trim()
     .min(1, 'Select the channel this return came in on.'),
+  sku: z
+    .string()
+    .trim()
+    .min(1, "Enter the item's SKU — OpenLinker needs it to restock later.")
+    .max(255, 'SKU must be at most 255 characters.'),
   itemName: z
     .string()
     .trim()
@@ -43,9 +58,11 @@ export const recordReturnDialogSchema = z.object({
       'Select a reason.',
     ),
   // `@IsInt() @Min(1)` on the backend. `z.coerce` because a native
-  // `<input type="number">` value arrives as a string. An empty/non-numeric
-  // input coerces to `NaN`, which `.int()` refuses with its own message —
-  // Zod 4 dropped the `invalid_type_error` option `z.number()` took in v3.
+  // `<input type="number">` value arrives as a string. `Number('')` is `0`,
+  // not `NaN` — an emptied field is caught by `.min(1)` below, never by
+  // `.int()`. Zod 4 dropped the `invalid_type_error` option `z.number()` took
+  // in v3, which is why a genuinely non-numeric string (`Number('abc')` is
+  // `NaN`) is instead caught by `.int()`'s own message.
   quantityAdvised: z.coerce
     .number()
     .int('Quantity must be a whole number.')
@@ -58,6 +75,7 @@ export type RecordReturnDialogFormSubmission = z.output<typeof recordReturnDialo
 export const RECORD_RETURN_DIALOG_DEFAULT_VALUES: RecordReturnDialogFormValues = {
   internalOrderId: '',
   sourceConnectionId: '',
+  sku: '',
   itemName: '',
   reason: '',
   quantityAdvised: 1,

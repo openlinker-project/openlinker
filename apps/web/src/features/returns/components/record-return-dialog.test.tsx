@@ -66,6 +66,7 @@ function renderDialog(options: {
 async function fillValidForm(): Promise<void> {
   await userEvent.type(await screen.findByLabelText(COPY.orderFieldLabel), 'ol_order_1');
   await userEvent.selectOptions(screen.getByLabelText(COPY.connectionFieldLabel), 'conn_1');
+  await userEvent.type(screen.getByLabelText(COPY.skuFieldLabel), 'MUG-CER-01');
   await userEvent.type(screen.getByLabelText(COPY.itemFieldLabel), 'Ceramic mug');
   await userEvent.selectOptions(screen.getByLabelText(COPY.reasonFieldLabel), 'defective');
   const quantity = screen.getByLabelText(COPY.quantityFieldLabel);
@@ -95,7 +96,9 @@ describe('RecordReturnDialog', () => {
       expect(record).toHaveBeenCalledWith({
         internalOrderId: 'ol_order_1',
         sourceConnectionId: 'conn_1',
-        lines: [{ name: 'Ceramic mug', reason: 'defective', quantityAdvised: 2 }],
+        lines: [
+          { sku: 'MUG-CER-01', name: 'Ceramic mug', reason: 'defective', quantityAdvised: 2 },
+        ],
       });
     });
     await waitFor(() => {
@@ -113,6 +116,42 @@ describe('RecordReturnDialog', () => {
     await waitFor(() => {
       expect(onRecorded).toHaveBeenCalled();
     });
+  });
+
+  it('should require a SKU before submitting — a line recorded without one can never be restocked', async () => {
+    const { record } = renderDialog();
+
+    await userEvent.type(await screen.findByLabelText(COPY.orderFieldLabel), 'ol_order_1');
+    await userEvent.selectOptions(screen.getByLabelText(COPY.connectionFieldLabel), 'conn_1');
+    await userEvent.type(screen.getByLabelText(COPY.itemFieldLabel), 'Ceramic mug');
+    await userEvent.selectOptions(screen.getByLabelText(COPY.reasonFieldLabel), 'defective');
+    // sku is deliberately left blank
+    await userEvent.click(screen.getByRole('button', { name: COPY.confirm }));
+
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('should label the reason options with the operator-facing REFUND_REASON_LABELS, not the raw wire value', async () => {
+    renderDialog();
+
+    const option = await screen.findByRole('option', { name: 'Item did not match the listing' });
+    expect(option).toHaveValue('not_as_described');
+    // The raw wire string is never the visible label.
+    expect(screen.queryByRole('option', { name: 'not_as_described' })).not.toBeInTheDocument();
+  });
+
+  it('should disable submit and explain when the connections list fails to load', async () => {
+    const apiClient = createMockApiClient();
+    apiClient.orders.list = vi
+      .fn()
+      .mockResolvedValue({ items: [order()], total: 1, limit: 20, offset: 0 }) as unknown as typeof apiClient.orders.list;
+    apiClient.connections.list = vi.fn().mockRejectedValue(new Error('network down')) as unknown as typeof apiClient.connections.list;
+
+    renderWithProviders(<RecordReturnDialog open onOpenChange={vi.fn()} />, { apiClient });
+
+    expect(await screen.findByText(COPY.connectionsLoadFailed)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: COPY.confirm })).toBeDisabled();
+    expect(screen.getByLabelText(COPY.connectionFieldLabel)).toBeDisabled();
   });
 
   it('should render an order/channel mismatch (400 order-not-on-connection) as a FIELD error', async () => {
