@@ -4384,36 +4384,49 @@ a.delivery-rider-banner__button:focus-visible {
   padding: var(--space-4) var(--space-4) var(--space-4) 2.75rem;
 }
 
-/* ── Duplicate-position group detail table (#3074, #3071) ──
+/* ── Duplicate-position group detail table (#3074, #3071, #3256 review) ──
    A per-row nested table of raw inventory_items rows inside the duplicate
    position group's expandable detail drawer. Reuses the detail-drawer's own
-   muted surface rather than adding a second background. */
-.data-table__detail-table {
+   muted surface rather than adding a second background.
+
+   Page-owned block (`duplicate-positions-detail-table`), deliberately NOT
+   `data-table__detail-table` / `data-table__detail-row--stale` — those names
+   would squat on the shared `data-table` BEM block, and
+   `.data-table__detail-row` is a REAL class owned by `data-table.tsx` (the
+   accordion's own detail `<tr>`), a different element from this nested
+   table's rows. A `--stale` modifier under that shared name would read as
+   belonging to the shared component and silently collide with it later. */
+.duplicate-positions-detail-table__scroll {
+  overflow-x: auto;
+}
+
+.duplicate-positions-detail-table {
   width: 100%;
   border-collapse: collapse;
 }
 
-.data-table__detail-table th,
-.data-table__detail-table td {
+.duplicate-positions-detail-table th,
+.duplicate-positions-detail-table td {
   padding: var(--space-2) var(--space-3);
   text-align: left;
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.data-table__detail-table th {
+.duplicate-positions-detail-table th {
   font-family: var(--font-mono);
   font-size: 0.625rem;
   font-weight: 500;
   letter-spacing: var(--tracking-caps);
   text-transform: uppercase;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
-.data-table__detail-table tbody tr:last-child td {
+.duplicate-positions-detail-table tbody tr:last-child td {
   border-bottom: 0;
 }
 
-.data-table__detail-row--stale {
+.duplicate-positions-detail-table__row--stale {
   opacity: 0.6;
 }
 
@@ -4428,6 +4441,14 @@ a.delivery-rider-banner__button:focus-visible {
 
 .duplicate-positions-product-cell__sku {
   font-size: 0.75rem;
+}
+
+/* ── Duplicate-positions muted text (#3256 review) ──
+   `.text-muted` is a dead global class (no such rule exists outside one
+   scoped `.ai-provider-table` override) — this page owns its own muted
+   treatment instead of silently rendering at default body colour. */
+.duplicate-positions-muted {
+  color: var(--text-secondary);
 }
 
 /* Detail field grid — shared by the desktop accordion and the mobile card.
