@@ -108,6 +108,42 @@ describe('InvoiceTimeline — clearance lane', () => {
     expect(container.textContent).not.toMatch(/KSeF/i);
   });
 
+  // #3192 - hooks on the SHIPPED lane, emitted only while awaiting
+  // submission, so their presence IS the assertion about the state rather
+  // than merely about a lane existing.
+  describe('waiting hooks (#3192)', () => {
+    it('names the lane and the active node while awaiting submission', () => {
+      renderWithProviders(
+        <InvoiceTimeline invoice={makeInvoice({ regulatoryStatus: 'pending-submission' })} />,
+      );
+
+      expect(screen.getByTestId('clearance-ladder-waiting')).toBeInTheDocument();
+      const node = screen.getByTestId('clearance-node-waiting');
+      expect(node).toHaveClass('invoice-tl-node--active');
+      expect(node.textContent).toMatch(/awaiting submission/i);
+    });
+
+    it('emits neither hook once the document has been submitted', () => {
+      renderWithProviders(
+        <InvoiceTimeline invoice={makeInvoice({ regulatoryStatus: 'submitted' })} />,
+      );
+
+      // The lane is still drawn - only the waiting names are withdrawn.
+      expect(screen.getByText(/regulatory clearance/i)).toBeInTheDocument();
+      expect(screen.queryByTestId('clearance-ladder-waiting')).toBeNull();
+      expect(screen.queryByTestId('clearance-node-waiting')).toBeNull();
+    });
+
+    it('emits neither hook on a terminal clearance', () => {
+      renderWithProviders(
+        <InvoiceTimeline invoice={makeInvoice({ regulatoryStatus: 'accepted' })} />,
+      );
+
+      expect(screen.queryByTestId('clearance-ladder-waiting')).toBeNull();
+      expect(screen.queryByTestId('clearance-node-waiting')).toBeNull();
+    });
+  });
+
   it('submitted ⇒ Submitted (done) + Awaiting acceptance (active)', () => {
     renderWithProviders(
       <InvoiceTimeline invoice={makeInvoice({ regulatoryStatus: 'submitted' })} />,

@@ -25,6 +25,18 @@ interface StatusBadgeProps {
   /** Pulses the leading dot — for live / syncing states. Forces `withDot`. */
   pulse?: boolean;
   withDot?: boolean;
+  /**
+   * For test introspection (the `Combobox` convention). Lands on the badge
+   * root so a caller can name ONE state without wrapping the badge in a spare
+   * element - a wrapper `<span>` changes how the badge sits inside the flex
+   * and grid parents this primitive is rendered into (KV rows, table cells,
+   * panel headers).
+   *
+   * See `docs/frontend-architecture.md` § Test-introspection `data-testid`
+   * prop for the convention and the running list of primitives that carry
+   * it — update that list rather than this comment when a new one adopts it.
+   */
+  'data-testid'?: string;
 }
 
 export function StatusBadge({
@@ -35,6 +47,7 @@ export function StatusBadge({
   tone = 'neutral',
   pulse = false,
   withDot = false,
+  'data-testid': dataTestId,
 }: StatusBadgeProps): ReactElement {
   const showDot = withDot || pulse;
   const classes = [
@@ -49,7 +62,7 @@ export function StatusBadge({
     .join(' ');
 
   return (
-    <span className={classes}>
+    <span className={classes} data-testid={dataTestId}>
       {showDot ? <span className="status-badge__dot" aria-hidden="true" /> : null}
       <span>{children}</span>
     </span>

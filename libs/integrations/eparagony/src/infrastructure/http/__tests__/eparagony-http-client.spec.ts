@@ -53,6 +53,24 @@ function makeClient(fetchImpl: jest.Mock, overrides: Partial<typeof CONFIG> = {}
 
 describe('EparagonyHttpClient', () => {
   describe('token lifecycle', () => {
+    it('should word a token-less response without naming a single document lane', async () => {
+      // The client is shared by the fiscalization and invoicing adapters (#3192),
+      // so an OAuth failure during INVOICE issuance must not read as e-receipt
+      // copy. Nothing else asserts this string, which is how the original
+      // "The e-receipt provider issued no access token." survived.
+      const fetchImpl = makeFetch([
+        (): Response => jsonResponse(200, { token_type: 'bearer', expires_in: 3600 }),
+      ]);
+      const error: unknown = await makeClient(fetchImpl)
+        .get('documents/x/status')
+        .then(() => null)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(EparagonyApiError);
+      expect((error as EparagonyApiError).reason.toLowerCase()).not.toContain('e-receipt');
+      expect((error as EparagonyApiError).reason).toContain('access token');
+    });
+
     it('should request a token from the OAuth host, not the API host', async () => {
       const fetchImpl = makeFetch([
         (): Response => jsonResponse(200, tokenBody()),

@@ -647,9 +647,22 @@ export class ConnectionService implements IConnectionService {
       // InventoryMaster first — see the mutual-exclusion guard below), which
       // preserves the "publish-only unless the operator asks" posture.
       // Marketplace manifests (no InventoryMaster) keep the full default set.
-      const defaultCapabilities = metadata.supportedCapabilities.includes('InventoryMaster')
-        ? metadata.supportedCapabilities.filter((c) => c !== 'OfferManager')
-        : [...metadata.supportedCapabilities];
+      //
+      // The same shape applies to a dual-role fiscal connection (#3192
+      // review, I1): the guided wizard for a manifest declaring both
+      // `Fiscalization` and `Invoicing` (eparagony) collects only the
+      // receipts-lane config, so omitting `enabledCapabilities` must not
+      // silently grant the invoicing lane too — that is exactly the
+      // #2610 rule that server-side validation cannot live only in the
+      // browser, since the raw config-JSON editor, curl and MCP all bypass
+      // it. `Invoicing` is opt-in, mirroring the OfferManager carve-out.
+      const defaultCapabilities = (
+        metadata.supportedCapabilities.includes('InventoryMaster')
+          ? metadata.supportedCapabilities.filter((c) => c !== 'OfferManager')
+          : [...metadata.supportedCapabilities]
+      ).filter(
+        (c) => !(c === 'Invoicing' && metadata.supportedCapabilities.includes('Fiscalization'))
+      );
       const enabledCapabilities = rest.enabledCapabilities ?? defaultCapabilities;
 
       const invalid = enabledCapabilities.filter(

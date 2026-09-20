@@ -68,3 +68,17 @@ export const EPARAGONY_SCOPE_PARAM = EPARAGONY_SCOPES.join(' ');
  * headroom is deliberate.
  */
 export const EPARAGONY_REGISTER_DEADLINE_MS = 110_000;
+
+/**
+ * Hard ceiling on the wall-clock a single `issueInvoice` may consume.
+ *
+ * The invoicing twin of {@link EPARAGONY_REGISTER_DEADLINE_MS}, and mirrored for
+ * the same reason rather than shared with it by accident: core's `InvoiceService`
+ * holds its own in-flight CAS lease whose documented invariant is that it must
+ * strictly exceed the longest supported provider round-trip (its
+ * `MAX_SUPPORTED_PROVIDER_TIMEOUT_MS`, 120 s). Overrunning that would let an
+ * expired lease be re-claimed while this call is still in flight and issue one
+ * sale's invoice twice. Both values are mirrored here rather than imported
+ * because core exports them from service modules, not from its barrel.
+ */
+export const EPARAGONY_ISSUE_DEADLINE_MS = 110_000;

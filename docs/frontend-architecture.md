@@ -452,6 +452,14 @@ Components that wrap headless libraries (Radix, TanStack) sit on the same footin
 
 **Live reference**: navigate to `/dev/ui` in a running app (admin tree, hidden from nav) for the brandbook + primitives gallery + composed patterns. Source under `apps/web/src/pages/dev-ui/`. The standalone HTML mockup at `docs/plans/ui-overhaul-mockup.html` is the offline reference.
 
+### Test-introspection `data-testid` prop (the `Combobox` convention)
+
+A shared primitive that renders as the ROOT of a spec-addressable unit (a notice, a badge, a control) may accept an optional `'data-testid'?: string` prop, forwarded onto the same element a test needs to name — never onto an internal wrapper `<div>`/`<span>`, since that changes how the primitive lays out inside its parent's flex/grid context. `Combobox` established the shape; `Alert` and `StatusBadge` adopted it together in the same change (#3268 review, S3).
+
+**Add it only when a real spec needs to name one instance among several of the same primitive on a page** — not defensively on every primitive up front. When adding it to a new primitive, update the running count in this paragraph in the same commit, so the next author has an accurate precedent count rather than a docblock that says "third" while a fourth already shipped:
+
+Primitives carrying the prop today (in the order adopted): `Combobox`, `Alert`, `StatusBadge`.
+
 ## UX Mockups (`docs/plans/mockups/`)
 
 A high-fidelity, interactive HTML mockup produced while designing a non-trivial feature (via the `artifact-design` skill or equivalent) **must be committed to the repo** under `docs/plans/mockups/{feature-name}.html`, not left as an ephemeral Claude Artifact link. The Artifact URL is for live iteration with the requester during design; the repo copy is the durable spec that implementation and E2E tasks reference for the life of the feature.

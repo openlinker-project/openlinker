@@ -57,6 +57,24 @@ export const REGULATORY_STATUS_LABEL_FALLBACK: Record<RegulatoryStatus, string> 
 
 const LABEL_FALLBACK = REGULATORY_STATUS_LABEL_FALLBACK;
 
+/**
+ * Test hook for the ONE state a document is waiting with its provider in
+ * (#3192): issued, legally effective, and not yet sent on for clearance.
+ *
+ * Emitted only for `pending-submission`, so its presence IS the assertion -
+ * a hook on every badge would say nothing about which state the badge is in.
+ * It rides the shared badge rather than a per-surface element because that
+ * badge is what renders the words "Awaiting submission" on all three surfaces
+ * that show a clearance state (the order-detail sales-document panel's
+ * Clearance row, the invoice detail page, the invoices list row), so one
+ * definition covers all three and they cannot drift apart.
+ *
+ * Note the list renders one badge PER ROW, so a spec on `/invoices` reads it
+ * with `getAllByTestId`; the mockup's own row hooks (`invoice-row-waiting-*`)
+ * are what a single row is addressed by there.
+ */
+const REGULATORY_WAITING_TEST_ID = 'sales-document-status-waiting';
+
 interface RegulatoryStatusBadgeProps {
   status: RegulatoryStatus;
   /**
@@ -85,6 +103,7 @@ export function RegulatoryStatusBadge({
       tone={TONE[status]}
       withDot
       pulse={status === 'submitted' || status === 'pending-submission'}
+      data-testid={status === 'pending-submission' ? REGULATORY_WAITING_TEST_ID : undefined}
     >
       {label}
     </StatusBadge>

@@ -238,9 +238,23 @@ async function main() {
   ];
 
   const fatal = [];
-  if (!core) fatal.push(`${CORE_FILE}: no 'export const ${CORE_NAME} = [...]' found`);
+  if (!core) {
+    fatal.push(`${CORE_FILE}: no 'export const ${CORE_NAME} = [...]' found`);
+  } else if (core.values.length === 0) {
+    fatal.push(
+      `${CORE_FILE}: '${CORE_NAME}' parsed to ZERO values - the PARSER is broken (a bracket ` +
+        'inside a comment likely truncated the array), not the union legitimately empty',
+    );
+  }
   for (const { file, what, parsed } of mirrors) {
-    if (!parsed) fatal.push(`${file}: no '${what}' found`);
+    if (!parsed) {
+      fatal.push(`${file}: no '${what}' found`);
+    } else if (parsed.values.length === 0) {
+      fatal.push(
+        `${file}: '${what}' parsed to ZERO values - the PARSER is broken (a bracket inside a ` +
+          'comment likely truncated it), not the mirror legitimately empty',
+      );
+    }
   }
 
   if (fatal.length > 0) {
@@ -316,6 +330,32 @@ function selfCheck() {
     'b-1',
   );
   expect('absent array declaration → null', parseConstArray('export const Other = [];', 'A'), null);
+
+  // #3002: a `]` inside a comment BETWEEN the real brackets must not truncate
+  // the array, and the reported line must not shift because of it. This parser
+  // already blanks comments (length-preserving) before locating the closing
+  // bracket, so these pin the existing correct behaviour rather than fixing new
+  // breakage.
+  expect(
+    'a "]" inside a line comment does not truncate the array',
+    parseConstArray(array('A', "  'a-x', // e.g. someList: []\n  'b-y',"), 'A')?.values.join(','),
+    'a-x,b-y',
+  );
+  expect(
+    'a "]" inside a block comment does not truncate the array',
+    parseConstArray(array('A', "  'a-x', /* e.g. someList: [] */\n  'b-y',"), 'A')?.values.join(','),
+    'a-x,b-y',
+  );
+  expect(
+    'a "]" inside a comment BEFORE the declaration does not shift the reported line',
+    parseConstArray(`// mentions a bracket like foo(): []\n${array('A', "  'a-x',")}`, 'A')?.line,
+    3, // leading comment (1) + the helper's own `/** header */` (2) + the decl (3)
+  );
+  expect(
+    'a declaration whose every entry is commented out parses to zero values',
+    parseConstArray(array('A', "  // 'a-x',"), 'A')?.values.length,
+    0,
+  );
 
   const iface = (name, members) => `export interface ${name} {\n${members}\n}\n`;
 
