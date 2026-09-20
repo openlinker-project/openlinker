@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import { EparagonySetupForm } from './eparagony-setup-form';
+import { toCreateConnectionInput } from './eparagony-setup.schema';
 
 describe('EparagonySetupForm', () => {
   afterEach(cleanup);
@@ -132,5 +133,42 @@ describe('EparagonySetupForm', () => {
     await waitFor(() => {
       expect(screen.getAllByText('must be a non-empty string')[0]).toBeInTheDocument();
     });
+  });
+
+  it('creates a receipts-only connection, never one that claims it can invoice', () => {
+    // The wizard collects no seller invoicing configuration, so it must not mint
+    // a connection carrying `'Invoicing'`. Omitting `enabledCapabilities` would
+    // do exactly that from #3192 slice 2 on, because the server then defaults to
+    // the adapter manifest's supported set - which now lists `'Invoicing'`.
+    const payload = toCreateConnectionInput({
+      name: 'Acme',
+      clientId: 'client-abc',
+      clientSecret: 'secret-xyz',
+      posId: 'openlinker',
+      environment: 'sandbox',
+      integrationId: '',
+    });
+
+    expect(payload.enabledCapabilities).toEqual(['Fiscalization']);
+  });
+
+  it('sends only core capability names, which is what the create DTO accepts', () => {
+    // `CreateConnectionDto.enabledCapabilities` is validated with
+    // `@IsIn(CoreCapabilityValues, { each: true })`, and neither
+    // `'FiscalRegistrationLocator'` nor `'RegulatoryStatusReader'` is a core
+    // capability - sending the manifest's full four here would 400 on every
+    // create. They are narrowed from the dispatched adapter with their `is*`
+    // guard and read off `enabledCapabilities` by nothing.
+    const payload = toCreateConnectionInput({
+      name: 'Acme',
+      clientId: 'client-abc',
+      clientSecret: 'secret-xyz',
+      posId: 'openlinker',
+      environment: 'sandbox',
+      integrationId: '',
+    });
+
+    expect(payload.enabledCapabilities).not.toContain('FiscalRegistrationLocator');
+    expect(payload.enabledCapabilities).not.toContain('RegulatoryStatusReader');
   });
 });

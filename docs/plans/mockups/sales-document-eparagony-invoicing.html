@@ -693,7 +693,7 @@ body.show-hooks .app [data-testid]::after {
         <div class="app" data-state="invoice-awaiting-submission" style="max-width:470px">
           <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:12px">
             <h4>Sales document</h4>
-            <span class="pill pill--warn" data-testid="sales-document-status-waiting">Invoice · Awaiting submission</span>
+            <span class="pill pill--warn" data-testid="sales-document-status-waiting" title="Shipped on the clearance RegulatoryStatusBadge, not on this header pill - the badge is the only element rendering the words &quot;Awaiting submission&quot;, while resolveInvoiceHeadline words pending-submission as &quot;Awaiting clearance&quot;">Invoice · Awaiting submission</span>
           </div>
           <div class="card">
             <div class="ladder" data-testid="clearance-ladder-waiting">
@@ -708,6 +708,10 @@ body.show-hooks .app [data-testid]::after {
                 <div>Processing mode</div><div data-testid="provider-raw-processing-mode"><span class="m">KSEF</span></div>
                 <div>Invoice hash</div><div data-testid="sales-document-invoice-hash"><span class="m" style="word-break:break-all">UtQp9Gpc51y-u3xApZjIjgkpZ01js-J8KflSPW8WzIE</span></div>
               </div>
+            </div>
+            <div class="note note--gap">
+              <span class="lbl">Those three rows are drawn and are NOT implementable yet (#3192 slice 3)</span>
+              <code>provider-raw-status</code>, <code>provider-raw-processing-mode</code> and <code>sales-document-invoice-hash</code> have <b>no data path to the frontend</b>. <code>InvoiceRecord</code> carries no slot for raw provider values - no <code>regimeExtras</code>, no <code>statusDetails</code>, unlike the fiscal-registration record - and <code>InvoiceRecordResponseDto</code> exposes none. Rendering them would mean inventing them, so slice 3 shipped the rest of this state and left these three out. Closing it is a core change with its own migration and DTO, not a frontend one.
             </div>
             <hr>
             <div class="alert" data-testid="clearance-cannot-retry">
@@ -860,13 +864,13 @@ body.show-hooks .app [data-testid]::after {
       <tbody>
         <tr><td>capability-count</td><td>Enabled-roles summary</td><td>Reads "2 of 2" once the adapter advertises both</td></tr>
         <tr><td>capability-toggle-invoicing</td><td>Enable switch</td><td>Independent of the fiscalisation switch; off on an existing connection</td></tr>
-        <tr><td>capability-routing-note</td><td>Consequence notice</td><td>Present when a role is enabled but no rule routes to it</td></tr>
+        <tr><td>capability-routing-note</td><td>Consequence notice</td><td>Shipped keyed on the connection <b>supporting</b> a sales-document capability, not on a role being enabled - the note answers "what does turning this on do", which is asked before it is turned on. Its noun is derived from the capabilities held (both -&gt; "sales documents", Invoicing only -&gt; "invoices", Fiscalization only -&gt; "fiscal receipts"), because "issue invoices" is false on a receipts-only connection</td></tr>
         <tr><td>provider-role-{key}</td><td>Role select</td><td><b>Four</b> options when both capabilities are held, two otherwise</td></tr>
         <tr><td>provider-primary-{key}</td><td>Goes-first marker</td><td>Exactly one row carries it across the whole table</td></tr>
-        <tr><td>clearance-node-waiting</td><td>Current ladder node</td><td>Present only while awaiting submission; carries the elapsed figure</td></tr>
-        <tr><td>provider-raw-status</td><td>Provider's own word</td><td>Passed through untranslated</td></tr>
-        <tr><td>provider-raw-processing-mode</td><td>Provider's own mode value</td><td>Passed through untranslated — never mapped to a friendly label</td></tr>
-        <tr><td>sales-document-invoice-hash</td><td>Hash row</td><td>Present only in the waiting state</td></tr>
+        <tr><td>clearance-node-waiting</td><td>Current ladder node</td><td>Present only while awaiting submission. Shipped, it carries an <b>absolute</b> instant (<code>invoice.updatedAt</code>), not the elapsed figure drawn above: <code>updatedAt</code> is the record's last write, not when it entered <code>pending-submission</code>, so an elapsed rendering would assert a duration the data does not support</td></tr>
+        <tr><td>provider-raw-status</td><td>Provider's own word</td><td>Passed through untranslated <b>NOT IMPLEMENTED</b> - no data path exists; see the gap note in the state above</td></tr>
+        <tr><td>provider-raw-processing-mode</td><td>Provider's own mode value</td><td>Passed through untranslated - never mapped to a friendly label <b>NOT IMPLEMENTED</b> - no data path exists; see the gap note in the state above</td></tr>
+        <tr><td>sales-document-invoice-hash</td><td>Hash row</td><td>Present only in the waiting state <b>NOT IMPLEMENTED</b> - no data path exists; see the gap note in the state above</td></tr>
         <tr><td>clearance-cannot-retry</td><td>Explanation</td><td><b>Never</b> coexists with a retry control</td></tr>
         <tr><td>invoices-chip-awaiting</td><td>List chip</td><td>Count and age; drives the filter when clicked</td></tr>
         <tr><td>one-document-guard</td><td>Refusal alert</td><td>Present when any document exists for the order, on any connection or role</td></tr>
@@ -895,7 +899,7 @@ body.show-hooks .app [data-testid]::after {
         <tr><td>E3-2</td><td><b>Widen the routing model to a multi-kind candidate</b> — config key, coercer, <code>SalesDocumentRoutingCandidate</code>, <code>resolveSalesDocumentRouting</code>, <code>AutoIssueTriggerService</code>, settings view. <i>Gates "Both" only.</i></td><td>—</td></tr>
         <tr><td>E3-3</td><td><code>EparagonyInvoicingAdapter</code> implementing <code>InvoicingPort</code> over <code>eInvoice</code></td><td>—</td></tr>
         <tr><td>E3-4</td><td><code>upsertCustomer</code> — <b>identity echo</b>, following the KSeF adapter's precedent: a deterministic id derived from the buyer's tax id, no network call. Not a no-op, not a throw</td><td>E3-3</td></tr>
-        <tr><td>E3-5</td><td><code>RegulatoryStatusReader</code>: map <code>OFFLINE → pending-submission</code>, <code>CONFIRMED+KSEF → cleared</code>, <code>CONFIRMED+NONE → not-applicable</code></td><td>E3-3</td></tr>
+        <tr><td>E3-5</td><td><code>RegulatoryStatusReader</code>: map <code>OFFLINE → pending-submission</code>, <code>CONFIRMED+KSEF → accepted</code>, <code>CONFIRMED+NONE → not-applicable</code></td><td>E3-3</td></tr>
         <tr><td>E3-6</td><td><code>CorrectionIssuer</code> over <code>eCorrectiveInvoice</code></td><td>E3-3</td></tr>
         <tr><td>E3-7</td><td>Manifest advertises <code>Invoicing</code>. Required, not cosmetic — the connection service validates the name against the adapter's list</td><td>E3-3</td></tr>
         <tr><td>E3-8</td><td>FE: capabilities block renders two roles</td><td>E3-7</td></tr>

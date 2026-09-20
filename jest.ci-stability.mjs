@@ -8,16 +8,58 @@
  * OOM-kill a worker (SIGKILL/exitCode=null), which looks identical to a real
  * test failure.
  *
- *  - `maxWorkers: 2` — absolute (not '50%'), so peak memory is deterministic
- *    regardless of the runner's core count.
+ *  - `maxWorkers` — absolute (not '50%'), so peak memory is deterministic
+ *    regardless of the runner's core count, and resolved by the ONE resolver
+ *    at the repo root (#3271) so prestashop and allegro cannot drift from the
+ *    rest of the unit tier. See `jest.unit-workers.cjs` for the number, the
+ *    8-CPU/24-GiB container fact behind it, and the local-vs-CI split.
+ *
+ *    This file briefly carried its own CI-only `8`, measured at
+ *    prestashop 297.6 s -> 198.1 s and allegro 151.4 s -> 81.7 s. Those gains
+ *    were real in isolation and are the reason the shared number is not 2; what
+ *    they did not price in is the other three packages running beside them
+ *    under `--workspace-concurrency`, which is the whole subject of the
+ *    resolver's comment.
  *  - `workerIdleMemoryLimit` — Jest recycles a worker once its heap crosses the
  *    ceiling, before the OS OOM-kills it. Tune down (e.g. '256MB') if a runner
  *    is tight.
  *
- * The cross-package fan-out itself is bounded separately by
- * `pnpm -r --workspace-concurrency=2` in the root `test:ci` script.
+ * The cross-package fan-out itself is bounded separately in the root `test:ci`
+ * script, which is now `--no-sort --workspace-concurrency=4` (#3271). The
+ * bound was `2` for #976; `4` is pnpm's own default, so on its own it throttles
+ * nothing — what actually protects the box is that `apps/web` moved to its own
+ * CI job and every remaining package declares an absolute worker cap here or in
+ * its own config. Raising either number again without re-measuring the WHOLE
+ * job is how this went wrong three times; see `libs/core/jest.config.js`.
  */
+import { createRequire } from 'node:module';
+
+const { resolveUnitTestWorkers } = createRequire(import.meta.url)('./jest.unit-workers.cjs');
+
+/**
+ * The one measured departure from the shared unit-tier count (#3271).
+ *
+ * The shared default is 2, because this job runs four packages at once and the
+ * container allows about 8 CPUs - see `jest.unit-workers.cjs`. These two
+ * packages measured better than that on the real runner, twice the length of
+ * anything else in the tier and almost entirely CPU-bound:
+ *
+ *   prestashop  297.6 s -> 198.1 s
+ *   allegro     151.4 s ->  81.7 s
+ *
+ * That figure is from the configuration this branch actually shipped green at
+ * 3m59s, which had these two at 8 and `libs/core` / `apps/api` / `apps/worker`
+ * at 2. Lowering it to the shared default would be an unmeasured change riding
+ * along with a measured one, which is the exact mistake `docs/lessons.md`
+ * records from the '512MB' episode.
+ *
+ * It is passed as an argument rather than written as a bare number so the
+ * departure is visible to anyone reading the resolver, and so the local rule,
+ * the override env var and the ceiling still come from one place.
+ */
+const PRESTASHOP_ALLEGRO_CI_WORKERS = 8;
+
 export const ciStabilityConfig = {
-  maxWorkers: 2,
+  maxWorkers: resolveUnitTestWorkers(PRESTASHOP_ALLEGRO_CI_WORKERS),
   workerIdleMemoryLimit: '512MB',
 };

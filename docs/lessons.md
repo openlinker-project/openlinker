@@ -1445,3 +1445,279 @@ pattern — currently `libs/core/src/inventory/infrastructure/persistence/reposi
 `applyGuardedAdd`.
 
 **Source**: PR #3035 CI failure, fixed same-branch.
+
+---
+
+## A cache that exists is not a cache that hits — measure the key, not the directory
+
+**Context**: #3271 investigated why the `Test` job takes 14m54s. The self-hosted
+runner's containers are long-lived and their jest cache directory held **33 GB
+across ~2M files**, written to daily. Every surface reading suggested a healthy,
+warm cache, so "add caching" was rejected as already done.
+
+**Problem**: the cache was never read back. Jest's transform-cache key is a
+function of the file's content **and** its mtime, and `actions/checkout` rewrites
+every file on every run. Each run therefore minted a complete new set of keys,
+could not match the previous run's entries, and appended a full new set beside
+them. Jest applies no TTL, size cap or eviction to that directory, so it only
+grew. Measured on `libs/integrations/prestashop` with content byte-identical
+throughout: warm 73-82 s, after a bare `touch` of `libs/core/**/*.ts` 168.7 s
+**and 1030 freshly written cache entries**. `pnpm install` and `pnpm -r build`
+invalidated nothing; only mtime did.
+
+The size of the directory was actively misleading: it was large *because* it was
+never hit, and reading it as evidence of warmth inverted the diagnosis.
+
+**Rule**: to decide whether a cache helps, measure a repeat run against a cold
+one and count the entries the repeat *writes*. Zero new entries means a hit; a
+full new set means the key moved. Never infer hit-rate from the cache's presence,
+age or size.
+
+**Applies to**: any CI cache — jest transform cache, ts-jest, pnpm store, build
+output — especially on long-lived self-hosted runners where a stale cache never
+disappears on its own.
+
+**Source**: #3271.
+
+---
+
+## A safety test must vary the exact dimension the mechanism keys on
+
+**Context**: #3271 pins every tracked file to one fixed mtime so the jest cache
+can hit. That is only sound if a *changed* file still misses the cache, so the
+change was gated on a safety test: break a file, roll its mtime back to the
+identical stamp, confirm the suites fail.
+
+**Problem**: the first version of that test appended a line. It failed the suites
+as hoped — but it had changed the file's **size** as well as its content, and
+jest's file-metadata check is `(mtime, size)`. The test therefore proved nothing
+about the case that actually matters: content that changes while both mtime and
+size stay identical, which a one-character edit produces routinely. Had the key
+been `(mtime, size)` rather than content-derived, the test would still have
+passed and the change would have shipped a CI that silently runs stale code.
+
+The corrected test replaced one word with another of equal length, preserving the
+byte count exactly (20069 → 20069), and still failed 21 suites — which is what
+established the key is content-derived.
+
+**Rule**: when a change is gated on a safety property, write the test so that
+every dimension the suspected mechanism could key on is held constant except the
+one under test. If the test would still pass under the hypothesis you are trying
+to rule out, it is not evidence.
+
+**Applies to**: cache-invalidation work, memoization, content-addressed storage,
+any "is this stale?" guard.
+
+**Source**: #3271.
+
+---
+
+## A skipped step must fail loudly, or it reads as a passing one
+
+**Context**: #3271 added a CI step that stamps every source file with a fixed
+mtime so the jest cache can hit. The first version asked the VCS for the file
+list, and wrapped that call so an unavailable binary degraded to a no-op with a
+printed message and exit 0 — reasoning that a step which only *accelerates* a
+build must never *break* one.
+
+**Problem**: the runner has no git binary (`actions/checkout` succeeds through
+its tarball/API path — a condition `ci.yml` already documents elsewhere). So the
+step ran, printed `version-control listing unavailable, skipping`, exited 0, and
+stamped nothing. The job showed a green tick beside a step that did nothing at
+all, and the change looked deployed while being entirely inert. It was caught
+only because someone noticed the job was slower than before, not because
+anything reported a problem.
+
+The "safe" degradation was the bug: it converted a hard dependency into an
+invisible one.
+
+**Rule**: when a step degrades instead of failing, the degradation must be
+impossible to mistake for success — fail the step, or emit a `::warning::` that
+surfaces in the job summary. Better still, remove the dependency: here, walking
+the working tree needs no external binary and cannot silently return an empty
+list.
+
+**Applies to**: CI steps that optimise rather than verify; any `try/catch` whose
+catch branch continues as if nothing happened.
+
+**Source**: #3271.
+
+---
+
+## Do not bundle an unmeasured safety knob with a measured change
+
+**Context**: #3271 raised `maxWorkers` from 2 to 8 under CI on the strength of a
+lab run (whole job 753.9 s -> 538.1 s; that raise was itself later reverted for
+most packages — see the next entry). A review suggested also adding
+`workerIdleMemoryLimit: '512MB'` to the three packages newly taking 4x the
+workers, since only prestashop and allegro had a ceiling. It sounded prudent, so
+it shipped alongside — untested.
+
+**Problem**: `libs/core`'s workers legitimately peak near **2.8 GB**, five times
+that ceiling. Jest recycles a worker whenever its heap crosses the limit, so the
+package re-spawned a process and rebuilt its whole module graph after almost
+every file: **74 s became over 17 minutes** on the real runner. The measured part
+of the change was fine; the unmeasured "precaution" bundled with it was the
+regression, and because they shipped together the first CI run could not say
+which half was at fault.
+
+There was also nothing to protect against at the time — the whole job's peak RSS
+at 8 workers had been measured at 32.4 GB of the runner's 251 GB, on an idle box.
+Under the real job an `apps/api` worker was later OOM-killed anyway, which is the
+next entry's subject.
+
+**Rule**: ship the measured change alone. A knob nobody measured is a change,
+not a safeguard, and bundling it destroys the attribution the measurement was
+for. If a ceiling is genuinely wanted, size it above the package's observed
+working set — never by copying a neighbour's number.
+
+**Applies to**: `workerIdleMemoryLimit`, worker/concurrency caps, timeouts, pool
+sizes — any tuning value copied from one package to another.
+
+**Source**: #3271.
+
+---
+
+## A lab number from an idle machine is not a CI number
+
+**Context**: #3271 needed to know whether raising jest's `maxWorkers` from 2 to 8
+would speed the `Test` job up. The self-hosted runner was available, so the whole
+job was run there directly, twice, at each setting — the real hardware, the real
+suite, the real commit. It measured 753.9 s -> 538.1 s cold and 490.3 s ->
+256.8 s warm, and the change shipped on that evidence.
+
+**Problem**: the lab runs had the machine to themselves. The real `Test` job runs
+alongside seven other jobs of the same workflow — Build, Lint, Type Check, Docker
+Build Smoke, PHP Unit Tests, Integration Tests — spread across the same four
+long-lived runner containers on one host. Re-measured there, the raise was net
+harmful: it helped only the three largest packages and made everything else
+slower, doubling `apps/api` (80.0 s -> 163.0 s) and reproducing the
+`signal=SIGKILL, exitCode=null` OOM its own config comment had warned about since
+444244f. Two packages at eight workers each is sixteen processes competing with
+whatever else the host is running, and on an empty box that contention does not
+exist to be measured.
+
+The mistake was not using a lab. It was treating "same hardware, same suite" as
+"same conditions", when the variable under test — contention for a shared
+machine — was precisely the one the lab removed.
+
+**Rule**: before trusting a resource-contention measurement, ask what else is
+running in production that was not running in the lab. If the answer is anything,
+the lab bounds the *best* case only; confirm on the real pipeline before drawing
+a conclusion, and treat a result that contradicts an existing in-code warning as
+the warning being right until proven otherwise.
+
+**Applies to**: worker/concurrency/pool sizing, memory ceilings, timeouts,
+rate-limit tuning — anything whose behaviour depends on what else shares the box.
+
+**Source**: #3271.
+
+---
+
+## Two runs on different machines are two cold runs, not a cache experiment
+
+**Context**: #3271 pinned every source file's mtime so jest's transform cache
+could stop missing. To confirm it worked on the real pipeline, the same commit
+was run twice — once to write the entries under the new stable stamps, once to
+read them back. `apps/api` came in at 260.6 s and then 163.0 s, `apps/worker` at
+242.0 s and then 142.9 s, and everything else stayed flat. That reads exactly
+like a transform cache doing its job on the two packages with the largest
+compile graphs, and it was written up as the confirmation.
+
+**Problem**: the jest cache directory is per runner *container*, and this pool
+holds four. Checking `Runner name:` in the job logs afterwards showed four
+consecutive runs on four different containers. Both halves of the "cold versus
+warm" comparison were cold. The difference was host load: the second run started
+after the rest of the workflow had finished, so it had the machine to itself —
+the same confound as the idle-lab entry above, arrived at from a different
+direction.
+
+What made it convincing was that the result *matched the hypothesis*. A
+transform cache should move exactly the packages with the biggest compile graphs
+and leave the rest flat, and it did. Plausibility is not evidence.
+
+**Rule**: a cache measurement has to establish that both runs shared the cache,
+not just that they ran the same code. Identify the host, or count what the second
+run *writes* — zero new entries is a hit, a full new set means the key moved or
+the store was empty. On a multi-runner pool, assume a fresh store unless the log
+proves otherwise.
+
+**Applies to**: any per-host cache on self-hosted CI — jest, ts-jest, pnpm store,
+docker layers, compiler output.
+
+**Postscript**: the controlled repeat — two runs that did share a container —
+confirmed the mechanism outright: the whole job went 13m46s -> 8m10s, every one
+of the nineteen packages faster, most by 70-87%. The withdrawal was still right.
+The first result was true by accident, and a number arrived at by accident cannot
+be relied on the next time.
+
+**Source**: #3271.
+
+---
+
+## Measure the whole thing, interleaved, or the drift measures you
+
+**Context**: #3271 needed to choose a `maxWorkers` / `--workspace-concurrency`
+pair for the CI test job. Three attempts to raise workers had already been
+reverted off real CI runs, so the next round moved to the runner host itself.
+
+**Problem, twice over.** The first lab pass measured ONE package at a time and
+reported that `libs/core` goes 70 s -> 26 s at 8 workers and `apps/api`
+47 s -> 21 s. Both true, both useless for the decision: the whole backend
+command at 8 workers then took 17m12s on real CI, because a single package on a
+quiet box is not the same question as twenty packages beside `Test (web)`,
+`Integration Tests` and `Lint`.
+
+The second pass measured the whole command, which was right, but ran the
+candidates in sequence while the host's load average happened to fall from 85
+to 45. Every later candidate got a quieter machine than the one before it, and
+the config that ran last "won". Running them interleaved over two rounds
+reversed part of the ordering and produced a stable answer instead
+(`4 x 2` 90/97 s, `4 x 4` 82/83 s, `3 x 8` 88/91 s).
+
+**Rule**: measure the same unit of work the decision is about, not a component
+of it; and when the environment can drift, interleave the candidates rather
+than running A then B. A one-percent spread across interleaved repeats is
+evidence. A single ordered sweep on a busy host is a ranking of when each
+candidate happened to run.
+
+**And know what your harness cannot see.** The lab still understates high
+worker counts, because it runs without the sibling CI jobs. A measurement
+environment that is missing a load source will always flatter the option that
+consumes the most of it.
+
+**Applies to**: performance tuning of any kind on shared hardware, A/B timing
+comparisons, benchmark harnesses that model one process out of many.
+
+**Source**: #3271.
+
+---
+
+## Raising a test-suite worker count turns a lazy-boot check-then-act into a race
+
+**Context**: #3263 raised the api integration suite from `maxWorkers: 1` to 6, made safe for
+Postgres/Redis by giving every worker its own database and logical DB. `startSharedPrestashopContainer()`
+was left as-is: `readLiveSharedRecord()` returns nothing on first use, so the caller boots a fresh
+container pair and writes the record only once the boot finishes.
+
+**Problem**: with several workers now able to reach that function inside the same ~90s boot
+window, "no record yet" is not the same fact as "nobody else is booting." A second worker sees the
+same absence and boots its own pair — a real Testcontainers boot cannot be prevented by rechecking
+the same file faster, only by a distinct claim the loser can observe *before* it starts booting.
+The two extra PS+MySQL pairs then compete for the same 24 GiB / 8-CPU cgroup cap this PR's own
+6-worker analysis was sized around, and only the last writer's ids survive to `globalTeardown`, so
+the others leak on the persistent CI runner (the #1285 failure mode, reopened one layer up).
+
+**Rule**: raising a suite's parallelism is not just "the shared containers already get per-worker
+databases" — audit every OTHER piece of cross-worker shared state for the same lazy
+check-then-act shape, and replace it with an atomic filesystem claim (`openSync(file, 'wx')`,
+which fails `EEXIST` if a peer already created it) rather than a plain existence check. A loser
+polls for the winner's completed record instead of retrying the boot; a stale claim (winner died
+mid-boot) needs its own age-based reclaim path or every later spec in the run polls out to a
+timeout for nothing.
+
+**Applies to**: any lazily-booted, cross-worker-shared Testcontainer or fixture whose dedup is a
+record file — currently `startSharedPrestashopContainer()` in
+`apps/api/test/integration/helpers/prestashop-container.helper.ts`.
+
+**Source**: PR #3276 review (piotrswierzy), fixed same-branch.

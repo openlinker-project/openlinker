@@ -7,7 +7,14 @@
  *
  * @module libs/test-kit
  */
-export { CI_RUN_ID_LABEL, ciRunIdLabels, startContainers, stopContainers } from './containers';
+export {
+  CI_RUN_ID_LABEL,
+  applyWorkerScope,
+  ciRunIdLabels,
+  createWorkerDatabases,
+  startContainers,
+  stopContainers,
+} from './containers';
 export { createIntegrationTestHarness } from './harness';
 export type {
   ContainerConfig,

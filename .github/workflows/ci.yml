@@ -140,6 +140,19 @@ jobs:
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm type-check
+      - name: Type-check the integration tests
+        # `tsconfig.type-check.json` excludes `test`, so until #3263 the only
+        # thing type-checking these files was ts-jest doing it on every run -
+        # the 11.9 s per-file floor that change removes. Without this step the
+        # tests would be type-checked nowhere at all.
+        #
+        # A separate step rather than a widened `pnpm type-check`, so a failure
+        # here names the test tier rather than looking like a src regression.
+        # It runs in this already-parallel job, so it costs nothing on the
+        # critical path.
+        run: |
+          pnpm --filter @openlinker/api exec tsc -p tsconfig.test-check.json
+          pnpm --filter @openlinker/worker exec tsc -p tsconfig.test-check.json
 
   test:
     name: Test
@@ -157,6 +170,29 @@ jobs:
         with:
           node-version: '22'
           cache: 'pnpm'
+      # `actions/checkout` writes every file afresh, so each run sees new mtimes
+      # for byte-identical content. Jest's transform-cache key is a function of
+      # BOTH content and mtime, so without this step every run mints a complete
+      # new set of keys: the previous run's entries become unreadable and a full
+      # new set is written beside them. The runner containers are long-lived and
+      # jest applies no TTL or size cap to its cache directory, so `/tmp/jest_rt`
+      # had reached 33 GB across ~2M entries that nothing could ever read.
+      #
+      # Pinning one constant mtime makes an unchanged file produce an unchanged
+      # key across runs and across branches. Measured on this runner (#3271):
+      # whole job 753.9 s -> 490.3 s from this step alone; combined with the
+      # raised worker caps, 256.8 s.
+      #
+      # Safe because the key also includes the content hash — verified directly,
+      # not assumed: a one-word edit preserving the file's exact byte length,
+      # with mtime rolled back to the same stamp, still failed 21 suites.
+      # Removing this step was MEASURED, not reasoned about, and it cost more
+      # than double: same runner, 4m24s with it and 9m22s without (#3271). It
+      # stays. Transpile-only takes mtime out of the cache key for `libs/core`,
+      # `apps/api` and `apps/worker` only - the other sixteen packages, the two
+      # heavy ESM integrations among them, still key on it.
+      - name: Normalize source mtimes so the jest cache can hit (#3271)
+        run: node scripts/normalize-source-mtimes.mjs
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       # No explicit libs build: `pnpm test:ci` already runs
@@ -164,6 +200,40 @@ jobs:
       # step here builds libs twice in this one job.
       - name: Run tests
         run: pnpm test:ci
+
+  # apps/web runs on its own runner, in parallel with `test` (#3271).
+  #
+  # It is the only vitest package and the only one with NO workspace
+  # dependencies, and it was the reason the combined job kept going red. Beside
+  # three jest packages under `--workspace-concurrency=4` it was starved to
+  # 352-371 s against the 162 s it takes with the box to itself, and RTL tests
+  # assert on elapsed behaviour - two consecutive runs failed on two DIFFERENT
+  # timing-sensitive tests, neither of which is about the thing it failed on.
+  #
+  # Splitting costs no extra runner time, it saves it: the two jobs together do
+  # less work than the one did, because neither side is starving the other. It
+  # also skips the libs build entirely, since apps/web imports no @openlinker
+  # package (#591), and it needs no mtime normalisation - that fixes jest's
+  # transform cache, and vitest keeps its own in node_modules/.vite.
+  test-web:
+    name: Test (web)
+    timeout-minutes: 30
+    runs-on: self-hosted
+    needs: changes
+    if: ${{ github.event_name == 'push' || (github.event.pull_request.draft == false && needs.changes.outputs.code == 'true') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run web tests
+        run: pnpm test:ci:web
 
   test-integration:
     name: Integration Tests
@@ -219,19 +289,33 @@ jobs:
       # ts-jest keys entries by file content, so restoring an older cache is
       # safe: changed files simply miss and re-transform (#1920).
       #
-      # The key is scoped to what invalidates the whole cache wholesale (deps,
-      # base tsconfig, the jest configs) plus the run id, so a save still
-      # happens while unchanged-deps runs share one entry. Keying on
-      # `github.sha` instead minted a fresh multi-hundred-MB entry per commit,
-      # which would evict the pnpm store cache this same job restores above -
-      # the repo-wide budget is 10 GB with LRU eviction (PR #1923 review).
+      # The key is scoped to what invalidates the whole cache wholesale: deps,
+      # base tsconfig, the jest configs, AND `jest.test-workers.cjs` (#3263) -
+      # the worker count now decides how many per-worker databases exist, so a
+      # change to it belongs in the same cache-busting set as the configs that
+      # size the transform.
+      #
+      # The PRIMARY key carries `github.run_id`, the ordinary rolling-cache
+      # shape `restore-keys` below already assumes: `actions/cache@v4` skips
+      # the save whenever the primary key already exists ("Cache already
+      # exists. Skipping save."), so a key with no run-scoped component is
+      # written ONCE and then frozen - every spec added or edited after that
+      # first save misses forever with nothing in the log to say so. An
+      # earlier version of this comment argued the run-scoped suffix was
+      # "pure waste" because it could never be restored; that reasoning
+      # ignored `restore-keys`, whose `jest-integration-<os>-<hash>-` prefix
+      # is exactly what restores the PREVIOUS run's entry by content, while
+      # this run still saves its own - the standard pattern, not a special
+      # case. ts-jest keys its own entries by file content, so restoring an
+      # older cache is safe regardless (unchanged files hit, changed ones
+      # re-transform, #1920).
       - name: Cache jest transform output
         uses: actions/cache@v4
         with:
           path: .jest-cache
-          key: jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs') }}-${{ github.run_id }}
+          key: jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs', 'jest.test-workers.cjs') }}-${{ github.run_id }}
           restore-keys: |
-            jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs') }}-
+            jest-integration-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', 'apps/*/test/jest-integration.cjs', 'jest.test-workers.cjs') }}-
             jest-integration-${{ runner.os }}-
       - name: Sweep orphaned Testcontainers from finished CI runs (#1285)
         # Ryuk is disabled (see above) so containers from a cancelled or
@@ -345,6 +429,16 @@ jobs:
         run: |
           test -f libs/core/dist/identifier-mapping/index.js \
             || (echo "ERROR: libs/core/dist/identifier-mapping/index.js missing after build" && exit 1)
+      # The two tiers run in SEQUENCE deliberately. Running them concurrently in
+      # one step was tried and measured worse on this runner (#3263): 20m31s
+      # sequential against 30m+ concurrent, on an otherwise IDLE box, so it is
+      # not a contention artefact from a busy machine. The likely cause is that
+      # a runner slot gets a fraction of the shared host's CPU, so two tiers at
+      # `maxWorkers: 8` each oversubscribe it roughly 2x and both halves slow
+      # down by more than the 4m19s the worker tier would have saved. Two
+      # separate GitHub jobs would take a second slot on that same host and is
+      # rejected for the same reason. Re-test only with a measurement, not a
+      # hypothesis, and lower the worker count if you do.
       - name: Run integration tests
         run: pnpm --filter @openlinker/api test:integration
         # Was 25 (PS container boot + module install + cache:warmup adds ~20-30s

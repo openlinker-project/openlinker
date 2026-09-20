@@ -48,10 +48,47 @@ function stripComments(source) {
 }
 
 /**
+ * Blank `//` and `/* ... *\/` comments to spaces (newlines preserved), so a `]`
+ * written inside a comment can never be mistaken for the array's real closing
+ * bracket. Length-preserving: any index found in the blanked string is a valid
+ * index into the original.
+ */
+function blankComments(source) {
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += '  ';
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
  * Extract the string literals of `export const <name> = [ ... ] as const;`.
  *
  * Anchored on `const <name>` and then on the FIRST bracket after it, so a
- * docblock above the declaration cannot supply the opening bracket.
+ * docblock above the declaration cannot supply the opening bracket. The
+ * closing bracket is located on a comment-BLANKED copy of the source, or a `]`
+ * written inside a comment between the real brackets is mistaken for the
+ * array's own close and truncates everything after it (#3002).
  */
 export function parseConstArray(source, name) {
   const start = source.indexOf(`const ${name}`);
@@ -59,8 +96,11 @@ export function parseConstArray(source, name) {
     return null;
   }
   const open = source.indexOf('[', start);
-  const close = source.indexOf(']', open);
-  if (open === -1 || close === -1) {
+  if (open === -1) {
+    return null;
+  }
+  const close = blankComments(source).indexOf(']', open);
+  if (close === -1) {
     return null;
   }
   const body = stripComments(source.slice(open + 1, close));
@@ -127,6 +167,29 @@ function selfCheck() {
     'a',
   );
   expect('absent const declaration', parseConstArray('export const B = [];', 'A'), null);
+
+  // #3002: a `]` inside a comment BETWEEN the real brackets must not truncate
+  // the array. Red-first against the pre-fix `indexOf(']', open)` on raw
+  // content: that stopped at the comment's own `]`.
+  expect(
+    'a "]" inside a line comment does not truncate the array',
+    parseConstArray("export const A = [\n  'a', // e.g. notCheckedYet: []\n  'b',\n] as const;", 'A')
+      ?.join(','),
+    'a,b',
+  );
+  expect(
+    'a "]" inside a block comment does not truncate the array',
+    parseConstArray(
+      "export const A = [\n  'a', /* e.g. notCheckedYet: [] */\n  'b',\n] as const;",
+      'A',
+    )?.join(','),
+    'a,b',
+  );
+  expect(
+    'a declaration whose every entry is commented out parses to zero values',
+    parseConstArray("export const A = [\n  // 'a',\n] as const;", 'A')?.length,
+    0,
+  );
 
   expect(
     'parses a single-line union',
