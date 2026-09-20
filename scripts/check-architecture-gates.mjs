@@ -71,9 +71,17 @@
  *   node scripts/check-architecture-gates.mjs --self-check
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT = process.cwd();
+/**
+ * Anchored to this file, never to `process.cwd()` (#2792). `readdirSync`
+ * against `ADR_DIR` threw `ENOENT` from any CWD other than the repo root,
+ * which propagated out of `checkGateMarkers` as an uncaught error rather
+ * than a diagnosable failure — the `check-stream-writes.mjs` fix, applied
+ * here for the same reason.
+ */
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ADR_DIR = 'docs/architecture/adrs';
 const CORE_SRC = 'libs/core/src';
 const RUNG_DIR = 'libs/core/src/products/domain/ports/capabilities';
@@ -376,15 +384,58 @@ function lineOfOffset(text, offset) {
   return text.slice(0, offset).split('\n').length;
 }
 
+/**
+ * Total live occurrences of the "*Reversal gate" convention phrase across
+ * `text`, marked or unmarked or inside the ADR-048 block heading. This is
+ * the floor's raw material: `checkGateMarkers` only ever reports on
+ * UNMARKED occurrences, so if the convention phrase itself were reworded
+ * everywhere (or a filename pattern changed and nothing was scanned), the
+ * unmarked-count check would silently read zero violations forever — a
+ * pass with nothing left to check. Counting every occurrence, marked or
+ * not, is what lets `evaluateGateOccurrenceFloor` catch that (#2792).
+ */
+export function countGateOccurrences(text) {
+  return (text.match(/\*Reversal gate/g) || []).length;
+}
+
+/**
+ * As of filing (#2792), 38 live occurrences are scanned across ADR-048+.
+ * Set well below that so a handful of gates legitimately closing (ADR-048's
+ * whole point) never trips this — but high enough that a wholesale rewording
+ * of the convention phrase (which would drop the live count to 0) still
+ * fails loudly instead of reading as a quiet, permanent pass.
+ */
+const MIN_GATE_MARKER_OCCURRENCES = 20;
+
+/**
+ * Pure evaluator, mirroring `evaluateKnobs` / `evaluateRungs` below — a
+ * count under the floor names the gap and floors at 0 rather than reporting
+ * a pass over nothing.
+ */
+export function evaluateGateOccurrenceFloor({ count, min }) {
+  if (count < min) {
+    return (
+      `only ${count} "*Reversal gate" occurrence(s) were found across ADR-${String(MARKER_CONVENTION_STARTS_AT).padStart(3, '0')}+ ` +
+      `(expected at least ${min}). Zero matches reads as a pass with nothing to check - if the ` +
+      `convention phrase was reworded, this floor is what catches it. check-architecture-gates.mjs ` +
+      `is likely broken (wrong ADR_DIR / phrase spelling), not the ADR corpus - fix the script, or ` +
+      `lower MIN_GATE_MARKER_OCCURRENCES in the same reviewed change if gates have genuinely closed.`
+    );
+  }
+  return null;
+}
+
 function checkGateMarkers() {
   const failures = [];
   const adrDirAbs = join(REPO_ROOT, ADR_DIR);
+  let totalOccurrences = 0;
   for (const name of readdirSync(adrDirAbs)) {
     const numberMatch = /^(\d{3})-.*\.md$/.exec(name);
     if (!numberMatch) continue;
     if (Number(numberMatch[1]) < MARKER_CONVENTION_STARTS_AT) continue;
     const rel = `${ADR_DIR}/${name}`;
     const text = readFileSync(join(REPO_ROOT, rel), 'utf8');
+    totalOccurrences += countGateOccurrences(text);
     for (const offset of findUnmarkedInlineGates(text)) {
       failures.push(
         `${rel}:${lineOfOffset(text, offset)} — unmarked reversal gate. Every gate in ADR-048+ ` +
@@ -393,6 +444,11 @@ function checkGateMarkers() {
       );
     }
   }
+  const floorFailure = evaluateGateOccurrenceFloor({
+    count: totalOccurrences,
+    min: MIN_GATE_MARKER_OCCURRENCES,
+  });
+  if (floorFailure) failures.push(floorFailure);
   return failures;
 }
 
@@ -640,6 +696,23 @@ function selfCheck() {
   expect(
     'third rung trips the ADR-048 gate',
     evaluateRungs({ rungCount: 3, threshold: 3 }) !== null,
+    true
+  );
+
+  // gate-marker occurrence floor (#2792): counts every occurrence of the
+  // phrase, marked or not, and a live corpus reworded to drop it entirely
+  // must fail loudly rather than reading as a clean pass.
+  expect(
+    'countGateOccurrences counts marked and unmarked alike',
+    countGateOccurrences(
+      '*Reversal gate (countable):* a. *Reversal gate:* b. **Reversal gates** (heading):'
+    ),
+    3
+  );
+  expect('count above floor passes', evaluateGateOccurrenceFloor({ count: 38, min: 20 }), null);
+  expect(
+    'count of zero (a reworded phrase) trips the floor',
+    evaluateGateOccurrenceFloor({ count: 0, min: 20 }) !== null,
     true
   );
 

@@ -62,9 +62,51 @@ const MIRRORED_DECLARATION = 'ParameterRestrictionIssueCodeValues';
 const DOCS_REF = 'docs/architecture-overview.md § Listings';
 
 /**
+ * Blank `//` and `/* ... *\/` comments to spaces (newlines preserved), so a `]`
+ * written inside a comment can never be mistaken for the declaration's real
+ * closing bracket. Length-preserving: any index found in the blanked string is
+ * a valid index into the original.
+ */
+function blankComments(source) {
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += '  ';
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
  * Extract the string literals of `export const <name> = [...] as const;`, with
  * the 1-based line number the declaration starts on. Returns `{ line, values }`,
  * or `null` when the declaration is absent.
+ *
+ * The closing bracket is located on a COMMENT-BLANKED copy of the content, or a
+ * `]` written inside a comment between the real brackets is mistaken for the
+ * declaration's own close and truncates everything after it - possibly the
+ * whole array (#3002).
+ *
+ * A parse that yields zero values is treated by the CALLER as a broken parser,
+ * never a legitimately empty vocabulary - see the fatal check in `main()`.
  */
 export function parseCodeValues(content, name) {
   const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\[`);
@@ -72,7 +114,7 @@ export function parseCodeValues(content, name) {
   if (!declMatch) return null;
 
   const openBracket = declMatch.index + declMatch[0].length - 1;
-  const closeBracket = content.indexOf(']', openBracket);
+  const closeBracket = blankComments(content).indexOf(']', openBracket);
   if (closeBracket === -1) return null;
 
   const body = content
@@ -133,8 +175,22 @@ async function main() {
   const frontend = parseCodeValues(frontendContent, MIRRORED_DECLARATION);
 
   const fatal = [];
-  if (!backend) fatal.push(`${BACKEND_FILE}: no 'export const ${MIRRORED_DECLARATION} = [...]' found`);
-  if (!frontend) fatal.push(`${FRONTEND_FILE}: no 'export const ${MIRRORED_DECLARATION} = [...]' found`);
+  if (!backend) {
+    fatal.push(`${BACKEND_FILE}: no 'export const ${MIRRORED_DECLARATION} = [...]' found`);
+  } else if (backend.values.length === 0) {
+    fatal.push(
+      `${BACKEND_FILE}: '${MIRRORED_DECLARATION}' parsed to ZERO values - the PARSER is broken ` +
+        '(a bracket inside a comment likely truncated the array), not the union legitimately empty',
+    );
+  }
+  if (!frontend) {
+    fatal.push(`${FRONTEND_FILE}: no 'export const ${MIRRORED_DECLARATION} = [...]' found`);
+  } else if (frontend.values.length === 0) {
+    fatal.push(
+      `${FRONTEND_FILE}: '${MIRRORED_DECLARATION}' parsed to ZERO values - the PARSER is broken ` +
+        '(a bracket inside a comment likely truncated the array), not the union legitimately empty',
+    );
+  }
   if (fatal.length > 0) {
     console.error('✗ check-parameter-restriction-mirror: could not locate the declaration.\n');
     for (const f of fatal) console.error(`  ${f}`);
@@ -203,6 +259,47 @@ function selfCheck() {
   );
 
   expect('absent declaration → null', parseCodeValues('export const Other = [];', name), null);
+
+  // #3002: a `]` inside a comment BETWEEN the real brackets must not truncate
+  // the array. Red-first against the pre-fix `indexOf(']', openBracket)` on
+  // raw content: that stopped at the comment's own `]`.
+  const lineCommentWithBracket = parseCodeValues(
+    file(name, "  'VALUE_TOO_SHORT', // e.g. connectionIds: []\n  'VALUE_TOO_LONG',"),
+    name,
+  );
+  expect(
+    'a "]" inside a line comment does not truncate the array',
+    lineCommentWithBracket?.values.join(','),
+    'VALUE_TOO_SHORT,VALUE_TOO_LONG',
+  );
+
+  const blockCommentWithBracket = parseCodeValues(
+    file(name, "  'VALUE_TOO_SHORT', /* e.g. connectionIds: [] */\n  'VALUE_TOO_LONG',"),
+    name,
+  );
+  expect(
+    'a "]" inside a block comment does not truncate the array',
+    blockCommentWithBracket?.values.join(','),
+    'VALUE_TOO_SHORT,VALUE_TOO_LONG',
+  );
+
+  const commentedBeforeDecl = `// mentions a bracket like foo(): []\n${file(name, "  'VALUE_TOO_SHORT',")}`;
+  expect(
+    'a "]" inside a comment BEFORE the declaration does not shift the reported line',
+    parseCodeValues(commentedBeforeDecl, name)?.line,
+    3, // leading comment (1) + the helper's own `/** header */` (2) + the decl (3)
+  );
+
+  let zeroValuesOutcome = 'did-not-return-empty';
+  const zeroValuesParsed = parseCodeValues(file(name, "  // 'VALUE_TOO_SHORT',\n"), name);
+  if (zeroValuesParsed !== null && zeroValuesParsed.values.length === 0) {
+    zeroValuesOutcome = 'empty';
+  }
+  expect(
+    'a declaration whose every entry is commented out parses to zero values',
+    zeroValuesOutcome,
+    'empty',
+  );
 
   expect('identical arrays → ok', diffCodeValues(['a', 'b'], ['a', 'b']).ok, true);
   expect('missing in frontend → not ok', diffCodeValues(['a', 'b'], ['a']).ok, false);
