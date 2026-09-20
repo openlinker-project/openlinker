@@ -53,6 +53,23 @@ export const EPARAGONY_PAYMENT_FORM_WIRE: Partial<Record<EparagonyPaymentForm, s
   Gotowka: 'Gotówka',
 };
 
+/**
+ * The seller's address as the vendor's `EntityAddress` wants it. Declared here
+ * rather than reused from the wire types because this is what an OPERATOR types
+ * into a connection form: it is configuration in the vendor's own shape, so the
+ * mapper copies it across with no interpretation and no guessing at where a
+ * building number ends.
+ */
+export interface EparagonySellerAddress {
+  street: string;
+  number: string;
+  apartment?: string;
+  postalCode: string;
+  city: string;
+  /** ISO 3166-1 alpha-2. */
+  country: string;
+}
+
 export interface EparagonyConnectionConfig {
   /** Which vendor deployment to talk to. Selects both the API and the OAuth host. */
   environment: EparagonyEnvironment;
@@ -113,6 +130,55 @@ export interface EparagonyConnectionConfig {
    * call stays inside core's supported provider round-trip ceiling.
    */
   statusPollTimeoutMs?: number;
+
+  /**
+   * The SELLER's tax number, stamped on every invoice this connection issues.
+   *
+   * INVOICE-ONLY, and OPTIONAL on this type on purpose. A connection that only
+   * registers receipts has no use for it, and every connection that exists today
+   * is one of those - making it required would break the config shape of every
+   * shipped connection and force a back-fill the epic explicitly rules out.
+   * Instead the invoice mapper REFUSES pre-call when it is absent, naming the
+   * remedy, so an operator who enables invoicing without setting it gets an
+   * actionable refusal rather than the vendor's opaque validation code.
+   *
+   * It belongs here, beside `posId`, because it is the same class of value: a
+   * per-connection identity the vendor validates against the registered account
+   * rather than by checksum, so a wrong one fails every invoice on the
+   * connection rather than one order.
+   */
+  merchantTIN?: string;
+
+  /**
+   * The seller's registered name. Optional - the vendor falls back to the name
+   * on the account when it is absent. OpenLinker never derives it: the neutral
+   * issue command describes the BUYER and the goods, and carries no seller
+   * party at all, which is why an adapter resolves the seller from its own
+   * connection config (the shape `IssueInvoiceResult.seller` exists for).
+   */
+  merchantName?: string;
+
+  /**
+   * The seller's registered address, in the vendor's own five-part shape.
+   * Optional for the same reason as `merchantName`; supplied and reported
+   * together with it, since a seller block is only worth surfacing when it
+   * carries both a name and an address.
+   */
+  merchantAddress?: EparagonySellerAddress;
+
+  /**
+   * Ask the vendor to relay every invoice this connection issues to the
+   * national e-invoicing hub.
+   *
+   * Defaults to `false`, which is the conservative reading: relaying requires
+   * the seller to have granted the vendor a permission in the authority's own
+   * app AND activated the integration in the vendor's panel, and neither is
+   * something OpenLinker can observe. With it off an invoice is issued outside
+   * the hub and reports `not-applicable` clearance - a complete, successful
+   * outcome, not a degraded one. With it on and the prerequisites missing the
+   * vendor refuses the document outright.
+   */
+  eInvoicingHubEnabled?: boolean;
 
   /**
    * DIAGNOSTIC ONLY - the unique number of the fiscal device this connection

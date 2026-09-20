@@ -686,6 +686,72 @@ describe('ConnectionService', () => {
       });
     });
 
+    // #3192 review (I1) — a dual-role fiscal manifest (Fiscalization +
+    // Invoicing) must not silently grant the invoicing lane on an omitted
+    // enabledCapabilities, the same server-side-defense-in-depth shape #1498
+    // already gives InventoryMaster/OfferManager.
+    describe('Invoicing capability defaults on a dual-role fiscal manifest (#3192 review I1)', () => {
+      const eparagonyManifest = {
+        adapterKey: 'eparagony.documents.v3',
+        platformType: 'eparagony',
+        supportedCapabilities: [
+          'Fiscalization',
+          'FiscalRegistrationLocator',
+          'Invoicing',
+          'RegulatoryStatusReader',
+        ],
+      };
+
+      it('should exclude Invoicing from defaulted capabilities when the manifest also declares Fiscalization', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
+          eparagonyManifest as never
+        );
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create({ ...payload, platformType: 'eparagony' });
+
+        const created = connectionPort.create.mock.calls[0][0] as {
+          enabledCapabilities: string[];
+        };
+        expect(created.enabledCapabilities).not.toContain('Invoicing');
+        expect(created.enabledCapabilities).toContain('Fiscalization');
+      });
+
+      it('should allow create with Invoicing explicitly requested', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce(
+          eparagonyManifest as never
+        );
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create({
+          ...payload,
+          platformType: 'eparagony',
+          enabledCapabilities: ['Fiscalization', 'Invoicing'] as never,
+        });
+
+        const created = connectionPort.create.mock.calls[0][0] as {
+          enabledCapabilities: string[];
+        };
+        expect(created.enabledCapabilities).toContain('Invoicing');
+      });
+
+      it('should keep Invoicing defaulted for a manifest that declares it without Fiscalization', async () => {
+        integrationsService.resolveAdapterMetadata.mockResolvedValueOnce({
+          adapterKey: 'invoicing-only.test.v1',
+          platformType: 'test-invoicing-only',
+          supportedCapabilities: ['Invoicing', 'RegulatoryStatusReader'],
+        } as never);
+        connectionPort.create.mockResolvedValue(mockConnection);
+
+        await service.create({ ...payload, platformType: 'test-invoicing-only' });
+
+        const created = connectionPort.create.mock.calls[0][0] as {
+          enabledCapabilities: string[];
+        };
+        expect(created.enabledCapabilities).toContain('Invoicing');
+      });
+    });
+
     // #509 — create-path config validation. Mirrors the update-path hook
     // (#437) so that operators get the same 400 surface on POST /connections
     // as they do on PATCH /connections/:id.
