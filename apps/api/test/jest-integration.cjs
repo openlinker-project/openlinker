@@ -3,6 +3,8 @@ const {
   ESM_DEPS_TRANSFORM_IGNORE_PATTERN,
   esmDepsJsTransform,
 } = require('../../../jest.esm-deps.cjs');
+const { resolveTestWorkers } = require('../../../jest.test-workers.cjs');
+const { transpileOnlyTsJest } = require('../../../jest.ts-transform.cjs');
 
 module.exports = {
   rootDir: '..',
@@ -10,7 +12,39 @@ module.exports = {
   testEnvironment: 'node',
   testRegex: 'test/integration/.*\\.int-spec\\.ts$',
   transform: {
-    '^.+\\.ts$': 'ts-jest',
+    // Transpile-only, and it is the single biggest lever on this tier (#3263).
+    //
+    // ts-jest's default builds a TypeScript program and type-checks it, and Jest
+    // resets the module registry per FILE - so that work happened 187 times per
+    // run. Measured on an EMPTY spec (no imports, one `expect(1).toBe(1)`, a
+    // minimal config with no containers and no setup files): 11.9 s with the
+    // default, 0.5 s transpile-only. That floor, not the tests, was the tier.
+    //
+    // Measured A/B on the full 190-file suite, same machine, 8 workers:
+    // 620 s wall / 4793 s summed-suite against 198 s / 742 s - 3.1x on the
+    // clock, 6.5x on the work. Both runs lost suites to container flakiness on
+    // a loaded box (3 against 1); nothing failed to COMPILE under isolation,
+    // which is what this option risks.
+    //
+    // A bare `diagnostics: false` alone is NOT the lever and was measured
+    // separately: it silences errors while still building the program, and
+    // its own run came back SLOWER. `isolatedModules` is what switches
+    // ts-jest to `ts.transpileModule`.
+    //
+    // The cost is real and is paid elsewhere: test files lose type-checking
+    // here, and `tsconfig.type-check.json` excludes `test`, so they had no
+    // other checker. `tsconfig.test-check.json` + the Type Check job's second
+    // step is where that coverage now lives - it runs in parallel, so it costs
+    // nothing on the clock.
+    //
+    // `transpileOnlyTsJest()` (jest.ts-transform.cjs) is the shared builder
+    // the unit tier uses for the same lever: it merges `moduleResolution:
+    // 'node'` into the tsconfig override rather than reaching for
+    // `diagnostics: false`, which fixes the underlying ts-jest/TS5110
+    // mismatch (ts-jest forces `module: CommonJS` against the base
+    // config's `moduleResolution: Node16`) instead of merely silencing it -
+    // a genuine syntactic error still surfaces at test time.
+    '^.+\\.ts$': transpileOnlyTsJest(),
     // ESM-only htmlparser2 chain pulled in transitively by sanitize-html
     // >=2.17.6 via @openlinker/shared/html — see jest.esm-deps.cjs.
     '^.+\\.js$': esmDepsJsTransform,
@@ -21,7 +55,21 @@ module.exports = {
   // 6.4 s warm vs 76.3 s cold locally for the same file) because every
   // int-spec pulls the whole AppModule graph through ts-jest (#1920).
   cacheDirectory: path.resolve(__dirname, '../../../.jest-cache/api-integration'),
-  maxWorkers: 1,
+  // Every worker owns its own Postgres database and Redis logical DB (see
+  // `libs/test-kit/src/containers.ts`), which is what makes a count above 1
+  // safe: before that, a second worker's `TRUNCATE ... CASCADE` + `flushDb()`
+  // reset would wipe a peer's data mid-test. Resolved from
+  // `OL_TEST_MAX_WORKERS`, defaulting to `DEFAULT_TEST_WORKERS` (6) on CI and
+  // to a CPU-bounded local default off it - a local run with no env set does
+  // NOT get 6 workers unless it has the cores to spare; `OL_TEST_MAX_WORKERS=1`
+  // is the escape hatch back to the old serial behaviour, for bisecting a
+  // parallelism-sensitive failure. See `jest.test-workers.cjs`.
+  maxWorkers: resolveTestWorkers(),
+  // Nothing in this repo caps a worker's heap, so a worker that grows runs
+  // until the kernel OOM-killer takes it - and the symptom ("Jest worker
+  // process crashed") reads like a broken test. Jest restarts a worker that
+  // passes this between files instead.
+  workerIdleMemoryLimit: '1GB',
   testTimeout: 120000,
   // Prevent CI hangs caused by long-lived timers (e.g. SchedulerService CronJobs)
   // that are not fully drained even after app.close(). onModuleDestroy stops them,
