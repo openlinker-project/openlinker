@@ -215,11 +215,27 @@ export class SubiektProductMasterAdapter implements ProductMasterPort {
   }
 
   async getProductVariants(productId: string): Promise<ProductVariant[]> {
-    // Synthetic single variant — see the class docblock. Re-fetch to keep the
-    // domain fields (sku/ean/price) consistent with the master's current state.
-    const product = await this.getProduct(productId);
+    // Synthetic single variant — see the class docblock. Re-fetch the RAW
+    // bridge product (not via getProduct/toDomainProduct, which maps onto
+    // `Product` — a type with no `ean` field at all) so `kodKreskowy` survives
+    // onto the variant, which is the only domain shape that carries barcode.
+    // Previously this always emitted `ean: null, gtin: null` unconditionally,
+    // silently dropping every barcode the bridge reported.
     const symbol = await this.resolveExternalSymbol(productId);
-    const variantExternalId = `${symbol ?? productId}::variant`;
+    if (symbol === null) {
+      throw new MasterProductNotFoundError(productId, this.connection.id);
+    }
+    let bridgeProduct: BridgeProduct;
+    try {
+      bridgeProduct = await this.getJson<BridgeProduct>(`/api/products/${encodeURIComponent(symbol)}`);
+    } catch (error: unknown) {
+      if (error instanceof SubiektRejectedError) {
+        throw new MasterProductNotFoundError(productId, this.connection.id, error);
+      }
+      throw this.translateBridgeError(error);
+    }
+    const product = this.toDomainProduct(productId, bridgeProduct);
+    const variantExternalId = `${symbol}::variant`;
     const variantInternalId = await this.identifierMapping.getOrCreateInternalId(
       CORE_ENTITY_TYPE.ProductVariant,
       variantExternalId,
@@ -231,8 +247,8 @@ export class SubiektProductMasterAdapter implements ProductMasterPort {
         productId,
         sku: product.sku,
         attributes: null,
-        ean: null,
-        gtin: null,
+        ean: bridgeProduct.kodKreskowy,
+        gtin: bridgeProduct.kodKreskowy,
         price: product.price ?? undefined,
       },
     ];
