@@ -245,6 +245,71 @@ describe('DuplicatePositionsPage', () => {
     expect(screen.getByText('No duplicate position groups')).toBeInTheDocument();
   });
 
+  it('should render the Stuck badge and re-arm copy when the backfill has latched with rows remaining', async () => {
+    const apiClient = createMockApiClient({
+      inventory: {
+        getDuplicatePositions: vi.fn().mockResolvedValue(buildReport()),
+        getProvenanceBackfillStatus: vi.fn().mockResolvedValue(
+          buildProvenanceStatus({
+            remainingNull: 3,
+            completed: false,
+            latchedAt: '2026-08-01T00:00:00.000Z',
+          })
+        ),
+      },
+    });
+
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    // `latchedAt` set + rows still remaining is the one state that must read
+    // as "nothing is draining this, intervene" rather than "wait, it's
+    // working" — collapsing it into the ordinary Pending badge would tell an
+    // operator to wait on a number that will never move on its own (#3262
+    // review).
+    expect(await screen.findByText('Stuck')).toBeInTheDocument();
+    expect(screen.queryByText('Pending')).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/has stopped running\. It will not resume on its own — ask an engineer/)
+    ).toBeInTheDocument();
+  });
+
+  it('should keep showing the last successful scan, with an inline banner, when a Refresh fails', async () => {
+    const getDuplicatePositions = vi
+      .fn()
+      .mockResolvedValueOnce(buildReport())
+      .mockRejectedValueOnce(new Error('Refresh network error'));
+    const getProvenanceBackfillStatus = vi.fn().mockResolvedValue(buildProvenanceStatus());
+    const apiClient = createMockApiClient({
+      inventory: { getDuplicatePositions, getProvenanceBackfillStatus },
+    });
+
+    renderWithProviders(<DuplicatePositionsPage />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    // The initial load succeeds and renders the report...
+    expect(await screen.findByText('Ready')).toBeInTheDocument();
+
+    const refreshButton = screen.getByRole('button', { name: 'Refresh' });
+    await userEvent.click(refreshButton);
+
+    // ...and a failed *refresh* must not blank the screen: the last-good
+    // report stays on screen alongside an inline failure banner, rather than
+    // falling through to the full-page ErrorState the initial-load failure
+    // uses (#3262 review — `initialLoadError` vs `refreshError` is otherwise
+    // an untested distinction).
+    expect(await screen.findByText('Refresh failed')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Refresh network error — showing the last successful scan below\./)
+    ).toBeInTheDocument();
+    expect(screen.getByText('Ready')).toBeInTheDocument();
+    expect(screen.queryByText('Unable to load the duplicate-position report')).not.toBeInTheDocument();
+  });
+
   it('should expand and collapse a group row to reveal/hide its individual inventory_items rows', async () => {
     const apiClient = createMockApiClient({
       inventory: {
