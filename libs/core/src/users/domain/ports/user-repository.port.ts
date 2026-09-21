@@ -14,7 +14,13 @@ export interface UserRepositoryPort {
   findByUsername(username: string): Promise<User | null>;
   findByEmail(email: string): Promise<User | null>;
   findById(id: string): Promise<User | null>;
-  findAll(opts?: { status?: UserStatus; page?: number; pageSize?: number }): Promise<{ users: User[]; total: number }>;
+  findAll(opts?: {
+    status?: UserStatus;
+    /** #3340 — the packer-roster read filters by this. */
+    role?: UserRole;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ users: User[]; total: number }>;
   save(
     user: Pick<User, 'username' | 'email' | 'passwordHash' | 'role' | 'status'> &
       // Optional so non-registration callers (e.g. bootstrap admin) don't have

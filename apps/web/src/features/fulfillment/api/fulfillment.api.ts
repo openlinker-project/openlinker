@@ -26,6 +26,7 @@ import type {
   FulfillmentTask,
   FulfillmentTaskFilters,
   FulfillmentTaskPage,
+  UpdateFulfillmentWorkAssignmentRequest,
 } from './fulfillment.types';
 
 export interface FulfillmentApi {
@@ -50,6 +51,15 @@ export interface FulfillmentApi {
     workId: string,
     action: string,
     body: ApplyFulfillmentTaskActionRequest
+  ) => Promise<FulfillmentTask>;
+  /**
+   * A supervisor's staffing decision (#3337, ADR-074) — assign, reassign,
+   * clear, and/or toggle self-serve eligibility. NOT gated by
+   * `expectedVersion` — see the request type's own docblock.
+   */
+  updateAssignment: (
+    workId: string,
+    body: UpdateFulfillmentWorkAssignmentRequest
   ) => Promise<FulfillmentTask>;
 }
 
@@ -89,6 +99,13 @@ export function createFulfillmentApi(request: ApiRequest): FulfillmentApi {
       const payload = await request<unknown>(
         `/fulfillment/works/${encodeURIComponent(workId)}/actions/${encodeURIComponent(action)}`,
         { method: 'POST', body: JSON.stringify(body) }
+      );
+      return parseFulfillmentTask(payload);
+    },
+    async updateAssignment(workId, body): Promise<FulfillmentTask> {
+      const payload = await request<unknown>(
+        `/fulfillment/works/${encodeURIComponent(workId)}/assignment`,
+        { method: 'PATCH', body: JSON.stringify(body) }
       );
       return parseFulfillmentTask(payload);
     },

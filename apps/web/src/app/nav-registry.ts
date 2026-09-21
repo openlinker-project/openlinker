@@ -43,6 +43,15 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // nav could read, and a badge is worse absent than wrong (the `/returns`
       // precedent one line down).
       { to: '/fulfillment', label: 'Fulfilment' },
+      // Permission-gated (#3340): `GET /users/packers` and the assignment PATCH
+      // are both `@Roles('admin', 'operator')` — `orders:write` is held by
+      // exactly those two roles in `ROLE_PERMISSIONS`, the same permission the
+      // worklist page above resolves its own write gate from.
+      {
+        to: '/fulfillment/assign',
+        label: 'Assign packing work',
+        requiresPermission: 'orders:write',
+      },
       // No `countKey`: the #2334 returns contract exposes no counts endpoint
       // the nav could read, and a badge is worse absent than wrong.
       { to: '/returns', label: 'Returns' },

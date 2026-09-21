@@ -53,6 +53,8 @@ export const fulfillmentTaskSchema = z.object({
   locationId: nullableString,
   deliveryMethod: nullableString,
   assignedConnectionId: nullableString,
+  assignedToUserId: nullableString,
+  selfServeEligible: z.boolean(),
   status: z.string(),
   requestStatus: z.string(),
   assignmentAttempt: z.number(),

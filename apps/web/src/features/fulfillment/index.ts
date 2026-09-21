@@ -35,6 +35,15 @@ export {
 } from './hooks/use-fulfillment-tasks-query';
 export { useFulfillmentTaskActionMutation } from './hooks/use-fulfillment-task-action-mutation';
 
+// #3340 — the Assign Packing Work board's composition surface.
+export { AssignPackingWorkLaneSection } from './components/assign-packing-work-lane-section';
+export type { AssignPackingWorkLaneSectionProps } from './components/assign-packing-work-lane-section';
+export { AssignPackingWorkActions } from './components/assign-packing-work-actions';
+export { useUpdateFulfillmentAssignmentMutation } from './hooks/use-update-fulfillment-assignment-mutation';
+export { groupTasksByPacker } from './lib/assign-packing-work-lanes';
+export type { AssignPackingWorkLane } from './lib/assign-packing-work-lanes';
+export { ASSIGN_PACKING_WORK_COPY } from './lib/assign-packing-work.copy';
+
 export {
   describeFulfillmentActionError,
   readFulfillmentConflict,

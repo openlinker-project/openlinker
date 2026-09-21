@@ -1,5 +1,6 @@
 import type {
   ApproveUserInput,
+  PackerListResponse,
   UserListFilters,
   UserListResponse,
 } from './users.types';
@@ -10,6 +11,8 @@ interface ApiRequest {
 
 export interface UsersApi {
   list: (filters?: UserListFilters) => Promise<UserListResponse>;
+  /** `GET /users/packers` (#3340) — admin+operator, minimal roster. */
+  listPackers: () => Promise<PackerListResponse>;
   approve: (userId: string, input: ApproveUserInput) => Promise<void>;
   reject: (userId: string) => Promise<void>;
   updateRole: (userId: string, input: { role: string }) => Promise<void>;
@@ -31,6 +34,9 @@ export function createUsersApi(request: ApiRequest): UsersApi {
   return {
     list(filters): Promise<UserListResponse> {
       return request<UserListResponse>(`/users${buildQuery(filters)}`);
+    },
+    listPackers(): Promise<PackerListResponse> {
+      return request<PackerListResponse>('/users/packers');
     },
     approve(userId, input): Promise<void> {
       return request<void>(`/users/${userId}/approve`, {

@@ -23905,6 +23905,55 @@ legend.analytics-settings-dialog__label {
   }
 }
 
+/* ── Assign Packing Work board (#3340) ──────────────────────────────────── */
+
+.assign-packing-work-board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.assign-packing-work-lane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.assign-packing-work-lane__head {
+  align-items: baseline;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  gap: var(--space-2);
+  padding-bottom: var(--space-1);
+}
+
+.assign-packing-work-lane__title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.assign-packing-work-lane__count {
+  font-size: 0.8125rem;
+  margin-left: auto;
+}
+
+.assign-packing-work-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+.assign-packing-work-actions__self-serve {
+  align-items: center;
+  display: flex;
+  font-size: 0.8125rem;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
 /* ── Sales-document glyph + headline (#2535) ───────────────────────────
    The kind is an entity axis, so the glyph inherits `currentColor` and takes
    no tone of its own. On the headline, colour marks exceptions only: `done`

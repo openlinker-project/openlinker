@@ -135,6 +135,8 @@ function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
     locationId: 'loc_warsaw',
     deliveryMethod: 'courier',
     assignedConnectionId: null,
+    assignedToUserId: null,
+    selfServeEligible: true,
     status: 'open',
     requestStatus: 'unsubmitted',
     assignmentAttempt: 0,
