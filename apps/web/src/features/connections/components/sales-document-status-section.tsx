@@ -22,6 +22,7 @@
 import { Link } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import type { Connection } from '../api/connections.types';
+import { Alert } from '../../../shared/ui/alert';
 import { KeyValueList } from '../../../shared/ui/key-value-list';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 
@@ -105,6 +106,13 @@ export function SalesDocumentStatusSection({
           },
         ]}
       />
+      {documentKind === 'both' ? (
+        <Alert tone="warning" data-testid="sales-document-dual-role-warning">
+          Issuing either document kind requires a matching sales-document rule for this
+          connection&apos;s markets. Without one, orders are held rather than auto-issued — a
+          fiscal document is never guessed.
+        </Alert>
+      ) : null}
       <p className="rate-limit-section__help">
         Read-only. <Link to="/settings/sales-documents">Manage in Settings → Sales documents</Link>
         {otherPrimary ? ` ${otherPrimary.name} is already primary.` : ''}
