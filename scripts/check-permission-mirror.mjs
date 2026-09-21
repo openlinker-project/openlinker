@@ -37,9 +37,47 @@ const FRONTEND_FILE = join('apps', 'web', 'src', 'shared', 'auth', 'session.type
 const DOCS_REF = 'docs/engineering-standards.md#union-types-as-const-pattern-default';
 
 /**
+ * Blank `//` and `/* ... *\/` comments to spaces (newlines preserved), so a `]`
+ * written inside a comment can never be mistaken for the declaration's real
+ * closing bracket. Length-preserving: any index found in the blanked string is
+ * a valid index into the original.
+ */
+function blankComments(source) {
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += '  ';
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
  * Extract the string literals of the `export const PermissionValues = [...] as const;`
  * declaration, with the 1-based line number the declaration starts on.
  * Returns `{ line, values }`, or `null` when the declaration is absent.
+ *
+ * The closing bracket is located on a COMMENT-BLANKED copy of the content, or
+ * a `]` written inside a comment between the real brackets is mistaken for the
+ * declaration's own close and truncates everything after it (#3002).
  */
 export function parsePermissionValues(content) {
   const declRe = /export\s+const\s+PermissionValues\s*=\s*\[/;
@@ -47,7 +85,7 @@ export function parsePermissionValues(content) {
   if (!declMatch) return null;
 
   const openBracket = declMatch.index + declMatch[0].length - 1;
-  const closeBracket = content.indexOf(']', openBracket);
+  const closeBracket = blankComments(content).indexOf(']', openBracket);
   if (closeBracket === -1) return null;
 
   const body = content
@@ -118,8 +156,22 @@ async function main() {
   const frontend = parsePermissionValues(frontendContent);
 
   const fatal = [];
-  if (!backend) fatal.push(`${BACKEND_FILE}: no 'export const PermissionValues = [...]' found`);
-  if (!frontend) fatal.push(`${FRONTEND_FILE}: no 'export const PermissionValues = [...]' found`);
+  if (!backend) {
+    fatal.push(`${BACKEND_FILE}: no 'export const PermissionValues = [...]' found`);
+  } else if (backend.values.length === 0) {
+    fatal.push(
+      `${BACKEND_FILE}: PermissionValues parsed to ZERO values - the PARSER is broken (a ` +
+        'bracket inside a comment likely truncated the array), not the union legitimately empty',
+    );
+  }
+  if (!frontend) {
+    fatal.push(`${FRONTEND_FILE}: no 'export const PermissionValues = [...]' found`);
+  } else if (frontend.values.length === 0) {
+    fatal.push(
+      `${FRONTEND_FILE}: PermissionValues parsed to ZERO values - the PARSER is broken (a ` +
+        'bracket inside a comment likely truncated the array), not the union legitimately empty',
+    );
+  }
   if (fatal.length > 0) {
     console.error('✗ check-permission-mirror: could not locate both declarations.\n');
     for (const f of fatal) console.error(`  ${f}`);
@@ -170,6 +222,40 @@ function selfCheck() {
   expect('strips block comments', blockCommented?.values.join(','), 'a:read,a:write');
 
   expect('absent declaration → null', parsePermissionValues('export const Other = [];'), null);
+
+  // #3002: a `]` inside a comment BETWEEN the real brackets must not truncate
+  // the array. Red-first against the pre-fix `indexOf(']', openBracket)` on
+  // raw content: that stopped at the comment's own `]`.
+  const lineCommentWithBracket = parsePermissionValues(
+    file("  'a:read', // e.g. permissions: []\n  'a:write',"),
+  );
+  expect(
+    'a "]" inside a line comment does not truncate the array',
+    lineCommentWithBracket?.values.join(','),
+    'a:read,a:write',
+  );
+
+  const blockCommentWithBracket = parsePermissionValues(
+    file("  'a:read', /* e.g. permissions: [] */\n  'a:write',"),
+  );
+  expect(
+    'a "]" inside a block comment does not truncate the array',
+    blockCommentWithBracket?.values.join(','),
+    'a:read,a:write',
+  );
+
+  const commentedBeforeDecl = `// mentions a bracket like foo(): []\n${file("  'a:read',")}`;
+  expect(
+    'a "]" inside a comment BEFORE the declaration does not shift the reported line',
+    parsePermissionValues(commentedBeforeDecl)?.line,
+    3, // leading comment (1) + the helper's own `/** header */` (2) + the decl (3)
+  );
+
+  expect(
+    'a declaration whose every entry is commented out parses to zero values',
+    parsePermissionValues(file("  // 'a:read',\n"))?.values.length,
+    0,
+  );
 
   expect('identical arrays → ok', diffPermissionValues(['a', 'b'], ['a', 'b']).ok, true);
   expect('missing in frontend → not ok', diffPermissionValues(['a', 'b'], ['a']).ok, false);

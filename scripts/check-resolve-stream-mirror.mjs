@@ -190,6 +190,15 @@ export function parseNumericConstant(content, name) {
 /**
  * Extract the string literals of `export const <name> = [...] as const;`.
  * Returns `{ line, values }`, or `null` when the declaration is absent.
+ *
+ * The closing bracket is located on a copy of the content run through this
+ * file's own quote-aware `blankComments` (defined above), or a `]` written
+ * inside a comment between the real brackets is mistaken for the
+ * declaration's own close and truncates everything after it (#3002). In
+ * `main()` the content is already pre-blanked before it reaches this
+ * function, so blanking again here is idempotent (a no-op on already-blanked
+ * text) and is what keeps this exported parser safe for a caller that passes
+ * it raw, un-blanked content directly.
  */
 export function parseConstArrayValues(content, name) {
   const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\[`);
@@ -197,10 +206,11 @@ export function parseConstArrayValues(content, name) {
   if (!declMatch) return null;
 
   const openBracket = declMatch.index + declMatch[0].length - 1;
-  const closeBracket = content.indexOf(']', openBracket);
+  const blanked = blankComments(content);
+  const closeBracket = blanked.indexOf(']', openBracket);
   if (closeBracket === -1) return null;
 
-  const body = content.slice(openBracket + 1, closeBracket);
+  const body = blanked.slice(openBracket + 1, closeBracket);
   const values = [];
   const literalRe = /'([^']*)'|"([^"]*)"/g;
   let m;
@@ -460,11 +470,21 @@ function checkStreamEventUnion(core, fe) {
   const feCompletion = parseConstArrayValues(fe.content, COMPLETION_VALUES);
   if (!coreCompletion) {
     fatal.push(`${core.file}: no 'export const ${COMPLETION_VALUES} = [...]' found`);
+  } else if (coreCompletion.values.length === 0) {
+    fatal.push(
+      `${core.file}: '${COMPLETION_VALUES}' parsed to ZERO values - the PARSER is broken (a ` +
+        'bracket inside a comment likely truncated the array), not the union legitimately empty',
+    );
   }
   if (!feCompletion) {
     fatal.push(`${fe.file}: no 'export const ${COMPLETION_VALUES} = [...]' found`);
+  } else if (feCompletion.values.length === 0) {
+    fatal.push(
+      `${fe.file}: '${COMPLETION_VALUES}' parsed to ZERO values - the PARSER is broken (a ` +
+        'bracket inside a comment likely truncated the array), not the union legitimately empty',
+    );
   }
-  if (coreCompletion && feCompletion) {
+  if (coreCompletion && feCompletion && coreCompletion.values.length > 0 && feCompletion.values.length > 0) {
     compared += coreCompletion.values.length;
     const { ok, issues } = diffValueArrays(
       coreCompletion.values,
@@ -517,6 +537,11 @@ function checkStreamEventUnion(core, fe) {
     const coreKindValues = parseConstArrayValues(core.content, EVENT_KIND_VALUES);
     if (!coreKindValues) {
       fatal.push(`${core.file}: no 'export const ${EVENT_KIND_VALUES} = [...]' found`);
+    } else if (coreKindValues.values.length === 0) {
+      fatal.push(
+        `${core.file}: '${EVENT_KIND_VALUES}' parsed to ZERO values - the PARSER is broken (a ` +
+          'bracket inside a comment likely truncated the array), not the array legitimately empty',
+      );
     } else {
       const selfDiff = diffValueArrays(
         coreKindValues.values,
@@ -672,6 +697,31 @@ function selfCheck() {
       'B'
     )?.values.join(','),
     'y'
+  );
+
+  // #3002: a `]` inside a comment BETWEEN the real brackets must not truncate
+  // the array, even when this exported function is called directly against
+  // RAW (not pre-blanked) content, as it is here.
+  expect(
+    'a "]" inside a line comment does not truncate the array',
+    parseConstArrayValues(
+      "export const V = [\n  'a', // e.g. someList: []\n  'b',\n] as const;",
+      'V'
+    )?.values.join(','),
+    'a,b'
+  );
+  expect(
+    'a "]" inside a block comment does not truncate the array',
+    parseConstArrayValues(
+      "export const V = [\n  'a', /* e.g. someList: [] */\n  'b',\n] as const;",
+      'V'
+    )?.values.join(','),
+    'a,b'
+  );
+  expect(
+    'a declaration whose every entry is commented out parses to zero values',
+    parseConstArrayValues("export const V = [\n  // 'a',\n] as const;", 'V')?.values.length,
+    0
   );
 
   // parseUnionMembers

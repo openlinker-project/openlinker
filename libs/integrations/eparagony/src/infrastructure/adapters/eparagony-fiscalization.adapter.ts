@@ -52,12 +52,21 @@ import {
 } from '../../domain/policies/document-token.policy';
 import {
   EPARAGONY_ERROR_DOCUMENT_ALREADY_EXISTS,
-  EPARAGONY_ERROR_UNKNOWN_DOCUMENT,
   EPARAGONY_STATUS_CONFIRMED,
   EPARAGONY_STATUS_ERROR,
   type EparagonyDocumentStatusResponse,
 } from '../../domain/types/eparagony-api.types';
 import type { EparagonyConnectionConfig } from '../../domain/types/eparagony-config.types';
+import {
+  EPARAGONY_DOCUMENTS_PATH,
+  MAX_STATUS_POLL_TIMEOUT_MS,
+  STATUS_POLL_BACKOFF_MULTIPLIER,
+  STATUS_POLL_INITIAL_DELAY_MS,
+  STATUS_POLL_MAX_DELAY_MS,
+  readEparagonyDocumentStatus,
+  resolveStatusPollTimeoutMs,
+  sleep,
+} from '../http/eparagony-document-status.reader';
 import type { IEparagonyHttpClient } from '../http/eparagony-http-client.interface';
 import {
   readDocumentStatus,
@@ -66,28 +75,19 @@ import {
   toRegisterTransactionResult,
 } from './eparagony-document.mapper';
 
-const DOCUMENTS_PATH = 'documents';
-
 /**
- * Default ceiling on the status poll. Deliberately well under
- * {@link EPARAGONY_REGISTER_DEADLINE_MS} so the create (with its own retries)
- * fits inside the same budget.
+ * Default ceiling on the status poll. THIS LANE'S OWN BUDGET - a device needs
+ * seconds to answer, and the invoicing lane budgets differently, so the default
+ * stayed here while the floor, the ceiling and the backoff moved to the shared
+ * reader. Deliberately well under {@link EPARAGONY_REGISTER_DEADLINE_MS} so the
+ * create (with its own retries) fits inside the same budget.
  */
 const DEFAULT_STATUS_POLL_TIMEOUT_MS = 60_000;
 
-/** Floor on an operator-configured poll timeout - a device needs seconds, not milliseconds. */
-const MIN_STATUS_POLL_TIMEOUT_MS = 5_000;
-
-/** Ceiling on an operator-configured poll timeout, so the deadline invariant cannot be configured away. */
-const MAX_STATUS_POLL_TIMEOUT_MS = 90_000;
-
-/** First gap before re-reading the status. The vendor asks for exponential backoff. */
-const STATUS_POLL_INITIAL_DELAY_MS = 1_000;
-const STATUS_POLL_BACKOFF_MULTIPLIER = 1.6;
-const STATUS_POLL_MAX_DELAY_MS = 5_000;
-
 // Fail loud at module load if the poll ceiling is ever raised past the whole-call
-// deadline, which would let one registration outlive core's in-flight lease.
+// deadline, which would let one registration outlive core's in-flight lease. The
+// ceiling is shared with the invoicing lane; THIS assertion is not - each adapter
+// checks it against its own deadline.
 if (MAX_STATUS_POLL_TIMEOUT_MS >= EPARAGONY_REGISTER_DEADLINE_MS) {
   throw new Error(
     `eparagony.pl fiscal-safety invariant violated: MAX_STATUS_POLL_TIMEOUT_MS ` +
@@ -156,7 +156,9 @@ export class EparagonyFiscalizationAdapter
     }
 
     const documentToken = deriveDocumentToken(this.connectionId, key);
-    const status = await this.readStatus(documentToken, { treatUnknownDocumentAsMissing: true });
+    const status = await readEparagonyDocumentStatus(this.http, documentToken, {
+      treatUnknownDocumentAsMissing: true,
+    });
 
     if (status === null) {
       // The provider holds no document under our token.
@@ -209,7 +211,7 @@ export class EparagonyFiscalizationAdapter
     orderId: string,
   ): Promise<void> {
     try {
-      await this.http.post<unknown>(DOCUMENTS_PATH, body, {
+      await this.http.post<unknown>(EPARAGONY_DOCUMENTS_PATH, body, {
         // `documentToken`, NOT core's raw `idempotencyKey`: the vendor requires
         // this header to match `/^[0-9A-Za-z_-]+$/` (verified live against the
         // sandbox), and core's key is `fiscal:{connectionId}:{orderId}` - colons
@@ -271,7 +273,7 @@ export class EparagonyFiscalizationAdapter
     let lastStatus: string | null = null;
 
     for (;;) {
-      const body = await this.readStatus(documentToken, {
+      const body = await readEparagonyDocumentStatus(this.http, documentToken, {
         treatUnknownDocumentAsMissing: false,
       });
       // `treatUnknownDocumentAsMissing: false` never returns null.
@@ -341,53 +343,11 @@ export class EparagonyFiscalizationAdapter
     );
   }
 
-  /**
-   * Read one document status.
-   *
-   * `treatUnknownDocumentAsMissing` converts the vendor's "no such token"
-   * rejection into `null`, which the locator reports as `not-found` - no
-   * registration exists for these coordinates. The
-   * poll never asks for that, because a document that vanished mid-poll is not a
-   * clean absence and must stay in doubt.
-   */
-  private async readStatus(
-    documentToken: string,
-    options: { treatUnknownDocumentAsMissing: boolean },
-  ): Promise<EparagonyDocumentStatusResponse | null> {
-    try {
-      const { data } = await this.http.get<EparagonyDocumentStatusResponse>(
-        `${DOCUMENTS_PATH}/${encodeURIComponent(documentToken)}/status`,
-      );
-      // A body that is not an object at all is a contract break, not a status.
-      if (data === null || typeof data !== 'object' || Array.isArray(data)) {
-        throw new EparagonyNetworkError(
-          `eparagony.pl returned a non-object status body for document ${documentToken}`,
-        );
-      }
-      return data;
-    } catch (error) {
-      if (
-        options.treatUnknownDocumentAsMissing &&
-        error instanceof EparagonyApiError &&
-        error.errorCode !== null &&
-        EPARAGONY_ERROR_UNKNOWN_DOCUMENT.includes(error.errorCode)
-      ) {
-        return null;
-      }
-      throw error;
-    }
-  }
-
   /** Clamp the operator's poll timeout into the range the deadline invariant allows. */
   private resolvePollTimeoutMs(): number {
-    const configured = this.config.statusPollTimeoutMs;
-    if (typeof configured !== 'number' || !Number.isFinite(configured)) {
-      return DEFAULT_STATUS_POLL_TIMEOUT_MS;
-    }
-    return Math.min(Math.max(configured, MIN_STATUS_POLL_TIMEOUT_MS), MAX_STATUS_POLL_TIMEOUT_MS);
+    return resolveStatusPollTimeoutMs(
+      this.config.statusPollTimeoutMs,
+      DEFAULT_STATUS_POLL_TIMEOUT_MS,
+    );
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
