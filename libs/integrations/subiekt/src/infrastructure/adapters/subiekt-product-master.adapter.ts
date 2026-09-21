@@ -1,0 +1,402 @@
+/**
+ * Subiekt Product Master Adapter (Subiekt GT)
+ *
+ * Implements `ProductMasterPort` over the bridge's `/api/products*` surface
+ * (Sfera GT `TowaryManager` on the Windows side — see
+ * `../../bridge/subiekt-bridge-products.types.ts`, the frozen wire contract
+ * this adapter is built against).
+ *
+ * **NOT verified live.** This adapter was built in an isolated git worktree
+ * with no `powershell.exe` access to the Windows bridge machine (the sandbox
+ * categorically refuses shell commands that could reach outside the worktree
+ * from an isolated agent), so the Windows side (`ProductsEndpoints.cs`) does
+ * not exist yet and this code has been exercised only against unit-test
+ * mocks. Whoever wires the real bridge endpoint should treat
+ * `subiekt-bridge-products.types.ts` as the contract to implement, then run
+ * this adapter against it live before trusting it in production.
+ *
+ * Own small HTTP client (not a shared file) — the parallel product build
+ * deliberately avoided touching `subiekt-bridge-http.client.ts` /
+ * `subiekt-bridge.client.ts` to prevent a file collision with 3 other
+ * capability builds running at the same time. Reuses the existing bridge
+ * error types (`SubiektBridgeUnreachableError` etc.) so a caller catching
+ * those still works uniformly across every Subiekt capability.
+ *
+ * Variants: Subiekt GT's `TowaryManager` has no distinct "product with N
+ * variants" concept matching OL's colour/size model (`DodajKomplet` is a
+ * kit/bundle of DIFFERENT towary, not a variant axis on one towar) — so every
+ * towar is treated as a simple product with exactly one synthetic variant,
+ * the same posture PrestaShop/WooCommerce take for a simple product.
+ *
+ * MVP gaps (`SubiektProductNotSupportedException`): `deleteProduct` (Subiekt
+ * GT towary are archived, not deleted, at the Sfera level — no confirmed
+ * `TowaryManager` member for this in the research this adapter was built
+ * from), `getProductCategories` / `assignCategories` / `getCategories` (no
+ * category-facade research done for this capability — Subiekt GT has
+ * "Grupy asortymentu" / "Rodzaje asortymentu", unexplored).
+ *
+ * @module libs/integrations/subiekt/src/infrastructure/adapters
+ */
+import { randomUUID } from 'crypto';
+import type { LoggerPort } from '@openlinker/shared/logging';
+import { Logger } from '@openlinker/shared/logging';
+import type { FetchLike } from '@openlinker/shared/http';
+import type {
+  Category,
+  Product,
+  ProductMasterPort,
+  ProductVariant,
+} from '@openlinker/core/products';
+import { MasterProductNotFoundError } from '@openlinker/core/products';
+import type { ProductCreate, ProductFilters, ProductUpdate } from '@openlinker/core/products';
+import type {
+  IdentifierMappingPort,
+  Connection,
+  ExternalIdMapping,
+} from '@openlinker/core/identifier-mapping';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import type {
+  BridgeCreateProductRequest,
+  BridgeListProductSymbolsResponse,
+  BridgeProduct,
+  BridgeSearchProductsResponse,
+  BridgeUpdateProductRequest,
+} from '../../bridge/subiekt-bridge-products.types';
+import {
+  SubiektBridgeUnreachableError,
+  SubiektRejectedError,
+} from '../../bridge/subiekt-bridge.errors';
+import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
+import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
+import { SubiektProductNotSupportedException } from '../../domain/exceptions/subiekt-product-not-supported.exception';
+import { isBridgeUrlSafe } from '../http/subiekt-url-safety';
+
+/** Same generic envelope every Subiekt bridge route uses. */
+interface BridgeEnvelope<T> {
+  success: boolean;
+  data: T | null;
+  error: string | null;
+}
+
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+export class SubiektProductMasterAdapter implements ProductMasterPort {
+  private readonly logger: LoggerPort;
+  private readonly baseUrl: string;
+  private readonly token?: string;
+  private readonly timeoutMs: number;
+  private readonly fetchImpl: FetchLike;
+
+  constructor(
+    baseUrl: string,
+    private readonly identifierMapping: IdentifierMappingPort,
+    private readonly connection: Connection,
+    opts: { token?: string; timeoutMs?: number; fetchImpl?: FetchLike; logger?: LoggerPort } = {},
+  ) {
+    if (!isBridgeUrlSafe(baseUrl)) {
+      throw new SubiektConfigException('bridgeBaseUrl is not a safe URL', 'bridgeBaseUrl', baseUrl);
+    }
+    this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.token = opts.token;
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- global fetch may be undefined in some test runners
+    this.fetchImpl = opts.fetchImpl ?? (globalThis.fetch);
+    this.logger = opts.logger ?? new Logger(SubiektProductMasterAdapter.name);
+  }
+
+  async getProduct(productId: string): Promise<Product> {
+    const symbol = await this.resolveExternalSymbol(productId);
+    if (symbol === null) {
+      throw new MasterProductNotFoundError(productId, this.connection.id);
+    }
+    try {
+      const bridgeProduct = await this.getJson<BridgeProduct>(`/api/products/${encodeURIComponent(symbol)}`);
+      return this.toDomainProduct(productId, bridgeProduct);
+    } catch (error: unknown) {
+      if (error instanceof SubiektRejectedError) {
+        // The bridge reports "no such towar" via the rejected-request shape —
+        // that IS a master-side deletion for this adapter's purposes.
+        throw new MasterProductNotFoundError(productId, this.connection.id, error);
+      }
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  async getProducts(filters?: ProductFilters): Promise<Product[]> {
+    if (filters?.externalIds && filters.externalIds.length > 0) {
+      const results: Product[] = [];
+      for (const symbol of filters.externalIds) {
+        try {
+          const bridgeProduct = await this.getJson<BridgeProduct>(
+            `/api/products/${encodeURIComponent(symbol)}`,
+          );
+          const internalId = await this.identifierMapping.getOrCreateInternalId(
+            CORE_ENTITY_TYPE.Product,
+            symbol,
+            this.connection.id,
+          );
+          results.push(this.toDomainProduct(internalId, bridgeProduct));
+        } catch (error: unknown) {
+          if (error instanceof SubiektRejectedError) {
+            continue; // gone at the master — silently skip, matching a filtered list read
+          }
+          throw this.translateBridgeError(error);
+        }
+      }
+      return results;
+    }
+
+    const symbols = await this.listSymbols(filters?.limit, filters?.offset);
+    const results: Product[] = [];
+    for (const symbol of symbols) {
+      const bridgeProduct = await this.getJson<BridgeProduct>(
+        `/api/products/${encodeURIComponent(symbol)}`,
+      );
+      const internalId = await this.identifierMapping.getOrCreateInternalId(
+        CORE_ENTITY_TYPE.Product,
+        symbol,
+        this.connection.id,
+      );
+      results.push(this.toDomainProduct(internalId, bridgeProduct));
+    }
+    return results;
+  }
+
+  async createProduct(product: ProductCreate): Promise<Product> {
+    const request: BridgeCreateProductRequest = {
+      symbol: product.sku,
+      nazwa: product.name,
+      cenaSprzedazyBrutto: product.price,
+      waluta: product.currency,
+      opis: product.description,
+      waga: product.weight,
+    };
+    try {
+      const bridgeProduct = await this.postJson<BridgeProduct>('/api/products', request);
+      const internalId = await this.identifierMapping.getOrCreateInternalId(
+        CORE_ENTITY_TYPE.Product,
+        bridgeProduct.symbol,
+        this.connection.id,
+      );
+      return this.toDomainProduct(internalId, bridgeProduct);
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  async updateProduct(productId: string, product: ProductUpdate): Promise<Product> {
+    const symbol = await this.resolveExternalSymbol(productId);
+    if (symbol === null) {
+      throw new MasterProductNotFoundError(productId, this.connection.id);
+    }
+    const request: BridgeUpdateProductRequest = {
+      nazwa: product.name,
+      cenaSprzedazyBrutto: product.price,
+      waluta: product.currency,
+      opis: product.description,
+      waga: product.weight,
+    };
+    try {
+      const bridgeProduct = await this.putJson<BridgeProduct>(
+        `/api/products/${encodeURIComponent(symbol)}`,
+        request,
+      );
+      return this.toDomainProduct(productId, bridgeProduct);
+    } catch (error: unknown) {
+      if (error instanceof SubiektRejectedError) {
+        throw new MasterProductNotFoundError(productId, this.connection.id, error);
+      }
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  deleteProduct(_productId: string): Promise<void> {
+    return Promise.reject(new SubiektProductNotSupportedException('deleteProduct'));
+  }
+
+  async getProductVariants(productId: string): Promise<ProductVariant[]> {
+    // Synthetic single variant — see the class docblock. Re-fetch to keep the
+    // domain fields (sku/ean/price) consistent with the master's current state.
+    const product = await this.getProduct(productId);
+    const symbol = await this.resolveExternalSymbol(productId);
+    const variantExternalId = `${symbol ?? productId}::variant`;
+    const variantInternalId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.ProductVariant,
+      variantExternalId,
+      this.connection.id,
+    );
+    return [
+      {
+        id: variantInternalId,
+        productId,
+        sku: product.sku,
+        attributes: null,
+        ean: null,
+        gtin: null,
+        price: product.price ?? undefined,
+      },
+    ];
+  }
+
+  async upsertProductVariant(productId: string): Promise<ProductVariant> {
+    // Synthetic-variant posture: there is nothing separate to write at the
+    // master — the variant IS the product. Return the current synthetic
+    // variant rather than silently accepting a write that goes nowhere.
+    const [variant] = await this.getProductVariants(productId);
+    return variant;
+  }
+
+  getProductCategories(_productId: string): Promise<Category[]> {
+    return Promise.reject(new SubiektProductNotSupportedException('getProductCategories'));
+  }
+
+  assignCategories(_productId: string, _categoryIds: string[]): Promise<void> {
+    return Promise.reject(new SubiektProductNotSupportedException('assignCategories'));
+  }
+
+  async searchProducts(query: string, filters?: ProductFilters): Promise<Product[]> {
+    const params = new URLSearchParams({ q: query });
+    if (filters?.limit !== undefined) params.set('limit', String(filters.limit));
+    try {
+      const response = await this.getJson<BridgeSearchProductsResponse>(
+        `/api/products/search?${params.toString()}`,
+      );
+      const results: Product[] = [];
+      for (const bridgeProduct of response.products) {
+        const internalId = await this.identifierMapping.getOrCreateInternalId(
+          CORE_ENTITY_TYPE.Product,
+          bridgeProduct.symbol,
+          this.connection.id,
+        );
+        results.push(this.toDomainProduct(internalId, bridgeProduct));
+      }
+      return results;
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  async listExternalIds(filters?: { limit?: number; offset?: number }): Promise<string[]> {
+    return this.listSymbols(filters?.limit, filters?.offset);
+  }
+
+  // --- helpers ---------------------------------------------------------------
+
+  private async listSymbols(limit?: number, offset?: number): Promise<string[]> {
+    const params = new URLSearchParams();
+    if (limit !== undefined) params.set('limit', String(limit));
+    if (offset !== undefined) params.set('offset', String(offset));
+    const qs = params.toString();
+    try {
+      const response = await this.getJson<BridgeListProductSymbolsResponse>(
+        `/api/products${qs ? `?${qs}` : ''}`,
+      );
+      return response.symbols;
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  /** Internal id -> external symbol, via the connection's own mapping. `null` when unmapped (caller decides deleted vs. never-synced). */
+  private async resolveExternalSymbol(internalProductId: string): Promise<string | null> {
+    const externalIds = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      internalProductId,
+    );
+    const match = externalIds.find((e: ExternalIdMapping) => e.connectionId === this.connection.id);
+    return match?.externalId ?? null;
+  }
+
+  private toDomainProduct(internalId: string, bridgeProduct: BridgeProduct): Product {
+    return {
+      id: internalId,
+      name: bridgeProduct.nazwa,
+      sku: bridgeProduct.symbol,
+      price: bridgeProduct.cenaSprzedazyBrutto ?? bridgeProduct.cenaSprzedazyNetto ?? null,
+      description: bridgeProduct.opis,
+      images: null,
+      currency: bridgeProduct.waluta,
+      weight: bridgeProduct.waga ?? undefined,
+    };
+  }
+
+  private translateBridgeError(error: unknown): Error {
+    if (
+      error instanceof SubiektBridgeUnreachableError ||
+      error instanceof SubiektBridgeAuthError ||
+      error instanceof SubiektConfigException ||
+      error instanceof SubiektRejectedError
+    ) {
+      return error;
+    }
+    return new SubiektBridgeUnreachableError(
+      error instanceof Error ? error.message : 'Unknown Subiekt bridge error',
+    );
+  }
+
+  // --- minimal own HTTP transport (deliberately not shared, see docblock) ----
+
+  private buildHeaders(hasBody: boolean): Record<string, string> {
+    const headers: Record<string, string> = { accept: 'application/json' };
+    if (hasBody) headers['content-type'] = 'application/json';
+    if (this.token !== undefined && this.token.length > 0) {
+      headers.authorization = `Bearer ${this.token}`;
+      headers['x-bridge-token'] = this.token;
+    }
+    return headers;
+  }
+
+  private async getJson<T>(path: string): Promise<T> {
+    return this.request<T>('GET', path, undefined);
+  }
+
+  private async postJson<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>('POST', path, body);
+  }
+
+  private async putJson<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>('PUT', path, body);
+  }
+
+  private async request<T>(
+    method: 'GET' | 'POST' | 'PUT',
+    path: string,
+    body: unknown,
+  ): Promise<T> {
+    const url = `${this.baseUrl}${path}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url, {
+        method,
+        headers: this.buildHeaders(body !== undefined),
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
+    } catch (error: unknown) {
+      this.logger.debug(`Subiekt bridge request failed (correlationId: ${randomUUID()})`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new SubiektBridgeUnreachableError();
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      throw new SubiektBridgeAuthError(response.status);
+    }
+
+    let envelope: BridgeEnvelope<T>;
+    try {
+      envelope = (await response.json()) as BridgeEnvelope<T>;
+    } catch {
+      throw new SubiektBridgeUnreachableError('Subiekt bridge returned a non-JSON response');
+    }
+
+    if (!envelope.success || envelope.data === null) {
+      throw new SubiektRejectedError(envelope.error ?? `HTTP ${response.status}`);
+    }
+    return envelope.data;
+  }
+}
