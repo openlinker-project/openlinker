@@ -22332,6 +22332,16 @@ legend.analytics-settings-dialog__label {
   overflow-wrap: anywhere;
 }
 
+/* The global `≥ 44px` tap-target rule is keyed on `(hover: none) and
+   (pointer: coarse)` — a real phone gets it, a narrow desktop window does not
+   — so this branch raises the row's one control at any viewport width, the
+   `.price-changes-queue` precedent (tech-lead review on #3280, SUGGESTION). */
+@media (max-width: 767px) {
+  .orphan-returns-worklist__row .button {
+    min-height: 44px;
+  }
+}
+
 /* The one horizontal member of the family: a chip and the sentence that says
    OpenLinker is not following the axis yet read as one statement, so they sit
    on a line together and wrap as a unit. */
