@@ -52,6 +52,20 @@ function Harness({
   );
 }
 
+// Hoisted to a stable reference (#3334) — `useForm({ errors })` re-syncs
+// form state via an effect keyed on this object's identity, so a fresh
+// literal recreated every `ErroredHarness` render causes react-hook-form to
+// re-sync on every render, which re-renders `ErroredHarness`, which creates
+// a new literal again: an infinite render loop with no thrown error and no
+// console output (never trips React's "Maximum update depth exceeded"),
+// which only reads as CI going silent until the job's timeout kills it.
+const UNKNOWN_LOCATION_FORM_ERRORS = {
+  stockLocationOverride: {
+    type: 'server',
+    message: 'config.stockLocationOverride names an unknown location: ol_location_1',
+  },
+};
+
 const ONE_ACTIVE_LOCATION: PaginatedInventoryLocations = {
   items: [
     {
@@ -290,12 +304,7 @@ describe('StockAndPricingSection', () => {
       function ErroredHarness(): ReactElement {
         const form = useForm<any>({
           defaultValues: { stockLocationOverride: 'ol_location_1' },
-          errors: {
-            stockLocationOverride: {
-              type: 'server',
-              message: 'config.stockLocationOverride names an unknown location: ol_location_1',
-            },
-          },
+          errors: UNKNOWN_LOCATION_FORM_ERRORS,
         });
         return (
           <StockAndPricingSection
