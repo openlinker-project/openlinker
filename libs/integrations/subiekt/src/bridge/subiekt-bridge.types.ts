@@ -30,12 +30,23 @@
  * #753 adapter — it is not referenced here. Observed live values: `none` (PA),
  * `pending` (FV pre-KSeF); the rest are the documented KSeF lifecycle.
  */
+/**
+ * #3351: widened from the original 5-value set. GT's `StatusKSeF` enum
+ * (Pomoc/gta.chm/StatusKSeFEnum.htm) has 9 values, and the bridge's original
+ * `MapKsefStatus` collapsed "not yet sent" (GT 1/2) AND "comms error on a
+ * send attempt" (GT 8) into the same `'pending'` — which the mapper below
+ * then read as core's `'submitted'`, a false claim (KSeF had not received
+ * the document). `'queued'` and `'error'` are told apart from `'sent'` (GT
+ * 3/4, genuinely in flight) so both route to core's `'pending-submission'`
+ * instead.
+ */
 export const BridgeRegulatoryStatusValues = [
   'none',
-  'pending',
+  'queued',
   'sent',
   'accepted',
   'rejected',
+  'error',
 ] as const;
 export type BridgeRegulatoryStatus = (typeof BridgeRegulatoryStatusValues)[number];
 
@@ -146,6 +157,13 @@ export interface BridgeIssueInvoiceResponse {
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
   pdfUrl: string | null;
+  /**
+   * KSeF-assigned number (#3352). `null` until KSeF actually assigns one —
+   * before this field existed the bridge read it locally (`dok_NumerKSeF`)
+   * but never put it on the wire, so `clearanceReference` was `null` on
+   * every Subiekt document forever.
+   */
+  clearanceReference: string | null;
 }
 
 /**
@@ -231,6 +249,8 @@ export interface BridgeInvoiceStatusRequest {
 export interface BridgeInvoiceStatusResponse {
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
+  /** KSeF-assigned number (#3352) — `null` until KSeF assigns one. */
+  clearanceReference: string | null;
 }
 
 /**

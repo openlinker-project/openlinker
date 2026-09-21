@@ -132,6 +132,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
       state: 'issued',
       regulatoryStatus: 'sent',
       pdfUrl: null,
+      clearanceReference: null,
       ...this.issueOverride,
     };
     this.issuedById.set(String(response.providerInvoiceId), response);
@@ -165,6 +166,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
       state,
       regulatoryStatus: this.issueOverride?.regulatoryStatus ?? 'sent',
       pdfUrl: null,
+      clearanceReference: this.issueOverride?.clearanceReference ?? null,
     });
     return Promise.resolve(response);
   }
@@ -192,8 +194,12 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     const known = this.issuedById.get(req.providerInvoiceId);
     return Promise.resolve(
       known
-        ? { state: known.state, regulatoryStatus: known.regulatoryStatus }
-        : { state: 'failed', regulatoryStatus: 'none' },
+        ? {
+            state: known.state,
+            regulatoryStatus: known.regulatoryStatus,
+            clearanceReference: known.clearanceReference,
+          }
+        : { state: 'failed', regulatoryStatus: 'none', clearanceReference: null },
     );
   }
 

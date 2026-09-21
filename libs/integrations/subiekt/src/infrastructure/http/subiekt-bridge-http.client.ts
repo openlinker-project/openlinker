@@ -93,11 +93,13 @@ export const SUBIEKT_BRIDGE_ENDPOINTS = {
 
 /**
  * The `data` payload the bridge's `GET /api/invoices/{id}/status` returns (a
- * superset of what we project): the KSeF `regulatoryStatus` plus a Polish
- * document `status`. We only read `regulatoryStatus`; the rest is ignored.
+ * superset of what we project): the KSeF `regulatoryStatus` + `clearanceReference`
+ * (#3352) plus a Polish document `status`. We read `regulatoryStatus` and
+ * `clearanceReference`; the rest is ignored.
  */
 interface BridgeInvoiceStatusData {
   regulatoryStatus: BridgeRegulatoryStatus;
+  clearanceReference?: string | null;
   status?: string;
 }
 
@@ -180,6 +182,7 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     return {
       state: 'issued',
       regulatoryStatus: data.regulatoryStatus ?? 'none',
+      clearanceReference: data.clearanceReference ?? null,
     };
   }
 

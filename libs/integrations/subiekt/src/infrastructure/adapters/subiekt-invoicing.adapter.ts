@@ -205,8 +205,10 @@ export class SubiektInvoicingAdapter
         String(response.providerInvoiceId),
         response.providerInvoiceNumber,
         toNeutralRegulatoryStatus(response.regulatoryStatus),
-        // clearanceReference — populated by a future RegulatoryTransmitter.
-        null,
+        // #3352: the bridge now puts the KSeF number on the wire at
+        // issuance too (it was always read locally via ReadKsefStatus, just
+        // never returned) — `null` until KSeF actually assigns one.
+        response.clearanceReference,
         idempotencyKey ?? null,
         response.pdfUrl,
         now,
@@ -348,9 +350,12 @@ export class SubiektInvoicingAdapter
       }
       return {
         regulatoryStatus: toNeutralRegulatoryStatus(status.regulatoryStatus),
-        // The bridge status read carries no authority reference today; preserve
-        // any reference already captured on the record.
-        clearanceReference: record.clearanceReference,
+        // #3352: the bridge status read now carries the KSeF number too —
+        // preferring the fresh read over the previously-captured value so a
+        // reconcile can pick up a number that appeared since the last read,
+        // falling back to what's already on the record if this read carries
+        // none (a status flip can legitimately answer with no number yet).
+        clearanceReference: status.clearanceReference ?? record.clearanceReference,
       };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
