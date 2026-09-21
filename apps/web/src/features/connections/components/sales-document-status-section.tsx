@@ -109,8 +109,10 @@ export function SalesDocumentStatusSection({
       {documentKind === 'both' ? (
         <Alert tone="warning" data-testid="sales-document-dual-role-warning">
           Issuing either document kind requires a matching sales-document rule for this
-          connection&apos;s markets. Without one, orders are held rather than auto-issued — a
-          fiscal document is never guessed.
+          connection&apos;s markets — the &quot;Primary&quot; status above has no effect here,
+          whether or not it&apos;s set. A rule is the only thing that can decide invoice vs.
+          receipt for a dual-role connection; without one, orders are held rather than
+          auto-issued, because a fiscal document is never guessed.
         </Alert>
       ) : null}
       <p className="rate-limit-section__help">
