@@ -748,14 +748,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     } catch (error) {
       // #3207 — a 400 naming `config.stockLocationOverride` (unknown/retired
       // location id, #3206's server-side guard) surfaces as a field-level
-      // error rather than the generic `updateConnection.error` alert below,
-      // matching how other StockAndPricingSection fields already do.
+      // error rather than the generic `updateConnection.error` alert below.
+      // This is the first field-level API-error mapping in this component;
+      // `updateConnection.reset()` clears the mutation's own error state
+      // (set automatically by `useMutation` on rejection, independent of
+      // this catch) so the generic alert doesn't also render the same
+      // message a second time beneath it.
       if (
         error instanceof ApiError &&
         error.status === 400 &&
         error.message.includes('stockLocationOverride')
       ) {
         form.setError('stockLocationOverride', { message: error.message });
+        updateConnection.reset();
         return;
       }
       return;
