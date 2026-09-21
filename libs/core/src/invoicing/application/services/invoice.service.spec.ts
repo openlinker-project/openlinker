@@ -1601,6 +1601,133 @@ describe('InvoiceService', () => {
         expect.objectContaining({ documentContent: null }),
       );
     });
+
+    // #3372: issueCorrection previously skipped the idempotency read-gate
+    // entirely, so a retried call with the same key called
+    // `adapter.issueCorrection` a second time — the identical bug class
+    // `issueInvoice`'s gate already closes, one method over.
+    describe('idempotency gate (#3372)', () => {
+      it('keyless no-dedup (R1): no findByIdempotencyKey call, create with idempotencyKey:null', async () => {
+        repo.create.mockResolvedValue(
+          makeRecord({ id: 'corr-rec', status: 'pending', idempotencyKey: null }),
+        );
+
+        await service.issueCorrection(makeCorrectionCmd({ idempotencyKey: undefined }));
+
+        expect(repo.findByIdempotencyKey).not.toHaveBeenCalled();
+        expect(repo.create).toHaveBeenCalledWith(
+          expect.objectContaining({ idempotencyKey: null }),
+        );
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledTimes(1);
+      });
+
+      it('idempotent replay (issued): returns the issued row as-is, adapter NEVER called, NO create', async () => {
+        const issued = makeRecord({ id: 'corr-rec', status: 'issued', documentType: 'corrected' });
+        repo.findByIdempotencyKey.mockResolvedValue(issued);
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(result).toBe(issued);
+        expect(repo.create).not.toHaveBeenCalled();
+        expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+      });
+
+      it('R2/R3: a row under a LIVE issuing lease is NOT re-attempted (no claim, no provider call)', async () => {
+        const liveLeaseHit = makeRecord({
+          id: 'corr-in-flight',
+          status: 'issuing',
+          leaseExpiresAt: new Date(Date.now() + 60_000),
+        });
+        repo.findByIdempotencyKey.mockResolvedValue(liveLeaseHit);
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(result).toBe(liveLeaseHit);
+        expect(repo.claimForIssue).not.toHaveBeenCalled();
+        expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+      });
+
+      it('R3: an in-doubt failed hit is NOT re-attempted — surfaced for manual reconciliation, NO provider call', async () => {
+        const inDoubtHit = makeRecord({
+          id: 'corr-f',
+          status: 'failed',
+          failureMode: 'in-doubt',
+          errorMessage: 'transport timeout — document may exist',
+        });
+        repo.findByIdempotencyKey.mockResolvedValue(inDoubtHit);
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(result).toBe(inDoubtHit);
+        expect(repo.claimForIssue).not.toHaveBeenCalled();
+        expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+        expect(repo.updateOutcome).not.toHaveBeenCalled();
+      });
+
+      it("retry-after-terminal-rejection: a 'rejected' failed hit IS re-attempted (claim, re-call adapter, no second create)", async () => {
+        const failedHit = makeRecord({
+          id: 'corr-failed',
+          status: 'failed',
+          failureMode: 'rejected',
+          documentType: 'corrected',
+          errorMessage: 'stale boom',
+        });
+        repo.findByIdempotencyKey.mockResolvedValue(failedHit);
+        repo.updateOutcome.mockResolvedValue(
+          makeRecord({ id: 'corr-failed', status: 'issued', documentType: 'corrected' }),
+        );
+
+        await service.issueCorrection(makeCorrectionCmd());
+
+        expect(repo.create).not.toHaveBeenCalled();
+        expect(repo.claimForIssue).toHaveBeenCalledWith('corr-failed', expect.any(Date));
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledTimes(1);
+        expect(repo.updateOutcome).toHaveBeenCalledWith(
+          'corr-failed',
+          expect.objectContaining({ status: 'issued' }),
+        );
+      });
+
+      it('create-race: create throws Duplicate -> re-read returns the winner, issues on the winner row', async () => {
+        repo.findByIdempotencyKey
+          .mockResolvedValueOnce(null) // read-gate miss
+          .mockResolvedValueOnce(makeRecord({ id: 'corr-winner', status: 'pending' })); // re-read
+        repo.create.mockRejectedValue(new DuplicateInvoiceRecordException(CONNECTION, KEY));
+        const finalRecord = makeRecord({ id: 'corr-winner', status: 'issued' });
+        repo.updateOutcome.mockResolvedValue(finalRecord);
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(repo.findByIdempotencyKey).toHaveBeenCalledTimes(2);
+        expect(repo.claimForIssue).toHaveBeenCalledWith('corr-winner', expect.any(Date));
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledTimes(1);
+        expect(result).toBe(finalRecord);
+      });
+
+      it('create-race where winner already issued -> returns winner, adapter NOT called', async () => {
+        repo.findByIdempotencyKey
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(makeRecord({ id: 'corr-winner', status: 'issued' }));
+        repo.create.mockRejectedValue(new DuplicateInvoiceRecordException(CONNECTION, KEY));
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(result.status).toBe('issued');
+        expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+      });
+
+      it('R2 single-flight: a LOST claim backs off WITHOUT calling the provider', async () => {
+        const reattemptable = makeRecord({ id: 'corr-lost', status: 'pending' });
+        repo.findByIdempotencyKey.mockResolvedValue(reattemptable);
+        repo.claimForIssue.mockResolvedValue(null);
+        repo.findById.mockResolvedValue(reattemptable);
+
+        const result = await service.issueCorrection(makeCorrectionCmd());
+
+        expect(result).toBe(reattemptable);
+        expect(correctionAdapter.issueCorrection).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('numbering allocation (#1575)', () => {

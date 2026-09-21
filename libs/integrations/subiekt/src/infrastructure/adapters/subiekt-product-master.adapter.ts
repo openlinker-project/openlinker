@@ -74,7 +74,15 @@ import {
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { SubiektProductNotSupportedException } from '../../domain/exceptions/subiekt-product-not-supported.exception';
+import { SubiektBridgeTransportError } from '../../domain/exceptions/subiekt-bridge-transport.exception';
+import type { SubiektTransportRetryability } from '../../domain/types/subiekt-transport-retryability.types';
 import { isBridgeUrlSafe } from '../http/subiekt-url-safety';
+
+/** Read the retryability phase, defaulting to the fiscal-safe `'indeterminate'` (mirrors the Inventory/Invoicing adapters' identical helper). */
+function readRetryability(error: SubiektBridgeUnreachableError): SubiektTransportRetryability {
+  const phase = (error as { retryability?: unknown }).retryability;
+  return phase === 'safe' || phase === 'indeterminate' ? phase : 'indeterminate';
+}
 
 /** Same generic envelope every Subiekt bridge route uses. */
 interface BridgeEnvelope<T> {
@@ -387,17 +395,32 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
     };
   }
 
+  /**
+   * #3369/#3373 fix: `SubiektBridgeUnreachableError` (including the
+   * phase-carrying `SubiektBridgeUnreachableWithPhaseError` subclass thrown by
+   * this adapter's own private transport) MUST be wrapped into
+   * `SubiektBridgeTransportError` — that is the ONLY type
+   * `SubiektRetryClassifierAdapter.isNonRetryable` pattern-matches for the
+   * fiscal-safety retryability pivot. Passing the raw unreachable error
+   * through unchanged (the pre-fix behavior) made the classifier abstain on
+   * every transport failure from this adapter, silently discarding the
+   * classified phase and falling back to the runner's unclassified default.
+   */
   private translateBridgeError(error: unknown): Error {
+    if (error instanceof SubiektBridgeUnreachableError) {
+      return new SubiektBridgeTransportError(error.message, readRetryability(error));
+    }
     if (
-      error instanceof SubiektBridgeUnreachableError ||
       error instanceof SubiektBridgeAuthError ||
       error instanceof SubiektConfigException ||
       error instanceof SubiektRejectedError
     ) {
       return error;
     }
-    return new SubiektBridgeUnreachableError(
+    return new SubiektBridgeTransportError(
       error instanceof Error ? error.message : 'Unknown Subiekt bridge error',
+      'indeterminate',
+      { cause: error },
     );
   }
 
