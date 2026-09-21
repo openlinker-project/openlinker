@@ -17,11 +17,19 @@
 
 /** One line on a customer order (ZK) being created. */
 export interface BridgeOrderLine {
-  /** Subiekt towar/usługa symbol. Empty for a one-off line with no catalogue match. */
+  /**
+   * Subiekt towar/usługa symbol. Empty string for a one-off service line
+   * with no catalogue match — e.g. the shipping line #3347 adds, mirroring
+   * the empty-symbol convention `BridgeIssueInvoiceRequest`'s lines already
+   * use for the identical case. The bridge maps an empty symbol onto
+   * `DodajUslugeJednorazowa()` rather than `Pozycje.Dodaj(symbol)`.
+   */
   symbol: string;
   ilosc: number;
   /** Buyer-paid gross total for this line (ADR-014 — never the catalogue price). */
   wartoscBrutto: number;
+  /** Display name for a symbol-less service line — ignored when `symbol` is set. */
+  nazwa?: string;
 }
 
 /** Inline buyer for order creation — same shape as `BridgeBuyer` in the invoicing contract. */
@@ -86,4 +94,27 @@ export interface BridgeOrderDetailResponse {
   waluta: string;
   wartoscBrutto: number;
   lines: BridgeOrderDetailLine[];
+}
+
+/**
+ * `PUT /api/orders/{id}/shipping` request — the `OrderFulfillmentUpdater`
+ * write. Writes onto `Sfera.WriteShipping`, which stamps `d.Uwagi` (one-line
+ * summary) and `d.UwagiExt` (full block) on the document — Subiekt exposes no
+ * dedicated fulfillment-status field on a ZK, so the remarks fields are the
+ * honest, always-present carrier for this.
+ */
+export interface BridgeWriteShippingRequest {
+  carrier?: string;
+  trackingNumber?: string;
+  pickupPoint?: string;
+  /** Free-text status label, e.g. "Wysłane" — not a Subiekt-native enum. */
+  status?: string;
+  trackingUrl?: string;
+  shipmentRef?: string;
+  orderRef?: string;
+}
+
+/** `PUT /api/orders/{id}/shipping` response (`data`). */
+export interface BridgeWriteShippingResponse {
+  numer: string;
 }

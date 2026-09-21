@@ -256,12 +256,13 @@ export class SubiektProductMasterAdapter implements ProductMasterPort {
     ];
   }
 
-  async upsertProductVariant(productId: string): Promise<ProductVariant> {
+  upsertProductVariant(_productId: string): Promise<ProductVariant> {
     // Synthetic-variant posture: there is nothing separate to write at the
-    // master — the variant IS the product. Return the current synthetic
-    // variant rather than silently accepting a write that goes nowhere.
-    const [variant] = await this.getProductVariants(productId);
-    return variant;
+    // master — the variant IS the product. #3356: this previously returned
+    // the current variant unchanged, silently dressing the discarded write
+    // as success. Honest failure, matching `deleteProduct`'s posture — zero
+    // production callers confirmed repo-wide for any adapter.
+    return Promise.reject(new SubiektProductNotSupportedException('upsertProductVariant'));
   }
 
   getProductCategories(_productId: string): Promise<Category[]> {
