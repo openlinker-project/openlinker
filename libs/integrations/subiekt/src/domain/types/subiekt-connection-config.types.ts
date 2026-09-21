@@ -52,4 +52,15 @@ export interface SubiektConnectionConfig {
    * bridge session, so a per-request override can only ever be rejected.
    */
   defaultStanowiskoKasoweId?: number;
+
+  /**
+   * `uf_Konfiguracja.uko_Id` — the physical fiscal-printer this connection
+   * registers documents on (Fiscalization capability, #3192). REQUIRED for
+   * fiscalization to mean anything: `SuDokument.RejestrujNaUF` has no effect
+   * without a target device (Pomoc/gta.chm `SuDokument_DrukarkaFiskalnaId.htm`,
+   * confirmed live — an unconfigured/wrong id fails fast with a clear Sfera
+   * error rather than hanging). Absent when the connection has `Fiscalization`
+   * disabled; the factory only builds a `SubiektFiscalizationAdapter` when set.
+   */
+  drukarkaFiskalnaId?: number;
 }

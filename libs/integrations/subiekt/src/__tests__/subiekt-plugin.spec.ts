@@ -127,9 +127,19 @@ describe('createSubiektPlugin', () => {
     });
 
     it('rejects for an unknown capability', async () => {
+      // ProductMaster is a real, supported capability as of the Subiekt GT
+      // multi-capability build (#3192-epic) - 'ShippingProviderManager' is
+      // never supported by this adapter and stays a genuine negative case.
       const plugin = createSubiektPlugin();
       await expect(
-        plugin.createCapabilityAdapter(makeConnection(), 'ProductMaster', makeHost()),
+        plugin.createCapabilityAdapter(makeConnection(), 'ShippingProviderManager', makeHost()),
+      ).rejects.toThrow();
+    });
+
+    it('rejects for Fiscalization when the connection has no drukarkaFiskalnaId configured', async () => {
+      const plugin = createSubiektPlugin();
+      await expect(
+        plugin.createCapabilityAdapter(makeConnection(), 'Fiscalization', makeHost()),
       ).rejects.toThrow();
     });
 

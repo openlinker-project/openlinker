@@ -11,7 +11,7 @@
  *
  * @module libs/integrations/subiekt/src/application
  */
-import type { Connection } from '@openlinker/core/identifier-mapping';
+import type { Connection, IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { CredentialsResolverPort } from '@openlinker/core/integrations';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
@@ -24,10 +24,29 @@ import type { SubiektBridgeCredentials } from '../domain/types/subiekt-credentia
 import { SubiektConfigException } from '../domain/exceptions/subiekt-config.exception';
 import { SubiektInvoicingAdapter } from '../infrastructure/adapters/subiekt-invoicing.adapter';
 import { SubiektBridgeHttpClient } from '../infrastructure/http/subiekt-bridge-http.client';
+import { SubiektProductMasterAdapter } from '../infrastructure/adapters/subiekt-product-master.adapter';
+import { SubiektInventoryMasterAdapter } from '../infrastructure/adapters/subiekt-inventory-master.adapter';
+import { SubiektInventoryBridgeClient } from '../infrastructure/http/subiekt-inventory-bridge.client';
+import { SubiektOrderSourceAdapter } from '../infrastructure/adapters/subiekt-order-source.adapter';
+import { SubiektOrderProcessorAdapter } from '../infrastructure/adapters/subiekt-order-processor.adapter';
+import { SubiektOrdersBridgeClient } from '../bridge/subiekt-orders-bridge.client';
+import { SubiektFiscalizationAdapter } from '../infrastructure/adapters/subiekt-fiscalization.adapter';
 
-/** The capability adapters this factory builds for a connection. */
+/**
+ * The capability adapters this factory builds for a connection.
+ *
+ * `fiscalization` is OPTIONAL — built only when `config.drukarkaFiskalnaId`
+ * is set (#3192). A connection with no configured fiscal printer legitimately
+ * has no Fiscalization capability; `dispatchCapability` degrades to a clean
+ * "capability not supported" rather than the factory guessing a device id.
+ */
 export interface SubiektAdapters {
   invoicing: SubiektInvoicingAdapter;
+  productMaster: SubiektProductMasterAdapter;
+  inventoryMaster: SubiektInventoryMasterAdapter;
+  orderSource: SubiektOrderSourceAdapter;
+  orderProcessor: SubiektOrderProcessorAdapter;
+  fiscalization?: SubiektFiscalizationAdapter;
 }
 
 export class SubiektAdapterFactory {
@@ -36,6 +55,7 @@ export class SubiektAdapterFactory {
     credentialsResolver: CredentialsResolverPort,
     logger: LoggerPort,
     fetchImpl: FetchLike,
+    identifierMapping: IdentifierMappingPort,
   ): Promise<SubiektAdapters> {
     const config = this.validateAndParseConfig(
       (connection.config ?? {}) as Record<string, unknown>,
@@ -59,9 +79,51 @@ export class SubiektAdapterFactory {
       fetchImpl,
     });
 
-    return {
+    const inventoryClient = new SubiektInventoryBridgeClient(config.bridgeBaseUrl, {
+      token,
+      timeoutMs: config.timeoutMs,
+      fetchImpl,
+    });
+
+    const ordersClient = new SubiektOrdersBridgeClient(config.bridgeBaseUrl, {
+      token,
+      timeoutMs: config.timeoutMs,
+      fetchImpl,
+    });
+
+    const adapters: SubiektAdapters = {
       invoicing: new SubiektInvoicingAdapter(client, connection.id, logger, config),
+      productMaster: new SubiektProductMasterAdapter(config.bridgeBaseUrl, identifierMapping, connection, {
+        token,
+        timeoutMs: config.timeoutMs,
+        fetchImpl,
+        logger,
+      }),
+      inventoryMaster: new SubiektInventoryMasterAdapter(
+        inventoryClient,
+        identifierMapping,
+        connection.id,
+        logger,
+      ),
+      orderSource: new SubiektOrderSourceAdapter(ordersClient, logger),
+      orderProcessor: new SubiektOrderProcessorAdapter(ordersClient, logger),
     };
+
+    if (config.drukarkaFiskalnaId !== undefined) {
+      adapters.fiscalization = new SubiektFiscalizationAdapter(
+        config.bridgeBaseUrl,
+        {
+          drukarkaFiskalnaId: config.drukarkaFiskalnaId,
+          stanowiskoKasoweId: config.defaultStanowiskoKasoweId,
+        },
+        logger,
+        fetchImpl,
+        token,
+        config.timeoutMs,
+      );
+    }
+
+    return adapters;
   }
 
   /**
@@ -114,6 +176,10 @@ export class SubiektAdapterFactory {
       config.defaultStanowiskoKasoweId,
       'defaultStanowiskoKasoweId',
     );
+    const drukarkaFiskalnaId = this.parsePositiveIntField(
+      config.drukarkaFiskalnaId,
+      'drukarkaFiskalnaId',
+    );
 
     const parsed: SubiektConnectionConfig = { bridgeBaseUrl };
     if (timeoutMs !== undefined) parsed.timeoutMs = timeoutMs;
@@ -122,6 +188,7 @@ export class SubiektAdapterFactory {
     if (defaultStanowiskoKasoweId !== undefined) {
       parsed.defaultStanowiskoKasoweId = defaultStanowiskoKasoweId;
     }
+    if (drukarkaFiskalnaId !== undefined) parsed.drukarkaFiskalnaId = drukarkaFiskalnaId;
     return parsed;
   }
 
