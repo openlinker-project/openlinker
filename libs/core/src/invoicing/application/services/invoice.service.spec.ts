@@ -215,6 +215,7 @@ describe('InvoiceService', () => {
       findIssuedNonTerminal: jest.fn(),
       findPendingSubmission: jest.fn(),
       findStuckPending: jest.fn(),
+      findManyKeyset: jest.fn(),
     };
     // Default: the order carries no record on any OTHER connection, so the
     // one-invoice-per-order guard (#2047) is a no-op. Tests that exercise a

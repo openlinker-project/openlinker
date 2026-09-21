@@ -10,10 +10,13 @@
 import type { SalesDocumentInFlight } from '@openlinker/core/sales-documents';
 
 import type { FiscalRegistrationRecord } from '../../domain/entities/fiscal-registration-record.entity';
+import type { FiscalRegistrationKeysetPage } from '../../domain/ports/fiscal-registration-record-repository.port';
 import type { FiscalRegistrationRequestAccepted } from '../../domain/types/fiscal-registration-request.types';
 import type { FiscalRegistrationProgress } from '../../domain/types/fiscal-registration-progress.types';
 import type {
   FiscalReconcileOutcome,
+  FiscalRegistrationKeysetCursor,
+  FiscalRegistrationListFilters,
   RegisterTransactionCommand,
 } from '../../domain/types/fiscalization.types';
 
@@ -168,6 +171,19 @@ export interface IFiscalRegistrationService {
    * document. {@link requestRegistration} makes that distinction itself.
    */
   assertRegistrable(orderId: string, requestedConnectionId: string): Promise<void>;
+
+  /**
+   * Cross-order operational list (#3306) - every registration record matching
+   * `filters`, newest-first, keyset-paginated. NEVER queries the
+   * provider/adapter. Backs the merged `GET /sales-documents` read alongside
+   * `IInvoiceService.listInvoicesKeyset` - see
+   * `libs/core/src/orders/application/services/sales-document-view.service.ts`
+   * for how the two are merged.
+   */
+  listRegistrationsKeyset(
+    filters: FiscalRegistrationListFilters,
+    opts: { limit: number; cursor?: FiscalRegistrationKeysetCursor },
+  ): Promise<FiscalRegistrationKeysetPage>;
 
   /** Every registration record held by an order, across connections, newest-first. */
   getByOrderId(orderId: string): Promise<FiscalRegistrationRecord[]>;

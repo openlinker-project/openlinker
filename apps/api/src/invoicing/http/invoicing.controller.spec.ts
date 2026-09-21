@@ -304,6 +304,7 @@ describe('InvoicingController', () => {
       listInvoiceConnectionIdsForOrder: jest.fn().mockResolvedValue([]),
       listInvoices: jest.fn(),
       applyRegulatoryClearance: jest.fn(),
+      listInvoicesKeyset: jest.fn(),
     } as unknown as jest.Mocked<IInvoiceService>;
     orders = {
       getOrderRecord: jest.fn(),

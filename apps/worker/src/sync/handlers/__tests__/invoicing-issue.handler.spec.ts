@@ -87,6 +87,7 @@ describe('InvoicingIssueHandler', () => {
       listInvoices: jest.fn(),
       issueCorrection: jest.fn(),
       applyRegulatoryClearance: jest.fn(),
+      listInvoicesKeyset: jest.fn(),
     };
     handler = new InvoicingIssueHandler(invoiceService as unknown as IInvoiceService);
     warnSpy = jest

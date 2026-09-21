@@ -119,6 +119,7 @@ describe('FiscalRegistrationService', () => {
       findRecentByConnectionId: jest.fn().mockResolvedValue([]),
       updateOutcome: jest.fn(),
       claimForRegistration: jest.fn(),
+      findManyKeyset: jest.fn(),
     };
     adapter = { registerTransaction: jest.fn() };
     integrations = {
