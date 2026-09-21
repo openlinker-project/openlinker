@@ -75,9 +75,11 @@ import type {
   RotateWebhookSecretResponse,
   RoutingRule,
   RoutingRuleInput,
+  CreateSalesDocumentRuleInput,
   SalesDocumentCountryAcknowledgment,
   SalesDocumentCountryDefault,
   SalesDocumentMarketsResponse,
+  SalesDocumentRule,
   SendInvoiceEmailInput,
   SendInvoiceEmailResult,
   Shipment,
@@ -672,6 +674,18 @@ export class ApiClient {
       this.request<void>(`/sales-documents/countries/${country}/acknowledgment`, {
         method: 'DELETE',
       }),
+    /** GET /sales-documents/rules?country= — used by the rule-composer suite for test-hygiene cleanup. */
+    listRules: (country: string): Promise<SalesDocumentRule[]> =>
+      this.request<SalesDocumentRule[]>(
+        `/sales-documents/rules${buildQuery({ country })}`,
+      ),
+    createRule: (input: CreateSalesDocumentRuleInput): Promise<SalesDocumentRule> =>
+      this.request<SalesDocumentRule>('/sales-documents/rules', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    deleteRule: (id: string): Promise<void> =>
+      this.request<void>(`/sales-documents/rules/${id}`, { method: 'DELETE' }),
   };
 
   // ── Invoices ────────────────────────────────────────────────────────────

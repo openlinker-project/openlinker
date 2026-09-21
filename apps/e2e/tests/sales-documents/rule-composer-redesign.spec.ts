@@ -26,6 +26,7 @@
  * @module tests/sales-documents
  */
 import { test, expect } from '../../src/fixtures/test';
+import type { ApiClient } from '../../src/api/api-client';
 import {
   seedSalesDocumentMarketOrders,
   MARKET_SEED_COUNTRIES,
@@ -108,6 +109,110 @@ test.describe('sales documents: rule-composer modal redesign', () => {
     // dumped into the layout.
     const glyph = page.locator('.rule-composer-condition-row svg, .rule-composer-condition-row button[aria-describedby]');
     await expect(glyph.first()).toBeVisible();
+  });
+});
+
+/**
+ * Deletes every `orderTotalGross` rule this suite could have created for
+ * `country`, keyed on the exact amounts the two tests below author (#3189
+ * decimal-string round-trip; #3190 overlap detection). Run both BEFORE
+ * authoring (in case a previous run failed mid-test and left a rule behind —
+ * `sales-document-rules` carries no cleanup of its own the way
+ * `sales-document-market-seed.ts`'s DB seed does) and AFTER, so a normal run
+ * leaves the market exactly as it found it.
+ */
+async function cleanupOrderTotalGrossTestRules(api: ApiClient, country: string): Promise<void> {
+  const AMOUNTS = new Set(['450.00', '449.00']);
+  const rules = await api.salesDocuments.listRules(country);
+  const stale = rules.filter((rule) =>
+    rule.conditions.some(
+      (c) => c.field === 'orderTotalGross' && c.amount !== undefined && AMOUNTS.has(c.amount),
+    ),
+  );
+  for (const rule of stale) {
+    await api.salesDocuments.deleteRule(rule.id);
+  }
+}
+
+test.describe('sales documents: rule composer — amount/currency round-trip + overlap detection', () => {
+  test.beforeAll(async () => {
+    await seedSalesDocumentMarketOrders();
+  });
+
+  test('an order-total condition round-trips its exact decimal amount and currency, and a same-currency rival blocks the save until the currency is changed (#3189/#3190)', async ({
+    page,
+    api,
+  }) => {
+    const country = MARKET_SEED_COUNTRIES.unconfigured;
+    await cleanupOrderTotalGrossTestRules(api, country);
+
+    await page.goto('/settings/sales-documents');
+    await expect(page.getByRole('heading', { name: 'Sales documents' })).toBeVisible({
+      timeout: 30_000,
+    });
+    const row = page
+      .locator('.sales-document-market-row')
+      .filter({ has: page.locator('.sales-document-market-row__name', { hasText: country }) });
+    await row.getByRole('button', { name: /Configure/ }).click();
+    await expect(
+      page.getByRole('heading', { name: `Sales-document routing · ${country}` }),
+    ).toBeVisible();
+
+    try {
+      // ── Rule 1: total < 450.00 PLN → Invoice ────────────────────────────
+      await page.getByRole('button', { name: 'Add rule' }).click();
+      const modal = page.locator('.dialog__content--elevated');
+
+      await modal.getByLabel('Condition field').selectOption({ value: 'orderTotalGross' });
+      await modal.getByLabel('Order total comparison').selectOption({ value: 'lt' });
+      await modal.getByLabel('Order total amount').fill('450.00');
+      await modal.getByLabel('Order total currency').fill('PLN');
+      await modal.getByLabel('Integration').selectOption({ index: 1 });
+
+      // The readback states the operator's OWN typed decimal string, not a
+      // re-derived number — `450` or `450.0` would both be silent precision
+      // loss (#3189).
+      await expect(modal.getByTestId('rule-readback')).toContainText('450.00 PLN');
+
+      await modal.getByTestId('rule-save').click();
+      await expect(modal).toBeHidden();
+
+      // The saved rule's condition chip echoes what the SERVER stored, i.e.
+      // the real round trip (create → refetch → render), not merely what the
+      // form held in memory.
+      const rule1Chip = page.locator('.condition-chip', { hasText: '450.00 PLN' });
+      await expect(rule1Chip).toBeVisible();
+
+      // ── Rule 2: total ≥ 449.00 PLN → collides with rule 1 (#3190) ───────
+      await page.getByRole('button', { name: 'Add rule' }).click();
+      await modal.getByLabel('Condition field').selectOption({ value: 'orderTotalGross' });
+      // Comparison stays at its default (`gte`) — resetting the field already
+      // put it back there.
+      await modal.getByLabel('Order total amount').fill('449.00');
+      await modal.getByLabel('Order total currency').fill('PLN');
+
+      await expect(modal.getByTestId('rule-conflict')).toBeVisible({ timeout: 10_000 });
+      await expect(modal.getByTestId('rule-save-blocked')).toBeVisible();
+      await expect(modal.getByTestId('rule-save')).toHaveCount(0);
+
+      // Switching ONLY the currency to EUR: two amount bounds in different
+      // currencies provably cannot describe the same order — an amount is
+      // compared and never converted (#3190's `currency` disjoint reason) —
+      // so the conflict must clear with no other field touched.
+      await modal.getByLabel('Order total currency').fill('EUR');
+      await expect(modal.getByTestId('rule-no-conflict')).toBeVisible({ timeout: 10_000 });
+      await expect(modal.getByTestId('rule-conflict')).toHaveCount(0);
+
+      await modal.getByLabel('Integration').selectOption({ index: 1 });
+      const saveButton = modal.getByTestId('rule-save');
+      await expect(saveButton).toBeEnabled();
+      await saveButton.click();
+      await expect(modal).toBeHidden();
+
+      await expect(page.locator('.condition-chip', { hasText: '449.00 EUR' })).toBeVisible();
+    } finally {
+      await cleanupOrderTotalGrossTestRules(api, country);
+    }
   });
 });
 
