@@ -14,14 +14,15 @@ import { MatchReturnDialog } from './match-return-dialog';
 import { MATCH_RETURN_DIALOG_COPY as COPY } from '../lib/match-return-dialog.copy';
 import { ApiError } from '../../../shared/api/api-error';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
+import type { WriteAccess } from '../../../shared/auth/use-permission';
 
-const FULL_WRITE_ACCESS = { canWrite: true, demoReadOnly: false, visible: true };
+const FULL_WRITE_ACCESS: WriteAccess = { canWrite: true, demoReadOnly: false, visible: true };
 
 function renderDialog(options: {
   matchOrder?: ReturnType<typeof vi.fn>;
   onMatched?: () => void;
   orders?: Array<{ internalOrderId: string; syncStatus: Array<{ externalOrderNumber: string | null }> }>;
-  writeAccess?: { canWrite: boolean; demoReadOnly: boolean; visible: boolean };
+  writeAccess?: WriteAccess;
 } = {}) {
   const apiClient = createMockApiClient();
   const matchOrder = options.matchOrder ?? vi.fn().mockResolvedValue({

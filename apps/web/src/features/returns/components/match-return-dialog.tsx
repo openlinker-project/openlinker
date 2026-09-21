@@ -59,6 +59,7 @@ import {
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
+import type { WriteAccess } from '../../../shared/auth/use-permission';
 // Cross-feature import goes through the orders barrel — the same route
 // `return-money-panel.tsx` already takes into `../../orders` (#337/#359).
 import { useOrdersQuery } from '../../orders';
@@ -83,7 +84,7 @@ interface MatchReturnDialogProps {
    * demoMode)` per page, so every write surface on that screen agrees about
    * the session.
    */
-  writeAccess: { canWrite: boolean; demoReadOnly: boolean; visible: boolean };
+  writeAccess: WriteAccess;
 }
 
 export function MatchReturnDialog({
