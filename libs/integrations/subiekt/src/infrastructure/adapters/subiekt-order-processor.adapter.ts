@@ -44,12 +44,36 @@
  * @module libs/integrations/subiekt/src/infrastructure/adapters
  */
 import type { LoggerPort } from '@openlinker/shared/logging';
-import type { OrderProcessorManagerPort, OrderCreate, OrderRef, Address } from '@openlinker/core/orders';
+import type {
+  OrderProcessorManagerPort,
+  OrderCreate,
+  OrderRef,
+  Address,
+  OrderStatus,
+  OrderLifecycleEvent,
+  OrderWritebackResult,
+} from '@openlinker/core/orders';
+import type { OrderFulfillmentUpdater, OrderStatusWriteback } from '@openlinker/core/orders';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { SubiektOrdersBridgeClient } from '../../bridge/subiekt-orders-bridge.client';
 import type { BridgeOrderLine, BridgeOrderBuyer } from '../../bridge/subiekt-bridge-orders.types';
 import { SubiektOrderProductMappingException } from '../../domain/exceptions/subiekt-order-product-mapping.exception';
+
+/**
+ * Neutral `OrderStatus` -> Polish operator-facing label, written into the
+ * ZK's `Uwagi`/`UwagiExt` remarks fields (`Sfera.WriteShipping` — Subiekt
+ * exposes no dedicated fulfillment-status field on a ZK to write a real enum
+ * onto). Not a Subiekt-native status code; a human label only.
+ */
+const STATUS_LABEL_PL: Record<OrderStatus, string> = {
+  pending: 'Oczekujące',
+  processing: 'W realizacji',
+  shipped: 'Wysłane',
+  delivered: 'Dostarczone',
+  cancelled: 'Anulowane',
+  refunded: 'Zwrócone',
+};
 
 function resolveBuyer(order: OrderCreate): BridgeOrderBuyer {
   const addr: Address | undefined = order.billingAddress ?? order.shippingAddress;
@@ -66,7 +90,9 @@ function resolveBuyer(order: OrderCreate): BridgeOrderBuyer {
   };
 }
 
-export class SubiektOrderProcessorAdapter implements OrderProcessorManagerPort {
+export class SubiektOrderProcessorAdapter
+  implements OrderProcessorManagerPort, OrderFulfillmentUpdater, OrderStatusWriteback
+{
   constructor(
     private readonly bridge: SubiektOrdersBridgeClient,
     private readonly identifierMapping: IdentifierMappingPort,
@@ -99,6 +125,18 @@ export class SubiektOrderProcessorAdapter implements OrderProcessorManagerPort {
         wartoscBrutto: item.price * item.quantity,
       });
     }
+    // #3347: the item loop above never carried shipping — every ZK silently
+    // under-recorded the buyer-paid order value by the shipping amount. A
+    // symbol-less service line (mirroring the invoicing bridge's identical
+    // convention for a line with no catalogue match) carries it explicitly.
+    if (order.totals.shipping > 0) {
+      lines.push({
+        symbol: '',
+        ilosc: 1,
+        wartoscBrutto: order.totals.shipping,
+        nazwa: 'Dostawa',
+      });
+    }
     return lines;
   }
 
@@ -125,5 +163,84 @@ export class SubiektOrderProcessorAdapter implements OrderProcessorManagerPort {
       orderId: String(response.id),
       orderNumber: response.numer,
     };
+  }
+
+  /**
+   * `OrderFulfillmentUpdater` (#837) — writes a post-create status + tracking
+   * update onto the ZK via `Sfera.WriteShipping`. Subiekt exposes no
+   * fulfillment-status field on a ZK, so this is a remarks write
+   * (`d.Uwagi`/`d.UwagiExt`), not a native status transition — an honest
+   * "best available" surface, not a Subiekt-native state machine.
+   */
+  async updateFulfillment(input: {
+    externalOrderId: string;
+    status: OrderStatus;
+    trackingNumber?: string;
+  }): Promise<void> {
+    const { numer } = await this.bridge.writeShipping(input.externalOrderId, {
+      status: STATUS_LABEL_PL[input.status],
+      trackingNumber: input.trackingNumber,
+    });
+    this.logger.log(
+      `Wrote fulfillment status '${input.status}' onto Subiekt ${numer} ` +
+        `(id ${input.externalOrderId})${input.trackingNumber ? `, tracking ${input.trackingNumber}` : ''}`,
+    );
+  }
+
+  /**
+   * `OrderStatusWriteback` (#3349) — the single event-as-data writeback the
+   * lifecycle relay dispatches through. Before this method existed the class
+   * implemented only `OrderFulfillmentUpdater`, whose `updateFulfillment` is
+   * never reachable from the relay path (`OrderLifecycleRelayService`
+   * resolves candidates exclusively via `isOrderStatusWriteback`) — so no
+   * status update from OL ever reached Subiekt in production. Delegates to
+   * the existing `updateFulfillment` remarks write, mirroring PrestaShop's/
+   * WooCommerce's own thin delegation. Subiekt carries no dedicated
+   * "already shipped" field on a ZK to refuse a cancel against (unlike
+   * PrestaShop's richer state read), so the `cancelled` arm writes the
+   * cancelled label unconditionally rather than refusing.
+   */
+  async write(event: OrderLifecycleEvent): Promise<OrderWritebackResult> {
+    try {
+      switch (event.type) {
+        case 'dispatched': {
+          await this.updateFulfillment({
+            externalOrderId: event.externalOrderId,
+            status: 'shipped',
+            trackingNumber: event.trackingNumber,
+          });
+          return { outcome: 'applied' };
+        }
+
+        case 'cancelled': {
+          await this.updateFulfillment({
+            externalOrderId: event.externalOrderId,
+            status: 'cancelled',
+          });
+          return { outcome: 'applied' };
+        }
+
+        default: {
+          // Unreachable in-tree: the binding is the compile break when an
+          // `OrderLifecycleEvent` member is added without an arm here
+          // (#2286). Returns rather than throws so a caller compiled
+          // against a widened union gets a surfaced no-op (ADR-055
+          // forward-compat), never a `rejected` from the enclosing catch.
+          const unhandled: never = event;
+          return {
+            outcome: 'unsupported',
+            detail: `unsupported order lifecycle event: ${JSON.stringify(unhandled)}`,
+          };
+        }
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `OrderStatusWriteback '${event.type}' failed for Subiekt order ` +
+          `${event.externalOrderId}: ${detail}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      return { outcome: 'rejected', detail };
+    }
   }
 }

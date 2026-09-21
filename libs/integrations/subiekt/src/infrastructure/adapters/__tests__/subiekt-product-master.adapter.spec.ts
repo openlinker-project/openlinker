@@ -149,7 +149,7 @@ describe('SubiektProductMasterAdapter', () => {
     expect(variants[0].sku).toBe('SKU-1');
   });
 
-  it('deleteProduct / getProductCategories / assignCategories throw SubiektProductNotSupportedException', async () => {
+  it('deleteProduct / getProductCategories / assignCategories / upsertProductVariant throw SubiektProductNotSupportedException', async () => {
     const adapter = buildAdapter((() => Promise.resolve(jsonResponse(200, envelope({})))) as FetchLike);
     await expect(adapter.deleteProduct('ol_product_1')).rejects.toBeInstanceOf(
       SubiektProductNotSupportedException,
@@ -158,6 +158,11 @@ describe('SubiektProductMasterAdapter', () => {
       SubiektProductNotSupportedException,
     );
     await expect(adapter.assignCategories('ol_product_1', ['x'])).rejects.toBeInstanceOf(
+      SubiektProductNotSupportedException,
+    );
+    // #3356: previously a silent no-op returning the unchanged variant
+    // dressed as success. Now honest, matching deleteProduct's posture.
+    await expect(adapter.upsertProductVariant('ol_product_1')).rejects.toBeInstanceOf(
       SubiektProductNotSupportedException,
     );
   });
