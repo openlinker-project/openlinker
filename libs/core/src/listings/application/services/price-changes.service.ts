@@ -718,9 +718,10 @@ export class PriceChangesService implements IPriceChangesService {
     const uniqueIds = Array.from(new Set(destinationConnectionIds));
     const entries = await Promise.all(
       uniqueIds.map(async (id) => {
-        const declared = await this.destinationCurrencyResolution
-          .resolveForConnection(id)
-          .catch(() => null);
+        // No `.catch()` here: `resolveForConnection` never rejects — its
+        // own internal probe already collapses every failure mode to `null`
+        // (see its docblock).
+        const declared = await this.destinationCurrencyResolution.resolveForConnection(id);
         const connection = connectionsById.get(id);
         const currency = declared ?? (connection ? readConnectionCurrency(connection.config) : null);
         return [id, currency] as const;

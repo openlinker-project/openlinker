@@ -326,9 +326,10 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
     if (cached && cached.expiresAt > now) {
       return cached.currency;
     }
-    const declared = await this.destinationCurrencyResolution
-      .resolveForConnection(connectionId)
-      .catch(() => null);
+    // No `.catch()` here: `resolveForConnection` never rejects — its own
+    // internal probe already collapses every failure mode ("not supported /
+    // not enabled / unresolvable") to `null` (see its docblock).
+    const declared = await this.destinationCurrencyResolution.resolveForConnection(connectionId);
     const currency = declared ?? readConnectionCurrency(connection.config);
     this.currencyCache.set(connectionId, {
       currency,

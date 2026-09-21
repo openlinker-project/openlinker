@@ -453,9 +453,12 @@ export class AllegroOfferManagerAdapter
    * in this tree (see `DEFAULT_ALLEGRO_TAX_COUNTRY` above — the same
    * assumption already baked into the tax-settings write path), and no
    * connection config here distinguishes a .cz/.sk/.hu account whose
-   * settlement currency would differ. Consumed by
+   * settlement currency would differ — `this.environment` is `sandbox` vs
+   * `production` only, a different axis, and carries no country/region
+   * signal this method could read instead. Consumed by
    * `DestinationCurrencyResolutionService` to answer
-   * `price-change-block.types.ts`'s currency-mismatch guard.
+   * `price-change-block.types.ts`'s currency-mismatch guard. Revisit this
+   * once a connection can declare a non-PL Allegro storefront.
    */
   getDestinationCurrency(): string | null {
     return 'PLN';
