@@ -69,7 +69,7 @@ Updated per item as each phase lands — see the linked epic + child issues for 
 | B5 | fixed | b51cdd186 (bridge Invoicing.cs/Program.cs + TS mapper) | GT's 9-value StatusKSeF now correctly splits not-yet-sent (1,2)/comms-error (8) into `'pending-submission'` instead of a premature `'submitted'`; type-check+unit tests green; E2E retest pending |
 | B6 | fixed | b51cdd186 | `KsefNumer` now extracted+threaded through issue/status bridge responses into `clearanceReference`; type-check+unit tests green; E2E retest pending |
 | B7 | fixed | bridge ProductsEndpoints.cs | code fix only; E2E barcode-read retest pending |
-| B8 | pending | | |
+| B8 | fixed | dad139a43 | all 5 doc files (README + setup-guide/tutorial/runbook/dev-windows-wsl-quick-setup-guide) rewritten Subiekt nexo→GT, terminology/env-vars/ports/architecture corrected; docs-only, no test impact |
 | B9 | fixed | 3cb820b0d | all "Subiekt nexo" strings + test assertion updated, web tests green |
 | B10 | fixed | 006ed156d | unit test added and green |
 | G2 | fixed | 6f2332fbd (bridge ProductsEndpoints.cs + TS `ProductTaxRateReader`) | live-confirmed VAT column `tw_IdVatSp`→`sl_StawkaVAT`; type-check+unit tests green; Net Sales retest pending |
