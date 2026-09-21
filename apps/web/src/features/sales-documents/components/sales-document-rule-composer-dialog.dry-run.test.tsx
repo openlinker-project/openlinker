@@ -109,19 +109,54 @@ describe('SalesDocumentRuleComposerDialog — dry run (#3191)', () => {
       country: string;
       documentKind: string;
       connectionId: string;
-      sampleOrder: { country: string; totalGross: number; currency: string; buyerHasTaxId?: boolean };
+      sampleOrder: {
+        country: string;
+        totalGross: number;
+        currency: string;
+        taxTreatment?: 'inclusive' | 'exclusive';
+        buyerHasTaxId?: boolean;
+      };
     };
     expect(payload.country).toBe('PL');
     expect(payload.connectionId).toBe('conn_eparagony');
+    // Defaults to gross-priced ('inclusive') — see #3191 review: the panel
+    // used to send no taxTreatment at all, which held every amount-threshold
+    // rule as "cannot compare" regardless of the typed amount.
     expect(payload.sampleOrder).toEqual({
       country: 'PL',
       totalGross: 450,
       currency: 'PLN',
+      taxTreatment: 'inclusive',
       buyerHasTaxId: undefined,
     });
 
     const result = await within(root).findByTestId('rule-test-sample-order-result');
     expect(result).toHaveTextContent('via the rule you are drafting');
+  });
+
+  it('should send taxTreatment: exclusive when the operator picks net-priced (#3191 review)', async () => {
+    const user = userEvent.setup();
+    const dryRunRule = vi.fn().mockResolvedValue({
+      kind: 'unresolved',
+      reason: 'net-priced-order',
+      matchedByCandidateRule: false,
+    });
+    renderComposer({ salesDocumentRules: { dryRunRule } });
+    const root = await dialog();
+
+    await pickAConnection(root, user);
+    await user.click(within(root).getByTestId('rule-test-sample-order'));
+    const panel = within(root).getByTestId('rule-test-sample-order-panel');
+    await user.type(within(panel).getByLabelText('Sample order total amount'), '10');
+    await user.type(within(panel).getByLabelText('Sample order currency'), 'EUR');
+    await user.selectOptions(within(panel).getByLabelText('Sample order pricing'), 'exclusive');
+    await user.click(within(panel).getByTestId('rule-run-sample-order-test'));
+
+    await waitFor(() => expect(dryRunRule).toHaveBeenCalledTimes(1));
+    const payload = dryRunRule.mock.calls[0][0] as {
+      sampleOrder: { taxTreatment?: 'inclusive' | 'exclusive' };
+    };
+    expect(payload.sampleOrder.taxTreatment).toBe('exclusive');
   });
 
   it('should never persist anything — no create/upsert/delete call happens from a dry run', async () => {
