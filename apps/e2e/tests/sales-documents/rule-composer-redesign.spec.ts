@@ -109,6 +109,51 @@ test.describe('sales documents: rule-composer modal redesign', () => {
     const glyph = page.locator('.rule-composer-condition-row svg, .rule-composer-condition-row button[aria-describedby]');
     await expect(glyph.first()).toBeVisible();
   });
+
+  test('selecting the Receipt document kind never surfaces the removed buyer-tax-ID checkbox (#3182)', async ({
+    page,
+    api,
+  }) => {
+    // #3182 removed a permanently-disabled "include the buyer's tax id on the
+    // receipt" checkbox from this exact selection — there is no such field on
+    // a fiscal receipt in this build, for either document kind. A component
+    // test (`sales-document-rule-composer-dialog.test.tsx`,
+    // "should never render a tax-ID-on-receipt toggle, for either document
+    // type") already proves the JSDOM tree carries no such control; this
+    // spec proves the SAME negative against the real rendered app.
+    const live = await api.salesDocuments.markets();
+    expect(live.markets.map((m) => m.country)).toContain(MARKET_SEED_COUNTRIES.unconfigured);
+    const country = MARKET_SEED_COUNTRIES.unconfigured;
+
+    await page.goto('/settings/sales-documents');
+    await expect(page.getByRole('heading', { name: 'Sales documents' })).toBeVisible({
+      timeout: 30_000,
+    });
+    const row = page
+      .locator('.sales-document-market-row')
+      .filter({ has: page.locator('.sales-document-market-row__name', { hasText: country }) });
+    await row.getByRole('button', { name: /Configure/ }).click();
+    await page.getByRole('button', { name: 'Add rule' }).click();
+
+    const modal = page.locator('.dialog__content--elevated');
+    const documentTypeSelect = modal.getByLabel('Document type');
+    await expect(documentTypeSelect).toBeVisible();
+
+    // Absent BEFORE selecting a document kind (the default is 'invoice').
+    await expect(
+      modal.getByLabel(/include the buyer.?s tax id/i),
+    ).toHaveCount(0);
+
+    // Still absent once the Receipt (fiscal-receipt) kind is selected — the
+    // exact selection the removed checkbox used to gate on.
+    await documentTypeSelect.selectOption({ label: 'Receipt' });
+    await expect(
+      modal.getByLabel(/include the buyer.?s tax id/i),
+    ).toHaveCount(0);
+    await expect(
+      modal.getByText(/include the buyer.?s tax id/i),
+    ).toHaveCount(0);
+  });
 });
 
 test.describe('sales documents: retired "Connected providers" page', () => {
