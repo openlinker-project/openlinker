@@ -33,6 +33,25 @@
  * config key on one form. The stock-publish-policy half above is unaffected;
  * it has no rival editor.
  *
+ * **Third group: stock-location override (#3206/#3207).** A per-connection
+ * OPERATOR ASSERTION - "all of this connection's currently un-located stock
+ * physically lives at this one location" - never a detection. Neither
+ * PrestaShop nor WooCommerce can report where their stock physically is, so
+ * without it the fulfilment router treats every position as unlocated and
+ * skips it (ADR-058 decision 2, narrowed by #3206). The picker's options come
+ * from `GET /inventory/locations` (the same read `/settings/inventory-locations`,
+ * #3063, uses) via `useInventoryLocationsQuery` - EVERY status is listed
+ * (retired locations included, labelled), mirroring `LocationDialog`'s
+ * connection picker, because the currently-persisted value may since have
+ * been retired and must still render with its real name rather than
+ * vanishing from the select. The group renders only when at least one
+ * `inventory_locations` row exists at all (any status) - an empty picker
+ * with nothing to pick would be worse than not showing it. Server-side
+ * existence/active-status validation
+ * (`ConnectionService.validateStockLocationOverride`, #3206) is the only
+ * place the id is actually checked; a 400 naming the field surfaces here as
+ * a field-level error via `EditConnectionForm.onSubmit`'s `ApiError` mapping.
+ *
  * @module features/connections/components
  */
 import { useState, type ReactElement } from 'react';
@@ -41,6 +60,7 @@ import { Link } from 'react-router-dom';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { Select } from '../../../shared/ui/select';
+import { useInventoryLocationsQuery } from '../../inventory';
 import type { EditConnectionFormValues } from './edit-connection.schema';
 import {
   applyPricingRule,
@@ -48,6 +68,9 @@ import {
   type PriceRoundingMode,
   type PricingRule,
 } from '../lib/stock-and-pricing-preview';
+
+/** One page is enough for a picker; an install with hundreds of warehouses is not this control's shape. */
+const LOCATION_OPTIONS_PAGE_SIZE = 200;
 
 /** Catalogue figures the worked examples are stated against. */
 const EXAMPLE_STOCK = 10;
@@ -61,6 +84,8 @@ export interface StockAndPricingSectionProps {
   syncStockPolicyToJson: () => void;
   /** Host whole-object serializer for `config.pricingRule`. */
   syncPricingRuleToJson: () => void;
+  /** Host serializer for the flat `config.stockLocationOverride` key (#3206/#3207). */
+  syncStockLocationOverrideToJson: () => void;
   /**
    * True for a viable pricing DESTINATION (#3149/#3166 review) — that
    * population's `config.pricingRule` is now owned exclusively by the
@@ -112,10 +137,12 @@ export function StockAndPricingSection({
   configIsParseable,
   syncStockPolicyToJson,
   syncPricingRuleToJson,
+  syncStockLocationOverrideToJson,
   pricingRuleManagedElsewhere,
 }: StockAndPricingSectionProps): ReactElement {
   const stockErrors = form.formState.errors.stockPolicy;
   const priceErrors = form.formState.errors.pricingRule;
+  const locationOverrideError = form.formState.errors.stockLocationOverride;
 
   // Local UI state, not derived per render: ticking a checkbox with the fields
   // still empty must keep them visible (see RateLimitSection for the trap).
@@ -124,6 +151,22 @@ export function StockAndPricingSection({
       form.getValues('stockPolicy.zeroThreshold') !== '',
   );
   const [priceOpen, setPriceOpen] = useState(Boolean(form.getValues('pricingRule.type')));
+  const [locationOverrideOpen, setLocationOverrideOpen] = useState(
+    Boolean(form.getValues('stockLocationOverride')),
+  );
+
+  // Every status, not just active — a location that has since been retired
+  // must still render (with its real name) so the currently-stored override
+  // doesn't silently vanish from the select. The gate below asks only "does
+  // at least one row exist at all", not "is one active".
+  const locationsQuery = useInventoryLocationsQuery(undefined, {
+    limit: LOCATION_OPTIONS_PAGE_SIZE,
+  });
+  const locations = locationsQuery.data?.items ?? [];
+  // Absent while loading, on error, and when nothing exists — an empty
+  // picker with nothing to pick would be worse than not showing the group
+  // at all (mirrors RateLimitSection's #2229 ceiling-readout convention).
+  const hasAnyLocation = (locationsQuery.data?.total ?? 0) > 0;
 
   const safetyBuffer = form.watch('stockPolicy.safetyBuffer') ?? '';
   const zeroThreshold = form.watch('stockPolicy.zeroThreshold') ?? '';
@@ -154,6 +197,22 @@ export function StockAndPricingSection({
           rounding: (rounding === '' ? 'none' : rounding) as PriceRoundingMode,
         };
   const examplePublishedPrice = applyPricingRule(EXAMPLE_PRICE, previewRule);
+
+  const stockLocationOverride = form.watch('stockLocationOverride') ?? '';
+
+  const handleLocationOverrideChange = (value: string): void => {
+    // ORDERING TRAP: write the form field FIRST, then re-serialize.
+    form.setValue('stockLocationOverride', value, { shouldDirty: true });
+    syncStockLocationOverrideToJson();
+  };
+
+  const handleLocationOverrideOpenChange = (checked: boolean): void => {
+    setLocationOverrideOpen(checked);
+    if (!checked) {
+      form.setValue('stockLocationOverride', '', { shouldDirty: true });
+    }
+    syncStockLocationOverrideToJson();
+  };
 
   const handleStockChange = (
     field: 'safetyBuffer' | 'zeroThreshold',
@@ -355,6 +414,55 @@ export function StockAndPricingSection({
           ) : null}
         </>
       )}
+
+      {hasAnyLocation ? (
+        <>
+          <label className="rate-limit-section__toggle">
+            <input
+              type="checkbox"
+              checked={locationOverrideOpen}
+              disabled={!configIsParseable}
+              onChange={(event) => handleLocationOverrideOpenChange(event.target.checked)}
+            />
+            <span>Assign a location to this connection&apos;s stock</span>
+          </label>
+
+          {locationOverrideOpen ? (
+            <>
+              <p className="rate-limit-section__help">
+                This is an <strong>assertion</strong>, not a detection: by picking a location you are
+                attesting that all of this connection&apos;s currently un-located stock physically
+                lives there. Only use this if everything behind this connection ships from one
+                place — if you operate more than one physical warehouse behind this connection,
+                leave this off, since setting it would misattribute stock to the wrong location for
+                fulfilment.
+              </p>
+
+              <FormField
+                label="Location"
+                name="stockLocationOverride"
+                error={locationOverrideError?.message}
+                description="Neither PrestaShop nor WooCommerce can report where their stock physically is, so without this the fulfilment router treats it as unlocated and skips it. This does not move or verify anything — it only tells OpenLinker where to assume it already is."
+              >
+                <Select
+                  value={stockLocationOverride}
+                  disabled={!configIsParseable}
+                  invalid={Boolean(locationOverrideError)}
+                  onChange={(event) => handleLocationOverrideChange(event.target.value)}
+                >
+                  <option value="">Select a location</option>
+                  {locations.map((location) => (
+                    <option key={location.id} value={location.id}>
+                      {location.name} ({location.code})
+                      {location.status !== 'active' ? ' — inactive' : ''}
+                    </option>
+                  ))}
+                </Select>
+              </FormField>
+            </>
+          ) : null}
+        </>
+      ) : null}
     </section>
   );
 }

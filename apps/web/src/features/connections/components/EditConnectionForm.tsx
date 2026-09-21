@@ -39,6 +39,7 @@ import {
 import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
 import { isPricingDestination } from '../lib/pricing-destination';
+import { ApiError } from '../../../shared/api/api-error';
 
 interface EditConnectionFormProps {
   connection: Connection;
@@ -156,6 +157,17 @@ function readWholeUnits(raw: unknown): string {
     return '';
   }
   return String(Math.max(0, Math.floor(raw)));
+}
+
+/**
+ * Read the per-connection stock-location override out of
+ * `config.stockLocationOverride` (#3206/#3207). Mirrors the core reader
+ * `readStockLocationOverride` - a missing, blank or non-string value reads
+ * as `''` (unset).
+ */
+function readStockLocationOverride(config: Record<string, unknown>): string {
+  const raw = config.stockLocationOverride;
+  return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : '';
 }
 
 /**
@@ -470,6 +482,8 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // Per-connection stock publish policy + pricing rule (#2610) — platform-neutral.
       stockPolicy: readStockPolicy(connection.config),
       pricingRule: readPricingRuleForm(connection.config),
+      // Per-connection stock-location override (#3206/#3207) — platform-neutral.
+      stockLocationOverride: readStockLocationOverride(connection.config),
       // Plugin-owned structured fields (#1330) — the platform's contribution
       // hydrates its own field slice (e.g. KSeF seller/payment) so an
       // unrelated save doesn't blank the persisted platform config.
@@ -657,6 +671,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
     form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
   }
 
+  // #3206/#3207 — re-serialize `config.stockLocationOverride` into configText.
+  // Clone of `syncRateLimitToJson`: reads CURRENT form state, takes NO
+  // argument, keeps the `!configIsParseable` early-return. The section MUST
+  // setValue('stockLocationOverride', …) BEFORE calling this.
+  function syncStockLocationOverrideToJson(): void {
+    if (!configIsParseable) return;
+    const parsed = JSON.parse(form.getValues('configText')) as Record<string, unknown>;
+    const merged = mergeStructuredIntoConfig(parsed, {
+      stockLocationOverride: form.getValues('stockLocationOverride'),
+    });
+    form.setValue('configText', JSON.stringify(merged, null, 2), { shouldDirty: true });
+  }
+
   // Auto-select the sole candidate ONCE on mount, only when the server never
   // stored a value (typeof check distinguishes "unset" from an explicit `""`
   // opt-out) and the operator hasn't already touched the picker. Never marks
@@ -718,7 +745,19 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         description: 'Connection settings have been saved.',
       });
       void navigate(`/connections/${connection.id}`);
-    } catch {
+    } catch (error) {
+      // #3207 — a 400 naming `config.stockLocationOverride` (unknown/retired
+      // location id, #3206's server-side guard) surfaces as a field-level
+      // error rather than the generic `updateConnection.error` alert below,
+      // matching how other StockAndPricingSection fields already do.
+      if (
+        error instanceof ApiError &&
+        error.status === 400 &&
+        error.message.includes('stockLocationOverride')
+      ) {
+        form.setError('stockLocationOverride', { message: error.message });
+        return;
+      }
       return;
     }
   });
@@ -864,6 +903,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         configIsParseable={configIsParseable}
         syncStockPolicyToJson={syncStockPolicyToJson}
         syncPricingRuleToJson={syncPricingRuleToJson}
+        syncStockLocationOverrideToJson={syncStockLocationOverrideToJson}
         pricingRuleManagedElsewhere={
           needsMasterCatalog ? { href: `/connections/${connection.id}/pricing-sync` } : undefined
         }
