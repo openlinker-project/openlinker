@@ -80,6 +80,11 @@ describe('SubiektOrderSourceAdapter', () => {
     expect(order.customerEmail).toBe('jan@example.com');
     expect(order.items).toHaveLength(1);
     expect(order.items[0]).toMatchObject({ sku: 'SKU-1', quantity: 3, price: 41.15 });
+    // #3359: `line.symbol` is exactly the towar symbol ProductMaster maps
+    // as `CORE_ENTITY_TYPE.Product` — `type: 'sku'` (a DISTINCT mapping
+    // kind nothing in this adapter's ProductMaster sync ever creates) made
+    // every native order-line resolution fail 100% of the time.
+    expect(order.items[0].productRef).toEqual({ type: 'product', externalId: 'SKU-1' });
     expect(order.totals.total).toBe(123.45);
     expect(order.totals.currency).toBe('PLN');
   });

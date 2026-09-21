@@ -82,7 +82,15 @@ export class SubiektOrderSourceAdapter implements OrderSourcePort {
       customerEmail: detail.kontrahentEmail ?? undefined,
       items: detail.lines.map((line, index) => ({
         id: `${detail.id}-${index}`,
-        productRef: { type: 'sku', externalId: line.symbol },
+        // #3359: `line.symbol` is exactly the towar symbol
+        // `SubiektProductMasterAdapter` maps as `CORE_ENTITY_TYPE.Product`
+        // (never `CORE_ENTITY_TYPE.Sku`, a distinct mapping kind nothing in
+        // this adapter's ProductMaster sync ever creates) — `type: 'sku'`
+        // made every line's product resolution fail 100% of the time
+        // (19/19 dead `marketplace.order.sync` jobs, live-confirmed), since
+        // `OrderItemRefResolverService`'s `'sku'` case looks up ONLY the
+        // `Sku` mapping kind and never falls back to `Product`.
+        productRef: { type: 'product', externalId: line.symbol },
         quantity: line.ilosc,
         price: line.ilosc > 0 ? line.wartoscBrutto / line.ilosc : line.wartoscBrutto,
         sku: line.symbol,
