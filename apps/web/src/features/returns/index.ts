@@ -84,6 +84,44 @@ export {
 export { ReturnDetailUnreadableError } from './api/return-detail.schema';
 export { useReturnQuery } from './hooks/use-return-query';
 export { useDeclineReturnMutation } from './hooks/use-decline-return-mutation';
+
+// ── Orphan/manual-return writes (#2372/#2376, #3079/#3080) ──────────────────
+export type {
+  AuthorizeReturnOutcome,
+  AuthorizeReturnResult,
+  MatchReturnToOrderInput,
+  MatchReturnToOrderResult,
+  RecordReturnInput,
+  RecordReturnLineInput,
+  RecordReturnResult,
+} from './api/returns.types';
+export { AUTHORIZE_RETURN_OUTCOME_VALUES, isAuthorizeReturnOutcome } from './api/returns.types';
+// Public for the same reason `ReturnDetailUnreadableError` is above: a caller
+// needs to tell "the write may have landed, we just could not read the
+// result" apart from an ordinary network/validation failure.
+export { ReturnWriteResultUnreadableError } from './api/return-write.schema';
+export { useAuthorizeReturnMutation } from './hooks/use-authorize-return-mutation';
+export { useMatchReturnToOrderMutation } from './hooks/use-match-return-to-order-mutation';
+export { useRecordReturnMutation } from './hooks/use-record-return-mutation';
+// The worklist itself (#3081) — two labelled groups, one primary action per
+// row, each routing to the return's own detail page rather than opening a
+// dialog here (see the component docblock for why).
+export { OrphanReturnsWorklist } from './components/orphan-returns-worklist';
+export { ORPHAN_RETURNS_WORKLIST_COPY } from './lib/orphan-returns-worklist.copy';
+// The match-to-order dialog (#3082) — the destination the worklist's
+// "Match to an order" link routes toward. Mounted on the return detail
+// page's orphan banner (#3085).
+export { MatchReturnDialog } from './components/match-return-dialog';
+export { MATCH_RETURN_DIALOG_COPY } from './lib/match-return-dialog.copy';
+// The approve dialog (#3083) — mounted inline by the worklist itself, since
+// this write carries no form to defer to a detail-page destination for.
+export { AuthorizeReturnDialog } from './components/authorize-return-dialog';
+export { AUTHORIZE_RETURN_DIALOG_COPY } from './lib/authorize-return-dialog.copy';
+// The record-a-return-by-hand dialog (#3084) — for a channel with no
+// returns feed at all. Standalone entry point (#3078's own list of
+// sub-issues has it opened from the returns list, not from a row).
+export { RecordReturnDialog } from './components/record-return-dialog';
+export { RECORD_RETURN_DIALOG_COPY } from './lib/record-return-dialog.copy';
 export { ReturnDeclineAction } from './components/return-decline-action';
 export { ReturnLineStateChip } from './components/return-line-state-chips';
 export { ReturnLinesTable } from './components/return-lines-table';

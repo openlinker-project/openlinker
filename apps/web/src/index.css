@@ -22295,6 +22295,67 @@ legend.analytics-settings-dialog__label {
   }
 }
 
+/* ── Orphan Returns Worklist (#3078/#3081) ──────────────────────────────── */
+.orphan-returns-worklist {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.orphan-returns-worklist__group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.orphan-returns-worklist__group-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.orphan-returns-worklist__group-description {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.orphan-returns-worklist__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.orphan-returns-worklist__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+/* A long `externalReturnId` must be allowed to wrap onto its own line rather
+   than compress the action beside it at phone width (tech-lead review on
+   #3280, SUGGESTION). `min-width: 0` is required for a flex child to actually
+   shrink/wrap instead of overflowing its flex line. */
+.orphan-returns-worklist__row .mono-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The global `≥ 44px` tap-target rule is keyed on `(hover: none) and
+   (pointer: coarse)` — a real phone gets it, a narrow desktop window does not
+   — so this branch raises the row's one control at any viewport width, the
+   `.price-changes-queue` precedent (tech-lead review on #3280, SUGGESTION). */
+@media (max-width: 767px) {
+  .orphan-returns-worklist__row .button {
+    min-height: 44px;
+  }
+}
+
 /* The one horizontal member of the family: a chip and the sentence that says
    OpenLinker is not following the axis yet read as one statement, so they sit
    on a line together and wrap as a unit. */
