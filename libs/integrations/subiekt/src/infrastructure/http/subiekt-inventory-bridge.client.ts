@@ -16,10 +16,12 @@
  * @module libs/integrations/subiekt/src/infrastructure/http
  */
 import type { FetchLike } from '@openlinker/shared/http';
+import { SubiektRejectedError } from '../../bridge/subiekt-bridge.errors';
 import {
-  SubiektBridgeUnreachableError,
-  SubiektRejectedError,
-} from '../../bridge/subiekt-bridge.errors';
+  extractErrorCode,
+  classifyRetryability,
+  SubiektBridgeUnreachableWithPhaseError,
+} from '../../bridge/subiekt-transport-retryability';
 import type {
   BridgeInventoryAdjustRequest,
   BridgeInventoryAdjustResponse,
@@ -107,8 +109,14 @@ export class SubiektInventoryBridgeClient {
         signal: controller.signal,
       });
     } catch (error) {
-      throw new SubiektBridgeUnreachableError(
-        error instanceof Error ? error.message : 'Subiekt inventory bridge is unreachable',
+      // Transport-level failure — never reached the bridge's business layer.
+      // Classify retryability (#2348 audit B2) rather than throwing bare, or
+      // the fiscal-safety-oriented retry classifier treats every transient
+      // blip as non-retryable and kills the job on attempt 1.
+      const code = extractErrorCode(error);
+      throw new SubiektBridgeUnreachableWithPhaseError(
+        `Subiekt inventory bridge is unreachable (${code ?? 'unknown'})`,
+        classifyRetryability(code),
       );
     } finally {
       clearTimeout(timer);
@@ -122,10 +130,14 @@ export class SubiektInventoryBridgeClient {
     try {
       envelope = (await response.json()) as BridgeResponseEnvelope<T>;
     } catch (error) {
-      throw new SubiektBridgeUnreachableError(
+      // The response WAS received (past the transport catch above) but
+      // couldn't be parsed — the write may or may not have landed, so this
+      // stays 'indeterminate' rather than 'safe'.
+      throw new SubiektBridgeUnreachableWithPhaseError(
         `Subiekt inventory bridge returned an unparseable response: ${
           error instanceof Error ? error.message : String(error)
         }`,
+        'indeterminate',
       );
     }
 

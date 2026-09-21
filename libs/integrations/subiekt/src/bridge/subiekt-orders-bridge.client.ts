@@ -13,10 +13,12 @@
  * @module libs/integrations/subiekt/bridge
  */
 import type { FetchLike } from '@openlinker/shared/http';
+import { SubiektRejectedError } from './subiekt-bridge.errors';
 import {
-  SubiektBridgeUnreachableError,
-  SubiektRejectedError,
-} from './subiekt-bridge.errors';
+  extractErrorCode,
+  classifyRetryability,
+  SubiektBridgeUnreachableWithPhaseError,
+} from './subiekt-transport-retryability';
 import { SubiektBridgeAuthError } from '../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektConfigException } from '../domain/exceptions/subiekt-config.exception';
 import { isBridgeUrlSafe } from '../infrastructure/http/subiekt-url-safety';
@@ -25,6 +27,8 @@ import type {
   BridgeCreateOrderResponse,
   BridgeOrderDetailResponse,
   BridgeOrderFeedResponse,
+  BridgeWriteShippingRequest,
+  BridgeWriteShippingResponse,
 } from './subiekt-bridge-orders.types';
 
 export interface SubiektOrdersBridgeClientOptions {
@@ -71,8 +75,22 @@ export class SubiektOrdersBridgeClient {
     return this.getJson<BridgeOrderDetailResponse>(`/api/orders/${encodeURIComponent(id)}`);
   }
 
+  async writeShipping(
+    id: string,
+    req: BridgeWriteShippingRequest,
+  ): Promise<BridgeWriteShippingResponse> {
+    return this.putJson<BridgeWriteShippingResponse>(
+      `/api/orders/${encodeURIComponent(id)}/shipping`,
+      req,
+    );
+  }
+
   private async postJson<T>(path: string, body: unknown): Promise<T> {
     return this.request<T>(path, { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  private async putJson<T>(path: string, body: unknown): Promise<T> {
+    return this.request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
   }
 
   private async getJson<T>(path: string): Promise<T> {
@@ -98,8 +116,13 @@ export class SubiektOrdersBridgeClient {
         redirect: 'manual',
       });
     } catch (error) {
-      throw new SubiektBridgeUnreachableError(
-        `Subiekt orders bridge unreachable: ${(error as Error).message}`,
+      // Transport-level failure — classify retryability (#2348 audit B2) so a
+      // transient blip enters the normal retry ladder instead of dying on
+      // attempt 1, same fix as the sibling Inventory bridge client.
+      const code = extractErrorCode(error);
+      throw new SubiektBridgeUnreachableWithPhaseError(
+        `Subiekt orders bridge unreachable (${code ?? 'unknown'})`,
+        classifyRetryability(code),
       );
     } finally {
       clearTimeout(timer);
@@ -113,8 +136,11 @@ export class SubiektOrdersBridgeClient {
     try {
       envelope = (await response.json()) as typeof envelope;
     } catch {
-      throw new SubiektBridgeUnreachableError(
+      // Response received but unparseable — the write may or may not have
+      // landed, so this stays 'indeterminate'.
+      throw new SubiektBridgeUnreachableWithPhaseError(
         `Subiekt orders bridge returned a non-JSON response (status ${response.status})`,
+        'indeterminate',
       );
     }
 

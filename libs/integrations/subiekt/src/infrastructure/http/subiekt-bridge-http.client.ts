@@ -33,10 +33,7 @@
 import { Logger } from '@openlinker/shared/logging';
 import type { FetchLike } from '@openlinker/shared/http';
 import type { SubiektBridgeClient } from '../../bridge/subiekt-bridge.client';
-import {
-  SubiektBridgeUnreachableError,
-  SubiektRejectedError,
-} from '../../bridge/subiekt-bridge.errors';
+import { SubiektRejectedError } from '../../bridge/subiekt-bridge.errors';
 import type {
   BridgeInvoiceStatusRequest,
   BridgeInvoiceStatusResponse,
@@ -53,35 +50,13 @@ import type {
   BridgeUpsertCustomerResponse,
 } from '../../bridge/subiekt-bridge.types';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
-import type { SubiektTransportRetryability } from '../../domain/types/subiekt-transport-retryability.types';
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { isBridgeUrlSafe } from './subiekt-url-safety';
-
-/**
- * Node error codes that PROVE the request never left the host (connect-refused
- * / DNS-failure). Only these are classified `'safe'` — auto-retry cannot
- * double-issue a fiscal document. Everything else is `'indeterminate'`.
- */
-const SAFE_RETRY_CODES = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN']);
-
-/** Extract a `cause.code` string from an unknown thrown value, if present. */
-function extractErrorCode(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null) return undefined;
-  const cause = (error as { cause?: unknown }).cause;
-  if (typeof cause === 'object' && cause !== null) {
-    const code = (cause as { code?: unknown }).code;
-    if (typeof code === 'string') return code;
-  }
-  // AbortError surfaces via `name` rather than a cause code.
-  const name = (error as { name?: unknown }).name;
-  if (name === 'AbortError') return 'ABORT';
-  return undefined;
-}
-
-/** Map a raw fetch error code to the fiscal-safety retryability phase. */
-function classifyRetryability(code: string | undefined): SubiektTransportRetryability {
-  return code !== undefined && SAFE_RETRY_CODES.has(code) ? 'safe' : 'indeterminate';
-}
+import {
+  classifyRetryability,
+  extractErrorCode,
+  SubiektBridgeUnreachableWithPhaseError,
+} from '../../bridge/subiekt-transport-retryability';
 
 /**
  * Bridge REST surface, reconciled against the live bridge's minimal-API routes
@@ -138,23 +113,6 @@ export interface SubiektBridgeHttpClientOptions {
    * constructor note for why this stays optional for now.
    */
   fetchImpl?: FetchLike;
-}
-
-/**
- * Client-private subclass of the frozen unreachable error that carries the
- * retryability phase across the frozen-error boundary. IS-A
- * `SubiektBridgeUnreachableError`, so contract-suite / `instanceof` checks and
- * the fake remain valid. NOT exported from the package barrel.
- */
-export class SubiektBridgeUnreachableWithPhaseError extends SubiektBridgeUnreachableError {
-  readonly retryability: SubiektTransportRetryability;
-
-  constructor(message: string, retryability: SubiektTransportRetryability) {
-    super(message);
-    this.name = 'SubiektBridgeUnreachableWithPhaseError';
-    this.retryability = retryability;
-    Error.captureStackTrace(this, this.constructor);
-  }
 }
 
 export class SubiektBridgeHttpClient implements SubiektBridgeClient {
