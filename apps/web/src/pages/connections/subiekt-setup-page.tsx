@@ -12,7 +12,7 @@ export function SubiektSetupPage(): ReactElement {
     <PageLayout
       eyebrow="Integrations"
       title="Connect Subiekt"
-      description="Point OpenLinker at your OpenLinker Sfera bridge. OpenLinker uses it to issue invoices in Subiekt nexo for your orders."
+      description="Point OpenLinker at your OpenLinker Sfera bridge. OpenLinker uses it to issue invoices in Subiekt GT for your orders."
       summary={
         <div className="toolbar__group">
           <span className="toolbar-chip">Sfera bridge</span>

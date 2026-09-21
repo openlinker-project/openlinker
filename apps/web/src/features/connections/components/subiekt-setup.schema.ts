@@ -2,7 +2,7 @@
  * Subiekt Setup Form Schema
  *
  * Zod schema + form → API payload mapping for the guided Subiekt connection
- * wizard (#1199). Subiekt nexo is reached through the OpenLinker Sfera bridge —
+ * wizard (#1199). Subiekt GT is reached through the OpenLinker Sfera bridge —
  * a LAN service — so the operator supplies the bridge base URL (`http` allowed,
  * the bridge is local) and, optionally, a shared bridge token for a hardened
  * deployment. `timeoutMs` is an optional advanced override.
@@ -71,7 +71,11 @@ export function toCreateConnectionInput(
     adapterKey: SUBIEKT_ADAPTER_KEY,
     config,
     // enabledCapabilities OMITTED on purpose — `ConnectionService.create`
-    // defaults to the adapter manifest's supported set (`['Invoicing']`).
+    // defaults to the adapter manifest's full supported-capability set
+    // (Invoicing included), since Subiekt declares no
+    // `defaultEnabledCapabilities` override (#3350) — only a manifest that
+    // needs a NARROWER default (eparagony's dual invoicing/fiscalization
+    // wizard) declares one.
   };
 
   // Optional shared bridge token — only sent when the operator provides one

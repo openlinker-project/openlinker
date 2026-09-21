@@ -648,21 +648,24 @@ export class ConnectionService implements IConnectionService {
       // preserves the "publish-only unless the operator asks" posture.
       // Marketplace manifests (no InventoryMaster) keep the full default set.
       //
-      // The same shape applies to a dual-role fiscal connection (#3192
-      // review, I1): the guided wizard for a manifest declaring both
-      // `Fiscalization` and `Invoicing` (eparagony) collects only the
-      // receipts-lane config, so omitting `enabledCapabilities` must not
-      // silently grant the invoicing lane too — that is exactly the
-      // #2610 rule that server-side validation cannot live only in the
-      // browser, since the raw config-JSON editor, curl and MCP all bypass
-      // it. `Invoicing` is opt-in, mirroring the OfferManager carve-out.
-      const defaultCapabilities = (
-        metadata.supportedCapabilities.includes('InventoryMaster')
-          ? metadata.supportedCapabilities.filter((c) => c !== 'OfferManager')
-          : [...metadata.supportedCapabilities]
-      ).filter(
-        (c) => !(c === 'Invoicing' && metadata.supportedCapabilities.includes('Fiscalization'))
-      );
+      // A dual-lane manifest (declaring BOTH `Invoicing` and `Fiscalization`)
+      // gets its own default via `AdapterMetadata.defaultEnabledCapabilities`
+      // (#3350) rather than a generic "strip Invoicing" rule — that rule was
+      // built for eparagony's dual-lane wizard, which collects only the
+      // receipts-lane config, but fired for every OTHER dual-lane manifest
+      // too (live-reproduced for Subiekt, whose guided wizard is
+      // Invoicing-only and silently lost Invoicing from a fresh connection
+      // with no error anywhere). An adapter that wants a narrower default
+      // than "everything it supports minus the OfferManager carve-out"
+      // declares it explicitly; one that doesn't gets the sane fallback.
+      const defaultCapabilities =
+        metadata.defaultEnabledCapabilities !== undefined
+          ? metadata.defaultEnabledCapabilities.filter((c) =>
+              metadata.supportedCapabilities.includes(c)
+            )
+          : metadata.supportedCapabilities.includes('InventoryMaster')
+            ? metadata.supportedCapabilities.filter((c) => c !== 'OfferManager')
+            : [...metadata.supportedCapabilities];
       const enabledCapabilities = rest.enabledCapabilities ?? defaultCapabilities;
 
       const invalid = enabledCapabilities.filter(
