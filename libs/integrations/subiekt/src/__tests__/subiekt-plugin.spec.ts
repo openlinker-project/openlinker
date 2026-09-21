@@ -61,16 +61,29 @@ describe('createSubiektPlugin', () => {
       configRegister: jest.Mock;
       testerRegister: jest.Mock;
       retryClassifierRegister: jest.Mock;
+      authFailureClassifierRegister: jest.Mock;
+      schedulerTaskRegister: jest.Mock;
     } {
       const configRegister = jest.fn();
       const testerRegister = jest.fn();
       const retryClassifierRegister = jest.fn();
+      const authFailureClassifierRegister = jest.fn();
+      const schedulerTaskRegister = jest.fn();
       const host = {
         connectionConfigShapeValidatorRegistry: { register: configRegister },
         connectionTesterRegistry: { register: testerRegister },
         retryClassifierRegistry: { register: retryClassifierRegister },
+        authFailureClassifierRegistry: { register: authFailureClassifierRegister },
+        schedulerTaskRegistry: { register: schedulerTaskRegister },
       } as unknown as HostServices;
-      return { host, configRegister, testerRegister, retryClassifierRegister };
+      return {
+        host,
+        configRegister,
+        testerRegister,
+        retryClassifierRegister,
+        authFailureClassifierRegister,
+        schedulerTaskRegister,
+      };
     }
 
     it('registers the config-shape validator under the adapterKey', () => {
@@ -99,6 +112,27 @@ describe('createSubiektPlugin', () => {
       expect(retryClassifierRegister).toHaveBeenCalledWith(
         subiektAdapterManifest.adapterKey,
         expect.anything(),
+      );
+    });
+
+    it('registers the auth-failure classifier under the adapterKey (#3358)', () => {
+      const { host, authFailureClassifierRegister } = makeRegisterHost();
+      createSubiektPlugin().register?.(host);
+      expect(authFailureClassifierRegister).toHaveBeenCalledWith(
+        subiektAdapterManifest.adapterKey,
+        expect.anything(),
+      );
+    });
+
+    it('registers the bridge reachability sweep scheduler task (#3358)', () => {
+      const { host, schedulerTaskRegister } = makeRegisterHost();
+      createSubiektPlugin().register?.(host);
+      expect(schedulerTaskRegister).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 'subiekt-bridge-reachability-sweep',
+          platformType: 'subiekt',
+          jobType: 'subiekt.bridge.reachabilitySweep',
+        }),
       );
     });
   });

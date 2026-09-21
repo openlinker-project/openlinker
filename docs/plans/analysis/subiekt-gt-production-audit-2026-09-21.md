@@ -62,17 +62,17 @@ Updated per item as each phase lands — see the linked epic + child issues for 
 
 | Item | Status | PR / commit | Verified how |
 |---|---|---|---|
-| B1 | pending | | |
-| B2 | pending | | |
-| B3 | pending | | |
-| B4 | pending | | |
-| B5 | pending | | |
-| B6 | pending | | |
-| B7 | pending | | |
+| B1 | fixed | 006ed156d (TS) + bridge Sfera.cs/OrdersEndpoints.cs | type-check+unit tests green; E2E retest pending |
+| B2 | fixed | 0a55ad8c2 | type-check+unit tests green; E2E bridge-restart retest pending |
+| B3 | fixed | 006ed156d | type-check+unit tests green; E2E retest pending |
+| B4 | fixed | 3cb820b0d | live-reproduced bug, fix type-checks; new-connection E2E retest pending |
+| B5 | fixed | b51cdd186 (bridge Invoicing.cs/Program.cs + TS mapper) | GT's 9-value StatusKSeF now correctly splits not-yet-sent (1,2)/comms-error (8) into `'pending-submission'` instead of a premature `'submitted'`; type-check+unit tests green; E2E retest pending |
+| B6 | fixed | b51cdd186 | `KsefNumer` now extracted+threaded through issue/status bridge responses into `clearanceReference`; type-check+unit tests green; E2E retest pending |
+| B7 | fixed | bridge ProductsEndpoints.cs | code fix only; E2E barcode-read retest pending |
 | B8 | pending | | |
-| B9 | pending | | |
-| B10 | pending | | |
-| G2 | pending | | |
-| G3 | pending | | |
-| G6 | pending | | |
-| G7 | pending | | |
+| B9 | fixed | 3cb820b0d | all "Subiekt nexo" strings + test assertion updated, web tests green |
+| B10 | fixed | 006ed156d | unit test added and green |
+| G2 | fixed | 6f2332fbd (bridge ProductsEndpoints.cs + TS `ProductTaxRateReader`) | live-confirmed VAT column `tw_IdVatSp`→`sl_StawkaVAT`; type-check+unit tests green; Net Sales retest pending |
+| G3 | fixed | this commit — `SubiektAuthFailureClassifierAdapter` + `subiekt.bridge.reachabilitySweep` job/handler/scheduler task | no external alert channel exists in the product (none built, by design — see epic body); reachability now produces a structured `subiekt_bridge_reachability_sweep_failed` log line every 5 min + flips the connection via the auth-failure classifier on a 401/403; type-check+unit tests green (worker: 58 suites/765 tests; subiekt: 21 suites/278 tests); deliberate-outage E2E retest pending |
+| G6 | fixed | c4b7a622e | root-caused: native `SubiektOrderSourceAdapter` reported `productRef.type:'sku'` but `ProductMaster` sync only ever creates `CORE_ENTITY_TYPE.Product` mappings keyed by symbol — corrected to `'product'`; type-check+unit tests green; E2E retest pending |
+| G7 | fixed | DB cleanup (raw SQL) | orphaned reporting_currency_setting row + throwaway audit connection deleted |

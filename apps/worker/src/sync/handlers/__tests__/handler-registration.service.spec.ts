@@ -3,7 +3,10 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (16 realtime / 30 bulk / 5 fiscal / 7 fan-out across 58 job types —
+ * table (16 realtime / 31 bulk / 5 fiscal / 7 fan-out across 59 job types —
+ * `subiekt.bridge.reachabilitySweep` joined `bulk` with #3358: it re-probes a
+ * Subiekt connection's own reachability on a cron, nobody is waiting on any
+ * one tick of it, and a late check costs nothing beyond a delayed log line;
  * `fiscalization.register` joined `fiscal` post-ADR, #2156;
  * `inventory.provenance.backfill` joined `bulk` with #2317; the three returns
  * types joined realtime/bulk/fan-out with #2330; `returns.orphan.reconcile`
@@ -54,7 +57,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 58 job types 16/30/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 59 job types 16/31/5/7 per ADR-050 decision 1', () => {
     // 16: three of the FIVE fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
@@ -119,7 +122,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // wave (#3145/#3148) — the operator-wave shape decision 1 assigns to
     // `bulk`, not the single-item "someone is waiting on this" shape
     // `realtime` is for.
-    expect(registry.getJobTypesByLane('bulk')).toHaveLength(30);
+    expect(registry.getJobTypesByLane('bulk')).toHaveLength(31);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
   });
