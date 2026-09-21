@@ -51,18 +51,19 @@ import type { NavCounts } from './hooks/use-nav-counts';
  * used to describe wrongly is now one the compiler refuses. See that type for
  * what to do when a second role genuinely needs group-level gating.
  *
- * The backend's `UserRoleValues` also carries `'viewer'`, deliberately absent
- * here — viewer-only UI behaviour is resolved elsewhere (e.g. `app-shell.tsx`'s
- * own `isViewerOnly` check against `session.user.role` directly). Add it here
- * only when a nav gate actually needs to name it. **There is already a known
- * consumer waiting**: `packer` appears in `@Roles(...)` on exactly the three
- * bench controllers, so a packer sees every other entry in the ungated
- * `Operations` group and 403s on each one. The per-item remedy is
- * `requiresRole: ['admin', 'operator', 'viewer']` on those entries, which this
- * union cannot yet express — tracked against epic #3104, and recorded here so
- * the next reader does not re-derive it.
+ * The backend's `UserRoleValues` also carries `'viewer'` (#3221) — added here
+ * because the per-item `requiresRole` gate (#3108) needed to name it: `packer`
+ * appears in `@Roles(...)` on exactly the three bench controllers, so a packer
+ * sees every other entry in the ungated `Operations` group and 403s on the six
+ * whose primary read excludes it (Analytics, Insights, Orders, Customers,
+ * Fulfilment, Invoices — see `nav-registry.ts`'s `requiresRole: ['admin',
+ * 'operator', 'viewer']` declarations). `viewer`-only UI behaviour that is NOT
+ * a nav-item gate is still resolved elsewhere (e.g. `app-shell.tsx`'s own
+ * `isViewerOnly` check against `session.user.role` directly) — this union is
+ * scoped to what a nav gate needs to express, not a mirror of the backend's
+ * full role vocabulary.
  */
-export const RoleValues = ['admin', 'operator', 'packer'] as const;
+export const RoleValues = ['admin', 'operator', 'packer', 'viewer'] as const;
 export type Role = (typeof RoleValues)[number];
 
 /**

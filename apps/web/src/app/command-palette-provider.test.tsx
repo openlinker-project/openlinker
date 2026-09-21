@@ -253,4 +253,30 @@ describe('CommandPaletteProvider', () => {
       expect(screen.queryByText('Pack bench')).toBeNull();
     });
   });
+
+  // #3221 — the same item-level `requiresRole` gate #3108 built for
+  // "Pack bench" is applied to the six Operations entries whose primary API
+  // read excludes `packer` (Analytics, Insights, Orders, Customers,
+  // Fulfilment, Invoices). Both the sidebar (`nav-registry.test.ts`) and ⌘K
+  // read the shared `isNavItemVisible`, but ⌘K used to have no role check at
+  // all — the issue names this as the "documented bypass" a sidebar-only
+  // test would leave open, so it is asserted here too.
+  describe('packer role-gated Operations entries (#3221)', () => {
+    it('does not show a role-gated entry for a packer session', async () => {
+      renderPalette(userWithRole('packer'));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      // A visible, non-gated item confirms the whole provider has settled
+      // (see the #3108 note above) before asserting the gated one's absence.
+      await screen.findByText('Pack bench');
+      expect(screen.queryByText('Orders')).toBeNull();
+      expect(screen.queryByText('Invoices')).toBeNull();
+    });
+
+    it('shows the role-gated entries for an operator session', async () => {
+      renderPalette(userWithRole('operator'));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      expect(await screen.findByText('Orders')).toBeInTheDocument();
+      expect(screen.getByText('Invoices')).toBeInTheDocument();
+    });
+  });
 });

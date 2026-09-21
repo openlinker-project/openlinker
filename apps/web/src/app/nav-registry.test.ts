@@ -125,6 +125,73 @@ describe('buildNavGroups', () => {
     });
   });
 
+  // #3221 — a packer sees Operations nav entries whose primary API read
+  // 403s. Six entries (Analytics, Insights, Orders, Customers, Fulfilment,
+  // Invoices) had their reads gated `@Roles('admin', 'operator', 'viewer')`
+  // and no item-level `requiresRole` to hide the affordance; the item-level
+  // gate #3108 built for "Pack bench" is applied to those six here.
+  describe('packer role-gated Operations entries (#3221)', () => {
+    // Named explicitly rather than as a count, per the issue's own
+    // acceptance criterion — a count would still pass if the WRONG five
+    // items were visible.
+    const PACKER_VISIBLE_OPERATIONS_ITEMS = [
+      'Products',
+      'Listings',
+      'Shipments',
+      'Returns',
+      'Pack bench',
+    ];
+    const PACKER_HIDDEN_OPERATIONS_ITEMS = [
+      'Analytics',
+      'Insights',
+      'Orders',
+      'Customers',
+      'Fulfilment',
+      'Invoices',
+      // Already hidden pre-#3221 via the permission gate (#2358 review I5) —
+      // included here so this test is a complete inventory of the group.
+      'Automations',
+    ];
+
+    it('sees exactly the unblocked Operations entries', () => {
+      const groups = buildNavGroups({ isAdmin: false, demoMode: false, role: 'packer' });
+      const labels = itemLabels(byLabel(groups, 'Operations'));
+
+      for (const label of PACKER_VISIBLE_OPERATIONS_ITEMS) {
+        expect(labels).toContain(label);
+      }
+      for (const label of PACKER_HIDDEN_OPERATIONS_ITEMS) {
+        expect(labels).not.toContain(label);
+      }
+    });
+
+    // Every one of the six newly `requiresRole`-gated items admits
+    // `admin`/`operator`/`viewer` — no item is hidden from a role that could
+    // already open it, the acceptance criterion's own wording.
+    it.each(['Analytics', 'Insights', 'Orders', 'Customers', 'Fulfilment', 'Invoices'])(
+      '%s is visible to admin, operator, and viewer',
+      (label) => {
+        for (const role of ['admin', 'operator', 'viewer']) {
+          const groups = buildNavGroups({ isAdmin: role === 'admin', demoMode: false, role });
+          expect(itemLabels(byLabel(groups, 'Operations'))).toContain(label);
+        }
+      },
+    );
+
+    // The pre-existing items (never role-gated by #3221) are unaffected —
+    // pinned separately from the "visible to packer" set above, which
+    // already asserts them, so a regression there fails at the right test.
+    it.each(['Products', 'Listings', 'Shipments', 'Returns'])(
+      '%s is unaffected — still visible to every authenticated role',
+      (label) => {
+        for (const role of ['admin', 'operator', 'viewer', 'packer']) {
+          const groups = buildNavGroups({ isAdmin: role === 'admin', demoMode: false, role });
+          expect(itemLabels(byLabel(groups, 'Operations'))).toContain(label);
+        }
+      },
+    );
+  });
+
   // #3108 review — the visibility RULE was shared but its INPUT was spelled
   // twice, and not identically: the shell had an extra `isReady &&` the palette
   // did not. `navRoleOf` is the one derivation both now call.
