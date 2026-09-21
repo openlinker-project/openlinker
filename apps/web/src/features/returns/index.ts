@@ -84,6 +84,24 @@ export {
 export { ReturnDetailUnreadableError } from './api/return-detail.schema';
 export { useReturnQuery } from './hooks/use-return-query';
 export { useDeclineReturnMutation } from './hooks/use-decline-return-mutation';
+
+// ── Orphan/manual-return writes (#2372/#2376, #3079) ────────────────────────
+export type {
+  AuthorizeReturnOutcome,
+  AuthorizeReturnResult,
+  MatchReturnToOrderInput,
+  MatchReturnToOrderResult,
+  RecordReturnInput,
+  RecordReturnLineInput,
+  RecordReturnResult,
+} from './api/returns.types';
+export { AUTHORIZE_RETURN_OUTCOME_VALUES, isAuthorizeReturnOutcome } from './api/returns.types';
+// Public for the same reason `ReturnDetailUnreadableError` is above: a caller
+// needs to tell "the write may have landed, we just could not read the
+// result" apart from an ordinary network/validation failure.
+export { ReturnWriteResultUnreadableError } from './api/return-write.schema';
+// The three mutation hooks over these writes are #3080 — added to this
+// section on that branch, not here.
 export { ReturnDeclineAction } from './components/return-decline-action';
 export { ReturnLineStateChip } from './components/return-line-state-chips';
 export { ReturnLinesTable } from './components/return-lines-table';
