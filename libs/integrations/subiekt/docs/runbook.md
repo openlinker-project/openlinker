@@ -1,6 +1,6 @@
-# Subiekt nexo — operator runbook
+# Subiekt GT — operator runbook
 
-Operational reference for the Subiekt nexo integration. For the step-by-step setup see the
+Operational reference for the Subiekt GT integration. For the step-by-step setup see the
 [setup guide](./setup-guide.md).
 
 ---
@@ -8,8 +8,12 @@ Operational reference for the Subiekt nexo integration. For the step-by-step set
 ## Architecture at a glance
 
 OpenLinker → (HTTPS + Bearer) → **Subiekt Bridge** (`openlinker-subiekt`, .NET 8, on the
-Windows box next to Subiekt) → Sfera SDK → **Subiekt nexo**. Adapter key
-`subiekt.invoicing.v1`, capability `Invoicing`.
+Windows box next to Subiekt) → Sfera GT (COM automation, ProgID `InsERT.GT`) →
+**Subiekt GT**. Adapter key `subiekt.invoicing.v1`, capability `Invoicing`.
+
+Sfera GT is the classic COM automation surface InsERT GT products expose (ProgID
+`InsERT.GT`) — it is **not** the same thing as the separate .NET Sfera SDK
+(`InsERT.Moria.Sfera`), which targets Subiekt nexo and is unrelated to this bridge.
 
 ---
 
@@ -18,28 +22,43 @@ Windows box next to Subiekt) → Sfera SDK → **Subiekt nexo**. Adapter key
 | Field (wizard) | Config key | Notes |
 |---|---|---|
 | Bridge URL | `config.bridgeBaseUrl` | `https://<host>:5005` — **no** `/api` suffix. |
-| Bridge token | credential `bridgeToken` | == bridge `Auth__ApiKey`; sent as `Authorization: Bearer` (the only header the bridge checks — a redundant `x-bridge-token` header is also sent but ignored). Stored encrypted. |
+| Bridge token | credential `bridgeToken` | Basic-auth credential pair for general endpoints, sent as `Authorization: Bearer` (the only header the bridge checks — a redundant `x-bridge-token` header is also sent but ignored). Invoicing endpoints use a **separate** bearer/`x-token` value. Both are fixed values configured on the bridge — consult the bridge operator for the actual values used in your deployment. Stored encrypted. |
 | Request timeout | `config.timeoutMs` | optional, 1000–120000 ms. |
 | Trigger model | `config.invoicing.triggerModel` | `manual` \| `auto-on-paid` \| `auto-on-shipped` \| `batched`. |
 
 ## Bridge configuration (Windows)
 
-Secrets go in **environment variables**, never in `appsettings*.json`:
-`Auth__ApiKey`, `Sfera__NexoPassword`, `Sfera__SqlPassword`, `Tls__CertPassword`.
+The bridge is launched by double-clicking (or running from `cmd`) `start-bridge.bat`, which
+keeps a console window open for the life of the process. **There is no process supervision**:
+no Windows Service, no auto-restart, no crash recovery. Closing the console window — or the
+window closing on a crash — stops the bridge, and nothing brings it back automatically. Recovery
+means an operator physically or remotely re-running `start-bridge.bat`.
 
-- **Bind / TLS.** Loopback by default. A non-loopback listener **requires** an `https://`
-  URL (`ASPNETCORE_URLS=https://0.0.0.0:5005`) plus a cert in the `Tls` section, **and**
-  `Auth.Enabled=true` with a non-empty key — otherwise the bridge refuses to start
-  (fail-closed). Or terminate TLS at a reverse proxy and bind to loopback.
-- **Firewall.** Open inbound TCP on the bridge port (default `5005`).
+The bridge listens on two ports:
+
+- **5055 (HTTPS, self-signed cert)** — the port OpenLinker talks to.
+- **5056 (plain HTTP)** — used only so a browser or image-fetcher can reach the bridge without
+  cert-trust issues.
+
+Auth is two fixed, hardcoded credentials baked into the bridge (`Program.cs`), not environment
+variables: a Basic-auth username/password pair for general endpoints, and a separate
+Bearer/`x-token` value for invoicing endpoints specifically. Consult the bridge operator for the
+actual values used in your deployment.
+
+The one real environment variable the bridge reads is `OL_BRIDGE_PUBLIC_BASE` (defaults to
+`http://host.docker.internal:5056`) — it controls how image URLs the bridge returns are
+resolved, since OpenLinker and Allegro fetch those images from outside the bridge machine's own
+loopback.
+
+- **Firewall.** Open inbound TCP on the bridge ports (5055 for OpenLinker, 5056 if
+  browser/image access is needed from elsewhere).
 - **Auth.** `/health` is anonymous; every `/api/*` route requires the Bearer token (401 otherwise).
 
 ## <a name="license"></a>License note
 
-The bridge works only through **Sfera for Subiekt nexo**. The demo/test database has Sfera
-built in (so the trial works out of the box); a **purchased** Subiekt nexo needs the
-**paid Sfera add-on** — without an active Sfera licence the bridge's `Połącz()`/`Zaloguj()`
-calls fail. Confirm the licence and session limits with InsERT / your partner before going live.
+The bridge automates Subiekt GT through Sfera GT (COM `InsERT.GT`) — this requires a Subiekt GT
+installation with COM automation available. Confirm licensing and session limits with InsERT /
+your partner before going live.
 
 ---
 
@@ -47,14 +66,14 @@ calls fail. Confirm the licence and session limits with InsERT / your partner be
 
 | Subiekt | Status |
 |---|---|
-| **nexo PRO** | ✅ Full support (Sfera ships with the package). |
-| **nexo (vanilla)** | ⚠️ Best-effort — depends on Sfera availability in the licence. |
-| **GT** | ❌ Not supported in v1 (a separate bridge would be required). |
+| **GT** | ✅ Full support — driven via Sfera GT (COM automation, ProgID `InsERT.GT`). Verified live against InsERT GT 1.89 SP1. |
+| **nexo** | ❌ Not supported by this integration (a different bridge, targeting the .NET Sfera SDK, would be required). |
 
 | Component | Verified |
 |---|---|
 | Bridge runtime | .NET 8 (`net8.0-windows`) |
 | OpenLinker adapter | `subiekt.invoicing.v1` |
+| Subiekt GT | InsERT GT 1.89 SP1 |
 | Order source (example) | PrestaShop 9.0.2 webservice |
 
 ---
@@ -93,10 +112,10 @@ for that hardware/driver before relying on the receipt path live.
 
 | Symptom | Cause / fix |
 |---|---|
-| Connection test / `/api/*` → **401** | Wrong/missing Bearer — the OpenLinker bridge token must equal the bridge `Auth__ApiKey`. |
-| Bridge **refuses to start** (`non-localhost requires https`) | Network listener without TLS — set `Tls:CertPath` (+ `Tls__CertPassword`) or use a reverse proxy on loopback. |
-| Bridge crashes loading the cert (`CryptographicException`) | `dev-cert.pfx` password ≠ `Tls__CertPassword` — regenerate with `dotnet dev-certs https -ep dev-cert.pfx -p <pwd>` using the same password. |
-| OpenLinker can't reach the bridge (timeout) | Firewall not open on the bridge port, or `bridgeBaseUrl` wrong (must be `https://…`, no `/api`). |
+| Connection test / `/api/*` → **401** | Wrong/missing Bearer — the OpenLinker bridge token must equal the fixed credential configured on the bridge (general endpoints use the Basic-auth pair; invoicing endpoints use the separate bearer/`x-token` value). |
+| Bridge is down / unreachable (outage) | **There is no auto-restart** — `start-bridge.bat` keeps a console window open, and closing it (or a crash) stops the bridge with nothing to bring it back. Recovery is manual: an operator must physically or remotely re-run `start-bridge.bat`. As of #3358 a periodic reachability sweep (every 5 minutes) logs a structured `subiekt_bridge_reachability_sweep_failed` line on the worker when the bridge can't be reached, so an operator watching worker logs (or a log-based alert they configure themselves — OpenLinker ships no built-in alerting/Slack/PagerDuty integration) can detect an outage faster than waiting for a failed sync job. |
+| OpenLinker can't reach the bridge (timeout) | Firewall not open on the bridge port (5055 for OpenLinker traffic), or `bridgeBaseUrl` wrong (must be `https://…:5055`, no `/api`). |
+| Image URLs from the bridge don't resolve outside the bridge machine | `OL_BRIDGE_PUBLIC_BASE` not set (or set to a loopback address) on the bridge — it must point to an address OpenLinker/Allegro can reach, defaulting to `http://host.docker.internal:5056`. |
 | Issue → 422 `Subiekt does not support document type "FV"/"PA"` | Send the neutral `invoice`/`receipt`, not the Polish wire codes. |
 | Issue → 422 `buyer details are unavailable` | The order has no usable address — ensure the order source hydrates the billing/shipping address. |
 | Issue → 422 `Invalid NIP checksum` | Buyer NIP is malformed — fix it (B2B) or issue without a NIP (paragon). |
@@ -111,3 +130,4 @@ for that hardware/driver before relying on the receipt path live.
 |---|---|
 | `config.invoicing.triggerModel = auto-on-paid` | Worker auto-enqueues issuance when an order is marked paid. |
 | Regulatory-status reconcile job | Periodically refreshes `regulatoryStatus` (KSeF) for issued documents. |
+| Bridge reachability sweep (#3358) | Every 5 minutes, the worker checks bridge reachability and logs `subiekt_bridge_reachability_sweep_failed` on failure — no built-in alerting, an operator must watch worker logs or wire their own alert on that log line. |

@@ -1,9 +1,9 @@
-# Subiekt nexo — integration setup guide
+# Subiekt GT — integration setup guide
 
-Issue **invoices** (faktura) and **receipts** (paragon) in **Subiekt nexo** for the
+Issue **invoices** (faktura) and **receipts** (paragon) in **Subiekt GT** for the
 orders OpenLinker ingests from your shop or marketplace. OpenLinker never talks to
-Subiekt directly — it goes through the **OpenLinker Sfera bridge**, a small .NET
-service you run on the Windows machine where Subiekt nexo is installed.
+Subiekt directly — it goes through the **OpenLinker Subiekt bridge**, a small .NET
+service you run on the Windows machine where Subiekt GT is installed.
 
 > **What you get:** the `Invoicing` capability for a Subiekt connection — issue a
 > document for an order (manual, from the order screen, or auto-on-paid), track its
@@ -14,18 +14,20 @@ service you run on the Windows machine where Subiekt nexo is installed.
 ## How it works
 
 ```
-Shop / marketplace        OpenLinker                 Subiekt Bridge (Windows)      Subiekt nexo
-(orders)            →     (orchestrates)      →      (HTTPS + Bearer)        →     (Sfera SDK)
+Shop / marketplace        OpenLinker                 Subiekt Bridge (Windows)      Subiekt GT
+(orders)            →     (orchestrates)      →      (HTTPS + Bearer)        →     (Sfera GT / COM)
                           - connection of type            - translates to              - issues the
-                            "Subiekt nexo"                  Sfera business ops            real FS / PA
-                          - issues invoices for                                           document, numbering,
-                            ingested orders                                               KSeF
+                            "Subiekt GT"                    Sfera GT business ops        real FS / PA
+                          - issues invoices for                                          document, numbering,
+                            ingested orders                                              KSeF
 ```
 
-- **OpenLinker** holds a *connection* of type **Subiekt nexo** pointing at the bridge.
-- **The bridge** runs next to Subiekt on Windows, exposes an HTTPS API, and translates
-  OpenLinker's neutral invoice command into Sfera business operations.
-- **Subiekt nexo** issues the real document (faktura `FS …` / paragon `PA …`), assigns
+- **OpenLinker** holds a *connection* of type **Subiekt GT** pointing at the bridge.
+- **The bridge** runs next to Subiekt on Windows, exposes an HTTP(S) API, and translates
+  OpenLinker's neutral invoice command into **Sfera GT** business operations — classic COM
+  automation against Subiekt GT (COM ProgID `InsERT.GT`), **not** the separate .NET Sfera SDK
+  (`InsERT.Moria.Sfera`), which is a different, unrelated InsERT product/API.
+- **Subiekt GT** issues the real document (faktura `FS …` / paragon `PA …`), assigns
   the number, and handles KSeF.
 
 **Document type is driven by the buyer tax id:** an order issued **with** a buyer NIP
@@ -35,56 +37,65 @@ becomes a **faktura** (B2B); **without** one it becomes a **paragon** (B2C).
 
 ## Prerequisites
 
-1. **Windows machine with Subiekt nexo PRO + Sfera** (the Sfera SDK ships with the
-   demo/trial database; a purchased Subiekt nexo needs the paid Sfera add-on — see the
-   [runbook](./runbook.md#license)).
-2. **.NET 8 runtime** on that machine.
-3. **The bridge** — the
-   [`openlinker-subiekt-bridge`](https://github.com/openlinker-project/openlinker-subiekt-bridge)
-   repository. Build/run per its `docs/DEPLOYMENT.md`; the essentials are in
-   [Part A](#part-a--run-the-bridge-on-windows).
+1. **Windows machine with Subiekt GT and a Sfera GT license/component installed** — COM
+   automation (ProgID `InsERT.GT`) requires the Sfera GT add-on to be present and licensed
+   for the Subiekt GT installation. Verified against a live InsERT GT 1.89 SP1 installation.
+2. **.NET 8 runtime** on that machine (the bridge itself is a .NET service; it does *not*
+   need the .NET Sfera SDK — it drives Subiekt through COM).
+3. **The bridge** — the OpenLinker Subiekt bridge you build/run on the Windows machine. See
+   [Part A](#part-a--run-the-bridge-on-windows) for the essentials.
 4. **An order source connection** in OpenLinker — e.g. a **PrestaShop** connection — so
    there are orders to invoice. See [Connecting a platform](../../../../docs/user-guide/02-connecting-a-platform.md).
-5. **Network reachability:** OpenLinker must reach the bridge over **HTTPS**. On a LAN this
-   is the Windows host's address, e.g. `https://192.168.1.50:5005`.
+5. **Network reachability:** OpenLinker must reach the bridge over HTTP(S). On a LAN this
+   is the Windows host's address, e.g. `https://192.168.1.50:5055`.
+6. **No process supervision.** The bridge has no Windows Service wrapper and no
+   auto-restart — it runs as a foreground console process via its launcher script, and
+   closing that console window stops the bridge. Plan accordingly (e.g. leave the console
+   open on a machine that stays logged in, or wrap it in your own supervisor) — there is no
+   built-in equivalent to a service that restarts itself after a crash or reboot.
 
 ---
 
 ## Part A — Run the bridge on Windows
 
-Full detail lives in the bridge repo's `docs/DEPLOYMENT.md`. The essentials:
+1. **Launch the bridge** via its `.bat` launcher script (e.g. `start-bridge.bat`) — run it
+   directly, either by double-clicking it or from `cmd`. It builds and starts the bridge as
+   a **foreground console process**; the console window must stay open, and closing it stops
+   the bridge (there is no background service — see the prerequisites note above).
+2. **Ports.** The bridge listens on two ports:
+   - **5055 (HTTPS, self-signed certificate)** — the API OpenLinker talks to.
+   - **5056 (plain HTTP)** — used only so a browser or image-fetcher (OpenLinker, and
+     Allegro through it) can retrieve bridge-hosted images without having to trust the
+     self-signed cert.
+3. **`OL_BRIDGE_PUBLIC_BASE`.** The one environment variable the bridge reads. It defaults
+   to `http://host.docker.internal:5056` and is used to build the public URLs the bridge
+   returns for images — those URLs are fetched from *outside* the bridge machine (by
+   OpenLinker, and by Allegro through it), so they must never resolve to `localhost`. Set it
+   to a reachable address for your deployment if the default doesn't apply (e.g. OpenLinker
+   isn't running in a container on the same Docker host).
+4. **Authentication is fixed, not configured via environment variables.** The bridge ships
+   with:
+   - a **Basic-auth username/password pair** for its general (product/order/inventory)
+     endpoints, and
+   - a **separate bearer token** for the invoicing endpoints specifically (accepted as
+     either `Authorization: Bearer <token>` or an `x-bridge-token: <token>` header).
 
-1. **Configure** `appsettings.json` (or environment variables). Point Sfera at your
-   deployment and set the operator credentials:
-   - `Sfera.BinariesDir` / `ConfigDir` / `TempDir` →
-     `%LOCALAPPDATA%\InsERT\Deployments\Nexo\<deployment>\…`
-   - `Sfera.SqlServer`, `Sfera.SqlDatabase`, `Sfera.NexoUser`
-   - **Secrets go in environment variables, never in the file:** `Sfera__NexoPassword`,
-     `Sfera__SqlPassword`.
-2. **Authentication.** Set `Auth__ApiKey` (env) to a strong token. OpenLinker sends it as
-   `Authorization: Bearer <token>`. `/health` is anonymous.
-3. **TLS (required for network access).** A non-loopback listener must serve HTTPS.
-   - Dev: a self-signed cert — `dotnet dev-certs https -ep dev-cert.pfx -p <pwd>`, then
-     `Tls__CertPath` + `Tls__CertPassword`.
-   - Production: a real CA cert, or terminate TLS at a reverse proxy and bind the bridge
-     to loopback.
-4. **Firewall.** Allow inbound TCP on the bridge port (default `5005`).
-5. **Run** on a network address:
-   ```powershell
-   $env:ASPNETCORE_URLS = "https://0.0.0.0:5005"
-   dotnet run -c Release --project bridge\Subiekt.Bridge.Api
-   ```
-   The log should show `Now listening on: https://…:5005` and `Sfera: zalogowano`.
+   Both are hardcoded constants in the bridge, not read from an environment variable or
+   config file — consult the bridge operator/deployment owner for the actual values used in
+   your deployment, and configure the matching OpenLinker connection credentials
+   ([Part B](#part-b--connect-subiekt-in-openlinker)) to match.
+5. **Firewall.** Allow inbound TCP on the bridge ports (5055 and, if you need image
+   fetching to work, 5056).
 6. **Smoke-test** from the machine where OpenLinker runs:
    ```powershell
-   Invoke-RestMethod https://<bridge-host>:5005/health -SkipCertificateCheck
-   # → {"status":"ok","bridge":"up","sferaSession":"valid","subiekt":"reachable", …}
+   Invoke-RestMethod https://<bridge-host>:5055/health -SkipCertificateCheck
    ```
+   `/health` is anonymous (no auth required) and reports whether the bridge's Sfera GT
+   session is up and Subiekt is reachable.
 
-> A healthy bridge prints `Now listening on: https://…:5005` and a Sfera login line
-> (`Sfera: zalogowano`) on start, and `/health` returns
-> `{"status":"ok","bridge":"up","sferaSession":"valid","subiekt":"reachable"}`. OpenLinker's
-> **Test connection** (Part B) exercises this same `/health` probe end-to-end.
+> A healthy bridge's console shows it listening on both ports and logs a successful Sfera
+> GT session start. OpenLinker's **Test connection** (Part B) exercises the same `/health`
+> probe end-to-end.
 
 ---
 
@@ -95,9 +106,9 @@ connection**.
 
 ![OpenLinker connections list](./assets/06-ol-connections-list.png)
 
-Pick **Subiekt nexo** on the platform picker.
+Pick **Subiekt GT** on the platform picker.
 
-![Add-connection platform picker with the Subiekt nexo card](./assets/07-ol-platform-picker.png)
+![Add-connection platform picker with the Subiekt GT card](./assets/07-ol-platform-picker.png)
 
 Fill the wizard:
 
@@ -105,9 +116,10 @@ Fill the wizard:
 
 - **Connection name** — a label, e.g. `My Subiekt`.
 - **Bridge URL** — the bridge address, **without** `/api` (the adapter appends the paths),
-  e.g. `https://192.168.1.50:5005`.
-- **Bridge token** *(optional, advanced)* — the same value as the bridge's `Auth__ApiKey`,
-  for a secured bridge. Stored encrypted, never shown again.
+  e.g. `https://192.168.1.50:5055`.
+- **Bridge token** *(optional, advanced)* — the bearer token the bridge's invoicing
+  endpoints expect (see [Part A](#part-a--run-the-bridge-on-windows)). Stored encrypted,
+  never shown again.
 
 ![Subiekt guided wizard - filled form](./assets/09-ol-wizard-filled.png)
 
@@ -127,7 +139,7 @@ The new connection shows up with the **Invoicing** capability:
 > **Advanced mode (alternative).** You can also add the connection via **Add connection →
 > Use advanced mode**: `Platform type = Subiekt`, `Adapter key = subiekt.invoicing.v1`,
 > `Enabled capabilities = Invoicing`, `Credentials JSON = { "bridgeToken": "<token>" }`,
-> `Config JSON = { "bridgeBaseUrl": "https://<host>:5005", "invoicing": { "triggerModel": "manual" } }`.
+> `Config JSON = { "bridgeBaseUrl": "https://<host>:5055", "invoicing": { "triggerModel": "manual" } }`.
 
 ---
 
@@ -144,8 +156,8 @@ the settings. Everything you set in the wizard is editable here, plus:
   - **Batched** — issuance is deferred and processed in scheduled batches.
 - **Show KSeF status badge** — surface the bridge-reported regulatory (KSeF) status on
   orders for this connection.
-- **Rotate bridge token** — replace the stored Bearer token without restarting the API
-  (e.g. after rotating `Auth__ApiKey` on the bridge). The token is write-only — stored
+- **Rotate bridge token** — replace the stored bearer token without restarting the API
+  (e.g. after the bridge's token is rotated). The token is write-only — stored
   encrypted, never shown back.
 - **Adapter key** — `subiekt.invoicing.v1` (inferred from the platform; rarely changed).
 
@@ -198,10 +210,10 @@ To issue **without clicking** per order, use an automatic trigger — see
 
    ![/invoices list](./assets/26-ol-invoices-list.png)
 
-2. **In Subiekt nexo** — open **Dokumenty → Sprzedaży** and find the number (e.g.
+2. **In Subiekt GT** — open **Dokumenty → Sprzedaży** and find the number (e.g.
    `FS …/CENTRALA/2026`). Line items, VAT and the buyer match.
 
-   ![Subiekt nexo — the issued faktura open (lines, VAT, buyer)](./assets/27-subiekt-nexo-fs-detail.png)
+   ![Subiekt GT — the issued faktura open (lines, VAT, buyer)](./assets/27-subiekt-nexo-fs-detail.png)
 
 3. **KSeF** — the badge moves from `pending` to `accepted` as the regulatory reconcile job
    refreshes it (demo/trial environments report a non-authoritative status).

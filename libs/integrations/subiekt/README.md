@@ -1,17 +1,22 @@
 # @openlinker/integrations-subiekt
 
-Subiekt nexo adapter for OpenLinker — issues faktura (FS) and paragon (PA) documents
-in Subiekt nexo ERP via the OpenLinker Sfera Bridge.
+Subiekt GT adapter for OpenLinker — issues faktura (FS) and paragon (PA) documents
+in Subiekt GT (InsERT GT) via the OpenLinker Subiekt Bridge.
 
 ## What this package does
 
 OpenLinker never talks to Subiekt directly. It sends an invoice command to the
-**Subiekt Bridge** — a small .NET 8 service running on the Windows machine where
-Subiekt nexo is installed — which translates it into Sfera SDK business operations:
+**Subiekt Bridge** — a small .NET service running on the Windows machine where
+Subiekt GT is installed — which drives Subiekt GT through classic **Sfera GT**
+COM automation (COM ProgID `InsERT.GT`):
 
 ```
-OpenLinker  →  HTTPS + Bearer  →  Subiekt Bridge  →  Sfera SDK  →  Subiekt nexo
+OpenLinker  →  HTTPS + Bearer  →  Subiekt Bridge  →  Sfera GT (COM)  →  Subiekt GT
 ```
+
+Note: Sfera GT is unrelated to the newer .NET "Sfera SDK" (`InsERT.Moria.Sfera`),
+which targets Subiekt nexo, a different InsERT product line this integration does
+not use.
 
 Document type is driven by the buyer's tax ID **only on the auto-issue path**
 (when no explicit `documentType` is supplied): an order **with** a NIP becomes a
@@ -41,7 +46,7 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 
 ```json
 {
-  "bridgeToken": "<Bearer token matching Auth__ApiKey on the bridge>"
+  "bridgeToken": "<the bridge's fixed invoicing bearer/x-token value>"
 }
 ```
 
@@ -49,7 +54,7 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 
 ```json
 {
-  "bridgeBaseUrl": "https://192.168.1.50:5005",
+  "bridgeBaseUrl": "https://192.168.1.50:5055",
   "invoicing": {
     "triggerModel": "manual"
   }
@@ -58,30 +63,42 @@ See [`docs/capabilities.md`](../../../docs/capabilities.md) for the full sub-cap
 
 | Field | Values | Notes |
 |---|---|---|
-| `bridgeBaseUrl` | HTTPS URL **without** `/api` | The adapter appends `/api/...` paths. If OpenLinker runs on a different host than the bridge, use the bridge machine's address, e.g. `https://192.168.1.50:5005` |
+| `bridgeBaseUrl` | HTTPS URL **without** `/api` | The adapter appends `/api/...` paths. If OpenLinker runs on a different host than the bridge, use the bridge machine's address, e.g. `https://192.168.1.50:5055` |
 | `invoicing.triggerModel` | `"manual"` \| `"auto-on-paid"` \| `"auto-on-shipped"` \| `"batched"` | `manual` = operator clicks Issue; others = worker-driven auto-issuance |
+
+Authentication is not env-configurable per deployment: the bridge is compiled with
+a fixed Basic-auth credential pair for its general endpoints, and a separate
+bearer token (`x-token`) for invoicing endpoints specifically. Consult the bridge
+operator for the actual values used in your deployment.
 
 ## Running the bridge
 
-The bridge lives in the [`openlinker-subiekt-bridge`](https://github.com/openlinker-project/openlinker-subiekt-bridge)
-repository. Start it from a Windows PowerShell prompt (not as a compiled exe):
+The bridge is launched via a `.bat` launcher script (`start-bridge.bat`) on the
+Windows machine where Subiekt GT is installed. Run it directly — double-click it
+or invoke it from `cmd` — and leave its console window open; it keeps the bridge
+process alive and closing the window stops the bridge.
 
-```powershell
-cd C:\Users\<user>\repos\openlinker-subiekt-bridge    # adjust path
+The bridge listens on two ports:
 
-$env:Sfera__NexoPassword = "your-nexo-password"
-$env:Sfera__SqlPassword  = "your-sql-password"
-$env:Auth__ApiKey        = "your-bridge-bearer-token"
-$env:Tls__CertPassword   = "your-cert-password"
-$env:ASPNETCORE_URLS     = "https://0.0.0.0:5005"
+- **5055 (HTTPS, self-signed certificate)** — the primary API, used by OpenLinker.
+- **5056 (plain HTTP)** — used only so a browser or image-fetcher (e.g. Allegro,
+  fetching a product image URL the bridge returned) can reach the bridge without
+  needing to trust the self-signed cert.
 
-dotnet run -c Release --project bridge/Subiekt.Bridge.Api
-```
+The one environment variable the bridge reads is `OL_BRIDGE_PUBLIC_BASE`
+(default: `http://host.docker.internal:5056`) — it controls the base URL used
+when the bridge builds image URLs in its responses, so those URLs resolve from
+outside the bridge machine's own loopback (OpenLinker and Allegro fetch images
+from outside that machine, not from `localhost` on it).
 
-A healthy bridge prints `Now listening on: https://…:5005` and `Sfera: zalogowano`.
-Smoke-test: `curl -k https://<bridge-host>:5005/health` → `{"status":"ok","bridge":"up","sferaSession":"valid","subiekt":"reachable"}`.
+Confirmed working against Subiekt GT / InsERT GT 1.89 SP1.
 
-See the bridge repo's `docs/DEPLOYMENT.md` for TLS, firewall, and SQL config.
+## Operational limitations
+
+- **No process supervision.** The bridge is a plain console process started by
+  `start-bridge.bat` — there is no Windows Service wrapper and no auto-restart.
+  If the console window is closed, the machine reboots, or the process crashes,
+  the bridge stays down until someone re-runs the launcher by hand.
 
 ## Documentation
 
