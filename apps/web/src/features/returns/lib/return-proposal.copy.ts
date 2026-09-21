@@ -50,6 +50,11 @@ export const RETURN_PROPOSAL_COPY = {
     'quantity-exceeds-invoiced': 'More units were returned than the invoice billed.',
     'disposition-not-confirmed':
       'These units are not confirmed disposed of yet — a refused restock is still outstanding.',
+    // Defensive fallback only — the server-supplied `noMatchExplanation` (#3312)
+    // is always populated for this reason today; this entry keeps the local
+    // fallback text in sync should that ever not be the case.
+    'ambiguous-invoice-line':
+      'This return could not be matched to exactly one invoice line automatically. Check the invoice by hand before crediting it.',
   } as Record<string, string>,
 
   outcomes: {

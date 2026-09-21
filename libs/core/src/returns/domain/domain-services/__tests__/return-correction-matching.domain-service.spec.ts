@@ -26,6 +26,7 @@ function line(overrides: Partial<CorrectionReturnLineInput> = {}): CorrectionRet
     sku: 'W-1',
     quantityDisposed: 1,
     hasUnconfirmedDisposition: false,
+    resolvedOrderLineId: null,
     ...overrides,
   };
 }
@@ -92,27 +93,141 @@ describe('classifyReturnCorrectionLines (#2374)', () => {
     });
   });
 
-  describe('ambiguous — the whole point of the feature', () => {
+  describe('id-first matching (#3312)', () => {
+    it('should match deterministically by orderLineId when it disagrees with what by-name would pick', () => {
+      // Two identically-named snapshot lines — by-name alone would be
+      // ambiguous. The id resolves to exactly one of them.
+      const [result] = classifyReturnCorrectionLines(
+        [line({ resolvedOrderLineId: 'order-item-2' })],
+        [
+          snapshotLine({ orderLineId: 'order-item-1' }),
+          snapshotLine({ orderLineId: 'order-item-2' }),
+        ]
+      );
+
+      expect(result.status).toBe('matched');
+      expect(result.selectedOriginalLineNumber).toBe(2);
+      expect(result.candidates).toHaveLength(1);
+    });
+
+    it('should never consult the by-name index once the id resolves', () => {
+      // The id-matched line and the by-name-matched line have DIFFERENT
+      // names — if the by-name index were consulted, this would resolve to
+      // 'no-line-by-name' instead of a match.
+      const [result] = classifyReturnCorrectionLines(
+        [line({ name: 'Widget', resolvedOrderLineId: 'order-item-1' })],
+        [snapshotLine({ name: 'Completely Different Name', orderLineId: 'order-item-1' })]
+      );
+
+      expect(result.status).toBe('matched');
+      expect(result.selectedOriginalLineNumber).toBe(1);
+    });
+
+    it('should report quantity-exceeds-invoiced via the id path exactly as the by-name path does', () => {
+      const [result] = classifyReturnCorrectionLines(
+        [line({ quantityDisposed: 4, resolvedOrderLineId: 'order-item-1' })],
+        [snapshotLine({ quantity: 3, orderLineId: 'order-item-1' })]
+      );
+
+      expect(result.status).toBe('no-match');
+      expect(result.noMatchReason).toBe('quantity-exceeds-invoiced');
+    });
+
+    it('should report ambiguous-invoice-line when the id resolves to more than one snapshot line', () => {
+      const [result] = classifyReturnCorrectionLines(
+        [line({ resolvedOrderLineId: 'order-item-1' })],
+        [
+          snapshotLine({ orderLineId: 'order-item-1' }),
+          snapshotLine({ orderLineId: 'order-item-1' }),
+        ]
+      );
+
+      expect(result.status).toBe('no-match');
+      expect(result.noMatchReason).toBe('ambiguous-invoice-line');
+      expect(result.candidates).toHaveLength(2);
+    });
+
+    it('should fall through to by-name matching when resolvedOrderLineId matches no snapshot line', () => {
+      const [result] = classifyReturnCorrectionLines(
+        [line({ name: 'Widget', resolvedOrderLineId: 'order-item-does-not-exist' })],
+        [snapshotLine({ name: 'Widget' })]
+      );
+
+      expect(result.status).toBe('matched');
+      expect(result.selectedOriginalLineNumber).toBe(1);
+    });
+
+    it('should fall through to by-name matching for a pre-#3312 snapshot (every orderLineId undefined) — byte-identical to resolvedOrderLineId: null', () => {
+      const withId = classifyReturnCorrectionLines(
+        [line({ name: 'Widget', resolvedOrderLineId: 'order-item-1' })],
+        [snapshotLine({ name: 'Widget' })]
+      );
+      const withoutId = classifyReturnCorrectionLines(
+        [line({ name: 'Widget', resolvedOrderLineId: null })],
+        [snapshotLine({ name: 'Widget' })]
+      );
+
+      expect(withId).toEqual(withoutId);
+    });
+
+    it('should fall through to by-name matching when resolvedOrderLineId is null (routine, not only historical)', () => {
+      const [result] = classifyReturnCorrectionLines(
+        [line({ name: 'Widget', resolvedOrderLineId: null })],
+        [snapshotLine({ name: 'Widget', orderLineId: 'order-item-1' })]
+      );
+
+      expect(result.status).toBe('matched');
+    });
+
+    it('should still exit at disposition-not-confirmed ahead of the id lookup', () => {
+      const [result] = classifyReturnCorrectionLines(
+        [
+          line({
+            hasUnconfirmedDisposition: true,
+            resolvedOrderLineId: 'order-item-1',
+          }),
+        ],
+        [snapshotLine({ orderLineId: 'order-item-1' })]
+      );
+
+      expect(result.status).toBe('no-match');
+      expect(result.noMatchReason).toBe('disposition-not-confirmed');
+    });
+
+    it('should still exit at no-line-name ahead of the id lookup', () => {
+      const [result] = classifyReturnCorrectionLines(
+        [line({ name: null, resolvedOrderLineId: 'order-item-1' })],
+        [snapshotLine({ orderLineId: 'order-item-1' })]
+      );
+
+      expect(result.status).toBe('no-match');
+      expect(result.noMatchReason).toBe('no-line-name');
+    });
+  });
+
+  describe('ambiguous-invoice-line — the residual case (#3312, formerly status: ambiguous)', () => {
     it('should list EVERY candidate and select none when one order repeats the same offer', () => {
       const [result] = classifyReturnCorrectionLines(
         [line()],
         [snapshotLine(), snapshotLine({ name: 'Other' }), snapshotLine()]
       );
 
-      expect(result.status).toBe('ambiguous');
+      expect(result.status).toBe('no-match');
+      expect(result.noMatchReason).toBe('ambiguous-invoice-line');
       expect(result.candidates.map((c) => c.originalLineNumber)).toEqual([1, 3]);
       expect(result.selectedOriginalLineNumber).toBeNull();
       expect(result.newQuantity).toBeNull();
     });
 
-    it('should stay ambiguous even when every candidate would credit the same amount', () => {
+    it('should stay unresolved even when every candidate would credit the same amount', () => {
       const [result] = classifyReturnCorrectionLines(
         [line()],
         [snapshotLine(), snapshotLine()]
       );
 
       // Reporting the coincidence is allowed; acting on it is not.
-      expect(result.status).toBe('ambiguous');
+      expect(result.status).toBe('no-match');
+      expect(result.noMatchReason).toBe('ambiguous-invoice-line');
       expect(result.candidatesPriceOrRateDiffer).toBe(false);
       expect(result.selectedOriginalLineNumber).toBeNull();
     });

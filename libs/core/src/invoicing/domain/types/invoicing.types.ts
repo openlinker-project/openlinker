@@ -392,6 +392,16 @@ export interface InvoiceLine {
    * sources that do. Providers without a unit concept ignore it.
    */
   unit?: string;
+  /**
+   * The order line (`OrderItem.id`) this invoice line was built from (#3312).
+   * Present only for a line minted from an `OrderItem` (`toInvoiceLine`) -
+   * absent for a synthesized line such as shipping (`toShippingLines`), since
+   * no single order item backs a delivery cost. Optional and additive: a
+   * snapshot issued before this field existed simply carries it as `undefined`
+   * on every line, which every reader must treat as "not resolvable this way",
+   * never as a guess.
+   */
+  orderLineId?: string;
 }
 
 /**
