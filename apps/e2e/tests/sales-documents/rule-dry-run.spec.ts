@@ -15,20 +15,26 @@
  * acknowledgment for the duration of this file's run, matching the sibling
  * spec's own seeding rationale.
  *
- * OUTCOME DETERMINISM: three of the four `evaluateSalesDocumentRules` outcome
+ * OUTCOME DETERMINISM: four of the `evaluateSalesDocumentRules` outcome
  * families are exercised, each reached by a candidate condition whose
  * evaluation cannot be perturbed by whatever ELSE a shared dev stack happens
  * to hold for FI:
  *   - `orderCountry eq FI` against a sample order in FI ALWAYS matches the
  *     candidate (tier 1), so `route`/`matchedByCandidateRule: true` is
  *     reachable regardless of stack history.
- *   - `orderTotalGross gte …` ALWAYS resolves `net-priced-order`, because the
- *     dry-run sample-order panel has no `taxTreatment` field at all — the
- *     wire request the UI sends never asserts `'inclusive'`, and
- *     `evaluateSalesDocumentRules` refuses to compare an amount on an order
- *     it cannot confirm is gross-priced. That refusal fires before any other
- *     rule in the scope is even consulted for THIS candidate, independent of
- *     what else FI carries.
+ *   - `orderTotalGross gte …` against a sample order EXPLICITLY marked
+ *     net-priced (the panel's "Sample order pricing" select, previously
+ *     absent — an operator testing a PL-style threshold rule against the
+ *     panel's default could never get anything but this refusal, since there
+ *     was no way to assert the order was gross-priced at all) ALWAYS
+ *     resolves `net-priced-order`: `evaluateSalesDocumentRules` refuses to
+ *     compare an amount on an order it cannot confirm is gross-priced. That
+ *     refusal fires before any other rule in the scope is even consulted for
+ *     THIS candidate, independent of what else FI carries.
+ *   - the SAME `orderTotalGross gte …` condition against a sample order left
+ *     on the panel's default ("Gross-priced") now genuinely matches, closing
+ *     the gap the previous bullet's old, unconditional wording described —
+ *     the flagship PL amount-threshold rule shape is testable here.
  *   - a country default set via the real write API (`PUT
  *     .../country-defaults`, not a persisted RULE — the composer's own
  *     candidate is deliberately built to miss, via `orderCountry eq 'ZZ'`, so
@@ -108,16 +114,13 @@ test.describe('sales documents: rule composer dry-run ("Test with a sample order
     await expect(runButton).toBeEnabled();
   });
 
-  test('reports "net-priced-order" from a live round trip when the sample order has no tax treatment', async ({
+  test('reports "net-priced-order" from a live round trip when the sample order is explicitly net-priced', async ({
     page,
   }) => {
     await openComposerFor(page, COUNTRY);
     const modal = page.locator('.dialog__content--elevated');
 
-    // The one pre-existing condition row, changed to an amount condition —
-    // the dry-run sample-order panel never asserts `taxTreatment`, so this
-    // condition can never be evaluated cleanly and the decision is always
-    // `unresolved`/`net-priced-order`, whatever else is configured for FI.
+    // The one pre-existing condition row, changed to an amount condition.
     await modal.getByLabel('Condition field').selectOption({ value: 'orderTotalGross' });
     await modal.getByLabel('Order total amount').fill('10.00');
     await modal.getByLabel('Order total currency').fill('EUR');
@@ -130,12 +133,47 @@ test.describe('sales documents: rule composer dry-run ("Test with a sample order
     await modal.getByLabel('Sample order delivery country').fill(COUNTRY);
     await modal.getByLabel('Sample order total amount').fill('100');
     await modal.getByLabel('Sample order currency').fill('EUR');
+    // Explicitly net-priced — the refusal branch this test targets. The
+    // panel defaults to gross-priced, which the next test exercises instead.
+    await modal.getByLabel('Sample order pricing').selectOption({ value: 'exclusive' });
 
     await modal.getByTestId('rule-run-sample-order-test').click();
 
     const result = modal.getByTestId('rule-test-sample-order-result');
     await expect(result).toBeVisible({ timeout: 15_000 });
     await expect(result).toContainText(/priced net|held/i);
+    await expect(modal.getByTestId('rule-test-sample-order-error')).not.toBeVisible();
+  });
+
+  test('matches an amount-threshold condition against a gross-priced sample order (default pricing)', async ({
+    page,
+  }) => {
+    await openComposerFor(page, COUNTRY);
+    const modal = page.locator('.dialog__content--elevated');
+
+    // Same shape as the PL flagship template: "total >= X -> invoice".
+    await modal.getByLabel('Condition field').selectOption({ value: 'orderTotalGross' });
+    await modal.getByLabel('Order total comparison').selectOption({ value: 'gte' });
+    await modal.getByLabel('Order total amount').fill('10.00');
+    await modal.getByLabel('Order total currency').fill('EUR');
+
+    await modal
+      .getByLabel('Integration')
+      .selectOption({ value: MARKET_SEED_CONNECTION_IDS.invoicing });
+
+    await modal.getByTestId('rule-test-sample-order').click();
+    await modal.getByLabel('Sample order delivery country').fill(COUNTRY);
+    await modal.getByLabel('Sample order total amount').fill('100');
+    await modal.getByLabel('Sample order currency').fill('EUR');
+    // Pricing left on the panel's default ("Gross-priced") — no interaction.
+    await expect(modal.getByLabel('Sample order pricing')).toHaveValue('inclusive');
+
+    await modal.getByTestId('rule-run-sample-order-test').click();
+
+    const result = modal.getByTestId('rule-test-sample-order-result');
+    await expect(result).toBeVisible({ timeout: 15_000 });
+    await expect(result).toContainText('via the rule you are drafting');
+    await expect(result).not.toContainText(/priced net/i);
     await expect(modal.getByTestId('rule-test-sample-order-error')).not.toBeVisible();
   });
 

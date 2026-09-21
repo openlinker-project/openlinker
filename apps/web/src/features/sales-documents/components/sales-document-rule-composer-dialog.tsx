@@ -326,6 +326,14 @@ export function SalesDocumentRuleComposerDialog({
   const [sampleAmount, setSampleAmount] = useState('');
   const [sampleCurrency, setSampleCurrency] = useState('');
   const [sampleBuyerHasTaxId, setSampleBuyerHasTaxId] = useState<'unknown' | 'yes' | 'no'>('unknown');
+  // Defaults to gross-priced ('inclusive') — the common case, and the only
+  // value an `orderTotalGross` condition can ever match against (see
+  // checkAmountConditionDataProblem). Leaving this unset silently held every
+  // amount-threshold rule as "net-priced, cannot compare" regardless of the
+  // typed amount, making the flagship PL threshold rule untestable here.
+  const [sampleTaxTreatment, setSampleTaxTreatment] = useState<'inclusive' | 'exclusive'>(
+    'inclusive',
+  );
 
   const connections = connectionsQuery.data ?? [];
   const candidates =
@@ -345,6 +353,7 @@ export function SalesDocumentRuleComposerDialog({
     setSampleAmount('');
     setSampleCurrency('');
     setSampleBuyerHasTaxId('unknown');
+    setSampleTaxTreatment('inclusive');
     dryRun.reset();
   }
 
@@ -362,6 +371,7 @@ export function SalesDocumentRuleComposerDialog({
         country: sampleCountry.trim().toUpperCase(),
         totalGross,
         currency: sampleCurrency.trim().toUpperCase(),
+        taxTreatment: sampleTaxTreatment,
         buyerHasTaxId: sampleBuyerHasTaxId === 'unknown' ? undefined : sampleBuyerHasTaxId === 'yes',
       },
     });
@@ -587,7 +597,21 @@ export function SalesDocumentRuleComposerDialog({
                   value={sampleCurrency}
                   onChange={(event) => setSampleCurrency(event.target.value.toUpperCase())}
                 />
+                <Select
+                  aria-label="Sample order pricing"
+                  value={sampleTaxTreatment}
+                  onChange={(event) =>
+                    setSampleTaxTreatment(event.target.value as 'inclusive' | 'exclusive')
+                  }
+                >
+                  <option value="inclusive">Gross-priced (VAT included)</option>
+                  <option value="exclusive">Net-priced (VAT excluded)</option>
+                </Select>
               </div>
+              <p className="muted-text" style={{ marginTop: 'var(--space-1)' }}>
+                An amount-threshold condition can only be compared against a gross-priced order —
+                pick net-priced to see how the rule holds an order it cannot evaluate.
+              </p>
 
               <div className="row" style={{ marginTop: 'var(--space-2)' }}>
                 <Button
