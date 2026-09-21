@@ -19,13 +19,24 @@ import { Logger } from '@openlinker/shared/logging';
 import { INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
 import { SyncJobQueuePort, SYNC_JOB_QUEUE_TOKEN } from '@openlinker/core/sync';
 
+/**
+ * Fallback scope for a propagation whose caller did not name the master it
+ * read from. Nothing in the tree reaches this today; keeping it means an
+ * out-of-tree caller loses per-scope isolation rather than the enqueue.
+ *
+ * Also the all-zero placeholder connection id (#2745), mirrored independently
+ * in `apps/worker/src/events/master-deletion-to-job.handler.ts` and
+ * `apps/web/src/features/connections/api/connections.types.ts` — see
+ * `scripts/check-system-connection-id-mirror.mjs`. Exported so a sibling
+ * service in this context (`InventoryQueryService`'s #3240 provenance-backfill
+ * read) reuses this literal by import instead of hardcoding a fourth,
+ * unregistered copy.
+ */
+export const SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
+
 @Injectable()
 export class InventoryService implements IInventoryService {
   private readonly logger = new Logger(InventoryService.name);
-  // Fallback scope for a propagation whose caller did not name the master it
-  // read from. Nothing in the tree reaches this today; keeping it means an
-  // out-of-tree caller loses per-scope isolation rather than the enqueue.
-  private readonly SYSTEM_CONNECTION_ID = '00000000-0000-0000-0000-000000000000';
 
   constructor(
     @Inject(INVENTORY_REPOSITORY_TOKEN)
@@ -87,7 +98,7 @@ export class InventoryService implements IInventoryService {
         // decision 3, #2609). A single synthetic id put every propagation in
         // the whole installation into one scope, and a per-scope cap of 1 then
         // serialised all of them behind each other.
-        connectionId: sourceConnectionId ?? this.SYSTEM_CONNECTION_ID,
+        connectionId: sourceConnectionId ?? SYSTEM_CONNECTION_ID,
         payload: {
           productId: upserted.productId,
           variantId: upserted.productVariantId,

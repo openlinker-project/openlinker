@@ -60,6 +60,7 @@ describe('InventoryController', () => {
       findAvailabilityByVariantIds: jest.fn(),
       getProductStockAggregates: jest.fn(),
       getDuplicatePositionReport: jest.fn(),
+      getProvenanceBackfillStatus: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -183,6 +184,10 @@ describe('InventoryController', () => {
             sourceConnectionId: null,
             rowCount: 2,
             liveRowCount: 1,
+            productName: 'Merino Wool Beanie',
+            sku: 'BEA-MER-001',
+            connectionName: null,
+            locationName: null,
             rows: [
               {
                 id: 'inv-1',
@@ -209,6 +214,12 @@ describe('InventoryController', () => {
       expect(result.groupCount).toBe(1);
       expect(result.excessRowCount).toBe(1);
       expect(result.groups[0].liveRowCount).toBe(1);
+      // Enrichment (#3239) is passed through the transport mapping verbatim —
+      // this controller never resolves names itself.
+      expect(result.groups[0].productName).toBe('Merino Wool Beanie');
+      expect(result.groups[0].sku).toBe('BEA-MER-001');
+      expect(result.groups[0].connectionName).toBeNull();
+      expect(result.groups[0].locationName).toBeNull();
       expect(result.groups[0].rows[0].updatedAt).toBe(updatedAt.toISOString());
       // Stale rows reach the transport layer — the report is deliberately
       // stricter than the availability read.
@@ -232,6 +243,37 @@ describe('InventoryController', () => {
       expect(result.groupCount).toBe(0);
       expect(result.groups).toEqual([]);
       expect(result.truncated).toBe(false);
+    });
+  });
+
+  describe('getProvenanceBackfillStatus (#3240)', () => {
+    it('passes the service answer through verbatim when the backfill is complete', async () => {
+      queryService.getProvenanceBackfillStatus.mockResolvedValue({
+        remainingNull: 0,
+        completed: true,
+        latchedAt: '2026-08-01T00:00:00.000Z',
+      });
+
+      const result = await controller.getProvenanceBackfillStatus();
+
+      expect(queryService.getProvenanceBackfillStatus).toHaveBeenCalledWith();
+      expect(result).toEqual({
+        remainingNull: 0,
+        completed: true,
+        latchedAt: '2026-08-01T00:00:00.000Z',
+      });
+    });
+
+    it('reports the count and false when rows are still missing provenance', async () => {
+      queryService.getProvenanceBackfillStatus.mockResolvedValue({
+        remainingNull: 37,
+        completed: false,
+        latchedAt: null,
+      });
+
+      const result = await controller.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({ remainingNull: 37, completed: false, latchedAt: null });
     });
   });
 });

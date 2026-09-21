@@ -103,10 +103,13 @@ export async function readEparagonyDocumentStatus(
  *
  * A non-numeric or non-finite value falls back to the default rather than
  * throwing: `config` is JSONB, and refusing to register a real sale over a
- * mistyped timeout would be the worse failure.
+ * mistyped timeout would be the worse failure. `null` is accepted alongside
+ * `undefined` because `EparagonyConnectionConfig.statusPollTimeoutMs` is
+ * `number | null` (#3268) - a cleared field must resolve to the default the
+ * same way an absent one does, not throw a type error at the call site.
  */
 export function resolveStatusPollTimeoutMs(
-  configured: number | undefined,
+  configured: number | null | undefined,
   defaultTimeoutMs: number,
 ): number {
   if (typeof configured !== 'number' || !Number.isFinite(configured)) {

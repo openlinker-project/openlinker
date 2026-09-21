@@ -19,6 +19,7 @@ import { GetInventoryAvailabilityQueryDto } from './dto/get-inventory-availabili
 import { InventoryAvailabilityResponseDto } from './dto/inventory-availability-response.dto';
 import { GetDuplicatePositionsQueryDto } from './dto/get-duplicate-positions-query.dto';
 import { DuplicatePositionsResponseDto } from './dto/duplicate-positions-response.dto';
+import { ProvenanceBackfillStatusResponseDto } from './dto/provenance-backfill-status-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { AnyRole } from '../../auth/decorators/any-role.decorator';
 
@@ -134,6 +135,10 @@ export class InventoryController {
         sourceConnectionId: group.sourceConnectionId,
         rowCount: group.rowCount,
         liveRowCount: group.liveRowCount,
+        productName: group.productName,
+        sku: group.sku,
+        connectionName: group.connectionName,
+        locationName: group.locationName,
         rows: group.rows.map((row) => ({
           id: row.id,
           availableQuantity: row.availableQuantity,
@@ -148,6 +153,26 @@ export class InventoryController {
       // answers apart.
       generatedAt: new Date().toISOString(),
     };
+  }
+
+  @Get('provenance-backfill-status')
+  @Roles('admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Live status of the #2317 provenance backfill',
+    description:
+      'The second, independent readiness condition for the #2325 SET NOT NULL ' +
+      'migration alongside GET /inventory/duplicate-positions groupCount. Always ' +
+      'resolved live — never cached.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Provenance backfill status',
+    type: ProvenanceBackfillStatusResponseDto,
+  })
+  @ApiResponse({ status: 403, description: 'Insufficient permissions (admin only)' })
+  async getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatusResponseDto> {
+    return this.queryService.getProvenanceBackfillStatus();
   }
 
   private inventoryViewToDto(view: InventoryItemView): InventoryItemResponseDto {

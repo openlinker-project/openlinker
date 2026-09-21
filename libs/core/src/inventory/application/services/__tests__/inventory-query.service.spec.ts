@@ -12,17 +12,27 @@ import { InventoryQueryService } from '../inventory-query.service';
 import { InventoryItem } from '../../../domain/entities/inventory-item.entity';
 import type { InventoryRepositoryPort } from '../../../domain/ports/inventory-repository.port';
 import type { IProductsService, Product } from '@openlinker/core/products';
+import type { ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { ConnectionNotFoundException } from '@openlinker/core/identifier-mapping';
 import type { IAvailabilityService } from '../availability.service.interface';
+import type { ILocationService } from '../location.service.interface';
+import type { ISyncCursorsService } from '@openlinker/core/sync';
 
 // Only the products-service method the SUT actually calls — keeps the
 // mock surface tight per #718 review.
 type ProductsServiceMock = Pick<IProductsService, 'getProductsByIds'>;
+type LocationServiceMock = Pick<ILocationService, 'getLocation'>;
+type ConnectionPortMock = Pick<ConnectionPort, 'get'>;
+type SyncCursorsServiceMock = Pick<ISyncCursorsService, 'getCursor'>;
 
 describe('InventoryQueryService', () => {
   let service: InventoryQueryService;
   let inventoryRepository: jest.Mocked<InventoryRepositoryPort>;
   let productsService: jest.Mocked<ProductsServiceMock>;
   let availabilityService: jest.Mocked<IAvailabilityService>;
+  let locationService: jest.Mocked<LocationServiceMock>;
+  let connectionPort: jest.Mocked<ConnectionPortMock>;
+  let cursors: jest.Mocked<SyncCursorsServiceMock>;
 
   const itemA = new InventoryItem(
     'inv-a',
@@ -112,10 +122,17 @@ describe('InventoryQueryService', () => {
       getAppliedReserve: jest.fn().mockResolvedValue(0),
     } as unknown as jest.Mocked<IAvailabilityService>;
 
+    locationService = { getLocation: jest.fn().mockResolvedValue(null) };
+    connectionPort = { get: jest.fn().mockRejectedValue(new ConnectionNotFoundException('n/a')) };
+    cursors = { getCursor: jest.fn().mockResolvedValue(null) };
+
     service = new InventoryQueryService(
       inventoryRepository,
       productsService as unknown as IProductsService,
       availabilityService,
+      locationService as unknown as ILocationService,
+      connectionPort as unknown as ConnectionPort,
+      cursors as unknown as ISyncCursorsService,
     );
   });
 
@@ -330,7 +347,7 @@ describe('InventoryQueryService', () => {
       expect(inventoryRepository.findDuplicatePositions).not.toHaveBeenCalled();
     });
 
-    it('returns the repository report verbatim, including uncapped totals', async () => {
+    it('preserves the repository totals verbatim, including uncapped ones, while enriching groups', async () => {
       // groupCount is the #2325 gate and must survive the service layer
       // untouched even when the detail was truncated.
       const truncated = {
@@ -346,13 +363,217 @@ describe('InventoryQueryService', () => {
             rowCount: 4,
             liveRowCount: 2,
             rows: [],
+            productName: null,
+            sku: null,
+            connectionName: null,
+            locationName: null,
           },
         ],
         truncated: true,
       };
       inventoryRepository.findDuplicatePositions.mockResolvedValue(truncated);
+      productsService.getProductsByIds.mockResolvedValue([]);
 
-      await expect(service.getDuplicatePositionReport(1)).resolves.toBe(truncated);
+      const result = await service.getDuplicatePositionReport(1);
+
+      expect(result.groupCount).toBe(3);
+      expect(result.rowCount).toBe(9);
+      expect(result.excessRowCount).toBe(6);
+      expect(result.truncated).toBe(true);
+      expect(result.groups).toEqual(truncated.groups);
+    });
+
+    describe('enrichment (#3239)', () => {
+      it('resolves productName/sku, connectionName and locationName, batched across unique ids', async () => {
+        const report = {
+          groupCount: 2,
+          rowCount: 4,
+          excessRowCount: 2,
+          groups: [
+            {
+              productId: 'prod-1',
+              productVariantId: 'var-1',
+              locationId: 'loc-1',
+              sourceConnectionId: 'conn-1',
+              rowCount: 2,
+              liveRowCount: 2,
+              rows: [],
+              productName: null,
+              sku: null,
+              connectionName: null,
+              locationName: null,
+            },
+            {
+              // A second group sharing the same product/location/connection —
+              // the point of the assertion below is that each is resolved
+              // exactly once, not once per group.
+              productId: 'prod-1',
+              productVariantId: 'var-2',
+              locationId: 'loc-1',
+              sourceConnectionId: 'conn-1',
+              rowCount: 2,
+              liveRowCount: 2,
+              rows: [],
+              productName: null,
+              sku: null,
+              connectionName: null,
+              locationName: null,
+            },
+          ],
+          truncated: false,
+        };
+        inventoryRepository.findDuplicatePositions.mockResolvedValue(report);
+        productsService.getProductsByIds.mockResolvedValue([product1]);
+        locationService.getLocation.mockResolvedValue({
+          id: 'loc-1',
+          name: 'Main Warehouse',
+        } as never);
+        connectionPort.get.mockResolvedValue({ id: 'conn-1', name: 'Allegro — Primary' } as never);
+
+        const result = await service.getDuplicatePositionReport();
+
+        expect(result.groups[0].productName).toBe(product1.name);
+        expect(result.groups[0].sku).toBe(product1.sku);
+        expect(result.groups[0].locationName).toBe('Main Warehouse');
+        expect(result.groups[0].connectionName).toBe('Allegro — Primary');
+        expect(result.groups[1].locationName).toBe('Main Warehouse');
+        expect(result.groups[1].connectionName).toBe('Allegro — Primary');
+        // Batched, not per-group: one call per unique id, regardless of how
+        // many groups reference it.
+        expect(productsService.getProductsByIds).toHaveBeenCalledTimes(1);
+        expect(productsService.getProductsByIds).toHaveBeenCalledWith(['prod-1']);
+        expect(locationService.getLocation).toHaveBeenCalledTimes(1);
+        expect(connectionPort.get).toHaveBeenCalledTimes(1);
+      });
+
+      it('never resolves a name for the null or legacy provenance sentinel, or a null location', async () => {
+        const report = {
+          groupCount: 1,
+          rowCount: 2,
+          excessRowCount: 1,
+          groups: [
+            {
+              productId: 'prod-1',
+              productVariantId: null,
+              locationId: null,
+              sourceConnectionId: 'legacy',
+              rowCount: 2,
+              liveRowCount: 0,
+              rows: [],
+              productName: null,
+              sku: null,
+              connectionName: null,
+              locationName: null,
+            },
+          ],
+          truncated: false,
+        };
+        inventoryRepository.findDuplicatePositions.mockResolvedValue(report);
+        productsService.getProductsByIds.mockResolvedValue([]);
+
+        const result = await service.getDuplicatePositionReport();
+
+        expect(result.groups[0].connectionName).toBeNull();
+        expect(result.groups[0].locationName).toBeNull();
+        expect(connectionPort.get).not.toHaveBeenCalled();
+        expect(locationService.getLocation).not.toHaveBeenCalled();
+      });
+
+      it('reports null rather than throwing when a connection has been deleted', async () => {
+        const report = {
+          groupCount: 1,
+          rowCount: 2,
+          excessRowCount: 1,
+          groups: [
+            {
+              productId: 'prod-1',
+              productVariantId: null,
+              locationId: null,
+              sourceConnectionId: 'deleted-conn',
+              rowCount: 2,
+              liveRowCount: 2,
+              rows: [],
+              productName: null,
+              sku: null,
+              connectionName: null,
+              locationName: null,
+            },
+          ],
+          truncated: false,
+        };
+        inventoryRepository.findDuplicatePositions.mockResolvedValue(report);
+        productsService.getProductsByIds.mockResolvedValue([]);
+        connectionPort.get.mockRejectedValue(new ConnectionNotFoundException('deleted-conn'));
+
+        const result = await service.getDuplicatePositionReport();
+
+        expect(result.groups[0].connectionName).toBeNull();
+      });
+    });
+  });
+
+  describe('getProvenanceBackfillStatus (#3240)', () => {
+    it('reports completed with no latch when nothing remains and the backfill never latched', async () => {
+      inventoryRepository.countMissingProvenance.mockResolvedValue(0);
+      cursors.getCursor.mockResolvedValue(null);
+
+      const result = await service.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({ remainingNull: 0, completed: true, latchedAt: null });
+    });
+
+    it('reports not-completed and passes the count through verbatim when rows remain', async () => {
+      inventoryRepository.countMissingProvenance.mockResolvedValue(1_200);
+      cursors.getCursor.mockResolvedValue(null);
+
+      const result = await service.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({ remainingNull: 1_200, completed: false, latchedAt: null });
+    });
+
+    it('reports the persisted latch even when rows remain — the stuck-pass state', async () => {
+      // A later mutation reintroduced a NULL row after the backfill already
+      // stamped its completion cursor. completed stays false (remainingNull
+      // > 0), but latchedAt tells a caller the pass is not draining it.
+      inventoryRepository.countMissingProvenance.mockResolvedValue(3);
+      cursors.getCursor.mockResolvedValue('2026-08-01T00:00:00.000Z');
+
+      const result = await service.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({
+        remainingNull: 3,
+        completed: false,
+        latchedAt: '2026-08-01T00:00:00.000Z',
+      });
+    });
+
+    it('reads the latch cursor under the nil-UUID system connection scope', async () => {
+      cursors.getCursor.mockResolvedValue(null);
+
+      await service.getProvenanceBackfillStatus();
+
+      // Hard-coded independently of the key builder — matching
+      // master-sweep-cursor.types.spec.ts's own reasoning: a format change,
+      // or picking the wrong sibling key in this same namespace (e.g.
+      // remainingNull's), must fail here rather than silently split reader
+      // from writer.
+      expect(cursors.getCursor).toHaveBeenCalledWith(
+        '00000000-0000-0000-0000-000000000000',
+        'master.inventory-provenance.completedAt:connection:00000000-0000-0000-0000-000000000000',
+      );
+    });
+
+    it('normalises an empty-string cursor row to latchedAt: null', async () => {
+      // The handler's own "latched" predicate treats '' identically to null
+      // (inventory-provenance-backfill.handler.ts's `execute()`); this reader
+      // must agree, or a non-latched pass reads as stuck and the docblock's
+      // prescribed remedy (delete the cursor row) fires on a healthy drain.
+      inventoryRepository.countMissingProvenance.mockResolvedValue(5);
+      cursors.getCursor.mockResolvedValue('');
+
+      const result = await service.getProvenanceBackfillStatus();
+
+      expect(result).toEqual({ remainingNull: 5, completed: false, latchedAt: null });
     });
   });
 });

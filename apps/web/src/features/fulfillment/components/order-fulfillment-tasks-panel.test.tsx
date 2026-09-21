@@ -23,6 +23,7 @@ import { OrderFulfillmentTasksPanel } from './order-fulfillment-tasks-panel';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
+  findToastDescription,
   renderWithProviders,
 } from '../../../test/test-utils';
 import type { SessionUser } from '../../../shared/auth/session.types';
@@ -328,7 +329,7 @@ describe('OrderFulfillmentTasksPanel (#2411)', () => {
       // avoid: the operator is told to look again, at something still on
       // screen. So assert what the operator ends up with.
       expect(
-        await screen.findByText(/Somebody moved this fulfilment task while you were looking at it/)
+        await findToastDescription(/Somebody moved this fulfilment task while you were looking at it/)
       ).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Schedule' })).toBeInTheDocument();
       expect(screen.queryByText(/Could not load/)).not.toBeInTheDocument();

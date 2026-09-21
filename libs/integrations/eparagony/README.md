@@ -74,6 +74,15 @@ legal event, not a safe "try again."
 
 ## Credentials & config
 
+Ten of the eleven config keys below have a form field on the connection's Edit page
+(`apps/web/src/plugins/eparagony/`, #3266) — `environment` / `posId` on the guided setup
+wizard, and `print` / `paymentForm` / `paymentName` / `defaultTaxRateCode` /
+`statusPollTimeoutMs` / `fiscalDeviceUniqueNumber` / `apiBaseUrl` / `authBaseUrl` on the
+connection's structured section. Only `taxRates` remains raw-JSON-only, deliberately: it
+describes the seller's physical device programming rather than a product's VAT rate, and
+OpenLinker cannot observe the device to validate it. The JSON below is still the ground
+truth for what each key means and accepts.
+
 **Credentials**:
 ```json
 {

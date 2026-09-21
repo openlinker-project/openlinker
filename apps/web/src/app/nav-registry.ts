@@ -64,6 +64,11 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       { to: '/jobs-logs', label: 'Jobs & Logs', countKey: 'jobsFailed' },
       { to: '/webhook-deliveries', label: 'Webhooks', countKey: 'webhooksFailed' },
       { to: '/cursors', label: 'Cursors' },
+      {
+        to: '/duplicate-positions',
+        label: 'Duplicate stock positions',
+        requiresRole: 'admin',
+      },
     ],
   },
   {
@@ -146,11 +151,13 @@ export function buildNavGroups({
       continue;
     }
     if (group.kind === 'live') {
-      // Per-ITEM permission gate. A live group whose every item is gated away
-      // is dropped entirely — an empty group heading advertises a section the
-      // session cannot reach.
+      // Per-ITEM permission + role gates. A live group whose every item is
+      // gated away is dropped entirely — an empty group heading advertises a
+      // section the session cannot reach.
       const items = group.items.filter(
-        (item) => item.requiresPermission === undefined || permissions.includes(item.requiresPermission),
+        (item) =>
+          (item.requiresPermission === undefined || permissions.includes(item.requiresPermission)) &&
+          (item.requiresRole === undefined || (item.requiresRole === 'admin' && isAdmin)),
       );
       if (items.length === 0) continue;
       baseGroups.push(items.length === group.items.length ? group : { ...group, items });

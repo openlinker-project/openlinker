@@ -114,3 +114,45 @@ describe('toCreateReceiptRequest — buyer tax number (#3187, ADR-073 decision 1
     expect('consumerTIN' in request.eReceipt.metadata).toBe(false);
   });
 });
+
+describe('toCreateReceiptRequest — payment.paymentName (#3268 review)', () => {
+  it('writes the configured payment name to the sole payment entry', () => {
+    const request = toCreateReceiptRequest({
+      command: makeCommand(),
+      config: makeConfig({ paymentName: 'Visa contactless' }),
+      documentToken: 'doc-1',
+      transactionToken: 'txn-1',
+    });
+
+    expect(request.eReceipt.payment.payments[0].paymentName).toBe('Visa contactless');
+  });
+
+  it('omits paymentName — never sends a null — when the connection has CLEARED the field', () => {
+    // Pinning test for the fix this PR made: `EparagonyConnectionConfig`
+    // widened `paymentName` to `string | null` because the connection form
+    // now persists an explicit `null` on clear (never a delete). Before the
+    // fix, `config.paymentName === undefined` was the only guard, so a
+    // cleared field's `null` was spread straight onto the wire as
+    // `paymentName: null` — a value the vendor never asked for and the form
+    // never intended to send.
+    const request = toCreateReceiptRequest({
+      command: makeCommand(),
+      config: makeConfig({ paymentName: null }),
+      documentToken: 'doc-1',
+      transactionToken: 'txn-1',
+    });
+
+    expect('paymentName' in request.eReceipt.payment.payments[0]).toBe(false);
+  });
+
+  it('omits paymentName when the connection never set it at all', () => {
+    const request = toCreateReceiptRequest({
+      command: makeCommand(),
+      config: makeConfig(),
+      documentToken: 'doc-1',
+      transactionToken: 'txn-1',
+    });
+
+    expect('paymentName' in request.eReceipt.payment.payments[0]).toBe(false);
+  });
+});

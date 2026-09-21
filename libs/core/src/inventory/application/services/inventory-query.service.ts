@@ -19,17 +19,37 @@ import {
   PRODUCTS_SERVICE_TOKEN,
 } from '@openlinker/core/products';
 import type { Product } from '@openlinker/core/products';
-import { AVAILABILITY_SERVICE_TOKEN, INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
+import {
+  ConnectionNotFoundException,
+  ConnectionPort,
+  CONNECTION_PORT_TOKEN,
+} from '@openlinker/core/identifier-mapping';
+import {
+  ISyncCursorsService,
+  SYNC_CURSORS_SERVICE_TOKEN,
+  masterSweepCompletedAtCursorKey,
+  type MasterSweepKind,
+} from '@openlinker/core/sync';
+import {
+  AVAILABILITY_SERVICE_TOKEN,
+  INVENTORY_REPOSITORY_TOKEN,
+  LOCATION_SERVICE_TOKEN,
+} from '../../inventory.tokens';
 import { IAvailabilityService } from './availability.service.interface';
+import { ILocationService } from './location.service.interface';
+import { SYSTEM_CONNECTION_ID } from './inventory.service';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
-import type {
-  InventoryFilters,
-  InventoryPagination,
-  VariantAvailability,
-  VariantStockRow,
-  ProductStockAggregate,
-  DuplicatePositionReport,
+import {
+  LEGACY_SOURCE_CONNECTION_ID,
+  type InventoryFilters,
+  type InventoryPagination,
+  type VariantAvailability,
+  type VariantStockRow,
+  type ProductStockAggregate,
+  type DuplicatePositionGroup,
+  type DuplicatePositionReport,
+  type ProvenanceBackfillStatus,
 } from '../../domain/types/inventory.types';
 import type {
   InventoryItemView,
@@ -44,6 +64,18 @@ import type { IInventoryQueryService } from './inventory-query.service.interface
 const MAX_STOCK_AGGREGATE_PRODUCT_IDS = 200;
 
 /**
+ * The sweep-key namespace `InventoryProvenanceBackfillHandler` owns —
+ * declared locally to match that handler's own convention (see its header)
+ * rather than imported, since the handler's `BACKFILL_SWEEP_KIND` is not
+ * exported from a shared module. The nil-UUID scope the pass runs under IS
+ * shared, as `SYSTEM_CONNECTION_ID` from `./inventory.service` — reused here
+ * rather than re-declared, per `scripts/check-system-connection-id-mirror.mjs`
+ * (#2745): a fifth independent copy in this context would be the one instance
+ * that script cannot see drift on.
+ */
+const PROVENANCE_BACKFILL_SWEEP_KIND: MasterSweepKind = 'inventory-provenance';
+
+/**
  * Hard cap on duplicate-position group DETAIL per call (#2319).
  *
  * Bounds only the `groups` array — `groupCount` / `rowCount` are always computed
@@ -55,6 +87,31 @@ export const MAX_DUPLICATE_POSITION_GROUPS = 500;
 /** Default duplicate-position group detail cap when the caller names none. */
 export const DEFAULT_DUPLICATE_POSITION_GROUPS = 100;
 
+/**
+ * In-flight ceiling for the location/connection display-name fan-out (#3249
+ * review). Distinct locations/connections are not bounded below group count
+ * — `MAX_DUPLICATE_POSITION_GROUPS` allows 500 groups at 500 distinct
+ * locations — so the id-set size alone is not a structural bound. Mirrors
+ * the declared, clamped-ceiling shape ADR-047/#2229 established
+ * (`resolveBatchConcurrency`) rather than relying on realistic cardinality.
+ */
+const DUPLICATE_POSITION_NAME_LOOKUP_CONCURRENCY = 10;
+
+/**
+ * Runs `worker` over `items` in fixed-size waves capped at `concurrency` —
+ * the next wave starts only once the previous one fully settles.
+ */
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  const cap = Math.max(1, concurrency);
+  for (let i = 0; i < items.length; i += cap) {
+    await Promise.all(items.slice(i, i + cap).map(worker));
+  }
+}
+
 @Injectable()
 export class InventoryQueryService implements IInventoryQueryService {
   constructor(
@@ -63,7 +120,13 @@ export class InventoryQueryService implements IInventoryQueryService {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly productsService: IProductsService,
     @Inject(AVAILABILITY_SERVICE_TOKEN)
-    private readonly availabilityService: IAvailabilityService
+    private readonly availabilityService: IAvailabilityService,
+    @Inject(LOCATION_SERVICE_TOKEN)
+    private readonly locationService: ILocationService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort,
+    @Inject(SYNC_CURSORS_SERVICE_TOKEN)
+    private readonly cursors: ISyncCursorsService
   ) {}
 
   async listInventoryItems(
@@ -161,7 +224,122 @@ export class InventoryQueryService implements IInventoryQueryService {
         `getDuplicatePositionReport accepts at most ${String(MAX_DUPLICATE_POSITION_GROUPS)} groups per call (got ${String(maxGroups)})`
       );
     }
-    return this.inventoryRepository.findDuplicatePositions(maxGroups);
+    const report = await this.inventoryRepository.findDuplicatePositions(maxGroups);
+    if (report.groups.length === 0) return report;
+    return { ...report, groups: await this.enrichDuplicatePositionGroups(report.groups) };
+  }
+
+  async getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatus> {
+    // remainingNull is live on every call, deliberately — see the
+    // ProvenanceBackfillStatus docblock. rawLatchedAt is the backfill's own
+    // persisted completion stamp (sweepCompletedAtCursorKey under the
+    // nil-UUID system connection, written by
+    // InventoryProvenanceBackfillHandler) — reading it alongside the live
+    // count is what makes "still draining" and "latched, and stuck" (a later
+    // mutation reintroduced a NULL row after completion) distinguishable.
+    const [remainingNull, rawLatchedAt] = await Promise.all([
+      this.inventoryRepository.countMissingProvenance(),
+      this.cursors.getCursor(
+        SYSTEM_CONNECTION_ID,
+        masterSweepCompletedAtCursorKey(PROVENANCE_BACKFILL_SWEEP_KIND, SYSTEM_CONNECTION_ID)
+      ),
+    ]);
+    // The handler's own "latched" predicate (see its `execute()`) treats an
+    // empty-string cursor row identically to a null one — normalise here so
+    // reader and writer agree on what a stored value means. Passing '' through
+    // verbatim would report `latchedAt: ''` (non-null), which every consumer
+    // of this docblock's contract reads as "latched" and prescribes deleting
+    // a cursor row that is not stuck at all.
+    const latchedAt = rawLatchedAt !== null && rawLatchedAt.length > 0 ? rawLatchedAt : null;
+    return { remainingNull, completed: remainingNull === 0, latchedAt };
+  }
+
+  /**
+   * Resolves display names for a duplicate-position report's groups (#3239).
+   *
+   * Batched across the UNIQUE ids in the whole `groups[]` array, never per
+   * group — the same shape `buildProductMap` already uses for the composed
+   * inventory-item view, and the `getEarliestOrderDateByConnection` (#2083)
+   * precedent for a single batched read ahead of any per-row loop.
+   *
+   * `locationId`/`sourceConnectionId` have no batched-by-id read on their own
+   * services today (`ILocationService.getLocation` and `ConnectionPort.get`
+   * are both single-id), so each distinct id costs its own round trip. That
+   * distinct-id count is NOT bounded below group count — `maxGroups` allows
+   * up to `MAX_DUPLICATE_POSITION_GROUPS` groups at that many distinct
+   * locations/connections — so the fan-out is capped at
+   * `DUPLICATE_POSITION_NAME_LOOKUP_CONCURRENCY` in-flight lookups per axis
+   * (the `resolveBatchConcurrency` / ADR-047 precedent) rather than an
+   * unbounded `Promise.all` over the whole id set.
+   */
+  private async enrichDuplicatePositionGroups(
+    groups: DuplicatePositionGroup[]
+  ): Promise<DuplicatePositionGroup[]> {
+    const productIds = groups.map((g) => g.productId);
+    const locationIds = [
+      ...new Set(groups.map((g) => g.locationId).filter((id): id is string => id !== null)),
+    ];
+    // null and the #2317 'legacy' sentinel both mean "not yet backfilled" —
+    // neither names a real connection, so neither is ever resolved.
+    const connectionIds = [
+      ...new Set(
+        groups
+          .map((g) => g.sourceConnectionId)
+          .filter((id): id is string => id !== null && id !== LEGACY_SOURCE_CONNECTION_ID)
+      ),
+    ];
+
+    const [productMap, locationNameMap, connectionNameMap] = await Promise.all([
+      this.buildProductMap(productIds),
+      this.buildLocationNameMap(locationIds),
+      this.buildConnectionNameMap(connectionIds),
+    ]);
+
+    return groups.map((group) => {
+      const product = productMap.get(group.productId) ?? null;
+      return {
+        ...group,
+        productName: product?.name ?? null,
+        sku: product?.sku ?? null,
+        locationName: group.locationId ? (locationNameMap.get(group.locationId) ?? null) : null,
+        connectionName:
+          group.sourceConnectionId && group.sourceConnectionId !== LEGACY_SOURCE_CONNECTION_ID
+            ? (connectionNameMap.get(group.sourceConnectionId) ?? null)
+            : null,
+      };
+    });
+  }
+
+  private async buildLocationNameMap(locationIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    await runWithConcurrency(
+      locationIds,
+      DUPLICATE_POSITION_NAME_LOOKUP_CONCURRENCY,
+      async (id) => {
+        const location = await this.locationService.getLocation(id);
+        if (location) map.set(id, location.name);
+      }
+    );
+    return map;
+  }
+
+  private async buildConnectionNameMap(connectionIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    await runWithConcurrency(
+      connectionIds,
+      DUPLICATE_POSITION_NAME_LOOKUP_CONCURRENCY,
+      async (id) => {
+        try {
+          const connection = await this.connectionPort.get(id);
+          map.set(id, connection.name);
+        } catch (error) {
+          // A deleted/unresolvable connection reports no name rather than
+          // failing the whole report — the raw id is still shown.
+          if (!(error instanceof ConnectionNotFoundException)) throw error;
+        }
+      }
+    );
+    return map;
   }
 
   private async buildProductMap(productIds: string[]): Promise<Map<string, Product>> {

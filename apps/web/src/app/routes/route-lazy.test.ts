@@ -100,8 +100,12 @@ const lazyRoutes = collectLazyRoutes([
  * stays mounted, see `invoices.route.tsx`), and `/sales-documents` +
  * `/sales-documents/fiscal-receipt/:recordId` are two NEW lazy routes —
  * net +2 over the pre-#3307 baseline of 66.
+ *
+ * Merged with main (#3261): `/inventory/duplicate-positions` diagnostics
+ * page added one more authenticated lazy route, bumping the baseline this
+ * branch merges onto from 66 to 67 — net +2 over that gives 69.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 68;
+const EXPECTED_LAZY_ROUTE_COUNT = 69;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

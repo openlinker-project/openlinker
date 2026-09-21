@@ -137,7 +137,14 @@ export function toCreateReceiptRequest(
         payments: [
           {
             paymentForm: EPARAGONY_PAYMENT_FORM_WIRE[paymentForm] ?? paymentForm,
-            ...(config.paymentName === undefined ? {} : { paymentName: config.paymentName }),
+            // NULLISH, not `=== undefined` (#3268 review). `null` is an
+            // accepted persisted value for this key - the validator admits it
+            // and the connection form writes it when an operator CLEARS the
+            // field - and an `undefined`-only guard spread `paymentName: null`
+            // straight onto a fiscal receipt request for exactly that case.
+            ...(config.paymentName === undefined || config.paymentName === null
+              ? {}
+              : { paymentName: config.paymentName }),
             paidThisForm: grossSaleValue,
           },
         ],

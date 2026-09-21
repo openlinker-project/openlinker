@@ -60,7 +60,7 @@ export const EPARAGONY_DEFAULT_TAX_RATES: EparagonyTaxRateTable = {
 
 /** Merge a partial operator override over the default slot table. */
 export function resolveTaxRateTable(
-  configured?: Partial<EparagonyTaxRateTable>,
+  configured?: Partial<EparagonyTaxRateTable> | null,
 ): EparagonyTaxRateTable {
   if (!configured) {
     return { ...EPARAGONY_DEFAULT_TAX_RATES };
@@ -79,7 +79,11 @@ export function resolveTaxRateTable(
 export function resolveTaxRateCode(
   neutralRate: string,
   table: EparagonyTaxRateTable,
-  fallback?: EparagonyTaxRateCode,
+  // `| null` because the connection form persists an explicit `null` for a
+  // CLEARED `defaultTaxRateCode` (#3268 review) - `fallback ?? null` below
+  // already treats it exactly like absent, which is the direction that keeps an
+  // un-rated line refused rather than guessed at.
+  fallback?: EparagonyTaxRateCode | null,
 ): EparagonyTaxRateCode | null {
   const raw = neutralRate.trim();
 
