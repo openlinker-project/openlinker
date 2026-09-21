@@ -1,7 +1,7 @@
 /**
  * Subiekt Setup Form
  *
- * Single-step guided wizard for creating a Subiekt nexo connection (#1199).
+ * Single-step guided wizard for creating a Subiekt GT connection (#1199).
  * Collects:
  *   - Connection name
  *   - Bridge base URL (the OpenLinker Sfera bridge, a LAN service — http allowed)
@@ -112,7 +112,7 @@ export function SubiektSetupForm(): ReactElement {
       ) : null}
 
       <Alert tone="info" title="Before you start">
-        Run the OpenLinker <strong>Sfera bridge</strong> on the Windows machine where Subiekt nexo
+        Run the OpenLinker <strong>Sfera bridge</strong> on the Windows machine where Subiekt GT
         is installed, then paste the bridge URL below. OpenLinker talks to Subiekt only through that
         bridge to issue invoices — it never connects to Subiekt directly.
       </Alert>

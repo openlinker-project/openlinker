@@ -42,7 +42,7 @@ describe('subiektPlugin', () => {
 
   describe('platform contributions', () => {
     it('declares the display name', () => {
-      expect(subiektPlugin.platform?.displayName).toBe('Subiekt nexo');
+      expect(subiektPlugin.platform?.displayName).toBe('Subiekt GT (Sfera bridge)');
     });
     it('contributes the setup card pointing to the guided wizard (#1199)', () => {
       expect(subiektPlugin.platform?.setupCard?.to).toBe('/connections/new/subiekt');

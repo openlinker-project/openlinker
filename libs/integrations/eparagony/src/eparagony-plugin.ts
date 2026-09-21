@@ -109,6 +109,16 @@ export const eparagonyAdapterManifest: AdapterMetadata = {
   displayName: 'eparagony.pl Documents API v3',
   version: '1.0.0',
   isDefault: true,
+  // #3350: this manifest declares BOTH `Invoicing` and `Fiscalization`, so a
+  // caller omitting `enabledCapabilities` at connection-create time needs a
+  // default that does NOT include `Invoicing` — the guided wizard collects
+  // only the receipts-lane config, and defaulting the invoice lane on would
+  // silently grant it to a connection whose seller fields
+  // (`merchantTIN`/`merchantName`/`merchantAddress`) the wizard never
+  // collects. Everything else the manifest supports (including the two
+  // advertised-without-dispatch sub-capabilities) stays in the default,
+  // preserving this connection's exact prior default-capability set.
+  defaultEnabledCapabilities: ['Fiscalization', 'FiscalRegistrationLocator', 'RegulatoryStatusReader'],
   // No `defaultRateLimit`. A manifest default exists for merchant-hosted
   // platforms whose remote is the operator's own box; this is multi-tenant SaaS
   // publishing no request ceiling for the documents API. It matters more than

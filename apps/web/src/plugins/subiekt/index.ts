@@ -9,7 +9,7 @@
  *    capability descriptors (AC-8), the structured-config section (Bridge URL +
  *    trigger model + capability toggles), and the Bearer bridge-token
  *    credentials panel.
- * Subiekt nexo issues invoices via the OpenLinker Sfera bridge (BE adapter
+ * Subiekt GT issues invoices via the OpenLinker Sfera bridge (BE adapter
  * `subiekt.invoicing.v1`, capability `Invoicing`; tester registration #753).
  *
  * ---
@@ -54,11 +54,11 @@ export const subiektPlugin: OpenLinkerPlugin = definePlugin({
     routes: [subiektSetupRoute],
   },
   platform: {
-    displayName: 'Subiekt nexo',
+    displayName: 'Subiekt GT (Sfera bridge)',
     setupCard: {
-      title: 'Subiekt nexo',
+      title: 'Subiekt GT',
       description:
-        'Issue invoices in Subiekt nexo via the OpenLinker Sfera bridge running on your Windows machine.',
+        'Issue invoices in Subiekt GT via classic COM automation (Sfera GT), through the OpenLinker bridge running on your Windows machine.',
       to: '/connections/new/subiekt',
       badge: 'Sfera bridge',
     },
