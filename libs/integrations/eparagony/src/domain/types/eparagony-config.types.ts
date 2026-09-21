@@ -54,26 +54,51 @@ export const EPARAGONY_PAYMENT_FORM_WIRE: Partial<Record<EparagonyPaymentForm, s
 };
 
 /**
+ * The seller's address as the vendor's `EntityAddress` wants it. Declared here
+ * rather than reused from the wire types because this is what an OPERATOR types
+ * into a connection form: it is configuration in the vendor's own shape, so the
+ * mapper copies it across with no interpretation and no guessing at where a
+ * building number ends.
+ */
+export interface EparagonySellerAddress {
+  street: string;
+  number: string;
+  apartment?: string;
+  postalCode: string;
+  city: string;
+  /** ISO 3166-1 alpha-2. */
+  country: string;
+}
+
+/**
  * The persisted config for an eparagony.pl connection.
  *
- * EVERY OPTIONAL KEY IS `| null` AS WELL AS OPTIONAL, AND THAT IS LOAD-BEARING
- * (#3268 review). `EparagonyConnectionConfigShapeValidatorAdapter` guards each
- * of them with `!== undefined && !== null`, so `null` is an accepted persisted
- * value - and the connection form WRITES it: `EditConnectionForm.onSubmit`
- * merges `{ ...fresh.config, ...input.config }`, a shallow spread that can only
- * override a key present on the right side, so a cleared field has to persist an
- * explicit `null` rather than delete the key or the clear never reaches the
+ * EVERY OPTIONAL KEY THE STRUCTURED RECEIPT FORM COVERS IS `| null` AS WELL AS
+ * OPTIONAL, AND THAT IS LOAD-BEARING (#3268 review). `taxRates`,
+ * `defaultTaxRateCode`, `print`, `paymentForm`, `paymentName`,
+ * `statusPollTimeoutMs`, `fiscalDeviceUniqueNumber`, `apiBaseUrl` and
+ * `authBaseUrl` are all guarded by `EparagonyConnectionConfigShapeValidatorAdapter`
+ * with `!== undefined && !== null`, so `null` is an accepted persisted value -
+ * and the connection form WRITES it: `EditConnectionForm.onSubmit` merges
+ * `{ ...fresh.config, ...input.config }`, a shallow spread that can only
+ * override a key present on the right side, so a cleared field has to persist
+ * an explicit `null` rather than delete the key or the clear never reaches the
  * server (the #2016 `rateLimit` rule). `taxRates` is included even though the
  * eight-field structured form has no control for it: the validator already
  * accepted `null` there (raw-JSON editors clear keys this way too), so the
  * type states what was already true rather than leaving one key silently
  * narrower than its own runtime contract.
  *
- * Declaring that here rather than leaving these `?: string` is what makes every
- * reader's handling of the cleared state a TYPE question instead of an
- * inspection one. It found one real defect on its first run: the document
- * mapper's `paymentName === undefined` guard spread `paymentName: null` onto a
- * fiscal receipt request for a cleared value.
+ * The invoice-lane fields (`merchantTIN`, `merchantName`, `merchantAddress`,
+ * `eInvoicingHubEnabled`) are deliberately NOT part of this rule - they belong
+ * to the separate invoicing epic (#3192/#3224), the guided wizard never writes
+ * them, and this PR's structured section carries no control for them either.
+ *
+ * Declaring the receipt-lane nullability here rather than leaving those keys
+ * `?: string` is what makes every reader's handling of the cleared state a
+ * TYPE question instead of an inspection one. It found one real defect on its
+ * first run: the document mapper's `paymentName === undefined` guard spread
+ * `paymentName: null` onto a fiscal receipt request for a cleared value.
  */
 export interface EparagonyConnectionConfig {
   /** Which vendor deployment to talk to. Selects both the API and the OAuth host. */
@@ -135,6 +160,55 @@ export interface EparagonyConnectionConfig {
    * call stays inside core's supported provider round-trip ceiling.
    */
   statusPollTimeoutMs?: number | null;
+
+  /**
+   * The SELLER's tax number, stamped on every invoice this connection issues.
+   *
+   * INVOICE-ONLY, and OPTIONAL on this type on purpose. A connection that only
+   * registers receipts has no use for it, and every connection that exists today
+   * is one of those - making it required would break the config shape of every
+   * shipped connection and force a back-fill the epic explicitly rules out.
+   * Instead the invoice mapper REFUSES pre-call when it is absent, naming the
+   * remedy, so an operator who enables invoicing without setting it gets an
+   * actionable refusal rather than the vendor's opaque validation code.
+   *
+   * It belongs here, beside `posId`, because it is the same class of value: a
+   * per-connection identity the vendor validates against the registered account
+   * rather than by checksum, so a wrong one fails every invoice on the
+   * connection rather than one order.
+   */
+  merchantTIN?: string;
+
+  /**
+   * The seller's registered name. Optional - the vendor falls back to the name
+   * on the account when it is absent. OpenLinker never derives it: the neutral
+   * issue command describes the BUYER and the goods, and carries no seller
+   * party at all, which is why an adapter resolves the seller from its own
+   * connection config (the shape `IssueInvoiceResult.seller` exists for).
+   */
+  merchantName?: string;
+
+  /**
+   * The seller's registered address, in the vendor's own five-part shape.
+   * Optional for the same reason as `merchantName`; supplied and reported
+   * together with it, since a seller block is only worth surfacing when it
+   * carries both a name and an address.
+   */
+  merchantAddress?: EparagonySellerAddress;
+
+  /**
+   * Ask the vendor to relay every invoice this connection issues to the
+   * national e-invoicing hub.
+   *
+   * Defaults to `false`, which is the conservative reading: relaying requires
+   * the seller to have granted the vendor a permission in the authority's own
+   * app AND activated the integration in the vendor's panel, and neither is
+   * something OpenLinker can observe. With it off an invoice is issued outside
+   * the hub and reports `not-applicable` clearance - a complete, successful
+   * outcome, not a degraded one. With it on and the prerequisites missing the
+   * vendor refuses the document outright.
+   */
+  eInvoicingHubEnabled?: boolean;
 
   /**
    * DIAGNOSTIC ONLY - the unique number of the fiscal device this connection

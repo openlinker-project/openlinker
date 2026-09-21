@@ -20,9 +20,14 @@ import { In, QueryFailedError, Repository } from 'typeorm';
 import { FiscalRegistrationRecord } from '../../../domain/entities/fiscal-registration-record.entity';
 import { DuplicateFiscalRegistrationRecordException } from '../../../domain/exceptions/duplicate-fiscal-registration-record.exception';
 import { FiscalRegistrationRecordNotFoundException } from '../../../domain/exceptions/fiscal-registration-record-not-found.exception';
-import type { FiscalRegistrationRecordRepositoryPort } from '../../../domain/ports/fiscal-registration-record-repository.port';
+import type {
+  FiscalRegistrationKeysetPage,
+  FiscalRegistrationRecordRepositoryPort,
+} from '../../../domain/ports/fiscal-registration-record-repository.port';
 import type {
   CreateFiscalRegistrationRecordInput,
+  FiscalRegistrationKeysetCursor,
+  FiscalRegistrationListFilters,
   FiscalRegistrationOutcomePatch,
 } from '../../../domain/types/fiscalization.types';
 import { FiscalRegistrationRecordOrmEntity } from '../entities/fiscal-registration-record.orm-entity';
@@ -192,6 +197,63 @@ export class FiscalRegistrationRecordRepository
       throw new FiscalRegistrationRecordNotFoundException(id);
     }
     return null;
+  }
+
+  async findManyKeyset(
+    filter: FiscalRegistrationListFilters,
+    opts: { limit: number; cursor?: FiscalRegistrationKeysetCursor },
+  ): Promise<FiscalRegistrationKeysetPage> {
+    // Row-value keyset comparison at millisecond resolution, the same trick
+    // `InvoiceRecordRepository`'s `findIssuedNonTerminal` uses: the column is
+    // Postgres `timestamptz` (microsecond precision) while the cursor's
+    // `createdAt` round-trips through a JS `Date` (millisecond precision).
+    // Comparing the raw column would let the cursor row's truncated value stay
+    // strictly greater than its own microsecond value and re-select itself
+    // forever on a DESC walk.
+    const CREATED_AT_MS = "date_trunc('milliseconds', record.\"createdAt\")";
+    const qb = this.repository.createQueryBuilder('record');
+
+    if (filter.status !== undefined) {
+      qb.andWhere('record.status = :status', { status: filter.status });
+    }
+    if (filter.connectionId !== undefined) {
+      qb.andWhere('record.connectionId = :connectionId', { connectionId: filter.connectionId });
+    }
+    if (filter.createdFrom !== undefined) {
+      qb.andWhere('record.createdAt >= :createdFrom', { createdFrom: filter.createdFrom });
+    }
+    if (filter.createdTo !== undefined) {
+      qb.andWhere('record.createdAt <= :createdTo', { createdTo: filter.createdTo });
+    }
+    if (filter.search !== undefined && filter.search.trim().length > 0) {
+      qb.andWhere('(record.orderId ILIKE :search OR record.documentReference ILIKE :search)', {
+        search: `%${filter.search.trim()}%`,
+      });
+    }
+    if (opts.cursor) {
+      // DESC walk (newest first, matching the operational list's own sort): the
+      // next page is every row STRICTLY BEFORE the cursor in (createdAt, id).
+      qb.andWhere(`(${CREATED_AT_MS}, record.id) < (:cursorCreatedAt, :cursorId)`, {
+        cursorCreatedAt: opts.cursor.createdAt,
+        cursorId: opts.cursor.id,
+      });
+    }
+
+    const entities = await qb
+      .orderBy(CREATED_AT_MS, 'DESC')
+      .addOrderBy('record.id', 'DESC')
+      .take(opts.limit)
+      .getMany();
+
+    const items = entities.map((entity) => this.toDomain(entity));
+    const last = entities.at(-1);
+    // A full page MAY have more rows behind it; a short page cannot (there is
+    // nothing left to walk past). Never a guess either way.
+    const nextCursor =
+      last && entities.length === opts.limit
+        ? { createdAt: last.createdAt, id: last.id }
+        : null;
+    return { items, nextCursor };
   }
 
   private toDomain(entity: FiscalRegistrationRecordOrmEntity): FiscalRegistrationRecord {

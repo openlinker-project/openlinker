@@ -572,3 +572,30 @@ export const FiscalReconcileOutcomeValues = [
   'still-unknown',
 ] as const;
 export type FiscalReconcileOutcome = (typeof FiscalReconcileOutcomeValues)[number];
+
+/**
+ * Filter surface for {@link FiscalRegistrationRecordRepositoryPort.findManyKeyset}
+ * (#3306) - the cross-order operational list, never an order-scoped read. All
+ * fields optional; an absent filter never constrains the query.
+ */
+export interface FiscalRegistrationListFilters {
+  status?: FiscalRegistrationStatus;
+  connectionId?: string;
+  /** Inclusive lower bound on `createdAt`. */
+  createdFrom?: Date;
+  /** Inclusive upper bound on `createdAt`. */
+  createdTo?: Date;
+  /** Matches `orderId` or `documentReference` (case-insensitive, partial). */
+  search?: string;
+}
+
+/**
+ * Row-value keyset position for {@link FiscalRegistrationListFilters}'s list -
+ * `(createdAt, id)`, the same shape `invoice-record.repository.ts`'s
+ * `findIssuedNonTerminal` already uses. `null` on the incoming request means
+ * "first page"; `null` on the outgoing page means "no more rows."
+ */
+export interface FiscalRegistrationKeysetCursor {
+  createdAt: Date;
+  id: string;
+}

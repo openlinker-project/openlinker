@@ -41,7 +41,14 @@ import type {
   IFiscalRegistrationService,
 } from './fiscal-registration.service.interface';
 import type { FiscalRegistrationRecord } from '../../domain/entities/fiscal-registration-record.entity';
-import { FiscalRegistrationRecordRepositoryPort } from '../../domain/ports/fiscal-registration-record-repository.port';
+import {
+  FiscalRegistrationRecordRepositoryPort,
+  type FiscalRegistrationKeysetPage,
+} from '../../domain/ports/fiscal-registration-record-repository.port';
+import type {
+  FiscalRegistrationKeysetCursor,
+  FiscalRegistrationListFilters,
+} from '../../domain/types/fiscalization.types';
 import type { FiscalizationPort } from '../../domain/ports/fiscalization.port';
 import { isFiscalRegistrationLocator } from '../../domain/ports/capabilities/fiscal-registration-locator.capability';
 import { DuplicateFiscalRegistrationRecordException } from '../../domain/exceptions/duplicate-fiscal-registration-record.exception';
@@ -429,6 +436,15 @@ export class FiscalRegistrationService implements IFiscalRegistrationService {
 
   async getByOrderIds(orderIds: readonly string[]): Promise<FiscalRegistrationRecord[]> {
     return this.repo.findAllByOrderIds(orderIds);
+  }
+
+  async listRegistrationsKeyset(
+    filters: FiscalRegistrationListFilters,
+    opts: { limit: number; cursor?: FiscalRegistrationKeysetCursor },
+  ): Promise<FiscalRegistrationKeysetPage> {
+    // Cross-context list seam (#3306): the HTTP layer reaches the fiscal
+    // projection through here, never the repository port. Pure projection read.
+    return this.repo.findManyKeyset(filters, opts);
   }
 
   async listRecentByConnectionId(

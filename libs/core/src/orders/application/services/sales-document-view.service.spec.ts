@@ -129,15 +129,21 @@ const withoutMatchedRule = (view: SalesDocumentView): Record<string, unknown> =>
 describe('SalesDocumentViewService', () => {
   let service: SalesDocumentViewService;
   let orderRecords: { findByIds: jest.Mock };
-  let invoices: { listInvoicesForOrders: jest.Mock };
-  let fiscalRegistrations: { getByOrderIds: jest.Mock };
+  let invoices: { listInvoicesForOrders: jest.Mock; listInvoicesKeyset: jest.Mock };
+  let fiscalRegistrations: { getByOrderIds: jest.Mock; listRegistrationsKeyset: jest.Mock };
   let connections: { list: jest.Mock };
   let rules: { resolveRoutingBatch: jest.Mock; getRulesByIds: jest.Mock };
 
   beforeEach(async () => {
     orderRecords = { findByIds: jest.fn().mockResolvedValue([]) };
-    invoices = { listInvoicesForOrders: jest.fn().mockResolvedValue([]) };
-    fiscalRegistrations = { getByOrderIds: jest.fn().mockResolvedValue([]) };
+    invoices = {
+      listInvoicesForOrders: jest.fn().mockResolvedValue([]),
+      listInvoicesKeyset: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    };
+    fiscalRegistrations = {
+      getByOrderIds: jest.fn().mockResolvedValue([]),
+      listRegistrationsKeyset: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    };
     connections = { list: jest.fn().mockResolvedValue([]) };
     rules = {
       resolveRoutingBatch: jest.fn().mockResolvedValue([]),
@@ -511,6 +517,102 @@ describe('SalesDocumentViewService', () => {
     await service.getForOrders(['ol_order_1', 'ol_order_1']);
 
     expect(orderRecords.findByIds).toHaveBeenCalledWith(['ol_order_1']);
+  });
+
+  describe('listSalesDocuments (#3306)', () => {
+    it('returns an empty page and never reads amounts/siblings when both sources are empty', async () => {
+      const page = await service.listSalesDocuments({}, { limit: 20 });
+
+      expect(page).toEqual({ items: [], nextCursor: { invoice: null, fiscal: null } });
+      expect(orderRecords.findByIds).not.toHaveBeenCalled();
+      expect(invoices.listInvoicesForOrders).not.toHaveBeenCalled();
+      expect(fiscalRegistrations.getByOrderIds).not.toHaveBeenCalled();
+    });
+
+    it('merges an invoice and a fiscal-receipt row newest-first, with amount and no duplicate', async () => {
+      const invoice = invoiceRecord({
+        id: 'inv-newer',
+        createdAt: new Date('2026-08-02T10:00:00.000Z'),
+        orderId: 'ol_order_a',
+        connectionId: 'conn-invoicing',
+      });
+      const fiscal = fiscalRecord({
+        id: 'fis-older',
+        createdAt: new Date('2026-08-01T10:00:00.000Z'),
+        orderId: 'ol_order_b',
+        connectionId: 'conn-fiscal',
+      });
+      invoices.listInvoicesKeyset.mockResolvedValue({ items: [invoice], nextCursor: null });
+      fiscalRegistrations.listRegistrationsKeyset.mockResolvedValue({
+        items: [fiscal],
+        nextCursor: null,
+      });
+      orderRecords.findByIds.mockResolvedValue([
+        orderRecord({ internalOrderId: 'ol_order_a', totalAmount: 199, currency: 'PLN' }),
+        orderRecord({ internalOrderId: 'ol_order_b', totalAmount: 49, currency: 'EUR' }),
+      ]);
+      // Only what's already on the page comes back from the sibling lookup -
+      // one record each, so nothing is a duplicate.
+      invoices.listInvoicesForOrders.mockResolvedValue([invoice]);
+      fiscalRegistrations.getByOrderIds.mockResolvedValue([fiscal]);
+
+      const page = await service.listSalesDocuments({}, { limit: 20 });
+
+      expect(page.items.map((item) => item.orderId)).toEqual(['ol_order_a', 'ol_order_b']);
+      expect(page.items[0]).toMatchObject({
+        connectionId: 'conn-invoicing',
+        amount: { value: 199, currency: 'PLN' },
+        otherRecordCount: 0,
+      });
+      expect(page.items[0]?.document.kind).toBe('invoice');
+      expect(page.items[1]).toMatchObject({
+        connectionId: 'conn-fiscal',
+        amount: { value: 49, currency: 'EUR' },
+        otherRecordCount: 0,
+      });
+      expect(page.items[1]?.document.kind).toBe('fiscal-receipt');
+      // Both order ids passed to the sibling lookup in ONE batched call, not
+      // one per row.
+      expect(invoices.listInvoicesForOrders).toHaveBeenCalledWith(['ol_order_a', 'ol_order_b']);
+    });
+
+    it('reports otherRecordCount when a second connection holds a record for the same order', async () => {
+      const winner = invoiceRecord({
+        id: 'inv-1',
+        orderId: 'ol_order_1',
+        connectionId: 'conn-invoicing',
+      });
+      const rival = invoiceRecord({
+        id: 'inv-2',
+        orderId: 'ol_order_1',
+        connectionId: 'conn-rival',
+      });
+      invoices.listInvoicesKeyset.mockResolvedValue({ items: [winner], nextCursor: null });
+      orderRecords.findByIds.mockResolvedValue([orderRecord()]);
+      // The sibling lookup for this order's ids finds BOTH records.
+      invoices.listInvoicesForOrders.mockResolvedValue([winner, rival]);
+
+      const page = await service.listSalesDocuments({}, { limit: 20 });
+
+      expect(page.items[0]?.otherRecordCount).toBe(1);
+    });
+
+    it('skips the fiscal source entirely when kind=invoice, reporting its cursor as permanently exhausted', async () => {
+      await service.listSalesDocuments({ kind: 'invoice' }, { limit: 20 });
+
+      expect(fiscalRegistrations.listRegistrationsKeyset).not.toHaveBeenCalled();
+      expect(invoices.listInvoicesKeyset).toHaveBeenCalled();
+    });
+
+    it('does not re-query a source whose incoming cursor is already null (exhausted)', async () => {
+      await service.listSalesDocuments(
+        {},
+        { limit: 20, cursor: { invoice: null, fiscal: undefined } },
+      );
+
+      expect(invoices.listInvoicesKeyset).not.toHaveBeenCalled();
+      expect(fiscalRegistrations.listRegistrationsKeyset).toHaveBeenCalled();
+    });
   });
 });
 

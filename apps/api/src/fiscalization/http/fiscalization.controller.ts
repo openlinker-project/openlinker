@@ -203,6 +203,27 @@ export class FiscalizationController {
   }
 
   @Roles('admin', 'operator', 'viewer')
+  @Get('fiscal-registrations/:id')
+  @ApiOperation({
+    summary: 'Read one fiscal registration record by id',
+    description:
+      'Backs the fiscal-receipt half of the /sales-documents detail page (#3306) - mirrors ' +
+      'GET /invoices/:invoiceId on the invoicing side. `getById` already existed on the service; ' +
+      'this is the first route exposing it.',
+  })
+  @ApiResponse({ status: 200, type: FiscalRegistrationResponseDto })
+  @ApiResponse({ status: 404, description: 'No record with this id' })
+  async getById(@Param('id') id: string): Promise<FiscalRegistrationResponseDto> {
+    let record;
+    try {
+      record = await this.fiscalRegistrations.getById(id);
+    } catch (error) {
+      throw this.toHttpException(error);
+    }
+    return this.toDto(record, new Date());
+  }
+
+  @Roles('admin', 'operator', 'viewer')
   @Get('orders/:orderId/fiscal-registration')
   @ApiOperation({
     summary: 'Where this order`s registration is on one connection',

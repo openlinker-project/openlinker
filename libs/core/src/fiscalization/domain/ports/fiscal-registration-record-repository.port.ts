@@ -17,8 +17,17 @@
 import type { FiscalRegistrationRecord } from '../entities/fiscal-registration-record.entity';
 import type {
   CreateFiscalRegistrationRecordInput,
+  FiscalRegistrationKeysetCursor,
+  FiscalRegistrationListFilters,
   FiscalRegistrationOutcomePatch,
 } from '../types/fiscalization.types';
+
+/** Page of {@link FiscalRegistrationRecordRepositoryPort.findManyKeyset}. */
+export interface FiscalRegistrationKeysetPage {
+  items: FiscalRegistrationRecord[];
+  /** `null` means the filtered set is exhausted - there is no next page. */
+  nextCursor: FiscalRegistrationKeysetCursor | null;
+}
 
 export interface FiscalRegistrationRecordRepositoryPort {
   /**
@@ -106,4 +115,23 @@ export interface FiscalRegistrationRecordRepositoryPort {
     id: string,
     leaseExpiresAt: Date,
   ): Promise<FiscalRegistrationRecord | null>;
+
+  /**
+   * Cross-order operational list (#3306) - every record matching `filter`,
+   * newest-first, keyset-paginated on `(createdAt, id)` (never `OFFSET`: a
+   * merged, financial-audit-adjacent list must not silently skip or duplicate
+   * a row when a document lands mid-walk - see
+   * `docs/engineering-standards.md` § When A Paginated Total Is Expensive for
+   * the sibling reasoning on the invoice side).
+   *
+   * `opts.cursor` absent means "first page." `nextCursor` on the returned page
+   * is the last row's `(createdAt, id)` when a full page was returned, else
+   * `null` - the caller must not assume a short page means "more may follow,"
+   * because keyset pagination (unlike `OFFSET`) cannot cheaply answer that
+   * without a stable point of reference from the CURRENT page.
+   */
+  findManyKeyset(
+    filter: FiscalRegistrationListFilters,
+    opts: { limit: number; cursor?: FiscalRegistrationKeysetCursor },
+  ): Promise<FiscalRegistrationKeysetPage>;
 }

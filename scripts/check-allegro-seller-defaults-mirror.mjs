@@ -75,6 +75,40 @@ const stripComments = (text) =>
   text.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
 
 /**
+ * Blank `//` and `/* ... *\/` comments to spaces (newlines preserved), so a `]`
+ * written inside a comment can never be mistaken for an array's real closing
+ * bracket. Length-preserving: any index found in the blanked string is a valid
+ * index into the original.
+ */
+function blankComments(source) {
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    const next = source[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < source.length && source[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += '  ';
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
  * Collect every `'sellerDefaults.*'` literal inside the adapter's gate
  * function. Returns `{ line, values }` (deduped, source order), or `null` when
  * the function is absent - a rename must fail loudly rather than pass with an
@@ -108,6 +142,10 @@ export function parseAdapterPaths(content, functionName) {
 /**
  * Extract the string literals of `export const <name> = [...] as const;`, with
  * the 1-based line the declaration starts on.
+ *
+ * The closing bracket is located on a comment-BLANKED copy of the content, or
+ * a `]` written inside a comment between the real brackets is mistaken for the
+ * declaration's own close and truncates everything after it (#3002).
  */
 export function parseDeclaredPaths(content, name) {
   const declRe = new RegExp(`export\\s+const\\s+${name}\\s*=\\s*\\[`);
@@ -115,7 +153,7 @@ export function parseDeclaredPaths(content, name) {
   if (!declMatch) return null;
 
   const openBracket = declMatch.index + declMatch[0].length - 1;
-  const closeBracket = content.indexOf(']', openBracket);
+  const closeBracket = blankComments(content).indexOf(']', openBracket);
   if (closeBracket === -1) return null;
 
   const body = stripComments(content.slice(openBracket + 1, closeBracket));
@@ -167,9 +205,21 @@ async function main() {
   const frontend = parseDeclaredPaths(frontendContent, MIRRORED_DECLARATION);
 
   const fatal = [];
-  if (!adapter) fatal.push(`${ADAPTER_FILE}: no 'function ${ADAPTER_FUNCTION}(' found`);
+  if (!adapter) {
+    fatal.push(`${ADAPTER_FILE}: no 'function ${ADAPTER_FUNCTION}(' found`);
+  } else if (adapter.values.length === 0) {
+    fatal.push(
+      `${ADAPTER_FILE}: ${ADAPTER_FUNCTION} parsed to ZERO sellerDefaults paths - the PARSER is ` +
+        `broken (a bracket inside a comment likely truncated the body), not the gate legitimately empty`,
+    );
+  }
   if (!frontend) {
     fatal.push(`${FRONTEND_FILE}: no 'export const ${MIRRORED_DECLARATION} = [...]' found`);
+  } else if (frontend.values.length === 0) {
+    fatal.push(
+      `${FRONTEND_FILE}: '${MIRRORED_DECLARATION}' parsed to ZERO values - the PARSER is broken ` +
+        `(a bracket inside a comment likely truncated the array), not the union legitimately empty`,
+    );
   }
   if (fatal.length > 0) {
     console.error('✗ check-allegro-seller-defaults-mirror: could not locate a side of the mirror.\n');
@@ -277,6 +327,40 @@ function selfCheck() {
     'absent declaration → null',
     parseDeclaredPaths('const Other = [];', MIRRORED_DECLARATION),
     null,
+  );
+
+  // #3002: a `]` inside a comment BETWEEN the real brackets must not truncate
+  // the array. Red-first against the pre-fix `indexOf(']', openBracket)` on
+  // raw content: that stopped at the comment's own `]`.
+  expect(
+    'a "]" inside a line comment does not truncate the array',
+    parseDeclaredPaths(
+      feFile("  'sellerDefaults.location', // e.g. missing: []\n  'sellerDefaults.gpsr',"),
+      MIRRORED_DECLARATION,
+    )?.values.join(','),
+    'sellerDefaults.location,sellerDefaults.gpsr',
+  );
+  expect(
+    'a "]" inside a block comment does not truncate the array',
+    parseDeclaredPaths(
+      feFile("  'sellerDefaults.location', /* e.g. missing: [] */\n  'sellerDefaults.gpsr',"),
+      MIRRORED_DECLARATION,
+    )?.values.join(','),
+    'sellerDefaults.location,sellerDefaults.gpsr',
+  );
+  expect(
+    'a "]" inside a comment BEFORE the declaration does not shift the reported line',
+    parseDeclaredPaths(
+      `// mentions a bracket like foo(): []\n${feFile("  'sellerDefaults.location',")}`,
+      MIRRORED_DECLARATION,
+    )?.line,
+    5, // leading comment (1) + header (2) + the UNRELATED array (3) + a blank line (4) + the decl (5)
+  );
+  expect(
+    'declaration present but every entry commented out → zero values',
+    parseDeclaredPaths(feFile("  // 'sellerDefaults.location',"), MIRRORED_DECLARATION)?.values
+      .length,
+    0,
   );
 
   expect('identical sets → ok', diffPaths(['a', 'b'], ['a', 'b']).ok, true);

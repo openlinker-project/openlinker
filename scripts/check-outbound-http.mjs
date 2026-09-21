@@ -41,7 +41,7 @@
  *
  * @module scripts
  */
-import { readFile, readdir } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, relative, resolve } from 'node:path';
 
@@ -159,9 +159,25 @@ export function findBareFetchCalls(content) {
 
 async function main() {
   const violations = [];
+  const missingRoots = [];
+  let rootsFound = 0;
 
   for (const scanRoot of SCAN_ROOTS) {
-    for await (const abs of walk(resolve(ROOT, scanRoot))) {
+    const rootAbs = resolve(ROOT, scanRoot);
+    try {
+      await access(rootAbs);
+    } catch {
+      // A declared root that does not resolve is never a silent skip (#2792):
+      // the old `walk()` swallowed ENOENT here, so a renamed/moved directory
+      // quietly scanned nothing for that root while the success line still
+      // reported `SCAN_ROOTS.length` (declared roots), not what was actually
+      // found and walked.
+      missingRoots.push(scanRoot);
+      continue;
+    }
+    rootsFound += 1;
+
+    for await (const abs of walk(rootAbs)) {
       const rel = relative(ROOT, abs);
       if (isTestFile(rel)) continue;
 
@@ -192,8 +208,22 @@ async function main() {
     process.exit(1);
   }
 
+  // A guard that passes because a declared root vanished (or because NO root
+  // resolved at all) has silently stopped guarding that root's traffic — most
+  // likely a directory was renamed/moved. Fail loudly rather than reporting
+  // the roots we WANTED to scan.
+  if (missingRoots.length > 0 || rootsFound === 0) {
+    process.stderr.write(
+      `check-outbound-http: ${missingRoots.length} of ${SCAN_ROOTS.length} declared root(s) could ` +
+        `not be found and were skipped: ${missingRoots.join(', ') || '(none found at all)'}.\n` +
+        'Re-sync SCAN_ROOTS with the current package layout, or this guard is silently not ' +
+        'checking those directories for a bare fetch() bypass.\n',
+    );
+    process.exit(1);
+  }
+
   process.stdout.write(
-    `check-outbound-http: OK (scanned ${SCAN_ROOTS.length} root${SCAN_ROOTS.length === 1 ? '' : 's'})\n`,
+    `check-outbound-http: OK (scanned ${rootsFound} root${rootsFound === 1 ? '' : 's'})\n`,
   );
 }
 
