@@ -257,6 +257,17 @@ export const JobTypeValues = [
   // one, and otherwise diagnostic only — `SyncJob.connectionId` is
   // non-nullable, pending #1943.
   'analytics.currency.recalculate',
+
+  // Subiekt bridge reachability sweep (#3358). Before this, an unreachable
+  // bridge produced no operator-facing signal at all — no alerting
+  // infrastructure exists anywhere in the product, and Subiekt registered no
+  // `AuthFailureClassifierPort`, so a bad token OR a dead bridge process
+  // both silently accumulated failed sync_jobs with nothing pointing at
+  // them. Periodically re-probes the connection's own `ConnectionTesterPort`
+  // (the same seam the "Test connection" button uses) and error-logs a
+  // structured, greppable token on failure. Scoped narrowly to what already
+  // exists in the product — no external alert channel is wired here.
+  'subiekt.bridge.reachabilitySweep',
 ] as const;
 
 /**

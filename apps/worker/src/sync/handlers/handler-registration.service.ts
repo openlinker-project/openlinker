@@ -32,6 +32,7 @@ import { MarketplaceOfferRefreshSnapshotHandler } from './marketplace-offer-refr
 import { MarketplaceOfferStockRestoreHandler } from './marketplace-offer-stock-restore.handler';
 import { MarketplaceOfferPauseStaleHandler } from './marketplace-offer-pause-stale.handler';
 import { MarketplaceOfferPauseStaleSweepHandler } from './marketplace-offer-pause-stale-sweep.handler';
+import { SubiektBridgeReachabilitySweepHandler } from './subiekt-bridge-reachability-sweep.handler';
 import { MarketplaceShipmentStatusSyncHandler } from './marketplace-shipment-status-sync.handler';
 import { MarketplaceShipmentSyncByExternalIdHandler } from './marketplace-shipment-sync-by-external-id.handler';
 import { MarketplaceFulfillmentStatusSyncHandler } from './marketplace-fulfillment-status-sync.handler';
@@ -98,6 +99,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly marketplaceOfferStockRestoreHandler: MarketplaceOfferStockRestoreHandler,
     private readonly marketplaceOfferPauseStaleHandler: MarketplaceOfferPauseStaleHandler,
     private readonly marketplaceOfferPauseStaleSweepHandler: MarketplaceOfferPauseStaleSweepHandler,
+    private readonly subiektBridgeReachabilitySweepHandler: SubiektBridgeReachabilitySweepHandler,
     private readonly marketplaceShipmentStatusSyncHandler: MarketplaceShipmentStatusSyncHandler,
     private readonly marketplaceShipmentSyncByExternalIdHandler: MarketplaceShipmentSyncByExternalIdHandler,
     private readonly marketplaceFulfillmentStatusSyncHandler: MarketplaceFulfillmentStatusSyncHandler,
@@ -288,6 +290,11 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'marketplace.offer.pauseStaleSweep',
       this.marketplaceOfferPauseStaleSweepHandler,
+      'bulk'
+    );
+    this.handlerRegistry.register(
+      'subiekt.bridge.reachabilitySweep',
+      this.subiektBridgeReachabilitySweepHandler,
       'bulk'
     );
     this.handlerRegistry.register(

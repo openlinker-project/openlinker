@@ -25,7 +25,9 @@ import { Logger } from '@openlinker/shared/logging';
 import { SubiektConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/subiekt-connection-config-shape-validator.adapter';
 import { SubiektConnectionTesterAdapter } from './infrastructure/adapters/subiekt-connection-tester.adapter';
 import { SubiektRetryClassifierAdapter } from './infrastructure/adapters/subiekt-retry-classifier.adapter';
+import { SubiektAuthFailureClassifierAdapter } from './infrastructure/adapters/subiekt-auth-failure-classifier.adapter';
 import { SubiektAdapterFactory } from './application/subiekt-adapter.factory';
+import { buildSubiektSchedulerTasks } from './infrastructure/scheduler/subiekt-scheduler-tasks';
 
 /**
  * Static plugin manifest. Exported as a top-level `const` so host tooling can
@@ -93,6 +95,22 @@ export function createSubiektPlugin(): AdapterPlugin {
         subiektAdapterManifest.adapterKey,
         new SubiektRetryClassifierAdapter(),
       );
+      // #3358: before this the plugin registered no AuthFailureClassifierPort
+      // at all, so a bad/missing bridge token produced no connection-status
+      // signal whatsoever — an operator would only discover it by reading raw
+      // sync_jobs. A bridge outage (unreachable, not a 401/403) still
+      // produces no signal here by design; that's a different failure class
+      // (see the scheduled reachability sweep, subiekt-reachability-sweep
+      // scheduler task) with a different remedy than re-entering credentials.
+      host.authFailureClassifierRegistry.register(
+        subiektAdapterManifest.adapterKey,
+        new SubiektAuthFailureClassifierAdapter(),
+      );
+      // #3358: periodic reachability sweep — see subiekt-scheduler-tasks.ts
+      // and subiekt-bridge-reachability-sweep.handler.ts.
+      for (const task of buildSubiektSchedulerTasks()) {
+        host.schedulerTaskRegistry.register(task);
+      }
     },
 
     // DIVERGENCE FROM WooCommerce: does NOT reject an empty credentialsRef — the
