@@ -199,8 +199,12 @@ For each group:
 4. **Delete the losers by primary key**, taken from the report:
 
    ```sql
-   -- ids come from the report's groups[].rows[].id — bare UUIDs, NOT
-   -- ol_-prefixed internal ids (inventory_items.id is a plain uuid).
+   -- ids come from the report's groups[].rows[].id — `ol_inventory_*`
+   -- internal ids, not bare UUIDs. `inventory_items.id` was converted from
+   -- uuid to text by 1767555200000-change-product-ids-to-varchar.ts, and
+   -- IdentifierMappingService mints every row's id via formatInternalId
+   -- (docs/architecture-overview.md § Identifier Mapping Service) — an
+   -- `ol_`-prefixed id here is correct, not a sign the report is wrong.
    DELETE FROM "inventory_items"
     WHERE "id" IN ('{loser id from the report}', '{loser id from the report}');
    ```
