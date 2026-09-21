@@ -229,24 +229,36 @@ export function EparagonyStructuredSection({
           unrecognised.paymentForm === null
             ? `How the payment is described on the receipt. Only the label is configurable — the amount is always the sale total. Defaults to ${EPARAGONY_DEFAULT_PAYMENT_FORM}, the honest description of a prepaid online order.`
             : // Never render an unrecognised stored value as a known one: the
-              // select can only show it as “use the default”, which is a false
-              // statement about the operator's own data, and the 400 they get
-              // on save names a key the form shows as unset (#3268 review).
-              //
-              // The instruction below cannot say "pick one below" unqualified:
-              // an unrecognised value hydrates this field to "" - the SAME
-              // value as "Use the default" - so re-selecting that option fires
-              // no change event and the save fails identically. Naming a
-              // DIFFERENT option first is the only remedy that actually works.
-              `The saved value (${unrecognised.paymentForm}) is not one eparagony.pl accepts, so saving this connection will be refused. Pick a different value below, then switch back to the default if that is what you meant — re-selecting the default without picking something else first will not clear this.`
+              // select's DISPLAYED value is the raw stored string itself (see
+              // the hidden sentinel `<option>` below), not "Use the default" -
+              // so this is the one place the copy can say "pick one below"
+              // unqualified again. Re-selecting the recommended option is a
+              // genuine value change now, not a no-op (#3311).
+              `The saved value (${unrecognised.paymentForm}) is not one eparagony.pl accepts, so saving this connection will be refused until you pick one below.`
         }
       >
         <Select
-          value={form.watch('eparagonyPaymentForm') ?? ''}
+          value={unrecognised.paymentForm ?? (form.watch('eparagonyPaymentForm') ?? '')}
           onChange={(event) => syncStructuredToJson('eparagonyPaymentForm', event.target.value)}
           disabled={!configIsParseable}
           invalid={Boolean(errors.eparagonyPaymentForm)}
         >
+          {/*
+            When the stored value is unrecognised, this hidden sentinel option
+            - not "Use the default" - is the one actually selected in the DOM
+            (see the `value` prop above). That is what makes re-picking "Use
+            the default" a REAL value change: a browser only fires `onChange`
+            when the selected option differs from what was already selected,
+            and pinning the select to the recommended option up front made
+            re-clicking it a no-op click that fired nothing (#3311). `hidden`
+            keeps it out of the dropdown list; `disabled` keeps it from ever
+            being reselected once the operator has moved off it.
+          */}
+          {unrecognised.paymentForm !== null && (
+            <option value={unrecognised.paymentForm} hidden disabled>
+              {unrecognised.paymentForm} (not recognised)
+            </option>
+          )}
           <option value="">Use the default ({EPARAGONY_DEFAULT_PAYMENT_FORM})</option>
           {EPARAGONY_PAYMENT_FORM_VALUES.map((value: EparagonyPaymentFormValue) => (
             <option key={value} value={value}>
@@ -291,11 +303,13 @@ export function EparagonyStructuredSection({
             <>
               {unrecognised.defaultTaxRateCode === null
                 ? TAX_FALLBACK_FIELD_DESCRIPTION
-                : // Same reselect-the-default no-op as `paymentForm` above:
-                  // the unrecognised value hydrates this field to "", which
-                  // is also the value of "Not set" (the recommended option),
-                  // so clicking it again changes nothing (#3268 review).
-                  `The saved value (${unrecognised.defaultTaxRateCode}) is not a slot this fiscal device exposes, so saving this connection will be refused. Pick a different slot below, then switch back to "Not set" if that is what you meant — re-selecting "Not set" without picking something else first will not clear this.`}{' '}
+                : // Same fix as `paymentForm` above: the select's DISPLAYED
+                  // value is the raw stored string (the hidden sentinel
+                  // option below), not "Not set", so re-picking the
+                  // recommended option is a genuine value change rather than
+                  // a no-op click (#3311) and the copy can say "pick one
+                  // below" unqualified again.
+                  `The saved value (${unrecognised.defaultTaxRateCode}) is not a slot this fiscal device exposes, so saving this connection will be refused until you pick one below.`}{' '}
               <Infotip
                 ariaLabel={TAX_FALLBACK_INFOTIP_LABEL}
                 definitions={EPARAGONY_TAX_FALLBACK_HAZARD_NOTES}
@@ -304,13 +318,19 @@ export function EparagonyStructuredSection({
           }
         >
           <Select
-            value={taxSlot}
+            value={unrecognised.defaultTaxRateCode ?? taxSlot}
             onChange={(event) =>
               syncStructuredToJson('eparagonyDefaultTaxRateCode', event.target.value)
             }
             disabled={!configIsParseable}
             invalid={Boolean(errors.eparagonyDefaultTaxRateCode)}
           >
+            {/* See the identical sentinel on `paymentForm` above for why this exists (#3311). */}
+            {unrecognised.defaultTaxRateCode !== null && (
+              <option value={unrecognised.defaultTaxRateCode} hidden disabled>
+                {unrecognised.defaultTaxRateCode} (not recognised)
+              </option>
+            )}
             <option value="">Not set — refuse a line with no rate (recommended)</option>
             {EPARAGONY_TAX_RATE_CODE_VALUES.map((code) => (
               <option key={code} value={code}>

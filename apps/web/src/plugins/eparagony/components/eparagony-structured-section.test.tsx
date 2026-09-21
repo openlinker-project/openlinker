@@ -289,6 +289,96 @@ describe('EparagonyStructuredSection', () => {
     expect(screen.getByText(/The saved value \(Bitcoin\) is not one eparagony\.pl accepts/)).toBeInTheDocument();
   });
 
+  it('should simplify the payment-form warning copy now the recommended option genuinely fixes it (#3311)', () => {
+    renderWithProviders(
+      <Harness defaultValues={{ configText: JSON.stringify({ paymentForm: 'Bitcoin' }) }} />,
+    );
+    expect(
+      screen.getByText(
+        'The saved value (Bitcoin) is not one eparagony.pl accepts, so saving this connection will be refused until you pick one below.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Pick a different value below/)).not.toBeInTheDocument();
+  });
+
+  it('should point the payment-form select at the raw unrecognised value rather than "Use the default" (#3311)', () => {
+    // Before the fix, an unrecognised stored value hydrated the FIELD — and
+    // hence the controlled select — to '', the same value as "Use the
+    // default", so the browser's real selected option was already the
+    // recommended one and re-picking it fired no `onChange`. Asserting the
+    // select's OWN value here is what proves the fix: the DOM's real
+    // selection is the raw stored string, not the recommended option, so a
+    // real browser sees a genuine change when the operator re-picks it.
+    renderWithProviders(
+      <Harness defaultValues={{ configText: JSON.stringify({ paymentForm: 'Bitcoin' }) }} />,
+    );
+    expect(screen.getByLabelText('Payment form on the receipt')).toHaveValue('Bitcoin');
+  });
+
+  it('should fix an unrecognised payment-form value by re-selecting the already-shown recommended option (#3311)', () => {
+    const sync = vi.fn();
+    renderWithProviders(
+      <Harness
+        syncStructuredToJson={sync}
+        defaultValues={{ configText: JSON.stringify({ paymentForm: 'Bitcoin' }) }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Payment form on the receipt'), {
+      target: { value: '' },
+    });
+    expect(sync).toHaveBeenCalledWith('eparagonyPaymentForm', '');
+  });
+
+  it('should still sync a genuinely different payment-form choice while an unrecognised value is stored', () => {
+    // No regression on the already-correct path: picking a real vendor value
+    // works exactly as before.
+    const sync = vi.fn();
+    renderWithProviders(
+      <Harness
+        syncStructuredToJson={sync}
+        defaultValues={{ configText: JSON.stringify({ paymentForm: 'Bitcoin' }) }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Payment form on the receipt'), {
+      target: { value: 'Karta' },
+    });
+    expect(sync).toHaveBeenCalledWith('eparagonyPaymentForm', 'Karta');
+  });
+
+  it('should simplify the fallback-slot warning copy now the recommended option genuinely fixes it (#3311)', () => {
+    renderWithProviders(
+      <Harness defaultValues={{ configText: JSON.stringify({ defaultTaxRateCode: 'Z' }) }} />,
+    );
+    openGroup('Fallback tax rate:');
+    expect(
+      screen.getByText(
+        /The saved value \(Z\) is not a slot this fiscal device exposes, so saving this connection will be refused until you pick one below\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Pick a different slot below/)).not.toBeInTheDocument();
+  });
+
+  it('should point the fallback-slot select at the raw unrecognised value rather than "Not set" (#3311)', () => {
+    renderWithProviders(
+      <Harness defaultValues={{ configText: JSON.stringify({ defaultTaxRateCode: 'Z' }) }} />,
+    );
+    openGroup('Fallback tax rate:');
+    expect(screen.getByLabelText('Fallback device slot')).toHaveValue('Z');
+  });
+
+  it('should fix an unrecognised fallback-slot value by re-selecting the already-shown "Not set" option (#3311)', () => {
+    const sync = vi.fn();
+    renderWithProviders(
+      <Harness
+        syncStructuredToJson={sync}
+        defaultValues={{ configText: JSON.stringify({ defaultTaxRateCode: 'Z' }) }}
+      />,
+    );
+    openGroup('Fallback tax rate:');
+    fireEvent.change(screen.getByLabelText('Fallback device slot'), { target: { value: '' } });
+    expect(sync).toHaveBeenCalledWith('eparagonyDefaultTaxRateCode', '');
+  });
+
   it('should not warn about a cleared or absent value', () => {
     // `null` is the CLEARED state the apply path writes. Reporting it would put
     // a warning on every field an operator has deliberately emptied.
