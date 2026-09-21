@@ -563,11 +563,13 @@ export function SalesDocumentRuleComposerDialog({
             </div>
           </div>
           {connectionRoleGap !== null ? (
-            <div data-testid="rule-connection-role-gap">
-              <Alert tone="warning" title="This connection has no role yet">
-                <p>{describeSalesDocumentConnectionRoleGap(connectionRoleGap)}</p>
-              </Alert>
-            </div>
+            <Alert
+              data-testid="rule-connection-role-gap"
+              tone="warning"
+              title="This connection has no role yet"
+            >
+              <p>{describeSalesDocumentConnectionRoleGap(connectionRoleGap)}</p>
+            </Alert>
           ) : null}
         </section>
 
