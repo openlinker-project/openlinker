@@ -159,3 +159,48 @@ export interface CheckSalesDocumentRuleOverlapInput {
   readonly effectiveTo?: string | null;
   readonly excludeRuleId?: string;
 }
+
+/**
+ * Sample-order input for a dry run (#3191) — mirrors the backend
+ * `SalesDocumentOrderFacts` projection. `buyerHasTaxId` absent means
+ * "unknown", never a defaulted `false` — the same rule the rest of this
+ * concern already follows for that field.
+ */
+export interface SalesDocumentDryRunSampleOrderInput {
+  country: string;
+  totalGross: number;
+  currency: string;
+  taxTreatment?: 'inclusive' | 'exclusive';
+  buyerHasTaxId?: boolean;
+}
+
+/**
+ * The in-progress, NEVER-SAVED rule candidate a dry run tests — the same
+ * scoping fields `CreateSalesDocumentRuleInput` carries, minus the effective
+ * window and provenance (a dry run tests conditions, not a calendar).
+ */
+export interface DryRunSalesDocumentRuleInput {
+  country: string;
+  conditions: SalesDocumentConditionInput[];
+  documentKind: SalesDocumentKind;
+  connectionId: string;
+  sampleOrder: SalesDocumentDryRunSampleOrderInput;
+}
+
+/**
+ * Mirrors the backend `SalesDocumentDryRunResultDto` (#3191) — the same
+ * `SalesDocumentDecision` shape `SalesDocumentMarketOutcome` mirrors, plus
+ * `matchedByCandidateRule`: true when the rule being drafted is what matched,
+ * as opposed to an already-saved rule elsewhere in this country's
+ * configuration.
+ */
+export interface SalesDocumentDryRunResult {
+  kind: 'route' | 'aggregate' | 'unresolved';
+  /** Set when `kind === 'route'`. `null` marks a self-routing destination. */
+  documentKind?: SalesDocumentKind | string | null;
+  /** Set when `kind === 'route'` or `kind === 'aggregate'`. */
+  connectionId?: string;
+  /** Set when `kind === 'unresolved'` — a `SalesDocumentUnresolvedReasonValue`. */
+  reason?: string;
+  matchedByCandidateRule: boolean;
+}
