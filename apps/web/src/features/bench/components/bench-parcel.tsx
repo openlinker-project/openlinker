@@ -76,6 +76,7 @@ import { useBenchReopenMutation } from '../hooks/use-bench-reopen-mutation';
 import { useBenchVerifyMutation } from '../hooks/use-bench-verify-mutation';
 import { useScannerInput } from '../hooks/use-scanner-input';
 import {
+  benchLineState,
   describeParcelRefusal,
   describeReopenRefusal,
   describeVerificationRefusal,
@@ -91,6 +92,7 @@ import {
   type ScanSoundKind,
 } from '../lib/bench-scan-sound';
 import { matchScanToParcelLine, outstandingScanCodes } from '../lib/parcel-scan-match';
+import { isEditableTarget } from '../lib/scanner-gesture';
 import { beginGesture } from '../lib/scanner-gesture-log';
 import { BenchDocumentsPanel } from './bench-documents';
 import { BenchParcelLineRow } from './bench-parcel-line';
@@ -372,6 +374,52 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
       );
     },
   });
+
+  /**
+   * "C" hand-confirms the first not-yet-satisfied line — a keyboard
+   * equivalent of pressing the topmost visible "Confirm this line" button
+   * (#3339, mockup fix). Deliberately NOT a full ShipStation-style hotkey
+   * set: the mockup also demonstrated "U" (undo) and "N" (take next task),
+   * but neither has a real counterpart here — this app has no undo
+   * capability at all (scans are append-only, matching the codebase's
+   * general act-ledger discipline), and "take next task" lives in a sibling
+   * component this one does not reach. Inventing either would be UI with no
+   * capability behind it.
+   *
+   * Same enabled-gate as the scanner listener above (`interactive && !closed
+   * && !refused`), and silently a no-op while unreachable — matching the
+   * per-line button's own `disabled={unreachable}`, never a bespoke message
+   * for a control this one doesn't visibly render.
+   */
+  useEffect(() => {
+    if (!interactive || closed || refused) return;
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isEditableTarget(event.target)) return;
+      if (event.key.toLowerCase() !== 'c') return;
+      if (reachabilityRef.current) return;
+
+      const current = parcelRef.current;
+      if (current === undefined) return;
+      const next = current.lines.find((candidate) => benchLineState(candidate) !== 'verified');
+      if (next === undefined) return;
+
+      event.preventDefault();
+      sequence.current += 1;
+      const gesture = beginGesture(next.workLineId, Date.now());
+      submit(next, gesture.gestureId, sequence.current);
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+    // Deliberate dep list: this project's ESLint config carries no
+    // `react-hooks/exhaustive-deps` rule (verified via `pnpm lint`), so there
+    // is no suppression to add. `submit` closes over state via refs
+    // (parcelRef/reachabilityRef) by the same convention useScannerInput's
+    // onScan above uses; re-running per parcel change would thrash the
+    // listener on every poll tick.
+  }, [interactive, closed, refused]);
 
   if (parcel === undefined && query.isPending) {
     return (

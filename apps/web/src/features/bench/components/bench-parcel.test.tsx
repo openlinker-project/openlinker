@@ -222,6 +222,73 @@ describe('BenchParcelView (#2418)', () => {
     );
   });
 
+  // ── "C" hand-confirms the first open line (#3339) ────────────────────────
+  describe('the "c" keyboard shortcut', () => {
+    it('should send the exact same request a click on "Confirm this line" would', async () => {
+      const verifyUnit = vi.fn().mockResolvedValue(verified());
+      mount(parcel(), { verifyUnit });
+      await screen.findByTestId('bench-parcel');
+
+      await act(async () => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }));
+        await Promise.resolve();
+      });
+
+      expect(verifyUnit).toHaveBeenCalledTimes(1);
+      const request = verifyUnit.mock.calls[0][1] as { workLineId: string; gestureId: string };
+      expect(request.workLineId).toBe('wl-1');
+      expect(Object.keys(request).sort()).toEqual(['gestureId', 'workLineId']);
+    });
+
+    it('should do nothing while typing in an editable element', async () => {
+      const verifyUnit = vi.fn();
+      mount(parcel(), { verifyUnit });
+      await screen.findByTestId('bench-parcel');
+
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      input.focus();
+
+      await act(async () => {
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }));
+        await Promise.resolve();
+      });
+
+      expect(verifyUnit).not.toHaveBeenCalled();
+      input.remove();
+    });
+
+    it('should ignore Ctrl+C so copying still works', async () => {
+      const verifyUnit = vi.fn();
+      mount(parcel(), { verifyUnit });
+      await screen.findByTestId('bench-parcel');
+
+      await act(async () => {
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true })
+        );
+        await Promise.resolve();
+      });
+
+      expect(verifyUnit).not.toHaveBeenCalled();
+    });
+
+    it('should do nothing once every line is already verified', async () => {
+      const verifyUnit = vi.fn();
+      mount(parcel({ lines: [line({ verifiedQuantity: 2, requiredQuantity: 2 })] }), {
+        verifyUnit,
+      });
+      await screen.findByTestId('bench-parcel');
+
+      await act(async () => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }));
+        await Promise.resolve();
+      });
+
+      expect(verifyUnit).not.toHaveBeenCalled();
+    });
+  });
+
   // ── RULE 4 — the wrong item is refused in the browser, with no request ──
   it('should refuse a wrong item without sending anything, naming what it expected', async () => {
     const verifyUnit = vi.fn();
