@@ -978,3 +978,40 @@ export interface SalesDocumentCountryAcknowledgment {
   country: string;
   acknowledgedAt: string;
 }
+
+/**
+ * Rule-engine types (#2170/#3189), narrowed to what the suite reads/writes.
+ * Mirrors `apps/web/src/features/sales-documents/api/sales-document-rules.types.ts`.
+ */
+export interface SalesDocumentConditionInput {
+  field: 'buyerHasTaxId' | 'orderCountry' | 'orderTotalGross';
+  op: 'eq' | 'gte' | 'lt';
+  boolValue?: boolean;
+  stringValue?: string;
+  /** Decimal string (#3189) — never a number, so precision is never re-derived. */
+  amount?: string;
+  currency?: string;
+}
+
+export interface SalesDocumentRule {
+  id: string;
+  country: string;
+  conditions: SalesDocumentConditionInput[];
+  documentKind: string;
+  connectionId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  provenance: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSalesDocumentRuleInput {
+  country: string;
+  conditions: SalesDocumentConditionInput[];
+  documentKind: string;
+  connectionId: string;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  provenance?: string | null;
+}
