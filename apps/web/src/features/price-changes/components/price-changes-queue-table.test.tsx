@@ -716,6 +716,76 @@ describe('PriceChangesQueueTable', () => {
           viewport.restore();
         }
       });
+
+      it('gives a resolved episode the same at-a-glance treatment mobile lacked from rowClassName (audit follow-up)', async () => {
+        const viewport = mockMobileViewport();
+        try {
+          const apiClient = createMockApiClient({
+            priceChanges: {
+              list: vi
+                .fn()
+                .mockResolvedValue(
+                  buildPage([
+                    buildItem({ id: 'ep-resolved', resolution: 'ignored', resolvedAt: '2026-09-10T11:00:00.000Z' }),
+                  ]),
+                ),
+            },
+          });
+
+          renderWithProviders(<PriceChangesQueueTable />, {
+            apiClient,
+            sessionAdapter: createAuthenticatedSessionAdapter(),
+          });
+          await screen.findByText('Ergonomic Office Chair');
+
+          expect(screen.getByTestId('card-status-resolved')).toHaveTextContent('Resolved');
+          expect(screen.queryByTestId('card-status-flagged')).not.toBeInTheDocument();
+        } finally {
+          viewport.restore();
+        }
+      });
+
+      it('gives a needs-refresh episode the same flagged treatment mobile lacked from rowClassName (audit follow-up)', async () => {
+        const viewport = mockMobileViewport();
+        try {
+          const apiClient = createMockApiClient({
+            priceChanges: {
+              list: vi.fn().mockResolvedValue(buildPage([buildItem({ needsRefresh: true })])),
+            },
+          });
+
+          renderWithProviders(<PriceChangesQueueTable />, {
+            apiClient,
+            sessionAdapter: createAuthenticatedSessionAdapter(),
+          });
+          await screen.findByText('Ergonomic Office Chair');
+
+          expect(screen.getByTestId('card-status-flagged')).toHaveTextContent('Needs refresh');
+          expect(screen.queryByTestId('card-status-resolved')).not.toBeInTheDocument();
+        } finally {
+          viewport.restore();
+        }
+      });
+
+      it('renders no status indicator for an ordinary pending episode', async () => {
+        const viewport = mockMobileViewport();
+        try {
+          const apiClient = createMockApiClient({
+            priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])) },
+          });
+
+          renderWithProviders(<PriceChangesQueueTable />, {
+            apiClient,
+            sessionAdapter: createAuthenticatedSessionAdapter(),
+          });
+          await screen.findByText('Ergonomic Office Chair');
+
+          expect(screen.queryByTestId('card-status-resolved')).not.toBeInTheDocument();
+          expect(screen.queryByTestId('card-status-flagged')).not.toBeInTheDocument();
+        } finally {
+          viewport.restore();
+        }
+      });
     });
   });
 });

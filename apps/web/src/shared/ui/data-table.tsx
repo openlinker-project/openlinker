@@ -222,7 +222,24 @@ interface DataTableProps<Row> {
 
 const INTERACTIVE_SELECTOR = 'a, button, input, select, textarea, details, summary, [role="button"]';
 
-/** Keys `rowAttributes` may not override — see the prop's own docblock. */
+/**
+ * Keys `rowAttributes` may not override — see the prop's own docblock.
+ *
+ * `key` is genuinely load-bearing here, not defensive documentation: it is
+ * stripped from the plain object `rowAttributes(row)` returns BEFORE that
+ * object is spread onto the `<tr>` (`{...extraRowAttributes}`), and if it
+ * were left in, a caller-supplied `key` would silently win over the row's
+ * own `key={key}` for React reconciliation — React only warns ("A props
+ * object containing a 'key' prop is being spread into JSX") and currently
+ * still HONOURS the spread value. Verified empirically against this
+ * project's React 19: an object literal `{key: 'x', ...}` spread after a
+ * literal `key={perRenderValue}` attribute wins reconciliation identity, so
+ * an un-sanitized `key` would desync the row's own identity across
+ * re-renders (stale state, lost animations, or a silently wrong row being
+ * reused) rather than merely failing to reach the DOM as a rendered
+ * attribute — `key` never renders as a DOM attribute either way, which is
+ * why this hazard is invisible in a DOM-only assertion.
+ */
 const RESERVED_ROW_ATTRIBUTE_KEYS = new Set(['key', 'className', 'onClick', 'style']);
 
 function sanitizeRowAttributes(attrs: Record<string, string> | undefined): Record<string, string> {

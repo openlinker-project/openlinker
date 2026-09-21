@@ -102,6 +102,63 @@ describe('DataTable', () => {
     expect(row).toHaveClass('data-table__row--linked');
   });
 
+  it('drops a poisoned rowAttributes `key` rather than letting it override React reconciliation identity (#3237, follow-up review)', () => {
+    // `key` never renders as a DOM attribute either way, so a DOM-only
+    // assertion (the test above) cannot prove the sanitizer is doing real
+    // work here — it would pass even if `key` were removed from
+    // RESERVED_ROW_ATTRIBUTE_KEYS. This test instead proves the actual
+    // hazard the reservation prevents: React currently still HONOURS a
+    // `key` found inside a spread props object (only warning about it), so
+    // an un-sanitized `rowAttributes` returning a constant `key` across
+    // renders would make React treat two DIFFERENT rows as the SAME
+    // reconciliation node — visible as native, uncontrolled DOM state (an
+    // unchecked checkbox) surviving a row swap it should not survive.
+    function Table({ rows }: { rows: TestRow[] }): React.ReactElement {
+      return (
+        <DataTable<TestRow>
+          columns={[
+            {
+              id: 'name',
+              header: 'Name',
+              cell: (row): React.ReactElement => (
+                <label>
+                  {row.name}
+                  <input type="checkbox" aria-label={`select ${row.name}`} defaultChecked={false} />
+                </label>
+              ),
+            },
+          ]}
+          rowKey={(row): string => row.id}
+          rows={rows}
+          // Constant across every row and every render — the poison value a
+          // buggy `rowAttributes` implementation might accidentally supply.
+          rowAttributes={(): Record<string, string> => ({ key: 'constant-poisoned-key' })}
+        />
+      );
+    }
+
+    const { rerender } = renderWithRouter(<Table rows={[ROWS[1]]} />); // Alpha only
+    const alphaCheckbox = screen.getByLabelText('select Alpha');
+    fireEvent.click(alphaCheckbox);
+    expect(alphaCheckbox).toBeChecked();
+
+    // Swap in a DIFFERENT row (Bravo) under the same MemoryRouter subtree —
+    // a genuinely new `<tr>` with `rowKey` = 'row-b', not an update of Alpha's.
+    rerender(
+      <MemoryRouter>
+        <Table rows={[ROWS[0]]} />
+      </MemoryRouter>,
+    );
+
+    const bravoCheckbox = screen.getByLabelText('select Bravo');
+    expect(screen.queryByLabelText('select Alpha')).not.toBeInTheDocument();
+    // If the poisoned `key` had leaked through the spread, React would have
+    // reconciled Bravo's row onto Alpha's existing DOM node instead of
+    // unmounting/remounting it — and the checkbox's native checked state
+    // would have incorrectly survived as checked.
+    expect(bravoCheckbox).not.toBeChecked();
+  });
+
   it('renders every existing caller unchanged when rowClassName/rowAttributes are omitted (#3237)', () => {
     renderWithRouter(
       <DataTable<TestRow>

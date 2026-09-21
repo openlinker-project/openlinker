@@ -49,6 +49,7 @@ import { ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
 import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { DataTableSkeleton } from '../../../shared/ui/data-table-skeleton';
 import { KeyValueList } from '../../../shared/ui/key-value-list';
+import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { BulkActionBar } from '../../../shared/ui/bulk-action-bar';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
@@ -582,6 +583,36 @@ export function PriceChangesQueueTable(): ReactElement {
     return classes || undefined;
   }
 
+  /**
+   * The mobile counterpart of the desktop `is-resolved`/`is-flagged` row
+   * tint (audit follow-up, #3237). `DataTable`'s `rowClassName`/
+   * `rowAttributes` hooks are deliberately desktop-`<tr>`-only —
+   * `DataTableCardView` renders solely from its own slots, with no per-card
+   * class hook, so a card cannot reproduce the `<tr>`'s background tint
+   * directly. `ActionCell` already states a resolved/needs-refresh row's
+   * state as TEXT on both layouts (`Published`/`Kept the old price`/the
+   * refresh prompt), so this is a passive-scanning aid on top of an
+   * already-present fact rather than new information — reached through the
+   * existing `meta` slot, so it costs no primitive change.
+   */
+  function cardMetaFor(item: PriceChangeItem): ReactElement | null {
+    if (item.resolvedAt) {
+      return (
+        <StatusBadge tone="neutral" compact data-testid="card-status-resolved">
+          Resolved
+        </StatusBadge>
+      );
+    }
+    if (item.needsRefresh) {
+      return (
+        <StatusBadge tone="warning" compact withDot data-testid="card-status-flagged">
+          Needs refresh
+        </StatusBadge>
+      );
+    }
+    return null;
+  }
+
   /** The per-row `id`/`data-testid`/`data-row-id`/`data-state` handles, unchanged from the pre-#3237 `<tr>`. */
   function rowAttributesFor(item: PriceChangeItem): Record<string, string> {
     return {
@@ -864,6 +895,7 @@ export function PriceChangesQueueTable(): ReactElement {
             cardView={{
               ...(write.visible ? { select: (item: PriceChangeItem) => renderSelectCheckbox(item) } : {}),
               title: (item) => renderProductIdentity(item),
+              meta: (item) => cardMetaFor(item),
               summary: (item) => (
                 <KeyValueList
                   items={[
