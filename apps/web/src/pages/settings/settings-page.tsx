@@ -29,7 +29,7 @@ export function SettingsPage(): ReactElement {
           {isAdmin ? <span className="toolbar-chip">Mailer</span> : null}
           {isAdmin ? <span className="toolbar-chip">PostHog</span> : null}
           {isAdmin ? <span className="toolbar-chip">MCP tokens</span> : null}
-          {isAdmin ? <span className="toolbar-chip">Sales documents</span> : null}
+          {isAdmin ? <span className="toolbar-chip">Document routing</span> : null}
           {/* Ungated, unlike its admin-gated neighbours — see `WhoDecidesTile`'s docblock. */}
           <span className="toolbar-chip">Who decides what</span>
           {isAdmin ? <span className="toolbar-chip">Sourcing rules</span> : null}

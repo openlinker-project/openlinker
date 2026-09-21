@@ -69,6 +69,16 @@ export {
 export { StockAtRiskBadge } from './components/stock-at-risk-badge';
 export { StockAtRiskCallout } from './components/stock-at-risk-callout';
 export type { OrderReservationShortfall } from './api/orders.types';
+// #3307 — the merged /sales-documents list renders the SAME per-record shape
+// the order-detail panel and the /orders row already do (ADR-065), so the new
+// list feature imports it here rather than hand-mirroring a second copy of a
+// multi-field discriminated union.
+export type {
+  SalesDocumentIdentity,
+  SalesDocumentInvoiceView,
+  SalesDocumentReceiptView,
+  SalesDocumentRecordView,
+} from './api/orders.types';
 export { ConnectionDot } from './components/connection-dot';
 // #3188: the invoices LIST renders the same three buyer-tax-id states the
 // order detail does, by rendering the same component rather than a second

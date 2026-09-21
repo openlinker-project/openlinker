@@ -17069,6 +17069,20 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   margin: 0;
 }
 
+/* ── Fiscal receipt detail page (#3307/#3309 review, SUGGESTION) ───────
+ * Named spacing slots replacing the inline `style={{ marginBottom: … }}`
+ * the page shipped with — the token values were already correct, this
+ * just moves them somewhere discoverable. */
+.fiscal-receipt-detail__status {
+  margin-bottom: var(--space-3);
+}
+.fiscal-receipt-detail__failure-reason {
+  margin-bottom: var(--space-3);
+}
+.fiscal-receipt-detail__artefacts {
+  margin-top: var(--space-4);
+}
+
 /* ── KSeF UPO inline preview dialog (#1234) ─────────────────────────
  * Wider dialog hosting a sandboxed <iframe> render of the official UPO
  * confirmation (PDF / XML). The frame fills the available height so the
