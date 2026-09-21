@@ -1514,6 +1514,81 @@ describe('AutoIssueTriggerService', () => {
     });
   });
 
+  describe('a dual-role connection issuing both kinds (#3195)', () => {
+    /** A connection enabled for BOTH capabilities, configured `documentKind: 'both'`. */
+    function makeBothConnection(overrides: Partial<Connection> = {}): Connection {
+      return makeConnection('auto-on-paid', {
+        id: 'conn-both',
+        enabledCapabilities: ['Invoicing', 'Fiscalization'],
+        config: {
+          invoicing: { triggerModel: 'auto-on-paid' },
+          salesDocument: { documentKind: 'both' },
+        },
+        ...overrides,
+      });
+    }
+
+    it('dispatches invoicing.issue for one order and fiscalization.register for another, on the SAME connection, per the rule engine\'s own per-order decision', async () => {
+      connectionPort.list.mockResolvedValue([makeBothConnection()]);
+      salesDocumentRules.resolveRouting.mockResolvedValueOnce({
+        kind: 'route',
+        documentKind: 'invoice',
+        connectionId: 'conn-both',
+      } satisfies SalesDocumentDecision);
+
+      const outcomeA = await service.onOrderTransition(
+        makeOrderWithDelivery({ id: 'order-A', paymentStatus: 'paid' }, 'PL'),
+        'src-1',
+      );
+
+      expect(outcomeA).toEqual({ kind: 'none' });
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(1);
+      expect(syncJobs.schedule.mock.calls[0][0].connectionId).toBe('conn-both');
+      expect(syncJobs.schedule.mock.calls[0][0].jobType).toBe('invoicing.issue');
+
+      salesDocumentRules.resolveRouting.mockResolvedValueOnce({
+        kind: 'route',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-both',
+      } satisfies SalesDocumentDecision);
+
+      const outcomeB = await service.onOrderTransition(
+        makeOrderWithDelivery({ id: 'order-B', paymentStatus: 'paid' }, 'DE'),
+        'src-2',
+      );
+
+      expect(outcomeB).toEqual({ kind: 'none' });
+      expect(syncJobs.schedule).toHaveBeenCalledTimes(2);
+      expect(syncJobs.schedule.mock.calls[1][0].connectionId).toBe('conn-both');
+      expect(syncJobs.schedule.mock.calls[1][0].jobType).toBe('fiscalization.register');
+    });
+
+    it('falls through to the operator-configured resolver, expands to two candidate rows, and reports ambiguous when neither is primary', async () => {
+      salesDocumentRules.resolveRouting.mockResolvedValue({
+        kind: 'unresolved',
+        reason: 'no-configuration-for-country',
+      });
+      connectionPort.list.mockResolvedValue([makeBothConnection()]);
+
+      const outcome = await service.onOrderTransition(
+        makeOrderWithDelivery({ paymentStatus: 'paid' }),
+        'src-1',
+      );
+
+      // One connection expands into TWO candidate rows (site 4's flatMap) —
+      // neither is primary, so the fallback resolver is ambiguous rather than
+      // picking one of the connection's own two kinds silently.
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+      expect(outcome).toEqual({
+        kind: 'blocked',
+        block: expect.objectContaining({
+          reason: 'unresolved-routing',
+          unresolvedReason: 'ambiguous-connection-no-primary',
+        }) as unknown,
+      });
+    });
+  });
+
   it('is defined', () => {
     expect(AutoIssueTriggerService).toBeDefined();
   });

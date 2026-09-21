@@ -66,7 +66,7 @@ import type {
   CreateSalesDocumentRuleInput,
   SalesDocumentConditionInput,
 } from '../api/sales-document-rules.types';
-import type { SalesDocumentKind } from '../api/sales-documents.types';
+import type { ConcreteDocumentKind } from '../api/sales-documents.types';
 import { describeSalesDocumentRuleDraft } from '../lib/describe-sales-document-rule-draft';
 import { useSalesDocumentRuleOverlapQuery } from '../hooks/use-sales-document-rule-overlap-query';
 import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-query';
@@ -255,7 +255,7 @@ export function SalesDocumentRuleComposerDialog({
   const createRule = useCreateSalesDocumentRuleMutation();
 
   const [conditions, setConditions] = useState<ConditionDraft[]>([newConditionDraft()]);
-  const [documentKind, setDocumentKind] = useState<SalesDocumentKind>('invoice');
+  const [documentKind, setDocumentKind] = useState<ConcreteDocumentKind>('invoice');
   const [connectionId, setConnectionId] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState(() => new Date().toISOString().slice(0, 10));
   const [effectiveTo, setEffectiveTo] = useState('');
@@ -515,7 +515,7 @@ export function SalesDocumentRuleComposerDialog({
                 id="sd-rule-doctype"
                 value={documentKind}
                 onChange={(event) => {
-                  setDocumentKind(event.target.value as SalesDocumentKind);
+                  setDocumentKind(event.target.value as ConcreteDocumentKind);
                   setConnectionId('');
                 }}
               >

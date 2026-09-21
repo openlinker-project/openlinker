@@ -14,19 +14,31 @@ import type { ConnectionStatus } from '../../connections';
 
 /**
  * The two capabilities that make a connection a sales-document routing
- * candidate (ADR-041 decision 4). A connection could in principle declare
- * both, but every shipped adapter declares exactly one — `deriveSalesDocumentRows`
- * resolves `Invoicing` first when both are present.
+ * candidate (ADR-041 decision 4), plus `'Both'` (#3195) for a connection that
+ * has enabled BOTH — a dual-role connection, which may then be configured to
+ * issue either document kind per order (`documentKind: 'both'`).
+ * `deriveSalesDocumentRows` resolves `'Both'` when a connection declares both
+ * capabilities, `'Invoicing'` / `'Fiscalization'` otherwise.
  */
-export type SalesDocumentCapability = 'Invoicing' | 'Fiscalization';
+export type SalesDocumentCapability = 'Invoicing' | 'Fiscalization' | 'Both';
 
 /**
  * Well-known document kinds core recognizes structurally, mirroring
- * `CoreSalesDocumentKindValues` (`@openlinker/core/sales-documents`). Kept in
- * lockstep by convention, not by import — see the module doc comment above.
+ * `CoreSalesDocumentKindValues` (`@openlinker/core/sales-documents`), plus the
+ * `'both'` dual-role config sentinel (#3195, mirroring
+ * `SALES_DOCUMENT_KIND_BOTH`). Kept in lockstep by convention, not by import —
+ * see the module doc comment above.
  */
-export const SALES_DOCUMENT_KIND_VALUES = ['invoice', 'fiscal-receipt'] as const;
+export const SALES_DOCUMENT_KIND_VALUES = ['invoice', 'fiscal-receipt', 'both'] as const;
 export type SalesDocumentKind = (typeof SALES_DOCUMENT_KIND_VALUES)[number];
+
+/**
+ * The kind a single fiscal document is actually issued as — never `'both'`.
+ * `'both'` is a CONNECTION-role config sentinel (#3195): a saved rule or a
+ * country default always names ONE concrete kind for a routing decision to
+ * resolve to, even when the connection it names may serve either.
+ */
+export type ConcreteDocumentKind = Exclude<SalesDocumentKind, 'both'>;
 
 /** One row of the centralized table: one connection, its routing config. */
 export interface SalesDocumentRow {
@@ -49,8 +61,10 @@ export interface SalesDocumentIssuesOption {
 }
 
 /**
- * Capability-constrained "Issues" options — never both `invoice` and
- * `fiscal-receipt` on the same row (mockup tab 02 "Configuration").
+ * Capability-constrained "Issues" options — never an option the connection's
+ * enabled capabilities cannot back (mockup tab 02 "Configuration"). `'Both'`
+ * (#3195) additionally offers `'both'`, so a dual-role connection can be
+ * configured to issue either kind per order rather than being pinned to one.
  */
 export function getSalesDocumentIssuesOptions(
   capability: SalesDocumentCapability,
@@ -61,8 +75,16 @@ export function getSalesDocumentIssuesOptions(
       { value: '', label: 'Nothing' },
     ];
   }
+  if (capability === 'Fiscalization') {
+    return [
+      { value: 'fiscal-receipt', label: 'Fiscal receipt' },
+      { value: '', label: 'Nothing' },
+    ];
+  }
   return [
-    { value: 'fiscal-receipt', label: 'Fiscal receipt' },
+    { value: 'fiscal-receipt', label: 'Receipts' },
+    { value: 'invoice', label: 'Invoices' },
+    { value: 'both', label: 'Both' },
     { value: '', label: 'Nothing' },
   ];
 }
