@@ -100,19 +100,17 @@ export function FiscalReceiptDetailPage(): ReactElement {
       }
     >
       <div className="card">
-        <div style={{ marginBottom: 'var(--space-3)' }}>
+        <div className="fiscal-receipt-detail__status">
           <FiscalReceiptStatusBadge status={displayStatus} />
         </div>
         {record.failureReason ? (
-          <p className="text-muted" style={{ marginBottom: 'var(--space-3)' }}>
-            {record.failureReason}
-          </p>
+          <p className="text-muted fiscal-receipt-detail__failure-reason">{record.failureReason}</p>
         ) : null}
         <KeyValueList items={fieldItems} />
       </div>
 
       {record.artefacts && record.artefacts.length > 0 ? (
-        <div className="card" style={{ marginTop: 'var(--space-4)' }}>
+        <div className="card fiscal-receipt-detail__artefacts">
           <FiscalArtefactList artefacts={record.artefacts} />
         </div>
       ) : null}

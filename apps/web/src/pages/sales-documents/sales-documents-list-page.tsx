@@ -176,15 +176,17 @@ export function SalesDocumentsListPage(): ReactElement {
       { replace: true },
     );
     setCursorStack([]);
-    // Deliberately depends only on `search` (the debounced value) — `setSearchParams`
-    // is a stable dispatcher and re-running this on its identity would defeat the
-    // whole point of debouncing.
+    // Deliberately depends only on `search` (the debounced value). `setSearchParams`
+    // is a `useCallback` that changes identity with `searchParams` (#3309 review,
+    // SUGGESTION) — omitting it from the deps is still correct because React always
+    // runs the LATEST closure when `search` changes, so there's no staleness; the
+    // real reason it's omitted is that including it would re-run this effect once
+    // per URL change and defeat the whole point of debouncing.
   }, [search]);
 
   function goNext(): void {
-    if (query.data?.nextCursor) {
-      setCursorStack((prev) => [...prev, query.data!.nextCursor as string]);
-    }
+    const next = query.data?.nextCursor;
+    if (next) setCursorStack((prev) => [...prev, next]);
   }
 
   function goPrev(): void {
