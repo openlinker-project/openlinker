@@ -107,6 +107,9 @@ export { useRecordReturnMutation } from './hooks/use-record-return-mutation';
 // row, each routing to the return's own detail page rather than opening a
 // dialog here (see the component docblock for why).
 export { OrphanReturnsWorklist } from './components/orphan-returns-worklist';
+// The match-to-order dialog (#3082) — the destination the worklist's
+// "Match to an order" link routes toward, once mounted on the detail page.
+export { MatchReturnDialog } from './components/match-return-dialog';
 export { ReturnDeclineAction } from './components/return-decline-action';
 export { ReturnLineStateChip } from './components/return-line-state-chips';
 export { ReturnLinesTable } from './components/return-lines-table';
