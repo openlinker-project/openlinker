@@ -200,8 +200,8 @@ export function InvoiceDetailPage(): ReactElement {
             )}
           />
           <div style={{ marginTop: '16px' }}>
-            <Link className="button button--secondary" to="/invoices">
-              {t('invoice.detail.backToList', 'Back to invoices')}
+            <Link className="button button--secondary" to="/sales-documents">
+              {t('invoice.detail.backToList', 'Back to sales documents')}
             </Link>
           </div>
         </PageLayout>

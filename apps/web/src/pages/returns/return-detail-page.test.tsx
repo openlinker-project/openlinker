@@ -9,6 +9,7 @@ import {
 } from '../../test/test-utils';
 import { ApiError } from '../../shared/api/api-error';
 import {
+  MATCH_RETURN_DIALOG_COPY,
   RETURN_ACTIVITY_COPY,
   RETURN_ORPHAN_BANNER_COPY,
   ReturnDetailUnreadableError,
@@ -223,6 +224,34 @@ describe('ReturnDetailPage', () => {
       ).toBeInTheDocument();
       // Visible AND disabled — a missing button is indistinguishable from a bug.
       expect(screen.getByRole('button', { name: 'Decline return' })).toBeDisabled();
+    });
+
+    it('should open the match dialog from the orphan banner (#3078/#3085)', async () => {
+      setup({
+        detail: makeDetail({ bucket: 'orphan', internalOrderId: null }),
+      });
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: RETURN_ORPHAN_BANNER_COPY.matchAction }),
+      );
+
+      expect(await screen.findByText(MATCH_RETURN_DIALOG_COPY.title)).toBeInTheDocument();
+    });
+
+    it('should hide the match action entirely for a session with no write access (tech-lead review on #3285)', async () => {
+      // The same `orders:write` permission `POST /returns/:returnId/match-order`
+      // enforces server-side — pins the gate the way `return-decline-action.tsx`'s
+      // own "hide the action entirely for a session with no write access" test
+      // does, so a future refactor that drops `writeAccess.visible ?` stays red.
+      setup({
+        detail: makeDetail({ bucket: 'orphan', internalOrderId: null }),
+        authenticated: false,
+      });
+
+      await screen.findByText(RETURN_ORPHAN_BANNER_COPY.title);
+      expect(
+        screen.queryByRole('button', { name: RETURN_ORPHAN_BANNER_COPY.matchAction }),
+      ).not.toBeInTheDocument();
     });
   });
 
