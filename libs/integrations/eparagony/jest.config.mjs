@@ -1,5 +1,4 @@
 import { ESM_DEPS_TRANSFORM_IGNORE_PATTERN, esmDepsJsTransform } from '../../../jest.esm-deps.cjs';
-import { ciStabilityConfig } from '../../../jest.ci-stability.mjs';
 
 export default {
   testEnvironment: 'node',
@@ -41,10 +40,4 @@ export default {
   coverageDirectory: '<rootDir>/coverage',
   clearMocks: true,
   testTimeout: 30000,
-
-  // Worker/memory caps for local + CI stability (#976) — this package had
-  // none, so a full smart-test run defaulted to jest's uncapped (cores - 1)
-  // workers with no per-worker memory ceiling, which is what OOM-killed the
-  // suite on a resource-constrained box.
-  ...ciStabilityConfig,
 };

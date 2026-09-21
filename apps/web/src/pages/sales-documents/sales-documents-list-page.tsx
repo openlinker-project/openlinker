@@ -51,6 +51,8 @@ import {
 } from '../../features/sales-documents';
 import { ConnectionCell, useConnectionsQuery } from '../../features/connections';
 import { OrderIdentityCell } from '../../features/orders';
+import { InvoiceStatusValues } from '../../features/invoicing';
+import { FiscalRegistrationStatusValues } from '../../features/fiscalization';
 
 const PAGE_SIZE = 20;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -70,6 +72,27 @@ const KIND_LABEL: Record<string, string> = {
   invoice: 'Invoice',
   'fiscal-receipt': 'Fiscal receipt',
 };
+
+// Status is matched against whichever vocabulary `kind` selects (backend
+// DTO docblock: "with `kind` unset it must accept EITHER vocabulary"). The
+// options offered here are therefore kind-scoped, so an operator is never
+// shown a status word that cannot match a single row on the current
+// filter — with no `kind` selected, both vocabularies are offered, since
+// the backend accepts either.
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Pending',
+  issuing: 'Issuing',
+  issued: 'Issued',
+  failed: 'Failed',
+  registering: 'Registering',
+  registered: 'Registered',
+};
+
+function statusOptionsForKind(kind: SalesDocumentKind | undefined): readonly string[] {
+  if (kind === 'invoice') return InvoiceStatusValues;
+  if (kind === 'fiscal-receipt') return FiscalRegistrationStatusValues;
+  return [...new Set([...InvoiceStatusValues, ...FiscalRegistrationStatusValues])];
+}
 
 export function SalesDocumentsListPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -115,6 +138,24 @@ export function SalesDocumentsListPage(): ReactElement {
       const next = new URLSearchParams(prev);
       if (value) next.set(key, value);
       else next.delete(key);
+      return next;
+    });
+    setCursorStack([]);
+  }
+
+  // `status` is scoped to the vocabulary `kind` selects (see `statusOptionsForKind`),
+  // so narrowing `kind` can leave a previously-picked `status` unmatchable by
+  // either vocabulary. Clear it in the same update rather than leaving a stale
+  // value that would silently return zero rows with no visible cause.
+  function setKindFilter(value: string): void {
+    const nextKind = isSalesDocumentKind(value) ? value : undefined;
+    const validStatuses = statusOptionsForKind(nextKind);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set('kind', value);
+      else next.delete('kind');
+      const currentStatus = next.get('status');
+      if (currentStatus && !validStatuses.includes(currentStatus)) next.delete('status');
       return next;
     });
     setCursorStack([]);
@@ -236,12 +277,25 @@ export function SalesDocumentsListPage(): ReactElement {
         <Select
           aria-label="Filter by kind"
           value={kind ?? ''}
-          onChange={(e) => setFilter('kind', e.target.value)}
+          onChange={(e) => setKindFilter(e.target.value)}
         >
           <option value="">All kinds</option>
           {SALES_DOCUMENT_KIND_VALUES.map((k) => (
             <option key={k} value={k}>
               {KIND_LABEL[k] ?? k}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          aria-label="Filter by status"
+          value={status ?? ''}
+          onChange={(e) => setFilter('status', e.target.value)}
+        >
+          <option value="">All statuses</option>
+          {statusOptionsForKind(kind).map((s) => (
+            <option key={s} value={s}>
+              {STATUS_LABEL[s] ?? s}
             </option>
           ))}
         </Select>

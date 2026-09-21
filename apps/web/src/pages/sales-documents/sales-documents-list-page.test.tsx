@@ -209,6 +209,56 @@ describe('SalesDocumentsListPage', () => {
   });
 
   // ---------------------------------------------------------------------
+  // #3309 review, IMPORTANT — `status` was readable from the URL but had no
+  // control, so a `?status=…` link produced a filtered table whose empty
+  // state said "clear some filters" with nothing on screen to clear.
+  // ---------------------------------------------------------------------
+  describe('status filter', () => {
+    it('offers the invoice vocabulary once kind=invoice is selected, and applies it to the query', async () => {
+      const list = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+      renderWithProviders(<SalesDocumentsListPage />, { apiClient: mockApi(list), route: '/sales-documents' });
+
+      await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+
+      fireEvent.change(screen.getByLabelText('Filter by kind'), { target: { value: 'invoice' } });
+      const statusSelect = screen.getByLabelText('Filter by status');
+      expect(within(statusSelect).getByRole('option', { name: 'Issued' })).toBeInTheDocument();
+      expect(within(statusSelect).queryByRole('option', { name: 'Registered' })).not.toBeInTheDocument();
+
+      fireEvent.change(statusSelect, { target: { value: 'issued' } });
+
+      await waitFor(() => {
+        expect(list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ kind: 'invoice', status: 'issued' }),
+          expect.anything(),
+        );
+      });
+    });
+
+    it('clears a status that no longer matches the newly selected kind', async () => {
+      const list = vi.fn().mockResolvedValue({ items: [], nextCursor: null });
+      renderWithProviders(<SalesDocumentsListPage />, { apiClient: mockApi(list), route: '/sales-documents' });
+
+      await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+
+      fireEvent.change(screen.getByLabelText('Filter by kind'), { target: { value: 'invoice' } });
+      fireEvent.change(screen.getByLabelText('Filter by status'), { target: { value: 'issued' } });
+      await waitFor(() => expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'issued' }), expect.anything()));
+
+      // 'issued' has no meaning for a fiscal receipt — switching kinds must drop it.
+      fireEvent.change(screen.getByLabelText('Filter by kind'), { target: { value: 'fiscal-receipt' } });
+
+      await waitFor(() => {
+        expect(list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ kind: 'fiscal-receipt', status: undefined }),
+          expect.anything(),
+        );
+      });
+      expect(screen.getByLabelText<HTMLSelectElement>('Filter by status').value).toBe('');
+    });
+  });
+
+  // ---------------------------------------------------------------------
   // #3309 review, IMPORTANT — the search input must not fire one request
   // per keystroke.
   // ---------------------------------------------------------------------

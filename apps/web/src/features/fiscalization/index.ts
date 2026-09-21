@@ -12,6 +12,7 @@
  */
 export { createFiscalizationApi } from './api/fiscalization.api';
 export type { FiscalizationApi } from './api/fiscalization.api';
+export { FiscalRegistrationStatusValues } from './api/fiscalization.types';
 export type {
   AcceptedFiscalRegistration,
   FiscalRegistrationProgress,
