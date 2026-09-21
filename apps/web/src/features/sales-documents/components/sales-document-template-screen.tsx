@@ -16,6 +16,12 @@
  * empty rule ladder first, with the suggestion available but not forced
  * open on top of it.
  *
+ * The connection picker per slot is deliberately capability-only (#3232) —
+ * see `find-sales-document-connection-role-gap.ts` for why a role-less pick
+ * still routes correctly, and for the pick-time warning that names the gap
+ * instead of letting the operator discover it later on the
+ * destination-warnings list.
+ *
  * @module apps/web/src/features/sales-documents/components
  */
 import { useState, type ReactElement } from 'react';
@@ -28,6 +34,10 @@ import { Select } from '../../../shared/ui/select';
 import { LoadingState } from '../../../shared/ui/feedback-state';
 import { useSalesDocumentTemplateQuery } from '../hooks/use-sales-document-template-query';
 import { useAdoptSalesDocumentTemplateMutation } from '../hooks/use-adopt-sales-document-template-mutation';
+import {
+  describeSalesDocumentConnectionRoleGap,
+  findSalesDocumentConnectionRoleGap,
+} from '../lib/find-sales-document-connection-role-gap';
 
 interface SalesDocumentTemplateScreenProps {
   country: string;
@@ -77,6 +87,17 @@ export function SalesDocumentTemplateScreen({
               rule.requiredCapability === 'Invoicing'
                 ? selectInvoicingCandidates(connections)
                 : selectFiscalizationCandidates(connections);
+            // #3232. Same deliberate divergence as the rule composer: this
+            // picker stays capability-only (a template rule carries its own
+            // `documentKind`, so nothing about dispatching it reads the
+            // connection's role) — see
+            // `find-sales-document-connection-role-gap.ts`. A role-less pick
+            // is named here rather than discovered later on the
+            // destination-warnings list.
+            const roleGap = findSalesDocumentConnectionRoleGap(
+              selections[rule.slot] ?? '',
+              connections,
+            );
             return (
               <div key={rule.slot} className="rule-card">
                 <div className="rule-card__flow">
@@ -98,6 +119,15 @@ export function SalesDocumentTemplateScreen({
                     ))}
                   </Select>
                 </div>
+                {roleGap !== null ? (
+                  <p
+                    className="muted-text"
+                    data-testid={`template-role-gap-${rule.slot}`}
+                    style={{ marginTop: 'var(--space-1)' }}
+                  >
+                    {describeSalesDocumentConnectionRoleGap(roleGap)}
+                  </p>
+                ) : null}
               </div>
             );
           })}
