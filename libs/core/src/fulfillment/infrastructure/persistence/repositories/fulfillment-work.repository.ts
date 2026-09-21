@@ -17,6 +17,8 @@
  * | `id` / `orderId` | `create` | insert-only; `text NOT NULL`, no DB default |
  * | `locationId` / `deliveryMethod` | `create` | **insert-only** — the router is the single producer. If re-routing mints a NEW row these are never updated; if it ever updates in place, a round-trip from a stale read would silently revert the re-route. Insert-only forces #2395 to choose explicitly |
  * | `assignedConnectionId` | `create`, `assignHolder`, `clearHolder` | settable at insert (ADR-054 R1 creates work ALREADY ASSIGNED, in one transaction); afterwards only the two narrow claims move it |
+ * | `assignedToUserId` | `create` (always `null`), `assignToPacker`, `clearAssignment` (#3336, ADR-074) | a distinct PERSON axis from `assignedConnectionId`'s HOLDER connection; unlike that pair, `assignToPacker` is not claim-once — a supervisor may reassign, so its guard is existence-only, not `IS NULL` |
+ * | `selfServeEligible` | `create` (always `true`), `setSelfServeEligible` (#3336, ADR-074) | advisory by default; enforcement of `false` lives in `FulfillmentHandshakeService`'s claim path (#3337), never in this table |
  * | `status` | `create`, `transitionStatus`, `cancel` | |
  * | `requestStatus` | `create`, `transitionRequestStatus`, `claimDispatchAttempt`, `recordAcceptance`, `recordRejection` | the handshake (#2399) owns it; the router holds a stale copy by construction. A NAMED additional writer is this table's convention (`status` and `assignedConnectionId` each already list three); an UNNAMED one is the defect it guards against. **#2712's timeout sweep adds NO writer here** — it reaps THROUGH `recordRejection`, deliberately, so the guarded `submitted -> rejected` transition and the rejection row stay one statement pair with one owner |
  * | `assignmentAttempt` | `claimDispatchAttempt` (#2399) | monotonic; a round-trip would reset the idempotency key's stability. #2392's `incrementAssignmentAttempt` is REPLACED, not supplemented: its `WHERE` was `"id" = :id` alone, so any caller could bump the counter out from under a live `submitted` dispatch and invalidate an in-flight key |
@@ -227,6 +229,12 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     header.locationId = input.locationId;
     header.deliveryMethod = input.deliveryMethod;
     header.assignedConnectionId = input.assignedConnectionId;
+    // Never pre-assigned to a packer at creation: the router mints work, a
+    // supervisor decides who packs it. Explicit rather than left unset, so
+    // correctness never depends on TypeORM's undefined-skips-to-DB-default
+    // behaviour (#3336, ADR-074).
+    header.assignedToUserId = null;
+    header.selfServeEligible = true;
     header.status = input.status ?? 'open';
     header.requestStatus = input.requestStatus ?? 'unsubmitted';
     header.assignmentAttempt = 0;
@@ -378,6 +386,34 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         .set({ assignedConnectionId: null, version: () => '"version" + 1' })
         .where('"id" = :id', { id: workId })
         .andWhere('"assignedConnectionId" IS NOT NULL')
+    );
+  }
+
+  async assignToPacker(workId: string, userId: string): Promise<boolean> {
+    // Unlike `assignHolder`, deliberately NOT guarded `IS NULL` — ADR-074
+    // requires a supervisor to be able to reassign an idle parcel, so the
+    // only precondition is that the work object still exists.
+    return this.applyGuardedUpdate('assignToPacker', (qb) =>
+      qb
+        .set({ assignedToUserId: userId, version: () => '"version" + 1' })
+        .where('"id" = :id', { id: workId })
+    );
+  }
+
+  async clearAssignment(workId: string): Promise<boolean> {
+    return this.applyGuardedUpdate('clearAssignment', (qb) =>
+      qb
+        .set({ assignedToUserId: null, version: () => '"version" + 1' })
+        .where('"id" = :id', { id: workId })
+        .andWhere('"assignedToUserId" IS NOT NULL')
+    );
+  }
+
+  async setSelfServeEligible(workId: string, selfServeEligible: boolean): Promise<boolean> {
+    return this.applyGuardedUpdate('setSelfServeEligible', (qb) =>
+      qb
+        .set({ selfServeEligible, version: () => '"version" + 1' })
+        .where('"id" = :id', { id: workId })
     );
   }
 
@@ -1174,6 +1210,8 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       locationId: header.locationId,
       deliveryMethod: header.deliveryMethod,
       assignedConnectionId: header.assignedConnectionId,
+      assignedToUserId: header.assignedToUserId,
+      selfServeEligible: header.selfServeEligible,
       // Narrow-or-fallback, never a blind cast — both guards ship in this same
       // context (#2391), so unlike `HoldReason` there is no leaf constraint
       // here. A row written by a newer release and rolled back reads as the

@@ -500,6 +500,33 @@ export interface FulfillmentWorkRepositoryPort {
   clearHolder(workId: string): Promise<boolean>;
 
   /**
+   * Pre-assign this parcel to a packer (ADR-074, #3336). Unlike
+   * `assignHolder`, this is NOT a claim-once primitive: ADR-074 requires a
+   * supervisor to be able to REASSIGN an idle parcel, so the guard is only
+   * that the row exists — an already-assigned work object may be
+   * reassigned, overwriting the prior `assignedToUserId` unconditionally.
+   *
+   * `false` means the work object no longer exists; an ordinary outcome
+   * (the parcel closed or was cancelled between the read and this call), not
+   * an error.
+   */
+  assignToPacker(workId: string, userId: string): Promise<boolean>;
+
+  /**
+   * Clear a pre-assignment. Guarded `IS NOT NULL`, mirroring `clearHolder` —
+   * `false` means the parcel was already unassigned, an ordinary no-op.
+   */
+  clearAssignment(workId: string): Promise<boolean>;
+
+  /**
+   * Set whether a packer other than `assignedToUserId` may still claim this
+   * parcel (ADR-074). An idempotent supervisor toggle — no precondition
+   * beyond the row existing, so `false` means only that the work object no
+   * longer exists.
+   */
+  setSelfServeEligible(workId: string, selfServeEligible: boolean): Promise<boolean>;
+
+  /**
    * Claim a dispatch: move `requestStatus` to `submitted` and increment
    * `assignmentAttempt`, in ONE conditional UPDATE, returning the attempt the
    * statement persisted — or `null` when the guard did not hold.

@@ -151,6 +151,26 @@ export class FulfillmentWorkOrmEntity {
   @Column({ type: 'uuid', nullable: true })
   assignedConnectionId!: string | null;
 
+  /**
+   * A supervisor's advisory pre-assignment of this parcel to a specific
+   * PACKER (ADR-074, #3336) — a distinct axis from `assignedConnectionId`
+   * (ADR-054's HOLDER connection, the executor). `null` = unassigned.
+   * `uuid`, matching the sibling `packedByUserId` column on this table.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  assignedToUserId!: string | null;
+
+  /**
+   * Whether a packer OTHER than `assignedToUserId` may still claim this
+   * parcel. `true` (the default) is ADR-074's advisory reading — a
+   * locked-to-one-packer assignment is the exception an operator opts into,
+   * not the default. Enforcement of `false` lives in
+   * `FulfillmentHandshakeService`'s claim path (#3337); this column only
+   * records the decision.
+   */
+  @Column({ type: 'boolean', default: true })
+  selfServeEligible!: boolean;
+
   /** `FulfillmentWorkStatus`. Narrowed on read by `isFulfillmentWorkStatus`. */
   @Column({ type: 'varchar', length: 32, default: 'open' })
   status!: string;
