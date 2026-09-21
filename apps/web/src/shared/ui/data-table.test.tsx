@@ -45,6 +45,78 @@ describe('DataTable', () => {
     expect(screen.getByText('Bravo')).toBeInTheDocument();
   });
 
+  it('appends rowClassName to the computed row classes rather than replacing them (#3237)', () => {
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        rowHref={(row): string => `/things/${row.id}`}
+        rowClassName={(row): string => (row.id === 'row-a' ? 'is-flagged' : '')}
+      />,
+    );
+
+    const rows = screen.getAllByRole('row').slice(1); // drop the header row
+    const flaggedRow = rows.find((row) => row.textContent?.includes('Alpha'));
+    expect(flaggedRow).toHaveClass('data-table__row');
+    // The primitive's own state class must survive alongside the caller's —
+    // `rowHref` with no `expandable` produces `data-table__row--linked`.
+    expect(flaggedRow).toHaveClass('data-table__row--linked');
+    expect(flaggedRow).toHaveClass('is-flagged');
+
+    const unflaggedRow = rows.find((row) => row.textContent?.includes('Bravo'));
+    expect(unflaggedRow).not.toHaveClass('is-flagged');
+  });
+
+  it('spreads rowAttributes onto the <tr>, dropping the reserved key/className/onClick/style keys (#3237)', () => {
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+        rowHref={(row): string => `/things/${row.id}`}
+        rowAttributes={(row): Record<string, string> => ({
+          id: `test-row-${row.id}`,
+          'data-testid': 'test-row',
+          'data-row-id': row.id,
+          // Reserved — must never reach the DOM, or a caller could silently
+          // disable the primitive's own row identity/navigation/behaviour.
+          key: 'not-the-real-key',
+          className: 'should-not-apply',
+          onClick: 'should-not-apply',
+          style: 'should-not-apply',
+        })}
+      />,
+    );
+
+    const row = document.getElementById('test-row-row-a');
+    expect(row).not.toBeNull();
+    expect(row).toHaveAttribute('data-testid', 'test-row');
+    expect(row).toHaveAttribute('data-row-id', 'row-a');
+    expect(row).not.toHaveClass('should-not-apply');
+    // The primitive's own computed class list survives — a reserved
+    // `className` key was dropped, not merged over it — and so does the
+    // `rowHref` navigation class, which a reserved `onClick` override would
+    // otherwise have silently disabled.
+    expect(row).toHaveClass('data-table__row');
+    expect(row).toHaveClass('data-table__row--linked');
+  });
+
+  it('renders every existing caller unchanged when rowClassName/rowAttributes are omitted (#3237)', () => {
+    renderWithRouter(
+      <DataTable<TestRow>
+        columns={[{ id: 'name', header: 'Name', cell: (row): string => row.name }]}
+        rowKey={(row): string => row.id}
+        rows={ROWS}
+      />,
+    );
+
+    const row = screen.getByText('Alpha').closest('tr');
+    expect(row).toHaveAttribute('class', 'data-table__row');
+    expect(row?.getAttribute('id')).toBeNull();
+    expect(row?.getAttribute('data-testid')).toBeNull();
+  });
+
   it('renders the provided empty state', () => {
     renderWithRouter(
       <DataTable<TestRow>

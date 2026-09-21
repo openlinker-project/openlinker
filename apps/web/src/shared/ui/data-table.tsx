@@ -154,6 +154,25 @@ interface DataTableProps<Row> {
   onSortChange?: OnChangeFn<SortingState>;
   rowHref?: (row: Row) => string;
   /**
+   * Per-row class hook (#3237). The result is APPENDED to the primitive's own
+   * computed `data-table__row …` class list, never replacing it — a caller
+   * cannot accidentally drop the expandable/linked/expanded state classes the
+   * primitive relies on for its own styling and behaviour. Desktop `<tr>`
+   * only; the mobile card view has no per-row class hook (`DataTableCardView`
+   * renders solely from its own slots — see that type's own docblock).
+   */
+  rowClassName?: (row: Row) => string | undefined;
+  /**
+   * Per-row attribute hook (#3237), spread onto the `<tr>` — e.g. `id`,
+   * `data-testid`, `data-state`, for a caller that needs a stable per-row DOM
+   * handle (an E2E spec, a `data-state` binding). `key`, `className`,
+   * `onClick` and `style` are reserved: the primitive owns all four (identity,
+   * its own computed classes, row navigation/expand, and virtualized row
+   * height) and a caller supplying one would silently override behaviour the
+   * primitive depends on, so those keys are dropped rather than applied.
+   */
+  rowAttributes?: (row: Row) => Record<string, string>;
+  /**
    * How the first cell's navigation `<a>` participates in layout.
    *
    * `'inline'` (default) is right for the common case — the link wraps plain
@@ -203,6 +222,19 @@ interface DataTableProps<Row> {
 
 const INTERACTIVE_SELECTOR = 'a, button, input, select, textarea, details, summary, [role="button"]';
 
+/** Keys `rowAttributes` may not override — see the prop's own docblock. */
+const RESERVED_ROW_ATTRIBUTE_KEYS = new Set(['key', 'className', 'onClick', 'style']);
+
+function sanitizeRowAttributes(attrs: Record<string, string> | undefined): Record<string, string> {
+  if (!attrs) return {};
+  const result: Record<string, string> = {};
+  for (const [attrKey, value] of Object.entries(attrs)) {
+    if (RESERVED_ROW_ATTRIBUTE_KEYS.has(attrKey)) continue;
+    result[attrKey] = value;
+  }
+  return result;
+}
+
 function shouldIgnoreRowClick(event: MouseEvent): boolean {
   if (event.defaultPrevented) return true;
   if (event.button !== 0) return true;
@@ -225,6 +257,8 @@ export function DataTable<Row>({
   manualSorting = false,
   onSortChange,
   rowHref,
+  rowAttributes,
+  rowClassName,
   rowLinkDisplay = 'inline',
   rowKey,
   rows,
@@ -488,6 +522,7 @@ export function DataTable<Row>({
       'data-table__row',
       expandable ? 'data-table__row--expandable' : href ? 'data-table__row--linked' : '',
       expanded ? 'data-table__row--expanded' : '',
+      rowClassName?.(row) ?? '',
     ]
       .filter(Boolean)
       .join(' ');
@@ -496,9 +531,10 @@ export function DataTable<Row>({
       : href
         ? makeRowClickHandler(href)
         : undefined;
+    const extraRowAttributes = sanitizeRowAttributes(rowAttributes?.(row));
 
     const bodyRow = (
-      <tr key={key} className={rowClasses} onClick={onClick} style={style}>
+      <tr key={key} className={rowClasses} onClick={onClick} style={style} {...extraRowAttributes}>
         {expandable ? (
           <td
             className={['data-table__expand-cell', stickyCellProps(0).className]
