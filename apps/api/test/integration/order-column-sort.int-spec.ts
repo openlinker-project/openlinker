@@ -56,7 +56,16 @@ describe('Order column sort (integration)', () => {
       orderSnapshot: { items: [] },
     });
 
-    const { items } = await repository.findMany({ sort: 'total', dir: 'desc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — an unfiltered `findMany` reads the whole
+    // `order_records` table, and this repository is shared with every other
+    // int-spec file running in the same Jest worker. A leaked row from
+    // another file (any sourceConnectionId other than this suite's) would
+    // otherwise land in an unpredictable position in the sorted result and
+    // break this exact-array assertion.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'total', dir: 'desc' },
+      PAGE,
+    );
 
     expect(items.map((o) => o.internalOrderId)).toEqual([
       pricey.internalOrderId,
@@ -78,7 +87,11 @@ describe('Order column sort (integration)', () => {
       orderSnapshot: { items: [], totals: { total: 'not-a-number', currency: 'PLN' } },
     });
 
-    const { items } = await repository.findMany({ sort: 'total', dir: 'desc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — see the note on the first `it` in this file.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'total', dir: 'desc' },
+      PAGE,
+    );
 
     expect(items.map((o) => o.internalOrderId)).toEqual([
       valid.internalOrderId,
@@ -97,7 +110,11 @@ describe('Order column sort (integration)', () => {
       orderSnapshot: { items: [], totals: { total: 199.99, currency: 'PLN' } },
     });
 
-    const { items } = await repository.findMany({ sort: 'total', dir: 'asc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — see the note on the first `it` in this file.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'total', dir: 'asc' },
+      PAGE,
+    );
 
     expect(items.map((o) => o.internalOrderId)).toEqual([
       cheap.internalOrderId,
@@ -122,7 +139,11 @@ describe('Order column sort (integration)', () => {
       },
     });
 
-    const { items } = await repository.findMany({ sort: 'items', dir: 'desc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — see the note on the first `it` in this file.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'items', dir: 'desc' },
+      PAGE,
+    );
 
     expect(items.map((o) => o.internalOrderId)).toEqual([
       three.internalOrderId,
@@ -145,7 +166,11 @@ describe('Order column sort (integration)', () => {
       orderSnapshot: { items: [] },
     });
 
-    const { items } = await repository.findMany({ sort: 'customer', dir: 'asc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — see the note on the first `it` in this file.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'customer', dir: 'asc' },
+      PAGE,
+    );
 
     expect(items.map((o) => o.internalOrderId)).toEqual([
       kowalski.internalOrderId, // 'kowalski' < 'nowak' (lowercased)
@@ -177,7 +202,11 @@ describe('Order column sort (integration)', () => {
       syncStatus: [{ destinationConnectionId: SOURCE, status: 'pending' }],
     });
 
-    const { items } = await repository.findMany({ sort: 'status', dir: 'asc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — see the note on the first `it` in this file.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'status', dir: 'asc' },
+      PAGE,
+    );
 
     expect(items.map((o) => o.internalOrderId)).toEqual([
       needsAttention.internalOrderId, // 0
@@ -202,7 +231,11 @@ describe('Order column sort (integration)', () => {
       orderSnapshot: { items: [] },
     });
 
-    const { items } = await repository.findMany({ sort: 'payment', dir: 'asc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — see the note on the first `it` in this file.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'payment', dir: 'asc' },
+      PAGE,
+    );
 
     // Alphabetical: awaiting < paid; the order with no paymentStatus sorts last.
     expect(items.map((o) => o.internalOrderId)).toEqual([
