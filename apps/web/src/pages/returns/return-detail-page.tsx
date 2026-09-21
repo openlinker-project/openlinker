@@ -321,6 +321,7 @@ export function ReturnDetailPage(): ReactElement {
             returnId={detail.id}
             open={isMatchDialogOpen}
             onOpenChange={setIsMatchDialogOpen}
+            writeAccess={writeAccess}
             // Cache invalidation is the mechanism (useMatchReturnToOrderMutation
             // already invalidates on settle) — no explicit refetch needed
             // here (tech-lead review on #3285, SUGGESTION).
