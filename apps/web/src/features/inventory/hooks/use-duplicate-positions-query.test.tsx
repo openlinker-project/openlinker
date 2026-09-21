@@ -2,26 +2,34 @@
  * useDuplicatePositionsQuery tests (#3072)
  *
  * Covers the forwarding of `maxGroups` to the API client, the query-key
- * axis, and that the hook surfaces an error rather than swallowing it.
+ * axis, that the hook surfaces an error rather than swallowing it, and the
+ * `enabled: isAdmin` admin gate the hook added (#3252 review) — a non-admin
+ * session must never trigger a 403 round-trip.
  */
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren, ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiClientProvider } from '../../../app/api/api-client-provider';
-import { createMockApiClient } from '../../../test/test-utils';
+import { SessionProvider } from '../../../shared/auth/session-provider';
+import { useSession } from '../../../shared/auth/use-session';
+import type { SessionAdapter } from '../../../shared/auth/session-adapter';
+import { createAuthenticatedSessionAdapter, createMockApiClient } from '../../../test/test-utils';
 import { useDuplicatePositionsQuery } from './use-duplicate-positions-query';
 import type { DuplicatePositionsReport } from '../api/inventory.types';
 
 function createWrapper(
   apiClient: ReturnType<typeof createMockApiClient>,
+  sessionAdapter: SessionAdapter = createAuthenticatedSessionAdapter(),
 ): ({ children }: PropsWithChildren) => ReactElement {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return function Wrapper({ children }: PropsWithChildren): ReactElement {
     return (
-      <ApiClientProvider client={apiClient}>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      </ApiClientProvider>
+      <SessionProvider adapter={sessionAdapter}>
+        <ApiClientProvider client={apiClient}>
+          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        </ApiClientProvider>
+      </SessionProvider>
     );
   };
 }
@@ -74,5 +82,32 @@ describe('useDuplicatePositionsQuery', () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error?.message).toBe('Network error');
+  });
+
+  it('should never call the api client for a non-admin session (#3252 review)', async () => {
+    const getDuplicatePositions = vi.fn().mockResolvedValue(report);
+    const apiClient = createMockApiClient({ inventory: { getDuplicatePositions } });
+    const nonAdminAdapter = createAuthenticatedSessionAdapter({
+      id: 'user_2',
+      username: 'operator',
+      email: 'operator@example.com',
+      role: 'operator',
+      permissions: [],
+      analyticsConsent: true,
+    });
+
+    const { result } = renderHook(
+      () => ({ query: useDuplicatePositionsQuery(), session: useSession() }),
+      { wrapper: createWrapper(apiClient, nonAdminAdapter) }
+    );
+
+    // `SessionProvider` starts anonymous and hydrates asynchronously; wait
+    // for the real (non-admin) session to settle before asserting, or the
+    // "never called" assertion would pass vacuously before `enabled` was
+    // ever evaluated against it.
+    await waitFor(() => expect(result.current.session.isReady).toBe(true));
+
+    expect(result.current.query.fetchStatus).toBe('idle');
+    expect(getDuplicatePositions).not.toHaveBeenCalled();
   });
 });
