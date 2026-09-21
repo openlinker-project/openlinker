@@ -19,13 +19,15 @@
  *
  * ## Product resolution
  *
- * A line's Subiekt `symbol` is resolved from `item.sku` when present (a Subiekt
- * towar is conventionally keyed by its SKU/symbol in this bridge's product
- * surface — see the parallel `ProductMaster` adapter). A line with no `sku`
- * cannot be resolved to a Subiekt towar and is created as an empty-symbol line;
- * the bridge is expected to treat an empty `symbol` as a one-off service line,
- * mirroring `Invoicing.cs`'s `DodajUslugeJednorazowa()` fallback pattern for
- * invoice lines with no `towarSymbol`.
+ * A line's Subiekt `symbol` is resolved via `identifier_mappings` for THIS
+ * connection (`item.productId` -> external symbol) — mirrors
+ * `PrestashopOrderProcessorManagerAdapter`'s "Product not found in PrestaShop"
+ * guard, not a bare `item.sku` read. A raw `item.sku` is the SOURCE's own SKU
+ * spelling and only accidentally equals the Subiekt symbol; trusting it would
+ * silently create a ZK line against the wrong towar (or an empty-symbol
+ * service line) whenever the two diverge. A product with no mapping for this
+ * connection — i.e. never synced from Subiekt via ProductMaster — throws
+ * `SubiektOrderProductMappingException` rather than guessing.
  *
  * ## Buyer resolution
  *
@@ -43,8 +45,11 @@
  */
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type { OrderProcessorManagerPort, OrderCreate, OrderRef, Address } from '@openlinker/core/orders';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { SubiektOrdersBridgeClient } from '../../bridge/subiekt-orders-bridge.client';
 import type { BridgeOrderLine, BridgeOrderBuyer } from '../../bridge/subiekt-bridge-orders.types';
+import { SubiektOrderProductMappingException } from '../../domain/exceptions/subiekt-order-product-mapping.exception';
 
 function resolveBuyer(order: OrderCreate): BridgeOrderBuyer {
   const addr: Address | undefined = order.billingAddress ?? order.shippingAddress;
@@ -61,25 +66,45 @@ function resolveBuyer(order: OrderCreate): BridgeOrderBuyer {
   };
 }
 
-function resolveLines(order: OrderCreate): BridgeOrderLine[] {
-  return order.items.map((item) => ({
-    symbol: item.sku ?? '',
-    ilosc: item.quantity,
-    // Buyer-paid TOTAL for the line, not the unit price — mirrors
-    // `Sfera.CreateZk`'s `GrossTotal` convention (`ZkLine.GrossTotal`).
-    wartoscBrutto: item.price * item.quantity,
-  }));
-}
-
 export class SubiektOrderProcessorAdapter implements OrderProcessorManagerPort {
   constructor(
     private readonly bridge: SubiektOrdersBridgeClient,
+    private readonly identifierMapping: IdentifierMappingPort,
+    private readonly connectionId: string,
     private readonly logger: LoggerPort,
   ) {}
 
+  /**
+   * Resolves each line's Subiekt symbol via `identifier_mappings` for this
+   * connection — see the class docblock. Throws
+   * `SubiektOrderProductMappingException` on the first unmapped product,
+   * rather than creating a ZK with a wrong or empty symbol.
+   */
+  private async resolveLines(order: OrderCreate): Promise<BridgeOrderLine[]> {
+    const lines: BridgeOrderLine[] = [];
+    for (const item of order.items) {
+      const externalIds = await this.identifierMapping.getExternalIds(
+        CORE_ENTITY_TYPE.Product,
+        item.productId,
+      );
+      const mapping = externalIds.find((e) => e.connectionId === this.connectionId);
+      if (!mapping) {
+        throw new SubiektOrderProductMappingException(item.productId, this.connectionId);
+      }
+      lines.push({
+        symbol: mapping.externalId,
+        ilosc: item.quantity,
+        // Buyer-paid TOTAL for the line, not the unit price — mirrors
+        // `Sfera.CreateZk`'s `GrossTotal` convention (`ZkLine.GrossTotal`).
+        wartoscBrutto: item.price * item.quantity,
+      });
+    }
+    return lines;
+  }
+
   async createOrder(order: OrderCreate): Promise<OrderRef> {
     const buyer = resolveBuyer(order);
-    const lines = resolveLines(order);
+    const lines = await this.resolveLines(order);
 
     if (buyer.nazwa === '') {
       this.logger.warn(

@@ -106,7 +106,12 @@ export class SubiektAdapterFactory {
         logger,
       ),
       orderSource: new SubiektOrderSourceAdapter(ordersClient, logger),
-      orderProcessor: new SubiektOrderProcessorAdapter(ordersClient, logger),
+      orderProcessor: new SubiektOrderProcessorAdapter(
+        ordersClient,
+        identifierMapping,
+        connection.id,
+        logger,
+      ),
     };
 
     if (config.drukarkaFiskalnaId !== undefined) {
