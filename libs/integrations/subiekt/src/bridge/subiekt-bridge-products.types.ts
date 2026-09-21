@@ -55,6 +55,12 @@ export interface BridgeProduct {
   /** Unit of measure symbol (e.g. `szt.`). */
   jednostkaMiary: string | null;
   waga: number | null;
+  /**
+   * Percent-as-string VAT rate (#3357, ADR-063), e.g. `'23'`, `'0'`, `'8.5'` —
+   * `null` when the towar carries no VAT-rate assignment at all
+   * (`tw_IdVatSp IS NULL`), genuinely different from a real 0% rate.
+   */
+  stawkaVat: string | null;
 }
 
 export interface BridgeCreateProductRequest {

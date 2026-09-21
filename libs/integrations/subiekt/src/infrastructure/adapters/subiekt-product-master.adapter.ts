@@ -46,6 +46,9 @@ import type {
   Product,
   ProductMasterPort,
   ProductVariant,
+  ProductTaxRateReader,
+  ReadProductTaxRateInput,
+  TaxRateResolution,
 } from '@openlinker/core/products';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { ProductCreate, ProductFilters, ProductUpdate } from '@openlinker/core/products';
@@ -82,7 +85,7 @@ interface BridgeEnvelope<T> {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
-export class SubiektProductMasterAdapter implements ProductMasterPort {
+export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
   private readonly logger: LoggerPort;
   private readonly baseUrl: string;
   private readonly token?: string;
@@ -297,6 +300,51 @@ export class SubiektProductMasterAdapter implements ProductMasterPort {
 
   async listExternalIds(filters?: { limit?: number; offset?: number }): Promise<string[]> {
     return this.listSymbols(filters?.limit, filters?.offset);
+  }
+
+  /**
+   * Subiekt GT's VAT-rate assignment (`tw_IdVatSp`) is a property of the
+   * towar itself, not of any per-variant concept — same posture as
+   * PrestaShop (#2054), whose synthetic-variant simple-product model this
+   * adapter already shares. Every variant of a product shares the
+   * product's rate; `variantId` is ignored.
+   */
+  readsTaxRatePerVariant(): boolean {
+    return false;
+  }
+
+  /**
+   * State the towar's VAT rate (#3357, ADR-063). Every Subiekt-sourced
+   * order line's `taxRate` was NULL forever before this — Net Sales
+   * excluded 100% of this connection's revenue — because no `ProductMaster`
+   * capability answered `isProductTaxRateReader`'s guard.
+   *
+   * The bridge's `stawkaVat` is `null` when the towar carries no VAT-rate
+   * assignment at all (`tw_IdVatSp IS NULL`) — a genuine `unknown`, not a
+   * real 0% rate — versus a resolved `'0'` string, which IS a deliberate
+   * zero (export, exempt goods; #2054's "unknown is not zero" rule).
+   */
+  async readProductTaxRate(input: ReadProductTaxRateInput): Promise<TaxRateResolution> {
+    const symbol = await this.resolveExternalSymbol(input.productId);
+    if (symbol === null) {
+      throw new MasterProductNotFoundError(input.productId, this.connection.id);
+    }
+    let bridgeProduct: BridgeProduct;
+    try {
+      bridgeProduct = await this.getJson<BridgeProduct>(`/api/products/${encodeURIComponent(symbol)}`);
+    } catch (error: unknown) {
+      if (error instanceof SubiektRejectedError) {
+        throw new MasterProductNotFoundError(input.productId, this.connection.id, error);
+      }
+      // A transport/infra failure says nothing about the towar's VAT
+      // configuration — re-raise rather than reporting 'unknown', or one
+      // failed sweep tick would freeze a false "no rate" onto the catalogue.
+      throw this.translateBridgeError(error);
+    }
+    if (bridgeProduct.stawkaVat === null) {
+      return { kind: 'unknown', reason: 'not-configured', detail: 'tw_IdVatSp is not set' };
+    }
+    return { kind: 'resolved', code: bridgeProduct.stawkaVat, countryIso2: 'PL' };
   }
 
   // --- helpers ---------------------------------------------------------------
