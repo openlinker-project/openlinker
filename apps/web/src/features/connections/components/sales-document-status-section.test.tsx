@@ -70,6 +70,27 @@ describe('SalesDocumentStatusSection', () => {
     expect(screen.getByText('Either (invoice or fiscal receipt)')).toBeInTheDocument();
   });
 
+  it('should warn that dual-role needs a matching routing rule to ever fire (#3195)', () => {
+    renderSection(
+      makeConnection({
+        enabledCapabilities: ['Invoicing', 'Fiscalization'],
+        config: { salesDocument: { documentKind: 'both' } },
+      }),
+    );
+
+    expect(screen.getByTestId('sales-document-dual-role-warning')).toHaveTextContent(
+      /requires a matching sales-document rule/i,
+    );
+  });
+
+  it('should not show the dual-role warning for a single-kind documentKind', () => {
+    renderSection(
+      makeConnection({ config: { salesDocument: { documentKind: 'invoice' } } }),
+    );
+
+    expect(screen.queryByTestId('sales-document-dual-role-warning')).not.toBeInTheDocument();
+  });
+
   it('should show Primary status when config.invoicing.isPrimary is true', () => {
     renderSection(makeConnection({ config: { invoicing: { isPrimary: true } } }));
 
