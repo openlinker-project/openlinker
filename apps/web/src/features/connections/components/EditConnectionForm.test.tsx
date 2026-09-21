@@ -210,6 +210,43 @@ describe('EditConnectionForm', () => {
     expect(submittedInput.config.rateLimit).toBeNull();
   });
 
+  it('persists an explicit config.print: null when the operator clears the paper-receipt setting on an eparagony.pl connection, even though the pre-submit refetch still returns the old value (#3268)', async () => {
+    // The eparagony.pl counterpart of the #2016 test above, for the same
+    // reason: `EditConnectionForm.onSubmit` merges
+    // `{ ...fresh.config, ...input.config }`, and a shallow spread can only
+    // override a key present on the right side. `applyEparagonyConfig` used to
+    // `delete` a cleared key rather than null it, so the clear was silently
+    // restored from the refetch and never reached the server — this is the
+    // test that would have caught it.
+    const eparagonyConnection: Connection = {
+      ...sampleConnection,
+      platformType: 'eparagony',
+      adapterKey: 'eparagony.documents.v3',
+      config: { environment: 'sandbox', posId: 'openlinker', print: true },
+    };
+    const updateFn = vi.fn().mockResolvedValue(eparagonyConnection);
+    const apiClient = createMockApiClient({
+      connections: {
+        update: updateFn,
+        // Refetch still reports the old `print: true` — nothing has persisted yet.
+        getById: vi.fn().mockResolvedValue(eparagonyConnection),
+      },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={eparagonyConnection} />, { apiClient });
+
+    expect(screen.getByRole('radio', { name: 'Print' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('radio', { name: 'Not set' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => {
+      expect(updateFn).toHaveBeenCalled();
+    });
+    const [, submittedInput] = updateFn.mock.calls[0] as [string, { config: Record<string, unknown> }];
+    expect('print' in submittedInput.config).toBe(true);
+    expect(submittedInput.config.print).toBeNull();
+  });
+
   describe('structured PrestaShop inputs + raw JSON toggle', () => {
     it('renders Shop URL / Storefront URL / Shop ID inputs for a PrestaShop connection', () => {
       renderWithProviders(<EditConnectionForm connection={sampleConnection} />);

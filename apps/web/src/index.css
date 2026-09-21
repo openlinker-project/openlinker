@@ -5829,7 +5829,8 @@ a.delivery-rider-banner__button:focus-visible {
    * the same reasoning the badge carve-down above states.
    */
   .gap-mark--clickable,
-  .analytics-coverage-alert-badge__trigger {
+  .analytics-coverage-alert-badge__trigger,
+  .section-infotip {
     min-height: 0;
     min-width: 0;
   }
@@ -5837,6 +5838,24 @@ a.delivery-rider-banner__button:focus-visible {
   .gap-mark--clickable {
     padding: var(--space-1);
     margin: calc(var(--space-1) * -1);
+  }
+
+  /*
+   * `.section-infotip` joins them (#3268 review). It is the ⓘ mark beside a KPI
+   * eyebrow and, since the eparagony.pl connection form, inside a field's
+   * `<p class="form-field__description">` — running text in both cases, so the
+   * 44px floor blows a box into the middle of a wrapped paragraph.
+   *
+   * It carries MORE padding than `.gap-mark--clickable` rather than the same,
+   * because here the surrounding label is NOT also an affordance: the mark is
+   * the only route to the hazard text it opens, so it has to stay comfortably
+   * tappable on its own. The negative margin restores the original 2px left
+   * gap and takes the rest back out of the line box, so nothing reflows.
+   */
+  .section-infotip {
+    padding: var(--space-2);
+    margin: calc(var(--space-2) * -1);
+    margin-left: calc(2px - var(--space-2));
   }
 
   /*

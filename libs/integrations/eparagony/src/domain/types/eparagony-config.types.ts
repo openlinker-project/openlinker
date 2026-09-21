@@ -70,6 +70,36 @@ export interface EparagonySellerAddress {
   country: string;
 }
 
+/**
+ * The persisted config for an eparagony.pl connection.
+ *
+ * EVERY OPTIONAL KEY THE STRUCTURED RECEIPT FORM COVERS IS `| null` AS WELL AS
+ * OPTIONAL, AND THAT IS LOAD-BEARING (#3268 review). `taxRates`,
+ * `defaultTaxRateCode`, `print`, `paymentForm`, `paymentName`,
+ * `statusPollTimeoutMs`, `fiscalDeviceUniqueNumber`, `apiBaseUrl` and
+ * `authBaseUrl` are all guarded by `EparagonyConnectionConfigShapeValidatorAdapter`
+ * with `!== undefined && !== null`, so `null` is an accepted persisted value -
+ * and the connection form WRITES it: `EditConnectionForm.onSubmit` merges
+ * `{ ...fresh.config, ...input.config }`, a shallow spread that can only
+ * override a key present on the right side, so a cleared field has to persist
+ * an explicit `null` rather than delete the key or the clear never reaches the
+ * server (the #2016 `rateLimit` rule). `taxRates` is included even though the
+ * eight-field structured form has no control for it: the validator already
+ * accepted `null` there (raw-JSON editors clear keys this way too), so the
+ * type states what was already true rather than leaving one key silently
+ * narrower than its own runtime contract.
+ *
+ * The invoice-lane fields (`merchantTIN`, `merchantName`, `merchantAddress`,
+ * `eInvoicingHubEnabled`) are deliberately NOT part of this rule - they belong
+ * to the separate invoicing epic (#3192/#3224), the guided wizard never writes
+ * them, and this PR's structured section carries no control for them either.
+ *
+ * Declaring the receipt-lane nullability here rather than leaving those keys
+ * `?: string` is what makes every reader's handling of the cleared state a
+ * TYPE question instead of an inspection one. It found one real defect on its
+ * first run: the document mapper's `paymentName === undefined` guard spread
+ * `paymentName: null` onto a fiscal receipt request for a cleared value.
+ */
 export interface EparagonyConnectionConfig {
   /** Which vendor deployment to talk to. Selects both the API and the OAuth host. */
   environment: EparagonyEnvironment;
@@ -86,7 +116,7 @@ export interface EparagonyConnectionConfig {
    * configuration, so an operator whose device is programmed differently must
    * override it - OL cannot observe the device.
    */
-  taxRates?: Partial<EparagonyTaxRateTable>;
+  taxRates?: Partial<EparagonyTaxRateTable> | null;
 
   /**
    * The connection's own device slot, declared by the operator.
@@ -103,14 +133,14 @@ export interface EparagonyConnectionConfig {
    * Absent still means an un-rated line blocks, which is now the same answer
    * core gives one step earlier.
    */
-  defaultTaxRateCode?: EparagonyTaxRateCode;
+  defaultTaxRateCode?: EparagonyTaxRateCode | null;
 
   /**
    * Ask the vendor's print service to also produce a paper receipt. Defaults to
    * `false`: an e-commerce sale registered asynchronously has no counter and no
    * customer standing at one.
    */
-  print?: boolean;
+  print?: boolean | null;
 
   /**
    * Payment form declared on the receipt. Defaults to `Przelew` (bank transfer),
@@ -119,17 +149,17 @@ export interface EparagonyConnectionConfig {
    * (`errorCode: 87`), so the AMOUNT is always the sale total - only the label
    * is configurable.
    */
-  paymentForm?: EparagonyPaymentForm;
+  paymentForm?: EparagonyPaymentForm | null;
 
   /** Free-text payment name (card scheme, PSP). Optional; purely descriptive. */
-  paymentName?: string;
+  paymentName?: string | null;
 
   /**
    * How long to wait for the device to reach a terminal status before giving up
    * and reporting the outcome as in-doubt. Clamped by the adapter so the whole
    * call stays inside core's supported provider round-trip ceiling.
    */
-  statusPollTimeoutMs?: number;
+  statusPollTimeoutMs?: number | null;
 
   /**
    * The SELLER's tax number, stamped on every invoice this connection issues.
@@ -189,11 +219,11 @@ export interface EparagonyConnectionConfig {
    * the device's number comes BACK on the confirmed status. Optional, because a
    * freshly configured connection legitimately does not know it yet.
    */
-  fiscalDeviceUniqueNumber?: string;
+  fiscalDeviceUniqueNumber?: string | null;
 
   /** Override for the API host. Must be https. Intended for testing. */
-  apiBaseUrl?: string;
+  apiBaseUrl?: string | null;
 
   /** Override for the OAuth host. Must be https. Intended for testing. */
-  authBaseUrl?: string;
+  authBaseUrl?: string | null;
 }
