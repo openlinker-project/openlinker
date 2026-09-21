@@ -281,4 +281,94 @@ describe('resolveSalesDocumentRouting (ADR-041)', () => {
       }
     }
   });
+
+  describe('a dual-role connection expanded into two candidate rows (#3195)', () => {
+    it('should route to the one eligible row when it is the only candidate, even though it shares a connectionId with no sibling here', () => {
+      const only = candidate({
+        connectionId: 'conn-both',
+        documentKind: 'invoice',
+        enabledCapabilities: ['Invoicing', 'Fiscalization'],
+      });
+
+      expect(resolveSalesDocumentRouting(ORDER, [only])).toEqual({
+        kind: 'route',
+        documentKind: 'invoice',
+        connectionId: 'conn-both',
+      });
+    });
+
+    it('should resolve unresolved/ambiguous-connection-no-primary when two rows share a connectionId and neither is primary — one connection, two candidates, still no unambiguous winner', () => {
+      const rows = [
+        candidate({
+          connectionId: 'conn-both',
+          documentKind: 'invoice',
+          enabledCapabilities: ['Invoicing', 'Fiscalization'],
+          isPrimary: false,
+        }),
+        candidate({
+          connectionId: 'conn-both',
+          documentKind: 'fiscal-receipt',
+          enabledCapabilities: ['Invoicing', 'Fiscalization'],
+          isPrimary: false,
+        }),
+      ];
+
+      expect(resolveSalesDocumentRouting(ORDER, rows)).toEqual({
+        kind: 'unresolved',
+        reason: 'ambiguous-connection-no-primary',
+      });
+    });
+
+    it('should route to the primary row when exactly one of two same-connection rows is primary', () => {
+      const rows = [
+        candidate({
+          connectionId: 'conn-both',
+          documentKind: 'invoice',
+          enabledCapabilities: ['Invoicing', 'Fiscalization'],
+          isPrimary: false,
+        }),
+        candidate({
+          connectionId: 'conn-both',
+          documentKind: 'fiscal-receipt',
+          enabledCapabilities: ['Invoicing', 'Fiscalization'],
+          isPrimary: true,
+        }),
+      ];
+
+      expect(resolveSalesDocumentRouting(ORDER, rows)).toEqual({
+        kind: 'route',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-both',
+      });
+    });
+
+    it('should route to the ONE row from a dual-role connection that wins against a normal single-role sibling', () => {
+      const rows = [
+        candidate({
+          connectionId: 'conn-both',
+          documentKind: 'invoice',
+          enabledCapabilities: ['Invoicing', 'Fiscalization'],
+          isPrimary: false,
+        }),
+        candidate({
+          connectionId: 'conn-both',
+          documentKind: 'fiscal-receipt',
+          enabledCapabilities: ['Invoicing', 'Fiscalization'],
+          isPrimary: true,
+        }),
+        candidate({
+          connectionId: 'conn-other',
+          documentKind: 'invoice',
+          enabledCapabilities: ['Invoicing'],
+          isPrimary: false,
+        }),
+      ];
+
+      expect(resolveSalesDocumentRouting(ORDER, rows)).toEqual({
+        kind: 'route',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-both',
+      });
+    });
+  });
 });

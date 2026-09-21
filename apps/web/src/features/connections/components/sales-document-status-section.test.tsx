@@ -59,6 +59,17 @@ describe('SalesDocumentStatusSection', () => {
     expect(screen.getByText('Invoice')).toBeInTheDocument();
   });
 
+  it('should show the resolved Issues label for a dual-role documentKind (#3195)', () => {
+    renderSection(
+      makeConnection({
+        enabledCapabilities: ['Invoicing', 'Fiscalization'],
+        config: { salesDocument: { documentKind: 'both' } },
+      }),
+    );
+
+    expect(screen.getByText('Either (invoice or fiscal receipt)')).toBeInTheDocument();
+  });
+
   it('should show Primary status when config.invoicing.isPrimary is true', () => {
     renderSection(makeConnection({ config: { invoicing: { isPrimary: true } } }));
 

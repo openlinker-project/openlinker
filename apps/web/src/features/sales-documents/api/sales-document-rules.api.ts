@@ -9,9 +9,11 @@ import type {
   AdoptSalesDocumentTemplateInput,
   CheckSalesDocumentRuleOverlapInput,
   CreateSalesDocumentRuleInput,
+  DryRunSalesDocumentRuleInput,
   SalesDocumentCountryAcknowledgment,
   SalesDocumentCountryDefault,
   SalesDocumentCountrySummary,
+  SalesDocumentDryRunResult,
   SalesDocumentRule,
   SalesDocumentRuleOverlapVerdict,
   SalesDocumentStarterTemplate,
@@ -22,6 +24,12 @@ import type {
 export interface SalesDocumentRulesApi {
   listRules: (country: string) => Promise<SalesDocumentRule[]>;
   createRule: (input: CreateSalesDocumentRuleInput) => Promise<SalesDocumentRule>;
+  /**
+   * POST /sales-documents/rules/dry-run (#3191) — "what would this order
+   * get?" for an in-progress, never-saved rule candidate. Persists nothing;
+   * safe to call repeatedly.
+   */
+  dryRunRule: (input: DryRunSalesDocumentRuleInput) => Promise<SalesDocumentDryRunResult>;
   deleteRule: (id: string) => Promise<void>;
   /**
    * POST /sales-documents/rules/overlap-check (#3190) - a READ despite the
@@ -69,6 +77,12 @@ export function createSalesDocumentRulesApi(request: ApiRequest): SalesDocumentR
     },
     checkRuleOverlap(input): Promise<SalesDocumentRuleOverlapVerdict> {
       return request<SalesDocumentRuleOverlapVerdict>('/sales-documents/rules/overlap-check', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    dryRunRule(input): Promise<SalesDocumentDryRunResult> {
+      return request<SalesDocumentDryRunResult>('/sales-documents/rules/dry-run', {
         method: 'POST',
         body: JSON.stringify(input),
       });

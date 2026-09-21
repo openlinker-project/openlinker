@@ -13,7 +13,7 @@
  *
  * @module apps/web/src/features/sales-documents/api
  */
-import type { SalesDocumentKind } from './sales-documents.types';
+import type { ConcreteDocumentKind, SalesDocumentKind } from './sales-documents.types';
 
 /** The `★ Rest of world` pseudo-country literal (mirrors `SALES_DOCUMENT_REST_OF_WORLD_COUNTRY`). */
 export const SALES_DOCUMENT_REST_OF_WORLD_COUNTRY = '*';
@@ -48,7 +48,8 @@ export interface SalesDocumentRule {
   id: string;
   country: string;
   conditions: SalesDocumentConditionInput[];
-  documentKind: SalesDocumentKind;
+  /** A saved rule always routes to ONE concrete kind — never the `'both'` config sentinel. */
+  documentKind: ConcreteDocumentKind;
   connectionId: string;
   effectiveFrom: string;
   effectiveTo: string | null;
@@ -60,7 +61,7 @@ export interface SalesDocumentRule {
 export interface CreateSalesDocumentRuleInput {
   country: string;
   conditions: SalesDocumentConditionInput[];
-  documentKind: SalesDocumentKind;
+  documentKind: ConcreteDocumentKind;
   connectionId: string;
   effectiveFrom: string;
   effectiveTo?: string | null;
@@ -70,13 +71,14 @@ export interface CreateSalesDocumentRuleInput {
 export interface SalesDocumentCountryDefault {
   id: string;
   country: string;
-  documentKind: SalesDocumentKind;
+  /** A country default always names ONE concrete kind — never `'both'`. */
+  documentKind: ConcreteDocumentKind;
   connectionId: string;
 }
 
 export interface UpsertSalesDocumentCountryDefaultInput {
   country: string;
-  documentKind: SalesDocumentKind;
+  documentKind: ConcreteDocumentKind;
   connectionId: string;
 }
 
@@ -156,4 +158,49 @@ export interface CheckSalesDocumentRuleOverlapInput {
   readonly effectiveFrom: string;
   readonly effectiveTo?: string | null;
   readonly excludeRuleId?: string;
+}
+
+/**
+ * Sample-order input for a dry run (#3191) — mirrors the backend
+ * `SalesDocumentOrderFacts` projection. `buyerHasTaxId` absent means
+ * "unknown", never a defaulted `false` — the same rule the rest of this
+ * concern already follows for that field.
+ */
+export interface SalesDocumentDryRunSampleOrderInput {
+  country: string;
+  totalGross: number;
+  currency: string;
+  taxTreatment?: 'inclusive' | 'exclusive';
+  buyerHasTaxId?: boolean;
+}
+
+/**
+ * The in-progress, NEVER-SAVED rule candidate a dry run tests — the same
+ * scoping fields `CreateSalesDocumentRuleInput` carries, minus the effective
+ * window and provenance (a dry run tests conditions, not a calendar).
+ */
+export interface DryRunSalesDocumentRuleInput {
+  country: string;
+  conditions: SalesDocumentConditionInput[];
+  documentKind: SalesDocumentKind;
+  connectionId: string;
+  sampleOrder: SalesDocumentDryRunSampleOrderInput;
+}
+
+/**
+ * Mirrors the backend `SalesDocumentDryRunResultDto` (#3191) — the same
+ * `SalesDocumentDecision` shape `SalesDocumentMarketOutcome` mirrors, plus
+ * `matchedByCandidateRule`: true when the rule being drafted is what matched,
+ * as opposed to an already-saved rule elsewhere in this country's
+ * configuration.
+ */
+export interface SalesDocumentDryRunResult {
+  kind: 'route' | 'aggregate' | 'unresolved';
+  /** Set when `kind === 'route'`. `null` marks a self-routing destination. */
+  documentKind?: SalesDocumentKind | string | null;
+  /** Set when `kind === 'route'` or `kind === 'aggregate'`. */
+  connectionId?: string;
+  /** Set when `kind === 'unresolved'` — a `SalesDocumentUnresolvedReasonValue`. */
+  reason?: string;
+  matchedByCandidateRule: boolean;
 }

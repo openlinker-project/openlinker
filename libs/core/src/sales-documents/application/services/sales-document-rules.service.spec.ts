@@ -23,6 +23,10 @@ import { SalesDocumentCountryAlreadyConfiguredException } from '../../domain/exc
 import { computeSalesDocumentConditionsHash } from '../../domain/types/sales-document-condition.types';
 import type { SalesDocumentRuleInput } from '../../domain/types/sales-document-rule-write.types';
 import type { SalesDocumentOrderFacts } from '../../domain/types/sales-document-order-facts.types';
+import {
+  SALES_DOCUMENT_DRY_RUN_CANDIDATE_RULE_ID,
+  type SalesDocumentDryRunCandidate,
+} from '../../domain/types/sales-document-dry-run.types';
 
 function makeRuleRepo(): jest.Mocked<SalesDocumentRuleRepositoryPort> {
   return {
@@ -338,6 +342,115 @@ describe('SalesDocumentRulesService (#2170, #2186)', () => {
         documentKind: 'invoice',
         connectionId: 'conn-row',
       });
+    });
+  });
+
+  describe('dryRunRule (#3191)', () => {
+    const sampleOrder = (overrides: Partial<SalesDocumentOrderFacts> = {}): SalesDocumentOrderFacts => ({
+      country: 'PL',
+      totalGross: 100,
+      currency: 'PLN',
+      buyerHasTaxId: undefined,
+      ...overrides,
+    });
+
+    const candidate = (
+      overrides: Partial<SalesDocumentDryRunCandidate> = {},
+    ): SalesDocumentDryRunCandidate => ({
+      country: 'PL',
+      conditions: [{ field: 'orderCountry', op: 'eq', value: 'PL' }],
+      documentKind: 'fiscal-receipt',
+      connectionId: 'conn-candidate',
+      ...overrides,
+    });
+
+    it('should fold the candidate into the order`s own country scope and report it matched via the sentinel ruleId', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([]);
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+
+      const decision = await service.dryRunRule(candidate(), sampleOrder());
+
+      expect(decision).toEqual({
+        kind: 'route',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-candidate',
+        ruleId: SALES_DOCUMENT_DRY_RUN_CANDIDATE_RULE_ID,
+      });
+    });
+
+    it('should NOT fold the candidate into evaluation when its scope differs from the sample order`s own country', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([]);
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+
+      // Candidate is scoped to PL, sample order delivers to DE — once saved
+      // this candidate would never be considered for a DE order either.
+      const decision = await service.dryRunRule(candidate({ country: 'PL' }), sampleOrder({ country: 'DE' }));
+
+      expect(decision).toEqual({ kind: 'unresolved', reason: 'no-configuration-for-country' });
+    });
+
+    it('should fold a `★ Rest of world`-scoped candidate into the rest-of-world tier', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([]);
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+
+      const decision = await service.dryRunRule(
+        candidate({ country: '*', conditions: [{ field: 'buyerHasTaxId', op: 'eq', value: true }] }),
+        sampleOrder({ country: 'DE', buyerHasTaxId: true }),
+      );
+
+      expect(decision).toEqual({
+        kind: 'route',
+        documentKind: 'fiscal-receipt',
+        connectionId: 'conn-candidate',
+        ruleId: SALES_DOCUMENT_DRY_RUN_CANDIDATE_RULE_ID,
+      });
+    });
+
+    it('should evaluate the SAME persisted rules a real order would (existing rule for the country plus Rest of world)', async () => {
+      ruleRepo.findByCountry.mockImplementation((country) =>
+        Promise.resolve(country === 'PL' ? [existingRule()] : []),
+      );
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+
+      // A candidate that could never match this sample order (wrong tax-id
+      // assertion) leaves the already-saved PL rule free to win on its own.
+      const decision = await service.dryRunRule(
+        candidate({ conditions: [{ field: 'orderCountry', op: 'eq', value: 'DE' }] }),
+        sampleOrder({ buyerHasTaxId: false }),
+      );
+
+      expect(decision).toEqual({
+        kind: 'route',
+        documentKind: existingRule().documentKind,
+        connectionId: existingRule().connectionId,
+        ruleId: existingRule().id,
+      });
+    });
+
+    it('should reject a malformed condition before ever reading a repository', async () => {
+      await expect(
+        service.dryRunRule(
+          candidate({ conditions: [{ field: 'orderTotalGross', op: 'lt', amount: 'not-a-number', currency: 'PLN' }] }),
+          sampleOrder(),
+        ),
+      ).rejects.toBeInstanceOf(SalesDocumentInvalidConditionException);
+      expect(ruleRepo.findByCountry).not.toHaveBeenCalled();
+    });
+
+    it('should persist NOTHING, however the candidate resolves, even across repeated calls', async () => {
+      ruleRepo.findByCountry.mockResolvedValue([]);
+      countryDefaultRepo.findByCountry.mockResolvedValue([]);
+
+      await service.dryRunRule(candidate(), sampleOrder());
+      await service.dryRunRule(candidate(), sampleOrder());
+      await service.dryRunRule(candidate({ country: 'DE' }), sampleOrder({ country: 'DE' }));
+
+      expect(ruleRepo.create).not.toHaveBeenCalled();
+      expect(ruleRepo.delete).not.toHaveBeenCalled();
+      expect(countryDefaultRepo.upsert).not.toHaveBeenCalled();
+      expect(countryDefaultRepo.delete).not.toHaveBeenCalled();
+      expect(acknowledgmentRepo.upsert).not.toHaveBeenCalled();
+      expect(acknowledgmentRepo.delete).not.toHaveBeenCalled();
     });
   });
 

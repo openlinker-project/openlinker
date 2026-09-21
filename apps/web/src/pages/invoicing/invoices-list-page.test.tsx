@@ -813,4 +813,85 @@ describe('InvoicesListPage', () => {
 
     expect(await screen.findByText('5260001246-20260625-A1B2-3D')).toBeInTheDocument();
   });
+
+  // ---------------------------------------------------------------------
+  // #3194 — the regulatory-status filter reverses a prior deliberate
+  // exclusion of `not-applicable` and `cleared`, and a chip surfaces the
+  // count + elapsed age of invoices currently `pending-submission` (never an
+  // ETA — OpenLinker has no basis for one).
+  // ---------------------------------------------------------------------
+  it('makes all six regulatory-status values selectable, including not-applicable and cleared (#3194)', async () => {
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [], total: 0 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    await screen.findByText('No invoices found');
+    const select = screen.getByTestId('invoices-filter-regulatory');
+    // Fallback labels (#1585 F7): "N/A" for not-applicable, "Clearing" for
+    // cleared — distinct from the "Cleared" pill wording elsewhere.
+    expect(within(select).getByRole('option', { name: 'N/A' })).toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: 'Clearing' })).toBeInTheDocument();
+    expect(within(select).getAllByRole('option')).toHaveLength(7); // "All" + 6 values
+  });
+
+  it('renders the awaiting-submission chip with a count and an elapsed-age phrase, never an ETA (#3194)', async () => {
+    // Real clock, deliberately: `screen.findBy*` polls via real timers, and
+    // fake timers left engaged past this test (e.g. by an early assertion
+    // failure) would hang every later test in the file. A wall-clock offset
+    // from `Date.now()` is exact enough at day/hour granularity.
+    const fourteenHoursAgo = new Date(Date.now() - 14 * 3_600_000).toISOString();
+    const awaiting = makeInvoice({
+      id: 'inv_awaiting',
+      regulatoryStatus: 'pending-submission',
+      updatedAt: fourteenHoursAgo,
+    });
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [awaiting], total: 1 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    const chip = await screen.findByTestId('invoices-chip-awaiting');
+    expect(chip.textContent).toContain('Awaiting submission');
+    expect(chip.textContent).toContain('1');
+    expect(chip.textContent).toContain('oldest 14 h');
+    // Not a completion-time estimate under any spelling.
+    expect(chip.textContent?.toLowerCase()).not.toMatch(/eta|estimate|expected/);
+  });
+
+  it('does not render the awaiting-submission chip when no invoice is pending-submission (#3194)', async () => {
+    const list = vi.fn().mockResolvedValue(
+      makeEnvelope({ items: [makeInvoice({ regulatoryStatus: 'accepted' })], total: 1 }),
+    );
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    await screen.findByText('order_1');
+    expect(screen.queryByTestId('invoices-chip-awaiting')).toBeNull();
+  });
+
+  it('clicking the awaiting-submission chip drives the regulatoryStatus filter', async () => {
+    const user = userEvent.setup();
+    const awaiting = makeInvoice({ id: 'inv_awaiting', regulatoryStatus: 'pending-submission' });
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [awaiting], total: 1 }));
+    renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
+
+    const chip = await screen.findByTestId('invoices-chip-awaiting');
+    await user.click(chip);
+
+    await waitFor(() => {
+      expect(list.mock.calls.at(-1)?.[0]).toMatchObject({ regulatoryStatus: 'pending-submission' });
+    });
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps the chip visible and clickable-to-clear while the filter is active, even at a zero count', async () => {
+    // Once applied, the fetched page may legitimately hold no matching rows —
+    // the chip must remain so the filter stays clearable (the
+    // `salesDocumentBlocked` chip's rule on the orders list, #2100 review).
+    const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [], total: 0 }));
+    renderWithProviders(<InvoicesListPage />, {
+      apiClient: mockApi(list),
+      route: '/invoices?regulatoryStatus=pending-submission',
+    });
+
+    const chip = await screen.findByTestId('invoices-chip-awaiting');
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(chip.textContent).toContain('0');
+  });
 });

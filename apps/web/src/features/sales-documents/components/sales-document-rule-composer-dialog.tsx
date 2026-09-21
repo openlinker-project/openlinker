@@ -62,11 +62,12 @@ import { useConnectionsQuery } from '../../connections';
 import { selectInvoicingCandidates } from '../../invoicing';
 import { selectFiscalizationCandidates } from '../../fiscalization';
 import { useCreateSalesDocumentRuleMutation } from '../hooks/use-create-sales-document-rule-mutation';
+import { useDryRunSalesDocumentRuleMutation } from '../hooks/use-dry-run-sales-document-rule-mutation';
 import type {
   CreateSalesDocumentRuleInput,
   SalesDocumentConditionInput,
 } from '../api/sales-document-rules.types';
-import type { SalesDocumentKind } from '../api/sales-documents.types';
+import type { ConcreteDocumentKind } from '../api/sales-documents.types';
 import { describeSalesDocumentRuleDraft } from '../lib/describe-sales-document-rule-draft';
 import { useSalesDocumentRuleOverlapQuery } from '../hooks/use-sales-document-rule-overlap-query';
 import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-query';
@@ -76,6 +77,7 @@ import {
   describeSalesDocumentOverlapConflictRival,
   describeSalesDocumentOverlapUndecided,
 } from '../lib/describe-sales-document-overlap';
+import { describeSalesDocumentDryRunResult } from '../lib/describe-sales-document-dry-run-result';
 
 interface SalesDocumentRuleComposerDialogProps {
   country: string;
@@ -253,9 +255,10 @@ export function SalesDocumentRuleComposerDialog({
 }: SalesDocumentRuleComposerDialogProps): ReactElement {
   const connectionsQuery = useConnectionsQuery();
   const createRule = useCreateSalesDocumentRuleMutation();
+  const dryRun = useDryRunSalesDocumentRuleMutation();
 
   const [conditions, setConditions] = useState<ConditionDraft[]>([newConditionDraft()]);
-  const [documentKind, setDocumentKind] = useState<SalesDocumentKind>('invoice');
+  const [documentKind, setDocumentKind] = useState<ConcreteDocumentKind>('invoice');
   const [connectionId, setConnectionId] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState(() => new Date().toISOString().slice(0, 10));
   const [effectiveTo, setEffectiveTo] = useState('');
@@ -313,6 +316,17 @@ export function SalesDocumentRuleComposerDialog({
     overlapState === 'incomplete' || overlapState === 'settling' || overlapState === 'pending';
   const recheckInFlight = overlapState === 'settling' || overlapState === 'pending';
 
+  // "Test with a sample order" — never persists anything; the sample fields
+  // are local to this dialog and default to the market this composer is
+  // already scoped to, since testing a rule against an order in a country it
+  // could not be scoped under is a configuration mistake the composer should
+  // not invite by defaulting elsewhere.
+  const [sampleOrderOpen, setSampleOrderOpen] = useState(false);
+  const [sampleCountry, setSampleCountry] = useState(country);
+  const [sampleAmount, setSampleAmount] = useState('');
+  const [sampleCurrency, setSampleCurrency] = useState('');
+  const [sampleBuyerHasTaxId, setSampleBuyerHasTaxId] = useState<'unknown' | 'yes' | 'no'>('unknown');
+
   const connections = connectionsQuery.data ?? [];
   const candidates =
     documentKind === 'invoice'
@@ -326,6 +340,31 @@ export function SalesDocumentRuleComposerDialog({
     setEffectiveFrom(new Date().toISOString().slice(0, 10));
     setEffectiveTo('');
     createRule.reset();
+    setSampleOrderOpen(false);
+    setSampleCountry(country);
+    setSampleAmount('');
+    setSampleCurrency('');
+    setSampleBuyerHasTaxId('unknown');
+    dryRun.reset();
+  }
+
+  function handleDryRun(): void {
+    const totalGross = Number.parseFloat(sampleAmount);
+    // Guarded by the button's own `disabled` below — a malformed sample can
+    // never reach the request.
+    if (!Number.isFinite(totalGross) || sampleCurrency.trim().length === 0) return;
+    dryRun.mutate({
+      country,
+      conditions: conditions.map(toConditionInput),
+      documentKind,
+      connectionId,
+      sampleOrder: {
+        country: sampleCountry.trim().toUpperCase(),
+        totalGross,
+        currency: sampleCurrency.trim().toUpperCase(),
+        buyerHasTaxId: sampleBuyerHasTaxId === 'unknown' ? undefined : sampleBuyerHasTaxId === 'yes',
+      },
+    });
   }
 
   /**
@@ -489,17 +528,99 @@ export function SalesDocumentRuleComposerDialog({
             ))}
           </div>
 
-          <Button
-            tone="secondary"
-            className="button--sm"
-            onClick={() => setConditions((prev) => [...prev, newConditionDraft()])}
-          >
-            + Add condition
-          </Button>
+          <div className="row" style={{ gap: 'var(--space-2)' }}>
+            <Button
+              tone="secondary"
+              className="button--sm"
+              onClick={() => setConditions((prev) => [...prev, newConditionDraft()])}
+            >
+              + Add condition
+            </Button>
+            <Button
+              tone="secondary"
+              className="button--sm"
+              data-testid="rule-test-sample-order"
+              onClick={() => setSampleOrderOpen((prev) => !prev)}
+            >
+              Test with a sample order
+            </Button>
+          </div>
           <p className="muted-text rule-composer-section__footnote">
             The underlying <span className="mono-text">field</span> is one closed, cross-country
             vocabulary — never a country-specific string.
           </p>
+
+          {sampleOrderOpen ? (
+            <div className="rule-composer-dry-run" data-testid="rule-test-sample-order-panel">
+              <p className="eyebrow" style={{ marginBottom: 6 }}>
+                Sample order
+              </p>
+              <div className="frame-grid frame-grid--2">
+                <Input
+                  aria-label="Sample order delivery country"
+                  placeholder="e.g. PL"
+                  value={sampleCountry}
+                  onChange={(event) => setSampleCountry(event.target.value.toUpperCase())}
+                />
+                <Select
+                  aria-label="Sample order buyer has a tax ID"
+                  value={sampleBuyerHasTaxId}
+                  onChange={(event) =>
+                    setSampleBuyerHasTaxId(event.target.value as 'unknown' | 'yes' | 'no')
+                  }
+                >
+                  <option value="unknown">Buyer tax ID: unknown</option>
+                  <option value="yes">Buyer tax ID: present</option>
+                  <option value="no">Buyer tax ID: none</option>
+                </Select>
+                <Input
+                  aria-label="Sample order total amount"
+                  inputMode="decimal"
+                  placeholder="450.00"
+                  value={sampleAmount}
+                  onChange={(event) => setSampleAmount(event.target.value)}
+                />
+                <Input
+                  aria-label="Sample order currency"
+                  placeholder="PLN"
+                  maxLength={3}
+                  value={sampleCurrency}
+                  onChange={(event) => setSampleCurrency(event.target.value.toUpperCase())}
+                />
+              </div>
+
+              <div className="row" style={{ marginTop: 'var(--space-2)' }}>
+                <Button
+                  className="button--sm"
+                  data-testid="rule-run-sample-order-test"
+                  disabled={
+                    dryRun.isPending ||
+                    connectionId === '' ||
+                    sampleAmount.trim().length === 0 ||
+                    sampleCurrency.trim().length === 0 ||
+                    sampleCountry.trim().length === 0
+                  }
+                  onClick={handleDryRun}
+                >
+                  {dryRun.isPending ? 'Testing…' : 'Run test'}
+                </Button>
+              </div>
+
+              {dryRun.error ? (
+                <Alert tone="error" data-testid="rule-test-sample-order-error">
+                  {dryRun.error.message}
+                </Alert>
+              ) : null}
+
+              {dryRun.data ? (
+                <p data-testid="rule-test-sample-order-result" className="muted-text" style={{ marginTop: 'var(--space-2)' }}>
+                  {describeSalesDocumentDryRunResult(dryRun.data, (id) =>
+                    candidates.find((c) => c.id === id)?.name ?? null,
+                  )}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         <section className="rule-composer-section">
@@ -515,7 +636,7 @@ export function SalesDocumentRuleComposerDialog({
                 id="sd-rule-doctype"
                 value={documentKind}
                 onChange={(event) => {
-                  setDocumentKind(event.target.value as SalesDocumentKind);
+                  setDocumentKind(event.target.value as ConcreteDocumentKind);
                   setConnectionId('');
                 }}
               >
