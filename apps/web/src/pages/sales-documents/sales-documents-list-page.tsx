@@ -1,25 +1,35 @@
 /**
  * Sales Documents List Page (#3307)
  *
- * The merged, kind-aware replacement for `/invoices` — every invoice AND
- * fiscal-receipt record, newest-first, across connections. Backs
+ * The merged, kind-aware replacement for the `/invoices` LIST — every invoice
+ * AND fiscal-receipt record, newest-first, across connections. Backs
  * `GET /sales-documents` (#3306), which is keyset-paginated (no `total`, no
- * `offset`): pagination here is a "Load more" cursor stack rather than the
- * page-number pagination `InvoicesListPage` uses, because a merged financial
- * list must not silently skip or duplicate a row when a new document lands
- * mid-walk (see the backend's own docblock).
+ * `offset`): pagination here is a Previous/Next cursor STACK, not a
+ * "Load more" accumulator (this page replaces its rows on every step, it
+ * never appends to them) and not the page-number pagination
+ * `InvoicesListPage` uses, because a merged financial list must not silently
+ * skip or duplicate a row when a new document lands mid-walk (see the
+ * backend's own docblock).
  *
  * Deliberately scoped down from the full mockup for this first slice — no
- * KPI strip, no bulk actions (those stay kind-specific and live on the
- * existing per-kind detail flows), no aggregate summary read. Filters,
- * columns and the reinstated per-row popover (`SalesDocumentListCell`,
- * `docs/plans/mockups/sales-documents.html`) are the MVP; the rest is a
- * stated follow-up.
+ * KPI strip, no aggregate summary read. Filters, columns and the reinstated
+ * per-row popover (`SalesDocumentListCell`, `docs/plans/mockups/sales-documents.html`)
+ * are the MVP; the rest is a stated follow-up.
+ *
+ * Bulk actions are NOT reproduced here (#3309 review, BLOCKING 1):
+ * `InvoicesListPage` — still mounted at `/invoices` — carries the ONLY batch
+ * retry and bulk-issue (#1355) flows in the product, and bulk issue is the
+ * documented primary remediation path for a `salesDocumentBlocked` order
+ * (`docs/architecture-overview.md` §14 Invoicing: excluding a blocked order
+ * from bulk issuance "would break the primary remediation path for the
+ * state this surfacing exists to reveal"). Retiring that page in the same
+ * change that ships this one would have removed the remedy while keeping
+ * the alarm, so `/invoices` stays live and this page links out to it.
  *
  * @module apps/web/src/pages/sales-documents
  */
-import { useState, type ReactElement } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useState, type ReactElement } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { DataTable, type DataTableColumn } from '../../shared/ui/data-table';
 import { ErrorState, EmptyState } from '../../shared/ui/feedback-state';
@@ -30,6 +40,8 @@ import { Select } from '../../shared/ui/select';
 import { TimeDisplay } from '../../shared/ui/time-display';
 import { EmptyValue } from '../../shared/ui/empty-value';
 import { DocumentKindGlyph } from '../../shared/ui/document-kind-glyph';
+import { formatAmount } from '../../shared/format/format-amount';
+import { useDebouncedValue } from '../../shared/hooks/use-debounced-value';
 import {
   useSalesDocumentsListQuery,
   SalesDocumentListCell,
@@ -41,6 +53,7 @@ import { ConnectionCell, useConnectionsQuery } from '../../features/connections'
 import { OrderIdentityCell } from '../../features/orders';
 
 const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 300;
 
 const TAX_ID_VALUES = ['with', 'without'] as const;
 type TaxIdFilter = (typeof TAX_ID_VALUES)[number];
@@ -67,18 +80,26 @@ export function SalesDocumentsListPage(): ReactElement {
   const connectionId = searchParams.get('connectionId') ?? undefined;
   const rawTaxId = searchParams.get('taxId');
   const taxId = isTaxIdFilter(rawTaxId) ? rawTaxId : undefined;
-  const search = searchParams.get('search') ?? undefined;
 
   const issuedFrom = searchParams.get('issuedFrom') || undefined;
   const issuedTo = searchParams.get('issuedTo') || undefined;
   const issuedFromIso = issuedFrom ? `${issuedFrom}T00:00:00.000Z` : undefined;
   const issuedToIso = issuedTo ? `${issuedTo}T23:59:59.999Z` : undefined;
 
+  // Search is debounced BEFORE it ever reaches the query or the URL (#3309
+  // review, IMPORTANT): typing "order id, document number..." fires neither a
+  // request nor a history entry per keystroke. `searchInput` is the input's
+  // live value; `search` (what the query and `hasFilters` read) only catches
+  // up once typing pauses for SEARCH_DEBOUNCE_MS.
+  const [searchInput, setSearchInput] = useState(searchParams.get('search') ?? '');
+  const search = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS) || undefined;
+
   const filters = { kind, status, connectionId, taxId, search, issuedFrom: issuedFromIso, issuedTo: issuedToIso };
 
   // Cursor stack — index 0 is "no cursor" (first page). Reset whenever a
-  // filter changes (setFilter clears it), since a keyset walk is only valid
-  // for the filter set it was fetched under.
+  // filter changes (setFilter clears it, or the search-debounce effect
+  // below), since a keyset walk is only valid for the filter set it was
+  // fetched under.
   const [cursorStack, setCursorStack] = useState<string[]>([]);
   const currentCursor = cursorStack[cursorStack.length - 1];
 
@@ -99,6 +120,26 @@ export function SalesDocumentsListPage(): ReactElement {
     setCursorStack([]);
   }
 
+  // Syncs the debounced search value to the URL (shareable/bookmarkable,
+  // like every other filter here) and resets the cursor stack for it — once
+  // per debounce settle, not once per keystroke. `replace: true` so a typed
+  // search term never spams Back with one entry per pause.
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (search) next.set('search', search);
+        else next.delete('search');
+        return next;
+      },
+      { replace: true },
+    );
+    setCursorStack([]);
+    // Deliberately depends only on `search` (the debounced value) — `setSearchParams`
+    // is a stable dispatcher and re-running this on its identity would defeat the
+    // whole point of debouncing.
+  }, [search]);
+
   function goNext(): void {
     if (query.data?.nextCursor) {
       setCursorStack((prev) => [...prev, query.data!.nextCursor as string]);
@@ -111,11 +152,10 @@ export function SalesDocumentsListPage(): ReactElement {
 
   const renderAmount = (item: SalesDocumentListItem): ReactElement => {
     if (!item.amount) return <EmptyValue />;
-    return (
-      <span className="mono-text tabular">
-        {item.amount.value.toFixed(2)} {item.amount.currency}
-      </span>
-    );
+    // `formatAmount` (#3309 review, SUGGESTION), not a hardcoded
+    // `.toFixed(2)`: a bare two-decimal render is wrong for a zero-decimal
+    // currency (JPY) and short a digit for a three-decimal one (KWD).
+    return <span className="mono-text tabular">{formatAmount(item.amount.value, item.amount.currency)}</span>;
   };
 
   const columns: DataTableColumn<SalesDocumentListItem>[] = [
@@ -183,6 +223,14 @@ export function SalesDocumentsListPage(): ReactElement {
       eyebrow="Operations"
       title="Sales documents"
       description="Every issued invoice and registered fiscal receipt across connections, in one place."
+      actions={
+        // Bulk actions (batch retry, bulk issue) live only on the per-kind
+        // `/invoices` list today — see the file header — so this stays
+        // reachable rather than silently dropped.
+        <Link className="button button--secondary" to="/invoices">
+          Manage invoices
+        </Link>
+      }
     >
       <div className="toolbar">
         <Select
@@ -225,8 +273,8 @@ export function SalesDocumentsListPage(): ReactElement {
           type="search"
           placeholder="Order id, document number…"
           aria-label="Search"
-          value={search ?? ''}
-          onChange={(e) => setFilter('search', e.target.value)}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
         />
 
         <Input
@@ -251,9 +299,26 @@ export function SalesDocumentsListPage(): ReactElement {
           message={query.error.message}
           action={<Button onClick={() => void query.refetch()}>Retry</Button>}
         />
+      ) : items.length === 0 && cursorStack.length > 0 ? (
+        // Reached only by clicking Next off a loaded table (#3309 review,
+        // BLOCKING 2) — the backend's keyset walk can legitimately answer
+        // an empty page carrying no `nextCursor` (the walk's true last
+        // page), and NOT because the operator has no documents. Rendering
+        // the never-issued copy here would be a false claim about their
+        // data on the exact screen where they were just reading it.
+        // `liveRegion` stays at the default "polite": this is a transition
+        // from a prior loaded table, not an initial-load landing.
+        <EmptyState
+          title="No more documents"
+          message="You've reached the end of this list."
+          action={<Button onClick={goPrev}>Back</Button>}
+        />
       ) : items.length === 0 ? (
         <EmptyState
-          liveRegion="off"
+          // "off" only for the true virgin landing (no filters, first page —
+          // nothing to transition from); every other empty arm here is
+          // reached from a prior loaded table and keeps the "polite" default.
+          liveRegion={hasFilters ? undefined : 'off'}
           title="No sales documents found"
           message={
             hasFilters

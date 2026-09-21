@@ -94,8 +94,14 @@ const lazyRoutes = collectLazyRoutes([
  *   - login (first-paint optimization — see `login.route.tsx`)
  *   - prompt-templates-legacy-redirects (inline `<Navigate>` element)
  *   - `/analytics` legacy alias (inline `<Navigate>` to `/`, #2740)
+ *
+ * #3307 (review fix): `/invoices` (the list) was briefly an inline
+ * `<Navigate>` to `/sales-documents`; it is lazy again (`InvoicesListPage`
+ * stays mounted, see `invoices.route.tsx`), and `/sales-documents` +
+ * `/sales-documents/fiscal-receipt/:recordId` are two NEW lazy routes —
+ * net +2 over the pre-#3307 baseline of 66.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 67;
+const EXPECTED_LAZY_ROUTE_COUNT = 68;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {
