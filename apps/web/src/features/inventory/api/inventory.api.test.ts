@@ -127,3 +127,51 @@ describe('createInventoryApi.deleteLocation', () => {
     });
   });
 });
+
+describe('createInventoryApi.getDuplicatePositions', () => {
+  it('should send no query string when maxGroups is omitted', async () => {
+    const request = vi.fn().mockResolvedValue({
+      groupCount: 0,
+      rowCount: 0,
+      excessRowCount: 0,
+      groups: [],
+      truncated: false,
+      generatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    await createInventoryApi(request).getDuplicatePositions();
+
+    expect(request).toHaveBeenCalledWith('/inventory/duplicate-positions');
+  });
+
+  it('should forward maxGroups via URLSearchParams', async () => {
+    const request = vi.fn().mockResolvedValue({
+      groupCount: 0,
+      rowCount: 0,
+      excessRowCount: 0,
+      groups: [],
+      truncated: false,
+      generatedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    await createInventoryApi(request).getDuplicatePositions(25);
+
+    const [path] = request.mock.calls[0] as [string];
+    expect(path).toBe('/inventory/duplicate-positions?maxGroups=25');
+  });
+});
+
+describe('createInventoryApi.getProvenanceBackfillStatus', () => {
+  it('should GET the provenance-backfill-status endpoint', async () => {
+    const request = vi.fn().mockResolvedValue({
+      remainingNull: 0,
+      completed: true,
+      latchedAt: null,
+    });
+
+    const result = await createInventoryApi(request).getProvenanceBackfillStatus();
+
+    expect(request).toHaveBeenCalledWith('/inventory/provenance-backfill-status');
+    expect(result).toEqual({ remainingNull: 0, completed: true, latchedAt: null });
+  });
+});
