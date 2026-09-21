@@ -46,6 +46,9 @@ export const MATCH_RETURN_DIALOG_COPY = {
   confirm: 'Confirm match',
   confirming: 'Matching…',
 
+  /** `ReadOnlyLock` tooltip for a demo viewer — the `return-custody.copy.ts` phrasing. */
+  readOnly: 'Matching a return to an order is disabled in the demo.',
+
   /**
    * 400 `unknown-order` — a FIELD error, not a toast, and it names what was
    * typed so the operator can see their own mistake rather than guess at it.

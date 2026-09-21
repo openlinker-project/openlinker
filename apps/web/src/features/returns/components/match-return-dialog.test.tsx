@@ -15,10 +15,13 @@ import { MATCH_RETURN_DIALOG_COPY as COPY } from '../lib/match-return-dialog.cop
 import { ApiError } from '../../../shared/api/api-error';
 import { createMockApiClient, renderWithProviders } from '../../../test/test-utils';
 
+const FULL_WRITE_ACCESS = { canWrite: true, demoReadOnly: false, visible: true };
+
 function renderDialog(options: {
   matchOrder?: ReturnType<typeof vi.fn>;
   onMatched?: () => void;
   orders?: Array<{ internalOrderId: string; syncStatus: Array<{ externalOrderNumber: string | null }> }>;
+  writeAccess?: { canWrite: boolean; demoReadOnly: boolean; visible: boolean };
 } = {}) {
   const apiClient = createMockApiClient();
   const matchOrder = options.matchOrder ?? vi.fn().mockResolvedValue({
@@ -44,6 +47,7 @@ function renderDialog(options: {
       open
       onOpenChange={onOpenChange}
       onMatched={options.onMatched}
+      writeAccess={options.writeAccess ?? FULL_WRITE_ACCESS}
     />,
     { apiClient },
   );
@@ -183,5 +187,48 @@ describe('MatchReturnDialog', () => {
     await userEvent.type(await screen.findByLabelText(COPY.fieldLabel), '1');
 
     expect(screen.queryByText(COPY.unknownOrder('#ZZZ999'))).not.toBeInTheDocument();
+  });
+
+  it('should clear a leftover generic error on Cancel, so it does not survive into a reopen', async () => {
+    // Repro from tech-lead review on #3281: the mutation object outlives a
+    // close, so `mutation.error` alone (never reset) would re-render the
+    // generic Alert on a dialog the operator hasn't touched yet.
+    const matchOrder = vi.fn().mockRejectedValue(new Error('network down'));
+    renderDialog({ matchOrder });
+
+    await typeAndSubmit('ol_order_1');
+    expect(await screen.findByText(COPY.genericError)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: COPY.cancel }));
+
+    expect(screen.queryByText(COPY.genericError)).not.toBeInTheDocument();
+  });
+
+  it('should disable the confirm button and show the read-only lock in demo mode', async () => {
+    renderDialog({ writeAccess: { canWrite: false, demoReadOnly: true, visible: true } });
+
+    expect(await screen.findByRole('button', { name: COPY.confirm })).toBeDisabled();
+  });
+
+  it('should disable the confirm button when the session has no write access at all', async () => {
+    renderDialog({ writeAccess: { canWrite: false, demoReadOnly: false, visible: false } });
+
+    expect(await screen.findByRole('button', { name: COPY.confirm })).toBeDisabled();
+  });
+
+  it('should not submit when the confirm button is clicked without write access', async () => {
+    const { matchOrder } = renderDialog({
+      writeAccess: { canWrite: false, demoReadOnly: true, visible: true },
+    });
+
+    const input = await screen.findByLabelText(COPY.fieldLabel);
+    await userEvent.type(input, 'ol_order_1');
+    // A demo-locked button still renders as a real <button disabled>, so a
+    // click resolves to nothing at the DOM level — this pins the same
+    // refusal at the submit handler, in case the disabled attribute is ever
+    // dropped from the markup.
+    await userEvent.click(screen.getByRole('button', { name: COPY.confirm }));
+
+    expect(matchOrder).not.toHaveBeenCalled();
   });
 });

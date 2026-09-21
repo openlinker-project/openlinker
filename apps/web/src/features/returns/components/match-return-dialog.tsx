@@ -36,6 +36,13 @@
  * echoed beneath the field, sourced from data already loaded for the
  * `<datalist>` rather than a second read.
  *
+ * **The confirm affordance carries its own `writeAccess` lock** (tech-lead
+ * review on #3281, IMPORTANT) — resolved by the page via
+ * `useWriteAccess('orders:write', demoMode)`, the same shape
+ * `ReturnDeclineAction` / `ReturnCustodyPanel` take, rather than relying on
+ * whatever mounts this dialog to gate it. A parent-side-only lock would leave
+ * a demo viewer able to open the dialog and find its primary button live.
+ *
  * @module apps/web/src/features/returns/components
  */
 import { useMemo, useState, type FormEvent, type ReactElement } from 'react';
@@ -51,6 +58,7 @@ import {
 } from '../../../shared/ui/dialog';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 // Cross-feature import goes through the orders barrel — the same route
 // `return-money-panel.tsx` already takes into `../../orders` (#337/#359).
 import { useOrdersQuery } from '../../orders';
@@ -69,6 +77,13 @@ interface MatchReturnDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Called once the return is confirmed attributed — including a lost race. */
   onMatched?: () => void;
+  /**
+   * Resolved by the page and passed in, exactly as `ReturnDeclineAction` /
+   * `ReturnCustodyPanel` take it — one `useWriteAccess('orders:write',
+   * demoMode)` per page, so every write surface on that screen agrees about
+   * the session.
+   */
+  writeAccess: { canWrite: boolean; demoReadOnly: boolean; visible: boolean };
 }
 
 export function MatchReturnDialog({
@@ -76,6 +91,7 @@ export function MatchReturnDialog({
   open,
   onOpenChange,
   onMatched,
+  writeAccess,
 }: MatchReturnDialogProps): ReactElement {
   const [value, setValue] = useState('');
   const [fieldError, setFieldError] = useState<string | undefined>(undefined);
@@ -102,12 +118,19 @@ export function MatchReturnDialog({
     setValue('');
     setFieldError(undefined);
     setAlreadyAttributed(false);
+    // Local state alone isn't enough — the mutation object itself outlives a
+    // close/reopen (the parent controls `open`, and this hook is called at
+    // the top level rather than inside `DialogContent`), so a leftover
+    // `mutation.error` from a prior generic failure would re-render the
+    // Alert on a dialog the operator hasn't touched yet (tech-lead review
+    // on #3281, IMPORTANT).
+    mutation.reset();
     onOpenChange(false);
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    if (mutation.isPending) return;
+    if (mutation.isPending || !writeAccess.canWrite) return;
 
     const trimmed = value.trim();
     if (trimmed === '') {
@@ -220,9 +243,14 @@ export function MatchReturnDialog({
                 <Button type="button" tone="secondary" disabled={mutation.isPending} onClick={resetAndClose}>
                   {COPY.cancel}
                 </Button>
-                <Button type="submit" disabled={mutation.isPending}>
-                  {mutation.isPending ? COPY.confirming : COPY.confirm}
-                </Button>
+                <ReadOnlyLock active={writeAccess.demoReadOnly} message={COPY.readOnly}>
+                  <Button
+                    type="submit"
+                    disabled={mutation.isPending || !writeAccess.canWrite}
+                  >
+                    {mutation.isPending ? COPY.confirming : COPY.confirm}
+                  </Button>
+                </ReadOnlyLock>
               </DialogFooter>
             </form>
           </>
