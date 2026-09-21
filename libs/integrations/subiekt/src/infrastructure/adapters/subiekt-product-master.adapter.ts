@@ -62,10 +62,12 @@ import type {
   BridgeSearchProductsResponse,
   BridgeUpdateProductRequest,
 } from '../../bridge/subiekt-bridge-products.types';
+import { SubiektBridgeUnreachableError, SubiektRejectedError } from '../../bridge/subiekt-bridge.errors';
 import {
-  SubiektBridgeUnreachableError,
-  SubiektRejectedError,
-} from '../../bridge/subiekt-bridge.errors';
+  extractErrorCode,
+  classifyRetryability,
+  SubiektBridgeUnreachableWithPhaseError,
+} from '../../bridge/subiekt-transport-retryability';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
 import { SubiektProductNotSupportedException } from '../../domain/exceptions/subiekt-product-not-supported.exception';
@@ -391,10 +393,20 @@ export class SubiektProductMasterAdapter implements ProductMasterPort {
         signal: controller.signal,
       });
     } catch (error: unknown) {
-      this.logger.debug(`Subiekt bridge request failed (correlationId: ${randomUUID()})`, {
+      const correlationId = randomUUID();
+      // Transport-level failure — classify retryability (#2348 audit B2) so a
+      // transient blip against this adapter's own private transport doesn't
+      // silently rely on `translateBridgeError`'s current retryable-abstain
+      // fallback (the only reason this path was safe by accident before).
+      const code = extractErrorCode(error);
+      this.logger.debug(`Subiekt bridge request failed (correlationId: ${correlationId})`, {
         error: error instanceof Error ? error.message : String(error),
+        code,
       });
-      throw new SubiektBridgeUnreachableError();
+      throw new SubiektBridgeUnreachableWithPhaseError(
+        `Subiekt bridge is unreachable (${code ?? 'unknown'}, correlationId: ${correlationId})`,
+        classifyRetryability(code),
+      );
     } finally {
       clearTimeout(timer);
     }
@@ -407,7 +419,12 @@ export class SubiektProductMasterAdapter implements ProductMasterPort {
     try {
       envelope = (await response.json()) as BridgeEnvelope<T>;
     } catch {
-      throw new SubiektBridgeUnreachableError('Subiekt bridge returned a non-JSON response');
+      // Response received but unparseable — the write may or may not have
+      // landed, so this stays 'indeterminate'.
+      throw new SubiektBridgeUnreachableWithPhaseError(
+        'Subiekt bridge returned a non-JSON response',
+        'indeterminate',
+      );
     }
 
     if (!envelope.success || envelope.data === null) {
