@@ -17,6 +17,10 @@ export interface IBenchWorkService {
    * executor's work by editing a query string, and there is nothing on this
    * surface a narrower one would serve — the search field filters rows the
    * browser already holds.
+   *
+   * `viewerId` (#3341, ADR-074) is the authenticated caller's own user id,
+   * never optional — it is what each row's `assignmentState` / `claimable`
+   * is computed against.
    */
-  listBenchWork(): Promise<BenchWorkListView>;
+  listBenchWork(viewerId: string): Promise<BenchWorkListView>;
 }

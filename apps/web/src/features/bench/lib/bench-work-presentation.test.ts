@@ -31,6 +31,8 @@ function work(over: Partial<BenchWork> = {}): BenchWork {
     holdPlacedAt: null,
     expeditedAt: null,
     supportedActions: ['expedite'],
+    assignmentState: 'unassigned',
+    claimable: true,
     ...over,
   };
 }

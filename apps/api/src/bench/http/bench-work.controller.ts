@@ -38,6 +38,8 @@ import {
 import type { BenchWorkListView } from '../application/types/bench-work.types';
 import { BenchWorkListResponseDto } from './dto/bench-work-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../auth/auth.types';
 
 @ApiBearerAuth()
 @ApiTags('bench')
@@ -59,8 +61,10 @@ export class BenchWorkController {
       'goods are on the shelf.',
   })
   @ApiResponse({ status: 200, type: BenchWorkListResponseDto })
-  async listBenchWork(): Promise<BenchWorkListResponseDto> {
-    return this.toDto(await this.bench.listBenchWork());
+  async listBenchWork(
+    @CurrentUser() actor: AuthenticatedUser
+  ): Promise<BenchWorkListResponseDto> {
+    return this.toDto(await this.bench.listBenchWork(actor.id));
   }
 
   private toDto(view: BenchWorkListView): BenchWorkListResponseDto {
@@ -82,6 +86,8 @@ export class BenchWorkController {
         holdPlacedAt: work.holdPlacedAt,
         expeditedAt: work.expeditedAt,
         supportedActions: [...work.supportedActions],
+        assignmentState: work.assignmentState,
+        claimable: work.claimable,
       })),
       executorName: view.executorName,
       routing: {

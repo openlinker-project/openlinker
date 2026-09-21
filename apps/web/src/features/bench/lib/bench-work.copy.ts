@@ -80,6 +80,12 @@ export const benchWorkCopy = {
       `Parcel ${String(parts.parcelIndex)} of ${String(parts.parcelTotal)} · ` +
       `${String(parts.lineCount)} lines, ${String(parts.unitsToVerify)} units to verify`,
     openAction: 'Open parcel',
+    /** #3341, ADR-074 — the pre-assigned-to-you state. */
+    assignedToYouBadge: 'Assigned to you',
+    /** Muted per the mockup's own treatment — a fact about the account, not an alert. */
+    assignedToOtherBadge: 'Assigned to another packer',
+    /** Shown in place of the open control when this packer may not claim it. */
+    lockedForOther: 'Only the assigned packer may open this one',
     expediteAction: 'Move to the front',
     releaseExpediteAction: 'Back to deadline order',
     expediteFailed: 'That did not go through. The list has been refreshed — try again.',
