@@ -110,6 +110,9 @@ export { OrphanReturnsWorklist } from './components/orphan-returns-worklist';
 // The match-to-order dialog (#3082) — the destination the worklist's
 // "Match to an order" link routes toward, once mounted on the detail page.
 export { MatchReturnDialog } from './components/match-return-dialog';
+// The approve dialog (#3083) — mounted inline by the worklist itself, since
+// this write carries no form to defer to a detail-page destination for.
+export { AuthorizeReturnDialog } from './components/authorize-return-dialog';
 export { ReturnDeclineAction } from './components/return-decline-action';
 export { ReturnLineStateChip } from './components/return-line-state-chips';
 export { ReturnLinesTable } from './components/return-lines-table';

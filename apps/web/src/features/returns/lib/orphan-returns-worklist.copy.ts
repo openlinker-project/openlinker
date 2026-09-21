@@ -33,6 +33,13 @@ export const ORPHAN_RETURNS_WORKLIST_COPY = {
     'You recorded these yourself. Approving is an audit stamp confirming it really happened — it does not hold up restock or refund.',
   needsApprovalAction: 'Review and approve',
 
+  /**
+   * The `ReadOnlyLock` tooltip for a demo viewer with no `orders:write`
+   * permission — the `return-detail.copy.ts` `readOnly` precedent, worded for
+   * this row action specifically (tech-lead review on #3283, IMPORTANT).
+   */
+  approveReadOnly: 'You do not have permission to approve returns.',
+
   /** The read failed. Never conflated with "nothing needs attention". */
   errorTitle: 'Could not be loaded',
   errorMessage: 'OpenLinker could not read this list just now. This is not a statement about it.',
