@@ -6,10 +6,19 @@
  * Subiekt GT via `Sfera.CreateZk` on the bridge side (already shipped for the
  * WooCommerce-shim spike; this adapter is the first REAL, port-typed caller).
  *
- * Per the port's own contract this adapter creates UNCONDITIONALLY — idempotency
- * (skip-if-already-created) and the external<->internal mapping write are owned
- * by `OrderSyncService` under a per-(order, destination) lock. It carries no
- * create-or-skip guard of its own.
+ * Per the port's own contract this adapter creates UNCONDITIONALLY at the OL
+ * layer — idempotency (skip-if-already-created) and the external<->internal
+ * mapping write are owned by `OrderSyncService` under a per-(order,
+ * destination) lock. It carries no create-or-skip guard of its own.
+ *
+ * #3369: the BRIDGE itself now guards against a duplicate ZK/kontrahent —
+ * `createOrder` checks `dok_NrPelnyOryg` for an existing document before
+ * inserting, and `EnsureKontrahent` is now given a resolved existing id
+ * (by NIP, else by the deterministic derived symbol) rather than always
+ * `existingId: 0`. This closes the gap `OrderSyncService`'s own comment names
+ * as "the adapter's own platform-side duplicate recovery" — Subiekt had none
+ * before this fix, confirmed live to create duplicate kontrahent rows under a
+ * retried createOrder call.
  *
  * ## Source-authoritative pricing (#895, ADR-014)
  *
@@ -59,6 +68,16 @@ import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { SubiektOrdersBridgeClient } from '../../bridge/subiekt-orders-bridge.client';
 import type { BridgeOrderLine, BridgeOrderBuyer } from '../../bridge/subiekt-bridge-orders.types';
 import { SubiektOrderProductMappingException } from '../../domain/exceptions/subiekt-order-product-mapping.exception';
+import { SubiektBridgeUnreachableError, SubiektRejectedError } from '../../bridge/subiekt-bridge.errors';
+import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
+import { SubiektBridgeTransportError } from '../../domain/exceptions/subiekt-bridge-transport.exception';
+import type { SubiektTransportRetryability } from '../../domain/types/subiekt-transport-retryability.types';
+
+/** Read the retryability phase, defaulting to the fiscal-safe `'indeterminate'` (mirrors the Inventory/Invoicing/ProductMaster adapters' identical helper). */
+function readRetryability(error: SubiektBridgeUnreachableError): SubiektTransportRetryability {
+  const phase = (error as { retryability?: unknown }).retryability;
+  return phase === 'safe' || phase === 'indeterminate' ? phase : 'indeterminate';
+}
 
 /**
  * Neutral `OrderStatus` -> Polish operator-facing label, written into the
@@ -150,12 +169,17 @@ export class SubiektOrderProcessorAdapter
       );
     }
 
-    const response = await this.bridge.createOrder({
-      buyer,
-      lines,
-      orderRef: order.orderNumber ?? '',
-      uwagi: order.orderNumber ? `OpenLinker order ${order.orderNumber}` : undefined,
-    });
+    let response;
+    try {
+      response = await this.bridge.createOrder({
+        buyer,
+        lines,
+        orderRef: order.orderNumber ?? '',
+        uwagi: order.orderNumber ? `OpenLinker order ${order.orderNumber}` : undefined,
+      });
+    } catch (error) {
+      throw this.translateBridgeError(error);
+    }
 
     this.logger.log(`Created Subiekt ZK ${response.numer} (id ${response.id})`);
 
@@ -177,10 +201,15 @@ export class SubiektOrderProcessorAdapter
     status: OrderStatus;
     trackingNumber?: string;
   }): Promise<void> {
-    const { numer } = await this.bridge.writeShipping(input.externalOrderId, {
-      status: STATUS_LABEL_PL[input.status],
-      trackingNumber: input.trackingNumber,
-    });
+    let numer: string;
+    try {
+      ({ numer } = await this.bridge.writeShipping(input.externalOrderId, {
+        status: STATUS_LABEL_PL[input.status],
+        trackingNumber: input.trackingNumber,
+      }));
+    } catch (error) {
+      throw this.translateBridgeError(error);
+    }
     this.logger.log(
       `Wrote fulfillment status '${input.status}' onto Subiekt ${numer} ` +
         `(id ${input.externalOrderId})${input.trackingNumber ? `, tracking ${input.trackingNumber}` : ''}`,
@@ -242,5 +271,35 @@ export class SubiektOrderProcessorAdapter
       );
       return { outcome: 'rejected', detail };
     }
+  }
+
+  /**
+   * #3369/#3373 fix: before this method existed, a transport failure from
+   * `this.bridge` propagated raw — `SubiektRetryClassifierAdapter` only
+   * pattern-matches `SubiektBridgeTransportError`, so the raw
+   * `SubiektBridgeUnreachableError` (including the phase-carrying
+   * `SubiektBridgeUnreachableWithPhaseError` subclass thrown by
+   * `SubiektOrdersBridgeClient`) was never recognized, the classifier
+   * abstained, and the job runner's UNCLASSIFIED DEFAULT applied to an
+   * ambiguous `createOrder` timeout — exactly the condition under which a
+   * duplicate ZK/kontrahent risk exists. Mirrors the identical pattern
+   * already correct in `SubiektInventoryMasterAdapter`/`SubiektInvoicingAdapter`.
+   */
+  private translateBridgeError(error: unknown): Error {
+    if (error instanceof SubiektBridgeUnreachableError) {
+      return new SubiektBridgeTransportError(error.message, readRetryability(error));
+    }
+    if (
+      error instanceof SubiektBridgeAuthError ||
+      error instanceof SubiektRejectedError ||
+      error instanceof SubiektOrderProductMappingException
+    ) {
+      return error;
+    }
+    return new SubiektBridgeTransportError(
+      error instanceof Error ? error.message : 'Unknown Subiekt orders bridge error',
+      'indeterminate',
+      { cause: error },
+    );
   }
 }

@@ -1039,19 +1039,117 @@ export class InvoiceService implements IInvoiceService {
       : reason.slice(0, MAX_FAILURE_REASON_LENGTH);
   }
 
+  /**
+   * Issue a correction of an already-issued document (#3372).
+   *
+   * A correction is a distinct new fiscal document with its own record (never
+   * the at-most-one-per-order guard `issueInvoice` enforces — see that
+   * method's docblock), but it is NOT exempt from the fiscal-safety invariant
+   * `resumeExisting` protects: a caller retrying the same `idempotencyKey`
+   * (e.g. a job runner retry after a timeout) used to skip the read-gate
+   * entirely and call `adapter.issueCorrection` a second time, risking a
+   * duplicate correction document for the identical original invoice — the
+   * `issueInvoice` bug class, one method over. The gate mirrors
+   * `issueLocked`'s steps (1)/(2)/(5): a keyless call is never deduplicated
+   * (R1); an `issued` hit replays verbatim; a live-leased or in-doubt-failed
+   * hit is surfaced without a second provider call; a create-race re-reads the
+   * winner by key. There is deliberately no per-order LOCK the way
+   * `issueInvoice` has one — two DIFFERENT idempotency keys correcting the
+   * same original document is a legitimate multi-correction sequence, not a
+   * race to exclude.
+   */
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {
+    const key = cmd.idempotencyKey;
+    if (key !== undefined) {
+      const existing = await this.repo.findByIdempotencyKey(cmd.connectionId, key);
+      if (existing) {
+        return this.resumeExistingCorrection(cmd, existing);
+      }
+    }
+
     // Persist intent before the provider call: `pending` row so a crash leaves
-    // a durable trace. Corrections do not share the idempotency-gate / CAS-lease
-    // of issueInvoice — each correction is a distinct new fiscal document with
-    // its own record; the caller supplies an idempotencyKey for dedup if needed.
-    const pending = await this.repo.create({
-      connectionId: cmd.connectionId,
-      orderId: cmd.orderId,
-      providerType: '',
-      documentType: cmd.documentType ?? 'corrected',
-      status: 'pending',
-      idempotencyKey: cmd.idempotencyKey ?? null,
-    });
+    // a durable trace.
+    let pending: InvoiceRecord;
+    try {
+      pending = await this.repo.create({
+        connectionId: cmd.connectionId,
+        orderId: cmd.orderId,
+        providerType: '',
+        documentType: cmd.documentType ?? 'corrected',
+        status: 'pending',
+        idempotencyKey: key ?? null,
+      });
+    } catch (error) {
+      // Create-race: a concurrent same-key call won the dedup guard between our
+      // read-gate and create. Re-read by key and resume the winner under the
+      // SAME fiscal-safety gate. Guarded by `key !== undefined` — the guard
+      // cannot fire keyless.
+      if (key !== undefined && error instanceof DuplicateInvoiceRecordException) {
+        const winner = await this.repo.findByIdempotencyKey(cmd.connectionId, key);
+        if (winner) {
+          return this.resumeExistingCorrection(cmd, winner);
+        }
+      }
+      throw error;
+    }
+
+    return this.issueCorrectionWithAdapter(cmd, pending.id);
+  }
+
+  /**
+   * Decide how to resume an EXISTING same-key correction record — the
+   * correction-path counterpart of {@link resumeExisting}. See that method's
+   * docblock for the fiscal-safety reasoning; the rules are identical.
+   */
+  private async resumeExistingCorrection(
+    cmd: IssueCorrectionCommand,
+    existing: InvoiceRecord,
+  ): Promise<InvoiceRecord> {
+    if (existing.status === 'issued') {
+      return existing;
+    }
+
+    const now = new Date();
+    if (existing.isLeaseLive(now)) {
+      this.logger.warn(
+        `Correction record ${existing.id} is claimed by a live in-flight attempt; not re-attempting`,
+      );
+      return existing;
+    }
+
+    if (existing.status === 'failed' && !existing.isReattemptableFailure) {
+      this.logger.warn(
+        `Correction record ${existing.id} failed in-doubt (failureMode=${existing.failureMode ?? 'unknown'}); ` +
+          `not auto-re-attempting — surfaced for manual reconciliation`,
+      );
+      return existing;
+    }
+
+    return this.issueCorrectionWithAdapter(cmd, existing.id);
+  }
+
+  private async issueCorrectionWithAdapter(
+    cmd: IssueCorrectionCommand,
+    recordId: string,
+  ): Promise<InvoiceRecord> {
+    // Atomic claim — the R2 single-flight guard: a concurrent same-key retry
+    // that fails to claim backs off WITHOUT calling the provider, exactly as
+    // `issueWithAdapter` does for a fresh invoice.
+    const leaseExpiresAt = new Date(Date.now() + ISSUING_LEASE_MS);
+    const claimed = await this.repo.claimForIssue(recordId, leaseExpiresAt);
+    if (claimed === null) {
+      this.logger.warn(
+        `Could not claim correction record ${recordId} for issuance ` +
+          `(held by a live attempt or already terminal); not re-attempting`,
+      );
+      const current = await this.repo.findById(recordId);
+      if (current) {
+        return current;
+      }
+      throw new InvoiceRecordNotFoundException(recordId);
+    }
+
+    const pending = claimed;
 
     const adapter = await this.integrations.getCapabilityAdapter<InvoicingPort>(
       cmd.connectionId,
@@ -1116,6 +1214,7 @@ export class InvoiceService implements IInvoiceService {
         failureMode,
         failureCode,
         failureReason,
+        // Release the lease: the attempt is over (terminal rejection or in-doubt).
         leaseExpiresAt: null,
       });
       throw error;

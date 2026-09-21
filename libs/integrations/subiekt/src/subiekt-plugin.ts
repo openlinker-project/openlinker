@@ -58,14 +58,33 @@ export const subiektAdapterManifest: AdapterMetadata = {
   displayName: 'Subiekt GT (Sfera bridge)',
   version: '1.0.0',
   isDefault: true,
-  // #1810 §1 — the Sfera bridge runs on the operator's own machine alongside
-  // Subiekt nexo, the same merchant-hosted profile PrestaShop's 60/4 (#1815)
-  // was calibrated for (not a borrowed number — Subiekt genuinely fits that
-  // rationale, unlike a carrier/marketplace platform). Both call sites already
-  // pass this to `host.http.forConnection` (see `createCapabilityAdapter` below
-  // and `SubiektConnectionTesterAdapter`, injected via constructor — never via
-  // an import of this module, which would cycle back into it).
-  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
+  // #1810 §1 — the Sfera bridge runs on the operator's own machine (not a
+  // borrowed number — Subiekt genuinely fits the merchant-hosted rationale,
+  // unlike a carrier/marketplace platform). Both call sites already pass this
+  // to `host.http.forConnection` (see `createCapabilityAdapter` below and
+  // `SubiektConnectionTesterAdapter`, injected via constructor — never via an
+  // import of this module, which would cycle back into it).
+  //
+  // maxConcurrent: 1 (#3367 audit finding, corrected from 4). Sfera GT drives
+  // every write through ONE dedicated STA COM worker thread with a single
+  // internal job queue (`Sfera.cs` — confirmed by reading the bridge source,
+  // not inferred) — the bridge itself never processes more than one request
+  // at a time regardless of how many OL sends concurrently. Its per-call
+  // server-side timeouts (60-120s for writes) already exceed every OL client
+  // timeout (15-30s), and that server-side wait is NOT tied to the HTTP
+  // request's cancellation — a queued call that OL gives up on keeps running
+  // and commits later. Allowing >1 concurrent request just makes it more
+  // likely that a slow call (a NIP-whitelist lookup, a cold COM re-attach)
+  // pushes its queue-mates past their own short timeout before even being
+  // dequeued — a client-side "unreachable" that is really "still queued,"
+  // indistinguishable from a genuine outage and, on the order-create path,
+  // risking exactly the duplicate-ZK/duplicate-kontrahent failure mode #3369
+  // fixes. At maxConcurrent=1, a slow call still delays its neighbours, but
+  // it does so through OL's own rate limiter (a controlled, observable wait)
+  // rather than manufacturing a spurious transport failure inside the
+  // bridge's queue. Revisit only once the bridge gets its own idempotency
+  // and/or a queue-depth signal OL could back off on.
+  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 1 },
 };
 
 /** Short brand label for domain-exception / dispatch error prefixes. */

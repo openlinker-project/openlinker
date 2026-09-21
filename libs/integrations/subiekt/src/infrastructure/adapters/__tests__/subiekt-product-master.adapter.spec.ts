@@ -1,10 +1,11 @@
 /**
  * Subiekt Product Master Adapter — unit tests
  *
- * Driven against a mocked `fetch` (`FetchLike`) — no real HTTP, no real
- * bridge. There is no `ProductsEndpoints.cs` on the Windows side yet (see the
- * adapter's own header docblock), so this suite is the only verification this
- * code has received.
+ * Driven against a mocked `fetch` (`FetchLike`) — no real HTTP. `ProductsEndpoints.cs`
+ * exists on the Windows side and has been exercised live this session
+ * (real 200 responses for create/update/read, real EAN-13 barcodes read back)
+ * — this suite covers the TS-side mapping/error-classification logic that
+ * live testing does not re-verify on every change.
  *
  * @module libs/integrations/subiekt/src/infrastructure/adapters/__tests__
  */
@@ -14,7 +15,19 @@ import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { FetchLike } from '@openlinker/shared/http';
 import { SubiektProductMasterAdapter } from '../subiekt-product-master.adapter';
 import { SubiektProductNotSupportedException } from '../../../domain/exceptions/subiekt-product-not-supported.exception';
-import { SubiektBridgeUnreachableError } from '../../../bridge/subiekt-bridge.errors';
+import { SubiektBridgeTransportError } from '../../../domain/exceptions/subiekt-bridge-transport.exception';
+
+/**
+ * Build a transport-failure fetch mock carrying the SAME shape a real Node
+ * `fetch` throw carries (`error.cause.code`) — #3373: the pre-fix tests here
+ * put the code in `.message` instead, which `extractErrorCode` never reads,
+ * so every such test silently exercised the 'indeterminate' branch regardless
+ * of which code was used and never asserted `.retryability` at all.
+ */
+function transportFailure(code: string): FetchLike {
+  return (() =>
+    Promise.reject(Object.assign(new Error('fetch failed'), { cause: { code } }))) as FetchLike;
+}
 
 function connection(): Connection {
   return new Connection(
@@ -167,12 +180,22 @@ describe('SubiektProductMasterAdapter', () => {
     );
   });
 
-  it('translates a network failure into SubiektBridgeUnreachableError', async () => {
-    const fetchImpl: FetchLike = (() => {
-      return Promise.reject(new Error('ECONNREFUSED'));
-    }) as FetchLike;
-    const adapter = buildAdapter(fetchImpl);
-    await expect(adapter.listExternalIds()).rejects.toBeInstanceOf(SubiektBridgeUnreachableError);
+  it('classifies a connect-refused failure as a safe-to-retry SubiektBridgeTransportError (#3369/#3373)', async () => {
+    const adapter = buildAdapter(transportFailure('ECONNREFUSED'));
+    const rejection = adapter.listExternalIds();
+    await expect(rejection).rejects.toBeInstanceOf(SubiektBridgeTransportError);
+    await rejection.catch((error: SubiektBridgeTransportError) => {
+      expect(error.retryability).toBe('safe');
+    });
+  });
+
+  it('classifies an ambiguous transport failure as indeterminate (#3369/#3373)', async () => {
+    const adapter = buildAdapter(transportFailure('ECONNRESET'));
+    const rejection = adapter.listExternalIds();
+    await expect(rejection).rejects.toBeInstanceOf(SubiektBridgeTransportError);
+    await rejection.catch((error: SubiektBridgeTransportError) => {
+      expect(error.retryability).toBe('indeterminate');
+    });
   });
 
   describe('readProductTaxRate (#3357)', () => {
@@ -238,11 +261,12 @@ describe('SubiektProductMasterAdapter', () => {
 
     it('re-raises a transport failure rather than reporting unknown', async () => {
       await idMapping.createMapping('Product', 'SKU-DOWN', 'conn-1', 'ol_product_down');
-      const fetchImpl: FetchLike = (() => Promise.reject(new Error('ECONNRESET'))) as FetchLike;
-      const adapter = buildAdapter(fetchImpl);
-      await expect(
-        adapter.readProductTaxRate({ productId: 'ol_product_down' }),
-      ).rejects.toBeInstanceOf(SubiektBridgeUnreachableError);
+      const adapter = buildAdapter(transportFailure('ECONNRESET'));
+      const rejection = adapter.readProductTaxRate({ productId: 'ol_product_down' });
+      await expect(rejection).rejects.toBeInstanceOf(SubiektBridgeTransportError);
+      await rejection.catch((error: SubiektBridgeTransportError) => {
+        expect(error.retryability).toBe('indeterminate');
+      });
     });
 
     it('throws MasterProductNotFoundError when the internal id has no mapping on this connection', async () => {

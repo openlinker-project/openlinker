@@ -46,7 +46,13 @@ export interface BridgeOrderBuyer {
 export interface BridgeCreateOrderRequest {
   buyer: BridgeOrderBuyer;
   lines: BridgeOrderLine[];
-  /** OL's own order id — stamped onto `dok_NrPelnyOryg` (Trim30), defense-in-depth only. */
+  /**
+   * OL's own order id — stamped onto `dok_NrPelnyOryg` (Trim30). #3369: the
+   * bridge now checks this field for an existing ZK BEFORE creating one, so
+   * this is the load-bearing idempotency key for `createOrder`, not merely
+   * defense-in-depth — a retried call with the same `orderRef` returns the
+   * ORIGINAL document rather than minting a second one.
+   */
   orderRef: string;
   uwagi?: string;
 }

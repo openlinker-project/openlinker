@@ -1,6 +1,7 @@
 import { SubiektOrderProcessorAdapter } from '../subiekt-order-processor.adapter';
 import { SubiektOrdersBridgeClient } from '../../../bridge/subiekt-orders-bridge.client';
 import { SubiektOrderProductMappingException } from '../../../domain/exceptions/subiekt-order-product-mapping.exception';
+import { SubiektBridgeTransportError } from '../../../domain/exceptions/subiekt-bridge-transport.exception';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type { OrderCreate } from '@openlinker/core/orders';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -117,5 +118,37 @@ describe('SubiektOrderProcessorAdapter', () => {
     };
 
     await expect(adapter.createOrder(order)).rejects.toThrow(SubiektOrderProductMappingException);
+  });
+
+  it('classifies a transport failure into SubiektBridgeTransportError, not a raw unreachable error (#3369/#3373)', async () => {
+    // Real fetch throw shape — code lives on `error.cause.code`, matching the
+    // shared retryability classifier's read path.
+    const fetchImpl = (() =>
+      Promise.reject(Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } }))) as unknown as typeof fetch;
+    const client = new SubiektOrdersBridgeClient('http://127.0.0.1:5056', { fetchImpl });
+    const identifierMapping = new InMemoryIdentifierMappingAdapter();
+    identifierMapping.seed({
+      entityType: CORE_ENTITY_TYPE.Product,
+      externalId: 'SYM-3',
+      connectionId: CONNECTION_ID,
+      internalId: 'ol_product_x',
+    });
+    const adapter = new SubiektOrderProcessorAdapter(client, identifierMapping, CONNECTION_ID, noopLogger);
+
+    const order: OrderCreate = {
+      status: 'pending',
+      items: [{ id: '1', productId: 'ol_product_x', quantity: 1, price: 10 }],
+      totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+    };
+
+    const rejection = adapter.createOrder(order);
+    await expect(rejection).rejects.toBeInstanceOf(SubiektBridgeTransportError);
+    // The classifier `SubiektRetryClassifierAdapter` only recognizes THIS type
+    // — before the #3369 fix, the raw SubiektBridgeUnreachableWithPhaseError
+    // propagated unclassified and the retry ladder's unclassified default
+    // applied to an ambiguous createOrder timeout, risking a duplicate ZK.
+    await rejection.catch((error: SubiektBridgeTransportError) => {
+      expect(error.retryability).toBe('indeterminate');
+    });
   });
 });
