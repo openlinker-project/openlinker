@@ -174,4 +174,82 @@ describe('SubiektProductMasterAdapter', () => {
     const adapter = buildAdapter(fetchImpl);
     await expect(adapter.listExternalIds()).rejects.toBeInstanceOf(SubiektBridgeUnreachableError);
   });
+
+  describe('readProductTaxRate (#3357)', () => {
+    it('does not read tax per variant — readsTaxRatePerVariant() is false', () => {
+      const adapter = buildAdapter((() => Promise.resolve(jsonResponse(200, envelope({})))) as FetchLike);
+      expect(adapter.readsTaxRatePerVariant()).toBe(false);
+    });
+
+    it('resolves a real rate as a percent-as-string code', async () => {
+      await idMapping.createMapping('Product', 'SKU-VAT', 'conn-1', 'ol_product_vat');
+      const fetchImpl: FetchLike = (() =>
+        Promise.resolve(
+          jsonResponse(
+            200,
+            envelope({
+              symbol: 'SKU-VAT',
+              nazwa: 'Kubek',
+              cenaSprzedazyNetto: 20.32,
+              cenaSprzedazyBrutto: 24.99,
+              waluta: 'PLN',
+              opis: null,
+              kodKreskowy: null,
+              jednostkaMiary: 'szt.',
+              waga: null,
+              stawkaVat: '23',
+            }),
+          ),
+        )) as FetchLike;
+
+      const adapter = buildAdapter(fetchImpl);
+      await expect(adapter.readProductTaxRate({ productId: 'ol_product_vat' })).resolves.toEqual({
+        kind: 'resolved',
+        code: '23',
+        countryIso2: 'PL',
+      });
+    });
+
+    it('reports unknown/not-configured when the towar carries no VAT-rate assignment', async () => {
+      await idMapping.createMapping('Product', 'SKU-NOVAT', 'conn-1', 'ol_product_novat');
+      const fetchImpl: FetchLike = (() =>
+        Promise.resolve(
+          jsonResponse(
+            200,
+            envelope({
+              symbol: 'SKU-NOVAT',
+              nazwa: 'Kubek',
+              cenaSprzedazyNetto: null,
+              cenaSprzedazyBrutto: null,
+              waluta: 'PLN',
+              opis: null,
+              kodKreskowy: null,
+              jednostkaMiary: null,
+              waga: null,
+              stawkaVat: null,
+            }),
+          ),
+        )) as FetchLike;
+
+      const adapter = buildAdapter(fetchImpl);
+      const resolution = await adapter.readProductTaxRate({ productId: 'ol_product_novat' });
+      expect(resolution).toMatchObject({ kind: 'unknown', reason: 'not-configured' });
+    });
+
+    it('re-raises a transport failure rather than reporting unknown', async () => {
+      await idMapping.createMapping('Product', 'SKU-DOWN', 'conn-1', 'ol_product_down');
+      const fetchImpl: FetchLike = (() => Promise.reject(new Error('ECONNRESET'))) as FetchLike;
+      const adapter = buildAdapter(fetchImpl);
+      await expect(
+        adapter.readProductTaxRate({ productId: 'ol_product_down' }),
+      ).rejects.toBeInstanceOf(SubiektBridgeUnreachableError);
+    });
+
+    it('throws MasterProductNotFoundError when the internal id has no mapping on this connection', async () => {
+      const adapter = buildAdapter((() => Promise.resolve(jsonResponse(200, envelope({})))) as FetchLike);
+      await expect(
+        adapter.readProductTaxRate({ productId: 'ol_product_unmapped' }),
+      ).rejects.toBeInstanceOf(MasterProductNotFoundError);
+    });
+  });
 });
