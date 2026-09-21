@@ -87,6 +87,14 @@ export const ROUTING_SEED_ORDER_IDS = {
   invoiceIssued: 'ol_order_e2e3196invoiceissued000',
   /** Holds an `issued` invoice stuck at `pending-submission`, backdated. */
   awaitingSubmission: 'ol_order_e2e3196awaitingsubmit00',
+  /**
+   * No document of any kind. Used to drive a REAL `POST /invoices` round trip
+   * from the order-detail panel's manual-override "Issue invoice" button
+   * against the dual-role eparagony connection — #3192's live-issuance gap.
+   * `buyerHasTaxId = true` so the arithmetic composing the command succeeds
+   * the same way it does for every other seeded order here.
+   */
+  freshForManualIssue: 'ol_order_e2e3196freshmanual0000',
 } as const;
 
 export type RoutingSeedOrderKey = keyof typeof ROUTING_SEED_ORDER_IDS;
@@ -151,6 +159,7 @@ const BUYER_TAX_ID_BY_ORDER: Record<RoutingSeedOrderKey, string | null> = {
   receiptIssued: '',
   invoiceIssued: ROUTING_SEED_BUYER_TAX_ID,
   awaitingSubmission: ROUTING_SEED_BUYER_TAX_ID,
+  freshForManualIssue: ROUTING_SEED_BUYER_TAX_ID,
 };
 
 const CUSTOMER_BY_ORDER: Record<RoutingSeedOrderKey, string> = {
@@ -160,6 +169,7 @@ const CUSTOMER_BY_ORDER: Record<RoutingSeedOrderKey, string> = {
   receiptIssued: 'Diogo Pinto',
   invoiceIssued: 'Eva Ribeiro',
   awaitingSubmission: 'Filipe Sousa',
+  freshForManualIssue: 'Gustavo Antunes',
 };
 
 function connect(): pg.Client {

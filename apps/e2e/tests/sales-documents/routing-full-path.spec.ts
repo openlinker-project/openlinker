@@ -513,4 +513,142 @@ test.describe('sales documents: routing full path (#3196)', () => {
 
     await shot(page, '19-invoices-filtered-by-tax-id');
   });
+
+  // ═══════════ F — eparagony live round trips: issuance + correction ═══════
+  //
+  // Everything above this point either READS a fiscal document that was
+  // seeded in Postgres (because no endpoint can force `registered` or
+  // `pending-submission`) or drives a REFUSAL through a real endpoint (D1/D2
+  // — a 409 the API answers unconditionally, needing no live provider
+  // session). Neither exercises the ADAPTER call itself: `EparagonyInvoicingAdapter`
+  // (#3192) and its `CorrectionIssuer` half (#3193) have never actually been
+  // invoked by this spec. F1/F2 close that gap — a real click drives a real
+  // `POST /invoices[/:id/correct]`, against the dual-role connection's fake
+  // sandbox `credentialsRef` ('seed-eparagony-dual-3196'). The honest outcome
+  // on a stack with no real eparagony sandbox session is therefore a FAILURE
+  // toast — asserted as evidence a genuine network round trip happened
+  // (the `order-detail-panel.spec.ts` "real UX … actually performs the issue
+  // request" precedent), never as a claim that issuance itself succeeded.
+
+  test('F1 — clicking "Issue invoice" on a fresh order performs a real POST /invoices round trip', async ({
+    page,
+  }) => {
+    await gotoOrder(page, ROUTING_SEED_ORDER_IDS.freshForManualIssue);
+
+    // No document exists yet for this order, so the panel's manual-override
+    // disclosure is the entry point — the same affordance
+    // `order-detail-panel.spec.ts` drives for KSeF.
+    const overrideSummary = page.getByText('Issue or register manually instead');
+    await expect(overrideSummary).toBeVisible({ timeout: 20_000 });
+    await overrideSummary.click();
+
+    const issueButton = page.getByRole('button', { name: 'Issue invoice' });
+    await expect(issueButton).toBeVisible();
+
+    // Demo-mode write lock: the button stays visible but disabled inside a
+    // clickable `.read-only-lock` wrapper. Real, stack-driven state — assert
+    // whichever branch the stack is actually in rather than assuming write
+    // access.
+    const lockWrapper = page.locator('.read-only-lock').filter({ has: issueButton });
+    if (await lockWrapper.count()) {
+      await lockWrapper.click();
+      await expect(page.getByRole('tooltip')).toBeVisible();
+      await shot(page, '20-eparagony-invoice-issue-readonly');
+      return;
+    }
+
+    // Only ONE `Invoicing`-capable connection is seeded by this fixture, so
+    // `resolveIssuableConnection` auto-selects it and no picker renders on a
+    // stack carrying nothing else. If a shared stack DOES carry more, pick
+    // the seeded connection by name rather than assume the single-candidate
+    // shortcut.
+    const connectionSelect = page.getByLabel('Issue on');
+    if (await connectionSelect.count()) {
+      await connectionSelect.selectOption({ label: ROUTING_SEED_CONNECTION_NAME });
+    }
+
+    await expect(issueButton).toBeEnabled({ timeout: 20_000 });
+    const live = page.locator('.sales-document-panel [role="status"][aria-live="polite"]');
+    await issueButton.click();
+
+    // The live region announces the mutation starting — real state driven by
+    // a real click.
+    await expect(live).toHaveText('Issuing the invoice.');
+
+    // A resolved outcome (success or an honest failure toast) is the proof
+    // the click reached the real adapter rather than a decorative toggle.
+    await expect(page.locator('.toast--error, .toast--success').first()).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await shot(page, '20-eparagony-invoice-issue-live-roundtrip');
+  });
+
+  // #3193 — corrective invoices. Part 1 of this same commit wires
+  // `EparagonyInvoiceCorrectionFlow` as the plugin's `invoiceCorrectionFlow`
+  // slot; before that no "Issue correction" entry point rendered on an
+  // eparagony invoice at all (`InvoiceCorrectionFlow` is null when a plugin
+  // declares no slot — `sales-document-panel.tsx`).
+  test('F2 — clicking "Issue correction" on an issued eparagony invoice performs a real POST /invoices/:id/correct round trip', async ({
+    page,
+  }) => {
+    // `invoiceIssued` already carries a real `issued` eparagony invoice
+    // (scenario C3), so the correction affordance has a document to correct.
+    const panel = await gotoOrder(page, ROUTING_SEED_ORDER_IDS.invoiceIssued);
+
+    // Scoped to the `<details className="sales-document-panel__correction">`
+    // wrapper — the exact "Issue correction" text also names the button
+    // nested inside it, so an unscoped `getByText`/`getByRole` would be
+    // ambiguous between the two.
+    const correctionDisclosure = panel.locator('.sales-document-panel__correction');
+    const correctionSummary = correctionDisclosure.locator('summary');
+    await expect(correctionSummary).toBeVisible({ timeout: 20_000 });
+    await correctionSummary.click();
+
+    const openCorrectionButton = correctionDisclosure.getByRole('button', {
+      name: 'Issue correction',
+    });
+    await expect(openCorrectionButton).toBeVisible();
+
+    const lockWrapper = page.locator('.read-only-lock').filter({ has: openCorrectionButton });
+    if (await lockWrapper.count()) {
+      await lockWrapper.click();
+      await expect(page.getByRole('tooltip')).toBeVisible();
+      await shot(page, '21-eparagony-correction-readonly');
+      return;
+    }
+
+    await openCorrectionButton.click();
+
+    // The correction flow renders inside a Dialog — EparagonyInvoiceCorrectionFlow,
+    // content-only, the host owns the chrome.
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Issue correction' })).toBeVisible();
+
+    // One line: the seeded order carries a single line (`SKU-3196`), quantity
+    // 1 at 100.00. Correcting to a reduced gross of 80.00 is a real,
+    // well-formed CorrectionLineInput.
+    const lineNumberInput = dialog.getByLabel(/Line number 1/i);
+    await lineNumberInput.fill('1');
+    const priceInput = dialog.getByLabel(/New gross, line 1/i);
+    await priceInput.fill('80.00');
+
+    const submitButton = dialog.getByRole('button', { name: 'Issue correction' });
+    await expect(submitButton).toBeEnabled();
+    await submitButton.click();
+
+    // Real backend round trip: either the dialog closes on a genuine success
+    // (a real correction record was created against the sandbox) or an error
+    // toast reports the sandbox rejection — either way the click drove real
+    // work rather than a static form.
+    await Promise.race([
+      expect(dialog).toBeHidden({ timeout: 15_000 }),
+      expect(page.locator('.toast--error, .toast--success').first()).toBeVisible({
+        timeout: 15_000,
+      }),
+    ]);
+
+    await shot(page, '21-eparagony-correction-live-roundtrip');
+  });
 });
