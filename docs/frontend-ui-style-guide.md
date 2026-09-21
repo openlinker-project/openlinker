@@ -656,6 +656,7 @@ Defaults (FE-002):
 | Sales-document market row (`.sales-document-market-row`, #2540) | `4.25 rem` min | Settings list row, not a `DataTable` row. Status dot + market identity (name + meta line) + outcome (headline + optional reason line) + one action, in a 4-column grid; the floor keeps a one-line row the same height as a row carrying a reason, so the list does not step as rows resolve. Collapses to a single column, auto height below 768 px. |
 | Source pricing rollup row (`.pricing-rollup__row`, #3150) | auto, ~52 px | Documented **non-`DataTable`** carve-out — a read-only two-line row on a SOURCE connection's page: destination name + `Manage` on the first line, the rule summary on the second. `var(--space-3)` padding, `var(--space-2)` between the lines. Not a `DataTable` row because the list is a settings summary of at most a handful of destinations, with one action each. |
 | Price-changes queue mobile card (`.price-changes-queue` `tbody tr` below 768 px, #3223) | auto — content-driven, no measured figure | Documented **non-`DataTable`** carve-out — below 768 px each `<tr>` becomes a two-column CSS-grid card: checkbox, product identity, four labelled blocks, action footer. Desktop and tablet keep the scrolled full table, which has no entry here yet (#3147's debt). See the carve-out below. |
+| Orphan-returns worklist row (`.orphan-returns-worklist__row`, #3081) | auto, content-driven | Documented **non-`DataTable`** carve-out — a flex row (wraps at phone width) pairing the return's mono-text external id with one primary `Link` action. Not a `DataTable` row: each group is a short, unpaginated worklist (a bounded server-side read or a client-side scan of at most `RETURNS_MAX_LIMIT` rows), not a sortable/filterable table. See the carve-out below. |
 
 Never introduce a row height that isn't on this list without updating the guide first. Variability across surfaces is the primary way a cockpit feels amateur.
 
@@ -792,6 +793,23 @@ Four things are worth knowing before copying it:
 - **It is hand-rolled rather than `DataTableCardView`** because the primitive hard-codes its `<tr>` classes
   with no per-row hook, and this table hangs both its grouping treatment and its `data-state` handles on the
   row element. The migration is tracked as #3237 and is blocked on the primitive, not merely unscheduled.
+
+**Documented carve-out — the orphan-returns worklist row (#3081).** `/returns` renders two named
+groups ("Needs an order", "Waiting for your OK"), each a short list of `.orphan-returns-worklist__row`
+entries — a return's mono-text external id beside one primary `Link` to its detail page. It is
+registered as a **non-`DataTable`** row for the same reason `.who-decides-row` and
+`.sales-document-market-row` are: it is a row shape with its own composition, and this section's
+standing instruction is to register one before shipping it.
+
+Two things worth knowing:
+
+- **It is content-driven, not a fixed height.** `display: flex; flex-wrap: wrap` lets a long
+  `externalReturnId` (`min-width: 0; overflow-wrap: anywhere` on the id span) wrap onto its own line at
+  phone width instead of compressing the action beside it, so no single row-height figure applies.
+- **The action's 44 px tap-target floor is width-keyed, matching the price-changes queue precedent
+  above.** `.button--sm` is 28 px, and the global `(hover: none) and (pointer: coarse)` rule covers a real
+  phone but not a narrow desktop window, so `@media (max-width: 767px) { .orphan-returns-worklist__row .button { min-height: 44px } }`
+  raises the row's one control at any viewport § Responsive actually asks for.
 
 Registered selection-row surfaces:
 

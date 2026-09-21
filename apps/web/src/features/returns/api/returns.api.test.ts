@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createReturnsApi } from './returns.api';
 import { RETURNS_MAX_LIMIT } from './returns.types';
+import type { ReturnFilters } from './returns.types';
 
 function envelope(): unknown {
   return {
@@ -24,22 +25,33 @@ describe('createReturnsApi.list', () => {
   it('should forward every declared filter', async () => {
     const request = vi.fn().mockResolvedValue(envelope());
 
-    await createReturnsApi(request).list(
-      {
-        bucket: 'orphan',
-        sourceConnectionId: 'conn_1',
-        createdFrom: '2026-01-01T00:00:00.000Z',
-        createdTo: '2026-02-01T00:00:00.000Z',
-      },
-      { limit: 20, offset: 40 },
-    );
+    // Typed `Required<ReturnFilters>` so a filter added to the interface
+    // without a matching `buildQuery` line is a compile error here rather
+    // than a silently-dropped param discovered in production (#3280 review —
+    // `segment`/`stage`/`money`/`reason`/`openedFrom`/`openedTo` were declared,
+    // parsed from the URL, and re-rendered the page, but never reached the
+    // server because `buildQuery` had no line for them).
+    const filters: Required<ReturnFilters> = {
+      bucket: 'orphan',
+      sourceConnectionId: 'conn_1',
+      internalOrderId: 'ol_order_1',
+      createdFrom: '2026-01-01T00:00:00.000Z',
+      createdTo: '2026-02-01T00:00:00.000Z',
+      segment: 'all_open',
+      stage: 'disposed',
+      money: 'pending',
+      reason: 'defective',
+      openedFrom: '2026-01-05T00:00:00.000Z',
+      openedTo: '2026-01-20T00:00:00.000Z',
+    };
+
+    await createReturnsApi(request).list(filters, { limit: 20, offset: 40 });
 
     const [path] = request.mock.calls[0] as [string];
     const query = new URLSearchParams(path.split('?')[1]);
-    expect(query.get('bucket')).toBe('orphan');
-    expect(query.get('sourceConnectionId')).toBe('conn_1');
-    expect(query.get('createdFrom')).toBe('2026-01-01T00:00:00.000Z');
-    expect(query.get('createdTo')).toBe('2026-02-01T00:00:00.000Z');
+    for (const [key, value] of Object.entries(filters)) {
+      expect(query.get(key)).toBe(value);
+    }
     expect(query.get('limit')).toBe('20');
     expect(query.get('offset')).toBe('40');
   });
