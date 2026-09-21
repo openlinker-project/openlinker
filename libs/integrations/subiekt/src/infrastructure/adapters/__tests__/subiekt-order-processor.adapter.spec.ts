@@ -13,11 +13,13 @@ const noopLogger: LoggerPort = {
 describe('SubiektOrderProcessorAdapter', () => {
   it('creates a ZK priced at the buyer-paid source total, never a catalogue lookup', async () => {
     let capturedBody: unknown;
-    const fetchImpl = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+    const fetchImpl = ((_url: RequestInfo | URL, init?: RequestInit) => {
       capturedBody = JSON.parse(init!.body as string);
-      return new Response(
-        JSON.stringify({ success: true, data: { id: 7, numer: 'ZK 7/2026' }, error: null }),
-        { status: 200 },
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ success: true, data: { id: 7, numer: 'ZK 7/2026' }, error: null }),
+          { status: 200 },
+        ),
       );
     }) as unknown as typeof fetch;
 
@@ -52,10 +54,12 @@ describe('SubiektOrderProcessorAdapter', () => {
   });
 
   it('falls back to first/last name when no company is present', async () => {
-    const fetchImpl = (async () =>
-      new Response(JSON.stringify({ success: true, data: { id: 1, numer: 'ZK 1/2026' }, error: null }), {
-        status: 200,
-      })) as unknown as typeof fetch;
+    const fetchImpl = (() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ success: true, data: { id: 1, numer: 'ZK 1/2026' }, error: null }), {
+          status: 200,
+        }),
+      )) as unknown as typeof fetch;
     const client = new SubiektOrdersBridgeClient('http://127.0.0.1:5056', { fetchImpl });
     const adapter = new SubiektOrderProcessorAdapter(client, noopLogger);
 

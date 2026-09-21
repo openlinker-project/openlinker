@@ -35,8 +35,25 @@ import { SubiektAdapterFactory } from './application/subiekt-adapter.factory';
 export const subiektAdapterManifest: AdapterMetadata = {
   adapterKey: 'subiekt.invoicing.v1',
   platformType: 'subiekt',
-  supportedCapabilities: ['Invoicing'],
-  displayName: 'Subiekt nexo (Sfera bridge)',
+  // Fiscalization is listed unconditionally, matching the OFFER/OFFER-nothing
+  // convention every other capability list here follows — it degrades to
+  // "not supported" per-connection (dispatchCapability) when the connection
+  // config carries no drukarkaFiskalnaId, rather than the manifest itself
+  // being connection-aware, which it cannot be.
+  supportedCapabilities: [
+    'Invoicing',
+    'ProductMaster',
+    'InventoryMaster',
+    'OrderSource',
+    'OrderProcessorManager',
+    'Fiscalization',
+  ],
+  // Driving Subiekt GT (InsERT GT product line) via the classic COM "Sfera GT"
+  // automation surface (ProgID InsERT.GT) — NOT Subiekt nexo, which is a
+  // different InsERT product with its own, unrelated .NET Sfera API
+  // (InsERT.Moria.Sfera). Corrected from an earlier, factually wrong label —
+  // the installed product was confirmed live this session (InsERT GT 1.89 SP1).
+  displayName: 'Subiekt GT (Sfera bridge)',
   version: '1.0.0',
   isDefault: true,
   // #1810 §1 — the Sfera bridge runs on the operator's own machine alongside
@@ -95,14 +112,25 @@ export function createSubiektPlugin(): AdapterPlugin {
           host.credentialsResolver,
           logger,
           host.http.forConnection(connection, subiektAdapterManifest.defaultRateLimit),
+          host.identifierMapping,
         );
-        return dispatchCapability<T>(
-          capability,
-          {
-            Invoicing: () => adapters.invoicing,
-          },
-          SUBIEKT_BRAND,
-        );
+        // Fiscalization's table entry is OMITTED (not merely undefined-valued)
+        // when the connection has no drukarkaFiskalnaId configured —
+        // dispatchCapability only checks key PRESENCE (Object.hasOwn), so an
+        // unconditional `Fiscalization: () => adapters.fiscalization` would
+        // silently hand a caller `undefined as T` instead of the clear
+        // "capability not supported" error this omission produces.
+        const table: Record<string, () => unknown> = {
+          Invoicing: () => adapters.invoicing,
+          ProductMaster: () => adapters.productMaster,
+          InventoryMaster: () => adapters.inventoryMaster,
+          OrderSource: () => adapters.orderSource,
+          OrderProcessorManager: () => adapters.orderProcessor,
+        };
+        if (adapters.fiscalization) {
+          table.Fiscalization = (): unknown => adapters.fiscalization;
+        }
+        return dispatchCapability<T>(capability, table, SUBIEKT_BRAND);
       } catch (err) {
         return Promise.reject(err as Error);
       }

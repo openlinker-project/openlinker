@@ -52,7 +52,7 @@ export class SubiektOrdersBridgeClient {
     this.baseUrl = bridgeBaseUrl.replace(/\/+$/, '');
     this.token = opts.token;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    this.fetchImpl = opts.fetchImpl ?? (globalThis.fetch as FetchLike);
+    this.fetchImpl = opts.fetchImpl ?? (globalThis.fetch);
   }
 
   async createOrder(req: BridgeCreateOrderRequest): Promise<BridgeCreateOrderResponse> {

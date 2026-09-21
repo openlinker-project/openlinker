@@ -10,18 +10,23 @@ const noopLogger: LoggerPort = {
 };
 
 function fakeFetch(bodyByPath: Record<string, unknown>): typeof fetch {
-  return (async (input: RequestInfo | URL) => {
+  return ((input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : (input as URL).toString();
     for (const [path, body] of Object.entries(bodyByPath)) {
       if (url.includes(path)) {
-        return new Response(JSON.stringify({ success: true, data: body, error: null }), {
-          status: 200,
-        });
+        return Promise.resolve(
+          new Response(JSON.stringify({ success: true, data: body, error: null }), {
+            status: 200,
+          }),
+        );
       }
     }
-    return new Response(JSON.stringify({ success: false, data: null, error: { code: 'not_found', reason: 'no fixture' } }), {
-      status: 404,
-    });
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ success: false, data: null, error: { code: 'not_found', reason: 'no fixture' } }),
+        { status: 404 },
+      ),
+    );
   }) as unknown as typeof fetch;
 }
 
