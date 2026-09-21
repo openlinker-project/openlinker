@@ -71,6 +71,7 @@ import type {
   TaxonomyIdentityProvider,
   TaxonomyOwner,
   ResolveConcurrencyCeiling,
+  OfferCurrencyDeclarer,
 } from '@openlinker/core/listings';
 
 import { ALLEGRO_DESCRIPTION_FORMAT } from '../util/allegro-description-format';
@@ -324,7 +325,8 @@ export class AllegroOfferManagerAdapter
     SellerPoliciesReader,
     ResponsibleProducerReader,
     SafetyAttachmentUploader,
-    TaxonomyIdentityProvider
+    TaxonomyIdentityProvider,
+    OfferCurrencyDeclarer
 {
   private readonly logger = new Logger(AllegroOfferManagerAdapter.name);
 
@@ -443,6 +445,20 @@ export class AllegroOfferManagerAdapter
    */
   getTaxonomyIdentity(): TaxonomyOwner {
     return this.environment === 'sandbox' ? 'allegro:sandbox' : 'allegro';
+  }
+
+  /**
+   * The currency this connection settles in (#3203, `OfferCurrencyDeclarer`).
+   * A fixed value rather than a live read: Allegro's marketplace is PL-first
+   * in this tree (see `DEFAULT_ALLEGRO_TAX_COUNTRY` above — the same
+   * assumption already baked into the tax-settings write path), and no
+   * connection config here distinguishes a .cz/.sk/.hu account whose
+   * settlement currency would differ. Consumed by
+   * `DestinationCurrencyResolutionService` to answer
+   * `price-change-block.types.ts`'s currency-mismatch guard.
+   */
+  getDestinationCurrency(): string | null {
+    return 'PLN';
   }
 
   /**

@@ -47,24 +47,32 @@ export function resolvePriceChangeBlockReason(
  * non-empty string, which the caller treats as "unknown" (see
  * `resolvePriceChangeBlockReason`).
  *
- * **This guard is inert on the repo's default topology today (#3159
- * review).** `config.currency` is written by exactly one surface in the
- * whole tree — the PrestaShop (source/master) setup form
+ * **This is now the FALLBACK source, not the primary one (#3203).**
+ * `config.currency` is written by exactly one surface in the whole tree —
+ * the PrestaShop (source/master) setup form
  * (`apps/web/src/features/connections/components/prestashop-setup.schema.ts`)
- * — and read by exactly one consumer, which stamps the SOURCE product's
- * currency (`PrestashopAdapterFactory`). No destination form (Allegro,
- * Erli, WooCommerce, or a generic connection editor) ever writes it, and it
- * is not even a declared field on `ConnectionConfig` — it lands on the
- * index signature. So on the common PrestaShop → Allegro path this reads
- * `null`, resolving to `'destination-currency-unknown'` rather than a
- * verified match. Resolving a destination's REAL currency (its marketplace
- * account, or an adapter-declared value) is a larger follow-up this
- * function does not attempt — tracked as
- * https://github.com/openlinker-project/openlinker/issues/3203, so this
- * docblock doesn't read as an unowned gap three PRs later; until it ships,
- * every destination effectively behaves as unverified-currency, which is
- * the conservative posture the caller's block reason is built to express
- * rather than to hide.
+ * — and read there by exactly one other consumer, which stamps the SOURCE
+ * product's currency (`PrestashopAdapterFactory`). No destination form
+ * (Allegro, Erli, WooCommerce, or a generic connection editor) writes it,
+ * and it is not even a declared field on `ConnectionConfig` — it lands on
+ * the index signature. So this function alone still reads `null` on the
+ * common PrestaShop → Allegro/Erli/WooCommerce topology.
+ *
+ * `readConnectionCurrency`'s callers (`PriceChangeDetectionService`,
+ * `PriceChangesService`) now try `IDestinationCurrencyResolutionService`
+ * FIRST — an adapter-declared value (`OfferCurrencyDeclarer` /
+ * `ShopCurrencyDeclarer`, the `DescriptionFormat` / `ResolveConcurrencyCeiling`
+ * precedent) — and fall back to THIS function only when the adapter declares
+ * nothing. Allegro and Erli both declare their fixed settlement currency
+ * (`'PLN'`, matching the PL-first / PLN-only assumptions already baked into
+ * both adapters), so the automatic-apply bypass is reachable on those two
+ * destinations without any operator configuration; a destination that
+ * declares nothing (WooCommerce today) still relies on this function, and
+ * an operator may still set `config.currency` by hand on ANY connection —
+ * source or destination — to unblock it. This function's own behaviour is
+ * unchanged: it still never guesses, and `null` still means "unknown", not
+ * "known to match" (ADR-061's `provenance: 'unknown'` / #2599's three-state
+ * `buyerHasTaxId` widening rule, restated once more rather than reinvented).
  */
 export function readConnectionCurrency(
   config: Record<string, unknown> | null | undefined

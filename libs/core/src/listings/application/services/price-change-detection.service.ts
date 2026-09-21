@@ -11,7 +11,11 @@
  *
  * Per destination, per (destination, source) pair:
  * - `resolvePriceChangeBlockReason` decides the currency-mismatch block
- *   (ADR-072 decision 4) — a pure function, re-decided on every pass.
+ *   (ADR-072 decision 4) — a pure function, re-decided on every pass. Its
+ *   `destinationCurrency` input is resolved via
+ *   `getDestinationCurrencyCached` (#3203): an adapter-declared value first
+ *   (`IDestinationCurrencyResolutionService`), falling back to the
+ *   operator-set `Connection.config.currency` key (`readConnectionCurrency`).
  * - `readPricingRuleForSource` / `applyPricingRule` compute the destination
  *   price.
  * - `readPriceSyncModeForSource` decides whether an ALREADY-opened episode
@@ -48,11 +52,15 @@ import {
 } from '@openlinker/core/identifier-mapping';
 import { JOB_ENQUEUE_TOKEN, type JobEnqueuePort } from '@openlinker/core/sync';
 import { PriceChangeEpisodeRepositoryPort } from '../../domain/ports/price-change-episode-repository.port';
-import { PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN } from '../../listings.tokens';
+import {
+  PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
+  DESTINATION_CURRENCY_RESOLUTION_SERVICE_TOKEN,
+} from '../../listings.tokens';
 import {
   resolvePriceChangeBlockReason,
   readConnectionCurrency,
 } from '../../domain/types/price-change-block.types';
+import { IDestinationCurrencyResolutionService } from './destination-currency-resolution.service.interface';
 import type { IPriceChangeDetectionService } from './price-change-detection.service.interface';
 
 @Injectable()
@@ -84,6 +92,19 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
   >();
   private static readonly CONNECTION_CACHE_TTL_MS = 5_000;
 
+  /**
+   * A short-lived, per-instance cache for the destination's real currency
+   * (#3203), keyed by connection id and sharing `connectionCache`'s TTL for
+   * the same reason: `detectForDestination` runs once per changed variant
+   * per destination, and `DestinationCurrencyResolutionService.resolveForConnection`
+   * resolves a capability adapter — not free to repeat per variant on a
+   * 100-product/3-variant sweep page.
+   */
+  private readonly currencyCache = new Map<
+    string,
+    { currency: string | null; expiresAt: number }
+  >();
+
   constructor(
     @Inject(IDENTIFIER_MAPPING_SERVICE_TOKEN)
     private readonly identifierMapping: IIdentifierMappingService,
@@ -92,7 +113,9 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
     @Inject(PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN)
     private readonly episodes: PriceChangeEpisodeRepositoryPort,
     @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort
+    private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(DESTINATION_CURRENCY_RESOLUTION_SERVICE_TOKEN)
+    private readonly destinationCurrencyResolution: IDestinationCurrencyResolutionService
   ) {}
 
   async onMasterPriceChanged(observation: MasterPriceChangeObservation): Promise<void> {
@@ -138,9 +161,13 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
       return;
     }
 
+    const destinationCurrency = await this.getDestinationCurrencyCached(
+      destinationConnectionId,
+      connection
+    );
     const blockReason = resolvePriceChangeBlockReason(
       observation.sourceCurrency,
-      readConnectionCurrency(connection.config)
+      destinationCurrency
     );
     const rule = readPricingRuleForSource(connection.config, observation.sourceConnectionId);
     const computedNewAmount = applyPricingRule(observation.sourceNewAmount, rule);
@@ -280,6 +307,34 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
       expiresAt: now + PriceChangeDetectionService.CONNECTION_CACHE_TTL_MS,
     });
     return connection;
+  }
+
+  /**
+   * The destination's real currency (#3203): an adapter-declared value
+   * (`IDestinationCurrencyResolutionService`, tried first) falling back to
+   * the operator-set `Connection.config.currency` key
+   * (`readConnectionCurrency`) — never a guess, and `null` when neither
+   * resolves, which `resolvePriceChangeBlockReason` reads as
+   * `'destination-currency-unknown'` rather than as a favourable match.
+   */
+  private async getDestinationCurrencyCached(
+    connectionId: string,
+    connection: Connection
+  ): Promise<string | null> {
+    const now = Date.now();
+    const cached = this.currencyCache.get(connectionId);
+    if (cached && cached.expiresAt > now) {
+      return cached.currency;
+    }
+    const declared = await this.destinationCurrencyResolution
+      .resolveForConnection(connectionId)
+      .catch(() => null);
+    const currency = declared ?? readConnectionCurrency(connection.config);
+    this.currencyCache.set(connectionId, {
+      currency,
+      expiresAt: now + PriceChangeDetectionService.CONNECTION_CACHE_TTL_MS,
+    });
+    return currency;
   }
 
   /**

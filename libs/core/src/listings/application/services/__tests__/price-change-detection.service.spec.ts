@@ -9,6 +9,7 @@ import type { JobEnqueuePort } from '@openlinker/core/sync';
 import { PriceChangeDetectionService } from '../price-change-detection.service';
 import { PriceChangeEpisode } from '../../../domain/entities/price-change-episode.entity';
 import type { PriceChangeEpisodeRepositoryPort } from '../../../domain/ports/price-change-episode-repository.port';
+import type { IDestinationCurrencyResolutionService } from '../destination-currency-resolution.service.interface';
 
 const VARIANT_ID = 'ol_variant_1';
 const DEST_ID = 'dest-conn-1';
@@ -80,6 +81,7 @@ describe('PriceChangeDetectionService', () => {
   let connections: jest.Mocked<ConnectionPort>;
   let episodes: jest.Mocked<PriceChangeEpisodeRepositoryPort>;
   let jobEnqueue: jest.Mocked<JobEnqueuePort>;
+  let destinationCurrencyResolution: jest.Mocked<IDestinationCurrencyResolutionService>;
   let service: PriceChangeDetectionService;
 
   beforeEach(() => {
@@ -97,8 +99,21 @@ describe('PriceChangeDetectionService', () => {
     jobEnqueue = {
       enqueueJob: jest.fn(),
     } as unknown as jest.Mocked<JobEnqueuePort>;
+    // Defaults to `null` — no adapter-declared value — so every existing
+    // test's `buildConnection({ currency: '...' })` fallback path is
+    // unaffected; tests exercising the adapter-declared resolution path
+    // override this per-case (#3203).
+    destinationCurrencyResolution = {
+      resolveForConnection: jest.fn().mockResolvedValue(null),
+    } as unknown as jest.Mocked<IDestinationCurrencyResolutionService>;
 
-    service = new PriceChangeDetectionService(identifierMapping, connections, episodes, jobEnqueue);
+    service = new PriceChangeDetectionService(
+      identifierMapping,
+      connections,
+      episodes,
+      jobEnqueue,
+      destinationCurrencyResolution
+    );
 
     identifierMapping.getExternalIds.mockImplementation((entityType) =>
       Promise.resolve(
@@ -363,6 +378,66 @@ describe('PriceChangeDetectionService', () => {
       expect.objectContaining({ blockReason: 'destination-currency-unknown' })
     );
     expect(jobEnqueue.enqueueJob).not.toHaveBeenCalled();
+  });
+
+  it('resolves the destination currency from the adapter-declared value when config.currency is not set (#3203)', async () => {
+    // No `currency` on `config` — the pre-#3203 default state for every
+    // destination form in the tree. The adapter declares 'PLN' instead.
+    connections.get.mockResolvedValue(
+      buildConnection({ priceSyncMode: { default: 'automatic', sourceOverrides: {} } })
+    );
+    destinationCurrencyResolution.resolveForConnection.mockResolvedValue('PLN');
+
+    await service.onMasterPriceChanged({
+      productVariantId: VARIANT_ID,
+      sourceConnectionId: SRC_ID,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      sourceCurrency: 'PLN',
+    });
+
+    expect(destinationCurrencyResolution.resolveForConnection).toHaveBeenCalledWith(DEST_ID);
+    expect(episodes.upsertOpen).toHaveBeenCalledWith(expect.objectContaining({ blockReason: null }));
+    expect(jobEnqueue.enqueueJob).toHaveBeenCalled();
+  });
+
+  it('prefers the adapter-declared currency over `config.currency` when they disagree', async () => {
+    // A stale/misconfigured `config.currency` must never win over a
+    // verified adapter-declared value (#3203).
+    connections.get.mockResolvedValue(buildConnection({ currency: 'EUR' }));
+    destinationCurrencyResolution.resolveForConnection.mockResolvedValue('PLN');
+
+    await service.onMasterPriceChanged({
+      productVariantId: VARIANT_ID,
+      sourceConnectionId: SRC_ID,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      sourceCurrency: 'PLN',
+    });
+
+    expect(episodes.upsertOpen).toHaveBeenCalledWith(expect.objectContaining({ blockReason: null }));
+  });
+
+  it('caches the resolved destination currency across calls, rather than re-resolving per variant', async () => {
+    connections.get.mockResolvedValue(buildConnection());
+    destinationCurrencyResolution.resolveForConnection.mockResolvedValue('PLN');
+
+    await service.onMasterPriceChanged({
+      productVariantId: VARIANT_ID,
+      sourceConnectionId: SRC_ID,
+      sourceOldAmount: 350,
+      sourceNewAmount: 327,
+      sourceCurrency: 'PLN',
+    });
+    await service.onMasterPriceChanged({
+      productVariantId: 'ol_variant_2',
+      sourceConnectionId: SRC_ID,
+      sourceOldAmount: 350,
+      sourceNewAmount: 300,
+      sourceCurrency: 'PLN',
+    });
+
+    expect(destinationCurrencyResolution.resolveForConnection).toHaveBeenCalledTimes(1);
   });
 
   it('refreshes the SAME open episode on re-detection rather than skipping it', async () => {
