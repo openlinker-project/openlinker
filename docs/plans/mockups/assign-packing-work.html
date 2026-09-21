@@ -1,0 +1,557 @@
+<title>Assign Packing Work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem;
+    --space-5: 1.5rem; --space-6: 2rem; --space-7: 3rem; --space-8: 4rem;
+    --radius-xs: 4px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 14px; --radius-pill: 9999px;
+    --tracking-tight: -0.012em; --tracking-normal: 0; --tracking-wide: 0.02em; --tracking-caps: 0.08em;
+    --duration-fast: 120ms; --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    color-scheme: dark;
+    --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270); --bg-surface: oklch(19% 0.007 270);
+    --bg-surface-elevated: oklch(22% 0.008 270); --bg-surface-muted: oklch(24% 0.009 270); --bg-surface-hover: oklch(28% 0.010 270); --bg-strong: oklch(28% 0.010 270);
+    --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270); --border-strong: oklch(42% 0.014 270); --border-focus: oklch(72% 0.18 50);
+    --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270); --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270);
+    --text-on-primary: oklch(16% 0.012 50); --text-inverse: oklch(20% 0.012 80);
+    --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50); --accent-primary-active: oklch(84% 0.16 50);
+    --accent-primary-soft: oklch(28% 0.08 50); --accent-primary-border: oklch(40% 0.14 55); --accent-ring: oklch(72% 0.18 50 / 0.40);
+    --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150); --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+    --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85); --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+    --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25); --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+    --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245); --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+    --status-review: oklch(74% 0.14 290);
+    --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270); --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40); --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.40), 0 1px 3px rgb(0 0 0 / 0.32);
+    --shadow-md: 0 2px 4px rgb(0 0 0 / 0.40), 0 6px 16px rgb(0 0 0 / 0.36);
+    --shadow-focus: 0 0 0 3px var(--accent-ring); --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04); --overlay-scrim: rgb(0 0 0 / 0.72);
+  }
+  :root[data-theme="light"] { color-scheme: light;
+    --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80); --bg-surface: #ffffff;
+    --bg-surface-elevated: oklch(99% 0.003 80); --bg-surface-muted: oklch(96% 0.005 80); --bg-surface-hover: oklch(93% 0.006 80); --bg-strong: oklch(93% 0.006 80);
+    --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80); --border-strong: oklch(78% 0.010 80); --border-focus: oklch(68% 0.18 50);
+    --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80); --text-muted: oklch(52% 0.008 80); --text-disabled: oklch(70% 0.005 80); --text-on-primary: oklch(18% 0.012 50); --text-inverse: oklch(96% 0.005 80);
+    --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50); --accent-primary-active: oklch(56% 0.20 50); --accent-primary-soft: oklch(96% 0.04 60); --accent-primary-border: oklch(85% 0.10 55); --accent-ring: oklch(68% 0.18 50 / 0.30);
+    --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150); --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
+    --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85); --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+    --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25); --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
+    --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245); --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
+    --status-review: oklch(58% 0.16 290);
+    --status-disabled: oklch(55% 0.008 80); --status-disabled-soft: oklch(95% 0.005 80); --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+    --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04); --shadow-sm: 0 1px 2px rgb(15 18 26 / 0.04), 0 1px 3px rgb(15 18 26 / 0.06); --shadow-md: 0 2px 4px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.08);
+    --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6); --overlay-scrim: rgb(15 18 26 / 0.55);
+  }
+  :root[data-theme="dark"] { color-scheme: dark; }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg-canvas); color: var(--text-primary); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  button, select { font: inherit; cursor: pointer; }
+  h1,h2,h3,h4 { text-wrap: balance; margin: 0; }
+
+  /* ── Real app shell (apps/web/src/app/app-shell.tsx + index.css
+     .shell / .shell-sidebar / .shell-nav / .shell-main / .shell-topbar) ──
+     This is an ordinary authenticated admin screen — unlike the pack bench,
+     it keeps the real navigation. Copied structurally, not reinvented. ─── */
+  .shell { min-height: 100vh; display: grid; grid-template-columns: 240px minmax(0,1fr); }
+  .shell-sidebar { display: flex; flex-direction: column; background: var(--bg-shell); border-right: 1px solid var(--border-subtle); padding: 12px 0; position: sticky; top: 0; height: 100vh; }
+  .shell-brand { display: flex; align-items: center; gap: 8px; padding: 4px 16px 16px; }
+  .shell-brand__mark { width: 26px; height: 26px; border-radius: 6px; background: var(--accent-primary); display: grid; place-items: center; color: var(--text-on-primary); font-weight: 700; font-size: 12px; flex-shrink: 0; }
+  .shell-brand__name { font-weight: 600; font-size: 14px; color: var(--text-primary); letter-spacing: -0.02em; }
+  .shell-nav { flex: 1; overflow-y: auto; padding: 0 12px; }
+  .shell-nav__group { margin-bottom: 16px; }
+  .shell-nav__label { margin: 0 0 4px; padding: 0 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.11em; text-transform: uppercase; color: var(--text-muted); }
+  .shell-nav__list { list-style: none; padding: 0; margin: 0; display: grid; gap: 1px; }
+  .shell-nav__link { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px; color: var(--text-secondary); font-size: 13px; font-weight: 500; text-decoration: none; }
+  .shell-nav__link:hover { background: var(--bg-surface-muted); color: var(--text-primary); }
+  .shell-nav__link--active { background: var(--bg-surface-muted); color: var(--text-primary); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent-primary); }
+  .shell-nav__link-label { flex: 1; min-width: 0; }
+  .shell-nav__link-count { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+
+  .shell-main { min-width: 0; display: flex; flex-direction: column; }
+  .shell-topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 20px; background: var(--bg-shell); border-bottom: 1px solid var(--border-subtle); }
+  .shell-crumbs { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
+  .shell-crumbs__current { color: var(--text-primary); font-weight: 500; }
+  .shell-topbar__spacer { flex: 1; }
+  .shell-topbar__icon { display: inline-flex; align-items: center; gap: 6px; background: none; border: none; color: var(--text-secondary); font-size: 13px; padding: 6px 10px; border-radius: var(--radius-md); }
+  .shell-topbar__icon:hover { background: var(--bg-surface-muted); color: var(--text-primary); }
+  .shell-user-chip { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px 3px 3px; border: none; border-radius: var(--radius-pill); background: transparent; color: var(--text-primary); height: 32px; }
+  .shell-user-chip:hover { background: var(--bg-surface-muted); }
+  .shell-user-chip__avatar { width: 26px; height: 26px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--status-review)); color: var(--text-inverse); display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 600; flex-shrink: 0; }
+  .shell-user-chip__name { font-size: 12.5px; font-weight: 500; }
+  .shell-content { flex: 1; padding: 20px 24px 40px; max-width: 1400px; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); border: 1px solid var(--accent-primary-border); border-radius: var(--radius-md); padding: 0 var(--space-4); height: 32px; background: var(--accent-primary); color: var(--text-on-primary); font-size: 13px; font-weight: 500; white-space: nowrap; box-shadow: var(--shadow-xs), var(--shadow-inset-top); }
+  .btn:hover { background: var(--accent-primary-hover); border-color: var(--accent-primary-hover); }
+  .btn--sm { height: 28px; padding: 0 var(--space-3); font-size: 12px; }
+  .btn--secondary { border-color: var(--border-default); background: var(--bg-surface); color: var(--text-primary); }
+  .btn--secondary:hover { background: var(--bg-surface-muted); border-color: var(--border-strong); }
+  .btn--ghost { border-color: transparent; background: transparent; color: var(--text-secondary); box-shadow: none; }
+  .btn--ghost:hover { background: var(--bg-surface-muted); color: var(--text-primary); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+  .status-badge { display: inline-flex; align-items: center; gap: var(--space-2); padding: 2px var(--space-2); border: 1px solid var(--status-disabled-border); border-radius: var(--radius-sm); background: var(--status-disabled-soft); color: var(--status-disabled-fg); font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--tracking-wide); text-transform: uppercase; white-space: nowrap; }
+  .status-badge--success { border-color: var(--status-success-border); background: var(--status-success-soft); color: var(--status-success-fg); }
+  .status-badge--warning { border-color: var(--status-warning-border); background: var(--status-warning-soft); color: var(--status-warning-fg); }
+  .status-badge--error { border-color: var(--status-error-border); background: var(--status-error-soft); color: var(--status-error-fg); }
+  .status-badge--info { border-color: var(--status-info-border); background: var(--status-info-soft); color: var(--status-info-fg); }
+
+  .alert { display: flex; align-items: flex-start; gap: var(--space-4); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 14px 16px; background: var(--bg-surface); box-shadow: inset 3px 0 0 var(--border-default); }
+  .alert--note { border-color: var(--border-default); background: var(--bg-surface-muted); box-shadow: inset 3px 0 0 var(--status-review); }
+  .alert h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; }
+  .alert p { margin: 0; font-size: 13px; color: var(--text-secondary); }
+  .alert code { font-family: var(--font-mono); font-size: 12px; background: var(--bg-surface-muted); padding: 1px 5px; border-radius: 4px; }
+
+  .tag-new { display: inline-block; font-family: var(--font-mono); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; background: var(--accent-primary-soft); color: var(--accent-primary-hover); border: 1px solid var(--accent-primary-border); border-radius: 4px; padding: 1px 5px; margin-left: 6px; vertical-align: middle; }
+
+  .metric-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--space-4); margin: var(--space-5) 0; }
+  .metric-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-xs); position: relative; overflow: hidden; }
+  .metric-card::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; background: var(--accent-primary); opacity: .6; }
+  .metric-card__label { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); }
+  .metric-card__value { font-size: 28px; font-weight: 600; letter-spacing: var(--tracking-tight); font-variant-numeric: tabular-nums; line-height: 1.05; }
+
+  /* ── Swimlanes (Round 2 layout — see honesty note) ────────────────
+     One horizontal lane per packer, "Unassigned" pinned as a peer lane
+     at the top — not a side panel. Triangulated across Microsoft Project
+     Team Planner, Ganttic, Syncfusion Gantt, Onfleet and Route4Me: every
+     one keeps the pool and the roster on ONE shared axis. */
+  .lanes { display: flex; flex-direction: column; gap: var(--space-4); }
+  /* A lane is a section of a dense, sortable-feeling list — not a row of
+     fixed-width cards. A real queue runs to dozens of parcels per packer;
+     cards force horizontal scroll and stop scaling almost immediately. */
+  .lane { border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--bg-surface); overflow: hidden; position: relative; }
+  .lane::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 2px; background: var(--border-strong); }
+  .lane--unassigned::before { background: var(--status-warning); }
+  .lane__head { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--bg-surface-muted); border-bottom: 1px solid var(--border-subtle); }
+  .lane__avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-primary), var(--status-review)); color: var(--text-inverse); display: inline-flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 600; flex-shrink: 0; }
+  .lane__icon { width: 28px; height: 28px; border-radius: 50%; background: var(--status-warning-soft); border: 1px solid var(--status-warning-border); color: var(--status-warning-fg); display: inline-flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .lane__name { font-weight: 600; font-size: 13.5px; }
+  .lane__station { font-size: 11px; color: var(--text-muted); font-family: var(--font-mono); }
+  .lane__load { display: flex; align-items: center; gap: 8px; width: 140px; flex-shrink: 0; }
+  .lane__load-bar { flex: 1; height: 5px; border-radius: var(--radius-pill); background: var(--bg-canvas); overflow: hidden; border: 1px solid var(--border-subtle); }
+  .lane__load-fill { height: 100%; border-radius: var(--radius-pill); background: var(--status-success); }
+  .lane__load-fill--busy { background: var(--status-warning); }
+  .lane__load-fill--over { background: var(--status-error); }
+  .lane__count { font-family: var(--font-mono); font-size: 13px; font-weight: 600; min-width: 2ch; text-align: right; color: var(--text-secondary); }
+  .lane__spacer { flex: 1; }
+  .lane__body { display: flex; flex-direction: column; }
+  .lane__empty { padding: var(--space-4); font-size: 12.5px; color: var(--text-muted); }
+  .lane__col-heads { display: flex; align-items: center; gap: var(--space-3); padding: 6px var(--space-4); font-family: var(--font-mono); font-size: 10px; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-disabled); border-bottom: 1px solid var(--border-subtle); }
+
+  /* One dense row per parcel, sized like the app's real DataTable rows —
+     ref+buyer read left to right on one line, badge and actions trail it,
+     so a hundred of these still scans in a couple of seconds, not a scroll. */
+  .lane-card { display: flex; align-items: center; gap: var(--space-3); padding: 8px var(--space-4); border-bottom: 1px solid var(--border-subtle); cursor: grab; }
+  .lane-card:last-child { border-bottom: none; }
+  .lane-card:hover { background: var(--bg-surface-muted); }
+  .lane-card:active { cursor: grabbing; }
+  .lane-card--dragging { opacity: .4; }
+  .lane-card__grip { color: var(--text-disabled); font-size: 13px; flex: 0 0 auto; line-height: 1; user-select: none; }
+  .lane__body--drag-over { background: var(--accent-primary-soft); outline: 2px dashed var(--accent-primary-border); outline-offset: -2px; }
+  .lane__body { min-height: 8px; transition: background .1s; }
+  .lane-card__ref { font-family: var(--font-mono); font-weight: 600; font-size: 13px; flex: 0 0 72px; }
+  .lane-card__buyer { font-size: 13px; color: var(--text-secondary); flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lane-card__meta { font-size: 11.5px; color: var(--text-muted); flex: 0 0 150px; }
+  .lane-card__pickable { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-muted); flex: 0 0 168px; cursor: pointer; user-select: none; }
+  .lane-card__pickable input { accent-color: var(--accent-primary); cursor: pointer; margin: 0; }
+  .lane-card--assignment-only { background: var(--bg-surface-muted); }
+  .lane-card--assignment-only .lane-card__pickable { color: var(--text-disabled); }
+  .lane-card__top { display: contents; }
+  .lane-card__actions { display: flex; gap: 6px; position: relative; flex: 0 0 auto; margin-left: auto; }
+  .lane-card__menu { position: absolute; top: 100%; right: 0; margin-top: 4px; z-index: 20; background: var(--bg-surface-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-md); min-width: 200px; padding: 4px; display: none; }
+  .lane-card__menu[data-open="true"] { display: block; }
+  .lane-card__menu button { display: block; width: 100%; text-align: left; background: none; border: none; padding: 7px 10px; border-radius: 6px; font-size: 12.5px; color: var(--text-primary); }
+  .lane-card__menu button:hover { background: var(--bg-surface-hover); }
+  .lane-card__menu hr { border: none; border-top: 1px solid var(--border-subtle); margin: 4px 0; }
+  .lane-card__menu .danger-ish { color: var(--status-warning-fg); }
+  @media (max-width: 760px) {
+    .lane-card { flex-wrap: wrap; }
+    .lane-card__meta { flex-basis: 100%; order: 3; }
+  }
+
+  .lane-card:has(.hold-form) { flex-wrap: wrap; }
+  .hold-form { flex-basis: 100%; padding: var(--space-3); background: var(--bg-canvas); border: 1px solid var(--border-strong); border-radius: var(--radius-md); margin-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+  .hold-form select, .hold-form textarea { width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-primary); padding: 6px 8px; font-size: 12.5px; font-family: inherit; }
+  .hold-form textarea { resize: vertical; min-height: 44px; }
+  .hold-form__row { display: flex; gap: 6px; }
+
+  .toast-stack { position: fixed; right: 20px; bottom: 20px; z-index: 70; display: flex; flex-direction: column-reverse; gap: 8px; }
+  .toast { padding: var(--space-3) var(--space-4); background: var(--bg-surface-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-md); font-size: 13px; animation: toast-in .18s var(--ease-out); }
+  @keyframes toast-in { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform:none; } }
+
+  [hidden] { display: none !important; }
+  @media (max-width: 860px) { .shell { grid-template-columns: 1fr; } .shell-sidebar { display: none; } .lane__load { width: 100px; } }
+</style>
+
+<div class="shell">
+  <aside class="shell-sidebar">
+    <div class="shell-brand"><span class="shell-brand__mark">OL</span><span class="shell-brand__name">OpenLinker</span></div>
+    <nav class="shell-nav">
+      <div class="shell-nav__group">
+        <p class="shell-nav__label">Operations</p>
+        <ul class="shell-nav__list">
+          <li><a class="shell-nav__link" href="#">Orders <span class="shell-nav__link-count mono">128</span></a></li>
+          <li><a class="shell-nav__link" href="#">Products</a></li>
+          <li><a class="shell-nav__link" href="#">Listings</a></li>
+          <li><a class="shell-nav__link" href="#">Shipments</a></li>
+          <li><a class="shell-nav__link" href="#">Pack bench</a></li>
+          <li><a class="shell-nav__link shell-nav__link--active" href="#">Assign packing work <span class="tag-new" style="margin-left:auto">new</span></a></li>
+        </ul>
+      </div>
+      <div class="shell-nav__group">
+        <p class="shell-nav__label">Platform</p>
+        <ul class="shell-nav__list">
+          <li><a class="shell-nav__link" href="#">Connections</a></li>
+          <li><a class="shell-nav__link" href="#">Settings</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <div class="shell-main">
+    <header class="shell-topbar">
+      <nav class="shell-crumbs" aria-label="Breadcrumb">
+        <span>Operations</span><span aria-hidden="true">/</span><span class="shell-crumbs__current">Assign packing work</span>
+      </nav>
+      <div class="shell-topbar__spacer"></div>
+      <button class="shell-topbar__icon" type="button" id="themeToggle">Light mode</button>
+      <button class="shell-topbar__icon" type="button">Alerts <span class="mono">0</span></button>
+      <button class="shell-user-chip" type="button"><span class="shell-user-chip__avatar">OP</span><span class="shell-user-chip__name">Operator</span></button>
+    </header>
+
+    <main class="shell-content">
+      <h1 style="font-size:19px; margin-bottom:4px;">Assign packing work</h1>
+      <p style="font-size:13px; color:var(--text-muted); margin:0 0 16px;">Move unassigned parcels onto a packer's queue, or pull one back.</p>
+
+
+      <div class="metric-row">
+        <div class="metric-card"><span class="metric-card__label">Unassigned right now</span><span class="metric-card__value" id="poolCount">3</span></div>
+        <div class="metric-card"><span class="metric-card__label">Packers at their benches</span><span class="metric-card__value">3</span></div>
+        <div class="metric-card"><span class="metric-card__label">Oldest unassigned</span><span class="metric-card__value" style="font-size:20px">52m</span></div>
+      </div>
+
+      <div class="lanes" id="lanes">
+        <section class="lane lane--unassigned" data-lane="unassigned">
+          <div class="lane__head">
+            <span class="lane__icon">✳</span>
+            <div><div class="lane__name">Unassigned</div><div class="lane__station">Visible to every packer until claimed or assigned</div></div>
+            <div class="lane__spacer"></div>
+            <span class="lane__count mono" id="unassignedCount">3</span>
+          </div>
+          <div class="lane__body" id="unassignedBody"></div>
+        </section>
+
+        <section class="lane" data-lane="bartek" data-packer-name="Bartek Wilk">
+          <div class="lane__head">
+            <span class="lane__avatar">BW</span>
+            <div><div class="lane__name">Bartek Wilk <span class="tag-new">lightest load</span></div><div class="lane__station">Bench 2 · online</div></div>
+            <div class="lane__spacer"></div>
+            <div class="lane__load"><div class="lane__load-bar"><div class="lane__load-fill" style="width:0%" data-fill></div></div></div>
+            <span class="lane__count mono" data-count>0</span>
+          </div>
+          <div class="lane__body" data-body></div>
+        </section>
+
+        <section class="lane" data-lane="marta" data-packer-name="Marta Kowalczyk">
+          <div class="lane__head">
+            <span class="lane__avatar">MK</span>
+            <div><div class="lane__name">Marta Kowalczyk</div><div class="lane__station">Bench 3 · online</div></div>
+            <div class="lane__spacer"></div>
+            <div class="lane__load"><div class="lane__load-bar"><div class="lane__load-fill" style="width:40%" data-fill></div></div></div>
+            <span class="lane__count mono" data-count>2</span>
+          </div>
+          <div class="lane__body" data-body>
+            <div class="lane-card" data-parcel="OL-4471">
+              <div class="lane-card__top"><span class="lane-card__ref">OL-4471</span><span class="status-badge status-badge--warning">16:00</span></div>
+              <div class="lane-card__buyer">Anna Nowak</div>
+              <div class="lane-card__actions"><button class="btn btn--secondary btn--sm" type="button" data-move-toggle>Move to…</button></div>
+            </div>
+            <div class="lane-card" data-parcel="OL-4470">
+              <div class="lane-card__top"><span class="lane-card__ref">OL-4470</span><span class="status-badge status-badge--info">Front of queue</span></div>
+              <div class="lane-card__buyer">Ewa Krawczyk</div>
+              <div class="lane-card__actions"><button class="btn btn--secondary btn--sm" type="button" data-move-toggle>Move to…</button></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="lane" data-lane="tomasz" data-packer-name="Tomasz Nowak">
+          <div class="lane__head">
+            <span class="lane__avatar">TN</span>
+            <div><div class="lane__name">Tomasz Nowak</div><div class="lane__station">Bench 1 · online</div></div>
+            <div class="lane__spacer"></div>
+            <div class="lane__load"><div class="lane__load-bar"><div class="lane__load-fill lane__load-fill--busy" style="width:80%" data-fill></div></div></div>
+            <span class="lane__count mono" data-count>4</span>
+          </div>
+          <div class="lane__body" data-body>
+            <div class="lane-card" data-parcel="OL-4472"><div class="lane-card__top"><span class="lane-card__ref">OL-4472</span><span class="status-badge">2h left</span></div><div class="lane-card__buyer">Karol Bąk</div><div class="lane-card__actions"><button class="btn btn--secondary btn--sm" type="button" data-move-toggle>Move to…</button></div></div>
+            <div class="lane-card" data-parcel="OL-4468"><div class="lane-card__top"><span class="lane-card__ref">OL-4468</span><span class="status-badge status-badge--error">On hold</span></div><div class="lane-card__buyer">Marcin Zieliński</div><div class="lane-card__actions"><button class="btn btn--secondary btn--sm" type="button" data-move-toggle>Move to…</button></div></div>
+            <div class="lane-card" data-parcel="OL-4477"><div class="lane-card__top"><span class="lane-card__ref">OL-4477</span><span class="status-badge">4h left</span></div><div class="lane-card__buyer">Zofia Lis</div><div class="lane-card__actions"><button class="btn btn--secondary btn--sm" type="button" data-move-toggle>Move to…</button></div></div>
+            <div class="lane-card" data-parcel="OL-4478"><div class="lane-card__top"><span class="lane-card__ref">OL-4478</span><span class="status-badge">4h left</span></div><div class="lane-card__buyer">Adam Górski</div><div class="lane-card__actions"><button class="btn btn--secondary btn--sm" type="button" data-move-toggle>Move to…</button></div></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<div class="shell-content" style="max-width:1400px; margin:0 auto; padding: var(--space-7) 24px 40px;">
+<hr style="border:none; border-top:6px solid var(--border-strong); margin: 0 0 var(--space-5);">
+      <div class="alert alert--note">
+        <div>
+          <h4>Round 2 — the two-panel layout didn't work, and here's why <span class="tag-new">new</span></h4>
+          <p style="margin-bottom:8px">First cut split the screen into a roster sidebar and a separate unassigned pool — reviewed as disjointed, and a fresh layout-specific research pass explains why: the Gestalt <em>law of proximity</em> says items placed apart read as unrelated even when they're logically connected. A tech-lead pass recommended fixing it with Kanban columns (one per packer); the layout research pass found something more specific and better triangulated — five independent products (Microsoft Project Team Planner, Ganttic, Syncfusion Gantt, Onfleet, Route4Me) all converge on the SAME shape, and it isn't columns. Each keeps the roster and the unassigned pool on one continuous axis, with "Unassigned" as a peer row among the named workers' rows, not a separate panel or a set of side-by-side columns.</p>
+          <p style="margin-bottom:8px">That's what's below: one lane per packer, "Unassigned" pinned at the top (Onfleet's and Ganttic's placement — the thing needing action first). This is also where the real app's own navigation sidebar lives — the first draft borrowed a kiosk screen's chrome by mistake, and this is an ordinary admin page.</p>
+          <p style="margin-bottom:0"><strong>Round 3:</strong> the cards were still the wrong shape — a fixed-width tile per parcel breaks down the moment a lane holds more than a handful, and the "Unassigned" header's full amber fill read as muddy rather than as a real accent. Rows now, dense like the app's own tables, scaling to however many parcels a shift actually has; the header is a thin top rule instead of a filled band. And drag-and-drop now sits ALONGSIDE the "Move to…" menu rather than replacing it — dragging is faster once you know the board, but it's mouse-only and invisible on first look, so the menu stays the real, keyboard-reachable path (the accessible-drag-and-drop convention: model the action, expose a plain click alternative, never make dragging the only way in).</p>
+        </div>
+      </div>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    document.getElementById('themeToggle').addEventListener('click', function () {
+      var isLight = root.getAttribute('data-theme') === 'light';
+      root.setAttribute('data-theme', isLight ? 'dark' : 'light');
+      this.textContent = isLight ? 'Light mode' : 'Dark mode';
+    });
+
+    function toast(msg) {
+      var stack = document.getElementById('toastStack');
+      var el = document.createElement('div');
+      el.className = 'toast';
+      el.textContent = msg;
+      stack.appendChild(el);
+      setTimeout(function () { el.remove(); }, 2800);
+    }
+
+    // Real closed vocabulary — HoldReasonValues, libs/core/src/order-lifecycle
+    var HOLD_REASONS = [
+      ['stock-shortfall', 'Stock shortfall'],
+      ['payment-review', 'Payment review'],
+      ['fraud-review', 'Fraud review'],
+      ['address-invalid', 'Address invalid'],
+      ['awaiting-amendment', 'Awaiting amendment'],
+      ['awaiting-customer-confirmation', 'Awaiting customer confirmation'],
+      ['external', 'External (third-party) hold'],
+      ['operator', 'Other — explain in the note'],
+    ];
+
+    var unassignedItems = [
+      { ref: 'OL-4469', buyer: 'Piotr Malinowski', meta: '1 product to scan', badge: '<span class="status-badge status-badge--warning">Must ship 15:00 · InPost</span>' },
+      { ref: 'OL-4473', buyer: 'Dawid Sikora', meta: '3 products, 4 units to scan', badge: '<span class="status-badge status-badge--error">Sat unassigned 52m</span>' },
+      { ref: 'OL-4475', buyer: 'Julia Adamczyk', meta: '1 product to scan', badge: '<span class="status-badge">3h left</span>' },
+    ];
+
+    function packerLanes() {
+      return Array.prototype.slice.call(document.querySelectorAll('.lane:not(.lane--unassigned)'));
+    }
+
+    function closeAllMenus() {
+      document.querySelectorAll('.lane-card__menu[data-open="true"]').forEach(function (m) { m.setAttribute('data-open', 'false'); });
+    }
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.lane-card__actions')) closeAllMenus();
+    });
+
+    function updateLaneCount(lane) {
+      var body = lane.querySelector('[data-body], #unassignedBody');
+      var n = body.querySelectorAll('.lane-card').length;
+      var countEl = lane.querySelector('[data-count], #unassignedCount');
+      if (countEl) countEl.textContent = String(n);
+      var fill = lane.querySelector('[data-fill]');
+      if (fill) {
+        var pct = Math.min(100, n * 20);
+        fill.style.width = pct + '%';
+        fill.className = 'lane__load-fill' + (n >= 5 ? ' lane__load-fill--over' : n >= 3 ? ' lane__load-fill--busy' : '');
+      }
+      if (lane.dataset.lane === 'unassigned') {
+        document.getElementById('poolCount').textContent = String(n);
+      }
+    }
+
+    function buildMoveMenu(card, currentLaneName) {
+      var menu = document.createElement('div');
+      menu.className = 'lane-card__menu';
+      var html = '';
+      packerLanes().forEach(function (lane) {
+        if (lane.dataset.packerName === currentLaneName) return;
+        var count = lane.querySelectorAll('.lane-card').length;
+        html += '<button type="button" data-target-lane="' + lane.dataset.lane + '">' + lane.dataset.packerName + ' (' + count + ')</button>';
+      });
+      if (currentLaneName) {
+        html += '<hr><button type="button" class="danger-ish" data-target-lane="unassigned">↩ Pull back to Unassigned</button>';
+      }
+      menu.innerHTML = html;
+      return menu;
+    }
+
+    // Drag-and-drop alongside the "Move to…" menu, never instead of it —
+    // dragging is faster once you know the board, but it's mouse-only and
+    // undiscoverable on first look, so the menu stays the real, keyboard-
+    // reachable path and drag is the shortcut layered on top of it.
+    var draggedCard = null;
+
+    function wireCardDrag(card) {
+      if (!card.querySelector('.lane-card__grip')) {
+        card.insertAdjacentHTML('afterbegin', '<span class="lane-card__grip" aria-hidden="true" title="Drag to a packer">⠿</span>');
+      }
+      card.draggable = true;
+      card.addEventListener('dragstart', function () {
+        draggedCard = card;
+        card.classList.add('lane-card--dragging');
+        closeAllMenus();
+      });
+      card.addEventListener('dragend', function () {
+        card.classList.remove('lane-card--dragging');
+        draggedCard = null;
+      });
+    }
+
+    // Dropping onto the packer's NAME is at least as natural a target as
+    // dropping into the (possibly empty, possibly scrolled-past) body below
+    // it — so the header is a real drop target too, both routed to the same
+    // move. `highlightEl` is what gets the visual drag-over cue; `dropTarget`
+    // is always the lane's actual row list, so a header-drop still lands the
+    // card in the right place regardless of which part of the lane caught it.
+    function wireDropzone(triggerEl, highlightEl, resolveBody) {
+      triggerEl.addEventListener('dragover', function (e) {
+        if (!draggedCard) return;
+        e.preventDefault();
+        highlightEl.classList.add('lane__body--drag-over');
+      });
+      triggerEl.addEventListener('dragleave', function () {
+        highlightEl.classList.remove('lane__body--drag-over');
+      });
+      triggerEl.addEventListener('drop', function (e) {
+        e.preventDefault();
+        highlightEl.classList.remove('lane__body--drag-over');
+        if (!draggedCard) return;
+        var body = resolveBody();
+        var fromLane = draggedCard.closest('.lane');
+        var toLane = body.closest('.lane');
+        if (fromLane === toLane) return;
+        body.appendChild(draggedCard);
+        updateLaneCount(fromLane);
+        updateLaneCount(toLane);
+        var destLabel = toLane.dataset.lane === 'unassigned' ? 'Unassigned' : toLane.dataset.packerName;
+        toast(draggedCard.dataset.parcel + ' moved to ' + destLabel);
+        draggedCard = null;
+      });
+    }
+    document.querySelectorAll('.lane').forEach(function (lane) {
+      var body = lane.querySelector('[data-body], #unassignedBody');
+      wireDropzone(body, body, function () { return body; });
+      var head = lane.querySelector('.lane__head');
+      wireDropzone(head, body, function () { return body; });
+    });
+
+    function wireCard(card) {
+      wireCardDrag(card);
+      var toggleBtn = card.querySelector('[data-move-toggle]');
+      var actions = card.querySelector('.lane-card__actions');
+      toggleBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var existing = actions.querySelector('.lane-card__menu');
+        if (existing) { existing.remove(); closeAllMenus(); return; }
+        closeAllMenus();
+        var currentLane = card.closest('.lane');
+        var currentName = currentLane.dataset.lane === 'unassigned' ? null : currentLane.dataset.packerName;
+        var menu = buildMoveMenu(card, currentName);
+        menu.setAttribute('data-open', 'true');
+        actions.appendChild(menu);
+        menu.querySelectorAll('button[data-target-lane]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var targetKey = btn.dataset.targetLane;
+            var targetLane = document.querySelector('.lane[data-lane="' + targetKey + '"]');
+            var targetBody = targetLane.querySelector('[data-body], #unassignedBody');
+            var fromLane = card.closest('.lane');
+            targetBody.appendChild(card);
+            menu.remove();
+            updateLaneCount(fromLane);
+            updateLaneCount(targetLane);
+            var destLabel = targetKey === 'unassigned' ? 'Unassigned' : targetLane.dataset.packerName;
+            toast(card.dataset.parcel + ' moved to ' + destLabel);
+          });
+        });
+      });
+
+      var holdBtn = card.querySelector('[data-hold-toggle]');
+      if (holdBtn) {
+        holdBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var existingForm = card.querySelector('.hold-form');
+          if (existingForm) { existingForm.remove(); return; }
+          var form = document.createElement('div');
+          form.className = 'hold-form';
+          var optionsHtml = HOLD_REASONS.map(function (r) { return '<option value="' + r[0] + '">' + r[1] + '</option>'; }).join('');
+          form.innerHTML =
+            '<label style="font-size:11px;color:var(--text-muted)">Reason</label>' +
+            '<select data-hold-reason>' + optionsHtml + '</select>' +
+            '<label style="font-size:11px;color:var(--text-muted)">Note (optional)</label>' +
+            '<textarea data-hold-note placeholder="Any context the next person should have…"></textarea>' +
+            '<div class="hold-form__row"><button class="btn btn--sm" type="button" data-hold-confirm>Confirm hold</button><button class="btn btn--ghost btn--sm" type="button" data-hold-cancel>Cancel</button></div>';
+          card.appendChild(form);
+          form.querySelector('[data-hold-cancel]').addEventListener('click', function () { form.remove(); });
+          form.querySelector('[data-hold-confirm]').addEventListener('click', function () {
+            var reasonKey = form.querySelector('[data-hold-reason]').value;
+            var reasonLabel = HOLD_REASONS.find(function (r) { return r[0] === reasonKey; })[1];
+            var note = form.querySelector('[data-hold-note]').value.trim();
+            var fromLane = card.closest('.lane');
+            card.remove();
+            updateLaneCount(fromLane);
+            toast(card.dataset.parcel + ' put on hold — ' + reasonLabel + (note ? ' ("' + note + '")' : ''));
+          });
+        });
+      }
+    }
+
+    function makeCard(item, isUnassigned) {
+      var card = document.createElement('div');
+      card.className = 'lane-card';
+      card.dataset.parcel = item.ref;
+      card.innerHTML =
+        '<div class="lane-card__top"><span class="lane-card__ref">' + item.ref + '</span>' + item.badge + '</div>' +
+        '<div class="lane-card__buyer">' + item.buyer + '</div>' +
+        '<div class="lane-card__meta">' + item.meta + '</div>' +
+        (isUnassigned ? '<label class="lane-card__pickable"><input type="checkbox" checked data-pickable /> Anyone can pick this up</label>' : '') +
+        '<div class="lane-card__actions"><button class="btn btn--secondary btn--sm" type="button" data-move-toggle>Assign to…</button>' +
+        (isUnassigned ? '<button class="btn btn--ghost btn--sm" type="button" data-hold-toggle>Hold</button>' : '') + '</div>';
+      wireCard(card);
+      if (isUnassigned) wirePickable(card);
+      return card;
+    }
+
+    // A parcel can be pulled out of the self-serve pool without being
+    // handed to a specific packer yet — e.g. a high-value or fragile order
+    // an operator wants to assign by hand rather than leave to whoever
+    // claims it first. Default ON, matching "every packer can claim
+    // anything" being today's real, unconditional behaviour — this is an
+    // opt-OUT per parcel, never a mode someone has to remember to enable.
+    function wirePickable(card) {
+      var checkbox = card.querySelector('[data-pickable]');
+      var label = card.querySelector('.lane-card__pickable');
+      checkbox.addEventListener('change', function () {
+        card.classList.toggle('lane-card--assignment-only', !checkbox.checked);
+        label.lastChild.textContent = checkbox.checked ? ' Anyone can pick this up' : ' Assignment only — hidden from self-serve';
+        toast(checkbox.checked
+          ? card.dataset.parcel + ' is back in every packer\'s self-serve queue'
+          : card.dataset.parcel + ' hidden from self-serve — only you can assign it now');
+      });
+    }
+
+    var unassignedBody = document.getElementById('unassignedBody');
+    unassignedItems.forEach(function (item) { unassignedBody.appendChild(makeCard(item, true)); });
+    updateLaneCount(document.querySelector('[data-lane="unassigned"]'));
+
+    // Existing static cards (already-assigned demo data) also get the menu.
+    document.querySelectorAll('.lane:not(.lane--unassigned) .lane-card').forEach(wireCard);
+    packerLanes().forEach(updateLaneCount);
+  })();
+</script>
