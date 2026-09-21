@@ -24,6 +24,7 @@ import type {
   ApplyFulfillmentWorkActionInput,
   FulfillmentWorkPageView,
   FulfillmentWorkView,
+  UpdateFulfillmentWorkAssignmentInput,
 } from '../types/fulfillment-work-view.types';
 
 export interface IFulfillmentWorklistService {
@@ -64,4 +65,16 @@ export interface IFulfillmentWorklistService {
    * @throws {FulfillmentWorkActionNotLegalError} the token matched but the action is not legal now.
    */
   applyAction(input: ApplyFulfillmentWorkActionInput): Promise<FulfillmentWorkView>;
+
+  /**
+   * A supervisor's staffing decision (#3337, ADR-074) — pre-assign, reassign
+   * or clear `assignedToUserId`, and/or set `selfServeEligible`. Deliberately
+   * NOT gated by `supportedActions` / `expectedVersion`: see
+   * `UpdateFulfillmentWorkAssignmentInput`'s docblock for why this sits
+   * outside the ADR-052 authority matrix `applyAction` enforces.
+   *
+   * @throws {FulfillmentWorkNotFoundError} no such work.
+   * @throws {EmptyFulfillmentWorkAssignmentUpdateError} neither field was supplied.
+   */
+  updateAssignment(input: UpdateFulfillmentWorkAssignmentInput): Promise<FulfillmentWorkView>;
 }

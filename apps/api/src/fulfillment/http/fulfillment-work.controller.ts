@@ -30,6 +30,7 @@ import {
   Inject,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
   Body,
@@ -43,6 +44,7 @@ import {
   getSchemaPath,
 } from '@nestjs/swagger';
 import {
+  EmptyFulfillmentWorkAssignmentUpdateError,
   FulfillmentHoldAlreadyReleasedError,
   FulfillmentHoldLimitExceededError,
   FulfillmentHoldNotFoundError,
@@ -73,6 +75,7 @@ import {
   FulfillmentWorkResponseDto,
 } from './dto/fulfillment-work-response.dto';
 import { ListFulfillmentWorksQueryDto } from './dto/list-fulfillment-works-query.dto';
+import { UpdateFulfillmentWorkAssignmentDto } from './dto/update-fulfillment-work-assignment.dto';
 
 @ApiBearerAuth()
 @ApiTags('fulfillment')
@@ -181,6 +184,35 @@ export class FulfillmentWorkController {
     }
   }
 
+  @Patch(':workId/assignment')
+  @Roles('admin', 'operator')
+  @ApiOperation({
+    summary: "A supervisor's staffing decision for one parcel",
+    description:
+      "Pre-assign, reassign or clear a packer, and/or set whether other packers may still " +
+      "work it. NOT gated by the optimistic token — ADR-074 places this outside the " +
+      "authority-matrix legality this surface's actions enforce.",
+  })
+  @ApiResponse({ status: 200, type: FulfillmentWorkResponseDto })
+  @ApiResponse({ status: 400, description: 'Neither field was supplied' })
+  @ApiResponse({ status: 404, description: 'No such fulfilment task' })
+  async updateAssignment(
+    @Param('workId') workId: string,
+    @Body() body: UpdateFulfillmentWorkAssignmentDto
+  ): Promise<FulfillmentWorkResponseDto> {
+    try {
+      return this.toDto(
+        await this.worklist.updateAssignment({
+          workId,
+          assignedToUserId: body.assignedToUserId,
+          selfServeEligible: body.selfServeEligible,
+        })
+      );
+    } catch (error) {
+      throw this.toHttp(error);
+    }
+  }
+
   /**
    * Map every domain error this surface can reach.
    *
@@ -223,7 +255,8 @@ export class FulfillmentWorkController {
     // action it does execute called without a field it needs.
     if (
       error instanceof UnsupportedFulfillmentWorkActionError ||
-      error instanceof MissingFulfillmentWorkActionFieldError
+      error instanceof MissingFulfillmentWorkActionFieldError ||
+      error instanceof EmptyFulfillmentWorkAssignmentUpdateError
     ) {
       return new BadRequestException(error.message);
     }
@@ -259,6 +292,8 @@ export class FulfillmentWorkController {
       locationId: view.locationId,
       deliveryMethod: view.deliveryMethod,
       assignedConnectionId: view.assignedConnectionId,
+      assignedToUserId: view.assignedToUserId,
+      selfServeEligible: view.selfServeEligible,
       status: view.status,
       requestStatus: view.requestStatus,
       assignmentAttempt: view.assignmentAttempt,

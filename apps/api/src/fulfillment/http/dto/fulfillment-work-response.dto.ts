@@ -50,6 +50,19 @@ export class FulfillmentWorkResponseDto {
   @ApiPropertyOptional({ nullable: true }) locationId!: string | null;
   @ApiPropertyOptional({ nullable: true }) deliveryMethod!: string | null;
   @ApiPropertyOptional({ nullable: true }) assignedConnectionId!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "A supervisor's advisory pre-assignment to a specific packer (#3337, ADR-074) — " +
+      'distinct from assignedConnectionId, the holder connection.',
+  })
+  assignedToUserId!: string | null;
+  @ApiProperty({
+    description:
+      'Whether a packer other than assignedToUserId may still work this parcel. true is the ' +
+      'advisory default.',
+  })
+  selfServeEligible!: boolean;
   @ApiProperty({ enum: FulfillmentWorkStatusValues }) status!: FulfillmentWorkStatus;
   @ApiProperty({ enum: FulfillmentRequestStatusValues }) requestStatus!: FulfillmentRequestStatus;
   @ApiProperty() assignmentAttempt!: number;

@@ -3,6 +3,7 @@
  *
  * @module libs/core/src/fulfillment/application/services
  */
+import { EmptyFulfillmentWorkAssignmentUpdateError } from '../../../domain/exceptions/empty-fulfillment-work-assignment-update.error';
 import { FulfillmentWorkActionNotLegalError } from '../../../domain/exceptions/fulfillment-work-action-not-legal.error';
 import { FulfillmentWorkNotFoundError } from '../../../domain/exceptions/fulfillment-work-not-found.error';
 import { FulfillmentWorkVersionConflictError } from '../../../domain/exceptions/fulfillment-work-version-conflict.error';
@@ -327,6 +328,98 @@ describe('FulfillmentWorklistService', () => {
         expect.objectContaining({ reason: 'operator_forced', expectedVersion: 7 })
       );
       expect(repo.transitionStatus).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('updateAssignment (#3337, ADR-074)', () => {
+    it('should refuse a patch naming neither field', async () => {
+      const service = makeService(makeRepo());
+
+      const error = await service
+        .updateAssignment({ workId: 'work-1' })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(EmptyFulfillmentWorkAssignmentUpdateError);
+    });
+
+    it('should assign a packer', async () => {
+      const repo = makeRepo({
+        assignToPacker: jest.fn().mockResolvedValue(true),
+      });
+
+      await makeService(repo).updateAssignment({ workId: 'work-1', assignedToUserId: 'user-9' });
+
+      expect(repo.assignToPacker).toHaveBeenCalledWith('work-1', 'user-9');
+    });
+
+    it('should clear an assignment on an explicit null, never on omission', async () => {
+      const repo = makeRepo({
+        clearAssignment: jest.fn().mockResolvedValue(true),
+        assignToPacker: jest.fn().mockResolvedValue(true),
+      });
+
+      await makeService(repo).updateAssignment({ workId: 'work-1', assignedToUserId: null });
+
+      expect(repo.clearAssignment).toHaveBeenCalledWith('work-1');
+      expect(repo.assignToPacker).not.toHaveBeenCalled();
+    });
+
+    it('should set self-serve eligibility independently of the assignment axis', async () => {
+      const assignToPacker = jest.fn().mockResolvedValue(true);
+      const repo = makeRepo({
+        setSelfServeEligible: jest.fn().mockResolvedValue(true),
+        assignToPacker,
+      });
+
+      await makeService(repo).updateAssignment({ workId: 'work-1', selfServeEligible: false });
+
+      expect(repo.setSelfServeEligible).toHaveBeenCalledWith('work-1', false);
+      expect(assignToPacker).not.toHaveBeenCalled();
+    });
+
+    it('should apply both axes in one call when both are supplied', async () => {
+      const repo = makeRepo({
+        assignToPacker: jest.fn().mockResolvedValue(true),
+        setSelfServeEligible: jest.fn().mockResolvedValue(true),
+      });
+
+      await makeService(repo).updateAssignment({
+        workId: 'work-1',
+        assignedToUserId: 'user-9',
+        selfServeEligible: false,
+      });
+
+      expect(repo.assignToPacker).toHaveBeenCalledWith('work-1', 'user-9');
+      expect(repo.setSelfServeEligible).toHaveBeenCalledWith('work-1', false);
+    });
+
+    it('should raise not-found when the work object is gone, regardless of which write "failed"', async () => {
+      const repo = makeRepo({
+        assignToPacker: jest.fn().mockResolvedValue(false),
+        findById: jest.fn().mockResolvedValue(null),
+      });
+
+      const error = await makeService(repo)
+        .updateAssignment({ workId: 'ghost', assignedToUserId: 'user-9' })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(FulfillmentWorkNotFoundError);
+    });
+
+    it('should return the fresh view, re-read after the write', async () => {
+      const repo = makeRepo({
+        assignToPacker: jest.fn().mockResolvedValue(true),
+        findById: jest
+          .fn()
+          .mockResolvedValue(workAt({ assignedToUserId: 'user-9', selfServeEligible: true })),
+      });
+
+      const view = await makeService(repo).updateAssignment({
+        workId: 'work-1',
+        assignedToUserId: 'user-9',
+      });
+
+      expect(view.assignedToUserId).toBe('user-9');
     });
   });
 });

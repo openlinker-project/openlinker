@@ -187,6 +187,7 @@ export { MissingFulfillmentWorkActionFieldError } from './domain/exceptions/miss
 export { FulfillmentWorkVersionConflictError } from './domain/exceptions/fulfillment-work-version-conflict.error';
 export { FulfillmentWorkVersionMismatchError } from './domain/exceptions/fulfillment-work-version-mismatch.error';
 export { UnsupportedFulfillmentWorkActionError } from './domain/exceptions/unsupported-fulfillment-work-action.error';
+export { EmptyFulfillmentWorkAssignmentUpdateError } from './domain/exceptions/empty-fulfillment-work-assignment-update.error';
 
 // Parcel verification at the pack bench (#2418). The SERVICE INTERFACE and its
 // vocabulary cross the barrel; `FulfillmentWorkRepositoryPort` still does not,

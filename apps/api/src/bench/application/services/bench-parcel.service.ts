@@ -134,6 +134,31 @@ export class BenchParcelService implements IBenchParcelService {
       };
     }
 
+    // ADR-074 (#3336/#3337): a packer excluded from a locked assignment may
+    // not RECORD progress on it, whatever the list or `getParcel` chose to
+    // show them. This is the actual server-side guarantee — a frontend
+    // affordance that hides the scan control is a convenience on top of this,
+    // never a substitute for it.
+    //
+    // Deliberately NOT folded into `refusalFor` / `BenchParcelRefusal`: that
+    // rule is VIEWER-INDEPENDENT (status, holds) and is shared with the list's
+    // colouring (story D2's "one rule, two callers"). Assignment eligibility
+    // depends on WHO is asking, which `getParcel(workId)` has no actor to
+    // answer for today — widening that read is #3341's rendering work, not
+    // this write-side guarantee.
+    if (
+      !work.selfServeEligible &&
+      work.assignedToUserId !== null &&
+      work.assignedToUserId !== input.verifiedByUserId
+    ) {
+      const state = await this.verification.getState(input.workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-packable',
+        parcel: await this.project(work, state),
+      };
+    }
+
     const result = await this.verification.verifyUnit({
       workId: input.workId,
       workLineId: input.workLineId,
