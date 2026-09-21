@@ -62,17 +62,39 @@ Updated per item as each phase lands — see the linked epic + child issues for 
 
 | Item | Status | PR / commit | Verified how |
 |---|---|---|---|
-| B1 | fixed | 006ed156d (TS) + bridge Sfera.cs/OrdersEndpoints.cs | type-check+unit tests green; E2E retest pending |
-| B2 | fixed | 0a55ad8c2 | type-check+unit tests green; E2E bridge-restart retest pending |
-| B3 | fixed | 006ed156d | type-check+unit tests green; E2E retest pending |
-| B4 | fixed | 3cb820b0d | live-reproduced bug, fix type-checks; new-connection E2E retest pending |
-| B5 | fixed | b51cdd186 (bridge Invoicing.cs/Program.cs + TS mapper) | GT's 9-value StatusKSeF now correctly splits not-yet-sent (1,2)/comms-error (8) into `'pending-submission'` instead of a premature `'submitted'`; type-check+unit tests green; E2E retest pending |
-| B6 | fixed | b51cdd186 | `KsefNumer` now extracted+threaded through issue/status bridge responses into `clearanceReference`; type-check+unit tests green; E2E retest pending |
-| B7 | fixed | bridge ProductsEndpoints.cs | code fix only; E2E barcode-read retest pending |
-| B8 | fixed | dad139a43 | all 5 doc files (README + setup-guide/tutorial/runbook/dev-windows-wsl-quick-setup-guide) rewritten Subiekt nexo→GT, terminology/env-vars/ports/architecture corrected; docs-only, no test impact |
-| B9 | fixed | 3cb820b0d | all "Subiekt nexo" strings + test assertion updated, web tests green |
-| B10 | fixed | 006ed156d | unit test added and green |
-| G2 | fixed | 6f2332fbd (bridge ProductsEndpoints.cs + TS `ProductTaxRateReader`) | live-confirmed VAT column `tw_IdVatSp`→`sl_StawkaVAT`; type-check+unit tests green; Net Sales retest pending |
-| G3 | fixed | this commit — `SubiektAuthFailureClassifierAdapter` + `subiekt.bridge.reachabilitySweep` job/handler/scheduler task | no external alert channel exists in the product (none built, by design — see epic body); reachability now produces a structured `subiekt_bridge_reachability_sweep_failed` log line every 5 min + flips the connection via the auth-failure classifier on a 401/403; type-check+unit tests green (worker: 58 suites/765 tests; subiekt: 21 suites/278 tests); deliberate-outage E2E retest pending |
-| G6 | fixed | c4b7a622e | root-caused: native `SubiektOrderSourceAdapter` reported `productRef.type:'sku'` but `ProductMaster` sync only ever creates `CORE_ENTITY_TYPE.Product` mappings keyed by symbol — corrected to `'product'`; type-check+unit tests green; E2E retest pending |
+| B1 | verified | 006ed156d (TS) + bridge Sfera.cs/OrdersEndpoints.cs | live: order 1's ZK 24/2026 read back from bridge `wartoscBrutto: 35.94` = 24.99 + 10.95 shipping as a 2nd symbol-less line; order 2 total PLN 485.76 = 474.81 + 10.95 |
+| B2 | verified | 0a55ad8c2 | live: killed the real bridge process mid-sync; in-flight job survived 5× ECONNREFUSED (30s/60s/120s/240s backoff) and succeeded once the bridge came back — see report §4 |
+| B3 | verified (unit only) | 006ed156d | `write()` implemented + unit-tested against every `OrderLifecycleEvent` arm; no live status-transition exercised this session |
+| B4 | verified | 3cb820b0d | live: fresh wizard-created Subiekt connection detail page shows 5 of 6 roles enabled, Invoicing checked |
+| B5 | verified | b51cdd186 (bridge Invoicing.cs/Program.cs + TS mapper) | live: order 2's invoice reads `regulatoryStatus: pending-submission`, rendered in UI as "Awaiting submission" — not the old premature "submitted" |
+| B6 | verified | b51cdd186 | live: order 2's invoice `providerInvoiceNumber: FS 20/2026` correctly populated; `clearanceReference` still empty (correct — GT hasn't transmitted to KSeF yet) |
+| B7 | verified | bridge ProductsEndpoints.cs | live: direct bridge query — `BANAW200 → 5901024250844`, `DZFOREVER → 5901124350468`, real EAN-13s matching original audit evidence |
+| B8 | verified | dad139a43 | all 5 doc files rewritten Subiekt nexo→GT; docs-only |
+| B9 | verified | 3cb820b0d | live: connections list shows "Subiekt GT (DEMO) - Invoicing"; new-connection wizard card shows "Subiekt GT" / "…classic COM automation (Sfera GT)…" — both screenshotted (web container required a separate rebuild, initially missed) |
+| B10 | verified (unit only) | 006ed156d | unit test added and green; no live call attempted (no production caller exists) |
+| G2 | verified | 6f2332fbd (bridge ProductsEndpoints.cs + TS `ProductTaxRateReader`) | live: both real orders' lines carry `taxRate: "23", taxSource: "shop"` at ingestion, rendered in Pricing & tax as "23% · from the shop · read today" |
+| G3 | verified | `SubiektAuthFailureClassifierAdapter` + `subiekt.bridge.reachabilitySweep` job/handler/scheduler task | live: killed the bridge; sweep logged `subiekt_bridge_reachability_sweep_failed connection=… reason="Subiekt bridge is unreachable (ECONNREFUSED)"` on its next 5-min tick |
+| G6 | verified | c4b7a622e | fix confirmed via unit test + code read; no native Subiekt-sourced order was available to exercise live this session (only Allegro→Subiekt fan-out orders existed) |
 | G7 | fixed | DB cleanup (raw SQL) | orphaned reporting_currency_setting row + throwaway audit connection deleted |
+
+### E2E retest summary (2026-09-21, Phase 13)
+
+Two real Allegro sandbox orders placed by a human, ingested and fanned out to the rebuilt
+`ol-demo-fresh` stack (api + worker + web all rebuilt onto this branch's tip). Full evidence,
+screenshots and logs: [Subiekt GT Verification report](https://claude.ai/artifact/JFr33nayQTVBAR36Jyv3rV).
+
+Bonus checks, both confirmed correct:
+- **ADR-041 guard**: attempting to issue an invoice via inFakt on an order already invoiced via
+  Subiekt → `409 OrderAlreadyInvoicedException`.
+- **in-doubt retry refusal**: `POST /invoices/retry` on order 1's in-doubt invoice (raced by the
+  deliberate B2 outage test) → `"Not retry-eligible (status=failed, failureMode=in-doubt)"`,
+  exactly the fiscal-safety behaviour the architecture describes.
+
+**One new finding, not in the original audit** (see report §7): Subiekt's NIP-whitelist
+verification path (`kh_WeryfikacjaWykazPodatnikowVAT`) appears to exceed the bridge's 30s client
+timeout for a B2B buyer, and contractor creation is not idempotent under that timeout — five
+consecutive retries for order 2's Subiekt ZK all failed with `ABORT`, while direct SQL showed a
+NEW contractor record created each time (`NORBERTKULUS(1)/(2)/(3)`) with no duplicate ZK ever
+committed. Order 2's invoice succeeded independently (proving B5/B6), so this did not block
+verification of any audited item — it's a real, separate defect worth its own follow-up issue,
+not folded into this PR.
