@@ -46,6 +46,12 @@ const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 const BACKEND_TYPES = 'libs/integrations/eparagony/src/domain/types/eparagony-config.types.ts';
 const BACKEND_ADAPTER =
   'libs/integrations/eparagony/src/infrastructure/adapters/eparagony-fiscalization.adapter.ts';
+// The poll-timeout MIN/MAX clamp bounds moved out of the adapter and into this
+// shared reader when the fiscalization and invoicing lanes both grew a caller
+// (main's #3304-adjacent refactor) - they are the same safety bound for both
+// lanes, unlike DEFAULT_STATUS_POLL_TIMEOUT_MS, which stays per-adapter.
+const BACKEND_STATUS_READER =
+  'libs/integrations/eparagony/src/infrastructure/http/eparagony-document-status.reader.ts';
 // OPTIONAL: the invoicing lane (#3192) may not exist on this branch yet. Read
 // only if present - a missing file is "not yet applicable", never a failure -
 // so this guard degrades gracefully before that lane lands and starts
@@ -179,11 +185,12 @@ async function readFileIfExists(path) {
 }
 
 async function run() {
-  const [types, adapter, mapper, taxEnforcement, frontend, frontendCopy, frontendWizard] =
+  const [types, adapter, statusReader, mapper, taxEnforcement, frontend, frontendCopy, frontendWizard] =
     await Promise.all(
       [
         BACKEND_TYPES,
         BACKEND_ADAPTER,
+        BACKEND_STATUS_READER,
         BACKEND_MAPPER,
         CORE_TAX_ENFORCEMENT,
         FRONTEND,
@@ -206,12 +213,12 @@ async function run() {
     ),
     diffNumbers(
       'Poll timeout minimum',
-      parseNumericConst(adapter, 'MIN_STATUS_POLL_TIMEOUT_MS'),
+      parseNumericConst(statusReader, 'MIN_STATUS_POLL_TIMEOUT_MS'),
       parseNumericConst(frontend, 'EPARAGONY_POLL_TIMEOUT_MIN_MS')
     ),
     diffNumbers(
       'Poll timeout maximum',
-      parseNumericConst(adapter, 'MAX_STATUS_POLL_TIMEOUT_MS'),
+      parseNumericConst(statusReader, 'MAX_STATUS_POLL_TIMEOUT_MS'),
       parseNumericConst(frontend, 'EPARAGONY_POLL_TIMEOUT_MAX_MS')
     ),
     diffNumbers(
@@ -252,6 +259,7 @@ async function run() {
     for (const failure of failures) console.error(`  ${failure}\n`);
     console.error(`  backend : ${BACKEND_TYPES}`);
     console.error(`            ${BACKEND_ADAPTER}`);
+    console.error(`            ${BACKEND_STATUS_READER}`);
     if (invoicingAdapter !== null) console.error(`            ${BACKEND_INVOICING_ADAPTER}`);
     console.error(`            ${BACKEND_MAPPER}`);
     console.error(`            ${CORE_TAX_ENFORCEMENT}`);
