@@ -42,13 +42,13 @@ function renderPalette(user?: SessionUser) {
   );
 }
 
-function userWithRole(role: string): SessionUser {
+function userWithRole(role: string, permissions: SessionUser['permissions'] = []): SessionUser {
   return {
     id: 'user_role_fixture',
     username: role,
     email: role + '@example.com',
     role,
-    permissions: [],
+    permissions,
   };
 }
 
@@ -222,7 +222,7 @@ describe('CommandPaletteProvider', () => {
     });
   });
 
-  describe('role-gated nav items (#3108)', () => {
+  describe('role- and permission-gated nav items (#3108/#3439)', () => {
     // `SessionProvider` starts at the anonymous session and resolves the real
     // one asynchronously (`isReady` starts `false`) — nav items gated on
     // `session.user?.role` are therefore absent on the very first render
@@ -234,23 +234,53 @@ describe('CommandPaletteProvider', () => {
     // this file already uses) to know the whole provider has settled before
     // asserting an absence — otherwise "not found yet" and "correctly
     // excluded" are indistinguishable.
-    it('shows "Pack bench" for a packer session', async () => {
-      renderPalette(userWithRole('packer'));
+    it('shows "Pack bench" for a packer session holding bench:write', async () => {
+      renderPalette(userWithRole('packer', ['bench:write']));
       fireEvent.keyDown(document, { key: 'k', metaKey: true });
       expect(await screen.findByText('Pack bench')).toBeInTheDocument();
     });
 
-    it('shows "Pack bench" for an operator session', async () => {
-      renderPalette(userWithRole('operator'));
+    it('shows "Pack bench" for an operator session holding bench:write', async () => {
+      renderPalette(userWithRole('operator', ['bench:write']));
       fireEvent.keyDown(document, { key: 'k', metaKey: true });
       expect(await screen.findByText('Pack bench')).toBeInTheDocument();
     });
 
-    it('does not show "Pack bench" for a viewer session — the bench API refuses that role', async () => {
+    it('does not show "Pack bench" for a viewer session — viewer never holds bench:write', async () => {
       renderPalette(userWithRole('viewer'));
       fireEvent.keyDown(document, { key: 'k', metaKey: true });
       await screen.findByText(sampleConnection.name);
       expect(screen.queryByText('Pack bench')).toBeNull();
+    });
+  });
+
+  // #3221 — the same item-level `requiresRole` gate #3108 built for
+  // "Pack bench" is applied to the five Operations entries whose primary API
+  // read excludes `packer` (Analytics, Insights, Orders, Customers, Sales
+  // documents). Both the sidebar (`nav-registry.test.ts`) and ⌘K read the
+  // shared `isNavItemVisible`, but ⌘K used to have no role check at all — the
+  // issue names this as the "documented bypass" a sidebar-only test would
+  // leave open, so it is asserted here too.
+  describe('packer role-gated Operations entries (#3221)', () => {
+    it('does not show a role-gated entry for a packer session', async () => {
+      // `bench:write` matches a real packer session (`ROLE_PERMISSIONS.packer`)
+      // and is what makes "Pack bench" a reliable settle-signal here — without
+      // it, the item would also be hidden, for the unrelated reason that its
+      // own permission gate (#3439) never received one.
+      renderPalette(userWithRole('packer', ['bench:write']));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      // A visible, non-gated item confirms the whole provider has settled
+      // (see the #3108 note above) before asserting the gated one's absence.
+      await screen.findByText('Pack bench');
+      expect(screen.queryByText('Orders')).toBeNull();
+      expect(screen.queryByText('Sales documents')).toBeNull();
+    });
+
+    it('shows the role-gated entries for an operator session', async () => {
+      renderPalette(userWithRole('operator'));
+      fireEvent.keyDown(document, { key: 'k', metaKey: true });
+      expect(await screen.findByText('Orders')).toBeInTheDocument();
+      expect(screen.getByText('Sales documents')).toBeInTheDocument();
     });
   });
 });

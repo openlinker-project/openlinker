@@ -68,7 +68,7 @@ describe('buildNavGroups', () => {
 
   describe('per-item requiresRole gate (#3076)', () => {
     const diagnosticsItems = (isAdmin: boolean): string[] => {
-      const groups = buildNavGroups({ isAdmin, demoMode: false });
+      const groups = buildNavGroups({ isAdmin, demoMode: false, role: isAdmin ? 'admin' : 'operator' });
       const diagnostics = byLabel(groups, 'Diagnostics');
       if (diagnostics?.kind !== 'live') throw new Error('expected a live Diagnostics group');
       return diagnostics.items.map((i) => i.label);
@@ -126,31 +126,125 @@ describe('buildNavGroups', () => {
     });
   });
 
-  // #3108 — "Pack bench" is visible to every role the bench API itself
-  // accepts (`@Roles('admin', 'operator', 'packer')`) and hidden from any
-  // other role (today, only `viewer`).
-  describe('"Pack bench" item-level role gate (#3108)', () => {
-    it.each(['admin', 'operator', 'packer'])('is visible to a %s session', (role) => {
-      const groups = buildNavGroups({ isAdmin: role === 'admin', demoMode: false, role });
+  // #3439/#3204 review — "Pack bench" is visible to every role the bench
+  // API itself accepts (`@Roles('admin', 'operator', 'packer')`) and hidden
+  // from any other role (today, only `viewer`). Gated on `bench:write`
+  // (held by exactly those three roles, guarded against the bench
+  // controllers' own `@Roles` lists by `check-bench-write-roles.mjs`) rather
+  // than an item-level `requiresRole` array — a `Permission` gate is
+  // preferred whenever one exists, and #3439 minted this one for exactly
+  // this purpose.
+  describe('"Pack bench" permission gate (#3439)', () => {
+    it.each(['admin', 'operator', 'packer'])('is visible to a %s session holding bench:write', (role) => {
+      const groups = buildNavGroups({
+        isAdmin: role === 'admin',
+        demoMode: false,
+        role,
+        permissions: ['bench:write'],
+      });
       expect(itemLabels(byLabel(groups, 'Operations'))).toContain('Pack bench');
     });
 
-    it('is hidden from a viewer session', () => {
-      const groups = buildNavGroups({ isAdmin: false, demoMode: false, role: 'viewer' });
+    it('is hidden from a viewer session, which holds no bench:write', () => {
+      const groups = buildNavGroups({ isAdmin: false, demoMode: false, role: 'viewer', permissions: [] });
       expect(itemLabels(byLabel(groups, 'Operations'))).not.toContain('Pack bench');
     });
 
-    it('is hidden when no role is known yet (session not resolved)', () => {
+    it('is hidden when no permissions are known yet (session not resolved)', () => {
       const groups = buildNavGroups({ isAdmin: false, demoMode: false });
       expect(itemLabels(byLabel(groups, 'Operations'))).not.toContain('Pack bench');
     });
 
-    it('does not drop its sibling items in the same group for a role-gated absence', () => {
-      const groups = buildNavGroups({ isAdmin: false, demoMode: false, role: 'viewer' });
+    it('does not drop its sibling items in the same group for a permission-gated absence', () => {
+      const groups = buildNavGroups({ isAdmin: false, demoMode: false, role: 'viewer', permissions: [] });
       const labels = itemLabels(byLabel(groups, 'Operations'));
       expect(labels).toContain('Orders');
       expect(labels).toContain('Analytics');
     });
+  });
+
+  // #3221 — a packer sees Operations nav entries whose primary API read
+  // 403s. Five entries (Analytics, Insights, Orders, Customers, Sales
+  // documents) had their reads gated `@Roles('admin', 'operator', 'viewer')`
+  // and no item-level `requiresRole` to hide the affordance; the item-level
+  // gate #3108 built for "Pack bench" is applied to those five here.
+  // `Fulfilment` 403s a packer too, but stays gated on its own pre-existing
+  // `requiresPermission: 'orders:write'` (#3340/#3368), which already
+  // excludes `packer` as a side effect — no `requiresRole` was needed there.
+  describe('packer role-gated Operations entries (#3221)', () => {
+    // Named explicitly rather than as a count, per the issue's own
+    // acceptance criterion — a count would still pass if the WRONG five
+    // items were visible.
+    const PACKER_VISIBLE_OPERATIONS_ITEMS = [
+      'Products',
+      'Listings',
+      'Shipments',
+      'Returns',
+      'Pack bench',
+    ];
+    const PACKER_HIDDEN_OPERATIONS_ITEMS = [
+      'Analytics',
+      'Insights',
+      'Orders',
+      'Customers',
+      // Hidden via its pre-existing `requiresPermission: 'orders:write'`
+      // gate (#3340/#3368), not a #3221 `requiresRole` addition.
+      'Fulfilment',
+      'Sales documents',
+      // Already hidden pre-#3221 via the permission gate (#2358 review I5) —
+      // included here so this test is a complete inventory of the group.
+      'Automations',
+    ];
+
+    it('sees exactly the unblocked Operations entries', () => {
+      // `permissions: ['bench:write']` matches a real packer session
+      // (`ROLE_PERMISSIONS.packer`) — without it "Pack bench" would also be
+      // hidden, for the unrelated reason that its permission gate (#3439)
+      // never received one.
+      const groups = buildNavGroups({
+        isAdmin: false,
+        demoMode: false,
+        role: 'packer',
+        permissions: ['bench:write'],
+      });
+      const labels = itemLabels(byLabel(groups, 'Operations'));
+
+      for (const label of PACKER_VISIBLE_OPERATIONS_ITEMS) {
+        expect(labels).toContain(label);
+      }
+      for (const label of PACKER_HIDDEN_OPERATIONS_ITEMS) {
+        expect(labels).not.toContain(label);
+      }
+    });
+
+    // Every one of the five newly `requiresRole`-gated items admits
+    // `admin`/`operator`/`viewer` — no item is hidden from a role that could
+    // already open it, the acceptance criterion's own wording. `Fulfilment`
+    // is deliberately excluded here: it is gated by permission, not role, and
+    // `viewer` does not hold `orders:write` — asserting it visible to viewer
+    // would fail against pre-existing, unrelated-to-#3221 behaviour.
+    it.each(['Analytics', 'Insights', 'Orders', 'Customers', 'Sales documents'])(
+      '%s is visible to admin, operator, and viewer',
+      (label) => {
+        for (const role of ['admin', 'operator', 'viewer']) {
+          const groups = buildNavGroups({ isAdmin: role === 'admin', demoMode: false, role });
+          expect(itemLabels(byLabel(groups, 'Operations'))).toContain(label);
+        }
+      },
+    );
+
+    // The pre-existing items (never role-gated by #3221) are unaffected —
+    // pinned separately from the "visible to packer" set above, which
+    // already asserts them, so a regression there fails at the right test.
+    it.each(['Products', 'Listings', 'Shipments', 'Returns'])(
+      '%s is unaffected — still visible to every authenticated role',
+      (label) => {
+        for (const role of ['admin', 'operator', 'viewer', 'packer']) {
+          const groups = buildNavGroups({ isAdmin: role === 'admin', demoMode: false, role });
+          expect(itemLabels(byLabel(groups, 'Operations'))).toContain(label);
+        }
+      },
+    );
   });
 
   // #3108 review — the visibility RULE was shared but its INPUT was spelled

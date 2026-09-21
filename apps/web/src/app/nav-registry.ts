@@ -32,11 +32,21 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
     kind: 'live',
     label: 'Operations',
     items: [
-      { to: '/', label: 'Analytics', end: true },
-      { to: '/insights', label: 'Insights' },
-      { to: '/orders', label: 'Orders', countKey: 'orders' },
+      // Role-gated (#3221): the primary read (`GET /analytics/sales` et al.)
+      // is `@Roles('admin', 'operator', 'viewer')` on every analytics
+      // controller — a `packer` (empty `ROLE_PERMISSIONS` grant, #2413) 403s
+      // on the first request the page makes.
+      { to: '/', label: 'Analytics', end: true, requiresRole: ['admin', 'operator', 'viewer'] },
+      // Role-gated (#3221): its first read, `GET /connections`, is
+      // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
+      { to: '/insights', label: 'Insights', requiresRole: ['admin', 'operator', 'viewer'] },
+      // Role-gated (#3221): `GET /orders` is
+      // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
+      { to: '/orders', label: 'Orders', countKey: 'orders', requiresRole: ['admin', 'operator', 'viewer'] },
       { to: '/products', label: 'Products' },
-      { to: '/customers', label: 'Customers', countKey: 'customers' },
+      // Role-gated (#3221): `GET /customers` is
+      // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
+      { to: '/customers', label: 'Customers', countKey: 'customers', requiresRole: ['admin', 'operator', 'viewer'] },
       { to: '/listings', label: 'Listings', countKey: 'listings' },
       { to: '/shipments', label: 'Shipments' },
       // ONE entry, since the staffing board and the worklist merged into one
@@ -48,8 +58,9 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // `orders:write` is a deliberate PROXY for that role set, correct only
       // because `ROLE_PERMISSIONS` grants it to exactly admin + operator
       // today. There is no `fulfillment:*` permission a reader could go
-      // looking for instead. A `viewer` shown this entry would 403 on the
-      // first request the screen makes.
+      // looking for instead. This ALSO excludes `packer` (#3221) as a side
+      // effect — `bench:write` is a packer's only permission, so a `packer`
+      // 403s here exactly like a `viewer` does.
       { to: '/fulfillment', label: 'Fulfilment', requiresPermission: 'orders:write' },
       // The bench itself (#2413) had no way in but a typed URL. A packer still
       // reaches it that way — they get no sidebar at all, since `/bench` renders
@@ -75,7 +86,13 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // entry gets a 403 on the first request the page makes. `automations:read`
       // is held by exactly admin + operator in `ROLE_PERMISSIONS`.
       { to: '/automations', label: 'Automations', requiresPermission: 'automations:read' },
-      { to: '/sales-documents', label: 'Sales documents' },
+      // Role-gated (#3221): its primary read, `GET /invoices`
+      // (`InvoicingController`), is `@Roles('admin', 'operator', 'viewer')` —
+      // same 403 for `packer`. Every other read on the page carries the same
+      // guard, so this is not a partial fix. Renamed from "Invoices" to
+      // "Sales documents" (invoicing/fiscalization routing); the gate
+      // carries over unchanged.
+      { to: '/sales-documents', label: 'Sales documents', requiresRole: ['admin', 'operator', 'viewer'] },
     ],
   },
   {
