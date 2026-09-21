@@ -207,7 +207,8 @@ export class WooCommerceProductMasterAdapter
         }
         throw err;
       }
-      return { ...this.mapper.mapProduct(p), id: productId };
+      const mapped = await this.withStoreCurrency(this.mapper.mapProduct(p));
+      return { ...mapped, id: productId };
     } catch (error) {
       // Translate the platform not-found (missing mapping OR a 404, i.e. deleted
       // at the master) into the neutral core error so core services can
@@ -240,6 +241,11 @@ export class WooCommerceProductMasterAdapter
       })),
     );
 
+    // Resolved once for the whole page rather than per row — the store has
+    // exactly one currency, and readStoreCurrency() is cache-cheap after the
+    // first call regardless.
+    const currency = await this.readStoreCurrency();
+
     return validProducts
       .map((p) => {
         const internalId = idMap.get(`${String(p.id)}:${this.connection.id}`);
@@ -247,7 +253,8 @@ export class WooCommerceProductMasterAdapter
           this.logger.warn(`No internal ID for WC product ${String(p.id)}`);
           return null;
         }
-        return { ...this.mapper.mapProduct(p), id: internalId };
+        const mapped = this.mapper.mapProduct(p);
+        return { ...mapped, currency: currency ?? mapped.currency, id: internalId };
       })
       .filter((p): p is Product => p !== null);
   }
@@ -447,7 +454,8 @@ export class WooCommerceProductMasterAdapter
       String(raw.id),
       this.connection.id,
     );
-    return { ...this.mapper.mapProduct(raw), id: internalId };
+    const mapped = await this.withStoreCurrency(this.mapper.mapProduct(raw));
+    return { ...mapped, id: internalId };
   }
 
   async updateProduct(productId: string, product: ProductUpdate): Promise<Product> {
@@ -490,7 +498,8 @@ export class WooCommerceProductMasterAdapter
       }
       throw err;
     }
-    return { ...this.mapper.mapProduct(raw), id: productId };
+    const mapped = await this.withStoreCurrency(this.mapper.mapProduct(raw));
+    return { ...mapped, id: productId };
   }
 
   async deleteProduct(productId: string): Promise<void> {
@@ -902,13 +911,70 @@ export class WooCommerceProductMasterAdapter
    */
   private async readStoreCountry(): Promise<string | null> {
     if (this.storeCountry !== undefined) return this.storeCountry;
-    const settings = await this.httpClient.get<WooCommerceGeneralSetting[]>(
-      '/wp-json/wc/v3/settings/general'
-    );
-    const raw = settings?.find((s) => s.id === 'woocommerce_default_country')?.value;
+    const settings = await this.readGeneralSettings();
+    const raw = settings.find((s) => s.id === 'woocommerce_default_country')?.value;
     const value = Array.isArray(raw) ? raw[0] : raw;
     this.storeCountry = value ? (value.split(':')[0]?.toUpperCase() ?? null) : null;
     return this.storeCountry;
+  }
+
+  /**
+   * The store's own selling currency, from `woocommerce_currency` (#3310).
+   *
+   * WooCommerce reports no currency on the product resource itself, and the
+   * mapper's `WooCommerceProductMapperOptions.currency` construction option is
+   * never populated in production — the mapper is built in the plugin factory
+   * before any HTTP call can run, so the value has to be resolved here and
+   * stamped onto the mapped product afterwards (`withStoreCurrency`) rather
+   * than threaded through the mapper's constructor.
+   *
+   * Shares `readGeneralSettings()`'s cache with `readStoreCountry()`, so a read
+   * that needs both never fetches `/settings/general` twice.
+   *
+   * Follows `readStoreCountry`'s two rules verbatim: **a transport failure
+   * throws** (never recorded as "the store declares no currency"), and **only
+   * a successful read is cached** (a failure must not pin a false `null` for
+   * the adapter's lifetime). `null` means the store answered and genuinely
+   * declares none — callers must keep producing the existing
+   * `REQUIRED` / `price.currency` refusal for that case, never a defaulted or
+   * guessed code.
+   */
+  private async readStoreCurrency(): Promise<string | null> {
+    if (this.storeCurrency !== undefined) return this.storeCurrency;
+    const settings = await this.readGeneralSettings();
+    const raw = settings.find((s) => s.id === 'woocommerce_currency')?.value;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    this.storeCurrency = value ? value.toUpperCase() : null;
+    return this.storeCurrency;
+  }
+
+  /**
+   * Overlays the store's resolved currency onto a mapped product, when there
+   * is one to overlay. Leaves the mapper's own output untouched otherwise, so
+   * a store that declares no currency keeps `Product.currency: null` and the
+   * builders' existing `REQUIRED` / `price.currency` refusal.
+   */
+  private async withStoreCurrency(product: Omit<Product, 'id'>): Promise<Omit<Product, 'id'>> {
+    const currency = await this.readStoreCurrency();
+    return currency ? { ...product, currency } : product;
+  }
+
+  /**
+   * Fetches `GET /wp-json/wc/v3/settings/general` once per adapter instance
+   * and caches the raw row list, so `readStoreCountry()` and
+   * `readStoreCurrency()` — which read different rows of the same response —
+   * never issue two requests for one product read (#3310 AC).
+   *
+   * Only a successful read is cached; a transport failure propagates and the
+   * next caller retries the fetch.
+   */
+  private async readGeneralSettings(): Promise<WooCommerceGeneralSetting[]> {
+    if (this.generalSettings !== undefined) return this.generalSettings;
+    const settings = await this.httpClient.get<WooCommerceGeneralSetting[]>(
+      '/wp-json/wc/v3/settings/general',
+    );
+    this.generalSettings = settings ?? [];
+    return this.generalSettings;
   }
 
   /**
@@ -931,6 +997,8 @@ export class WooCommerceProductMasterAdapter
   }
 
   private storeCountry: string | null | undefined;
+  private storeCurrency: string | null | undefined;
+  private generalSettings: WooCommerceGeneralSetting[] | undefined;
 
   /**
    * Refuse a requested page size WooCommerce will not honour.
