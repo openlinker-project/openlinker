@@ -59,4 +59,32 @@ describe('buildNavGroups', () => {
       expect(byLabel(groups, 'Operations')?.kind).toBe('live');
     });
   });
+
+  describe('per-item requiresRole gate (#3076)', () => {
+    const diagnosticsItems = (isAdmin: boolean): string[] => {
+      const groups = buildNavGroups({ isAdmin, demoMode: false });
+      const diagnostics = byLabel(groups, 'Diagnostics');
+      if (diagnostics?.kind !== 'live') throw new Error('expected a live Diagnostics group');
+      return diagnostics.items.map((i) => i.label);
+    };
+
+    it('hides "Duplicate stock positions" for a non-admin', () => {
+      expect(diagnosticsItems(false)).not.toContain('Duplicate stock positions');
+    });
+
+    it('shows "Duplicate stock positions" for an admin, alongside its siblings', () => {
+      const items = diagnosticsItems(true);
+      expect(items).toContain('Duplicate stock positions');
+      expect(items).toContain('Jobs & Logs');
+      expect(items).toContain('Webhooks');
+      expect(items).toContain('Cursors');
+    });
+
+    it('never drops the sibling items for a non-admin', () => {
+      const items = diagnosticsItems(false);
+      expect(items).toContain('Jobs & Logs');
+      expect(items).toContain('Webhooks');
+      expect(items).toContain('Cursors');
+    });
+  });
 });
