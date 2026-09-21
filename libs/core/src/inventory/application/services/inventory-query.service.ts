@@ -19,17 +19,29 @@ import {
   PRODUCTS_SERVICE_TOKEN,
 } from '@openlinker/core/products';
 import type { Product } from '@openlinker/core/products';
-import { AVAILABILITY_SERVICE_TOKEN, INVENTORY_REPOSITORY_TOKEN } from '../../inventory.tokens';
+import {
+  ConnectionNotFoundException,
+  ConnectionPort,
+  CONNECTION_PORT_TOKEN,
+} from '@openlinker/core/identifier-mapping';
+import {
+  AVAILABILITY_SERVICE_TOKEN,
+  INVENTORY_REPOSITORY_TOKEN,
+  LOCATION_SERVICE_TOKEN,
+} from '../../inventory.tokens';
 import { IAvailabilityService } from './availability.service.interface';
+import { ILocationService } from './location.service.interface';
 import { InventoryRepositoryPort } from '../../domain/ports/inventory-repository.port';
 import type { InventoryItem } from '../../domain/entities/inventory-item.entity';
-import type {
-  InventoryFilters,
-  InventoryPagination,
-  VariantAvailability,
-  VariantStockRow,
-  ProductStockAggregate,
-  DuplicatePositionReport,
+import {
+  LEGACY_SOURCE_CONNECTION_ID,
+  type InventoryFilters,
+  type InventoryPagination,
+  type VariantAvailability,
+  type VariantStockRow,
+  type ProductStockAggregate,
+  type DuplicatePositionGroup,
+  type DuplicatePositionReport,
 } from '../../domain/types/inventory.types';
 import type {
   InventoryItemView,
@@ -55,6 +67,31 @@ export const MAX_DUPLICATE_POSITION_GROUPS = 500;
 /** Default duplicate-position group detail cap when the caller names none. */
 export const DEFAULT_DUPLICATE_POSITION_GROUPS = 100;
 
+/**
+ * In-flight ceiling for the location/connection display-name fan-out (#3249
+ * review). Distinct locations/connections are not bounded below group count
+ * — `MAX_DUPLICATE_POSITION_GROUPS` allows 500 groups at 500 distinct
+ * locations — so the id-set size alone is not a structural bound. Mirrors
+ * the declared, clamped-ceiling shape ADR-047/#2229 established
+ * (`resolveBatchConcurrency`) rather than relying on realistic cardinality.
+ */
+const DUPLICATE_POSITION_NAME_LOOKUP_CONCURRENCY = 10;
+
+/**
+ * Runs `worker` over `items` in fixed-size waves capped at `concurrency` —
+ * the next wave starts only once the previous one fully settles.
+ */
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>
+): Promise<void> {
+  const cap = Math.max(1, concurrency);
+  for (let i = 0; i < items.length; i += cap) {
+    await Promise.all(items.slice(i, i + cap).map(worker));
+  }
+}
+
 @Injectable()
 export class InventoryQueryService implements IInventoryQueryService {
   constructor(
@@ -63,7 +100,11 @@ export class InventoryQueryService implements IInventoryQueryService {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly productsService: IProductsService,
     @Inject(AVAILABILITY_SERVICE_TOKEN)
-    private readonly availabilityService: IAvailabilityService
+    private readonly availabilityService: IAvailabilityService,
+    @Inject(LOCATION_SERVICE_TOKEN)
+    private readonly locationService: ILocationService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connectionPort: ConnectionPort
   ) {}
 
   async listInventoryItems(
@@ -161,7 +202,97 @@ export class InventoryQueryService implements IInventoryQueryService {
         `getDuplicatePositionReport accepts at most ${String(MAX_DUPLICATE_POSITION_GROUPS)} groups per call (got ${String(maxGroups)})`
       );
     }
-    return this.inventoryRepository.findDuplicatePositions(maxGroups);
+    const report = await this.inventoryRepository.findDuplicatePositions(maxGroups);
+    if (report.groups.length === 0) return report;
+    return { ...report, groups: await this.enrichDuplicatePositionGroups(report.groups) };
+  }
+
+  /**
+   * Resolves display names for a duplicate-position report's groups (#3239).
+   *
+   * Batched across the UNIQUE ids in the whole `groups[]` array, never per
+   * group — the same shape `buildProductMap` already uses for the composed
+   * inventory-item view, and the `getEarliestOrderDateByConnection` (#2083)
+   * precedent for a single batched read ahead of any per-row loop.
+   *
+   * `locationId`/`sourceConnectionId` have no batched-by-id read on their own
+   * services today (`ILocationService.getLocation` and `ConnectionPort.get`
+   * are both single-id), so each distinct id costs its own round trip. That
+   * distinct-id count is NOT bounded below group count — `maxGroups` allows
+   * up to `MAX_DUPLICATE_POSITION_GROUPS` groups at that many distinct
+   * locations/connections — so the fan-out is capped at
+   * `DUPLICATE_POSITION_NAME_LOOKUP_CONCURRENCY` in-flight lookups per axis
+   * (the `resolveBatchConcurrency` / ADR-047 precedent) rather than an
+   * unbounded `Promise.all` over the whole id set.
+   */
+  private async enrichDuplicatePositionGroups(
+    groups: DuplicatePositionGroup[]
+  ): Promise<DuplicatePositionGroup[]> {
+    const productIds = groups.map((g) => g.productId);
+    const locationIds = [
+      ...new Set(groups.map((g) => g.locationId).filter((id): id is string => id !== null)),
+    ];
+    // null and the #2317 'legacy' sentinel both mean "not yet backfilled" —
+    // neither names a real connection, so neither is ever resolved.
+    const connectionIds = [
+      ...new Set(
+        groups
+          .map((g) => g.sourceConnectionId)
+          .filter((id): id is string => id !== null && id !== LEGACY_SOURCE_CONNECTION_ID)
+      ),
+    ];
+
+    const [productMap, locationNameMap, connectionNameMap] = await Promise.all([
+      this.buildProductMap(productIds),
+      this.buildLocationNameMap(locationIds),
+      this.buildConnectionNameMap(connectionIds),
+    ]);
+
+    return groups.map((group) => {
+      const product = productMap.get(group.productId) ?? null;
+      return {
+        ...group,
+        productName: product?.name ?? null,
+        sku: product?.sku ?? null,
+        locationName: group.locationId ? (locationNameMap.get(group.locationId) ?? null) : null,
+        connectionName:
+          group.sourceConnectionId && group.sourceConnectionId !== LEGACY_SOURCE_CONNECTION_ID
+            ? (connectionNameMap.get(group.sourceConnectionId) ?? null)
+            : null,
+      };
+    });
+  }
+
+  private async buildLocationNameMap(locationIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    await runWithConcurrency(
+      locationIds,
+      DUPLICATE_POSITION_NAME_LOOKUP_CONCURRENCY,
+      async (id) => {
+        const location = await this.locationService.getLocation(id);
+        if (location) map.set(id, location.name);
+      }
+    );
+    return map;
+  }
+
+  private async buildConnectionNameMap(connectionIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    await runWithConcurrency(
+      connectionIds,
+      DUPLICATE_POSITION_NAME_LOOKUP_CONCURRENCY,
+      async (id) => {
+        try {
+          const connection = await this.connectionPort.get(id);
+          map.set(id, connection.name);
+        } catch (error) {
+          // A deleted/unresolvable connection reports no name rather than
+          // failing the whole report — the raw id is still shown.
+          if (!(error instanceof ConnectionNotFoundException)) throw error;
+        }
+      }
+    );
+    return map;
   }
 
   private async buildProductMap(productIds: string[]): Promise<Map<string, Product>> {
