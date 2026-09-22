@@ -30,6 +30,34 @@ Jira-swimlane treatment over Cin7's hide-entirely one), matching #3329's mockup.
 `selfServeEligible: false` is the explicit escape hatch for a supervisor who wants a hard
 assignment; it is a per-parcel operator decision, not a policy default.
 
+`assignedToUserId` and `selfServeEligible` are coupled by one invariant: `NOT selfServeEligible`
+implies `assignedToUserId IS NOT NULL`. An unassigned-and-locked parcel — nobody may work it —
+is not a state this decision allows, so it must not be independently reachable through
+`setSelfServeEligible(workId, false)` on unassigned work, nor left behind by
+`clearAssignment(workId)` on an exclusively-assigned one. The write API therefore folds the two
+into a single call, `assignToPacker(workId, userId, { exclusive })`, rather than exposing
+`setSelfServeEligible` as its own standalone writer; `clearAssignment` resets `selfServeEligible`
+to `true` as part of the same statement that nulls `assignedToUserId`. A class-level `@Check`
+(`fulfillment-work-migration-parity.int-spec.ts`'s territory, per #2392's own precedent for this
+table) is a second line of defense, not the primary one — the combined write signature is what
+makes the state unwritable in the first place, rather than merely refused after the fact.
+
+The affordance is not the boundary. `selfServeEligible: false` changes what the bench *renders*;
+what actually refuses a non-assignee from doing the work is a check inside the write path a
+packer reaches by acting on a parcel — today that is `verifyUnit` (`POST
+.../:workId/verifications`) and, for the same reason, `reopenParcel` (`POST
+.../:workId/reopen`). Neither the bench's nav nor its list/claim projection is a trust boundary;
+per #3322's framing landing the same week, a hidden or muted affordance grants nothing, and the
+API remains the authorization boundary. The implementation epic must add this check to both
+endpoints before `selfServeEligible: false` means anything beyond a rendering hint.
+
+An exclusive assignment to a user who is later deactivated or deleted degrades to the same
+locked-forever case as an unnoticed mis-assignment (see Cons) — there is no FK from
+`assignedToUserId` to the users table (consistent with this table's reference-by-value
+discipline: `orderId`, `productVariantId` and `assignedConnectionId` all carry none), so nothing
+detects or reacts to the assignee going away. Accepted for v1, on the same "no data yet on a sane
+timeout" reasoning as the deferred reap below.
+
 No automatic expiry ships in v1. An idle assigned-and-locked parcel stays visible to the assigning
 supervisor for manual reassignment; an automatic reap (mirroring #2712) is deferred until real
 usage shows staleness is a problem, rather than guessing a timeout now.
@@ -64,9 +92,27 @@ decision one layer below the matrix, and the matrix must not grow a row for it.
 
 **Migration path:**
 - One migration adding `assignedToUserId` (nullable `text`) and `selfServeEligible` (`boolean not
-  null default true`) to `fulfillment_works`.
-- `FulfillmentWorkRepositoryPort` gains `assignToPacker(workId, userId)`, `clearAssignment(workId)`,
-  `setSelfServeEligible(workId, boolean)` — each a single conditional `UPDATE`, no full-row save.
+  null default true`) to `fulfillment_works`, plus a class-level `@Check` under the migration's
+  own constraint name enforcing `NOT selfServeEligible → assignedToUserId IS NOT NULL` — declared
+  by name so the migration and the `synchronize`-built test schema agree, the same discipline
+  `fulfillment-work-migration-parity.int-spec.ts` already checks for this table; that spec should
+  be extended to cover the two new columns.
+- `FulfillmentWorkRepositoryPort` gains `assignToPacker(workId, userId, { exclusive: boolean })`
+  and `clearAssignment(workId)` — each a single conditional `UPDATE`, no full-row save. There is
+  no standalone `setSelfServeEligible`: the exclusivity flag is folded into `assignToPacker` so
+  an unassigned-and-locked parcel cannot be written, and `clearAssignment` resets
+  `selfServeEligible` to `true` in the same statement that nulls `assignedToUserId`.
+- The two new rows for `fulfillment-work.repository.ts`'s per-column writer table:
+  `assignedToUserId` — sole writer `assignToPacker`, cleared by `clearAssignment`;
+  `selfServeEligible` — sole writer `assignToPacker`, reset to `true` by `clearAssignment`. Unlike
+  #2728's declined `shippedAt` column — rejected there as *"a sixth writer on a five-writer
+  table, a second source of truth, and backfillable only from the same `eventKind` read"* —
+  neither new column duplicates a fact the table or the claim rows already hold, so the "second
+  source of truth" objection does not apply here; the writer-count discipline does.
+- `verifyUnit` and `reopenParcel` gain the actual enforcement: both refuse a non-assignee when
+  `selfServeEligible` is `false` on the addressed work object, with a distinguishable error
+  naming the assignee. This is the authorization boundary; the bench read below is a rendering
+  affordance only.
 - One admin/operator-gated HTTP write endpoint for the assignment action.
 - The bench's list/claim read projects the two new fields so a row can render "assigned to you" /
   "unassigned" / "assignment only."
