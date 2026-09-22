@@ -169,7 +169,13 @@ interface DataTableProps<Row> {
    * `onClick` and `style` are reserved: the primitive owns all four (identity,
    * its own computed classes, row navigation/expand, and virtualized row
    * height) and a caller supplying one would silently override behaviour the
-   * primitive depends on, so those keys are dropped rather than applied.
+   * primitive depends on, so those keys are dropped rather than applied (a
+   * dev-only `console.warn` fires when one is, review follow-up #3327).
+   *
+   * `tabIndex` is deliberately NOT reserved: on a table that also sets
+   * `rowHref`, keyboard reachability lives on the in-cell navigation `<a>`,
+   * not the `<tr>` itself, so a caller may pass `tabIndex` through without
+   * disturbing anything the primitive owns.
    */
   rowAttributes?: (row: Row) => Record<string, string>;
   /**
@@ -246,7 +252,17 @@ function sanitizeRowAttributes(attrs: Record<string, string> | undefined): Recor
   if (!attrs) return {};
   const result: Record<string, string> = {};
   for (const [attrKey, value] of Object.entries(attrs)) {
-    if (RESERVED_ROW_ATTRIBUTE_KEYS.has(attrKey)) continue;
+    if (RESERVED_ROW_ATTRIBUTE_KEYS.has(attrKey)) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console -- dev-only guard, see RESERVED_ROW_ATTRIBUTE_KEYS JSDoc
+        console.warn(
+          `[DataTable] rowAttributes() returned reserved key "${attrKey}" - it was dropped, ` +
+            'not applied. The primitive owns key/className/onClick/style; see ' +
+            'RESERVED_ROW_ATTRIBUTE_KEYS in data-table.tsx.',
+        );
+      }
+      continue;
+    }
     result[attrKey] = value;
   }
   return result;

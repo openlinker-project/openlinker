@@ -567,16 +567,23 @@ export function PriceChangesQueueTable(): ReactElement {
    * `is-resolved` for the muted-row treatment, `is-flagged` for the
    * needs-refresh highlight. `DataTable`'s own `rowClassName` appends these to
    * its computed `data-table__row …` list rather than replacing it.
+   *
+   * Derived from `rowStateFor` (review follow-up, #3327) rather than
+   * re-reading `item.resolvedAt`/`item.needsRefresh` directly, so this class
+   * list, `cardMetaFor`'s mobile badge, and the `data-state` attribute can
+   * never disagree about the same row's state - they all fold through the
+   * one function that already computes it.
    */
   function rowClassNameFor(item: PriceChangeItem): string | undefined {
     const groupKey = groupKeyFor(item);
     const isGroupStart = groupStartIds.has(item.id);
     const isGrouped = (groupCounts.get(groupKey) ?? 0) > 1;
+    const state = rowStateFor(item);
     const classes = [
-      item.resolvedAt ? 'is-resolved' : '',
+      isRowStateResolved(state) ? 'is-resolved' : '',
       isGroupStart ? 'is-group-start' : '',
       isGrouped ? 'is-grouped' : '',
-      item.needsRefresh && !item.resolvedAt ? 'is-flagged' : '',
+      state === 'row-needs-refresh' ? 'is-flagged' : '',
     ]
       .filter(Boolean)
       .join(' ');
@@ -594,16 +601,19 @@ export function PriceChangesQueueTable(): ReactElement {
    * refresh prompt), so this is a passive-scanning aid on top of an
    * already-present fact rather than new information — reached through the
    * existing `meta` slot, so it costs no primitive change.
+   *
+   * Derived from `rowStateFor` - see `rowClassNameFor`'s docblock.
    */
   function cardMetaFor(item: PriceChangeItem): ReactElement | null {
-    if (item.resolvedAt) {
+    const state = rowStateFor(item);
+    if (isRowStateResolved(state)) {
       return (
         <StatusBadge tone="neutral" compact data-testid="card-status-resolved">
           Resolved
         </StatusBadge>
       );
     }
-    if (item.needsRefresh) {
+    if (state === 'row-needs-refresh') {
       return (
         <StatusBadge tone="warning" compact withDot data-testid="card-status-flagged">
           Needs refresh
@@ -1003,12 +1013,31 @@ export function PriceChangesQueueTable(): ReactElement {
   );
 }
 
-function rowStateFor(item: PriceChangeItem): string {
+type RowState =
+  | 'row-accepted-custom'
+  | 'row-accepted'
+  | 'row-ignored'
+  | 'row-needs-refresh'
+  | 'row-pending';
+
+/**
+ * The single derivation of a row's state, read by `data-state`,
+ * `rowClassNameFor` and `cardMetaFor` (review follow-up, #3327) - see
+ * `rowClassNameFor`'s docblock for why collapsing three independent
+ * re-derivations onto this one function is load-bearing rather than
+ * cosmetic.
+ */
+function rowStateFor(item: PriceChangeItem): RowState {
   if (item.resolution === 'accepted-custom') return 'row-accepted-custom';
   if (item.resolution === 'accepted') return 'row-accepted';
   if (item.resolution === 'ignored') return 'row-ignored';
   if (item.needsRefresh) return 'row-needs-refresh';
   return 'row-pending';
+}
+
+/** Any resolved state (accepted, accepted-custom or ignored) - the "is-resolved" bucket. */
+function isRowStateResolved(state: RowState): boolean {
+  return state === 'row-accepted' || state === 'row-accepted-custom' || state === 'row-ignored';
 }
 
 function PriceCell({ item }: { item: PriceChangeItem }): ReactElement {
