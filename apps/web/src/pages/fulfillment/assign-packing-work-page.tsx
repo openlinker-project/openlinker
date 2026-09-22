@@ -156,8 +156,14 @@ export function AssignPackingWorkPage(): ReactElement {
     () => (byPacker ? lightestLoadLaneIds(lanes) : new Set<string>()),
     [byPacker, lanes]
   );
-  // #3428 — the pinned lane IS the unassigned count; no separate read needed.
-  const unassignedCount = lanes.find((lane) => lane.id === UNASSIGNED_LANE_ID)?.tasks.length ?? 0;
+  // #3428 — counted from the TASKS, not from the pinned lane.
+  //
+  // Reading the lane was correct while packer was the only axis; on the
+  // location axis no lane carries that id, so it answered a confident `0`
+  // over a page with four unassigned tasks on it. A metric that is wrong on
+  // one axis is worse than one that is absent, and the tasks answer the same
+  // question on every axis.
+  const unassignedCount = tasks.filter((task) => task.assignedToUserId === null).length;
 
   const setFilter = (key: 'orderId' | 'locationId', value: string): void => {
     setSearchParams(setFulfillmentFilterParam(searchParams, key, value));

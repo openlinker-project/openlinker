@@ -170,7 +170,12 @@ export function toBoardLanes(lanes: readonly FulfillmentLane[]): AssignPackingWo
   return lanes.map((lane) => ({
     id: lane.id,
     packer: null,
-    title: `${lane.locationLabel} · ${lane.deliveryMethodLabel}`,
+    // The location's NAME when the read resolved one (#3426), never the raw
+    // `ol_location_bab164c3…`. Every task in a lane shares its location by
+    // construction, so the first one answers for all of them — and the card
+    // one line below already prints that name, so a heading showing the id
+    // would contradict its own rows.
+    title: `${lane.tasks[0]?.locationName ?? lane.locationLabel} · ${lane.deliveryMethodLabel}`,
     tasks: lane.tasks,
   }));
 }

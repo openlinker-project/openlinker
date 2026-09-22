@@ -618,6 +618,43 @@ describe('the merged screen — the grouping axis', () => {
     expect(card?.getAttribute('draggable')).toBe('true');
   });
 
+  it('names the location rather than printing its internal id', async () => {
+    // The card one line below prints `Main warehouse`; a heading showing
+    // `ol_location_bab164c3…` would contradict its own rows.
+    renderPage({
+      list: vi.fn().mockResolvedValue(
+        page([
+          task({
+            locationId: 'ol_location_bab164c3b9b94a9eab0df5ab2130c184',
+            locationName: 'Main warehouse',
+          }),
+        ])
+      ),
+      route: '/fulfillment?groupBy=location',
+    });
+
+    expect(
+      await screen.findByRole('region', { name: 'Main warehouse · courier' })
+    ).toBeInTheDocument();
+  });
+
+  it('counts unassigned tasks on EITHER axis', async () => {
+    // Read off the pinned lane this answered a confident 0 here, because no
+    // lane carries that id on the location axis.
+    renderPage({
+      list: vi
+        .fn()
+        .mockResolvedValue(page([task({ id: 'a' }), task({ id: 'b' }), task({ id: 'c' })])),
+      route: '/fulfillment?groupBy=location',
+    });
+
+    await screen.findByText('Unassigned right now');
+    // Scoped to the metric: the lane header carries its own count, which is
+    // the same number here and would make a bare text query ambiguous.
+    const metric = document.querySelector('.assign-packing-work-metrics') as HTMLElement;
+    expect(within(metric).getByText('3')).toBeInTheDocument();
+  });
+
   it('says why drag is unavailable rather than letting it silently stop working', async () => {
     renderPage({
       list: vi.fn().mockResolvedValue(page([task({ locationId: 'loc_warsaw' })])),
