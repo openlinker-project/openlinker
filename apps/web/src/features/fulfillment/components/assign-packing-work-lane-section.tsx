@@ -43,6 +43,7 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import { buildFulfillmentDragSourceProps } from '../lib/assign-packing-work-drag';
 import {
+  isAssignmentOnlyCard,
   laneLoadPercent,
   laneLoadTone,
   UNASSIGNED_LANE_ID,
@@ -103,6 +104,22 @@ export function AssignPackingWorkLaneSection({
       }
     : {};
 
+  /**
+   * #3429 — merges the drag-source rootProps (#3426) with the assignment-
+   * only muted class, so a row can carry both without either caller
+   * overwriting the other's `className`.
+   */
+  const buildRootProps = (task: FulfillmentTask): ReturnType<typeof buildFulfillmentDragSourceProps> => {
+    const dragProps = buildFulfillmentDragSourceProps(task, dragEnabled, onTaskDragStart);
+    if (!isAssignmentOnlyCard(task)) return dragProps;
+    return {
+      ...dragProps,
+      className: [dragProps.className, 'assign-packing-work-lane-card--assignment-only']
+        .filter(Boolean)
+        .join(' '),
+    };
+  };
+
   const sectionClassName = [
     'assign-packing-work-lane',
     isUnassignedLane ? 'assign-packing-work-lane--unassigned' : '',
@@ -136,6 +153,12 @@ export function AssignPackingWorkLaneSection({
               </StatusBadge>
             ) : null}
           </h3>
+          {/* #3429 — static copy, needs no presence signal (see the module docblock). */}
+          {isUnassignedLane ? (
+            <p className="assign-packing-work-lane__subtitle">
+              {ASSIGN_PACKING_WORK_COPY.lane.unassignedSubtitle}
+            </p>
+          ) : null}
         </div>
         <div className="assign-packing-work-lane__load">
           <div className="assign-packing-work-lane__load-bar">
@@ -160,7 +183,7 @@ export function AssignPackingWorkLaneSection({
                 key={task.id}
                 task={task}
                 actions={renderActions(task)}
-                rootProps={buildFulfillmentDragSourceProps(task, dragEnabled, onTaskDragStart)}
+                rootProps={buildRootProps(task)}
               />
             ))}
           </ul>
@@ -171,7 +194,7 @@ export function AssignPackingWorkLaneSection({
                 key={task.id}
                 task={task}
                 actions={renderActions(task)}
-                rootProps={buildFulfillmentDragSourceProps(task, dragEnabled, onTaskDragStart)}
+                rootProps={buildRootProps(task)}
               />
             ))}
           </ul>

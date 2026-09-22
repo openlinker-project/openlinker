@@ -101,9 +101,21 @@ export function AssignPackingWorkPage(): ReactElement {
     body: { assignedToUserId?: string | null; selfServeEligible?: boolean }
   ): void => {
     setBusyTaskId(task.id);
+    // #3429 — only the failure path toasted before; a successful staffing
+    // change said nothing at all. The two success messages are told apart
+    // by which field the CALLER set, never guessed from the task's new
+    // state (a self-serve toggle on an already-unassigned task could
+    // otherwise be misread as a move).
+    const successMessage =
+      'assignedToUserId' in body
+        ? ASSIGN_PACKING_WORK_COPY.row.moveSucceeded
+        : ASSIGN_PACKING_WORK_COPY.row.selfServeUpdated;
     assignmentMutation.mutate(
       { workId: task.id, ...body },
       {
+        onSuccess: () => {
+          showToast({ tone: 'success', description: successMessage });
+        },
         onError: () => {
           showToast({ tone: 'error', description: ASSIGN_PACKING_WORK_COPY.row.moveFailed });
         },

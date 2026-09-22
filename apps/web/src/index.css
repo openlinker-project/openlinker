@@ -24011,6 +24011,13 @@ legend.analytics-settings-dialog__label {
   min-width: 0;
 }
 
+.assign-packing-work-lane__subtitle {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin: 0;
+}
+
 .assign-packing-work-lane__load {
   display: flex;
   align-items: center;
@@ -24058,6 +24065,16 @@ legend.analytics-settings-dialog__label {
 
 .assign-packing-work-draggable:active {
   cursor: grabbing;
+}
+
+/* #3429 — "pulled out of self-serve": the mockup's own
+   `.lane-card--assignment-only`, muted background + dimmed self-serve label. */
+.assign-packing-work-lane-card--assignment-only {
+  background: var(--bg-surface-muted);
+}
+
+.assign-packing-work-lane-card--assignment-only .assign-packing-work-actions__self-serve {
+  color: var(--text-disabled);
 }
 
 .assign-packing-work-actions {

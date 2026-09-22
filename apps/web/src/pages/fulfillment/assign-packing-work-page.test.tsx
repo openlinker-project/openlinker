@@ -156,6 +156,111 @@ describe('AssignPackingWorkPage', () => {
     });
   });
 
+  // ── #3429 — success toasts, assignment-only styling, control scoping ────
+  describe('success toasts', () => {
+    it('toasts on a successful move', async () => {
+      const user = userEvent.setup();
+      renderPage({});
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
+      await user.selectOptions(select, 'packer-a');
+
+      expect(await screen.findByText('Task moved.')).toBeInTheDocument();
+    });
+
+    it('toasts on a successful self-serve toggle, with its own message', async () => {
+      const user = userEvent.setup();
+      renderPage({});
+
+      await screen.findAllByRole('checkbox', { name: 'Anyone may claim this' });
+      const checkbox = within(desktop()).getByRole('checkbox', { name: 'Anyone may claim this' });
+      await user.click(checkbox);
+
+      expect(await screen.findByText('Self-serve eligibility updated.')).toBeInTheDocument();
+      expect(screen.queryByText('Task moved.')).not.toBeInTheDocument();
+    });
+
+    it('does not toast success on a failed move — only the existing error path fires', async () => {
+      const user = userEvent.setup();
+      renderPage({ updateAssignment: vi.fn().mockRejectedValue(new Error('boom')) });
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
+      await user.selectOptions(select, 'packer-a');
+
+      expect(
+        await screen.findByText('Could not move this task. Nothing has changed.')
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Task moved.')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('self-serve checkbox + Hold button scoping', () => {
+    it('renders both on an unassigned task', async () => {
+      renderPage({});
+
+      await screen.findAllByRole('checkbox', { name: 'Anyone may claim this' });
+      expect(
+        within(desktop()).getByRole('checkbox', { name: 'Anyone may claim this' })
+      ).toBeInTheDocument();
+      expect(within(desktop()).getByRole('button', { name: 'Hold' })).toBeInTheDocument();
+    });
+
+    it('renders NEITHER on a task already assigned to a packer — the mockup scoping bug', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
+      });
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      expect(screen.queryByRole('checkbox', { name: 'Anyone may claim this' })).not.toBeInTheDocument();
+      expect(within(desktop()).queryByRole('button', { name: 'Hold' })).not.toBeInTheDocument();
+      // "Move to" stays on every task, in every lane.
+      expect(within(desktop()).getByRole('combobox', { name: 'Move to' })).toBeInTheDocument();
+    });
+  });
+
+  describe('lane header presentation additions', () => {
+    it('renders the Unassigned lane subtitle', async () => {
+      renderPage({});
+
+      const unassignedLane = await screen.findByRole('region', { name: 'Unassigned' });
+      expect(
+        within(unassignedLane).getByText('Visible to every packer until claimed or assigned')
+      ).toBeInTheDocument();
+    });
+
+    it('mutes an unassigned, non-self-serve task and does not mute an ordinary one', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(
+          page([
+            task({ id: 'a', assignedToUserId: null, selfServeEligible: false }),
+            task({ id: 'b', assignedToUserId: null, selfServeEligible: true }),
+          ])
+        ),
+      });
+
+      await screen.findAllByRole('checkbox', { name: 'Anyone may claim this' });
+      const rowA = within(desktop()).getByText('a').closest('li') as HTMLElement;
+      const rowB = within(desktop()).getByText('b').closest('li') as HTMLElement;
+
+      expect(rowA.className).toContain('assign-packing-work-lane-card--assignment-only');
+      expect(rowB.className).not.toContain('assign-packing-work-lane-card--assignment-only');
+    });
+
+    it('never mutes an assigned task, whatever its selfServeEligible value', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(
+          page([task({ assignedToUserId: 'u_a', selfServeEligible: false })])
+        ),
+      });
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      const row = within(desktop()).getByText('ol_work_1').closest('li') as HTMLElement;
+      expect(row.className).not.toContain('assign-packing-work-lane-card--assignment-only');
+    });
+  });
+
   it('degrades to a roster-error banner without blocking the board on a failed packer read', async () => {
     renderPage({ listPackers: vi.fn().mockRejectedValue(new Error('boom')) });
 

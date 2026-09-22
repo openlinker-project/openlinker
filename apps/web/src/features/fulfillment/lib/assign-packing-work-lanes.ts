@@ -121,3 +121,19 @@ export function lightestLoadLaneIds(lanes: readonly AssignPackingWorkLane[]): Re
     packerLanes.filter((lane) => lane.tasks.length === min).map((lane) => lane.id)
   );
 }
+
+/**
+ * "Pulled out of self-serve" (#3429, mockup's own `.lane-card--assignment-only`)
+ *
+ * True only for a task that is BOTH still in the Unassigned pool AND marked
+ * `selfServeEligible: false` — the mockup's own `makeCard`/`wirePickable`
+ * pairing: the muted treatment and the checkbox that drives it exist only
+ * on Unassigned-lane cards, so a task a supervisor has already NAMED a
+ * packer for never renders muted here, whatever `selfServeEligible` says —
+ * that field still means something once assigned (whether a packer other
+ * than the named one could later pick it up), but the mockup surfaces it
+ * nowhere on an assigned card, so this stays silent there too.
+ */
+export function isAssignmentOnlyCard(task: FulfillmentTask): boolean {
+  return task.assignedToUserId === null && !task.selfServeEligible;
+}

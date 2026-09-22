@@ -38,6 +38,13 @@ export const ASSIGN_PACKING_WORK_COPY = {
     empty: 'Nothing here right now.',
     /** #3427 — the cross-packer load comparison. See `lightestLoadLaneIds`. */
     lightestLoadTag: 'lightest load',
+    /**
+     * #3429 — the mockup's `.lane__station` text under "Unassigned", verbatim.
+     * Static copy, unlike a packer lane's station/presence line (deliberately
+     * NOT rendered — see `assign-packing-work-lane-section.tsx`'s docblock):
+     * this one needs no backend signal at all.
+     */
+    unassignedSubtitle: 'Visible to every packer until claimed or assigned',
   },
 
   row: {
@@ -46,6 +53,9 @@ export const ASSIGN_PACKING_WORK_COPY = {
     selfServeLabel: 'Anyone may claim this',
     hold: 'Hold',
     moveFailed: 'Could not move this task. Nothing has changed.',
+    /** #3429 — only errors toasted before; a successful staffing change said nothing. */
+    moveSucceeded: 'Task moved.',
+    selfServeUpdated: 'Self-serve eligibility updated.',
   },
 
   loading: {
