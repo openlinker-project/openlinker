@@ -17,6 +17,20 @@ export const ASSIGN_PACKING_WORK_COPY = {
       'Pre-assign a fulfilment task to a specific packer ahead of time, or leave it open for whoever picks it up first.',
   },
 
+  /**
+   * #3428 — the metric row above the board. Only "Unassigned right now" is
+   * shipped — it is a pure count over lanes already read for the board, so
+   * it needs no new backend signal. "Oldest unassigned" and "Packers at
+   * their benches" both need a presence/unassigned-since signal this system
+   * does not have yet (their write semantics — when does "unassigned
+   * since" get stamped, and what counts as "at the bench" — are undecided,
+   * not merely unwired), so neither is rendered rather than showing a
+   * fabricated or misleading number.
+   */
+  metrics: {
+    unassignedLabel: 'Unassigned right now',
+  },
+
   lane: {
     unassignedTitle: 'Unassigned',
     /** A task assigned to a user id no longer in the active packer roster. */

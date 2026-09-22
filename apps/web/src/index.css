@@ -23907,6 +23907,20 @@ legend.analytics-settings-dialog__label {
 
 /* ── Assign Packing Work board (#3340) ──────────────────────────────────── */
 
+/* #3428 — the metric row. Flex, not a fixed-column grid: only one of the
+   mockup's three cards is shipped, and a fixed grid would leave visibly
+   empty cells rather than a naturally-sized row. */
+.assign-packing-work-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.assign-packing-work-metrics .metric-card {
+  min-width: 160px;
+}
+
 .assign-packing-work-board {
   display: flex;
   flex-direction: column;

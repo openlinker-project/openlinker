@@ -173,6 +173,32 @@ describe('AssignPackingWorkPage', () => {
     expect(await screen.findByText('Nothing to assign right now')).toBeInTheDocument();
   });
 
+  // ── #3428 — the metric row ───────────────────────────────────────────
+  describe('the metric row', () => {
+    it('counts only the pinned Unassigned lane, never assigned tasks', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(
+          page([
+            task({ id: 'a', assignedToUserId: null }),
+            task({ id: 'b', assignedToUserId: null }),
+            task({ id: 'c', assignedToUserId: 'u_a' }),
+          ])
+        ),
+        listPackers: vi.fn().mockResolvedValue({ packers: [{ id: 'u_a', username: 'packer-a' }] }),
+      });
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      const card = screen.getByText('Unassigned right now').closest('.metric-card') as HTMLElement;
+      expect(within(card).getByText('2')).toBeInTheDocument();
+    });
+
+    it('does not render until the board has real data — no loading-flicker zero', () => {
+      renderPage({ list: vi.fn(() => new Promise(() => {})) });
+
+      expect(screen.queryByText('Unassigned right now')).not.toBeInTheDocument();
+    });
+  });
+
   // ── #3426 — native drag-and-drop, additive to "Move to" ──────────────
   describe('drag-and-drop lane reassignment', () => {
     /** A minimal `DataTransfer` stub — happy-dom does not implement one. */

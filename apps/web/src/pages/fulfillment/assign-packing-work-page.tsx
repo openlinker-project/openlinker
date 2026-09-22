@@ -62,6 +62,7 @@ import { useWriteAccess } from '../../shared/auth/use-permission';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { EmptyState, ErrorState } from '../../shared/ui/feedback-state';
+import { MetricCard } from '../../shared/ui/metric-card';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useToast } from '../../shared/ui/toast-provider';
 
@@ -92,6 +93,8 @@ export function AssignPackingWorkPage(): ReactElement {
   // #3427 — computed once over every lane, not per lane: the tag is a
   // comparison ACROSS packers, which a single lane cannot make about itself.
   const lightestLanes = useMemo(() => lightestLoadLaneIds(lanes), [lanes]);
+  // #3428 — the pinned lane IS the unassigned count; no separate read needed.
+  const unassignedCount = lanes.find((lane) => lane.id === UNASSIGNED_LANE_ID)?.tasks.length ?? 0;
 
   const setAssignment = (
     task: FulfillmentTask,
@@ -252,6 +255,20 @@ export function AssignPackingWorkPage(): ReactElement {
       {packersQuery.isError ? (
         <Alert tone="warning">{ASSIGN_PACKING_WORK_COPY.rosterError.message}</Alert>
       ) : null}
+
+      {/* #3428 — one card shipped ("Unassigned right now"), a pure count over
+          lanes already read for the board. "Oldest unassigned" and "Packers
+          at their benches" are not rendered — see the copy module's own
+          docblock for why. Only shown once the board has real data to
+          summarise. */}
+      {tasksQuery.isPending || tasksQuery.isError ? null : (
+        <div className="assign-packing-work-metrics">
+          <MetricCard
+            label={ASSIGN_PACKING_WORK_COPY.metrics.unassignedLabel}
+            value={unassignedCount}
+          />
+        </div>
+      )}
 
       {body}
 
