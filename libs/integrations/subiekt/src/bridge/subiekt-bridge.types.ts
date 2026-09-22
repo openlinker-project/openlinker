@@ -144,6 +144,18 @@ export interface BridgeIssueInvoiceRequest {
    * session-bound branch).
    */
   stanowiskoKasoweId?: number;
+  /**
+   * The Subiekt ZK's own numeric `dok_Id`, resolved by the adapter via
+   * `identifier_mappings` (the same row `OrderSyncService.persistDestinationMapping`
+   * writes when the order was created). When present the bridge's #3431
+   * warehouse-release step uses it DIRECTLY instead of searching
+   * `dok_NrPelnyOryg` by `orderId` — that search keys on the OL-internal order
+   * id, which was NEVER what got written there (the ZK's `dok_NrPelnyOryg` is
+   * stamped with the marketplace order NUMBER at create time, #3369). Absent
+   * (order-less/manual invoice, or a pre-fix mapping) falls back to the
+   * pre-existing string-matching lookup.
+   */
+  zkId?: number;
 }
 
 /**
