@@ -164,6 +164,16 @@ export interface BridgeIssueInvoiceResponse {
    * every Subiekt document forever.
    */
   clearanceReference: string | null;
+  /**
+   * #3431: the warehouse-release (WZ, Wydanie Zewnętrzne) document number
+   * the bridge created (or detected Subiekt already auto-created) alongside
+   * this invoice, releasing the order's stock in Subiekt's own bookkeeping.
+   * `null` means no linked ZK was found for this order (a manually-issued,
+   * order-less invoice has nothing to release) — never a failure signal;
+   * a genuine release failure is a thrown request error, not a null here.
+   * Optional/additive on the wire — an older bridge build omits it entirely.
+   */
+  warehouseReleaseNumber?: string | null;
 }
 
 /**
