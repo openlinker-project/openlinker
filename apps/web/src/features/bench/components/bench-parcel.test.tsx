@@ -229,8 +229,18 @@ describe('BenchParcelView (#2418)', () => {
       mount(parcel(), { verifyUnit });
       await screen.findByTestId('bench-parcel');
 
+      // Dispatched on `document.body`, not `document` itself: the shortcut
+      // listener is registered `{ capture: true }` precisely so it answers
+      // the burst check against the buffer as it stood BEFORE the scanner
+      // hook's own bubble-phase listener processes this keystroke. That
+      // capture-before-bubble ordering only exists when `document` is a
+      // genuine ANCESTOR of the event target — which it is for every real
+      // keydown (the currently-focused element, defaulting to `<body>`, per
+      // `useScannerInput`'s own module docblock), but is NOT true of an
+      // event dispatched directly on `document`, where capture and bubble
+      // listeners on the target itself run in plain registration order.
       await act(async () => {
-        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }));
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }));
         await Promise.resolve();
       });
 
@@ -282,6 +292,34 @@ describe('BenchParcelView (#2418)', () => {
 
       await act(async () => {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', bubbles: true }));
+        await Promise.resolve();
+      });
+
+      expect(verifyUnit).not.toHaveBeenCalled();
+    });
+
+    // Review finding (#3339): the scanner listener is on `document` with no
+    // focused element required, so during a scan every keystroke — including
+    // this handler's own — passes through the SAME stream. A barcode
+    // containing a "c"/"C" anywhere past its first character must be read as
+    // scan data ONLY, never as this shortcut hand-confirming a line nobody
+    // scanned. Before the burst guard, the embedded "C" here fired the
+    // shortcut in addition to (or instead of) the scan being refused.
+    it('should treat a "c" embedded in a scanner burst as scan data, never as the shortcut', async () => {
+      const verifyUnit = vi.fn();
+      mount(parcel(), { verifyUnit });
+      await screen.findByTestId('bench-parcel');
+
+      await act(async () => {
+        // `document.body` for the same reason as the test above — real
+        // capture-before-bubble ordering requires `document` to be a genuine
+        // ancestor of the dispatch target, not the target itself.
+        //
+        // The burst does NOT match the mounted line's SKU/EAN, so ANY
+        // verifyUnit call recorded here could only have come from the "C"
+        // mid-burst being misread as the shortcut, not from a legitimate
+        // scan match (which would raise a "wrong item" notice instead).
+        dispatchScannerBurst('XYZC1234', document.body);
         await Promise.resolve();
       });
 

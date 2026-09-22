@@ -87,6 +87,30 @@ export interface UseScannerInputResult {
    * function; this one exists for a consumer that already has the hook.
    */
   readonly settle: (gestureId: string) => void;
+  /**
+   * Whether keystrokes have arrived recently enough to still belong to the
+   * scan burst in progress, as of right now (#3339 review).
+   *
+   * A pure PEEK — it prunes a COPY of the buffer, never the buffer itself —
+   * answered by the same `pruneStaleKeystrokes` / `SCANNER_MAX_KEY_GAP_MS`
+   * rule a new keystroke would be judged against.
+   *
+   * Exposed for a consumer that layers its own keyboard shortcut over this
+   * same stream (`bench-parcel.tsx`'s "C" shortcut): a scanned value
+   * containing a stray "c"/"C" must never be read as that shortcut, only as
+   * scan data, and this is how the consumer tells the two apart.
+   *
+   * The consumer's own listener MUST be registered `{ capture: true }` to use
+   * this correctly. This hook's listener is a plain (bubble-phase) one, so a
+   * bubble-phase consumer registered AFTER it would see its own just-typed
+   * keystroke already appended to the buffer on every call — making
+   * `isBurstInProgress()` true for every keystroke, including a genuine
+   * standalone press, and the shortcut would never fire. A capture-phase
+   * listener runs before this hook's bubble-phase one for the same event, so
+   * it reads the buffer as it stood BEFORE this keystroke — which is what
+   * "burst in progress" is supposed to mean.
+   */
+  readonly isBurstInProgress: () => boolean;
 }
 
 export function useScannerInput({
@@ -167,5 +191,9 @@ export function useScannerInput({
     settleGesture(gestureId);
   }, []);
 
-  return { settle };
+  const isBurstInProgress = useCallback((): boolean => {
+    return pruneStaleKeystrokes(buffer.current, Date.now()).length > 0;
+  }, []);
+
+  return { settle, isBurstInProgress };
 }

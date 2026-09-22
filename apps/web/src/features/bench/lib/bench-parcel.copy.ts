@@ -151,6 +151,12 @@ export const benchParcelCopy = {
     noCommit:
       'This box closes itself the moment the last line is verified. There is nothing here to press.',
     scannerReady: 'Scanner in · keyboard not needed',
+    /**
+     * The "C" shortcut has no visible control of its own to attach a hint
+     * to — unlike every other affordance on this surface, which is a
+     * button (#3339 review). Stated here rather than left undiscoverable.
+     */
+    keyboardHint: 'Not scanning? Press C to confirm the next open item by hand.',
   },
 
   /**
