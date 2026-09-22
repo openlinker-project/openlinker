@@ -38,16 +38,25 @@
  *
  * @module apps/web/src/pages/fulfillment
  */
-import { useMemo, useState, type ReactElement } from 'react';
+import { useMemo, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import {
   ASSIGN_PACKING_WORK_COPY,
   AssignPackingWorkActions,
   AssignPackingWorkLaneSection,
+  FULFILLMENT_WORKLIST_COPY,
+  FULFILLMENT_WORKLIST_PAGE_SIZE,
   FulfillmentTaskActionDialog,
   UNASSIGNED_LANE_ID,
+  clearFulfillmentFilters,
   groupTasksByPacker,
+  hasActiveFulfillmentFilters,
   lightestLoadLaneIds,
+  readFulfillmentFilters,
+  readFulfillmentOffset,
+  setFulfillmentFilterParam,
+  setFulfillmentOffsetParam,
   useFulfillmentTaskActionRunner,
   useFulfillmentTasksQuery,
   useUpdateFulfillmentAssignmentMutation,
@@ -59,15 +68,27 @@ import { useWriteAccess } from '../../shared/auth/use-permission';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { EmptyState, ErrorState } from '../../shared/ui/feedback-state';
+import { Input } from '../../shared/ui/input';
 import { MetricCard } from '../../shared/ui/metric-card';
 import { PageLayout } from '../../shared/ui/page-layout';
 import { useToast } from '../../shared/ui/toast-provider';
 
-/** The board's own ceiling — the server's hard max, so nothing is silently paged off. */
-const BOARD_TASK_LIMIT = 100;
-
 export function AssignPackingWorkPage(): ReactElement {
-  const tasksQuery = useFulfillmentTasksQuery({ limit: BOARD_TASK_LIMIT });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = useMemo(() => readFulfillmentFilters(searchParams), [searchParams]);
+  const offset = readFulfillmentOffset(searchParams);
+  const isFiltered = hasActiveFulfillmentFilters(filters);
+
+  // Paged, not a flat ceiling. This screen used to ask for a fixed 100 and
+  // show whatever came back, so past that it silently displayed a slice —
+  // and grouped by packer, a slice means somebody's lane looks empty when it
+  // is not. The page size is the server's own default, which it clamps to
+  // anyway.
+  const tasksQuery = useFulfillmentTasksQuery({
+    ...filters,
+    limit: FULFILLMENT_WORKLIST_PAGE_SIZE,
+    offset,
+  });
   const packersQuery = usePackersQuery();
   const assignmentMutation = useUpdateFulfillmentAssignmentMutation();
   const { showToast } = useToast();
@@ -95,13 +116,42 @@ export function AssignPackingWorkPage(): ReactElement {
   const [draggedTask, setDraggedTask] = useState<FulfillmentTask | null>(null);
 
   const packers: PackerSummary[] = packersQuery.data?.packers ?? [];
-  const tasks = tasksQuery.data?.works ?? [];
+  const page = tasksQuery.data;
+  const tasks = page?.works ?? [];
+  // The APPLIED page, not the requested one — the server clamps, and a pager
+  // that reports what it asked for rather than what it got is a pager that
+  // lies about which rows are on screen.
+  const appliedLimit = page?.limit ?? FULFILLMENT_WORKLIST_PAGE_SIZE;
+  const appliedOffset = page?.offset ?? offset;
+  const total = page?.total ?? 0;
   const lanes = useMemo(() => groupTasksByPacker(tasks, packers), [tasks, packers]);
   // #3427 — computed once over every lane, not per lane: the tag is a
   // comparison ACROSS packers, which a single lane cannot make about itself.
   const lightestLanes = useMemo(() => lightestLoadLaneIds(lanes), [lanes]);
   // #3428 — the pinned lane IS the unassigned count; no separate read needed.
   const unassignedCount = lanes.find((lane) => lane.id === UNASSIGNED_LANE_ID)?.tasks.length ?? 0;
+
+  const setFilter = (key: 'orderId' | 'locationId', value: string): void => {
+    setSearchParams(setFulfillmentFilterParam(searchParams, key, value));
+  };
+  const clearFilters = (): void => {
+    setSearchParams(clearFulfillmentFilters(searchParams));
+  };
+  const goToOffset = (next: number): void => {
+    setSearchParams(setFulfillmentOffsetParam(searchParams, next));
+  };
+  /**
+   * Enter commits the filter, because a box that only reacts to blur reads as
+   * broken to anyone who types and presses Enter.
+   */
+  const commitOnEnter = (
+    event: KeyboardEvent<HTMLInputElement>,
+    key: 'orderId' | 'locationId'
+  ): void => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    setFilter(key, event.currentTarget.value.trim());
+  };
 
   const setAssignment = (
     task: FulfillmentTask,
@@ -202,14 +252,57 @@ export function AssignPackingWorkPage(): ReactElement {
       );
     }
     if (tasks.length === 0) {
+      // Three situations, three sentences. Collapsing them tells an operator
+      // there is no work when in fact they typed an id that matches nothing,
+      // or paged past the end of a list that has plenty.
+      if (appliedOffset > 0 && total > 0) {
+        return (
+          <EmptyState
+            liveRegion="off"
+            title={FULFILLMENT_WORKLIST_COPY.empty.pastEnd.title}
+            message={FULFILLMENT_WORKLIST_COPY.empty.pastEnd.message}
+            action={
+              <Button
+                onClick={() => {
+                  goToOffset(0);
+                }}
+              >
+                {FULFILLMENT_WORKLIST_COPY.empty.pastEnd.action}
+              </Button>
+            }
+          />
+        );
+      }
+      if (isFiltered) {
+        return (
+          <EmptyState
+            liveRegion="off"
+            title={FULFILLMENT_WORKLIST_COPY.empty.filtered.title}
+            message={FULFILLMENT_WORKLIST_COPY.empty.filtered.message}
+            action={
+              <Button onClick={clearFilters}>{FULFILLMENT_WORKLIST_COPY.filter.clear}</Button>
+            }
+          />
+        );
+      }
       return (
         <EmptyState
+          liveRegion="off"
           title={ASSIGN_PACKING_WORK_COPY.empty.title}
           message={ASSIGN_PACKING_WORK_COPY.empty.message}
         />
       );
     }
     return (
+      <>
+        {/* Once, not per lane. Now that the board is paged, a lane holds only
+            the tasks on THIS page — so a packer's lane can look empty while
+            they have plenty. That is a fact about the board, and repeating it
+            on every lane would state N times something true once. */}
+        <p className="text-muted assign-packing-work-scope-note">
+          {FULFILLMENT_WORKLIST_COPY.lane.pageScopeNote}
+        </p>
+
       <div className="assign-packing-work-board">
         {lanes.map((lane) => (
           <AssignPackingWorkLaneSection
@@ -223,6 +316,35 @@ export function AssignPackingWorkPage(): ReactElement {
           />
         ))}
       </div>
+
+        <div className="pagination">
+          <span className="text-muted tabular">
+            {FULFILLMENT_WORKLIST_COPY.pagination.range(
+              appliedOffset + 1,
+              Math.min(appliedOffset + appliedLimit, total),
+              total
+            )}
+          </span>
+          <div className="pagination__actions">
+            <Button
+              disabled={appliedOffset <= 0}
+              onClick={() => {
+                goToOffset(Math.max(0, appliedOffset - appliedLimit));
+              }}
+            >
+              {FULFILLMENT_WORKLIST_COPY.pagination.previous}
+            </Button>
+            <Button
+              disabled={appliedOffset + appliedLimit >= total}
+              onClick={() => {
+                goToOffset(appliedOffset + appliedLimit);
+              }}
+            >
+              {FULFILLMENT_WORKLIST_COPY.pagination.next}
+            </Button>
+          </div>
+        </div>
+      </>
     );
   })();
 
@@ -232,6 +354,43 @@ export function AssignPackingWorkPage(): ReactElement {
       title={ASSIGN_PACKING_WORK_COPY.page.title}
       description={ASSIGN_PACKING_WORK_COPY.page.description}
     >
+      <div className="toolbar" role="group" aria-label={FULFILLMENT_WORKLIST_COPY.filter.groupLabel}>
+        {/* `key` is the URL's own value, so the box REMOUNTS whenever the
+            filter changes from outside it — which is what makes `Clear
+            filters` clear the text as well as the list. An uncontrolled input
+            ignores a changed `defaultValue`, so without this the page shows a
+            filter box reading `ol_order_7` over an unfiltered board and the
+            remedy appears to do nothing. Typing stays uncontrolled; the key
+            only moves when the committed value does. */}
+        <Input
+          key={`orderId:${filters.orderId ?? ''}`}
+          aria-label={FULFILLMENT_WORKLIST_COPY.filter.orderLabel}
+          placeholder={FULFILLMENT_WORKLIST_COPY.filter.orderPlaceholder}
+          defaultValue={filters.orderId ?? ''}
+          onBlur={(event) => {
+            setFilter('orderId', event.target.value.trim());
+          }}
+          onKeyDown={(event) => {
+            commitOnEnter(event, 'orderId');
+          }}
+        />
+        <Input
+          key={`locationId:${filters.locationId ?? ''}`}
+          aria-label={FULFILLMENT_WORKLIST_COPY.filter.locationLabel}
+          placeholder={FULFILLMENT_WORKLIST_COPY.filter.locationPlaceholder}
+          defaultValue={filters.locationId ?? ''}
+          onBlur={(event) => {
+            setFilter('locationId', event.target.value.trim());
+          }}
+          onKeyDown={(event) => {
+            commitOnEnter(event, 'locationId');
+          }}
+        />
+        {isFiltered ? (
+          <Button onClick={clearFilters}>{FULFILLMENT_WORKLIST_COPY.filter.clear}</Button>
+        ) : null}
+      </div>
+
       {packersQuery.isError ? (
         <Alert tone="warning">{ASSIGN_PACKING_WORK_COPY.rosterError.message}</Alert>
       ) : null}

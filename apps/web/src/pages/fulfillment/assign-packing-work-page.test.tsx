@@ -55,14 +55,23 @@ function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
   };
 }
 
-function page(tasks: FulfillmentTask[]): unknown {
-  return { works: tasks, total: tasks.length, limit: 100, offset: 0 };
+function page(
+  tasks: FulfillmentTask[],
+  overrides: { total?: number; limit?: number; offset?: number } = {}
+): unknown {
+  return {
+    works: tasks,
+    total: overrides.total ?? tasks.length,
+    limit: overrides.limit ?? 25,
+    offset: overrides.offset ?? 0,
+  };
 }
 
 function renderPage(opts: {
   list?: ReturnType<typeof vi.fn>;
   listPackers?: ReturnType<typeof vi.fn>;
   updateAssignment?: ReturnType<typeof vi.fn>;
+  route?: string;
 }): {
   list: ReturnType<typeof vi.fn>;
   listPackers: ReturnType<typeof vi.fn>;
@@ -82,7 +91,7 @@ function renderPage(opts: {
 
   renderWithProviders(<AssignPackingWorkPage />, {
     apiClient: api,
-    route: '/fulfillment/assign',
+    route: opts.route ?? '/fulfillment',
     sessionAdapter: createAuthenticatedSessionAdapter(OPERATOR),
   });
 
@@ -493,5 +502,135 @@ describe('AssignPackingWorkPage', () => {
       expect(fill.style.width).toBe('60%');
       expect(fill.className).toContain('assign-packing-work-lane__load-fill--busy');
     });
+  });
+});
+
+// ── Filters and paging, moved from the worklist this screen absorbed ──────
+//
+// These are the capabilities the board did not have. Before the merge it
+// asked for a flat 100 and rendered whatever came back, so past that it
+// showed a slice — and grouped by packer, a slice means a lane looks empty
+// when it is not.
+
+describe('the merged screen — empty states are three, not one', () => {
+  it('says "no matches" when a filter is narrowing the board', async () => {
+    renderPage({
+      list: vi.fn().mockResolvedValue(page([])),
+      route: '/fulfillment?orderId=ol_order_missing',
+    });
+
+    expect(await screen.findByText('No fulfilment tasks match these filters')).toBeInTheDocument();
+  });
+
+  it('says "nothing on this page" when paged past the end', async () => {
+    // Neither of the other two: rows exist, this page is simply beyond them.
+    renderPage({
+      list: vi.fn().mockResolvedValue(page([], { total: 40, offset: 100 })),
+      route: '/fulfillment?offset=100',
+    });
+
+    expect(await screen.findByText('Nothing on this page')).toBeInTheDocument();
+  });
+
+  it('offers a way out of the filtered empty state', async () => {
+    renderPage({
+      list: vi.fn().mockResolvedValue(page([])),
+      route: '/fulfillment?orderId=ol_order_missing',
+    });
+
+    await screen.findByText('No fulfilment tasks match these filters');
+    expect(screen.getAllByRole('button', { name: 'Clear filters' }).length).toBeGreaterThan(0);
+  });
+});
+
+describe('the merged screen — the pager reads the APPLIED page', () => {
+  it('uses the limit the server applied, not the one requested', async () => {
+    // The server clamps, so a pager reading its own request would render a
+    // range that does not describe the lanes on screen.
+    renderPage({
+      list: vi.fn().mockResolvedValue(page([task()], { total: 60, limit: 25, offset: 0 })),
+    });
+
+    expect(await screen.findByText('Showing 1–25 of 60')).toBeInTheDocument();
+  });
+
+  it('asks for the page size the server will actually give', async () => {
+    const { list } = renderPage({});
+
+    await waitFor(() => {
+      expect(list).toHaveBeenCalledWith(expect.objectContaining({ limit: 25, offset: 0 }));
+    });
+  });
+
+  it('states once, not per lane, that a lane holds only this page', async () => {
+    renderPage({
+      list: vi
+        .fn()
+        .mockResolvedValue(page([task({ id: 'a', assignedToUserId: 'u_a' }), task({ id: 'b' })])),
+    });
+
+    // Two lanes render; the caveat is a fact about the board, so it appears
+    // once rather than on each of them.
+    expect(await screen.findAllByText('Grouped from the tasks on this page only.')).toHaveLength(1);
+  });
+});
+
+describe('the merged screen — filters reach the request', () => {
+  it('sends both free-string filters read out of the URL', async () => {
+    const { list } = renderPage({
+      route: '/fulfillment?orderId=ol_order_7&locationId=loc_krakow',
+    });
+
+    await waitFor(() => {
+      expect(list).toHaveBeenCalledWith(
+        expect.objectContaining({ orderId: 'ol_order_7', locationId: 'loc_krakow' })
+      );
+    });
+  });
+
+  it('commits a filter on Enter, not only on blur', async () => {
+    const user = userEvent.setup();
+    const { list } = renderPage({});
+
+    await waitFor(() => {
+      expect(list).toHaveBeenCalledTimes(1);
+    });
+
+    await user.type(await screen.findByLabelText('Order'), 'ol_order_9{Enter}');
+
+    await waitFor(() => {
+      expect(list).toHaveBeenCalledWith(expect.objectContaining({ orderId: 'ol_order_9' }));
+    });
+  });
+
+  it('clears the visible filter text when the filters are cleared', async () => {
+    // A box still showing `ol_order_7` over an unfiltered board is the screen
+    // contradicting itself.
+    const user = userEvent.setup();
+    renderPage({
+      list: vi.fn().mockResolvedValue(page([])),
+      route: '/fulfillment?orderId=ol_order_7',
+    });
+
+    const before = await screen.findByLabelText<HTMLInputElement>('Order');
+    expect(before.value).toBe('ol_order_7');
+
+    await user.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText<HTMLInputElement>('Order').value).toBe('');
+    });
+  });
+
+  it('does not send a present-but-empty filter as a value', async () => {
+    // `?orderId=` would otherwise filter to orders whose id is the empty
+    // string — none — while the screen reported itself unfiltered.
+    const { list } = renderPage({ route: '/fulfillment?orderId=' });
+
+    await waitFor(() => {
+      expect(list).toHaveBeenCalledTimes(1);
+    });
+    expect(list.mock.calls[0][0]).not.toHaveProperty('orderId', '');
+    expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
   });
 });

@@ -23921,6 +23921,13 @@ legend.analytics-settings-dialog__label {
   min-width: 160px;
 }
 
+/* The board is paged, so a lane holds only this page's tasks. Stated once
+   above the lanes rather than on each — see the page's own comment. */
+.assign-packing-work-scope-note {
+  margin: 0 0 var(--space-3);
+  font-size: 0.8125rem;
+}
+
 .assign-packing-work-board {
   display: flex;
   flex-direction: column;
