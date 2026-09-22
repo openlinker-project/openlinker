@@ -22,6 +22,26 @@
  * this way, through this one function, so the gate and the read surface can
  * never expand a dual-role connection differently.
  *
+ * ONE `isPrimary` VALUE IS COPIED ONTO BOTH RESULTING ROWS - a dual-role
+ * connection cannot express "invoice is primary, fiscal-receipt is not" by
+ * itself. Combined with `resolveSalesDocumentRoutingFromCandidates`'s
+ * exactly-one-primary tie-break, this means the FALLBACK resolver can never
+ * select a dual-role connection on its own: marking it primary contributes
+ * TWO primaries (its own two rows), leaving it, not one; leaving it
+ * unmarked contributes zero. Either way the candidate set has no unambiguous
+ * winner and resolves `unresolved / ambiguous-connection-no-primary` -
+ * verified in `resolve-sales-document-routing.spec.ts`'s dual-role block,
+ * including with a normal single-role sibling present. This is by design:
+ * the rule engine (#2173's `evaluateSalesDocumentRules`) is what
+ * disambiguates a `'both'` connection per order, and it runs BEFORE this
+ * fallback resolver, falling through here only on `no-configuration-for-country`.
+ * A fresh install that ticks "Both" on its only connection with no rule and
+ * no country default configured therefore holds EVERY order as unresolved -
+ * a real, silent failure mode with no dedicated `SalesDocumentUnresolvedReason`
+ * of its own today, since it surfaces through the same
+ * `ambiguous-connection-no-primary` a genuinely ambiguous multi-connection
+ * install produces.
+ *
  * Pure - no NestJS, no I/O.
  *
  * @module libs/core/src/sales-documents/domain/domain-services

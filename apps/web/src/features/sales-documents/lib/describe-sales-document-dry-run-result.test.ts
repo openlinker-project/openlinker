@@ -10,11 +10,11 @@ describe('describeSalesDocumentDryRunResult (#3191)', () => {
       kind: 'route',
       documentKind: 'fiscal-receipt',
       connectionId: 'conn-1',
-      matchedByCandidateRule: true,
+      decidedBy: 'candidate',
     };
 
     expect(describeSalesDocumentDryRunResult(result, connectionName)).toBe(
-      'This order would get a fiscal receipt through e-paragony Sandbox — via the rule you are drafting.',
+      'This order would get a fiscal receipt through e-paragony Sandbox - via the rule you are drafting.',
     );
   });
 
@@ -23,7 +23,7 @@ describe('describeSalesDocumentDryRunResult (#3191)', () => {
       kind: 'route',
       documentKind: 'invoice',
       connectionId: 'conn-1',
-      matchedByCandidateRule: false,
+      decidedBy: 'saved-rule',
     };
 
     expect(describeSalesDocumentDryRunResult(result, connectionName)).toContain(
@@ -31,11 +31,23 @@ describe('describeSalesDocumentDryRunResult (#3191)', () => {
     );
   });
 
+  it('should attribute a match to the tier-2 country default, never as an already-saved rule', () => {
+    const result: SalesDocumentDryRunResult = {
+      kind: 'route',
+      documentKind: 'invoice',
+      connectionId: 'conn-1',
+      decidedBy: 'country-default',
+    };
+
+    const description = describeSalesDocumentDryRunResult(result, connectionName);
+    expect(description).toContain('via the country default');
+    expect(description).not.toContain('already-saved rule');
+  });
+
   it('should describe an aggregate outcome without naming a document', () => {
     const result: SalesDocumentDryRunResult = {
       kind: 'aggregate',
       connectionId: 'conn-1',
-      matchedByCandidateRule: false,
     };
 
     expect(describeSalesDocumentDryRunResult(result, connectionName)).toBe(
@@ -47,7 +59,6 @@ describe('describeSalesDocumentDryRunResult (#3191)', () => {
     const result: SalesDocumentDryRunResult = {
       kind: 'unresolved',
       reason: 'conflicting-rules-equal-priority',
-      matchedByCandidateRule: false,
     };
 
     expect(describeSalesDocumentDryRunResult(result, connectionName)).toContain('Two or more rules matched');
@@ -57,11 +68,10 @@ describe('describeSalesDocumentDryRunResult (#3191)', () => {
     const result: SalesDocumentDryRunResult = {
       kind: 'unresolved',
       reason: 'some-future-reason-this-build-does-not-know',
-      matchedByCandidateRule: false,
     };
 
     expect(describeSalesDocumentDryRunResult(result, connectionName)).toBe(
-      'This order would be held — nothing could decide a document for it.',
+      'This order would be held - nothing could decide a document for it.',
     );
   });
 });

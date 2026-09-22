@@ -59,6 +59,14 @@ export type CoreSalesDocumentKind = (typeof CoreSalesDocumentKindValues)[number]
  * (`domain-services/expand-sales-document-routing-candidates.ts`) is the one
  * place a `'both'`-configured connection turns into two independent candidate
  * rows, one per kind, sharing the connection id.
+ *
+ * RESERVED WORD (#3194 review): decision 10's open-world vocabulary lets a
+ * regime declare a `documentKind` core has never seen, but the literal
+ * string `'both'` is claimed by THIS sentinel and must never be reused as a
+ * genuine per-regime kind - `readSalesDocumentRouting` recognizes it as the
+ * dual-role config value, not as a document a regime issues, so a regime
+ * naming its own kind exactly `'both'` would silently expand into two
+ * candidate rows instead of being treated as one concrete kind.
  */
 export const SALES_DOCUMENT_KIND_BOTH = 'both';
 

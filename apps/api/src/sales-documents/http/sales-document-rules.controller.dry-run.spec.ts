@@ -1,5 +1,5 @@
 /**
- * SalesDocumentRulesController — dry-run route unit tests (#3191)
+ * SalesDocumentRulesController - dry-run route unit tests (#3191)
  *
  * @module apps/api/src/sales-documents/http
  */
@@ -17,7 +17,7 @@ import { SalesDocumentRulesController } from './sales-document-rules.controller'
 import { SalesDocumentCapabilityGuardService } from '../sales-document-capability-guard.service';
 import type { DryRunSalesDocumentRuleDto } from './dto/dry-run-sales-document-rule.dto';
 
-describe('SalesDocumentRulesController — dry-run (#3191)', () => {
+describe('SalesDocumentRulesController - dry-run (#3191)', () => {
   let controller: SalesDocumentRulesController;
   let service: { dryRunRule: jest.Mock };
   let capabilityGuard: { assertConnectionSupportsKind: jest.Mock };
@@ -58,7 +58,7 @@ describe('SalesDocumentRulesController — dry-run (#3191)', () => {
     controller = module.get(SalesDocumentRulesController);
   });
 
-  it('should never call the capability guard — a dry run persists nothing for it to protect', async () => {
+  it('should never call the capability guard - a dry run persists nothing for it to protect', async () => {
     service.dryRunRule.mockResolvedValue({ kind: 'unresolved', reason: 'no-configuration-for-country' });
 
     await controller.dryRunRule(baseRequest());
@@ -80,11 +80,11 @@ describe('SalesDocumentRulesController — dry-run (#3191)', () => {
       kind: 'route',
       documentKind: 'fiscal-receipt',
       connectionId: 'conn-1',
-      matchedByCandidateRule: true,
+      decidedBy: 'candidate',
     });
   });
 
-  it('should report a route matched by an ALREADY-SAVED rule as not the candidate', async () => {
+  it('should report a route matched by an ALREADY-SAVED rule distinctly from the candidate', async () => {
     service.dryRunRule.mockResolvedValue({
       kind: 'route',
       documentKind: 'invoice',
@@ -94,7 +94,21 @@ describe('SalesDocumentRulesController — dry-run (#3191)', () => {
 
     const result = await controller.dryRunRule(baseRequest());
 
-    expect(result.matchedByCandidateRule).toBe(false);
+    expect(result.decidedBy).toBe('saved-rule');
+  });
+
+  it('should report a route decided by the tier-2 COUNTRY DEFAULT distinctly, never as a saved rule', async () => {
+    // `ruleId` absent is what a country default looks like - the domain
+    // type is explicit that its absence "must not imply [a rule] exists".
+    service.dryRunRule.mockResolvedValue({
+      kind: 'route',
+      documentKind: 'invoice',
+      connectionId: 'conn-default',
+    });
+
+    const result = await controller.dryRunRule(baseRequest());
+
+    expect(result.decidedBy).toBe('country-default');
   });
 
   it('should project an unresolved decision with its reason', async () => {
@@ -105,7 +119,6 @@ describe('SalesDocumentRulesController — dry-run (#3191)', () => {
     expect(result).toEqual({
       kind: 'unresolved',
       reason: 'net-priced-order',
-      matchedByCandidateRule: false,
     });
   });
 
