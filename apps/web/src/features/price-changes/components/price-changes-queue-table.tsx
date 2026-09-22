@@ -22,6 +22,13 @@
  * of hand-rolled markup, and honest "queued" toast copy (accept/edit resolve
  * asynchronously in the worker, not on the 204 response).
  *
+ * #3237 migrated the hand-rolled `<table>` onto the shared `DataTable` +
+ * `DataTableCardView` primitive (which is where the responsive card layout
+ * now lives, replacing #3223's own CSS grid) — made possible by `DataTable`
+ * gaining `rowClassName`/`rowAttributes`, since this queue hangs its grouping
+ * treatment and its `data-state`/`id`/`data-testid` handles on the row
+ * element, which the primitive used to hard-code.
+ *
  * #3148 review fixes rolled in here: `BulkPublishProgress` is mounted as a
  * SIBLING of the table's own loading/empty/error branch rather than nested
  * inside it (finding 3 — nesting made it vanish the instant a fully-accepted
@@ -39,7 +46,10 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '../../../shared/ui/button';
 import { Chip } from '../../../shared/ui/chip';
 import { ErrorState, EmptyState } from '../../../shared/ui/feedback-state';
+import { DataTable, type DataTableColumn } from '../../../shared/ui/data-table';
 import { DataTableSkeleton } from '../../../shared/ui/data-table-skeleton';
+import { KeyValueList } from '../../../shared/ui/key-value-list';
+import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
 import { BulkActionBar } from '../../../shared/ui/bulk-action-bar';
 import { ProductThumbnail } from '../../../shared/ui/product-thumbnail';
@@ -89,7 +99,7 @@ const DESTINATION_CAPABILITIES = ['OfferManager', 'ProductPublisher'];
  * the per-connection chips specifically (the "All" chip's own count still
  * comes from the authoritative `total`, unaffected by this bound). A real
  * counts-by-connection endpoint would remove the need for this cap
- * entirely (#3164 review).
+ * entirely (#3164 review) — tracked as a #3237 follow-up, #3325.
  */
 const CHIP_COUNTS_LIMIT = 200;
 
@@ -241,23 +251,30 @@ export function PriceChangesQueueTable(): ReactElement {
     return counts;
   }, [items]);
 
-  // The canonical "group start" index for each group key, computed once
-  // over the WHOLE page rather than by comparing to the previous row
-  // (#3164 review): the source's `detectedAt` is pinned at first detection
-  // and never moves on a re-detection (by design, so "detected" keeps
-  // meaning "first seen"), while a newly-mapped sibling in the same group
-  // gets a fresh timestamp — so members of one group are not guaranteed to
-  // sort adjacently, and an adjacency check renders two "group start"
-  // borders for one group. Only the first occurrence (by index) is ever the
-  // start; every other same-key row is a continuation, even when it is not
-  // physically adjacent to its group's start.
-  const groupFirstIndex = useMemo(() => {
-    const firstIndex = new Map<string, number>();
-    items.forEach((item, index) => {
+  // The set of item ids that are the canonical "group start" for their group
+  // key, computed once over the WHOLE page rather than by comparing to the
+  // previous row (#3164 review): the source's `detectedAt` is pinned at
+  // first detection and never moves on a re-detection (by design, so
+  // "detected" keeps meaning "first seen"), while a newly-mapped sibling in
+  // the same group gets a fresh timestamp — so members of one group are not
+  // guaranteed to sort adjacently, and an adjacency check renders two "group
+  // start" borders for one group. Only the first occurrence (by array order)
+  // is ever the start; every other same-key row is a continuation, even when
+  // it is not physically adjacent to its group's start. Keyed by item id
+  // (#3237) rather than by array index — `rowClassName`/`rowAttributes`
+  // receive the row, not its position, and an item's id is the stable
+  // identity across re-sorts the index never was.
+  const groupStartIds = useMemo(() => {
+    const seenKeys = new Set<string>();
+    const startIds = new Set<string>();
+    for (const item of items) {
       const key = groupKeyFor(item);
-      if (!firstIndex.has(key)) firstIndex.set(key, index);
-    });
-    return firstIndex;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        startIds.add(item.id);
+      }
+    }
+    return startIds;
   }, [items]);
 
   // A chip count is a claim about the operator's own data, so it must never be
@@ -544,6 +561,214 @@ export function PriceChangesQueueTable(): ReactElement {
   const allSelected = selectedIds.length > 0 && selectedIds.length === selectableIds.length;
   const hasQueueFilters = connectionFilter !== 'all' || directionFilter !== 'all' || magnitudeOnly;
 
+  /**
+   * The classes the queue's rows hung on their own hand-rolled `<tr>` before
+   * #3237, unchanged — `is-group-start`/`is-grouped` for the fan-out accent,
+   * `is-resolved` for the muted-row treatment, `is-flagged` for the
+   * needs-refresh highlight. `DataTable`'s own `rowClassName` appends these to
+   * its computed `data-table__row …` list rather than replacing it.
+   *
+   * Derived from `rowStateFor` (review follow-up, #3327) rather than
+   * re-reading `item.resolvedAt`/`item.needsRefresh` directly, so this class
+   * list, `cardMetaFor`'s mobile badge, and the `data-state` attribute can
+   * never disagree about the same row's state - they all fold through the
+   * one function that already computes it.
+   */
+  function rowClassNameFor(item: PriceChangeItem): string | undefined {
+    const groupKey = groupKeyFor(item);
+    const isGroupStart = groupStartIds.has(item.id);
+    const isGrouped = (groupCounts.get(groupKey) ?? 0) > 1;
+    const state = rowStateFor(item);
+    const classes = [
+      isRowStateResolved(state) ? 'is-resolved' : '',
+      isGroupStart ? 'is-group-start' : '',
+      isGrouped ? 'is-grouped' : '',
+      state === 'row-needs-refresh' ? 'is-flagged' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    return classes || undefined;
+  }
+
+  /**
+   * The mobile counterpart of the desktop `is-resolved`/`is-flagged` row
+   * tint (audit follow-up, #3237). `DataTable`'s `rowClassName`/
+   * `rowAttributes` hooks are deliberately desktop-`<tr>`-only —
+   * `DataTableCardView` renders solely from its own slots, with no per-card
+   * class hook, so a card cannot reproduce the `<tr>`'s background tint
+   * directly. `ActionCell` already states a resolved/needs-refresh row's
+   * state as TEXT on both layouts (`Published`/`Kept the old price`/the
+   * refresh prompt), so this is a passive-scanning aid on top of an
+   * already-present fact rather than new information — reached through the
+   * existing `meta` slot, so it costs no primitive change.
+   *
+   * Derived from `rowStateFor` - see `rowClassNameFor`'s docblock.
+   */
+  function cardMetaFor(item: PriceChangeItem): ReactElement | null {
+    const state = rowStateFor(item);
+    if (isRowStateResolved(state)) {
+      return (
+        <StatusBadge tone="neutral" compact data-testid="card-status-resolved">
+          Resolved
+        </StatusBadge>
+      );
+    }
+    if (state === 'row-needs-refresh') {
+      return (
+        <StatusBadge tone="warning" compact withDot data-testid="card-status-flagged">
+          Needs refresh
+        </StatusBadge>
+      );
+    }
+    return null;
+  }
+
+  /** The per-row `id`/`data-testid`/`data-row-id`/`data-state` handles, unchanged from the pre-#3237 `<tr>`. */
+  function rowAttributesFor(item: PriceChangeItem): Record<string, string> {
+    return {
+      id: `price-change-row-${item.id}`,
+      'data-testid': 'price-change-row',
+      'data-row-id': item.id,
+      'data-state': rowStateFor(item),
+    };
+  }
+
+  /**
+   * Shared verbatim by the desktop `product` column and the mobile card
+   * `title` slot (the `renderSelectCheckbox` precedent orders-list-page.tsx
+   * established) — so a continuation row's "Also changes here" treatment,
+   * the one piece of content that actually encodes grouping, cannot drift
+   * between the two layouts.
+   */
+  function renderProductIdentity(item: PriceChangeItem): ReactElement {
+    if (groupStartIds.has(item.id)) {
+      return (
+        <div className="cell-product">
+          <ProductThumbnail name={item.productName} src={null} size="md" />
+          <div className="cell-product__text">
+            <div className="cell-product__name" title={item.productName}>
+              {item.productName}
+              {item.variantLabel ? (
+                <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> — {item.variantLabel}</span>
+              ) : null}
+            </div>
+            {item.sku ? <div className="cell-product__sku">{item.sku}</div> : null}
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="cell-continuation">
+        <span aria-hidden="true">↳</span>
+        Also changes here{' '}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button type="button" className="cell-continuation__help" aria-label="What does this mean?">
+              ?
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            One price change, one more listing to update. You can accept, edit, or ignore each listing
+            on its own.
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    );
+  }
+
+  /** Shared verbatim by the desktop select column and the mobile card select slot (#1620 precedent). */
+  function renderSelectCheckbox(item: PriceChangeItem): ReactElement {
+    return (
+      <input
+        type="checkbox"
+        data-testid="row-select"
+        aria-label={`Select ${item.productName} on ${item.destinationLabel}`}
+        checked={selected.has(item.id)}
+        disabled={!isSelectable(item)}
+        onChange={() => toggleSelected(item.id)}
+      />
+    );
+  }
+
+  const columns: DataTableColumn<PriceChangeItem>[] = [
+    {
+      id: 'select',
+      header: write.visible ? (
+        <input type="checkbox" aria-label="Select all" checked={allSelected} onChange={toggleSelectAll} />
+      ) : null,
+      cell: (item) => (write.visible ? renderSelectCheckbox(item) : null),
+    },
+    {
+      id: 'product',
+      header: 'Product',
+      cell: (item) => renderProductIdentity(item),
+    },
+    {
+      id: 'changedIn',
+      header: 'Changed in',
+      cell: (item) => (
+        <>
+          <div className="cell-product__source">
+            <Link
+              className="connection-tag"
+              data-testid="row-source-tag"
+              to={`/connections/${item.sourceConnectionId}/pricing-sync`}
+            >
+              {item.sourceLabel}
+            </Link>
+          </div>
+          <div className="cell-product__source">
+            {formatAmount(item.sourceOldAmount, item.sourceCurrency)} →{' '}
+            {formatAmount(item.sourceNewAmount, item.sourceCurrency)}
+          </div>
+        </>
+      ),
+    },
+    {
+      id: 'connection',
+      header: 'Connection',
+      cell: (item) => (
+        <Link
+          className="connection-tag"
+          data-testid="row-connection-tag"
+          to={`/connections/${item.destinationConnectionId}/pricing-sync`}
+        >
+          {item.destinationLabel}
+        </Link>
+      ),
+    },
+    {
+      id: 'price',
+      header: (
+        <>
+          Price on this connection <span className="th-sub">incl. VAT</span>
+        </>
+      ),
+      cell: (item) => <PriceCell item={item} />,
+    },
+    {
+      id: 'detected',
+      header: 'Detected',
+      cell: (item) => <TimeDisplay iso={item.detectedAt} format="datetime" />,
+    },
+    {
+      id: 'action',
+      header: 'Action',
+      align: 'right',
+      cell: (item) => (
+        <ActionCell
+          item={item}
+          write={write}
+          onAccept={setAcceptTarget}
+          onEdit={setEditTarget}
+          onIgnore={handleIgnore}
+          onUndo={handleUndo}
+          onRefresh={handleRefresh}
+        />
+      ),
+    },
+  ];
+
   return (
     <div className="price-changes-queue">
       <div className="tab-toolbar">
@@ -646,176 +871,101 @@ export function PriceChangesQueueTable(): ReactElement {
         </div>
       ) : (
         <div data-state="queue-live">
-          <div className="table-wrap">
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ width: 36 }}>
-                      {write.visible ? (
-                        <input
-                          type="checkbox"
-                          aria-label="Select all"
-                          checked={allSelected}
-                          onChange={toggleSelectAll}
-                        />
-                      ) : null}
-                    </th>
-                    <th>Product</th>
-                    <th>Changed in</th>
-                    <th>Connection</th>
-                    <th>
-                      Price on this connection <span className="th-sub">incl. VAT</span>
-                    </th>
-                    <th>Detected</th>
-                    <th className="col-num">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, index) => {
-                    const groupKey = groupKeyFor(item);
-                    const isGroupStart = groupFirstIndex.get(groupKey) === index;
-                    const isGrouped = (groupCounts.get(groupKey) ?? 0) > 1;
-                    const rowState = rowStateFor(item);
-                    const rowClasses = [
-                      item.resolvedAt ? 'is-resolved' : '',
-                      isGroupStart ? 'is-group-start' : '',
-                      isGrouped ? 'is-grouped' : '',
-                      item.needsRefresh && !item.resolvedAt ? 'is-flagged' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ');
-
-                    return (
-                      <tr
-                        key={item.id}
-                        id={`price-change-row-${item.id}`}
-                        data-testid="price-change-row"
-                        data-row-id={item.id}
-                        data-state={rowState}
-                        className={rowClasses || undefined}
+          <DataTable
+            caption="Price changes"
+            columns={columns}
+            rows={items}
+            rowKey={(item) => item.id}
+            rowClassName={rowClassNameFor}
+            rowAttributes={rowAttributesFor}
+            footer={
+              <BulkActionBar
+                count={selectedIds.length}
+                itemNoun="price change"
+                actions={
+                  <>
+                    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                      <Button
+                        tone="secondary"
+                        disabled={write.demoReadOnly}
+                        onClick={() => void handleBulkIgnore()}
                       >
-                        <td className="cell-select">
-                          {write.visible ? (
-                            <input
-                              type="checkbox"
-                              data-testid="row-select"
-                              aria-label={`Select ${item.productName} on ${item.destinationLabel}`}
-                              checked={selected.has(item.id)}
-                              disabled={!isSelectable(item)}
-                              onChange={() => toggleSelected(item.id)}
-                            />
-                          ) : null}
-                        </td>
-                        <td className="cell-identity">
-                          {isGroupStart ? (
-                            <div className="cell-product">
-                              <ProductThumbnail name={item.productName} src={null} size="md" />
-                              <div className="cell-product__text">
-                                <div className="cell-product__name" title={item.productName}>
-                                  {item.productName}
-                                  {item.variantLabel ? (
-                                    <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
-                                      {' '}
-                                      — {item.variantLabel}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                {item.sku ? <div className="cell-product__sku">{item.sku}</div> : null}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="cell-continuation">
-                              <span aria-hidden="true">↳</span>
-                              Also changes here{' '}
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="cell-continuation__help"
-                                    aria-label="What does this mean?"
-                                  >
-                                    ?
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  One price change, one more listing to update. You can accept, edit, or
-                                  ignore each listing on its own.
-                                </TooltipContent>
-                              </Tooltip>
-                            </div>
-                          )}
-                        </td>
-                        <td data-label="Changed in">
-                          <div className="cell-product__source">
-                            <Link
-                              className="connection-tag"
-                              data-testid="row-source-tag"
-                              to={`/connections/${item.sourceConnectionId}/pricing-sync`}
-                            >
-                              {item.sourceLabel}
-                            </Link>
-                          </div>
+                        Keep prices
+                      </Button>
+                    </ReadOnlyLock>
+                    <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
+                      <Button disabled={write.demoReadOnly} onClick={() => setBulkDialogOpen(true)}>
+                        Accept selected
+                      </Button>
+                    </ReadOnlyLock>
+                  </>
+                }
+              />
+            }
+            cardView={{
+              ...(write.visible ? { select: (item: PriceChangeItem) => renderSelectCheckbox(item) } : {}),
+              title: (item) => renderProductIdentity(item),
+              meta: (item) => cardMetaFor(item),
+              summary: (item) => (
+                <KeyValueList
+                  items={[
+                    {
+                      id: 'changed-in',
+                      label: 'Changed in',
+                      value: (
+                        <>
+                          <Link
+                            className="connection-tag"
+                            data-testid="row-source-tag"
+                            to={`/connections/${item.sourceConnectionId}/pricing-sync`}
+                          >
+                            {item.sourceLabel}
+                          </Link>
                           <div className="cell-product__source">
                             {formatAmount(item.sourceOldAmount, item.sourceCurrency)} →{' '}
                             {formatAmount(item.sourceNewAmount, item.sourceCurrency)}
                           </div>
-                        </td>
-                        <td data-label="Connection">
-                          <Link
-                            className="connection-tag"
-                            data-testid="row-connection-tag"
-                            to={`/connections/${item.destinationConnectionId}/pricing-sync`}
-                          >
-                            {item.destinationLabel}
-                          </Link>
-                        </td>
-                        <td data-label="Price on this connection">
-                          <PriceCell item={item} />
-                        </td>
-                        <td data-label="Detected">
-                          <TimeDisplay iso={item.detectedAt} format="datetime" />
-                        </td>
-                        <td className="col-num">
-                          <ActionCell
-                            item={item}
-                            write={write}
-                            onAccept={setAcceptTarget}
-                            onEdit={setEditTarget}
-                            onIgnore={handleIgnore}
-                            onUndo={handleUndo}
-                            onRefresh={handleRefresh}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <BulkActionBar
-            count={selectedIds.length}
-            itemNoun="price change"
-            actions={
-              <>
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-                  <Button
-                    tone="secondary"
-                    disabled={write.demoReadOnly}
-                    onClick={() => void handleBulkIgnore()}
-                  >
-                    Keep prices
-                  </Button>
-                </ReadOnlyLock>
-                <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
-                  <Button disabled={write.demoReadOnly} onClick={() => setBulkDialogOpen(true)}>
-                    Accept selected
-                  </Button>
-                </ReadOnlyLock>
-              </>
-            }
+                        </>
+                      ),
+                    },
+                    {
+                      id: 'connection',
+                      label: 'Connection',
+                      value: (
+                        <Link
+                          className="connection-tag"
+                          data-testid="row-connection-tag"
+                          to={`/connections/${item.destinationConnectionId}/pricing-sync`}
+                        >
+                          {item.destinationLabel}
+                        </Link>
+                      ),
+                    },
+                    {
+                      id: 'price',
+                      label: 'Price on this connection (incl. VAT)',
+                      value: <PriceCell item={item} />,
+                    },
+                    {
+                      id: 'detected',
+                      label: 'Detected',
+                      value: <TimeDisplay iso={item.detectedAt} format="datetime" />,
+                    },
+                  ]}
+                />
+              ),
+              actions: (item) => (
+                <ActionCell
+                  item={item}
+                  write={write}
+                  onAccept={setAcceptTarget}
+                  onEdit={setEditTarget}
+                  onIgnore={handleIgnore}
+                  onUndo={handleUndo}
+                  onRefresh={handleRefresh}
+                />
+              ),
+            }}
           />
         </div>
       )}
@@ -863,12 +1013,31 @@ export function PriceChangesQueueTable(): ReactElement {
   );
 }
 
-function rowStateFor(item: PriceChangeItem): string {
+type RowState =
+  | 'row-accepted-custom'
+  | 'row-accepted'
+  | 'row-ignored'
+  | 'row-needs-refresh'
+  | 'row-pending';
+
+/**
+ * The single derivation of a row's state, read by `data-state`,
+ * `rowClassNameFor` and `cardMetaFor` (review follow-up, #3327) - see
+ * `rowClassNameFor`'s docblock for why collapsing three independent
+ * re-derivations onto this one function is load-bearing rather than
+ * cosmetic.
+ */
+function rowStateFor(item: PriceChangeItem): RowState {
   if (item.resolution === 'accepted-custom') return 'row-accepted-custom';
   if (item.resolution === 'accepted') return 'row-accepted';
   if (item.resolution === 'ignored') return 'row-ignored';
   if (item.needsRefresh) return 'row-needs-refresh';
   return 'row-pending';
+}
+
+/** Any resolved state (accepted, accepted-custom or ignored) - the "is-resolved" bucket. */
+function isRowStateResolved(state: RowState): boolean {
+  return state === 'row-accepted' || state === 'row-accepted-custom' || state === 'row-ignored';
 }
 
 function PriceCell({ item }: { item: PriceChangeItem }): ReactElement {

@@ -12,6 +12,45 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.12.0](https://github.com/openlinker-project/openlinker/compare/v0.11.0...v0.12.0) (2026-09-21)
+
+
+### Features
+
+* **eparagony:** eparagony issues invoices through the Invoicing capability ([#3304](https://github.com/openlinker-project/openlinker/issues/3304)) ([0281245](https://github.com/openlinker-project/openlinker/commit/028124508803bd1224b3a12550933f5050c0342c))
+* **inventory:** close mockup-parity gaps on the duplicate-positions page ([#3264](https://github.com/openlinker-project/openlinker/issues/3264)) ([a0d1997](https://github.com/openlinker-project/openlinker/commit/a0d199702929bc682ab9a16f167eff60a395273a))
+* **inventory:** duplicate-positions API client + query hook ([#3251](https://github.com/openlinker-project/openlinker/issues/3251)) ([df940b6](https://github.com/openlinker-project/openlinker/commit/df940b6414e4cfdbab38b083e8fd03cbbe31ec8b))
+* **inventory:** duplicate-positions page with readiness KPI strip ([#3252](https://github.com/openlinker-project/openlinker/issues/3252)) ([4ffb39d](https://github.com/openlinker-project/openlinker/commit/4ffb39d7df1408f71037b13935684e627d02e0e8))
+* **inventory:** enrich duplicate-positions response with product/variant/connection/location display names ([#3249](https://github.com/openlinker-project/openlinker/issues/3249)) ([9f0e02f](https://github.com/openlinker-project/openlinker/commit/9f0e02f04c9f7f0ac6a6adb3107de13ce5abc80b))
+* **inventory:** expandable grouped table (per-row inventory_items detail) ([#3255](https://github.com/openlinker-project/openlinker/issues/3255)) ([c36ee2b](https://github.com/openlinker-project/openlinker/commit/c36ee2ba253b559b16286df72db51a79b5701cc7))
+* **inventory:** expose [#2317](https://github.com/openlinker-project/openlinker/issues/2317) provenance-backfill completion state for the duplicate-positions readiness gate ([#3250](https://github.com/openlinker-project/openlinker/issues/3250)) ([fc9ddd4](https://github.com/openlinker-project/openlinker/commit/fc9ddd42d83ca17ea8c6d79e0bf2e3f7b9d361d1))
+* **inventory:** nav entry under Diagnostics ([#3261](https://github.com/openlinker-project/openlinker/issues/3261)) ([9b7f2a5](https://github.com/openlinker-project/openlinker/commit/9b7f2a5606a8d63f222cf27e93a7bbcba5e9984a))
+* **inventory:** truncated-report banner state ([#3256](https://github.com/openlinker-project/openlinker/issues/3256)) ([ddeb4ef](https://github.com/openlinker-project/openlinker/commit/ddeb4efb4724840ecc7ca4c7d722312ce42712aa))
+* **orders,api:** merge invoices and fiscal receipts into GET /sales-documents ([#3308](https://github.com/openlinker-project/openlinker/issues/3308)) ([a7500ba](https://github.com/openlinker-project/openlinker/commit/a7500ba63d5b85104f8585a1d3bed8f095e34528))
+* **returns:** approve dialog for operator-authored returns ([#3283](https://github.com/openlinker-project/openlinker/issues/3283)) ([86e3657](https://github.com/openlinker-project/openlinker/commit/86e3657d3e6b7ccaa4f0f7be895168f816417b36))
+* **returns:** entry point from the returns list/detail ([#3285](https://github.com/openlinker-project/openlinker/issues/3285)) ([9c90a33](https://github.com/openlinker-project/openlinker/commit/9c90a33b71c3c0771304e30b7905cf42cbf8e84d))
+* **returns:** match-to-order dialog + unknown-order/already-attributed handling ([#3281](https://github.com/openlinker-project/openlinker/issues/3281)) ([476c705](https://github.com/openlinker-project/openlinker/commit/476c7057eca7b8db6dbb2dbd3265a0f3ae461b53))
+* **returns:** mutation hooks + cache invalidation ([#3080](https://github.com/openlinker-project/openlinker/issues/3080)) ([#3279](https://github.com/openlinker-project/openlinker/issues/3279)) ([26635f2](https://github.com/openlinker-project/openlinker/commit/26635f29389ca5ffe546f6e5c8b9f7f7abb72d30))
+* **returns:** orphan-returns worklist (needs-order / needs-approval groups) ([#3280](https://github.com/openlinker-project/openlinker/issues/3280)) ([a89a59f](https://github.com/openlinker-project/openlinker/commit/a89a59fbfe41bf9dbcb78f8f98c229a08722b189))
+* **returns:** record-a-return-by-hand dialog ([#3284](https://github.com/openlinker-project/openlinker/issues/3284)) ([978a621](https://github.com/openlinker-project/openlinker/commit/978a621675cbbb9e8271f6031ce100552cca815a))
+* **returns:** write API client (record, authorize, match-order) ([#3278](https://github.com/openlinker-project/openlinker/issues/3278)) ([366d302](https://github.com/openlinker-project/openlinker/commit/366d302a28e44629dc2827d8a245840a76207759))
+* **sales-documents:** merge invoices and fiscal receipts into one operator list ([#3309](https://github.com/openlinker-project/openlinker/issues/3309)) ([f226976](https://github.com/openlinker-project/openlinker/commit/f226976903ab7a2a0bc516f58526359d21c54c3b))
+* **sales-documents:** refuse a colliding rule in the composer, before the save ([#3253](https://github.com/openlinker-project/openlinker/issues/3253)) ([3da1c3a](https://github.com/openlinker-project/openlinker/commit/3da1c3afe99cb537273c6db14753f962b51276e1))
+* **web:** give the eparagony.pl connection config real form fields ([#3268](https://github.com/openlinker-project/openlinker/issues/3268)) ([f81d746](https://github.com/openlinker-project/openlinker/commit/f81d7464f383639e522606052b73b8765ce8c2db))
+* **web:** show release version instead of static "DEV" text in top-left badge ([#3288](https://github.com/openlinker-project/openlinker/issues/3288)) ([e1ae0ae](https://github.com/openlinker-project/openlinker/commit/e1ae0aecece5b6e0105b91be52b8cb0706c7bcc8))
+
+
+### Bug Fixes
+
+* **invariants:** floor the scanned-file/root/phrase count on six check-* guards so a path or wording change fails loudly ([#3303](https://github.com/openlinker-project/openlinker/issues/3303)) ([1e4e628](https://github.com/openlinker-project/openlinker/commit/1e4e628de86d2e230b2e1d3e631f8c04db0f5134))
+* **invariants:** stop the mirror-guard array parser truncating on a bracket inside a comment ([#3305](https://github.com/openlinker-project/openlinker/issues/3305)) ([4486f3e](https://github.com/openlinker-project/openlinker/commit/4486f3e3e34295d35f60376709905a2de10d7217)), closes [#3002](https://github.com/openlinker-project/openlinker/issues/3002)
+
+
+### Performance Improvements
+
+* **ci:** three fixes for the Integration Tests job - per-worker databases, duplicate type-checking, and an oversized worker count (about 3x faster) ([#3276](https://github.com/openlinker-project/openlinker/issues/3276)) ([c3db337](https://github.com/openlinker-project/openlinker/commit/c3db3378a0b0e8292a689ac22366575dbeeef9b0))
+* **ci:** three fixes for the Test job (unit tests) - cache, queueing, and a starved frontend (about 4x faster) ([#3275](https://github.com/openlinker-project/openlinker/issues/3275)) ([b89bf7c](https://github.com/openlinker-project/openlinker/commit/b89bf7c06d6a4cbb37ba18b5a58552c3cd0f4550))
+
 ## [0.11.0](https://github.com/openlinker-project/openlinker/compare/v0.10.0...v0.11.0) (2026-09-15)
 
 

@@ -1553,7 +1553,9 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
    * default (soonest ship-by first, NULLs last); the JSONB-derived keys back the
    * sortable table columns. `dir` overrides the per-key default direction when
    * the FE supplies one (a header click). Every branch adds a stable
-   * `createdAt DESC` tiebreaker so equal sort keys keep a deterministic order.
+   * `createdAt DESC` tiebreaker so equal sort keys keep a deterministic order,
+   * and a final `internalOrderId ASC` tiebreak (#3316 review) makes the order
+   * fully deterministic even when two rows also share `createdAt`.
    */
   private applySort(
     qb: SelectQueryBuilder<OrderRecordOrmEntity>,
@@ -1564,48 +1566,45 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       dir === 'asc' ? 'ASC' : dir === 'desc' ? 'DESC' : fallback;
     switch (sort) {
       case 'dispatchBy':
-        qb.orderBy('rec.dispatchByAt', d('ASC'), 'NULLS LAST').addOrderBy('rec.createdAt', 'DESC');
+        qb.orderBy('rec.dispatchByAt', d('ASC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'total':
-        qb.orderBy(OrderRecordRepository.TOTAL_EXPR, d('DESC'), 'NULLS LAST').addOrderBy(
-          'rec.createdAt',
-          'DESC'
-        );
+        qb.orderBy(OrderRecordRepository.TOTAL_EXPR, d('DESC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'items':
-        qb.orderBy(OrderRecordRepository.ITEMS_EXPR, d('DESC'), 'NULLS LAST').addOrderBy(
-          'rec.createdAt',
-          'DESC'
-        );
+        qb.orderBy(OrderRecordRepository.ITEMS_EXPR, d('DESC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'customer':
-        qb.orderBy(OrderRecordRepository.CUSTOMER_EXPR, d('ASC'), 'NULLS LAST').addOrderBy(
-          'rec.createdAt',
-          'DESC'
-        );
+        qb.orderBy(OrderRecordRepository.CUSTOMER_EXPR, d('ASC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'status':
-        qb.orderBy(OrderRecordRepository.HEALTH_ORDINAL, d('ASC')).addOrderBy(
-          'rec.createdAt',
-          'DESC'
-        );
+        qb.orderBy(OrderRecordRepository.HEALTH_ORDINAL, d('ASC'))
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'fulfillment':
-        qb.orderBy(OrderRecordRepository.FULFILLMENT_ORDINAL, d('ASC')).addOrderBy(
-          'rec.createdAt',
-          'DESC'
-        );
+        qb.orderBy(OrderRecordRepository.FULFILLMENT_ORDINAL, d('ASC'))
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'payment':
-        qb.orderBy(OrderRecordRepository.PAYMENT_EXPR, d('ASC'), 'NULLS LAST').addOrderBy(
-          'rec.createdAt',
-          'DESC'
-        );
+        qb.orderBy(OrderRecordRepository.PAYMENT_EXPR, d('ASC'), 'NULLS LAST')
+          .addOrderBy('rec.createdAt', 'DESC')
+          .addOrderBy('rec.internalOrderId', 'ASC');
         return;
       case 'createdAt':
       default:
-        // No-sort default stays createdAt DESC (unchanged for non-list callers).
-        qb.orderBy('rec.createdAt', d('DESC'));
+        // No-sort default stays createdAt DESC (unchanged for non-list callers),
+        // with the same final tiebreak so this branch is deterministic too.
+        qb.orderBy('rec.createdAt', d('DESC')).addOrderBy('rec.internalOrderId', 'ASC');
         return;
     }
   }

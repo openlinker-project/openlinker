@@ -65,6 +65,17 @@ import { HTTP_TRANSPORT_FACTORY_TOKEN } from '@openlinker/plugin-sdk';
 // RateLimitStatusService convention).
 import { HttpTransportFactoryPort } from '@openlinker/shared/http';
 
+/**
+ * Machine-readable code for a `config.stockLocationOverride` 400 (#3206/#3207
+ * review). The message is prose the backend is free to reword; the FE mapping
+ * in `EditConnectionForm.onSubmit` must branch on THIS, not on
+ * `error.message.includes(...)`, or a rewording silently reverts the
+ * field-level error to the generic banner. Mirrored verbatim in
+ * `apps/web/src/features/connections/lib/stock-location-override-error.ts` —
+ * the `ORDER_ALREADY_ON_HOLD` / `HOLD_ALREADY_RELEASED` precedent (#2341).
+ */
+export const STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE = 'STOCK_LOCATION_OVERRIDE_INVALID';
+
 @Injectable()
 export class ConnectionService implements IConnectionService {
   private readonly logger = new Logger(ConnectionService.name);
@@ -467,7 +478,11 @@ export class ConnectionService implements IConnectionService {
     const value = config.stockLocationOverride;
     if (value === undefined || value === null) return;
     if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new BadRequestException('config.stockLocationOverride must be a non-empty string');
+      throw new BadRequestException({
+        statusCode: 400,
+        error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
+        message: 'config.stockLocationOverride must be a non-empty string',
+      });
     }
 
     // Shape-only read of the persisted value: `Connection.config` is JSONB, so
@@ -487,16 +502,21 @@ export class ConnectionService implements IConnectionService {
 
     const location = await this.locations.getLocation(locationId);
     if (!location) {
-      throw new BadRequestException(
-        `config.stockLocationOverride names an unknown location: ${locationId}`
-      );
+      throw new BadRequestException({
+        statusCode: 400,
+        error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
+        message: `config.stockLocationOverride names an unknown location: ${locationId}`,
+      });
     }
     if (location.status !== 'active') {
-      throw new BadRequestException(
-        `config.stockLocationOverride names a retired location: ${locationId} (status: ${location.status}). ` +
+      throw new BadRequestException({
+        statusCode: 400,
+        error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE,
+        message:
+          `config.stockLocationOverride names a retired location: ${locationId} (status: ${location.status}). ` +
           'Stock written to an inactive location is filtered out by fulfilment routing, so the ' +
-          'override would decide nothing. Name an active location, or reactivate this one.'
-      );
+          'override would decide nothing. Name an active location, or reactivate this one.',
+      });
     }
   }
 

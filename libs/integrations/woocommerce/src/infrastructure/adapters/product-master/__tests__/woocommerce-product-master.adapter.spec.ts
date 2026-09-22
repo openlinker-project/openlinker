@@ -236,7 +236,13 @@ describe('WooCommerceProductMasterAdapter', () => {
   describe('getProduct', () => {
     it('should return product with internal ID', async () => {
       const httpClient = makeHttpClient();
-      httpClient.get.mockResolvedValue({ id: 42, name: 'Product', type: 'simple' });
+      // Path-aware: a bare `mockResolvedValue` would answer the currency
+      // adapter's `/settings/general` read with this same product body,
+      // and `.find` on it throws (#3310).
+      httpClient.get.mockImplementation((path: string) => {
+        if (path === '/wp-json/wc/v3/settings/general') return Promise.resolve([]);
+        return Promise.resolve({ id: 42, name: 'Product', type: 'simple' });
+      });
       const identifierMapping = makeIdentifierMapping();
       identifierMapping.getExternalIds.mockResolvedValue([
         { externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
@@ -1080,6 +1086,154 @@ describe('WooCommerceProductMasterAdapter', () => {
       await expect(
         adapter.readProductTaxRate({ productId: 'prod-1', variantId: 'var-1' }),
       ).resolves.toEqual({ kind: 'inherited' });
+    });
+  });
+
+  describe('store currency resolution (#3310)', () => {
+    const PLN_SETTINGS = [
+      { id: 'woocommerce_default_country', value: 'PL:MZ' },
+      { id: 'woocommerce_currency', value: 'PLN' },
+    ];
+
+    function respondByPath(
+      httpClient: jest.Mocked<IWooCommerceHttpClient>,
+      routes: {
+        product?: unknown;
+        settings?: unknown;
+      },
+    ): void {
+      httpClient.get.mockImplementation((path: string) => {
+        if (path === '/wp-json/wc/v3/settings/general') {
+          const settings = routes.settings;
+          if (typeof settings === 'function') (settings as () => never)();
+          return Promise.resolve(settings);
+        }
+        return Promise.resolve(routes.product ?? {});
+      });
+    }
+
+    it('should resolve currency from the store settings on getProduct', async () => {
+      const httpClient = makeHttpClient();
+      respondByPath(httpClient, {
+        product: { id: 42, name: 'Product', type: 'simple' },
+        settings: PLN_SETTINGS,
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      const result = await adapter.getProduct('prod-internal-1');
+
+      expect(result.currency).toBe('PLN');
+    });
+
+    it('should resolve currency from the store settings on getProducts', async () => {
+      const httpClient = makeHttpClient();
+      httpClient.get.mockImplementation((path: string) => {
+        if (path === '/wp-json/wc/v3/settings/general') return Promise.resolve(PLN_SETTINGS);
+        return Promise.resolve([{ id: 1 }]);
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.batchGetOrCreateInternalIds.mockResolvedValue(
+        new Map([[`1:${CONNECTION_ID}`, 'internal-1']]),
+      );
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      const result = await adapter.getProducts();
+
+      expect(result).toHaveLength(1);
+      expect(result[0].currency).toBe('PLN');
+    });
+
+    it('should keep currency null when the store declares none — no defaulted or guessed code', async () => {
+      const httpClient = makeHttpClient();
+      respondByPath(httpClient, {
+        product: { id: 42, name: 'Product', type: 'simple' },
+        settings: [{ id: 'woocommerce_default_country', value: 'PL' }],
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      const result = await adapter.getProduct('prod-internal-1');
+
+      expect(result.currency).toBeNull();
+    });
+
+    it('should throw on a transport failure reading /settings/general, never reporting "the store declares none"', async () => {
+      const httpClient = makeHttpClient();
+      respondByPath(httpClient, {
+        product: { id: 42, name: 'Product', type: 'simple' },
+        settings: () => {
+          throw new WooCommerceHttpResponseException(500, 'Internal Server Error');
+        },
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      await expect(adapter.getProduct('prod-internal-1')).rejects.toBeInstanceOf(
+        WooCommerceHttpResponseException,
+      );
+    });
+
+    it('should not cache a failed currency read, so a later read still answers', async () => {
+      const httpClient = makeHttpClient();
+      let settingsCall = 0;
+      httpClient.get.mockImplementation((path: string) => {
+        if (path === '/wp-json/wc/v3/settings/general') {
+          settingsCall += 1;
+          if (settingsCall === 1) {
+            return Promise.reject(new WooCommerceHttpResponseException(500, 'boom'));
+          }
+          return Promise.resolve(PLN_SETTINGS);
+        }
+        return Promise.resolve({ id: 42, name: 'Product', type: 'simple' });
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      await expect(adapter.getProduct('prod-internal-1')).rejects.toBeInstanceOf(
+        WooCommerceHttpResponseException,
+      );
+      const result = await adapter.getProduct('prod-internal-1');
+      expect(result.currency).toBe('PLN');
+    });
+
+    it('should fetch /settings/general at most once per adapter instance when both country and currency are needed', async () => {
+      const httpClient = makeHttpClient();
+      let settingsCalls = 0;
+      httpClient.get.mockImplementation((path: string) => {
+        if (path === '/wp-json/wc/v3/settings/general') {
+          settingsCalls += 1;
+          return Promise.resolve(PLN_SETTINGS);
+        }
+        if (path === '/wp-json/wc/v3/taxes') {
+          return Promise.resolve([{ id: 1, country: 'PL', rate: '23.0000' }]);
+        }
+        return Promise.resolve({ id: 42, name: 'Product', type: 'simple', tax_class: '', tax_status: 'taxable' });
+      });
+      const identifierMapping = makeIdentifierMapping();
+      identifierMapping.getExternalIds.mockResolvedValue([
+        { externalId: '42', connectionId: CONNECTION_ID, platformType: 'woocommerce', entityType: 'Product' },
+      ]);
+      const adapter = makeAdapter(httpClient, identifierMapping, makeMapper());
+
+      const product = await adapter.getProduct('prod-internal-1'); // resolves currency
+      const rate = await adapter.readProductTaxRate({ productId: 'prod-internal-1' }); // resolves country
+
+      expect(product.currency).toBe('PLN');
+      expect(rate).toEqual(expect.objectContaining({ kind: 'resolved', countryIso2: 'PL' }));
+      expect(settingsCalls).toBe(1);
     });
   });
 });
