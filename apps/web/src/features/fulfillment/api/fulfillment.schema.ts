@@ -56,8 +56,12 @@ export const fulfillmentTaskSchema = z.object({
   // keeps parsing against an API that has not shipped them yet and falls back
   // to the work's own id rather than failing the whole read.
   orderReference: nullableString,
-  buyerName: nullableString,
+  // `buyerNameMasked`, not `buyerName`: the field says on the wire that the
+  // value has been through `maskName` server-side, so no reader can mistake
+  // it for the buyer's own name.
+  buyerNameMasked: nullableString,
   dispatchByAt: nullableString,
+  carrierName: nullableString,
   locationName: nullableString,
   assignedConnectionId: nullableString,
   assignedToUserId: nullableString,

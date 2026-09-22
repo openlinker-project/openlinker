@@ -86,8 +86,22 @@ export interface FulfillmentTask {
    * `undefined` against an API that predates them.
    */
   orderReference?: string | null;
-  buyerName?: string | null;
+  /**
+   * MASKED server-side ("A. Kowalska"). The field name carries that, so no
+   * reader can mistake it for the buyer's own name. `null` under
+   * `OL_STORE_PII=false`, where the persisted address is redacted and there
+   * genuinely is no name - an ordinary answer, not a failure.
+   */
+  buyerNameMasked?: string | null;
   dispatchByAt?: string | null;
+  carrierName?: string | null;
+  /**
+   * `null` FAR more often than it looks: `inventory_items.locationId IS NULL`
+   * means the master declines to locate its stock (ADR-058 decision 2), and
+   * neither shipped `InventoryMasterPort` adapter can report a location. So
+   * expect no location at all unless the operator set a per-connection
+   * `stockLocationOverride` (#3206).
+   */
   locationName?: string | null;
   assignedConnectionId: string | null;
   /**

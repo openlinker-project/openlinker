@@ -18,7 +18,7 @@
  *
  * ## It states what it does NOT know
  *
- * `orderReference` and `buyerName` come from the order, which a task does not
+ * `orderReference` and `buyerNameMasked` come from the order, which a task does not
  * carry until the board's own read supplies them. Absent, the card falls back
  * to the work's own id rather than rendering an empty line, and says nothing
  * about a buyer at all — an em-dash placeholder in a buyer slot reads as "no
@@ -89,8 +89,8 @@ export function AssignPackingWorkCard({
           )}
         </div>
         {/* Absent rather than placeheld — see the module docblock. */}
-        {task.buyerName == null ? null : (
-          <span className="assign-packing-work-card__buyer">{task.buyerName}</span>
+        {task.buyerNameMasked == null ? null : (
+          <span className="assign-packing-work-card__buyer">{task.buyerNameMasked}</span>
         )}
         <span className="assign-packing-work-card__meta">
           {ASSIGN_PACKING_WORK_COPY.card.summary({
