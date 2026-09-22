@@ -21,6 +21,8 @@ import { AnalyticsPage } from './analytics.page';
 import { AnalyticsMockupPage } from './analytics-mockup.page';
 import { BenchPage } from './bench.page';
 import { PackBenchMockupPage } from './pack-bench-mockup.page';
+import { AssignPackingWorkPage } from './assign-packing-work.page';
+import { AssignPackingWorkMockupPage } from './assign-packing-work-mockup.page';
 
 export interface PageObjects {
   login: LoginPage;
@@ -38,6 +40,8 @@ export interface PageObjects {
   analyticsMockup: AnalyticsMockupPage;
   bench: BenchPage;
   packBenchMockup: PackBenchMockupPage;
+  assignPackingWork: AssignPackingWorkPage;
+  assignPackingWorkMockup: AssignPackingWorkMockupPage;
 }
 
 export function createPageObjects(page: Page): PageObjects {
@@ -57,6 +61,8 @@ export function createPageObjects(page: Page): PageObjects {
     analyticsMockup: new AnalyticsMockupPage(page),
     bench: new BenchPage(page),
     packBenchMockup: new PackBenchMockupPage(page),
+    assignPackingWork: new AssignPackingWorkPage(page),
+    assignPackingWorkMockup: new AssignPackingWorkMockupPage(page),
   };
 }
 
@@ -74,3 +80,5 @@ export * from './analytics.page';
 export * from './analytics-mockup.page';
 export * from './bench.page';
 export * from './pack-bench-mockup.page';
+export * from './assign-packing-work.page';
+export * from './assign-packing-work-mockup.page';
