@@ -122,19 +122,21 @@ export const eparagonyAdapterManifest: AdapterMetadata = {
 export function createEparagonyPlugin(): AdapterPlugin {
   // One factory for the lifetime of the plugin rather than one per capability
   // resolution (the #2592 hoist, mirroring `createPrestashopPlugin`). Safe
-  // because the factory holds no per-connection state: it takes no constructor
-  // arguments and the connection is a parameter of `createAdapters`.
+  // because the factory holds only a per-connection HTTP-client cache, keyed
+  // to invalidate itself on a config edit or a credential rotation (see the
+  // factory's own header, #3382) - it takes no constructor arguments and the
+  // connection is a parameter of `createAdapters`.
   //
-  // Be precise about what this does and does not buy here. It does NOT make the
-  // OAuth token cache outlive a capability resolution - that cache lives on the
-  // `EparagonyHttpClient`, which `createAdapters` still builds per call, so two
-  // resolutions for one connection still fetch two tokens. What it buys is the
-  // seam: the factory is now the only place a per-connection client could be
-  // cached, and caching one is a separate decision that owes an invalidation
-  // story (rotated credentials, a changed host override) of the kind
-  // `PrestashopAdapterFactory.dropCachesOnShopIdentityChange` carries. The
-  // doubling this slice had to avoid is the one WITHIN a resolution: both
-  // adapters ride the single client `createAdapters` builds.
+  // This IS what makes the OAuth token cache outlive a capability resolution:
+  // `getCapabilityAdapter` still constructs a fresh adapter on every call, but
+  // the factory instance - and with it the client map - is the ONE thing that
+  // survives across those calls, because it is hoisted here rather than
+  // constructed inside `createCapabilityAdapter` below. Hoisting the factory
+  // without also caching the client inside it (the #2592 state before #3382)
+  // bought only the seam, not the reuse: `createAdapters` still built a fresh
+  // client, with a fresh empty token cache, on every call. The doubling within
+  // ONE resolution was never the problem - both adapters have always ridden
+  // the single client `createAdapters` builds for that call.
   const factory = new EparagonyAdapterFactory();
 
   return {
