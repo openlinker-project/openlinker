@@ -64,7 +64,10 @@ export const ASSIGN_PACKING_WORK_COPY = {
     moveToLabel: 'Move to',
     moveToUnassigned: 'Unassigned',
     selfServeLabel: 'Anyone may claim this',
-    hold: 'Hold',
+    // No `hold` key: this screen's own "Hold" label is gone. Every action
+    // label now comes from `fulfillmentActionLabel` via `FulfillmentTaskActions`,
+    // so the button reads "Put on hold" here exactly as it does on the order
+    // panel — one action, one word for it.
     moveFailed: 'Could not move this task. Nothing has changed.',
     /** #3429 — only errors toasted before; a successful staffing change said nothing. */
     moveSucceeded: 'Task moved.',

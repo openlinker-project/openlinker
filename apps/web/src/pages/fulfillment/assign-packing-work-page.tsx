@@ -46,12 +46,9 @@ import {
   AssignPackingWorkLaneSection,
   FulfillmentTaskActionDialog,
   UNASSIGNED_LANE_ID,
-  describeFulfillmentActionError,
-  fulfillmentActionLabel,
   groupTasksByPacker,
   lightestLoadLaneIds,
-  readFulfillmentConflict,
-  useFulfillmentTaskActionMutation,
+  useFulfillmentTaskActionRunner,
   useFulfillmentTasksQuery,
   useUpdateFulfillmentAssignmentMutation,
   type FulfillmentTask,
@@ -73,7 +70,6 @@ export function AssignPackingWorkPage(): ReactElement {
   const tasksQuery = useFulfillmentTasksQuery({ limit: BOARD_TASK_LIMIT });
   const packersQuery = usePackersQuery();
   const assignmentMutation = useUpdateFulfillmentAssignmentMutation();
-  const actionMutation = useFulfillmentTaskActionMutation();
   const { showToast } = useToast();
   const demoMode = useDemoMode();
   // The same permission the worklist page resolves its write gate from
@@ -81,9 +77,20 @@ export function AssignPackingWorkPage(): ReactElement {
   // `@Roles('admin', 'operator')`, exactly who holds `orders:write`.
   const write = useWriteAccess('orders:write', demoMode);
 
+  /**
+   * Which task has an ASSIGNMENT write in flight.
+   *
+   * Deliberately separate from `actions.busyTaskId`: assignment is not an
+   * action and carries no `expectedVersion` (ADR-074 puts it outside the
+   * legality matrix), so it has neither the runner's 409 contract nor its
+   * dialog. Two writes, two busy flags, one disabled state at the control.
+   */
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
-  const [holdTask, setHoldTask] = useState<FulfillmentTask | null>(null);
-  const [holdError, setHoldError] = useState<unknown>(null);
+  // Every ACTION goes through the shared runner (#3257): the 409 contract, the
+  // busy task and the dialog form all live there, so this screen cannot grow
+  // its own dialect of them.
+  const actions = useFulfillmentTaskActionRunner();
+
   /** #3426 — the task currently being dragged, lifted here for the reason stated above. */
   const [draggedTask, setDraggedTask] = useState<FulfillmentTask | null>(null);
 
@@ -145,69 +152,30 @@ export function AssignPackingWorkPage(): ReactElement {
     });
   };
 
-  const openHold = (task: FulfillmentTask): void => {
-    setHoldError(null);
-    setHoldTask(task);
-  };
-
-  const submitHold = (holdReason: string, note?: string): void => {
-    if (!holdTask) return;
-    const task = holdTask;
-    setBusyTaskId(task.id);
-    actionMutation.mutate(
-      {
-        workId: task.id,
-        action: 'hold',
-        orderId: task.orderId,
-        expectedVersion: task.version,
-        holdReason,
-        note,
-      },
-      {
-        onSuccess: () => {
-          showToast({ tone: 'success', description: `${fulfillmentActionLabel('hold')} applied.` });
-          setHoldTask(null);
-        },
-        onError: (error) => {
-          const conflict = readFulfillmentConflict(error);
-          if (conflict) {
-            // A stale token or an illegal action — the server's own truth wins;
-            // closing the form and letting the row re-render is the same rule
-            // the worklist page follows.
-            setHoldTask(null);
-            showToast({
-              tone: conflict.retryable ? 'warning' : 'error',
-              description: describeFulfillmentActionError(
-                error,
-                `Could not ${fulfillmentActionLabel('hold').toLowerCase()} this fulfilment task.`
-              ),
-            });
-            return;
-          }
-          setHoldError(error);
-        },
-        onSettled: () => {
-          setBusyTaskId(null);
-        },
-      }
-    );
-  };
-
   const renderActions = (task: FulfillmentTask): ReactElement | null => (
     <AssignPackingWorkActions
       task={task}
       packers={packers}
       visible={write.visible}
       readOnly={write.demoReadOnly}
-      busy={busyTaskId === task.id}
+      busy={busyTaskId === task.id || actions.busyTaskId === task.id}
       onMoveTo={(userId) => {
         setAssignment(task, { assignedToUserId: userId });
       }}
       onToggleSelfServe={(selfServeEligible) => {
         setAssignment(task, { selfServeEligible });
       }}
+      onInvoke={(action) => {
+        actions.run(task, action, {});
+      }}
       onHold={() => {
-        openHold(task);
+        actions.openForm({ mode: 'hold', task });
+      }}
+      onReleaseHold={(hold) => {
+        actions.openForm({ mode: 'release_hold', task, hold });
+      }}
+      onForceCancel={() => {
+        actions.openForm({ mode: 'force_cancel', task });
       }}
     />
   );
@@ -284,20 +252,21 @@ export function AssignPackingWorkPage(): ReactElement {
 
       {body}
 
-      {holdTask ? (
+      {actions.pendingForm ? (
         <FulfillmentTaskActionDialog
-          key={holdTask.id}
+          // Remount per (task, mode, hold) so a draft never carries across.
+          // The old key was the task id alone, which was enough while `hold`
+          // was the only mode this screen had.
+          key={`${actions.pendingForm.task.id}:${actions.pendingForm.mode}:${actions.pendingForm.hold?.id ?? ''}`}
           open
-          mode="hold"
-          submitting={busyTaskId === holdTask.id}
-          error={holdError}
+          mode={actions.pendingForm.mode}
+          holdId={actions.pendingForm.hold?.id}
+          submitting={actions.busyTaskId === actions.pendingForm.task.id}
+          error={actions.pendingForm.error ?? null}
           onOpenChange={(open) => {
-            if (!open) setHoldTask(null);
+            if (!open) actions.closeForm();
           }}
-          onSubmit={(actionBody) => {
-            setHoldError(null);
-            submitHold(actionBody.holdReason ?? '', actionBody.note);
-          }}
+          onSubmit={actions.submitForm}
         />
       ) : null}
     </PageLayout>

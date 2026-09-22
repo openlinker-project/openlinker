@@ -34,6 +34,13 @@ export {
   FULFILLMENT_WORKLIST_PAGE_SIZE,
 } from './hooks/use-fulfillment-tasks-query';
 export { useFulfillmentTaskActionMutation } from './hooks/use-fulfillment-task-action-mutation';
+// #3257 — the one place a fulfilment action becomes a request. Every surface
+// that offers an action uses this; nothing re-implements the 409 contract.
+export { useFulfillmentTaskActionRunner } from './hooks/use-fulfillment-task-action-runner';
+export type {
+  FulfillmentPendingForm,
+  FulfillmentTaskActionRunner,
+} from './hooks/use-fulfillment-task-action-runner';
 
 // #3340 — the Assign Packing Work board's composition surface.
 export { AssignPackingWorkLaneSection } from './components/assign-packing-work-lane-section';

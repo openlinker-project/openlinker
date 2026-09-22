@@ -201,27 +201,75 @@ describe('AssignPackingWorkPage', () => {
     });
   });
 
-  describe('self-serve checkbox + Hold button scoping', () => {
-    it('renders both on an unassigned task', async () => {
+  describe('self-serve checkbox scoping', () => {
+    it('renders the checkbox on an unassigned task', async () => {
       renderPage({});
 
       await screen.findAllByRole('checkbox', { name: 'Anyone may claim this' });
       expect(
         within(desktop()).getByRole('checkbox', { name: 'Anyone may claim this' })
       ).toBeInTheDocument();
-      expect(within(desktop()).getByRole('button', { name: 'Hold' })).toBeInTheDocument();
     });
 
-    it('renders NEITHER on a task already assigned to a packer — the mockup scoping bug', async () => {
+    it('renders no checkbox on a task already assigned to a packer', async () => {
       renderPage({
         list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
       });
 
       await screen.findAllByRole('combobox', { name: 'Move to' });
       expect(screen.queryByRole('checkbox', { name: 'Anyone may claim this' })).not.toBeInTheDocument();
-      expect(within(desktop()).queryByRole('button', { name: 'Hold' })).not.toBeInTheDocument();
       // "Move to" stays on every task, in every lane.
       expect(within(desktop()).getByRole('combobox', { name: 'Move to' })).toBeInTheDocument();
+    });
+
+    it('offers Release hold on a held task — the gate this screen used to be missing', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(
+          page([
+            task({
+              supportedActions: ['release_hold'],
+              activeHolds: [
+                {
+                  id: 'hold_1',
+                  reason: 'stock_shortfall',
+                  note: null,
+                  placedAt: '2026-09-22T10:00:00.000Z',
+                },
+              ],
+            }),
+          ])
+        ),
+      });
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      expect(within(desktop()).getByRole('button', { name: 'Release hold' })).toBeInTheDocument();
+    });
+
+    it('offers no button when the server allows a release but reports no hold', async () => {
+      // A state this surface cannot act on: a control that cannot be completed
+      // is worse than none.
+      renderPage({
+        list: vi
+          .fn()
+          .mockResolvedValue(page([task({ supportedActions: ['release_hold'], activeHolds: [] })])),
+      });
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      expect(within(desktop()).queryByRole('button', { name: /release hold/i })).not.toBeInTheDocument();
+    });
+
+    it('keeps the action set on an assigned task, because the SERVER decides it', async () => {
+      // The old assertion here was that Hold disappeared once a task was
+      // assigned. That was the screen's own lane-based gate, and it is what
+      // made this a one-way gate: a held task could never be released from
+      // the only screen that could hold it. `supportedActions` is the gate
+      // now, so an assigned task still offers whatever the server declared.
+      renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
+      });
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      expect(within(desktop()).getByRole('button', { name: 'Put on hold' })).toBeInTheDocument();
     });
   });
 
