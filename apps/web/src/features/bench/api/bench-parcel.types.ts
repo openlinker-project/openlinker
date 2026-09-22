@@ -159,3 +159,69 @@ export interface BenchUnlabelledParcelList {
   /** Whether the read hit its cap. Said out loud rather than truncating silently. */
   readonly truncated: boolean;
 }
+
+/** What an undo-last-scan answers (#3405, epic #3401). */
+export interface BenchUndoResult {
+  /** `voided` | `refused`. */
+  readonly outcome: string;
+  /** `parcel-closed` | `nothing-to-undo`, or `null`. */
+  readonly reason: string | null;
+  /** Which line's count just went down. `null` on any outcome but `voided`. */
+  readonly workLineId: string | null;
+  readonly parcel: BenchParcel;
+}
+
+/** What claiming this parcel answers (#3412). */
+export interface BenchClaimResult {
+  /** `claimed` | `refused`. */
+  readonly outcome: string;
+  /** `held` | `cancelled` | `not-claimable`, or `null`. */
+  readonly reason: string | null;
+  readonly parcel: BenchParcel;
+}
+
+/** What "take next task" answers (#3412). */
+export interface BenchClaimNextResult {
+  /** `claimed` | `nothing-to-claim`. */
+  readonly outcome: string;
+  readonly parcel: BenchParcel | null;
+}
+
+/** A collision signal (#3406) — advisory only, never a lock. */
+export interface BenchPresence {
+  readonly collision: boolean;
+  readonly otherUserId: string | null;
+}
+
+/** One entry of a parcel's recent-activity log (#3411). */
+export interface BenchActivityEntry {
+  readonly workLineId: string;
+  readonly name: string | null;
+  /** `verified` | `undone`. */
+  readonly kind: string;
+  readonly at: string;
+  readonly byUserId: string | null;
+}
+
+/** One row of the "Packed today" tab (#3413). */
+export interface BenchPackedTodayRow {
+  readonly workId: string;
+  readonly orderReference: string;
+  readonly buyerName: string | null;
+  readonly parcelIndex: number;
+  readonly parcelTotal: number;
+  readonly closedAt: string;
+  readonly packedByUserId: string | null;
+}
+
+export interface BenchPackedTodayList {
+  readonly works: readonly BenchPackedTodayRow[];
+  readonly total: number;
+}
+
+/** The bench metric row (#3413). */
+export interface BenchMetrics {
+  readonly packedToday: number;
+  readonly packedYesterday: number;
+  readonly toPackAllBenches: number;
+}

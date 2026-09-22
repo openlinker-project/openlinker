@@ -16,16 +16,30 @@
  * @module apps/web/src/features/bench/api
  */
 import {
+  parseBenchActivityEntries,
+  parseBenchClaimNextResult,
+  parseBenchClaimResult,
   parseBenchDocuments,
+  parseBenchMetrics,
+  parseBenchPackedTodayList,
   parseBenchParcel,
+  parseBenchPresence,
   parseBenchReopenResult,
+  parseBenchUndoResult,
   parseBenchUnlabelledParcelList,
   parseBenchVerificationResult,
 } from './bench-parcel.schema';
 import type {
+  BenchActivityEntry,
+  BenchClaimNextResult,
+  BenchClaimResult,
   BenchDocuments,
+  BenchMetrics,
+  BenchPackedTodayList,
   BenchParcel,
+  BenchPresence,
   BenchReopenResult,
+  BenchUndoResult,
   BenchUnlabelledParcelList,
   BenchVerificationResult,
 } from './bench-parcel.types';
@@ -78,6 +92,23 @@ export interface BenchApi {
   downloadInvoice: (workId: string) => Promise<Blob>;
   /** Finished boxes with no label on them, here and in dispatch. */
   listUnlabelledParcels: () => Promise<BenchUnlabelledParcelList>;
+
+  // ── #3401 mockup-parity: undo, presence, claim, activity, metrics ──────
+
+  /** Undo the single most recent scan on an OPEN parcel (#3405). */
+  undoLastScan: (workId: string) => Promise<BenchUndoResult>;
+  /** Announce presence on this parcel, and learn whether someone else already has (#3406). */
+  pingPresence: (workId: string) => Promise<BenchPresence>;
+  /** "Claim this parcel" — self-assign the CALLER, never anyone else (#3412). */
+  claimParcel: (workId: string) => Promise<BenchClaimResult>;
+  /** "Take next task" — server-picked from the same sorted, filtered worklist (#3412). */
+  claimNext: () => Promise<BenchClaimNextResult>;
+  /** Recent activity for this parcel, newest first (#3411). */
+  listActivity: (workId: string) => Promise<readonly BenchActivityEntry[]>;
+  /** Parcels this bench has closed today, newest-closed first (#3413). */
+  listPackedToday: () => Promise<BenchPackedTodayList>;
+  /** Packed-today count, its trend, and the cross-connection backlog (#3413). */
+  getMetrics: () => Promise<BenchMetrics>;
 }
 
 interface ApiRequest {
@@ -130,6 +161,36 @@ export function createBenchApi(request: ApiRequest, requestBlob: ApiBlobRequest)
     },
     async listUnlabelledParcels(): Promise<BenchUnlabelledParcelList> {
       return parseBenchUnlabelledParcelList(await request<unknown>('/bench/unlabelled-parcels'));
+    },
+
+    async undoLastScan(workId): Promise<BenchUndoResult> {
+      return parseBenchUndoResult(
+        await request<unknown>(`${work(workId)}/verifications/undo`, { method: 'POST' })
+      );
+    },
+    async pingPresence(workId): Promise<BenchPresence> {
+      return parseBenchPresence(
+        await request<unknown>(`${work(workId)}/presence`, { method: 'POST' })
+      );
+    },
+    async claimParcel(workId): Promise<BenchClaimResult> {
+      return parseBenchClaimResult(
+        await request<unknown>(`${work(workId)}/claim`, { method: 'POST' })
+      );
+    },
+    async claimNext(): Promise<BenchClaimNextResult> {
+      return parseBenchClaimNextResult(
+        await request<unknown>('/bench/work/claim-next', { method: 'POST' })
+      );
+    },
+    async listActivity(workId): Promise<readonly BenchActivityEntry[]> {
+      return parseBenchActivityEntries(await request<unknown>(`${work(workId)}/activity`));
+    },
+    async listPackedToday(): Promise<BenchPackedTodayList> {
+      return parseBenchPackedTodayList(await request<unknown>('/bench/work/packed-today'));
+    },
+    async getMetrics(): Promise<BenchMetrics> {
+      return parseBenchMetrics(await request<unknown>('/bench/metrics'));
     },
   };
 }

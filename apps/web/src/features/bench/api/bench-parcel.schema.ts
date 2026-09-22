@@ -22,9 +22,16 @@
 import { z } from 'zod';
 
 import type {
+  BenchActivityEntry,
+  BenchClaimNextResult,
+  BenchClaimResult,
   BenchDocuments,
+  BenchMetrics,
+  BenchPackedTodayList,
   BenchParcel,
+  BenchPresence,
   BenchReopenResult,
+  BenchUndoResult,
   BenchUnlabelledParcelList,
   BenchVerificationResult,
 } from './bench-parcel.types';
@@ -161,4 +168,87 @@ export function parseBenchDocuments(payload: unknown): BenchDocuments {
 
 export function parseBenchUnlabelledParcelList(payload: unknown): BenchUnlabelledParcelList {
   return benchUnlabelledParcelListSchema.parse(payload);
+}
+
+export const benchUndoResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  workLineId: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export function parseBenchUndoResult(payload: unknown): BenchUndoResult {
+  return benchUndoResultSchema.parse(payload);
+}
+
+export const benchClaimResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export function parseBenchClaimResult(payload: unknown): BenchClaimResult {
+  return benchClaimResultSchema.parse(payload);
+}
+
+export const benchClaimNextResultSchema = z.object({
+  outcome: z.string(),
+  parcel: benchParcelSchema.nullish().transform((value) => value ?? null),
+});
+
+export function parseBenchClaimNextResult(payload: unknown): BenchClaimNextResult {
+  return benchClaimNextResultSchema.parse(payload);
+}
+
+export const benchPresenceSchema = z.object({
+  collision: z.boolean(),
+  otherUserId: nullableString,
+});
+
+export function parseBenchPresence(payload: unknown): BenchPresence {
+  return benchPresenceSchema.parse(payload);
+}
+
+export const benchActivityEntrySchema = z.object({
+  workLineId: z.string(),
+  name: nullableString,
+  kind: z.string(),
+  at: z.string(),
+  byUserId: nullableString,
+});
+
+export function parseBenchActivityEntries(payload: unknown): readonly BenchActivityEntry[] {
+  return z.array(benchActivityEntrySchema).parse(payload);
+}
+
+export const benchPackedTodayListSchema = z.object({
+  works: z
+    .array(
+      z.object({
+        workId: z.string(),
+        orderReference: z.string(),
+        buyerName: nullableString,
+        parcelIndex: z.number(),
+        parcelTotal: z.number(),
+        closedAt: z.string(),
+        packedByUserId: nullableString,
+      })
+    )
+    .nullish()
+    .transform((value) => value ?? []),
+  total: z.number(),
+});
+
+export function parseBenchPackedTodayList(payload: unknown): BenchPackedTodayList {
+  return benchPackedTodayListSchema.parse(payload);
+}
+
+export const benchMetricsSchema = z.object({
+  packedToday: z.number(),
+  packedYesterday: z.number(),
+  toPackAllBenches: z.number(),
+});
+
+export function parseBenchMetrics(payload: unknown): BenchMetrics {
+  return benchMetricsSchema.parse(payload);
 }

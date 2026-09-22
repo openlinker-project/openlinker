@@ -21,4 +21,8 @@ export const benchQueryKeys = {
   parcel: (workId: string) => ['bench', 'parcel', workId] as const,
   documents: (workId: string) => ['bench', 'documents', workId] as const,
   unlabelled: () => ['bench', 'unlabelled'] as const,
+  // #3401 mockup-parity epic.
+  activity: (workId: string) => ['bench', 'activity', workId] as const,
+  packedToday: () => ['bench', 'packed-today'] as const,
+  metrics: () => ['bench', 'metrics'] as const,
 };

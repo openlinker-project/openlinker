@@ -185,6 +185,19 @@ export const benchParcelCopy = {
   },
 
   /**
+   * #3405 (epic #3401) — undo the single most recent scan, whichever line it
+   * landed on. A lighter correction than reopen: it never touches a closed
+   * box.
+   */
+  undo: {
+    action: 'Undo last scan',
+    voidedNotice: (name: string | null): string =>
+      `Undone — the last unit on ${name ?? 'that line'} no longer counts.`,
+    nothingToUndo: 'Nothing to undo yet.',
+    parcelClosed: 'This box already closed. Reopen it first.',
+  },
+
+  /**
    * H2 — the running answer to *"did my last scan count?"* (#2421)
    *
    * Read by ONE `aria-live="polite"` region, so a packer who cannot see the

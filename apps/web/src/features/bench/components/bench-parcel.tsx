@@ -74,6 +74,7 @@ import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useBenchParcelQuery } from '../hooks/use-bench-parcel-query';
 import { useBenchReachability, isUnreachableFailure } from '../hooks/use-bench-reachability';
 import { useBenchReopenMutation } from '../hooks/use-bench-reopen-mutation';
+import { useBenchUndoMutation } from '../hooks/use-bench-undo-mutation';
 import { useBenchVerifyMutation } from '../hooks/use-bench-verify-mutation';
 import { useScannerInput } from '../hooks/use-scanner-input';
 import { describeBenchDeadline } from '../lib/bench-work-presentation';
@@ -123,6 +124,7 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
   const query = useBenchParcelQuery(workId);
   const verify = useBenchVerifyMutation();
   const reopen = useBenchReopenMutation();
+  const undo = useBenchUndoMutation();
   const reachability = useBenchReachability();
   // A3. False while the idle lock or the handover prompt covers the bench.
   const interactive = useBenchInteractive();
@@ -130,6 +132,7 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
   const [notice, setNotice] = useState<ScanNotice | null>(null);
   const [interrupted, setInterrupted] = useState<string | null>(null);
   const [reopenNotice, setReopenNotice] = useState<string | null>(null);
+  const [undoNotice, setUndoNotice] = useState<string | null>(null);
   const [muted, setMuted] = useState(() => isBenchAudioMuted());
 
   /**
@@ -526,9 +529,47 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
       </header>
 
       <p className="bench-parcel__scope">{benchParcelCopy.header.thisBoxOnly}</p>
-      <p className="bench-parcel__progress">
-        {benchParcelCopy.header.progress(totals.verified, totals.required)}
-      </p>
+      <div className="bench-parcel__progress-row">
+        <p className="bench-parcel__progress">
+          {benchParcelCopy.header.progress(totals.verified, totals.required)}
+        </p>
+        {/* #3405. Undoes the single most recent scan, whichever line it
+            landed on — there is no per-line target to name, so this is one
+            control rather than a button repeated on every row. Offered only
+            on an OPEN box (a closed one is `reopenParcel`'s job). */}
+        {closed ? null : (
+          <Button
+            tone="ghost"
+            disabled={undo.isPending}
+            onClick={() => {
+              setUndoNotice(null);
+              undo.mutate(workId, {
+                onSuccess: (result) => {
+                  if (result.outcome === 'refused') {
+                    setUndoNotice(
+                      result.reason === 'parcel-closed'
+                        ? benchParcelCopy.undo.parcelClosed
+                        : benchParcelCopy.undo.nothingToUndo
+                    );
+                    return;
+                  }
+                  const lineName =
+                    result.parcel.lines.find((l) => l.workLineId === result.workLineId)?.name ??
+                    null;
+                  setUndoNotice(benchParcelCopy.undo.voidedNotice(lineName));
+                },
+              });
+            }}
+          >
+            {benchParcelCopy.undo.action}
+          </Button>
+        )}
+      </div>
+      {undoNotice === null ? null : (
+        <p className="bench-parcel__undo-notice" role="status" data-testid="bench-parcel-undo-notice">
+          {undoNotice}
+        </p>
+      )}
 
       {/* H2's running answer to "did that count?". POLITE, and carrying only
           acceptance and in-flight — every refusal below is already inside a

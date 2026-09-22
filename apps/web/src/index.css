@@ -24553,6 +24553,18 @@ legend.analytics-settings-dialog__label {
   color: var(--text-primary);
 }
 
+.bench-parcel__progress-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.bench-parcel__undo-notice {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
 .bench-parcel__lines {
   display: flex;
   flex-direction: column;

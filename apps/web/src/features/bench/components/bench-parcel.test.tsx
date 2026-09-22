@@ -184,7 +184,47 @@ describe('BenchParcelView (#2418)', () => {
         'Confirm this line',
         // C4's sound toggle. Renders one of two labels; this is the muted-off one.
         'Turn the sound off',
+        // #3405 (epic #3401) — the OPPOSITE of a commit: voids the single most
+        // recent scan on an OPEN parcel, and cannot reach a closed box. A
+        // deliberate addition to this allowlist, not an oversight.
+        'Undo last scan',
       ].sort()
+    );
+  });
+
+  // ── #3405 — undo the most recent scan ───────────────────────────────────
+  it('should report which line was undone', async () => {
+    const user = userEvent.setup();
+    const undoLastScan = vi.fn().mockResolvedValue({
+      outcome: 'voided',
+      reason: null,
+      workLineId: 'wl-1',
+      parcel: parcel({ lines: [line({ verifiedQuantity: 0 })] }),
+    });
+    mount(parcel(), { undoLastScan });
+
+    await user.click(await screen.findByRole('button', { name: 'Undo last scan' }));
+
+    expect(undoLastScan).toHaveBeenCalledWith('w-1');
+    expect(await screen.findByTestId('bench-parcel-undo-notice')).toHaveTextContent(
+      /Ceramic mug, matte white, 350 ml/
+    );
+  });
+
+  it('should name the refusal reason without changing the box', async () => {
+    const user = userEvent.setup();
+    const undoLastScan = vi.fn().mockResolvedValue({
+      outcome: 'refused',
+      reason: 'nothing-to-undo',
+      workLineId: null,
+      parcel: parcel(),
+    });
+    mount(parcel(), { undoLastScan });
+
+    await user.click(await screen.findByRole('button', { name: 'Undo last scan' }));
+
+    expect(await screen.findByTestId('bench-parcel-undo-notice')).toHaveTextContent(
+      'Nothing to undo yet.'
     );
   });
 
