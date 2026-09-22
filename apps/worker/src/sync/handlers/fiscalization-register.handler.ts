@@ -44,6 +44,10 @@
  * @module apps/worker/src/sync/handlers
  */
 import { Injectable, Inject } from '@nestjs/common';
+import {
+  POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
+  type PostSaleInventoryRefreshService,
+} from '@openlinker/core/inventory';
 import type {
   SyncJobHandler,
   SyncJobHandlerResult,
@@ -80,6 +84,8 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
   constructor(
     @Inject(FISCAL_REGISTRATION_SERVICE_TOKEN)
     private readonly fiscalRegistrations: IFiscalRegistrationService,
+    @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
+    private readonly postSaleInventoryRefresh: PostSaleInventoryRefreshService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -94,7 +100,27 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
       // `register` never throws on a provider rejection (see file docstring) —
       // a resolved call is always a completed job, whatever the returned
       // record's own `status`/`failureMode` says.
-      await this.fiscalRegistrations.register(command);
+      const record = await this.fiscalRegistrations.register(command);
+      // A fiscal receipt moves warehouse stock on a master that files it as a
+      // stock document (Subiekt's PAf carries the release exactly as its FS/PA
+      // does), so the master's quantity is re-read once the receipt has
+      // committed. Keyed on the registration record, hence a distinct event
+      // from the order-scoped refresh; wrapped so it can never change the
+      // outcome of a registration that already happened.
+      try {
+        await this.postSaleInventoryRefresh.enqueue({
+          productIds: payload.lines
+            .map((line) => line.productId)
+            .filter((id): id is string => typeof id === 'string' && id !== ''),
+          keyScope: `receipt:${record.id}`,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `post-receipt master inventory refresh could not be enqueued for orderId=${payload.orderId}: ` +
+            `${error instanceof Error ? error.name : 'unknown error'}. ` +
+            `The scheduled inventory sweep remains the backstop.`,
+        );
+      }
       return { outcome: 'ok' };
     } catch (error) {
       if (

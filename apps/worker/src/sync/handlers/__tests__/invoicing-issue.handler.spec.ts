@@ -16,6 +16,7 @@ import { InvoicingIssueHandler, MAX_INVOICE_LINES } from '../invoicing-issue.han
 import { BuyerProfile } from '@openlinker/core/invoicing';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IInvoiceService } from '@openlinker/core/invoicing';
+import type { PostSaleInventoryRefreshService } from '@openlinker/core/inventory';
 import type {
   InvoicingIssuePayloadV1,
   SyncJob as SyncJobEntity,
@@ -68,11 +69,12 @@ function makeJob(payload: unknown): SyncJobEntity {
 describe('InvoicingIssueHandler', () => {
   let invoiceService: jest.Mocked<IInvoiceService>;
   let handler: InvoicingIssueHandler;
+  let postSaleInventoryRefresh: jest.Mocked<PostSaleInventoryRefreshService>;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
 
   beforeEach(() => {
     invoiceService = {
-      issueInvoice: jest.fn().mockResolvedValue({} as never),
+      issueInvoice: jest.fn().mockResolvedValue({ id: 'inv-record-1' } as never),
       getInvoice: jest.fn(),
       getInvoiceById: jest.fn(),
       getLatestInvoiceForOrder: jest.fn(),
@@ -89,7 +91,13 @@ describe('InvoicingIssueHandler', () => {
       applyRegulatoryClearance: jest.fn(),
       listInvoicesKeyset: jest.fn(),
     };
-    handler = new InvoicingIssueHandler(invoiceService as unknown as IInvoiceService);
+    postSaleInventoryRefresh = {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<PostSaleInventoryRefreshService>;
+    handler = new InvoicingIssueHandler(
+      invoiceService as unknown as IInvoiceService,
+      postSaleInventoryRefresh,
+    );
     warnSpy = jest
       .spyOn(
         (handler as unknown as { logger: { warn: (m: string) => void } }).logger,
