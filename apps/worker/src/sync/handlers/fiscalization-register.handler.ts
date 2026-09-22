@@ -46,7 +46,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import {
   POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
-  type PostSaleInventoryRefreshService,
+  type IPostSaleInventoryRefreshService,
 } from '@openlinker/core/inventory';
 import type {
   SyncJobHandler,
@@ -85,7 +85,7 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
     @Inject(FISCAL_REGISTRATION_SERVICE_TOKEN)
     private readonly fiscalRegistrations: IFiscalRegistrationService,
     @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
-    private readonly postSaleInventoryRefresh: PostSaleInventoryRefreshService,
+    private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {

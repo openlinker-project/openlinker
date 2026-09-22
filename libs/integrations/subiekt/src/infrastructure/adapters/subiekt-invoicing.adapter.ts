@@ -173,7 +173,13 @@ export class SubiektInvoicingAdapter
     // Resolve each line's Subiekt catalogue symbol so the document carries real
     // catalogue positions instead of free-text service lines — see
     // `resolveTowarSymbols` and the line mapper's header.
-    const symbolByProductId = await this.resolveTowarSymbols(cmd.lines);
+    const { symbolByProductId, unmappedProductIds } = await this.resolveTowarSymbols(cmd.lines);
+    // Count LINES, not products: two lines of the same unmapped product are two
+    // lines the warehouse will not see, and the operator is looking at a
+    // document whose lines are what they can count.
+    const unlinkedCatalogueLines = cmd.lines.filter(
+      (line) => line.productId !== undefined && unmappedProductIds.has(line.productId),
+    ).length;
 
     try {
       const response = await this.bridge.issueInvoice({
@@ -234,7 +240,13 @@ export class SubiektInvoicingAdapter
       );
       // Subiekt does not surface a seller identity or a source document
       // (the bridge is a local adapter with no authority submission).
-      return { record };
+      //
+      // `unlinkedCatalogueLines` is always reported here, INCLUDING the `0`
+      // case: on this provider a linked line is the normal, correct outcome,
+      // so omitting the field would make "every line reached the warehouse"
+      // indistinguishable from "this provider does not report linkage" (the
+      // `null` a non-catalogue provider leaves behind).
+      return { record, unlinkedCatalogueLines };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }
@@ -396,7 +408,7 @@ export class SubiektInvoicingAdapter
    */
   private async resolveTowarSymbols(
     lines: readonly { productId?: string }[],
-  ): Promise<Map<string, string>> {
+  ): Promise<{ symbolByProductId: Map<string, string>; unmappedProductIds: Set<string> }> {
     const resolved = new Map<string, string>();
     const productIds = [
       ...new Set(
@@ -406,7 +418,7 @@ export class SubiektInvoicingAdapter
       ),
     ];
     if (productIds.length === 0) {
-      return resolved;
+      return { symbolByProductId: resolved, unmappedProductIds: new Set() };
     }
 
     const unmapped: string[] = [];
@@ -441,7 +453,7 @@ export class SubiektInvoicingAdapter
         { connectionId: this.connectionId, productIds: unmapped },
       );
     }
-    return resolved;
+    return { symbolByProductId: resolved, unmappedProductIds: new Set(unmapped) };
   }
 
   /**

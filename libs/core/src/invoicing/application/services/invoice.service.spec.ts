@@ -362,6 +362,59 @@ describe('InvoiceService', () => {
       );
     });
 
+    it('persists a reported unlinked-catalogue-line count on the issued patch', async () => {
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue({
+        ...makeIssuedFromAdapter(),
+        unlinkedCatalogueLines: 2,
+      });
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd());
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({ unlinkedCatalogueLines: 2 }),
+      );
+    });
+
+    it('persists a reported ZERO as zero, not as "not reported"', async () => {
+      // The two are different facts and the badge reads `> 0`, so collapsing a
+      // reported 0 into null would throw away the only evidence that anything
+      // checked the document at all.
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue({
+        ...makeIssuedFromAdapter(),
+        unlinkedCatalogueLines: 0,
+      });
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd());
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({ unlinkedCatalogueLines: 0 }),
+      );
+    });
+
+    it('leaves the column null for an adapter that does not report linkage', async () => {
+      // inFakt / KSeF / eparagony have no catalogue to link to; `null` is the
+      // truthful "not reported", never a manufactured clean bill.
+      repo.findByIdempotencyKey.mockResolvedValue(null);
+      repo.create.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'pending' }));
+      adapter.issueInvoice.mockResolvedValue(makeIssuedFromAdapter());
+      repo.updateOutcome.mockResolvedValue(makeRecord({ id: 'rec-1', status: 'issued' }));
+
+      await service.issueInvoice(makeCmd());
+
+      expect(repo.updateOutcome).toHaveBeenCalledWith(
+        'rec-1',
+        expect.objectContaining({ unlinkedCatalogueLines: null }),
+      );
+    });
+
     it('(a3b) #2076: documentContent.lines is index-aligned with issuedLineSnapshot.lines', async () => {
       // The invariant the correction line picker rests on. The operator picks a
       // row from `documentContent.lines` (served by GET /invoices/:id/content)

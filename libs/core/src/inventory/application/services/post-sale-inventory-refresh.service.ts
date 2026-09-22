@@ -46,21 +46,13 @@ import {
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
 import { SYNC_JOB_QUEUE_TOKEN, type SyncJobQueuePort } from '@openlinker/core/sync';
-
-/** What to re-read, and under which event's key. */
-export interface PostSaleInventoryRefreshInput {
-  /** OL-internal product ids the sale touched. Duplicates and blanks are ignored. */
-  productIds: readonly string[];
-  /**
-   * Names the EVENT this refresh reacts to, e.g. `order:ol_order_x` or
-   * `invoice:{recordId}`. Becomes the leading segment of the dedupe key — see
-   * the module docblock for why it must never be counter- or clock-derived.
-   */
-  keyScope: string;
-}
+import type {
+  IPostSaleInventoryRefreshService,
+  PostSaleInventoryRefreshInput,
+} from './post-sale-inventory-refresh.service.interface';
 
 @Injectable()
-export class PostSaleInventoryRefreshService {
+export class PostSaleInventoryRefreshService implements IPostSaleInventoryRefreshService {
   private readonly logger = new Logger(PostSaleInventoryRefreshService.name);
 
   constructor(
