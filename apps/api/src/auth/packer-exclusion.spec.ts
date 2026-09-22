@@ -184,6 +184,9 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // worklist listBenchWork returns; delegates to claimParcel for the actual
   // write and re-check.
   'BenchWorkController.claimNext',
+  // #3413. Two reads, scoped exactly as listBenchWork scopes them.
+  'BenchWorkController.listPackedToday',
+  'BenchWorkController.getMetrics',
 
   // #2418, Surface F. The paper for THIS parcel, and the boxes that cannot go
   // out. `getDocuments` and `downloadInvoice` take a WORK id and no invoice id,

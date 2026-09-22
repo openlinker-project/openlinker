@@ -163,3 +163,44 @@ export interface BenchWorkListView {
    */
   readonly total: number;
 }
+
+/**
+ * One row of the "Packed today" tab (#3413, epic #3401) — a parcel this
+ * bench already closed, deliberately a NARROWER projection than
+ * `BenchWorkView`: it carries nothing about what remains outstanding
+ * (`unitsToVerify`, `supportedActions`, `assignmentState`, `claimable`),
+ * because a packed parcel has none of those questions left to answer.
+ */
+export interface BenchPackedTodayRowView {
+  readonly workId: string;
+  readonly orderReference: string;
+  readonly buyerName: string | null;
+  readonly parcelIndex: number;
+  readonly parcelTotal: number;
+  readonly closedAt: string;
+  readonly packedByUserId: string | null;
+}
+
+export interface BenchPackedTodayListView {
+  readonly works: readonly BenchPackedTodayRowView[];
+  readonly total: number;
+}
+
+/**
+ * The bench's metric row (#3413) — packed-today count with its trend
+ * against the SAME time-of-day yesterday, plus the outstanding backlog
+ * across every connection routed to OpenLinker's own packing executor
+ * ("to pack — all benches" in the mockup's own words: "all benches" means
+ * every executor connection, not a physical location this product has no
+ * concept of — see `BenchWorkService`'s own module docblock).
+ *
+ * `packedYesterday` is compared against the SAME elapsed portion of the
+ * day, not the whole of yesterday — comparing a partial today against a
+ * complete yesterday would always read as a decline until the day ends,
+ * which is a false trend rather than a true one.
+ */
+export interface BenchMetricsView {
+  readonly packedToday: number;
+  readonly packedYesterday: number;
+  readonly toPackAllBenches: number;
+}

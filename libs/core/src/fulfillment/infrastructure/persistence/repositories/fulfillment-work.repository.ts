@@ -1039,6 +1039,18 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
             : 'work.parcelClosedAt IS NULL'
         );
       }
+      // #3413's "packed today" range, independent of `parcelClosed` above —
+      // a half-open window on the caller's own instants.
+      if (filter.parcelClosedAfter !== undefined) {
+        qb.andWhere('work.parcelClosedAt >= :parcelClosedAfter', {
+          parcelClosedAfter: filter.parcelClosedAfter,
+        });
+      }
+      if (filter.parcelClosedBefore !== undefined) {
+        qb.andWhere('work.parcelClosedAt < :parcelClosedBefore', {
+          parcelClosedBefore: filter.parcelClosedBefore,
+        });
+      }
 
       // `createdAt` alone is not unique, so a page boundary landing inside a
       // same-timestamp run would drop or repeat rows between pages. The id is

@@ -42,6 +42,8 @@ function controllerFor(result: BenchWorkListView): BenchWorkController {
   const bench: IBenchWorkService = {
     listBenchWork: jest.fn().mockResolvedValue(result),
     claimNext: jest.fn(),
+    listPackedToday: jest.fn(),
+    getMetrics: jest.fn(),
   };
   return new BenchWorkController(bench);
 }

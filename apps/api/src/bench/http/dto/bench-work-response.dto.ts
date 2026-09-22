@@ -114,3 +114,35 @@ export class BenchWorkListResponseDto {
   })
   total!: number;
 }
+
+export class BenchPackedTodayRowResponseDto {
+  @ApiProperty() workId!: string;
+  @ApiProperty() orderReference!: string;
+  @ApiPropertyOptional({ nullable: true }) buyerName!: string | null;
+  @ApiProperty() parcelIndex!: number;
+  @ApiProperty() parcelTotal!: number;
+  @ApiProperty() closedAt!: string;
+  @ApiPropertyOptional({ nullable: true }) packedByUserId!: string | null;
+}
+
+export class BenchPackedTodayListResponseDto {
+  @ApiProperty({ type: [BenchPackedTodayRowResponseDto] })
+  works!: BenchPackedTodayRowResponseDto[];
+  @ApiProperty() total!: number;
+}
+
+export class BenchMetricsResponseDto {
+  @ApiProperty({ description: 'Parcels this bench has closed today so far' })
+  packedToday!: number;
+  @ApiProperty({
+    description: 'Parcels closed by the same elapsed point yesterday, for the trend comparison',
+  })
+  packedYesterday!: number;
+  @ApiProperty({
+    description:
+      'The outstanding backlog across every connection routed to this packing executor ' +
+      '("all benches" — every executor connection, never a physical location this product has ' +
+      'no concept of).',
+  })
+  toPackAllBenches!: number;
+}
