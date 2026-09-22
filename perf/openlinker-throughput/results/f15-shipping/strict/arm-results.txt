@@ -1,0 +1,3 @@
+armA-label-throughput ok=10 total=10 meanMs=565 perHour=6371.7 stubLatencyMs=500
+armB-late-waybill-relay trackingBefore=null trackingAfter=STUB-TRACK-LATE-fe59d3 relayedAtBefore=null relayedAtAfter=2026-09-10 14:12:04.076 ok=1
+armC-transient-relay-failure trackingAfterFail=null relayedAfterFail=null trackingAfterRetry=STUB-TRACK-LATE-12bc98 relayedAfterRetry=2026-09-10 14:12:25.24 ok=1

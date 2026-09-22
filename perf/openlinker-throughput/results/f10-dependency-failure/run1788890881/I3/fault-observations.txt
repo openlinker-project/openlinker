@@ -1,0 +1,6 @@
+EXPECTED-BY-FAULT DISCARDED post_guard_containers_stable: container(s) restarted or recreated inside the measurement window - lab-worker-1(was=2026-09-08T15:51:17.382494598Z now=2026-09-08T18:10:08.123503058Z)
+ok
+DISCARDED post_guard_deferrals: 1 job(s) carry deferredTotalMs>0 (or drain_wait observed a deferred row) inside the window
+ok
+ok
+ok offered_work: 12 child job(s) for 12 pushed order(s) - the intended load reached the queue

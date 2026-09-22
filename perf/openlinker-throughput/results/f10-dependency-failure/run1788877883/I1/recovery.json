@@ -1,0 +1,8 @@
+{
+  "recoveredWithoutAHumanAfterSecs": 15,
+  "recoveryObservedForSecs": 15,
+  "jobsStillInFlightWhenObservationEnded": 0,
+  "drainResult": "[f10] drain_wait: waiting for connection(s) ['758eb04c-9847-42ba-a905-af62b0b37b39'] to go quiet (max 1800s)\n[f10]   inflight=0 deferred=0 quiet=1 waited=5s\n[f10]   inflight=0 deferred=0 quiet=2 waited=10s\n[f10]   inflight=0 deferred=0 quiet=3 waited=15s\n[f10]   inflight=0 deferred=0 quiet=4 waited=20s\n[f10]   inflight=0 deferred=0 quiet=5 waited=25s\n[f10]   inflight=0 deferred=0 quiet=6 waited=30s\ndrained",
+  "rowsTheHARNESSMarkedDeadDuringCleanup": "",
+  "note": "recoveredWithoutAHumanAfterSecs is null when this window still had queued/running jobs when the observation window ended - that is NOT a claim that recovery never happens, only that it had not happened within recoveryObservedForSecs. rowsTheHARNESSMarkedDeadDuringCleanup names rows drain_wait killed AFTER the ledger above was read, so they are absent from it."
+}

@@ -1,0 +1,10 @@
+# Per-route latency - MIN_N_FOR_PERCENTILE=30, MIN_N_FOR_STABLE_P99=100
+
+page_shell_total_duration_ms                            n=145   p50=100.00   p95=120.00   p99=135.56  
+route_orders_list_duration_ms                           n=392   p50=66.32    p95=79.82    p99=89.87   
+route_orders_list_needs_attention_duration_ms           n=145   p50=160.32   p95=172.80   p99=180.84  
+route_order_detail_duration_ms                          n=295   p50=10.84    p95=18.55    p99=31.87   
+route_products_list_duration_ms                         n=291   p50=23.69    p95=32.08    p99=47.91   
+route_product_detail_duration_ms                        n=198   p50=12.46    p95=17.08    p99=18.81   
+route_sync_jobs_list_duration_ms                        n=128   p50=56.02    p95=61.34    p99=70.92   
+page_shell_request_duration_ms                          n=725   p50=5.26     p95=64.87    p99=73.19   

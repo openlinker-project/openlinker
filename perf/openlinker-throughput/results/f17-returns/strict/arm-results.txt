@@ -1,0 +1,13 @@
+armA-pass1-ingestion ingested=10 total=10 elapsedMs=6963 perHour=5170.2
+armA-pass2-lifecycle elapsedMs=2423
+armB-custody-blocked-restock goodBlocked=none goodRestocked=1 badBlocked={
+  "eventId": "079290ca-69a5-4e05-aadb-db27e6cb6b6c",
+  "quantity": 1,
+  "sku": "F17-NONEXISTENT-SKU-XYZ",
+  "reason": "unresolved-product",
+  "detail": "no product variant in OpenLinker carries the sku \"F17-NONEXISTENT-SKU-XYZ\"",
+  "connectionId": "ccadaf52-2b65-4343-a3f7-830113fd2cf6",
+  "connectionName": "perf-prestashop",
+  "state": "blocked"
+} badRestocked=0 ok=1
+armC-orphan-reconcile total=11 elapsedMs=1313 perSec=8.38 resolvableAttributed=yes permanentOrphansAfter=10 ok=1

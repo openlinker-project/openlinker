@@ -1,0 +1,16 @@
+=== arm throughput-lane-raised ===
+window elapsed:        294s
+orders completed:      900
+sustained rate:        3.061 orders/s = 11020 orders/hour
+oldest due-job age:    125s -> 0s over the window's second half (81% of ticks rising)
+queue growth:          NO - the offered load did not exceed the system, so the sustained rate above is a FLOOR on the ceiling, not the knee. Offer more (deeper backlog or a faster poll cadence) and re-run
+stub feed backlog:     min=0 max=800 (reaching 0 here is NORMAL and not starvation - the poll pump converts upstream events into queued child jobs faster than they drain, so the upstream empties while the system is busiest)
+available work:        min=0 max=884 (upstream + due queue + running; min 0 means the system was IDLE for part of the window, so the achieved rate is a floor on the offered load rather than the system's ceiling)
+due-queued peak:       631
+
+stub upstream requests over the window:
+{
+  "GET /order/checkout-forms/:id": 900,
+  "GET /order/events": 30,
+  "PUT /sale/offer-quantity-change-commands/:id": 163
+}

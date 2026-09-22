@@ -1,0 +1,23 @@
+window            : 1788876986 .. 1788877408 (422s)
+container         : lab-prestashop
+probe requests    : 0 (excluded from every figure below)
+OL /api/ requests : 2029
+OL module POSTs   : 0
+OL total (paced)  : 2029
+
+per resource (method resource -> count, status mix):
+    1500  GET    tax_rules          200
+     500  GET    taxes              200
+      10  GET    products           200
+      10  GET    combinations       200
+       7  GET    categories         401
+       1  GET    product_option_values 200
+       1  GET    product_options    200
+
+module endpoints:
+
+budget spent on a call that cannot succeed:
+  GET configurations       : 0
+  of which 401             : 0
+  401 share of paced total : 0.00%
+  401 per minute           : 0.00

@@ -1,0 +1,7 @@
+label,depth,execution_time_ms,planning_time_ms
+r1,0,0.755,2.547
+r1,1000,0.444,1.421
+r1-observed-peak,572,0.680,1.359
+r3,0,0.223,2.609
+r3,1000,0.250,1.269
+r3-observed-peak,545,0.584,1.360
