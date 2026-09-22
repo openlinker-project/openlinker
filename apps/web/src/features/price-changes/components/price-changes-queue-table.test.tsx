@@ -143,9 +143,7 @@ describe('PriceChangesQueueTable', () => {
     await userEvent.click(screen.getByTestId('row-accept'));
     await userEvent.click(await screen.findByRole('button', { name: 'Publish price' }));
 
-    // Toast copy is duplicated into Radix's delayed aria-live announcer
-    // (#3314) - `findToastDescription` scopes to the visible `.toast__*`
-    // element to skip it.
+    // `findToastDescription` (see its docblock in test-utils.tsx) - #3314
     expect(
       await findToastDescription(
         /changed again while you were reviewing — refresh and take another look/,
@@ -366,9 +364,7 @@ describe('PriceChangesQueueTable', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Keep prices' }));
 
-    // Toast copy is duplicated into Radix's delayed aria-live announcer
-    // (#3314) - `findToastDescription` scopes to the visible `.toast__*`
-    // element to skip it.
+    // `findToastDescription` (see its docblock in test-utils.tsx) - #3314
     expect(await findToastDescription(/Kept 1, but 1 failed/)).toBeInTheDocument();
   });
 
@@ -461,12 +457,10 @@ describe('PriceChangesQueueTable', () => {
       expect(bulkAccept).toHaveBeenCalled();
     });
 
-    // ONE toast naming both sources, not two independent ones. Toast
-    // `title` text is duplicated into Radix's delayed aria-live announcer
-    // (#3314) - `findToastTitle` scopes to the visible `.toast__title`
-    // element to skip it. The `Undo` action label is excluded from that
-    // announcer by Radix itself, so it stays a plain
-    // `getAllByText`/`toHaveLength(1)` assertion.
+    // ONE toast naming both sources, not two independent ones.
+    // `findToastTitle` (see its docblock in test-utils.tsx) - #3314. The
+    // `Undo` action label isn't duplicated by Radix's announcer, so it
+    // stays a plain `getAllByText`/`toHaveLength(1)` assertion.
     expect(await findToastTitle('Turned on automatic pricing for 2 sources')).toBeInTheDocument();
     expect(screen.getAllByText('Undo')).toHaveLength(1);
   });
