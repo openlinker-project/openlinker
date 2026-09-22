@@ -22,6 +22,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
   ParcelReopenRefusalValues,
+  ParcelUndoRefusalValues,
   ParcelVerificationRefusalValues,
 } from '@openlinker/core/fulfillment';
 
@@ -142,6 +143,34 @@ export class BenchReopenResultResponseDto {
 
   @ApiProperty({ nullable: true, enum: ParcelReopenRefusalValues })
   reason!: string | null;
+
+  @ApiProperty({ type: BenchParcelResponseDto })
+  parcel!: BenchParcelResponseDto;
+}
+
+export class BenchPresenceResponseDto {
+  @ApiProperty({
+    description:
+      'Whether someone OTHER than the caller pinged this same parcel within the presence window. Advisory only — this never gates a write, only warns.',
+  })
+  collision!: boolean;
+
+  @ApiProperty({ nullable: true, description: "Who else has it open, when `collision` is true" })
+  otherUserId!: string | null;
+}
+
+export class BenchUndoResultResponseDto {
+  @ApiProperty({ enum: ['voided', 'refused'] })
+  outcome!: string;
+
+  @ApiProperty({ nullable: true, enum: ParcelUndoRefusalValues })
+  reason!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Which line the undone scan belonged to. Null on any outcome but `voided`.',
+  })
+  workLineId!: string | null;
 
   @ApiProperty({ type: BenchParcelResponseDto })
   parcel!: BenchParcelResponseDto;

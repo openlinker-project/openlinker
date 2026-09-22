@@ -116,6 +116,7 @@ function harness(options: {
     getState: jest.fn().mockResolvedValue(state()),
     verifyUnit: jest.fn(),
     reopenParcel: jest.fn(),
+    voidLastVerification: jest.fn(),
   } as unknown as IFulfillmentVerificationService;
 
   const orders = {
@@ -636,6 +637,42 @@ describe('BenchParcelService (#2418)', () => {
       expect(markPacked).toHaveBeenCalled();
       expect(result.outcome).toBe('verified');
       expect(result.parcel.closedAt).not.toBeNull();
+    });
+  });
+
+  describe('#3405 — undo the most recent scan', () => {
+    it('passes the actor through and re-projects the returned state', async () => {
+      const { service, verification } = harness({});
+      (verification.voidLastVerification as jest.Mock).mockResolvedValue({
+        outcome: 'voided',
+        workLineId: 'line-1',
+        state: state({ closedAt: null }),
+      });
+
+      const result = await service.undoLastScan({ workId: 'work-1', actorUserId: 'user-1' });
+
+      expect(verification.voidLastVerification).toHaveBeenCalledWith({
+        workId: 'work-1',
+        actorUserId: 'user-1',
+      });
+      expect(result).toMatchObject({ outcome: 'voided', workLineId: 'line-1' });
+    });
+
+    it('carries a refusal through with a null workLineId', async () => {
+      const { service, verification } = harness({});
+      (verification.voidLastVerification as jest.Mock).mockResolvedValue({
+        outcome: 'refused',
+        reason: 'nothing-to-undo',
+        state: state(),
+      });
+
+      const result = await service.undoLastScan({ workId: 'work-1', actorUserId: 'user-1' });
+
+      expect(result).toMatchObject({
+        outcome: 'refused',
+        reason: 'nothing-to-undo',
+        workLineId: null,
+      });
     });
   });
 });

@@ -49,17 +49,24 @@ import {
   BENCH_PARCEL_SERVICE_TOKEN,
   type IBenchParcelService,
 } from '../application/interfaces/bench-parcel.service.interface';
+import {
+  BENCH_PRESENCE_SERVICE_TOKEN,
+  type IBenchPresenceService,
+} from '../application/interfaces/bench-presence.service.interface';
 import { BenchParcelNotAtThisBenchError } from '../application/services/bench-parcel.service';
 import type {
   BenchParcelView,
   BenchReopenResultView,
+  BenchUndoResultView,
   BenchVerificationResultView,
 } from '../application/types/bench-parcel.types';
 import { ReopenParcelDto } from './dto/reopen-parcel.dto';
 import { VerifyUnitDto } from './dto/verify-unit.dto';
 import {
   BenchParcelResponseDto,
+  BenchPresenceResponseDto,
   BenchReopenResultResponseDto,
+  BenchUndoResultResponseDto,
   BenchVerificationResultResponseDto,
 } from './dto/bench-parcel-response.dto';
 
@@ -69,7 +76,9 @@ import {
 export class BenchParcelController {
   constructor(
     @Inject(BENCH_PARCEL_SERVICE_TOKEN)
-    private readonly parcels: IBenchParcelService
+    private readonly parcels: IBenchParcelService,
+    @Inject(BENCH_PRESENCE_SERVICE_TOKEN)
+    private readonly presence: IBenchPresenceService
   ) {}
 
   @Get(':workId/parcel')
@@ -173,6 +182,62 @@ export class BenchParcelController {
     return this.toReopenDto(result);
   }
 
+  @Post(':workId/verifications/undo')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Undo the single most recent scan',
+    description:
+      'A lighter correction than reopen: voids the last active verification on an OPEN parcel, ' +
+      'offered inline beside the line a packer just scanned. Refused `parcel-closed` rather than ' +
+      'reopening the box as a side effect — a closed parcel must go through the full reopen ' +
+      'ceremony, which is the only place a reopen is ever recorded as having happened.',
+  })
+  @ApiResponse({ status: 201, type: BenchUndoResultResponseDto })
+  @ApiResponse({ status: 401, description: 'An undo must name the packer' })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  async undoLastScan(
+    @Param('workId') workId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchUndoResultResponseDto> {
+    // Same discipline as `verifyUnit` (#2890 F1): an undo records who reversed
+    // the scan, so it must not be reachable without a principal.
+    if (!user?.id) {
+      throw new UnauthorizedException('An undo must name the packer');
+    }
+
+    const result = await this.run(() =>
+      this.parcels.undoLastScan({ workId, actorUserId: user.id })
+    );
+    return this.toUndoDto(result);
+  }
+
+  @Post(':workId/presence')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Announce presence on this parcel, and learn whether someone else already has',
+    description:
+      'A lightweight, ephemeral Redis TTL signal — advisory only, never a lock. Call it on open ' +
+      'and refresh it while the parcel view stays mounted. Scoped exactly as `getParcel` scopes ' +
+      "it, so a packer cannot ping a work id outside this bench's own eligibility to learn who " +
+      'else is looking at it.',
+  })
+  @ApiResponse({ status: 201, type: BenchPresenceResponseDto })
+  @ApiResponse({ status: 401, description: 'A presence ping must name the packer' })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  async pingPresence(
+    @Param('workId') workId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchPresenceResponseDto> {
+    if (!user?.id) {
+      throw new UnauthorizedException('A presence ping must name the packer');
+    }
+    // Scoping check only — the result is discarded. Presence must never be
+    // readable for a work id outside this bench's own eligibility, exactly as
+    // `getParcel` refuses one.
+    await this.run(() => this.parcels.getWorkForDocuments(workId));
+    return this.presence.ping(workId, user.id);
+  }
+
   /**
    * "Does not exist" and "is not yours" answer the SAME 404.
    *
@@ -233,6 +298,15 @@ export class BenchParcelController {
     return {
       outcome: result.outcome,
       reason: result.reason,
+      parcel: this.toParcelDto(result.parcel),
+    };
+  }
+
+  private toUndoDto(result: BenchUndoResultView): BenchUndoResultResponseDto {
+    return {
+      outcome: result.outcome,
+      reason: result.reason,
+      workLineId: result.workLineId,
       parcel: this.toParcelDto(result.parcel),
     };
   }

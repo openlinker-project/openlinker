@@ -69,6 +69,7 @@ import {
 import { readBuyerName, readOrderReference } from '../bench-order-facts';
 import type {
   BenchReopenInput,
+  BenchUndoInput,
   BenchVerifyUnitInput,
   IBenchParcelService,
 } from '../interfaces/bench-parcel.service.interface';
@@ -77,6 +78,7 @@ import type {
   BenchParcelRefusal,
   BenchParcelView,
   BenchReopenResultView,
+  BenchUndoResultView,
   BenchVerificationResultView,
 } from '../types/bench-parcel.types';
 import { BenchExecutorResolver } from './bench-executor.resolver';
@@ -230,6 +232,22 @@ export class BenchParcelService implements IBenchParcelService {
     return {
       outcome: result.outcome,
       reason: result.outcome === 'refused' ? result.reason : null,
+      parcel: await this.project(work, result.state),
+    };
+  }
+
+  async undoLastScan(input: BenchUndoInput): Promise<BenchUndoResultView> {
+    const work = await this.loadBenchWork(input.workId);
+
+    const result = await this.verification.voidLastVerification({
+      workId: input.workId,
+      actorUserId: input.actorUserId,
+    });
+
+    return {
+      outcome: result.outcome,
+      reason: result.outcome === 'refused' ? result.reason : null,
+      workLineId: result.outcome === 'voided' ? result.workLineId : null,
       parcel: await this.project(work, result.state),
     };
   }

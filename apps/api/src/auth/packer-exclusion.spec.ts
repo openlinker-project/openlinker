@@ -163,6 +163,16 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // NO close route: the parcel closes on the last verification (D18).
   'BenchParcelController.verifyUnit',
   'BenchParcelController.reopenParcel',
+  // #3405, mockup-parity epic #3401. A lighter correction than reopen: undo
+  // the single most recent scan on an OPEN parcel, offered inline beside the
+  // line a packer just scanned. Scoped the same way as the two writes above —
+  // a parcel this bench may pack — and cannot reach a closed box, an order or
+  // a document.
+  'BenchParcelController.undoLastScan',
+  // #3406. An ephemeral Redis TTL presence heartbeat, scoped exactly as
+  // `getParcel` scopes it. Discloses only another packer's user id, and only
+  // while that packer's own ping is fresh.
+  'BenchParcelController.pingPresence',
 
   // #2418, Surface F. The paper for THIS parcel, and the boxes that cannot go
   // out. `getDocuments` and `downloadInvoice` take a WORK id and no invoice id,

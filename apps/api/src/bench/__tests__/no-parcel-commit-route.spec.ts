@@ -38,14 +38,22 @@ const BENCH_HTTP_ROOT = resolve(__dirname, '..', 'http');
 /**
  * Every non-GET route the bench serves, as `METHOD /path`.
  *
- * Pinned with `toEqual`, so a third write is a failing assertion rather than a
+ * Pinned with `toEqual`, so a new write is a failing assertion rather than a
  * quiet append — which is the whole mechanism. `verify` closes the box as a
- * CONSEQUENCE of the last unit (D18) and `reopen` is E6's correction path;
- * there is deliberately no third.
+ * CONSEQUENCE of the last unit (D18) and `reopen` is E6's correction path.
+ * `verifications/undo` (#3405) is neither a close nor a reopen — it is the
+ * OPPOSITE of a commit, voiding the single most recent scan on an OPEN
+ * parcel, and it cannot reach a closed box (refused `parcel-closed` rather
+ * than reopening one as a side effect). `presence` (#3406) closes nothing
+ * either — it is an ephemeral Redis TTL heartbeat with no effect on parcel
+ * state at all. Both listed as deliberate writes rather than silently
+ * exempted from the guard this file exists to be.
  */
 const EXPECTED_BENCH_WRITES = [
+  'POST bench/work/:workId/presence',
   'POST bench/work/:workId/reopen',
   'POST bench/work/:workId/verifications',
+  'POST bench/work/:workId/verifications/undo',
 ] as const;
 
 /** Nest's metadata keys. Literals for the reason the coverage spec states. */
@@ -110,7 +118,7 @@ describe('the bench API exposes no parcel-commit route (#2418, D18)', () => {
     expect(ROUTES.length).toBeGreaterThan(3);
   });
 
-  it('serves exactly the two writes story E5 names, and no third', () => {
+  it('serves exactly the writes decided against D18, and no undecided one', () => {
     const writes = ROUTES.filter((route) => WRITE_VERBS.has(route.verb))
       .map((route) => `${route.verb} ${route.path}`)
       .sort();
