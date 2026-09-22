@@ -89,7 +89,7 @@ describe('SalesDocumentRuleComposerDialog — dry run (#3191)', () => {
       kind: 'route',
       documentKind: 'invoice',
       connectionId: 'conn_eparagony',
-      matchedByCandidateRule: true,
+      decidedBy: 'candidate',
     });
     renderComposer({ salesDocumentRules: { dryRunRule } });
     const root = await dialog();
@@ -127,7 +127,7 @@ describe('SalesDocumentRuleComposerDialog — dry run (#3191)', () => {
   it('should never persist anything — no create/upsert/delete call happens from a dry run', async () => {
     const user = userEvent.setup();
     const createRule = vi.fn();
-    const dryRunRule = vi.fn().mockResolvedValue({ kind: 'unresolved', reason: 'no-matching-rule', matchedByCandidateRule: false });
+    const dryRunRule = vi.fn().mockResolvedValue({ kind: 'unresolved', reason: 'no-matching-rule' });
     renderComposer({ salesDocumentRules: { createRule, dryRunRule } });
     const root = await dialog();
 

@@ -613,11 +613,23 @@ export function SalesDocumentRuleComposerDialog({
               ) : null}
 
               {dryRun.data ? (
-                <p data-testid="rule-test-sample-order-result" className="muted-text" style={{ marginTop: 'var(--space-2)' }}>
-                  {describeSalesDocumentDryRunResult(dryRun.data, (id) =>
-                    candidates.find((c) => c.id === id)?.name ?? null,
-                  )}
-                </p>
+                <>
+                  <p data-testid="rule-test-sample-order-result" className="muted-text" style={{ marginTop: 'var(--space-2)' }}>
+                    {describeSalesDocumentDryRunResult(dryRun.data, (id) =>
+                      candidates.find((c) => c.id === id)?.name ?? null,
+                    )}
+                  </p>
+                  {/* #3194 review: the dry run evaluates the draft with
+                      `effectiveFrom: new Date(0)` / `effectiveTo: null` (the
+                      type's own docblock - "testing CONDITIONS, not the
+                      calendar"), so it can silently differ from what the
+                      saved rule with the window set above would actually do.
+                      One line closes that gap rather than leaving it implicit. */}
+                  <p className="muted-text" style={{ marginTop: 'var(--space-1)' }}>
+                    This test ignores the effective window above and checks the
+                    rule&apos;s conditions only.
+                  </p>
+                </>
               ) : null}
             </div>
           ) : null}

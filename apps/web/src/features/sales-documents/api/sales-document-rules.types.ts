@@ -1,5 +1,5 @@
 /**
- * Sales-Document Rules — view types (#2170)
+ * Sales-Document Rules - view types (#2170)
  *
  * FE-local mirror of the backend rule-engine DTOs, matching the
  * `apps/web` never-imports-`@openlinker/core/*` contract strategy already
@@ -48,7 +48,7 @@ export interface SalesDocumentRule {
   id: string;
   country: string;
   conditions: SalesDocumentConditionInput[];
-  /** A saved rule always routes to ONE concrete kind — never the `'both'` config sentinel. */
+  /** A saved rule always routes to ONE concrete kind - never the `'both'` config sentinel. */
   documentKind: ConcreteDocumentKind;
   connectionId: string;
   effectiveFrom: string;
@@ -71,7 +71,7 @@ export interface CreateSalesDocumentRuleInput {
 export interface SalesDocumentCountryDefault {
   id: string;
   country: string;
-  /** A country default always names ONE concrete kind — never `'both'`. */
+  /** A country default always names ONE concrete kind - never `'both'`. */
   documentKind: ConcreteDocumentKind;
   connectionId: string;
 }
@@ -94,7 +94,7 @@ export interface SalesDocumentThreshold {
 /**
  * Mirrors the backend `SalesDocumentCountrySummaryResponseDto` (#2186): one
  * row per country carrying ANY rule, country default, or no-document
- * acknowledgment. A country missing one side is never dropped — `ruleCount`
+ * acknowledgment. A country missing one side is never dropped - `ruleCount`
  * defaults to `0`, the two default fields default to `null`.
  */
 export interface SalesDocumentCountrySummary {
@@ -121,7 +121,7 @@ export interface SalesDocumentTemplateRuleSummary {
   requiredCapability: 'Invoicing' | 'Fiscalization';
   effectiveFrom: string;
   effectiveTo: string | null;
-  /** Whether this rule's conditions reference `buyerHasTaxId` — see the backend controller's own doc comment. */
+  /** Whether this rule's conditions reference `buyerHasTaxId` - see the backend controller's own doc comment. */
   usesBuyerHasTaxId: boolean;
 }
 
@@ -161,9 +161,9 @@ export interface CheckSalesDocumentRuleOverlapInput {
 }
 
 /**
- * Sample-order input for a dry run (#3191) — mirrors the backend
+ * Sample-order input for a dry run (#3191) - mirrors the backend
  * `SalesDocumentOrderFacts` projection. `buyerHasTaxId` absent means
- * "unknown", never a defaulted `false` — the same rule the rest of this
+ * "unknown", never a defaulted `false` - the same rule the rest of this
  * concern already follows for that field.
  */
 export interface SalesDocumentDryRunSampleOrderInput {
@@ -175,7 +175,7 @@ export interface SalesDocumentDryRunSampleOrderInput {
 }
 
 /**
- * The in-progress, NEVER-SAVED rule candidate a dry run tests — the same
+ * The in-progress, NEVER-SAVED rule candidate a dry run tests - the same
  * scoping fields `CreateSalesDocumentRuleInput` carries, minus the effective
  * window and provenance (a dry run tests conditions, not a calendar).
  */
@@ -188,11 +188,15 @@ export interface DryRunSalesDocumentRuleInput {
 }
 
 /**
- * Mirrors the backend `SalesDocumentDryRunResultDto` (#3191) — the same
+ * Mirrors the backend `SalesDocumentDryRunResultDto` (#3191) - the same
  * `SalesDocumentDecision` shape `SalesDocumentMarketOutcome` mirrors, plus
- * `matchedByCandidateRule`: true when the rule being drafted is what matched,
- * as opposed to an already-saved rule elsewhere in this country's
- * configuration.
+ * `decidedBy`, set only on `kind === 'route'`: `candidate` when the rule
+ * being drafted is what matched, `saved-rule` when a DIFFERENT already-saved
+ * rule matched, `country-default` when no rule matched and the tier-2
+ * country default decided. Deliberately three-valued rather than a boolean -
+ * the backend's `ruleId` is absent for a country default too, and reading
+ * that absence as "an already-saved rule decided this" is exactly what the
+ * domain type says must never be implied.
  */
 export interface SalesDocumentDryRunResult {
   kind: 'route' | 'aggregate' | 'unresolved';
@@ -200,7 +204,8 @@ export interface SalesDocumentDryRunResult {
   documentKind?: SalesDocumentKind | string | null;
   /** Set when `kind === 'route'` or `kind === 'aggregate'`. */
   connectionId?: string;
-  /** Set when `kind === 'unresolved'` — a `SalesDocumentUnresolvedReasonValue`. */
+  /** Set when `kind === 'unresolved'` - a `SalesDocumentUnresolvedReasonValue`. */
   reason?: string;
-  matchedByCandidateRule: boolean;
+  /** Set when `kind === 'route'` - see the field-level rationale above. */
+  decidedBy?: 'candidate' | 'saved-rule' | 'country-default';
 }
