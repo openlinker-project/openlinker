@@ -56,12 +56,14 @@ describe('Order column sort (integration)', () => {
       orderSnapshot: { items: [] },
     });
 
-    // Scoped to `SOURCE` (#3316) — an unfiltered `findMany` reads the whole
-    // `order_records` table, and this repository is shared with every other
-    // int-spec file running in the same Jest worker. A leaked row from
-    // another file (any sourceConnectionId other than this suite's) would
-    // otherwise land in an unpredictable position in the sorted result and
-    // break this exact-array assertion.
+    // Scoped to `SOURCE` (#3316) — narrows the population an unfiltered
+    // `findMany` would otherwise read the whole `order_records` table
+    // through, which is a strict improvement regardless of mechanism: a row
+    // from another file, if one ever leaked in, would land in an
+    // unpredictable position and break this exact-array assertion. Note this
+    // scoping alone does not make ties on `createdAt` deterministic — see
+    // `applySort`'s `internalOrderId` tiebreak, which is the other half of
+    // the fix for #3316.
     const { items } = await repository.findMany(
       { sourceConnectionId: SOURCE, sort: 'total', dir: 'desc' },
       PAGE,
