@@ -4,9 +4,17 @@
  * A supervisor's staffing board: every fulfilment task, grouped into one
  * swimlane per packer plus a pinned "Unassigned" lane, with click-only
  * controls to move a task, hold it, or toggle whether anyone may self-serve
- * it. No drag-and-drop — the "Move to" select IS the real interaction path
- * (the mockup's own accessibility argument, carried into this build as the
- * screen's whole scope).
+ * it, PLUS native drag-and-drop between lanes (#3426) as a mouse-only
+ * shortcut. The "Move to" select stays the primary, keyboard-reachable path
+ * — the mockup's own accessibility argument — and is never removed; drag is
+ * purely additive.
+ *
+ * ## Dragged-task identity lives in React state, not a module-level var
+ *
+ * The mockup's own script uses a plain mutable variable; that is not safe
+ * across React re-renders (a stale closure could read the wrong task after
+ * an unrelated state update), so it is lifted to `useState` here, on the one
+ * component that already owns every other piece of staffing state.
  *
  * ## Not the worklist page, and not built on top of it
  *
@@ -37,6 +45,7 @@ import {
   AssignPackingWorkActions,
   AssignPackingWorkLaneSection,
   FulfillmentTaskActionDialog,
+  UNASSIGNED_LANE_ID,
   describeFulfillmentActionError,
   fulfillmentActionLabel,
   groupTasksByPacker,
@@ -73,6 +82,8 @@ export function AssignPackingWorkPage(): ReactElement {
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   const [holdTask, setHoldTask] = useState<FulfillmentTask | null>(null);
   const [holdError, setHoldError] = useState<unknown>(null);
+  /** #3426 — the task currently being dragged, lifted here for the reason stated above. */
+  const [draggedTask, setDraggedTask] = useState<FulfillmentTask | null>(null);
 
   const packers: PackerSummary[] = packersQuery.data?.packers ?? [];
   const tasks = tasksQuery.data?.works ?? [];
@@ -94,6 +105,25 @@ export function AssignPackingWorkPage(): ReactElement {
         },
       }
     );
+  };
+
+  /**
+   * #3426 — fires on ANY drop, whatever lane it lands in. Dropping onto the
+   * dragged task's own CURRENT lane is a no-op (matching the mockup's own
+   * `drop` handler), and routes through the SAME `setAssignment` the "Move
+   * to" select already uses — no new endpoint, no parallel mutation path.
+   */
+  const handleDropOnLane = (destinationLaneId: string): void => {
+    const task = draggedTask;
+    setDraggedTask(null);
+    if (!task) return;
+
+    const currentLaneId = task.assignedToUserId ?? UNASSIGNED_LANE_ID;
+    if (currentLaneId === destinationLaneId) return;
+
+    setAssignment(task, {
+      assignedToUserId: destinationLaneId === UNASSIGNED_LANE_ID ? null : destinationLaneId,
+    });
   };
 
   const openHold = (task: FulfillmentTask): void => {
@@ -195,7 +225,14 @@ export function AssignPackingWorkPage(): ReactElement {
     return (
       <div className="assign-packing-work-board">
         {lanes.map((lane) => (
-          <AssignPackingWorkLaneSection key={lane.id} lane={lane} renderActions={renderActions} />
+          <AssignPackingWorkLaneSection
+            key={lane.id}
+            lane={lane}
+            renderActions={renderActions}
+            dragEnabled={write.canWrite}
+            onTaskDragStart={setDraggedTask}
+            onDropOnLane={handleDropOnLane}
+          />
         ))}
       </div>
     );

@@ -261,4 +261,9 @@ describe('FulfillmentWorklistRow — what it shows', () => {
     expect(within(row).getByText('No lines')).toBeInTheDocument();
     expect(screen.queryByText('0 of 0')).not.toBeInTheDocument();
   });
+
+  it('is not draggable when no rootProps are supplied — #3426 stays opt-in for the plain worklist page', () => {
+    const row = renderRow(task());
+    expect(row).not.toHaveAttribute('draggable');
+  });
 });

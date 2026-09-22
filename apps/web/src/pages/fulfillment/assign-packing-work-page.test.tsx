@@ -6,7 +6,7 @@
  * self-serve posts the right body, and a failed roster read degrades the
  * board rather than blocking it.
  */
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -171,5 +171,82 @@ describe('AssignPackingWorkPage', () => {
     renderPage({ list: vi.fn().mockResolvedValue(page([])) });
 
     expect(await screen.findByText('Nothing to assign right now')).toBeInTheDocument();
+  });
+
+  // ── #3426 — native drag-and-drop, additive to "Move to" ──────────────
+  describe('drag-and-drop lane reassignment', () => {
+    /** A minimal `DataTransfer` stub — happy-dom does not implement one. */
+    function fakeDataTransfer(): DataTransfer {
+      return {
+        setData: vi.fn(),
+        effectAllowed: '',
+      } as unknown as DataTransfer;
+    }
+
+    function draggableRow(): HTMLElement {
+      return within(desktop()).getByText('ol_work_1').closest('li') as HTMLElement;
+    }
+
+    it('dragging a task onto a different lane posts the same assignment the "Move to" select uses', async () => {
+      const { updateAssignment } = renderPage({
+        listPackers: vi.fn().mockResolvedValue({
+          packers: [
+            { id: 'u_a', username: 'packer-a' },
+            { id: 'u_b', username: 'packer-b' },
+          ],
+        }),
+      });
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      const sourceRow = draggableRow();
+      const destinationLane = screen.getByRole('region', { name: 'packer-a' });
+
+      fireEvent.dragStart(sourceRow, { dataTransfer: fakeDataTransfer() });
+      fireEvent.dragOver(destinationLane, { dataTransfer: fakeDataTransfer() });
+      fireEvent.drop(destinationLane, { dataTransfer: fakeDataTransfer() });
+
+      await waitFor(() => {
+        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', { assignedToUserId: 'u_a' });
+      });
+    });
+
+    it('dropping onto the task\'s own current lane is a no-op', async () => {
+      const { updateAssignment } = renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
+        listPackers: vi.fn().mockResolvedValue({ packers: [{ id: 'u_a', username: 'packer-a' }] }),
+      });
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      const sourceRow = draggableRow();
+      const ownLane = screen.getByRole('region', { name: 'packer-a' });
+
+      fireEvent.dragStart(sourceRow, { dataTransfer: fakeDataTransfer() });
+      fireEvent.dragOver(ownLane, { dataTransfer: fakeDataTransfer() });
+      fireEvent.drop(ownLane, { dataTransfer: fakeDataTransfer() });
+
+      // Give any wrongly-fired mutation a tick to land before asserting absence.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(updateAssignment).not.toHaveBeenCalled();
+    });
+
+    it('the "Move to" select keeps working exactly as before, drag or no drag', async () => {
+      const user = userEvent.setup();
+      const { updateAssignment } = renderPage({});
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
+      await user.selectOptions(select, 'packer-a');
+
+      await waitFor(() => {
+        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', { assignedToUserId: 'u_a' });
+      });
+    });
+
+    it('marks the row draggable only for a session that may write', async () => {
+      renderPage({});
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      expect(draggableRow()).toHaveAttribute('draggable', 'true');
+    });
   });
 });

@@ -23917,6 +23917,11 @@ legend.analytics-settings-dialog__label {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  /* #3426 — the drag-over highlight lives on the same rule as the layout,
+     transparent border by default so nothing shifts when it activates. */
+  border: 1px dashed transparent;
+  border-radius: var(--radius-lg);
+  transition: border-color 0.1s ease, background-color 0.1s ease;
 }
 
 .assign-packing-work-lane__head {
@@ -23936,6 +23941,21 @@ legend.analytics-settings-dialog__label {
 .assign-packing-work-lane__count {
   font-size: 0.8125rem;
   margin-left: auto;
+}
+
+/* #3426 — the drag-over highlight, and the drag source's cursor. Additive
+   to the "Move to" select; drag is never the only way to reassign a row. */
+.assign-packing-work-lane--drag-over {
+  background: var(--accent-primary-soft);
+  border-color: var(--accent-primary-border);
+}
+
+.assign-packing-work-draggable {
+  cursor: grab;
+}
+
+.assign-packing-work-draggable:active {
+  cursor: grabbing;
 }
 
 .assign-packing-work-actions {

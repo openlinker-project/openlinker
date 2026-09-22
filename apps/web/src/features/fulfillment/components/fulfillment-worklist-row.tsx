@@ -24,9 +24,20 @@
  * re-derived: nothing writes `status = 'on_hold'`, and `recordLineProgress`
  * moves a counter without bumping `version` (#2400).
  *
+ * ## `rootProps` is a generic passthrough, never drag-specific (#3426)
+ *
+ * `AssignPackingWorkLaneSection` uses it to spread `draggable`/`onDragStart`/
+ * a drag class onto this row's own `<li>` — nesting a SECOND `<li>` around
+ * this one to add those attributes would be invalid HTML (an `<li>` may not
+ * be an `<li>`'s child outside a nested list) and would break the CSS grid
+ * this row's `<li>` participates in. This component stays entirely ignorant
+ * of drag-and-drop either way: it spreads whatever it is handed, which is
+ * exactly what keeps the plain `/fulfillment` worklist page — the other
+ * caller of this component — unaffected, since it never passes the prop.
+ *
  * @module apps/web/src/features/fulfillment/components
  */
-import type { ReactElement } from 'react';
+import type { LiHTMLAttributes, ReactElement } from 'react';
 
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { holdReasonLabel } from '../../orders';
@@ -41,11 +52,14 @@ export interface FulfillmentWorklistRowProps {
   task: FulfillmentTask;
   /** The action controls, composed by the page (which owns the dialogs). */
   actions?: ReactElement | null;
+  /** Spread onto the root `<li>` — see the module docblock. */
+  rootProps?: LiHTMLAttributes<HTMLLIElement>;
 }
 
 export function FulfillmentWorklistRow({
   task,
   actions,
+  rootProps,
 }: FulfillmentWorklistRowProps): ReactElement {
   const held = task.activeHolds.length > 0;
 
@@ -53,7 +67,11 @@ export function FulfillmentWorklistRow({
   const total = task.lines.reduce((sum, line) => sum + line.totalQuantity, 0);
 
   return (
-    <li className="fulfilment-worklist-row" data-held={held ? 'true' : 'false'}>
+    <li
+      {...rootProps}
+      className={['fulfilment-worklist-row', rootProps?.className].filter(Boolean).join(' ')}
+      data-held={held ? 'true' : 'false'}
+    >
       <div className="fulfilment-worklist-row__identity">
         <span className="fulfilment-worklist-row__id mono-text" title={task.id}>
           {task.id}

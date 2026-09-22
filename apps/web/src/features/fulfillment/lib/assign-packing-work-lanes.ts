@@ -28,7 +28,8 @@ export interface AssignPackingWorkLane {
   tasks: FulfillmentTask[];
 }
 
-const UNASSIGNED_LANE_ID = 'unassigned';
+/** The pinned lane's id — also `AssignPackingWorkLane['id']`'s special value. */
+export const UNASSIGNED_LANE_ID = 'unassigned';
 
 export function groupTasksByPacker(
   tasks: readonly FulfillmentTask[],

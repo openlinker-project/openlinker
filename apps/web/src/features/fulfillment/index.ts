@@ -40,7 +40,7 @@ export { AssignPackingWorkLaneSection } from './components/assign-packing-work-l
 export type { AssignPackingWorkLaneSectionProps } from './components/assign-packing-work-lane-section';
 export { AssignPackingWorkActions } from './components/assign-packing-work-actions';
 export { useUpdateFulfillmentAssignmentMutation } from './hooks/use-update-fulfillment-assignment-mutation';
-export { groupTasksByPacker } from './lib/assign-packing-work-lanes';
+export { groupTasksByPacker, UNASSIGNED_LANE_ID } from './lib/assign-packing-work-lanes';
 export type { AssignPackingWorkLane } from './lib/assign-packing-work-lanes';
 export { ASSIGN_PACKING_WORK_COPY } from './lib/assign-packing-work.copy';
 

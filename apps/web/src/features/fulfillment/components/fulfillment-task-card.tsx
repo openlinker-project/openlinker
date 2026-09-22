@@ -25,9 +25,14 @@
  * can move under a client holding a valid token. They are stated as such and
  * nothing is gated on one.
  *
+ * ## `rootProps` is a generic passthrough, never drag-specific (#3426)
+ *
+ * Same seam and same reason as `FulfillmentWorklistRow`'s own docblock — see
+ * there for why nesting a wrapper `<li>` is not the right shape.
+ *
  * @module apps/web/src/features/fulfillment/components
  */
-import type { ReactElement } from 'react';
+import type { LiHTMLAttributes, ReactElement } from 'react';
 
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { TimeDisplay } from '../../../shared/ui/time-display';
@@ -42,13 +47,23 @@ export interface FulfillmentTaskCardProps {
   task: FulfillmentTask;
   /** The action controls, composed by the panel (which owns the dialogs). */
   actions?: ReactElement | null;
+  /** Spread onto the root `<li>` — see the module docblock. */
+  rootProps?: LiHTMLAttributes<HTMLLIElement>;
 }
 
-export function FulfillmentTaskCard({ task, actions }: FulfillmentTaskCardProps): ReactElement {
+export function FulfillmentTaskCard({
+  task,
+  actions,
+  rootProps,
+}: FulfillmentTaskCardProps): ReactElement {
   const held = task.activeHolds.length > 0;
 
   return (
-    <li className="fulfilment-task" data-held={held ? 'true' : 'false'}>
+    <li
+      {...rootProps}
+      className={['fulfilment-task', rootProps?.className].filter(Boolean).join(' ')}
+      data-held={held ? 'true' : 'false'}
+    >
       <div className="fulfilment-task__head">
         <div className="fulfilment-task__badges">
           {held ? (
