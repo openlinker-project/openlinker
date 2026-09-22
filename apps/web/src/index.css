@@ -24492,6 +24492,14 @@ legend.analytics-settings-dialog__label {
   font-size: 0.75rem;
 }
 
+/* Sits UNDER the field, inside the search strip — at full rail width with no
+   padding it overflowed the panel. */
+.bench-rail__search .bench-work-list__search-hint {
+  margin: var(--space-2) 0 0;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
 .bench-rail__search input:focus-visible {
   outline: none;
   border-color: var(--accent-primary);
@@ -24765,6 +24773,30 @@ legend.analytics-settings-dialog__label {
 
 .bench-work-row__actions {
   margin-top: var(--space-2);
+}
+
+/* Small enough for a 340 px column, and still over the 44 px touch floor the
+   section header insists on — height comes from `min-height`, not from type. */
+.bench-work-row__actions .button {
+  flex: 1;
+  padding-inline: var(--space-2);
+  font-size: 0.75rem;
+}
+
+/* Every remaining prose block in the rail is inset to the panel's own gutter;
+   at full width they ran past the column's border. */
+.bench-work-list__scope,
+.bench-work-list__truncated,
+.bench-work-list__no-matches,
+.bench-work-list__done-note,
+.bench-work-list__take-next-notice {
+  padding-inline: var(--space-4);
+  font-size: 0.75rem;
+}
+
+.bench-work-list__footer {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  font-size: 0.7rem;
 }
 
 /* The 44 px floor, unconditional. See the section header. */
@@ -25112,6 +25144,9 @@ legend.analytics-settings-dialog__label {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-4);
+  margin: calc(var(--space-5) * -1) calc(var(--space-5) * -1) 0;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .bench-parcel__identity {
@@ -25123,6 +25158,13 @@ legend.analytics-settings-dialog__label {
    row's trailing edge, matching the mockup's `.order-head__spacer`. */
 .bench-parcel__header-spacer {
   flex: 1;
+}
+
+.bench-parcel__header-trailing {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
 }
 
 /* #3420 (epic #3401) — the inert camera-preview row. Small and muted on
@@ -25355,6 +25397,14 @@ legend.analytics-settings-dialog__label {
   background: var(--bg-surface-muted);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
+}
+
+/* Without this the child spans are inline and the product name runs straight
+   into its own EAN — "Canvas tote bagEAN 5901234123488". */
+.bench-parcel-line__identity {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
 .bench-parcel-line__count {

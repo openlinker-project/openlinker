@@ -237,7 +237,6 @@ export const benchParcelCopy = {
     scanLabel: 'Scan this item',
     scanPlaceholder: 'Scan or type SKU / EAN, then press Enter',
     confirmAction: 'Confirm this item',
-    undoAction: 'Undo last scan',
     scanHint:
       'Scanning counts on its own — no button needed. Use Confirm this item only when a barcode is damaged, missing or will not read.',
     keyboardHint: 'Keyboard, when you are not scanning: C confirms this item.',

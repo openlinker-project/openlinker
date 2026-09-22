@@ -508,6 +508,32 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
   // DERIVED, never stored — see `BenchParcelHero`'s docblock. `undefined`
   // once every line is satisfied, which is also when there is nothing to put
   // in front of the packer.
+  /**
+   * #3405. Voids the single most recent scan, whichever line it landed on —
+   * there is no per-line target to name, so this is one control rather than a
+   * button repeated on every row. Lives on the hero card (#3401), beside the
+   * scan it undoes, and is offered only on an OPEN box (a closed one is
+   * `reopenParcel`'s job).
+   */
+  const undoLastScan = (): void => {
+    setUndoNotice(null);
+    undo.mutate(workId, {
+      onSuccess: (result) => {
+        if (result.outcome === 'refused') {
+          setUndoNotice(
+            result.reason === 'parcel-closed'
+              ? benchParcelCopy.undo.parcelClosed
+              : benchParcelCopy.undo.nothingToUndo
+          );
+          return;
+        }
+        const lineName =
+          result.parcel.lines.find((l) => l.workLineId === result.workLineId)?.name ?? null;
+        setUndoNotice(benchParcelCopy.undo.voidedNotice(lineName));
+      },
+    });
+  };
+
   const heroLine = parcel.lines.find((line) => benchLineState(line) !== 'verified');
   const progressPercent =
     totals.required === 0 ? 100 : Math.round((totals.verified / totals.required) * 100);
@@ -556,6 +582,9 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
           </div>
         )}
         <div className="bench-parcel__header-spacer" />
+        {/* Grouped so the pill and the exit wrap TOGETHER — split across two
+            rows, "Back to the list" sat alone under the fields. */}
+        <div className="bench-parcel__header-trailing">
         {/* #3418 — the order-head's own status pill. `pulse` only on the
             genuinely in-progress state, matching the mockup's own
             `status-badge--pulse`; a held/cancelled/packed box is a settled
@@ -577,9 +606,10 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
             {benchParcelCopy.header.statusInProgress}
           </StatusBadge>
         )}
-        <Button tone="ghost" onClick={onClose}>
-          {benchParcelCopy.header.backAction}
-        </Button>
+          <Button tone="ghost" onClick={onClose}>
+            {benchParcelCopy.header.backAction}
+          </Button>
+        </div>
       </header>
 
       <p className="bench-parcel__scope">{benchParcelCopy.header.thisBoxOnly}</p>
@@ -602,6 +632,8 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
             const gesture = beginGesture(target.workLineId, Date.now());
             submit(target, gesture.gestureId, sequence.current);
           }}
+          onUndo={closed ? undefined : undoLastScan}
+          undoing={undo.isPending}
         />
       )}
 
@@ -628,39 +660,6 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
         </div>
       </div>
 
-      <div className="bench-parcel__progress-row">
-        {/* #3405. Undoes the single most recent scan, whichever line it
-            landed on — there is no per-line target to name, so this is one
-            control rather than a button repeated on every row. Offered only
-            on an OPEN box (a closed one is `reopenParcel`'s job). */}
-        {closed ? null : (
-          <Button
-            tone="ghost"
-            disabled={undo.isPending}
-            onClick={() => {
-              setUndoNotice(null);
-              undo.mutate(workId, {
-                onSuccess: (result) => {
-                  if (result.outcome === 'refused') {
-                    setUndoNotice(
-                      result.reason === 'parcel-closed'
-                        ? benchParcelCopy.undo.parcelClosed
-                        : benchParcelCopy.undo.nothingToUndo
-                    );
-                    return;
-                  }
-                  const lineName =
-                    result.parcel.lines.find((l) => l.workLineId === result.workLineId)?.name ??
-                    null;
-                  setUndoNotice(benchParcelCopy.undo.voidedNotice(lineName));
-                },
-              });
-            }}
-          >
-            {benchParcelCopy.undo.action}
-          </Button>
-        )}
-      </div>
       {undoNotice === null ? null : (
         <p className="bench-parcel__undo-notice" role="status" data-testid="bench-parcel-undo-notice">
           {undoNotice}

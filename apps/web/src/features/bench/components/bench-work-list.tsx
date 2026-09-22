@@ -293,6 +293,7 @@ export function BenchWorkList({
             setSearch(event.target.value);
           }}
         />
+        <p className="bench-work-list__search-hint">{benchWorkCopy.search.hint}</p>
       </div>
 
       {/* #3412/#3416 — "Take next task": the server picks, oldest deadline
@@ -364,8 +365,6 @@ export function BenchWorkList({
           {benchWorkCopy.tabs.done} <span className="mono">{bothCounts.done}</span>
         </button>
       </div>
-
-      <p className="bench-work-list__search-hint">{benchWorkCopy.search.hint}</p>
 
       {/* C3: immediate, distinct, and it records nothing. `role="alert"` so it
           reaches a screen reader without the packer looking up from the box. */}

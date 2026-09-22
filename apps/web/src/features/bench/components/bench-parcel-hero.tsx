@@ -148,7 +148,7 @@ export function BenchParcelHero({
                     onUndo();
                   }}
                 >
-                  {benchParcelCopy.hero.undoAction}
+                  {benchParcelCopy.undo.action}
                 </Button>
               )}
             </form>
