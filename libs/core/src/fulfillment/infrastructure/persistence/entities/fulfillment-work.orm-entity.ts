@@ -165,8 +165,10 @@ export class FulfillmentWorkOrmEntity {
    * parcel. `true` (the default) is ADR-074's advisory reading — a
    * locked-to-one-packer assignment is the exception an operator opts into,
    * not the default. Enforcement of `false` lives in
-   * `FulfillmentHandshakeService`'s claim path (#3337); this column only
-   * records the decision.
+   * `BenchParcelService.verifyUnit` (#3337) — a human-packer guard, not
+   * `FulfillmentHandshakeService`, which negotiates with holder connections
+   * (ADR-054's executor axis, #2399) and has no concept of an acting user;
+   * this column only records the decision.
    */
   @Column({ type: 'boolean', default: true })
   selfServeEligible!: boolean;
@@ -285,6 +287,13 @@ export class FulfillmentWorkOrmEntity {
    * full-entity `save()`, and this aggregate is written exclusively by narrow
    * conditional UPDATEs, which it would never observe. Each transition carries
    * `version = version + 1` in its own `SET`.
+   *
+   * `assignToPacker` / `clearAssignment` / `setSelfServeEligible` (#3336) bump
+   * it too, deliberately — the row genuinely changed. The consequence is felt
+   * by a packer mid-parcel: a supervisor's staffing decision on this work
+   * object (a reassignment, or flipping `selfServeEligible`) invalidates the
+   * token the bench is holding, so that packer's next action answers 409 via
+   * `supportedActions` / `expectedVersion` and must re-fetch.
    */
   @Column({ type: 'integer', default: 0 })
   version!: number;

@@ -20,9 +20,11 @@
  * `selfServeEligible` defaults `true` — an assigned-and-locked parcel is the
  * explicit exception an operator opts into (ADR-074 "Alternatives
  * considered"), never the default a migration silently produces for every
- * existing row. Enforcement of `false` lives in
- * `FulfillmentHandshakeService`'s claim path (#3337); this migration only
- * adds the column the enforcement will read.
+ * existing row. Enforcement of `false` lives in `BenchParcelService.verifyUnit`
+ * (#3337) — a human-packer guard, not `FulfillmentHandshakeService`, which
+ * negotiates with holder connections (ADR-054's executor axis, #2399) and has
+ * no concept of an acting user; this migration only adds the column the
+ * enforcement will read.
  *
  * ## No default and no index on `assignedToUserId`, no index on `selfServeEligible`
  *
