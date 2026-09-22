@@ -18,8 +18,10 @@
  */
 import type { ReactElement, ReactNode } from 'react';
 
+import { Alert } from '../../../shared/ui/alert';
 import { resolveBenchIdleTimeoutMs, useBenchIdentity } from '../hooks/use-bench-identity';
 import { BenchInteractiveContext } from '../hooks/use-bench-interactive';
+import { benchIdentityCopy } from '../lib/bench-identity.copy';
 import { BenchIdentityBar } from './bench-identity-bar';
 import { BenchIdentityOverlay } from './bench-identity-overlay';
 import { BenchTopbar } from './bench-topbar';
@@ -53,6 +55,15 @@ export function BenchSurface({ children, idleTimeoutMs }: BenchSurfaceProps): Re
         signedInName={identity.signedInName}
         onSwitchPacker={identity.requestHandover}
       />
+      {/* #3408 (epic #3401). Advisory only — see `use-bench-identity.ts`'s
+          "does not add a fourth state" docblock. Any activity dismisses it
+          via `useIdleTimeout`'s own onActivity handler, which is what makes
+          "tap anywhere to stay signed in" true without a dismiss button. */}
+      {identity.warningSecondsRemaining === null ? null : (
+        <Alert tone="warning" data-testid="bench-idle-warning">
+          {benchIdentityCopy.warning(identity.warningSecondsRemaining)}
+        </Alert>
+      )}
       <BenchIdentityOverlay
         state={identity.state}
         onConfirmHandover={() => void identity.confirmHandover()}

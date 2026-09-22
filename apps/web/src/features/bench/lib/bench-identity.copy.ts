@@ -46,4 +46,7 @@ export const benchIdentityCopy = {
     confirmAction: 'Sign in as someone else',
     cancelAction: 'Stay signed in',
   },
+  /** #3408 — the pre-lock countdown warning. Advisory, never a fourth screen. */
+  warning: (secondsRemaining: number): string =>
+    `You'll be signed out in ${String(secondsRemaining)}s — tap anywhere to stay signed in.`,
 } as const;
