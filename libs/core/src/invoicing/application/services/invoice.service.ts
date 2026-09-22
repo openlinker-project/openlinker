@@ -785,7 +785,8 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller, sourceDocument, documentLines } = issueResult;
+    const { record: issued, seller, sourceDocument, documentLines, unlinkedCatalogueLines } =
+      issueResult;
     // #2251: prefer the document's OWN per-line amounts over core's
     // recomputation, so the stored figure matches the paper to the grosz.
     const documentContent = this.buildContent(cmd, issued, seller ?? null, documentLines);
@@ -830,6 +831,13 @@ export class InvoiceService implements IInvoiceService {
       sourceDocument: sourceDocument ?? null,
       // #1297: persist the issuance-time line snapshot on the same issued patch.
       issuedLineSnapshot,
+      // How many lines the adapter could not link to the provider's catalogue.
+      // `undefined` from an adapter that does not report linkage stays `null`,
+      // which reads as "not reported" — deliberately distinct from a reported
+      // `0`, "every line was linked". Only the issue path carries this: no
+      // correction adapter reports linkage today, and a field nothing populates
+      // is noise until one does.
+      unlinkedCatalogueLines: unlinkedCatalogueLines ?? null,
     };
     return this.repo.updateOutcome(recordId, patch);
   }

@@ -143,7 +143,29 @@ export class InvoiceRecord {
      * before this column existed — there is nothing to backfill it from.
      */
     public readonly buyerTaxId: string | null = null,
+    /**
+     * How many of this document's lines the provider could not link to its own
+     * catalogue and issued as free text — see
+     * {@link IssueInvoiceResult.unlinkedCatalogueLines} for the tri-state and
+     * for why `0` is not a provider guarantee.
+     *
+     * `null` on every row issued before this column existed, and on every row
+     * from a provider that does not report linkage. Both read as "not
+     * reported", which is why {@link hasUnlinkedCatalogueLines} tests `> 0`
+     * rather than nullability.
+     */
+    public readonly unlinkedCatalogueLines: number | null = null,
   ) {}
+
+  /**
+   * Did this document go out with lines the provider could not link to its
+   * catalogue? Pure read of the column, so a surface never has to decide what
+   * `null` means for itself: only a positive count is a claim, and `null`
+   * (not reported) and `0` (all linked) both answer false.
+   */
+  get hasUnlinkedCatalogueLines(): boolean {
+    return this.unlinkedCatalogueLines !== null && this.unlinkedCatalogueLines > 0;
+  }
 
   /** Pure derivation: the document was successfully issued by the provider. */
   get isIssued(): boolean {
