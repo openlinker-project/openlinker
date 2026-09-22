@@ -3,8 +3,8 @@
  *
  * Renders the preview — never issues anything. `CorrectionIssuer` is called
  * nowhere here; the panel matches returned lines to the invoice, shows what
- * it found, and hands off to the provider's own correction flow on
- * `/invoices/:invoiceId`.
+ * it found, and hands off to the provider's own correction flow, mounted in
+ * a dialog on this page (see the "handoff" note below — #3094 amendment).
  *
  * **A headline before the detail.** The acceptance criterion this shape
  * exists for: an operator must see what is at stake — the total credit and
@@ -70,18 +70,37 @@
  * a re-render or a remount, rather than a `useState` flag this component
  * would lose the moment its parent unmounted it.
  *
+ * **The handoff opens the real correction flow, never a link (#3094
+ * amendment).** The mockup's own frame-04 gap legend names the
+ * `/invoices/:id` link as drift, not a design choice — the operator lands on
+ * a page that has to re-derive everything this panel already knows. The
+ * fix reuses `sales-document-panel.tsx`'s exact pattern verbatim: resolve
+ * the invoice's own `InvoiceRecord` + issuing connection, resolve that
+ * connection's provider-specific `InvoiceCorrectionFlow` via `usePlatform`,
+ * and mount it in a `Dialog` on this page — no new backend, no new
+ * provider logic, and no duplicated correction UI. A provider with no
+ * contributed flow (or a stale/disabled issuing connection) degrades to a
+ * disabled button rather than a broken dialog.
+ *
  * @module apps/web/src/features/returns/components
  */
-import type { ReactElement } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, type ReactElement } from 'react';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
+import { Dialog, DialogContent, DialogTitle } from '../../../shared/ui/dialog';
 import { ReadOnlyLock } from '../../../shared/ui/read-only-lock';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import { MetricCard } from '../../../shared/ui/metric-card';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { useToast } from '../../../shared/ui/toast-provider';
+import { usePlatform } from '../../../shared/plugins';
+import { useConnectionsQuery } from '../../connections';
+import {
+  resolveIssuingConnection,
+  useInvoiceQuery,
+  type CorrectionSuggestedLine,
+} from '../../invoicing';
 import { RETURN_PROPOSAL_COPY } from '../lib/return-proposal.copy';
 import {
   computeCorrectionProposalBreakdown,
@@ -111,6 +130,21 @@ export function CorrectionProposalPanel({
 }: CorrectionProposalPanelProps): ReactElement {
   const { showToast } = useToast();
   const record = useRecordCorrectionProposalMutation(returnId);
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+
+  // Called unconditionally (React hook rules — the early `proposal === null`
+  // return below must not skip a hook call). Both degrade to their own
+  // disabled/loading query state when there is nothing to resolve yet:
+  // `useInvoiceQuery` no-ops on an empty id (`enabled: Boolean(invoiceId)`),
+  // and the connections list is needed regardless of which outcome renders.
+  const invoiceQuery = useInvoiceQuery(proposal?.invoiceRecordId ?? '');
+  const connectionsQuery = useConnectionsQuery();
+  const connections = connectionsQuery.data ?? [];
+  const invoice = invoiceQuery.data ?? null;
+  const lock = invoice ? resolveIssuingConnection(invoice, connections) : null;
+  const invoicingConnection = lock?.connection ?? null;
+  const platform = usePlatform(invoicingConnection?.platformType);
+  const InvoiceCorrectionFlow = platform?.invoiceCorrectionFlow ?? null;
 
   if (proposal === null) {
     const badge = RETURN_PROPOSAL_COPY.outcomeBadges[outcome];
@@ -141,6 +175,17 @@ export function CorrectionProposalPanel({
       line.status === 'ambiguous' || line.noMatchReason === NEEDS_ATTENTION_NO_MATCH_REASON
   );
   const breakdown = computeCorrectionProposalBreakdown(proposal.lines);
+  // Only a `matched` line has both a resolved invoice position and a
+  // computed after-correction quantity (#3090) — the grid pre-fills exactly
+  // these rows; everything else (ambiguous, no-match) is left for the
+  // operator to review on the panel above, never guessed at in the dialog.
+  const suggestedLines: CorrectionSuggestedLine[] = proposal.lines.flatMap((line) =>
+    line.status === 'matched' &&
+    line.selectedOriginalLineNumber !== null &&
+    line.newQuantity !== null
+      ? [{ originalLineNumber: line.selectedOriginalLineNumber, suggestedQuantity: line.newQuantity }]
+      : [],
+  );
   const isRecorded = changeId !== null;
   // The picker this AC was written against is retired (#3091) — nothing in
   // this build can resolve an unresolved line (`status: 'ambiguous'`, or its
@@ -289,11 +334,45 @@ export function CorrectionProposalPanel({
 
       <footer className="returns-proposal-panel__footer text-muted">
         <p>{RETURN_PROPOSAL_COPY.noAutoIssue}</p>
-        {/* A route link, never a reimplementation — the provider's own
-            correction flow is mounted on the invoice page. */}
-        <Link to={`/invoices/${proposal.invoiceRecordId}`}>
-          {RETURN_PROPOSAL_COPY.handoff}
-        </Link>
+        {/* Reused verbatim from `sales-document-panel.tsx` — the same dialog,
+            the same per-provider `InvoiceCorrectionFlow`, no new backend and
+            no duplicated correction UI (#3094 amendment). A provider with no
+            contributed flow, or a stale/disabled issuing connection,
+            degrades to a disabled button with copy explaining why, rather
+            than a link that lands on a page unable to help either. */}
+        {InvoiceCorrectionFlow && invoice && invoicingConnection ? (
+          <>
+            <Button
+              tone="secondary"
+              onClick={() => setCorrectionOpen(true)}
+              disabled={lock?.isStale ?? false}
+            >
+              {RETURN_PROPOSAL_COPY.handoff}
+            </Button>
+            {lock?.isStale ? (
+              <p className="text-muted">{RETURN_PROPOSAL_COPY.handoffConnectionStale}</p>
+            ) : null}
+            <Dialog open={correctionOpen} onOpenChange={setCorrectionOpen}>
+              <DialogContent aria-describedby={undefined}>
+                <DialogTitle>{RETURN_PROPOSAL_COPY.handoffDialogTitle}</DialogTitle>
+                <InvoiceCorrectionFlow
+                  invoice={invoice}
+                  connection={invoicingConnection}
+                  suggestedLines={suggestedLines}
+                  onClose={() => setCorrectionOpen(false)}
+                  onCorrectionIssued={() => {
+                    setCorrectionOpen(false);
+                    void invoiceQuery.refetch();
+                  }}
+                />
+              </DialogContent>
+            </Dialog>
+          </>
+        ) : invoiceQuery.isLoading || connectionsQuery.isLoading ? (
+          <p className="text-muted">{RETURN_PROPOSAL_COPY.handoffLoading}</p>
+        ) : (
+          <p className="text-muted">{RETURN_PROPOSAL_COPY.handoffUnavailable}</p>
+        )}
       </footer>
     </section>
   );

@@ -36,8 +36,32 @@ export const RETURN_PROPOSAL_COPY = {
   /** § 5.8's rule, stated in the footer so nobody has to infer it. */
   noAutoIssue:
     'OpenLinker never issues a credit note on its own. It matches the returned lines to the invoice and shows you what it found; issuing is always your decision.',
+  /**
+   * Opens the provider's own `InvoiceCorrectionFlow` in a dialog on this
+   * page (#3094 amendment) — never a link, and never a second
+   * implementation of that flow.
+   */
   handoff: 'Review and issue on the invoice',
+  handoffDialogTitle: 'Issue correction',
   reviewCta: 'Confirm these matches',
+  /** While the invoice + connection reads this needs are still in flight. */
+  handoffLoading: 'Loading correction options…',
+  /**
+   * The issuing connection is inactive or no longer has `Invoicing`
+   * enabled — the same "stale" signal `sales-document-panel.tsx` surfaces
+   * on the order page, repeated here so an operator does not click a
+   * button that cannot do anything.
+   */
+  handoffConnectionStale:
+    'The connection that issued this invoice is disabled or no longer set up for invoicing — a correction cannot be issued from here right now.',
+  /**
+   * No `InvoiceCorrectionFlow` is registered for this invoice's platform, or
+   * the invoice/connection could not be resolved at all. Never a fabricated
+   * link — the mockup's own gap legend calls a dead link "drift, not a
+   * design choice".
+   */
+  handoffUnavailable:
+    'No correction flow is available for this invoice from here yet.',
 
   /**
    * The action this panel actually performs — recording an ADR-044 change

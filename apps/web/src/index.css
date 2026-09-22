@@ -16709,6 +16709,53 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   white-space: nowrap;
 }
 
+/* ─ Shared: correction line grid (#3090) — CorrectionLineGrid, mounted by
+   every provider's InvoiceCorrectionFlow. One row per invoice line: a
+   recessed read-only "as invoiced" column, an editable "after correction"
+   pair, and a computed "credit" column. */
+.credit-grid__scroll {
+  overflow-x: auto;
+}
+.credit-grid__lp {
+  width: 2.5rem;
+  text-align: right;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+/* Evidence: recessed, never an input — the "before" side stays structurally
+   untouchable. Money never wraps: a figure broken across two lines is
+   unreadable in a container that already scrolls sideways. */
+.credit-cell--invoiced,
+.credit-cell--after,
+.credit-cell--credit,
+.credit-grid tfoot td {
+  white-space: nowrap;
+}
+.credit-cell--invoiced {
+  color: var(--text-secondary);
+}
+.credit-cell--credit {
+  font-variant-numeric: tabular-nums;
+}
+/* A line the return does not touch: present and inert, never hidden. */
+.credit-row--untouched td {
+  color: var(--text-muted);
+}
+.credit-cell__pair {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+.credit-cell__times {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+.credit-grid tfoot td {
+  border-top: 1px solid var(--border-default);
+  font-weight: 600;
+}
+
 /* ─ KSeF invoice correction dialog (#1220) ─ */
 .ksef-correction__head {
   display: flex;

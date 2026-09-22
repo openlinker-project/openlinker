@@ -34,7 +34,7 @@ import type { ApiRequest, PluginApiNamespaces } from '../../app/api/api-client';
 import type { Role } from '../../app/nav-registry.types';
 import type { Connection } from '../../features/connections/api/connections.types';
 import type { EditConnectionFormValues } from '../../features/connections/components/edit-connection.schema';
-import type { InvoiceRecord } from '../../features/invoicing';
+import type { CorrectionSuggestedLine, InvoiceRecord } from '../../features/invoicing';
 import type { StructuredError } from '../types/structured-error.types';
 
 /**
@@ -568,6 +568,14 @@ export interface InvoiceCorrectionFlowProps {
   connection?: Connection;
   onClose: () => void;
   onCorrectionIssued: (correctionInvoiceId: string) => void;
+  /**
+   * Lines a return's own correction proposal already resolved (#3090) — the
+   * mount site on the return-detail page supplies these from
+   * `ReturnCorrectionProposal.lines`; the order-detail mount omits the field
+   * entirely, and every implementer's `CorrectionLineGrid` degrades to
+   * showing every invoice line unprefilled when it is absent.
+   */
+  suggestedLines?: CorrectionSuggestedLine[];
 }
 
 /**

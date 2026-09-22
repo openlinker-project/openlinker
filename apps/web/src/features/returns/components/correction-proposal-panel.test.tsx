@@ -207,13 +207,18 @@ describe('CorrectionProposalPanel — headline + breakdown (#3090)', () => {
     ).toBeInTheDocument();
   });
 
-  it('should never auto-issue, and say so in the footer', () => {
+  it('should never auto-issue, and never hand off via a dead link (#3094 amendment)', () => {
     renderPanel(proposal([line()]));
 
     expect(screen.getByText(RETURN_PROPOSAL_COPY.noAutoIssue)).toBeInTheDocument();
+    // The `/invoices/:id` link this used to assert was itself the defect
+    // (#3094's own amendment: "drift, not a design choice") — the handoff now
+    // opens the real `InvoiceCorrectionFlow` in a dialog (see
+    // `ksef-invoice-correction-flow.test.tsx` etc. for that wiring), so no
+    // link of any kind may exist here.
     expect(
-      screen.getByRole('link', { name: RETURN_PROPOSAL_COPY.handoff }),
-    ).toHaveAttribute('href', '/invoices/inv-1');
+      screen.queryByRole('link', { name: RETURN_PROPOSAL_COPY.handoff }),
+    ).not.toBeInTheDocument();
     // "Record for review" exists; a literal "Issue" CTA must not.
     expect(screen.queryByRole('button', { name: /issue/i })).not.toBeInTheDocument();
   });
