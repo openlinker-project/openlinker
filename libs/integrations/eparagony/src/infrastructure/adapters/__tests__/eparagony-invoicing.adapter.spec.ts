@@ -10,7 +10,12 @@
  */
 import type { LoggerPort } from '@openlinker/shared/logging';
 import { BuyerProfile, InvoiceRecord } from '@openlinker/core/invoicing';
-import type { IssueInvoiceCommand, RegulatoryStatus } from '@openlinker/core/invoicing';
+import type {
+  IssueCorrectionCommand,
+  IssueInvoiceCommand,
+  OriginalDocumentSnapshot,
+  RegulatoryStatus,
+} from '@openlinker/core/invoicing';
 
 import { EPARAGONY_ISSUE_DEADLINE_MS } from '../../../eparagony.constants';
 import { EparagonyApiError } from '../../../domain/exceptions/eparagony-api.error';
@@ -28,7 +33,19 @@ import { EparagonyInvoicingAdapter } from '../eparagony-invoicing.adapter';
 
 const CONNECTION_ID = 'conn-eparagony-1';
 const IDEMPOTENCY_KEY = 'invoice:conn-eparagony-1:ol_order_1';
-const EXPECTED_DOCUMENT_TOKEN = deriveDocumentToken(CONNECTION_ID, IDEMPOTENCY_KEY);
+// `resolveRegistrationKey` namespaces its `kind` prefix UNCONDITIONALLY,
+// including over a caller-supplied key (#3193 review) - so the registration
+// key actually sent to the vendor is `invoice:{IDEMPOTENCY_KEY}`, never
+// `IDEMPOTENCY_KEY` verbatim, even though `record.idempotencyKey` still
+// echoes the raw supplied value unchanged.
+const REGISTRATION_KEY = `invoice:${IDEMPOTENCY_KEY}`;
+const EXPECTED_DOCUMENT_TOKEN = deriveDocumentToken(CONNECTION_ID, REGISTRATION_KEY);
+const CORRECTION_IDEMPOTENCY_KEY = `correction:${CONNECTION_ID}:ol_order_1`;
+const CORRECTION_REGISTRATION_KEY = `correction:${CORRECTION_IDEMPOTENCY_KEY}`;
+const EXPECTED_CORRECTION_DOCUMENT_TOKEN = deriveDocumentToken(
+  CONNECTION_ID,
+  CORRECTION_REGISTRATION_KEY,
+);
 
 const logger: LoggerPort = {
   log: jest.fn(),
@@ -260,7 +277,7 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
     expect(body.documentToken).toBe(EXPECTED_DOCUMENT_TOKEN);
     // Required whenever `documentToken` is sent, and derived under its own
     // namespace so the two can never collide.
-    expect(body.transactionToken).toBe(deriveTransactionToken(CONNECTION_ID, IDEMPOTENCY_KEY));
+    expect(body.transactionToken).toBe(deriveTransactionToken(CONNECTION_ID, REGISTRATION_KEY));
     expect(body.transactionToken).not.toBe(body.documentToken);
     expect(body.eInvoice.invoiceType).toBe('VAT');
     // The vendor's header rejects OL's colon-bearing raw key, so the derived
@@ -614,5 +631,216 @@ describe('EparagonyInvoicingAdapter - upsertCustomer', () => {
       buyer: buyer(null),
     });
     expect(result.providerCustomerId).toBe(`eparagony:${CONNECTION_ID}:guest`);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// issueCorrection (#3193)
+// -----------------------------------------------------------------------------
+
+/**
+ * A correction requires `merchantName` and a complete `merchantAddress`, neither
+ * of which a receipts-shaped config carries - the vendor's `correctingMetadata`
+ * has no fallback to the account's own registered identity the way a plain
+ * invoice's `metadata` does.
+ */
+function makeCorrectionConfig(
+  overrides: Partial<EparagonyConnectionConfig> = {},
+): EparagonyConnectionConfig {
+  return makeConfig({
+    merchantName: 'OpenLinker POC Sp. z o.o.',
+    merchantAddress: {
+      street: 'ul. Grzybowska',
+      number: '2',
+      postalCode: '00-131',
+      city: 'Warszawa',
+      country: 'PL',
+    },
+    ...overrides,
+  });
+}
+
+function makeOriginalDocument(
+  overrides: Partial<OriginalDocumentSnapshot> = {},
+): OriginalDocumentSnapshot {
+  return {
+    buyer: new BuyerProfile(
+      'Firma Polska sc.',
+      { scheme: 'pl-nip', value: '6460558758' },
+      {
+        line1: 'Pl. Obroncow Lublina 73',
+        line2: null,
+        city: 'Warszawa',
+        postalCode: '20-601',
+        countryIso2: 'PL',
+      },
+      'company',
+    ),
+    currency: 'PLN',
+    documentType: 'invoice',
+    lines: [{ name: 'T-shirt', quantity: 2, unitPriceGross: 49.2, taxRate: '23' }],
+    clearanceReference: '5265877635-20250626-010080DD2B5E-26',
+    documentNumber: 'OL-POC/2026/B2B/1',
+    issueDate: '2026-09-15',
+    ...overrides,
+  };
+}
+
+function makeCorrectionCommand(
+  overrides: Partial<IssueCorrectionCommand> = {},
+): IssueCorrectionCommand {
+  return {
+    connectionId: CONNECTION_ID,
+    orderId: 'ol_order_1',
+    originalProviderInvoiceId: EXPECTED_DOCUMENT_TOKEN,
+    reason: 'buyer returned one unit',
+    lines: [{ originalLineNumber: 1, newQuantity: 1 }],
+    idempotencyKey: CORRECTION_IDEMPOTENCY_KEY,
+    originalDocument: makeOriginalDocument(),
+    ...overrides,
+  };
+}
+
+describe('EparagonyInvoicingAdapter - issueCorrection', () => {
+  it('issues the correction and projects the neutral record once the document is issued', async () => {
+    const client = makeClient([OFFLINE]);
+    const { record } = await makeAdapter(client, makeCorrectionConfig()).issueCorrection(
+      makeCorrectionCommand(),
+    );
+
+    expect(record.status).toBe('issued');
+    expect(record.providerType).toBe('eparagony');
+    // Defaults to 'corrected' when the caller names no explicit document type.
+    expect(record.documentType).toBe('corrected');
+    expect(record.providerInvoiceId).toBe(EXPECTED_CORRECTION_DOCUMENT_TOKEN);
+    expect(record.idempotencyKey).toBe(CORRECTION_IDEMPOTENCY_KEY);
+    expect(record.regulatoryStatus).toBe('pending-submission');
+  });
+
+  it("honours a caller-supplied document type rather than forcing 'corrected'", async () => {
+    const client = makeClient([OFFLINE]);
+    const { record } = await makeAdapter(client, makeCorrectionConfig()).issueCorrection(
+      makeCorrectionCommand({ documentType: 'credit-note' }),
+    );
+    expect(record.documentType).toBe('credit-note');
+  });
+
+  it('derives a DIFFERENT token pair than an original invoice on the SAME order with no key', async () => {
+    // Without the namespace, an idempotency-key-less correction would derive the
+    // invoice's own documentToken and the vendor - which dedupes on that token -
+    // would answer the correction with the original document.
+    const client = makeClient([OFFLINE]);
+    const command = makeCorrectionCommand();
+    delete command.idempotencyKey;
+    const { record } = await makeAdapter(client, makeCorrectionConfig()).issueCorrection(command);
+
+    // No supplied key - falls to `correction:{connectionId}:{orderId}`, which
+    // (unlike EXPECTED_CORRECTION_DOCUMENT_TOKEN above) is derived without a
+    // caller-supplied key to namespace.
+    expect(record.providerInvoiceId).not.toBe(EXPECTED_DOCUMENT_TOKEN);
+    expect(record.providerInvoiceId).toBe(
+      deriveDocumentToken(CONNECTION_ID, `correction:${CONNECTION_ID}:ol_order_1`),
+    );
+  });
+
+  it('sends the eCorrectiveInvoice body under its own derived token pair', async () => {
+    const client = makeClient([OFFLINE]);
+    await makeAdapter(client, makeCorrectionConfig()).issueCorrection(makeCorrectionCommand());
+
+    const [path, body, options] = client.post.mock.calls[0] as [
+      string,
+      {
+        documentToken: string;
+        transactionToken: string;
+        eCorrectiveInvoice: {
+          invoiceType: string;
+          correctedMetadata: { invoiceNumber: string };
+        };
+      },
+      { headers: Record<string, string>; idempotent: boolean },
+    ];
+
+    expect(path).toBe('documents');
+    expect(body.documentToken).toBe(EXPECTED_CORRECTION_DOCUMENT_TOKEN);
+    expect(body.transactionToken).toBe(
+      deriveTransactionToken(CONNECTION_ID, CORRECTION_REGISTRATION_KEY),
+    );
+    expect(body.eCorrectiveInvoice.invoiceType).toBe('VAT');
+    expect(body.eCorrectiveInvoice.correctedMetadata.invoiceNumber).toBe('OL-POC/2026/B2B/1');
+    // The same idempotency header the issue path sends, for the same reason.
+    expect(options.headers['Idempotency-Key']).toBe(EXPECTED_CORRECTION_DOCUMENT_TOKEN);
+    expect(options.idempotent).toBe(true);
+  });
+
+  it("hands core the corrected document's own per-line figures", async () => {
+    const client = makeClient([OFFLINE]);
+    const { documentLines } = await makeAdapter(client, makeCorrectionConfig()).issueCorrection(
+      makeCorrectionCommand(),
+    );
+    expect(documentLines).toEqual([
+      { lineNumber: 1, unitNet: 40, net: 40, tax: 9.2, gross: 49.2 },
+    ]);
+  });
+
+  it('reports the seller the connection configures, exactly as an original invoice does', async () => {
+    const client = makeClient([OFFLINE]);
+    const result = await makeAdapter(client, makeCorrectionConfig()).issueCorrection(
+      makeCorrectionCommand(),
+    );
+    expect(result.seller).toMatchObject({
+      name: 'OpenLinker POC Sp. z o.o.',
+      taxId: { scheme: 'pl-nip', value: '5252556107' },
+    });
+  });
+
+  it('polls past a non-terminal status before reporting the correction issued', async () => {
+    const client = makeClient([PENDING, OFFLINE]);
+    const { record } = await makeAdapter(client, makeCorrectionConfig()).issueCorrection(
+      makeCorrectionCommand(),
+    );
+    expect(record.status).toBe('issued');
+    expect(client.get.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('classifies a terminal vendor ERROR as rejected, same as the invoice path', async () => {
+    const client = makeClient([ERRORED]);
+    await expect(
+      makeAdapter(client, makeCorrectionConfig()).issueCorrection(makeCorrectionCommand()),
+    ).rejects.toBeInstanceOf(EparagonyApiError);
+
+    const error = await makeAdapter(client, makeCorrectionConfig())
+      .issueCorrection(makeCorrectionCommand())
+      .catch((caught: unknown) => caught);
+    expect((error as EparagonyApiError).failureMode).toBe('rejected');
+  });
+
+  it('refuses a composition failure BEFORE anything crosses the boundary', async () => {
+    const client = makeClient([OFFLINE]);
+    await expect(
+      makeAdapter(client, makeCorrectionConfig({ merchantName: undefined })).issueCorrection(
+        makeCorrectionCommand(),
+      ),
+    ).rejects.toBeInstanceOf(EparagonyConfigException);
+
+    expect(client.post).not.toHaveBeenCalled();
+    expect(client.get).not.toHaveBeenCalled();
+  });
+
+  it('issues a NEW document and never re-reads the original it corrects', async () => {
+    // The correction composes solely from the caller-supplied snapshot and
+    // issues an independent document under its own token - it never resolves
+    // the original, and never writes back to the snapshot it was handed.
+    const client = makeClient([OFFLINE]);
+    const originalDocument = makeOriginalDocument();
+    await makeAdapter(client, makeCorrectionConfig()).issueCorrection(
+      makeCorrectionCommand({ originalDocument }),
+    );
+
+    for (const [path] of client.get.mock.calls as Array<[string]>) {
+      expect(path).toContain(EXPECTED_CORRECTION_DOCUMENT_TOKEN);
+      expect(path).not.toContain(EXPECTED_DOCUMENT_TOKEN);
+    }
+    expect(originalDocument.documentNumber).toBe('OL-POC/2026/B2B/1');
+    expect(originalDocument.lines).toHaveLength(1);
   });
 });

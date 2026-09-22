@@ -49,6 +49,15 @@
  * and every one of them that is not an answer withholds the save, except
  * `unavailable` - a failed check is not evidence of a collision.
  *
+ * CONNECTION CANDIDATES (#3232): the "Integration" select stays
+ * capability-only (`selectInvoicingCandidates` / `selectFiscalizationCandidates`)
+ * rather than also requiring a role (`config.salesDocument.documentKind`) the
+ * way the destination-warnings list (#3209) and the country-default picker
+ * (#3210) do — deliberately, since a rule carries its own `documentKind` and
+ * nothing about DISPATCHING it reads the connection's role at all. See
+ * `find-sales-document-connection-role-gap.ts` for the full rationale and the
+ * pick-time warning that keeps the divergence non-silent.
+ *
  * @module apps/web/src/features/sales-documents/components
  */
 import { useState, type ReactElement } from 'react';
@@ -78,6 +87,10 @@ import {
   describeSalesDocumentOverlapUndecided,
 } from '../lib/describe-sales-document-overlap';
 import { describeSalesDocumentDryRunResult } from '../lib/describe-sales-document-dry-run-result';
+import {
+  describeSalesDocumentConnectionRoleGap,
+  findSalesDocumentConnectionRoleGap,
+} from '../lib/find-sales-document-connection-role-gap';
 
 interface SalesDocumentRuleComposerDialogProps {
   country: string;
@@ -340,6 +353,14 @@ export function SalesDocumentRuleComposerDialog({
     documentKind === 'invoice'
       ? selectInvoicingCandidates(connections)
       : selectFiscalizationCandidates(connections);
+  // #3232. The candidate list above is deliberately capability-only, wider
+  // than the destination-warnings list (#3209) and the country-default
+  // picker (#3210), which both additionally require a role — see
+  // `find-sales-document-connection-role-gap.ts` for why that is correct
+  // rather than a residual gap. What must not be silent is the operator
+  // discovering the difference only after saving, so a role-less pick is
+  // named here, at pick time.
+  const connectionRoleGap = findSalesDocumentConnectionRoleGap(connectionId, connections);
 
   function reset(): void {
     setConditions([newConditionDraft()]);
@@ -420,11 +441,25 @@ export function SalesDocumentRuleComposerDialog({
         onOpenChange(next);
       }}
     >
+      {/*
+        `data-testid` values on this dialog are the LITERAL strings
+        `docs/plans/mockups/sales-document-rule-composer.html` declares, so an
+        e2e selects by the mockup's own vocabulary rather than by copy or by a
+        CSS class (#3196). Three the mockup names have no element here at all
+        and are deliberately NOT invented: `rule-condition-remove-{i}` (this
+        composer has no per-row remove control), `rule-test-sample-order` (the
+        dry run, which needs `FulfillmentRouterPort.evaluate`'s sales-document
+        equivalent and has no endpoint) and `rule-market` (the country is
+        carried by the parent routing dialog's heading, not repeated as a pill
+        here). Adding a hook for a control that does not exist would promise
+        coverage of a feature nobody built.
+      */}
       <DialogContent
         aria-describedby={undefined}
         className="dialog__content--elevated"
         overlayClassName="dialog__overlay--elevated"
         style={{ maxWidth: '32rem' }}
+        data-testid="rule-composer"
       >
         <DialogTitle>Add rule</DialogTitle>
 
@@ -440,9 +475,14 @@ export function SalesDocumentRuleComposerDialog({
 
           <div className="rule-composer-conditions">
             {conditions.map((condition, index) => (
-              <div key={index} className="rule-composer-condition-row">
+              <div
+                key={index}
+                className="rule-composer-condition-row"
+                data-testid={`rule-condition-${index}`}
+              >
                 <Select
                   aria-label="Condition field"
+                  data-testid={`rule-condition-field-${index}`}
                   value={condition.kind}
                   onChange={(event) => {
                     const kind = event.target.value as ConditionKind;
@@ -459,6 +499,7 @@ export function SalesDocumentRuleComposerDialog({
                 {condition.kind === 'buyerHasTaxId' ? (
                   <Select
                     aria-label="Buyer has a tax ID value"
+                    data-testid={`rule-condition-value-${index}`}
                     value={String(condition.boolValue)}
                     onChange={(event) =>
                       setConditions((prev) =>
@@ -476,6 +517,7 @@ export function SalesDocumentRuleComposerDialog({
                 {condition.kind === 'orderCountry' ? (
                   <Input
                     aria-label="Order country value"
+                    data-testid={`rule-condition-value-${index}`}
                     value={condition.stringValue}
                     placeholder="e.g. PL"
                     onChange={(event) =>
@@ -490,8 +532,16 @@ export function SalesDocumentRuleComposerDialog({
 
                 {condition.kind === 'orderTotalGross' ? (
                   <div className="rule-composer-condition-row__threshold">
+                    {/*
+                      The mockup's `rule-condition-test-{i}` is the COMPARISON
+                      control. It exists here only for an amount condition —
+                      `buyerHasTaxId` and `orderCountry` carry an implicit `eq`
+                      with no control to hook, which the mockup renders as a
+                      third dropdown this composer does not have.
+                    */}
                     <Select
                       aria-label="Order total comparison"
+                      data-testid={`rule-condition-test-${index}`}
                       value={condition.op}
                       onChange={(event) =>
                         setConditions((prev) =>
@@ -506,6 +556,7 @@ export function SalesDocumentRuleComposerDialog({
                     </Select>
                     <Input
                       aria-label="Order total amount"
+                      data-testid={`rule-condition-amount-${index}`}
                       inputMode="decimal"
                       placeholder="450.00"
                       value={condition.amount}
@@ -519,6 +570,7 @@ export function SalesDocumentRuleComposerDialog({
                     />
                     <Input
                       aria-label="Order total currency"
+                      data-testid={`rule-condition-currency-${index}`}
                       placeholder="PLN"
                       maxLength={3}
                       value={condition.currency}
@@ -542,6 +594,7 @@ export function SalesDocumentRuleComposerDialog({
             <Button
               tone="secondary"
               className="button--sm"
+              data-testid="rule-add-condition"
               onClick={() => setConditions((prev) => [...prev, newConditionDraft()])}
             >
               + Add condition
@@ -670,6 +723,7 @@ export function SalesDocumentRuleComposerDialog({
               </label>
               <Select
                 id="sd-rule-doctype"
+                data-testid="rule-document-kind"
                 value={documentKind}
                 onChange={(event) => {
                   setDocumentKind(event.target.value as ConcreteDocumentKind);
@@ -686,6 +740,7 @@ export function SalesDocumentRuleComposerDialog({
               </label>
               <Select
                 id="sd-rule-connection"
+                data-testid="rule-connection"
                 value={connectionId}
                 onChange={(event) => setConnectionId(event.target.value)}
               >
@@ -698,6 +753,15 @@ export function SalesDocumentRuleComposerDialog({
               </Select>
             </div>
           </div>
+          {connectionRoleGap !== null ? (
+            <Alert
+              data-testid="rule-connection-role-gap"
+              tone="warning"
+              title="This connection has no role yet"
+            >
+              <p>{describeSalesDocumentConnectionRoleGap(connectionRoleGap)}</p>
+            </Alert>
+          ) : null}
         </section>
 
         <section className="rule-composer-section">
@@ -711,6 +775,7 @@ export function SalesDocumentRuleComposerDialog({
               </label>
               <Input
                 id="sd-rule-from"
+                data-testid="rule-effective-from"
                 type="date"
                 value={effectiveFrom}
                 onChange={(event) => setEffectiveFrom(event.target.value)}
@@ -722,6 +787,7 @@ export function SalesDocumentRuleComposerDialog({
               </label>
               <Input
                 id="sd-rule-to"
+                data-testid="rule-effective-to"
                 type="date"
                 value={effectiveTo}
                 onChange={(event) => setEffectiveTo(event.target.value)}
@@ -885,6 +951,7 @@ export function SalesDocumentRuleComposerDialog({
           <Button
             tone="secondary"
             className="button--sm"
+            data-testid="rule-cancel"
             onClick={() => {
               reset();
               onOpenChange(false);

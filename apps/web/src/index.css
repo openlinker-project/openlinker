@@ -1921,56 +1921,40 @@ textarea,
   background: none;
 }
 
-.price-changes-queue .table-wrap {
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  background: var(--bg-surface);
-  overflow: hidden;
-}
-
-.price-changes-queue .table-scroll {
-  overflow-x: auto;
-  /* Momentum scroll on iOS Safari — a bare `overflow-x: auto` scrolls but
-     without inertia, which reads as broken on a touch device (#3164
-     review). The card view for <768px SHIPPED with #3223 — see the
-     "Price changes queue — mobile card view" block further down; this
-     scroller is the tablet and desktop treatment, which
-     `docs/frontend-ui-style-guide.md § Responsive` keeps as the full table.
-     The `DataTableCardView` migration is separately tracked as
-     openlinker-project/openlinker#3237 and is BLOCKED on the primitive
-     gaining a per-row class/attribute hook: this table hangs its grouping
-     treatment and its `data-state` handles on the row element, which
-     `DataTable` hard-codes. An earlier revision of this comment claimed one
-     issue covered both halves on the premise that the migration supplies
-     the card view; it does not, which is why they are two. */
-  -webkit-overflow-scrolling: touch;
-}
-
-.price-changes-queue .table-wrap table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 900px;
-}
-
-.price-changes-queue .table-wrap thead th {
-  text-align: left;
-  font-size: 0.65rem;
-  font-weight: 600;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--text-muted);
-  padding: 10px var(--space-4);
-  border-bottom: 1px solid var(--border-default);
+/* The queue's row identity — grouping, resolved, flagged — hangs on
+ * `DataTable`'s `rowClassName` (#3237), never on hand-rolled `<table>`
+ * markup: the primitive supplies `.data-table__row`/`.data-table__container`
+ * and every generic header/cell rule, so only the app-specific STATE classes
+ * and cell CONTENT below are this feature's own. `<td>` carries no
+ * background of its own in the primitive (only `.data-table__sticky-col`
+ * does, and this table doesn't freeze columns), so a row's tint is set
+ * directly on `.data-table__row` and shows through every cell beneath it —
+ * the reason the pre-#3237 `tr.is-resolved td { background }` rule collapses
+ * to one `tr`-level declaration here. */
+.price-changes-queue .data-table__row.is-resolved {
   background: var(--bg-surface-muted);
-  white-space: nowrap;
+  opacity: 0.6;
 }
 
-.price-changes-queue .table-wrap th.col-num,
-.price-changes-queue .table-wrap td.col-num {
-  text-align: right;
+/* Every row carries a `border-top` by default (the primitive's own
+ * `.data-table td` rule) — the desktop group-start accent no longer needs to
+ * ADD one; a continuation row instead SUPPRESSES it, so the group reads as
+ * one unbroken block rather than a separately-bordered row. */
+.price-changes-queue .data-table__row.is-grouped:not(.is-group-start) td {
+  border-top: 0;
 }
 
-.price-changes-queue .table-wrap .th-sub {
+/* The persistent left-border accent tying a fanned-out price change's rows
+   together (#3147 AC: "exactly as in the mockup"). */
+.price-changes-queue .data-table__row.is-grouped td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent-primary-border);
+}
+
+.price-changes-queue .data-table__row.is-flagged {
+  background: color-mix(in oklab, var(--status-warning-soft) 55%, transparent);
+}
+
+.price-changes-queue .th-sub {
   font-family: var(--font-mono);
   font-weight: 500;
   text-transform: none;
@@ -1978,42 +1962,6 @@ textarea,
   color: var(--text-muted);
   font-size: 0.6rem;
   margin-left: 4px;
-}
-
-.price-changes-queue .table-wrap tbody td {
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border-default);
-  vertical-align: middle;
-}
-
-.price-changes-queue .table-wrap tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.price-changes-queue .table-wrap tbody tr.is-resolved td {
-  background: var(--bg-surface-muted);
-}
-
-.price-changes-queue .table-wrap tbody tr.is-resolved {
-  opacity: 0.6;
-}
-
-.price-changes-queue .table-wrap tbody tr.is-group-start td {
-  border-top: 1px solid var(--border-default);
-}
-
-.price-changes-queue .table-wrap tbody tr.is-group-start:first-child td {
-  border-top: none;
-}
-
-/* The persistent left-border accent tying a fanned-out price change's rows
-   together (#3147 AC: "exactly as in the mockup"). */
-.price-changes-queue .table-wrap tbody tr.is-grouped td:first-child {
-  box-shadow: inset 3px 0 0 var(--accent-primary-border);
-}
-
-.price-changes-queue .table-wrap tbody tr.is-flagged td {
-  background: color-mix(in oklab, var(--status-warning-soft) 55%, transparent);
 }
 
 .price-changes-queue .cell-product {
@@ -2202,164 +2150,17 @@ textarea,
   max-width: 220px;
 }
 
-/* ── Price changes queue — mobile card view (#3223) ─────────────────
- * `docs/frontend-ui-style-guide.md` § Responsive makes mobile first-class and
- * its parity matrix specifies a CARD VIEW for tables there, not a 7-column
- * grid behind a horizontal scrollbar. This is the queue's own card layout on
- * its existing markup; it is expected to be REPLACED by `DataTableCardView`
- * when #3237 migrates the table onto the shared primitive — which is blocked
- * on that primitive gaining a per-row class/attribute hook, since the queue
- * hangs its grouping treatment and its `data-state` handles on the row.
- *
- * The bound is 767.98px, not 768px. § Responsive calls the fraction
- * load-bearing: a rounded `max-width: 768px` MATCHES at 768px and overlaps the
- * tablet `min-width: 768px` band by one pixel, so at that width this block
- * would be in its mobile branch while every other table on the page is in its
- * desktop one. It is the same bound `.data-table__cell--hide-below-768` uses,
- * deliberately — a component follows the primitive if the house breakpoint
- * ever moves.
- *
- * Tablet (768–1023px) is NOT carded: the parity matrix keeps the full table
- * there, scrolled within its container.
+/* ── Price changes queue — mobile card view ──────────────────────────
+ * #3223 shipped a hand-rolled `@media (max-width: 767.98px)` block here that
+ * converted the queue's own `<table>` markup into cards with CSS Grid — the
+ * whole thing was necessary only because the queue's markup was hand-rolled
+ * in the first place. #3237 moved the queue onto the shared `DataTable` +
+ * `DataTableCardView` primitive (`rowClassName`/`rowAttributes` supply the
+ * grouping/resolved/flagged state that markup needed a row-level class hook
+ * for), so the responsive behaviour is now the primitive's own
+ * `.data-table__cards`/`.data-table__card*` rules — see `data-table.tsx` and
+ * its CSS block — and this feature carries no `@media` block of its own.
  */
-@media (max-width: 767.98px) {
-  /* The scroller and its 900px floor are what the card view exists to
-     replace — leaving either would keep the horizontal scrollbar. */
-  .price-changes-queue .table-wrap {
-    border: 0;
-    border-radius: 0;
-    background: none;
-    overflow: visible;
-  }
-
-  .price-changes-queue .table-scroll {
-    overflow-x: visible;
-  }
-
-  .price-changes-queue .table-wrap table {
-    display: block;
-    min-width: 0;
-  }
-
-  /* The header row's labels move onto each cell via `data-label` below. */
-  .price-changes-queue .table-wrap thead {
-    display: none;
-  }
-
-  .price-changes-queue .table-wrap tbody {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .price-changes-queue .table-wrap tbody tr {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: var(--space-2) var(--space-3);
-    padding: var(--space-3);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-md);
-    background: var(--bg-surface);
-  }
-
-  .price-changes-queue .table-wrap tbody td {
-    display: block;
-    padding: 0;
-    border: 0;
-    grid-column: 2;
-  }
-
-  /* Selection stays in its own leading column so the checkbox sits beside the
-     product identity rather than above it. */
-  .price-changes-queue .table-wrap tbody td.cell-select {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  .price-changes-queue .table-wrap tbody td.cell-identity {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  /* Every remaining cell is labelled, because the header that carried its
-     meaning is hidden above. A cell with no `data-label` renders bare — the
-     action cell, whose buttons name themselves. */
-  .price-changes-queue .table-wrap tbody td[data-label]::before {
-    content: attr(data-label);
-    display: block;
-    font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: var(--tracking-caps);
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin-bottom: 2px;
-  }
-
-  /* The action row is the card's footer: full width, and its controls keep a
-     44px touch target regardless of the pointer media query the global rule
-     is keyed on — this branch is keyed on WIDTH. */
-  .price-changes-queue .table-wrap tbody td.col-num {
-    grid-column: 1 / -1;
-    text-align: left;
-  }
-
-  .price-changes-queue .table-wrap tbody td.col-num .button {
-    min-height: 44px;
-  }
-
-  /* Same reasoning for the card's other control, and § Responsive is
-     unconditional about it ("every interactive element"). The global rule at
-     `@media (hover: none) and (pointer: coarse)` already raises every `input`
-     on a real phone, so this only adds the width-keyed half a 767px desktop
-     window would otherwise miss — on the card's primary bulk-selection
-     affordance. The two links per card are uncovered by the global rule too;
-     that is pre-existing and tracked with the queue's desktop debt. */
-  .price-changes-queue .table-wrap tbody td.cell-select input[type='checkbox'] {
-    min-height: 44px;
-    min-width: 44px;
-  }
-
-  /* Four desktop rules also target `td` and OUT-SPECIFY the reset above: it is
-     (0,2,2) while each `tr.is-<state> td` is (0,3,3), and a media query adds
-     no specificity. So each is neutralised by name here and its treatment
-     re-homed on the card. Left alone, a group-start card would draw a hairline
-     above every stacked cell, a grouped card would draw the 3px accent beside
-     the checkbox as well as on its own edge, and both tints would paint
-     per-cell rectangles with the card's own surface showing through the grid
-     gutters — on `is-flagged`, the rows an operator most needs to read. */
-  .price-changes-queue .table-wrap tbody tr.is-group-start td {
-    border-top: 0;
-  }
-
-  .price-changes-queue .table-wrap tbody tr.is-grouped td:first-child {
-    box-shadow: none;
-  }
-
-  .price-changes-queue .table-wrap tbody tr.is-resolved td,
-  .price-changes-queue .table-wrap tbody tr.is-flagged td {
-    background: transparent;
-  }
-
-  .price-changes-queue .table-wrap tbody tr.is-resolved {
-    background: var(--bg-surface-muted);
-  }
-
-  /* Composited against the card surface rather than carried over as the
-     translucent desktop value: there the tint layers over `.table-wrap`'s own
-     `--bg-surface`, whereas a translucent CARD background would let the page
-     ground through instead. */
-  .price-changes-queue .table-wrap tbody tr.is-flagged {
-    background: color-mix(in oklab, var(--status-warning-soft) 55%, var(--bg-surface));
-  }
-
-  /* The grouped treatment moves to the card's own left edge. The desktop
-     version borders the first CELL, which is still grid item 1/1 here rather
-     than gone — hence the `box-shadow: none` above, without which the card
-     would carry both marks. */
-  .price-changes-queue .table-wrap tbody tr.is-grouped {
-    border-left: 3px solid var(--accent-primary-border);
-  }
-}
 
 /* ── Price change dialogs (#3148, ADR-072) ──────────────────────────
  * No `@media` here either (#3165 round-3 review). The gap is the queue
@@ -22157,6 +21958,9 @@ legend.analytics-settings-dialog__label {
 }
 .template-card__preview {
   margin-bottom: var(--space-3);
+}
+.rule-card__role-gap {
+  margin-top: var(--space-1);
 }
 
 .ack-row {
