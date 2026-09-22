@@ -47,6 +47,11 @@ export const subiektAdapterManifest: AdapterMetadata = {
   // and `SubiektConnectionTesterAdapter`, injected via constructor — never via
   // an import of this module, which would cycle back into it).
   defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
+  // #3391: two active Subiekt connections pointed at the identical bridge
+  // process would each get their own independent rate limiter against the
+  // SAME underlying single-threaded Sfera COM queue, defeating the
+  // maxConcurrent protection above per-connection rather than per-bridge.
+  uniqueConfigKeys: ['bridgeBaseUrl'],
 };
 
 /** Short brand label for domain-exception / dispatch error prefixes. */
