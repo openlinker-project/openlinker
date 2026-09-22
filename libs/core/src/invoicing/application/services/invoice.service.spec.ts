@@ -1607,18 +1607,78 @@ describe('InvoiceService', () => {
     // `adapter.issueCorrection` a second time — the identical bug class
     // `issueInvoice`'s gate already closes, one method over.
     describe('idempotency gate (#3372)', () => {
-      it('keyless no-dedup (R1): no findByIdempotencyKey call, create with idempotencyKey:null', async () => {
+      // #3365 review: UNLIKE issueInvoice's R1, a keyless issueCorrection call
+      // is NOT exempt from the gate — core derives a deterministic fallback
+      // key (deriveCorrectionFallbackKey) and runs the SAME read-gate/create
+      // path as a caller-supplied key would. See correction-fallback-key.ts
+      // for why (the FE "Issue correction" button never supplies a key).
+      it('keyless: derives a deterministic fallback key, runs the read-gate, creates with that key (not null)', async () => {
+        repo.findByIdempotencyKey.mockResolvedValue(null);
         repo.create.mockResolvedValue(
           makeRecord({ id: 'corr-rec', status: 'pending', idempotencyKey: null }),
         );
 
         await service.issueCorrection(makeCorrectionCmd({ idempotencyKey: undefined }));
 
-        expect(repo.findByIdempotencyKey).not.toHaveBeenCalled();
+        expect(repo.findByIdempotencyKey).toHaveBeenCalledWith(
+          CONNECTION,
+          expect.stringMatching(/^correction-fallback:[0-9a-f]{64}$/),
+        );
         expect(repo.create).toHaveBeenCalledWith(
-          expect.objectContaining({ idempotencyKey: null }),
+          expect.objectContaining({
+            idempotencyKey: expect.stringMatching(/^correction-fallback:[0-9a-f]{64}$/),
+          }),
         );
         expect(correctionAdapter.issueCorrection).toHaveBeenCalledTimes(1);
+      });
+
+      it('keyless: two calls with byte-identical content dedupe — the SECOND never reaches the adapter', async () => {
+        const issued = makeRecord({ id: 'corr-rec', status: 'issued', documentType: 'corrected' });
+        repo.findByIdempotencyKey.mockResolvedValueOnce(null).mockResolvedValueOnce(issued);
+        repo.create.mockResolvedValue(makeRecord({ id: 'corr-rec', status: 'pending' }));
+
+        await service.issueCorrection(makeCorrectionCmd({ idempotencyKey: undefined }));
+        const result = await service.issueCorrection(makeCorrectionCmd({ idempotencyKey: undefined }));
+
+        expect(result).toBe(issued);
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledTimes(1);
+      });
+
+      it('keyless: two calls with DIFFERENT correction content do NOT dedupe — both reach the adapter as separate documents', async () => {
+        repo.findByIdempotencyKey.mockResolvedValue(null);
+        repo.create.mockResolvedValue(makeRecord({ id: 'corr-rec', status: 'pending' }));
+
+        await service.issueCorrection(
+          makeCorrectionCmd({
+            idempotencyKey: undefined,
+            lines: [{ originalLineNumber: 1, newUnitPriceGross: 90 }],
+          }),
+        );
+        await service.issueCorrection(
+          makeCorrectionCmd({
+            idempotencyKey: undefined,
+            lines: [{ originalLineNumber: 1, newUnitPriceGross: 50 }],
+          }),
+        );
+
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledTimes(2);
+        const [firstCall, secondCall] = repo.create.mock.calls;
+        expect((firstCall[0] as { idempotencyKey: string }).idempotencyKey).not.toBe(
+          (secondCall[0] as { idempotencyKey: string }).idempotencyKey,
+        );
+      });
+
+      it('passes the derived fallback key through to the adapter (so a self-deriving adapter uses the SUPPLIED key, not its own)', async () => {
+        repo.findByIdempotencyKey.mockResolvedValue(null);
+        repo.create.mockResolvedValue(makeRecord({ id: 'corr-rec', status: 'pending' }));
+
+        await service.issueCorrection(makeCorrectionCmd({ idempotencyKey: undefined }));
+
+        expect(correctionAdapter.issueCorrection).toHaveBeenCalledWith(
+          expect.objectContaining({
+            idempotencyKey: expect.stringMatching(/^correction-fallback:[0-9a-f]{64}$/),
+          }),
+        );
       });
 
       it('idempotent replay (issued): returns the issued row as-is, adapter NEVER called, NO create', async () => {
