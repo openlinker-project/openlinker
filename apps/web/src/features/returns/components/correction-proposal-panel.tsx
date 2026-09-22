@@ -353,7 +353,12 @@ export function CorrectionProposalPanel({
               <p className="text-muted">{RETURN_PROPOSAL_COPY.handoffConnectionStale}</p>
             ) : null}
             <Dialog open={correctionOpen} onOpenChange={setCorrectionOpen}>
-              <DialogContent aria-describedby={undefined}>
+              {/* Wide: the correction-line grid (#3090) is a 5-column table
+                  (# / item / as invoiced / after correction / credit) that
+                  the default 520px dialog crushes — verified live, the
+                  qty×price pair and the reference line both ran together
+                  illegibly at that width. */}
+              <DialogContent aria-describedby={undefined} className="dialog__content--wide">
                 <DialogTitle>{RETURN_PROPOSAL_COPY.handoffDialogTitle}</DialogTitle>
                 <InvoiceCorrectionFlow
                   invoice={invoice}

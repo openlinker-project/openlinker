@@ -16709,6 +16709,22 @@ textarea.bulk-editor__input { resize: vertical; min-height: 66px; font-family: i
   white-space: nowrap;
 }
 
+/* ─ Shared: correction dialog "Correcting FV/… · KSeF … · Issued …"
+   reference line (all three providers — each names it differently:
+   `.ksef-correction__orig`, `.infakt-correction__orig`, `.corr__orig`).
+   Plain `<span>`s with no rule of their own ran the text together with no
+   visible space (verified live: "KSeF 9311084191-202…Issued 2026-09-17"). ─ */
+.ksef-correction__orig,
+.infakt-correction__orig,
+.corr__orig {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-4);
+}
+
 /* ─ Shared: correction line grid (#3090) — CorrectionLineGrid, mounted by
    every provider's InvoiceCorrectionFlow. One row per invoice line: a
    recessed read-only "as invoiced" column, an editable "after correction"
