@@ -387,11 +387,12 @@ export class SubiektInvoicingAdapter
    * id, but `dok_NrPelnyOryg` is stamped with the marketplace order NUMBER at
    * create time (`orderRef: order.orderNumber`, `subiekt-order-processor.adapter.ts`).
    *
-   * Returns `null` (never throws) for an order-less/manual invoice, or one
-   * created before this fix shipped (no mapping row yet) — the bridge falls
-   * back to its pre-existing lookup in both cases. A lookup failure is
-   * swallowed the same way: the ZK id is an OPTIMIZATION for a downstream
-   * step, never a precondition for issuing the invoice itself.
+   * Returns `null` (never throws) when the mapping row doesn't exist yet —
+   * an order created before this fix shipped, or one whose ZK was mapped
+   * under a different connection — the bridge falls back to its
+   * pre-existing lookup in that case. A lookup failure is swallowed the
+   * same way, as defense-in-depth: the ZK id is an OPTIMIZATION for a
+   * downstream step, never a precondition for issuing the invoice itself.
    */
   private async resolveZkId(orderId: string): Promise<number | null> {
     try {
