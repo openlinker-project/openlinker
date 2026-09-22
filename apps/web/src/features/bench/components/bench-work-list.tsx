@@ -267,17 +267,11 @@ export function BenchWorkList({
 
   return (
     <div className="bench-work-list" data-testid="bench-work-list">
-      {/* The mockup's rail opens with the search field, not with a page
-          title — the executor's name is a standing fact and sits above it,
-          compact, rather than taking the largest type on a 340 px column. */}
-      <header className="bench-rail__head">
-        <p className="eyebrow">{benchWorkCopy.header.eyebrow}</p>
-        <h1 className="bench-rail__title">
-          {query.data?.executorName ?? benchWorkCopy.header.fallbackTitle}
-        </h1>
-        <span className="bench-work-list__ordering">{benchWorkCopy.header.orderingNote}</span>
-      </header>
-
+      {/* The mockup's rail opens with the SEARCH FIELD. It carries no page
+          title at all — the bench topbar already says where you are, and a
+          1.5rem heading in a 340 px column pushed the one control a packer
+          reaches for below the fold. The executor's name and the ordering
+          rule are standing facts and moved to the footer with the rest. */}
       <div className="bench-rail__search">
         <label htmlFor="bench-search" className="sr-only">
           {benchWorkCopy.search.label}
@@ -293,7 +287,6 @@ export function BenchWorkList({
             setSearch(event.target.value);
           }}
         />
-        <p className="bench-work-list__search-hint">{benchWorkCopy.search.hint}</p>
       </div>
 
       {/* #3412/#3416 — "Take next task": the server picks, oldest deadline
@@ -502,9 +495,14 @@ export function BenchWorkList({
       ) : null}
 
       <footer className="bench-work-list__footer">
-        {/* Moved here from above the search by #3401's rail rebuild — it is a
-            standing caveat about the whole list, and at the top of a 340 px
-            column it displaced the field a packer actually reaches for. */}
+        {/* Everything here is a STANDING fact about the list rather than about
+            any row, and at the top of a 340 px column each one displaced the
+            control a packer actually reaches for. */}
+        <span>
+          {query.data?.executorName ?? benchWorkCopy.header.fallbackTitle} ·{' '}
+          {benchWorkCopy.header.orderingNote}
+        </span>
+        <span>{benchWorkCopy.search.hint}</span>
         <span>{benchWorkCopy.scope.note}</span>
         <span>{benchWorkCopy.footer.honesty}</span>
         <span>{benchWorkCopy.footer.liveness}</span>

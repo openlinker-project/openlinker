@@ -24454,25 +24454,8 @@ legend.analytics-settings-dialog__label {
   flex-direction: column;
 }
 
-/* The rail opens with the search field, not with a page title — the
-   executor's name is a standing fact and rides above it, compact. */
-.bench-rail__head {
-  display: grid;
-  gap: 2px;
-  padding: var(--space-4) var(--space-4) var(--space-3);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.bench-rail__title {
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  margin: 0;
-}
-
 .bench-rail__search {
   padding: var(--space-4);
-  border-bottom: 1px solid var(--border-subtle);
 }
 
 .bench-rail__search input {
@@ -24492,13 +24475,6 @@ legend.analytics-settings-dialog__label {
   font-size: 0.75rem;
 }
 
-/* Sits UNDER the field, inside the search strip — at full rail width with no
-   padding it overflowed the panel. */
-.bench-rail__search .bench-work-list__search-hint {
-  margin: var(--space-2) 0 0;
-  font-size: 0.7rem;
-  line-height: 1.45;
-}
 
 .bench-rail__search input:focus-visible {
   outline: none;
@@ -24508,8 +24484,15 @@ legend.analytics-settings-dialog__label {
 
 .bench-rail__take-next {
   display: grid;
-  gap: var(--space-2);
+  gap: 6px;
   padding: 0 var(--space-4) var(--space-3);
+}
+
+.bench-rail__take-next .bench-work-list__take-next-notice {
+  padding: 0;
+  margin: 0;
+  font-size: 0.7rem;
+  text-align: center;
 }
 
 .bench-rail__take-next .button {
@@ -24720,6 +24703,75 @@ legend.analytics-settings-dialog__label {
   border-left-color: var(--accent-primary);
 }
 
+/* The whole card is the target — see the component docblock. */
+/* Undoes the global `button, .button` rule near the top of this file, which
+   is what a bare `<button>` inherits here: it pins `height: 2rem` and paints
+   the accent background, so the card's own content overflowed a 32 px box and
+   the action strip below it landed on top of the meta line. */
+.bench-work-row__surface {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  text-align: left;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  white-space: normal;
+  font: inherit;
+  font-weight: 400;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* The same global rule paints `button:hover` / `:active` solid accent with
+   white text. A bare `<button>` used as a LAYOUT surface has to opt out of
+   every one of those states, not just the resting one — a pointer left over
+   a clicked row turned the whole card orange. */
+.bench-work-row__surface:hover,
+.bench-work-row__surface:active,
+.bench-rail-row__open:hover,
+.bench-rail-row__open:active,
+.bench-rail__tab:hover,
+.bench-rail__tab:active {
+  background: none;
+  border-color: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+
+.bench-rail-row__open,
+.bench-rail__tab {
+  height: auto;
+  min-height: 2.75rem;
+  border-radius: 0;
+  box-shadow: none;
+  white-space: normal;
+  font-weight: inherit;
+}
+
+.bench-rail__tab {
+  border-bottom: 2px solid transparent;
+}
+
+.bench-rail__tab[aria-selected='true'] {
+  border-bottom-color: var(--accent-primary);
+}
+
+.bench-work-row__surface--static {
+  cursor: default;
+}
+
+.bench-work-row__surface:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-focus);
+}
+
 .bench-work-row__top {
   display: flex;
   align-items: baseline;
@@ -24775,12 +24827,13 @@ legend.analytics-settings-dialog__label {
   margin-top: var(--space-2);
 }
 
+
 /* Small enough for a 340 px column, and still over the 44 px touch floor the
-   section header insists on — height comes from `min-height`, not from type. */
+   section header insists on — height comes from `min-height`, not from type.
+   Light, because the row itself is now the primary target. */
 .bench-work-row__actions .button {
-  flex: 1;
   padding-inline: var(--space-2);
-  font-size: 0.75rem;
+  font-size: 0.7rem;
 }
 
 /* Every remaining prose block in the rail is inset to the panel's own gutter;
@@ -24795,8 +24848,15 @@ legend.analytics-settings-dialog__label {
 }
 
 .bench-work-list__footer {
-  padding: var(--space-3) var(--space-4) var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
   font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  text-wrap: pretty;
 }
 
 /* The 44 px floor, unconditional. See the section header. */
@@ -24842,17 +24902,6 @@ legend.analytics-settings-dialog__label {
   color: var(--text-muted);
 }
 
-.bench-work-list__footer {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-top: auto;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border-default);
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  text-wrap: pretty;
-}
 
 /* One column below the tablet breakpoint: the row's four columns cannot hold
    their meaning at a narrow width, and reflowing keeps every part visible
@@ -25165,6 +25214,7 @@ legend.analytics-settings-dialog__label {
   align-items: center;
   gap: var(--space-3);
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* #3420 (epic #3401) — the inert camera-preview row. Small and muted on
@@ -25320,24 +25370,98 @@ legend.analytics-settings-dialog__label {
 .bench-parcel__lines {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* ── The item list, on the mockup's column rhythm (epic #3401) ───────────
+ * `.lines-wrap` in the mockup is a real `<table>` with ITEM / IDENTIFIERS /
+ * LOCATION / SCANNED / STATUS. The columns are reproduced here as one shared
+ * grid template on the header strip and on every row, so the eye runs down a
+ * column — but the rows stay generous `<li>`s rather than table cells,
+ * because the 44 px touch floor at a bench is not negotiable and a dense
+ * table row cannot hold it. */
+.bench-parcel__lines-wrap {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.bench-parcel__lines-caption {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.bench-parcel__lines-head,
 .bench-parcel-line {
   display: grid;
   /* Leading `auto` is the #3410 thumbnail column — absent from the grid, not
      merely hidden, when a line's `imageUrl` is null (the `<img>` renders
      nothing, so this column collapses to its content, 0). */
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  /* FIXED trailing tracks, not `auto`. The header strip and the rows are two
+     separate grids, so an `auto` track sized to a column label in one and to
+     a 44 px button in the other — the labels stood off their own columns. */
+  grid-template-columns:
+    44px minmax(0, 1.7fr) minmax(0, 1fr) 6.5rem 7rem 8.5rem 9.5rem;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border: 2px solid var(--border-default);
-  border-radius: var(--radius-lg);
+  gap: var(--space-3);
+}
+
+.bench-parcel__lines-head {
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bench-parcel__lines-head-right {
+  text-align: right;
+}
+
+/* Reserves the thumbnail column so the labels sit over their own cells. */
+.bench-parcel__lines-head > span:first-child {
+  width: 44px;
+}
+
+.bench-parcel-line {
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0;
   background: var(--bg-surface);
+  /* The touch floor, unconditional — see this section's header. */
+  min-height: 3.5rem;
+}
+
+.bench-parcel-line:first-child {
+  border-top: none;
+}
+
+.bench-parcel-line__location {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+.bench-parcel-line__location .bench-parcel-line__bin-code {
+  white-space: nowrap;
+}
+
+.bench-parcel-line__state,
+.bench-parcel-line__actions {
+  justify-self: end;
+  min-width: 0;
 }
 
 /* Tints. Additions to the words, never the carrier — see rule 2 above. */
@@ -25351,7 +25475,7 @@ legend.analytics-settings-dialog__label {
 }
 
 .bench-parcel-line__name {
-  font-size: 1.25rem;
+  font-size: 0.9375rem;
   font-weight: 600;
   line-height: 1.3;
   text-wrap: pretty;
@@ -25359,14 +25483,16 @@ legend.analytics-settings-dialog__label {
 
 .bench-parcel-line__codes {
   font-family: var(--font-mono);
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 /* ── Catalogue detail on the line card (#3410/#3417, mockup-parity epic #3401) ── */
 .bench-parcel-line__thumb {
-  width: 56px;
-  height: 56px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-md);
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-default);
@@ -25382,9 +25508,9 @@ legend.analytics-settings-dialog__label {
 .bench-parcel-line__physical {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
+  gap: var(--space-2);
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
 }
 
@@ -25409,13 +25535,16 @@ legend.analytics-settings-dialog__label {
 
 .bench-parcel-line__count {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   justify-items: end;
+  min-width: 0;
+  text-align: right;
 }
 
 .bench-parcel-line__count-value {
   font-family: var(--font-mono);
-  font-size: 2.25rem;
+  font-size: 1.125rem;
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -25424,10 +25553,12 @@ legend.analytics-settings-dialog__label {
 
 .bench-parcel-line__count-note {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
+  font-size: 0.6rem;
+  line-height: 1.35;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-secondary);
+  text-wrap: pretty;
 }
 
 .bench-parcel-line__state {

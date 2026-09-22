@@ -101,7 +101,13 @@ export function BenchParcelLineRow({
       {/* #3410/#3417 (epic #3401) — the parent product's image. Purely
           decorative identity, so it carries no accessible name of its own;
           `line.name` beside it already announces the product. */}
-      {line.imageUrl === null ? null : (
+      {/* The cell is ALWAYS present, even with no image. Rendering `null` here
+          removed the element entirely, so every later cell auto-placed one
+          column to the left and the whole row stood off the column headings
+          above it — invisible until a line happened to carry a picture. */}
+      {line.imageUrl === null ? (
+        <div className="bench-parcel-line__thumb bench-parcel-line__thumb--empty" aria-hidden="true" />
+      ) : (
         <img
           className="bench-parcel-line__thumb"
           src={line.imageUrl}
@@ -110,25 +116,19 @@ export function BenchParcelLineRow({
         />
       )}
 
+      {/* ITEM — the mockup's first column: name, then the variant's own
+          distinguishing attributes under it. */}
       <div className="bench-parcel-line__identity">
         <span className="bench-parcel-line__name">
           {line.name ?? benchParcelCopy.lines.unnamed}
         </span>
-        {codes.length === 0 ? null : (
-          <span className="bench-parcel-line__codes">{codes}</span>
-        )}
         {line.attributes === null || Object.keys(line.attributes).length === 0 ? null : (
           <span className="bench-parcel-line__attributes">
             {benchParcelCopy.lines.attributesText(line.attributes)}
           </span>
         )}
-        {line.binCode === null && line.weightGrams === null && line.lengthMm === null ? null : (
+        {line.weightGrams === null && line.lengthMm === null ? null : (
           <span className="bench-parcel-line__physical">
-            {line.binCode === null ? null : (
-              <span className="bench-parcel-line__bin-code">
-                {benchParcelCopy.lines.binCodeLabel(line.binCode)}
-              </span>
-            )}
             {line.weightGrams === null ? null : (
               <span>{benchParcelCopy.lines.weightGrams(line.weightGrams)}</span>
             )}
@@ -137,6 +137,19 @@ export function BenchParcelLineRow({
                 {benchParcelCopy.lines.dimensionsMm(line.lengthMm, line.widthMm, line.heightMm)}
               </span>
             )}
+          </span>
+        )}
+      </div>
+
+      {/* IDENTIFIERS — its own column in the mockup, so a packer's eye runs
+          down one list of codes rather than hunting inside each card. */}
+      <div className="bench-parcel-line__codes">{codes.length === 0 ? null : codes}</div>
+
+      {/* LOCATION — where to LOOK, never a claim that the unit is there. */}
+      <div className="bench-parcel-line__location">
+        {line.binCode === null ? null : (
+          <span className="bench-parcel-line__bin-code">
+            {benchParcelCopy.lines.binCodeLabel(line.binCode)}
           </span>
         )}
       </div>

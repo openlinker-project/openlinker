@@ -31,9 +31,9 @@ export const benchParcelCopy = {
     buyerLabel: 'Buyer',
     parcelLabel: 'Parcel',
     /** #3409 (epic #3401) — a deliberate reversal of the original PII exclusion. */
-    totalLabel: 'Total',
+    totalLabel: 'Order total',
     carrierLabel: 'Carrier',
-    dispatchByLabel: 'Must ship by',
+    dispatchByLabel: 'Ship by',
     /** D3. Always shown, on every state of this surface. */
     parcelOf: (index: number, total: number): string =>
       `Parcel ${String(index)} of ${String(total)}`,
@@ -68,6 +68,13 @@ export const benchParcelCopy = {
       [parts.ean === null ? null : `EAN ${parts.ean}`, parts.sku === null ? null : `SKU ${parts.sku}`]
         .filter((part): part is string => part !== null)
         .join(' · '),
+    /** The mockup's own caption above the item list. */
+    allItemsCaption: 'All items in this parcel',
+    colItem: 'Item',
+    colIdentifiers: 'Identifiers',
+    colLocation: 'Location',
+    colScanned: 'Scanned',
+    colStatus: 'Status',
     badgeVerified: 'Verified',
     badgeScanning: 'Scanning now',
     badgeNotScanned: 'Not scanned yet',

@@ -123,7 +123,8 @@ export const benchWorkCopy = {
       readonly unitsToVerify: number;
     }): string =>
       `Parcel ${String(parts.parcelIndex)} of ${String(parts.parcelTotal)} · ` +
-      `${String(parts.lineCount)} lines, ${String(parts.unitsToVerify)} units to verify`,
+      `${String(parts.lineCount)} ${parts.lineCount === 1 ? 'item' : 'items'}, ` +
+      `${String(parts.unitsToVerify)} units to scan`,
     openAction: 'Open parcel',
     /** #3341, ADR-074 — the pre-assigned-to-you state. */
     assignedToYouBadge: 'Assigned to you',

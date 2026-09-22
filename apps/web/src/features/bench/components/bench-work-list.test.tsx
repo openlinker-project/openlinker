@@ -108,7 +108,10 @@ describe('BenchWorkList (#2416)', () => {
     const row = screen.getByTestId('bench-work-row');
     expect(row.textContent).toContain('Jan Wiśniewski');
     expect(row.textContent).toContain('Parcel 1 of 2');
-    expect(row.textContent).toContain('6 units to verify');
+    // "units to scan", not "units to verify": the mockup's own wording, and
+    // still a statement about what the packer will DO rather than about what
+    // is on a shelf — which is the B2 rule the next test enforces.
+    expect(row.textContent).toContain('6 units to scan');
   });
 
   it('should never state or imply that stock is picked or ready (story B2)', async () => {

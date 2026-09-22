@@ -68,6 +68,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { formatAbsoluteTime } from '../../../shared/format/format-date';
 import { formatAmount } from '../../../shared/format/format-amount';
 import type { BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
 import { useBenchInteractive } from '../hooks/use-bench-interactive';
@@ -578,7 +579,13 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
         {parcel.dispatchByAt === null ? null : (
           <div className="bench-parcel__identity">
             <span className="eyebrow">{benchParcelCopy.header.dispatchByLabel}</span>
-            <span>{describeBenchDeadline(parcel.dispatchByAt).headline}</span>
+            {/* The CLOCK TIME, as the mockup shows it — a packer reads this
+                against the clock on the wall. The relative phrasing
+                (`describeBenchDeadline`) belongs on the rail, where the row
+                has no room for both and urgency is what is being ranked. */}
+            <span className="mono" title={describeBenchDeadline(parcel.dispatchByAt).headline}>
+              {formatAbsoluteTime(parcel.dispatchByAt)}
+            </span>
           </div>
         )}
         <div className="bench-parcel__header-spacer" />
@@ -814,7 +821,26 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
           <p className="bench-parcel__reopen-hint">{benchParcelCopy.closed.reopenHint}</p>
         </div>
       ) : (
-        <ul className="bench-parcel__lines">
+        <div className="bench-parcel__lines-wrap">
+          {/* The mockup's `.lines-wrap__head` plus its column labels. Labels
+              are `aria-hidden`: each row already carries its own words, so a
+              screen reader reading six column headings before every line
+              would say each fact twice. */}
+          <p className="bench-parcel__lines-caption">{benchParcelCopy.lines.allItemsCaption}</p>
+          <div className="bench-parcel__lines-head" aria-hidden="true">
+            <span />
+            <span>{benchParcelCopy.lines.colItem}</span>
+            <span>{benchParcelCopy.lines.colIdentifiers}</span>
+            <span>{benchParcelCopy.lines.colLocation}</span>
+            <span className="bench-parcel__lines-head-right">
+              {benchParcelCopy.lines.colScanned}
+            </span>
+            <span className="bench-parcel__lines-head-right">
+              {benchParcelCopy.lines.colStatus}
+            </span>
+            <span />
+          </div>
+          <ul className="bench-parcel__lines">
           {parcel.lines.map((line) => (
             <BenchParcelLineRow
               key={line.workLineId}
@@ -832,7 +858,8 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
               }}
             />
           ))}
-        </ul>
+          </ul>
+        </div>
       )}
 
       {/* Surface F, on EVERY state (#3401). It used to render only inside the
