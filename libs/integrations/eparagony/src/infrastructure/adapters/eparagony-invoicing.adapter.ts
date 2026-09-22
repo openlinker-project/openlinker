@@ -680,10 +680,15 @@ export class EparagonyInvoicingAdapter
    * `idempotencyKey` is optional on both commands, and without one there is
    * nothing deterministic to derive from - so a per-(connection, order, KIND)
    * key stands in. `kind` namespaces an original invoice apart from a
-   * correction: without it, an idempotency-key-less correction on the same order
-   * would derive the SAME `documentToken`/`transactionToken` pair the original
-   * invoice did, and the vendor - which dedupes on that token - would answer the
-   * correction with the original document.
+   * correction, and is applied UNCONDITIONALLY - including onto a
+   * caller-supplied key. Without it, a correction sharing a caller-supplied
+   * idempotency key with its original (a plausible shape: both minted from
+   * the same order id) would derive the SAME `documentToken`/`transactionToken`
+   * pair the original invoice did, and the vendor - which dedupes on that
+   * token - would answer the correction with the original document, so
+   * OpenLinker would record a correction that was never issued. Prefixing the
+   * kind stays deterministic (a retry with the same supplied key still
+   * replays), it only makes the collision inexpressible.
    *
    * That is not a weaker guarantee for the invariant that matters: one order on
    * one connection gets one document OF A GIVEN KIND either way, which is the
@@ -695,7 +700,7 @@ export class EparagonyInvoicingAdapter
     kind: 'invoice' | 'correction',
   ): string {
     const supplied = idempotencyKey?.trim() ?? '';
-    return supplied.length > 0 ? supplied : `${kind}:${this.connectionId}:${orderId}`;
+    return supplied.length > 0 ? `${kind}:${supplied}` : `${kind}:${this.connectionId}:${orderId}`;
   }
 
   /** Clamp the operator's poll timeout into the range the deadline invariant allows. */

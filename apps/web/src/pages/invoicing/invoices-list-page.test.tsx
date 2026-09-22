@@ -815,12 +815,14 @@ describe('InvoicesListPage', () => {
   });
 
   // ---------------------------------------------------------------------
-  // #3194 — the regulatory-status filter reverses a prior deliberate
-  // exclusion of `not-applicable` and `cleared`, and a chip surfaces the
-  // count + elapsed age of invoices currently `pending-submission` (never an
-  // ETA — OpenLinker has no basis for one).
+  // #3194 - the regulatory-status filter reverses a prior deliberate
+  // exclusion of `not-applicable`, and a chip surfaces the count + elapsed
+  // age of invoices currently `pending-submission` (never an ETA -
+  // OpenLinker has no basis for one). `cleared` stays excluded: no shipped
+  // provider adapter emits it, so selecting it would filter to an
+  // unreachable state.
   // ---------------------------------------------------------------------
-  it('makes all six regulatory-status values selectable, including not-applicable and cleared (#3194)', async () => {
+  it('makes not-applicable selectable but keeps cleared excluded (#3194)', async () => {
     const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [], total: 0 }));
     renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });
 
@@ -829,8 +831,8 @@ describe('InvoicesListPage', () => {
     // Fallback labels (#1585 F7): "N/A" for not-applicable, "Clearing" for
     // cleared — distinct from the "Cleared" pill wording elsewhere.
     expect(within(select).getByRole('option', { name: 'N/A' })).toBeInTheDocument();
-    expect(within(select).getByRole('option', { name: 'Clearing' })).toBeInTheDocument();
-    expect(within(select).getAllByRole('option')).toHaveLength(7); // "All" + 6 values
+    expect(within(select).queryByRole('option', { name: 'Clearing' })).toBeNull();
+    expect(within(select).getAllByRole('option')).toHaveLength(6); // "All" + 5 reachable values
   });
 
   it('renders the awaiting-submission chip with a count and an elapsed-age phrase, never an ETA (#3194)', async () => {
@@ -842,7 +844,11 @@ describe('InvoicesListPage', () => {
     const awaiting = makeInvoice({
       id: 'inv_awaiting',
       regulatoryStatus: 'pending-submission',
-      updatedAt: fourteenHoursAgo,
+      issuedAt: fourteenHoursAgo,
+      createdAt: fourteenHoursAgo,
+      // A far-later `updatedAt` (as the offline-resubmit sweep would leave
+      // behind) must NOT be read as the start of the wait.
+      updatedAt: new Date().toISOString(),
     });
     const list = vi.fn().mockResolvedValue(makeEnvelope({ items: [awaiting], total: 1 }));
     renderWithProviders(<InvoicesListPage />, { apiClient: mockApi(list), route: '/invoices' });

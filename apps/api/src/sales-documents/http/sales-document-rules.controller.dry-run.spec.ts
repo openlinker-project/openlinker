@@ -80,11 +80,11 @@ describe('SalesDocumentRulesController — dry-run (#3191)', () => {
       kind: 'route',
       documentKind: 'fiscal-receipt',
       connectionId: 'conn-1',
-      matchedByCandidateRule: true,
+      decidedBy: 'draft-candidate',
     });
   });
 
-  it('should report a route matched by an ALREADY-SAVED rule as not the candidate', async () => {
+  it('should report a route matched by an ALREADY-SAVED rule as decidedBy: saved-rule', async () => {
     service.dryRunRule.mockResolvedValue({
       kind: 'route',
       documentKind: 'invoice',
@@ -94,10 +94,25 @@ describe('SalesDocumentRulesController — dry-run (#3191)', () => {
 
     const result = await controller.dryRunRule(baseRequest());
 
-    expect(result.matchedByCandidateRule).toBe(false);
+    expect(result.decidedBy).toBe('saved-rule');
   });
 
-  it('should project an unresolved decision with its reason', async () => {
+  it('should report a route with NO ruleId (a tier-2 country default, or the legacy fallback) as decidedBy: country-default (#3364 review)', async () => {
+    // No `ruleId` at all - distinct from a real saved rule. Collapsing this
+    // into the same boolean as `saved-rule` is what made the composer render
+    // "via an already-saved rule" for a route no rule ever decided.
+    service.dryRunRule.mockResolvedValue({
+      kind: 'route',
+      documentKind: 'invoice',
+      connectionId: 'conn-existing',
+    });
+
+    const result = await controller.dryRunRule(baseRequest());
+
+    expect(result.decidedBy).toBe('country-default');
+  });
+
+  it('should project an unresolved decision with its reason and no decidedBy', async () => {
     service.dryRunRule.mockResolvedValue({ kind: 'unresolved', reason: 'net-priced-order' });
 
     const result = await controller.dryRunRule(baseRequest());
@@ -105,7 +120,6 @@ describe('SalesDocumentRulesController — dry-run (#3191)', () => {
     expect(result).toEqual({
       kind: 'unresolved',
       reason: 'net-priced-order',
-      matchedByCandidateRule: false,
     });
   });
 

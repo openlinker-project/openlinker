@@ -10,7 +10,7 @@ describe('describeSalesDocumentDryRunResult (#3191)', () => {
       kind: 'route',
       documentKind: 'fiscal-receipt',
       connectionId: 'conn-1',
-      matchedByCandidateRule: true,
+      decidedBy: 'draft-candidate',
     };
 
     expect(describeSalesDocumentDryRunResult(result, connectionName)).toBe(
@@ -23,7 +23,7 @@ describe('describeSalesDocumentDryRunResult (#3191)', () => {
       kind: 'route',
       documentKind: 'invoice',
       connectionId: 'conn-1',
-      matchedByCandidateRule: false,
+      decidedBy: 'saved-rule',
     };
 
     expect(describeSalesDocumentDryRunResult(result, connectionName)).toContain(
@@ -31,11 +31,26 @@ describe('describeSalesDocumentDryRunResult (#3191)', () => {
     );
   });
 
+  it('should attribute a match to the country default, never to "an already-saved rule" (#3364 review)', () => {
+    // No rule, saved or otherwise, decided this route - rendering it as one
+    // would be a false statement about the operator's own configuration.
+    const result: SalesDocumentDryRunResult = {
+      kind: 'route',
+      documentKind: 'invoice',
+      connectionId: 'conn-1',
+      decidedBy: 'country-default',
+    };
+
+    const description = describeSalesDocumentDryRunResult(result, connectionName);
+    expect(description).toContain('country default');
+    expect(description).not.toContain('already-saved rule');
+    expect(description).not.toContain('via the rule you are drafting');
+  });
+
   it('should describe an aggregate outcome without naming a document', () => {
     const result: SalesDocumentDryRunResult = {
       kind: 'aggregate',
       connectionId: 'conn-1',
-      matchedByCandidateRule: false,
     };
 
     expect(describeSalesDocumentDryRunResult(result, connectionName)).toBe(
@@ -47,7 +62,6 @@ describe('describeSalesDocumentDryRunResult (#3191)', () => {
     const result: SalesDocumentDryRunResult = {
       kind: 'unresolved',
       reason: 'conflicting-rules-equal-priority',
-      matchedByCandidateRule: false,
     };
 
     expect(describeSalesDocumentDryRunResult(result, connectionName)).toContain('Two or more rules matched');
@@ -57,7 +71,6 @@ describe('describeSalesDocumentDryRunResult (#3191)', () => {
     const result: SalesDocumentDryRunResult = {
       kind: 'unresolved',
       reason: 'some-future-reason-this-build-does-not-know',
-      matchedByCandidateRule: false,
     };
 
     expect(describeSalesDocumentDryRunResult(result, connectionName)).toBe(

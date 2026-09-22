@@ -181,12 +181,11 @@ KSeF rather than transmitting directly), `CorrectionIssuer`,
 `RegulatoryDocumentReader`, and `BankAccountsReader` / `BankAccountDefaultSetter`;
 Subiekt nexo implements `RegulatoryStatusReader`, `CorrectionIssuer`, and
 `BankAccountsReader` / `BankAccountDefaultSetter`; eparagony.pl implements
-`RegulatoryStatusReader` only, on the same relay split as Infakt — it hands the
-document to the national e-invoicing hub on the seller's behalf and reads back
-the clearance, never holding the authority session itself. It deliberately does
-NOT implement `CorrectionIssuer`: the vendor models a correction as its own
-`eCorrectiveInvoice` document kind, which the adapter refuses pre-call rather
-than composing (#3193). (See the
+`RegulatoryStatusReader` and `CorrectionIssuer` (#3193), on the same relay
+split as Infakt - it hands the document to the national e-invoicing hub on the
+seller's behalf and reads back the clearance, never holding the authority
+session itself, and reaches the vendor's sibling `eCorrectiveInvoice` document
+kind for a correction rather than a per-line delta on the original. (See the
 [README Integrations](../README.md#integrations) section.)
 
 See [ADR-026](./architecture/adrs/026-country-agnostic-invoicing-domain.md) for

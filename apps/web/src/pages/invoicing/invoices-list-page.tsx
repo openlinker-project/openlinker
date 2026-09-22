@@ -95,8 +95,12 @@ function isTaxIdFilter(value: string | null): value is TaxIdFilter {
 /**
  * Elapsed-time suffix for the "awaiting submission" chip (#3194).
  *
- * `oldestAt` is the OLDEST `updatedAt` among the currently loaded
- * `pending-submission` rows — an ELAPSED measurement, never an ETA: nothing
+ * `oldestAt` is the OLDEST `issuedAt ?? createdAt` among the currently loaded
+ * `pending-submission` rows - deliberately NOT `updatedAt`: the offline-resubmit
+ * sweep (`InvoiceRecordRepository.claimPendingSubmission`) bumps `updatedAt` on
+ * every row it claims, oldest-first, so the longest-waiting documents are the
+ * ones the sweep touches most and would render as the freshest. An ELAPSED
+ * measurement, never an ETA: nothing
  * about a document sitting with the regulator lets OpenLinker predict when it
  * clears (see `docs/plans/mockups/sales-document-eparagony-invoicing.html`
  * "with provider for" note). Day/hour granularity, matching the sibling
@@ -508,16 +512,20 @@ export function InvoicesListPage(): ReactElement {
   // there is no separate summary read for invoices (unlike the orders list's
   // backend-aggregated `salesDocumentBlocked`), so the figure describes what
   // is on screen rather than the whole install. `oldestAt` is the OLDEST
-  // `updatedAt` among them (the invoice that has waited longest), never the
-  // newest — an "oldest" label reporting the newest would understate the wait.
+  // `issuedAt ?? createdAt` among them (the invoice that has waited longest),
+  // never the newest - an "oldest" label reporting the newest would
+  // understate the wait. Deliberately not `updatedAt`: the offline-resubmit
+  // sweep bumps that column on every `pending-submission` row it claims, so
+  // it tracks the sweep's own progress rather than when the document started
+  // waiting.
   const pendingSubmissionItems = (query.data?.items ?? []).filter(
     (r) => r.regulatoryStatus === 'pending-submission',
   );
   const pendingSubmissionCount = pendingSubmissionItems.length;
-  const pendingSubmissionOldestAt = pendingSubmissionItems.reduce<string | null>(
-    (oldest, r) => (oldest === null || r.updatedAt < oldest ? r.updatedAt : oldest),
-    null,
-  );
+  const pendingSubmissionOldestAt = pendingSubmissionItems.reduce<string | null>((oldest, r) => {
+    const startedAt = r.issuedAt ?? r.createdAt;
+    return oldest === null || startedAt < oldest ? startedAt : oldest;
+  }, null);
 
   return (
     <PageLayout
@@ -620,16 +628,19 @@ export function InvoicesListPage(): ReactElement {
           onChange={(e) => setFilter('regulatoryStatus', e.target.value)}
         >
           <option value="">{t('invoice.filter.regulatory.all', 'All regulatory statuses')}</option>
-          {/* #3194 REVERSES a prior deliberate exclusion: this filter used to
-              drop `not-applicable` (read as noise, since it meant "no
+          {/* #3194 PARTIALLY reverses a prior deliberate exclusion: this filter
+              used to drop `not-applicable` (read as noise, since it meant "no
               regulatory tracking") and `cleared` (believed to be a reserved
-              status no provider emitted). Both are now real, reachable
-              per-provider outcomes — a provider can report "no clearance
-              needed" as `not-applicable`, and `cleared` is a genuine
-              document-lifecycle terminal — so hiding them from the filter hid
-              states an operator can actually be triaging. All six
-              `RegulatoryStatusValues` are now selectable. */}
-          {RegulatoryStatusValues.map((s) => (
+              status no provider emitted). Only `not-applicable` is real and
+              reachable - eparagony's `RegulatoryStatusReader` genuinely maps a
+              "no clearance needed" answer onto it - so it is re-added.
+              `cleared` stays excluded: no provider in the tree emits it
+              (eparagony maps to `not-applicable | rejected | accepted |
+              pending-submission`; KSeF and inFakt never emit it either; it is
+              explicitly reserved/unused for Subiekt), so selecting it filters
+              to a state no invoice can ever be in and the resulting empty list
+              would misread as "you have no cleared documents". */}
+          {RegulatoryStatusValues.filter((s) => s !== 'cleared').map((s) => (
             <option key={s} value={s}>
               {/* Reuse the badge's label map (#1585 F7) so the filter never falls
                   back to the raw hyphenated slug next to nicely-labelled badges. */}

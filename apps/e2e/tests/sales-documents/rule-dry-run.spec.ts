@@ -20,7 +20,7 @@
  * evaluation cannot be perturbed by whatever ELSE a shared dev stack happens
  * to hold for FI:
  *   - `orderCountry eq FI` against a sample order in FI ALWAYS matches the
- *     candidate (tier 1), so `route`/`matchedByCandidateRule: true` is
+ *     candidate (tier 1), so `route`/`decidedBy: 'draft-candidate'` is
  *     reachable regardless of stack history.
  *   - `orderTotalGross gte …` against a sample order EXPLICITLY marked
  *     net-priced (the panel's "Sample order pricing" select, previously
@@ -39,8 +39,11 @@
  *     .../country-defaults`, not a persisted RULE — the composer's own
  *     candidate is deliberately built to miss, via `orderCountry eq 'ZZ'`, so
  *     the tier-2 fallback is what answers) reaches `route`/
- *     `matchedByCandidateRule: false` — "via an already-saved rule" — without
- *     needing an exact-match rival rule to already exist on the shared stack.
+ *     `decidedBy: 'country-default'` - "via {connection}'s country default",
+ *     never "via an already-saved rule" (#3364 review: a country default
+ *     carries no rule at all, and the previous boolean collapsed the two into
+ *     one `false` value) - without needing an exact-match rival rule to
+ *     already exist on the shared stack.
  *
  * @module tests/sales-documents
  */
@@ -227,7 +230,7 @@ test.describe('sales documents: rule composer dry-run ("Test with a sample order
     );
   });
 
-  test('reports a "route" decision matched by an ALREADY-SAVED routing config, not the draft', async ({
+  test('reports a "route" decision decided by a COUNTRY DEFAULT, never "an already-saved rule" (#3364 review)', async ({
     page,
     api,
   }) => {
@@ -264,7 +267,11 @@ test.describe('sales documents: rule composer dry-run ("Test with a sample order
 
       const result = modal.getByTestId('rule-test-sample-order-result');
       await expect(result).toBeVisible({ timeout: 15_000 });
-      await expect(result).toContainText('via an already-saved rule at');
+      // A country default carries no rule at all - rendering this as "via an
+      // already-saved rule" would name a rule that does not exist (#3364
+      // review).
+      await expect(result).toContainText("country default");
+      await expect(result).not.toContainText('already-saved rule');
       await expect(result).not.toContainText('via the rule you are drafting');
     } finally {
       await api.salesDocuments.deleteCountryDefault(countryDefault.id);

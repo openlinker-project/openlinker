@@ -30,9 +30,15 @@ export function describeSalesDocumentDryRunResult(
         ? 'a document its own destination decides'
         : (DOCUMENT_KIND_LABEL[result.documentKind ?? ''] ?? `a ${result.documentKind ?? 'document'}`);
     const where = result.connectionId ? (connectionName(result.connectionId) ?? result.connectionId) : '(unknown)';
-    const via = result.matchedByCandidateRule
-      ? 'via the rule you are drafting'
-      : `via an already-saved rule at ${where}`;
+    // Three-valued (#3364 review) - a tier-2 country default or the legacy
+    // fallback carries NO rule at all, and rendering it as "via an
+    // already-saved rule" would name a rule that does not exist.
+    const via =
+      result.decidedBy === 'draft-candidate'
+        ? 'via the rule you are drafting'
+        : result.decidedBy === 'saved-rule'
+          ? `via an already-saved rule at ${where}`
+          : `via ${where}'s country default`;
     return `This order would get ${kind} through ${where} — ${via}.`;
   }
 

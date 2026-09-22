@@ -33,11 +33,16 @@ import { EparagonyInvoicingAdapter } from '../eparagony-invoicing.adapter';
 
 const CONNECTION_ID = 'conn-eparagony-1';
 const IDEMPOTENCY_KEY = 'invoice:conn-eparagony-1:ol_order_1';
-const EXPECTED_DOCUMENT_TOKEN = deriveDocumentToken(CONNECTION_ID, IDEMPOTENCY_KEY);
+// The registration key is `${kind}:${supplied}` unconditionally (#3364
+// review) - the kind namespace applies even to a caller-supplied key, so a
+// correction sharing a key with its original can never collide with it.
+const EXPECTED_DOCUMENT_TOKEN = deriveDocumentToken(CONNECTION_ID, `invoice:${IDEMPOTENCY_KEY}`);
 const CORRECTION_IDEMPOTENCY_KEY = `correction:${CONNECTION_ID}:ol_order_1`;
+// The default `makeCorrectionCommand()` supplies `CORRECTION_IDEMPOTENCY_KEY`,
+// so the registration key is `correction:${CORRECTION_IDEMPOTENCY_KEY}`.
 const EXPECTED_CORRECTION_DOCUMENT_TOKEN = deriveDocumentToken(
   CONNECTION_ID,
-  CORRECTION_IDEMPOTENCY_KEY,
+  `correction:${CORRECTION_IDEMPOTENCY_KEY}`,
 );
 
 const logger: LoggerPort = {
@@ -270,7 +275,9 @@ describe('EparagonyInvoicingAdapter - issueInvoice', () => {
     expect(body.documentToken).toBe(EXPECTED_DOCUMENT_TOKEN);
     // Required whenever `documentToken` is sent, and derived under its own
     // namespace so the two can never collide.
-    expect(body.transactionToken).toBe(deriveTransactionToken(CONNECTION_ID, IDEMPOTENCY_KEY));
+    expect(body.transactionToken).toBe(
+      deriveTransactionToken(CONNECTION_ID, `invoice:${IDEMPOTENCY_KEY}`),
+    );
     expect(body.transactionToken).not.toBe(body.documentToken);
     expect(body.eInvoice.invoiceType).toBe('VAT');
     // The vendor's header rejects OL's colon-bearing raw key, so the derived
@@ -728,7 +735,15 @@ describe('EparagonyInvoicingAdapter - issueCorrection', () => {
     const { record } = await makeAdapter(client, makeCorrectionConfig()).issueCorrection(command);
 
     expect(record.providerInvoiceId).not.toBe(EXPECTED_DOCUMENT_TOKEN);
-    expect(record.providerInvoiceId).toBe(EXPECTED_CORRECTION_DOCUMENT_TOKEN);
+    // The no-key fallback is `${kind}:${connectionId}:${orderId}`, which is
+    // NOT the same registration key as the with-key default (that one is now
+    // `correction:${CORRECTION_IDEMPOTENCY_KEY}`) - `CORRECTION_IDEMPOTENCY_KEY`
+    // itself already has the fallback shape, so its raw value is the fallback
+    // token's input.
+    expect(record.providerInvoiceId).toBe(
+      deriveDocumentToken(CONNECTION_ID, CORRECTION_IDEMPOTENCY_KEY),
+    );
+    expect(record.providerInvoiceId).not.toBe(EXPECTED_CORRECTION_DOCUMENT_TOKEN);
   });
 
   it('sends the eCorrectiveInvoice body under its own derived token pair', async () => {
@@ -751,7 +766,7 @@ describe('EparagonyInvoicingAdapter - issueCorrection', () => {
     expect(path).toBe('documents');
     expect(body.documentToken).toBe(EXPECTED_CORRECTION_DOCUMENT_TOKEN);
     expect(body.transactionToken).toBe(
-      deriveTransactionToken(CONNECTION_ID, CORRECTION_IDEMPOTENCY_KEY),
+      deriveTransactionToken(CONNECTION_ID, `correction:${CORRECTION_IDEMPOTENCY_KEY}`),
     );
     expect(body.eCorrectiveInvoice.invoiceType).toBe('VAT');
     expect(body.eCorrectiveInvoice.correctedMetadata.invoiceNumber).toBe('OL-POC/2026/B2B/1');

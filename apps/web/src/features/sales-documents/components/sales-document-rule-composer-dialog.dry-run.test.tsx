@@ -89,7 +89,7 @@ describe('SalesDocumentRuleComposerDialog — dry run (#3191)', () => {
       kind: 'route',
       documentKind: 'invoice',
       connectionId: 'conn_eparagony',
-      matchedByCandidateRule: true,
+      decidedBy: 'draft-candidate',
     });
     renderComposer({ salesDocumentRules: { dryRunRule } });
     const root = await dialog();
@@ -139,7 +139,6 @@ describe('SalesDocumentRuleComposerDialog — dry run (#3191)', () => {
     const dryRunRule = vi.fn().mockResolvedValue({
       kind: 'unresolved',
       reason: 'net-priced-order',
-      matchedByCandidateRule: false,
     });
     renderComposer({ salesDocumentRules: { dryRunRule } });
     const root = await dialog();
@@ -159,10 +158,37 @@ describe('SalesDocumentRuleComposerDialog — dry run (#3191)', () => {
     expect(payload.sampleOrder.taxTreatment).toBe('exclusive');
   });
 
+  it('sends no taxTreatment when the operator picks "not asserted by the source" (#3364 review)', async () => {
+    // The third, reachable state - mirrors what a source that never asserts a
+    // treatment actually produces on a real order, which is the case an
+    // amount-threshold rule the evaluator refuses to guess on would hold.
+    const user = userEvent.setup();
+    const dryRunRule = vi.fn().mockResolvedValue({
+      kind: 'unresolved',
+      reason: 'net-priced-order',
+    });
+    renderComposer({ salesDocumentRules: { dryRunRule } });
+    const root = await dialog();
+
+    await pickAConnection(root, user);
+    await user.click(within(root).getByTestId('rule-test-sample-order'));
+    const panel = within(root).getByTestId('rule-test-sample-order-panel');
+    await user.type(within(panel).getByLabelText('Sample order total amount'), '10');
+    await user.type(within(panel).getByLabelText('Sample order currency'), 'EUR');
+    await user.selectOptions(within(panel).getByLabelText('Sample order pricing'), 'unknown');
+    await user.click(within(panel).getByTestId('rule-run-sample-order-test'));
+
+    await waitFor(() => expect(dryRunRule).toHaveBeenCalledTimes(1));
+    const payload = dryRunRule.mock.calls[0][0] as {
+      sampleOrder: { taxTreatment?: 'inclusive' | 'exclusive' };
+    };
+    expect(payload.sampleOrder.taxTreatment).toBeUndefined();
+  });
+
   it('should never persist anything — no create/upsert/delete call happens from a dry run', async () => {
     const user = userEvent.setup();
     const createRule = vi.fn();
-    const dryRunRule = vi.fn().mockResolvedValue({ kind: 'unresolved', reason: 'no-matching-rule', matchedByCandidateRule: false });
+    const dryRunRule = vi.fn().mockResolvedValue({ kind: 'unresolved', reason: 'no-matching-rule' });
     renderComposer({ salesDocumentRules: { createRule, dryRunRule } });
     const root = await dialog();
 

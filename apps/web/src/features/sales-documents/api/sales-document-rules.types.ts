@@ -190,10 +190,17 @@ export interface DryRunSalesDocumentRuleInput {
 /**
  * Mirrors the backend `SalesDocumentDryRunResultDto` (#3191) — the same
  * `SalesDocumentDecision` shape `SalesDocumentMarketOutcome` mirrors, plus
- * `matchedByCandidateRule`: true when the rule being drafted is what matched,
- * as opposed to an already-saved rule elsewhere in this country's
- * configuration.
+ * `decidedBy` (#3364 review): what decided a `kind === 'route'` result -
+ * the rule being drafted (`'draft-candidate'`), an already-saved rule
+ * elsewhere in this country's configuration (`'saved-rule'`), or a tier-2
+ * country default / the legacy fallback with no rule behind it at all
+ * (`'country-default'`). Three states rather than a boolean: collapsing
+ * `'saved-rule'` and `'country-default'` into one `false` value made a
+ * country default render as "via an already-saved rule", which is a false
+ * claim - no rule, saved or otherwise, decided that route.
  */
+export type SalesDocumentDryRunDecidedBy = 'draft-candidate' | 'saved-rule' | 'country-default';
+
 export interface SalesDocumentDryRunResult {
   kind: 'route' | 'aggregate' | 'unresolved';
   /** Set when `kind === 'route'`. `null` marks a self-routing destination. */
@@ -202,5 +209,6 @@ export interface SalesDocumentDryRunResult {
   connectionId?: string;
   /** Set when `kind === 'unresolved'` — a `SalesDocumentUnresolvedReasonValue`. */
   reason?: string;
-  matchedByCandidateRule: boolean;
+  /** Set when `kind === 'route'` only. */
+  decidedBy?: SalesDocumentDryRunDecidedBy;
 }

@@ -331,7 +331,17 @@ export function SalesDocumentRuleComposerDialog({
   // checkAmountConditionDataProblem). Leaving this unset silently held every
   // amount-threshold rule as "net-priced, cannot compare" regardless of the
   // typed amount, making the flagship PL threshold rule untestable here.
-  const [sampleTaxTreatment, setSampleTaxTreatment] = useState<'inclusive' | 'exclusive'>(
+  //
+  // Three states, mirroring `sampleBuyerHasTaxId` (and the domain's own
+  // `SalesDocumentOrderFacts.taxTreatment`): `'unknown'` is a real, reachable
+  // state - the one every source that does not assert a treatment actually
+  // produces - and maps to `undefined` on the wire ("not asserted"), never to
+  // a guessed value. Without it, an operator could never test the case the
+  // evaluator itself refuses to guess on (`evaluate-sales-document-rules.ts`:
+  // "Only an EXPLICIT 'inclusive' clears this check"), so a rule that reads as
+  // routing in the composer could hold every real order that arrives with no
+  // asserted treatment.
+  const [sampleTaxTreatment, setSampleTaxTreatment] = useState<'unknown' | 'inclusive' | 'exclusive'>(
     'inclusive',
   );
 
@@ -371,7 +381,7 @@ export function SalesDocumentRuleComposerDialog({
         country: sampleCountry.trim().toUpperCase(),
         totalGross,
         currency: sampleCurrency.trim().toUpperCase(),
-        taxTreatment: sampleTaxTreatment,
+        taxTreatment: sampleTaxTreatment === 'unknown' ? undefined : sampleTaxTreatment,
         buyerHasTaxId: sampleBuyerHasTaxId === 'unknown' ? undefined : sampleBuyerHasTaxId === 'yes',
       },
     });
@@ -601,16 +611,20 @@ export function SalesDocumentRuleComposerDialog({
                   aria-label="Sample order pricing"
                   value={sampleTaxTreatment}
                   onChange={(event) =>
-                    setSampleTaxTreatment(event.target.value as 'inclusive' | 'exclusive')
+                    setSampleTaxTreatment(event.target.value as 'unknown' | 'inclusive' | 'exclusive')
                   }
                 >
-                  <option value="inclusive">Gross-priced (VAT included)</option>
+                  <option value="inclusive">Gross-priced (VAT included) - assumed by default</option>
                   <option value="exclusive">Net-priced (VAT excluded)</option>
+                  <option value="unknown">Not asserted by the source</option>
                 </Select>
               </div>
               <p className="muted-text" style={{ marginTop: 'var(--space-1)' }}>
-                An amount-threshold condition can only be compared against a gross-priced order —
-                pick net-priced to see how the rule holds an order it cannot evaluate.
+                An amount-threshold condition can only be compared against a gross-priced order -
+                pick net-priced, or &quot;not asserted&quot;, to see how the rule holds an order it
+                cannot evaluate. &quot;Gross-priced&quot; is this panel&apos;s assumption for testing
+                convenience, not a fact about any real order - a source that does not assert a
+                treatment produces &quot;not asserted&quot; on live orders.
               </p>
 
               <div className="row" style={{ marginTop: 'var(--space-2)' }}>
