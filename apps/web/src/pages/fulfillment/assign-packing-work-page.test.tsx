@@ -90,12 +90,17 @@ function renderPage(opts: {
 }
 
 /**
- * The desktop surface's container — both surfaces are always in the DOM (the
- * breakpoint is CSS, `FulfillmentLaneSection`'s house pattern), so every role
- * query below is scoped to one of them or it finds each control twice.
+ * The task list.
+ *
+ * This board used to render its tasks TWICE — a desktop row list and a mobile
+ * card list, both always in the DOM with a CSS breakpoint choosing between
+ * them — so every role query had to be scoped to one or it matched each
+ * control twice. #3401 replaced both with one card that reflows, so the
+ * scoping is no longer about avoiding duplicates; it is kept because a query
+ * scoped to the list cannot accidentally match a control in the page header.
  */
 function desktop(): HTMLElement {
-  return document.querySelector('.fulfilment-worklist__desktop') as HTMLElement;
+  return document.querySelector('.assign-packing-work-card-list') as HTMLElement;
 }
 
 describe('AssignPackingWorkPage', () => {

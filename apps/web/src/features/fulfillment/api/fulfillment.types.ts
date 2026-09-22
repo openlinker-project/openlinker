@@ -73,6 +73,22 @@ export interface FulfillmentTask {
   orderId: string;
   locationId: string | null;
   deliveryMethod: string | null;
+  /**
+   * The order's own reference, and the facts an operator recognises it by
+   * (#3401). A task carries only internal ids of its own, so without these
+   * the assign board can render nothing but `ol_order_…`.
+   *
+   * `buyerName` is MASKED server-side ("A. Kowalska") — a deliberate,
+   * bounded reversal of ADR-062's exclusion for THIS board only, because a
+   * supervisor deciding who packs a box has to recognise the order.
+   *
+   * All four are `null` when the order or the location row is not there, and
+   * `undefined` against an API that predates them.
+   */
+  orderReference?: string | null;
+  buyerName?: string | null;
+  dispatchByAt?: string | null;
+  locationName?: string | null;
   assignedConnectionId: string | null;
   /**
    * A supervisor's advisory pre-assignment to a specific PACKER (#3340,

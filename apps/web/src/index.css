@@ -23927,6 +23927,88 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-5);
 }
 
+/* ── Assign-board task card (#3340; mobile-first rebuild, epic #3401) ─────
+ * The mockup's `.lane-card`: reference and one badge, the buyer, the counts,
+ * then the staffing controls. ONE card at every width - it reflows rather
+ * than swapping to a second component, because the question a supervisor is
+ * answering ("who packs this?") does not change with the screen.
+ *
+ * Wide, everything sits on one line. Narrow, the controls drop under the
+ * identity rather than squeezing beside it. */
+.assign-packing-work-card-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assign-packing-work-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.assign-packing-work-card__identity {
+  display: grid;
+  gap: 3px;
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.assign-packing-work-card__top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.assign-packing-work-card__ref {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.assign-packing-work-card__buyer {
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assign-packing-work-card__meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+/* The controls keep their own width on a desk and take the full row on a
+   phone, where a 44 px select beside a checkbox beside a button does not
+   fit and splitting them across two lines reads as two decisions. */
+.assign-packing-work-card__actions {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .assign-packing-work-card {
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .assign-packing-work-card__identity,
+  .assign-packing-work-card__actions {
+    flex: 1 1 100%;
+  }
+}
+
 .assign-packing-work-lane {
   display: flex;
   flex-direction: column;

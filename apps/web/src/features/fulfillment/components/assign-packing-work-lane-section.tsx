@@ -50,8 +50,7 @@ import {
   type AssignPackingWorkLane,
 } from '../lib/assign-packing-work-lanes';
 import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
-import { FulfillmentTaskCard } from './fulfillment-task-card';
-import { FulfillmentWorklistRow } from './fulfillment-worklist-row';
+import { AssignPackingWorkCard } from './assign-packing-work-card';
 
 export interface AssignPackingWorkLaneSectionProps {
   lane: AssignPackingWorkLane;
@@ -176,29 +175,23 @@ export function AssignPackingWorkLaneSection({
       {lane.tasks.length === 0 ? (
         <p className="text-muted">{ASSIGN_PACKING_WORK_COPY.lane.empty}</p>
       ) : (
-        <>
-          <ul className="fulfilment-worklist__desktop">
-            {lane.tasks.map((task) => (
-              <FulfillmentWorklistRow
-                key={task.id}
-                task={task}
-                actions={renderActions(task)}
-                rootProps={buildRootProps(task)}
-              />
-            ))}
-          </ul>
-
-          <ul className="fulfilment-worklist__cards fulfilment-task-list">
-            {lane.tasks.map((task) => (
-              <FulfillmentTaskCard
-                key={task.id}
-                task={task}
-                actions={renderActions(task)}
-                rootProps={buildRootProps(task)}
-              />
-            ))}
-          </ul>
-        </>
+        /* ONE list at every width (#3401). The dual desktop-row/mobile-card
+           pair here was `FulfillmentWorklistRow` + `FulfillmentTaskCard`,
+           borrowed from the EXECUTION worklist - and on a phone that card
+           stacked every column as a label/value pair, so a supervisor saw a
+           screenful of `ol_location_...` and `ol_variant_...` per task. This
+           board's card reflows instead of swapping, because the question is
+           the same on a phone as on a desk. */
+        <ul className="assign-packing-work-card-list">
+          {lane.tasks.map((task) => (
+            <AssignPackingWorkCard
+              key={task.id}
+              task={task}
+              actions={renderActions(task)}
+              rootProps={buildRootProps(task)}
+            />
+          ))}
+        </ul>
       )}
     </section>
   );

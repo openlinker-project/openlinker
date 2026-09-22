@@ -31,6 +31,19 @@ export const ASSIGN_PACKING_WORK_COPY = {
     unassignedLabel: 'Unassigned right now',
   },
 
+  /**
+   * One task on the board (#3401). The card answers "who packs this?", so it
+   * carries what a supervisor recognises the order by and nothing else - the
+   * location id, delivery method and variant ids the execution worklist needs
+   * are noise here, and on a phone they filled the screen.
+   */
+  card: {
+    heldBadge: 'On hold',
+    summary: (parts: { readonly lines: number; readonly units: number }): string =>
+      `${String(parts.lines)} ${parts.lines === 1 ? 'item' : 'items'}, ` +
+      `${String(parts.units)} ${parts.units === 1 ? 'unit' : 'units'}`,
+  },
+
   lane: {
     unassignedTitle: 'Unassigned',
     /** A task assigned to a user id no longer in the active packer roster. */

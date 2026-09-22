@@ -52,6 +52,13 @@ export const fulfillmentTaskSchema = z.object({
   orderId: z.string(),
   locationId: nullableString,
   deliveryMethod: nullableString,
+  // #3401 — the human facts the assign board renders. Nullish, so the board
+  // keeps parsing against an API that has not shipped them yet and falls back
+  // to the work's own id rather than failing the whole read.
+  orderReference: nullableString,
+  buyerName: nullableString,
+  dispatchByAt: nullableString,
+  locationName: nullableString,
   assignedConnectionId: nullableString,
   assignedToUserId: nullableString,
   selfServeEligible: z.boolean(),
