@@ -64,14 +64,32 @@ export const ParcelVerificationRefusalValues = [
   /**
    * The work is not one this bench may pack — story D2's shared rule said so.
    *
-   * The one member DECLARED here and produced nowhere in this context: the rule
-   * that answers it is `deriveBenchWorkState`, which lives in `apps/api/src/bench`
-   * because it reads a bench's own executor scope, and `BenchParcelService` is
-   * its only writer. Every other member below is produced by the core
-   * verification service. Stated because the asymmetry otherwise reads as a
-   * value nothing emits (#2905 review).
+   * The rule that answers it is `deriveBenchWorkState`, which lives in
+   * `apps/api/src/bench` because it reads a bench's own executor scope, and
+   * `BenchParcelService` is its only writer. It is one of TWO members
+   * declared here and produced nowhere in this context — every other member
+   * below is produced by the core verification service. Stated because the
+   * asymmetry otherwise reads as a value nothing emits (#2905 review).
    */
   'not-packable',
+  /**
+   * Locked to a packer other than the one asking (ADR-074's
+   * `selfServeEligible: false`).
+   *
+   * The second member DECLARED here and produced nowhere in this context —
+   * the rule lives in `BenchParcelService`, because it depends on the
+   * CALLER's own identity (`FulfillmentWorkView.assignedToUserId` versus the
+   * actor), which the core verification service has no actor to compare
+   * against. A distinct value rather than reusing `not-packable`: that one is
+   * a fact about the PARCEL (its status, its holds) and is viewer-independent
+   * — this one is a fact about the ACTOR, and the parcel is perfectly
+   * packable, by someone else. Reusing `not-packable` would tell an excluded
+   * packer the parcel cannot be packed when the remedy is "ask your
+   * supervisor to reassign it" — a different action entirely — and leave
+   * #3341's rendering with no way to distinguish the two (#2341's rule: two
+   * states with different remedies need distinguishable codes).
+   */
+  'assigned-to-another-packer',
   /** The box is already closed. Reopen it first (E6). */
   'parcel-closed',
   /** No such line on this work. */
@@ -95,6 +113,14 @@ export const ParcelReopenRefusalValues = [
   'shipped',
   /** Nothing to reopen — the parcel is not closed. */
   'not-closed',
+  /**
+   * Locked to a packer other than the one asking (ADR-074). The same reason
+   * as `ParcelVerificationRefusal`'s member of the same name — a fact about
+   * the ACTOR, not about the parcel's own closed/shipped state, and produced
+   * by `BenchParcelService` rather than by this context's own reopen logic
+   * (#3361 review).
+   */
+  'assigned-to-another-packer',
 ] as const;
 
 export type ParcelReopenRefusal = (typeof ParcelReopenRefusalValues)[number];

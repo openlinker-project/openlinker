@@ -251,7 +251,10 @@ describe('BenchParcelService (#2418)', () => {
         verifiedByUserId: 'user-1', // not user-9
       });
 
-      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-packable' });
+      // The reason names the ACTOR, never `not-packable` — that reason is a
+      // fact about the parcel, and this parcel is perfectly packable, by
+      // someone else (#3361 review).
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'assigned-to-another-packer' });
       expect(verification.verifyUnit).not.toHaveBeenCalled();
     });
 
@@ -334,6 +337,100 @@ describe('BenchParcelService (#2418)', () => {
       await expect(service.getParcel('work-1')).rejects.toBeInstanceOf(
         BenchParcelNotAtThisBenchError
       );
+    });
+  });
+
+  /**
+   * ADR-074 (#3336/#3337, #3361 review) — the SAME guard `verifyUnit` applies,
+   * on the write `reopenParcel` performs. An excluded packer reopening a
+   * locked, closed parcel would erase `packedByUserId`, the record of who
+   * actually packed it — a hard assignment another packer can reopen and
+   * de-attribute is not one.
+   */
+  describe('story D2 — reopenParcel honours the same assignment lock', () => {
+    it('should refuse a reopen from a packer excluded by a locked assignment', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-9', selfServeEligible: false }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: 'user-1', // not user-9
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'assigned-to-another-packer' });
+      expect(verification.reopenParcel).not.toHaveBeenCalled();
+    });
+
+    it('should refuse an anonymous reopen of a locked parcel', async () => {
+      // `reopenedByUserId: null` — `@CurrentUser()` is optional on this
+      // route by design. `null` is never equal to a real assignee, so an
+      // unattributed caller is excluded too (fail-closed).
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-9', selfServeEligible: false }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: null,
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'assigned-to-another-packer' });
+      expect(verification.reopenParcel).not.toHaveBeenCalled();
+    });
+
+    it('should allow the ASSIGNED packer to reopen a locked parcel', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-1', selfServeEligible: false }),
+      });
+      (verification.reopenParcel as jest.Mock).mockResolvedValue({
+        outcome: 'reopened',
+        state: state({ closedAt: null }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: 'user-1', // is user-1
+      });
+
+      expect(result.outcome).not.toBe('refused');
+      expect(verification.reopenParcel).toHaveBeenCalled();
+    });
+
+    it('should allow ANY packer to reopen when self-serve remains eligible', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-9', selfServeEligible: true }),
+      });
+      (verification.reopenParcel as jest.Mock).mockResolvedValue({
+        outcome: 'reopened',
+        state: state({ closedAt: null }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: 'user-1', // not user-9, but advisory-only
+      });
+
+      expect(result.outcome).not.toBe('refused');
+      expect(verification.reopenParcel).toHaveBeenCalled();
+    });
+
+    it('should allow any packer to reopen an unassigned parcel even with self-serve disabled', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: null, selfServeEligible: false }),
+      });
+      (verification.reopenParcel as jest.Mock).mockResolvedValue({
+        outcome: 'reopened',
+        state: state({ closedAt: null }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: 'user-1',
+      });
+
+      expect(result.outcome).not.toBe('refused');
+      expect(verification.reopenParcel).toHaveBeenCalled();
     });
   });
 

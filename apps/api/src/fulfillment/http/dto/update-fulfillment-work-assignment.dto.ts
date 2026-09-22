@@ -24,7 +24,10 @@ export class UpdateFulfillmentWorkAssignmentDto {
     nullable: true,
     description:
       'A packer to pre-assign this parcel to, or null to clear an existing assignment. Omit to ' +
-      'leave the current assignment untouched.',
+      'leave the current assignment untouched. NOT VALIDATED against the users table today — ' +
+      'a UUID naming no real user, or one with no bench access (e.g. a viewer), is accepted and ' +
+      'locks the parcel to a principal that can never open it. See #3361 review; closing this ' +
+      'needs a users-context read this endpoint does not have yet.',
   })
   @IsOptional()
   @ValidateIf((_object, value: unknown) => value !== null)
