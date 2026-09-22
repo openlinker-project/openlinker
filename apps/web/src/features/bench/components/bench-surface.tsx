@@ -18,6 +18,7 @@
  */
 import type { ReactElement, ReactNode } from 'react';
 
+import { usePermission } from '../../../shared/auth/use-permission';
 import { Alert } from '../../../shared/ui/alert';
 import { resolveBenchIdleTimeoutMs, useBenchIdentity } from '../hooks/use-bench-identity';
 import { BenchInteractiveContext } from '../hooks/use-bench-interactive';
@@ -47,10 +48,17 @@ export function BenchSurface({ children, idleTimeoutMs }: BenchSurfaceProps): Re
       ),
   });
 
+  // Whether this viewer has an application to return to. `usePermission` rather
+  // than `useWriteAccess`: this is not a write affordance, so demo mode has no
+  // opinion on it, and a disabled-but-visible exit would be worse than none.
+  // An anonymous (locked) session resolves false, which is what keeps the
+  // locked bench from advertising a door out of itself.
+  const canLeaveBench = usePermission('orders:write');
+
   return (
     <div className="bench">
       {/* #3423 (epic #3401) — bench-owned, never `AppShell`. See the module docblock. */}
-      <BenchTopbar signedInName={identity.signedInName} />
+      <BenchTopbar signedInName={identity.signedInName} canLeaveBench={canLeaveBench} />
       <BenchIdentityBar
         signedInName={identity.signedInName}
         onSwitchPacker={identity.requestHandover}

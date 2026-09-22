@@ -405,14 +405,37 @@ export const benchParcelCopy = {
     missingBody:
       'This is not something you can fix at the bench, and it does not stop the box going out.',
     missingInvoiceTitle: 'No invoice was made for this order',
-    missingInvoiceBody:
-      'There is nothing to put in the box. Send it without one. The office will post it to the buyer afterwards.',
-    missingReasonLabel: 'What the office will see',
+    missingInvoiceBody: 'There is nothing to put in the box. Send it without one.',
+    missingReasonLabel: 'Why',
     /** Said when nothing recorded a reason — itself an answer, not a gap to fill in. */
-    missingReasonUnknown: 'Nothing on this order says why. The office has it on their list either way.',
-    flaggedTitle: 'This one is flagged for the office.',
-    flaggedBody:
-      'It is already on their list of orders that went out without a document — you do not need to tell anyone or write it down.',
+    missingReasonUnknown: 'Nothing on this order says why.',
+
+    /**
+     * Three endings, because there are three different truths — see
+     * `features/sales-documents/lib/invoice-absence-audience.ts` for which
+     * applies when, and for what the single old ending got wrong.
+     */
+    audience: {
+      /** The order really is in the blocked count and under the filter. */
+      onOfficeList: {
+        title: 'The office can see this one.',
+        body: 'It is in their list of orders that went out without a document — you do not need to write it down.',
+      },
+      /**
+       * `trigger-model-manual`. Nothing is counted, nothing is filtered, so
+       * nobody is told unless a person says so — which is the whole point of
+       * naming it here rather than leaving the packer reassured.
+       */
+      issuedOnRequest: {
+        title: 'Nobody is told automatically.',
+        body: 'This shop only makes an invoice when someone asks for one. Send the box; if this order needs an invoice, tell the office.',
+      },
+      /** No recorded reason, or one this build cannot place. No list holds it. */
+      nobodyTold: {
+        title: 'Nobody has been told.',
+        body: 'This order is not on any list OpenLinker keeps. Send the box, and mention it to the office.',
+      },
+    },
   },
 
   /**

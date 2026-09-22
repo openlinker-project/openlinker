@@ -55,6 +55,17 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
         label: 'Assign packing work',
         requiresPermission: 'orders:write',
       },
+      // The bench itself (#2413) had no way in but a typed URL. A packer still
+      // reaches it that way — they get no sidebar at all, since `/bench` renders
+      // outside `AuthenticatedAppLayout` on purpose — but an admin or operator
+      // checking the floor had to know the path by heart.
+      //
+      // Gated on `orders:write`, held by exactly admin + operator, for the same
+      // reason as the entry above: the bench's own routes are
+      // `@Roles('admin', 'operator', 'packer')`, and `ROLE_PERMISSIONS.packer`
+      // is `[]`, so no permission can name all three. A `viewer` shown this
+      // entry would 403 on the first request the page makes.
+      { to: '/bench', label: 'Pack bench', requiresPermission: 'orders:write' },
       // No `countKey`: the #2334 returns contract exposes no counts endpoint
       // the nav could read, and a badge is worse absent than wrong.
       { to: '/returns', label: 'Returns' },

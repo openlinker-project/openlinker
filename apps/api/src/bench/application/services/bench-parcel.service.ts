@@ -89,6 +89,7 @@ import type {
   BenchUndoResultView,
   BenchVerificationResultView,
 } from '../types/bench-parcel.types';
+import { productImageProxyPath } from '../../../products/http/product-image-path';
 import { BenchExecutorResolver } from './bench-executor.resolver';
 
 /** Raised when the work is not a parcel this bench may see at all. */
@@ -606,7 +607,12 @@ export class BenchParcelService implements IBenchParcelService {
         verifiedQuantity: counts?.verifiedQuantity ?? 0,
         // #3410 (epic #3401) — the parent PRODUCT's image; ProductVariant
         // carries none of its own.
-        imageUrl: product?.images?.[0] ?? null,
+        //
+        // The PROXY path, never the stored url (#3340 follow-up): what the
+        // catalogue sync wrote is the address the BACKEND used to reach the
+        // shop, which on a compose deployment the browser cannot resolve at
+        // all. See `products/application/services/product-image-proxy.service.ts`.
+        imageUrl: productImageProxyPath(product),
         attributes: variant?.attributes ?? null,
         binCode: binCodes.get(line.productVariantId) ?? null,
         weightGrams: variant?.weightGrams ?? null,

@@ -139,6 +139,56 @@ describe('BenchDocumentsPanel (#2418)', () => {
     expect(await screen.findByText(/Nothing on this order says why/i)).toBeInTheDocument();
   });
 
+  // ── Who else knows (#3340 follow-up) ────────────────────────────────────
+  //
+  // The panel used to claim, for EVERY reason and for none, that the order was
+  // "already on their list … you do not need to tell anyone". That is true of
+  // exactly one of these three cases. The other two are the reassuring
+  // direction of wrong: a packer told somebody knows does not mention it.
+  describe('whether anyone else knows the invoice is missing', () => {
+    const missingWith = (blockReason: string | null) =>
+      invoice({
+        state: 'missing',
+        invoiceId: null,
+        documentNumber: null,
+        issuedAt: null,
+        blockReason,
+        unresolvedReason: null,
+      });
+
+    it('should say the office can see it when the reason really is counted', async () => {
+      mount({ invoice: missingWith('missing-tax-rate') });
+
+      expect(await screen.findByText(/The office can see this one/i)).toBeInTheDocument();
+      expect(screen.getByText(/you do not need to write it down/i)).toBeInTheDocument();
+    });
+
+    it('should say nobody is told when the shop only invoices on request', async () => {
+      mount({ invoice: missingWith('trigger-model-manual') });
+
+      // `trigger-model-manual` is excluded from SalesDocumentAttentionReasonValues,
+      // so it enters no count and matches no filter — nothing has been flagged.
+      expect(await screen.findByText(/Nobody is told automatically/i)).toBeInTheDocument();
+      expect(screen.getByText(/tell the office/i)).toBeInTheDocument();
+      expect(screen.queryByText(/The office can see this one/i)).toBeNull();
+    });
+
+    it('should not claim anyone was told when nothing recorded a reason', async () => {
+      mount({ invoice: missingWith(null) });
+
+      expect(await screen.findByText(/Nobody has been told/i)).toBeInTheDocument();
+      expect(screen.getByText(/not on any list OpenLinker keeps/i)).toBeInTheDocument();
+    });
+
+    it('should not claim anyone was told for a reason this build cannot place', async () => {
+      // A reason added to the backend union and not yet mirrored here cannot be
+      // matched by the filter's own `IN (…)` either, so it is not on a list.
+      mount({ invoice: missingWith('some-future-reason') });
+
+      expect(await screen.findByText(/Nobody has been told/i)).toBeInTheDocument();
+    });
+  });
+
   it('should say there is nothing to print when the document is not printable', async () => {
     mount({ invoice: invoice({ state: 'issued-not-printable' }) });
 

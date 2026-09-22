@@ -38,6 +38,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import type { BenchParcelLine } from '../api/bench-parcel.types';
 import { benchLineState, type BenchLineState } from '../lib/bench-parcel-presentation';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
+import { BenchThumb } from './bench-thumb';
 
 export interface BenchParcelLineRowProps {
   readonly line: BenchParcelLine;
@@ -105,16 +106,12 @@ export function BenchParcelLineRow({
           removed the element entirely, so every later cell auto-placed one
           column to the left and the whole row stood off the column headings
           above it — invisible until a line happened to carry a picture. */}
-      {line.imageUrl === null ? (
-        <div className="bench-parcel-line__thumb bench-parcel-line__thumb--empty" aria-hidden="true" />
-      ) : (
-        <img
-          className="bench-parcel-line__thumb"
-          src={line.imageUrl}
-          alt=""
-          data-testid="bench-parcel-line-thumb"
-        />
-      )}
+      <BenchThumb
+        className="bench-parcel-line__thumb"
+        imageUrl={line.imageUrl}
+        name={line.name}
+        testId="bench-parcel-line-thumb"
+      />
 
       {/* ITEM — the mockup's first column: name, then the variant's own
           distinguishing attributes under it. */}

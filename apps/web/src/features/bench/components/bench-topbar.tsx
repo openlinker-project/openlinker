@@ -28,16 +28,31 @@
  * @module apps/web/src/features/bench/components
  */
 import type { ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 
 import { formatInitials } from '../../../shared/format/format-initials';
 import { ThemeToggle } from '../../../shared/ui/theme-toggle';
+import { benchTopbarCopy } from '../lib/bench-topbar.copy';
 
 export interface BenchTopbarProps {
   /** `null` while no session is signed in — the chip renders nothing then. */
   readonly signedInName: string | null;
+  /**
+   * Whether this viewer has an application to go back to.
+   *
+   * `/bench` is a top-level route with no `AppShell` and no sidebar (#2413,
+   * for reasons `bench.route.tsx` sets out), so until now it was a screen you
+   * could only leave by editing the address bar. That is right for a packer at
+   * a terminal and wrong for the admin or operator who opened it to look.
+   *
+   * Resolved by the caller from `orders:write`, held by exactly admin and
+   * operator — `ROLE_PERMISSIONS.packer` is `[]`, so a packer never sees the
+   * crumb become a link, and an anonymous (locked) session never does either.
+   */
+  readonly canLeaveBench: boolean;
 }
 
-export function BenchTopbar({ signedInName }: BenchTopbarProps): ReactElement {
+export function BenchTopbar({ signedInName, canLeaveBench }: BenchTopbarProps): ReactElement {
   return (
     <header className="bench-topbar" data-testid="bench-topbar">
       <div className="bench-topbar__brand">
@@ -46,11 +61,27 @@ export function BenchTopbar({ signedInName }: BenchTopbarProps): ReactElement {
         </span>
         <span className="bench-topbar__brand-name">OpenLinker</span>
       </div>
+      {/* The crumb IS the way out. A breadcrumb whose parent does nothing is a
+          control shaped like a link that is not one; where the viewer can use
+          the parent, it behaves like the parent. `/fulfillment` rather than the
+          dashboard because that is the bench's actual parent — the work list
+          these parcels come from. */}
       <nav className="bench-topbar__crumbs" aria-label="Breadcrumb">
-        <span>Operations</span>
+        {canLeaveBench ? (
+          <Link className="bench-topbar__crumbs-up" to="/fulfillment">
+            {benchTopbarCopy.parentCrumb}
+          </Link>
+        ) : (
+          <span>{benchTopbarCopy.parentCrumb}</span>
+        )}
         <span aria-hidden="true">/</span>
-        <span className="bench-topbar__crumbs-current">Pack bench</span>
+        <span className="bench-topbar__crumbs-current">{benchTopbarCopy.currentCrumb}</span>
       </nav>
+      {canLeaveBench ? (
+        <Link className="bench-topbar__leave" to="/fulfillment">
+          {benchTopbarCopy.leaveAction}
+        </Link>
+      ) : null}
       <div className="bench-topbar__spacer" />
       <ThemeToggle className="bench-topbar__theme-toggle" />
       {signedInName === null ? null : (

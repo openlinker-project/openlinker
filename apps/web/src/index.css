@@ -26147,6 +26147,52 @@ legend.analytics-settings-dialog__label {
   font-weight: 500;
 }
 
+/* The crumb's parent, live for a viewer who can use it (#3340 follow-up).
+   Reads as text until hovered, because a breadcrumb that shouts is a
+   breadcrumb competing with the work. */
+.bench-topbar__crumbs-up {
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.bench-topbar__crumbs-up:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.bench-topbar__crumbs-up:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* The explicit exit. It survives the phone breakpoint that folds the crumbs
+   away, which is the width where a typed URL is least available. */
+.bench-topbar__leave {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.78125rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.bench-topbar__leave:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.bench-topbar__leave:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
 .bench-topbar__spacer {
   flex: 1;
 }
@@ -26405,6 +26451,31 @@ legend.analytics-settings-dialog__label {
   border: 1px solid var(--border-default);
   object-fit: cover;
   flex-shrink: 0;
+}
+
+/* No picture, or one that did not load (#3340 follow-up). All three bench
+   slots keep their own size and border above and share only this: the item's
+   initial, centred, so an empty square says "no photo" instead of nothing.
+   `BenchThumb` decides WHICH of the two states applies; see its docblock. */
+.bench-hero__swatch--empty,
+.bench-dock__thumb--empty,
+.bench-parcel-line__thumb--empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
+}
+
+.bench-hero__swatch--empty {
+  font-size: 1.5rem;
+}
+
+.bench-dock__thumb--empty,
+.bench-parcel-line__thumb--empty {
+  font-size: 1.125rem;
 }
 
 .bench-parcel-line__attributes {

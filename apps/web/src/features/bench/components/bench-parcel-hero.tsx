@@ -49,6 +49,7 @@ import type { BenchParcelLine } from '../api/bench-parcel.types';
 import { isEditableTarget } from '../lib/scanner-gesture';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import { BenchCopyButton } from './bench-copy-button';
+import { BenchThumb } from './bench-thumb';
 
 export interface BenchParcelHeroProps {
   /** The line this box is waiting for next. Derived by the caller. */
@@ -134,11 +135,7 @@ export function BenchParcelHero({
 
   return (
     <section className="bench-hero" data-testid="bench-parcel-hero">
-      {line.imageUrl === null ? (
-        <div className="bench-hero__swatch" aria-hidden="true" />
-      ) : (
-        <img className="bench-hero__swatch" src={line.imageUrl} alt="" />
-      )}
+      <BenchThumb className="bench-hero__swatch" imageUrl={line.imageUrl} name={line.name} />
 
       <div className="bench-hero__body">
         <p className="bench-hero__name">{line.name ?? benchParcelCopy.lines.unnamed}</p>

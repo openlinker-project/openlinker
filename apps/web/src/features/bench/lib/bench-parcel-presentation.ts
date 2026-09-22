@@ -23,7 +23,9 @@
  * @module apps/web/src/features/bench/lib
  */
 import {
+  resolveInvoiceAbsenceAudience,
   resolveSalesDocumentReasonCopy,
+  type InvoiceAbsenceAudience,
   type SalesDocumentGateReasonCopy,
 } from '../../sales-documents';
 import type { BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
@@ -212,5 +214,18 @@ export function describeInvoiceBlock(
   return resolveSalesDocumentReasonCopy(
     blockReason as Parameters<typeof resolveSalesDocumentReasonCopy>[0],
     unresolvedReason as Parameters<typeof resolveSalesDocumentReasonCopy>[1]
+  );
+}
+
+/**
+ * Who, if anyone, already knows this box went out without an invoice.
+ *
+ * Delegates for the same reason `describeInvoiceBlock` does — the rule is the
+ * sales-document vocabulary's, not the bench's, and a copy of it here would be
+ * a second answer the guarded one does not govern.
+ */
+export function describeInvoiceAbsenceAudience(blockReason: string | null): InvoiceAbsenceAudience {
+  return resolveInvoiceAbsenceAudience(
+    blockReason as Parameters<typeof resolveInvoiceAbsenceAudience>[0]
   );
 }

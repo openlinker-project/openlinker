@@ -44,6 +44,7 @@ import type { BenchParcelLine } from '../api/bench-parcel.types';
 import { useBarcodeCamera } from '../hooks/use-barcode-camera';
 import { benchLineState } from '../lib/bench-parcel-presentation';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
+import { BenchThumb } from './bench-thumb';
 
 export interface BenchScanDockProps {
   /** Every line of the box, in the server's order — the accordion's content. */
@@ -252,11 +253,11 @@ export function BenchScanDock({
         {/* ── Storey 2: the scan dock ─────────────────────────────────── */}
         <div className="bench-dock__scan">
           <div className="bench-dock__item-strip">
-            {activeLine?.imageUrl === undefined || activeLine.imageUrl === null ? (
-              <span className="bench-dock__thumb" aria-hidden="true" />
-            ) : (
-              <img className="bench-dock__thumb" src={activeLine.imageUrl} alt="" />
-            )}
+            <BenchThumb
+              className="bench-dock__thumb"
+              imageUrl={activeLine?.imageUrl}
+              name={activeLine?.name}
+            />
             <span className="bench-dock__strip-body">
               <span className="bench-dock__strip-name">
                 {activeLine?.name ?? benchParcelCopy.lines.unnamed}

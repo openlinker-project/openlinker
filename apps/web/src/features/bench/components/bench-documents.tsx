@@ -52,9 +52,27 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { BenchLabel } from '../api/bench-parcel.types';
 import { useBenchDocumentsQuery, useBenchUnlabelledQuery } from '../hooks/use-bench-documents-query';
-import { describeInvoiceBlock } from '../lib/bench-parcel-presentation';
+import {
+  describeInvoiceAbsenceAudience,
+  describeInvoiceBlock,
+} from '../lib/bench-parcel-presentation';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import { printBlob } from '../lib/bench-print';
+
+/**
+ * Maps the three audiences onto their copy. A `Record` rather than a chain of
+ * ternaries so that adding a fourth audience is a compile error here, not a
+ * silently-unreachable branch — the bug this whole seam exists to fix was a
+ * message that rendered where it did not apply.
+ */
+const AUDIENCE_COPY: Record<
+  ReturnType<typeof describeInvoiceAbsenceAudience>,
+  { readonly title: string; readonly body: string }
+> = {
+  'on-office-list': benchParcelCopy.documents.audience.onOfficeList,
+  'issued-on-request': benchParcelCopy.documents.audience.issuedOnRequest,
+  'nobody-told': benchParcelCopy.documents.audience.nobodyTold,
+};
 
 export interface BenchDocumentsPanelProps {
   readonly workId: string;
@@ -104,6 +122,7 @@ export function BenchDocumentsPanel({
   const invoice = data.invoice;
   const label = data.label;
   const invoiceBlock = describeInvoiceBlock(invoice.blockReason, invoice.unresolvedReason);
+  const invoiceAudience = AUDIENCE_COPY[describeInvoiceAbsenceAudience(invoice.blockReason)];
 
   const printInvoice = (): void => {
     setPrintError(null);
@@ -241,9 +260,10 @@ export function BenchDocumentsPanel({
                 ? benchParcelCopy.documents.missingReasonUnknown
                 : `${invoiceBlock.short} — ${invoiceBlock.detail}`}
             </p>
+            {/* Whether anyone else knows — three different answers, never one
+                reassuring one. See `invoice-absence-audience.ts`. */}
             <p className="bench-documents__flagged">
-              <strong>{benchParcelCopy.documents.flaggedTitle}</strong>{' '}
-              {benchParcelCopy.documents.flaggedBody}
+              <strong>{invoiceAudience.title}</strong> {invoiceAudience.body}
             </p>
           </>
         )}
