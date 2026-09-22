@@ -67,6 +67,11 @@ export {
 // Application Services
 export { IInventoryService } from './application/services/inventory.service.interface';
 export { InventoryService } from './application/services/inventory.service';
+export {
+  PostSaleInventoryRefreshService,
+  buildPostSaleInventoryRefreshKey,
+} from './application/services/post-sale-inventory-refresh.service';
+export type { PostSaleInventoryRefreshInput } from './application/services/post-sale-inventory-refresh.service';
 export { IInventorySyncService } from './application/services/inventory-sync.service.interface';
 export { InventorySyncService } from './application/services/inventory-sync.service';
 export {

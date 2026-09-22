@@ -7,6 +7,7 @@
  *
  * @module apps/worker/src/sync/handlers/__tests__
  */
+import type { PostSaleInventoryRefreshService } from '@openlinker/core/inventory';
 import { FiscalizationRegisterHandler, MAX_FISCAL_LINES } from '../fiscalization-register.handler';
 import {
   MissingIdempotencyKeyException,
@@ -57,11 +58,12 @@ function makeJob(payload: unknown): SyncJobEntity {
 describe('FiscalizationRegisterHandler', () => {
   let fiscalRegistrations: jest.Mocked<IFiscalRegistrationService>;
   let handler: FiscalizationRegisterHandler;
+  let postSaleInventoryRefresh: jest.Mocked<PostSaleInventoryRefreshService>;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
 
   beforeEach(() => {
     fiscalRegistrations = {
-      register: jest.fn().mockResolvedValue({} as never),
+      register: jest.fn().mockResolvedValue({ id: 'fiscal-record-1' } as never),
       // The three reads added with asynchronous registration (#2525/#2526).
       // This handler is the path that PERFORMS the work, so none of them is
       // exercised here; they are present because the interface has them.
@@ -76,7 +78,10 @@ describe('FiscalizationRegisterHandler', () => {
       getInFlightRegistration: jest.fn().mockResolvedValue(null),
       listRegistrationsKeyset: jest.fn(),
     };
-    handler = new FiscalizationRegisterHandler(fiscalRegistrations);
+    postSaleInventoryRefresh = {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<PostSaleInventoryRefreshService>;
+    handler = new FiscalizationRegisterHandler(fiscalRegistrations, postSaleInventoryRefresh);
     warnSpy = jest
       .spyOn(
         (handler as unknown as { logger: { warn: (m: string) => void } }).logger,

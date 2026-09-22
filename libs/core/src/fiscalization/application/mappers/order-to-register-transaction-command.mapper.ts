@@ -272,6 +272,9 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
     unitPriceGross: item.price,
     taxRate: item.taxRate?.trim() ?? '',
     sku: item.sku ?? null,
+    // Carried so the post-registration stock re-read knows what moved; the
+    // shipping lines below deliberately omit it.
+    productId: item.productId,
   };
 }
 
