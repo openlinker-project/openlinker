@@ -766,6 +766,7 @@ export function createMockApiClient(
     }) as ApiClient['listings'],
     priceChanges: {
       list: vi.fn().mockResolvedValue({ items: [], hiddenStaleCount: 0, total: 0 }),
+      counts: vi.fn().mockResolvedValue({ total: 0, byConnection: [] }),
       accept: vi.fn().mockResolvedValue(undefined),
       ignore: vi.fn().mockResolvedValue(undefined),
       unresolve: vi.fn().mockResolvedValue(undefined),

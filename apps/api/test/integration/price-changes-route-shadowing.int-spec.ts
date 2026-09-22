@@ -82,4 +82,25 @@ describe('Price Changes Route-Shadowing API Integration', () => {
       expect(Array.isArray(response.body)).toBe(true);
     });
   });
+
+  describe('GET /listings/price-changes/counts', () => {
+    it('resolves to the exact counts-by-connection read, never to GET /listings/:id or similar (#3325)', async () => {
+      const http = harness.getHttp();
+      const dataSource = harness.getDataSource();
+      const token = await loginAsAdmin(http, dataSource);
+
+      const response = await http
+        .get('/v1/listings/price-changes/counts')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).not.toBe(400);
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(
+        expect.objectContaining({
+          total: expect.any(Number),
+          byConnection: expect.any(Array),
+        })
+      );
+    });
+  });
 });

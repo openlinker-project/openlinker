@@ -178,4 +178,20 @@ export interface PriceChangeEpisodeRepositoryPort {
    * every column of every open episode purely to throw the rows away).
    */
   listOpenDestinationConnectionIds(sourceConnectionId: string): Promise<readonly string[]>;
+
+  /**
+   * Open-episode count per DESTINATION connection, across the WHOLE
+   * install — the review queue's connection filter-bar chip counts (#3325,
+   * split out of #3237/#3164 review). The mirror of `countOpenBySource`
+   * (which groups by source for a single destination): this groups by
+   * destination with no scope at all, one `GROUP BY` rather than a
+   * `countOpen({ destinationConnectionId })` call per connection in a loop
+   * (`docs/engineering-standards.md § When A Paginated Total Is Expensive`).
+   *
+   * Strictly-open, matching `countOpen`/`countOpenBySource` — never widened
+   * by `includeRecentlyResolved`, which stays a review-queue LIST concern.
+   * Destinations with zero open episodes are absent from the map, never
+   * present with `0`.
+   */
+  countOpenByDestination(): Promise<ReadonlyMap<string, number>>;
 }

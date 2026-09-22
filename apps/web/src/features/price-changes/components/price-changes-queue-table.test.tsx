@@ -456,7 +456,7 @@ describe('PriceChangesQueueTable', () => {
     expect(screen.getAllByText('Undo')).toHaveLength(1);
   });
 
-  it('shows connection chips for both marketplace and shop-write-back destinations, counted from the unfiltered set', async () => {
+  it('shows connection chips for both marketplace and shop-write-back destinations, counted exactly from the counts-by-connection endpoint (#3325)', async () => {
     const marketplaceConnection = {
       ...sampleConnection,
       id: 'dest-1',
@@ -475,14 +475,29 @@ describe('PriceChangesQueueTable', () => {
     ];
     const apiClient = createMockApiClient({
       connections: { list: vi.fn().mockResolvedValue([marketplaceConnection, shopConnection]) },
-      priceChanges: { list: vi.fn().mockResolvedValue(buildPage(items, 0, 2)) },
+      priceChanges: {
+        list: vi.fn().mockResolvedValue(buildPage(items, 0, 2)),
+        // The point of #3325: this count is exact regardless of any page-size
+        // bound the review-queue LIST read applies — asserted here with a
+        // count (201) that would previously have been under-reported by the
+        // retired CHIP_COUNTS_LIMIT=200 client-side bucketing.
+        counts: vi.fn().mockResolvedValue({
+          total: 202,
+          byConnection: [
+            { connectionId: 'dest-1', count: 201 },
+            { connectionId: 'dest-2', count: 1 },
+          ],
+        }),
+      },
     });
 
     renderWithProviders(<PriceChangesQueueTable />, { apiClient });
     await screen.findByText('Ergonomic Office Chair');
 
-    expect(screen.getByRole('button', { name: /Allegro — PL/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /WooCommerce — EU Store/ })).toBeInTheDocument();
+    const group = await screen.findByRole('group', { name: 'Filter by connection' });
+    expect(within(group).getByRole('button', { name: 'All 202' })).toBeInTheDocument();
+    expect(within(group).getByRole('button', { name: 'Allegro — PL 201' })).toBeInTheDocument();
+    expect(within(group).getByRole('button', { name: 'WooCommerce — EU Store 1' })).toBeInTheDocument();
   });
 
   describe('write-access gating (listings:write, useWriteAccess + ReadOnlyLock, #3164 review)', () => {
@@ -529,10 +544,10 @@ describe('PriceChangesQueueTable', () => {
       expect(accept).toBeDisabled();
     });
   });
-  describe('chip counts never assert a number the read did not supply (#3164 re-review)', () => {
+  describe('chip counts never assert a number the read did not supply (#3164 re-review, #3325)', () => {
     it('renders an em dash, not 0, when the counts read fails', async () => {
       const apiClient = createMockApiClient({
-        priceChanges: { list: vi.fn().mockRejectedValue(new Error('boom')) },
+        priceChanges: { counts: vi.fn().mockRejectedValue(new Error('boom')) },
       });
 
       renderWithProviders(<PriceChangesQueueTable />, { apiClient });
@@ -547,7 +562,7 @@ describe('PriceChangesQueueTable', () => {
 
     it('renders no count at all while the counts read is still in flight', async () => {
       const apiClient = createMockApiClient({
-        priceChanges: { list: vi.fn().mockReturnValue(new Promise(() => undefined)) },
+        priceChanges: { counts: vi.fn().mockReturnValue(new Promise(() => undefined)) },
       });
 
       renderWithProviders(<PriceChangesQueueTable />, { apiClient });

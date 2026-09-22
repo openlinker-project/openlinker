@@ -522,6 +522,22 @@ export class PriceChangeEpisodeRepository implements PriceChangeEpisodeRepositor
     }
   }
 
+  async countOpenByDestination(): Promise<ReadonlyMap<string, number>> {
+    try {
+      const rows = await this.episodes
+        .createQueryBuilder('e')
+        .select('e.destinationConnectionId', 'destinationConnectionId')
+        .addSelect('COUNT(*)', 'count')
+        .where('e.resolvedAt IS NULL')
+        .groupBy('e.destinationConnectionId')
+        .getRawMany<{ destinationConnectionId: string; count: string }>();
+
+      return new Map(rows.map((row) => [row.destinationConnectionId, Number(row.count)]));
+    } catch (error) {
+      throw new PriceChangeEpisodePersistenceError('countOpenByDestination', error);
+    }
+  }
+
   async listOpenDestinationConnectionIds(sourceConnectionId: string): Promise<readonly string[]> {
     try {
       const rows = await this.episodes
