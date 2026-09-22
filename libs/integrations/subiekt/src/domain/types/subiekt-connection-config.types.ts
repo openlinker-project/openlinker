@@ -63,4 +63,23 @@ export interface SubiektConnectionConfig {
    * disabled; the factory only builds a `SubiektFiscalizationAdapter` when set.
    */
   drukarkaFiskalnaId?: number;
+  /**
+   * The Subiekt magazyn (`sl_Magazyn.mag_Id`) whose stock this connection
+   * publishes — i.e. the warehouse a sale actually releases from.
+   *
+   * It exists because stock USED to be summed across every magazyn while the
+   * release came out of one: a towar holding 506 in MAG and 2 in MAP was
+   * advertised as 508, and those 2 units could never ship. That is a standing
+   * oversell on any multi-warehouse install, with every counter internally
+   * consistent and nothing logged.
+   *
+   * Absent, the adapter uses the bridge's own `domyslnyMagazynId` (the same
+   * `ResolveDefaultMagazyn` its adjust path uses), which is right on the
+   * ordinary single-warehouse install and is what the observed sale released
+   * from. Set it when the operator's release warehouse is NOT that one — the
+   * adapter warns whenever a towar has stock in more than one magazyn and no
+   * explicit choice was made, because that is exactly when a default is a
+   * guess rather than a fact.
+   */
+  stockMagazynId?: number;
 }

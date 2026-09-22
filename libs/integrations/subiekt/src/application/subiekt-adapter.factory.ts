@@ -104,6 +104,7 @@ export class SubiektAdapterFactory {
         identifierMapping,
         connection.id,
         logger,
+        config.stockMagazynId,
       ),
       orderSource: new SubiektOrderSourceAdapter(ordersClient, logger),
       orderProcessor: new SubiektOrderProcessorAdapter(
@@ -185,6 +186,7 @@ export class SubiektAdapterFactory {
       config.drukarkaFiskalnaId,
       'drukarkaFiskalnaId',
     );
+    const stockMagazynId = this.parsePositiveIntField(config.stockMagazynId, 'stockMagazynId');
 
     const parsed: SubiektConnectionConfig = { bridgeBaseUrl };
     if (timeoutMs !== undefined) parsed.timeoutMs = timeoutMs;
@@ -194,6 +196,7 @@ export class SubiektAdapterFactory {
       parsed.defaultStanowiskoKasoweId = defaultStanowiskoKasoweId;
     }
     if (drukarkaFiskalnaId !== undefined) parsed.drukarkaFiskalnaId = drukarkaFiskalnaId;
+    if (stockMagazynId !== undefined) parsed.stockMagazynId = stockMagazynId;
     return parsed;
   }
 

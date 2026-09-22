@@ -44,6 +44,17 @@ export interface BridgeInventoryStockResponse {
   towarSymbol: string;
   /** Empty when the towar has no `tw_Stan` rows at all (never sold/stocked yet) — NOT a not-found. */
   positions: BridgeInventoryStockRow[];
+  /**
+   * The magazyn a stock movement for this towar lands in — the bridge's own
+   * `ResolveDefaultMagazyn`, i.e. the SAME resolution its adjust path uses.
+   * Reported so the adapter can publish the quantity of the warehouse a sale
+   * actually releases from instead of re-deriving that rule in TypeScript.
+   *
+   * OPTIONAL so a bridge predating the field keeps deserialising; absent, the
+   * adapter falls back to summing every position, which is what it did before
+   * — correct on a single-warehouse install and an over-count on any other.
+   */
+  domyslnyMagazynId?: number;
 }
 
 /**
