@@ -10,7 +10,7 @@ import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import type { PricingRule } from '@openlinker/core/identifier-mapping';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { ConnectionService } from './connection.service';
+import { ConnectionService, STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE } from './connection.service';
 import type {
   ConnectionPort,
   ConnectionUpdate,
@@ -1093,6 +1093,25 @@ describe('ConnectionService', () => {
           })
         ).rejects.toThrow(BadRequestException);
         expect(connectionPort.create).not.toHaveBeenCalled();
+      });
+
+      // #3207 review — the FE mapping branches on this machine-readable
+      // code, not on the message text. Pin the response shape so a future
+      // reword of the message can't silently drop the code too.
+      it('should carry the machine-readable error code (#3207 review)', async () => {
+        locations.getLocation.mockResolvedValue(null);
+
+        try {
+          await service.create({
+            ...payload,
+            config: { ...payload.config, stockLocationOverride: 'ol_location_ghost' },
+          });
+          throw new Error('expected create() to reject');
+        } catch (error) {
+          expect(error).toBeInstanceOf(BadRequestException);
+          const response = (error as BadRequestException).getResponse();
+          expect(response).toMatchObject({ error: STOCK_LOCATION_OVERRIDE_INVALID_ERROR_CODE });
+        }
       });
 
       it('should reject a non-string override value', async () => {

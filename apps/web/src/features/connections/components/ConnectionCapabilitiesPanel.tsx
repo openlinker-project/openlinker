@@ -58,6 +58,20 @@ export function capabilityToggleTestId(capability: string): string {
 }
 
 /**
+ * The stable test hook for one capability ROW — the mockup's own
+ * `capability-invoicing` / `capability-fiscalization`
+ * (`docs/plans/mockups/sales-document-eparagony-invoicing.html`), which is how
+ * a spec asserts that ONE connection carries BOTH sales-document lanes
+ * (ADR-073 decision 3, #3192) rather than only that a checkbox exists.
+ *
+ * Derived from the wire value by the same lowercase rule as the toggle above,
+ * for the same reason: one transform, no per-capability table to keep in step.
+ */
+export function capabilityRowTestId(capability: string): string {
+  return `capability-${capability.toLowerCase()}`;
+}
+
+/**
  * What this connection would become eligible to produce. Named from what the
  * adapter SUPPORTS rather than from a fixed word, because "issue invoices" is
  * plainly false on a connection that only registers receipts, and half true
@@ -205,7 +219,11 @@ export function ConnectionCapabilitiesPanel({
             const conflict = getCapabilityConflict(enabled, capability);
             const isBlocked = conflict !== null && !isChecked;
             return (
-              <li key={capability} className="capability-list__item">
+              <li
+                key={capability}
+                className="capability-list__item"
+                data-testid={capabilityRowTestId(capability)}
+              >
                 <label htmlFor={id} className="capability-list__label">
                   <input
                     id={id}
