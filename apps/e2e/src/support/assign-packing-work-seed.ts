@@ -10,7 +10,8 @@
  *
  * @module support
  */
-import { Client } from 'pg';
+import pg from 'pg';
+type Client = InstanceType<typeof pg.Client>;
 import { resolveEnv } from '../config/env';
 import { assertSeedableDatabase } from './assert-seedable-database';
 import { BENCH_SEED_IDS } from './bench-seed';
@@ -67,7 +68,7 @@ export async function seedAssignPackingWork(
 ): Promise<AssignPackingWorkSeedResult> {
   assertSeedableDatabase('seedAssignPackingWork');
   const env = resolveEnv();
-  const client = new Client({ connectionString: env.databaseUrl });
+  const client = new pg.Client({ connectionString: env.databaseUrl });
   await client.connect();
   try {
     await client.query('BEGIN');
@@ -102,9 +103,9 @@ export async function seedAssignPackingWork(
       );
       await client.query(
         `INSERT INTO fulfillment_work_lines
-           (id, "fulfillmentWorkId", "productVariantId", "totalQuantity", "fulfilledQuantity", "cancelledQuantity")
-         VALUES ($1, $2, $3, 2, 0, 0)`,
-        [`${workId}-line1`, workId, BENCH_SEED_IDS.variant],
+           (id, "fulfillmentWorkId", "orderLineId", "productVariantId", "totalQuantity", "fulfilledQuantity", "cancelledQuantity")
+         VALUES (gen_random_uuid(), $1, 'line-1', $2, 2, 0, 0)`,
+        [workId, BENCH_SEED_IDS.variant],
       );
     };
 
@@ -138,7 +139,7 @@ export async function seedAssignPackingWork(
 export async function clearAssignPackingWorkSeed(): Promise<void> {
   assertSeedableDatabase('clearAssignPackingWorkSeed');
   const env = resolveEnv();
-  const client = new Client({ connectionString: env.databaseUrl });
+  const client = new pg.Client({ connectionString: env.databaseUrl });
   await client.connect();
   try {
     await clean(client);

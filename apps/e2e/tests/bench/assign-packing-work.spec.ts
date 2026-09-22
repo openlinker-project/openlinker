@@ -96,9 +96,11 @@ test.describe('Assign Packing Work (#3343)', () => {
       // docblock states).
       await seedPackerBrowserSession(page.context(), env, packerA!.creds);
       await pages.bench.goto();
-      // The row for the reassigned unassigned-work item is now this packer's
-      // own — rendered on the SAME worklist #3341 built.
-      await expect(page.locator('[data-testid="bench-work-row"]')).toContainText('Assigned to you', {
+      // Scoped to THIS seeded row, not a bare `bench-work-row` selector — a
+      // shared stack carries its own pre-existing demo rows, and asserting
+      // against every row on the page is a Playwright strict-mode violation
+      // the moment more than one exists.
+      await expect(pages.bench.rowForWorkId(seed.unassignedWorkId)).toContainText('Assigned to you', {
         timeout: 10_000,
       });
     });
