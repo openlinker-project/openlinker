@@ -828,6 +828,9 @@ describe('OrdersController', () => {
         // the FE suppresses a sales-document block on exactly the records the
         // backend gate refuses to write one for.
         blocksIssuanceElsewhere: true,
+        // Tri-state, projected verbatim: `null` is "this provider does not
+        // report catalogue linkage", which the fixture's record is.
+        unlinkedCatalogueLines: null,
       });
     });
 

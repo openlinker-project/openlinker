@@ -59,7 +59,7 @@ import { IOrderRecordService } from '../interfaces/order-record.service.interfac
 import { IOrderHoldService } from '../interfaces/order-hold.service.interface';
 import {
   POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
-  type PostSaleInventoryRefreshService,
+  type IPostSaleInventoryRefreshService,
 } from '@openlinker/core/inventory';
 import { ORDER_HOLD_SERVICE_TOKEN, ORDER_RECORD_SERVICE_TOKEN } from '../../orders.tokens';
 
@@ -81,7 +81,7 @@ export class OrderSyncService implements IOrderSyncService {
     @Inject(ORDER_HOLD_SERVICE_TOKEN)
     private readonly orderHoldService: IOrderHoldService,
     @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
-    private readonly postSaleInventoryRefresh: PostSaleInventoryRefreshService
+    private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService
   ) {}
 
   async syncOrder(request: OrderSyncRequest): Promise<OrderSyncResult[]> {

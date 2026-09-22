@@ -663,6 +663,7 @@ export class InvoiceRecordRepository implements InvoiceRecordRepositoryPort {
       entity.documentNumber,
       entity.allocatedSeq,
       entity.buyerTaxId,
+      entity.unlinkedCatalogueLines,
     );
   }
 }

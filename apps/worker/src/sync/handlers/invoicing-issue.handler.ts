@@ -48,7 +48,7 @@ import type {
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import {
   POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
-  type PostSaleInventoryRefreshService,
+  type IPostSaleInventoryRefreshService,
 } from '@openlinker/core/inventory';
 import {
   IInvoiceService,
@@ -78,7 +78,7 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     @Inject(INVOICE_SERVICE_TOKEN)
     private readonly invoiceService: IInvoiceService,
     @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
-    private readonly postSaleInventoryRefresh: PostSaleInventoryRefreshService,
+    private readonly postSaleInventoryRefresh: IPostSaleInventoryRefreshService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {

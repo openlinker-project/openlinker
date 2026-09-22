@@ -866,6 +866,28 @@ export interface IssueInvoiceResult {
    * source document omit it.
    */
   sourceDocument?: StoredDocument;
+  /**
+   * How many of the document's lines the provider could NOT link to a record in
+   * its own catalogue, and therefore issued as free text.
+   *
+   * TRI-STATE, and the distinction is the point:
+   *   - `undefined` — this provider does not report linkage at all. Most do
+   *     not: a provider with no catalogue and no warehouse has nothing to say.
+   *   - `0` — every line was linked.
+   *   - `> 0` — that many lines were not, so anything the provider derives
+   *     from its catalogue does not reflect them. On a warehouse-backed
+   *     provider that means the goods left and the stock never moved.
+   *
+   * It exists because such a document looks completely normal — correct name,
+   * quantity, price and VAT on every line — while the seller's warehouse never
+   * registers the sale. The only previous signal was a log line.
+   *
+   * It is the provider's PRE-SUBMIT belief about linkage, not a confirmation
+   * from the provider that the lines were filed as linked. `0` therefore means
+   * "we sent a catalogue key for every line", NOT "the provider accepted every
+   * key" — a bridge or API can still drop one downstream.
+   */
+  unlinkedCatalogueLines?: number;
 }
 
 /** Query for an issued document by either internal order id or provider id. */
@@ -991,6 +1013,8 @@ export interface PaginatedInvoiceRecords {
  */
 export interface InvoiceOutcomePatch {
   status?: InvoiceStatus;
+  /** See {@link IssueInvoiceResult.unlinkedCatalogueLines}. Written on the issued patch only. */
+  unlinkedCatalogueLines?: number | null;
   /**
    * Authoritative provider identifier resolved at issue time (e.g. `subiekt`).
    * The pending row is created with `providerType: ''` (the connection's
