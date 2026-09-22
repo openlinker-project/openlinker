@@ -51,6 +51,13 @@ export type { BenchParcelProps } from './components/bench-parcel';
 export { BenchMetricRow } from './components/bench-metric-row';
 export { BenchParcelPlaceholder } from './components/bench-parcel-placeholder';
 
+// The mobile-first rebuild. The PAGE picks the layout, because the compact
+// bench is a different tree rather than the same one narrowed — see
+// `use-bench-layout.ts`. `BenchScanDock` is deliberately NOT exported: it is
+// only correct inside `BenchParcelView`, which owns the submit path it calls.
+export { useBenchLayout, BENCH_PHONE_MAX_WIDTH, BENCH_TWO_PANE_MIN_WIDTH } from './hooks/use-bench-layout';
+export type { BenchLayout } from './hooks/use-bench-layout';
+
 // #2421 — Surface H and C4 are BEHAVIOUR of the parcel view, not a component a
 // caller composes, so nothing new leaves this barrel. The reachability hook,
 // the sound module and the in-flight ledger are deliberately private: a second

@@ -250,6 +250,40 @@ export const benchParcelCopy = {
    * as many words, because the packer's instinct on seeing a colleague's name
    * is to stop, and stopping is the wrong move.
    */
+  /**
+   * The phone and tablet bench (mobile-first rebuild, epic #3401).
+   *
+   * Every string here is about the packer's own hands: what to point the
+   * camera at, which item the count belongs to, and what to do when the
+   * device cannot read a barcode at all. Nothing here promises a camera on a
+   * browser that has no decoder - `cameraUnsupported` says which path is
+   * left instead, because a control that cannot work is worse than none.
+   */
+  mobile: {
+    scanAction: 'Scan with camera',
+    scanClose: 'Close the camera',
+    torch: 'Torch',
+    aim: 'Hold the barcode inside the frame',
+    keepScanning: 'Keep scanning - the camera stays open until this item is done.',
+    lastRead: 'Read',
+    cameraUnsupported:
+      'This browser cannot read a barcode from the camera. Type the code instead - it counts exactly the same.',
+    cameraNoDevice: 'No camera on this device. Type the code instead.',
+    cameraDenied:
+      'The camera is blocked for this page. Allow it in your browser settings, or type the code instead.',
+    cameraFailed: 'The camera did not start. Try again, or type the code instead.',
+    /** The accordion handle, collapsed. */
+    itemOf: (index: number, total: number): string =>
+      `Item ${String(index)} of ${String(total)}`,
+    itemsHeading: 'Items in this box',
+    switchParcel: 'Switch to another parcel',
+    closeList: 'Back to the box',
+    /** Said on the handle so the packer knows what opening it costs them. */
+    stillToScanShort: (remaining: number): string =>
+      remaining === 1 ? '1 left' : `${String(remaining)} left`,
+    allItemsDone: 'All items scanned',
+  },
+
   collision: {
     title: 'Someone else has this box open too',
     body: (names: readonly string[]): string => {

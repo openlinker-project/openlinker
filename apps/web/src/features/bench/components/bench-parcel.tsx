@@ -73,6 +73,7 @@ import { formatAmount } from '../../../shared/format/format-amount';
 import type { BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
 import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useBenchParcelQuery } from '../hooks/use-bench-parcel-query';
+import { useBenchLayout } from '../hooks/use-bench-layout';
 import { useBenchPresenceQuery } from '../hooks/use-bench-presence';
 import { useBenchReachability, isUnreachableFailure } from '../hooks/use-bench-reachability';
 import { useBenchReopenMutation } from '../hooks/use-bench-reopen-mutation';
@@ -104,11 +105,18 @@ import { BenchCopyButton } from './bench-copy-button';
 import { BenchDocumentsPanel } from './bench-documents';
 import { BenchParcelHero } from './bench-parcel-hero';
 import { BenchParcelLineRow } from './bench-parcel-line';
+import { BenchScanDock } from './bench-scan-dock';
 
 export interface BenchParcelProps {
   readonly workId: string;
   /** Leaving this box. The bench's only exit from the parcel, per story C2. */
   readonly onClose: () => void;
+  /**
+   * Opens the work list (mobile-first rebuild, #3401). On a compact bench the
+   * rail is a sheet rather than a pane beside this one, so the dock needs a
+   * way to summon it. Absent on desktop, where the rail is always on screen.
+   */
+  readonly onSwitchParcel?: () => void;
 }
 
 /**
@@ -125,7 +133,11 @@ type ScanNotice = { readonly seq: number } & (
   | { readonly kind: 'failed'; readonly lineName: string }
 );
 
-export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactElement {
+export function BenchParcelView({
+  workId,
+  onClose,
+  onSwitchParcel,
+}: BenchParcelProps): ReactElement {
   const query = useBenchParcelQuery(workId);
   const verify = useBenchVerifyMutation();
   const reopen = useBenchReopenMutation();
@@ -150,6 +162,20 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
    * who has used one of those tools.
    */
   const [groupByBin, setGroupByBin] = useState(false);
+  /**
+   * Which line the scan surface is counting into (#3401).
+   *
+   * `null` means "whichever is next", which is what the desktop hero has
+   * always shown. The compact bench's accordion lets a packer PICK one
+   * instead - a box where the next unscanned item is not the one in their
+   * hand is the ordinary case on a phone, where they are walking a shelf
+   * rather than working a laid-out tote.
+   *
+   * Cleared the moment the picked line is satisfied, so the surface falls
+   * back to "whichever is next" rather than parking on a finished item.
+   */
+  const [pickedLineId, setPickedLineId] = useState<string | null>(null);
+  const layout = useBenchLayout();
 
   /**
    * H2's in-flight ledger: line id → gestures sent and unanswered.
@@ -564,7 +590,13 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
   };
   undoRef.current = undoLastScan;
 
-  const heroLine = parcel.lines.find((line) => benchLineState(line) !== 'verified');
+  const nextLine = parcel.lines.find((line) => benchLineState(line) !== 'verified');
+  const picked =
+    pickedLineId === null
+      ? undefined
+      : parcel.lines.find((line) => line.workLineId === pickedLineId);
+  // A picked line that is now satisfied hands back to the derived one.
+  const heroLine = picked !== undefined && benchLineState(picked) !== 'verified' ? picked : nextLine;
   /**
    * A COPY, sorted — never a mutation of `parcel.lines`, which is the query
    * cache's own array. A line with no bin sorts last rather than first, so
@@ -579,7 +611,11 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
     totals.required === 0 ? 100 : Math.round((totals.verified / totals.required) * 100);
 
   return (
-    <section className="bench-parcel" data-testid="bench-parcel" data-work-id={parcel.workId}>
+    <section
+      className={`bench-parcel bench-parcel--${layout}`}
+      data-testid="bench-parcel"
+      data-work-id={parcel.workId}
+    >
       <header className="bench-parcel__header">
         <div className="bench-parcel__identity">
           <span className="bench-parcel__field-label">{benchParcelCopy.header.orderLabel}</span>
@@ -682,7 +718,7 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
           next, with the visible scan field. Derived, never stored — see
           `BenchParcelHero`'s own docblock. Absent once every line is in,
           because there is no next item to put in front of the packer. */}
-      {heroLine === undefined ? null : (
+      {heroLine === undefined || layout !== 'desktop' ? null : (
         <BenchParcelHero
           line={heroLine}
           open={!closed && !refused}
@@ -977,6 +1013,35 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
             <span>{benchParcelCopy.footer.keyboardHint}</span>
           </span>
         </footer>
+      )}
+
+      {/* The compact bench's own scan surface (#3401). It replaces the hero
+          rather than joining it: two scan fields would be two things the
+          scanner listener and `Esc` could focus, and two counts a packer
+          could read differently. */}
+      {layout === 'desktop' ? null : (
+        <BenchScanDock
+          layout={layout}
+          lines={parcel.lines}
+          activeLine={heroLine}
+          open={!closed && !refused}
+          unreachable={reachability.unreachable}
+          pendingCount={heroLine === undefined ? 0 : (inFlight[heroLine.workLineId] ?? 0)}
+          onSelectLine={(line) => {
+            setPickedLineId(line.workLineId);
+          }}
+          onScanValue={(value) => {
+            processScannedValue(value, null);
+          }}
+          onConfirm={(target) => {
+            sequence.current += 1;
+            const gesture = beginGesture(target.workLineId, Date.now());
+            submit(target, gesture.gestureId, sequence.current);
+          }}
+          onUndo={closed ? undefined : undoLastScan}
+          undoing={undo.isPending}
+          onSwitchParcel={onSwitchParcel}
+        />
       )}
     </section>
   );
