@@ -30,7 +30,7 @@ export function SalesDocumentsPage(): ReactElement {
 
   if (session.status === 'authenticated' && session.user?.role !== 'admin') {
     return (
-      <PageLayout eyebrow="Settings" title="Sales documents" description="Admin-only access.">
+      <PageLayout eyebrow="Settings" title="Document routing" description="Admin-only access.">
         <ErrorState
           title="Admin role required"
           message="This page routes fiscal documents to a connection — it requires an admin session."
@@ -42,7 +42,7 @@ export function SalesDocumentsPage(): ReactElement {
   return (
     <PageLayout
       eyebrow="Settings"
-      title="Sales documents"
+      title="Document routing"
       description="Choose what each market issues, per country, and what each connected provider may issue. OpenLinker never decides which document an order legally needs."
       backTo={{ to: '/settings', label: 'Settings' }}
     >

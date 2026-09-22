@@ -978,3 +978,45 @@ export interface SalesDocumentCountryAcknowledgment {
   country: string;
   acknowledgedAt: string;
 }
+
+/**
+ * One persisted routing rule (#2170/#3189). `conditions` is left as `unknown[]`
+ * deliberately: the condition union is a closed server-side vocabulary that has
+ * already been narrowed twice (the `thresholdRef` → inline-amount change of
+ * #3189), and a second copy of it here would drift silently. Specs that need a
+ * condition assert on the RULE the composer rendered, never on this shape.
+ */
+export interface SalesDocumentRule {
+  id: string;
+  country: string;
+  documentKind: string;
+  connectionId: string;
+  conditions: unknown[];
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  provenance: string | null;
+}
+
+/**
+ * `POST /fiscal-registrations` answers **202 Accepted**, not the registration:
+ * it records the request and enqueues `fiscalization.register`. A 202 therefore
+ * says nothing about whether the sale was registered — read the order's
+ * registration state for that.
+ */
+export interface AcceptedFiscalRegistration {
+  orderId: string;
+  connectionId: string;
+  idempotencyKey: string;
+  jobId: string;
+  redrivenFromDead: boolean;
+}
+
+export interface FiscalRegistrationRecordSummary {
+  id: string;
+  connectionId: string;
+  orderId: string;
+  providerType: string;
+  status: string;
+  documentReference: string | null;
+  registeredAt: string | null;
+}

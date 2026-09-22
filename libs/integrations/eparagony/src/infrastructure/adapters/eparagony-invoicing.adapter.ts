@@ -1,10 +1,11 @@
 /**
  * eparagony.pl Invoicing Adapter
  *
- * `InvoicingPort` + `RegulatoryStatusReader` over the vendor's `eInvoice`
- * document kind - the SECOND capability on the same connection and the same
- * plugin as `EparagonyFiscalizationAdapter`, so one connection can register
- * receipts and issue invoices without the operator configuring the provider
+ * `InvoicingPort` + `RegulatoryStatusReader` + `CorrectionIssuer` (#3193) over
+ * the vendor's `eInvoice` / `eCorrectiveInvoice` document kinds - the SECOND
+ * capability on the same connection and the same plugin as
+ * `EparagonyFiscalizationAdapter`, so one connection can register receipts and
+ * issue (and correct) invoices without the operator configuring the provider
  * twice. Both adapters share one `EparagonyHttpClient`, which owns the OAuth
  * token cache; the existing scope set already covers invoicing.
  *
@@ -47,10 +48,15 @@
  * The adapter is a PURE MECHANISM: it never deduplicates and holds no state.
  * Idempotency, persistence and the exactly-once guarantee belong to core.
  *
- * NOT IMPLEMENTED HERE, deliberately: `CorrectionIssuer`. The vendor models a
- * correction as its own `eCorrectiveInvoice` document kind with its own
- * before/after metadata pair, which is a document this adapter does not compose
- * (#3193).
+ * `CorrectionIssuer` (#3193) reaches the vendor's SIBLING `eCorrectiveInvoice`
+ * document kind - the same `POST /documents` endpoint and the same status poll,
+ * with a different composed body: `correctedMetadata` links the original BY
+ * INVOICE NUMBER and `correctingMetadata` states the post-correction totals.
+ * `issueCorrection` therefore shares the create/poll/result machinery below with
+ * `issueInvoice`; only the composition (`composeCorrectiveInvoiceDocument`) and
+ * the registration-key NAMESPACE differ, so a correction never derives the same
+ * `documentToken`/`transactionToken` pair an original invoice on the same order
+ * would.
  *
  * @module libs/integrations/eparagony/src/infrastructure/adapters
  */
@@ -58,9 +64,11 @@ import { randomUUID } from 'node:crypto';
 
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type {
+  CorrectionIssuer,
   DocumentType,
   GetInvoiceQuery,
   InvoicingPort,
+  IssueCorrectionCommand,
   IssueInvoiceCommand,
   IssueInvoiceResult,
   IssuedDocumentLineAmounts,
@@ -84,6 +92,7 @@ import {
   EPARAGONY_STATUS_CONFIRMED,
   EPARAGONY_STATUS_ERROR,
   EPARAGONY_STATUS_OFFLINE,
+  type EparagonyCreateCorrectiveInvoiceRequest,
   type EparagonyCreateInvoiceRequest,
   type EparagonyDocumentStatusResponse,
 } from '../../domain/types/eparagony-api.types';
@@ -101,6 +110,7 @@ import {
 import type { IEparagonyHttpClient } from '../http/eparagony-http-client.interface';
 import { readDocumentStatus } from './eparagony-document.mapper';
 import {
+  composeCorrectiveInvoiceDocument,
   composeInvoiceDocument,
   readDocumentUrl,
   readInvoiceNumber,
@@ -109,8 +119,23 @@ import {
   toRegulatoryClearanceResult,
 } from './eparagony-invoice.mapper';
 
-/** The only neutral document type this adapter issues today; corrections are #3193. */
+/**
+ * The only neutral document type `issueInvoice` issues.
+ *
+ * `getSupportedDocumentTypes()` is `IssueInvoiceCommand.documentType` discovery
+ * specifically - a correction is issued through the dedicated
+ * `CorrectionIssuer.issueCorrection` capability (#3193), which this array does
+ * not describe.
+ */
 const SUPPORTED_DOCUMENT_TYPES: readonly DocumentType[] = ['invoice'];
+
+/**
+ * Neutral document type stamped on a correction record when the caller named
+ * none - the same default `SubiektInvoicingAdapter` uses for its own
+ * `issueCorrection`, since a correction that arrived with no explicit type is
+ * still, unambiguously, a correcting document.
+ */
+const DEFAULT_CORRECTION_DOCUMENT_TYPE: DocumentType = 'corrected';
 
 /**
  * Default ceiling on the issuance status poll. THIS LANE'S OWN BUDGET, which is
@@ -161,7 +186,9 @@ if (MAX_STATUS_POLL_TIMEOUT_MS >= EPARAGONY_ISSUE_DEADLINE_MS) {
  */
 const ISSUED_STATUSES: readonly string[] = [EPARAGONY_STATUS_CONFIRMED, EPARAGONY_STATUS_OFFLINE];
 
-export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatusReader {
+export class EparagonyInvoicingAdapter
+  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer
+{
   constructor(
     private readonly connectionId: string,
     private readonly http: IEparagonyHttpClient,
@@ -172,7 +199,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
   async issueInvoice(cmd: IssueInvoiceCommand): Promise<IssueInvoiceResult> {
     this.assertIssuableDocument(cmd);
 
-    const registrationKey = this.resolveRegistrationKey(cmd);
+    const registrationKey = this.resolveRegistrationKey(cmd.orderId, cmd.idempotencyKey, 'invoice');
     const documentToken = deriveDocumentToken(this.connectionId, registrationKey);
     const transactionToken = deriveTransactionToken(this.connectionId, registrationKey);
 
@@ -201,6 +228,61 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
   }
 
   /**
+   * `CorrectionIssuer.issueCorrection` (#3193) - the vendor's
+   * `eCorrectiveInvoice` document kind, reached over the SAME `POST /documents`
+   * endpoint and the SAME bounded status poll `issueInvoice` uses, with a
+   * different composed body (`composeCorrectiveInvoiceDocument`).
+   *
+   * The registration key is namespaced `'correction'`, distinct from a plain
+   * issue's `'invoice'`: an idempotency-key-less correction on the SAME order
+   * must derive a DIFFERENT `documentToken`/`transactionToken` pair than the
+   * original invoice did, or the vendor - which dedupes on exactly that token -
+   * would answer the correction with the original document and OpenLinker would
+   * record a correction that was never issued.
+   *
+   * There is no `assertIssuableDocument` counterpart here: the caller has
+   * already chosen the correction capability, so `documentType` describes the
+   * document being produced rather than selecting one this adapter may not
+   * compose.
+   */
+  async issueCorrection(cmd: IssueCorrectionCommand): Promise<IssueInvoiceResult> {
+    const registrationKey = this.resolveRegistrationKey(
+      cmd.orderId,
+      cmd.idempotencyKey,
+      'correction',
+    );
+    const documentToken = deriveDocumentToken(this.connectionId, registrationKey);
+    const transactionToken = deriveTransactionToken(this.connectionId, registrationKey);
+
+    // Composition failures throw `EparagonyConfigException`
+    // (`failureMode: 'rejected'`) BEFORE anything crosses the boundary.
+    const { request, documentLines } = composeCorrectiveInvoiceDocument({
+      command: cmd,
+      config: this.config,
+      documentToken,
+      transactionToken,
+    });
+
+    const deadline = Date.now() + EPARAGONY_ISSUE_DEADLINE_MS;
+
+    await this.createDocument(request, documentToken, cmd.orderId, deadline);
+    const status = await this.pollToSettledIssuance(documentToken, deadline, cmd.orderId);
+
+    return this.buildIssueResult(
+      {
+        orderId: cmd.orderId,
+        documentType: cmd.documentType,
+        idempotencyKey: cmd.idempotencyKey,
+        issuedAt: cmd.issuedAt,
+      },
+      DEFAULT_CORRECTION_DOCUMENT_TYPE,
+      status,
+      documentToken,
+      documentLines,
+    );
+  }
+
+  /**
    * Refuse a document this adapter does not issue, before anything is composed.
    *
    * `getSupportedDocumentTypes()` declares `['invoice']` and NOTHING ENFORCES IT
@@ -211,23 +293,27 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
    * record was stamped with the type it asked for - two documents disagreeing
    * about what was issued, one of them transmitted to a tax authority.
    *
-   * A correction is the concrete case and the reason this exists: the vendor
-   * models one as its own `eCorrectiveInvoice` document with its own
-   * before/after metadata pair, which this adapter does not compose (#3193), and
-   * `cmd.correction` is read nowhere else here - so without this guard the
-   * linkage would be silently dropped. Refusing makes the #3193 boundary
-   * explicit rather than implicit.
+   * A correction is the concrete case, though its remedy changed with #3193:
+   * the vendor's `eCorrectiveInvoice` IS composed now, but only through the
+   * dedicated `CorrectionIssuer.issueCorrection` capability, over its own
+   * before/after metadata pair. `IssueInvoiceCommand.correction` is a SEPARATE,
+   * narrower field for a provider that corrects through its plain issue call -
+   * this adapter is not that shape, and `cmd.correction` is read nowhere else
+   * here, so without this guard the linkage would be silently dropped rather
+   * than routed to the capability that actually issues it.
    *
    * `EparagonyConfigException` for both, so `failureMode` is `'rejected'` with
    * nothing sent - which is exactly true here, and makes re-attempting safe once
-   * the caller asks for a document this adapter issues.
+   * the caller asks for a document this adapter issues (or resubmits through
+   * `issueCorrection` instead).
    */
   private assertIssuableDocument(cmd: IssueInvoiceCommand): void {
     if (cmd.correction !== undefined) {
       throw new EparagonyConfigException(
-        `eparagony.pl cannot issue a correction for order ${cmd.orderId}: a correction is the ` +
-          `vendor's own eCorrectiveInvoice document, which this adapter does not compose`,
-        'This connection cannot issue correction documents yet, only original invoices.',
+        `eparagony.pl cannot issue a correction for order ${cmd.orderId} via issueInvoice: a ` +
+          `correction is the vendor's own eCorrectiveInvoice document, issued through the ` +
+          `CorrectionIssuer capability instead`,
+        'This connection issues corrections through its correction capability, not the plain invoice call.',
         this.connectionId,
       );
     }
@@ -334,7 +420,10 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
   // -------------------------------------------------------------------------
 
   private async createDocument(
-    body: EparagonyCreateInvoiceRequest,
+    // A correction shares this create/poll machinery over its own SIBLING
+    // document kind (#3193) - both bodies key off the same `documentToken` /
+    // `transactionToken` pair, so the HTTP call itself is body-shape-agnostic.
+    body: EparagonyCreateInvoiceRequest | EparagonyCreateCorrectiveInvoiceRequest,
     documentToken: string,
     orderId: string,
     deadline: number,
@@ -363,7 +452,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
         timeoutMs,
       });
       this.logger.log(
-        `eparagony.pl accepted the invoice for order ${orderId} as ${documentToken} ` +
+        `eparagony.pl accepted the document for order ${orderId} as ${documentToken} ` +
           `[connectionId=${this.connectionId}]`,
       );
     } catch (error) {
@@ -510,14 +599,50 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
     documentToken: string,
     documentLines: IssuedDocumentLineAmounts[],
   ): IssueInvoiceResult {
+    return this.buildIssueResult(
+      {
+        orderId: cmd.orderId,
+        documentType: cmd.documentType,
+        idempotencyKey: cmd.idempotencyKey,
+        issuedAt: cmd.issuedAt,
+      },
+      'invoice',
+      status,
+      documentToken,
+      documentLines,
+    );
+  }
+
+  /**
+   * Shared by `issueInvoice` and `issueCorrection`: an original invoice and a
+   * correction resolve to ONE `InvoiceRecord` shape, over the same status-read
+   * projections (`toRegulatoryClearanceResult`, `readInvoiceNumber`,
+   * `readDocumentUrl`) and the same optional-seller rule. Only the default
+   * document type and the caller's own command fields differ, which is why the
+   * command arrives here already projected onto the four fields that are read -
+   * a shared method typed on the union of two commands would invite reading a
+   * field only one of them carries.
+   */
+  private buildIssueResult(
+    params: {
+      orderId: string;
+      documentType?: string;
+      idempotencyKey?: string;
+      issuedAt?: Date;
+    },
+    defaultDocumentType: DocumentType,
+    status: EparagonyDocumentStatusResponse,
+    documentToken: string,
+    documentLines: IssuedDocumentLineAmounts[],
+  ): IssueInvoiceResult {
     const clearance = toRegulatoryClearanceResult(status);
     const now = new Date();
     const record = new InvoiceRecord(
       randomUUID(),
       this.connectionId,
-      cmd.orderId,
+      params.orderId,
       EPARAGONY_PROVIDER_TYPE,
-      cmd.documentType ?? 'invoice',
+      params.documentType ?? defaultDocumentType,
       'issued',
       // The vendor's ONLY document key, and ours: deterministic, so a later
       // clearance read re-derives it from the same registration key.
@@ -525,7 +650,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
       readInvoiceNumber(status),
       clearance.regulatoryStatus,
       clearance.clearanceReference ?? null,
-      cmd.idempotencyKey ?? null,
+      params.idempotencyKey ?? null,
       // The vendor publishes an HTML visualisation rather than a PDF, and this
       // is the only slot on the neutral record for a link to the issued
       // document. Unlike the receipt lane it is NOT gated on `CONFIRMED`: an
@@ -536,7 +661,7 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
       // `endTime` is deliberately NOT used: it came back as an instant in the
       // PAST on a freshly-issued document, which looks like a window boundary
       // rather than an issue time, and surfacing it would misdate the document.
-      cmd.issuedAt ?? now,
+      params.issuedAt ?? now,
       null,
       now,
       now,
@@ -552,15 +677,26 @@ export class EparagonyInvoicingAdapter implements InvoicingPort, RegulatoryStatu
   /**
    * The key both tokens are derived from.
    *
-   * `IssueInvoiceCommand.idempotencyKey` is optional, and without one there is
-   * nothing deterministic to derive from - so a per-(connection, order) key
-   * stands in. That is not a weaker guarantee for the invariant that matters:
-   * one order on one connection gets one document either way, which is the
+   * `idempotencyKey` is optional on both commands, and without one there is
+   * nothing deterministic to derive from - so a per-(connection, order, KIND)
+   * key stands in. `kind` namespaces an original invoice apart from a
+   * correction UNCONDITIONALLY - including a caller-supplied key - because a
+   * correction sharing an original invoice's caller-supplied key would derive
+   * the SAME `documentToken`/`transactionToken` pair the original invoice did,
+   * and the vendor - which dedupes on that token - would answer the correction
+   * with the original, unmodified document rather than creating one.
+   *
+   * That is not a weaker guarantee for the invariant that matters: one order on
+   * one connection gets one document OF A GIVEN KIND either way, which is the
    * one-originating-document rule (ADR-041) expressed at the token.
    */
-  private resolveRegistrationKey(cmd: IssueInvoiceCommand): string {
-    const supplied = cmd.idempotencyKey?.trim() ?? '';
-    return supplied.length > 0 ? supplied : `invoice:${this.connectionId}:${cmd.orderId}`;
+  private resolveRegistrationKey(
+    orderId: string,
+    idempotencyKey: string | undefined,
+    kind: 'invoice' | 'correction',
+  ): string {
+    const supplied = idempotencyKey?.trim() ?? '';
+    return supplied.length > 0 ? `${kind}:${supplied}` : `${kind}:${this.connectionId}:${orderId}`;
   }
 
   /** Clamp the operator's poll timeout into the range the deadline invariant allows. */

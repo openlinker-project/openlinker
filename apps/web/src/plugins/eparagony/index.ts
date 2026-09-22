@@ -28,10 +28,18 @@
  * visualisation rather than a PDF. Both live in
  * `EparagonyInvoiceDetailSection`; neither belongs in a shared component.
  *
+ * The adapter also implements `CorrectionIssuer` (#3193), so this plugin
+ * registers `invoiceCorrectionFlow` too — a near-1:1 port of the
+ * KSeF/inFakt/Subiekt correction forms, all built on the same generic
+ * `POST /invoices/:invoiceId/correct` endpoint. Without it an eparagony
+ * invoice had no "Issue correction" action at all — the host only renders
+ * that entry point when a plugin declares this slot.
+ *
  * @module plugins/eparagony
  */
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
+import { EparagonyInvoiceCorrectionFlow } from './components/eparagony-invoice-correction-flow';
 import { EparagonyInvoiceDetailSection } from './components/eparagony-invoice-detail-section';
 import { EparagonyStructuredSection } from './components/eparagony-structured-section';
 import { eparagonyConnectionConfig } from './eparagony-connection-config';
@@ -54,5 +62,6 @@ export const eparagonyPlugin: OpenLinkerPlugin = definePlugin({
     StructuredConfigSection: EparagonyStructuredSection,
     connectionConfig: eparagonyConnectionConfig,
     invoiceDetailSection: EparagonyInvoiceDetailSection,
+    invoiceCorrectionFlow: EparagonyInvoiceCorrectionFlow,
   },
 });

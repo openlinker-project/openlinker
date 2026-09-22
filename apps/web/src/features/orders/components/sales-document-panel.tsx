@@ -719,10 +719,16 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
       : { state: t('salesDocument.kind.none', 'Not issued'), tone: 'idle' as const, identity: null };
 
   return (
-    <section className="detail-section sales-document-panel">
+    /*
+      `sales-document-panel` / `sales-document-status` are the literal hooks
+      `docs/plans/mockups/sales-document-tax-number-on-receipt.html` declares
+      for this panel and its headline pill (#3196).
+    */
+    <section className="detail-section sales-document-panel" data-testid="sales-document-panel">
       <header className="sales-document-panel__header">
         <h3 className="detail-section__title">{t('salesDocument.panel.title', 'Sales document')}</h3>
         <DocumentHeadline
+          data-testid="sales-document-status"
           kind={showInvoiceSlot ? 'invoice' : showFiscalSlot ? 'fiscal-receipt' : null}
           state={headlineModel.state}
           tone={headlineModel.tone}
@@ -1097,6 +1103,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           {registerBlockedByInvoice ? (
             <Alert
               tone="warning"
+              data-testid="one-document-guard"
               title={t('salesDocument.blocked.receiptTitle', 'This order already has a document')}
             >
               {t(
@@ -1283,6 +1290,7 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
           {issueBlockedByReceipt ? (
             <Alert
               tone="warning"
+              data-testid="one-document-guard"
               title={t('salesDocument.blocked.invoiceTitle', 'This order already has a document')}
             >
               {t(
@@ -1451,7 +1459,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
               (whose primary action is fixing routing, not overriding it per
               order) and the existing `routing-disclosure` pattern above. */}
           {canIssueInvoiceManually || canRegisterReceiptManually ? (
-            <details className="sales-document-panel__routing-disclosure">
+            <details
+              className="sales-document-panel__routing-disclosure"
+              data-testid="sales-document-why-connection"
+            >
               <summary>{t('salesDocument.panel.manualOverride', 'Issue or register manually instead')}</summary>
 
               {/* Issue-invoice affordance — the override (#2561): admin-only, and
