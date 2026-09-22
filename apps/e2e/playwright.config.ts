@@ -344,5 +344,18 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
+    {
+      // Pack bench + Assign Packing Work (#3342/#3343) — mockup parity for
+      // both OMS staffing screens. MUTATING: seeds `fulfillment_works` rows
+      // directly via Postgres (see `support/bench-seed.ts`'s header for why)
+      // and provisions throwaway `packer` accounts through the real
+      // register+approve flow. `retries: 0`: a silent retry would
+      // re-provision a packer and re-seed mid-assertion.
+      name: 'bench',
+      testMatch: /bench\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
   ],
 });

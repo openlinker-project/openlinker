@@ -94,13 +94,29 @@ test.describe('pack bench redesign mockup parity (#3342)', () => {
     }
 
     await test.step('empty', async () => {
+      // The mockup's `empty` pill is labelled "Nothing routed" and its panel
+      // is the NOT-ROUTED empty state, not the idle/pipe-healthy one — see
+      // `seedBenchState`'s own comment. `seedBenchState('empty')` disables
+      // `sourcingAuthority` on the seeded OMS connection to match.
       await seedBenchState('empty');
+
+      // The worklist is INSTALL-WIDE, not scoped to this suite's own rows
+      // (`listPackingExecutors()` is unscoped by packer identity — spec D2).
+      // On a SHARED stack another connection may still carry accepted work
+      // this seed cannot clear (verified live: a demo stack's own
+      // pre-existing OMS connection/work rows), in which case the bench can
+      // never read empty however this suite's own connection is configured.
+      // Skip with a named reason rather than asserting an install-wide fact
+      // this fixture cannot guarantee.
+      const stillHasWork = (await packer!.client.bench.listWork()).works.length;
+      test.skip(
+        stillHasWork > 0,
+        'bench worklist is not empty on this stack (other connections carry accepted work this seed cannot clear) — the not-routed empty state is unreachable here',
+      );
+
       await pages.packBenchMockup.gotoState('empty');
       await pages.bench.goto();
-      // A packer's own idle bench with routing switched on is the IDLE empty
-      // state — never the not-routed one, which this stack's seeded
-      // `sourcingAuthority`-claiming OMS connection makes unreachable here.
-      await expect(pages.bench.emptyIdle).toBeVisible();
+      await expect(pages.bench.emptyNotRouted).toBeVisible();
       await captureBoth(testInfo, pages.packBenchMockup.regionFor('empty'), page, 'empty');
     });
 

@@ -31,6 +31,11 @@ export class BenchPage {
       .filter({ has: this.page.locator('.bench-work-row__reference', { hasText: orderReference }) });
   }
 
+  /** The worklist row for `workId` (the row's own `data-work-id`), by its internal id. */
+  rowForWorkId(workId: string): Locator {
+    return this.page.locator(`[data-testid="bench-work-row"][data-work-id="${workId}"]`);
+  }
+
   async openParcel(orderReference: string): Promise<void> {
     await this.rowFor(orderReference).getByRole('button', { name: 'Open parcel' }).click();
     await expect(this.page.locator('[data-testid="bench-parcel"]')).toBeVisible();

@@ -3,11 +3,18 @@
  *
  * Drives the REPO-COMMITTED mockup file directly off disk
  * (`docs/plans/mockups/pack-bench-redesign.html`) via a `file://` URL — never
- * a Claude Artifact URL, matching `AnalyticsMockupPage`'s own hard rule. Each
- * `data-state` is a `<div data-state="…">` inside `<main class="panel">`,
- * switched by clicking `[data-state-btn="…"]` in the mockup's own state
- * switcher strip; `locked` is a full-screen overlay layered on top rather
- * than an inner panel swap.
+ * a Claude Artifact URL, matching `AnalyticsMockupPage`'s own hard rule.
+ * Switched by clicking `[data-state-btn="…"]` in the mockup's own state
+ * switcher strip.
+ *
+ * Most `[data-state="…"]` panels live inside `<main class="panel">`
+ * (`working`/`ready`/`hold`/`unlabelled`) — but NOT all of them: `empty`
+ * (`<section data-bench-body="empty" data-state="empty" hidden>`) sits in the
+ * left rail, entirely OUTSIDE `<main>` (verified against the file: `<main>`
+ * opens at line 402, the `empty` section at line 322). A `main [data-state]`
+ * selector silently never matches it. The lookup is therefore page-wide,
+ * never scoped to `<main>`; `locked` is a full-screen overlay layered on top
+ * rather than an inner panel swap, and is handled as its own case.
  *
  * @module pages
  */
@@ -39,7 +46,7 @@ export class PackBenchMockupPage {
 
   async goto(): Promise<void> {
     await this.page.goto(`file://${PACK_BENCH_MOCKUP_FILE_PATH}`);
-    await expect(this.page.locator('main [data-state="working"]')).toBeVisible();
+    await expect(this.page.locator('[data-state="working"]')).toBeVisible();
   }
 
   async gotoState(state: PackBenchMockupState): Promise<void> {
@@ -51,12 +58,12 @@ export class PackBenchMockupPage {
       await expect(this.page.locator('#lockOverlay')).toBeVisible();
       return;
     }
-    await expect(this.page.locator(`main [data-state="${state}"]`)).toBeVisible();
+    await expect(this.page.locator(`[data-state="${state}"]`)).toBeVisible();
   }
 
   /** The region to screenshot for `state`. */
   regionFor(state: PackBenchMockupState): Locator {
     if (state === 'locked') return this.page.locator('#lockOverlay');
-    return this.page.locator(`main [data-state="${state}"]`);
+    return this.page.locator(`[data-state="${state}"]`);
   }
 }

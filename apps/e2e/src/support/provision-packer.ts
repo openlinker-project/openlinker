@@ -25,6 +25,7 @@ import { findUserByUsername, uniqueCreds, type Credentials } from './access-cont
 export interface ProvisionedPacker {
   readonly client: ApiClient;
   readonly creds: Credentials;
+  readonly id: string;
 }
 
 /**
@@ -36,6 +37,20 @@ export async function provisionPacker(
   env: E2eEnv,
   adminClient: ApiClient,
 ): Promise<ProvisionedPacker | null> {
+  if (env.packerUser && env.packerPass) {
+    const seeded = new ApiClient({ baseUrl: env.apiUrl });
+    await seeded.login(env.packerUser, env.packerPass);
+    const found = await findUserByUsername(adminClient, env.packerUser);
+    if (!found) {
+      throw new Error(`E2E_PACKER_USER "${env.packerUser}" logged in but is not visible to the admin user list`);
+    }
+    return {
+      client: seeded,
+      creds: { username: env.packerUser, email: '', password: env.packerPass },
+      id: found.id,
+    };
+  }
+
   const creds = uniqueCreds('e2e-packer');
 
   try {
@@ -60,7 +75,7 @@ export async function provisionPacker(
 
   const client = new ApiClient({ baseUrl: env.apiUrl });
   await client.login(creds.username, creds.password);
-  return { client, creds };
+  return { client, creds, id: found.id };
 }
 
 /** Log a browser context into a provisioned packer's session (#3342/#3343). */

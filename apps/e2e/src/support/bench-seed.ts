@@ -30,7 +30,8 @@
  *
  * @module support
  */
-import { Client } from 'pg';
+import pg from 'pg';
+type Client = InstanceType<typeof pg.Client>;
 import { resolveEnv } from '../config/env';
 import { assertSeedableDatabase } from './assert-seedable-database';
 
@@ -102,10 +103,14 @@ async function ensureFixtures(client: Client): Promise<void> {
      ON CONFLICT (id) DO NOTHING`,
     [BENCH_SEED_IDS.sourceConnection],
   );
+  // `config` is reset on conflict too — a prior `empty`-state run flips
+  // `sourcingAuthority.enabled` to `false` (see below) and, unlike the other
+  // columns here, that would otherwise persist across every LATER seed call,
+  // since `ON CONFLICT` only touches the columns it names.
   await client.query(
     `INSERT INTO connections (id, "platformType", name, status, config, "credentialsRef", "enabledCapabilities")
      VALUES ($1, 'openlinker', 'E2E packing bench', 'active', '{"sourcingAuthority":{"enabled":true}}'::jsonb, '', '["FulfillmentExecutor"]'::jsonb)
-     ON CONFLICT (id) DO UPDATE SET status = 'active', "enabledCapabilities" = '["FulfillmentExecutor"]'::jsonb`,
+     ON CONFLICT (id) DO UPDATE SET status = 'active', config = '{"sourcingAuthority":{"enabled":true}}'::jsonb, "enabledCapabilities" = '["FulfillmentExecutor"]'::jsonb`,
     [BENCH_SEED_IDS.omsConnection],
   );
   await client.query(
@@ -142,17 +147,29 @@ async function insertWork(
   orderId: string,
   opts: { fulfilledQuantity: number; parcelClosedAt: string | null },
 ): Promise<void> {
+  // `CHK_fulfillment_works_closed_parcel_actor` refuses a closed parcel
+  // naming neither `packedByUserId` nor `packedByService` — a closed row
+  // must always name who packed it. `packedByService` (never
+  // `packedByUserId`, which would collide with `CHK_fulfillment_works_packed_actor`'s
+  // mutual-exclusion) is set only when `parcelClosedAt` is being seeded.
   await client.query(
     `INSERT INTO fulfillment_works
-       (id, "orderId", "locationId", "assignedConnectionId", "deliveryMethod", status, "requestStatus", "acceptedAt", "parcelClosedAt")
-     VALUES ($1, $2, $3, $4, 'courier', 'open', 'accepted', now(), $5)`,
-    [workId, orderId, BENCH_SEED_IDS.location, BENCH_SEED_IDS.omsConnection, opts.parcelClosedAt],
+       (id, "orderId", "locationId", "assignedConnectionId", "deliveryMethod", status, "requestStatus", "acceptedAt", "parcelClosedAt", "packedByService")
+     VALUES ($1, $2, $3, $4, 'courier', 'open', 'accepted', now(), $5, $6)`,
+    [
+      workId,
+      orderId,
+      BENCH_SEED_IDS.location,
+      BENCH_SEED_IDS.omsConnection,
+      opts.parcelClosedAt,
+      opts.parcelClosedAt === null ? null : 'e2e-seed',
+    ],
   );
   await client.query(
     `INSERT INTO fulfillment_work_lines
-       (id, "fulfillmentWorkId", "productVariantId", "totalQuantity", "fulfilledQuantity", "cancelledQuantity")
-     VALUES ($1, $2, $3, 2, $4, 0)`,
-    [`${workId}-line1`, workId, BENCH_SEED_IDS.variant, opts.fulfilledQuantity],
+       (id, "fulfillmentWorkId", "orderLineId", "productVariantId", "totalQuantity", "fulfilledQuantity", "cancelledQuantity")
+     VALUES (gen_random_uuid(), $1, 'line-1', $2, 2, $3, 0)`,
+    [workId, BENCH_SEED_IDS.variant, opts.fulfilledQuantity],
   );
 }
 
@@ -163,7 +180,7 @@ async function insertWork(
 export async function seedBenchState(state: BenchSeedState): Promise<BenchSeedResult | null> {
   assertSeedableDatabase(`seedBenchState:${state}`);
   const env = resolveEnv();
-  const client = new Client({ connectionString: env.databaseUrl });
+  const client = new pg.Client({ connectionString: env.databaseUrl });
   await client.connect();
   try {
     await client.query('BEGIN');
@@ -171,6 +188,17 @@ export async function seedBenchState(state: BenchSeedState): Promise<BenchSeedRe
     await ensureFixtures(client);
 
     if (state === 'empty') {
+      // The mockup's own `empty` pill reads "Nothing routed" and its panel
+      // copy is "OpenLinker is not sending packing work here… turns on
+      // packing… who decides what" — the NOT-ROUTED empty state
+      // (`BenchWorkEmpty`'s `routingReady: false` arm), not the idle,
+      // pipe-healthy one. Disabling `sourcingAuthority` here is what makes
+      // the real app match what the mockup actually demonstrates; the idle
+      // variant has no mockup panel to compare against and is out of scope.
+      await client.query(
+        `UPDATE connections SET config = '{"sourcingAuthority":{"enabled":false}}'::jsonb WHERE id = $1`,
+        [BENCH_SEED_IDS.omsConnection],
+      );
       await client.query('COMMIT');
       return null;
     }
@@ -196,13 +224,23 @@ export async function seedBenchState(state: BenchSeedState): Promise<BenchSeedRe
         );
         break;
       case 'unlabelled':
-        // Closed, and deliberately no `shipments` row at all — `listUnlabelled` /
-        // the closed-parcel documents panel read a work with NO shipment as
-        // `label.state === 'unavailable'`.
+        // Closed, PLUS a real `shipments` row whose label attempt FAILED
+        // (`providerShipmentId IS NULL`). `BenchDocumentsService.describeLabel`
+        // maps a work with NO shipment row at all to `state: 'none'` (never
+        // attempted), and only a shipment that exists but carries no
+        // provider id to `state: 'unavailable'` — the "packed, no label"
+        // panel Surface F renders. A closed work with zero shipment rows is
+        // a different, unrelated state.
         await insertWork(client, workId, orderId, {
           fulfilledQuantity: 2,
           parcelClosedAt: new Date().toISOString(),
         });
+        await client.query(
+          `INSERT INTO shipments
+             (id, "orderId", "connectionId", "fulfillmentWorkId", "shippingMethod", status, direction, carrier, "providerCode", "errorMessage", "failedAt")
+           VALUES ($1, $2, $3, $4, 'courier', 'failed', 'outbound', 'InPost', 'LABEL_GENERATION_FAILED', 'E2E seeded label failure', now())`,
+          [`ol_shipment_${workId}`, orderId, BENCH_SEED_IDS.omsConnection, workId],
+        );
         break;
     }
 
@@ -220,7 +258,7 @@ export async function seedBenchState(state: BenchSeedState): Promise<BenchSeedRe
 export async function clearBenchSeed(): Promise<void> {
   assertSeedableDatabase('clearBenchSeed');
   const env = resolveEnv();
-  const client = new Client({ connectionString: env.databaseUrl });
+  const client = new pg.Client({ connectionString: env.databaseUrl });
   await client.connect();
   try {
     await clean(client);
