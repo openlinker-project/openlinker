@@ -90,6 +90,28 @@ export class ProductVariantOrmEntity {
   @Column({ type: 'varchar', length: 32, nullable: true })
   taxRateUnknownReason!: string | null;
 
+  /**
+   * Physical weight/dimensions master data (#3403, mockup-parity epic #3401).
+   * Operator-authored at the product/variant level, never captured at the
+   * pack bench — the bench (#3419) only DISPLAYS these, it never scales or
+   * measures a parcel. `null` means "not recorded", not zero.
+   *
+   * Units: grams and millimetres, matching `weightGrams`'s existing sibling
+   * usage in `libs/core/src/shipping` (`ParcelSpec.weightGrams`) so a value
+   * captured here needs no conversion when it later feeds a real shipment.
+   */
+  @Column({ type: 'int', nullable: true })
+  weightGrams!: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  lengthMm!: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  widthMm!: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  heightMm!: number | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

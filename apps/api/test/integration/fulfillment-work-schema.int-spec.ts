@@ -177,6 +177,9 @@ describe('Fulfillment Work Schema Integration', () => {
         // new parcel exclusive and break nothing else visibly.
         'selfServeEligible boolean NOT NULL DEFAULT true',
         "status character varying(32) NOT NULL DEFAULT 'open'::character varying",
+        // #3424. Moves in the SAME guarded statement as `assignedToUserId`,
+        // never on its own - see the repository's per-column writer table.
+        'unassignedSince timestamp with time zone NULL',
         'updatedAt timestamp with time zone NOT NULL DEFAULT now()',
         'version integer NOT NULL DEFAULT 0',
       ]);

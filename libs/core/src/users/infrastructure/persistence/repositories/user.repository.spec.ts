@@ -31,6 +31,8 @@ describe('UserRepository', () => {
     role: 'viewer',
     status: 'pending',
     analyticsConsent: true,
+    packStationLabel: null,
+    lastActiveAt: null,
     createdAt: now,
     updatedAt: now,
     ...overrides,

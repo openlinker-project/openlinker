@@ -199,6 +199,22 @@ export class FulfillmentWorkOrmEntity {
   @Column({ type: 'boolean', default: true })
   selfServeEligible!: boolean;
 
+  /**
+   * When this work object last BECAME unassigned (#3424, mockup-parity epic
+   * #3401) — set alongside `assignedToUserId` going `null` (creation with no
+   * pre-assignment counts), cleared back to `null` the moment a supervisor
+   * assigns it. Feeds the Assign Packing Work board's "oldest unassigned"
+   * metric (#3428), which needs a durable instant rather than a value
+   * re-derived from `updatedAt` — a column this table's five writers touch
+   * for unrelated reasons.
+   *
+   * No index: read only as part of the operator worklist projection (#3425),
+   * already narrowed to unassigned rows by `assignedToUserId IS NULL` — an
+   * index nothing else reads is cost on every write to this table.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  unassignedSince!: Date | null;
+
   /** `FulfillmentWorkStatus`. Narrowed on read by `isFulfillmentWorkStatus`. */
   @Column({ type: 'varchar', length: 32, default: 'open' })
   status!: string;

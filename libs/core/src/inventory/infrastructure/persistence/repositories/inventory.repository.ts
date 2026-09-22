@@ -146,6 +146,10 @@ export const INVENTORY_DB_MANAGED_COLUMNS = ['updatedAt'] as const;
  */
 export const INVENTORY_OL_OWNED_COLUMNS: readonly (keyof InventoryItemOrmEntity)[] = [
   'olReservedQuantity',
+  // #3402, mockup-parity epic #3401. Operator-authored bin/shelf code - a
+  // master sync reports nothing resembling it, and if one ever did, writing
+  // it here would blank an operator's typed-in value on the next pull.
+  'binCode',
 ];
 
 @Injectable()
