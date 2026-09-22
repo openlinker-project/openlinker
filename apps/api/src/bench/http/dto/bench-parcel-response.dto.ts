@@ -26,7 +26,10 @@ import {
   ParcelVerificationRefusalValues,
 } from '@openlinker/core/fulfillment';
 
-import { BenchParcelRefusalValues } from '../../application/types/bench-parcel.types';
+import {
+  BenchClaimRefusalValues,
+  BenchParcelRefusalValues,
+} from '../../application/types/bench-parcel.types';
 
 export class BenchParcelLineResponseDto {
   @ApiProperty({ description: 'Id of this line within the work object' })
@@ -193,6 +196,48 @@ export class BenchReopenResultResponseDto {
 
   @ApiProperty({ type: BenchParcelResponseDto })
   parcel!: BenchParcelResponseDto;
+}
+
+export class BenchClaimResultResponseDto {
+  @ApiProperty({ enum: ['claimed', 'refused'] })
+  outcome!: string;
+
+  @ApiProperty({ nullable: true, enum: BenchClaimRefusalValues })
+  reason!: string | null;
+
+  @ApiProperty({ type: BenchParcelResponseDto })
+  parcel!: BenchParcelResponseDto;
+}
+
+export class BenchClaimNextResultResponseDto {
+  @ApiProperty({ enum: ['claimed', 'nothing-to-claim'] })
+  outcome!: string;
+
+  @ApiProperty({
+    nullable: true,
+    type: BenchParcelResponseDto,
+    description: 'Null when outcome is nothing-to-claim',
+  })
+  parcel!: BenchParcelResponseDto | null;
+}
+
+export class BenchActivityEntryResponseDto {
+  @ApiProperty() workLineId!: string;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'The product name, or null when the variant is not in the catalogue',
+  })
+  name!: string | null;
+
+  @ApiProperty({ enum: ['verified', 'undone'] })
+  kind!: string;
+
+  @ApiProperty({ description: "The instant THIS entry reports" })
+  at!: string;
+
+  @ApiProperty({ nullable: true })
+  byUserId!: string | null;
 }
 
 export class BenchPresenceResponseDto {

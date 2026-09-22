@@ -39,7 +39,10 @@ function view(over: Partial<BenchWorkListView> = {}): BenchWorkListView {
 }
 
 function controllerFor(result: BenchWorkListView): BenchWorkController {
-  const bench: IBenchWorkService = { listBenchWork: jest.fn().mockResolvedValue(result) };
+  const bench: IBenchWorkService = {
+    listBenchWork: jest.fn().mockResolvedValue(result),
+    claimNext: jest.fn(),
+  };
   return new BenchWorkController(bench);
 }
 

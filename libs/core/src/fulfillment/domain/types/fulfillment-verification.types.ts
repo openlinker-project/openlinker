@@ -307,6 +307,22 @@ export interface ReopenParcelInput {
   readonly expectedVersion?: number;
 }
 
+/**
+ * One row of the per-unit ledger, as recorded (#3411, mockup-parity epic
+ * #3401) — never interpreted into "verified" vs. "undone" here, which is a
+ * presentation decision the caller makes from `voidedAt`'s presence. This is
+ * the SAME ledger `countParcelVerifications` aggregates; this read is its
+ * unaggregated counterpart for a "recent activity" log.
+ */
+export interface ParcelVerificationEvent {
+  readonly workLineId: string;
+  readonly verifiedByUserId: string | null;
+  readonly verifiedAt: Date;
+  /** `null` while the unit still counts. Non-null means voided — by a reopen or by #3405's undo. */
+  readonly voidedAt: Date | null;
+  readonly voidedByUserId: string | null;
+}
+
 /** What `reopenParcel` answers. */
 export type ReopenParcelResult =
   | { readonly outcome: 'reopened'; readonly state: ParcelVerificationState }

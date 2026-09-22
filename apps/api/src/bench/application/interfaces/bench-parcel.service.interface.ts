@@ -15,6 +15,8 @@
 import type { FulfillmentWorkView } from '@openlinker/core/fulfillment';
 
 import type {
+  BenchActivityEntryView,
+  BenchClaimResultView,
   BenchParcelView,
   BenchReopenResultView,
   BenchUndoResultView,
@@ -94,4 +96,20 @@ export interface IBenchParcelService {
    * rather than reopening the box as a side effect.
    */
   undoLastScan(input: BenchUndoInput): Promise<BenchUndoResultView>;
+
+  /**
+   * Recent activity for this parcel (#3411), newest first — the verification
+   * ledger projected with each line's product name.
+   */
+  listActivity(workId: string): Promise<BenchActivityEntryView[]>;
+
+  /**
+   * "Claim this parcel" (#3412) — a packer self-assigns a SPECIFIC parcel
+   * they chose. `viewerId` is always the write's own target: this route can
+   * never assign a parcel to anyone but the caller, which is the whole
+   * difference from `PATCH :workId/assignment` (a supervisor's decision,
+   * `@Roles('admin','operator')`, able to name anyone). Refused exactly as
+   * `verifyUnit` would refuse a scan at this parcel, plus the ADR-074 lock.
+   */
+  claimParcel(workId: string, viewerId: string): Promise<BenchClaimResultView>;
 }

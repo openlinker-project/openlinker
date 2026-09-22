@@ -80,6 +80,8 @@ import type {
   IBenchParcelService,
 } from '../interfaces/bench-parcel.service.interface';
 import type {
+  BenchActivityEntryView,
+  BenchClaimResultView,
   BenchParcelLineView,
   BenchParcelRefusal,
   BenchParcelView,
@@ -242,6 +244,96 @@ export class BenchParcelService implements IBenchParcelService {
       reason: result.outcome === 'refused' ? result.reason : null,
       parcel: await this.project(work, result.state),
     };
+  }
+
+  async listActivity(workId: string): Promise<BenchActivityEntryView[]> {
+    const work = await this.loadBenchWork(workId);
+    const [events, variants] = await Promise.all([
+      this.verification.listVerifications(workId),
+      work.lines.length === 0
+        ? Promise.resolve([])
+        : this.products.getVariantsByIds([
+            ...new Set(work.lines.map((line) => line.productVariantId)),
+          ]),
+    ]);
+
+    const variantById = new Map(variants.map((variant) => [variant.id, variant]));
+    const productIds = [...new Set(variants.map((variant) => variant.productId))];
+    const products =
+      productIds.length === 0 ? [] : await this.products.getProductsByIds(productIds);
+    const productById = new Map(products.map((product) => [product.id, product]));
+    const lineById = new Map(work.lines.map((line) => [line.id, line]));
+
+    const nameForLine = (workLineId: string): string | null => {
+      const line = lineById.get(workLineId);
+      const variant = line === undefined ? undefined : variantById.get(line.productVariantId);
+      const product = variant === undefined ? undefined : productById.get(variant.productId);
+      return product?.name ?? null;
+    };
+
+    // One ledger row can produce TWO activity entries — the verify always
+    // happened, and a voided row means an undo happened LATER, at a
+    // different instant. Splitting them is what lets "verified" and "undone"
+    // both appear on the timeline in their own chronological place, rather
+    // than collapsing a corrected mistake into a single, misleading row.
+    const entries: BenchActivityEntryView[] = [];
+    for (const event of events) {
+      entries.push({
+        workLineId: event.workLineId,
+        name: nameForLine(event.workLineId),
+        kind: 'verified',
+        at: event.verifiedAt.toISOString(),
+        byUserId: event.verifiedByUserId,
+      });
+      if (event.voidedAt !== null) {
+        entries.push({
+          workLineId: event.workLineId,
+          name: nameForLine(event.workLineId),
+          kind: 'undone',
+          at: event.voidedAt.toISOString(),
+          byUserId: event.voidedByUserId,
+        });
+      }
+    }
+
+    // `listVerifications` is already newest-first by `verifiedAt`, which the
+    // split above can invalidate (a row's own `undone` entry sorts after its
+    // `verified` one, but an OLDER row's undo can still be more recent than
+    // a newer row's verify) — so the merged list is re-sorted by its own
+    // `at`.
+    entries.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    return entries;
+  }
+
+  async claimParcel(workId: string, viewerId: string): Promise<BenchClaimResultView> {
+    const work = await this.loadBenchWork(workId);
+
+    const refusal = this.refusalFor(work);
+    if (refusal !== null) {
+      const state = await this.verification.getState(workId);
+      return { outcome: 'refused', reason: refusal, parcel: await this.project(work, state) };
+    }
+
+    if (!isClaimableByViewer(work, viewerId)) {
+      const state = await this.verification.getState(workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-claimable',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    // Idempotent: claiming a parcel already assigned to THIS viewer (or
+    // unassigned-but-self-serve) writes the identical value again rather
+    // than being special-cased, so a double-tap or a retried request is
+    // harmless.
+    const claimed = await this.worklist.updateAssignment({
+      workId,
+      assignedToUserId: viewerId,
+    });
+
+    const state = await this.verification.getState(workId);
+    return { outcome: 'claimed', reason: null, parcel: await this.project(claimed, state) };
   }
 
   async undoLastScan(input: BenchUndoInput): Promise<BenchUndoResultView> {

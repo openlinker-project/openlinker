@@ -3,6 +3,7 @@
  *
  * @module apps/api/src/bench/application/interfaces
  */
+import type { BenchClaimNextResultView } from '../types/bench-parcel.types';
 import type { BenchWorkListView } from '../types/bench-work.types';
 
 export const BENCH_WORK_SERVICE_TOKEN = Symbol('IBenchWorkService');
@@ -23,4 +24,13 @@ export interface IBenchWorkService {
    * is computed against.
    */
   listBenchWork(viewerId: string): Promise<BenchWorkListView>;
+
+  /**
+   * "Take next task" (#3412) — picks the TOP eligible row from the
+   * already-sorted, already-eligibility-filtered worklist this viewer would
+   * see, and claims it. No new domain rule: sort order and eligibility are
+   * both already computed by `listBenchWork` / `compareBenchWork`, so this
+   * is a thin wrapper rather than a second ordering to keep in sync.
+   */
+  claimNext(viewerId: string): Promise<BenchClaimNextResultView>;
 }

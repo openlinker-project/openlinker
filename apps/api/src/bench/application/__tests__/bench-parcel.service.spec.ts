@@ -111,6 +111,7 @@ function harness(options: {
     listSiblingWorkIds: jest.fn().mockResolvedValue(options.siblings ?? new Map()),
     list: jest.fn(),
     applyAction: jest.fn(),
+    updateAssignment: jest.fn().mockResolvedValue(work),
   } as unknown as IFulfillmentWorklistService;
 
   const verification = {
@@ -118,6 +119,7 @@ function harness(options: {
     verifyUnit: jest.fn(),
     reopenParcel: jest.fn(),
     voidLastVerification: jest.fn(),
+    listVerifications: jest.fn().mockResolvedValue([]),
   } as unknown as IFulfillmentVerificationService;
 
   const orders = {
@@ -175,6 +177,7 @@ function harness(options: {
     ),
     verification,
     orders,
+    worklist,
   };
 }
 
@@ -663,6 +666,92 @@ describe('BenchParcelService (#2418)', () => {
       expect(markPacked).toHaveBeenCalled();
       expect(result.outcome).toBe('verified');
       expect(result.parcel.closedAt).not.toBeNull();
+    });
+  });
+
+  describe('#3411 — recent activity', () => {
+    it('projects a plain verification into one "verified" entry with the product name', async () => {
+      const { service, verification } = harness({});
+      (verification.listVerifications as jest.Mock).mockResolvedValue([
+        {
+          workLineId: 'line-1',
+          verifiedByUserId: 'user-1',
+          verifiedAt: new Date('2026-09-01T14:36:00Z'),
+          voidedAt: null,
+          voidedByUserId: null,
+        },
+      ]);
+
+      const entries = await service.listActivity('work-1');
+
+      expect(entries).toEqual([
+        {
+          workLineId: 'line-1',
+          name: 'Ceramic mug, matte white, 350 ml',
+          kind: 'verified',
+          at: '2026-09-01T14:36:00.000Z',
+          byUserId: 'user-1',
+        },
+      ]);
+    });
+
+    it('splits a voided row into two entries, newest first', async () => {
+      const { service, verification } = harness({});
+      (verification.listVerifications as jest.Mock).mockResolvedValue([
+        {
+          workLineId: 'line-1',
+          verifiedByUserId: 'user-1',
+          verifiedAt: new Date('2026-09-01T14:36:00Z'),
+          voidedAt: new Date('2026-09-01T14:37:00Z'),
+          voidedByUserId: 'user-1',
+        },
+      ]);
+
+      const entries = await service.listActivity('work-1');
+
+      expect(entries.map((e) => e.kind)).toEqual(['undone', 'verified']);
+      expect(entries[0].at).toBe('2026-09-01T14:37:00.000Z');
+      expect(entries[1].at).toBe('2026-09-01T14:36:00.000Z');
+    });
+  });
+
+  describe('#3412 — claim this parcel', () => {
+    it('claims an unassigned packable parcel for the viewer', async () => {
+      const { service, worklist } = harness({});
+
+      const result = await service.claimParcel('work-1', 'user-1');
+
+      expect(result.outcome).toBe('claimed');
+      expect(worklist.updateAssignment).toHaveBeenCalledWith({
+        workId: 'work-1',
+        assignedToUserId: 'user-1',
+      });
+    });
+
+    it('refuses `not-claimable` when the parcel is locked to a different packer', async () => {
+      const { service, worklist } = harness({
+        work: workView({ assignedToUserId: 'user-2', selfServeEligible: false }),
+      });
+
+      const result = await service.claimParcel('work-1', 'user-1');
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-claimable' });
+      expect(worklist.updateAssignment).not.toHaveBeenCalled();
+    });
+
+    it('refuses a held parcel with the SAME reason the list would colour it', async () => {
+      const { service, worklist } = harness({
+        work: workView({
+          activeHolds: [
+            { id: 'h1', reason: 'awaiting_stock', note: null, placedAt: new Date() },
+          ] as never,
+        }),
+      });
+
+      const result = await service.claimParcel('work-1', 'user-1');
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'held' });
+      expect(worklist.updateAssignment).not.toHaveBeenCalled();
     });
   });
 

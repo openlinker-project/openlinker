@@ -312,6 +312,52 @@ export interface BenchDocumentsView {
   readonly label: BenchLabelView;
 }
 
+/**
+ * One entry of a parcel's recent-activity log (#3411, epic #3401) — the
+ * verification ledger, projected with the line's product name so the
+ * surface can render e.g. "Linen tea towel — verified, 2 of 2" the way the
+ * mockup does, rather than a bare id.
+ */
+export interface BenchActivityEntryView {
+  readonly workLineId: string;
+  /** `null` when the line's variant is not in the catalogue — matches `BenchParcelLineView.name`. */
+  readonly name: string | null;
+  /** `'verified'` while active, `'undone'` once voided — see `ParcelVerificationEvent.voidedAt`. */
+  readonly kind: 'verified' | 'undone';
+  /** The instant of the event THIS ENTRY reports — `voidedAt` for `'undone'`, `verifiedAt` otherwise. */
+  readonly at: string;
+  readonly byUserId: string | null;
+}
+
+/**
+ * Why a self-claim was refused (#3412, epic #3401).
+ *
+ * A NARROWER union than `BenchParcelRefusal`: `'not-claimable'` is the
+ * ADR-074 lock (`isClaimableByViewer`), which has no counterpart on that
+ * type — refusing a scan and refusing a claim are different questions with
+ * partly-overlapping but not identical reasons.
+ */
+export const BenchClaimRefusalValues = ['held', 'cancelled', 'not-claimable'] as const;
+export type BenchClaimRefusal = (typeof BenchClaimRefusalValues)[number];
+
+/** What claiming ONE chosen parcel answers (#3412). */
+export interface BenchClaimResultView {
+  readonly outcome: 'claimed' | 'refused';
+  readonly reason: BenchClaimRefusal | null;
+  readonly parcel: BenchParcelView;
+}
+
+/**
+ * What "take next task" answers (#3412) — the server picks the top eligible
+ * row from the ALREADY-sorted, already-eligibility-filtered worklist and
+ * claims it. `'nothing-to-claim'` is a real, ordinary outcome (queue empty),
+ * never an error — the worklist can legitimately have nothing this viewer
+ * may take.
+ */
+export type BenchClaimNextResultView =
+  | { readonly outcome: 'claimed'; readonly parcel: BenchParcelView }
+  | { readonly outcome: 'nothing-to-claim' };
+
 /** One packed parcel with no label on it (story F4). */
 export interface BenchUnlabelledParcelView {
   readonly workId: string;

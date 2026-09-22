@@ -67,7 +67,12 @@ import {
 import { readBuyerName, readOrderReference } from '../bench-order-facts';
 import { compareBenchWork } from '../bench-work-ordering';
 import { BenchExecutorResolver } from './bench-executor.resolver';
+import {
+  BENCH_PARCEL_SERVICE_TOKEN,
+  type IBenchParcelService,
+} from '../interfaces/bench-parcel.service.interface';
 import type { IBenchWorkService } from '../interfaces/bench-work.service.interface';
+import type { BenchClaimNextResultView } from '../types/bench-parcel.types';
 import type {
   BenchRoutingReadiness,
   BenchWorkListView,
@@ -100,7 +105,9 @@ export class BenchWorkService implements IBenchWorkService {
     @Inject(FULFILLMENT_WORKLIST_SERVICE_TOKEN)
     private readonly worklist: IFulfillmentWorklistService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
-    private readonly orders: IOrderRecordService
+    private readonly orders: IOrderRecordService,
+    @Inject(BENCH_PARCEL_SERVICE_TOKEN)
+    private readonly parcels: IBenchParcelService
   ) {}
 
   async listBenchWork(viewerId: string): Promise<BenchWorkListView> {
@@ -128,6 +135,25 @@ export class BenchWorkService implements IBenchWorkService {
       routing: { ready: true },
       total,
     };
+  }
+
+  async claimNext(viewerId: string): Promise<BenchClaimNextResultView> {
+    // Reuses listBenchWork's OWN sort and eligibility — no second ordering to
+    // keep in sync with compareBenchWork, and `claimable` is the same
+    // predicate `claimParcel` re-checks at write time.
+    const { works } = await this.listBenchWork(viewerId);
+    const top = works.find(
+      (row) => row.state === 'packable' && row.claimable && row.assignmentState !== 'mine'
+    );
+    if (top === undefined) return { outcome: 'nothing-to-claim' };
+
+    // Delegates to claimParcel for the write AND the re-check: the list
+    // snapshot above can be stale by the time this runs (another packer
+    // claimed it first), so the actual eligibility decision is made fresh,
+    // never trusted from the row that picked the candidate.
+    const result = await this.parcels.claimParcel(top.workId, viewerId);
+    if (result.outcome === 'refused') return { outcome: 'nothing-to-claim' };
+    return { outcome: 'claimed', parcel: result.parcel };
   }
 
   /**

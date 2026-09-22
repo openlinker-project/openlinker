@@ -49,6 +49,7 @@ import type {
   FulfillmentWorkListFilter,
   FulfillmentWorkPage,
 } from '../types/fulfillment-worklist-page.types';
+import type { ParcelVerificationEvent } from '../types/fulfillment-verification.types';
 
 /** One line of a work object at creation time. Counters start at zero. */
 export interface CreateFulfillmentWorkLineInput {
@@ -841,4 +842,14 @@ export interface FulfillmentWorkRepositoryPort {
     input: VoidLastVerificationWriteInput,
     transaction?: FulfillmentWorkTransaction
   ): Promise<boolean>;
+
+  /**
+   * The whole per-unit ledger for one work, newest first (#3411).
+   *
+   * Every row, active and voided alike — a "recent activity" log needs to
+   * show an undo happened, not just its absence from a count. No `LIMIT`:
+   * a parcel's line count already bounds the ledger's size, and the caller
+   * decides how much of it to render.
+   */
+  listVerifications(workId: string): Promise<readonly ParcelVerificationEvent[]>;
 }

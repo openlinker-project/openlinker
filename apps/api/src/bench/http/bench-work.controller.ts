@@ -28,14 +28,17 @@
  *
  * @module apps/api/src/bench/http
  */
-import { Controller, Get, Inject } from '@nestjs/common';
+import { Controller, Get, Inject, Post, UnauthorizedException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import {
   BENCH_WORK_SERVICE_TOKEN,
   type IBenchWorkService,
 } from '../application/interfaces/bench-work.service.interface';
+import type { BenchClaimNextResultView } from '../application/types/bench-parcel.types';
 import type { BenchWorkListView } from '../application/types/bench-work.types';
+import { toParcelResponseDto } from './dto/bench-parcel.mapper';
+import { BenchClaimNextResultResponseDto } from './dto/bench-parcel-response.dto';
 import { BenchWorkListResponseDto } from './dto/bench-work-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -65,6 +68,34 @@ export class BenchWorkController {
     @CurrentUser() actor: AuthenticatedUser
   ): Promise<BenchWorkListResponseDto> {
     return this.toDto(await this.bench.listBenchWork(actor.id));
+  }
+
+  @Post('work/claim-next')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Take next task',
+    description:
+      'Server-picked "whatever\'s next" — the top eligible row from the SAME sorted, filtered ' +
+      'worklist listBenchWork returns, claimed on the caller\'s behalf. `nothing-to-claim` is an ' +
+      'ordinary outcome, not an error: the queue can legitimately have nothing this packer may ' +
+      'take right now.',
+  })
+  @ApiResponse({ status: 201, type: BenchClaimNextResultResponseDto })
+  @ApiResponse({ status: 401, description: 'A claim must name the packer' })
+  async claimNext(
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchClaimNextResultResponseDto> {
+    if (!user?.id) {
+      throw new UnauthorizedException('A claim must name the packer');
+    }
+    return this.toClaimNextDto(await this.bench.claimNext(user.id));
+  }
+
+  private toClaimNextDto(view: BenchClaimNextResultView): BenchClaimNextResultResponseDto {
+    if (view.outcome === 'nothing-to-claim') {
+      return { outcome: 'nothing-to-claim', parcel: null };
+    }
+    return { outcome: 'claimed', parcel: toParcelResponseDto(view.parcel) };
   }
 
   private toDto(view: BenchWorkListView): BenchWorkListResponseDto {

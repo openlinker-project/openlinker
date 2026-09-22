@@ -32,6 +32,7 @@
  * @module libs/core/src/fulfillment/application/interfaces
  */
 import type {
+  ParcelVerificationEvent,
   ParcelVerificationState,
   ReopenParcelInput,
   ReopenParcelResult,
@@ -90,4 +91,10 @@ export interface IFulfillmentVerificationService {
   voidLastVerification(
     input: UndoLastVerificationInput
   ): Promise<UndoLastVerificationResult>;
+
+  /**
+   * The whole per-unit ledger for one work, newest first (#3411) — a pure
+   * passthrough of the repository read, for a "recent activity" log.
+   */
+  listVerifications(workId: string): Promise<readonly ParcelVerificationEvent[]>;
 }

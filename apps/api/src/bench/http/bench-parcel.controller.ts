@@ -55,6 +55,8 @@ import {
 } from '../application/interfaces/bench-presence.service.interface';
 import { BenchParcelNotAtThisBenchError } from '../application/services/bench-parcel.service';
 import type {
+  BenchActivityEntryView,
+  BenchClaimResultView,
   BenchParcelView,
   BenchReopenResultView,
   BenchUndoResultView,
@@ -62,7 +64,10 @@ import type {
 } from '../application/types/bench-parcel.types';
 import { ReopenParcelDto } from './dto/reopen-parcel.dto';
 import { VerifyUnitDto } from './dto/verify-unit.dto';
+import { toParcelResponseDto } from './dto/bench-parcel.mapper';
 import {
+  BenchActivityEntryResponseDto,
+  BenchClaimResultResponseDto,
   BenchParcelResponseDto,
   BenchPresenceResponseDto,
   BenchReopenResultResponseDto,
@@ -182,6 +187,46 @@ export class BenchParcelController {
     return this.toReopenDto(result);
   }
 
+  @Post(':workId/claim')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Claim this parcel',
+    description:
+      'A packer self-assigns a specific, chosen parcel. Can only ever assign to the CALLER — ' +
+      "distinct from PATCH :workId/assignment, a supervisor's staffing decision able to name " +
+      "anyone. Refused exactly as a scan at this parcel would refuse, plus the ADR-074 lock " +
+      '(a parcel locked to a different packer).',
+  })
+  @ApiResponse({ status: 201, type: BenchClaimResultResponseDto })
+  @ApiResponse({ status: 401, description: 'A claim must name the packer' })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  async claimParcel(
+    @Param('workId') workId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchClaimResultResponseDto> {
+    if (!user?.id) {
+      throw new UnauthorizedException('A claim must name the packer');
+    }
+    const result = await this.run(() => this.parcels.claimParcel(workId, user.id));
+    return this.toClaimDto(result);
+  }
+
+  @Get(':workId/activity')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Recent activity for this parcel',
+    description:
+      "The verification ledger, projected with each line's product name and newest first — " +
+      "e.g. \"Linen tea towel — verified\". A voided row surfaces as TWO entries, one for the " +
+      'original verify and one for the later undo, in their own chronological places.',
+  })
+  @ApiResponse({ status: 200, type: [BenchActivityEntryResponseDto] })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  async getActivity(@Param('workId') workId: string): Promise<BenchActivityEntryResponseDto[]> {
+    const entries = await this.run(() => this.parcels.listActivity(workId));
+    return entries.map((entry) => this.toActivityDto(entry));
+  }
+
   @Post(':workId/verifications/undo')
   @Roles('admin', 'operator', 'packer')
   @ApiOperation({
@@ -260,39 +305,7 @@ export class BenchParcelController {
 
   /** Field by field, never a spread — see the DTO module docblock. */
   private toParcelDto(view: BenchParcelView): BenchParcelResponseDto {
-    return {
-      workId: view.workId,
-      version: view.version,
-      orderReference: view.orderReference,
-      buyerName: view.buyerName,
-      totalAmount: view.totalAmount,
-      currency: view.currency,
-      carrierName: view.carrierName,
-      dispatchByAt: view.dispatchByAt,
-      parcelIndex: view.parcelIndex,
-      parcelTotal: view.parcelTotal,
-      refusal: view.refusal,
-      holdReason: view.holdReason,
-      closedAt: view.closedAt,
-      packedByUserId: view.packedByUserId,
-      lines: view.lines.map((line) => ({
-        workLineId: line.workLineId,
-        productVariantId: line.productVariantId,
-        name: line.name,
-        sku: line.sku,
-        ean: line.ean,
-        gtin: line.gtin,
-        requiredQuantity: line.requiredQuantity,
-        verifiedQuantity: line.verifiedQuantity,
-        imageUrl: line.imageUrl,
-        attributes: line.attributes,
-        binCode: line.binCode,
-        weightGrams: line.weightGrams,
-        lengthMm: line.lengthMm,
-        widthMm: line.widthMm,
-        heightMm: line.heightMm,
-      })),
-    };
+    return toParcelResponseDto(view);
   }
 
   private toVerificationDto(
@@ -310,6 +323,24 @@ export class BenchParcelController {
       outcome: result.outcome,
       reason: result.reason,
       parcel: this.toParcelDto(result.parcel),
+    };
+  }
+
+  private toClaimDto(result: BenchClaimResultView): BenchClaimResultResponseDto {
+    return {
+      outcome: result.outcome,
+      reason: result.reason,
+      parcel: this.toParcelDto(result.parcel),
+    };
+  }
+
+  private toActivityDto(entry: BenchActivityEntryView): BenchActivityEntryResponseDto {
+    return {
+      workLineId: entry.workLineId,
+      name: entry.name,
+      kind: entry.kind,
+      at: entry.at,
+      byUserId: entry.byUserId,
     };
   }
 

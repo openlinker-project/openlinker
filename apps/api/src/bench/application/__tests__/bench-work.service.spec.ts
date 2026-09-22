@@ -93,6 +93,7 @@ interface Harness {
    * against a field that no longer exists.
    */
   lastFilter: () => FulfillmentWorkListFilter;
+  parcels: { claimParcel: jest.Mock };
 }
 
 function harness(options: {
@@ -127,6 +128,8 @@ function harness(options: {
       .mockResolvedValue({ adapterKey: options.adapterKey ?? OMS_ADAPTER_KEY }),
   } as unknown as IIntegrationsService;
 
+  const parcels = { claimParcel: jest.fn() };
+
   // The executor resolution moved out of this service in #2418, so that story
   // D2's refusal can apply the SAME rule. It is constructed here rather than
   // stubbed: the rules it carries (active, capability enabled, registry-resolved
@@ -135,7 +138,8 @@ function harness(options: {
   const service = new BenchWorkService(
     new BenchExecutorResolver(connections, integrations),
     { list, get: jest.fn(), applyAction: jest.fn(), listSiblingWorkIds: siblings } as never,
-    { findByIds } as unknown as IOrderRecordService
+    { findByIds } as unknown as IOrderRecordService,
+    parcels as never
   );
 
   return {
@@ -147,6 +151,7 @@ function harness(options: {
       if (captured === undefined) throw new Error('listWorks was never called');
       return captured;
     },
+    parcels,
   };
 }
 
@@ -468,7 +473,8 @@ describe('BenchWorkService (#2416)', () => {
           applyAction: jest.fn(),
           listSiblingWorkIds: jest.fn().mockResolvedValue(new Map()),
         } as never,
-        { findByIds: jest.fn().mockResolvedValue([orderRecord()]) } as unknown as IOrderRecordService
+        { findByIds: jest.fn().mockResolvedValue([orderRecord()]) } as unknown as IOrderRecordService,
+        { claimParcel: jest.fn() } as never
       );
 
       const view = await service.listBenchWork('viewer-1');
@@ -596,6 +602,76 @@ describe('BenchWorkService (#2416)', () => {
 
       expect(row.state).toBe('held');
       expect(row.supportedActions).toEqual(['release_hold']);
+    });
+  });
+
+  describe('claimNext (#3412)', () => {
+    it('delegates the top eligible row to claimParcel', async () => {
+      const { service, parcels } = harness({
+        page: { works: [workView({ id: 'w-top' })], total: 1 },
+      });
+      parcels.claimParcel.mockResolvedValue({
+        outcome: 'claimed',
+        reason: null,
+        parcel: { workId: 'w-top' },
+      });
+
+      const result = await service.claimNext('viewer-1');
+
+      expect(parcels.claimParcel).toHaveBeenCalledWith('w-top', 'viewer-1');
+      expect(result).toEqual({ outcome: 'claimed', parcel: { workId: 'w-top' } });
+    });
+
+    it('skips a row already claimed by the viewer, in favour of the next eligible one', async () => {
+      const { service, parcels } = harness({
+        page: {
+          works: [
+            workView({ id: 'w-mine', assignedToUserId: 'viewer-1', selfServeEligible: false }),
+            workView({ id: 'w-next' }),
+          ],
+          total: 2,
+        },
+      });
+      parcels.claimParcel.mockResolvedValue({
+        outcome: 'claimed',
+        reason: null,
+        parcel: { workId: 'w-next' },
+      });
+
+      await service.claimNext('viewer-1');
+
+      expect(parcels.claimParcel).toHaveBeenCalledWith('w-next', 'viewer-1');
+    });
+
+    it('reports nothing-to-claim when every row is locked to someone else', async () => {
+      const { service, parcels } = harness({
+        page: {
+          works: [
+            workView({ id: 'w-locked', assignedToUserId: 'user-9', selfServeEligible: false }),
+          ],
+          total: 1,
+        },
+      });
+
+      const result = await service.claimNext('viewer-1');
+
+      expect(result).toEqual({ outcome: 'nothing-to-claim' });
+      expect(parcels.claimParcel).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing-to-claim when the delegated claim loses the race and is refused', async () => {
+      const { service, parcels } = harness({
+        page: { works: [workView({ id: 'w-top' })], total: 1 },
+      });
+      parcels.claimParcel.mockResolvedValue({
+        outcome: 'refused',
+        reason: 'not-claimable',
+        parcel: { workId: 'w-top' },
+      });
+
+      const result = await service.claimNext('viewer-1');
+
+      expect(result).toEqual({ outcome: 'nothing-to-claim' });
     });
   });
 });
