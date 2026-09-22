@@ -62,6 +62,34 @@ export class BenchParcelLineResponseDto {
       'Units verified into the box. Never greater than requiredQuantity — over-packing is refused at the moment it happens, not clamped afterwards.',
   })
   verifiedQuantity!: number;
+
+  @ApiProperty({
+    nullable: true,
+    description: "The parent product's first image, or null when the product has none",
+  })
+  imageUrl!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: 'object',
+    description: "The variant's distinguishing attributes (colour, size, …)",
+  })
+  attributes!: Record<string, string> | null;
+
+  @ApiProperty({ nullable: true, description: 'Operator-authored bin/shelf code' })
+  binCode!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'Display-only physical master data, in grams' })
+  weightGrams!: number | null;
+
+  @ApiProperty({ nullable: true, description: 'Display-only physical master data, in millimetres' })
+  lengthMm!: number | null;
+
+  @ApiProperty({ nullable: true })
+  widthMm!: number | null;
+
+  @ApiProperty({ nullable: true })
+  heightMm!: number | null;
 }
 
 export class BenchParcelResponseDto {
@@ -85,6 +113,25 @@ export class BenchParcelResponseDto {
 
   @ApiProperty({ description: 'How many parcels the order has in all' })
   parcelTotal!: number;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      "The order's total, in the source's own currency — never the reporting-currency stamp. Reverses #2413's PII-minimization exclusion by explicit product decision (#3409).",
+  })
+  totalAmount!: number | null;
+
+  @ApiProperty({ nullable: true })
+  currency!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: "The source's own delivery-method label; null when the source reports none",
+  })
+  carrierName!: string | null;
+
+  @ApiProperty({ nullable: true, description: 'The dispatch deadline' })
+  dispatchByAt!: string | null;
 
   @ApiProperty({
     nullable: true,

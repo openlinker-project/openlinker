@@ -19,6 +19,7 @@ import type {
   IFulfillmentWorklistService,
   ParcelVerificationState,
 } from '@openlinker/core/fulfillment';
+import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import type { IProductsService } from '@openlinker/core/products';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
@@ -158,8 +159,20 @@ function harness(options: {
     findByFulfillmentWorkIds: jest.fn().mockResolvedValue(new Map()),
   } as unknown as IShipmentQueryService;
 
+  const inventory = {
+    findBinCodesByVariantIds: jest.fn().mockResolvedValue(new Map()),
+  } as unknown as IInventoryQueryService;
+
   return {
-    service: new BenchParcelService(executors, worklist, verification, orders, products, shipments),
+    service: new BenchParcelService(
+      executors,
+      worklist,
+      verification,
+      orders,
+      products,
+      shipments,
+      inventory
+    ),
     verification,
     orders,
   };
@@ -457,16 +470,21 @@ describe('BenchParcelService (#2418)', () => {
   describe('story D4 — the projection an interruption watches', () => {
     it('carries exactly the fields it is supposed to and no others', async () => {
       // This list IS the D4 guarantee: an interruption fires when this
-      // projection changes, and nothing here can be moved by a buyer's address
-      // edit — so the promise is a property of the field list rather than of a
-      // comparison somebody wrote carefully.
+      // projection changes, and there is no address, email or phone anywhere
+      // in it — so a buyer's address edit still cannot move any field here.
+      // `totalAmount`/`currency`/`carrierName`/`dispatchByAt` are a
+      // DELIBERATE reversal of #2413's original "no total, no price"
+      // exclusion (#3409, epic #3401) — see the type docblock.
       const { service } = harness({});
       const parcel = await service.getParcel('work-1');
 
       expect(Object.keys(parcel).sort()).toEqual(
         [
           'buyerName',
+          'carrierName',
           'closedAt',
+          'currency',
+          'dispatchByAt',
           'holdReason',
           'lines',
           'orderReference',
@@ -474,19 +492,27 @@ describe('BenchParcelService (#2418)', () => {
           'parcelIndex',
           'parcelTotal',
           'refusal',
+          'totalAmount',
           'version',
           'workId',
         ].sort()
       );
       expect(Object.keys(parcel.lines[0]).sort()).toEqual(
         [
+          'attributes',
+          'binCode',
           'ean',
           'gtin',
+          'heightMm',
+          'imageUrl',
+          'lengthMm',
           'name',
           'productVariantId',
           'requiredQuantity',
           'sku',
           'verifiedQuantity',
+          'weightGrams',
+          'widthMm',
           'workLineId',
         ].sort()
       );

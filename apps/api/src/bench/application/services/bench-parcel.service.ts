@@ -30,10 +30,12 @@
  * ## Story D4 — the interrupt cannot fire on an address edit
  *
  * The surface polls this read while a parcel is open and interrupts when
- * `refusal` becomes non-null. The projection carries no address, no email, no
- * phone and no total (see `BenchParcelView`), so a change to any of them is
- * invisible here and cannot produce a diff. That is the guarantee, and it is a
- * property of the field list rather than of a comparison somebody wrote
+ * `refusal` becomes non-null. The projection carries no address, no email and
+ * no phone (see `BenchParcelView` — `totalAmount`/`currency`/`carrierName`/
+ * `dispatchByAt` are a deliberate #3409 reversal, not part of this
+ * guarantee), so a change to any of the three still-excluded fields is
+ * invisible here and cannot produce a diff. That is the guarantee, and it is
+ * a property of the field list rather than of a comparison somebody wrote
  * carefully.
  *
  * @module apps/api/src/bench/application/services
@@ -54,6 +56,10 @@ import {
   OrderRecordNotFoundException,
   IOrderRecordService,
 } from '@openlinker/core/orders';
+import {
+  INVENTORY_QUERY_SERVICE_TOKEN,
+  type IInventoryQueryService,
+} from '@openlinker/core/inventory';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import {
   SHIPMENT_QUERY_SERVICE_TOKEN,
@@ -106,7 +112,9 @@ export class BenchParcelService implements IBenchParcelService {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService,
     @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
-    private readonly shipments: IShipmentQueryService
+    private readonly shipments: IShipmentQueryService,
+    @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
+    private readonly inventory: IInventoryQueryService
   ) {}
 
   async getParcel(workId: string): Promise<BenchParcelView> {
@@ -446,6 +454,12 @@ export class BenchParcelService implements IBenchParcelService {
       version: state.version,
       orderReference: readOrderReference(order) ?? work.orderId,
       buyerName: readBuyerName(order),
+      // #3409 (epic #3401) — see the type docblock for why this is now a
+      // deliberate reversal of #2413's exclusion rather than an oversight.
+      totalAmount: order?.totalAmount ?? null,
+      currency: order?.currency ?? null,
+      carrierName: order?.sourceDeliveryMethodName ?? null,
+      dispatchByAt: order?.dispatchByAt?.toISOString() ?? null,
       parcelIndex: index >= 0 ? index + 1 : 1,
       parcelTotal: parcels.length > 0 ? parcels.length : 1,
       refusal: this.refusalFor(work),
@@ -470,7 +484,13 @@ export class BenchParcelService implements IBenchParcelService {
     const variantIds = [...new Set(work.lines.map((line) => line.productVariantId))];
     const variants = variantIds.length === 0 ? [] : await this.products.getVariantsByIds(variantIds);
     const productIds = [...new Set(variants.map((variant) => variant.productId))];
-    const products = productIds.length === 0 ? [] : await this.products.getProductsByIds(productIds);
+    const [products, binCodes] = await Promise.all([
+      productIds.length === 0 ? Promise.resolve([]) : this.products.getProductsByIds(productIds),
+      // #3402/#3410 — one batched read for the whole parcel, never one per line.
+      variantIds.length === 0
+        ? Promise.resolve(new Map<string, string>())
+        : this.inventory.findBinCodesByVariantIds(variantIds),
+    ]);
 
     const variantById = new Map(variants.map((variant) => [variant.id, variant]));
     const productById = new Map(products.map((product) => [product.id, product]));
@@ -492,6 +512,15 @@ export class BenchParcelService implements IBenchParcelService {
         gtin: variant?.gtin ?? null,
         requiredQuantity: counts?.requiredQuantity ?? 0,
         verifiedQuantity: counts?.verifiedQuantity ?? 0,
+        // #3410 (epic #3401) — the parent PRODUCT's image; ProductVariant
+        // carries none of its own.
+        imageUrl: product?.images?.[0] ?? null,
+        attributes: variant?.attributes ?? null,
+        binCode: binCodes.get(line.productVariantId) ?? null,
+        weightGrams: variant?.weightGrams ?? null,
+        lengthMm: variant?.lengthMm ?? null,
+        widthMm: variant?.widthMm ?? null,
+        heightMm: variant?.heightMm ?? null,
       };
     });
   }
