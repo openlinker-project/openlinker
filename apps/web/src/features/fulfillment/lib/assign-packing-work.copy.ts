@@ -10,11 +10,19 @@
  */
 
 export const ASSIGN_PACKING_WORK_COPY = {
+  /**
+   * The heading names the SCREEN, not one of its two jobs.
+   *
+   * It read "Assign packing work" while the screen was only a staffing board.
+   * It now also answers where a task is packed from, matches the nav entry and
+   * the crumb, and sits at `/fulfillment` — a heading still naming one of the
+   * two would read as the wrong page to anyone arriving for the other.
+   */
   page: {
     eyebrow: 'Operations',
-    title: 'Assign packing work',
+    title: 'Fulfilment',
     description:
-      'Pre-assign a fulfilment task to a specific packer ahead of time, or leave it open for whoever picks it up first.',
+      'The fulfilment tasks waiting to be worked. Assign one to a packer ahead of time, or leave it open for whoever picks it up first.',
   },
 
   /**

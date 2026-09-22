@@ -27,8 +27,9 @@
  *
  * @module apps/web/src/features/bench/components
  */
-import type { ReactElement } from 'react';
+import { useCallback, type ReactElement } from 'react';
 
+import { useApiClient } from '../../../app/api/api-client-provider';
 import { useAuthenticatedImage } from '../../../shared/hooks/use-authenticated-image';
 
 export interface BenchThumbProps {
@@ -46,7 +47,14 @@ export interface BenchThumbProps {
 }
 
 export function BenchThumb({ className, imageUrl, name, testId }: BenchThumbProps): ReactElement {
-  const image = useAuthenticatedImage(imageUrl);
+  const apiClient = useApiClient();
+  // Memoised, or the hook's effect re-runs on every render and re-fetches the
+  // same picture — its dependency list includes the fetcher.
+  const fetchImage = useCallback(
+    (path: string) => apiClient.requestBlob(path),
+    [apiClient]
+  );
+  const image = useAuthenticatedImage(imageUrl, fetchImage);
   const initial = (name ?? '').trim().charAt(0).toUpperCase();
 
   if (image.status === 'ready') {

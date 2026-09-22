@@ -30,7 +30,7 @@ import {
   ApiParam,
   ApiQuery,
 } from '@nestjs/swagger';
-import type { Response } from 'express';
+import { Response } from 'express';
 import {
   PRODUCTS_SERVICE_TOKEN,
   IProductsService,

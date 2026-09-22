@@ -32,8 +32,6 @@
  */
 import { useEffect, useState } from 'react';
 
-import { useApiClient } from '../../app/api/api-client-provider';
-
 export type AuthenticatedImageState =
   /** No path was given — the thing has no picture. Not a failure. */
   | { readonly status: 'absent' }
@@ -41,8 +39,19 @@ export type AuthenticatedImageState =
   | { readonly status: 'ready'; readonly objectUrl: string }
   | { readonly status: 'failed' };
 
-export function useAuthenticatedImage(path: string | null | undefined): AuthenticatedImageState {
-  const apiClient = useApiClient();
+/**
+ * Fetches the bytes. Supplied by the CALLER rather than resolved here, because
+ * `shared` may not import `app` — the dependency direction is
+ * `app -> pages -> features -> shared`, and a shared hook reaching for the api
+ * client inverts it. `usePaginatedTotal` takes its `queryFn` the same way, for
+ * the same reason. A feature passes `apiClient.requestBlob`.
+ */
+export type AuthenticatedImageFetcher = (path: string) => Promise<Blob>;
+
+export function useAuthenticatedImage(
+  path: string | null | undefined,
+  fetchImage: AuthenticatedImageFetcher
+): AuthenticatedImageState {
   const [state, setState] = useState<AuthenticatedImageState>({ status: 'absent' });
 
   useEffect(() => {
@@ -58,7 +67,7 @@ export function useAuthenticatedImage(path: string | null | undefined): Authenti
     let created: string | null = null;
     setState({ status: 'loading' });
 
-    void apiClient.requestBlob(path).then(
+    void fetchImage(path).then(
       (blob) => {
         if (!live) return;
         created = URL.createObjectURL(blob);
@@ -77,7 +86,7 @@ export function useAuthenticatedImage(path: string | null | undefined): Authenti
       live = false;
       if (created !== null) URL.revokeObjectURL(created);
     };
-  }, [apiClient, path]);
+  }, [fetchImage, path]);
 
   return state;
 }
