@@ -170,6 +170,10 @@ export class SubiektInvoicingAdapter
     // identifier_mappings BEFORE the call, so the bridge's warehouse-release
     // step never has to search dok_NrPelnyOryg by orderId — see `resolveZkId`.
     const zkId = await this.resolveZkId(cmd.orderId);
+    // Resolve each line's Subiekt catalogue symbol so the document carries real
+    // catalogue positions instead of free-text service lines — see
+    // `resolveTowarSymbols` and the line mapper's header.
+    const symbolByProductId = await this.resolveTowarSymbols(cmd.lines);
 
     try {
       const response = await this.bridge.issueInvoice({
@@ -185,7 +189,7 @@ export class SubiektInvoicingAdapter
         buyer: toBridgeBuyer(cmd.buyer),
         // #2260 review: the era travels with the lines so a pre-rollout order
         // is exempt here exactly as it is on the other two invoicing routes.
-        lines: toBridgeLines(cmd.lines, cmd.taxRateEra),
+        lines: toBridgeLines(cmd.lines, cmd.taxRateEra, symbolByProductId),
         // Connection-level payment + cash-register selection (#1324). Both
         // helpers return `{}` when unset (or when a combination the bridge would
         // 422 is only half-configured), so an unconfigured connection produces a
@@ -371,6 +375,73 @@ export class SubiektInvoicingAdapter
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }
+  }
+
+  /**
+   * Resolve each line's Subiekt catalogue symbol (`tw__Towar.tw_Symbol`) from
+   * its OL-internal product id, through the SAME `identifier_mappings` lookup
+   * `SubiektOrderProcessorAdapter.resolveLines` uses when it builds the ZK — so
+   * the invoice names the same catalogue item the order did, resolved the same
+   * way, rather than by a second and possibly-disagreeing rule.
+   *
+   * Returns a map keyed by product id. A product with no mapping on THIS
+   * connection is simply absent from the map and its line degrades to a
+   * free-text service line: an unmapped product must not fail an already-paid
+   * order's fiscal document, which is the one thing that would be worse than a
+   * line the warehouse cannot see. The degradation is warn-logged, because it
+   * is also exactly the condition under which stock silently will not move.
+   *
+   * Never throws: like `resolveZkId`, this is an enrichment of the request, not
+   * a precondition for issuing it.
+   */
+  private async resolveTowarSymbols(
+    lines: readonly { productId?: string }[],
+  ): Promise<Map<string, string>> {
+    const resolved = new Map<string, string>();
+    const productIds = [
+      ...new Set(
+        lines
+          .map((line) => line.productId)
+          .filter((id): id is string => id !== undefined && id !== ''),
+      ),
+    ];
+    if (productIds.length === 0) {
+      return resolved;
+    }
+
+    const unmapped: string[] = [];
+    for (const productId of productIds) {
+      try {
+        const externalIds = await this.identifierMapping.getExternalIds(
+          CORE_ENTITY_TYPE.Product,
+          productId,
+        );
+        const mapping = externalIds.find((e) => e.connectionId === this.connectionId);
+        if (mapping && mapping.externalId !== '') {
+          resolved.set(productId, mapping.externalId);
+        } else {
+          unmapped.push(productId);
+        }
+      } catch (error: unknown) {
+        unmapped.push(productId);
+        this.logger.warn(
+          'Subiekt resolveTowarSymbols: identifier-mapping lookup failed; the line falls back to a free-text service line and will not move stock',
+          {
+            connectionId: this.connectionId,
+            productId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      }
+    }
+
+    if (unmapped.length > 0) {
+      this.logger.warn(
+        'Subiekt resolveTowarSymbols: product(s) have no Subiekt catalogue mapping on this connection; their document lines will be free-text and will NOT release warehouse stock',
+        { connectionId: this.connectionId, productIds: unmapped },
+      );
+    }
+    return resolved;
   }
 
   /**

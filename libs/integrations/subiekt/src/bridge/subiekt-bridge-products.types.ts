@@ -61,6 +61,15 @@ export interface BridgeProduct {
    * (`tw_IdVatSp IS NULL`), genuinely different from a real 0% rate.
    */
   stawkaVat: string | null;
+  /**
+   * Bridge-served URLs of the towar's images (main image first), read from
+   * Subiekt's own `tw_ZdjecieTw` blobs and addressed via the bridge's
+   * `/gt-image/{towarId}` route. Absent or empty when the towar has none.
+   *
+   * OPTIONAL so a bridge predating the field keeps deserialising — its absence
+   * simply means "no images", the behaviour every Subiekt product had before.
+   */
+  zdjecia?: string[] | null;
 }
 
 export interface BridgeCreateProductRequest {

@@ -1,0 +1,525 @@
+// OrdersEndpoints.cs.ready — the bridge's order (ZK) endpoints, committed for
+// review under the same .cs.ready convention as Invoicing.cs.ready.
+//
+// A FULL DUMP of the file as it exists on the Windows host at
+// /mnt/c/Users/42zer/gtspike/bridge/OrdersEndpoints.cs — not a diff — because
+// the bridge has no git history of its own on that machine and a partial
+// extract would leave a reader unable to see what surrounds a change.
+//
+// Live-verified changes carried here:
+//   - CreateOrderRequest.Waluta / zkReq.Waluta: the ZK is now denominated in
+//     the source's currency. It previously carried none, so a foreign-currency
+//     order was booked as though its figures were zlotys.
+//   - KontrahentInfo.Kod: the buyer's postcode already arrived on the wire and
+//     was simply never assigned, so every kontrahent created from an order had
+//     a blank legal address.
+//   - KontrahentMatchesAddress: a kontrahent found by the derived NAME symbol
+//     (uppercased, cut to 16 chars) is verified against the address before it
+//     is reused — two different buyers sharing a derived symbol were otherwise
+//     silently collapsed onto one record.
+//
+// NOT compiled or type-checked by this repo's CI — there is no C# build here.
+
+// OrdersEndpoints - OrderSource + OrderProcessorManager capability.
+//
+// Speaks the contract in libs/integrations/subiekt/src/bridge/subiekt-bridge-orders.types.ts
+// (English /api/orders* routes, {success,data,error} envelope, Polish field names
+// inside payloads - same convention as Invoicing.cs). Auth is already applied
+// globally to /api/* by Program.cs's token-auth middleware - these routes need
+// no per-route auth attribute.
+//
+// createOrder writes a ZK (Zamowienie od Klienta) via the EXISTING Sfera.CreateZk /
+// Sfera.EnsureKontrahent (already shipped for the WooCommerce-shim spike) - this
+// endpoint is the first REAL, port-typed caller of them.
+//
+// listOrderFeed / getOrder read via raw SQL on dok__Dokument, same reasoning as
+// every other read in this bridge (Invoicing.cs's ListBankAccounts/ListCashRegisters):
+// SuDokumentyManager.Wybierz() is a UI picker, not a headless query.
+//
+// *** NOT LIVE-VERIFIED - built with no access to run dotnet/sqlcmd on this
+// machine (sandboxed worktree). Three things below are UNCONFIRMED and must be
+// checked before first real use: ***
+//   1. DokDataKolumna (the watermark date column name) - a guess. Verify with:
+//      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+//      WHERE TABLE_NAME='dok__Dokument' AND COLUMN_NAME LIKE 'dok_Data%'
+//      and correct the constant below if it isn't dok_DataWyst.
+//   2. The ZK filter uses dok_NrPelny LIKE 'ZK %' rather than a dok_Typ code
+//      (deliberately - Invoicing.cs never established ZK's numeric dok_Typ,
+//      while 'ZK 18/2026'-style numbering IS confirmed live in this DB from the
+//      #753 invoicing E2E run). Prefer switching to dok_Typ once confirmed via:
+//      SELECT DISTINCT dok_Typ FROM dok__Dokument WHERE dok_NrPelny LIKE 'ZK %'
+//      (a numeric-code filter is index-friendlier than a LIKE on dok_NrPelny).
+//   3. The line-items table/columns (pd__Pozycja, tw_Symbol/tw_Nazwa/pd_Ilosc/
+//      pd_WartoscBrutto, pd_DokumentId, pd_TowarId, dok_KontrahentId) follow this
+//      DB's double-underscore naming convention (dok__Dokument/kh__Kontrahent/
+//      rb__RachBankowy) but were never queried directly in this bridge before.
+//      Verify with: SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE
+//      TABLE_NAME LIKE 'pd%' and the equivalent COLUMNS query.
+
+using System.Data;
+using System.Globalization;
+using Microsoft.Data.SqlClient;
+
+public static class OrdersEndpoints
+{
+    // UNCONFIRMED - see file header note 1.
+    private const string DokDataKolumna = "dok_DataWyst";
+
+    private const string ConnStr =
+        @"Server=DESKTOP-FJ0P3NU\INSERTNEXO;Database=DEMO;Integrated Security=True;"
+      + "TrustServerCertificate=True;Encrypt=False;Connect Timeout=10";
+
+    // Local envelope helpers - Program.cs's own Envelope<T>/Rejected are local
+    // functions scoped to its top-level statements, not visible from this file,
+    // so this mirrors their exact JSON shape rather than sharing them.
+    private static IResult Ok<T>(T data) => Results.Ok(new { success = true, data, error = (object?)null });
+    private static IResult Fail(string code, string reason, int status = 422) =>
+        Results.Json(new { success = false, data = (object?)null, error = new { code, reason, correlationId = (string?)null } }, statusCode: status);
+
+    public static void MapOrdersEndpoints(this WebApplication app)
+    {
+        app.MapPost("/api/orders", async (HttpRequest req) =>
+        {
+            var body = await req.ReadFromJsonAsync<CreateOrderRequest>();
+            if (body is null)
+                return Fail("bad_request", "Missing or invalid body.", 400);
+
+            try
+            {
+                var result = await CreateOrder(body);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return Fail("order_rejected", ex.Message);
+            }
+        });
+
+        app.MapGet("/api/orders/feed", async (string? since, int? limit) =>
+        {
+            try
+            {
+                var page = await ListOrderFeed(since, limit ?? 50);
+                return Ok(page);
+            }
+            catch (Exception ex)
+            {
+                return Fail("sfera_error", ex.Message, 500);
+            }
+        });
+
+        app.MapGet("/api/orders/{id:int}", async (int id) =>
+        {
+            try
+            {
+                var detail = await GetOrder(id);
+                return detail is null
+                    ? Fail("not_found", $"No order with id {id}.", 404)
+                    : Ok(detail);
+            }
+            catch (Exception ex)
+            {
+                return Fail("sfera_error", ex.Message, 500);
+            }
+        });
+
+        // OrderFulfillmentUpdater write (#837) - see subiekt-bridge-orders.types.ts.
+        // Writes onto Sfera.WriteShipping (already shipped, previously unrouted):
+        // Subiekt has no dedicated fulfillment-status field on a ZK, so this
+        // stamps the remarks fields (d.Uwagi/d.UwagiExt) - an honest "best
+        // available" surface, not a native status transition.
+        app.MapPut("/api/orders/{id:int}/shipping", async (int id, HttpRequest req) =>
+        {
+            var body = await req.ReadFromJsonAsync<WriteShippingRequest>();
+            if (body is null)
+                return Fail("bad_request", "Missing or invalid body.", 400);
+
+            try
+            {
+                var numer = Sfera.WriteShipping(id, new ShippingInfo
+                {
+                    Carrier = body.Carrier ?? "",
+                    Tracking = body.TrackingNumber ?? "",
+                    PickupPoint = body.PickupPoint ?? "",
+                    Status = body.Status ?? "",
+                    TrackingUrl = body.TrackingUrl ?? "",
+                    ShipmentRef = body.ShipmentRef ?? "",
+                    OrderRef = body.OrderRef ?? "",
+                });
+                return Ok(new WriteShippingResponse(numer));
+            }
+            catch (Exception ex)
+            {
+                return Fail("sfera_error", ex.Message, 500);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Creates a ZK via the existing Sfera.EnsureKontrahent + Sfera.CreateZk
+    /// (Sfera.cs) - the same pair the WooCommerce-shim spike already used, now
+    /// called from the real, port-typed route. Unconditional create, no
+    /// idempotency guard here by design - OrderSyncService owns that
+    /// (OrderProcessorManagerPort's own contract).
+    /// </summary>
+    private static async Task<CreateOrderResponse> CreateOrder(CreateOrderRequest req)
+    {
+        if (req.Buyer.Nazwa.Length == 0)
+            throw new InvalidOperationException("Buyer name is required to create a kontrahent.");
+
+        // #3369 idempotency fix, part 1: a retried createOrder call (the
+        // operator's "Retry" action re-running from scratch after an
+        // ambiguous client-side timeout — the bridge's own COM-side wait is
+        // NOT tied to the HTTP request's cancellation, so a write OL gave up
+        // on can still commit later) must not mint a second ZK for the same
+        // order. Mirrors Invoicing.cs's FindByIdempotencyKey exactly — same
+        // dok_NrPelnyOryg field, same Trim30 discipline — except filtered by
+        // 'ZK %' rather than an unconfirmed numeric dok_Typ (see file header
+        // note 2). A hit here means the ORIGINAL call already succeeded
+        // server-side even though the client saw a timeout; return that
+        // document verbatim rather than creating a new one.
+        if (req.OrderRef != "")
+        {
+            var existingZk = await FindExistingZk(req.OrderRef);
+            if (existingZk is not null)
+                return new CreateOrderResponse(existingZk.Value.Id, existingZk.Value.Numer);
+        }
+
+        // #3369 idempotency fix, part 2: EnsureKontrahent's existingId=0 path
+        // ALWAYS creates a fresh kontrahent — confirmed live this session to
+        // produce duplicate customer records (NORBERTKULUS(1)/(2)/(3)) under
+        // exactly this retry scenario. Resolve an existing kontrahent first:
+        // by NIP when the buyer supplied one (same lookup Invoicing.cs's
+        // UpsertCustomer uses — a NIP is a real, stable natural key), else by
+        // the same deterministic Symbol MakeSymbol would derive for THIS
+        // buyer name (a repeat retail order under the same buyer name then
+        // correctly resolves to the kontrahent the first attempt created,
+        // rather than minting another one every time).
+        var symbol = MakeSymbol(req.Buyer.Nazwa);
+        int existingKontrahentId = 0;
+        if (req.Buyer.Nip is string nip && nip != "")
+            existingKontrahentId = await FindKontrahentIdByNip(nip) ?? 0;
+        if (existingKontrahentId == 0)
+        {
+            existingKontrahentId = await FindKontrahentIdBySymbol(symbol) ?? 0;
+            // A symbol is only the buyer's NAME, uppercased and cut to 16
+            // characters - it is NOT an identity. Every "Jan Kowalski" in
+            // Poland derives the same one, and two different surnames sharing
+            // a 16-character prefix collide as well. Reusing such a match
+            // would issue the second buyer's faktura to the first buyer's name
+            // and address, which the operator cannot see from Subiekt.
+            // So a symbol match is VERIFIED against the address before it is
+            // trusted; a mismatch falls through to creation, where Subiekt
+            // suffixes the symbol itself. A NIP match above needs no such
+            // check - a tax id IS an identity.
+            if (existingKontrahentId != 0 &&
+                !await KontrahentMatchesAddress(existingKontrahentId, req.Buyer))
+            {
+                Console.Error.WriteLine($"OrdersEndpoints.CreateOrder: kontrahent {existingKontrahentId} shares the derived symbol '{symbol}' but its address differs - treating as a DIFFERENT buyer and creating a new record.");
+                existingKontrahentId = 0;
+            }
+        }
+
+        int kontrahentId = Sfera.EnsureKontrahent(new KontrahentInfo
+        {
+            Symbol = symbol,
+            NazwaPelna = req.Buyer.Nazwa,
+            Nip = req.Buyer.Nip ?? "",
+            Ulica = req.Buyer.Ulica ?? "",
+            Kod = req.Buyer.KodPocztowy ?? "",
+            Miejscowosc = req.Buyer.Miejscowosc ?? "",
+        }, existingId: existingKontrahentId);
+
+        var zkReq = new ZkRequest
+        {
+            KontrahentId = kontrahentId,
+            NumerOryginalny = req.OrderRef,
+            Uwagi = req.Uwagi ?? "",
+            Rezerwacja = false,
+            Waluta = req.Waluta ?? "",
+        };
+        foreach (var line in req.Lines)
+        {
+            zkReq.Lines.Add(new ZkLine
+            {
+                Symbol = line.Symbol,
+                Quantity = line.Ilosc,
+                GrossTotal = line.WartoscBrutto,
+                Name = line.Nazwa,
+            });
+        }
+
+        var (docId, numer) = Sfera.CreateZk(zkReq);
+        return new CreateOrderResponse(docId, numer);
+    }
+
+    /// <summary>#3369 idempotency pre-check — see CreateOrder's own comment.
+    /// Filters on 'ZK %' rather than dok_Typ for the same unconfirmed-numeric-code
+    /// reason ListOrderFeed does (file header note 2).</summary>
+    /// <summary>Is the kontrahent found by a derived NAME symbol actually the
+    /// same buyer? Compares the postcode and town, which is the best identity
+    /// a marketplace retail order carries (Allegro's e-mail is masked and
+    /// rotates per transaction, so it is no key at all). Returns TRUE when the
+    /// incoming order supplies neither field - absence is not evidence of a
+    /// different person, and refusing to reuse on it would mint a duplicate
+    /// for every buyer whose address the source withholds.</summary>
+    private static async Task<bool> KontrahentMatchesAddress(int kontrahentId, OrderBuyerDto buyer)
+    {
+        var kod = (buyer.KodPocztowy ?? "").Trim();
+        var miasto = (buyer.Miejscowosc ?? "").Trim();
+        if (kod == "" && miasto == "") return true;
+
+        try
+        {
+            await using var c = new SqlConnection(ConnStr);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                "SELECT TOP 1 ISNULL(adr_Kod,''), ISNULL(adr_Miejscowosc,'') " +
+                "FROM kh__Kontrahent k LEFT JOIN adr__Ewid a ON a.adr_IdObiektu = k.kh_Id " +
+                "AND a.adr_TypAdresu = 1 " +
+                "WHERE k.kh_Id = @id", c);
+            cmd.Parameters.AddWithValue("@id", kontrahentId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            if (!await r.ReadAsync()) return true; // no address on file - cannot disprove
+            var storedKod = r.GetString(0).Trim();
+            var storedMiasto = r.GetString(1).Trim();
+            if (storedKod == "" && storedMiasto == "") return true;
+
+            if (kod != "" && storedKod != "" &&
+                !string.Equals(kod, storedKod, StringComparison.OrdinalIgnoreCase)) return false;
+            if (miasto != "" && storedMiasto != "" &&
+                !string.Equals(miasto, storedMiasto, StringComparison.OrdinalIgnoreCase)) return false;
+            return true;
+        }
+        catch (Exception e)
+        {
+            // A verification that cannot run must not block an order that is
+            // already paid: fall back to the pre-check behaviour (reuse).
+            Console.Error.WriteLine($"OrdersEndpoints.KontrahentMatchesAddress: check failed for {kontrahentId} - {e.Message}; reusing the match.");
+            return true;
+        }
+    }
+
+    private static async Task<(int Id, string Numer)?> FindExistingZk(string orderRef)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT TOP 1 dok_Id, dok_NrPelny FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_NrPelny LIKE 'ZK %'", c);
+        cmd.Parameters.AddWithValue("@k", Trim30(orderRef));
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync()) return null;
+        return (r.GetInt32(0), r.GetString(1).Trim());
+    }
+
+    /// <summary>dok_NrPelnyOryg is varchar(30) - refused outright past that length.</summary>
+    private static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
+
+    /// <summary>Same lookup as Invoicing.cs's FindKontrahentIdByNip (kh__Kontrahent
+    /// carries no NIP column of its own - it lives on the kontrahent's primary
+    /// address, adr__Ewid.adr_TypAdresu = 1). Duplicated rather than shared across
+    /// files per this bridge's existing per-endpoint-file convention (each of
+    /// Invoicing.cs/ProductsEndpoints.cs/OrdersEndpoints.cs already owns its own
+    /// local ConnStr and raw-SQL helpers).</summary>
+    private static async Task<int?> FindKontrahentIdByNip(string nip)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT TOP 1 k.kh_Id FROM kh__Kontrahent k
+              JOIN adr__Ewid a ON a.adr_IdObiektu = k.kh_Id AND a.adr_TypAdresu = 1
+              WHERE a.adr_NIP = @nip ORDER BY k.kh_Id", c);
+        cmd.Parameters.AddWithValue("@nip", nip);
+        var r = await cmd.ExecuteScalarAsync();
+        return r is null || r is DBNull ? null : Convert.ToInt32(r);
+    }
+
+    /// <summary>#3369 fix: a NIP-less (private/retail) buyer has no natural key
+    /// Invoicing.cs's NIP lookup can use - MakeSymbol derives a DETERMINISTIC
+    /// symbol from the buyer name (unless the name yields no usable characters,
+    /// in which case it falls back to a randomised "ZAMhhmmssfff" that can never
+    /// collide with a prior attempt by design, so a repeat lookup there correctly
+    /// finds nothing and creates fresh - there is no natural key for an unnamed
+    /// buyer). An exact-symbol match means a prior order under the SAME derived
+    /// symbol already created this kontrahent; reuse it instead of minting another.</summary>
+    private static async Task<int?> FindKontrahentIdBySymbol(string symbol)
+    {
+        if (symbol.StartsWith("ZAM", StringComparison.Ordinal)) return null;
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT TOP 1 kh_Id FROM kh__Kontrahent WHERE kh_Symbol = @sym ORDER BY kh_Id", c);
+        cmd.Parameters.AddWithValue("@sym", symbol);
+        var r = await cmd.ExecuteScalarAsync();
+        return r is null || r is DBNull ? null : Convert.ToInt32(r);
+    }
+
+    private static string MakeSymbol(string name)
+    {
+        var baseSym = name.ToUpperInvariant();
+        var sym = new string(baseSym.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_').Take(16).ToArray());
+        return sym == "" ? "ZAM" + DateTime.Now.ToString("HHmmssfff") : sym;
+    }
+
+    /// <summary>
+    /// Watermark-cursor page over ZK documents. 'since' is an ISO timestamp
+    /// (null = beginning); nextCursor is the max watermark seen in this page,
+    /// or null when the page was empty.
+    /// </summary>
+    private static async Task<OrderFeedResponse> ListOrderFeed(string? since, int limit)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        var sql = $@"SELECT TOP (@limit) dok_Id, dok_NrPelny, {DokDataKolumna}
+                     FROM dok__Dokument
+                     WHERE dok_NrPelny LIKE 'ZK %'
+                       AND (@since IS NULL OR {DokDataKolumna} > @since)
+                     ORDER BY {DokDataKolumna} ASC";
+        await using var cmd = new SqlCommand(sql, c);
+        cmd.Parameters.AddWithValue("@limit", limit);
+        cmd.Parameters.AddWithValue("@since", (object?)(since is null ? null : DateTime.Parse(since, CultureInfo.InvariantCulture)) ?? DBNull.Value);
+
+        var items = new List<OrderFeedItem>();
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            while (await r.ReadAsync())
+            {
+                var data = r.GetDateTime(2);
+                items.Add(new OrderFeedItem(
+                    r.GetInt32(0),
+                    r.GetString(1).Trim(),
+                    data.ToString("o", CultureInfo.InvariantCulture)));
+            }
+        }
+
+        var nextCursor = items.Count > 0 ? items[^1].DataWystawienia : null;
+        return new OrderFeedResponse(items, nextCursor);
+    }
+
+    private static async Task<OrderDetailResponse?> GetOrder(int id)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+
+        // Header + kontrahent. Confirmed live this session: the document's
+        // buyer FK is dok_PlatnikId (NOT dok_KontrahentId - that column does
+        // not exist), currency is dok_Waluta (not dok_WalutaSymbol), and
+        // kh__Kontrahent carries no name column at all - the display name
+        // lives on the kontrahent's primary address row (adr_TypAdresu = 1),
+        // exactly like NIP already does in Invoicing.cs's FindKontrahentIdByNip.
+        var headerSql = $@"SELECT d.dok_Id, d.dok_NrPelny, d.{DokDataKolumna}, d.dok_Waluta,
+                                   d.dok_WartBrutto, a.adr_NazwaPelna, a.adr_NIP, kh.kh_EMail
+                            FROM dok__Dokument d
+                            LEFT JOIN kh__Kontrahent kh ON kh.kh_Id = d.dok_PlatnikId
+                            LEFT JOIN adr__Ewid a ON a.adr_IdObiektu = d.dok_PlatnikId AND a.adr_TypAdresu = 1
+                            WHERE d.dok_Id = @id";
+        await using var headerCmd = new SqlCommand(headerSql, c);
+        headerCmd.Parameters.AddWithValue("@id", id);
+
+        int docId;
+        string numer, waluta;
+        string? kontrahentNazwa, kontrahentNip, kontrahentEmail;
+        string dataWyst;
+        decimal wartoscBrutto;
+
+        await using (var r = await headerCmd.ExecuteReaderAsync())
+        {
+            if (!await r.ReadAsync()) return null;
+            docId = r.GetInt32(0);
+            numer = r.GetString(1).Trim();
+            dataWyst = r.GetDateTime(2).ToString("o", CultureInfo.InvariantCulture);
+            waluta = r.IsDBNull(3) ? "PLN" : r.GetString(3).Trim();
+            wartoscBrutto = r.IsDBNull(4) ? 0m : r.GetDecimal(4);
+            kontrahentNazwa = r.IsDBNull(5) ? null : r.GetString(5).Trim();
+            kontrahentNip = r.IsDBNull(6) ? null : r.GetString(6).Trim();
+            kontrahentEmail = r.IsDBNull(7) ? null : r.GetString(7).Trim();
+        }
+
+        // Lines: confirmed live this session. The real positions table is
+        // dok_Pozycja (not pd__Pozycja), keyed to the "handlowy" (commercial)
+        // document via ob_DokHanId (there's a separate ob_DokMagId for the
+        // warehouse-document side - not used here, ZK is commercial-only).
+        // ob_TowId is NULL for a one-off "usluga jednorazowa" line with no
+        // catalogue match, exactly like the invoicing path - the LEFT JOIN
+        // degrades tw_Symbol/tw_Nazwa to null rather than dropping the row.
+        var linesSql = @"SELECT t.tw_Symbol, t.tw_Nazwa, p.ob_Ilosc, p.ob_WartBrutto
+                          FROM dok_Pozycja p
+                          LEFT JOIN tw__Towar t ON t.tw_Id = p.ob_TowId
+                          WHERE p.ob_DokHanId = @id";
+        await using var linesCmd = new SqlCommand(linesSql, c);
+        linesCmd.Parameters.AddWithValue("@id", id);
+        var lines = new List<OrderDetailLine>();
+        await using (var r = await linesCmd.ExecuteReaderAsync())
+        {
+            while (await r.ReadAsync())
+            {
+                lines.Add(new OrderDetailLine(
+                    r.IsDBNull(0) ? "" : r.GetString(0).Trim(),
+                    r.IsDBNull(1) ? null : r.GetString(1).Trim(),
+                    r.IsDBNull(2) ? 0m : r.GetDecimal(2),
+                    r.IsDBNull(3) ? 0m : r.GetDecimal(3)));
+            }
+        }
+
+        return new OrderDetailResponse(docId, numer, dataWyst, kontrahentNazwa, kontrahentNip,
+            kontrahentEmail, waluta, wartoscBrutto, lines);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Wire DTOs - mirror libs/integrations/subiekt/src/bridge/subiekt-bridge-orders.types.ts
+// ---------------------------------------------------------------------------
+
+public sealed class OrderBuyerDto
+{
+    public string Nazwa { get; set; } = "";
+    public string? Nip { get; set; }
+    public string? Telefon { get; set; }
+    public string? Ulica { get; set; }
+    public string? KodPocztowy { get; set; }
+    public string? Miejscowosc { get; set; }
+}
+
+public sealed class OrderLineDto
+{
+    public string Symbol { get; set; } = "";
+    public decimal Ilosc { get; set; }
+    public decimal WartoscBrutto { get; set; }
+    /// <summary>Display name for a symbol-less service line (e.g. shipping) — ignored when Symbol is set.</summary>
+    public string? Nazwa { get; set; }
+}
+
+public sealed class CreateOrderRequest
+{
+    public OrderBuyerDto Buyer { get; set; } = new();
+    public List<OrderLineDto> Lines { get; set; } = new();
+    public string OrderRef { get; set; } = "";
+    public string? Uwagi { get; set; }
+    /// <summary>ISO currency the line amounts are denominated in. Null/empty
+    /// leaves the document on Subiekt's own default currency.</summary>
+    public string? Waluta { get; set; }
+}
+
+public sealed record CreateOrderResponse(int Id, string Numer);
+
+public sealed record OrderFeedItem(int Id, string Numer, string DataWystawienia);
+public sealed record OrderFeedResponse(List<OrderFeedItem> Items, string? NextCursor);
+
+public sealed record OrderDetailLine(string Symbol, string? Nazwa, decimal Ilosc, decimal WartoscBrutto);
+public sealed record OrderDetailResponse(
+    int Id, string Numer, string DataWystawienia,
+    string? KontrahentNazwa, string? KontrahentNip, string? KontrahentEmail,
+    string Waluta, decimal WartoscBrutto, List<OrderDetailLine> Lines);
+
+public sealed class WriteShippingRequest
+{
+    public string? Carrier { get; set; }
+    public string? TrackingNumber { get; set; }
+    public string? PickupPoint { get; set; }
+    public string? Status { get; set; }
+    public string? TrackingUrl { get; set; }
+    public string? ShipmentRef { get; set; }
+    public string? OrderRef { get; set; }
+}
+
+public sealed record WriteShippingResponse(string Numer);

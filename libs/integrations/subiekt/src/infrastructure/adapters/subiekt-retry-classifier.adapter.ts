@@ -27,6 +27,11 @@
  *     violation; deterministic, never resolves on retry.
  *   - `SubiektConfigException` — deterministic config / SSRF-guard failure
  *     raised before any request leaves the client; re-throws every attempt.
+ *   - `SubiektOrderProductMappingException` — the product has no Subiekt
+ *     catalogue mapping on this connection; retrying re-reads the same
+ *     `identifier_mappings` row and gets the same answer.
+ *   - `SubiektNetPricedOrderException` — the order's source reports net line
+ *     prices, which is a property of the order; every retry refuses again.
  *   - `SubiektBridgeAuthError` — TERMINAL bridge auth/config failure (401/403);
  *     a retry with the same bad credentials fails identically, and re-issuing
  *     on a credential fix is a human action, not an auto-retry.
@@ -50,6 +55,8 @@ import type { RetryClassifierPort } from '@openlinker/core/sync';
 import { SubiektInvoiceRejectedError } from '../../domain/exceptions/subiekt-invoice-rejected.exception';
 import { SubiektUnsupportedDocumentTypeError } from '../../domain/exceptions/subiekt-unsupported-document-type.exception';
 import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.exception';
+import { SubiektOrderProductMappingException } from '../../domain/exceptions/subiekt-order-product-mapping.exception';
+import { SubiektNetPricedOrderException } from '../../domain/exceptions/subiekt-net-priced-order.exception';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektBridgeTransportError } from '../../domain/exceptions/subiekt-bridge-transport.exception';
 
@@ -66,7 +73,18 @@ export class SubiektRetryClassifierAdapter implements RetryClassifierPort {
       cause instanceof SubiektInvoiceRejectedError ||
       cause instanceof SubiektUnsupportedDocumentTypeError ||
       cause instanceof SubiektConfigException ||
-      cause instanceof SubiektBridgeAuthError
+      cause instanceof SubiektBridgeAuthError ||
+      // A product with no Subiekt catalogue mapping on this connection is a
+      // CONFIGURATION fact, not a transient one: every retry re-runs the same
+      // `identifier_mappings` lookup and gets the same answer, so without this
+      // the order spent the full ladder (~10 attempts, backing off to 6h) over
+      // roughly two days before dead-lettering — turning "this product isn't
+      // mapped" into a silent two-day disappearance. Terminal instead, so the
+      // operator sees a failed job naming the product straight away.
+      cause instanceof SubiektOrderProductMappingException ||
+      // The source's tax treatment is a property of the order itself, so every
+      // retry re-reads the same value and reaches the same refusal.
+      cause instanceof SubiektNetPricedOrderException
     ) {
       return true;
     }

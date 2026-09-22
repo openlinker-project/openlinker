@@ -68,6 +68,7 @@ import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type { SubiektOrdersBridgeClient } from '../../bridge/subiekt-orders-bridge.client';
 import type { BridgeOrderLine, BridgeOrderBuyer } from '../../bridge/subiekt-bridge-orders.types';
 import { SubiektOrderProductMappingException } from '../../domain/exceptions/subiekt-order-product-mapping.exception';
+import { SubiektNetPricedOrderException } from '../../domain/exceptions/subiekt-net-priced-order.exception';
 import { SubiektBridgeUnreachableError, SubiektRejectedError } from '../../bridge/subiekt-bridge.errors';
 import { SubiektBridgeAuthError } from '../../domain/exceptions/subiekt-bridge-auth.exception';
 import { SubiektBridgeTransportError } from '../../domain/exceptions/subiekt-bridge-transport.exception';
@@ -160,6 +161,14 @@ export class SubiektOrderProcessorAdapter
   }
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {
+    // Refuse a net-priced source BEFORE anything is written. The lines below go
+    // onto a gross-priced document, so a net figure would be booked as gross and
+    // silently under-record the order by roughly one VAT rate — see the
+    // exception's own docblock for why this refuses rather than converts.
+    if (order.totals.taxTreatment === 'exclusive') {
+      throw new SubiektNetPricedOrderException(order.orderNumber ?? '(no order number)');
+    }
+
     const buyer = resolveBuyer(order);
     const lines = await this.resolveLines(order);
 
@@ -176,6 +185,10 @@ export class SubiektOrderProcessorAdapter
         lines,
         orderRef: order.orderNumber ?? '',
         uwagi: order.orderNumber ? `OpenLinker order ${order.orderNumber}` : undefined,
+        // The line amounts below are the buyer-paid figures in the SOURCE's
+        // currency (ADR-014). Sending it keeps the ZK denominated in what the
+        // buyer actually paid instead of Subiekt's default.
+        ...(order.totals.currency ? { waluta: order.totals.currency } : {}),
       });
     } catch (error) {
       throw this.translateBridgeError(error);
