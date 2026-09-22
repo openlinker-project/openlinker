@@ -214,21 +214,23 @@ function readEnum(config: Record<string, unknown>, key: string, values: readonly
  * stored", never "an unrecognised value" - reporting them would put a warning on
  * every unset field.
  *
- * KNOWN LIMITATION (#3268 review, tracked as #3311): an unrecognised value hydrates the RHF
- * field - and hence the controlled `<select>` - to `''`, which is also the
- * value of the recommended "Not set" option. Clicking that already-selected
- * option therefore fires no `onChange` (neither the DOM nor React consider it
- * a change), so `configText` keeps carrying the stale unrecognised value and
- * a save fails identically. The warning itself does not disappear - it is
- * reactively derived from `configText`, so an attentive operator gets a clue
- * that nothing changed. The section's warning copy now says so explicitly
- * (pick a DIFFERENT option first, then switch back if the default was
- * intended), rather than instructing "pick one below" unqualified - the
- * copy-only fix a reviewer flagged. Picking any OTHER option still clears it
- * correctly, since that is a genuine value change. Not fixed at the
- * mechanism level: a real fix would mean detecting this case and forcing a
- * write regardless of the select's rendered state, which is a behaviour
- * change rather than the read-side fix this function makes.
+ * FIXED (#3268 review, #3311): this function still narrows the RHF FIELD
+ * value (what `readEnum` above computes, and what gets submitted if the
+ * operator saves untouched) to `''` - the same value as the recommended
+ * "Not set" / "Use the default" option. Left there alone, the controlled
+ * `<select>` would render already-selected on that option, and clicking the
+ * same, already-selected option fires no `onChange` (neither the DOM nor
+ * React consider it a change), so `configText` would keep carrying the stale
+ * unrecognised value and a save would fail identically.
+ *
+ * `eparagony-structured-section.tsx` breaks that trap without touching this
+ * function or `readEnum`: it renders a hidden `<option>` carrying THIS
+ * function's raw return value and points the `<select>`'s controlled `value`
+ * prop at it whenever it is non-null, rather than at the narrowed RHF field.
+ * The DOM's real selected option is therefore the raw unrecognised value, not
+ * "Not set" - so re-picking "Not set" is a genuine value change and fires
+ * `onChange` normally. Picking any OTHER option always worked, since that was
+ * already a genuine value change.
  */
 export function readUnrecognisedEnumValue(
   config: Record<string, unknown>,
