@@ -1,7 +1,8 @@
 /**
  * Invoicing Issue Handler (OL #1120)
  *
- * Handles `invoicing.issue` sync jobs — a PURE delegate to `IInvoiceService`.
+ * Handles `invoicing.issue` sync jobs — very nearly a pure delegate to
+ * `IInvoiceService`, with ONE deliberate exception noted below.
  * The policy service (`AutoIssueTriggerService`) has already composed the
  * issuance command into the job payload, so this handler:
  *  1. Casts + DEEP-validates the payload (F5).
@@ -20,6 +21,21 @@
  *    THROW (retryable); the message excludes payload/buyer (only `error.name` +
  *    `orderId` / `connectionId`).
  *
+ * THE ONE THING THIS HANDLER DOES BESIDES DELEGATE (Z3). After a successful
+ * issuance it asks for a post-document master stock re-read. On a master where
+ * the DOCUMENT moves stock — Subiekt, whose FS/PA carries the warehouse release
+ * — the refresh `OrderSyncService` fires at order-create time runs BEFORE the
+ * sale is recorded and therefore reads the pre-sale quantity; measured at 5.1 s
+ * early, and unrepeatable because that key is order-scoped. This is the only
+ * point that both knows the document committed and still holds the payload.
+ *
+ * It lives here rather than in `InvoiceService` on purpose: doing it there
+ * would mean injecting the job queue, identifier mapping and the integrations
+ * registry into `InvoicingModule` — a new invoicing→inventory edge and three
+ * new throw sites on the fiscal-safety-critical write path, whose whole premise
+ * is that nothing may disturb a committed document. Here it is wrapped so it
+ * can never change the outcome.
+ *
  * @module apps/worker/src/sync/handlers
  */
 import { Injectable, Inject } from '@nestjs/common';
@@ -30,6 +46,10 @@ import type {
   InvoicingIssuePayloadV1,
 } from '@openlinker/core/sync';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
+import {
+  POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
+  type PostSaleInventoryRefreshService,
+} from '@openlinker/core/inventory';
 import {
   IInvoiceService,
   INVOICE_SERVICE_TOKEN,
@@ -57,6 +77,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
   constructor(
     @Inject(INVOICE_SERVICE_TOKEN)
     private readonly invoiceService: IInvoiceService,
+    @Inject(POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN)
+    private readonly postSaleInventoryRefresh: PostSaleInventoryRefreshService,
   ) {}
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
@@ -75,7 +97,8 @@ export class InvoicingIssueHandler implements SyncJobHandler {
       // F4: command idempotencyKey === payload.idempotencyKey === job row key.
       // The service's `issued`-only exactly-once gate makes duplicate events /
       // retries a no-op against the same key.
-      await this.invoiceService.issueInvoice(command);
+      const record = await this.invoiceService.issueInvoice(command);
+      await this.refreshMasterStockAfterDocument(record.id, payload);
       return { outcome: 'ok' };
     } catch (error) {
       // #2047: the order is already invoiced on ANOTHER connection. A retry can
@@ -147,6 +170,42 @@ export class InvoicingIssueHandler implements SyncJobHandler {
    * PII: on violation logs ONLY the failed field name(s) + `orderId` /
    * `connectionId` / `schemaVersion` — NEVER `payload` / `buyer` / `lines`.
    */
+  /**
+   * Ask for a master stock re-read now that the document — and with it, on a
+   * document-moves-stock master, the warehouse release — has committed.
+   *
+   * Keyed on the INVOICE RECORD, which makes it a genuinely distinct event
+   * from the order-scoped refresh and therefore fires exactly once more. A
+   * retried `invoicing.issue` resolves to the same record through the
+   * exactly-once gate, hence the same key, hence no re-enqueue; a correction
+   * is a new record and legitimately earns one more. The upper bound is the
+   * number of documents issued against the order.
+   *
+   * NEVER throws and never changes the job outcome: the document is already
+   * committed fiscal state, and a queue hiccup must not turn a successful
+   * issuance into a retry that would re-enter the issuance path.
+   */
+  private async refreshMasterStockAfterDocument(
+    invoiceRecordId: string,
+    payload: InvoicingIssuePayloadV1,
+  ): Promise<void> {
+    try {
+      await this.postSaleInventoryRefresh.enqueue({
+        // Shipping and manual lines carry no product and are simply absent.
+        productIds: payload.lines
+          .map((line) => line.productId)
+          .filter((id): id is string => typeof id === 'string' && id !== ''),
+        keyScope: `invoice:${invoiceRecordId}`,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `post-document master inventory refresh could not be enqueued for orderId=${payload.orderId} ` +
+          `(invoice ${invoiceRecordId}): ${error instanceof Error ? error.name : 'unknown error'}. ` +
+          `The scheduled inventory sweep remains the backstop.`,
+      );
+    }
+  }
+
   private validatePayload(job: SyncJob): InvoicingIssuePayloadV1 | null {
     const p = job.payload as unknown as Partial<InvoicingIssuePayloadV1>;
 
