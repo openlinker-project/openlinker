@@ -46,6 +46,7 @@ import type {
   BridgeKorektaResponse,
   BridgeListBankAccountsResponse,
   BridgeListCashRegistersResponse,
+  BridgeLocateResponse,
   BridgeRegulatoryStatus,
   BridgeResponseEnvelope,
   BridgeSetDefaultBankAccountResponse,
@@ -108,6 +109,11 @@ export const SUBIEKT_BRIDGE_ENDPOINTS = {
    * bridge route is `PUT /api/bank-accounts/{id}/default` (#1324).
    */
   setDefaultBankAccount: (id: number): string => `/api/bank-accounts/${id}/default`,
+  /**
+   * Crash-recovery lookup by original idempotency key (#3389). The bridge route
+   * is `GET /api/invoices/locate?key=...`.
+   */
+  locate: (key: string): string => `/api/invoices/locate?key=${encodeURIComponent(key)}`,
   /**
    * Stanowisko Kasowe (cash register) discovery. The bridge route is
    * `GET /api/cash-registers` (#1324).
@@ -240,6 +246,10 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
 
   async listCashRegisters(): Promise<BridgeListCashRegistersResponse> {
     return this.getJson<BridgeListCashRegistersResponse>(SUBIEKT_BRIDGE_ENDPOINTS.cashRegisters);
+  }
+
+  async locateByOriginalKey(key: string): Promise<BridgeLocateResponse> {
+    return this.getJson<BridgeLocateResponse>(SUBIEKT_BRIDGE_ENDPOINTS.locate(key));
   }
 
   /**

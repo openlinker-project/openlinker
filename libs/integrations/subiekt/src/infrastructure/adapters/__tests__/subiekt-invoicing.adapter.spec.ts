@@ -13,6 +13,7 @@ import {
   isBankAccountDefaultSetter,
   isBankAccountsReader,
   isCorrectionIssuer,
+  isRegulatoryRecordLocator,
   isRegulatoryStatusReader,
   MissingTaxRateException,
 } from '@openlinker/core/invoicing';
@@ -622,6 +623,48 @@ describe('SubiektInvoicingAdapter', () => {
       await expect(adapter.getClearanceStatus(issued.record)).rejects.toBeInstanceOf(
         SubiektInvoiceRejectedError,
       );
+    });
+  });
+
+  describe('locateByQuery (#3389, RegulatoryRecordLocator crash-recovery)', () => {
+    it('is detected as a RegulatoryRecordLocator', () => {
+      const adapter = makeAdapter().adapter;
+      expect(isRegulatoryRecordLocator(adapter)).toBe(true);
+    });
+
+    it('finds a previously-issued document by idempotencyKey and maps it to a neutral result', async () => {
+      const { adapter } = makeAdapter();
+      const issued = await adapter.issueInvoice(command({ idempotencyKey: 'invoice:conn-1:order-1' }));
+      const located = await adapter.locateByQuery({ idempotencyKey: 'invoice:conn-1:order-1' });
+      expect(located).not.toBeNull();
+      expect(located?.providerInvoiceId).toBe(issued.record.providerInvoiceId);
+      expect(located?.regulatoryStatus).toBe('submitted'); // fake seeds 'sent' -> neutral 'submitted'
+    });
+
+    it('returns null when nothing was issued under the given idempotencyKey', async () => {
+      const { adapter } = makeAdapter();
+      const located = await adapter.locateByQuery({ idempotencyKey: 'never-issued-key' });
+      expect(located).toBeNull();
+    });
+
+    it('returns null without a bridge call when the criteria carries no idempotencyKey (Subiekt cannot search by documentNumber pre-crash)', async () => {
+      const { adapter, bridge } = makeAdapter();
+      const spy = jest.spyOn(bridge, 'locateByOriginalKey');
+      const located = await adapter.locateByQuery({
+        documentNumber: 'FV/2026/1',
+        issuedFrom: new Date(),
+        issuedTo: new Date(),
+      });
+      expect(located).toBeNull();
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('translates a transport failure during the locate call', async () => {
+      const { adapter, bridge } = makeAdapter();
+      bridge.seedFailure('bridge-unreachable');
+      await expect(
+        adapter.locateByQuery({ idempotencyKey: 'some-key' }),
+      ).rejects.toBeInstanceOf(SubiektBridgeTransportError);
     });
   });
 

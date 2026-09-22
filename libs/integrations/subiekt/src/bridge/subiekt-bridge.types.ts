@@ -234,6 +234,24 @@ export interface BridgeInvoiceStatusResponse {
 }
 
 /**
+ * `GET /api/invoices/locate?key=...` response (#3389, `RegulatoryRecordLocator`
+ * crash-recovery). `found: false` is a NORMAL, expected outcome (nothing was
+ * ever created under this key) — deliberately never expressed as a null `data`
+ * envelope, since `SubiektBridgeHttpClient`'s generic envelope-unwrap treats a
+ * null `data` on a 2xx as a rejection, which would turn "not found" into a
+ * thrown error instead of the clean `null` the capability's contract requires.
+ */
+export type BridgeLocateResponse =
+  | { found: false }
+  | {
+      found: true;
+      providerInvoiceId: number;
+      numer: string;
+      regulatoryStatus: BridgeRegulatoryStatus;
+      clearanceReference: string | null;
+    };
+
+/**
  * One bank account (rachunek bankowy) as the bridge returns it from
  * `GET /api/bank-accounts` (bridge PR #4). All display fields are nullable —
  * the bridge returns `""`/`null` for unset Sfera columns, normalized to `null`
