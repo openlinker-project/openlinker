@@ -31,6 +31,12 @@
  * "issues nothing" reading rather than treated as a different case, since
  * such a connection is equally unable to issue anything.
  *
+ * NOT converged with the rule composer / starter-template screen (#3232):
+ * those two pickers stay capability-only, deliberately wider than this
+ * predicate — see `find-sales-document-connection-role-gap.ts` for why, and
+ * for the pick-time warning that keeps an operator from discovering the gap
+ * only here, after a rule has already saved.
+ *
  * Mockup reconciliation (`docs/plans/mockups/sales-document-rule-composer.html`,
  * `rules-destination-warning`): the mockup panel draws the single
  * `issues-nothing` destination only. Its sentence was updated alongside this
