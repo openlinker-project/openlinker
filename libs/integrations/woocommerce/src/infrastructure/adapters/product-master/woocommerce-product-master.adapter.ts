@@ -253,8 +253,8 @@ export class WooCommerceProductMasterAdapter
           this.logger.warn(`No internal ID for WC product ${String(p.id)}`);
           return null;
         }
-        const mapped = this.mapper.mapProduct(p);
-        return { ...mapped, currency: currency ?? mapped.currency, id: internalId };
+        const mapped = this.applyStoreCurrency(this.mapper.mapProduct(p), currency);
+        return { ...mapped, id: internalId };
       })
       .filter((p): p is Product => p !== null);
   }
@@ -956,6 +956,18 @@ export class WooCommerceProductMasterAdapter
    */
   private async withStoreCurrency(product: Omit<Product, 'id'>): Promise<Omit<Product, 'id'>> {
     const currency = await this.readStoreCurrency();
+    return this.applyStoreCurrency(product, currency);
+  }
+
+  /**
+   * The one rule behind `withStoreCurrency` / `getProducts`, shared rather
+   * than restated: overlay the store's currency onto a mapped product when
+   * there is one, otherwise leave the mapper's own output untouched.
+   */
+  private applyStoreCurrency(
+    product: Omit<Product, 'id'>,
+    currency: string | null,
+  ): Omit<Product, 'id'> {
     return currency ? { ...product, currency } : product;
   }
 
