@@ -40,6 +40,7 @@ import { POLISH_VOIVODESHIP_VALUES } from '../types/polish-voivodeship.types';
 import { INVOICE_TRIGGER_MODEL_VALUES } from '../types/invoice-trigger-model.types';
 import { isPricingDestination } from '../lib/pricing-destination';
 import { ApiError } from '../../../shared/api/api-error';
+import { isStockLocationOverrideValidationError } from '../lib/stock-location-override-error';
 
 interface EditConnectionFormProps {
   connection: Connection;
@@ -513,6 +514,13 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
   // population, so a divergence here is silently destructive.
   const needsMasterCatalog = isPricingDestination(connection);
   const hasStructuredInputs = StructuredSection !== undefined || needsMasterCatalog;
+  // #3207 review — `config.stockLocationOverride` is read by
+  // `MasterInventorySyncService` only, so offering the knob on a connection
+  // with no enabled `InventoryMaster` capability would let it persist and be
+  // read by nothing: the configuration-that-decides-nothing shape #2407
+  // refuses. Gating here also stops `StockAndPricingSection` from firing its
+  // `GET /inventory/locations` read on every connection-edit page load.
+  const isInventoryMaster = connection.enabledCapabilities.includes('InventoryMaster');
 
   // Tracks whether the raw JSON currently parses. When it doesn't, we lock the
   // structured inputs so typing in them can't silently drop custom keys that
@@ -754,11 +762,12 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
       // (set automatically by `useMutation` on rejection, independent of
       // this catch) so the generic alert doesn't also render the same
       // message a second time beneath it.
-      if (
-        error instanceof ApiError &&
-        error.status === 400 &&
-        error.message.includes('stockLocationOverride')
-      ) {
+      //
+      // Branches on the backend's machine-readable `error` code, not on
+      // `error.message.includes('stockLocationOverride')` — that matched on
+      // prose the backend is free to reword, and a reworded message would
+      // have silently reverted this to the generic banner (review finding).
+      if (error instanceof ApiError && isStockLocationOverrideValidationError(error)) {
         form.setError('stockLocationOverride', { message: error.message });
         updateConnection.reset();
         return;
@@ -909,6 +918,7 @@ export function EditConnectionForm({ connection }: EditConnectionFormProps): Rea
         syncStockPolicyToJson={syncStockPolicyToJson}
         syncPricingRuleToJson={syncPricingRuleToJson}
         syncStockLocationOverrideToJson={syncStockLocationOverrideToJson}
+        stockLocationOverrideCapable={isInventoryMaster}
         pricingRuleManagedElsewhere={
           needsMasterCatalog ? { href: `/connections/${connection.id}/pricing-sync` } : undefined
         }

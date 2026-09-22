@@ -175,7 +175,16 @@ describe('EditConnectionForm', () => {
     const fieldErrorMessage = 'config.stockLocationOverride names an unknown location: ol_location_1';
     const apiClient = createMockApiClient({
       connections: {
-        update: vi.fn().mockRejectedValue(new ApiError(fieldErrorMessage, 400, { message: fieldErrorMessage })),
+        // The `error` code is what the field-level mapping branches on
+        // (#3207 review) — not a substring match on `message`, which is
+        // prose the backend is free to reword.
+        update: vi.fn().mockRejectedValue(
+          new ApiError(fieldErrorMessage, 400, {
+            statusCode: 400,
+            error: 'STOCK_LOCATION_OVERRIDE_INVALID',
+            message: fieldErrorMessage,
+          }),
+        ),
         getById: vi.fn().mockResolvedValue(connectionWithOverride),
       },
       inventory: { listLocations: vi.fn().mockResolvedValue(locations) },
@@ -187,13 +196,59 @@ describe('EditConnectionForm', () => {
     // The field-level error renders under the Location select (and, since
     // submitCount > 0, is also echoed in the top-of-form validation
     // summary — that's the form's ordinary error-summary behaviour, not the
-    // bug this test guards against).
+    // bug this test guards against). Exactly two, not `> 0` (#3207
+    // review) — the count is deterministic here, and a fixed length also
+    // fails loudly if the field and the summary ever stop agreeing.
     const fieldErrors = await screen.findAllByText(fieldErrorMessage);
-    expect(fieldErrors.length).toBeGreaterThan(0);
+    expect(fieldErrors).toHaveLength(2);
     // The generic "Unable to update connection" banner must not also render
     // — before the fix, `updateConnection.error` stayed set independently of
     // `form.setError`, so the message rendered a THIRD time, in that banner.
     expect(screen.queryByText('Unable to update connection')).not.toBeInTheDocument();
+  });
+
+  it('does not offer the stock-location-override group, and does not read locations, for a connection without InventoryMaster (#3207 review)', async () => {
+    const connectionWithoutInventoryMaster: Connection = {
+      ...sampleConnection,
+      enabledCapabilities: ['OfferManager', 'OrderProcessorManager'],
+    };
+    const listLocations = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'ol_location_1',
+          code: 'WH1',
+          name: 'Main warehouse',
+          kind: 'warehouse',
+          ownerConnectionId: null,
+          externalRef: null,
+          status: 'active',
+          countryIso2: null,
+          postcode: null,
+          latitude: null,
+          longitude: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      total: 1,
+      page: 1,
+      limit: 200,
+    });
+    const apiClient = createMockApiClient({
+      connections: { getById: vi.fn().mockResolvedValue(connectionWithoutInventoryMaster) },
+      inventory: { listLocations },
+    });
+
+    renderWithProviders(<EditConnectionForm connection={connectionWithoutInventoryMaster} />, {
+      apiClient,
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText("Assign a location to this connection's stock"),
+      ).not.toBeInTheDocument(),
+    );
+    expect(listLocations).not.toHaveBeenCalled();
   });
 
   it('preserves a config field written by a sibling panel after this form mounted, instead of clobbering it with the load-time snapshot', async () => {

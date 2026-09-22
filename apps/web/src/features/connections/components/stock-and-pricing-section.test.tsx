@@ -17,6 +17,7 @@ interface HarnessProps {
   syncStockPolicyToJson?: () => void;
   syncPricingRuleToJson?: () => void;
   syncStockLocationOverrideToJson?: () => void;
+  stockLocationOverrideCapable?: boolean;
   initialStockPolicy?: { safetyBuffer?: string; zeroThreshold?: string };
   initialPricingRule?: { type?: string; percent?: string; rounding?: string };
   initialStockLocationOverride?: string;
@@ -28,6 +29,10 @@ function Harness({
   syncStockPolicyToJson = (): void => {},
   syncPricingRuleToJson = (): void => {},
   syncStockLocationOverrideToJson = (): void => {},
+  // Defaults `true` — the existing suite exercises the group as a connection
+  // with `InventoryMaster` enabled; the capability gate itself is covered by
+  // its own describe block below (#3207 review).
+  stockLocationOverrideCapable = true,
   initialStockPolicy,
   initialPricingRule,
   initialStockLocationOverride,
@@ -47,6 +52,7 @@ function Harness({
       syncStockPolicyToJson={syncStockPolicyToJson}
       syncPricingRuleToJson={syncPricingRuleToJson}
       syncStockLocationOverrideToJson={syncStockLocationOverrideToJson}
+      stockLocationOverrideCapable={stockLocationOverrideCapable}
       pricingRuleManagedElsewhere={pricingRuleManagedElsewhere}
     />
   );
@@ -313,6 +319,7 @@ describe('StockAndPricingSection', () => {
             syncStockPolicyToJson={() => {}}
             syncPricingRuleToJson={() => {}}
             syncStockLocationOverrideToJson={() => {}}
+            stockLocationOverrideCapable
           />
         );
       }
@@ -333,6 +340,53 @@ describe('StockAndPricingSection', () => {
       expect(
         await screen.findByLabelText("Assign a location to this connection's stock"),
       ).toBeDisabled();
+    });
+
+    // #3207 review — the group must never be offered on a connection whose
+    // enabled capabilities can't use the answer, and the locations read must
+    // not fire either (its whole cost).
+    it('does not render the group, and does not fire the locations read, when the connection is not InventoryMaster-capable', async () => {
+      const listLocations = vi.fn().mockResolvedValue(ONE_ACTIVE_LOCATION);
+      const apiClient = createMockApiClient({ inventory: { listLocations } });
+      renderWithProviders(<Harness stockLocationOverrideCapable={false} />, { apiClient });
+
+      await waitFor(() =>
+        expect(
+          screen.queryByLabelText("Assign a location to this connection's stock"),
+        ).not.toBeInTheDocument(),
+      );
+      expect(listLocations).not.toHaveBeenCalled();
+    });
+
+    // #3207 review — a stored id that never resolves against the fetched
+    // page (deleted, retired past this page's window, or the read simply
+    // hasn't answered yet) must not fall back to the empty placeholder: the
+    // checkbox would read "on" while the picker read "nothing chosen", and
+    // the actual stored value would be unrecoverable from this surface.
+    it('names the stored value with a sentinel option when it is not among the fetched locations', async () => {
+      const apiClient = createMockApiClient({
+        inventory: { listLocations: vi.fn().mockResolvedValue(ONE_ACTIVE_LOCATION) },
+      });
+      renderWithProviders(<Harness initialStockLocationOverride="ol_location_deleted" />, {
+        apiClient,
+      });
+
+      await screen.findByLabelText("Assign a location to this connection's stock");
+      expect(screen.getByLabelText('Location')).toHaveValue('ol_location_deleted');
+      expect(
+        screen.getByRole('option', { name: /Currently set to: ol_location_deleted/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('renders the group for a stored value even when no inventory_locations row exists at all', async () => {
+      // The default mock apiClient's `inventory.listLocations` resolves an
+      // empty page (see test-utils.tsx) — `hasAnyLocation` is false, but a
+      // stored value must still be shown rather than silently disappearing.
+      renderWithProviders(<Harness initialStockLocationOverride="ol_location_deleted" />);
+
+      const toggle = await screen.findByLabelText("Assign a location to this connection's stock");
+      expect(toggle).toBeChecked();
+      expect(await screen.findByLabelText('Location')).toHaveValue('ol_location_deleted');
     });
   });
 });
