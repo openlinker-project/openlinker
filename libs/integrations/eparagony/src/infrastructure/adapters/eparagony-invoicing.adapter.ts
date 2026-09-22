@@ -680,10 +680,11 @@ export class EparagonyInvoicingAdapter
    * `idempotencyKey` is optional on both commands, and without one there is
    * nothing deterministic to derive from - so a per-(connection, order, KIND)
    * key stands in. `kind` namespaces an original invoice apart from a
-   * correction: without it, an idempotency-key-less correction on the same order
-   * would derive the SAME `documentToken`/`transactionToken` pair the original
-   * invoice did, and the vendor - which dedupes on that token - would answer the
-   * correction with the original document.
+   * correction UNCONDITIONALLY - including a caller-supplied key - because a
+   * correction sharing an original invoice's caller-supplied key would derive
+   * the SAME `documentToken`/`transactionToken` pair the original invoice did,
+   * and the vendor - which dedupes on that token - would answer the correction
+   * with the original, unmodified document rather than creating one.
    *
    * That is not a weaker guarantee for the invariant that matters: one order on
    * one connection gets one document OF A GIVEN KIND either way, which is the
@@ -695,7 +696,7 @@ export class EparagonyInvoicingAdapter
     kind: 'invoice' | 'correction',
   ): string {
     const supplied = idempotencyKey?.trim() ?? '';
-    return supplied.length > 0 ? supplied : `${kind}:${this.connectionId}:${orderId}`;
+    return supplied.length > 0 ? `${kind}:${supplied}` : `${kind}:${this.connectionId}:${orderId}`;
   }
 
   /** Clamp the operator's poll timeout into the range the deadline invariant allows. */
