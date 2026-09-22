@@ -27,6 +27,7 @@ import type {
   UpdateAnalyticsSettingsInput,
   ProductContentState,
   ApproveUserInput,
+  UserSummary,
   BulkBatchSummary,
   DescriptionFormatView,
   BulkIssueInvoicesInput,
@@ -411,6 +412,15 @@ export class ApiClient {
         body: JSON.stringify(input),
         skipAuth: true,
       }),
+    /**
+     * `GET /auth/me` — the currently authenticated user, resolved server-side
+     * from THIS client's own bearer token. The one honest way to prove a
+     * provisioned account's `id` (read back from the admin's user list) is
+     * the same principal a login actually authenticates as, rather than two
+     * independently-derived values that merely happen to both be non-null
+     * (#3385 review).
+     */
+    me: (): Promise<UserSummary> => this.request<UserSummary>('/auth/me'),
   };
 
   // ── Users (admin only) ────────────────────────────────────────────────────

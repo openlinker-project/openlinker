@@ -11,9 +11,20 @@
  * `FulfillmentWork` rows are seeded directly (see `bench-seed.ts`'s header
  * for why), reusing its connection/location/product/variant fixtures.
  * `docs/plans/mockups/assign-packing-work.html` is opened from the
- * repo-committed file (never the Artifact URL) for one baseline structural
- * screenshot — see `assign-packing-work-mockup.page.ts`'s header for why its
- * remaining interactive states are not independently re-driven here.
+ * repo-committed file (never the Artifact URL) for a baseline structural
+ * screenshot, plus one paired screenshot beside each real-app step whose
+ * state the mockup's own `[data-demo-state-btn]` switcher can reach (#3362)
+ * — see `assign-packing-work-mockup.page.ts`'s header for which two states
+ * qualify and why `drag-over` still doesn't.
+ *
+ * Coverage note (#3385 review): unlike #3384's pack-bench suite, which
+ * compares FIVE full-screen states with both screenshot and real content,
+ * "parity" here rests almost entirely on the real-app content assertions
+ * below — the mockup screenshots are a structural reference alongside them,
+ * not an independent state-by-state comparison, because this board has no
+ * mutually-exclusive full-screen states to compare in the first place (see
+ * the mockup page object's header). A reader should not assume this suite
+ * offers the same class of coverage #3384's does.
  *
  * @module tests/bench
  */
@@ -44,6 +55,16 @@ test.describe('Assign Packing Work (#3343)', () => {
 
     const packerA = await provisionPacker(env, api);
     test.skip(!packerA, 'no packer available — registration disabled or rate-limited on this stack');
+
+    // `packerA!.id` (read back from the admin's user list at provisioning
+    // time) is what `seedAssignPackingWork` stamps onto `assignedWorkId`'s
+    // `assignedToUserId` below. Before trusting that seeded row to prove
+    // anything about the bench's `assignmentState: 'mine'` rendering, confirm
+    // that id is genuinely the same principal `packerA!.creds` authenticates
+    // as — otherwise the round-trip could pass with the two ids merely both
+    // being non-null and never actually matching (#3385 review).
+    const me = await packerA!.client.auth.me();
+    expect(me.id).toBe(packerA!.id);
 
     // `bench-seed`'s connection/location/product/variant fixtures are a
     // prerequisite FK target for `seedAssignPackingWork` — any state seeds them.
@@ -79,6 +100,15 @@ test.describe('Assign Packing Work (#3343)', () => {
       await expect(checkbox).toBeChecked();
       await pages.assignPackingWork.toggleSelfServe(seed.assignedWorkId);
       await expect(checkbox).not.toBeChecked();
+
+      // Paired mockup reference (#3362 switcher, #3385 review).
+      await pages.assignPackingWorkMockup.setDemoState('assignment-only');
+      const assignmentOnlyFile = testInfo.outputPath('board--mockup-assignment-only.png');
+      await pages.assignPackingWorkMockup.board.screenshot({ path: assignmentOnlyFile });
+      await testInfo.attach('board — mockup (assignment-only)', {
+        path: assignmentOnlyFile,
+        contentType: 'image/png',
+      });
     });
 
     await test.step('place a hold with a reason', async () => {
@@ -87,20 +117,35 @@ test.describe('Assign Packing Work (#3343)', () => {
         'data-held',
         'true',
       );
+
+      // Paired mockup reference (#3362 switcher, #3385 review).
+      await pages.assignPackingWorkMockup.setDemoState('hold-form-open');
+      const holdFormFile = testInfo.outputPath('board--mockup-hold-form-open.png');
+      await pages.assignPackingWorkMockup.board.screenshot({ path: holdFormFile });
+      await testInfo.attach('board — mockup (hold-form-open)', {
+        path: holdFormFile,
+        contentType: 'image/png',
+      });
     });
 
     await test.step('bench-side rendering matches (#3341 rail)', async () => {
-      // packerA is the assignee of `seed.assignedWorkId` — their bench must
-      // read `assignmentState: 'mine'` (the assigned-to-you badge), never a
-      // raw internal user id (the PII-minimization rule #3341's own service
-      // docblock states).
       await seedPackerBrowserSession(page.context(), env, packerA!.creds);
       await pages.bench.goto();
       // Scoped to THIS seeded row, not a bare `bench-work-row` selector — a
       // shared stack carries its own pre-existing demo rows, and asserting
       // against every row on the page is a Playwright strict-mode violation
       // the moment more than one exists.
+      //
+      // Two rows, two different sources of "packerA is the assignee":
+      // `unassignedWorkId` earned the assignment through the real
+      // `/fulfillment/assign` UI action above, while `assignedWorkId` was
+      // seeded directly into `assignedToUserId` at the top of the test — the
+      // one row whose "Assigned to you" reading actually depends on the
+      // `packerA!.id === me.id` identity assertion above having been true.
       await expect(pages.bench.rowForWorkId(seed.unassignedWorkId)).toContainText('Assigned to you', {
+        timeout: 10_000,
+      });
+      await expect(pages.bench.rowForWorkId(seed.assignedWorkId)).toContainText('Assigned to you', {
         timeout: 10_000,
       });
     });
