@@ -65,6 +65,7 @@ import {
   invoiceIssueLockKey,
 } from './invoice-issue-lock';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
+import { deriveCorrectionFallbackKey } from '../../domain/idempotency/correction-fallback-key';
 import { taxRatePercentToFraction } from '../../domain/types/tax-rate-notation.types';
 import { findMissingTaxRate } from '../../domain/types/order-tax-rate-gate.types';
 import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
@@ -1050,36 +1051,46 @@ export class InvoiceService implements IInvoiceService {
    * entirely and call `adapter.issueCorrection` a second time, risking a
    * duplicate correction document for the identical original invoice — the
    * `issueInvoice` bug class, one method over. The gate mirrors
-   * `issueLocked`'s steps (1)/(2)/(5): a keyless call is never deduplicated
-   * (R1); an `issued` hit replays verbatim; a live-leased or in-doubt-failed
-   * hit is surfaced without a second provider call; a create-race re-reads the
-   * winner by key. There is deliberately no per-order LOCK the way
-   * `issueInvoice` has one — two DIFFERENT idempotency keys correcting the
-   * same original document is a legitimate multi-correction sequence, not a
-   * race to exclude.
+   * `issueLocked`'s steps (1)/(2)/(5): an `issued` hit replays verbatim; a
+   * live-leased or in-doubt-failed hit is surfaced without a second provider
+   * call; a create-race re-reads the winner by key. There is deliberately no
+   * per-order LOCK the way `issueInvoice` has one — two DIFFERENT idempotency
+   * keys correcting the same original document is a legitimate
+   * multi-correction sequence, not a race to exclude.
    *
-   * R1's "keyless is never deduplicated" holds a hidden assumption: it
-   * matches the ADAPTER exactly when the adapter also treats "no key" as "no
-   * dedup promise" (verified true for Subiekt's own `issueCorrection`, which
-   * omits `idempotencyKey` from the bridge request entirely when absent, and
-   * the bridge itself derives no fallback). It does NOT hold for an adapter
-   * that derives a deterministic per-(connection, order, kind) fallback token
-   * when no key is supplied and dedupes on THAT (eparagony's
-   * `resolveRegistrationKey`, flagged from the adapter side on #3332): two
-   * keyless corrections from this method would then create two
-   * `InvoiceRecord` rows here while the provider holds only one document -
-   * core and the adapter would disagree about how many corrections exist.
-   * Not fixed here (#3365 review) - either refusing a key-less correction or
-   * deriving the same deterministic fallback core-side needs to be decided
-   * once, for every adapter this method serves, not inside one adapter's PR.
+   * UNLIKE `issueInvoice`, a keyless call here is NOT exempt from the gate
+   * (#3365 review, IMPORTANT). `issueInvoice`'s R1 ("keyless is never
+   * deduplicated") is a long-standing, documented CALLER contract every
+   * existing consumer already assumes; `issueCorrection` is new in this same
+   * change and has exactly one shipped caller — the operator "Issue
+   * correction" button — which never threads an `idempotencyKey` through at
+   * all, so R1 would have left every real correction request completely
+   * undeduplicated. Rather than push that burden onto every future caller,
+   * this method derives a deterministic fallback key
+   * (`deriveCorrectionFallbackKey`, hashing what the correction actually
+   * changes — the original document reference, lines, reason, requested
+   * document type) whenever the caller omits one, and uses it for the
+   * read-gate, the `pending` row, and the command handed to the adapter. Two
+   * things follow: (1) a genuine retry (byte-identical content) dedupes
+   * through core's own `(connectionId, idempotencyKey)` guard exactly as a
+   * caller-supplied key would; (2) an adapter that ALSO derives its own
+   * fallback token when it sees no key (eparagony's `resolveRegistrationKey`,
+   * flagged from the adapter side on #3332 — no shipped `CorrectionIssuer`
+   * does this today, but the concern is adapter-agnostic) instead receives a
+   * REAL, non-empty key from core and uses it, so core and the adapter can no
+   * longer disagree about how many corrections exist for one request. See
+   * `correction-fallback-key.ts` for why the key must be content-derived
+   * rather than `(connectionId, orderId)` alone — the latter would silently
+   * collapse every subsequent keyless correction of one order into the FIRST
+   * one ever issued.
    */
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {
-    const key = cmd.idempotencyKey;
-    if (key !== undefined) {
-      const existing = await this.repo.findByIdempotencyKey(cmd.connectionId, key);
-      if (existing) {
-        return this.resumeExistingCorrection(cmd, existing);
-      }
+    const key = cmd.idempotencyKey ?? deriveCorrectionFallbackKey(cmd);
+    const effectiveCmd: IssueCorrectionCommand = { ...cmd, idempotencyKey: key };
+
+    const existing = await this.repo.findByIdempotencyKey(effectiveCmd.connectionId, key);
+    if (existing) {
+      return this.resumeExistingCorrection(effectiveCmd, existing);
     }
 
     // Persist intent before the provider call: `pending` row so a crash leaves
@@ -1087,28 +1098,27 @@ export class InvoiceService implements IInvoiceService {
     let pending: InvoiceRecord;
     try {
       pending = await this.repo.create({
-        connectionId: cmd.connectionId,
-        orderId: cmd.orderId,
+        connectionId: effectiveCmd.connectionId,
+        orderId: effectiveCmd.orderId,
         providerType: '',
-        documentType: cmd.documentType ?? 'corrected',
+        documentType: effectiveCmd.documentType ?? 'corrected',
         status: 'pending',
-        idempotencyKey: key ?? null,
+        idempotencyKey: key,
       });
     } catch (error) {
       // Create-race: a concurrent same-key call won the dedup guard between our
       // read-gate and create. Re-read by key and resume the winner under the
-      // SAME fiscal-safety gate. Guarded by `key !== undefined` — the guard
-      // cannot fire keyless.
-      if (key !== undefined && error instanceof DuplicateInvoiceRecordException) {
-        const winner = await this.repo.findByIdempotencyKey(cmd.connectionId, key);
+      // SAME fiscal-safety gate.
+      if (error instanceof DuplicateInvoiceRecordException) {
+        const winner = await this.repo.findByIdempotencyKey(effectiveCmd.connectionId, key);
         if (winner) {
-          return this.resumeExistingCorrection(cmd, winner);
+          return this.resumeExistingCorrection(effectiveCmd, winner);
         }
       }
       throw error;
     }
 
-    return this.issueCorrectionWithAdapter(cmd, pending.id);
+    return this.issueCorrectionWithAdapter(effectiveCmd, pending.id);
   }
 
   /**
