@@ -168,6 +168,8 @@ export function describeVerificationRefusal(
       });
     case 'not-packable':
       return copy.notPackable;
+    case 'assigned-to-another-packer':
+      return copy.assignedToAnotherPacker;
     case 'parcel-closed':
       return copy.parcelClosed;
     case 'no-such-line':
@@ -185,6 +187,8 @@ export function describeReopenRefusal(reason: string | null): string {
       return copy.reopenShipped;
     case 'not-closed':
       return copy.reopenNotClosed;
+    case 'assigned-to-another-packer':
+      return copy.reopenAssignedToAnotherPacker;
     default:
       return copy.reopenUnknownRefusal;
   }

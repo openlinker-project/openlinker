@@ -100,6 +100,17 @@ export const ParcelVerificationRefusalValues = [
    * rather than clamped afterwards.
    */
   'over-packed',
+  /**
+   * ADR-074 / #3336 / #3337 / #3341: the parcel is locked to a different
+   * packer. Declared here and produced only by `apps/api/src/bench` — the
+   * same asymmetry `'not-packable'` documents above, since the eligibility
+   * predicate reads `isClaimableByViewer` in `bench-work-eligibility.ts`
+   * rather than anything in this context. Kept distinct from `'not-packable'`
+   * so the list's own "assigned to another packer" copy and the write's
+   * refusal state the same cause, rather than the write falling back to the
+   * viewer-independent D2 wording for a viewer-dependent reason.
+   */
+  'assigned-to-another-packer',
 ] as const;
 
 export type ParcelVerificationRefusal = (typeof ParcelVerificationRefusalValues)[number];
@@ -114,11 +125,11 @@ export const ParcelReopenRefusalValues = [
   /** Nothing to reopen — the parcel is not closed. */
   'not-closed',
   /**
-   * Locked to a packer other than the one asking (ADR-074). The same reason
-   * as `ParcelVerificationRefusal`'s member of the same name — a fact about
-   * the ACTOR, not about the parcel's own closed/shipped state, and produced
-   * by `BenchParcelService` rather than by this context's own reopen logic
-   * (#3361 review).
+   * Locked to a packer other than the one asking (ADR-074 / #3336 / #3337 /
+   * #3341). The same reason as `ParcelVerificationRefusal`'s member of the
+   * same name — a fact about the ACTOR, not about the parcel's own
+   * closed/shipped state, and produced by `BenchParcelService` rather than
+   * by this context's own reopen logic (#3361 review).
    */
   'assigned-to-another-packer',
 ] as const;

@@ -146,6 +146,18 @@ export function deriveBenchWorkAssignmentState(
  * `@CurrentUser()` is optional by design: `null` never equals a real
  * assignee, so an anonymous request against a locked parcel is excluded too -
  * the fail-closed reading of "who is asking" when nobody answers.
+ *
+ * **This is deliberate, not an oversight: a lock refuses its own author.**
+ * The predicate tests only `selfServeEligible` / `assignedToUserId` /
+ * `viewerId` — it does not carve out an exception for the admin or operator
+ * who set the lock in the first place (`PATCH …/assignment` is
+ * `@Roles('admin','operator')`, and `verifyUnit`'s route admits the same
+ * roles alongside `packer`). So a supervisor who locks a parcel to a specific
+ * packer cannot themselves pack it until they reassign it. That is
+ * surprising the first time an operator hits it, which is exactly why it is
+ * recorded here: the remedy already exists (reassign, or clear the lock),
+ * and the lock is meant to be a hard assignment rather than one with a silent
+ * escape hatch for whoever set it.
  */
 export function isClaimableByViewer(
   input: BenchAssignmentEligibilityInput,

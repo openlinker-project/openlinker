@@ -84,6 +84,8 @@ export const benchParcelCopy = {
       `Third scan turned down — this box takes ${String(parts.required)}. The count stayed at ${String(parts.kept)}. The bench beeped.`,
     overPackedBadge: 'Extra scan refused',
     notPackable: 'Nothing was recorded. This box must not be packed — take it back to the trolley.',
+    /** ADR-074 / #3336 / #3337 / #3341 — the assignment-lock refusal. */
+    assignedToAnotherPacker: 'Nothing was recorded. This box is assigned to another packer.',
     parcelClosed:
       'Nothing was recorded. This box is already closed. Reopen it first if something needs changing.',
     noSuchLine:
@@ -141,6 +143,8 @@ export const benchParcelCopy = {
     reopenShipped:
       'This box has already gone. It cannot be reopened here, because the goods are not in the building any more.',
     reopenNotClosed: 'This box is not closed, so there is nothing to reopen. Carry on scanning.',
+    /** ADR-074 / #3336 / #3337 / #3341 — the assignment-lock refusal. */
+    reopenAssignedToAnotherPacker: 'This box could not be reopened — it is assigned to another packer.',
     reopenUnknownRefusal:
       'The box was not reopened, and this bench cannot say why. Show this screen to your supervisor.',
     reopenFailed: 'That did not go through. Nothing changed — try again.',

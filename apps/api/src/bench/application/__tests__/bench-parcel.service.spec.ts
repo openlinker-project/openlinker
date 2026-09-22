@@ -341,11 +341,11 @@ describe('BenchParcelService (#2418)', () => {
   });
 
   /**
-   * ADR-074 (#3336/#3337, #3361 review) — the SAME guard `verifyUnit` applies,
-   * on the write `reopenParcel` performs. An excluded packer reopening a
-   * locked, closed parcel would erase `packedByUserId`, the record of who
-   * actually packed it — a hard assignment another packer can reopen and
-   * de-attribute is not one.
+   * ADR-074 (#3336/#3337/#3341, #3361 review) — the SAME guard `verifyUnit`
+   * applies, on the write `reopenParcel` performs. An excluded packer
+   * reopening a locked, closed parcel would erase `packedByUserId`, the
+   * record of who actually packed it — a hard assignment another packer can
+   * reopen and de-attribute is not one.
    */
   describe('story D2 — reopenParcel honours the same assignment lock', () => {
     it('should refuse a reopen from a packer excluded by a locked assignment', async () => {

@@ -199,15 +199,16 @@ export class BenchParcelService implements IBenchParcelService {
   async reopenParcel(input: BenchReopenInput): Promise<BenchReopenResultView> {
     const work = await this.loadBenchWork(input.workId);
 
-    // ADR-074 (#3336/#3337), the SAME guard `verifyUnit` applies, extended
-    // here after review (#3361): `reopenParcel` writes
-    // `{ parcelClosedAt: null, packedByUserId: null }` on a locked, closed
-    // parcel, erasing the attribution `selfServeEligible: false` exists to
-    // protect. A packer excluded from the lock must not be able to reopen —
-    // and therefore de-attribute — a box someone else packed. Reads the same
-    // `isClaimableByViewer` predicate `verifyUnit` reads above - a nullable
-    // viewer, since this route's `@CurrentUser()` is optional and an
-    // anonymous reopen must be excluded too.
+    // ADR-074 (#3336/#3337/#3341): the same lock that refuses `verifyUnit`
+    // must refuse `reopenParcel` too — otherwise a packer excluded from a
+    // locked assignment can reopen a parcel they may not scan into, clearing
+    // `packedByUserId` and erasing the record of who packed it. Reads the
+    // same `isClaimableByViewer` predicate `verifyUnit` reads above rather
+    // than restating the rule, so the two write-side guarantees cannot drift
+    // apart. `input.reopenedByUserId` is nullable at this layer (this
+    // route's `@CurrentUser()` is optional by design), and `isClaimableByViewer`
+    // accepts that directly - null never equals a real assignee, so an
+    // anonymous reopen against a locked parcel is excluded too.
     if (!isClaimableByViewer(work, input.reopenedByUserId)) {
       const state = await this.verification.getState(input.workId);
       return {
