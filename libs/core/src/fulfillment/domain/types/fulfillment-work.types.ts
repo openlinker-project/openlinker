@@ -131,8 +131,11 @@ export interface FulfillmentWork {
    * parcel. `true` (the schema default) is the advisory reading ADR-074
    * chose: a locked, assigned-only parcel is the explicit exception a
    * supervisor opts into, not the default. Server-side enforcement of
-   * `false` lives in `FulfillmentHandshakeService`'s claim path (#3337), not
-   * here — this field only records the operator's decision.
+   * `false` lives in `BenchParcelService.verifyUnit` (#3337) — a
+   * human-packer guard, not `FulfillmentHandshakeService`, which negotiates
+   * with holder connections (ADR-054's executor axis, #2399) and has no
+   * concept of an acting user; this field only records the operator's
+   * decision.
    */
   readonly selfServeEligible: boolean;
 
