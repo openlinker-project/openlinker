@@ -251,8 +251,10 @@ export function EparagonyStructuredSection({
             when the selected option differs from what was already selected,
             and pinning the select to the recommended option up front made
             re-clicking it a no-op click that fired nothing (#3311). `hidden`
-            keeps it out of the dropdown list; `disabled` keeps it from ever
-            being reselected once the operator has moved off it.
+            keeps it out of the dropdown list; `disabled` is belt-and-braces -
+            the moment the operator picks any real option `unrecognised.*`
+            goes `null` and this option unmounts, so it is never reachable as
+            a destination to begin with (#3318 review).
           */}
           {unrecognised.paymentForm !== null && (
             <option value={unrecognised.paymentForm} hidden disabled>

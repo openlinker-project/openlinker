@@ -12,7 +12,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- test harness wraps RHF with a flexible form type */
 import { useEffect, type ReactElement } from 'react';
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, sampleConnection } from '../../../test/test-utils';
@@ -315,6 +315,25 @@ describe('EparagonyStructuredSection', () => {
     expect(screen.getByLabelText('Payment form on the receipt')).toHaveValue('Bitcoin');
   });
 
+  it('should keep the unrecognised-value sentinel out of the rendered dropdown list (#3318 review)', () => {
+    // The sentinel option carries `hidden`, so a browser (and testing-library's
+    // accessibility-tree-based role queries) excludes it from the option list -
+    // it can only ever be the pre-interaction selected value, never something
+    // an operator could pick from the dropdown. Pinned separately from the
+    // `.toHaveValue('Bitcoin')` assertion above: that one still passes if a
+    // future tidy-up drops `hidden`, since the select's value is unaffected.
+    renderWithProviders(
+      <Harness defaultValues={{ configText: JSON.stringify({ paymentForm: 'Bitcoin' }) }} />,
+    );
+    const select = screen.getByLabelText('Payment form on the receipt');
+    expect(
+      within(select).queryByRole('option', { name: /not recognised/i }),
+    ).not.toBeInTheDocument();
+    // 10 vendor values + "use the default" + the hidden sentinel, present in
+    // the DOM but absent from the accessible option list asserted above.
+    expect(select.querySelectorAll('option')).toHaveLength(12);
+  });
+
   it('should fix an unrecognised payment-form value by re-selecting the already-shown recommended option (#3311)', () => {
     const sync = vi.fn();
     renderWithProviders(
@@ -364,6 +383,19 @@ describe('EparagonyStructuredSection', () => {
     );
     openGroup('Fallback tax rate:');
     expect(screen.getByLabelText('Fallback device slot')).toHaveValue('Z');
+  });
+
+  it('should keep the fallback-slot sentinel out of the rendered dropdown list (#3318 review)', () => {
+    renderWithProviders(
+      <Harness defaultValues={{ configText: JSON.stringify({ defaultTaxRateCode: 'Z' }) }} />,
+    );
+    openGroup('Fallback tax rate:');
+    const select = screen.getByLabelText('Fallback device slot');
+    expect(
+      within(select).queryByRole('option', { name: /not recognised/i }),
+    ).not.toBeInTheDocument();
+    // 7 device slots + "Not set" + the hidden sentinel.
+    expect(select.querySelectorAll('option')).toHaveLength(9);
   });
 
   it('should fix an unrecognised fallback-slot value by re-selecting the already-shown "Not set" option (#3311)', () => {
