@@ -68,6 +68,7 @@ import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { ErrorState, LoadingState } from '../../../shared/ui/feedback-state';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { formatAmount } from '../../../shared/format/format-amount';
 import type { BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
 import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useBenchParcelQuery } from '../hooks/use-bench-parcel-query';
@@ -75,6 +76,7 @@ import { useBenchReachability, isUnreachableFailure } from '../hooks/use-bench-r
 import { useBenchReopenMutation } from '../hooks/use-bench-reopen-mutation';
 import { useBenchVerifyMutation } from '../hooks/use-bench-verify-mutation';
 import { useScannerInput } from '../hooks/use-scanner-input';
+import { describeBenchDeadline } from '../lib/bench-work-presentation';
 import {
   benchLineState,
   describeParcelRefusal,
@@ -491,6 +493,27 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
           <div className="bench-parcel__identity">
             <span className="eyebrow">{benchParcelCopy.header.buyerLabel}</span>
             <span className="bench-parcel__buyer">{parcel.buyerName}</span>
+          </div>
+        )}
+        {/* #3409 (epic #3401) — a deliberate PII-exclusion reversal. */}
+        {parcel.totalAmount === null ? null : (
+          <div className="bench-parcel__identity">
+            <span className="eyebrow">{benchParcelCopy.header.totalLabel}</span>
+            <span className="bench-parcel__total">
+              {formatAmount(parcel.totalAmount, parcel.currency ?? undefined)}
+            </span>
+          </div>
+        )}
+        {parcel.carrierName === null ? null : (
+          <div className="bench-parcel__identity">
+            <span className="eyebrow">{benchParcelCopy.header.carrierLabel}</span>
+            <span>{parcel.carrierName}</span>
+          </div>
+        )}
+        {parcel.dispatchByAt === null ? null : (
+          <div className="bench-parcel__identity">
+            <span className="eyebrow">{benchParcelCopy.header.dispatchByLabel}</span>
+            <span>{describeBenchDeadline(parcel.dispatchByAt).headline}</span>
           </div>
         )}
         {/* D3. Rendered on every state of this surface, never conditionally. */}

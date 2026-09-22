@@ -24525,6 +24525,14 @@ legend.analytics-settings-dialog__label {
   font-weight: 600;
 }
 
+/* #3409 (epic #3401) — the order-head fields reversing the PII exclusion. */
+.bench-parcel__total {
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .bench-parcel__scope,
 .bench-parcel__unreachable-next {
   margin: 0;
@@ -24556,7 +24564,10 @@ legend.analytics-settings-dialog__label {
 
 .bench-parcel-line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  /* Leading `auto` is the #3410 thumbnail column — absent from the grid, not
+     merely hidden, when a line's `imageUrl` is null (the `<img>` renders
+     nothing, so this column collapses to its content, 0). */
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: var(--space-4);
   padding: var(--space-4);
@@ -24586,6 +24597,42 @@ legend.analytics-settings-dialog__label {
   font-family: var(--font-mono);
   font-size: 0.875rem;
   color: var(--text-secondary);
+}
+
+/* ── Catalogue detail on the line card (#3410/#3417, mockup-parity epic #3401) ── */
+.bench-parcel-line__thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.bench-parcel-line__attributes {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.bench-parcel-line__physical {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.bench-parcel-line__bin-code {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
 }
 
 .bench-parcel-line__count {

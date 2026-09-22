@@ -98,12 +98,46 @@ export function BenchParcelLineRow({
       data-testid="bench-parcel-line"
       data-line-id={line.workLineId}
     >
+      {/* #3410/#3417 (epic #3401) — the parent product's image. Purely
+          decorative identity, so it carries no accessible name of its own;
+          `line.name` beside it already announces the product. */}
+      {line.imageUrl === null ? null : (
+        <img
+          className="bench-parcel-line__thumb"
+          src={line.imageUrl}
+          alt=""
+          data-testid="bench-parcel-line-thumb"
+        />
+      )}
+
       <div className="bench-parcel-line__identity">
         <span className="bench-parcel-line__name">
           {line.name ?? benchParcelCopy.lines.unnamed}
         </span>
         {codes.length === 0 ? null : (
           <span className="bench-parcel-line__codes">{codes}</span>
+        )}
+        {line.attributes === null || Object.keys(line.attributes).length === 0 ? null : (
+          <span className="bench-parcel-line__attributes">
+            {benchParcelCopy.lines.attributesText(line.attributes)}
+          </span>
+        )}
+        {line.binCode === null && line.weightGrams === null && line.lengthMm === null ? null : (
+          <span className="bench-parcel-line__physical">
+            {line.binCode === null ? null : (
+              <span className="bench-parcel-line__bin-code">
+                {benchParcelCopy.lines.binCodeLabel(line.binCode)}
+              </span>
+            )}
+            {line.weightGrams === null ? null : (
+              <span>{benchParcelCopy.lines.weightGrams(line.weightGrams)}</span>
+            )}
+            {line.lengthMm === null || line.widthMm === null || line.heightMm === null ? null : (
+              <span>
+                {benchParcelCopy.lines.dimensionsMm(line.lengthMm, line.widthMm, line.heightMm)}
+              </span>
+            )}
+          </span>
         )}
       </div>
 

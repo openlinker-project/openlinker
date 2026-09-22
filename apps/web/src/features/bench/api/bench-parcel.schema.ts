@@ -34,6 +34,16 @@ const nullableString = z
   .nullish()
   .transform((value) => value ?? null);
 
+const nullableNumber = z
+  .number()
+  .nullish()
+  .transform((value) => value ?? null);
+
+const nullableAttributes = z
+  .record(z.string())
+  .nullish()
+  .transform((value) => value ?? null);
+
 export const benchParcelLineSchema = z.object({
   workLineId: z.string(),
   productVariantId: z.string(),
@@ -43,6 +53,13 @@ export const benchParcelLineSchema = z.object({
   gtin: nullableString,
   requiredQuantity: z.number(),
   verifiedQuantity: z.number(),
+  imageUrl: nullableString,
+  attributes: nullableAttributes,
+  binCode: nullableString,
+  weightGrams: nullableNumber,
+  lengthMm: nullableNumber,
+  widthMm: nullableNumber,
+  heightMm: nullableNumber,
 });
 
 export const benchParcelSchema = z.object({
@@ -50,6 +67,10 @@ export const benchParcelSchema = z.object({
   version: z.number(),
   orderReference: z.string(),
   buyerName: nullableString,
+  totalAmount: nullableNumber,
+  currency: nullableString,
+  carrierName: nullableString,
+  dispatchByAt: nullableString,
   parcelIndex: z.number(),
   parcelTotal: z.number(),
   // See the types module: never `z.enum` on a server-owned vocabulary.

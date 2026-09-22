@@ -29,6 +29,10 @@ export const benchParcelCopy = {
   header: {
     orderLabel: 'Order',
     buyerLabel: 'Buyer',
+    /** #3409 (epic #3401) — a deliberate reversal of the original PII exclusion. */
+    totalLabel: 'Total',
+    carrierLabel: 'Carrier',
+    dispatchByLabel: 'Must ship by',
     /** D3. Always shown, on every state of this surface. */
     parcelOf: (index: number, total: number): string =>
       `Parcel ${String(index)} of ${String(total)}`,
@@ -69,6 +73,23 @@ export const benchParcelCopy = {
      */
     confirmAction: 'Confirm this line',
     confirmHint: 'For an item whose barcode is damaged, missing or will not read.',
+    /**
+     * The variant's distinguishing attributes (colour, size, …), rendered as
+     * one line (#3417, mockup-parity epic #3401). Sorted by key so the same
+     * variant always reads in the same order across a render.
+     */
+    attributesText: (attrs: Record<string, string>): string =>
+      Object.keys(attrs)
+        .sort()
+        .map((key) => attrs[key])
+        .join(' · '),
+    /** Operator-authored bin/shelf code, rendered as a short label (#3402/#3410). */
+    binCodeLabel: (code: string): string => `Bin ${code}`,
+    /** Display-only physical master data — never a claim OpenLinker measured it. */
+    weightGrams: (grams: number): string =>
+      grams >= 1000 ? `${(grams / 1000).toFixed(grams % 1000 === 0 ? 0 : 1)} kg` : `${String(grams)} g`,
+    dimensionsMm: (lengthMm: number, widthMm: number, heightMm: number): string =>
+      `${String(lengthMm)} × ${String(widthMm)} × ${String(heightMm)} mm`,
   },
 
   verify: {

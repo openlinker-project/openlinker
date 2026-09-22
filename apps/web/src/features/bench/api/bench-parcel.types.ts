@@ -14,9 +14,15 @@
  *
  * ## What is NOT on this wire, and why that is the point
  *
- * No address, no email, no phone, no total, no price. The API projects field by
- * field rather than by spread, and this mirror is the same allowlist one layer
- * out — so a surface built on it cannot render what it was never handed.
+ * No address, no email, no phone. The API projects field by field rather than
+ * by spread, and this mirror is the same allowlist one layer out — so a
+ * surface built on it cannot render what it was never handed.
+ *
+ * `totalAmount`/`currency`/`carrierName`/`dispatchByAt` on `BenchParcel`, and
+ * `imageUrl`/`attributes`/`binCode`/the weight+dimension fields on
+ * `BenchParcelLine`, are a DELIBERATE reversal of the original "no total, no
+ * price" exclusion (#3409/#3410, mockup-parity epic #3401) — see the API
+ * type's own docblock for the reasoning.
  *
  * @module apps/web/src/features/bench/api
  */
@@ -34,6 +40,17 @@ export interface BenchParcelLine {
   readonly requiredQuantity: number;
   /** Units verified into the box. Never greater than `requiredQuantity`. */
   readonly verifiedQuantity: number;
+  /** The parent product's first image, or `null`. */
+  readonly imageUrl: string | null;
+  /** The variant's distinguishing attributes (colour, size, …), or `null`. */
+  readonly attributes: Record<string, string> | null;
+  /** Operator-authored bin/shelf code, or `null` when never recorded. */
+  readonly binCode: string | null;
+  /** Display-only physical master data. `null` on any field means "not recorded". */
+  readonly weightGrams: number | null;
+  readonly lengthMm: number | null;
+  readonly widthMm: number | null;
+  readonly heightMm: number | null;
 }
 
 /** One box, as the bench sees it. */
@@ -43,6 +60,12 @@ export interface BenchParcel {
   readonly version: number;
   readonly orderReference: string;
   readonly buyerName: string | null;
+  /** The order's total, in the source's own currency. */
+  readonly totalAmount: number | null;
+  readonly currency: string | null;
+  /** The source's own delivery-method label; `null` when the source reports none. */
+  readonly carrierName: string | null;
+  readonly dispatchByAt: string | null;
   readonly parcelIndex: number;
   readonly parcelTotal: number;
   /**
