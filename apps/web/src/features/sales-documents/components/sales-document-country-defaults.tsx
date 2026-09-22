@@ -101,11 +101,18 @@ export function SalesDocumentCountryDefaults({
   // `isEligibleCandidate`. It deliberately does NOT mirror the resolver's
   // step-6 kind-to-capability pairing (`invoice` needs `Invoicing`), so a
   // connection whose role contradicts its capability is still offered here
-  // and refused at routing time. `sales-document-rule-composer-dialog.tsx`
-  // answers the same question — which connection may a routing decision
+  // and refused at routing time.
+  //
+  // `sales-document-rule-composer-dialog.tsx` / `sales-document-template-screen.tsx`
+  // answer the same question — which connection may a routing decision
   // name — with the capability predicate alone (`selectInvoicingCandidates`
-  // / `selectFiscalizationCandidates`); converging the two is a follow-up,
-  // not this change.
+  // / `selectFiscalizationCandidates`), and #3232 resolved that as a
+  // DELIBERATE divergence rather than a convergence: this picker needs a
+  // role because the operator never picks a `documentKind` here (it is
+  // derived FROM the role), whereas a rule/template carries its own
+  // `documentKind` and routes without ever consulting the connection's
+  // role. See `find-sales-document-connection-role-gap.ts` for the full
+  // rationale and the pick-time warning that keeps that gap visible.
   const candidates: CountryDefaultCandidate[] = rows
     .filter(isActiveRoutable)
     .map((row) => ({

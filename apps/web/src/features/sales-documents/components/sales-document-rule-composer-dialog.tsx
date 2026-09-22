@@ -49,6 +49,15 @@
  * and every one of them that is not an answer withholds the save, except
  * `unavailable` - a failed check is not evidence of a collision.
  *
+ * CONNECTION CANDIDATES (#3232): the "Integration" select stays
+ * capability-only (`selectInvoicingCandidates` / `selectFiscalizationCandidates`)
+ * rather than also requiring a role (`config.salesDocument.documentKind`) the
+ * way the destination-warnings list (#3209) and the country-default picker
+ * (#3210) do — deliberately, since a rule carries its own `documentKind` and
+ * nothing about DISPATCHING it reads the connection's role at all. See
+ * `find-sales-document-connection-role-gap.ts` for the full rationale and the
+ * pick-time warning that keeps the divergence non-silent.
+ *
  * @module apps/web/src/features/sales-documents/components
  */
 import { useState, type ReactElement } from 'react';
@@ -76,6 +85,10 @@ import {
   describeSalesDocumentOverlapConflictRival,
   describeSalesDocumentOverlapUndecided,
 } from '../lib/describe-sales-document-overlap';
+import {
+  describeSalesDocumentConnectionRoleGap,
+  findSalesDocumentConnectionRoleGap,
+} from '../lib/find-sales-document-connection-role-gap';
 
 interface SalesDocumentRuleComposerDialogProps {
   country: string;
@@ -318,6 +331,14 @@ export function SalesDocumentRuleComposerDialog({
     documentKind === 'invoice'
       ? selectInvoicingCandidates(connections)
       : selectFiscalizationCandidates(connections);
+  // #3232. The candidate list above is deliberately capability-only, wider
+  // than the destination-warnings list (#3209) and the country-default
+  // picker (#3210), which both additionally require a role — see
+  // `find-sales-document-connection-role-gap.ts` for why that is correct
+  // rather than a residual gap. What must not be silent is the operator
+  // discovering the difference only after saving, so a role-less pick is
+  // named here, at pick time.
+  const connectionRoleGap = findSalesDocumentConnectionRoleGap(connectionId, connections);
 
   function reset(): void {
     setConditions([newConditionDraft()]);
@@ -575,6 +596,15 @@ export function SalesDocumentRuleComposerDialog({
               </Select>
             </div>
           </div>
+          {connectionRoleGap !== null ? (
+            <Alert
+              data-testid="rule-connection-role-gap"
+              tone="warning"
+              title="This connection has no role yet"
+            >
+              <p>{describeSalesDocumentConnectionRoleGap(connectionRoleGap)}</p>
+            </Alert>
+          ) : null}
         </section>
 
         <section className="rule-composer-section">
