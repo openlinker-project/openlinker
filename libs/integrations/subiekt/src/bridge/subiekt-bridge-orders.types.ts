@@ -55,6 +55,13 @@ export interface BridgeCreateOrderRequest {
    */
   orderRef: string;
   uwagi?: string;
+  /**
+   * ISO currency the line amounts are denominated in, written to the ZK's
+   * `WalutaSymbol`. Omitted leaves the document on Subiekt's own default
+   * currency — which is what every ZK carried before this field existed, so a
+   * foreign-currency order was booked as though its figures were zlotys.
+   */
+  waluta?: string;
 }
 
 /** `POST /api/orders` response (`data`). */
