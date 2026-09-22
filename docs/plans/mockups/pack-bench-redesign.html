@@ -599,6 +599,12 @@
       <span class="legend__item"><span class="legend__swatch legend__swatch--new"></span> <span class="tag-new" style="margin:0">new</span> Gap found in competitor/reference review — not backed by today's data model yet</span>
     </div>
 
+    <div class="legend" style="margin-top:-8px">
+      <span class="legend__item"><code>working</code> / <code>ready</code> / <code>unlabelled</code> / <code>hold</code> → <code>main [data-state="…"]</code>, toggled via <code>hidden</code></span>
+      <span class="legend__item"><code>empty</code> → <code>[data-bench-body="empty"]</code> vs <code>[data-bench-body="grid"]</code></span>
+      <span class="legend__item"><code>locked</code> → <code>#lockOverlay[data-open="true"]</code>, layered over whichever <code>[data-state]</code> was active before the lock fired</span>
+    </div>
+
     <div class="alert alert--note" style="margin-bottom: var(--space-5)">
       <div>
         <h4>Competitor research — what changed and what didn't</h4>
@@ -621,7 +627,8 @@
       <div>
         <h4>Round 3 — two tech-lead UX audits, one real bug found</h4>
         <p style="margin-bottom:8px">Two independent audits, reading the file cold and clicking through every state, converged on the same top finding — which turned out to be a genuine mistake, not a design disagreement: the earlier draft showed a required-looking <code>Confirm this line</code> button sitting right next to a footnote saying "there is nothing here to press." Checking the real component (<code>bench-parcel.copy.ts</code>) settled it: <code>Confirm this line</code> is real, but it's the <strong>manual fallback for a damaged or unreadable barcode</strong> — scanning alone confirms a line, no button needed. I'd built the fallback control twice, once as this button and once as a separate tiny "mark manually" link. Fixed to one control, correctly labelled, and the footnote is now actually true.</p>
-        <p style="margin-bottom:0">Also fixed: a table row that quietly contradicted its own quantity and status (a real bug, not a design choice); every tooltip-only hint (connectivity, undo scope) moved onto the screen as visible text, since this is a touch kiosk with no hover; the rail rows were showing the internal work id as the primary label instead of the order reference the real <code>bench-work-row.tsx</code> actually renders; "To pack 12" and "To pack 4" now say what each one counts; a closed-but-unlabelled parcel no longer inflates the "to pack" count; Hold and Packed-no-label now share one structured header and a matching forward-looking reassurance; and signing back in after an idle lock now returns to whatever state was actually on screen, not a hardcoded default — so "nothing has been lost" is true rather than aspirational.</p>
+        <p style="margin-bottom:8px">Also fixed: a table row that quietly contradicted its own quantity and status (a real bug, not a design choice); every tooltip-only hint (connectivity, undo scope) moved onto the screen as visible text, since this is a touch kiosk with no hover; the rail rows were showing the internal work id as the primary label instead of the order reference the real <code>bench-work-row.tsx</code> actually renders; "To pack 12" and "To pack 4" now say what each one counts; a closed-but-unlabelled parcel no longer inflates the "to pack" count; Hold and Packed-no-label now share one structured header and a matching forward-looking reassurance; and signing back in after an idle lock now returns to whatever state was actually on screen, not a hardcoded default — so "nothing has been lost" is true rather than aspirational.</p>
+        <p style="margin-bottom:0"><strong>Both "real bugs" named above are mockup-draft defects, not shipped-product defects</strong> — mistakes I made building an earlier draft of THIS file, caught by the two audits reading this file cold. Neither was reproduced against the real <code>/pack</code> screen in production, so no separate product issue is being filed for either; this section exists so a reader can tell that apart from the items marked <span class="tag-new" style="margin:0">new</span> above, which ARE proposed changes to the shipped product.</p>
       </div>
     </div>
 
