@@ -186,6 +186,19 @@ const stockPolicyFormSchema = z.object({
  * neutral config keys, which is what covers the raw JSON editor on this very
  * form and every non-browser caller.
  */
+/**
+ * Per-connection stock-location override (#3206/#3207) - platform-neutral,
+ * flat string field. An operator ASSERTION ("all of this connection's
+ * currently un-located stock physically lives here"), not a detected fact -
+ * the server (`ConnectionService.validateStockLocationOverride`) is the only
+ * place the location id is actually checked for existence/active status, so
+ * this schema stays a plain non-empty-string check and lets the 400 surface
+ * as a field-level error on submit (see `EditConnectionForm.onSubmit`).
+ */
+const stockLocationOverrideFormSchema = z
+  .union([z.string().trim().min(1), z.literal('')])
+  .optional();
+
 const pricingRuleFormSchema = z
   .object({
     type: z
@@ -396,6 +409,8 @@ export const editConnectionSchema = z
     // Per-connection stock publish policy + pricing rule (#2610) — platform-neutral.
     stockPolicy: stockPolicyFormSchema.optional(),
     pricingRule: pricingRuleFormSchema.optional(),
+    // Per-connection stock-location override (#3206/#3207) — platform-neutral.
+    stockLocationOverride: stockLocationOverrideFormSchema,
   });
 
 /**
@@ -560,6 +575,12 @@ export type StructuredConfigPatch = {
    * (see `rateLimit` for why not a delete).
    */
   pricingRule?: PricingRuleFormValues | null;
+  /**
+   * Per-connection stock-location override — flat `config.stockLocationOverride`
+   * (#3206/#3207). Platform-neutral. An empty selection writes an EXPLICIT
+   * `null` rather than deleting the key (see `rateLimit` for why not a delete).
+   */
+  stockLocationOverride?: string | null;
 };
 
 /**
@@ -913,6 +934,18 @@ export function mergeStructuredIntoConfig(
     next.pricingRule = existingSourceOverrides
       ? { default: defaultRule, sourceOverrides: existingSourceOverrides }
       : defaultRule;
+  }
+  // Stock-location override (#3206/#3207). Platform-neutral, one flat key. An
+  // empty selection writes an EXPLICIT `null` rather than deleting the key -
+  // same shallow-spread reason as rateLimit/stockPolicy above. Trimmed to
+  // match `readStockLocationOverride`'s own trim (core), so a value that
+  // round-trips through this form never differs from what the core reader
+  // sees, and an unrelated save never blanks an already-stored id (the
+  // server-side guard only re-validates the id when its trimmed value CHANGES).
+  if (structured.stockLocationOverride !== undefined) {
+    const trimmed =
+      typeof structured.stockLocationOverride === 'string' ? structured.stockLocationOverride.trim() : '';
+    next.stockLocationOverride = trimmed.length === 0 ? null : trimmed;
   }
   // Platform-owned assembly pass (#1330): plugin field names on the patch are
   // assembled by the platform contribution with the same partial-patch

@@ -460,8 +460,25 @@ export function InvoicesListPage(): ReactElement {
     {
       id: 'issuedAt',
       header: t('invoice.column.issuedAt', 'Issued'),
-      cell: (r) =>
-        r.issuedAt ? <TimeDisplay iso={r.issuedAt} format="date" /> : <span className="text-muted">—</span>,
+      // The mockup's `invoice-row-waiting-{i}` names a "With provider for"
+      // column carrying an elapsed duration. This page has no such column and
+      // this change does not invent one (#3196) — it hooks the nearest real
+      // fact, the `Issued` instant, and emits the hook ONLY on a row that is
+      // genuinely awaiting submission, so its presence still means what the
+      // mockup's does: this row is the one waiting, and here is since when.
+      cell: (r): ReactElement => {
+        const waitingTestId =
+          r.regulatoryStatus === 'pending-submission' && rowIndexById.has(r.id)
+            ? `invoice-row-waiting-${rowIndexById.get(r.id)}`
+            : undefined;
+        return r.issuedAt ? (
+          <TimeDisplay data-testid={waitingTestId} iso={r.issuedAt} format="date" />
+        ) : (
+          <span data-testid={waitingTestId} className="text-muted">
+            —
+          </span>
+        );
+      },
       accessor: (r) => r.issuedAt ?? '',
     },
   ];
@@ -567,6 +584,7 @@ export function InvoicesListPage(): ReactElement {
 
         <Select
           aria-label={t('invoice.filter.regulatory', 'Filter by regulatory status')}
+          data-testid="invoices-filter-regulatory"
           value={regulatoryStatus ?? ''}
           onChange={(e) => setFilter('regulatoryStatus', e.target.value)}
         >
@@ -600,6 +618,7 @@ export function InvoicesListPage(): ReactElement {
         {/* C2: taxId filter */}
         <Select
           aria-label={t('invoice.filter.taxId', 'Filter by buyer tax ID')}
+          data-testid="invoices-filter-tax-id"
           value={taxId ?? ''}
           onChange={(e) => setFilter('taxId', e.target.value)}
         >
@@ -654,6 +673,16 @@ export function InvoicesListPage(): ReactElement {
             // `DataTable` lands `className` on its container, so the rule is a
             // descendant selector on this page's table only (see `index.css`).
             className="invoices-table"
+            // The literal hooks
+            // `docs/plans/mockups/sales-document-eparagony-invoicing.html` and
+            // `…tax-number-on-receipt.html` declare for this table and its rows
+            // (#3196). Positional, from the SAME `rowIndexById` map the
+            // buyer-tax-id cell hook already uses, so the two hooks on one row
+            // can never disagree about which row they mean.
+            tableTestId="invoices-table"
+            rowTestId={(r) =>
+              rowIndexById.has(r.id) ? `invoice-row-${rowIndexById.get(r.id)}` : undefined
+            }
             caption={t('invoice.list.caption', 'Invoices')}
             columns={columns}
             rows={query.data?.items ?? []}
