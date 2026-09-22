@@ -957,6 +957,30 @@ export function createMockApiClient(
       listUnlabelledParcels: vi
         .fn<BenchApi['listUnlabelledParcels']>()
         .mockResolvedValue({ parcels: [], total: 0, truncated: false }),
+      // #3401 mockup-parity epic. Empty-safe defaults — the same reasoning as
+      // `listWork` above: an unstubbed member must not crash a render with
+      // "is not a function", it must render the surface's own honest empty
+      // state, which every one of `BenchActivityPanel`/`BenchMetricRow`/the
+      // rail's claim controls already degrades to on an empty or failed read.
+      undoLastScan: vi
+        .fn<BenchApi['undoLastScan']>()
+        .mockRejectedValue(new Error('bench.undoLastScan not stubbed')),
+      pingPresence: vi
+        .fn<BenchApi['pingPresence']>()
+        .mockRejectedValue(new Error('bench.pingPresence not stubbed')),
+      claimParcel: vi
+        .fn<BenchApi['claimParcel']>()
+        .mockRejectedValue(new Error('bench.claimParcel not stubbed')),
+      claimNext: vi
+        .fn<BenchApi['claimNext']>()
+        .mockRejectedValue(new Error('bench.claimNext not stubbed')),
+      listActivity: vi.fn<BenchApi['listActivity']>().mockResolvedValue([]),
+      listPackedToday: vi
+        .fn<BenchApi['listPackedToday']>()
+        .mockResolvedValue({ works: [], total: 0 }),
+      getMetrics: vi
+        .fn<BenchApi['getMetrics']>()
+        .mockResolvedValue({ packedToday: 0, packedYesterday: 0, toPackAllBenches: 0 }),
       ...overrides.bench,
     },
     fulfillment: {

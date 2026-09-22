@@ -59,6 +59,32 @@ export const benchWorkCopy = {
      */
     doNotPack: 'Do not pack these',
   },
+  /** #3416 (epic #3401) — the rail's three tabs, and the four sections the first tab holds. */
+  tabs: {
+    bench: 'At this bench',
+    hold: 'On hold',
+    done: 'Packed today',
+    assignedToYou: 'Assigned to you',
+    assignedToOthers: 'Assigned to other packers',
+    unassigned: 'Unassigned — anyone can pick this up',
+    waitingOnCarrier: 'Packed — waiting on carrier',
+    onHoldHeading: 'On hold — do not pack',
+    noPacksYet: 'Nothing packed yet today.',
+    /** The mockup's own log-not-a-queue sentence. */
+    doneNote: 'This is a log, not a queue — nothing here can be opened.',
+    /** #3412 — this row's own claim control. */
+    claimAction: 'Claim this parcel',
+    claimFailed: 'That claim did not go through. The list has been refreshed — try again.',
+    /** The unlabelled row's own reassurance — nothing left for THIS bench to do. */
+    nothingLeftHere: 'Nothing left for you to do here',
+    /** The unlabelled row's own badge. */
+    unlabelledBadge: 'Packed · no label',
+    /** #3412 — pull the oldest-deadline unassigned parcel into your own queue. */
+    takeNextAction: 'Take next task',
+    takeNextEmpty: 'Nothing unassigned right now.',
+    takeNextFailed: 'That did not go through. The list has been refreshed — try again.',
+    noSectionMatches: 'Nothing here matches what you typed.',
+  },
   row: {
     expeditedBadge: 'Moved to the front',
     expeditedHint: 'Someone asked for this one to go out ahead of its deadline order.',

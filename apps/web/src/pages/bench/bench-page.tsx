@@ -46,8 +46,8 @@ export function BenchPage(): ReactElement {
     <BenchSurface>
       {openWorkId === null ? (
         <BenchWorkList
-          onOpenParcel={(work) => {
-            setOpenWorkId(work.workId);
+          onOpenParcel={(workId) => {
+            setOpenWorkId(workId);
           }}
         />
       ) : (

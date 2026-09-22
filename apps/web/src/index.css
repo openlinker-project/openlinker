@@ -24508,6 +24508,62 @@ legend.analytics-settings-dialog__label {
   }
 }
 
+/* ── Rail row (#3416, mockup-parity epic #3401) ──────────────────────────
+ * The lighter row used by the "waiting on carrier" and "packed today"
+ * sections — flex rather than `.bench-work-row`'s four-column grid, since
+ * neither row carries a deadline countdown or an actions column. */
+.bench-rail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 3.5rem;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+
+.bench-rail-row--done {
+  background: var(--bg-surface-muted);
+}
+
+.bench-rail-row__open {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.bench-rail-row__identity {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.bench-rail-row__reference {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-rail-row__meta {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
 /* ── Pack bench — the open box (#2418 layout, #2421 story C4) ────────────────
  *
  * C4's conditions are glare, gloves, one hand occupied, and a bench-height

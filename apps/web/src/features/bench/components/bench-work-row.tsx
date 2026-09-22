@@ -48,8 +48,25 @@ export interface BenchWorkRowProps {
   readonly canExpedite: boolean;
   readonly onExpedite: (work: BenchWork, action: 'expedite' | 'release_expedite') => void;
   readonly expediting?: boolean;
-  /** #2418's seam. Absent renders no control — see the module docblock. */
-  readonly onOpenParcel?: (work: BenchWork) => void;
+  /**
+   * #2418's seam. Absent renders no control — see the module docblock.
+   *
+   * Takes the id, not the whole row (#3416) — every caller only ever read
+   * `work.workId` off it, and the unlabelled rail row shares this same
+   * callback while having no `BenchWork` to hand back.
+   */
+  readonly onOpenParcel?: (workId: string) => void;
+  /**
+   * #3412/#3416 — explicit pre-claim, offered alongside "Open parcel" rather
+   * than instead of it: the shipped model already lets any packer open an
+   * unassigned+claimable row directly (`BenchParcelService.verifyUnit`'s own
+   * re-check is the real guarantee, not a claim pre-step), so this is the
+   * ADDITIONAL "claim several, work through them in order" path the mockup's
+   * "Claim this parcel" button demonstrates. Rendered only for an
+   * `unassigned` row when supplied.
+   */
+  readonly onClaim?: (work: BenchWork) => void;
+  readonly claiming?: boolean;
 }
 
 function toneFor(work: BenchWork): StatusBadgeTone {
@@ -65,6 +82,8 @@ export function BenchWorkRow({
   onExpedite,
   expediting = false,
   onOpenParcel,
+  onClaim,
+  claiming = false,
 }: BenchWorkRowProps): ReactElement {
   const deadline = describeBenchDeadline(work.dispatchByAt, now);
   const expediteAction = expediteActionFor(work);
@@ -156,11 +175,22 @@ export function BenchWorkRow({
               : benchWorkCopy.row.releaseExpediteAction}
           </Button>
         ) : null}
+        {onClaim === undefined || work.assignmentState !== 'unassigned' ? null : (
+          <Button
+            tone="secondary"
+            disabled={claiming}
+            onClick={() => {
+              onClaim(work);
+            }}
+          >
+            {benchWorkCopy.tabs.claimAction}
+          </Button>
+        )}
         {onOpenParcel === undefined ? null : work.claimable ? (
           <Button
             tone="primary"
             onClick={() => {
-              onOpenParcel(work);
+              onOpenParcel(work.workId);
             }}
           >
             {benchWorkCopy.row.openAction}
