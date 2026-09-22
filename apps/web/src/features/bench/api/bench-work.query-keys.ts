@@ -25,4 +25,6 @@ export const benchQueryKeys = {
   activity: (workId: string) => ['bench', 'activity', workId] as const,
   packedToday: () => ['bench', 'packed-today'] as const,
   metrics: () => ['bench', 'metrics'] as const,
+  /** #3406 — who else has this box open. Polled, never invalidated by hand. */
+  presence: (workId: string) => ['bench', 'presence', workId] as const,
 };

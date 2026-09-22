@@ -244,6 +244,24 @@ export const benchParcelCopy = {
    * and for the same D20 reason.
    */
   /** The mockup's `.copy-btn`, beside the order reference and the hero's EAN. */
+  /**
+   * #3406 — the mockup's collision banner. Advisory, never a lock: both
+   * packers keep scanning and the counts are one count. The copy says that in
+   * as many words, because the packer's instinct on seeing a colleague's name
+   * is to stop, and stopping is the wrong move.
+   */
+  collision: {
+    title: 'Someone else has this box open too',
+    body: (names: readonly string[]): string => {
+      const who =
+        names.length === 1
+          ? names[0]
+          : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1] ?? ''}`;
+      const verb = names.length === 1 ? 'is' : 'are';
+      return `${who} ${verb} scanning this box as well. Your scans and theirs are counted together, so carry on - just do not both go hunting for the same missing unit.`;
+    },
+  },
+
   copy: {
     action: (what: string): string => `Copy ${what}`,
     copied: (what: string): string => `${what} copied`,

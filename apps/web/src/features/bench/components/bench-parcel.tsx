@@ -73,6 +73,7 @@ import { formatAmount } from '../../../shared/format/format-amount';
 import type { BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
 import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useBenchParcelQuery } from '../hooks/use-bench-parcel-query';
+import { useBenchPresenceQuery } from '../hooks/use-bench-presence';
 import { useBenchReachability, isUnreachableFailure } from '../hooks/use-bench-reachability';
 import { useBenchReopenMutation } from '../hooks/use-bench-reopen-mutation';
 import { useBenchUndoMutation } from '../hooks/use-bench-undo-mutation';
@@ -130,6 +131,9 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
   const reopen = useBenchReopenMutation();
   const undo = useBenchUndoMutation();
   const reachability = useBenchReachability();
+  // A3. Off while the idle lock covers the bench — see the hook's docblock for
+  // why a locked terminal must not keep announcing the packer who walked away.
+  const presence = useBenchPresenceQuery(workId, { enabled: useBenchInteractive() });
   // A3. False while the idle lock or the handover prompt covers the bench.
   const interactive = useBenchInteractive();
 
@@ -661,6 +665,18 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
       </header>
 
       <p className="bench-parcel__scope">{benchParcelCopy.header.thisBoxOnly}</p>
+
+      {/* #3406 — advisory, and deliberately `info` rather than `warning`: two
+          packers on one box is a normal, supported situation, and a tone that
+          reads as a problem would make them stop, which is the wrong move.
+          Absent while the read has not answered or failed — see the hook. */}
+      {(presence.data?.others.length ?? 0) === 0 ? null : (
+        <Alert tone="info" title={benchParcelCopy.collision.title} data-testid="bench-collision">
+          {benchParcelCopy.collision.body(
+            (presence.data?.others ?? []).map((viewer) => viewer.displayName)
+          )}
+        </Alert>
+      )}
 
       {/* The mockup's hero card (#3401): the ONE line this box is waiting for
           next, with the visible scan field. Derived, never stored — see

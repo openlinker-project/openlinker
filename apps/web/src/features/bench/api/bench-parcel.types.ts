@@ -187,10 +187,28 @@ export interface BenchClaimNextResult {
   readonly parcel: BenchParcel | null;
 }
 
-/** A collision signal (#3406) — advisory only, never a lock. */
+/** One OTHER packer who currently has this parcel open (#3406). */
+export interface BenchPresenceViewer {
+  /**
+   * Already masked by the API — "Anna Kowalska" arrives as "A. Kowalska".
+   * Never a user id, and never a name this surface assembles itself.
+   */
+  readonly displayName: string;
+}
+
+/**
+ * A collision signal (#3406) — advisory only, never a lock.
+ *
+ * `others` NEVER includes the viewer, and an empty array is the first-class
+ * answer "nobody else". A FAILED read is not that answer: it throws, and the
+ * surface renders no banner AND no reassurance, because a read that did not
+ * happen has no standing to say the box is yours alone.
+ */
 export interface BenchPresence {
+  /** Exactly `others.length > 0`. What the banner's visibility keys on. */
   readonly collision: boolean;
-  readonly otherUserId: string | null;
+  /** Most recently seen first. */
+  readonly others: readonly BenchPresenceViewer[];
 }
 
 /** One entry of a parcel's recent-activity log (#3411). */

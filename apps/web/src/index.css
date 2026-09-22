@@ -25185,7 +25185,8 @@ legend.analytics-settings-dialog__label {
   color: var(--text-secondary);
 }
 
-@media (max-width: 720px) {
+/* The mockup's own breakpoint for both. */
+@media (max-width: 640px) {
   .bench-hero {
     flex-direction: column;
     align-items: flex-start;
@@ -25193,6 +25194,10 @@ legend.analytics-settings-dialog__label {
 
   .bench-hero__count {
     text-align: left;
+  }
+
+  .bench-documents__cards {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -25400,6 +25405,39 @@ legend.analytics-settings-dialog__label {
   margin: 0;
   font-size: 0.7rem;
   color: var(--text-muted);
+}
+
+/* The topbar is the one row that cannot wrap without hiding the sign-out, so
+   on a phone the two pieces that are merely orientation give way: the
+   breadcrumb (the bench is the only screen a packer has) and the name beside
+   the avatar (the identity bar under it already says who is signed in). */
+@media (max-width: 560px) {
+  /* `.theme-toggle` is `overflow: hidden`, so a topbar that merely ran out of
+     room CLIPPED its third option rather than scrolling — "System" became
+     unreachable with nothing to say so. The bar wraps instead, which needs
+     the fixed 52 px height released. */
+  .bench-topbar {
+    height: auto;
+    flex-wrap: wrap;
+    row-gap: var(--space-2);
+    padding-block: var(--space-2);
+  }
+
+  .bench-topbar__crumbs {
+    display: none;
+  }
+
+  .bench-topbar__user-name {
+    display: none;
+  }
+}
+
+/* The footnote rows carry a control and a sentence; narrow, the sentence has
+   to drop below the control rather than run under it. */
+@media (max-width: 640px) {
+  .bench-documents__camera-preview {
+    flex-wrap: wrap;
+  }
 }
 
 /* ── Bench topbar (#3423, mockup-parity epic #3401) ──────────────────────
@@ -25897,18 +25935,49 @@ legend.analytics-settings-dialog__label {
   }
 }
 
-/* One column below the tablet breakpoint, for the reason the work row reflows:
-   the four columns cannot hold their meaning narrow, and hiding the state
-   column would drop the part that must never depend on anything but text. */
-@media (max-width: 768px) {
+/* ── The item list below a desktop pane (mockup-parity epic #3401) ───────
+ * The seven-column rhythm needs ~600 px of pane. Between 900 px and 1200 px
+ * the rail is still beside the parcel, so the pane is ~570 px and the fixed
+ * tracks overflowed it — the identifiers column collapsed to one character
+ * per line and the confirm control hung off the panel.
+ *
+ * Below 1200 px the row becomes a card: the thumbnail keeps its column and
+ * everything else stacks beside it. The column HEADINGS go with it — labels
+ * over columns that no longer exist are worse than none, and on a phone they
+ * rendered as an unreadable `ITEMIDENTIFIERS SC` band. */
+@media (max-width: 1199px) {
+  .bench-parcel__lines-head {
+    display: none;
+  }
+
   .bench-parcel-line {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: start;
+    row-gap: 6px;
+  }
+
+  .bench-parcel-line > *:not(.bench-parcel-line__thumb) {
+    grid-column: 2;
   }
 
   .bench-parcel-line__count,
   .bench-parcel-line__state,
   .bench-parcel-line__actions {
+    justify-self: start;
     justify-items: start;
+    text-align: left;
+  }
+}
+
+/* One column on a phone: even the thumbnail's own column costs more than it
+   returns when the name beside it has 46 characters of room. */
+@media (max-width: 640px) {
+  .bench-parcel-line {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bench-parcel-line > *:not(.bench-parcel-line__thumb) {
+    grid-column: 1;
   }
 }
 

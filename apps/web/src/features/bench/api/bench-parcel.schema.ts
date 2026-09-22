@@ -202,7 +202,11 @@ export function parseBenchClaimNextResult(payload: unknown): BenchClaimNextResul
 
 export const benchPresenceSchema = z.object({
   collision: z.boolean(),
-  otherUserId: nullableString,
+  // Defaulted, so an API that predates the roster parses to "nobody else"
+  // rather than failing the whole read — which on this surface would mean a
+  // packer loses the collision warning AND gets an error where the banner
+  // would have been.
+  others: z.array(z.object({ displayName: z.string() })).default([]),
 });
 
 export function parseBenchPresence(payload: unknown): BenchPresence {

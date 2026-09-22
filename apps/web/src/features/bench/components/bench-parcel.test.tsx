@@ -206,6 +206,44 @@ describe('BenchParcelView (#2418)', () => {
     );
   });
 
+  // ── #3406 — someone else has this box open ──────────────────────────────
+  describe('the collision banner (#3406)', () => {
+    it('names the other packer, as the API masked them', async () => {
+      mount(parcel(), {
+        pingPresence: vi.fn().mockResolvedValue({
+          collision: true,
+          others: [{ displayName: 'P. Malinowski' }],
+        }),
+      });
+
+      const banner = await screen.findByTestId('bench-collision');
+      expect(banner.textContent).toContain('P. Malinowski');
+      // The instruction is to CARRY ON. A packer's instinct on seeing a
+      // colleague's name is to stop, and stopping is the wrong move.
+      expect(banner.textContent).toContain('carry on');
+    });
+
+    it('renders nothing when the roster is empty', async () => {
+      mount(parcel(), {
+        pingPresence: vi.fn().mockResolvedValue({ collision: false, others: [] }),
+      });
+
+      await screen.findByTestId('bench-parcel');
+      expect(screen.queryByTestId('bench-collision')).not.toBeInTheDocument();
+    });
+
+    it('renders NOTHING when the read fails — no banner and no reassurance', async () => {
+      // The harness default rejects, which is the point: a read that did not
+      // happen has no standing to say the box is this packer's alone, so the
+      // surface must not draw the banner AND must not draw its opposite.
+      mount(parcel());
+
+      const surface = await screen.findByTestId('bench-parcel');
+      expect(screen.queryByTestId('bench-collision')).not.toBeInTheDocument();
+      expect(surface.textContent).not.toContain('open too');
+    });
+  });
+
   // ── #3405 — undo the most recent scan ───────────────────────────────────
   it('should report which line was undone', async () => {
     const user = userEvent.setup();
