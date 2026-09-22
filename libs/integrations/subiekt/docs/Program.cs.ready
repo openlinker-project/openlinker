@@ -1,0 +1,1178 @@
+// Program.cs.ready — the bridge's HTTP entrypoint, AS OF #3436, committed
+// per piotrswierzy's review on PR #3436, alongside Invoicing.cs.ready.
+//
+// This is a FULL DUMP of the bridge's Program.cs as it exists on the Windows
+// host at /mnt/c/Users/42zer/gtspike/bridge/Program.cs right now. Most of this
+// file is unrelated to #3431 (it wires every other endpoint group — orders,
+// products, inventory, fiscalization). The #3431-relevant change is narrow:
+// the /api/invoices response envelope now carries
+//   warehouseReleaseNumber = result.WarehouseReleaseNumber
+// (search for "warehouseReleaseNumber" / "EnsureWarehouseRelease" to find it)
+// — the wire-level plumbing for the field added to IssueResult in
+// Invoicing.cs.ready and to BridgeIssueInvoiceResponse in
+// libs/integrations/subiekt/src/bridge/subiekt-bridge.types.ts.
+//
+// NOT compiled or type-checked by this repo's CI — there is no C# build here.
+// See Invoicing.cs.ready's header for the deployment note and the auth-token
+// disclosure (InvoiceToken/User/Pass below are this LOCAL SANDBOX bridge's
+// own dev-only constants, not a production secret).
+
+// OpenLinker <- Subiekt GT spike bridge.
+// Speaks a READ-ONLY subset of the WooCommerce REST v3 dialect so the shipped
+// OpenLinker WooCommerce ProductMaster/InventoryMaster adapters can consume
+// Subiekt GT without any change to OpenLinker itself.
+// This is a SPIKE SHIM, not the production design.
+
+using System.Data;
+using System.Globalization;
+using System.Text;
+using Microsoft.Data.SqlClient;
+
+const string ConnStr =
+    @"Server=DESKTOP-FJ0P3NU\INSERTNEXO;Database=DEMO;Integrated Security=True;"
+  + "TrustServerCertificate=True;Encrypt=False;Connect Timeout=10";
+
+const string User = "olkey";
+const string Pass = "olsecret";
+const string InvoiceToken = "olinvoicekey";
+const int VariationIdOffset = 1_000_000;
+const int ModelIdOffset = 900_000;
+// Image URLs are fetched by OpenLinker (and by Allegro, through it), so they must
+// resolve from OUTSIDE this machine's loopback. "localhost" silently yields
+// IMAGE_DOWNLOAD_FAILED on the marketplace side.
+string PublicBase = Environment.GetEnvironmentVariable("OL_BRIDGE_PUBLIC_BASE")
+                    ?? "http://host.docker.internal:5056";
+
+var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(k =>
+{
+    k.ListenAnyIP(5055, o => o.UseHttps(@"C:\Users\42zer\gtspike\bridge\bridge.pfx", "gtspike"));
+    // Drugi port, zwykly HTTP - tylko po to, zeby przegladarka mogla pobrac zdjecie.
+    k.ListenAnyIP(5056);
+});
+builder.Logging.ClearProviders().AddSimpleConsole(o => { o.SingleLine = true; o.TimestampFormat = "HH:mm:ss "; });
+var app = builder.Build();
+
+// Warm Subiekt up now, not on the first order - a cold attach can take well
+// over a minute, past OpenLinker's own HTTP timeout on the sync call.
+Sfera.Warmup();
+// Dismisses a small, text-verified set of harmless dialogs (see Sfera.cs)
+// so they never wedge the single Sfera worker thread forever.
+DialogWatcher.Start();
+
+// --- request log: shows exactly what OpenLinker asks for -------------------
+app.Use(async (ctx, next) =>
+{
+    var q = ctx.Request.QueryString.HasValue ? ctx.Request.QueryString.Value : "";
+    app.Logger.LogInformation("--> {M} {P}{Q}", ctx.Request.Method, ctx.Request.Path, q);
+    await next();
+    app.Logger.LogInformation("<-- {S} {P}", ctx.Response.StatusCode, ctx.Request.Path);
+});
+
+// --- basic auth (WC-emulation routes) ---------------------------------------
+app.Use(async (ctx, next) =>
+{
+    if (ctx.Request.Path.StartsWithSegments("/health") ||
+        ctx.Request.Path.StartsWithSegments("/gt-image") ||
+        ctx.Request.Path.StartsWithSegments("/api")) { await next(); return; }
+    var h = ctx.Request.Headers.Authorization.ToString();
+    if (h.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
+    {
+        var raw = Encoding.UTF8.GetString(Convert.FromBase64String(h[6..].Trim()));
+        var i = raw.IndexOf(':');
+        if (i > 0 && raw[..i] == User && raw[(i + 1)..] == Pass) { await next(); return; }
+    }
+    ctx.Response.StatusCode = 401;
+    await ctx.Response.WriteAsJsonAsync(new { code = "woocommerce_rest_authentication_error", message = "bad credentials" });
+});
+
+// --- token auth (invoicing /api/* routes, subiekt.invoicing.v1's contract) --
+// The real client sends BOTH `authorization: Bearer <token>` and
+// `x-bridge-token: <token>` (SubiektBridgeHttpClient.buildHeaders); either is
+// accepted here. A 401/403 is read by that client as a bridge auth/config
+// problem, never a fiscal rejection - never blur the two.
+app.Use(async (ctx, next) =>
+{
+    if (!ctx.Request.Path.StartsWithSegments("/api")) { await next(); return; }
+    var bearer = ctx.Request.Headers.Authorization.ToString();
+    var xToken = ctx.Request.Headers["x-bridge-token"].ToString();
+    var ok = bearer == $"Bearer {InvoiceToken}" || xToken == InvoiceToken;
+    if (!ok)
+    {
+        ctx.Response.StatusCode = 401;
+        await ctx.Response.WriteAsJsonAsync(new { success = false, data = (object?)null,
+            error = new { code = "unauthorized", reason = "bad or missing bridge token", correlationId = (string?)null } });
+        return;
+    }
+    await next();
+});
+
+string Money(decimal? d) => d is null ? "" : d.Value.ToString("0.00", CultureInfo.InvariantCulture);
+string Num(decimal? d) => d is null || d == 0m ? "" : d.Value.ToString("0.###", CultureInfo.InvariantCulture);
+
+// VAT rate -> WooCommerce tax_class slug. "" is WC's own slug for standard.
+string TaxClass(decimal? rate) => rate switch
+{
+    null => "",
+    23m  => "",
+    8m   => "reduced-rate",
+    5m   => "reduced-rate-5",
+    0m   => "zero-rate",
+    _    => "rate-" + rate.Value.ToString("0.##", CultureInfo.InvariantCulture),
+};
+
+const string BaseSelect = @"
+SELECT  t.tw_Id, t.tw_Symbol, t.tw_Nazwa, t.tw_Opis, t.tw_PodstKodKresk,
+        t.tw_Masa, t.tw_Rodzaj, t.tw_Zablokowany,
+        v.vat_Stawka,
+        c.tc_CenaNetto1, c.tc_CenaBrutto1,
+        ISNULL(s.stan, 0)  AS stan,
+        ISNULL(s.rez, 0)   AS rez,
+        md.mdt_Id          AS modelId,
+        md.mdt_Nazwa       AS modelNazwa,
+        CASE WHEN EXISTS (SELECT 1 FROM tw_ZdjecieTw z WHERE z.zd_IdTowar = t.tw_Id) THEN 1 ELSE 0 END AS hasImg,
+        gr.grt_Id          AS grupaId,
+        gr.grt_Nazwa       AS grupaNazwa
+FROM    tw__Towar t
+LEFT JOIN sl_StawkaVAT v ON v.vat_Id = t.tw_IdVatSp
+OUTER APPLY (SELECT TOP 1 tc_CenaNetto1, tc_CenaBrutto1 FROM tw_Cena WHERE tc_IdTowar = t.tw_Id) c
+OUTER APPLY (SELECT SUM(st_Stan) AS stan, SUM(st_StanRez) AS rez FROM tw_Stan WHERE st_TowId = t.tw_Id) s
+LEFT JOIN sl_ModelTowar mt ON mt.mtw_IdTowar = t.tw_Id
+LEFT JOIN sl_ModelTw    md ON md.mdt_Id      = mt.mtw_IdModel
+LEFT JOIN sl_GrupaTw    gr ON gr.grt_Id      = t.tw_IdGrupa
+WHERE   t.tw_Usuniety = 0
+";
+
+
+static Row Read(SqlDataReader r) => new(
+    r.GetInt32(0),
+    r.IsDBNull(1) ? "" : r.GetString(1).Trim(),
+    r.IsDBNull(2) ? "" : r.GetString(2).Trim(),
+    r.IsDBNull(3) ? null : r.GetString(3).Trim(),
+    r.IsDBNull(4) ? null : r.GetString(4).Trim(),
+    r.IsDBNull(5) ? null : r.GetDecimal(5),
+    r.IsDBNull(6) ? 1 : r.GetInt32(6),
+    !r.IsDBNull(7) && r.GetBoolean(7),
+    r.IsDBNull(8) ? null : r.GetDecimal(8),
+    r.IsDBNull(9) ? null : r.GetDecimal(9),
+    r.IsDBNull(10) ? null : r.GetDecimal(10),
+    r.IsDBNull(11) ? 0m : r.GetDecimal(11),
+    r.IsDBNull(12) ? 0m : r.GetDecimal(12),
+    r.IsDBNull(13) ? (int?)null : r.GetInt32(13),
+    r.IsDBNull(14) ? null : r.GetString(14).Trim(),
+    !r.IsDBNull(15) && r.GetInt32(15) == 1,
+    r.IsDBNull(16) ? (int?)null : r.GetInt32(16),
+    r.IsDBNull(17) ? null : r.GetString(17).Trim());
+
+static async Task<List<Row>> Query(string sql, params (string, object)[] ps)
+{
+    await using var c = new SqlConnection(ConnStr);
+    await c.OpenAsync();
+    await using var cmd = new SqlCommand(sql, c);
+    foreach (var (n, v) in ps) cmd.Parameters.AddWithValue(n, v);
+    await using var r = await cmd.ExecuteReaderAsync();
+    var list = new List<Row>();
+    while (await r.ReadAsync()) list.Add(Read(r));
+    return list;
+}
+
+object Variation(Row t, Dictionary<int, List<string>> cechy)
+{
+    var available = t.Stock - t.Reserved;
+    var meta = new List<object>();
+    if (!string.IsNullOrWhiteSpace(t.Ean)) meta.Add(new { id = 1, key = "_ean", value = t.Ean });
+    return new
+    {
+        id = VariationIdOffset + t.Id,
+        sku = t.Symbol,
+        price = Money(t.Gross),
+        regular_price = Money(t.Gross),
+        // Wariant + cechy towaru z GT - OpenLinker czyta atrybuty z WARIANTU, nie z produktu.
+        attributes = new object[] { new { id = 0, name = "Wariant", option = t.Name } }
+                     .Concat((cechy.TryGetValue(t.Id, out var cs) ? cs : new List<string>())
+                              .Select((cecha, i) => (object)new { id = 100 + i, name = cecha, option = "tak" }))
+                     .ToArray(),
+        image = t.HasImage ? new { id = t.Id, src = $"{PublicBase}/gt-image/{t.Id}" } : null,
+        stock_quantity = (int)Math.Floor(available),
+        manage_stock = true,
+        stock_status = available > 0 ? "instock" : "outofstock",
+        weight = Num(t.Mass),
+        tax_class = TaxClass(t.Vat),
+        tax_status = "taxable",
+        date_created = "2026-01-01T00:00:00",
+        date_modified = "2026-01-01T00:00:00",
+        date_modified_gmt = "2026-01-01T00:00:00",
+        meta_data = meta,
+    };
+}
+
+// Grupowanie po modelu GT: model = jeden produkt WooCommerce, towary = jego warianty.
+// Towar bez modelu zostaje osobnym produktem z jednym wariantem.
+int GroupId(Row t) => t.ModelId is int m ? ModelIdOffset + m : t.Id;
+
+object ProductOf(List<Row> g, Dictionary<int, List<string>> cechy)
+{
+    var head = g[0];
+    var grouped = head.ModelId is not null;
+    var available = g.Sum(x => x.Stock - x.Reserved);
+    var meta = new List<object>();
+    if (!grouped && !string.IsNullOrWhiteSpace(head.Ean))
+        meta.Add(new { id = 1, key = "_ean", value = head.Ean });
+
+    return new
+    {
+        id = GroupId(head),
+        name = grouped ? head.ModelName : head.Name,
+        slug = (grouped ? "model-" + head.ModelId : head.Symbol.ToLowerInvariant()),
+        type = "variable",
+        status = head.Blocked ? "private" : "publish",
+        sku = grouped ? "" : head.Symbol,
+        price = Money(head.Gross),
+        regular_price = Money(head.Gross),
+        description = head.Desc ?? "",
+        categories = head.GroupId_ is int gid
+            ? new object[] { new { id = gid, name = head.GroupName ?? "", slug = "grupa-" + gid } }
+            : Array.Empty<object>(),
+        images = g.Where(x => x.HasImage)
+                  .Select(x => new { id = x.Id, src = $"{PublicBase}/gt-image/{x.Id}", alt = x.Name })
+                  .ToArray(),
+        attributes = new object[] { new { id = 0, name = "Wariant", position = 0, variation = true, visible = true,
+                                         options = g.Select(x => x.Name).ToArray() } }
+                     .Concat(g.SelectMany(x => cechy.TryGetValue(x.Id, out var cs) ? cs : new List<string>())
+                              .Distinct()
+                              .Select((cecha, i) => (object)new { id = 100 + i, name = cecha, position = i + 1,
+                                                                 variation = false, visible = true,
+                                                                 options = new[] { "tak" } }))
+                     .ToArray(),
+        variations = g.Select(x => VariationIdOffset + x.Id).ToArray(),
+        stock_quantity = (int)Math.Floor(available),
+        manage_stock = true,
+        stock_status = available > 0 ? "instock" : "outofstock",
+        weight = Num(head.Mass),
+        tax_class = TaxClass(head.Vat),
+        tax_status = "taxable",
+        date_created = "2026-01-01T00:00:00",
+        date_modified = "2026-01-01T00:00:00",
+        date_modified_gmt = "2026-01-01T00:00:00",
+        meta_data = meta,
+    };
+}
+
+// Cechy towaru z GT (sl_CechaTw + tw_CechaTw) - jedno zapytanie na zadanie.
+async Task<Dictionary<int, List<string>>> Cechy()
+{
+    var map = new Dictionary<int, List<string>>();
+    await using var c = new SqlConnection(ConnStr);
+    await c.OpenAsync();
+    await using var cmd = new SqlCommand(
+        "SELECT ct.cht_IdTowar, s.ctw_Nazwa FROM tw_CechaTw ct JOIN sl_CechaTw s ON s.ctw_Id = ct.cht_IdCecha ORDER BY ct.cht_IdTowar", c);
+    await using var r = await cmd.ExecuteReaderAsync();
+    while (await r.ReadAsync())
+    {
+        var id = r.GetInt32(0);
+        var name = r.IsDBNull(1) ? null : r.GetString(1).Trim();
+        if (string.IsNullOrWhiteSpace(name)) continue;
+        if (!map.TryGetValue(id, out var list)) { list = new List<string>(); map[id] = list; }
+        if (!list.Contains(name)) list.Add(name);
+    }
+    return map;
+}
+
+async Task<List<List<Row>>> Groups()
+{
+    var rows = await Query(BaseSelect + " ORDER BY t.tw_Id");
+    return rows.GroupBy(GroupId).OrderBy(x => x.Key).Select(x => x.ToList()).ToList();
+}
+
+app.MapGet("/wp-json/wc/v3/products", async (HttpRequest req) =>
+{
+    var perPage = int.TryParse(req.Query["per_page"], out var pp) ? Math.Clamp(pp, 1, 100) : 10;
+    var page = int.TryParse(req.Query["page"], out var pg) ? Math.Max(pg, 1) : 1;
+    var fields = req.Query["_fields"].ToString();
+    var include = req.Query["include"].ToString();
+
+    var groups = await Groups();
+    if (!string.IsNullOrWhiteSpace(include))
+    {
+        var ids = include.Split(',').Where(x => int.TryParse(x, out _)).Select(int.Parse).ToHashSet();
+        groups = groups.Where(g => ids.Contains(GroupId(g[0]))).ToList();
+    }
+    var pageItems = groups.Skip((page - 1) * perPage).Take(perPage).ToList();
+
+    if (fields.Contains("id") && !fields.Contains(","))
+        return Results.Ok(pageItems.Select(g => new { id = GroupId(g[0]) }));
+    var cechy = await Cechy();
+    return Results.Ok(pageItems.Select(x => ProductOf(x, cechy)));
+});
+
+app.MapGet("/wp-json/wc/v3/products/{id:int}", async (int id) =>
+{
+    var g = (await Groups()).FirstOrDefault(x => GroupId(x[0]) == id);
+    return g is null
+        ? Results.NotFound(new { code = "woocommerce_rest_product_invalid_id", message = "Invalid ID." })
+        : Results.Ok(ProductOf(g, await Cechy()));
+});
+
+app.MapGet("/wp-json/wc/v3/products/{id:int}/variations", async (int id) =>
+{
+    var g = (await Groups()).FirstOrDefault(x => GroupId(x[0]) == id);
+    if (g is null) return Results.Ok(Array.Empty<object>());
+    var cechy = await Cechy();
+    return Results.Ok(g.Select(x => Variation(x, cechy)));
+});
+
+app.MapGet("/wp-json/wc/v3/products/{pid:int}/variations/{vid:int}", async (int pid, int vid) =>
+{
+    var rows = await Query(BaseSelect + " AND t.tw_Id = @id", ("@id", vid - VariationIdOffset));
+    return rows.Count == 0
+        ? Results.NotFound(new { code = "woocommerce_rest_product_invalid_id", message = "Invalid ID." })
+        : Results.Ok(Variation(rows[0], await Cechy()));
+});
+
+// --- ZAMOWIENIA: dokumenty ZK z Subiekta jako zamowienia WooCommerce ----------
+// GT nie ma znacznika modyfikacji dokumentu, wiec date_modified jest syntetyczna:
+// data wystawienia + numer dokumentu w sekundach. Monotoniczna, co wystarcza kursorowi.
+const string OrderSelect = @"
+SELECT  d.dok_Id, d.dok_NrPelny, d.dok_DataWyst, d.dok_WartBrutto, d.dok_Status,
+        k.kh_Id, k.kh_Symbol, k.kh_EMail,
+        a.adr_Nazwa, a.adr_Ulica, a.adr_NrDomu, a.adr_Kod, a.adr_Miejscowosc, a.adr_NIP, a.adr_Telefon
+FROM    dok__Dokument d
+LEFT JOIN kh__Kontrahent k ON k.kh_Id = d.dok_PlatnikId
+OUTER APPLY (SELECT TOP 1 * FROM adr__Ewid WHERE adr_IdObiektu = k.kh_Id AND adr_TypAdresu = 1) a
+WHERE   d.dok_Typ = 16
+";
+
+static string Iso(DateTime d, int id) => d.Date.AddSeconds(id).ToString("yyyy-MM-ddTHH:mm:ss");
+
+async Task<List<object>> ReadOrders(string extraWhere, params (string, object)[] ps)
+{
+    await using var c = new SqlConnection(ConnStr);
+    await c.OpenAsync();
+    await using var cmd = new SqlCommand(OrderSelect + extraWhere + " ORDER BY d.dok_Id", c);
+    foreach (var (n, v) in ps) cmd.Parameters.AddWithValue(n, v);
+
+    var heads = new List<(int Id, string Nr, DateTime Date, decimal Total, int Status,
+                          int KhId, string KhSym, string Mail, string Name, string Street,
+                          string House, string Zip, string City, string Nip, string Phone)>();
+    await using (var r = await cmd.ExecuteReaderAsync())
+        while (await r.ReadAsync())
+            heads.Add((r.GetInt32(0),
+                       r.IsDBNull(1) ? "" : r.GetString(1).Trim(),
+                       r.IsDBNull(2) ? DateTime.Today : r.GetDateTime(2),
+                       r.IsDBNull(3) ? 0m : r.GetDecimal(3),
+                       r.IsDBNull(4) ? 0 : Convert.ToInt32(r.GetValue(4)),
+                       r.IsDBNull(5) ? 0 : r.GetInt32(5),
+                       r.IsDBNull(6) ? "" : r.GetString(6).Trim(),
+                       r.IsDBNull(7) ? "" : r.GetString(7).Trim(),
+                       r.IsDBNull(8) ? "" : r.GetString(8).Trim(),
+                       r.IsDBNull(9) ? "" : r.GetString(9).Trim(),
+                       r.IsDBNull(10) ? "" : r.GetString(10).Trim(),
+                       r.IsDBNull(11) ? "" : r.GetString(11).Trim(),
+                       r.IsDBNull(12) ? "" : r.GetString(12).Trim(),
+                       r.IsDBNull(13) ? "" : r.GetString(13).Trim(),
+                       r.IsDBNull(14) ? "" : r.GetString(14).Trim()));
+
+    var result = new List<object>();
+    foreach (var h in heads)
+    {
+        var lines = new List<object>();
+        await using (var lc = new SqlCommand(
+            @"SELECT p.ob_Id, t.tw_Id, t.tw_Symbol, t.tw_Nazwa, p.ob_Ilosc, p.ob_CenaBrutto,
+                     mt.mtw_IdModel
+              FROM dok_Pozycja p
+              JOIN tw__Towar t ON t.tw_Id = p.ob_TowId
+              LEFT JOIN sl_ModelTowar mt ON mt.mtw_IdTowar = t.tw_Id
+              WHERE p.ob_DokHanId = @d", c))
+        {
+            lc.Parameters.AddWithValue("@d", h.Id);
+            await using var lr = await lc.ExecuteReaderAsync();
+            while (await lr.ReadAsync())
+            {
+                var twId = lr.GetInt32(1);
+                var modelId = lr.IsDBNull(6) ? (int?)null : lr.GetInt32(6);
+                var qty = lr.IsDBNull(4) ? 0m : lr.GetDecimal(4);
+                var unit = lr.IsDBNull(5) ? 0m : lr.GetDecimal(5);
+                lines.Add(new
+                {
+                    id = lr.GetInt32(0),
+                    name = lr.IsDBNull(3) ? "" : lr.GetString(3).Trim(),
+                    product_id = modelId is int m ? ModelIdOffset + m : twId,
+                    variation_id = VariationIdOffset + twId,
+                    quantity = (int)Math.Round(qty),
+                    sku = lr.IsDBNull(2) ? "" : lr.GetString(2).Trim(),
+                    price = Money(unit),
+                    subtotal = Money(unit * qty),
+                    total = Money(unit * qty),
+                    image = (object?)null,
+                });
+            }
+        }
+
+        var parts = (h.Name.Length > 0 ? h.Name : h.KhSym).Split(' ', 2);
+        var addr = new
+        {
+            first_name = parts[0],
+            last_name = parts.Length > 1 ? parts[1] : "",
+            company = "",
+            address_1 = (h.Street + " " + h.House).Trim(),
+            address_2 = "",
+            city = h.City,
+            state = "",
+            postcode = h.Zip,
+            country = "PL",
+            email = h.Mail,
+            phone = h.Phone,
+        };
+
+        result.Add(new
+        {
+            id = h.Id,
+            number = h.Nr,
+            status = "processing",
+            date_created = Iso(h.Date, h.Id),
+            date_created_gmt = Iso(h.Date, h.Id),
+            date_modified = Iso(h.Date, h.Id),
+            date_modified_gmt = Iso(h.Date, h.Id),
+            customer_id = h.KhId,
+            billing = addr,
+            shipping = addr,
+            line_items = lines,
+            shipping_lines = new object[]
+            {
+                new { id = 1, method_id = "inpost_paczkomat", method_title = "InPost Paczkomat", total = "0.00" }
+            },
+            total = Money(h.Total),
+            total_tax = "0.00",
+            shipping_total = "0.00",
+            fee_lines = Array.Empty<object>(),
+            currency = "PLN",
+            payment_method = "przelewy24",
+            payment_method_title = "Przelew",
+            meta_data = Array.Empty<object>(),
+        });
+    }
+    return result;
+}
+
+app.MapGet("/wp-json/wc/v3/orders", async (HttpRequest req) =>
+{
+    var after = req.Query["modified_after"].ToString();
+    var perPage = int.TryParse(req.Query["per_page"], out var pp) ? Math.Clamp(pp, 1, 100) : 10;
+    var all = await ReadOrders("");
+    IEnumerable<object> q = all;
+    if (!string.IsNullOrWhiteSpace(after))
+        q = all.Where(o => string.CompareOrdinal(
+            (string)o.GetType().GetProperty("date_modified_gmt")!.GetValue(o)!, after) > 0);
+    return Results.Ok(q.Take(perPage));
+});
+
+app.MapGet("/wp-json/wc/v3/orders/{id:int}", async (int id) =>
+{
+    var o = await ReadOrders(" AND d.dok_Id = @id", ("@id", id));
+    return o.Count == 0
+        ? Results.NotFound(new { code = "woocommerce_rest_shop_order_invalid_id", message = "Invalid ID." })
+        : Results.Ok(o[0]);
+});
+
+app.MapGet("/wp-json/wc/v3/products/categories", async () =>
+{
+    await using var c = new SqlConnection(ConnStr);
+    await c.OpenAsync();
+    await using var cmd = new SqlCommand("SELECT grt_Id, grt_Nazwa FROM sl_GrupaTw ORDER BY grt_Nazwa", c);
+    await using var r = await cmd.ExecuteReaderAsync();
+    var list = new List<object>();
+    while (await r.ReadAsync())
+        list.Add(new { id = r.GetInt32(0), name = r.IsDBNull(1) ? "" : r.GetString(1).Trim(),
+                       slug = "grupa-" + r.GetInt32(0), parent = 0, count = 0 });
+    return Results.Ok(list);
+});
+
+app.MapGet("/wp-json/wc/v3/settings/general", () => Results.Ok(new object[]
+{
+    new { id = "woocommerce_currency", label = "Currency", value = "PLN" },
+    new { id = "woocommerce_prices_include_tax", label = "Prices entered with tax", value = "yes" },
+    // Bez tego OpenLinker odpowiada 'not-configured' i nigdy nie pyta o /taxes.
+    new { id = "woocommerce_default_country", label = "Selling location", value = "PL" },
+}));
+
+app.MapGet("/wp-json/wc/v3/taxes", async (HttpRequest req) =>
+{
+    // OpenLinker pyta o konkretna klase i wymaga DOKLADNIE JEDNEGO wiersza dla
+    // kraju sklepu - kilka wierszy o roznych stawkach to dla niego 'ambiguous'.
+    var wanted = req.Query["class"].ToString();
+    await using var c = new SqlConnection(ConnStr);
+    await c.OpenAsync();
+    await using var cmd = new SqlCommand(
+        "SELECT DISTINCT v.vat_Id, v.vat_Stawka FROM sl_StawkaVAT v WHERE v.vat_Stawka IS NOT NULL ORDER BY v.vat_Stawka DESC", c);
+    await using var r = await cmd.ExecuteReaderAsync();
+    var list = new List<object>();
+    var seen = new HashSet<string>();
+    while (await r.ReadAsync())
+    {
+        var rate = r.IsDBNull(1) ? (decimal?)null : r.GetDecimal(1);
+        var slug = TaxClass(rate);
+        var apiSlug = slug == "" ? "standard" : slug;
+        if (!string.IsNullOrEmpty(wanted) && !string.Equals(wanted, apiSlug, StringComparison.OrdinalIgnoreCase)) continue;
+        if (!seen.Add(apiSlug)) continue;   // jedna stawka na klase
+        list.Add(new
+        {
+            id = r.GetInt32(0),
+            country = "PL",
+            state = "",
+            postcode = "",
+            city = "",
+            rate = (rate ?? 0m).ToString("0.0000", CultureInfo.InvariantCulture),
+            name = "VAT " + (rate ?? 0m).ToString("0.##", CultureInfo.InvariantCulture) + "%",
+            priority = 1,
+            compound = false,
+            shipping = true,
+            order = 0,
+            @class = apiSlug,
+        });
+    }
+    return Results.Ok(list);
+});
+
+// Zdjecie towaru prosto z tw_ZdjecieTw (blob w bazie GT).
+app.MapGet("/gt-image/{towarId:int}", async (int towarId) =>
+{
+    await using var c = new SqlConnection(ConnStr);
+    await c.OpenAsync();
+    await using var cmd = new SqlCommand(
+        "SELECT TOP 1 zd_Zdjecie FROM tw_ZdjecieTw WHERE zd_IdTowar = @id ORDER BY zd_Glowne DESC, zd_Id", c);
+    cmd.Parameters.AddWithValue("@id", towarId);
+    var blob = await cmd.ExecuteScalarAsync();
+    if (blob is not byte[] bytes || bytes.Length == 0) return Results.NotFound();
+    return Results.File(bytes, "image/jpeg");
+});
+
+app.MapGet("/wp-json/wc/v3/system_status", () => Results.Ok(new
+{
+    environment = new { version = "9.0.0", wp_version = "6.6", home_url = "http://gt-bridge" },
+    settings = new { currency = "PLN" },
+}));
+
+
+// â”€â”€â”€ zapis wysylki do Subiekta â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// WooCommerce-owy PUT /orders/{id}. Adapter WC w OL przysyla tylko {status} -
+// numer przesylki gubi po drodze, wiec przewoznika/paczkomat czytamy z meta_data
+// albo z pol wlasnych requestu, ktore przysle dopiero prawdziwy adapter Subiekta.
+
+/// <summary>Reads back the shipping block this bridge previously wrote, as label -> value.</summary>
+async Task<Dictionary<string, string>> ReadShippingBlock(int dokId)
+{
+    var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    try
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand("SELECT dok_UwagiExt FROM dok__Dokument WHERE dok_Id = @id", c);
+        cmd.Parameters.AddWithValue("@id", dokId);
+        var raw = await cmd.ExecuteScalarAsync();
+        if (raw is null || raw is DBNull) return map;
+        foreach (var line in Convert.ToString(raw)!.Split('\n'))
+        {
+            var i = line.IndexOf(':');
+            if (i <= 0) continue;
+            var key = line[..i].Trim();
+            var val = line[(i + 1)..].Trim();
+            if (key.Length > 0 && val.Length > 0) map[key] = val;
+        }
+    }
+    catch { /* a merge is best-effort; never block the write */ }
+    return map;
+}
+
+app.MapPut("/wp-json/wc/v3/orders/{id:int}", async (int id, HttpRequest req) =>
+{
+    using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body);
+    var root = doc.RootElement;
+
+    string Str(string name)
+    {
+        if (root.ValueKind == System.Text.Json.JsonValueKind.Object &&
+            root.TryGetProperty(name, out var v) &&
+            v.ValueKind == System.Text.Json.JsonValueKind.String)
+            return v.GetString() ?? "";
+        return "";
+    }
+
+    string Meta(params string[] keys)
+    {
+        if (root.ValueKind != System.Text.Json.JsonValueKind.Object) return "";
+        if (!root.TryGetProperty("meta_data", out var md)) return "";
+        if (md.ValueKind != System.Text.Json.JsonValueKind.Array) return "";
+        foreach (var m in md.EnumerateArray())
+        {
+            if (!m.TryGetProperty("key", out var k)) continue;
+            var key = k.GetString() ?? "";
+            if (!keys.Any(x => string.Equals(x, key, StringComparison.OrdinalIgnoreCase))) continue;
+            if (m.TryGetProperty("value", out var val))
+                return val.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? val.GetString() ?? ""
+                    : val.ToString();
+        }
+        return "";
+    }
+
+    var wcStatus = Str("status");
+    var info = new ShippingInfo
+    {
+        Carrier     = Str("ol_carrier")      != "" ? Str("ol_carrier")      : Meta("_ol_carrier", "carrier", "_shipping_provider"),
+        Tracking    = Str("ol_tracking")     != "" ? Str("ol_tracking")     : Meta("_ol_tracking", "_tracking_number", "tracking_number"),
+        PickupPoint = Str("ol_pickup_point") != "" ? Str("ol_pickup_point") : Meta("_ol_pickup_point", "pickup_point", "_paczkomat"),
+        TrackingUrl = Str("ol_tracking_url") != "" ? Str("ol_tracking_url") : Meta("_ol_tracking_url", "tracking_url"),
+        ShipmentRef = Str("ol_shipment_id")  != "" ? Str("ol_shipment_id")  : Meta("_ol_shipment_id"),
+        OrderRef    = Str("ol_order_id")     != "" ? Str("ol_order_id")     : Meta("_ol_order_id"),
+        Status      = wcStatus switch
+        {
+            "completed"  => "wyslane",
+            "processing" => "w realizacji",
+            "cancelled"  => "anulowane",
+            "refunded"   => "zwrocone",
+            "on-hold"    => "wstrzymane",
+            ""           => "",
+            _            => wcStatus,
+        },
+    };
+
+    if (info.OneLine() == "")
+        return Results.BadRequest(new { code = "ol_nothing_to_write", message = "Brak danych wysylki w zadaniu." });
+
+    // Merge, never overwrite. A caller that knows only the status (the WooCommerce
+    // adapter sends exactly that) must not wipe the carrier, waybill and pickup
+    // point a previous, richer call already wrote.
+    var previous = await ReadShippingBlock(id);
+    if (info.Carrier == "")     info.Carrier     = previous.GetValueOrDefault("Przewoznik", "");
+    if (info.Tracking == "")    info.Tracking    = previous.GetValueOrDefault("Nr przesylki", "");
+    if (info.PickupPoint == "") info.PickupPoint = previous.GetValueOrDefault("Punkt odbioru", "");
+    if (info.TrackingUrl == "") info.TrackingUrl = previous.GetValueOrDefault("Sledzenie", "");
+    if (info.ShipmentRef == "") info.ShipmentRef = previous.GetValueOrDefault("Przesylka OL", "");
+    if (info.OrderRef == "")    info.OrderRef    = previous.GetValueOrDefault("Zamowienie OL", "");
+    if (info.Status == "")      info.Status      = previous.GetValueOrDefault("Status", "");
+
+    try
+    {
+        var numer = Sfera.WriteShipping(id, info);
+        app.Logger.LogInformation("Subiekt {Nr} (id {Id}) <- {Line}", numer, id, info.OneLine());
+        var o = await ReadOrders(" AND d.dok_Id = @id", ("@id", id));
+        return o.Count == 0 ? Results.Ok(new { id, subiekt = numer }) : Results.Ok(o[0]);
+    }
+    catch (Exception e)
+    {
+        app.Logger.LogError("Sfera write failed for {Id}: {Msg}", id, e.Message);
+        return Results.Json(new { code = "ol_sfera_write_failed", message = e.Message }, statusCode: 502);
+    }
+});
+
+
+// â”€â”€â”€ kontrahenci â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// OL provisions a customer before creating the order, so the bridge maps a WC
+// customer onto a Subiekt kontrahent. WC customer id == kh_Id.
+
+async Task<int?> FindKontrahentIdByEmail(string email)
+{
+    if (string.IsNullOrWhiteSpace(email)) return null;
+    await using var c = new SqlConnection(ConnStr);
+    await c.OpenAsync();
+    await using var cmd = new SqlCommand(
+        "SELECT TOP 1 kh_Id FROM kh__Kontrahent WHERE kh_EMail = @e ORDER BY kh_Id", c);
+    cmd.Parameters.AddWithValue("@e", email);
+    var r = await cmd.ExecuteScalarAsync();
+    return r is null || r is DBNull ? null : Convert.ToInt32(r);
+}
+
+async Task<int?> FindKontrahentIdBySymbol(string symbol)
+{
+    if (string.IsNullOrWhiteSpace(symbol)) return null;
+    await using var c = new SqlConnection(ConnStr);
+    await c.OpenAsync();
+    await using var cmd = new SqlCommand(
+        "SELECT TOP 1 kh_Id FROM kh__Kontrahent WHERE kh_Symbol = @s ORDER BY kh_Id", c);
+    cmd.Parameters.AddWithValue("@s", symbol);
+    var r = await cmd.ExecuteScalarAsync();
+    return r is null || r is DBNull ? null : Convert.ToInt32(r);
+}
+
+async Task<object?> KontrahentDto(int id)
+{
+    await using var c = new SqlConnection(ConnStr);
+    await c.OpenAsync();
+    await using var cmd = new SqlCommand(
+        "SELECT kh_Id, kh_Symbol, ISNULL(kh_EMail,''), ISNULL(kh_Nazwa,'') FROM kh__Kontrahent WHERE kh_Id = @id", c);
+    cmd.Parameters.AddWithValue("@id", id);
+    await using var r = await cmd.ExecuteReaderAsync();
+    if (!await r.ReadAsync()) return null;
+    return new
+    {
+        id = r.GetInt32(0),
+        email = r.GetString(2).Trim(),
+        first_name = "",
+        last_name = r.GetString(3).Trim(),
+        username = r.GetString(1).Trim(),
+        billing = new { email = r.GetString(2).Trim() },
+    };
+}
+
+static string JStr(System.Text.Json.JsonElement root, params string[] path)
+{
+    var cur = root;
+    foreach (var p in path)
+    {
+        if (cur.ValueKind != System.Text.Json.JsonValueKind.Object) return "";
+        if (!cur.TryGetProperty(p, out var next)) return "";
+        cur = next;
+    }
+    return cur.ValueKind == System.Text.Json.JsonValueKind.String ? cur.GetString() ?? "" : "";
+}
+
+app.MapGet("/wp-json/wc/v3/customers", async (HttpRequest req) =>
+{
+    var email = req.Query["email"].ToString();
+    var id = await FindKontrahentIdByEmail(email);
+    if (id is null) return Results.Ok(Array.Empty<object>());
+    var dto = await KontrahentDto(id.Value);
+    return Results.Ok(dto is null ? Array.Empty<object>() : new[] { dto });
+});
+
+app.MapGet("/wp-json/wc/v3/customers/{id:int}", async (int id) =>
+{
+    var dto = await KontrahentDto(id);
+    return dto is null
+        ? Results.NotFound(new { code = "woocommerce_rest_invalid_id", message = "Invalid ID." })
+        : Results.Ok(dto);
+});
+
+app.MapPost("/wp-json/wc/v3/customers", async (HttpRequest req) =>
+{
+    using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body);
+    var root = doc.RootElement;
+
+    var email = JStr(root, "email");
+    if (email == "") email = JStr(root, "billing", "email");
+    var first = JStr(root, "first_name"); if (first == "") first = JStr(root, "billing", "first_name");
+    var last  = JStr(root, "last_name");  if (last  == "") last  = JStr(root, "billing", "last_name");
+    var name  = (first + " " + last).Trim();
+    if (name == "") name = email == "" ? "Klient OpenLinker" : email;
+
+    // A stable, readable symbol; Subiekt's kh_Symbol is the operator-facing key.
+    var baseSym = (email != "" ? email.Split('@')[0] : name).ToUpperInvariant();
+    var sym = new string(baseSym.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_').Take(16).ToArray());
+    if (sym == "") sym = "OL" + DateTime.Now.ToString("HHmmss");
+
+    var existing = (await FindKontrahentIdByEmail(email)) ?? (await FindKontrahentIdBySymbol(sym));
+
+    var info = new KontrahentInfo
+    {
+        Symbol      = sym,
+        NazwaPelna  = name,
+        // WC core carries no tax-number field, so the shim cannot pass a NIP through.
+        // A real Subiekt plugin takes it from the order's own buyerTaxId.
+        Nip         = "",
+        Ulica       = JStr(root, "billing", "address_1"),
+        NrDomu      = JStr(root, "billing", "address_2"),
+        Kod         = JStr(root, "billing", "postcode"),
+        Miejscowosc = JStr(root, "billing", "city"),
+        Email       = email,
+    };
+
+    try
+    {
+        var id = Sfera.EnsureKontrahent(info, existing ?? 0);
+        app.Logger.LogInformation("kontrahent {Sym} -> kh_Id {Id}", sym, id);
+        var dto = await KontrahentDto(id);
+        return Results.Ok(dto ?? (object)new { id, email });
+    }
+    catch (Exception e)
+    {
+        app.Logger.LogError("EnsureKontrahent failed: {Msg}", e.Message);
+        return Results.Json(new { code = "ol_sfera_customer_failed", message = e.Message }, statusCode: 502);
+    }
+});
+
+app.MapPut("/wp-json/wc/v3/customers/{id:int}", async (int id) =>
+{
+    // Address write-back is best-effort in OL and Subiekt keeps addresses on the
+    // kontrahent card; nothing to do beyond acknowledging.
+    var dto = await KontrahentDto(id);
+    return dto is null ? Results.NotFound(new { code = "woocommerce_rest_invalid_id" }) : Results.Ok(dto);
+});
+
+// â”€â”€â”€ tworzenie zamowienia â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+async Task<string?> SymbolOfTowar(int towarId)
+{
+    await using var c = new SqlConnection(ConnStr);
+    await c.OpenAsync();
+    await using var cmd = new SqlCommand("SELECT tw_Symbol FROM tw__Towar WHERE tw_Id = @id", c);
+    cmd.Parameters.AddWithValue("@id", towarId);
+    var r = await cmd.ExecuteScalarAsync();
+    return r is null || r is DBNull ? null : Convert.ToString(r)!.Trim();
+}
+
+app.MapPost("/wp-json/wc/v3/orders", async (HttpRequest req) =>
+{
+    using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body);
+    var root = doc.RootElement;
+
+    var kontrahentId = 0;
+    if (root.TryGetProperty("customer_id", out var cid) && cid.TryGetInt32(out var cidv)) kontrahentId = cidv;
+    if (kontrahentId <= 0)
+    {
+        var mail = JStr(root, "billing", "email");
+        kontrahentId = (await FindKontrahentIdByEmail(mail)) ?? 0;
+    }
+    if (kontrahentId <= 0)
+        return Results.BadRequest(new { code = "ol_no_kontrahent", message = "Brak kontrahenta dla zamowienia." });
+
+    var lines = new List<ZkLine>();
+    if (root.TryGetProperty("line_items", out var items) && items.ValueKind == System.Text.Json.JsonValueKind.Array)
+    {
+        foreach (var it in items.EnumerateArray())
+        {
+            int towarId = 0;
+            if (it.TryGetProperty("variation_id", out var vid) && vid.TryGetInt32(out var vidv) && vidv >= VariationIdOffset)
+                towarId = vidv - VariationIdOffset;
+            else if (it.TryGetProperty("product_id", out var pid) && pid.TryGetInt32(out var pidv))
+                towarId = pidv >= ModelIdOffset ? 0 : pidv;   // a model id is not a towar
+
+            if (towarId <= 0)
+                return Results.BadRequest(new { code = "ol_line_not_resolvable", message = "Pozycja nie wskazuje towaru Subiekta." });
+
+            var symbol = await SymbolOfTowar(towarId);
+            if (symbol is null)
+                return Results.BadRequest(new { code = "ol_towar_not_found", message = $"Brak towaru {towarId} w Subiekcie." });
+
+            decimal qty = 1m;
+            if (it.TryGetProperty("quantity", out var q) && q.TryGetDecimal(out var qv)) qty = qv;
+
+            decimal gross = 0m;
+            if (it.TryGetProperty("total", out var tot) && tot.ValueKind == System.Text.Json.JsonValueKind.String)
+                decimal.TryParse(tot.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out gross);
+
+            lines.Add(new ZkLine { Symbol = symbol, Quantity = qty, GrossTotal = gross });
+        }
+    }
+    if (lines.Count == 0)
+        return Results.BadRequest(new { code = "ol_empty_order", message = "Zamowienie bez pozycji." });
+
+    string olOrderId = "";
+    if (root.TryGetProperty("meta_data", out var md) && md.ValueKind == System.Text.Json.JsonValueKind.Array)
+        foreach (var m in md.EnumerateArray())
+            if (m.TryGetProperty("key", out var k) && k.GetString() == "_ol_order_id"
+                && m.TryGetProperty("value", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String)
+                olOrderId = v.GetString() ?? "";
+
+    decimal shipping = 0m;
+    var shipTitle = "";
+    if (root.TryGetProperty("shipping_lines", out var sl) && sl.ValueKind == System.Text.Json.JsonValueKind.Array)
+        foreach (var l in sl.EnumerateArray())
+        {
+            if (l.TryGetProperty("total", out var st) && st.ValueKind == System.Text.Json.JsonValueKind.String)
+                if (decimal.TryParse(st.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var sv)) shipping += sv;
+            if (shipTitle == "") shipTitle = JStr(l, "method_title");
+        }
+
+    // Shipping is a real document line, priced at what the buyer actually paid
+    // for delivery (ADR-014) - "DOSTAWA" is the existing GT service kartoteka
+    // (tw_Id 7). Previously this only lived as text in Uwagi, so the document
+    // total was short by the shipping amount versus what the marketplace charged.
+    if (shipping > 0)
+        lines.Add(new ZkLine { Symbol = "DOSTAWA", Quantity = 1m, GrossTotal = shipping });
+
+    var uwagi = olOrderId != "" ? "OpenLinker " + olOrderId : "";
+    if (shipping > 0 && shipTitle != "")
+        uwagi = (uwagi + " | " + shipTitle).Trim();
+
+    try
+    {
+        var (id, numer) = Sfera.CreateZk(new ZkRequest
+        {
+            KontrahentId    = kontrahentId,
+            Lines           = lines,
+            NumerOryginalny = olOrderId,
+            Uwagi           = uwagi.Length > 500 ? uwagi[..500] : uwagi,
+        });
+        app.Logger.LogInformation("Subiekt {Nr} (id {Id}) <- zamowienie OL {Ol}", numer, id, olOrderId);
+        return Results.Ok(new { id, number = numer, status = "processing" });
+    }
+    catch (Exception e)
+    {
+        app.Logger.LogError("CreateZk failed: {Msg}", e.Message);
+        return Results.Json(new { code = "ol_sfera_order_failed", message = e.Message }, statusCode: 502);
+    }
+});
+
+// â”€â”€â”€ invoicing bridge: subiekt.invoicing.v1's frozen contract â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Routes + envelope shape reconciled 1:1 against
+// libs/integrations/subiekt/src/{bridge/subiekt-bridge.types.ts,
+// infrastructure/http/subiekt-bridge-http.client.ts}. See Invoicing.cs for the
+// Sfera-side implementation and its gta.chm citations.
+
+app.MapGet("/health", () => Results.Ok(new { success = true, data = new { ok = true }, error = (object?)null }));
+
+static IResult Envelope<T>(T data) => Results.Ok(new { success = true, data, error = (object?)null });
+static IResult Rejected(string code, string reason, int status = 422) =>
+    Results.Json(new { success = false, data = (object?)null, error = new { code, reason, correlationId = (string?)null } }, statusCode: status);
+
+app.MapPost("/api/invoices", async (HttpRequest req) =>
+{
+    using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body);
+    var root = doc.RootElement;
+
+    string Str(string name) => root.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() ?? "" : "";
+    int Int(string name) => root.TryGetProperty(name, out var v) && v.TryGetInt32(out var i) ? i : 0;
+
+    var ir = new IssueRequest
+    {
+        DocumentType = Str("documentType") is "PA" ? "PA" : "FV",
+        Currency = root.TryGetProperty("currency", out var cur) && cur.ValueKind == System.Text.Json.JsonValueKind.String ? cur.GetString()! : "PLN",
+        OrderId = Str("orderId"),
+        IdempotencyKey = Str("idempotencyKey"),
+        KontrahentId = Int("kontrahentId"),
+        PaymentMethod = root.TryGetProperty("paymentMethod", out var pm) && pm.ValueKind == System.Text.Json.JsonValueKind.String ? pm.GetString() : null,
+        BankAccountId = root.TryGetProperty("bankAccountId", out var ba) && ba.TryGetInt32(out var bav) ? bav : null,
+        StanowiskoKasoweId = root.TryGetProperty("stanowiskoKasoweId", out var sk) && sk.TryGetInt32(out var skv) ? skv : null,
+    };
+
+    // No kontrahentId - self-sufficient mode: upsert the inline buyer first.
+    if (ir.KontrahentId <= 0 && root.TryGetProperty("buyer", out var buyer) && buyer.ValueKind == System.Text.Json.JsonValueKind.Object)
+    {
+        string BStr(string name) => buyer.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() ?? "" : "";
+        var custReq = new CustomerRequest
+        {
+            NazwaSkrocona = BStr("name") is var n && n != "" ? n : "Klient",
+            Nip = buyer.TryGetProperty("nip", out var nipEl) && nipEl.ValueKind == System.Text.Json.JsonValueKind.String ? nipEl.GetString() : null,
+            Telefon = BStr("telefon"),
+        };
+        if (buyer.TryGetProperty("address", out var addr) && addr.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            string AStr(string name) => addr.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() ?? "" : "";
+            custReq.Address = new CustomerAddress { Ulica = AStr("ulica"), KodPocztowy = AStr("kodPocztowy"), Miejscowosc = AStr("miejscowosc") };
+        }
+        try { ir.KontrahentId = await Invoicing.UpsertCustomer(custReq); }
+        catch (Exception e)
+        {
+            app.Logger.LogError("Inline buyer upsert failed: {Msg}", e.Message);
+            return Results.Json(new { success = false, data = (object?)null, error = new { code = "sfera_error", reason = e.Message, correlationId = (string?)null } }, statusCode: 500);
+        }
+    }
+    if (ir.KontrahentId <= 0)
+        return Rejected("no_buyer", "Neither kontrahentId nor buyer.name was supplied.", 400);
+
+    if (root.TryGetProperty("lines", out var lines) && lines.ValueKind == System.Text.Json.JsonValueKind.Array)
+        foreach (var l in lines.EnumerateArray())
+        {
+            string LStr(string name) => l.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() ?? "" : "";
+            decimal LDec(string name) => l.TryGetProperty(name, out var v) && v.TryGetDecimal(out var d) ? d : 0m;
+            ir.Lines.Add(new InvoiceLine
+            {
+                TowarSymbol = LStr("towarSymbol") is var ts && ts != "" ? ts : null,
+                Ilosc = LDec("ilosc"),
+                CenaBrutto = LDec("cenaBrutto"),
+                StawkaVAT = LStr("stawkaVAT") is var sv && sv != "" ? sv : "23",
+                Name = LStr("name") is var nm && nm != "" ? nm : null,
+            });
+        }
+    if (ir.Lines.Count == 0)
+        return Rejected("no_lines", "Invoice has no lines.", 400);
+
+    try
+    {
+        var result = await Invoicing.IssueInvoice(ir);
+        app.Logger.LogInformation("Subiekt {Nr} (id {Id}) <- invoice {Type} orderId={Order}", result.ProviderInvoiceNumber, result.ProviderInvoiceId, ir.DocumentType, ir.OrderId);
+        return Envelope(new
+        {
+            providerInvoiceId = result.ProviderInvoiceId,
+            providerInvoiceNumber = result.ProviderInvoiceNumber,
+            state = result.State,
+            regulatoryStatus = result.RegulatoryStatus,
+            pdfUrl = result.PdfUrl,
+            // #3352: was never on the wire at all, though ReadKsefStatus had
+            // already read it.
+            clearanceReference = result.KsefNumer,
+            // #3431: the warehouse-release (WZ) document number, for
+            // operator/debug visibility that stock was actually released -
+            // null means EnsureWarehouseRelease found no linked ZK (an
+            // order-less/manual invoice), not a failure.
+            warehouseReleaseNumber = result.WarehouseReleaseNumber,
+        });
+    }
+    catch (InvoiceValidationException e) { return Rejected("validation_error", e.Message, 400); }
+    catch (Exception e)
+    {
+        app.Logger.LogError("IssueInvoice failed: {Msg}", e.Message);
+        return Results.Json(new { success = false, data = (object?)null, error = new { code = "sfera_error", reason = e.Message, correlationId = (string?)null } }, statusCode: 500);
+    }
+});
+
+// Correction (faktura korygujÄ…ca): see Invoicing.IssueCorrection for the
+// SuDokument.NaPodstawie(origId) link (confirmed live against gta.chm example 7).
+app.MapPost("/api/invoices/{origId:int}/corrections", async (int origId, HttpRequest req) =>
+{
+    using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body);
+    var root = doc.RootElement;
+    string Str(string name) => root.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() ?? "" : "";
+
+    var cr = new CorrectionRequest
+    {
+        Przyczyna = Str("przyczyna"),
+        IdempotencyKey = Str("idempotencyKey"),
+    };
+    if (root.TryGetProperty("lines", out var lines) && lines.ValueKind == System.Text.Json.JsonValueKind.Array)
+        foreach (var l in lines.EnumerateArray())
+        {
+            int LInt(string name) => l.TryGetProperty(name, out var v) && v.TryGetInt32(out var i) ? i : 0;
+            decimal? LDecOpt(string name) => l.TryGetProperty(name, out var v) && v.ValueKind != System.Text.Json.JsonValueKind.Null && v.TryGetDecimal(out var d) ? d : null;
+            cr.Lines.Add(new CorrectionLine
+            {
+                Lp = LInt("lp"),
+                NowaIlosc = LDecOpt("nowaIlosc"),
+                NowaCena = LDecOpt("nowaCena"),
+            });
+        }
+    if (cr.Lines.Count == 0)
+        return Rejected("no_lines", "Correction has no lines.", 400);
+    if (cr.Lines.Any(l => l.Lp <= 0))
+        return Rejected("validation_error", "Every correction line requires a positive lp (the original line's 1-based position).", 400);
+    if (cr.Lines.Any(l => l.NowaIlosc is null && l.NowaCena is null))
+        return Rejected("validation_error", "A correction line must change at least one of nowaIlosc/nowaCena.", 400);
+
+    try
+    {
+        var result = await Invoicing.IssueCorrection(origId, cr);
+        app.Logger.LogInformation("Subiekt {Nr} (id {Id}) <- korekta of doc {OrigId}", result.ProviderInvoiceNumber, result.ProviderInvoiceId, origId);
+        return Envelope(new
+        {
+            providerInvoiceId = result.ProviderInvoiceId,
+            providerInvoiceNumber = result.ProviderInvoiceNumber,
+            korygowanyId = result.KorygowanyId,
+            przyczyna = result.Przyczyna,
+            state = result.State,
+        });
+    }
+    catch (InvoiceValidationException e) { return Rejected("validation_error", e.Message, 400); }
+    catch (Exception e)
+    {
+        app.Logger.LogError("IssueCorrection failed: {Msg}", e.Message);
+        return Results.Json(new { success = false, data = (object?)null, error = new { code = "sfera_error", reason = e.Message, correlationId = (string?)null } }, statusCode: 500);
+    }
+});
+
+app.MapPost("/api/customers/upsert", async (HttpRequest req) =>
+{
+    using var doc = await System.Text.Json.JsonDocument.ParseAsync(req.Body);
+    var root = doc.RootElement;
+    string Str(string name) => root.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() ?? "" : "";
+
+    var custReq = new CustomerRequest
+    {
+        NazwaSkrocona = Str("nazwaSkrocona"),
+        Nip = root.TryGetProperty("nip", out var nipEl) && nipEl.ValueKind == System.Text.Json.JsonValueKind.String ? nipEl.GetString() : null,
+        Typ = Str("typ") is "firma" ? "firma" : "osoba",
+        Telefon = Str("telefon"),
+    };
+    if (custReq.NazwaSkrocona == "")
+        return Rejected("validation_error", "nazwaSkrocona is required.", 400);
+    if (root.TryGetProperty("address", out var addr) && addr.ValueKind == System.Text.Json.JsonValueKind.Object)
+    {
+        string AStr(string name) => addr.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() ?? "" : "";
+        custReq.Address = new CustomerAddress { Ulica = AStr("ulica"), KodPocztowy = AStr("kodPocztowy"), Miejscowosc = AStr("miejscowosc") };
+    }
+
+    try
+    {
+        var id = await Invoicing.UpsertCustomer(custReq);
+        return Envelope(new { id, numer = "", nazwaSkrocona = custReq.NazwaSkrocona, nip = custReq.Nip });
+    }
+    catch (Exception e)
+    {
+        app.Logger.LogError("UpsertCustomer failed: {Msg}", e.Message);
+        return Results.Json(new { success = false, data = (object?)null, error = new { code = "sfera_error", reason = e.Message, correlationId = (string?)null } }, statusCode: 500);
+    }
+});
+
+app.MapGet("/api/invoices/{id:int}/status", async (int id) =>
+{
+    try
+    {
+        var s = await Invoicing.GetStatus(id);
+        // #3352: clearanceReference was never on the wire at all.
+        // #3390: `paid` (dok_Rozliczony) - PaymentStatusReader's read side.
+        return Envelope(new { status = s.Numer, regulatoryStatus = s.RegulatoryStatus, clearanceReference = s.KsefNumer, paid = s.Paid });
+    }
+    catch (InvoiceNotFoundException e) { return Rejected("not_found", e.Message, 404); }
+});
+
+// #3389 - RegulatoryRecordLocator crash-recovery read: find a document by its
+// original OL-minted idempotency key alone (no document-type filter - see
+// Invoicing.LocateByOriginalKey's own comment for why). A miss is a normal,
+// expected outcome (nothing was ever created under this key), NOT an error -
+// answered as `data: { found: false }` rather than `data: null`, because the
+// shared TS bridge client's envelope-unwrap treats a null `data` on a 2xx as a
+// rejection (`SubiektRejectedError`), which would turn an ordinary "nothing
+// found under this key" into a thrown error instead of the clean `null` return
+// RegulatoryRecordLocator.locateByQuery's contract requires.
+app.MapGet("/api/invoices/locate", async (string key) =>
+{
+    var found = await Invoicing.LocateByOriginalKey(key);
+    if (found is null) return Envelope(new { found = false });
+    var (id, numer, regulatoryStatus, ksefNumer) = found.Value;
+    return Envelope(new { found = true, providerInvoiceId = id, numer, regulatoryStatus, clearanceReference = ksefNumer });
+});
+
+app.MapGet("/api/bank-accounts", async () =>
+{
+    var accounts = await Invoicing.ListBankAccounts();
+    return Envelope(new
+    {
+        count = accounts.Count,
+        accounts = accounts.Select(a => new
+        {
+            id = a.Id, name = a.Name, number = a.Number, bankNumber = (string?)null,
+            description = a.BankName, currency = (string?)"PLN", isVatAccount = false,
+            isDefault = a.IsDefault, ownerPodmiotId = a.OwnerPodmiotId, ownerName = (string?)null,
+        }),
+    });
+});
+
+app.MapPut("/api/bank-accounts/{id:int}/default", (int id) =>
+    // Sfera exposes no writable "default bank account" attribute this bridge
+    // has confirmed yet (rb_Podstawowy read live as a per-account flag, not
+    // proven settable via Sfera). Honest 501 rather than a silent no-op that
+    // would let a caller believe the selection took effect.
+    Rejected("not_implemented", $"Setting the default bank account is not yet implemented on this bridge (id={id}).", 501));
+
+app.MapGet("/api/cash-registers", async () =>
+{
+    var regs = await Invoicing.ListCashRegisters();
+    return Envelope(new
+    {
+        count = regs.Count,
+        cashRegisters = regs.Select(r => new { id = r.Id, name = r.Name, symbol = r.Symbol, oddzialId = (int?)null }),
+    });
+});
+
+app.MapFallback((HttpContext ctx) =>
+{
+    app.Logger.LogWarning("!!! UNHANDLED {M} {P}{Q}", ctx.Request.Method, ctx.Request.Path, ctx.Request.QueryString);
+    return Results.NotFound(new { code = "rest_no_route", message = "no route: " + ctx.Request.Path });
+});
+
+app.Lifetime.ApplicationStopping.Register(Sfera.Shutdown);
+
+
+// New capability endpoint groups (ProductMaster/InventoryMaster/OrderSource+OrderProcessorManager/Fiscalization).
+// Each capability owns its OWN file (ProductsEndpoints.cs etc.) so parallel work never touches Program.cs again.
+app.MapProductsEndpoints();
+app.MapInventoryEndpoints();
+app.MapOrdersEndpoints();
+app.MapFiscalizationEndpoints();
+
+app.Run();
+
+record Row(int Id, string Symbol, string Name, string? Desc, string? Ean,
+           decimal? Mass, int Kind, bool Blocked, decimal? Vat,
+           decimal? Net, decimal? Gross, decimal Stock, decimal Reserved,
+           int? ModelId, string? ModelName, bool HasImage,
+           int? GroupId_, string? GroupName);

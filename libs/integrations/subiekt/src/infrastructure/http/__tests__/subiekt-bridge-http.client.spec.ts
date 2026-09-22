@@ -149,6 +149,61 @@ describe('SubiektBridgeHttpClient', () => {
       expect(res.state).toBe('issued');
     });
 
+    it('#3431: parses cleanly when the bridge omits warehouseReleaseNumber (older bridge build)', async () => {
+      // No `warehouseReleaseNumber` key at all in the wire payload — the shape
+      // every bridge build older than #3431 produces. `postJson` does a bare
+      // `as T` cast with no runtime schema validation, so the field must simply
+      // come back `undefined` rather than throwing or defaulting to something else.
+      fetchMock.mockResolvedValue(
+        okResponse({
+          providerInvoiceId: 100355,
+          providerInvoiceNumber: 'FS 166/CENTRALA/2026',
+          state: 'issued',
+          regulatoryStatus: 'pending',
+          pdfUrl: null,
+          clearanceReference: null,
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.issueInvoice(sampleIssueInvoiceRequest());
+      expect(res.warehouseReleaseNumber).toBeUndefined();
+    });
+
+    it('#3431: passes warehouseReleaseNumber through verbatim when the bridge reports it', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({
+          providerInvoiceId: 100355,
+          providerInvoiceNumber: 'FS 166/CENTRALA/2026',
+          state: 'issued',
+          regulatoryStatus: 'pending',
+          pdfUrl: null,
+          clearanceReference: null,
+          warehouseReleaseNumber: 'WZ 42/CENTRALA/2026',
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.issueInvoice(sampleIssueInvoiceRequest());
+      expect(res.warehouseReleaseNumber).toBe('WZ 42/CENTRALA/2026');
+    });
+
+    it('#3431: null warehouseReleaseNumber means "no ZK for this order", not a failure signal', async () => {
+      fetchMock.mockResolvedValue(
+        okResponse({
+          providerInvoiceId: 100355,
+          providerInvoiceNumber: 'FS 166/CENTRALA/2026',
+          state: 'issued',
+          regulatoryStatus: 'pending',
+          pdfUrl: null,
+          clearanceReference: null,
+          warehouseReleaseNumber: null,
+        }),
+      );
+      const client = new SubiektBridgeHttpClient(BASE);
+      const res = await client.issueInvoice(sampleIssueInvoiceRequest());
+      expect(res.state).toBe('issued');
+      expect(res.warehouseReleaseNumber).toBeNull();
+    });
+
     it('throws SubiektRejectedError on a 2xx success:false envelope', async () => {
       // A success:false envelope returned with a 200 (the bridge's validation path).
       fetchMock.mockResolvedValue({
