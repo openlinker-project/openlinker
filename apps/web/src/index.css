@@ -24617,6 +24617,17 @@ legend.analytics-settings-dialog__label {
   flex: 1;
 }
 
+/* #3420 (epic #3401) — the inert camera-preview row. Small and muted on
+   purpose, matching the mockup's own footnote treatment. */
+.bench-documents__camera-preview {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
 .bench-parcel__reference {
   font-family: var(--font-mono);
   font-size: 1.5rem;

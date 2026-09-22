@@ -31,6 +31,16 @@
  * produced — and buying one needs the address and the box measurements, which
  * are deliberately not on this screen. The panel names the owner instead.
  *
+ * ## A THIRD control — "Show camera preview" — is rendered anyway (#3420)
+ *
+ * It looks like the same mistake and is the opposite of it. There is no
+ * pack-station camera in OpenLinker, so a button wired to a real feed is
+ * genuinely impossible here — but the mockup's own copy names that fact
+ * OUT LOUD, right beside the button, so a packer who presses it learns what
+ * the two omitted controls above never would have let them find out: this
+ * one is not broken, it was never real. A toast repeats the same sentence on
+ * click, matching the mockup's own handler.
+ *
  * @module apps/web/src/features/bench/components
  */
 import { useState, type ReactElement } from 'react';
@@ -39,6 +49,7 @@ import { useApiClient } from '../../../app/api/api-client-provider';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
+import { useToast } from '../../../shared/ui/toast-provider';
 import type { BenchLabel } from '../api/bench-parcel.types';
 import { useBenchDocumentsQuery, useBenchUnlabelledQuery } from '../hooks/use-bench-documents-query';
 import { describeInvoiceBlock } from '../lib/bench-parcel-presentation';
@@ -79,6 +90,7 @@ export function BenchDocumentsPanel({
   unitsPacked,
 }: BenchDocumentsPanelProps): ReactElement | null {
   const apiClient = useApiClient();
+  const { showToast } = useToast();
   const documents = useBenchDocumentsQuery(workId);
   const [printError, setPrintError] = useState<string | null>(null);
 
@@ -254,6 +266,20 @@ export function BenchDocumentsPanel({
           </Button>
         </div>
       ) : null}
+
+      {/* #3420 (epic #3401) — see the module docblock for why this one, and
+          only this one, is rendered despite doing nothing real. */}
+      <p className="bench-documents__camera-preview">
+        <Button
+          tone="ghost"
+          onClick={() => {
+            showToast({ tone: 'info', description: benchParcelCopy.cameraPreview.toast });
+          }}
+        >
+          {benchParcelCopy.cameraPreview.action}
+        </Button>
+        <span>{benchParcelCopy.cameraPreview.disclaimer}</span>
+      </p>
 
       {unlabelled && invoice.state === 'ready' ? (
         <p className="bench-documents__invoice-still-fine">

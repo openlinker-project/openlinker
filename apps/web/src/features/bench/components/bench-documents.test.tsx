@@ -6,6 +6,7 @@
  * offer a control that cannot succeed.
  */
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -241,5 +242,31 @@ describe('BenchDocumentsPanel (#2418)', () => {
 
     expect(await screen.findByRole('button', { name: /print invoice/i })).toBeInTheDocument();
     expect(screen.getByText(/it is not missing later/i)).toBeInTheDocument();
+  });
+
+  // ── #3420 (epic #3401) — the inert camera-preview control ───────────────
+  describe('the camera-preview control', () => {
+    it('renders the button and its own honest disclaimer, unconditionally', async () => {
+      mount();
+
+      expect(
+        await screen.findByRole('button', { name: 'Show camera preview' })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/No pack-station camera exists in OpenLinker today/)
+      ).toBeInTheDocument();
+    });
+
+    it('records nothing and creates no request when pressed', async () => {
+      const { apiClient } = mount();
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Show camera preview' }));
+
+      // The mockup's own toast, and nothing else — no write, no navigation.
+      expect(
+        await screen.findByText(/this button is a mockup idea, not a real feature/i)
+      ).toBeInTheDocument();
+      expect(apiClient.bench.downloadInvoice).not.toHaveBeenCalled();
+    });
   });
 });

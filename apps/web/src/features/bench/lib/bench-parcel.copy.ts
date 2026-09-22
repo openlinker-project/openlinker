@@ -321,6 +321,20 @@ export const benchParcelCopy = {
       'It is already on their list of orders that went out without a document — you do not need to tell anyone or write it down.',
   },
 
+  /**
+   * #3420 (epic #3401) — the camera-preview button. Rendered inert, exactly
+   * as the mockup's own comment admits: there is no pack-station camera in
+   * OpenLinker, so nothing here would show a real feed. The honesty is the
+   * feature — a silently-missing button invites a packer to wonder if it is
+   * broken; a button that says plainly what it is not does not.
+   */
+  cameraPreview: {
+    action: 'Show camera preview',
+    disclaimer:
+      'No pack-station camera exists in OpenLinker today — nothing here would show a real feed.',
+    toast: 'No camera is wired up — this button is a mockup idea, not a real feature.',
+  },
+
   /** F3/F4 — packed, and it cannot go out. */
   unlabelled: {
     eyebrow: 'This box cannot go out',
