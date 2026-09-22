@@ -6,6 +6,8 @@ import {
   createMockApiClient,
   createAuthenticatedSessionAdapter,
   sampleConnection,
+  findToastTitle,
+  findToastDescription,
 } from '../../../test/test-utils';
 import { ApiError } from '../../../shared/api/api-error';
 import { PriceChangesQueueTable } from './price-changes-queue-table';
@@ -141,15 +143,14 @@ describe('PriceChangesQueueTable', () => {
     await userEvent.click(screen.getByTestId('row-accept'));
     await userEvent.click(await screen.findByRole('button', { name: 'Publish price' }));
 
-    // The toast provider (Radix Toast) can render its description into a
-    // second, delayed `aria-live` announcer node alongside the visible
-    // `Toast.Description` (#3314) - the same duplication the steep-tooltip
-    // case above works around. `findByText` throws on that second match, so
-    // assert via `findAllByText` instead.
-    const toastMatches = await screen.findAllByText(
-      /changed again while you were reviewing — refresh and take another look/,
-    );
-    expect(toastMatches.length).toBeGreaterThan(0);
+    // Toast copy is duplicated into Radix's delayed aria-live announcer
+    // (#3314) - `findToastDescription` scopes to the visible `.toast__*`
+    // element to skip it.
+    expect(
+      await findToastDescription(
+        /changed again while you were reviewing — refresh and take another look/,
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/expected version/)).not.toBeInTheDocument();
   });
 
@@ -365,10 +366,10 @@ describe('PriceChangesQueueTable', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Keep prices' }));
 
-    // Toast `description` text is duplicated into Radix's delayed aria-live
-    // announcer (#3314) - assert via `findAllByText`, as above.
-    const toastMatches = await screen.findAllByText(/Kept 1, but 1 failed/);
-    expect(toastMatches.length).toBeGreaterThan(0);
+    // Toast copy is duplicated into Radix's delayed aria-live announcer
+    // (#3314) - `findToastDescription` scopes to the visible `.toast__*`
+    // element to skip it.
+    expect(await findToastDescription(/Kept 1, but 1 failed/)).toBeInTheDocument();
   });
 
   it('opens the bulk accept dialog and mounts live publish progress on confirm', async () => {
@@ -462,11 +463,11 @@ describe('PriceChangesQueueTable', () => {
 
     // ONE toast naming both sources, not two independent ones. Toast
     // `title` text is duplicated into Radix's delayed aria-live announcer
-    // (#3314) - assert via `findAllByText`, as above. The `Undo` action
-    // label is excluded from that announcer by Radix itself, so it stays a
-    // plain `getAllByText`/`toHaveLength(1)` assertion.
-    const toastMatches = await screen.findAllByText('Turned on automatic pricing for 2 sources');
-    expect(toastMatches.length).toBeGreaterThan(0);
+    // (#3314) - `findToastTitle` scopes to the visible `.toast__title`
+    // element to skip it. The `Undo` action label is excluded from that
+    // announcer by Radix itself, so it stays a plain
+    // `getAllByText`/`toHaveLength(1)` assertion.
+    expect(await findToastTitle('Turned on automatic pricing for 2 sources')).toBeInTheDocument();
     expect(screen.getAllByText('Undo')).toHaveLength(1);
   });
 
