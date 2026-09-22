@@ -933,6 +933,9 @@ app.MapPost("/api/invoices", async (HttpRequest req) =>
         PaymentMethod = root.TryGetProperty("paymentMethod", out var pm) && pm.ValueKind == System.Text.Json.JsonValueKind.String ? pm.GetString() : null,
         BankAccountId = root.TryGetProperty("bankAccountId", out var ba) && ba.TryGetInt32(out var bav) ? bav : null,
         StanowiskoKasoweId = root.TryGetProperty("stanowiskoKasoweId", out var sk) && sk.TryGetInt32(out var skv) ? skv : null,
+        // #3431 follow-up: the ZK's own numeric dok_Id, resolved OL-side —
+        // see IssueRequest.ZkId's docblock.
+        ZkId = root.TryGetProperty("zkId", out var zk) && zk.TryGetInt32(out var zkv) ? zkv : null,
     };
 
     // No kontrahentId - self-sufficient mode: upsert the inline buyer first.

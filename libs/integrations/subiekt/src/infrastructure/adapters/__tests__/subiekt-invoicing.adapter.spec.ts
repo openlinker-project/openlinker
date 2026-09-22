@@ -23,6 +23,8 @@ import type {
   TaxIdentifier,
 } from '@openlinker/core/invoicing';
 import type { LoggerPort } from '@openlinker/shared/logging';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { InMemoryIdentifierMappingAdapter } from '@openlinker/core/identifier-mapping/testing';
 import type { SubiektConnectionConfig } from '../../../domain/types/subiekt-connection-config.types';
 import { FakeSubiektBridgeAdapter } from '../../../testing/fake-subiekt-bridge.adapter';
 import {
@@ -74,14 +76,18 @@ function makeLogger(): LoggerPort {
   return { log: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() };
 }
 
-function makeAdapter(bridge = new FakeSubiektBridgeAdapter()): {
+function makeAdapter(
+  bridge = new FakeSubiektBridgeAdapter(),
+  identifierMapping = new InMemoryIdentifierMappingAdapter(),
+): {
   adapter: SubiektInvoicingAdapter;
   bridge: FakeSubiektBridgeAdapter;
   logger: LoggerPort;
+  identifierMapping: InMemoryIdentifierMappingAdapter;
 } {
   const logger = makeLogger();
-  const adapter = new SubiektInvoicingAdapter(bridge, 'conn-1', logger);
-  return { adapter, bridge, logger };
+  const adapter = new SubiektInvoicingAdapter(bridge, identifierMapping, 'conn-1', logger);
+  return { adapter, bridge, logger, identifierMapping };
 }
 
 const BASE_CONFIG: SubiektConnectionConfig = { bridgeBaseUrl: 'http://localhost:5000' };
@@ -95,10 +101,16 @@ function makeConfiguredAdapter(
   logger: LoggerPort;
 } {
   const logger = makeLogger();
-  const adapter = new SubiektInvoicingAdapter(bridge, 'conn-1', logger, {
-    ...BASE_CONFIG,
-    ...config,
-  });
+  const adapter = new SubiektInvoicingAdapter(
+    bridge,
+    new InMemoryIdentifierMappingAdapter(),
+    'conn-1',
+    logger,
+    {
+      ...BASE_CONFIG,
+      ...config,
+    },
+  );
   return { adapter, bridge, logger };
 }
 
@@ -208,6 +220,46 @@ describe('SubiektInvoicingAdapter', () => {
         SubiektBridgeTransportError,
       );
       expect(spy).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'idem-xyz' }));
+    });
+
+    describe('resolveZkId (order-number vs. order-id mismatch fix)', () => {
+      it('resolves the ZK dok_Id via identifier_mappings and passes it as zkId', async () => {
+        const { adapter, bridge, identifierMapping } = makeAdapter();
+        identifierMapping.seed({
+          entityType: CORE_ENTITY_TYPE.Order,
+          externalId: '42', // the Subiekt ZK's numeric dok_Id, as a string
+          connectionId: 'conn-1',
+          internalId: 'ol_order_1', // matches command()'s default orderId
+        });
+        await adapter.issueInvoice(command());
+        expect(bridge.getLastIssueInvoiceRequest()).toMatchObject({ zkId: 42 });
+      });
+
+      it('omits zkId when no mapping exists for the order (order-less/manual invoice, or pre-fix data)', async () => {
+        const { adapter, bridge } = makeAdapter();
+        await adapter.issueInvoice(command());
+        expect(bridge.getLastIssueInvoiceRequest()).not.toHaveProperty('zkId');
+      });
+
+      it("ignores a mapping row that belongs to a DIFFERENT connection", async () => {
+        const { adapter, bridge, identifierMapping } = makeAdapter();
+        identifierMapping.seed({
+          entityType: CORE_ENTITY_TYPE.Order,
+          externalId: '42',
+          connectionId: 'some-other-connection',
+          internalId: 'ol_order_1',
+        });
+        await adapter.issueInvoice(command());
+        expect(bridge.getLastIssueInvoiceRequest()).not.toHaveProperty('zkId');
+      });
+
+      it('omits zkId when the identifier-mapping lookup throws (fiscal-safe: never blocks issuance)', async () => {
+        const { adapter, bridge, identifierMapping } = makeAdapter();
+        jest.spyOn(identifierMapping, 'getExternalIds').mockRejectedValueOnce(new Error('db down'));
+        const result = await adapter.issueInvoice(command());
+        expect(result.record.status).toBe('issued');
+        expect(bridge.getLastIssueInvoiceRequest()).not.toHaveProperty('zkId');
+      });
     });
 
     it('translates seedFailure(subiekt-rejected) -> SubiektInvoiceRejectedError (terminal)', async () => {
