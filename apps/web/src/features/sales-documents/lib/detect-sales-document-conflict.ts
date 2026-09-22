@@ -14,6 +14,7 @@
  * @module apps/web/src/features/sales-documents/lib
  */
 import type { SalesDocumentRow } from '../api/sales-documents.types';
+import { isActiveRoutable } from './derive-sales-document-rows';
 
 export type SalesDocumentConflictKind = 'multiple-primaries' | 'ambiguous-no-primary';
 
@@ -32,7 +33,7 @@ export type SalesDocumentConflictKind = 'multiple-primaries' | 'ambiguous-no-pri
 export function detectSalesDocumentConflict(
   rows: readonly SalesDocumentRow[],
 ): SalesDocumentConflictKind | null {
-  const eligible = rows.filter((row) => row.status === 'active' && row.documentKind !== null);
+  const eligible = rows.filter(isActiveRoutable);
   if (eligible.length <= 1) return null;
 
   const primaries = eligible.filter((row) => row.isPrimary);
