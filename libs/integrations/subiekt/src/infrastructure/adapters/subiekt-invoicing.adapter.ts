@@ -38,6 +38,8 @@ import type {
   IssueCorrectionCommand,
   IssueInvoiceCommand,
   IssueInvoiceResult,
+  PaymentStatusReader,
+  PaymentStatusResult,
   RegulatoryClearanceResult,
   RegulatoryLocateCriteria,
   RegulatoryLocateResult,
@@ -119,7 +121,8 @@ export class SubiektInvoicingAdapter
     CorrectionIssuer,
     BankAccountsReader,
     BankAccountDefaultSetter,
-    RegulatoryRecordLocator
+    RegulatoryRecordLocator,
+    PaymentStatusReader
 {
   /**
    * Connection-level defaults (#1324). All OPTIONAL — an unset field means the
@@ -395,6 +398,33 @@ export class SubiektInvoicingAdapter
         regulatoryStatus: toNeutralRegulatoryStatus(located.regulatoryStatus),
         clearanceReference: located.clearanceReference,
       };
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  /**
+   * Read Subiekt's own settled/paid flag (#3390, `dok_Rozliczony`) for an
+   * already-issued document — the READ half of the payment-status seam
+   * (`PaymentStatusReader`). A single boolean, no partial-payment concept, so
+   * the neutral mapping is exhaustively `paid` / `unpaid` — never
+   * `'partially-paid'` or `'unknown'` for a record that resolves at all. A
+   * record with no `providerInvoiceId` cannot be read back — mirrors
+   * `getClearanceStatus`'s same no-transport-call rule for the identical reason.
+   */
+  async getPaymentStatus(record: InvoiceRecord): Promise<PaymentStatusResult> {
+    if (record.providerInvoiceId === null || record.providerInvoiceId.length === 0) {
+      this.logger.debug(
+        'Subiekt getPaymentStatus called for a record without a providerInvoiceId; returning unknown',
+        { connectionId: this.connectionId, recordId: record.id },
+      );
+      return { paymentStatus: 'unknown' };
+    }
+    try {
+      const status = await this.bridge.getInvoiceStatus({
+        providerInvoiceId: record.providerInvoiceId,
+      });
+      return { paymentStatus: status.paid ? 'paid' : 'unpaid' };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }

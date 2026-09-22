@@ -124,12 +124,14 @@ export const SUBIEKT_BRIDGE_ENDPOINTS = {
 
 /**
  * The `data` payload the bridge's `GET /api/invoices/{id}/status` returns (a
- * superset of what we project): the KSeF `regulatoryStatus` plus a Polish
- * document `status`. We only read `regulatoryStatus`; the rest is ignored.
+ * superset of what we project): the KSeF `regulatoryStatus`, a Polish document
+ * `status`, and (#3390) the settled/paid flag. We read `regulatoryStatus` +
+ * `paid`; `status` (the Polish document label) is ignored.
  */
 interface BridgeInvoiceStatusData {
   regulatoryStatus: BridgeRegulatoryStatus;
   status?: string;
+  paid?: boolean;
 }
 
 /** Options for the HTTP client. */
@@ -228,6 +230,9 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     return {
       state: 'issued',
       regulatoryStatus: data.regulatoryStatus ?? 'none',
+      // #3390: dok_Rozliczony, absent only on a bridge build predating this
+      // field — default `false` rather than fabricate a paid state.
+      paid: data.paid ?? false,
     };
   }
 

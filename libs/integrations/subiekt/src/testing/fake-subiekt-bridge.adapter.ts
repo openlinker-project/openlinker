@@ -117,6 +117,11 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   // Keyed by the caller-supplied idempotencyKey (#3389) — mirrors the real
   // bridge's dok_NrPelnyOryg lookup, which is never keyed by providerInvoiceId.
   private readonly issuedByKey = new Map<string, BridgeIssueInvoiceResponse>();
+  // Provider invoice ids (string form) marked paid via `seedPaid()` (#3390) —
+  // mirrors dok_Rozliczony, which no shipped write path sets (no PaymentMarker
+  // yet, #3392), so the only way to produce a `paid: true` fake response is
+  // seeding this set directly.
+  private readonly paidIds = new Set<string>();
   /** The most recent korekta request body (for passthrough assertions in tests). */
   private lastKorektaRequest: BridgeKorektaRequest | null = null;
   /** Discovery state (bank accounts / cash registers), #1324. */
@@ -206,8 +211,12 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     const known = this.issuedById.get(req.providerInvoiceId);
     return Promise.resolve(
       known
-        ? { state: known.state, regulatoryStatus: known.regulatoryStatus }
-        : { state: 'failed', regulatoryStatus: 'none' },
+        ? {
+            state: known.state,
+            regulatoryStatus: known.regulatoryStatus,
+            paid: this.paidIds.has(req.providerInvoiceId),
+          }
+        : { state: 'failed', regulatoryStatus: 'none', paid: false },
     );
   }
 
@@ -288,6 +297,11 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   /** The body passed to the most recent `issueCorrection` call (passthrough assertions). */
   getLastKorektaRequest(): BridgeKorektaRequest | null {
     return this.lastKorektaRequest;
+  }
+
+  /** Mark a provider invoice id as paid (#3390) for a subsequent `getInvoiceStatus` read. */
+  seedPaid(providerInvoiceId: number): void {
+    this.paidIds.add(String(providerInvoiceId));
   }
 
   /** Replace the seeded bank accounts (deep-copied) for `listBankAccounts`/`setDefaultBankAccount`. */

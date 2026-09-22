@@ -226,11 +226,13 @@ export interface BridgeInvoiceStatusRequest {
  * `GET /api/invoices/{id}/status`. The bridge's status payload carries the KSeF
  * `regulatoryStatus` and a Polish document `status` (e.g. `"zatwierdzony"`) but no
  * `state` field; the HTTP client derives `state: 'issued'` for a document that
- * reads back, `'failed'` otherwise.
+ * reads back, `'failed'` otherwise. `paid` (#3390) is Subiekt's own
+ * `dok_Rozliczony` settled flag — a single boolean, no partial-payment concept.
  */
 export interface BridgeInvoiceStatusResponse {
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
+  paid: boolean;
 }
 
 /**
