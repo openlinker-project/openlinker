@@ -18,6 +18,21 @@ export const ASSIGN_PACKING_WORK_COPY = {
   },
 
   /**
+   * The grouping-axis switch (screen merge).
+   *
+   * Two questions over one read: "who packs this" and "where is it packed
+   * from". The board is the staffing answer; the second axis is what the
+   * worklist this screen absorbed was for.
+   */
+  groupBy: {
+    label: 'Group by',
+    packer: 'Packer',
+    location: 'Location',
+    /** Said in place, because a control that silently stops working is worse. */
+    dragUnavailable: 'Drag moves a task between packers — switch to Packer to use it.',
+  },
+
+  /**
    * #3428 — the metric row above the board. Only "Unassigned right now" is
    * shipped — it is a pure count over lanes already read for the board, so
    * it needs no new backend signal. "Oldest unassigned" and "Packers at

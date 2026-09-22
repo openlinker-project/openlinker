@@ -575,6 +575,80 @@ describe('the merged screen — the pager reads the APPLIED page', () => {
   });
 });
 
+describe('the merged screen — the grouping axis', () => {
+  it('groups by packer by default', async () => {
+    renderPage({
+      list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
+    });
+
+    expect(await screen.findByRole('region', { name: 'packer-a' })).toBeInTheDocument();
+  });
+
+  it('groups by location and delivery method when asked', async () => {
+    renderPage({
+      list: vi.fn().mockResolvedValue(page([task({ locationId: 'loc_warsaw' })])),
+      route: '/fulfillment?groupBy=location',
+    });
+
+    expect(await screen.findByRole('region', { name: 'loc_warsaw · courier' })).toBeInTheDocument();
+    // The packer lanes are gone — this is a different question about the
+    // same rows, not an extra section.
+    expect(screen.queryByRole('region', { name: 'packer-a' })).not.toBeInTheDocument();
+  });
+
+  it('turns drag OFF on the location axis, because a lane id is not a user id', async () => {
+    // The drop handler PATCHes `assignedToUserId` with the lane it was
+    // dropped on. On this axis that would send a location key as a user id,
+    // and the handler cannot tell — a lane id is an opaque string.
+    renderPage({
+      list: vi.fn().mockResolvedValue(page([task({ locationId: 'loc_warsaw' })])),
+      route: '/fulfillment?groupBy=location',
+    });
+
+    await screen.findByRole('region', { name: 'loc_warsaw · courier' });
+    const card = document.querySelector('[data-testid="assign-packing-work-card"]');
+    expect(card?.getAttribute('draggable')).not.toBe('true');
+  });
+
+  it('keeps drag on the packer axis', async () => {
+    renderPage({});
+
+    await screen.findAllByRole('combobox', { name: 'Move to' });
+    const card = document.querySelector('[data-testid="assign-packing-work-card"]');
+    expect(card?.getAttribute('draggable')).toBe('true');
+  });
+
+  it('says why drag is unavailable rather than letting it silently stop working', async () => {
+    renderPage({
+      list: vi.fn().mockResolvedValue(page([task({ locationId: 'loc_warsaw' })])),
+      route: '/fulfillment?groupBy=location',
+    });
+
+    expect(
+      await screen.findByText('Drag moves a task between packers — switch to Packer to use it.')
+    ).toBeInTheDocument();
+  });
+
+  it('drops the offset when the axis changes', async () => {
+    // Row 26 of one grouping is not row 26 of the other.
+    const user = userEvent.setup();
+    const { list } = renderPage({
+      list: vi.fn().mockResolvedValue(page([task()], { total: 90, offset: 25 })),
+      route: '/fulfillment?offset=25',
+    });
+
+    await waitFor(() => {
+      expect(list).toHaveBeenCalledWith(expect.objectContaining({ offset: 25 }));
+    });
+
+    await user.click(await screen.findByRole('radio', { name: 'Location' }));
+
+    await waitFor(() => {
+      expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0 }));
+    });
+  });
+});
+
 describe('the merged screen — filters reach the request', () => {
   it('sends both free-string filters read out of the URL', async () => {
     const { list } = renderPage({

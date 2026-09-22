@@ -51,12 +51,14 @@ import {
   UNASSIGNED_LANE_ID,
   clearFulfillmentFilters,
   groupTasksByPacker,
+  groupTasksIntoLanes,
   hasActiveFulfillmentFilters,
   lightestLoadLaneIds,
   readFulfillmentFilters,
   readFulfillmentOffset,
   setFulfillmentFilterParam,
   setFulfillmentOffsetParam,
+  toBoardLanes,
   useFulfillmentTaskActionRunner,
   useFulfillmentTasksQuery,
   useUpdateFulfillmentAssignmentMutation,
@@ -71,13 +73,31 @@ import { EmptyState, ErrorState } from '../../shared/ui/feedback-state';
 import { Input } from '../../shared/ui/input';
 import { MetricCard } from '../../shared/ui/metric-card';
 import { PageLayout } from '../../shared/ui/page-layout';
+import { SegmentedControl } from '../../shared/ui/segmented-control';
 import { useToast } from '../../shared/ui/toast-provider';
+
+/**
+ * Which question the lanes answer.
+ *
+ * `packer` is "who packs this" — the staffing axis this screen was built on.
+ * `location` is "where is it packed from", the execution axis the worklist
+ * this screen absorbed was grouped by. One read, two readings of it.
+ */
+type BoardGroupBy = 'packer' | 'location';
+const GROUP_BY_PARAM = 'groupBy';
+const DEFAULT_GROUP_BY: BoardGroupBy = 'packer';
+
+function readGroupBy(params: URLSearchParams): BoardGroupBy {
+  return params.get(GROUP_BY_PARAM) === 'location' ? 'location' : DEFAULT_GROUP_BY;
+}
 
 export function AssignPackingWorkPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const filters = useMemo(() => readFulfillmentFilters(searchParams), [searchParams]);
   const offset = readFulfillmentOffset(searchParams);
   const isFiltered = hasActiveFulfillmentFilters(filters);
+  const groupBy = readGroupBy(searchParams);
+  const byPacker = groupBy === 'packer';
 
   // Paged, not a flat ceiling. This screen used to ask for a fixed 100 and
   // show whatever came back, so past that it silently displayed a slice —
@@ -124,10 +144,18 @@ export function AssignPackingWorkPage(): ReactElement {
   const appliedLimit = page?.limit ?? FULFILLMENT_WORKLIST_PAGE_SIZE;
   const appliedOffset = page?.offset ?? offset;
   const total = page?.total ?? 0;
-  const lanes = useMemo(() => groupTasksByPacker(tasks, packers), [tasks, packers]);
+  const lanes = useMemo(
+    () => (byPacker ? groupTasksByPacker(tasks, packers) : toBoardLanes(groupTasksIntoLanes(tasks))),
+    [byPacker, tasks, packers]
+  );
   // #3427 — computed once over every lane, not per lane: the tag is a
   // comparison ACROSS packers, which a single lane cannot make about itself.
-  const lightestLanes = useMemo(() => lightestLoadLaneIds(lanes), [lanes]);
+  // Empty off the packer axis: a location lane is not a workload, and the
+  // helper reads lane ids as packer ids.
+  const lightestLanes = useMemo(
+    () => (byPacker ? lightestLoadLaneIds(lanes) : new Set<string>()),
+    [byPacker, lanes]
+  );
   // #3428 — the pinned lane IS the unassigned count; no separate read needed.
   const unassignedCount = lanes.find((lane) => lane.id === UNASSIGNED_LANE_ID)?.tasks.length ?? 0;
 
@@ -136,6 +164,17 @@ export function AssignPackingWorkPage(): ReactElement {
   };
   const clearFilters = (): void => {
     setSearchParams(clearFulfillmentFilters(searchParams));
+  };
+  const setGroupBy = (next: BoardGroupBy): void => {
+    const params = new URLSearchParams(searchParams);
+    // The default is not written, so a plain `/fulfillment` stays clean and a
+    // shared link only ever carries an axis somebody actually chose.
+    if (next === DEFAULT_GROUP_BY) params.delete(GROUP_BY_PARAM);
+    else params.set(GROUP_BY_PARAM, next);
+    // Offset goes with it: row 26 of the packer grouping is not row 26 of the
+    // location grouping — the same reason `setFulfillmentFilterParam` drops it.
+    params.delete('offset');
+    setSearchParams(params);
   };
   const goToOffset = (next: number): void => {
     setSearchParams(setFulfillmentOffsetParam(searchParams, next));
@@ -309,7 +348,11 @@ export function AssignPackingWorkPage(): ReactElement {
             key={lane.id}
             lane={lane}
             renderActions={renderActions}
-            dragEnabled={write.canWrite}
+            // Only on the packer axis. `handleDropOnLane` sends a lane id
+            // straight into `assignedToUserId`; on any other axis that would
+            // PATCH a location key as a user id. The drop handler has no way
+            // to tell — a lane id is an opaque string — so the gate is here.
+            dragEnabled={write.canWrite && byPacker}
             onTaskDragStart={setDraggedTask}
             onDropOnLane={handleDropOnLane}
             lightestLoad={lightestLanes.has(lane.id)}
@@ -354,6 +397,27 @@ export function AssignPackingWorkPage(): ReactElement {
       title={ASSIGN_PACKING_WORK_COPY.page.title}
       description={ASSIGN_PACKING_WORK_COPY.page.description}
     >
+      <div className="assign-packing-work-groupby">
+        <SegmentedControl
+          aria-label={ASSIGN_PACKING_WORK_COPY.groupBy.label}
+          value={groupBy}
+          options={[
+            { value: 'packer', label: ASSIGN_PACKING_WORK_COPY.groupBy.packer },
+            { value: 'location', label: ASSIGN_PACKING_WORK_COPY.groupBy.location },
+          ]}
+          onChange={setGroupBy}
+        />
+        {/* Said in place rather than left to be discovered: the cards simply
+            stop being draggable on the other axis, and a control that quietly
+            stops working reads as a bug. Only shown to someone who had drag
+            in the first place. */}
+        {write.canWrite && !byPacker ? (
+          <span className="text-muted assign-packing-work-groupby__note">
+            {ASSIGN_PACKING_WORK_COPY.groupBy.dragUnavailable}
+          </span>
+        ) : null}
+      </div>
+
       <div className="toolbar" role="group" aria-label={FULFILLMENT_WORKLIST_COPY.filter.groupLabel}>
         {/* `key` is the URL's own value, so the box REMOUNTS whenever the
             filter changes from outside it — which is what makes `Clear

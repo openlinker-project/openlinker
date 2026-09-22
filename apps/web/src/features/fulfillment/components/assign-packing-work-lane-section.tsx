@@ -65,6 +65,10 @@ export interface AssignPackingWorkLaneSectionProps {
 }
 
 function laneTitle(lane: AssignPackingWorkLane): string {
+  // An axis that is not about people supplies its own heading — there is
+  // nothing to derive one from. Checked FIRST so a lane whose id happens to
+  // collide with the pinned one cannot borrow its title.
+  if (lane.title !== undefined) return lane.title;
   if (lane.id === UNASSIGNED_LANE_ID) return ASSIGN_PACKING_WORK_COPY.lane.unassignedTitle;
   if (lane.packer) return lane.packer.username;
   return ASSIGN_PACKING_WORK_COPY.lane.offRosterTitle;

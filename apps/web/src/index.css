@@ -23928,6 +23928,21 @@ legend.analytics-settings-dialog__label {
   font-size: 0.8125rem;
 }
 
+/* The grouping-axis switch, and the one thing that changes with it. The note
+   sits beside the control rather than under the board, because the control is
+   what the operator just used. */
+.assign-packing-work-groupby {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.assign-packing-work-groupby__note {
+  font-size: 0.8125rem;
+}
+
 .assign-packing-work-board {
   display: flex;
   flex-direction: column;

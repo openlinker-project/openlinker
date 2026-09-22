@@ -19,12 +19,27 @@
  */
 import type { PackerSummary } from '../../users';
 import type { FulfillmentTask } from '../api/fulfillment.types';
+import type { FulfillmentLane } from './fulfillment-lanes';
 
 export interface AssignPackingWorkLane {
-  /** `'unassigned'` for the pinned lane, otherwise the packer's user id. */
+  /**
+   * `'unassigned'` for the pinned lane, otherwise the packer's user id — or,
+   * on the location axis, that grouping's own key. A lane id is only ever a
+   * USER id on the packer axis, which is why dropping is disabled elsewhere;
+   * see `assign-packing-work-page.tsx`'s drop handler.
+   */
   id: string;
   /** `null` for the unassigned lane, or a packer no longer in the roster. */
   packer: PackerSummary | null;
+  /**
+   * An explicit heading, for a lane that is not about a person at all.
+   *
+   * Absent on the packer axis, where the title is derived from `packer` /
+   * the pinned id. Present on every other axis, because there is nothing to
+   * derive it from — the lane section takes it rather than growing a second
+   * derivation per axis.
+   */
+  title?: string;
   tasks: FulfillmentTask[];
 }
 
@@ -136,4 +151,26 @@ export function lightestLoadLaneIds(lanes: readonly AssignPackingWorkLane[]): Re
  */
 export function isAssignmentOnlyCard(task: FulfillmentTask): boolean {
   return task.assignedToUserId === null && !task.selfServeEligible;
+}
+
+/**
+ * The location/delivery-method grouping, in the shape the board renders.
+ *
+ * The merged screen offers two grouping axes over one read (`?groupBy=`), and
+ * this is the adapter for the second: `groupTasksIntoLanes` answers with its
+ * own `FulfillmentLane`, which carries two labels and no packer. Rather than
+ * teach the lane section a second lane type, the lane is normalised here and
+ * the heading it cannot derive is handed over as `title`.
+ *
+ * `packer: null` is honest — a location lane is about no person — and it is
+ * also why nothing about a location lane can be dropped onto or compared for
+ * load: both of those read a lane id as a user id.
+ */
+export function toBoardLanes(lanes: readonly FulfillmentLane[]): AssignPackingWorkLane[] {
+  return lanes.map((lane) => ({
+    id: lane.id,
+    packer: null,
+    title: `${lane.locationLabel} · ${lane.deliveryMethodLabel}`,
+    tasks: lane.tasks,
+  }));
 }

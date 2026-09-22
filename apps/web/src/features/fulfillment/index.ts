@@ -50,6 +50,9 @@ export { useUpdateFulfillmentAssignmentMutation } from './hooks/use-update-fulfi
 export {
   groupTasksByPacker,
   lightestLoadLaneIds,
+  // The location grouping, normalised into the shape the board renders — the
+  // adapter for the merged screen's second axis.
+  toBoardLanes,
   UNASSIGNED_LANE_ID,
 } from './lib/assign-packing-work-lanes';
 export type { AssignPackingWorkLane } from './lib/assign-packing-work-lanes';
