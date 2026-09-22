@@ -56,6 +56,7 @@ export class SubiektOrdersBridgeClient {
     this.baseUrl = bridgeBaseUrl.replace(/\/+$/, '');
     this.token = opts.token;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    // eslint-disable-next-line no-restricted-globals -- test-only fallback; production call sites all inject a connection-bound transport (SubiektBridgeHttpClient precedent, #1810)
     this.fetchImpl = opts.fetchImpl ?? (globalThis.fetch);
   }
 

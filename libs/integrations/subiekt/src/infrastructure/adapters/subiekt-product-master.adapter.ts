@@ -112,7 +112,7 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.token = opts.token;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- global fetch may be undefined in some test runners
+    // eslint-disable-next-line no-restricted-globals, @typescript-eslint/no-unnecessary-condition -- test-only fallback; production call sites all inject a connection-bound transport (SubiektBridgeHttpClient precedent, #1810)
     this.fetchImpl = opts.fetchImpl ?? (globalThis.fetch);
     this.logger = opts.logger ?? new Logger(SubiektProductMasterAdapter.name);
   }
