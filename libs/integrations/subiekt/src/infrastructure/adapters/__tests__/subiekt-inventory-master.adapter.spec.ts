@@ -53,7 +53,10 @@ describe('SubiektInventoryMasterAdapter', () => {
   });
 
   describe('getInventory', () => {
-    it('should sum stan/stanRez across every magazyn position when no locationId is given', async () => {
+    it('should fall back to summing every magazyn when the bridge reports no release warehouse (pre-field bridge)', async () => {
+      // A bridge predating `domyslnyMagazynId`. Summing is an over-count on a
+      // multi-warehouse install, but picking a warehouse on no information at
+      // all would be worse — so the pre-fix behaviour is preserved verbatim.
       bridge.getStock.mockResolvedValue({
         towarSymbol: TOWAR_SYMBOL,
         positions: [
@@ -68,6 +71,103 @@ describe('SubiektInventoryMasterAdapter', () => {
       expect(inventory.reserved).toBe(2);
       expect(inventory.available).toBe(13);
       expect(inventory.productId).toBe(PRODUCT_ID);
+      expect(inventory.locationId).toBeUndefined();
+    });
+
+    it('should publish ONLY the release magazyn the bridge names, not the sum', async () => {
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [
+          { magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 },
+          { magazynId: 2, magazynSymbol: 'MAP', stan: 2, stanRez: 0 },
+        ],
+        domyslnyMagazynId: 1,
+      });
+
+      const inventory = await adapter.getInventory(PRODUCT_ID);
+
+      // 508 was the oversell: the 2 units in MAP can never ship.
+      expect(inventory.quantity).toBe(506);
+      expect(inventory.available).toBe(506);
+      expect(inventory.locationId).toBe('1');
+    });
+
+    it('should warn when a towar is stocked in several magazyny and the connection names none', async () => {
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [
+          { magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 },
+          { magazynId: 2, magazynSymbol: 'MAP', stan: 2, stanRez: 0 },
+        ],
+        domyslnyMagazynId: 1,
+      });
+
+      await adapter.getInventory(PRODUCT_ID);
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('subiekt_inventory_multi_magazyn_default'),
+        expect.objectContaining({ usingMagazynId: 1, magazynIds: [1, 2] }),
+      );
+    });
+
+    it('should NOT warn when the towar sits in a single magazyn', async () => {
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [{ magazynId: 1, magazynSymbol: 'MAG', stan: 28, stanRez: 0 }],
+        domyslnyMagazynId: 1,
+      });
+
+      await adapter.getInventory(PRODUCT_ID);
+
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('should prefer the operator-configured magazyn over the bridge default', async () => {
+      const configured = new SubiektInventoryMasterAdapter(
+        bridge as unknown as SubiektInventoryBridgeClient,
+        identifierMapping,
+        CONNECTION_ID,
+        logger,
+        2,
+      );
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [
+          { magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 },
+          { magazynId: 2, magazynSymbol: 'MAP', stan: 2, stanRez: 0 },
+        ],
+        domyslnyMagazynId: 1,
+      });
+
+      const inventory = await configured.getInventory(PRODUCT_ID);
+
+      expect(inventory.quantity).toBe(2);
+      expect(inventory.locationId).toBe('2');
+      // An explicit operator choice is a fact, not a guess — nothing to warn about.
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('should let an explicit caller locationId win over both', async () => {
+      const configured = new SubiektInventoryMasterAdapter(
+        bridge as unknown as SubiektInventoryBridgeClient,
+        identifierMapping,
+        CONNECTION_ID,
+        logger,
+        1,
+      );
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [
+          { magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 },
+          { magazynId: 2, magazynSymbol: 'MAP', stan: 2, stanRez: 0 },
+        ],
+        domyslnyMagazynId: 1,
+      });
+
+      const inventory = await configured.getInventory(PRODUCT_ID, '2');
+
+      expect(inventory.quantity).toBe(2);
+      expect(inventory.locationId).toBe('2');
     });
 
     it('should filter to one magazyn when locationId is given', async () => {

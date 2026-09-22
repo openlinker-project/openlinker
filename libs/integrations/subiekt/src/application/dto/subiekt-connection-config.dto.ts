@@ -76,4 +76,21 @@ export class SubiektConnectionConfigDto {
   @IsInt()
   @Min(1)
   defaultStanowiskoKasoweId?: number;
+
+  /**
+   * Was missing here while `SubiektConnectionConfig` already declared it, so a
+   * save could carry a malformed value straight past this validator and only
+   * fail later in the factory. Added with `stockMagazynId` below rather than
+   * left for the next person to trip over.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  drukarkaFiskalnaId?: number;
+
+  /** The magazyn whose stock this connection publishes — see the domain type. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  stockMagazynId?: number;
 }
