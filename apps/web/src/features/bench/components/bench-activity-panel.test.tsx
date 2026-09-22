@@ -6,6 +6,7 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { BenchApi } from '../api/bench-work.api';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
@@ -22,7 +23,7 @@ const PACKER = {
   analyticsConsent: true,
 } as const;
 
-function mount(listActivity: ReturnType<typeof vi.fn>) {
+function mount(listActivity: ReturnType<typeof vi.fn<BenchApi['listActivity']>>) {
   const apiClient = createMockApiClient({ bench: { listActivity } });
   return renderWithProviders(<BenchActivityPanel workId="w-1" />, {
     apiClient,

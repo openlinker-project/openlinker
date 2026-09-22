@@ -47,7 +47,7 @@ const nullableNumber = z
   .transform((value) => value ?? null);
 
 const nullableAttributes = z
-  .record(z.string())
+  .record(z.string(), z.string())
   .nullish()
   .transform((value) => value ?? null);
 
