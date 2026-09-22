@@ -92,7 +92,7 @@ export class SubiektAdapterFactory {
     });
 
     const adapters: SubiektAdapters = {
-      invoicing: new SubiektInvoicingAdapter(client, connection.id, logger, config),
+      invoicing: new SubiektInvoicingAdapter(client, identifierMapping, connection.id, logger, config),
       productMaster: new SubiektProductMasterAdapter(config.bridgeBaseUrl, identifierMapping, connection, {
         token,
         timeoutMs: config.timeoutMs,

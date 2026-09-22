@@ -246,8 +246,19 @@ public static class Invoicing
     /// nothing to release - and is logged rather than thrown. A genuine
     /// Sfera failure here is deliberately left to propagate: the caller must
     /// see the request as failed and retry, or stock silently never gets
-    /// released while the invoice looks fully issued.</summary>
-    private static async Task<string?> EnsureWarehouseRelease(string orderId, string key, int invoiceDocId)
+    /// released while the invoice looks fully issued.
+    ///
+    /// #3431 follow-up: `zkId`, when supplied, is the ZK's own numeric
+    /// dok_Id, resolved OL-side via identifier_mappings (the same row
+    /// written when the order was created) - a direct cross-reference, not a
+    /// search. It is used DIRECTLY instead of `FindZkIdByOrderRef(orderId)`,
+    /// whose search was NEVER reachable on a natural order: it searches
+    /// dok_NrPelnyOryg for the OL-internal order id, but dok_NrPelnyOryg is
+    /// stamped with the marketplace order NUMBER at ZK-create time
+    /// (OrdersEndpoints.cs's FindExistingZk, keyed on req.OrderRef) - a
+    /// different field entirely. `zkId` absent (order-less/manual invoice,
+    /// or a pre-fix mapping) falls back to that search unchanged.</summary>
+    private static async Task<string?> EnsureWarehouseRelease(string orderId, string key, int invoiceDocId, int? zkId = null)
     {
         var autoWz = await FindAutoReleasedWzForInvoice(invoiceDocId);
         if (autoWz is not null)
@@ -256,8 +267,8 @@ public static class Invoicing
             return autoWz.Value.Numer;
         }
 
-        var zkId = await FindZkIdByOrderRef(orderId);
-        if (zkId is null)
+        var resolvedZkId = zkId ?? await FindZkIdByOrderRef(orderId);
+        if (resolvedZkId is null)
         {
             Console.Error.WriteLine($"Invoicing.EnsureWarehouseRelease: no ZK found for order '{orderId}' - skipping WZ (order-less/manual invoice).");
             return null;
@@ -280,11 +291,11 @@ public static class Invoicing
             dynamic wz = mgr.DodajWZ();
             try
             {
-                wz.NaPodstawie(zkId.Value);
+                wz.NaPodstawie(resolvedZkId.Value);
                 if (key != "") wz.NumerOryginalny = ReduceIdempotencyKey(key);
                 wz.Zapisz();
                 wzNumer = Convert.ToString(wz.NumerPelny) ?? "";
-                Console.Error.WriteLine($"Invoicing.EnsureWarehouseRelease: released stock via {wzNumer} for ZK {zkId.Value}.");
+                Console.Error.WriteLine($"Invoicing.EnsureWarehouseRelease: released stock via {wzNumer} for ZK {resolvedZkId.Value}.");
             }
             finally { try { wz.Zamknij(); } catch { } }
         }, TimeSpan.FromSeconds(120));
@@ -307,7 +318,7 @@ public static class Invoicing
             // crash may have happened BETWEEN the original invoice commit and
             // its WZ commit - always re-check/re-attempt, never assume a
             // found invoice means its stock was already released too.
-            var wzNumerExisting = await EnsureWarehouseRelease(req.OrderId, key, exId);
+            var wzNumerExisting = await EnsureWarehouseRelease(req.OrderId, key, exId, req.ZkId);
             return new IssueResult(exId, exNumer, "issued", regStatus, null, ksefNr, wzNumerExisting);
         }
 
@@ -401,7 +412,7 @@ public static class Invoicing
         // state and must be reported as issued regardless. An exception here
         // propagates to the caller as a genuine request failure (retryable;
         // EnsureWarehouseRelease's idempotency check makes the retry safe).
-        var wzNumer = await EnsureWarehouseRelease(req.OrderId, key, docId);
+        var wzNumer = await EnsureWarehouseRelease(req.OrderId, key, docId, req.ZkId);
         return new IssueResult(docId, numer, "issued", finalRegStatus, null, finalKsefNr, wzNumer);
     }
 
@@ -671,6 +682,11 @@ public sealed class IssueRequest
     public string? PaymentMethod;
     public int? BankAccountId;
     public int? StanowiskoKasoweId;
+    /// <summary>#3431 follow-up: the ZK's own numeric dok_Id, resolved
+    /// OL-side via identifier_mappings. See EnsureWarehouseRelease's
+    /// docblock. Null (order-less/manual invoice, or a pre-fix caller) falls
+    /// back to the pre-existing FindZkIdByOrderRef(OrderId) search.</summary>
+    public int? ZkId;
 }
 
 public sealed record IssueResult(int ProviderInvoiceId, string ProviderInvoiceNumber, string State, string RegulatoryStatus, string? PdfUrl, string? KsefNumer = null, string? WarehouseReleaseNumber = null);

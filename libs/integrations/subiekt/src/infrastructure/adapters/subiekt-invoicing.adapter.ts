@@ -44,6 +44,8 @@ import type {
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
 import { InvoiceRecord, MissingTaxRateException } from '@openlinker/core/invoicing';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { BridgeIssueInvoiceRequest } from '../../bridge/subiekt-bridge.types';
 import type { SubiektBridgeClient } from '../../bridge/subiekt-bridge.client';
 import type {
@@ -131,11 +133,15 @@ export class SubiektInvoicingAdapter
 
   constructor(
     private readonly bridge: SubiektBridgeClient,
+    // Resolves the Subiekt ZK's numeric `dok_Id` for `issueInvoice`'s #3431
+    // warehouse-release step — see `resolveZkId`. Positioned right after
+    // `bridge`, mirroring `SubiektOrderProcessorAdapter`'s constructor.
+    private readonly identifierMapping: IdentifierMappingPort,
     private readonly connectionId: string,
     private readonly logger: LoggerPort,
     // Only the optional defaults are read here; `bridgeBaseUrl`/`timeoutMs`
     // are the HTTP client's concern — accept a `Partial` so the `= {}` default
-    // keeps the existing 3-arg call sites (tests) working without a cast.
+    // keeps the existing 4-arg call sites (tests) working without a cast.
     config: Partial<SubiektConnectionConfig> = {},
   ) {
     this.paymentMethod = config.defaultPaymentMethod;
@@ -160,12 +166,17 @@ export class SubiektInvoicingAdapter
     const bridgeDocumentType = toBridgeDocumentType(neutralDocumentType);
 
     const idempotencyKey = cmd.idempotencyKey;
+    // #3431 follow-up: resolve the ZK's own numeric dok_Id via
+    // identifier_mappings BEFORE the call, so the bridge's warehouse-release
+    // step never has to search dok_NrPelnyOryg by orderId — see `resolveZkId`.
+    const zkId = await this.resolveZkId(cmd.orderId);
 
     try {
       const response = await this.bridge.issueInvoice({
         documentType: bridgeDocumentType,
         currency: cmd.currency,
         orderId: cmd.orderId,
+        ...(zkId !== null ? { zkId } : {}),
         // Place idempotencyKey on the request BEFORE the call so fiscal dedup
         // holds on every error branch.
         ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
@@ -359,6 +370,51 @@ export class SubiektInvoicingAdapter
       };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
+    }
+  }
+
+  /**
+   * Resolve the order's Subiekt ZK numeric `dok_Id` for the #3431
+   * warehouse-release step, via the SAME `identifier_mappings` row
+   * `OrderSyncService.persistDestinationMapping` writes when the order was
+   * created (`createMapping(Order, orderRef.orderId, destinationConnectionId,
+   * internalOrderId)` — and `SubiektOrderProcessorAdapter.createOrder` returns
+   * `orderId: String(response.id)`, the ZK's own `dok_Id`). This is a direct
+   * cross-reference, not a string-matching search: it sidesteps the
+   * order-number-vs-order-id mismatch that made `EnsureWarehouseRelease`'s
+   * fallback `FindZkIdByOrderRef(orderId)` lookup never match a natural
+   * order — that lookup searches `dok_NrPelnyOryg` for the OL-internal order
+   * id, but `dok_NrPelnyOryg` is stamped with the marketplace order NUMBER at
+   * create time (`orderRef: order.orderNumber`, `subiekt-order-processor.adapter.ts`).
+   *
+   * Returns `null` (never throws) for an order-less/manual invoice, or one
+   * created before this fix shipped (no mapping row yet) — the bridge falls
+   * back to its pre-existing lookup in both cases. A lookup failure is
+   * swallowed the same way: the ZK id is an OPTIMIZATION for a downstream
+   * step, never a precondition for issuing the invoice itself.
+   */
+  private async resolveZkId(orderId: string): Promise<number | null> {
+    try {
+      const mappings = await this.identifierMapping.getExternalIds(
+        CORE_ENTITY_TYPE.Order,
+        orderId,
+      );
+      const mapping = mappings.find((m) => m.connectionId === this.connectionId);
+      if (!mapping) {
+        return null;
+      }
+      const zkId = Number(mapping.externalId);
+      return Number.isInteger(zkId) && zkId > 0 ? zkId : null;
+    } catch (error: unknown) {
+      this.logger.warn(
+        'Subiekt resolveZkId: identifier-mapping lookup failed; falling back to the bridge order-ref search',
+        {
+          connectionId: this.connectionId,
+          orderId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      return null;
     }
   }
 
