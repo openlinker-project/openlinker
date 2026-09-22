@@ -80,6 +80,7 @@ import type {
   CreateFulfillmentWorkInput,
   FulfillmentWorkRepositoryPort,
   FulfillmentWorkTransaction,
+  LatestActiveParcelVerification,
   ListUnrelayedShippedDispatchesInput,
   UnrelayedShippedDispatch,
   ListTimedOutDispatchesInput,
@@ -95,6 +96,7 @@ import type {
   TimedOutFulfillmentDispatch,
   TransitionFulfillmentRequestStatusInput,
   TransitionFulfillmentWorkStatusInput,
+  VoidLastVerificationWriteInput,
 } from '../../../domain/ports/fulfillment-work-repository.port';
 import {
   FULFILLMENT_HOLD_ACTIVE_LIMIT,
@@ -1481,6 +1483,54 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         : await run(manager);
     } catch (error) {
       throw new FulfillmentPersistenceError('reopenParcel', error);
+    }
+  }
+
+  async findLatestActiveVerification(
+    workId: string,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<LatestActiveParcelVerification | null> {
+    const manager = transaction as EntityManager | undefined;
+    const repo =
+      manager === undefined
+        ? this.verifications
+        : manager.getRepository(FulfillmentWorkVerificationOrmEntity);
+    try {
+      const row = await repo
+        .createQueryBuilder('verification')
+        .where('verification.fulfillmentWorkId = :workId', { workId })
+        .andWhere('verification.voidedAt IS NULL')
+        .orderBy('verification.verifiedAt', 'DESC')
+        .getOne();
+      if (row === null) return null;
+      return { id: row.id, workLineId: row.workLineId };
+    } catch (error) {
+      throw new FulfillmentPersistenceError('findLatestActiveVerification', error);
+    }
+  }
+
+  async voidVerificationById(
+    verificationId: string,
+    input: VoidLastVerificationWriteInput,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<boolean> {
+    const manager = transaction as EntityManager | undefined;
+    try {
+      const base =
+        manager === undefined
+          ? this.verifications.createQueryBuilder().update(FulfillmentWorkVerificationOrmEntity)
+          : manager.createQueryBuilder().update(FulfillmentWorkVerificationOrmEntity);
+      const result = await base
+        .set({ voidedAt: input.voidedAt, voidedByUserId: input.voidedByUserId })
+        .where('"id" = :id', { id: verificationId })
+        // At-most-once: a concurrent reopen or a second undo racing this one
+        // may have voided the row already, in which case this write must be
+        // a no-op rather than a double-void.
+        .andWhere('"voidedAt" IS NULL')
+        .execute();
+      return (result.affected ?? 0) > 0;
+    } catch (error) {
+      throw new FulfillmentPersistenceError('voidVerificationById', error);
     }
   }
 }

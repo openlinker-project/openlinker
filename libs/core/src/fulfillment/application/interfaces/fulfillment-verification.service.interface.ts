@@ -35,6 +35,8 @@ import type {
   ParcelVerificationState,
   ReopenParcelInput,
   ReopenParcelResult,
+  UndoLastVerificationInput,
+  UndoLastVerificationResult,
   VerifyUnitInput,
   VerifyUnitResult,
 } from '../../domain/types/fulfillment-verification.types';
@@ -71,4 +73,21 @@ export interface IFulfillmentVerificationService {
    * nobody knows which unit was wrong.
    */
   reopenParcel(input: ReopenParcelInput): Promise<ReopenParcelResult>;
+
+  /**
+   * Undo the single most recent scan on an OPEN parcel (#3405) — a lighter
+   * correction than `reopenParcel`, offered inline beside the line a packer
+   * just scanned rather than the full close-then-reopen ceremony.
+   *
+   * Refuses `parcel-closed` rather than reopening the box as a side effect:
+   * a closed parcel already went through D18's silent auto-close, and undoing
+   * INTO that state without the operator ever seeing a reopen confirmation
+   * would let a packer un-close a box with no record that they meant to.
+   *
+   * Refuses `nothing-to-undo` when no active verification exists to void.
+   * Never throws for either — both are ordinary answers a packer is shown.
+   */
+  voidLastVerification(
+    input: UndoLastVerificationInput
+  ): Promise<UndoLastVerificationResult>;
 }

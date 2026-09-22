@@ -60,6 +60,8 @@ import {
   type ParcelVerificationState,
   type ReopenParcelInput,
   type ReopenParcelResult,
+  type UndoLastVerificationInput,
+  type UndoLastVerificationResult,
   type VerifyUnitInput,
   type VerifyUnitResult,
 } from '../../domain/types/fulfillment-verification.types';
@@ -209,6 +211,63 @@ export class FulfillmentVerificationService implements IFulfillmentVerificationS
           { ...work, parcelClosedAt: null, packedByUserId: null, version: work.version + 1 },
           counts
         ),
+      } as const;
+    });
+  }
+
+  async voidLastVerification(
+    input: UndoLastVerificationInput
+  ): Promise<UndoLastVerificationResult> {
+    return this.works.runInTransaction(async (transaction) => {
+      const work = await this.works.lockWorkForVerification(input.workId, transaction);
+      if (work === null) throw new FulfillmentWorkNotFoundError(input.workId);
+
+      // Checked before looking for a row to void: undo is scoped to an OPEN
+      // parcel on purpose (see the interface docblock) — a closed box must go
+      // through the full reopen ceremony, never be silently reopened as a
+      // side effect of "undo".
+      if (work.parcelClosedAt !== null) {
+        const counts = await this.works.countParcelVerifications(input.workId, transaction);
+        return {
+          outcome: 'refused',
+          reason: 'parcel-closed',
+          state: this.toState(work, counts),
+        } as const;
+      }
+
+      const latest = await this.works.findLatestActiveVerification(input.workId, transaction);
+      if (latest === null) {
+        const counts = await this.works.countParcelVerifications(input.workId, transaction);
+        return {
+          outcome: 'refused',
+          reason: 'nothing-to-undo',
+          state: this.toState(work, counts),
+        } as const;
+      }
+
+      const voidedAt = new Date();
+      const voided = await this.works.voidVerificationById(
+        latest.id,
+        { workId: input.workId, voidedByUserId: input.actorUserId, voidedAt },
+        transaction
+      );
+
+      const counts = await this.works.countParcelVerifications(input.workId, transaction);
+      if (!voided) {
+        // Lost the race — a concurrent reopen or a second undo voided this
+        // exact row between the read above and this write. The current state
+        // is the honest answer; nothing further was changed by this call.
+        return {
+          outcome: 'refused',
+          reason: 'nothing-to-undo',
+          state: this.toState(work, counts),
+        } as const;
+      }
+
+      return {
+        outcome: 'voided',
+        workLineId: latest.workLineId,
+        state: this.toState(work, counts),
       } as const;
     });
   }

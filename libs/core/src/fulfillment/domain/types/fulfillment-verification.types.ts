@@ -126,6 +126,60 @@ export const ParcelReopenRefusalValues = [
 export type ParcelReopenRefusal = (typeof ParcelReopenRefusalValues)[number];
 
 /**
+ * Why an undo-last-scan was refused (#3405, mockup-parity epic #3401).
+ *
+ * A DIFFERENT, lighter-weight correction than `reopenParcel`: undo targets the
+ * single most-recent ACTIVE verification on an OPEN parcel — a misclick caught
+ * within the same gesture, offered as an inline "Undo" beside the just-scanned
+ * line rather than the full close-then-reopen ceremony. It never touches a
+ * closed box; `reopenParcel` stays the only path there, and the two refusal
+ * unions are deliberately kept separate rather than sharing one, because
+ * `'shipped'` cannot apply to an open parcel and `'not-closed'` describes the
+ * wrong direction entirely.
+ */
+export const ParcelUndoRefusalValues = [
+  /**
+   * The box already shut. Undo is scoped to an open parcel on purpose —
+   * silently reopening one as a side effect of "undo" would let a packer
+   * un-close a box without ever seeing the reopen confirmation E6 exists to
+   * force. Reopen it first.
+   */
+  'parcel-closed',
+  /** Nothing active to undo — no verification has been recorded yet. */
+  'nothing-to-undo',
+] as const;
+
+export type ParcelUndoRefusal = (typeof ParcelUndoRefusalValues)[number];
+
+/**
+ * Undo the single most recent scan on this parcel (#3405).
+ *
+ * Scoped to the WORK, not a line: the packer is undoing the physical action
+ * they just took, wherever it landed, not correcting one specific line's
+ * count. `actorUserId` is who is undoing it — carried into the void row's
+ * `voidedByUserId` exactly as a reopen's actor is.
+ */
+export interface UndoLastVerificationInput {
+  readonly workId: string;
+  readonly actorUserId: string | null;
+}
+
+/** What `voidLastVerification` answers. */
+export type UndoLastVerificationResult =
+  | {
+      /** The most recent active unit was voided. */
+      readonly outcome: 'voided';
+      /** Which line's count just went down, so the bench can highlight it. */
+      readonly workLineId: string;
+      readonly state: ParcelVerificationState;
+    }
+  | {
+      readonly outcome: 'refused';
+      readonly reason: ParcelUndoRefusal;
+      readonly state: ParcelVerificationState;
+    };
+
+/**
  * One unit, verified into the box.
  *
  * `gestureId` is #2416's client-minted, storage-durable per-gesture id, CONSUMED
