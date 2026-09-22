@@ -26,6 +26,14 @@ export class FulfillmentWorkLineResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() orderLineId!: string;
   @ApiProperty() productVariantId!: string;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "The parent PRODUCT's name (#3426) — `ProductVariant` carries none of its own. null when " +
+      'the variant is absent from the catalogue; never a placeholder that reads like a name, ' +
+      'because productVariantId is still on the row and a fabricated label is not actionable.',
+  })
+  productName!: string | null;
   @ApiProperty() totalQuantity!: number;
   @ApiProperty({
     description:
@@ -47,7 +55,23 @@ export class FulfillmentHoldResponseDto {
 export class FulfillmentWorkResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() orderId!: string;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "The source's own order reference — what a marketplace calls the order and what an " +
+      'operator says out loud (#3426). null when the order is absent from order_records (a work ' +
+      'holds orderId by value with no FK, so it can outlive or precede its order record) or its ' +
+      'snapshot names none. Deliberately NOT a fallback to orderId, which is on this row anyway.',
+  })
+  orderReference!: string | null;
   @ApiPropertyOptional({ nullable: true }) locationId!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "The location's operator-authored name (#2313, surfaced by #3426). null when locationId " +
+      'is null (the master declines to locate its stock — ADR-058 decision 2) or the row is gone.',
+  })
+  locationName!: string | null;
   @ApiPropertyOptional({ nullable: true }) deliveryMethod!: string | null;
   @ApiPropertyOptional({ nullable: true }) assignedConnectionId!: string | null;
   @ApiPropertyOptional({
