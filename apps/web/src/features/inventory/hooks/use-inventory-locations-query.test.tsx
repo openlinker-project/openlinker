@@ -58,4 +58,17 @@ describe('useInventoryLocationsQuery', () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error?.message).toBe('Network error');
   });
+
+  it('does not fire the request when `enabled` is false (#3207 review)', async () => {
+    const listLocations = vi.fn().mockResolvedValue(page);
+    const apiClient = createMockApiClient({ inventory: { listLocations } });
+
+    const { result } = renderHook(
+      () => useInventoryLocationsQuery(undefined, undefined, { enabled: false }),
+      { wrapper: createWrapper(apiClient) },
+    );
+
+    expect(result.current.isPending).toBe(true);
+    expect(listLocations).not.toHaveBeenCalled();
+  });
 });
