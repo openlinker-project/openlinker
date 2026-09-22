@@ -6,6 +6,8 @@ import {
   createMockApiClient,
   createAuthenticatedSessionAdapter,
   sampleConnection,
+  findToastTitle,
+  findToastDescription,
 } from '../../../test/test-utils';
 import { mockMobileViewport } from '../../../test/viewport';
 import { ApiError } from '../../../shared/api/api-error';
@@ -142,8 +144,11 @@ describe('PriceChangesQueueTable', () => {
     await userEvent.click(screen.getByTestId('row-accept'));
     await userEvent.click(await screen.findByRole('button', { name: 'Publish price' }));
 
+    // `findToastDescription` (see its docblock in test-utils.tsx) - #3314
     expect(
-      await screen.findByText(/changed again while you were reviewing — refresh and take another look/),
+      await findToastDescription(
+        /changed again while you were reviewing — refresh and take another look/,
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/expected version/)).not.toBeInTheDocument();
   });
@@ -360,7 +365,8 @@ describe('PriceChangesQueueTable', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Keep prices' }));
 
-    expect(await screen.findByText(/Kept 1, but 1 failed/)).toBeInTheDocument();
+    // `findToastDescription` (see its docblock in test-utils.tsx) - #3314
+    expect(await findToastDescription(/Kept 1, but 1 failed/)).toBeInTheDocument();
   });
 
   it('opens the bulk accept dialog and mounts live publish progress on confirm', async () => {
@@ -453,7 +459,10 @@ describe('PriceChangesQueueTable', () => {
     });
 
     // ONE toast naming both sources, not two independent ones.
-    expect(await screen.findByText('Turned on automatic pricing for 2 sources')).toBeInTheDocument();
+    // `findToastTitle` (see its docblock in test-utils.tsx) - #3314. The
+    // `Undo` action label isn't duplicated by Radix's announcer, so it
+    // stays a plain `getAllByText`/`toHaveLength(1)` assertion.
+    expect(await findToastTitle('Turned on automatic pricing for 2 sources')).toBeInTheDocument();
     expect(screen.getAllByText('Undo')).toHaveLength(1);
   });
 
