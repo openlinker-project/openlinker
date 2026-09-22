@@ -62,12 +62,14 @@ import {
   type FulfillmentWorkView,
   type IFulfillmentWorklistService,
 } from '@openlinker/core/fulfillment';
+import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService, type OrderRecord } from '@openlinker/core/orders';
 
 // Value imports (not `import type`): the @CurrentUser() param type feeds
 // decorator metadata, so erasing it breaks the emitted signature.
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { readCarrierName, readMaskedBuyerName } from '../application/fulfillment-work-order-facts';
 import { ApplyFulfillmentWorkActionDto } from './dto/apply-fulfillment-work-action.dto';
 import {
   FulfillmentWorkActionNotLegalResponseDto,
@@ -84,7 +86,9 @@ import { UpdateFulfillmentWorkAssignmentDto } from './dto/update-fulfillment-wor
 export class FulfillmentWorkController {
   constructor(
     @Inject(FULFILLMENT_WORKLIST_SERVICE_TOKEN)
-    private readonly worklist: IFulfillmentWorklistService
+    private readonly worklist: IFulfillmentWorklistService,
+    @Inject(ORDER_RECORD_SERVICE_TOKEN)
+    private readonly orders: IOrderRecordService
   ) {}
 
   @Get()
@@ -107,7 +111,21 @@ export class FulfillmentWorkController {
       limit: query.limit,
       offset: query.offset,
     });
-    return this.toPageDto(page);
+    return await this.toPageDto(page);
+  }
+
+  /**
+   * One batched order read for a page (#3425) — never one per row. `Map`
+   * built from a single `findByIds` call, so widening this response never
+   * turns a list read into an N+1.
+   */
+  private async loadOrders(
+    works: readonly FulfillmentWorkView[]
+  ): Promise<Map<string, OrderRecord>> {
+    const orderIds = [...new Set(works.map((w) => w.orderId))];
+    if (orderIds.length === 0) return new Map();
+    const orders = await this.orders.findByIds(orderIds);
+    return new Map(orders.map((order) => [order.internalOrderId, order]));
   }
 
   @Get(':workId')
@@ -117,7 +135,9 @@ export class FulfillmentWorkController {
   @ApiResponse({ status: 404, description: 'No such fulfilment task' })
   async get(@Param('workId') workId: string): Promise<FulfillmentWorkResponseDto> {
     try {
-      return this.toDto(await this.worklist.get(workId));
+      const work = await this.worklist.get(workId);
+      const orders = await this.loadOrders([work]);
+      return this.toDto(work, orders.get(work.orderId));
     } catch (error) {
       throw this.toHttp(error);
     }
@@ -163,23 +183,23 @@ export class FulfillmentWorkController {
     }
 
     try {
-      return this.toDto(
-        await this.worklist.applyAction({
-          workId,
-          action,
-          expectedVersion: body.expectedVersion,
-          holdReason: body.holdReason,
-          cancellationReason: body.cancellationReason,
-          holdId: body.holdId,
-          note: body.note ?? null,
-          releaseNote: body.releaseNote ?? null,
-          // Threaded, never dropped: `placeHold` / `releaseHold` persist this as
-          // `placedByUserId` / `releasedByUserId`. Leaving it undefined would
-          // write a null actor on every hold taken through the operator UI —
-          // the audit column exists precisely to answer "who suspended this".
-          actorUserId: user.id,
-        })
-      );
+      const work = await this.worklist.applyAction({
+        workId,
+        action,
+        expectedVersion: body.expectedVersion,
+        holdReason: body.holdReason,
+        cancellationReason: body.cancellationReason,
+        holdId: body.holdId,
+        note: body.note ?? null,
+        releaseNote: body.releaseNote ?? null,
+        // Threaded, never dropped: `placeHold` / `releaseHold` persist this as
+        // `placedByUserId` / `releasedByUserId`. Leaving it undefined would
+        // write a null actor on every hold taken through the operator UI —
+        // the audit column exists precisely to answer "who suspended this".
+        actorUserId: user.id,
+      });
+      const orders = await this.loadOrders([work]);
+      return this.toDto(work, orders.get(work.orderId));
     } catch (error) {
       throw this.toHttp(error);
     }
@@ -202,13 +222,13 @@ export class FulfillmentWorkController {
     @Body() body: UpdateFulfillmentWorkAssignmentDto
   ): Promise<FulfillmentWorkResponseDto> {
     try {
-      return this.toDto(
-        await this.worklist.updateAssignment({
-          workId,
-          assignedToUserId: body.assignedToUserId,
-          selfServeEligible: body.selfServeEligible,
-        })
-      );
+      const work = await this.worklist.updateAssignment({
+        workId,
+        assignedToUserId: body.assignedToUserId,
+        selfServeEligible: body.selfServeEligible,
+      });
+      const orders = await this.loadOrders([work]);
+      return this.toDto(work, orders.get(work.orderId));
     } catch (error) {
       throw this.toHttp(error);
     }
@@ -281,16 +301,17 @@ export class FulfillmentWorkController {
     return error instanceof Error ? error : new Error(String(error));
   }
 
-  private toPageDto(page: FulfillmentWorkPageView): FulfillmentWorkPageResponseDto {
+  private async toPageDto(page: FulfillmentWorkPageView): Promise<FulfillmentWorkPageResponseDto> {
+    const orders = await this.loadOrders(page.works);
     return {
-      works: page.works.map((work) => this.toDto(work)),
+      works: page.works.map((work) => this.toDto(work, orders.get(work.orderId))),
       total: page.total,
       limit: page.limit,
       offset: page.offset,
     };
   }
 
-  private toDto(view: FulfillmentWorkView): FulfillmentWorkResponseDto {
+  private toDto(view: FulfillmentWorkView, order: OrderRecord | undefined): FulfillmentWorkResponseDto {
     // Field-by-field, never a spread — see the DTO module docblock.
     return {
       id: view.id,
@@ -310,6 +331,13 @@ export class FulfillmentWorkController {
       expeditedAt: view.expeditedAt,
       createdAt: view.createdAt,
       updatedAt: view.updatedAt,
+      // #3425 (epic #3401) — a deliberate, MASKED reversal of ADR-062's
+      // buyer-PII exclusion on this board. The full name is never resolved
+      // here — readMaskedBuyerName masks internally and this file never
+      // sees the unmasked value.
+      buyerNameMasked: readMaskedBuyerName(order),
+      dispatchByAt: order?.dispatchByAt?.toISOString() ?? null,
+      carrierName: readCarrierName(order),
       lines: view.lines.map((line) => ({
         id: line.id,
         orderLineId: line.orderLineId,

@@ -78,6 +78,21 @@ export class FulfillmentWorkResponseDto {
       'itself under whoever is reading it.',
   })
   expeditedAt!: Date | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      "The buyer's name, MASKED to a first initial plus surname (e.g. \"A. Kowalska\") — #3425, " +
+      "a deliberate reversal of ADR-062's buyer-PII exclusion, condition on the masking. The " +
+      'full name is never resolved by this endpoint.',
+  })
+  buyerNameMasked!: string | null;
+  @ApiPropertyOptional({ nullable: true, description: "The order's dispatch deadline (#3425)" })
+  dispatchByAt!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "The source's own delivery-method label (#3425); null when the source reports none",
+  })
+  carrierName!: string | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
   @ApiProperty({ type: [FulfillmentWorkLineResponseDto] })
