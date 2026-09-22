@@ -184,6 +184,13 @@ export const benchParcelCopy = {
     keyboardHint: 'Not scanning? Press C to confirm the next open item by hand.',
   },
 
+  /** #3411 (epic #3401) — recent activity, newest first. */
+  activity: {
+    heading: 'Recent activity',
+    verified: 'verified',
+    undone: 'undone',
+  },
+
   /**
    * #3405 (epic #3401) — undo the single most recent scan, whichever line it
    * landed on. A lighter correction than reopen: it never touches a closed

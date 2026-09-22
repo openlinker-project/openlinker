@@ -97,6 +97,7 @@ import {
 import { matchScanToParcelLine, outstandingScanCodes } from '../lib/parcel-scan-match';
 import { isEditableTarget } from '../lib/scanner-gesture';
 import { beginGesture } from '../lib/scanner-gesture-log';
+import { BenchActivityPanel } from './bench-activity-panel';
 import { BenchDocumentsPanel } from './bench-documents';
 import { BenchParcelLineRow } from './bench-parcel-line';
 
@@ -742,6 +743,10 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
           ))}
         </ul>
       )}
+
+      {/* #3411 (epic #3401). Rendered on every state — activity happened
+          throughout packing, not only once the box is open. */}
+      <BenchActivityPanel workId={workId} />
 
       {/* E5's promise. Rendered while verifying, where the missing button is. */}
       {closed ? null : (
