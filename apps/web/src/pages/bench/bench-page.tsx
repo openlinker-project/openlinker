@@ -62,7 +62,7 @@ export function BenchPage(): ReactElement {
 
   return (
     <BenchSurface>
-      <div className="bench-body">
+      <div className="bench-shell">
         {/* #3413 (epic #3401). Above the grid, not inside the rail: it is a
             fact about the whole bench, and the mockup puts it there. */}
         <BenchMetricRow />

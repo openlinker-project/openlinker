@@ -41,11 +41,14 @@
  *
  * @module apps/web/src/features/bench/components
  */
-import { useState, type FormEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 
 import { Button } from '../../../shared/ui/button';
+import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { BenchParcelLine } from '../api/bench-parcel.types';
+import { isEditableTarget } from '../lib/scanner-gesture';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
+import { BenchCopyButton } from './bench-copy-button';
 
 export interface BenchParcelHeroProps {
   /** The line this box is waiting for next. Derived by the caller. */
@@ -76,6 +79,44 @@ export function BenchParcelHero({
   undoing = false,
 }: BenchParcelHeroProps): ReactElement {
   const [typed, setTyped] = useState('');
+  const field = useRef<HTMLInputElement | null>(null);
+  /** The mockup's transient `✓ Matched`, cleared on the next gesture. */
+  const [matched, setMatched] = useState(false);
+  const seen = useRef(line.verifiedQuantity);
+
+  // The mockup's `Esc back to the scan box`. Bound here because this is the
+  // component that owns the field; anywhere else would need a ref handed
+  // across a boundary for one key.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      // An editable target is the whole point here — Esc is FOR getting back
+      // to the field — so `isEditableTarget` is used to skip only the field
+      // itself, which is already focused.
+      if (field.current !== null && event.target === field.current) return;
+      if (isEditableTarget(event.target)) return;
+      event.preventDefault();
+      field.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  // Fires on the SERVER's count moving, never on the gesture being sent —
+  // the badge must mean "that one landed", which is the whole of H2's rule.
+  useEffect(() => {
+    if (line.verifiedQuantity <= seen.current) {
+      seen.current = line.verifiedQuantity;
+      return;
+    }
+    seen.current = line.verifiedQuantity;
+    setMatched(true);
+    const t = setTimeout(() => {
+      setMatched(false);
+    }, 1600);
+    return () => clearTimeout(t);
+  }, [line.verifiedQuantity]);
 
   const remaining = Math.max(0, line.requiredQuantity - line.verifiedQuantity);
   const attributes =
@@ -105,6 +146,11 @@ export function BenchParcelHero({
 
         <p className="bench-hero__ids">
           {benchParcelCopy.lines.codes({ ean: line.ean, sku: line.sku })}
+          {/* The mockup's copy control, on the value a packer reads out to the
+              office when an item will not scan. */}
+          {line.ean === null ? null : (
+            <BenchCopyButton value={line.ean} what={benchParcelCopy.copy.barcode} />
+          )}
           {line.binCode === null ? null : (
             <> · {benchParcelCopy.lines.binCodeLabel(line.binCode)}</>
           )}
@@ -121,6 +167,7 @@ export function BenchParcelHero({
               </label>
               <input
                 id="bench-hero-scan"
+                ref={field}
                 type="text"
                 className="mono"
                 autoComplete="off"
@@ -155,6 +202,16 @@ export function BenchParcelHero({
 
             <p className="bench-hero__hint">{benchParcelCopy.hero.scanHint}</p>
             <p className="bench-hero__keys">{benchParcelCopy.hero.keyboardHint}</p>
+            {/* Transient, and it says only that the count MOVED — the live
+                region still carries the number, so this adds reassurance at a
+                glance and never a fact of its own. */}
+            <p className="bench-hero__feedback">
+              {matched ? (
+                <StatusBadge tone="success" withDot compact>
+                  {benchParcelCopy.hero.matched}
+                </StatusBadge>
+              ) : null}
+            </p>
           </>
         ) : null}
       </div>

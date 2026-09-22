@@ -99,6 +99,7 @@ import { matchScanToParcelLine, outstandingScanCodes } from '../lib/parcel-scan-
 import { isEditableTarget } from '../lib/scanner-gesture';
 import { beginGesture } from '../lib/scanner-gesture-log';
 import { BenchActivityPanel } from './bench-activity-panel';
+import { BenchCopyButton } from './bench-copy-button';
 import { BenchDocumentsPanel } from './bench-documents';
 import { BenchParcelHero } from './bench-parcel-hero';
 import { BenchParcelLineRow } from './bench-parcel-line';
@@ -137,6 +138,14 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
   const [reopenNotice, setReopenNotice] = useState<string | null>(null);
   const [undoNotice, setUndoNotice] = useState<string | null>(null);
   const [muted, setMuted] = useState(() => isBenchAudioMuted());
+  /**
+   * The mockup's `Group by location`, renamed for what it does here: it sorts
+   * THIS parcel's own items by bin. Deliberately not a picking route across
+   * several orders, which is what most tools mean by the phrase — the note
+   * beside the control says so, because the difference matters to a packer
+   * who has used one of those tools.
+   */
+  const [groupByBin, setGroupByBin] = useState(false);
 
   /**
    * H2's in-flight ledger: line id → gestures sent and unanswered.
@@ -195,6 +204,14 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
   // the CURRENT reachability, not the one that held when the listener attached.
   const reachabilityRef = useRef(false);
   reachabilityRef.current = reachability.unreachable;
+
+  /**
+   * Lets the `U` hotkey reach the undo, which is defined below the early
+   * returns and so is out of scope where the listener is registered. A no-op
+   * until then, which is correct: there is nothing to undo on a box that has
+   * not loaded.
+   */
+  const undoRef = useRef<() => void>(() => undefined);
 
   /**
    * The poll is the reachability probe that needs no packer.
@@ -448,12 +465,19 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (isEditableTarget(event.target)) return;
-      if (event.key.toLowerCase() !== 'c') return;
+      const key = event.key.toLowerCase();
+      if (key !== 'c' && key !== 'u') return;
       if (scannerInput.isBurstInProgress()) return;
 
       if (reachabilityRef.current) {
         sequence.current += 1;
         raise({ seq: sequence.current, kind: 'unreachable' }, 'unreachable');
+        return;
+      }
+
+      if (key === 'u') {
+        event.preventDefault();
+        undoRef.current();
         return;
       }
 
@@ -534,8 +558,19 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
       },
     });
   };
+  undoRef.current = undoLastScan;
 
   const heroLine = parcel.lines.find((line) => benchLineState(line) !== 'verified');
+  /**
+   * A COPY, sorted — never a mutation of `parcel.lines`, which is the query
+   * cache's own array. A line with no bin sorts last rather than first, so
+   * turning the control on never buries the items that do have one.
+   */
+  const orderedLines = groupByBin
+    ? [...parcel.lines].sort((a, b) =>
+        (a.binCode ?? '\uffff').localeCompare(b.binCode ?? '\uffff')
+      )
+    : parcel.lines;
   const progressPercent =
     totals.required === 0 ? 100 : Math.round((totals.verified / totals.required) * 100);
 
@@ -543,12 +578,18 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
     <section className="bench-parcel" data-testid="bench-parcel" data-work-id={parcel.workId}>
       <header className="bench-parcel__header">
         <div className="bench-parcel__identity">
-          <span className="eyebrow">{benchParcelCopy.header.orderLabel}</span>
-          <span className="bench-parcel__reference">{parcel.orderReference}</span>
+          <span className="bench-parcel__field-label">{benchParcelCopy.header.orderLabel}</span>
+          <span className="bench-parcel__reference">
+            {parcel.orderReference}
+            <BenchCopyButton
+              value={parcel.orderReference}
+              what={benchParcelCopy.copy.orderReference}
+            />
+          </span>
         </div>
         {parcel.buyerName === null ? null : (
           <div className="bench-parcel__identity">
-            <span className="eyebrow">{benchParcelCopy.header.buyerLabel}</span>
+            <span className="bench-parcel__field-label">{benchParcelCopy.header.buyerLabel}</span>
             <span className="bench-parcel__buyer">{parcel.buyerName}</span>
           </div>
         )}
@@ -558,13 +599,13 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
             than the badge it was before; the parcel-index STATUS pill is the
             state signal now, so a badge here would duplicate that role. */}
         <div className="bench-parcel__identity">
-          <span className="eyebrow">{benchParcelCopy.header.parcelLabel}</span>
+          <span className="bench-parcel__field-label">{benchParcelCopy.header.parcelLabel}</span>
           <span>{benchParcelCopy.header.parcelOf(parcel.parcelIndex, parcel.parcelTotal)}</span>
         </div>
         {/* #3409 (epic #3401) — a deliberate PII-exclusion reversal. */}
         {parcel.totalAmount === null ? null : (
           <div className="bench-parcel__identity">
-            <span className="eyebrow">{benchParcelCopy.header.totalLabel}</span>
+            <span className="bench-parcel__field-label">{benchParcelCopy.header.totalLabel}</span>
             <span className="bench-parcel__total">
               {formatAmount(parcel.totalAmount, parcel.currency ?? undefined)}
             </span>
@@ -572,13 +613,13 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
         )}
         {parcel.carrierName === null ? null : (
           <div className="bench-parcel__identity">
-            <span className="eyebrow">{benchParcelCopy.header.carrierLabel}</span>
+            <span className="bench-parcel__field-label">{benchParcelCopy.header.carrierLabel}</span>
             <span>{parcel.carrierName}</span>
           </div>
         )}
         {parcel.dispatchByAt === null ? null : (
           <div className="bench-parcel__identity">
-            <span className="eyebrow">{benchParcelCopy.header.dispatchByLabel}</span>
+            <span className="bench-parcel__field-label">{benchParcelCopy.header.dispatchByLabel}</span>
             {/* The CLOCK TIME, as the mockup shows it — a packer reads this
                 against the clock on the wall. The relative phrasing
                 (`describeBenchDeadline`) belongs on the rail, where the row
@@ -826,7 +867,20 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
               are `aria-hidden`: each row already carries its own words, so a
               screen reader reading six column headings before every line
               would say each fact twice. */}
-          <p className="bench-parcel__lines-caption">{benchParcelCopy.lines.allItemsCaption}</p>
+          <div className="bench-parcel__lines-caption">
+            <span>{benchParcelCopy.lines.allItemsCaption}</span>
+            <label className="bench-parcel__group-by">
+              <input
+                type="checkbox"
+                checked={groupByBin}
+                onChange={(event) => {
+                  setGroupByBin(event.target.checked);
+                }}
+              />
+              {benchParcelCopy.lines.groupByLocationLabel}
+            </label>
+          </div>
+          <p className="bench-parcel__lines-note">{benchParcelCopy.lines.groupByLocationNote}</p>
           <div className="bench-parcel__lines-head" aria-hidden="true">
             <span />
             <span>{benchParcelCopy.lines.colItem}</span>
@@ -841,7 +895,7 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
             <span />
           </div>
           <ul className="bench-parcel__lines">
-          {parcel.lines.map((line) => (
+          {orderedLines.map((line) => (
             <BenchParcelLineRow
               key={line.workLineId}
               line={line}

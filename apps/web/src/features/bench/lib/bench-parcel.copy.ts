@@ -70,6 +70,9 @@ export const benchParcelCopy = {
         .join(' · '),
     /** The mockup's own caption above the item list. */
     allItemsCaption: 'All items in this parcel',
+    groupByLocationLabel: 'Group by bin',
+    groupByLocationNote:
+      'Sorts this parcel\u2019s own items by bin. Not a picking route across several orders, which is what most tools mean by grouping by location.',
     colItem: 'Item',
     colIdentifiers: 'Identifiers',
     colLocation: 'Location',
@@ -240,13 +243,24 @@ export const benchParcelCopy = {
    * it does and never for how — the same rule `lines.confirmAction` follows,
    * and for the same D20 reason.
    */
+  /** The mockup's `.copy-btn`, beside the order reference and the hero's EAN. */
+  copy: {
+    action: (what: string): string => `Copy ${what}`,
+    copied: (what: string): string => `${what} copied`,
+    orderReference: 'order reference',
+    barcode: 'barcode',
+  },
+
   hero: {
     scanLabel: 'Scan this item',
+    /** The mockup's transient `✓ Matched`. Announced separately by the live region. */
+    matched: 'Matched',
     scanPlaceholder: 'Scan or type SKU / EAN, then press Enter',
     confirmAction: 'Confirm this item',
     scanHint:
       'Scanning counts on its own — no button needed. Use Confirm this item only when a barcode is damaged, missing or will not read.',
-    keyboardHint: 'Keyboard, when you are not scanning: C confirms this item.',
+    keyboardHint:
+      'Keyboard, when you are not scanning: C confirms this item · U undoes the last scan · Esc returns to the scan box.',
     countOf: (required: number): string => `of ${String(required)}`,
     /** The progress bar's own right-hand figure. */
     percent: (value: number): string => `${String(value)}%`,

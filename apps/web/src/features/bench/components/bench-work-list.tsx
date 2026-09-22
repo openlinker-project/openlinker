@@ -43,7 +43,7 @@
  *
  * @module apps/web/src/features/bench/components
  */
-import { useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 
 import { useWriteAccess } from '../../../shared/auth/use-permission';
 import { DEMO_READ_ONLY_ACTION_MESSAGE } from '../../../shared/config/demo-mode';
@@ -59,6 +59,7 @@ import { useBenchPackedTodayQuery } from '../hooks/use-bench-activity-query';
 import { useBenchUnlabelledQuery } from '../hooks/use-bench-documents-query';
 import { useBenchWorkQuery } from '../hooks/use-bench-work-query';
 import { useScannerInput } from '../hooks/use-scanner-input';
+import { isEditableTarget } from '../lib/scanner-gesture';
 import {
   groupBenchWork,
   groupBenchWorkByAssignment,
@@ -113,6 +114,31 @@ export function BenchWorkList({
   const [rejectedScan, setRejectedScan] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<BenchRailTab>('bench');
   const [claimNextNotice, setClaimNextNotice] = useState<string | null>(null);
+
+  /** Lets the `N` hotkey reach the handler defined below. */
+  const takeNextRef = useRef<() => void>(() => undefined);
+
+  /**
+   * "N" takes the next task — the mockup's own legend, bound HERE rather than
+   * on the parcel surface because this is the component that owns the
+   * `claimNext` mutation. Both panes are mounted at once (#3401), so the key
+   * works while a box is open, which is when a packer reaches for it.
+   *
+   * Same enabled-gate as the scanner listener below: a locked bench takes no
+   * input at all (A3).
+   */
+  useEffect(() => {
+    if (!interactive) return;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isEditableTarget(event.target)) return;
+      if (event.key.toLowerCase() !== 'n') return;
+      event.preventDefault();
+      takeNextRef.current();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [interactive]);
 
   useScannerInput({
     enabled: interactive,
@@ -188,6 +214,19 @@ export function BenchWorkList({
       />
     );
   }
+
+  /** ONE body for the button and the `N` key — two copies could diverge. */
+  const takeNextTask = (): void => {
+    setClaimNextNotice(null);
+    claimNext.mutate(undefined, {
+      onSuccess: (result) => {
+        if (result.outcome === 'nothing-to-claim') {
+          setClaimNextNotice(benchWorkCopy.tabs.takeNextEmpty);
+        }
+      },
+    });
+  };
+  takeNextRef.current = takeNextTask;
 
   const routingReady = query.data?.routing.ready ?? true;
   const canExpedite = write.canWrite;
@@ -295,20 +334,7 @@ export function BenchWorkList({
           tabs, since it is not scoped to any one section. */}
       {canClaim ? (
         <div className="bench-rail__take-next">
-          <Button
-            tone="primary"
-            disabled={claimNext.isPending}
-            onClick={() => {
-              setClaimNextNotice(null);
-              claimNext.mutate(undefined, {
-                onSuccess: (result) => {
-                  if (result.outcome === 'nothing-to-claim') {
-                    setClaimNextNotice(benchWorkCopy.tabs.takeNextEmpty);
-                  }
-                },
-              });
-            }}
-          >
+          <Button tone="primary" disabled={claimNext.isPending} onClick={takeNextTask}>
             {benchWorkCopy.tabs.takeNextAction}
           </Button>
           {claimNextNotice === null ? null : (
@@ -403,7 +429,8 @@ export function BenchWorkList({
               {renderSection(
                 benchWorkCopy.tabs.assignedToYou,
                 visibleMine,
-                'bench-section-assigned-to-you'
+                'bench-section-assigned-to-you',
+                'bench-rail__section-label--mine'
               )}
               {renderSection(
                 benchWorkCopy.tabs.assignedToOthers,
@@ -456,7 +483,8 @@ export function BenchWorkList({
               renderSection(
                 benchWorkCopy.tabs.onHoldHeading,
                 visibleDoNotPack,
-                'bench-section-do-not-pack'
+                'bench-section-do-not-pack',
+                'bench-rail__section-label--hold'
               )
             )
           ) : null}

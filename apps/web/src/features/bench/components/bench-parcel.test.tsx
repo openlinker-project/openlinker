@@ -180,6 +180,14 @@ describe('BenchParcelView (#2418)', () => {
       [
         // The bench's only exit (C2).
         'Back to the list',
+        // Two copy controls (mockup-parity epic #3401): the order reference on
+        // the head, and the hero's barcode. They render a glyph, so their
+        // `textContent` is that glyph rather than their accessible name — the
+        // name is `aria-label`, which this assertion deliberately does not
+        // read, since what it is guarding is the VISIBLE control inventory.
+        // Neither commits anything: both write to the clipboard.
+        '⧉',
+        '⧉',
         // E4's hand-confirm — one per unverified line, and the fixture has one.
         'Confirm this line',
         // The hero card's own hand-confirm (mockup-parity epic #3401). The

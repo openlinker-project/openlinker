@@ -24360,19 +24360,45 @@ legend.analytics-settings-dialog__label {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.5rem 1rem;
+  gap: var(--space-4);
+  margin: 0 var(--space-5);
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg-surface-muted);
   border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.875rem;
+}
+
+/* The mockup says out loud what the switch DOES, next to the control, rather
+   than leaving it to a `title` a gloved hand never hovers. */
+.bench-identity-bar__hint {
+  margin-left: auto;
+  margin-right: var(--space-4);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+@media (max-width: 900px) {
+  .bench-identity-bar__hint {
+    display: none;
+  }
 }
 
 /* ── Pack bench — work list (#2416, W3b-3) ──────────────────────────────────
  *
- * Sized for a bench rather than a desk: the deadline headline and the order
- * reference are the two things read from arm's length across a room, so they
- * carry the largest type on the surface, and every control clears the 44 px
- * touch floor unconditionally — not behind a `pointer: coarse` media query,
- * because a bench terminal is routinely a mouse-driven all-in-one and the
- * guarantee is about gloved hands, not about the input device.
+ * Sized for a bench rather than a desk. The 44 px touch floor is unconditional
+ * — not behind a `pointer: coarse` media query, because a bench terminal is
+ * routinely a mouse-driven all-in-one and the guarantee is about gloved hands,
+ * not about the input device.
+ *
+ * It covers the SCAN PATH, which is what the mockup itself decided: its own
+ * `.hero-line__scan .btn, .rail__search + div .btn, .hero-line__scan input`
+ * rule raises the scan field, the hand-confirm, the undo and the take-next
+ * button to 44 px and leaves the rail's SEARCH and TABS at 36 px. Those two
+ * are navigation a packer uses between boxes rather than controls they hit
+ * with a full hand mid-pack, so the row-action and parcel-surface floors
+ * (asserted by `bench-parcel-targets.test.ts`) are the binding ones and the
+ * rail's own chrome follows the mockup.
  *
  * State is carried by TEXT and by SECTION (story B4). Everything below is an
  * addition to that, never the carrier — `bench-work-row.test.tsx` asserts state
@@ -24385,7 +24411,10 @@ legend.analytics-settings-dialog__label {
  * their hands are in the current box, so the two are side by side and not
  * one after the other — see `bench-page.tsx`'s own docblock. Collapses to
  * one column below the mockup's own 900 px breakpoint. */
-.bench-body {
+/* `.bench-shell`, NOT `.bench-body` — the identity overlay already owns that
+   class for the subtree it conceals, and two elements carrying it nested one
+   inside the other applied the page gutter twice (48px instead of 24px). */
+.bench-shell {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
@@ -24460,7 +24489,7 @@ legend.analytics-settings-dialog__label {
 
 .bench-rail__search input {
   width: 100%;
-  min-height: 2.75rem;
+  height: 36px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-default);
   background: var(--bg-surface-muted);
@@ -24508,8 +24537,9 @@ legend.analytics-settings-dialog__label {
 .bench-rail__tab {
   flex: 1;
   text-align: center;
-  padding: var(--space-3) var(--space-1);
-  min-height: 2.75rem;
+  padding: var(--space-2) var(--space-1);
+  min-height: 0;
+  height: 36px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -24538,10 +24568,20 @@ legend.analytics-settings-dialog__label {
   padding: var(--space-3) var(--space-4) var(--space-2);
   font-family: var(--font-mono);
   font-size: 0.65rem;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+/* The mockup accents the section a packer's own work is in, and tints the
+   hold section's label with the status hue it already uses on those rows. */
+.bench-rail__section-label--mine {
+  color: var(--accent-primary-hover);
+}
+
+.bench-rail__section-label--hold {
+  color: var(--status-error-fg);
 }
 
 .bench-rail__list {
@@ -24574,16 +24614,15 @@ legend.analytics-settings-dialog__label {
 /* ── Metric row (#3413, mockup-parity epic #3401) ────────────────────────── */
 .bench-metric-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: var(--space-3);
-  padding: 0 var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-4);
 }
 
 .bench-metric-card {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-3);
+  padding: var(--space-4);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
@@ -24599,8 +24638,9 @@ legend.analytics-settings-dialog__label {
 }
 
 .bench-metric-card__value {
-  font-size: 1.5rem;
+  font-size: 1.75rem;
   font-weight: 600;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
   display: flex;
   align-items: baseline;
@@ -24748,6 +24788,7 @@ legend.analytics-settings-dialog__label {
 .bench-rail__tab {
   height: auto;
   min-height: 2.75rem;
+  font-weight: 500;
   border-radius: 0;
   box-shadow: none;
   white-space: normal;
@@ -24756,6 +24797,9 @@ legend.analytics-settings-dialog__label {
 
 .bench-rail__tab {
   border-bottom: 2px solid transparent;
+  height: 36px;
+  min-height: 0;
+  font-weight: 500;
 }
 
 .bench-rail__tab[aria-selected='true'] {
@@ -24811,7 +24855,7 @@ legend.analytics-settings-dialog__label {
 .bench-work-row__meta,
 .bench-work-row__note {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   text-wrap: pretty;
 }
 
@@ -24824,13 +24868,19 @@ legend.analytics-settings-dialog__label {
 }
 
 .bench-work-row__actions {
-  margin-top: var(--space-2);
+  margin-top: 6px;
 }
 
 
 /* Small enough for a 340 px column, and still over the 44 px touch floor the
    section header insists on — height comes from `min-height`, not from type.
    Light, because the row itself is now the primary target. */
+/* Type is compact for a 340 px column; HEIGHT is not, and must not be. The
+   44 px floor below is unconditional and `bench-parcel-targets.test.ts` pins
+   it, so a row carrying an action is ~50 px taller than the mockup's. That
+   difference is invisible to the audience: both controls are write-gated, so
+   a PACKER sees a row of exactly the mockup's height and only an operator
+   sees the taller one. */
 .bench-work-row__actions .button {
   padding-inline: var(--space-2);
   font-size: 0.7rem;
@@ -25192,7 +25242,7 @@ legend.analytics-settings-dialog__label {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-4);
+  gap: var(--space-5);
   margin: calc(var(--space-5) * -1) calc(var(--space-5) * -1) 0;
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--border-subtle);
@@ -25201,6 +25251,24 @@ legend.analytics-settings-dialog__label {
 .bench-parcel__identity {
   display: grid;
   gap: 2px;
+}
+
+/* The mockup's `.order-head__field dt`: a mono-caps term over its value.
+   Deliberately NOT `.eyebrow`, which is 12 px bold accent — six accent
+   headings across one strip made the head shout and pushed it onto a second
+   row, which is what buried the hero below the fold. */
+.bench-parcel__field-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* `.order-head__field dd`. One size for every value on the strip. */
+.bench-parcel__identity > span:not(.bench-parcel__field-label) {
+  font-size: 0.875rem;
 }
 
 /* #3418 (epic #3401) — pushes the status pill and the back control to the
@@ -25215,6 +25283,112 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-3);
   flex-shrink: 0;
   margin-left: auto;
+}
+
+/* ── The two papers, as cards (mockup-parity epic #3401) ─────────────────
+ * The mockup's `.docs`: one card for what goes IN the box and one for what
+ * goes ON it, side by side, so the distinction is structural rather than
+ * something a packer has to read for. */
+.bench-documents__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--space-4);
+}
+
+.bench-documents__card {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  align-content: start;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
+}
+
+.bench-documents__card h3 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.bench-documents__card h4 {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.bench-documents__card p {
+  margin: 0;
+  font-size: 0.78125rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+/* The mockup's `.doc-card__slot`: which side of the box this paper is for. */
+.bench-documents__card .bench-documents__slot {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── Copy control (mockup-parity epic #3401) ─────────────────────────────
+ * The mockup's `.copy-btn`. Always visible, never hover-revealed: at a bench
+ * nobody hovers, so a control that appears on hover is a control that is not
+ * there. Opts out of the global `button` treatment the same way the layout
+ * surfaces above do. */
+.bench-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  min-height: 0;
+  margin-left: var(--space-2);
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1;
+  box-shadow: none;
+  vertical-align: middle;
+}
+
+.bench-copy-button:hover,
+.bench-copy-button:active {
+  background: var(--bg-surface-muted);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+/* ── The item-list caption strip (mockup-parity epic #3401) ──────────────── */
+.bench-parcel__group-by {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.bench-parcel__lines-note {
+  margin: 0;
+  padding: 6px var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.6875rem;
+  color: var(--text-disabled);
+  text-wrap: pretty;
+}
+
+/* Reserves the row so the transient badge never reflows the card under a
+   packer's hands (the mockup's own `min-height:18px`). */
+.bench-hero__feedback {
+  min-height: 1.25rem;
+  margin: var(--space-2) 0 0;
 }
 
 /* #3420 (epic #3401) — the inert camera-preview row. Small and muted on
@@ -25314,24 +25488,24 @@ legend.analytics-settings-dialog__label {
   font-weight: 500;
 }
 
+/* `.order-head__ref` — the one value on the strip the mockup lifts, and only
+   by a point. */
 .bench-parcel__reference {
   font-family: var(--font-mono);
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 0.9375rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
 }
 
 .bench-parcel__buyer {
-  font-size: 1.125rem;
-  font-weight: 600;
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 /* #3409 (epic #3401) — the order-head fields reversing the PII exclusion. */
 .bench-parcel__total {
   font-family: var(--font-mono);
-  font-size: 1.125rem;
-  font-weight: 600;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -25386,11 +25560,14 @@ legend.analytics-settings-dialog__label {
 .bench-parcel__lines-wrap {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  background: var(--bg-surface);
   overflow: hidden;
 }
 
 .bench-parcel__lines-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   margin: 0;
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
@@ -25415,7 +25592,7 @@ legend.analytics-settings-dialog__label {
 }
 
 .bench-parcel__lines-head {
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-surface-muted);
   font-family: var(--font-mono);

@@ -194,8 +194,16 @@ export function BenchDocumentsPanel({
         </div>
       ) : null}
 
+      {/* The mockup's `.docs`: the two papers side by side as cards, so a
+          packer sees at a glance that one goes IN the box and one goes ON it.
+          The grid takes 1 or 2 children — the label card is suppressed while
+          the parcel is unlabelled, which has its own treatment above. */}
+      <div className="bench-documents__cards">
       {/* ── The invoice: inside the box. ──────────────────────────────────── */}
-      <div className="bench-documents__invoice" data-testid="bench-documents-invoice">
+      <div
+        className="bench-documents__card bench-documents__invoice"
+        data-testid="bench-documents-invoice"
+      >
         <StatusBadge tone={invoice.state === 'ready' ? 'success' : 'warning'} withDot>
           {invoice.state === 'ready'
             ? benchParcelCopy.documents.readyBadge
@@ -244,7 +252,10 @@ export function BenchDocumentsPanel({
       {/* ── The label: on the box. Suppressed while unlabelled, which has its
              own treatment above. ──────────────────────────────────────────── */}
       {label.state === 'ready' ? (
-        <div className="bench-documents__label" data-testid="bench-documents-label">
+        <div
+          className="bench-documents__card bench-documents__label"
+          data-testid="bench-documents-label"
+        >
           <StatusBadge tone="success" withDot>
             {benchParcelCopy.documents.readyBadge}
           </StatusBadge>
@@ -266,6 +277,7 @@ export function BenchDocumentsPanel({
           </Button>
         </div>
       ) : null}
+      </div>
 
       {/* #3420 (epic #3401) — see the module docblock for why this one, and
           only this one, is rendered despite doing nothing real. */}
