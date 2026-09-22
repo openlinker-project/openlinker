@@ -80,6 +80,7 @@ describe('createEparagonyPlugin', () => {
         'FiscalRegistrationLocator',
         'Invoicing',
         'RegulatoryStatusReader',
+        'CorrectionIssuer',
       ]);
     });
 
@@ -117,11 +118,18 @@ describe('createEparagonyPlugin', () => {
       expect(eparagonyAdapterManifest.supportedCapabilities).not.toContain('FiscalDeviceOperator');
     });
 
-    it('should not declare corrections, which this adapter cannot compose yet', () => {
-      // The vendor models a correction as its own `eCorrectiveInvoice` document
-      // kind (#3193). Advertising the name would promise a document the invoice
-      // adapter refuses pre-call.
-      expect(eparagonyAdapterManifest.supportedCapabilities).not.toContain('CorrectionIssuer');
+    it('should declare corrections, composed as the eCorrectiveInvoice document kind (#3193)', () => {
+      expect(eparagonyAdapterManifest.supportedCapabilities).toContain('CorrectionIssuer');
+    });
+
+    it('should advertise the correction issuer without dispatching it by name', async () => {
+      // Same rule as the other two invoice-lane sub-capabilities:
+      // `isCorrectionIssuer` narrows the DISPATCHED Invoicing adapter, and the
+      // registry refuses the name.
+      const { host } = makeHost();
+      await expect(
+        createEparagonyPlugin().createCapabilityAdapter(connection, 'CorrectionIssuer', host),
+      ).rejects.toThrow();
     });
 
     it('should not declare regulatory transmission, which this vendor performs on the seller behalf', () => {
