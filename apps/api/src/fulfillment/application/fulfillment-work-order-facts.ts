@@ -21,6 +21,8 @@
  */
 import type { OrderRecord } from '@openlinker/core/orders';
 
+import { maskName } from '../../common/format/mask-name';
+
 function readString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
@@ -51,29 +53,15 @@ function readFullBuyerName(order: OrderRecord | undefined): string | null {
 }
 
 /**
- * Mask a full name to its FIRST INITIAL plus surname — "Anna Kowalska"
- * becomes "A. Kowalska" — so an operator can recognise the order without
- * this board carrying the buyer's full identity (#3425, reversing ADR-062's
- * exclusion by explicit product decision, with masking as the condition of
- * that reversal).
- *
- * A single-word name (a company, or a name the source reported as one
- * field) is returned UNMASKED — there is no surname to keep and no first
- * name to reduce to an initial, so masking it further would destroy the
- * only identifying fact rather than merely reduce it.
- */
-function maskName(name: string): string {
-  const parts = name.split(/\s+/).filter((part) => part.length > 0);
-  if (parts.length < 2) return name;
-  const [first, ...rest] = parts;
-  return `${first.charAt(0)}. ${rest.join(' ')}`;
-}
-
-/**
  * The buyer's name, MASKED (#3425) — the one buyer-identity field this
  * board may carry, and never the full name `readFullBuyerName` resolves
  * internally. `null` is an ordinary answer (no name in the snapshot, or
  * `OL_STORE_PII=false`), never a placeholder.
+ *
+ * The masking rule itself is shared (`common/format/mask-name`): reversing
+ * ADR-062's exclusion by explicit product decision was conditional on
+ * masking, and the bench's collision banner (#3415) reduces a packer's name
+ * by the SAME rule, so the two cannot disclose different amounts.
  */
 export function readMaskedBuyerName(order: OrderRecord | undefined): string | null {
   const full = readFullBuyerName(order);

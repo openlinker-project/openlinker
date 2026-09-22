@@ -259,12 +259,13 @@ export class BenchParcelController {
   @Post(':workId/presence')
   @Roles('admin', 'operator', 'packer')
   @ApiOperation({
-    summary: 'Announce presence on this parcel, and learn whether someone else already has',
+    summary: 'Announce presence on this parcel, and learn who else has it open',
     description:
       'A lightweight, ephemeral Redis TTL signal — advisory only, never a lock. Call it on open ' +
       'and refresh it while the parcel view stays mounted. Scoped exactly as `getParcel` scopes ' +
       "it, so a packer cannot ping a work id outside this bench's own eligibility to learn who " +
-      'else is looking at it.',
+      'else is looking at it. Answers with MASKED names only, never a user id, and never the ' +
+      'caller themselves.',
   })
   @ApiResponse({ status: 201, type: BenchPresenceResponseDto })
   @ApiResponse({ status: 401, description: 'A presence ping must name the packer' })
@@ -280,7 +281,20 @@ export class BenchParcelController {
     // readable for a work id outside this bench's own eligibility, exactly as
     // `getParcel` refuses one.
     await this.run(() => this.parcels.getWorkForDocuments(workId));
-    return this.presence.ping(workId, user.id);
+    // The VERIFIED token's username, never a body field — this is the name a
+    // colleague will read as "who is in this box with me", and the same rule
+    // `verifyUnit` states for attribution applies: a name a client could
+    // supply is a name a client could forge. `username` is the only display
+    // name the users context holds (there is no first/last split), and the
+    // service masks it before storing it.
+    const view = await this.presence.ping(workId, user.id, user.username ?? user.id);
+    // Field by field, never a spread — see the DTO module docblock. A spread
+    // here would silently publish whatever the view type grows next, which on
+    // this particular projection means whatever it grows about a colleague.
+    return {
+      collision: view.collision,
+      others: view.others.map((viewer) => ({ displayName: viewer.displayName })),
+    };
   }
 
   /**

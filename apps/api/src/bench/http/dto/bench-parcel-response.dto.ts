@@ -240,15 +240,27 @@ export class BenchActivityEntryResponseDto {
   byUserId!: string | null;
 }
 
+export class BenchPresenceViewerResponseDto {
+  @ApiProperty({
+    description:
+      'The other packer\'s name, MASKED by the same rule the Assign Packing Work board masks a buyer name with — "Anna Kowalska" reads "A. Kowalska". A single-token account name passes through whole, having no surname to keep. This is the only field: no user id, no username, no email, no role.',
+  })
+  displayName!: string;
+}
+
 export class BenchPresenceResponseDto {
   @ApiProperty({
     description:
-      'Whether someone OTHER than the caller pinged this same parcel within the presence window. Advisory only — this never gates a write, only warns.',
+      'Whether anyone OTHER than the caller has this parcel open right now — exactly `others.length > 0`. Advisory only: this never gates a write, only warns.',
   })
   collision!: boolean;
 
-  @ApiProperty({ nullable: true, description: "Who else has it open, when `collision` is true" })
-  otherUserId!: string | null;
+  @ApiProperty({
+    type: [BenchPresenceViewerResponseDto],
+    description:
+      'Everyone else who has it open, most recently seen first, NEVER including the caller. An EMPTY array means "nobody else" and is a first-class answer — a failed read answers a non-2xx instead, because "nobody else is in this box" is a reassurance a failed read has no standing to give.',
+  })
+  others!: BenchPresenceViewerResponseDto[];
 }
 
 export class BenchUndoResultResponseDto {

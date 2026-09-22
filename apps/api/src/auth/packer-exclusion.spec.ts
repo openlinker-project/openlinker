@@ -169,9 +169,10 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // a parcel this bench may pack — and cannot reach a closed box, an order or
   // a document.
   'BenchParcelController.undoLastScan',
-  // #3406. An ephemeral Redis TTL presence heartbeat, scoped exactly as
-  // `getParcel` scopes it. Discloses only another packer's user id, and only
-  // while that packer's own ping is fresh.
+  // #3406, widened by #3415. An ephemeral Redis TTL presence heartbeat,
+  // scoped exactly as `getParcel` scopes it. Discloses only another packer's
+  // MASKED name ("A. Kowalska") — never a user id, never an unmasked
+  // username — and only while that packer's own ping is fresh.
   'BenchParcelController.pingPresence',
   // #3411. A read: the verification ledger for one parcel, scoped exactly as
   // getParcel scopes it. Carries no buyer PII of its own beyond what
