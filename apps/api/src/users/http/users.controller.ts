@@ -80,7 +80,12 @@ export class UsersController {
     description:
       'Minimal roster used by the Assign Packing Work screen (#3340) — id + ' +
       'username only, unlike GET /users which is admin-only and carries the ' +
-      'full user-management projection.',
+      'full user-management projection. ' +
+      'Deliberately narrowed to role=packer only, even though the bench routes ' +
+      '(@Roles(admin, operator, packer)) and the claim predicate accept any user ' +
+      'id — an operator/admin packing a shift is not offered as an assignment ' +
+      'target here. Capped at 500 rows (pageSize) with no total reported back; ' +
+      'past that cap the board silently renders a partial roster.',
   })
   @ApiResponse({ status: 200, description: 'Packer roster', type: PackerListResponseDto })
   async listPackers(): Promise<PackerListResponseDto> {
