@@ -392,6 +392,25 @@ export interface InvoiceLine {
    * sources that do. Providers without a unit concept ignore it.
    */
   unit?: string;
+  /**
+   * The OL-internal product id this line sells, when the caller knows it - the
+   * same id `OrderItem.productId` carries, so a provider resolves it to its own
+   * catalogue key through `identifier_mappings` exactly as the order-creation
+   * path already does.
+   *
+   * OPTIONAL and provider-ignorable, the `unit` precedent above: a line that is
+   * not a catalogue item at all (a shipping charge, a manual adjustment) has no
+   * product and legitimately omits it, and a provider whose documents carry no
+   * catalogue concept never reads it.
+   *
+   * It exists because a document whose lines name a product only in free text
+   * is not linked to the goods: on Subiekt such a line is a "usługa
+   * jednorazowa" (one-time service) and therefore moves no stock, so the seller
+   * sells an item and their warehouse never registers it leaving. Carrying the
+   * id lets the provider emit a real catalogue line instead. NEVER a substitute
+   * for `name`, which stays the human-readable text the document prints.
+   */
+  productId?: string;
 }
 
 /**

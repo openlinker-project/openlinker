@@ -2,12 +2,26 @@
  * Subiekt Line Mapper (#753)
  *
  * Maps neutral `InvoiceLine[]` to bridge-native `BridgeLine[]` (the bridge's
- * `CreateInvoiceLineRequestDto`). The neutral line carries no catalogue symbol,
- * so every line is sent as a one-time line under its `name`:
- *   - `name`           1:1 (the one-time line name; `towarSymbol` is left unset)
+ * `CreateInvoiceLineRequestDto`):
+ *   - `name`           1:1 (the printed line name)
  *   - `quantity`       -> `ilosc`
  *   - `unitPriceGross` -> `cenaBrutto`
  *   - `taxRate`        -> `stawkaVAT`
+ *   - `productId`      -> `towarSymbol`, via the caller-supplied resolution map
+ *
+ * THE CATALOGUE SYMBOL IS WHAT MOVES STOCK. Until the neutral line carried a
+ * product reference, every line was emitted symbol-less and the bridge routed
+ * it to `SuPozycje.DodajUslugeJednorazowa` - a one-time SERVICE line, which
+ * Subiekt stores with `ob_TowId = NULL` and which no warehouse document can
+ * release. The observable consequence was a seller whose stock never dropped
+ * when they sold: the receipt existed, the goods left, and `tw_Stan` stayed
+ * where it was, so the next inventory pull republished the already-sold
+ * quantity to every other channel. A resolved symbol routes the line to
+ * `SuPozycje.Dodaj(symbol)` instead, which is a real catalogue position.
+ *
+ * A line with NO symbol is still legitimate and still supported - a delivery
+ * charge is not a catalogue item - so an unresolved product degrades to the
+ * previous service-line behaviour rather than failing the document.
  *
  * THE TAX-REGIME DEFAULT IS ROLLOUT-GATED (#2257, gated in the #2245 review).
  * This mapper substitutes the Polish standard "23" whenever the neutral line
@@ -84,14 +98,28 @@ function toStawkaVat(taxRate: string, lineName: string, enforced: boolean): stri
  * resolved ONCE here, so a pre-rollout order keeps the pre-#2245 default even
  * with the switch on. Omitting it means "not pre-rollout", the ordinary case.
  */
-export function toBridgeLines(lines: InvoiceLine[], taxRateEra?: string | null): BridgeLine[] {
+export function toBridgeLines(
+  lines: InvoiceLine[],
+  taxRateEra?: string | null,
+  symbolByProductId?: ReadonlyMap<string, string>,
+): BridgeLine[] {
   const enforced = isTaxRateEnforced(taxRateEra);
-  return lines.map((line) => ({
-    name: line.name,
-    ilosc: line.quantity,
-    cenaBrutto: line.unitPriceGross,
-    stawkaVAT: toStawkaVat(line.taxRate, line.name, enforced),
-  }));
+  return lines.map((line) => {
+    // A resolved symbol makes this a real catalogue line on the document
+    // (`d.Pozycje.Dodaj(symbol)` bridge-side), which is what actually moves
+    // stock; without one the bridge falls back to `DodajUslugeJednorazowa` and
+    // the line is a one-time service that the warehouse never sees. A shipping
+    // charge legitimately has no product and stays a service line.
+    const towarSymbol =
+      line.productId !== undefined ? symbolByProductId?.get(line.productId) : undefined;
+    return {
+      name: line.name,
+      ilosc: line.quantity,
+      cenaBrutto: line.unitPriceGross,
+      stawkaVAT: toStawkaVat(line.taxRate, line.name, enforced),
+      ...(towarSymbol !== undefined && towarSymbol !== '' ? { towarSymbol } : {}),
+    };
+  });
 }
 
 /**

@@ -389,7 +389,15 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
       sku: bridgeProduct.symbol,
       price: bridgeProduct.cenaSprzedazyBrutto ?? bridgeProduct.cenaSprzedazyNetto ?? null,
       description: bridgeProduct.opis,
-      images: null,
+      // Served by the bridge itself from Subiekt's own `tw_ZdjecieTw` blobs.
+      // Only OpenLinker fetches these URLs — it downloads the bytes and
+      // re-uploads them to the channel's CDN — so the bridge's base only has to
+      // be reachable from the worker, not from the public internet. `null`
+      // rather than `[]` when the towar has none, matching the field's "not
+      // known" reading. Without them a Subiekt-sourced product cannot be
+      // published at all: Allegro refuses an offer that carries no image.
+      images:
+        bridgeProduct.zdjecia && bridgeProduct.zdjecia.length > 0 ? bridgeProduct.zdjecia : null,
       currency: bridgeProduct.waluta,
       weight: bridgeProduct.waga ?? undefined,
     };

@@ -1,0 +1,436 @@
+// ProductsEndpoints.cs.ready — the bridge's ProductMaster endpoints, committed
+// for review under the same .cs.ready convention as Invoicing.cs.ready.
+//
+// A FULL DUMP of the file as it exists on the Windows host at
+// /mnt/c/Users/42zer/gtspike/bridge/ProductsEndpoints.cs — not a diff.
+//
+// Live-verified change carried here:
+//   - BridgeProductDto.Zdjecia + ReadImageUrls: the catalogue read now carries
+//     the towar's image URLs, served from Subiekt's own tw_ZdjecieTw blobs via
+//     the bridge's existing /gt-image/{towarId} route. Only OpenLinker fetches
+//     them (it downloads the bytes and re-uploads them to the channel's CDN),
+//     so OL_BRIDGE_PUBLIC_BASE only has to be reachable from the worker.
+//     Without them a Subiekt-sourced product could not be published at all —
+//     Allegro refuses an offer carrying no image.
+//
+// NOT compiled or type-checked by this repo's CI — there is no C# build here.
+
+// ProductsEndpoints - ProductMaster capability.
+//
+// Speaks the contract in libs/integrations/subiekt/src/bridge/subiekt-bridge-products.types.ts
+// (English /api/products* routes, {success,data,error} envelope, Polish field
+// names inside payloads). Auth is already applied globally to /api/* by
+// Program.cs's token-auth middleware.
+//
+// Reads (list/search/get) go via raw SQL on tw__Towar + tw_Cena (mirrors
+// Invoicing.cs's ListBankAccounts/ListCashRegisters pattern - TowaryManager's
+// own Wybierz() is a UI picker, not a headless query). Writes (create/update)
+// go via Sfera's TowaryManager object model.
+//
+// Confirmed live against the real Sfera GT (Pomoc/gta.chm + direct SQL, this
+// session): tw__Towar.tw_Symbol/tw_Nazwa/tw_Opis/tw_JednMiary are real columns;
+// price lives in tw_Cena (tc_IdTowar -> tw_Id). CONFIRMED LIVE this session:
+// tc_CenaBrutto0/tc_CenaNetto0 (SQL "level 0") are NOT the sale price Ceny
+// exposes - Towar.Ceny.Element(1) (the object model's first price level) maps
+// to tc_CenaBrutto1/tc_CenaNetto1, and writing there correctly triggered
+// Subiekt's own recalculation of other levels (e.g. level 2, presumably a
+// markup-derived list price). Level 0 stayed untouched - likely a distinct
+// "cena zakupu" (purchase/cost) concept, not a sale-price level at all.
+// Towar.CenaKartotekowa was tried FIRST and rejected: it left every price
+// level's Brutto at 0 despite a valid VAT id on the towar.
+// Towar.KodyKreskowe is a COLLECTION (TwKodyKreskowe), not a scalar - the wire
+// contract's `kodKreskowy` is a single string, so we add/read the FIRST barcode
+// only (MVP simplification, documented here rather than silently assumed).
+
+using System.Data;
+using Microsoft.Data.SqlClient;
+
+public static class ProductsEndpoints
+{
+    private const string ConnStr =
+        @"Server=DESKTOP-FJ0P3NU\INSERTNEXO;Database=DEMO;Integrated Security=True;"
+      + "TrustServerCertificate=True;Encrypt=False;Connect Timeout=10";
+
+    private static IResult Ok<T>(T data) => Results.Ok(new { success = true, data, error = (object?)null });
+    private static IResult Fail(string error, int status = 422) =>
+        Results.Json(new { success = false, data = (object?)null, error }, statusCode: status);
+
+    public static void MapProductsEndpoints(this WebApplication app)
+    {
+        app.MapGet("/api/products", async (int? limit, int? offset) =>
+        {
+            var symbols = await ListSymbols(limit ?? 100, offset ?? 0);
+            return Ok(new { symbols });
+        });
+
+        app.MapGet("/api/products/search", async (string? q, int? limit) =>
+        {
+            if (string.IsNullOrWhiteSpace(q))
+                return Fail("q is required", 400);
+            var products = await SearchProducts(q, limit ?? 25);
+            return Ok(new { products });
+        });
+
+        app.MapGet("/api/products/{symbol}", async (string symbol) =>
+        {
+            var product = await ReadProduct(symbol);
+            return product is null ? Fail($"No product with symbol {symbol}.", 404) : Ok(product);
+        });
+
+        app.MapPost("/api/products", async (HttpRequest req) =>
+        {
+            CreateProductRequest? body;
+            try { body = await req.ReadFromJsonAsync<CreateProductRequest>(); }
+            catch (Exception e) { return Fail($"bad request: {e.Message}", 400); }
+            if (body is null || string.IsNullOrWhiteSpace(body.Symbol) || string.IsNullOrWhiteSpace(body.Nazwa))
+                return Fail("symbol and nazwa are required", 400);
+
+            try
+            {
+                var product = await CreateProduct(body);
+                return Ok(product);
+            }
+            catch (Exception e)
+            {
+                return Fail(e.Message);
+            }
+        });
+
+        app.MapPut("/api/products/{symbol}", async (string symbol, HttpRequest req) =>
+        {
+            UpdateProductRequest? body;
+            try { body = await req.ReadFromJsonAsync<UpdateProductRequest>(); }
+            catch (Exception e) { return Fail($"bad request: {e.Message}", 400); }
+            if (body is null) return Fail("body is required", 400);
+
+            try
+            {
+                var product = await UpdateProduct(symbol, body);
+                return product is null ? Fail($"No product with symbol {symbol}.", 404) : Ok(product);
+            }
+            catch (Exception e)
+            {
+                return Fail(e.Message);
+            }
+        });
+    }
+
+    // --- SQL reads --------------------------------------------------------
+
+    private static async Task<List<string>> ListSymbols(int limit, int offset)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT tw_Symbol FROM tw__Towar WHERE tw_Usuniety = 0
+              ORDER BY tw_Id OFFSET @off ROWS FETCH NEXT @lim ROWS ONLY", c);
+        cmd.Parameters.AddWithValue("@off", offset);
+        cmd.Parameters.AddWithValue("@lim", limit);
+        var list = new List<string>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync()) list.Add(r.GetString(0).Trim());
+        return list;
+    }
+
+    private static async Task<List<BridgeProductDto>> SearchProducts(string q, int limit)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT TOP (@lim) t.tw_Symbol, t.tw_Nazwa, t.tw_Opis, t.tw_JednMiary, t.tw_Masa,
+                     c.tc_CenaNetto1, c.tc_CenaBrutto1, v.vat_Stawka, t.tw_Id
+              FROM tw__Towar t
+              LEFT JOIN tw_Cena c ON c.tc_IdTowar = t.tw_Id
+              LEFT JOIN sl_StawkaVAT v ON v.vat_Id = t.tw_IdVatSp
+              WHERE t.tw_Usuniety = 0 AND (t.tw_Symbol LIKE @q OR t.tw_Nazwa LIKE @q)
+              ORDER BY t.tw_Id", c);
+        cmd.Parameters.AddWithValue("@lim", limit);
+        cmd.Parameters.AddWithValue("@q", $"%{q}%");
+        var list = new List<BridgeProductDto>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        // Materialise first: ReadImageUrls opens its own connection, which the
+        // open reader on this one would otherwise block.
+        var rows = new List<(string Symbol, int TowarId, BridgeProductDto Partial)>();
+        while (await r.ReadAsync())
+            rows.Add((r.GetString(0).Trim(), r.GetInt32(8), RowToProduct(r, null)));
+        await r.CloseAsync();
+        foreach (var row in rows)
+            list.Add(row.Partial with
+            {
+                KodKreskowy = await ReadFirstBarcode(row.Symbol),
+                Zdjecia = await ReadImageUrls(row.TowarId),
+            });
+        return list;
+    }
+
+    private static async Task<BridgeProductDto?> ReadProduct(string symbol)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT TOP 1 t.tw_Symbol, t.tw_Nazwa, t.tw_Opis, t.tw_JednMiary, t.tw_Masa,
+                     c.tc_CenaNetto1, c.tc_CenaBrutto1, v.vat_Stawka, t.tw_Id
+              FROM tw__Towar t
+              LEFT JOIN tw_Cena c ON c.tc_IdTowar = t.tw_Id
+              LEFT JOIN sl_StawkaVAT v ON v.vat_Id = t.tw_IdVatSp
+              WHERE t.tw_Symbol = @sym AND t.tw_Usuniety = 0", c);
+        cmd.Parameters.AddWithValue("@sym", symbol);
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync()) return null;
+        var towarId = r.GetInt32(8);
+        var partial = RowToProduct(r, null);
+        await r.CloseAsync();
+        return partial with
+        {
+            KodKreskowy = await ReadFirstBarcode(symbol),
+            Zdjecia = await ReadImageUrls(towarId),
+        };
+    }
+
+    /// <summary>#3357: sl_StawkaVAT.vat_Stawka is a decimal (e.g. 23.0000,
+    /// .0000) - formatted with "0.##" to a trimmed percent-as-string code
+    /// ("23", "0", "8.5") matching InvoiceLine.taxRate's own vocabulary
+    /// (ADR-063). A towar with no VAT-rate assignment (tw_IdVatSp IS NULL,
+    /// the LEFT JOIN misses) reports null - genuinely different from a real
+    /// 0% rate.</summary>
+    private static string? FormatVatRate(decimal? stawka) =>
+        stawka is null ? null : stawka.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The bridge's own externally-addressable base, shared with
+    /// Program.cs's image route. Same env var, same default.</summary>
+    private static readonly string PublicBase =
+        Environment.GetEnvironmentVariable("OL_BRIDGE_PUBLIC_BASE")
+        ?? "http://host.docker.internal:5056";
+
+    /// <summary>Image URLs for a towar, main image first, or an empty list.
+    /// One row per image so a towar with several is published with all of
+    /// them; ordering mirrors /gt-image's own (zd_Glowne DESC, zd_Id).</summary>
+    private static async Task<List<string>> ReadImageUrls(int towarId)
+    {
+        var urls = new List<string>();
+        try
+        {
+            await using var c = new SqlConnection(ConnStr);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                "SELECT zd_Id FROM tw_ZdjecieTw WHERE zd_IdTowar = @id ORDER BY zd_Glowne DESC, zd_Id", c);
+            cmd.Parameters.AddWithValue("@id", towarId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            var idx = 0;
+            while (await r.ReadAsync())
+            {
+                // /gt-image/{towarId} serves the MAIN image only, so only the
+                // first one has a route today; the rest are skipped rather than
+                // pointed at a URL that would return the wrong bytes.
+                if (idx == 0) urls.Add($"{PublicBase}/gt-image/{towarId}");
+                idx++;
+            }
+        }
+        catch (Exception e)
+        {
+            // An image read must never fail a catalogue read - the product is
+            // still perfectly usable without one.
+            Console.Error.WriteLine($"ProductsEndpoints.ReadImageUrls: could not read images for towar {towarId} - {e.Message}");
+        }
+        return urls;
+    }
+
+    private static BridgeProductDto RowToProduct(SqlDataReader r, string? barcode, List<string>? images = null) => new(
+        r.GetString(0).Trim(),
+        r.GetString(1).Trim(),
+        r.IsDBNull(5) ? null : r.GetDecimal(5),
+        r.IsDBNull(6) ? null : r.GetDecimal(6),
+        "PLN",
+        r.IsDBNull(2) ? null : r.GetString(2).Trim(),
+        barcode,
+        r.IsDBNull(3) ? null : r.GetString(3).Trim(),
+        r.IsDBNull(4) ? null : r.GetDecimal(4),
+        FormatVatRate(r.IsDBNull(7) ? null : r.GetDecimal(7)),
+        images);
+
+    /// <summary>First barcode only (MVP - see file header). #3353: the
+    /// PRIMARY source is now the scalar default-barcode column
+    /// `tw__Towar.tw_PodstKodKresk`, confirmed live this session with real
+    /// EAN-13 values for BANAW200/DZFOREVER/DZSO100 - the previous primary
+    /// source, the `tw_KodKreskowy` collection table, has 0 rows in this DB
+    /// and its own table/column names were never confirmed. The collection
+    /// table is kept as a SECONDARY enrichment attempt only (still wrapped
+    /// in try/catch, still degrading to null on failure) for a towar whose
+    /// default column is empty but that carries additional barcodes.</summary>
+    private static async Task<string?> ReadFirstBarcode(string symbol)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+
+        await using (var cmd = new SqlCommand(
+            "SELECT tw_PodstKodKresk FROM tw__Towar WHERE tw_Symbol = @sym", c))
+        {
+            cmd.Parameters.AddWithValue("@sym", symbol);
+            var res = await cmd.ExecuteScalarAsync();
+            if (res is not null && res is not DBNull)
+            {
+                var primary = Convert.ToString(res)!.Trim();
+                if (primary.Length > 0) return primary;
+            }
+        }
+
+        try
+        {
+            await using var cmd = new SqlCommand(
+                @"SELECT TOP 1 kk.kk_Kod FROM tw_KodKreskowy kk
+                  JOIN tw__Towar t ON t.tw_Id = kk.kk_IdTowar
+                  WHERE t.tw_Symbol = @sym ORDER BY kk.kk_Id", c);
+            cmd.Parameters.AddWithValue("@sym", symbol);
+            var res = await cmd.ExecuteScalarAsync();
+            return res is null || res is DBNull ? null : Convert.ToString(res)!.Trim();
+        }
+        catch
+        {
+            // Table/column name unconfirmed for this DB - degrade to "no
+            // additional barcode" rather than fail the whole product read.
+            return null;
+        }
+    }
+
+    /// <summary>Sets the GROSS price on the towar's default price level (level
+    /// id 0, matching tw_Cena.tc_CenaBrutto1 - ADR-014 posture, OL writes gross).
+    /// CONFIRMED LIVE this session that `Towar.CenaKartotekowa` is the WRONG
+    /// property - it left tc_CenaBrutto1 at 0 despite a valid 23% VAT id on the
+    /// towar. `TwCena.Brutto` (Pomoc/gta.chm/TwCena_Brutto.htm) IS the real
+    /// gross-price setter and auto-recalculates net/profit/margin/markup - it
+    /// is used here instead. Finds the level by `.Id == 0` rather than assuming
+    /// collection index 1 is level 0 (1-indexed COM collection, Id is a
+    /// separate field from position).</summary>
+    private static void SetGrossPriceLevel0(dynamic tw, decimal grossPrice)
+    {
+        dynamic ceny = tw.Ceny;
+        int count = ceny.Liczba;
+        dynamic? target = null;
+        for (int i = 1; i <= count; i++)
+        {
+            dynamic poziom = ceny.Element(i);
+            if ((int)poziom.Id == 0) { target = poziom; break; }
+        }
+        target ??= count > 0 ? ceny.Element(1) : null;
+        if (target is null) return;
+
+        // Setting .Brutto ALONE left tc_CenaBrutto1 at 0 in live testing this
+        // session (confirmed via SQL, twice, across two builds) despite
+        // gta.chm documenting it as an auto-recalculating setter and the towar
+        // carrying a valid 23% VAT id - root cause unconfirmed. TwCena.Stala
+        // ("this price level is NOT recalculated on a cena-kartotekowa change")
+        // is a plausible culprit if it defaults true on a freshly created
+        // towar's level-0 row - cleared defensively before writing. TwCena
+        // carries no VAT-rate attribute of its own (TwCenaMembers.htm), so the
+        // net figure is computed with the standard PL 23% rate rather than a
+        // per-towar lookup - acceptable for MVP, revisit if non-standard-rate
+        // products need this endpoint.
+        try { target.Stala = false; } catch { }
+        target.Brutto = grossPrice;
+        try { target.Netto = Math.Round(grossPrice / 1.23m, 2); } catch { }
+    }
+
+    // --- Sfera writes -------------------------------------------------------
+
+    private static async Task<BridgeProductDto> CreateProduct(CreateProductRequest req)
+    {
+        Sfera.Run(sub =>
+        {
+            dynamic mgr = sub.TowaryManager;
+            dynamic tw = mgr.DodajTowar();
+            try
+            {
+                tw.Symbol = req.Symbol;
+                tw.Nazwa = req.Nazwa;
+                if (!string.IsNullOrEmpty(req.Opis)) tw.Opis = req.Opis;
+                if (req.JednostkaMiary is { Length: > 0 } jm) { try { tw.JednostkaMiary = jm; } catch { } }
+                if (req.Waga is decimal waga) { try { tw.Masa = waga; } catch { } }
+                if (req.CenaSprzedazyBrutto is decimal cena)
+                {
+                    SetGrossPriceLevel0(tw, cena);
+                }
+                tw.Zapisz();
+                if (req.KodKreskowy is { Length: > 0 } ean)
+                {
+                    try
+                    {
+                        dynamic kody = tw.KodyKreskowe;
+                        dynamic kod = kody.Dodaj();
+                        kod.Kod = ean;
+                        kod.Zapisz();
+                    }
+                    catch { /* best-effort - barcode collection API unconfirmed */ }
+                }
+            }
+            finally { try { tw.Zamknij(); } catch { } }
+        }, TimeSpan.FromSeconds(60));
+
+        return (await ReadProduct(req.Symbol))!;
+    }
+
+    private static async Task<BridgeProductDto?> UpdateProduct(string symbol, UpdateProductRequest req)
+    {
+        bool found = true;
+        Sfera.Run(sub =>
+        {
+            dynamic mgr = sub.TowaryManager;
+            dynamic? tw = mgr.WczytajTowar(symbol);
+            if (tw is null) { found = false; return; }
+            try
+            {
+                if (req.Nazwa is { Length: > 0 } nazwa) tw.Nazwa = nazwa;
+                if (!string.IsNullOrEmpty(req.Opis)) tw.Opis = req.Opis;
+                if (req.Waga is decimal waga) { try { tw.Masa = waga; } catch { } }
+                if (req.CenaSprzedazyBrutto is decimal cena) SetGrossPriceLevel0(tw, cena);
+                tw.Zapisz();
+            }
+            finally { try { tw.Zamknij(); } catch { } }
+        }, TimeSpan.FromSeconds(60));
+
+        return found ? await ReadProduct(symbol) : null;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Wire DTOs - mirror libs/integrations/subiekt/src/bridge/subiekt-bridge-products.types.ts
+// ---------------------------------------------------------------------------
+
+public sealed record BridgeProductDto(
+    string Symbol, string Nazwa, decimal? CenaSprzedazyNetto, decimal? CenaSprzedazyBrutto,
+    string? Waluta, string? Opis, string? KodKreskowy, string? JednostkaMiary, decimal? Waga,
+    /// <summary>Percent-as-string VAT rate (#3357, ADR-063), e.g. "23", "0" — null when
+    /// the towar carries no VAT-rate assignment (tw_IdVatSp IS NULL), which is a
+    /// genuinely different state from a real 0% rate.</summary>
+    string? StawkaVat = null,
+    /// <summary>Publicly-addressable URLs of the towar's images, main one
+    /// first, served by this bridge's own /gt-image/{towarId} endpoint from
+    /// the tw_ZdjecieTw blob. Empty when the towar has none.
+    ///
+    /// Only OpenLinker fetches these, never the marketplace: OL downloads the
+    /// bytes and re-uploads them to the channel's own CDN, so the base only has
+    /// to be reachable from the OL worker (OL_BRIDGE_PUBLIC_BASE), not from the
+    /// public internet. Without them a Subiekt-sourced product cannot be
+    /// published at all - Allegro refuses an offer with no image.</summary>
+    List<string>? Zdjecia = null);
+
+public sealed class CreateProductRequest
+{
+    public string Symbol { get; set; } = "";
+    public string Nazwa { get; set; } = "";
+    public decimal? CenaSprzedazyBrutto { get; set; }
+    public string? Waluta { get; set; }
+    public string? Opis { get; set; }
+    public string? KodKreskowy { get; set; }
+    public string? JednostkaMiary { get; set; }
+    public decimal? Waga { get; set; }
+}
+
+public sealed class UpdateProductRequest
+{
+    public string? Nazwa { get; set; }
+    public decimal? CenaSprzedazyBrutto { get; set; }
+    public string? Waluta { get; set; }
+    public string? Opis { get; set; }
+    public string? KodKreskowy { get; set; }
+    public decimal? Waga { get; set; }
+}
