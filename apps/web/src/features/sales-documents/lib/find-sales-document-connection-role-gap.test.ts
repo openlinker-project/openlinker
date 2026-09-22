@@ -6,7 +6,9 @@ import type { Connection } from '../../connections';
 import {
   describeSalesDocumentConnectionRoleGap,
   findSalesDocumentConnectionRoleGap,
+  findSalesDocumentConnectionRoleGapFromRows,
 } from './find-sales-document-connection-role-gap';
+import { deriveSalesDocumentRows } from './derive-sales-document-rows';
 
 function makeConnection(overrides: Partial<Connection> = {}): Connection {
   return {
@@ -52,6 +54,24 @@ describe('findSalesDocumentConnectionRoleGap', () => {
     // needs to answer the role question.
     const connections = [makeConnection({ status: 'disabled', config: {} })];
     expect(findSalesDocumentConnectionRoleGap('conn_1', connections)).toBe('e-paragony Sandbox');
+  });
+});
+
+describe('findSalesDocumentConnectionRoleGapFromRows', () => {
+  it('agrees with findSalesDocumentConnectionRoleGap given the same rows', () => {
+    const connections = [makeConnection({ config: {} })];
+    const rows = deriveSalesDocumentRows(connections);
+    expect(findSalesDocumentConnectionRoleGapFromRows('conn_1', connections, rows)).toBe(
+      findSalesDocumentConnectionRoleGap('conn_1', connections),
+    );
+  });
+
+  it('returns null when the pre-derived rows already carry a role for the connection', () => {
+    const connections = [
+      makeConnection({ config: { salesDocument: { documentKind: 'invoice' } } }),
+    ];
+    const rows = deriveSalesDocumentRows(connections);
+    expect(findSalesDocumentConnectionRoleGapFromRows('conn_1', connections, rows)).toBeNull();
   });
 });
 

@@ -42,16 +42,20 @@
  * @module apps/web/src/features/sales-documents/lib
  */
 import type { Connection } from '../../connections';
+import type { SalesDocumentRow } from '../api/sales-documents.types';
 import { deriveSalesDocumentRows } from './derive-sales-document-rows';
 
 /**
- * `null` when `connectionId` is empty, names a connection this list does not
- * know about, or already carries a role. Otherwise the connection's display
- * name, to be named in the pick-time warning.
+ * Same answer as {@link findSalesDocumentConnectionRoleGap}, but takes an
+ * already-derived `rows` list instead of deriving one internally. A caller
+ * checking a gap for several connections in one render (e.g. one per
+ * template slot) should derive `rows` once and call this variant per
+ * connection, rather than re-deriving the whole list on every call.
  */
-export function findSalesDocumentConnectionRoleGap(
+export function findSalesDocumentConnectionRoleGapFromRows(
   connectionId: string,
   connections: readonly Connection[],
+  rows: readonly SalesDocumentRow[],
 ): string | null {
   if (connectionId === '') return null;
 
@@ -62,10 +66,32 @@ export function findSalesDocumentConnectionRoleGap(
   // re-reading `connection.config.salesDocument.documentKind` inline, so a
   // change to that coercion cannot make this helper and the country-default
   // picker / destination-warnings list disagree about the same connection.
-  const row = deriveSalesDocumentRows(connections).find((r) => r.connectionId === connectionId);
+  const row = rows.find((r) => r.connectionId === connectionId);
   if ((row?.documentKind ?? null) !== null) return null;
 
   return connection.name;
+}
+
+/**
+ * `null` when `connectionId` is empty, names a connection this list does not
+ * know about, or already carries a role. Otherwise the connection's display
+ * name, to be named in the pick-time warning.
+ *
+ * Derives `deriveSalesDocumentRows(connections)` internally on every call —
+ * fine for a single pick-time check per render, but a caller checking a gap
+ * for several connections (e.g. once per row inside a `.map()`) should use
+ * {@link findSalesDocumentConnectionRoleGapFromRows} with a hoisted `rows`
+ * instead, to avoid re-deriving the whole connection list per row.
+ */
+export function findSalesDocumentConnectionRoleGap(
+  connectionId: string,
+  connections: readonly Connection[],
+): string | null {
+  return findSalesDocumentConnectionRoleGapFromRows(
+    connectionId,
+    connections,
+    deriveSalesDocumentRows(connections),
+  );
 }
 
 /** The pick-time warning sentence for a connection {@link findSalesDocumentConnectionRoleGap} named. */

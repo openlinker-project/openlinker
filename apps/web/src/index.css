@@ -22147,6 +22147,9 @@ legend.analytics-settings-dialog__label {
 .template-card__preview {
   margin-bottom: var(--space-3);
 }
+.rule-card__role-gap {
+  margin-top: var(--space-1);
+}
 
 .ack-row {
   display: flex;

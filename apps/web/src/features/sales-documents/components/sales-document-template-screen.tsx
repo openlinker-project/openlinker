@@ -36,8 +36,9 @@ import { useSalesDocumentTemplateQuery } from '../hooks/use-sales-document-templ
 import { useAdoptSalesDocumentTemplateMutation } from '../hooks/use-adopt-sales-document-template-mutation';
 import {
   describeSalesDocumentConnectionRoleGap,
-  findSalesDocumentConnectionRoleGap,
+  findSalesDocumentConnectionRoleGapFromRows,
 } from '../lib/find-sales-document-connection-role-gap';
+import { deriveSalesDocumentRows } from '../lib/derive-sales-document-rows';
 
 interface SalesDocumentTemplateScreenProps {
   country: string;
@@ -62,6 +63,10 @@ export function SalesDocumentTemplateScreen({
   }
 
   const connections = connectionsQuery.data ?? [];
+  // Derived once here rather than inside the `.map()` below — the helper
+  // itself would otherwise re-derive the whole connection list once per
+  // template rule (O(rules × connections) per render).
+  const salesDocumentRows = deriveSalesDocumentRows(connections);
 
   return (
     <details className="template-accordion">
@@ -94,9 +99,10 @@ export function SalesDocumentTemplateScreen({
             // `find-sales-document-connection-role-gap.ts`. A role-less pick
             // is named here rather than discovered later on the
             // destination-warnings list.
-            const roleGap = findSalesDocumentConnectionRoleGap(
+            const roleGap = findSalesDocumentConnectionRoleGapFromRows(
               selections[rule.slot] ?? '',
               connections,
+              salesDocumentRows,
             );
             return (
               <div key={rule.slot} className="rule-card">
@@ -121,9 +127,8 @@ export function SalesDocumentTemplateScreen({
                 </div>
                 {roleGap !== null ? (
                   <p
-                    className="muted-text"
+                    className="muted-text rule-card__role-gap"
                     data-testid={`template-role-gap-${rule.slot}`}
-                    style={{ marginTop: 'var(--space-1)' }}
                   >
                     {describeSalesDocumentConnectionRoleGap(roleGap)}
                   </p>
