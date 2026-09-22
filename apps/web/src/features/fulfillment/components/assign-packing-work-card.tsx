@@ -7,14 +7,18 @@
  * phone as on a desk ("who packs this?") and the answer needs the same four
  * facts.
  *
- * ## Why this screen does not reuse `FulfillmentWorklistRow` / `FulfillmentTaskCard`
+ * ## Why it replaced `FulfillmentWorklistRow` rather than reusing it
  *
- * Those belong to the EXECUTION worklist (#2410), where a location id, a
- * delivery method and a variant id are what an operator is working from. On
- * the assign board they are noise, and on a phone the generic card's
- * label/value stack rendered them as a screenful of raw internal ids —
- * `ol_location_bab164c3…`, `ol_variant_db188778…` — one card filling the
- * viewport. A supervisor deciding who packs a box does not read variant ids.
+ * That row belonged to the execution worklist (#2410), where a location id, a
+ * delivery method and a variant id are what an operator works from. Here they
+ * are noise, and on a phone its label/value stack rendered them as a
+ * screenful of raw internal ids — `ol_location_bab164c3…`,
+ * `ol_variant_db188778…` — one card filling the viewport. A supervisor
+ * deciding who packs a box does not read variant ids.
+ *
+ * The worklist has since been merged into this screen and the row deleted, so
+ * this is the only task card on it. `FulfillmentTaskCard` survives separately
+ * for the order-detail panel, which answers a different question again.
  *
  * ## It states what it does NOT know
  *
@@ -32,6 +36,7 @@ import { formatAbsoluteTime } from '../../../shared/format/format-date';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
+import { fulfillmentStatusLabel } from '../lib/fulfillment-task.copy';
 
 export interface AssignPackingWorkCardProps {
   readonly task: FulfillmentTask;
@@ -56,7 +61,13 @@ function badgeFor(task: FulfillmentTask): { tone: StatusBadgeTone; label: string
     return { tone: 'warning', label: formatAbsoluteTime(task.dispatchByAt) };
   }
   if (task.status !== 'open') {
-    return { tone: 'neutral', label: task.status };
+    // Humanised, never raw. `status` is a server vocabulary the FE
+    // deliberately does not mirror (`fulfillment.types.ts`), so an unknown
+    // value still reaches the screen — and `awaiting_wave` on a badge is the
+    // system's word, not the operator's. The worklist this screen absorbed
+    // ran every status through this helper; the card inherits that rather
+    // than losing it with the component.
+    return { tone: 'neutral', label: fulfillmentStatusLabel(task.status) };
   }
   return null;
 }

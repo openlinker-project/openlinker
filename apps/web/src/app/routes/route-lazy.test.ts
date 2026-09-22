@@ -104,8 +104,13 @@ const lazyRoutes = collectLazyRoutes([
  * Merged with main (#3261): `/inventory/duplicate-positions` diagnostics
  * page added one more authenticated lazy route, bumping the baseline this
  * branch merges onto from 66 to 67 — net +2 over that gives 69.
+ *
+ * The fulfilment screen merge: `/fulfillment` and `/fulfillment/assign` were
+ * two lazy routes over two pages and are now one lazy route plus an inline
+ * `<Navigate>` shim on the old path. A redirect loads nothing, so it joins
+ * the eager list above rather than this count — net −1, from 70 to 69.
  */
-const EXPECTED_LAZY_ROUTE_COUNT = 70;
+const EXPECTED_LAZY_ROUTE_COUNT = 69;
 
 describe('route lazy contract', () => {
   it(`the registered route tree contains exactly ${EXPECTED_LAZY_ROUTE_COUNT} lazy routes`, () => {

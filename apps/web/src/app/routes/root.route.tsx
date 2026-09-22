@@ -14,7 +14,6 @@ import type { RouteObject } from 'react-router-dom';
 import { plugins } from '../../plugins';
 import { AuthenticatedAppLayout } from '../layouts/authenticated-app-layout';
 import { adaptersRoute } from './adapters.route';
-import { assignPackingWorkRoute } from './assign-packing-work.route';
 import { analyticsIndexRoute, analyticsLegacyRedirectRoute } from './analytics.route';
 import { connectionDetailRoute } from './connection-detail.route';
 import { connectionCategoryMappingsRoute } from './connection-category-mappings.route';
@@ -46,7 +45,10 @@ import {
 } from './prompt-templates-legacy-redirects.route';
 import { automationsRoute } from './automations.route';
 import { returnsRoute } from './returns.route';
-import { fulfillmentRoute } from './fulfillment.route';
+import {
+  assignPackingWorkLegacyRedirectRoute,
+  fulfillmentRoute,
+} from './fulfillment.route';
 import { operationalSettingsRoute } from './operational-settings.route';
 import { salesDocumentsRoute } from './sales-documents.route';
 import { sourcingRulesRoute } from './sourcing-rules.route';
@@ -75,7 +77,7 @@ export const coreChildren: RouteObject[] = [
   shipmentsRoute,
   returnsRoute,
   fulfillmentRoute,
-  assignPackingWorkRoute,
+  assignPackingWorkLegacyRedirectRoute,
   automationsRoute,
   invoicesRoute,
   salesDocumentsListRoute,
