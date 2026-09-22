@@ -238,6 +238,7 @@
         <button class="mockup-pill" data-demo-state-btn="hold-form-open" aria-pressed="false" type="button">Hold-reason form open</button>
         <button class="mockup-pill" data-demo-state-btn="drag-over" aria-pressed="false" type="button">Card dragged over a lane</button>
         <button class="mockup-pill" data-demo-state-btn="assignment-only" aria-pressed="false" type="button">Pulled out of self-serve</button>
+        <button class="mockup-pill" data-demo-state-btn="pickable" aria-pressed="false" type="button">Back in self-serve (pickable)</button>
       </div>
 
       <div class="metric-row">
@@ -640,7 +641,12 @@
             checkbox.dispatchEvent(new Event('change'));
           }
         }
-        // 'default' needs nothing beyond the reset above.
+        // 'default' and 'pickable' need nothing beyond the reset above —
+        // resetDemo() already re-checks the pickable box, which is the same
+        // real interaction the 'pickable' data-state is produced by (#3338
+        // review). Two switcher entries point at one board state on
+        // purpose: 'default' documents the board at rest, 'pickable' gives
+        // that state's own data-state value a discoverable, named route.
       }
 
       demoBtns.forEach(function (btn) {
