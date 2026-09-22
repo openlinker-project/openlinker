@@ -100,17 +100,6 @@ export const ParcelVerificationRefusalValues = [
    * rather than clamped afterwards.
    */
   'over-packed',
-  /**
-   * ADR-074 / #3336 / #3337 / #3341: the parcel is locked to a different
-   * packer. Declared here and produced only by `apps/api/src/bench` — the
-   * same asymmetry `'not-packable'` documents above, since the eligibility
-   * predicate reads `isClaimableByViewer` in `bench-work-eligibility.ts`
-   * rather than anything in this context. Kept distinct from `'not-packable'`
-   * so the list's own "assigned to another packer" copy and the write's
-   * refusal state the same cause, rather than the write falling back to the
-   * viewer-independent D2 wording for a viewer-dependent reason.
-   */
-  'assigned-to-another-packer',
 ] as const;
 
 export type ParcelVerificationRefusal = (typeof ParcelVerificationRefusalValues)[number];
