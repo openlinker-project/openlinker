@@ -56,7 +56,18 @@ describe('Order column sort (integration)', () => {
       orderSnapshot: { items: [] },
     });
 
-    const { items } = await repository.findMany({ sort: 'total', dir: 'desc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — narrows the population an unfiltered
+    // `findMany` would otherwise read the whole `order_records` table
+    // through, which is a strict improvement regardless of mechanism: a row
+    // from another file, if one ever leaked in, would land in an
+    // unpredictable position and break this exact-array assertion. Note this
+    // scoping alone does not make ties on `createdAt` deterministic — see
+    // `applySort`'s `internalOrderId` tiebreak, which is the other half of
+    // the fix for #3316.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'total', dir: 'desc' },
+      PAGE,
+    );
 
     expect(items.map((o) => o.internalOrderId)).toEqual([
       pricey.internalOrderId,
@@ -78,7 +89,11 @@ describe('Order column sort (integration)', () => {
       orderSnapshot: { items: [], totals: { total: 'not-a-number', currency: 'PLN' } },
     });
 
-    const { items } = await repository.findMany({ sort: 'total', dir: 'desc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — see the note on the first `it` in this file.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'total', dir: 'desc' },
+      PAGE,
+    );
 
     expect(items.map((o) => o.internalOrderId)).toEqual([
       valid.internalOrderId,
@@ -97,7 +112,11 @@ describe('Order column sort (integration)', () => {
       orderSnapshot: { items: [], totals: { total: 199.99, currency: 'PLN' } },
     });
 
-    const { items } = await repository.findMany({ sort: 'total', dir: 'asc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — see the note on the first `it` in this file.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'total', dir: 'asc' },
+      PAGE,
+    );
 
     expect(items.map((o) => o.internalOrderId)).toEqual([
       cheap.internalOrderId,
@@ -122,7 +141,11 @@ describe('Order column sort (integration)', () => {
       },
     });
 
-    const { items } = await repository.findMany({ sort: 'items', dir: 'desc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — see the note on the first `it` in this file.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'items', dir: 'desc' },
+      PAGE,
+    );
 
     expect(items.map((o) => o.internalOrderId)).toEqual([
       three.internalOrderId,
@@ -145,7 +168,11 @@ describe('Order column sort (integration)', () => {
       orderSnapshot: { items: [] },
     });
 
-    const { items } = await repository.findMany({ sort: 'customer', dir: 'asc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — see the note on the first `it` in this file.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'customer', dir: 'asc' },
+      PAGE,
+    );
 
     expect(items.map((o) => o.internalOrderId)).toEqual([
       kowalski.internalOrderId, // 'kowalski' < 'nowak' (lowercased)
@@ -177,7 +204,11 @@ describe('Order column sort (integration)', () => {
       syncStatus: [{ destinationConnectionId: SOURCE, status: 'pending' }],
     });
 
-    const { items } = await repository.findMany({ sort: 'status', dir: 'asc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — see the note on the first `it` in this file.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'status', dir: 'asc' },
+      PAGE,
+    );
 
     expect(items.map((o) => o.internalOrderId)).toEqual([
       needsAttention.internalOrderId, // 0
@@ -202,7 +233,11 @@ describe('Order column sort (integration)', () => {
       orderSnapshot: { items: [] },
     });
 
-    const { items } = await repository.findMany({ sort: 'payment', dir: 'asc' }, PAGE);
+    // Scoped to `SOURCE` (#3316) — see the note on the first `it` in this file.
+    const { items } = await repository.findMany(
+      { sourceConnectionId: SOURCE, sort: 'payment', dir: 'asc' },
+      PAGE,
+    );
 
     // Alphabetical: awaiting < paid; the order with no paymentStatus sorts last.
     expect(items.map((o) => o.internalOrderId)).toEqual([
