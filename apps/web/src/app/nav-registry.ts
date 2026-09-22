@@ -32,17 +32,29 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
     kind: 'live',
     label: 'Operations',
     items: [
-      { to: '/', label: 'Analytics', end: true },
-      { to: '/insights', label: 'Insights' },
-      { to: '/orders', label: 'Orders', countKey: 'orders' },
+      // Role-gated (#3221): the primary read (`GET /analytics/sales` et al.)
+      // is `@Roles('admin', 'operator', 'viewer')` on every analytics
+      // controller — a `packer` (empty `ROLE_PERMISSIONS` grant, #2413) 403s
+      // on the first request the page makes.
+      { to: '/', label: 'Analytics', end: true, requiresRole: ['admin', 'operator', 'viewer'] },
+      // Role-gated (#3221): its first read, `GET /connections`, is
+      // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
+      { to: '/insights', label: 'Insights', requiresRole: ['admin', 'operator', 'viewer'] },
+      // Role-gated (#3221): `GET /orders` is
+      // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
+      { to: '/orders', label: 'Orders', countKey: 'orders', requiresRole: ['admin', 'operator', 'viewer'] },
       { to: '/products', label: 'Products' },
-      { to: '/customers', label: 'Customers', countKey: 'customers' },
+      // Role-gated (#3221): `GET /customers` is
+      // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
+      { to: '/customers', label: 'Customers', countKey: 'customers', requiresRole: ['admin', 'operator', 'viewer'] },
       { to: '/listings', label: 'Listings', countKey: 'listings' },
       { to: '/shipments', label: 'Shipments' },
       // No `countKey`: the #2406 worklist read exposes no counts endpoint the
       // nav could read, and a badge is worse absent than wrong (the `/returns`
       // precedent one line down).
-      { to: '/fulfillment', label: 'Fulfilment' },
+      // Role-gated (#3221): `GET /fulfillment-work` is
+      // `@Roles('admin', 'operator', 'viewer')` — same 403 for `packer`.
+      { to: '/fulfillment', label: 'Fulfilment', requiresRole: ['admin', 'operator', 'viewer'] },
       // No `countKey`: the #2334 returns contract exposes no counts endpoint
       // the nav could read, and a badge is worse absent than wrong.
       { to: '/returns', label: 'Returns' },
@@ -54,7 +66,11 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       // entry gets a 403 on the first request the page makes. `automations:read`
       // is held by exactly admin + operator in `ROLE_PERMISSIONS`.
       { to: '/automations', label: 'Automations', requiresPermission: 'automations:read' },
-      { to: '/invoices', label: 'Invoices' },
+      // Role-gated (#3221): its primary read, `GET /invoices`
+      // (`InvoicingController`), is `@Roles('admin', 'operator', 'viewer')` —
+      // same 403 for `packer`. Every other read on the page carries the same
+      // guard, so this is not a partial fix.
+      { to: '/invoices', label: 'Invoices', requiresRole: ['admin', 'operator', 'viewer'] },
       // Role-gated (#3108): the bench's own API is
       // `@Roles('admin', 'operator', 'packer')` on every route
       // (`BenchWorkController` et al.) — everyone except `viewer` — so the
