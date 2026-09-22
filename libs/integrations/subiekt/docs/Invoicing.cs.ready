@@ -86,6 +86,27 @@ public static class Invoicing
     private static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
     private static string Trim50(string s) => s.Length <= 50 ? s : s.Substring(0, 50);
 
+    /// <summary>#3440: dok_NrPelnyOryg is varchar(30), but the invoice/correction
+    /// idempotency key core hands us (`invoice:{connectionId}:{orderId}`, ~90
+    /// chars) is far longer — naive Trim30 silently discarded the order id (the
+    /// only part that varies per invoice), collapsing every second document for
+    /// a connection onto the first one ever issued. Hash rather than truncate:
+    /// SHA-256 hex, first 30 chars — deterministic (a genuine retry of the same
+    /// key still resolves to the same document, preserving the fiscal-safety
+    /// idempotency guarantee), and collision probability across any realistic
+    /// order volume is astronomically small (30 hex chars = 120 bits of hash
+    /// space). Applied ONLY where the key being stored/looked-up is this long,
+    /// semantically-structured idempotency key - NOT to FindZkIdByOrderRef's
+    /// plain order-id lookup, which is short enough on its own and was confirmed
+    /// unaffected (#3440 investigation).</summary>
+    private static string ReduceIdempotencyKey(string key)
+    {
+        if (key.Length <= 30) return key;
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(key));
+        return Convert.ToHexString(hash).Substring(0, 30);
+    }
+
     /// <summary>sl_StawkaVAT.vat_Id for a percent-as-string rate code (e.g. "23"). Sfera's
     /// SuPozycja.VatId (writable) is the only way to set a line's VAT rate -
     /// VatProcent is read-only (Pomoc/gta.chm/SuPozycja_VatProcent.htm).</summary>
@@ -110,7 +131,7 @@ public static class Invoicing
         await c.OpenAsync();
         await using var cmd = new SqlCommand(
             "SELECT TOP 1 dok_Id, dok_NrPelny FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_Typ = @t", c);
-        cmd.Parameters.AddWithValue("@k", Trim30(key));
+        cmd.Parameters.AddWithValue("@k", ReduceIdempotencyKey(key));
         cmd.Parameters.AddWithValue("@t", dokTyp);
         await using var r = await cmd.ExecuteReaderAsync();
         if (!await r.ReadAsync()) return null;
@@ -136,7 +157,7 @@ public static class Invoicing
         await c.OpenAsync();
         await using var cmd = new SqlCommand(
             "SELECT TOP 1 dok_Id, dok_NrPelny, dok_StatusKSeF, dok_NumerKSeF FROM dok__Dokument WHERE dok_NrPelnyOryg = @k", c);
-        cmd.Parameters.AddWithValue("@k", Trim30(key));
+        cmd.Parameters.AddWithValue("@k", ReduceIdempotencyKey(key));
         await using var r = await cmd.ExecuteReaderAsync();
         if (!await r.ReadAsync()) return null;
         var id = r.GetInt32(0);
@@ -174,7 +195,7 @@ public static class Invoicing
         await c.OpenAsync();
         await using var cmd = new SqlCommand(
             "SELECT TOP 1 dok_Id, dok_NrPelny FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_NrPelny LIKE 'WZ %' ORDER BY dok_Id DESC", c);
-        cmd.Parameters.AddWithValue("@k", Trim30(key));
+        cmd.Parameters.AddWithValue("@k", ReduceIdempotencyKey(key));
         await using var r = await cmd.ExecuteReaderAsync();
         if (!await r.ReadAsync()) return null;
         return (r.GetInt32(0), r.GetString(1).Trim());
@@ -260,7 +281,7 @@ public static class Invoicing
             try
             {
                 wz.NaPodstawie(zkId.Value);
-                if (key != "") wz.NumerOryginalny = Trim30(key);
+                if (key != "") wz.NumerOryginalny = ReduceIdempotencyKey(key);
                 wz.Zapisz();
                 wzNumer = Convert.ToString(wz.NumerPelny) ?? "";
                 Console.Error.WriteLine($"Invoicing.EnsureWarehouseRelease: released stock via {wzNumer} for ZK {zkId.Value}.");
@@ -361,7 +382,7 @@ public static class Invoicing
                     try { d.KasaId = ksaId; } catch { } // dks_Kasa.ks_Id
                 }
 
-                if (key != "") d.NumerOryginalny = Trim30(key);
+                if (key != "") d.NumerOryginalny = ReduceIdempotencyKey(key);
 
                 d.Zapisz();
                 docId = (int)d.Identyfikator;
@@ -481,7 +502,7 @@ public static class Invoicing
                 }
 
                 if (req.Przyczyna != "") d.Uwagi = req.Przyczyna;
-                if (req.IdempotencyKey != "") d.NumerOryginalny = Trim30(req.IdempotencyKey);
+                if (req.IdempotencyKey != "") d.NumerOryginalny = ReduceIdempotencyKey(req.IdempotencyKey);
 
                 d.Zapisz();
                 docId = (int)d.Identyfikator;
