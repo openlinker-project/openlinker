@@ -29,6 +29,7 @@ export const benchParcelCopy = {
   header: {
     orderLabel: 'Order',
     buyerLabel: 'Buyer',
+    parcelLabel: 'Parcel',
     /** #3409 (epic #3401) — a deliberate reversal of the original PII exclusion. */
     totalLabel: 'Total',
     carrierLabel: 'Carrier',
@@ -36,6 +37,11 @@ export const benchParcelCopy = {
     /** D3. Always shown, on every state of this surface. */
     parcelOf: (index: number, total: number): string =>
       `Parcel ${String(index)} of ${String(total)}`,
+    /** #3418 (epic #3401) — the order-head's own status pill, one per state. */
+    statusInProgress: 'In progress',
+    statusHeld: 'On hold',
+    statusCancelled: 'Cancelled',
+    statusPacked: 'Packed',
     /** D3's second half: one box's contents are never presented as the order. */
     thisBoxOnly:
       'Everything below belongs in this box only. The other boxes of this order are being handled somewhere else.',

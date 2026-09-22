@@ -441,6 +441,29 @@ describe('BenchParcelView (#2418)', () => {
     expect(screen.getByText(/belongs in this box only/i)).toBeInTheDocument();
   });
 
+  // ── #3418 (epic #3401) — the order-head status pill ────────────────────
+  describe('the order-head status pill', () => {
+    it('reads "In progress" for an open, un-refused box', async () => {
+      mount(parcel({ refusal: null, closedAt: null }));
+      expect(await screen.findByText('In progress')).toBeInTheDocument();
+    });
+
+    it('reads "On hold" for a held box', async () => {
+      mount(parcel({ refusal: 'held', holdReason: 'payment_review', closedAt: null }));
+      expect(await screen.findByText('On hold')).toBeInTheDocument();
+    });
+
+    it('reads "Cancelled" for a cancelled box', async () => {
+      mount(parcel({ refusal: 'cancelled', closedAt: null }));
+      expect(await screen.findByText('Cancelled')).toBeInTheDocument();
+    });
+
+    it('reads "Packed" for a closed, un-refused box', async () => {
+      mount(parcel({ refusal: null, closedAt: '2026-09-04T14:36:00Z' }));
+      expect(await screen.findByText('Packed')).toBeInTheDocument();
+    });
+  });
+
   it('should refuse a box that must not be packed, in the same words as the list', async () => {
     mount(parcel({ refusal: 'held', holdReason: 'payment_review' }));
 

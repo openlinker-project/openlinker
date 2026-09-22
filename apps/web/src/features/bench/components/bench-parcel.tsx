@@ -499,6 +499,15 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
             <span className="bench-parcel__buyer">{parcel.buyerName}</span>
           </div>
         )}
+        {/* D3. Always shown, on every state — never conditional like the
+            fields below it. Rendered as a FIELD (#3418), matching the
+            mockup's own Order/Buyer/Parcel/Total/Carrier/Ship-by row, rather
+            than the badge it was before; the parcel-index STATUS pill is the
+            state signal now, so a badge here would duplicate that role. */}
+        <div className="bench-parcel__identity">
+          <span className="eyebrow">{benchParcelCopy.header.parcelLabel}</span>
+          <span>{benchParcelCopy.header.parcelOf(parcel.parcelIndex, parcel.parcelTotal)}</span>
+        </div>
         {/* #3409 (epic #3401) — a deliberate PII-exclusion reversal. */}
         {parcel.totalAmount === null ? null : (
           <div className="bench-parcel__identity">
@@ -520,10 +529,28 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
             <span>{describeBenchDeadline(parcel.dispatchByAt).headline}</span>
           </div>
         )}
-        {/* D3. Rendered on every state of this surface, never conditionally. */}
-        <StatusBadge tone="info">
-          {benchParcelCopy.header.parcelOf(parcel.parcelIndex, parcel.parcelTotal)}
-        </StatusBadge>
+        <div className="bench-parcel__header-spacer" />
+        {/* #3418 — the order-head's own status pill. `pulse` only on the
+            genuinely in-progress state, matching the mockup's own
+            `status-badge--pulse`; a held/cancelled/packed box is a settled
+            fact, not something happening right now. */}
+        {parcel.refusal === 'held' ? (
+          <StatusBadge tone="error" withDot>
+            {benchParcelCopy.header.statusHeld}
+          </StatusBadge>
+        ) : parcel.refusal === 'cancelled' ? (
+          <StatusBadge tone="neutral" withDot>
+            {benchParcelCopy.header.statusCancelled}
+          </StatusBadge>
+        ) : closed ? (
+          <StatusBadge tone="success" withDot>
+            {benchParcelCopy.header.statusPacked}
+          </StatusBadge>
+        ) : (
+          <StatusBadge tone="warning" pulse>
+            {benchParcelCopy.header.statusInProgress}
+          </StatusBadge>
+        )}
         <Button tone="ghost" onClick={onClose}>
           {benchParcelCopy.header.backAction}
         </Button>

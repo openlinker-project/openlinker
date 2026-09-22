@@ -24611,6 +24611,12 @@ legend.analytics-settings-dialog__label {
   gap: 2px;
 }
 
+/* #3418 (epic #3401) — pushes the status pill and the back control to the
+   row's trailing edge, matching the mockup's `.order-head__spacer`. */
+.bench-parcel__header-spacer {
+  flex: 1;
+}
+
 .bench-parcel__reference {
   font-family: var(--font-mono);
   font-size: 1.5rem;
