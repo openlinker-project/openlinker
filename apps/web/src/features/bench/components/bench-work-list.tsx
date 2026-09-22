@@ -35,6 +35,7 @@ import { useBenchWorkQuery } from '../hooks/use-bench-work-query';
 import { useScannerInput } from '../hooks/use-scanner-input';
 import { groupBenchWork, matchesBenchSearch } from '../lib/bench-work-presentation';
 import { benchWorkCopy } from '../lib/bench-work.copy';
+import { BenchMetricRow } from './bench-metric-row';
 import { BenchWorkEmpty } from './bench-work-empty';
 import { BenchWorkRow } from './bench-work-row';
 
@@ -160,6 +161,10 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
       </header>
 
       <p className="bench-work-list__scope">{benchWorkCopy.scope.note}</p>
+
+      {/* #3413 (epic #3401). A background fact, so it renders below the header
+          and above the search rather than displacing either. */}
+      <BenchMetricRow />
 
       <div className="bench-work-list__search">
         <label htmlFor="bench-search">{benchWorkCopy.search.label}</label>

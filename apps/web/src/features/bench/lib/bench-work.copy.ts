@@ -28,6 +28,14 @@ export const benchWorkCopy = {
     fallbackTitle: 'Packing work at this bench',
     orderingNote: 'Most urgent first',
   },
+  /** #3413 (epic #3401) — packed-today, its trend, and the cross-bench backlog. */
+  metrics: {
+    packedTodayLabel: 'Packed today',
+    toPackLabel: 'To pack — all benches',
+    trendFlat: 'same as yesterday',
+    trendUp: (delta: number): string => `+${String(delta)} vs yesterday`,
+    trendDown: (delta: number): string => `-${String(delta)} vs yesterday`,
+  },
   scope: {
     /**
      * D8, said to the packer: this list is what was routed here, not every
