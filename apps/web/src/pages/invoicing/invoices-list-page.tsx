@@ -636,7 +636,6 @@ export function InvoicesListPage(): ReactElement {
         <Select
           data-testid="invoices-filter-regulatory"
           aria-label={t('invoice.filter.regulatory', 'Filter by regulatory status')}
-          data-testid="invoices-filter-regulatory"
           value={regulatoryStatus ?? ''}
           onChange={(e) => setFilter('regulatoryStatus', e.target.value)}
         >
