@@ -49,6 +49,7 @@ import {
   describeFulfillmentActionError,
   fulfillmentActionLabel,
   groupTasksByPacker,
+  lightestLoadLaneIds,
   readFulfillmentConflict,
   useFulfillmentTaskActionMutation,
   useFulfillmentTasksQuery,
@@ -88,6 +89,9 @@ export function AssignPackingWorkPage(): ReactElement {
   const packers: PackerSummary[] = packersQuery.data?.packers ?? [];
   const tasks = tasksQuery.data?.works ?? [];
   const lanes = useMemo(() => groupTasksByPacker(tasks, packers), [tasks, packers]);
+  // #3427 — computed once over every lane, not per lane: the tag is a
+  // comparison ACROSS packers, which a single lane cannot make about itself.
+  const lightestLanes = useMemo(() => lightestLoadLaneIds(lanes), [lanes]);
 
   const setAssignment = (
     task: FulfillmentTask,
@@ -232,6 +236,7 @@ export function AssignPackingWorkPage(): ReactElement {
             dragEnabled={write.canWrite}
             onTaskDragStart={setDraggedTask}
             onDropOnLane={handleDropOnLane}
+            lightestLoad={lightestLanes.has(lane.id)}
           />
         ))}
       </div>

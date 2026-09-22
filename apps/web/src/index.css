@@ -23917,6 +23917,8 @@ legend.analytics-settings-dialog__label {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  position: relative;
+  overflow: hidden;
   /* #3426 — the drag-over highlight lives on the same rule as the layout,
      transparent border by default so nothing shifts when it activates. */
   border: 1px dashed transparent;
@@ -23925,22 +23927,108 @@ legend.analytics-settings-dialog__label {
 }
 
 .assign-packing-work-lane__head {
-  align-items: baseline;
+  align-items: center;
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
-  gap: var(--space-2);
-  padding-bottom: var(--space-1);
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
 }
 
 .assign-packing-work-lane__title {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
   font-size: 0.9375rem;
   font-weight: 600;
   margin: 0;
 }
 
 .assign-packing-work-lane__count {
+  font-family: var(--font-mono);
   font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 2ch;
+  text-align: right;
+}
+
+/* #3427 — avatar, "no longer a packer" icon, load bar, top accent. */
+.assign-packing-work-lane::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--border-strong);
+}
+
+.assign-packing-work-lane--unassigned::before {
+  background: var(--status-warning);
+}
+
+.assign-packing-work-lane__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), var(--status-review));
+  color: var(--text-inverse);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65625rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.assign-packing-work-lane__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--status-warning-soft);
+  border: 1px solid var(--status-warning-border);
+  color: var(--status-warning-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.assign-packing-work-lane__identity {
+  min-width: 0;
+}
+
+.assign-packing-work-lane__load {
+  display: flex;
+  align-items: center;
+  width: 140px;
+  flex-shrink: 0;
   margin-left: auto;
+}
+
+.assign-packing-work-lane__load-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-canvas);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.assign-packing-work-lane__load-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+}
+
+.assign-packing-work-lane__load-fill--normal {
+  background: var(--status-success);
+}
+
+.assign-packing-work-lane__load-fill--busy {
+  background: var(--status-warning);
+}
+
+.assign-packing-work-lane__load-fill--over {
+  background: var(--status-error);
 }
 
 /* #3426 — the drag-over highlight, and the drag source's cursor. Additive

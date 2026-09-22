@@ -19,13 +19,35 @@
  * legal, that is `AssignPackingWorkPage`'s job, which already knows the
  * dragged task's CURRENT lane and can no-op a same-lane drop.
  *
+ * ## The avatar, load bar and accent (#3427)
+ *
+ * `lane.packer === null` covers both the pinned Unassigned lane AND an
+ * off-roster assignee — but only the FORMER gets the warning icon and the
+ * warning-toned top accent; an off-roster packer still gets an initials
+ * avatar (from whatever name it has, which is none — see `laneTitle`) and
+ * the ordinary accent, because it is a real (if departed) person's work,
+ * not a pool. The load bar and its threshold tones are `lane.tasks.length`
+ * read through `laneLoadPercent`/`laneLoadTone` — the SAME count already
+ * rendered beside it, never a second, possibly-drifting source. Station and
+ * online-presence text (the mockup's `lane__station`) is not rendered: it
+ * needs a presence signal this system does not have yet (tracked
+ * separately); rendering a fabricated "online" claim would be worse than
+ * omitting the line.
+ *
  * @module apps/web/src/features/fulfillment/components
  */
 import { useState, type DragEvent, type ReactElement } from 'react';
 
+import { formatInitials } from '../../../shared/format/format-initials';
+import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import { buildFulfillmentDragSourceProps } from '../lib/assign-packing-work-drag';
-import type { AssignPackingWorkLane } from '../lib/assign-packing-work-lanes';
+import {
+  laneLoadPercent,
+  laneLoadTone,
+  UNASSIGNED_LANE_ID,
+  type AssignPackingWorkLane,
+} from '../lib/assign-packing-work-lanes';
 import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
 import { FulfillmentTaskCard } from './fulfillment-task-card';
 import { FulfillmentWorklistRow } from './fulfillment-worklist-row';
@@ -38,10 +60,12 @@ export interface AssignPackingWorkLaneSectionProps {
   onTaskDragStart: (task: FulfillmentTask) => void;
   /** Fired on drop, whatever lane it lands in — the page decides legality. */
   onDropOnLane: (laneId: string) => void;
+  /** #3427 — computed once, across every lane. See `lightestLoadLaneIds`. */
+  lightestLoad: boolean;
 }
 
 function laneTitle(lane: AssignPackingWorkLane): string {
-  if (lane.id === 'unassigned') return ASSIGN_PACKING_WORK_COPY.lane.unassignedTitle;
+  if (lane.id === UNASSIGNED_LANE_ID) return ASSIGN_PACKING_WORK_COPY.lane.unassignedTitle;
   if (lane.packer) return lane.packer.username;
   return ASSIGN_PACKING_WORK_COPY.lane.offRosterTitle;
 }
@@ -52,9 +76,13 @@ export function AssignPackingWorkLaneSection({
   dragEnabled,
   onTaskDragStart,
   onDropOnLane,
+  lightestLoad,
 }: AssignPackingWorkLaneSectionProps): ReactElement {
   const title = laneTitle(lane);
+  const isUnassignedLane = lane.id === UNASSIGNED_LANE_ID;
   const [dragOver, setDragOver] = useState(false);
+  const loadPercent = laneLoadPercent(lane.tasks.length);
+  const loadTone = laneLoadTone(lane.tasks.length);
 
   const dropTargetProps = dragEnabled
     ? {
@@ -77,6 +105,7 @@ export function AssignPackingWorkLaneSection({
 
   const sectionClassName = [
     'assign-packing-work-lane',
+    isUnassignedLane ? 'assign-packing-work-lane--unassigned' : '',
     dragOver ? 'assign-packing-work-lane--drag-over' : '',
   ]
     .filter(Boolean)
@@ -85,7 +114,37 @@ export function AssignPackingWorkLaneSection({
   return (
     <section className={sectionClassName} aria-label={title} {...dropTargetProps}>
       <header className="assign-packing-work-lane__head">
-        <h3 className="assign-packing-work-lane__title">{title}</h3>
+        {isUnassignedLane ? (
+          <span className="assign-packing-work-lane__icon" aria-hidden="true">
+            ✳
+          </span>
+        ) : (
+          <span className="assign-packing-work-lane__avatar" aria-hidden="true">
+            {formatInitials(title)}
+          </span>
+        )}
+        <div className="assign-packing-work-lane__identity">
+          <h3 className="assign-packing-work-lane__title">
+            {title}
+            {lightestLoad ? (
+              <StatusBadge
+                tone="success"
+                compact
+                className="assign-packing-work-lane__lightest-tag"
+              >
+                {ASSIGN_PACKING_WORK_COPY.lane.lightestLoadTag}
+              </StatusBadge>
+            ) : null}
+          </h3>
+        </div>
+        <div className="assign-packing-work-lane__load">
+          <div className="assign-packing-work-lane__load-bar">
+            <div
+              className={`assign-packing-work-lane__load-fill assign-packing-work-lane__load-fill--${loadTone}`}
+              style={{ width: `${String(loadPercent)}%` }}
+            />
+          </div>
+        </div>
         <span className="assign-packing-work-lane__count tabular text-muted">
           {lane.tasks.length}
         </span>

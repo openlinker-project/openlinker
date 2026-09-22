@@ -22,6 +22,8 @@ export const ASSIGN_PACKING_WORK_COPY = {
     /** A task assigned to a user id no longer in the active packer roster. */
     offRosterTitle: 'No longer a packer',
     empty: 'Nothing here right now.',
+    /** #3427 — the cross-packer load comparison. See `lightestLoadLaneIds`. */
+    lightestLoadTag: 'lightest load',
   },
 
   row: {

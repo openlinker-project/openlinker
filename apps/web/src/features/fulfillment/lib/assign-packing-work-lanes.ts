@@ -69,3 +69,55 @@ export function groupTasksByPacker(
 
   return lanes;
 }
+
+/**
+ * Load bar fill (#3427) — each task is 20% of the bar's width, capped at
+ * 100%, and the mockup's own `updateLaneCount` formula (`n * 20`, `min(100,
+ * …)`). Not derived from a configured capacity anywhere in this system —
+ * there is none — so this is a purely relative visual, not a claim about
+ * how many tasks a packer *should* carry.
+ */
+export function laneLoadPercent(taskCount: number): number {
+  return Math.min(100, taskCount * 20);
+}
+
+export type LaneLoadTone = 'normal' | 'busy' | 'over';
+
+/** Same thresholds as the fill width — `n >= 5` over, `n >= 3` busy. */
+export function laneLoadTone(taskCount: number): LaneLoadTone {
+  if (taskCount >= 5) return 'over';
+  if (taskCount >= 3) return 'busy';
+  return 'normal';
+}
+
+/**
+ * Which packer lanes should carry the "lightest load" tag (#3427).
+ *
+ * Pure client computation over `lane.tasks.length`, per the issue's own
+ * instruction — the mockup's tag is static demo markup, never recomputed by
+ * its own script. Two rules keep the tag meaningful rather than decorative:
+ *
+ * - The `unassigned` lane is never a candidate — it isn't a packer, so
+ *   "lightest load" would be comparing a person against a queue.
+ * - The tag is suppressed entirely when every packer lane carries the SAME
+ *   count (including the trivial case of zero or one packer lane) — there
+ *   is no meaningful "lightest" when nothing is lighter than anything else,
+ *   and tagging every lane at once would read as a broken feature rather
+ *   than a fact.
+ * - A TIE at the minimum tags every tied lane, never an arbitrarily "first"
+ *   one — picking one winner among equals would assert a distinction the
+ *   data does not support.
+ */
+export function lightestLoadLaneIds(lanes: readonly AssignPackingWorkLane[]): ReadonlySet<string> {
+  const packerLanes = lanes.filter((lane) => lane.id !== UNASSIGNED_LANE_ID);
+  if (packerLanes.length < 2) return new Set();
+
+  const counts = packerLanes.map((lane) => lane.tasks.length);
+  const min = Math.min(...counts);
+  const max = Math.max(...counts);
+  if (min === max) return new Set();
+
+  return new Set(
+    packerLanes.filter((lane) => lane.tasks.length === min).map((lane) => lane.id)
+  );
+}

@@ -29,20 +29,12 @@
  */
 import type { ReactElement } from 'react';
 
+import { formatInitials } from '../../../shared/format/format-initials';
 import { ThemeToggle } from '../../../shared/ui/theme-toggle';
 
 export interface BenchTopbarProps {
   /** `null` while no session is signed in — the chip renders nothing then. */
   readonly signedInName: string | null;
-}
-
-/** First-and-last initial, uppercased — the mockup's own `shell-user-chip__avatar` shape. */
-function initialsOf(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return '';
-  const first = words[0]?.charAt(0) ?? '';
-  const last = words.length > 1 ? (words[words.length - 1]?.charAt(0) ?? '') : '';
-  return (first + last).toUpperCase();
 }
 
 export function BenchTopbar({ signedInName }: BenchTopbarProps): ReactElement {
@@ -64,7 +56,7 @@ export function BenchTopbar({ signedInName }: BenchTopbarProps): ReactElement {
       {signedInName === null ? null : (
         <span className="bench-topbar__user-chip">
           <span className="bench-topbar__user-avatar" aria-hidden="true">
-            {initialsOf(signedInName)}
+            {formatInitials(signedInName)}
           </span>
           <span className="bench-topbar__user-name">{signedInName}</span>
         </span>

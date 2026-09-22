@@ -249,4 +249,65 @@ describe('AssignPackingWorkPage', () => {
       expect(draggableRow()).toHaveAttribute('draggable', 'true');
     });
   });
+
+  // ── #3427 — avatar, lightest-load tag, load bar, lane accent ────────────
+  describe('lane header presentation', () => {
+    it('renders an initials avatar for a packer lane and a warning icon for Unassigned', async () => {
+      renderPage({
+        listPackers: vi.fn().mockResolvedValue({
+          packers: [{ id: 'u_a', username: 'Marta Kowalczyk' }],
+        }),
+      });
+
+      const packerLane = await screen.findByRole('region', { name: 'Marta Kowalczyk' });
+      expect(within(packerLane).getByText('MK')).toBeInTheDocument();
+
+      const unassignedLane = screen.getByRole('region', { name: 'Unassigned' });
+      expect(within(unassignedLane).getByText('✳')).toBeInTheDocument();
+    });
+
+    it('tags the packer with the fewest tasks "lightest load", and no one else', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(
+          page([
+            task({ id: 'a', assignedToUserId: 'u_a' }),
+            task({ id: 'b', assignedToUserId: 'u_a' }),
+            task({ id: 'c', assignedToUserId: 'u_b' }),
+          ])
+        ),
+        listPackers: vi.fn().mockResolvedValue({
+          packers: [
+            { id: 'u_a', username: 'packer-a' },
+            { id: 'u_b', username: 'packer-b' },
+          ],
+        }),
+      });
+
+      const laneA = await screen.findByRole('region', { name: 'packer-a' });
+      const laneB = screen.getByRole('region', { name: 'packer-b' });
+
+      expect(within(laneB).getByText('lightest load')).toBeInTheDocument();
+      expect(within(laneA).queryByText('lightest load')).not.toBeInTheDocument();
+    });
+
+    it('reads the load-bar fill width and tone off the same task count shown beside it', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(
+          page(
+            Array.from({ length: 3 }, (_, i) =>
+              task({ id: `t${String(i)}`, assignedToUserId: 'u_a' })
+            )
+          )
+        ),
+        listPackers: vi.fn().mockResolvedValue({ packers: [{ id: 'u_a', username: 'packer-a' }] }),
+      });
+
+      const lane = await screen.findByRole('region', { name: 'packer-a' });
+      const fill = lane.querySelector('.assign-packing-work-lane__load-fill') as HTMLElement;
+
+      // 3 tasks -> 60% width, "busy" tone (>= 3).
+      expect(fill.style.width).toBe('60%');
+      expect(fill.className).toContain('assign-packing-work-lane__load-fill--busy');
+    });
+  });
 });
