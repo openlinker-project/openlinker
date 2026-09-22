@@ -59,9 +59,17 @@ import type { NavCounts } from './hooks/use-nav-counts';
  * Fulfilment, Invoices — see `nav-registry.ts`'s `requiresRole: ['admin',
  * 'operator', 'viewer']` declarations). `viewer`-only UI behaviour that is NOT
  * a nav-item gate is still resolved elsewhere (e.g. `app-shell.tsx`'s own
- * `isViewerOnly` check against `session.user.role` directly) — this union is
- * scoped to what a nav gate needs to express, not a mirror of the backend's
- * full role vocabulary.
+ * `isViewerOnly` check against `session.user.role` directly).
+ *
+ * As of #3221 this union IS a full copy of the backend's `UserRoleValues`
+ * (same four members, only the declaration order differs) - it is not scoped
+ * to a subset any more, and nothing enforces that the two stay aligned.
+ * `scripts/check-permission-mirror.mjs` mirrors `PermissionValues` between
+ * `role.types.ts` and `session.types.ts` only; `RoleValues` here is a second,
+ * unguarded hand-maintained copy. If the backend gains a fifth role, add it
+ * here too - a role missing from this array fails **closed** for the nav (the
+ * item just stays hidden, never a 403), so the failure mode is silent rather
+ * than loud.
  */
 export const RoleValues = ['admin', 'operator', 'packer', 'viewer'] as const;
 export type Role = (typeof RoleValues)[number];
