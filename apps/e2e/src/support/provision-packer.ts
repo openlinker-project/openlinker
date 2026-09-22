@@ -14,6 +14,18 @@
  * demo stack degrades to a `test.skip` at the call site rather than a silent
  * no-op account.
  *
+ * Two further divergences from `provisionViewer` are why this stays a
+ * separate file rather than a `provisionUser(role)` fold (#3384 review): the
+ * return shape carries the provisioned user's own `id` (`ProvisionedPacker`),
+ * which the Assign-Packing-Work round-trip (#3343) needs to assert the
+ * seeded `assignedToUserId` against the acting session's own identity — a
+ * fact `ProvisionedViewer` has no caller for and therefore doesn't carry; and
+ * the seeded-credentials branch (`E2E_PACKER_USER`/`E2E_PACKER_PASS`) omits
+ * `provisionViewer`'s narrow 401/403-only login-error handling, because that
+ * branch exists to let an operator pre-provision a packer once rather than
+ * register one per run, so a login failure there is a misconfiguration the
+ * run should fail loudly on rather than silently skip.
+ *
  * @module support
  */
 import type { BrowserContext } from '@playwright/test';

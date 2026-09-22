@@ -103,10 +103,10 @@ async function ensureFixtures(client: Client): Promise<void> {
      ON CONFLICT (id) DO NOTHING`,
     [BENCH_SEED_IDS.sourceConnection],
   );
-  // `config` is reset on conflict too — a prior `empty`-state run flips
-  // `sourcingAuthority.enabled` to `false` (see below) and, unlike the other
-  // columns here, that would otherwise persist across every LATER seed call,
-  // since `ON CONFLICT` only touches the columns it names.
+  // `enabledCapabilities` is reset on conflict too — a prior `empty`-state
+  // run clears it to `[]` (see below) and, unlike the other columns here,
+  // that would otherwise persist across every LATER seed call, since
+  // `ON CONFLICT` only touches the columns it names.
   await client.query(
     `INSERT INTO connections (id, "platformType", name, status, config, "credentialsRef", "enabledCapabilities")
      VALUES ($1, 'openlinker', 'E2E packing bench', 'active', '{"sourcingAuthority":{"enabled":true}}'::jsonb, '', '["FulfillmentExecutor"]'::jsonb)
@@ -192,11 +192,29 @@ export async function seedBenchState(state: BenchSeedState): Promise<BenchSeedRe
       // copy is "OpenLinker is not sending packing work here… turns on
       // packing… who decides what" — the NOT-ROUTED empty state
       // (`BenchWorkEmpty`'s `routingReady: false` arm), not the idle,
-      // pipe-healthy one. Disabling `sourcingAuthority` here is what makes
-      // the real app match what the mockup actually demonstrates; the idle
-      // variant has no mockup panel to compare against and is out of scope.
+      // pipe-healthy one.
+      //
+      // `routingReady` (`bench-work-list.tsx`) is `query.data?.routing.ready`,
+      // and the server answer comes from `BenchExecutorResolver.listPackingExecutors()`
+      // (`apps/api/src/bench/application/services/bench-executor.resolver.ts`)
+      // — `ready: false` fires ONLY when that resolver finds zero connections
+      // that are `status === 'active'` AND carry `FulfillmentExecutor` in
+      // `enabledCapabilities` (plus the `OMS_ADAPTER_KEY` check). It never
+      // reads `sourcingAuthority` at all — that key governs A2 (which
+      // location/holder gets picked), not A3 (whether a holder is switched on
+      // to receive work), and the two are orthogonal (ADR-052/ADR-054).
+      // Disabling `sourcingAuthority` alone therefore leaves
+      // `listPackingExecutors()` finding this connection regardless, and the
+      // bench renders the IDLE state instead — verified live against a real
+      // stack, where the previous version of this seed rendered "Work is
+      // reaching this bench normally" for a state meant to say the opposite.
+      // Clearing `enabledCapabilities` is what actually drops the connection
+      // out of `listPackingExecutors()` and reaches the not-routed branch.
       await client.query(
-        `UPDATE connections SET config = '{"sourcingAuthority":{"enabled":false}}'::jsonb WHERE id = $1`,
+        `UPDATE connections
+           SET config = '{"sourcingAuthority":{"enabled":false}}'::jsonb,
+               "enabledCapabilities" = '[]'::jsonb
+         WHERE id = $1`,
         [BENCH_SEED_IDS.omsConnection],
       );
       await client.query('COMMIT');
