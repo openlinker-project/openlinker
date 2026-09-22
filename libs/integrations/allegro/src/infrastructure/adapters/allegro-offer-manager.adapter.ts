@@ -448,17 +448,34 @@ export class AllegroOfferManagerAdapter
   }
 
   /**
-   * The currency this connection settles in (#3203, `OfferCurrencyDeclarer`).
-   * A fixed value rather than a live read: Allegro's marketplace is PL-first
-   * in this tree (see `DEFAULT_ALLEGRO_TAX_COUNTRY` above — the same
-   * assumption already baked into the tax-settings write path), and no
-   * connection config here distinguishes a .cz/.sk/.hu account whose
-   * settlement currency would differ — `this.environment` is `sandbox` vs
+   * The currency this connection is ASSUMED to settle in (#3203,
+   * `OfferCurrencyDeclarer`, #3159 review — IMPORTANT). A fixed value
+   * rather than a live read: Allegro's marketplace is PL-first in this
+   * tree (see `DEFAULT_ALLEGRO_TAX_COUNTRY` above — the same assumption
+   * already baked into the tax-settings write path), and no connection
+   * config here distinguishes a .cz/.sk/.hu account whose settlement
+   * currency would differ — `this.environment` is `sandbox` vs
    * `production` only, a different axis, and carries no country/region
-   * signal this method could read instead. Consumed by
-   * `DestinationCurrencyResolutionService` to answer
-   * `price-change-block.types.ts`'s currency-mismatch guard. Revisit this
-   * once a connection can declare a non-PL Allegro storefront.
+   * signal this method could read instead.
+   *
+   * **This describes the assumed ACCOUNT, not what this adapter WRITES.**
+   * `updateOfferQuantity` and `updateOfferFields` both send whatever
+   * currency the caller's command carries (`cmd.price.currency` /
+   * `cmd.fields.price.currency` — the SOURCE's currency, passed through
+   * verbatim); nothing here pins the two together, because one is a
+   * standing assumption about the seller's storefront and the other is a
+   * per-call passthrough with no currency conversion anywhere in this
+   * adapter. Declaring `'PLN'` therefore is NOT a claim that offers are
+   * published in PLN — it only answers "what does this account settle
+   * in", for `price-change-block.types.ts`'s currency-mismatch guard.
+   *
+   * Consumed by `DestinationCurrencyResolutionService`, and — because the
+   * value is a fixed guess rather than a verified fact — it is
+   * deliberately the FALLBACK there: `readConnectionCurrency`'s
+   * operator-set `Connection.config.currency` key wins over this value
+   * when set, so a seller on a non-PL Allegro storefront has a remedy
+   * (see that function's docblock). Revisit this once a connection can
+   * declare a non-PL Allegro storefront.
    */
   getDestinationCurrency(): string | null {
     return 'PLN';

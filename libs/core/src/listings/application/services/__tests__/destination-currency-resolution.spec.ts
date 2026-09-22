@@ -37,22 +37,26 @@ describe('resolveOfferDestinationCurrency', () => {
 });
 
 describe('resolveShopDestinationCurrency', () => {
-  it('returns the declared value when the adapter implements ShopCurrencyDeclarer', () => {
+  it('returns the declared value when the adapter implements ShopCurrencyDeclarer', async () => {
+    // `ShopCurrencyDeclarer.getDestinationCurrency` is ASYNC (#3159
+    // review, SUGGESTION) — a real implementer typically needs a live read
+    // (e.g. a WooCommerce store-settings call), unlike the marketplace
+    // sibling's fixed-constant case.
     const adapter = {
       publishProduct: jest.fn(),
       getDescriptionFormat: jest.fn(),
-      getDestinationCurrency: () => 'USD',
+      getDestinationCurrency: () => Promise.resolve('USD'),
     } as unknown as ShopProductManagerPort;
 
-    expect(resolveShopDestinationCurrency(adapter)).toBe('USD');
+    await expect(resolveShopDestinationCurrency(adapter)).resolves.toBe('USD');
   });
 
-  it('returns null when the adapter declares nothing', () => {
+  it('returns null when the adapter declares nothing', async () => {
     const adapter = {
       publishProduct: jest.fn(),
       getDescriptionFormat: jest.fn(),
     } as unknown as ShopProductManagerPort;
 
-    expect(resolveShopDestinationCurrency(adapter)).toBeNull();
+    await expect(resolveShopDestinationCurrency(adapter)).resolves.toBeNull();
   });
 });

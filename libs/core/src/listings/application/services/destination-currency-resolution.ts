@@ -36,8 +36,14 @@ export function resolveOfferDestinationCurrency(adapter: OfferManagerPort): stri
 
 /**
  * The currency a shop destination declares, or `null` when it declares
- * nothing (every in-tree shop adapter today).
+ * nothing (every in-tree shop adapter today). `ShopCurrencyDeclarer` is
+ * ASYNC (#3159 review, SUGGESTION), unlike its marketplace sibling above —
+ * a shop's real settlement currency typically needs a live read (e.g. a
+ * WooCommerce store-settings call), where Allegro/Erli can answer from a
+ * fixed constant with no I/O at all.
  */
-export function resolveShopDestinationCurrency(adapter: ShopProductManagerPort): string | null {
+export async function resolveShopDestinationCurrency(
+  adapter: ShopProductManagerPort,
+): Promise<string | null> {
   return isShopCurrencyDeclarer(adapter) ? adapter.getDestinationCurrency() : null;
 }

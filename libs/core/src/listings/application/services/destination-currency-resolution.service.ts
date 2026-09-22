@@ -23,15 +23,34 @@
  * ## Why an undeclared/unresolvable currency is `null`, never a guess
  *
  * The caller (`price-change-block.types.ts`'s callers) treats `null` as
- * "unknown" and falls back to `readConnectionCurrency(connection.config)` —
- * the pre-#3203 config-key path stays reachable as a second, operator-set
- * mechanism (ADR-072 decision 4's "absent must never collapse into a
- * favourable match" rule, restated once more here rather than guessed at a
- * second time).
+ * "unknown" and prefers `readConnectionCurrency(connection.config)` when
+ * it is set — the pre-#3203 config-key path stays reachable, and now wins
+ * over this resolver, as the operator-set mechanism (ADR-072 decision 4's
+ * "absent must never collapse into a favourable match" rule, restated once
+ * more here rather than guessed at a second time; see
+ * `readConnectionCurrency`'s docblock for why the operator's own statement
+ * must win over a fixed adapter assumption, #3159 review — BLOCKING).
+ *
+ * ## Why discovery is manifest-first
+ *
+ * `resolveAdapterMetadata` (metadata-only — constructs no adapter, resolves
+ * no credentials, works even on a disabled connection) is checked before
+ * `getCapabilityAdapter`, the #2229 `ResolveConcurrencyCeiling` rule:
+ * "Discovery is manifest-first — building a capability adapter resolves
+ * credentials, so `supportedCapabilities` is checked before construction."
+ * Without it, a WooCommerce destination — whose `OfferManager` IS
+ * supported (base-port-only, no declarer) — constructed TWO adapters per
+ * resolution (`OfferManager`, then `ProductPublisher`) and repeated that on
+ * every queue read with no cache in between (#3159 review, SUGGESTION).
  *
  * @module libs/core/src/listings/application/services
  */
 import { Inject, Injectable } from '@nestjs/common';
+import {
+  CONNECTION_PORT_TOKEN,
+  type Connection,
+  type ConnectionPort,
+} from '@openlinker/core/identifier-mapping';
 import {
   INTEGRATIONS_SERVICE_TOKEN,
   type IIntegrationsService,
@@ -52,10 +71,21 @@ export class DestinationCurrencyResolutionService
   constructor(
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
     private readonly integrationsService: IIntegrationsService,
+    @Inject(CONNECTION_PORT_TOKEN)
+    private readonly connections: ConnectionPort,
   ) {}
 
   async resolveForConnection(connectionId: string): Promise<string | null> {
-    const marketplace = await this.tryResolve<OfferManagerPort>(connectionId, 'OfferManager');
+    const connection = await this.connections.get(connectionId).catch(() => null);
+    if (!connection) {
+      return null;
+    }
+
+    const marketplace = await this.tryResolve<OfferManagerPort>(
+      connectionId,
+      connection,
+      'OfferManager',
+    );
     if (marketplace !== null) {
       const declared = resolveOfferDestinationCurrency(marketplace);
       if (declared !== null) {
@@ -63,9 +93,13 @@ export class DestinationCurrencyResolutionService
       }
     }
 
-    const shop = await this.tryResolve<ShopProductManagerPort>(connectionId, 'ProductPublisher');
+    const shop = await this.tryResolve<ShopProductManagerPort>(
+      connectionId,
+      connection,
+      'ProductPublisher',
+    );
     if (shop !== null) {
-      const declared = resolveShopDestinationCurrency(shop);
+      const declared = await resolveShopDestinationCurrency(shop);
       if (declared !== null) {
         return declared;
       }
@@ -74,7 +108,31 @@ export class DestinationCurrencyResolutionService
     return null;
   }
 
-  private async tryResolve<T>(connectionId: string, capability: string): Promise<T | null> {
+  /**
+   * Manifest-first (#3159 review, SUGGESTION): `resolveAdapterMetadata` is
+   * checked before `getCapabilityAdapter` constructs anything, so a
+   * connection whose adapter doesn't support (or hasn't enabled)
+   * `capability` at all is filtered out here without resolving credentials
+   * or building an adapter for it.
+   */
+  private async tryResolve<T>(
+    connectionId: string,
+    connection: Connection,
+    capability: string,
+  ): Promise<T | null> {
+    const metadata = await this.integrationsService
+      .resolveAdapterMetadata({
+        platformType: connection.platformType,
+        adapterKey: connection.adapterKey,
+      })
+      .catch(() => null);
+    if (
+      !metadata ||
+      !metadata.supportedCapabilities.includes(capability) ||
+      !connection.enabledCapabilities.includes(capability)
+    ) {
+      return null;
+    }
     try {
       return await this.integrationsService.getCapabilityAdapter<T>(connectionId, capability);
     } catch {

@@ -592,7 +592,7 @@ describe('PriceChangesService', () => {
       expect(page.hasMore).toBe(true);
     });
 
-    it('resolves destinationCurrency from the adapter-declared value, over a stale config.currency (#3203)', async () => {
+    it('prefers config.currency over the adapter-declared value when they disagree (#3159 review, BLOCKING)', async () => {
       episodes.findOpenAll.mockResolvedValue([buildEpisode({ id: 'ep-1', destinationConnectionId: DEST_ID })]);
       connections.list.mockResolvedValue([buildConnection({ currency: 'EUR' })]);
       destinationCurrencyResolution.resolveForConnection.mockResolvedValue('PLN');
@@ -600,7 +600,7 @@ describe('PriceChangesService', () => {
       const page = await service.listOpen({});
 
       expect(destinationCurrencyResolution.resolveForConnection).toHaveBeenCalledWith(DEST_ID);
-      expect(page.items[0].destinationCurrency).toBe('PLN');
+      expect(page.items[0].destinationCurrency).toBe('EUR');
     });
 
     it('falls back to config.currency when the adapter declares nothing', async () => {

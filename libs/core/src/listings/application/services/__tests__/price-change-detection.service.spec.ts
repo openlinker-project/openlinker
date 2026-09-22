@@ -401,9 +401,12 @@ describe('PriceChangeDetectionService', () => {
     expect(jobEnqueue.enqueueJob).toHaveBeenCalled();
   });
 
-  it('prefers the adapter-declared currency over `config.currency` when they disagree', async () => {
-    // A stale/misconfigured `config.currency` must never win over a
-    // verified adapter-declared value (#3203).
+  it('prefers `config.currency` over the adapter-declared value when they disagree (#3159 review, BLOCKING)', async () => {
+    // The operator's own statement about their account must win over a
+    // fixed adapter assumption (e.g. Allegro's PL-first 'PLN' on an
+    // allegro-cz/-sk/-hu seller) — or they have no remedy left in the
+    // product for a wrong adapter guess (#2229: operator narrows adapter,
+    // never the reverse).
     connections.get.mockResolvedValue(buildConnection({ currency: 'EUR' }));
     destinationCurrencyResolution.resolveForConnection.mockResolvedValue('PLN');
 
@@ -412,7 +415,7 @@ describe('PriceChangeDetectionService', () => {
       sourceConnectionId: SRC_ID,
       sourceOldAmount: 350,
       sourceNewAmount: 327,
-      sourceCurrency: 'PLN',
+      sourceCurrency: 'EUR',
     });
 
     expect(episodes.upsertOpen).toHaveBeenCalledWith(expect.objectContaining({ blockReason: null }));

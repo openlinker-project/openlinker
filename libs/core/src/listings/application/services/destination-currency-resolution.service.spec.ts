@@ -9,15 +9,50 @@
  */
 import { DestinationCurrencyResolutionService } from './destination-currency-resolution.service';
 import type { IIntegrationsService } from '@openlinker/core/integrations';
+import type { AdapterMetadata } from '@openlinker/core/integrations';
+import type { Connection, ConnectionPort } from '@openlinker/core/identifier-mapping';
+
+function buildConnection(overrides: Partial<Connection> = {}): Connection {
+  return {
+    id: 'conn-1',
+    platformType: 'allegro',
+    name: 'Test connection',
+    status: 'active',
+    config: {},
+    credentialsRef: 'ref',
+    adapterKey: undefined,
+    enabledCapabilities: ['OfferManager', 'ProductPublisher'],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  } as unknown as Connection;
+}
+
+function buildMetadata(overrides: Partial<AdapterMetadata> = {}): AdapterMetadata {
+  return {
+    adapterKey: 'allegro.publicapi.v1',
+    platformType: 'allegro',
+    supportedCapabilities: ['OfferManager', 'ProductPublisher'],
+    ...overrides,
+  } as AdapterMetadata;
+}
 
 describe('DestinationCurrencyResolutionService', () => {
-  let integrationsService: jest.Mocked<Pick<IIntegrationsService, 'getCapabilityAdapter'>>;
+  let integrationsService: jest.Mocked<
+    Pick<IIntegrationsService, 'getCapabilityAdapter' | 'resolveAdapterMetadata'>
+  >;
+  let connections: jest.Mocked<Pick<ConnectionPort, 'get'>>;
   let service: DestinationCurrencyResolutionService;
 
   beforeEach(() => {
-    integrationsService = { getCapabilityAdapter: jest.fn() };
+    integrationsService = {
+      getCapabilityAdapter: jest.fn(),
+      resolveAdapterMetadata: jest.fn().mockResolvedValue(buildMetadata()),
+    };
+    connections = { get: jest.fn().mockResolvedValue(buildConnection()) };
     service = new DestinationCurrencyResolutionService(
       integrationsService as unknown as IIntegrationsService,
+      connections as unknown as ConnectionPort,
     );
   });
 
@@ -28,6 +63,29 @@ describe('DestinationCurrencyResolutionService', () => {
         : Promise.reject(new Error(`not supported: ${cap}`)),
     );
   }
+
+  it('returns null when the connection cannot be resolved', async () => {
+    connections.get.mockRejectedValue(new Error('connection not found'));
+
+    await expect(service.resolveForConnection('nope')).resolves.toBeNull();
+    expect(integrationsService.resolveAdapterMetadata).not.toHaveBeenCalled();
+  });
+
+  it('returns null when the manifest does not support either capability, without constructing an adapter (#3159 review, SUGGESTION)', async () => {
+    integrationsService.resolveAdapterMetadata.mockResolvedValue(
+      buildMetadata({ supportedCapabilities: [] }),
+    );
+
+    await expect(service.resolveForConnection('conn-1')).resolves.toBeNull();
+    expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+  });
+
+  it('returns null when the capability is supported but not enabled on this connection, without constructing an adapter', async () => {
+    connections.get.mockResolvedValue(buildConnection({ enabledCapabilities: [] }));
+
+    await expect(service.resolveForConnection('conn-1')).resolves.toBeNull();
+    expect(integrationsService.getCapabilityAdapter).not.toHaveBeenCalled();
+  });
 
   it('returns the marketplace-declared currency', async () => {
     resolveOnly('OfferManager', {
@@ -41,7 +99,7 @@ describe('DestinationCurrencyResolutionService', () => {
   it('falls through to the shop capability when the connection is not a marketplace', async () => {
     resolveOnly('ProductPublisher', {
       publishProduct: jest.fn(),
-      getDestinationCurrency: () => 'USD',
+      getDestinationCurrency: () => Promise.resolve('USD'),
     });
 
     await expect(service.resolveForConnection('conn-2')).resolves.toBe('USD');
@@ -52,7 +110,7 @@ describe('DestinationCurrencyResolutionService', () => {
       Promise.resolve(
         (cap === 'OfferManager'
           ? { updateOfferQuantity: jest.fn(), getDestinationCurrency: () => 'PLN' }
-          : { publishProduct: jest.fn(), getDestinationCurrency: () => 'USD' }) as never,
+          : { publishProduct: jest.fn(), getDestinationCurrency: () => Promise.resolve('USD') }) as never,
       ),
     );
 
@@ -64,7 +122,7 @@ describe('DestinationCurrencyResolutionService', () => {
       Promise.resolve(
         (cap === 'OfferManager'
           ? { updateOfferQuantity: jest.fn() }
-          : { publishProduct: jest.fn(), getDestinationCurrency: () => 'USD' }) as never,
+          : { publishProduct: jest.fn(), getDestinationCurrency: () => Promise.resolve('USD') }) as never,
       ),
     );
 
@@ -89,9 +147,9 @@ describe('DestinationCurrencyResolutionService', () => {
     await expect(service.resolveForConnection('conn-6')).resolves.toBeNull();
   });
 
-  it('never throws for an unknown connection', async () => {
-    integrationsService.getCapabilityAdapter.mockRejectedValue(new Error('connection not found'));
+  it('returns null when resolveAdapterMetadata itself fails', async () => {
+    integrationsService.resolveAdapterMetadata.mockRejectedValue(new Error('registry unavailable'));
 
-    await expect(service.resolveForConnection('nope')).resolves.toBeNull();
+    await expect(service.resolveForConnection('conn-7')).resolves.toBeNull();
   });
 });

@@ -13,9 +13,13 @@
  * - `resolvePriceChangeBlockReason` decides the currency-mismatch block
  *   (ADR-072 decision 4) — a pure function, re-decided on every pass. Its
  *   `destinationCurrency` input is resolved via
- *   `getDestinationCurrencyCached` (#3203): an adapter-declared value first
- *   (`IDestinationCurrencyResolutionService`), falling back to the
- *   operator-set `Connection.config.currency` key (`readConnectionCurrency`).
+ *   `getDestinationCurrencyCached` (#3203): the operator-set
+ *   `Connection.config.currency` key (`readConnectionCurrency`) wins when
+ *   set, falling back to an adapter-declared value
+ *   (`IDestinationCurrencyResolutionService`) only when it is not — never
+ *   the reverse, or a fixed adapter assumption (e.g. Allegro's PL-first
+ *   `'PLN'`) would override the operator's own statement about their
+ *   account with no remedy left (#3159 review, BLOCKING).
  * - `readPricingRuleForSource` / `applyPricingRule` compute the destination
  *   price.
  * - `readPriceSyncModeForSource` decides whether an ALREADY-opened episode
@@ -310,11 +314,14 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
   }
 
   /**
-   * The destination's real currency (#3203): an adapter-declared value
-   * (`IDestinationCurrencyResolutionService`, tried first) falling back to
-   * the operator-set `Connection.config.currency` key
-   * (`readConnectionCurrency`) — never a guess, and `null` when neither
-   * resolves, which `resolvePriceChangeBlockReason` reads as
+   * The destination's real currency (#3203): the operator-set
+   * `Connection.config.currency` key (`readConnectionCurrency`) wins when
+   * set — an operator's own statement about their account, never
+   * overridden by a fixed adapter assumption (#3159 review, BLOCKING; see
+   * `readConnectionCurrency`'s docblock for the full reasoning). Falls back
+   * to an adapter-declared value (`IDestinationCurrencyResolutionService`)
+   * only when the config key is unset. Never a guess either way, and `null`
+   * when neither resolves, which `resolvePriceChangeBlockReason` reads as
    * `'destination-currency-unknown'` rather than as a favourable match.
    */
   private async getDestinationCurrencyCached(
@@ -330,7 +337,7 @@ export class PriceChangeDetectionService implements IPriceChangeDetectionService
     // internal probe already collapses every failure mode ("not supported /
     // not enabled / unresolvable") to `null` (see its docblock).
     const declared = await this.destinationCurrencyResolution.resolveForConnection(connectionId);
-    const currency = declared ?? readConnectionCurrency(connection.config);
+    const currency = readConnectionCurrency(connection.config) ?? declared;
     this.currencyCache.set(connectionId, {
       currency,
       expiresAt: now + PriceChangeDetectionService.CONNECTION_CACHE_TTL_MS,

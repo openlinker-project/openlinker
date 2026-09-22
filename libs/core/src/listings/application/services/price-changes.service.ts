@@ -706,10 +706,12 @@ export class PriceChangesService implements IPriceChangesService {
   /**
    * The destination's REAL currency (#3203), batched once per read — the
    * same "one round trip, not N sequential calls" rule `fetchConnections`
-   * states above. Tries the adapter-declared value
-   * (`IDestinationCurrencyResolutionService`) first, falling back to the
-   * operator-set `Connection.config.currency` key (`readConnectionCurrency`)
-   * — never a guess when neither resolves.
+   * states above. The operator-set `Connection.config.currency` key
+   * (`readConnectionCurrency`) wins when set (#3159 review, BLOCKING — see
+   * that function's docblock for why the operator's own statement must
+   * never be overridden by a fixed adapter assumption), falling back to the
+   * adapter-declared value (`IDestinationCurrencyResolutionService`) only
+   * when the config key is unset — never a guess when neither resolves.
    */
   private async fetchDestinationCurrencies(
     connectionsById: Map<string, Connection>,
@@ -723,8 +725,8 @@ export class PriceChangesService implements IPriceChangesService {
         // (see its docblock).
         const declared = await this.destinationCurrencyResolution.resolveForConnection(id);
         const connection = connectionsById.get(id);
-        const currency = declared ?? (connection ? readConnectionCurrency(connection.config) : null);
-        return [id, currency] as const;
+        const configured = connection ? readConnectionCurrency(connection.config) : null;
+        return [id, configured ?? declared] as const;
       })
     );
     return new Map(entries);
