@@ -359,4 +359,82 @@ describe('SalesDocumentRuleComposerDialog', () => {
     expect(serialized).not.toContain('buyertaxidonreceipt');
     expect(apiClient.salesDocumentRules.createRule).toBe(createRule);
   });
+
+  // #3232: the composer offers a capability-only candidate list, wider than
+  // the destination-warnings list's capability+role predicate — deliberately,
+  // since a rule routes on its own `documentKind` regardless of the
+  // connection's role. That divergence must not be silent.
+  describe('connection role gap (#3232)', () => {
+    it('warns at pick time when the chosen connection has no role configured', async () => {
+      const user = userEvent.setup();
+      renderComposer({
+        connections: {
+          list: vi.fn().mockResolvedValue([
+            {
+              ...sampleConnection,
+              id: 'conn_eparagony',
+              name: 'e-paragony Sandbox',
+              status: 'active',
+              enabledCapabilities: ['Fiscalization'],
+              config: {},
+            },
+          ]),
+        },
+      });
+      const root = await dialog();
+
+      await user.selectOptions(await within(root).findByLabelText('Document type'), 'fiscal-receipt');
+      const connectionSelect = within(root).getByLabelText('Integration');
+      await waitFor(() =>
+        expect(
+          within(connectionSelect as HTMLSelectElement).getAllByRole('option').length
+        ).toBeGreaterThan(1)
+      );
+      await user.selectOptions(connectionSelect, 'conn_eparagony');
+
+      const warning = await within(root).findByTestId('rule-connection-role-gap');
+      expect(warning).toHaveTextContent('e-paragony Sandbox');
+      expect(warning).toHaveTextContent('no role set');
+      // Non-blocking: the operator may still save.
+      expect(within(root).getByTestId('rule-save')).not.toBeDisabled();
+    });
+
+    it('renders no warning when the chosen connection already carries a role', async () => {
+      const user = userEvent.setup();
+      renderComposer({
+        connections: {
+          list: vi.fn().mockResolvedValue([
+            {
+              ...sampleConnection,
+              id: 'conn_eparagony',
+              name: 'e-paragony Sandbox',
+              status: 'active',
+              enabledCapabilities: ['Fiscalization'],
+              config: { salesDocument: { documentKind: 'fiscal-receipt' } },
+            },
+          ]),
+        },
+      });
+      const root = await dialog();
+
+      await user.selectOptions(await within(root).findByLabelText('Document type'), 'fiscal-receipt');
+      const connectionSelect = within(root).getByLabelText('Integration');
+      await waitFor(() =>
+        expect(
+          within(connectionSelect as HTMLSelectElement).getAllByRole('option').length
+        ).toBeGreaterThan(1)
+      );
+      await user.selectOptions(connectionSelect, 'conn_eparagony');
+
+      expect(within(root).queryByTestId('rule-connection-role-gap')).not.toBeInTheDocument();
+    });
+
+    it('renders no warning before any connection is picked', async () => {
+      renderComposer();
+      const root = await dialog();
+      await waitFor(() => expect(within(root).getByText('Conditions')).toBeInTheDocument());
+
+      expect(within(root).queryByTestId('rule-connection-role-gap')).not.toBeInTheDocument();
+    });
+  });
 });

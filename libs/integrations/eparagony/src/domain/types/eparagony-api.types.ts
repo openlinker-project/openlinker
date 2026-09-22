@@ -303,6 +303,81 @@ export interface EparagonyCreateInvoiceRequest {
   eInvoice: EparagonyInvoiceBody;
 }
 
+// ---------------------------------------------------------------------------
+// Create document (corrective invoice, #3193)
+// ---------------------------------------------------------------------------
+
+/**
+ * `PDCorrectiveInvoice.correctedMetadata` - links the correction to its
+ * original BY INVOICE NUMBER, never by hub number or `documentToken`: those are
+ * the RELAY's and this integration's own identifiers, while the correction
+ * references the fiscal document itself.
+ */
+export interface EparagonyCorrectedInvoiceMetadata {
+  /** The ORIGINAL document's legal number. */
+  invoiceNumber: string;
+  /** The ORIGINAL document's issue date, `YYYY-MM-DD`. */
+  invoiceDate: string;
+  /** The ORIGINAL document's total, integer minor units. */
+  grossSaleValue: number;
+}
+
+/**
+ * `PDCorrectiveInvoice.correctingMetadata` - the POST-correction state the
+ * vendor reconciles the correction against.
+ *
+ * `merchantName` / `merchantAddress` are REQUIRED here, unlike on
+ * {@link EparagonyInvoiceMetadata} where both are optional (on a plain invoice
+ * the vendor falls back to the account's own registered name and address). A
+ * correction carries no such fallback, which is why
+ * `composeCorrectiveInvoiceDocument` refuses a connection that configures
+ * neither rather than sending a document the vendor would reject.
+ */
+export interface EparagonyCorrectingInvoiceMetadata {
+  merchantTIN: string;
+  merchantName: string;
+  merchantAddress: EparagonyEntityAddress;
+  consumerName: string;
+  consumerAddress: EparagonyEntityAddress;
+  /** The CORRECTED (post-correction) document's total, integer minor units. */
+  grossSaleValue: number;
+}
+
+/**
+ * `PDVatCorrectiveInvoice` - the `eCorrectiveInvoice` object on the create
+ * body. `metadata` is the correction's OWN document (its `invoiceNumber` is the
+ * correction's new number, its `netValueByTaxRate` / `taxValueByTaxRate`
+ * describe the CORRECTED, post-correction state).
+ *
+ * `lines` is deliberately ABSENT at this level - unlike {@link
+ * EparagonyInvoiceBody}, a `PDVatCorrectiveInvoice` states only `invoiceType` /
+ * `metadata` / `correctedMetadata` / `correctingMetadata` as required, with
+ * `correctedLines` / `correctingLines` the optional per-line detail.
+ */
+export interface EparagonyCorrectiveInvoiceBody {
+  invoiceType: typeof EPARAGONY_INVOICE_TYPE_VAT;
+  /** Present asks for a hub relay; absent issues outside the hub entirely. */
+  eInvoicingHub?: typeof EPARAGONY_EINVOICING_HUB_KSEF;
+  metadata: EparagonyInvoiceMetadata;
+  correctedMetadata: EparagonyCorrectedInvoiceMetadata;
+  correctingMetadata: EparagonyCorrectingInvoiceMetadata;
+  /** ORIGINAL ("before") lines, for audit; optional. */
+  correctedLines?: EparagonyInvoiceLine[];
+  /** CORRECTED ("after") lines; optional. */
+  correctingLines?: EparagonyInvoiceLine[];
+  correctionReason?: string;
+}
+
+/** `POST /documents` body for a correction (`CreateCorrectiveInvoiceDocumentPayload`). */
+export interface EparagonyCreateCorrectiveInvoiceRequest {
+  posId: string;
+  /** Caller-supplied UUIDv4; supplying it is what makes the status read locatable. */
+  documentToken: string;
+  /** Required whenever `documentToken` is supplied. */
+  transactionToken: string;
+  eCorrectiveInvoice: EparagonyCorrectiveInvoiceBody;
+}
+
 /** `CreateDocumentSuccess` - returned on both `200` and `202`. */
 export interface EparagonyCreateDocumentResponse {
   transactionToken?: unknown;
