@@ -57,19 +57,6 @@
  * a re-render or a remount, rather than a `useState` flag this component
  * would lose the moment its parent unmounted it.
  *
- * **"Record for review" is not "issue".** The mockup's confirm-dialog CTA
- * reads "Issue credit note", but nothing behind this panel calls
- * `CorrectionIssuer` — the button here only records the ADR-044 change
- * proposal an operator later confirms through the existing correction flow
- * on the invoice page. Labelling it "Issue" here would contradict
- * `RETURN_PROPOSAL_COPY.noAutoIssue` printed one line below it.
- *
- * **Recorded state lives in the query cache, not local state.** A successful
- * record seeds the preview query with the response (#3089), so `changeId`
- * arriving as a prop — sourced from that same cached read — is what survives
- * a re-render or a remount, rather than a `useState` flag this component
- * would lose the moment its parent unmounted it.
- *
  * **The handoff opens the real correction flow, never a link (#3094
  * amendment).** The mockup's own frame-04 gap legend names the
  * `/invoices/:id` link as drift, not a design choice — the operator lands on
