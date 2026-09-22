@@ -37,18 +37,27 @@ import { buildSubiektSchedulerTasks } from './infrastructure/scheduler/subiekt-s
 export const subiektAdapterManifest: AdapterMetadata = {
   adapterKey: 'subiekt.invoicing.v1',
   platformType: 'subiekt',
-  // Fiscalization is listed unconditionally, matching the OFFER/OFFER-nothing
-  // convention every other capability list here follows — it degrades to
-  // "not supported" per-connection (dispatchCapability) when the connection
-  // config carries no drukarkaFiskalnaId, rather than the manifest itself
-  // being connection-aware, which it cannot be.
+  // NOTE: 'Fiscalization' is deliberately NOT listed here yet (#3365 review).
+  // The adapter exists in TypeScript, but the bridge-side endpoint it talks to
+  // (FiscalizationEndpoints.cs) has never been copied onto the Windows bridge,
+  // compiled, or run against a real fiscal printer - see
+  // docs/fiscalization-not-live-verified.md for the full unverified-assumption
+  // list (the dok_StatusFiskalny mapping, the printer configuration, the
+  // guessed poll timeout, no E2E run). Per #980, a capability name enters the
+  // manifest together with the adapter delivering it - here the thing it talks
+  // to does not exist at all, so advertising it would make it operator-
+  // tickable and auto-issue-reachable (#2156) against an unverified endpoint,
+  // and ADR-042 requires exactly-once fiscal registration to be an honest
+  // guarantee, not one resting on a status mapper that reports "unknown" for
+  // everything. Add it back once fiscalization-not-live-verified.md's steps
+  // 1-4 are done (bridge file compiled + run, dok_StatusFiskalny confirmed,
+  // printer configuration confirmed, an E2E run proving the wire contract).
   supportedCapabilities: [
     'Invoicing',
     'ProductMaster',
     'InventoryMaster',
     'OrderSource',
     'OrderProcessorManager',
-    'Fiscalization',
   ],
   // Driving Subiekt GT (InsERT GT product line) via the classic COM "Sfera GT"
   // automation surface (ProgID InsERT.GT) — NOT Subiekt nexo, which is a

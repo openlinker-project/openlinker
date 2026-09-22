@@ -3,10 +3,23 @@
  *
  * Implements the core `FiscalizationPort` (ADR-042) over a NEW, self-contained
  * HTTP call to the Windows bridge's `/api/fiscalize` route. Deliberately does
- * NOT reuse `SubiektBridgeHttpClient` / `SubiektBridgeClient` — those are the
- * invoicing capability's shared surface, edited by a parallel worktree build;
- * this file owns its own small transport so the two capabilities never collide
- * on one file. Mirrors `SubiektInvoicingAdapter`'s error-translation shape.
+ * NOT reuse the `SubiektBridgeHttpClient` / `SubiektBridgeClient` WRAPPER
+ * CLASSES (envelope parsing, base-URL prefixing, header building) - those are
+ * the invoicing capability's shared surface, edited by a parallel worktree
+ * build; this file owns its own small wire-protocol logic in `post()` so the
+ * two capabilities never collide on one file. It STILL receives the exact
+ * same connection-bound, rate-limited `FetchLike` every other Subiekt bridge
+ * client for this connection receives (`fetchImpl` - the constructor's 4th
+ * param, threaded verbatim from `SubiektAdapterFactory.createAdapters`'s own
+ * `fetchImpl` argument, which is `host.http.forConnection(connection,
+ * defaultRateLimit)` in `subiekt-plugin.ts`). `HttpTransportFactory.forConnection`
+ * caches ONE `FetchLike` per connection id and keys its limiter on that same
+ * id, so this adapter's `/api/fiscalize` POSTs share the identical
+ * `maxConcurrent: 1` / `requestsPerMinute: 60` (and any operator
+ * `config.rateLimit` override) limiter instance as the invoicing/inventory/
+ * orders/product-master bridge clients for the same connection - they are not
+ * a second, unpaced request stream (#3365 review). Mirrors
+ * `SubiektInvoicingAdapter`'s error-translation shape.
  *
  * OpenLinker is a PURE MECHANISM here (ADR-042): it never deduplicates and
  * never decides what a rejection means beyond translating the bridge's answer

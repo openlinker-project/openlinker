@@ -1057,6 +1057,21 @@ export class InvoiceService implements IInvoiceService {
    * `issueInvoice` has one — two DIFFERENT idempotency keys correcting the
    * same original document is a legitimate multi-correction sequence, not a
    * race to exclude.
+   *
+   * R1's "keyless is never deduplicated" holds a hidden assumption: it
+   * matches the ADAPTER exactly when the adapter also treats "no key" as "no
+   * dedup promise" (verified true for Subiekt's own `issueCorrection`, which
+   * omits `idempotencyKey` from the bridge request entirely when absent, and
+   * the bridge itself derives no fallback). It does NOT hold for an adapter
+   * that derives a deterministic per-(connection, order, kind) fallback token
+   * when no key is supplied and dedupes on THAT (eparagony's
+   * `resolveRegistrationKey`, flagged from the adapter side on #3332): two
+   * keyless corrections from this method would then create two
+   * `InvoiceRecord` rows here while the provider holds only one document -
+   * core and the adapter would disagree about how many corrections exist.
+   * Not fixed here (#3365 review) - either refusing a key-less correction or
+   * deriving the same deterministic fallback core-side needs to be decided
+   * once, for every adapter this method serves, not inside one adapter's PR.
    */
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {
     const key = cmd.idempotencyKey;
