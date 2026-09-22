@@ -167,6 +167,35 @@ public static class Invoicing
         return (id, numer, MapKsefStatus(status), string.IsNullOrEmpty(ksef) ? null : ksef);
     }
 
+    /// <summary>Does this document itself carry the warehouse movement?
+    /// dok_JestRuchMag = 1 means Subiekt released the stock as part of issuing
+    /// the document ("sprzedaz z magazynu"), which is the default posture on a
+    /// standard install - a separate WZ would then release the same units a
+    /// second time. On an install configured to sell with a separate warehouse
+    /// document the flag is 0 and the WZ below is what actually moves stock.
+    /// Fails CLOSED (returns false -> write the WZ) only on a read error, on
+    /// the reasoning that a missing release is recoverable by hand while a
+    /// double release is not; the WZ's own idempotency check still guards the
+    /// repeat.</summary>
+    private static async Task<bool> DocumentCarriesStockMovement(int docId)
+    {
+        try
+        {
+            await using var c = new SqlConnection(ConnStr);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                "SELECT dok_JestRuchMag FROM dok__Dokument WHERE dok_Id = @id", c);
+            cmd.Parameters.AddWithValue("@id", docId);
+            var r = await cmd.ExecuteScalarAsync();
+            return r is not null && r is not DBNull && Convert.ToInt32(r) == 1;
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"Invoicing.DocumentCarriesStockMovement: could not read dok_JestRuchMag for {docId} - {e.Message}");
+            return false;
+        }
+    }
+
     /// <summary>#3431: finds the order's ZK document by OL order id
     /// (dok_NrPelnyOryg, the same field CreateOrder's FindExistingZk keys on
     /// in OrdersEndpoints.cs), so an invoice can release the warehouse stock
@@ -258,7 +287,7 @@ public static class Invoicing
     /// (OrdersEndpoints.cs's FindExistingZk, keyed on req.OrderRef) - a
     /// different field entirely. `zkId` absent (order-less/manual invoice,
     /// or a pre-fix mapping) falls back to that search unchanged.</summary>
-    private static async Task<string?> EnsureWarehouseRelease(string orderId, string key, int invoiceDocId, int? zkId = null)
+    private static async Task<string?> EnsureWarehouseRelease(string orderId, string key, int invoiceDocId, int? zkId = null, List<InvoiceLine>? lines = null)
     {
         var autoWz = await FindAutoReleasedWzForInvoice(invoiceDocId);
         if (autoWz is not null)
@@ -292,6 +321,32 @@ public static class Invoicing
             try
             {
                 wz.NaPodstawie(resolvedZkId.Value);
+                // NaPodstawie LINKS the WZ to the ZK; it does not copy the
+                // ZK's specification onto it (confirmed live: every WZ written
+                // before this carried zero dok_Pozycja rows and released no
+                // stock at all). The positions are therefore added explicitly,
+                // from the same lines the invoice was built from, using the
+                // same SuPozycje.Dodaj(symbol) call CreateZk already uses.
+                // A symbol-less line is a service charge (delivery) and has no
+                // warehouse movement, so it is skipped rather than added.
+                var wzPozycji = 0;
+                foreach (var line in lines ?? new List<InvoiceLine>())
+                {
+                    if (line.TowarSymbol is null || line.TowarSymbol == "") continue;
+                    dynamic wpoz = wz.Pozycje.Dodaj(line.TowarSymbol);
+                    wpoz.IloscJm = line.Ilosc;
+                    wzPozycji++;
+                }
+                if (wzPozycji == 0)
+                {
+                    // Nothing to release (an order of pure services, or no line
+                    // carried a catalogue symbol). Writing an empty WZ is what
+                    // this code used to do and it is worse than writing none:
+                    // it looks like a release that happened.
+                    Console.Error.WriteLine($"Invoicing.EnsureWarehouseRelease: no catalogue lines to release for order '{orderId}' - not writing an empty WZ.");
+                    try { wz.Zamknij(); } catch { }
+                    return;
+                }
                 if (key != "") wz.NumerOryginalny = ReduceIdempotencyKey(key);
                 wz.Zapisz();
                 wzNumer = Convert.ToString(wz.NumerPelny) ?? "";
@@ -299,7 +354,7 @@ public static class Invoicing
             }
             finally { try { wz.Zamknij(); } catch { } }
         }, TimeSpan.FromSeconds(120));
-        return wzNumer;
+        return wzNumer == "" ? null : wzNumer;
     }
 
     public static async Task<IssueResult> IssueInvoice(IssueRequest req)
@@ -318,7 +373,9 @@ public static class Invoicing
             // crash may have happened BETWEEN the original invoice commit and
             // its WZ commit - always re-check/re-attempt, never assume a
             // found invoice means its stock was already released too.
-            var wzNumerExisting = await EnsureWarehouseRelease(req.OrderId, key, exId, req.ZkId);
+            var wzNumerExisting = await DocumentCarriesStockMovement(exId)
+                ? null
+                : await EnsureWarehouseRelease(req.OrderId, key, exId, req.ZkId, req.Lines);
             return new IssueResult(exId, exNumer, "issued", regStatus, null, ksefNr, wzNumerExisting);
         }
 
@@ -412,7 +469,9 @@ public static class Invoicing
         // state and must be reported as issued regardless. An exception here
         // propagates to the caller as a genuine request failure (retryable;
         // EnsureWarehouseRelease's idempotency check makes the retry safe).
-        var wzNumer = await EnsureWarehouseRelease(req.OrderId, key, docId, req.ZkId);
+        var wzNumer = await DocumentCarriesStockMovement(docId)
+            ? null
+            : await EnsureWarehouseRelease(req.OrderId, key, docId, req.ZkId, req.Lines);
         return new IssueResult(docId, numer, "issued", finalRegStatus, null, finalKsefNr, wzNumer);
     }
 
