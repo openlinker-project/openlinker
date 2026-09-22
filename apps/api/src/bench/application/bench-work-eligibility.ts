@@ -129,7 +129,8 @@ export function deriveBenchWorkAssignmentState(
 }
 
 /**
- * May THIS viewer claim (open, verify) this parcel — ADR-074 / #3336 / #3337.
+ * May THIS viewer claim (open, verify, reopen, undo) this parcel — ADR-074 /
+ * #3336 / #3337.
  *
  * The list's own copy of `BenchParcelService.verifyUnit`'s guard, moved here
  * so list and write share the identical predicate (this file's "one rule, two

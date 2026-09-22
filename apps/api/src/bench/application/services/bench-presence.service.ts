@@ -39,6 +39,20 @@
  * `CACHE_PORT_TOKEN` is `@Global()` (`CacheModule`), so this needs no module
  * import beyond the injection itself.
  *
+ * ## Deliberately NOT gated by the ADR-074 assignment lock (#3435 review)
+ *
+ * `BenchParcelService.verifyUnit` / `reopenParcel` / `undoLastScan` all
+ * refuse a packer `isClaimableByViewer` excludes from a locked assignment —
+ * but `ping` here applies no such check, and that asymmetry is intentional
+ * rather than an oversight. A packer who may NOT work a locked parcel can
+ * still open it to look, and is exactly the packer who most needs to see "the
+ * assigned packer already has this open" — withholding presence from them
+ * would hide the one signal that explains why their own scan is about to be
+ * refused. Presence answers "who else is looking at this parcel right now",
+ * a question with no assignment axis of its own; the write-side lock is a
+ * different question, "may THIS viewer change this parcel's state", answered
+ * independently by each of the three methods above.
+ *
  * @module apps/api/src/bench/application/services
  * @implements {IBenchPresenceService}
  */

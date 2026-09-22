@@ -142,6 +142,24 @@ describe('bench work eligibility (#2418, story D2)', () => {
           )
         ).toBe(false);
       });
+
+      it('is claimable by an anonymous viewer when nobody is assigned (#3435 review)', () => {
+        expect(
+          isClaimableByViewer({ assignedToUserId: null, selfServeEligible: false }, null)
+        ).toBe(true);
+      });
+
+      it('refuses an anonymous viewer locked out of a non-self-serve assignment (#3435 review)', () => {
+        // `null` never equals a real `assignedToUserId`, so a caller with no
+        // recorded actor is excluded exactly as a named non-assignee is —
+        // `reopenParcel`'s own `@CurrentUser()` is optional at its route.
+        expect(
+          isClaimableByViewer(
+            { assignedToUserId: 'someone-else', selfServeEligible: false },
+            null
+          )
+        ).toBe(false);
+      });
     });
   });
 });

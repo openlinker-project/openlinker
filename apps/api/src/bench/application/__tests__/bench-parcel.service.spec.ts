@@ -372,6 +372,7 @@ describe('BenchParcelService (#2418)', () => {
     });
   });
 
+<<<<<<< HEAD
   /**
    * ADR-074 (#3336/#3337/#3341, #3361 review) — the SAME guard `verifyUnit`
    * applies, on the write `reopenParcel` performs. An excluded packer
@@ -466,6 +467,57 @@ describe('BenchParcelService (#2418)', () => {
     });
   });
 
+||||||| parent of a2aa4c6d6 (fix(bench): guard undoLastScan + reopenParcel against a non-assigned packer, add assignment-axis guard spec (#3435 review))
+=======
+  describe('reopenParcel — the same assignment lock as verifyUnit (#3435 review)', () => {
+    it('should refuse a reopen from a packer excluded by a locked assignment', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-9', selfServeEligible: false }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: 'user-1', // not user-9
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-packable' });
+      expect(verification.reopenParcel).not.toHaveBeenCalled();
+    });
+
+    it('should refuse an anonymous reopen of a locked parcel', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-9', selfServeEligible: false }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: null,
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-packable' });
+      expect(verification.reopenParcel).not.toHaveBeenCalled();
+    });
+
+    it('should allow the ASSIGNED packer to reopen a locked parcel', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-1', selfServeEligible: false }),
+      });
+      (verification.reopenParcel as jest.Mock).mockResolvedValue({
+        outcome: 'reopened',
+        state: state({ closedAt: null }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: 'user-1', // is user-1
+      });
+
+      expect(result.outcome).not.toBe('refused');
+      expect(verification.reopenParcel).toHaveBeenCalled();
+    });
+  });
+
+>>>>>>> a2aa4c6d6 (fix(bench): guard undoLastScan + reopenParcel against a non-assigned packer, add assignment-axis guard spec (#3435 review))
   describe('story D3 — a split order is unambiguous', () => {
     it('reports which parcel of the order this is', async () => {
       const { service } = harness({
@@ -1011,6 +1063,37 @@ describe('BenchParcelService (#2418)', () => {
         reason: 'nothing-to-undo',
         workLineId: null,
       });
+    });
+
+    it('should refuse an undo from a packer excluded by a locked assignment (#3435 review)', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-9', selfServeEligible: false }),
+      });
+
+      const result = await service.undoLastScan({ workId: 'work-1', actorUserId: 'user-1' }); // not user-9
+
+      expect(result).toMatchObject({
+        outcome: 'refused',
+        reason: 'not-packable',
+        workLineId: null,
+      });
+      expect(verification.voidLastVerification).not.toHaveBeenCalled();
+    });
+
+    it('should allow the ASSIGNED packer to undo a scan on a locked parcel', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-1', selfServeEligible: false }),
+      });
+      (verification.voidLastVerification as jest.Mock).mockResolvedValue({
+        outcome: 'voided',
+        workLineId: 'line-1',
+        state: state({ closedAt: null }),
+      });
+
+      const result = await service.undoLastScan({ workId: 'work-1', actorUserId: 'user-1' }); // is user-1
+
+      expect(result.outcome).not.toBe('refused');
+      expect(verification.voidLastVerification).toHaveBeenCalled();
     });
   });
 });

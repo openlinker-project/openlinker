@@ -221,21 +221,21 @@ export class BenchParcelService implements IBenchParcelService {
   async reopenParcel(input: BenchReopenInput): Promise<BenchReopenResultView> {
     const work = await this.loadBenchWork(input.workId);
 
-    // ADR-074 (#3336/#3337/#3341): the same lock that refuses `verifyUnit`
-    // must refuse `reopenParcel` too — otherwise a packer excluded from a
-    // locked assignment can reopen a parcel they may not scan into, clearing
-    // `packedByUserId` and erasing the record of who packed it. Reads the
-    // same `isClaimableByViewer` predicate `verifyUnit` reads above rather
-    // than restating the rule, so the two write-side guarantees cannot drift
-    // apart. `input.reopenedByUserId` is nullable at this layer (this
-    // route's `@CurrentUser()` is optional by design), and `isClaimableByViewer`
+    // ADR-074 (#3336/#3337/#3341/#3435 review): the same lock that refuses
+    // `verifyUnit` and `undoLastScan` must refuse `reopenParcel` too -
+    // otherwise a packer excluded from a locked assignment can reopen a
+    // parcel they may not scan into, clearing `packedByUserId` and erasing
+    // the record of who packed it. Reads the same `isClaimableByViewer`
+    // predicate rather than restating the rule, so the write-side guarantees
+    // cannot drift apart. `input.reopenedByUserId` is nullable at this layer
+    // (this route's `@CurrentUser()` is optional by design) and the predicate
     // accepts that directly - null never equals a real assignee, so an
     // anonymous reopen against a locked parcel is excluded too.
     if (!isClaimableByViewer(work, input.reopenedByUserId)) {
       const state = await this.verification.getState(input.workId);
       return {
         outcome: 'refused',
-        reason: 'not-claimable-by-viewer',
+        reason: 'not-packable',
         parcel: await this.project(work, state),
       };
     }
@@ -450,6 +450,22 @@ export class BenchParcelService implements IBenchParcelService {
 
   async undoLastScan(input: BenchUndoInput): Promise<BenchUndoResultView> {
     const work = await this.loadBenchWork(input.workId);
+
+    // ADR-074 (#3336/#3337), same rule as `verifyUnit` above: a packer
+    // excluded from a locked assignment may not RECORD progress on this
+    // parcel, and undoing another packer's recorded scan is recording
+    // progress on it just as much as adding one is. Checked before the void
+    // rather than left to the core service, which has no viewer to read
+    // (#3435 review).
+    if (!isClaimableByViewer(work, input.actorUserId)) {
+      const state = await this.verification.getState(input.workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-packable',
+        workLineId: null,
+        parcel: await this.project(work, state),
+      };
+    }
 
     const result = await this.verification.voidLastVerification({
       workId: input.workId,

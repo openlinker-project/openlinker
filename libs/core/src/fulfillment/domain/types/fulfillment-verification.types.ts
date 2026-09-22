@@ -114,13 +114,16 @@ export const ParcelReopenRefusalValues = [
   /** Nothing to reopen — the parcel is not closed. */
   'not-closed',
   /**
-   * Locked to a packer other than the one asking (ADR-074 / #3336 / #3337 /
-   * #3341). The same reason as `ParcelVerificationRefusal`'s member of the
-   * same name — a fact about the ACTOR, not about the parcel's own
-   * closed/shipped state, and produced by `BenchParcelService` rather than
-   * by this context's own reopen logic (#3361 review).
+   * The work is not one this bench may pack — the same ADR-074 assignment
+   * rule `verifyUnit` and `voidLastVerification` read. DECLARED here and
+   * produced nowhere in this context, for the same reason
+   * `ParcelVerificationRefusalValues` states it: the rule answers from
+   * `isClaimableByViewer`, which reads a bench's own scope and belongs to
+   * `apps/api/src/bench`. A packer excluded by a locked assignment may not
+   * reopen another packer's parcel any more than they may scan or undo one on
+   * it (#3435 review).
    */
-  'assigned-to-another-packer',
+  'not-packable',
 ] as const;
 
 export type ParcelReopenRefusal = (typeof ParcelReopenRefusalValues)[number];
@@ -147,6 +150,17 @@ export const ParcelUndoRefusalValues = [
   'parcel-closed',
   /** Nothing active to undo — no verification has been recorded yet. */
   'nothing-to-undo',
+  /**
+   * The work is not one this bench may pack — the same ADR-074 assignment
+   * rule `verifyUnit` reads. DECLARED here and produced nowhere in this
+   * context, for the same reason `ParcelVerificationRefusalValues` states it:
+   * the rule answers from `isClaimableByViewer`, which reads a bench's own
+   * scope and belongs to `apps/api/src/bench`, not to this core service. A
+   * packer excluded by a locked assignment must be refused before undoing
+   * another packer's recorded scan, exactly as before recording their own
+   * (#3435 review).
+   */
+  'not-packable',
 ] as const;
 
 export type ParcelUndoRefusal = (typeof ParcelUndoRefusalValues)[number];

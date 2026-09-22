@@ -115,7 +115,7 @@ export interface BenchVerificationResult {
 export interface BenchReopenResult {
   /** `reopened` | `refused`. */
   readonly outcome: string;
-  /** `shipped` | `not-closed`, or `null`. */
+  /** `shipped` | `not-closed` | `not-packable` (#3435 review), or `null`. */
   readonly reason: string | null;
   readonly parcel: BenchParcel;
 }

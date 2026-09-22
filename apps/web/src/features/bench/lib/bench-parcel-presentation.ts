@@ -181,7 +181,13 @@ export function describeVerificationRefusal(
   }
 }
 
-/** Why a reopen was turned down. `shipped` gets its own words — the box has gone. */
+/**
+ * Why a reopen was turned down. `shipped` gets its own words — the box has
+ * gone. `not-packable` (#3435 review) is the same ADR-074 assignment-lock
+ * reason `describeVerificationRefusal` already renders above — this branch
+ * overloads that one reason across every mutation the lock refuses, rather
+ * than minting a per-method spelling, so the copy is reused verbatim here too.
+ */
 export function describeReopenRefusal(reason: string | null): string {
   const copy = benchParcelCopy.closed;
   switch (reason) {
@@ -189,8 +195,8 @@ export function describeReopenRefusal(reason: string | null): string {
       return copy.reopenShipped;
     case 'not-closed':
       return copy.reopenNotClosed;
-    case 'not-claimable-by-viewer':
-      return copy.reopenAssignedToAnotherPacker;
+    case 'not-packable':
+      return benchParcelCopy.verify.notPackable;
     default:
       return copy.reopenUnknownRefusal;
   }
