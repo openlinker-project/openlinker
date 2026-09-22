@@ -22,17 +22,29 @@
  */
 import type { ReturnCorrectionProposalLine } from '../api/returns.types';
 
-/** Mirrors the panel's own constant — see its docblock for why. */
-const NEEDS_ATTENTION_NO_MATCH_REASON = 'ambiguous-invoice-line';
+/**
+ * The one `noMatchReason` value that must read as attention-worthy rather
+ * than as a routine, closed exclusion — the residual case `status:
+ * 'ambiguous'` used to carry before #3312 retired it. Declared exactly once,
+ * here, and imported by the panel — a second, independent declaration is how
+ * this drifted from a member of `ReturnCorrectionNoMatchReasonValues` before.
+ */
+export const NEEDS_ATTENTION_NO_MATCH_REASON = 'ambiguous-invoice-line';
 
 export interface CorrectionProposalBreakdown {
   /** Sum of every resolved line's credit. Rounded to cents. */
   totalCredit: number;
-  /** `matched` lines — OpenLinker resolved these without asking. */
+  /**
+   * `matched` lines that are actually PRICEABLE — a reported `newQuantity`
+   * AND a resolvable selected candidate. This is the count the headline
+   * credit is drawn from; a `matched` line missing either contributes `0` to
+   * `totalCredit` and is counted in `cantCreditCount` instead, or the two
+   * numbers would describe different sets of lines.
+   */
   automaticCount: number;
   /** `ambiguous` lines — the operator must pick before this credits anything. */
   needsPickCount: number;
-  /** `no-match` lines — excluded, each with its own reason. */
+  /** `no-match` lines, plus an unpriceable `matched` line — each excluded from the credit for its own reason. */
   cantCreditCount: number;
 }
 
@@ -47,13 +59,30 @@ function selectedCandidate(
   );
 }
 
+/**
+ * A `matched` line the server has actually priced — a reported `newQuantity`
+ * and a selected candidate that still resolves against `candidates`. Both
+ * `lineCredit` and the breakdown's `automaticCount` gate on this, so a line
+ * missing either piece cannot silently count as "automatic" while
+ * contributing nothing to the total.
+ */
+function isPriceable(line: ReturnCorrectionProposalLine): boolean {
+  return (
+    line.status === 'matched' && line.newQuantity !== null && selectedCandidate(line) !== null
+  );
+}
+
 /** One resolved line's own credit — `0` when it cannot be priced yet. */
 export function lineCredit(line: ReturnCorrectionProposalLine): number {
-  if (line.status !== 'matched' || line.newQuantity === null) return 0;
-  const candidate = selectedCandidate(line);
-  if (candidate === null) return 0;
-  const deltaQty = candidate.quantity - line.newQuantity;
-  return Math.round(deltaQty * candidate.unitPriceGross * 100) / 100;
+  if (!isPriceable(line)) return 0;
+  // isPriceable already proved newQuantity and the candidate are both present.
+  const candidate = selectedCandidate(line)!;
+  const deltaQty = candidate.quantity - line.newQuantity!;
+  // Clamped at 0 rather than let through: `newQuantity` and the selected
+  // candidate are resolved by different parts of the matcher, so a mismatch
+  // between them would otherwise produce a NEGATIVE credit that silently
+  // reduces the headline instead of crediting nothing.
+  return Math.max(0, Math.round(deltaQty * candidate.unitPriceGross * 100) / 100);
 }
 
 export function computeCorrectionProposalBreakdown(
@@ -66,8 +95,15 @@ export function computeCorrectionProposalBreakdown(
 
   for (const line of lines) {
     if (line.status === 'matched') {
-      automaticCount += 1;
-      totalCredit += lineCredit(line);
+      if (isPriceable(line)) {
+        automaticCount += 1;
+        totalCredit += lineCredit(line);
+      } else {
+        // Reported as matched but missing what pricing it needs — reads as
+        // "can't credit yet", the honest description, rather than being
+        // counted as automatic while contributing nothing to the total.
+        cantCreditCount += 1;
+      }
     } else if (
       line.status === 'ambiguous' ||
       line.noMatchReason === NEEDS_ATTENTION_NO_MATCH_REASON

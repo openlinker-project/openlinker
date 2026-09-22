@@ -84,6 +84,12 @@ describe('CorrectionProposalPanel (#3090)', () => {
       .toHaveTextContent('1');
   });
 
+  it('should label the headline as an estimate, never as the amount the document will carry (review finding on #3376)', () => {
+    renderPanel(proposal([line()]));
+
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.headlineEstimateNote)).toBeInTheDocument();
+  });
+
   it('should show a plain-language status, never the raw enum value', () => {
     renderPanel(proposal([line({ status: 'ambiguous', candidates: [
       { originalLineNumber: 1, name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '23' },

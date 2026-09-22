@@ -35,7 +35,14 @@
  * `noMatchReason: 'ambiguous-invoice-line'`. It must read as attention-worthy
  * here too, not as a routine, closed exclusion, so both the page-level banner
  * and the per-line badge tone treat it exactly like the old `'ambiguous'`
- * status did — see `NEEDS_ATTENTION_NO_MATCH_REASON` below.
+ * status did — see `NEEDS_ATTENTION_NO_MATCH_REASON`, imported from the lib
+ * rather than declared here a second time.
+ *
+ * **The headline is a browser-side estimate with no server counterpart.** A
+ * return credits quantity only — core computes no net for a correction and
+ * rounds nothing (ADR-063); the provider computes and rounds the actual
+ * issued amounts. `RETURN_PROPOSAL_COPY.headlineEstimateNote` says so next to
+ * the figure, so it is never read as the number the document will carry.
  *
  * @module apps/web/src/features/returns/components
  */
@@ -47,21 +54,17 @@ import { StatusBadge } from '../../../shared/ui/status-badge';
 import { MetricCard } from '../../../shared/ui/metric-card';
 import { formatAmount } from '../../../shared/format/format-amount';
 import { RETURN_PROPOSAL_COPY } from '../lib/return-proposal.copy';
-import { computeCorrectionProposalBreakdown, lineCredit } from '../lib/correction-proposal-breakdown';
+import {
+  computeCorrectionProposalBreakdown,
+  lineCredit,
+  NEEDS_ATTENTION_NO_MATCH_REASON,
+} from '../lib/correction-proposal-breakdown';
 import type { ReturnCorrectionProposal } from '../api/returns.types';
 
 interface CorrectionProposalPanelProps {
   proposal: ReturnCorrectionProposal | null;
   outcome: string;
 }
-
-/**
- * The one `noMatchReason` value that must read as attention-worthy rather than
- * as a routine, closed exclusion — the residual case `status: 'ambiguous'`
- * used to carry before #3312 retired it. Named once so the banner check and
- * the badge-tone check below cannot drift.
- */
-const NEEDS_ATTENTION_NO_MATCH_REASON = 'ambiguous-invoice-line';
 
 export function CorrectionProposalPanel({
   proposal,
@@ -94,6 +97,7 @@ export function CorrectionProposalPanel({
         <MetricCard
           label={RETURN_PROPOSAL_COPY.headlineLabel}
           value={formatAmount(breakdown.totalCredit, proposal.currency)}
+          description={RETURN_PROPOSAL_COPY.headlineEstimateNote}
         />
         <dl className="returns-proposal-panel__breakdown">
           <div>

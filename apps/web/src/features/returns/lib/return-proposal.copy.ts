@@ -9,6 +9,14 @@ export const RETURN_PROPOSAL_COPY = {
 
   /** The headline metric — the acceptance criterion is that it needs no scroll. */
   headlineLabel: 'Total credit',
+  /**
+   * A correction credits quantity only — core computes no net for it and
+   * rounds nothing (ADR-063); the provider computes and rounds the actual
+   * issued amounts. This figure is OpenLinker's own estimate from the
+   * invoice's own line prices, and the operator must not read it as the
+   * number the document will carry.
+   */
+  headlineEstimateNote: "Estimated from the invoice's own line prices — the issued document's amounts come from your invoicing provider.",
   breakdownAutomatic: 'Credited automatically',
   breakdownNeedsPick: 'Needs your pick',
   breakdownCantCredit: "Can't credit yet",

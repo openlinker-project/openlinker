@@ -47,6 +47,19 @@ describe('lineCredit', () => {
   it('should credit nothing when the full invoiced quantity survives the return', () => {
     expect(lineCredit(line({ newQuantity: 2 }))).toBe(0);
   });
+
+  it('should credit nothing for a matched line whose selected candidate no longer resolves', () => {
+    // selectedOriginalLineNumber names a position absent from `candidates` —
+    // reported as matched, but unpriceable.
+    expect(lineCredit(line({ selectedOriginalLineNumber: 99 }))).toBe(0);
+  });
+
+  it('should clamp at 0 rather than credit a negative amount (review finding on #3376)', () => {
+    // newQuantity (5) exceeds the selected candidate's own quantity (2) — the
+    // two are resolved separately by the matcher, so a mismatch between them
+    // must not silently reduce the headline via a negative credit.
+    expect(lineCredit(line({ newQuantity: 5 }))).toBe(0);
+  });
 });
 
 describe('computeCorrectionProposalBreakdown', () => {
@@ -89,5 +102,37 @@ describe('computeCorrectionProposalBreakdown', () => {
 
     expect(result.needsPickCount).toBe(1);
     expect(result.cantCreditCount).toBe(0);
+  });
+
+  it('should count a matched-but-unpriced line as cantCredit, never automatic (review finding on #3376)', () => {
+    // `newQuantity: null` on a `matched` line is a real shape the type
+    // permits — reported matched, but the server has not priced it yet.
+    // Counting it as `automatic` while it contributes 0 to `totalCredit`
+    // would let the two numbers on the panel disagree.
+    const result = computeCorrectionProposalBreakdown([
+      line({ newQuantity: null }),
+    ]);
+
+    expect(result).toEqual({
+      totalCredit: 0,
+      automaticCount: 0,
+      needsPickCount: 0,
+      cantCreditCount: 1,
+    });
+  });
+
+  it('should keep automaticCount and totalCredit describing the same set of lines', () => {
+    // One genuinely priceable matched line, one matched-but-unpriced line.
+    // automaticCount must equal the number of lines that actually fed
+    // totalCredit, not the number of lines the server merely called
+    // "matched".
+    const result = computeCorrectionProposalBreakdown([
+      line({ returnLineId: 'priced' }),
+      line({ returnLineId: 'unpriced', newQuantity: null }),
+    ]);
+
+    expect(result.automaticCount).toBe(1);
+    expect(result.totalCredit).toBe(10);
+    expect(result.cantCreditCount).toBe(1);
   });
 });
