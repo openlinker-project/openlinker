@@ -113,6 +113,7 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
         <ReadOnlyLock active={write.demoReadOnly} message={DEMO_READ_ONLY_ACTION_MESSAGE}>
           <Button
             className="button--sm"
+            data-testid="rules-add"
             disabled={!write.canWrite}
             onClick={() => setComposerOpen(true)}
           >
@@ -135,7 +136,7 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
         </Alert>
       ) : null}
 
-      {rules.map((rule) => {
+      {rules.map((rule, ruleIndex) => {
         const connectionName =
           connections.find((c) => c.id === rule.connectionId)?.name ?? rule.connectionId;
         const isDeletingThisRule = deleteRule.isPending && deleteRule.variables === rule.id;
@@ -145,7 +146,14 @@ export function SalesDocumentRulesList({ country }: SalesDocumentRulesListProps)
           <div
             key={rule.id}
             id={ruleCardDomId(rule.id)}
-            data-testid={`rule-card-${rule.id}`}
+            // `rule-row-{n}` is the literal hook
+            // `docs/plans/mockups/sales-document-rule-composer.html` declares
+            // for a rule row (#3196). The id-keyed `rule-card-{ruleId}` it
+            // replaces survives as this element's `id` — which is what the
+            // reveal effect above and this component's unit spec already use —
+            // so nothing lost an addressing route, and an element can carry
+            // only one `data-testid`.
+            data-testid={`rule-row-${ruleIndex}`}
             // Programmatically focusable, never in the tab order (#3190
             // review): the reveal effect above moves focus here so the row is
             // announced, and a row is not a control an operator should have to

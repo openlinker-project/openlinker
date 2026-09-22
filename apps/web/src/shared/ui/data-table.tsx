@@ -196,6 +196,26 @@ interface DataTableProps<Row> {
   rowLinkDisplay?: 'inline' | 'block';
   rowKey: (row: Row) => Key;
   rows: Row[];
+  /**
+   * Stable test hook for the `<table>` element (#3196). Opt-in: a table without
+   * one renders exactly as before.
+   *
+   * It sits on the table rather than on the surrounding container because that
+   * is what the sales-document mockups declare (`invoices-table`), and because
+   * a hook on a wrapper would still be present when the mobile card view has
+   * replaced the table entirely — asserting the presence of something that is
+   * not rendered.
+   */
+  tableTestId?: string;
+  /**
+   * Stable test hook per rendered `<tr>` (#3196). Returning `undefined` for a
+   * row emits no attribute, so a partial mapping is expressible rather than
+   * forced to invent a hook for every row.
+   *
+   * Desktop table rows only — the card view is a different DOM and carries no
+   * equivalent, which a spec must not read as "the row is missing".
+   */
+  rowTestId?: (row: Row) => string | undefined;
   sort?: SortingState;
   /**
    * Freeze the leading N data columns to the left edge while the rest of the
@@ -295,6 +315,8 @@ export function DataTable<Row>({
   rowLinkDisplay = 'inline',
   rowKey,
   rows,
+  tableTestId,
+  rowTestId,
   sort,
   stickyLeftColumns = 0,
   virtualize = false,
@@ -567,7 +589,14 @@ export function DataTable<Row>({
     const extraRowAttributes = sanitizeRowAttributes(rowAttributes?.(row));
 
     const bodyRow = (
-      <tr key={key} className={rowClasses} onClick={onClick} style={style} {...extraRowAttributes}>
+      <tr
+        key={key}
+        data-testid={rowTestId?.(row)}
+        className={rowClasses}
+        onClick={onClick}
+        style={style}
+        {...extraRowAttributes}
+      >
         {expandable ? (
           <td
             className={['data-table__expand-cell', stickyCellProps(0).className]
@@ -653,6 +682,7 @@ export function DataTable<Row>({
     return (
     <table
       ref={tableRef}
+      data-testid={tableTestId}
       className={['data-table', stickyScrolled ? 'data-table--sticky-scrolled' : '']
         .filter(Boolean)
         .join(' ')}

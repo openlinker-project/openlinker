@@ -12,11 +12,11 @@ relaying it to KSeF (Poland's national e-invoicing hub).
 | **Adapter key** | `eparagony.documents.v3` |
 | **Platform type** | `eparagony` |
 | **Package** | `@openlinker/integrations-eparagony` |
-| **Capabilities** | `Fiscalization`, `FiscalRegistrationLocator`, `Invoicing`, `RegulatoryStatusReader` |
+| **Capabilities** | `Fiscalization`, `FiscalRegistrationLocator`, `Invoicing`, `RegulatoryStatusReader`, `CorrectionIssuer` |
 
 One connection can carry both the receipts lane and the invoicing lane — they share the
 same OAuth credentials and the same `POST /documents` endpoint, only the document kind
-in the request body differs (`eReceipt` vs `eInvoice`). Each lane is enabled
+in the request body differs (`eReceipt` vs `eInvoice` vs `eCorrectiveInvoice`). Each lane is enabled
 independently on the connection (`enabledCapabilities` is stamped at connection create
 and never retro-filled, so an existing receipts-only connection does **not** silently
 gain the invoicing lane) — enabling one role never routes anything to it by itself; a
@@ -47,12 +47,30 @@ inside the `eReceipt` request payload, not separate endpoints, so there is nothi
 device sub-capability to call. See [ADR-042 § Decision 5](../../../docs/architecture/adrs/042-fiscalization-capability.md).
 
 **Invoicing**: `EparagonyInvoicingAdapter` implements `InvoicingPort` (`issueInvoice`,
-`getInvoice`, `upsertCustomer`) and `RegulatoryStatusReader` (`getClearanceStatus`) over
-the vendor's `eInvoice` document kind, relayed to KSeF via `eInvoicingHub: "KSEF"` on
+`getInvoice`, `upsertCustomer`), `RegulatoryStatusReader` (`getClearanceStatus`) and
+`CorrectionIssuer` (`issueCorrection`, #3193) over the vendor's `eInvoice` /
+`eCorrectiveInvoice` document kinds, each relayed to KSeF via `eInvoicingHub: "KSEF"` on
 the document body. `upsertCustomer` is a pure identity echo — no network call, a
 deterministic id derived from the buyer's tax number (or a per-connection guest handle
-when absent), mirroring the KSeF adapter's own precedent. `CorrectionIssuer` (correcting
-an already-issued invoice) is **not yet implemented** on this adapter — see #3193.
+when absent), mirroring the KSeF adapter's own precedent.
+
+`issueCorrection` composes the vendor's `eCorrectiveInvoice` body from the ORIGINAL
+document's issuance-time line snapshot (`IssueCorrectionCommand.originalDocument`,
+#1297) — `correctedMetadata` links the correction to the original **by invoice number**
+(never by KSeF number or `documentToken`, which are the relay's and this integration's
+own identifiers), and `correctingMetadata` states the post-correction totals. A line no
+correction entry names carries through unchanged into the "after" state, because those
+two blocks state the document's full totals rather than a diff.
+
+Unlike a plain invoice, a correction requires the connection to configure `merchantTIN`
+**and** `merchantName` **and** a complete `merchantAddress` — the vendor's
+`correctingMetadata` has no fallback to the account's own registered identity the way a
+plain invoice's `metadata` does, so a connection missing any of them is refused pre-call
+with a message naming the field to set. The correction derives its own `documentToken` /
+`transactionToken` from a `correction`-namespaced registration key, so an
+idempotency-key-less correction on the same order never collides with the original
+invoice's token — which the vendor dedupes on, and would otherwise answer with the
+original document.
 
 **Status mapping** (`RegulatoryStatusReader`):
 
