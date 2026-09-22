@@ -224,6 +224,28 @@ export const benchParcelCopy = {
    * is why the in-flight state is named rather than papered over with a tick
    * that arrives early.
    */
+  /**
+   * The hero scan card (mockup-parity epic #3401).
+   *
+   * Says outright that scanning needs no button, because the previous
+   * surface had no visible field at all and a packer could not tell whether
+   * their reader was reaching the screen. `confirmAction` is named for what
+   * it does and never for how — the same rule `lines.confirmAction` follows,
+   * and for the same D20 reason.
+   */
+  hero: {
+    scanLabel: 'Scan this item',
+    scanPlaceholder: 'Scan or type SKU / EAN, then press Enter',
+    confirmAction: 'Confirm this item',
+    undoAction: 'Undo last scan',
+    scanHint:
+      'Scanning counts on its own — no button needed. Use Confirm this item only when a barcode is damaged, missing or will not read.',
+    keyboardHint: 'Keyboard, when you are not scanning: C confirms this item.',
+    countOf: (required: number): string => `of ${String(required)}`,
+    /** The progress bar's own right-hand figure. */
+    percent: (value: number): string => `${String(value)}%`,
+  },
+
   inFlight: {
     sent: 'Sent — waiting for the system',
     sentAnnouncement: (name: string): string => `${name} sent. Waiting for the system.`,

@@ -67,6 +67,13 @@ export interface BenchWorkRowProps {
    */
   readonly onClaim?: (work: BenchWork) => void;
   readonly claiming?: boolean;
+  /**
+   * Whether this is the box open in the pane beside the rail (#3401). Marks
+   * the row `aria-current="true"`, which is what the mockup's own
+   * `.rail-row[aria-current]` rule tints. Never the carrier of any state —
+   * every word on the row is unchanged by it.
+   */
+  readonly active?: boolean;
 }
 
 function toneFor(work: BenchWork): StatusBadgeTone {
@@ -84,6 +91,7 @@ export function BenchWorkRow({
   onOpenParcel,
   onClaim,
   claiming = false,
+  active = false,
 }: BenchWorkRowProps): ReactElement {
   const deadline = describeBenchDeadline(work.dispatchByAt, now);
   const expediteAction = expediteActionFor(work);
@@ -91,16 +99,64 @@ export function BenchWorkRow({
 
   return (
     <li
-      className={`bench-work-row bench-work-row--${work.state}`}
+      className={[
+        'bench-work-row',
+        `bench-work-row--${work.state}`,
+        work.assignmentState === 'mine' ? 'bench-work-row--mine' : null,
+        work.assignmentState === 'unassigned' ? 'bench-work-row--open' : null,
+      ]
+        .filter((part): part is string => part !== null)
+        .join(' ')}
       data-testid="bench-work-row"
       data-work-id={work.workId}
+      // The mockup's own active-row marker. Written on every row so the
+      // absence is explicit rather than inferred from a missing attribute.
+      aria-current={active}
       // #3341, ADR-074 — the distinct, test-queryable marker for the three
       // pre-assignment states. Present on every row, including `unassigned`,
       // so a change of value is always observable even where no badge renders.
       data-assignment-state={work.assignmentState}
     >
-      <div className="bench-work-row__deadline">
-        {/* The headline is words, always — never a bare colour bar. */}
+      {/* The mockup's `.rail-row__top`: the reference on the left and the one
+          loudest badge on the right, on one baseline. */}
+      <div className="bench-work-row__top">
+        <span className="bench-work-row__reference">{work.orderReference}</span>
+        <span className="bench-work-row__state">
+          {expedited ? (
+            <StatusBadge tone="warning" withDot compact>
+              {benchWorkCopy.row.expeditedBadge}
+            </StatusBadge>
+          ) : null}
+          {work.state !== 'packable' ? (
+            <StatusBadge tone={toneFor(work)} withDot compact>
+              {work.state === 'held'
+                ? benchWorkCopy.row.heldBadge
+                : benchWorkCopy.row.cancelledBadge}
+            </StatusBadge>
+          ) : null}
+          {/* `unassigned` renders no badge — the default state is silence, the
+              same rule the `packable` / not-expedited rows already follow. */}
+          {work.assignmentState === 'mine' ? (
+            <StatusBadge tone="info" compact>
+              {benchWorkCopy.row.assignedToYouBadge}
+            </StatusBadge>
+          ) : null}
+          {work.assignmentState === 'assigned-other' ? (
+            <StatusBadge tone="neutral" compact>
+              {benchWorkCopy.row.assignedToOtherBadge}
+            </StatusBadge>
+          ) : null}
+        </span>
+      </div>
+
+      {work.buyerName === null ? null : (
+        <span className="bench-work-row__buyer">{work.buyerName}</span>
+      )}
+
+      {/* The deadline headline is WORDS, always — never a bare colour bar —
+          and it now leads the meta line rather than owning its own column,
+          which is what lets the row fit a 340 px rail. */}
+      <span className="bench-work-row__meta">
         <span className="bench-work-row__deadline-headline">
           {work.state === 'held'
             ? benchWorkCopy.row.heldTitle
@@ -109,55 +165,23 @@ export function BenchWorkRow({
               : deadline.headline}
         </span>
         {deadline.remaining !== null && work.state === 'packable' ? (
-          <span className="bench-work-row__deadline-detail">{deadline.remaining}</span>
-        ) : null}
-      </div>
+          <> · {deadline.remaining}</>
+        ) : null}{' '}
+        ·{' '}
+        {benchWorkCopy.row.summary({
+          parcelIndex: work.parcelIndex,
+          parcelTotal: work.parcelTotal,
+          lineCount: work.lineCount,
+          unitsToVerify: work.unitsToVerify,
+        })}
+      </span>
 
-      <div className="bench-work-row__identity">
-        <span className="bench-work-row__reference">{work.orderReference}</span>
-        <span className="bench-work-row__meta">
-          {work.buyerName === null ? null : <>{work.buyerName} · </>}
-          {benchWorkCopy.row.summary({
-            parcelIndex: work.parcelIndex,
-            parcelTotal: work.parcelTotal,
-            lineCount: work.lineCount,
-            unitsToVerify: work.unitsToVerify,
-          })}
-        </span>
-        {work.state === 'held' ? (
-          <span className="bench-work-row__note">{benchWorkCopy.row.heldBody}</span>
-        ) : null}
-        {work.state === 'cancelled' ? (
-          <span className="bench-work-row__note">{benchWorkCopy.row.cancelledBody}</span>
-        ) : null}
-      </div>
-
-      <div className="bench-work-row__state">
-        {expedited ? (
-          <StatusBadge tone="warning" withDot>
-            {benchWorkCopy.row.expeditedBadge}
-          </StatusBadge>
-        ) : null}
-        {work.state !== 'packable' ? (
-          <StatusBadge tone={toneFor(work)} withDot>
-            {work.state === 'held'
-              ? benchWorkCopy.row.heldBadge
-              : benchWorkCopy.row.cancelledBadge}
-          </StatusBadge>
-        ) : null}
-        {/* `unassigned` renders no badge — the default state is silence, the
-            same rule the `packable` / not-expedited rows already follow. */}
-        {work.assignmentState === 'mine' ? (
-          <StatusBadge tone="info" compact>
-            {benchWorkCopy.row.assignedToYouBadge}
-          </StatusBadge>
-        ) : null}
-        {work.assignmentState === 'assigned-other' ? (
-          <StatusBadge tone="neutral" compact>
-            {benchWorkCopy.row.assignedToOtherBadge}
-          </StatusBadge>
-        ) : null}
-      </div>
+      {work.state === 'held' ? (
+        <span className="bench-work-row__note">{benchWorkCopy.row.heldBody}</span>
+      ) : null}
+      {work.state === 'cancelled' ? (
+        <span className="bench-work-row__note">{benchWorkCopy.row.cancelledBody}</span>
+      ) : null}
 
       <div className="bench-work-row__actions">
         {/* Offered only when the SERVER says the verb is legal, and only to a

@@ -66,7 +66,6 @@ import {
   matchesBenchTextSearch,
 } from '../lib/bench-work-presentation';
 import { benchWorkCopy } from '../lib/bench-work.copy';
-import { BenchMetricRow } from './bench-metric-row';
 import { BenchPackedTodayRow } from './bench-packed-today-row';
 import { BenchUnlabelledRow } from './bench-unlabelled-row';
 import { BenchWorkEmpty } from './bench-work-empty';
@@ -77,11 +76,22 @@ export interface BenchWorkListProps {
   readonly now?: Date;
   /** #2418's seam. Absent renders no open control — see `BenchWorkRow`. */
   readonly onOpenParcel?: (workId: string) => void;
+  /**
+   * The box currently open in the pane beside this rail (#3401). Marks its
+   * row `aria-current` so a packer can see at a glance which of the four
+   * sections the box in front of them came from. `null` while nothing is
+   * open, which is also the whole of this prop's default behaviour.
+   */
+  readonly activeWorkId?: string | null;
 }
 
 type BenchRailTab = 'bench' | 'hold' | 'done';
 
-export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactElement {
+export function BenchWorkList({
+  now,
+  onOpenParcel,
+  activeWorkId = null,
+}: BenchWorkListProps): ReactElement {
   const query = useBenchWorkQuery();
   const unlabelledQuery = useBenchUnlabelledQuery();
   const packedTodayQuery = useBenchPackedTodayQuery();
@@ -185,12 +195,13 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
 
   const renderWorkRows = (rows: readonly BenchWork[], testId: string): ReactElement | null =>
     rows.length === 0 ? null : (
-      <ul className="bench-work-list__rows" data-testid={testId}>
+      <ul className="bench-rail__list" data-testid={testId}>
         {rows.map((work) => (
           <BenchWorkRow
             key={work.workId}
             work={work}
             now={now}
+            active={work.workId === activeWorkId}
             canExpedite={canExpedite}
             expediting={expedite.isPending}
             onExpedite={(target, action) => {
@@ -222,9 +233,13 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
     headingClassName?: string
   ): ReactElement | null =>
     rows.length === 0 ? null : (
-      <section className="bench-work-list__section" data-testid={testId}>
-        <h2 className={`bench-work-list__section-heading ${headingClassName ?? ''}`.trim()}>
-          {heading} · {rows.length}
+      <section className="bench-rail__section" data-testid={testId}>
+        {/* The mockup's `.rail__section-label` — mono caps, count pushed to
+            the trailing edge. Still an `h2`, so the rail keeps a real
+            heading outline for a screen reader. */}
+        <h2 className={`bench-rail__section-label ${headingClassName ?? ''}`.trim()}>
+          <span>{heading}</span>
+          <span className="mono">{rows.length}</span>
         </h2>
         {renderWorkRows(rows, `${testId}-rows`)}
       </section>
@@ -252,26 +267,40 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
 
   return (
     <div className="bench-work-list" data-testid="bench-work-list">
-      <header className="bench-work-list__header">
+      {/* The mockup's rail opens with the search field, not with a page
+          title — the executor's name is a standing fact and sits above it,
+          compact, rather than taking the largest type on a 340 px column. */}
+      <header className="bench-rail__head">
         <p className="eyebrow">{benchWorkCopy.header.eyebrow}</p>
-        <h1 className="bench-work-list__title">
+        <h1 className="bench-rail__title">
           {query.data?.executorName ?? benchWorkCopy.header.fallbackTitle}
         </h1>
         <span className="bench-work-list__ordering">{benchWorkCopy.header.orderingNote}</span>
       </header>
 
-      <p className="bench-work-list__scope">{benchWorkCopy.scope.note}</p>
-
-      {/* #3413 (epic #3401). A background fact, so it renders below the header
-          and above the search rather than displacing either. */}
-      <BenchMetricRow />
+      <div className="bench-rail__search">
+        <label htmlFor="bench-search" className="sr-only">
+          {benchWorkCopy.search.label}
+        </label>
+        <input
+          id="bench-search"
+          type="search"
+          inputMode="search"
+          autoComplete="off"
+          placeholder={benchWorkCopy.search.placeholder}
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+          }}
+        />
+      </div>
 
       {/* #3412/#3416 — "Take next task": the server picks, oldest deadline
           first among the unassigned. Same underlying move as "Claim this
-          parcel", offered once, above the tabs, since it is not scoped to
-          any one section. */}
+          parcel", offered once, directly under the search and above the
+          tabs, since it is not scoped to any one section. */}
       {canClaim ? (
-        <div className="bench-work-list__take-next">
+        <div className="bench-rail__take-next">
           <Button
             tone="primary"
             disabled={claimNext.isPending}
@@ -300,12 +329,12 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
       {/* #3416 — the rail's three tabs. Real filtering, not decoration: the
           inactive panels are unmounted, matching the mockup's own
           `hidden`-attribute behaviour. */}
-      <div className="bench-work-list__tabs" role="tablist">
+      <div className="bench-rail__tabs" role="tablist">
         <button
           type="button"
           role="tab"
           aria-selected={activeTab === 'bench'}
-          className="bench-work-list__tab"
+          className="bench-rail__tab"
           onClick={() => {
             setActiveTab('bench');
           }}
@@ -316,7 +345,7 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
           type="button"
           role="tab"
           aria-selected={activeTab === 'hold'}
-          className="bench-work-list__tab"
+          className="bench-rail__tab"
           onClick={() => {
             setActiveTab('hold');
           }}
@@ -327,7 +356,7 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
           type="button"
           role="tab"
           aria-selected={activeTab === 'done'}
-          className="bench-work-list__tab"
+          className="bench-rail__tab"
           onClick={() => {
             setActiveTab('done');
           }}
@@ -336,21 +365,7 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
         </button>
       </div>
 
-      <div className="bench-work-list__search">
-        <label htmlFor="bench-search">{benchWorkCopy.search.label}</label>
-        <input
-          id="bench-search"
-          type="text"
-          inputMode="search"
-          autoComplete="off"
-          placeholder={benchWorkCopy.search.placeholder}
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-          }}
-        />
-        <span className="bench-work-list__search-hint">{benchWorkCopy.search.hint}</span>
-      </div>
+      <p className="bench-work-list__search-hint">{benchWorkCopy.search.hint}</p>
 
       {/* C3: immediate, distinct, and it records nothing. `role="alert"` so it
           reaches a screen reader without the packer looking up from the box. */}
@@ -410,13 +425,14 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
               )}
               {visibleUnlabelled.length === 0 ? null : (
                 <section
-                  className="bench-work-list__section"
+                  className="bench-rail__section"
                   data-testid="bench-section-waiting-on-carrier"
                 >
-                  <h2 className="bench-work-list__section-heading">
-                    {benchWorkCopy.tabs.waitingOnCarrier} · {visibleUnlabelled.length}
+                  <h2 className="bench-rail__section-label">
+                    <span>{benchWorkCopy.tabs.waitingOnCarrier}</span>
+                    <span className="mono">{visibleUnlabelled.length}</span>
                   </h2>
-                  <ul className="bench-work-list__rows">
+                  <ul className="bench-rail__list">
                     {visibleUnlabelled.map((parcel) => (
                       <BenchUnlabelledRow
                         key={parcel.workId}
@@ -454,9 +470,10 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
           ) : null}
 
           {activeTab === 'done' ? (
-            <section className="bench-work-list__section" data-testid="bench-section-packed-today">
-              <h2 className="bench-work-list__section-heading">
-                {benchWorkCopy.tabs.done} · {bothCounts.done}
+            <section className="bench-rail__section" data-testid="bench-section-packed-today">
+              <h2 className="bench-rail__section-label">
+                <span>{benchWorkCopy.tabs.done}</span>
+                <span className="mono">{bothCounts.done}</span>
               </h2>
               {visiblePackedToday.length === 0 ? (
                 <p className="bench-work-list__no-matches" data-testid="bench-search-no-matches">
@@ -466,7 +483,7 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
                 </p>
               ) : (
                 <>
-                  <ul className="bench-work-list__rows">
+                  <ul className="bench-rail__list">
                     {visiblePackedToday.map((row) => (
                       <BenchPackedTodayRow key={row.workId} row={row} />
                     ))}
@@ -486,6 +503,10 @@ export function BenchWorkList({ now, onOpenParcel }: BenchWorkListProps): ReactE
       ) : null}
 
       <footer className="bench-work-list__footer">
+        {/* Moved here from above the search by #3401's rail rebuild — it is a
+            standing caveat about the whole list, and at the top of a 340 px
+            column it displaced the field a packer actually reaches for. */}
+        <span>{benchWorkCopy.scope.note}</span>
         <span>{benchWorkCopy.footer.honesty}</span>
         <span>{benchWorkCopy.footer.liveness}</span>
       </footer>

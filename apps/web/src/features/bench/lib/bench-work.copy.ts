@@ -85,6 +85,17 @@ export const benchWorkCopy = {
     takeNextFailed: 'That did not go through. The list has been refreshed — try again.',
     noSectionMatches: 'Nothing here matches what you typed.',
   },
+
+  /**
+   * The parcel pane before a box is open (mockup-parity epic #3401). Says
+   * what to do next, and deliberately nothing about the bench being idle —
+   * `empty` below owns "nothing can reach this bench", which is a different
+   * fact and has a different remedy.
+   */
+  placeholder: {
+    title: 'No box open',
+    body: 'Pick a parcel from the list on the left to start scanning it into a box.',
+  },
   row: {
     expeditedBadge: 'Moved to the front',
     expeditedHint: 'Someone asked for this one to go out ahead of its deadline order.',

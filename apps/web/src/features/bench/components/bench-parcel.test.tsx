@@ -182,6 +182,12 @@ describe('BenchParcelView (#2418)', () => {
         'Back to the list',
         // E4's hand-confirm — one per unverified line, and the fixture has one.
         'Confirm this line',
+        // The hero card's own hand-confirm (mockup-parity epic #3401). The
+        // SAME act as the row's, on the one line the box is waiting for next,
+        // and it goes through the same `submit` — so it commits nothing the
+        // row could not already commit. A deliberate addition to this
+        // allowlist, not an oversight.
+        'Confirm this item',
         // C4's sound toggle. Renders one of two labels; this is the muted-off one.
         'Turn the sound off',
         // #3405 (epic #3401) — the OPPOSITE of a commit: voids the single most

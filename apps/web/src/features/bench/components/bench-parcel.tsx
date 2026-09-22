@@ -99,6 +99,7 @@ import { isEditableTarget } from '../lib/scanner-gesture';
 import { beginGesture } from '../lib/scanner-gesture-log';
 import { BenchActivityPanel } from './bench-activity-panel';
 import { BenchDocumentsPanel } from './bench-documents';
+import { BenchParcelHero } from './bench-parcel-hero';
 import { BenchParcelLineRow } from './bench-parcel-line';
 
 export interface BenchParcelProps {
@@ -318,6 +319,74 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
       });
   };
 
+  /**
+   * One scanned value, from whichever way it arrived.
+   *
+   * Extracted from the scanner listener by the mockup-parity rebuild (#3401)
+   * so the hero card's visible field can reach the IDENTICAL path: same
+   * unreachability check, same matcher, same refusals, same `submit`. The one
+   * difference is where the gesture id comes from — the hook mints its own
+   * before it knows which line matched, while a typed value mints after,
+   * exactly as the `C` hotkey below already does. Both produce the same shape,
+   * so nothing downstream can tell the three paths apart (D20).
+   */
+  const processScannedValue = (value: string, gestureId: string | null): void => {
+    const current = parcelRef.current;
+    if (current === undefined) return;
+
+    sequence.current += 1;
+    const seq = sequence.current;
+
+    // H1, and FIRST. The listener stays attached while the bench is out of
+    // touch precisely so this branch can run: detaching it would swallow the
+    // scan, which is the failure C3 exists to prevent one state over. Nothing
+    // is stored and nothing will be replayed — the packer is told to scan the
+    // item again once the bench is back.
+    if (reachabilityRef.current) {
+      raise({ seq, kind: 'unreachable' }, 'unreachable');
+      return;
+    }
+
+    const match = matchScanToParcelLine(current, value);
+    if (match.kind === 'matched') {
+      submit(
+        match.line,
+        gestureId ?? beginGesture(match.line.workLineId, Date.now()).gestureId,
+        seq
+      );
+      return;
+    }
+
+    // E2/E3 answered in the browser. Nothing is sent, and nothing is
+    // recorded — including the gesture id, which stays pending because no
+    // server ever saw it.
+    if (match.kind === 'already-full') {
+      raise(
+        {
+          seq,
+          kind: 'refused',
+          message: benchParcelCopy.verify.overPacked({
+            required: match.line.requiredQuantity,
+            kept: match.line.verifiedQuantity,
+          }),
+          overPacked: true,
+        },
+        'over-scan'
+      );
+      return;
+    }
+
+    raise(
+      {
+        seq,
+        kind: 'wrong-item',
+        scanned: value,
+        expected: outstandingScanCodes(current),
+      },
+      'wrong-item'
+    );
+  };
+
   const scannerInput = useScannerInput({
     // Off while the box is closed, refused or still loading: a scan made then
     // has nothing it could legitimately record, and accepting it would be the
@@ -328,56 +397,7 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
     // to whoever walked away. See `use-bench-interactive.ts`.
     enabled: interactive && parcel !== undefined && !closed && !refused,
     onScan: (gesture) => {
-      const current = parcelRef.current;
-      if (current === undefined) return;
-
-      sequence.current += 1;
-      const seq = sequence.current;
-
-      // H1, and FIRST. The listener stays attached while the bench is out of
-      // touch precisely so this branch can run: detaching it would swallow the
-      // scan, which is the failure C3 exists to prevent one state over. Nothing
-      // is stored and nothing will be replayed — the packer is told to scan the
-      // item again once the bench is back.
-      if (reachabilityRef.current) {
-        raise({ seq, kind: 'unreachable' }, 'unreachable');
-        return;
-      }
-
-      const match = matchScanToParcelLine(current, gesture.value);
-      if (match.kind === 'matched') {
-        submit(match.line, gesture.gestureId, seq);
-        return;
-      }
-
-      // E2/E3 answered in the browser. Nothing is sent, and nothing is
-      // recorded — including the gesture id, which stays pending because no
-      // server ever saw it.
-      if (match.kind === 'already-full') {
-        raise(
-          {
-            seq,
-            kind: 'refused',
-            message: benchParcelCopy.verify.overPacked({
-              required: match.line.requiredQuantity,
-              kept: match.line.verifiedQuantity,
-            }),
-            overPacked: true,
-          },
-          'over-scan'
-        );
-        return;
-      }
-
-      raise(
-        {
-          seq,
-          kind: 'wrong-item',
-          scanned: gesture.value,
-          expected: outstandingScanCodes(current),
-        },
-        'wrong-item'
-      );
+      processScannedValue(gesture.value, gesture.gestureId);
     },
   });
 
@@ -485,6 +505,12 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
 
   const totals = parcelTotals(parcel);
   const refusalCopy = parcel.refusal === null ? null : describeParcelRefusal(parcel.refusal);
+  // DERIVED, never stored — see `BenchParcelHero`'s docblock. `undefined`
+  // once every line is satisfied, which is also when there is nothing to put
+  // in front of the packer.
+  const heroLine = parcel.lines.find((line) => benchLineState(line) !== 'verified');
+  const progressPercent =
+    totals.required === 0 ? 100 : Math.round((totals.verified / totals.required) * 100);
 
   return (
     <section className="bench-parcel" data-testid="bench-parcel" data-work-id={parcel.workId}>
@@ -557,10 +583,52 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
       </header>
 
       <p className="bench-parcel__scope">{benchParcelCopy.header.thisBoxOnly}</p>
+
+      {/* The mockup's hero card (#3401): the ONE line this box is waiting for
+          next, with the visible scan field. Derived, never stored — see
+          `BenchParcelHero`'s own docblock. Absent once every line is in,
+          because there is no next item to put in front of the packer. */}
+      {heroLine === undefined ? null : (
+        <BenchParcelHero
+          line={heroLine}
+          open={!closed && !refused}
+          unreachable={reachability.unreachable}
+          pendingCount={inFlight[heroLine.workLineId] ?? 0}
+          onScanValue={(value) => {
+            processScannedValue(value, null);
+          }}
+          onConfirm={(target) => {
+            sequence.current += 1;
+            const gesture = beginGesture(target.workLineId, Date.now());
+            submit(target, gesture.gestureId, sequence.current);
+          }}
+        />
+      )}
+
+      {/* The mockup's `.progress-block`. The BAR is an addition to the words
+          beside it, never their replacement — deleting this whole block
+          leaves the count on screen and the surface correct. */}
+      <div className="bench-parcel__progress-block">
+        <div className="bench-parcel__progress-top">
+          <span>{benchParcelCopy.header.progress(totals.verified, totals.required)}</span>
+          <span className="mono">{benchParcelCopy.hero.percent(progressPercent)}</span>
+        </div>
+        <div
+          className="bench-parcel__progress-track"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={totals.required}
+          aria-valuenow={totals.verified}
+          aria-label={benchParcelCopy.header.progress(totals.verified, totals.required)}
+        >
+          <div
+            className="bench-parcel__progress-fill"
+            style={{ width: `${String(progressPercent)}%` }}
+          />
+        </div>
+      </div>
+
       <div className="bench-parcel__progress-row">
-        <p className="bench-parcel__progress">
-          {benchParcelCopy.header.progress(totals.verified, totals.required)}
-        </p>
         {/* #3405. Undoes the single most recent scan, whichever line it
             landed on — there is no per-line target to name, so this is one
             control rather than a button repeated on every row. Offered only
@@ -745,9 +813,6 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
             {benchParcelCopy.closed.reopenAction}
           </Button>
           <p className="bench-parcel__reopen-hint">{benchParcelCopy.closed.reopenHint}</p>
-
-          {/* Surface F opens with the box. */}
-          <BenchDocumentsPanel workId={workId} unitsPacked={totals.verified} />
         </div>
       ) : (
         <ul className="bench-parcel__lines">
@@ -770,6 +835,15 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
           ))}
         </ul>
       )}
+
+      {/* Surface F, on EVERY state (#3401). It used to render only inside the
+          `closed` branch, so the paper that travels with the box was invisible
+          for the whole time the box was being filled — and the mockup shows
+          both doc cards beside the open parcel, because a packer prints the
+          invoice while they pack rather than after. The panel already states
+          per document whether it is ready, so an open box is never told a
+          label exists that does not. */}
+      <BenchDocumentsPanel workId={workId} unitsPacked={totals.verified} />
 
       {/* #3411 (epic #3401). Rendered on every state — activity happened
           throughout packing, not only once the box is open. */}
