@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders, createAuthenticatedSessionAdapter } from '../../../test/test-utils';
 import type { SessionAdapter } from '../../../shared/auth/session-adapter';
+import { ThemeProvider } from '../../../shared/theme/theme-provider';
 import type { Session } from '../../../shared/auth/session.types';
 import { useSession } from '../../../shared/auth/use-session';
 import { useBenchInteractive } from '../hooks/use-bench-interactive';
@@ -222,6 +223,16 @@ function scan(value: string): void {
  */
 const IDLE_TIMEOUT_MS = 30_000;
 
+/**
+ * #3423 — `BenchSurface` now always renders `BenchTopbar`'s `ThemeToggle`,
+ * which throws outside a `ThemeProvider`. `renderWithProviders` deliberately
+ * does not mount one globally (the `theme-toggle.test.tsx` precedent), so
+ * every render in this file wraps its tree with one here.
+ */
+function withTheme(node: ReactElement): ReactElement {
+  return <ThemeProvider>{node}</ThemeProvider>;
+}
+
 describe('BenchSurface (#2413)', () => {
   beforeEach(() => {
     // `shouldAdvanceTime: true` is load-bearing, not incidental: RTL does not
@@ -237,9 +248,11 @@ describe('BenchSurface (#2413)', () => {
 
   function render(): ReturnType<typeof renderWithProviders> {
     return renderWithProviders(
-      <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
-        <ProgressStub />
-      </BenchSurface>,
+      withTheme(
+        <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
+          <ProgressStub />
+        </BenchSurface>
+      ),
       { sessionAdapter: createAuthenticatedSessionAdapter() }
     );
   }
@@ -300,9 +313,11 @@ describe('BenchSurface (#2413)', () => {
     resetGestureLogForTests();
     const seen: string[] = [];
     renderWithProviders(
-      <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
-        <ScannerStub seen={seen} />
-      </BenchSurface>,
+      withTheme(
+        <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
+          <ScannerStub seen={seen} />
+        </BenchSurface>
+      ),
       { sessionAdapter: createAuthenticatedSessionAdapter() }
     );
     await awaitSignedIn();
@@ -383,12 +398,14 @@ describe('BenchSurface (#2413)', () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const adapter = createSwitchableSessionAdapter(true);
     renderWithProviders(
-      <>
-        <SignInTrigger onSignIn={() => adapter.signIn()} />
-        <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
-          <ProgressStub />
-        </BenchSurface>
-      </>,
+      withTheme(
+        <>
+          <SignInTrigger onSignIn={() => adapter.signIn()} />
+          <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
+            <ProgressStub />
+          </BenchSurface>
+        </>
+      ),
       { sessionAdapter: adapter }
     );
     await awaitSignedIn();
@@ -417,9 +434,11 @@ describe('BenchSurface (#2413)', () => {
     const clearSpy = vi.spyOn(adapter, 'clearSession');
 
     renderWithProviders(
-      <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
-        <ProgressStub />
-      </BenchSurface>,
+      withTheme(
+        <BenchSurface idleTimeoutMs={IDLE_TIMEOUT_MS}>
+          <ProgressStub />
+        </BenchSurface>
+      ),
       { sessionAdapter: adapter }
     );
     await awaitSignedIn();

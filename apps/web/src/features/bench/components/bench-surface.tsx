@@ -10,6 +10,10 @@
  * bench that locks and never says whose work it is recording. Both are the
  * mis-attribution failure ADR-071 names.
  *
+ * `BenchTopbar` (#3423) is composed here too, but is stateless and carries no
+ * attribution stake — it renders above the identity bar unconditionally and
+ * has no bearing on the lock/handover argument above.
+ *
  * @module apps/web/src/features/bench/components
  */
 import type { ReactElement, ReactNode } from 'react';
@@ -18,6 +22,7 @@ import { resolveBenchIdleTimeoutMs, useBenchIdentity } from '../hooks/use-bench-
 import { BenchInteractiveContext } from '../hooks/use-bench-interactive';
 import { BenchIdentityBar } from './bench-identity-bar';
 import { BenchIdentityOverlay } from './bench-identity-overlay';
+import { BenchTopbar } from './bench-topbar';
 
 export interface BenchSurfaceProps {
   /** The bench body. Never unmounted, so its state survives a lock or a switch. */
@@ -42,6 +47,8 @@ export function BenchSurface({ children, idleTimeoutMs }: BenchSurfaceProps): Re
 
   return (
     <div className="bench">
+      {/* #3423 (epic #3401) — bench-owned, never `AppShell`. See the module docblock. */}
+      <BenchTopbar signedInName={identity.signedInName} />
       <BenchIdentityBar
         signedInName={identity.signedInName}
         onSwitchPacker={identity.requestHandover}

@@ -24628,6 +24628,92 @@ legend.analytics-settings-dialog__label {
   color: var(--text-muted);
 }
 
+/* ── Bench topbar (#3423, mockup-parity epic #3401) ──────────────────────
+ * A bench-owned header, NOT `AppShell` — `/bench` stays outside
+ * `AuthenticatedAppLayout` by design (#2413). Mirrors the mockup's
+ * `.topbar`/`.shell-brand`/`.shell-crumbs`/`.shell-user-chip` visually. */
+.bench-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: 52px;
+  padding: 0 var(--space-5);
+  background: var(--bg-shell);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.bench-topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bench-topbar__brand-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--accent-primary);
+  display: grid;
+  place-items: center;
+  color: var(--text-on-primary);
+  font-weight: 700;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.bench-topbar__brand-name {
+  font-weight: 600;
+  font-size: 0.875rem;
+  letter-spacing: -0.02em;
+}
+
+.bench-topbar__crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-default);
+}
+
+.bench-topbar__crumbs-current {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.bench-topbar__spacer {
+  flex: 1;
+}
+
+.bench-topbar__user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px 10px 3px 3px;
+  border-radius: var(--radius-pill);
+  height: 32px;
+}
+
+.bench-topbar__user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), var(--status-review));
+  color: var(--text-inverse);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65625rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.bench-topbar__user-name {
+  font-size: 0.78125rem;
+  font-weight: 500;
+}
+
 .bench-parcel__reference {
   font-family: var(--font-mono);
   font-size: 1.5rem;
