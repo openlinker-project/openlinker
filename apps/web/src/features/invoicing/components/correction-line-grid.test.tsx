@@ -46,15 +46,12 @@ function renderGrid(options: {
   linesIndexedByCorrection?: boolean;
   suggestedLines?: CorrectionSuggestedLine[];
   onChange?: (lines: CorrectionLineInput[]) => void;
-  getContent?: ReturnType<typeof vi.fn>;
 }): { onChange: ReturnType<typeof vi.fn> } {
   const onChange = options.onChange ?? vi.fn();
-  const getContent =
-    options.getContent ??
-    vi.fn().mockResolvedValue({
-      linesIndexedByCorrection: options.linesIndexedByCorrection ?? true,
-      lines: options.lines,
-    });
+  const getContent = vi.fn().mockResolvedValue({
+    linesIndexedByCorrection: options.linesIndexedByCorrection ?? true,
+    lines: options.lines,
+  });
 
   renderWithProviders(
     <CorrectionLineGrid
@@ -77,13 +74,9 @@ describe('CorrectionLineGrid', () => {
     await screen.findByText('Alpha');
     expect(screen.getByText('Beta')).toBeInTheDocument();
 
-    const alphaQty = screen.getByLabelText('Quantity after correction, line 1');
-    const alphaPrice = screen.getByLabelText('Unit price after correction, line 1');
-    expect(alphaQty.value).toBe('2');
-    expect(alphaPrice.value).toBe('50.00');
-
-    const betaQty = screen.getByLabelText('Quantity after correction, line 2');
-    expect(betaQty.value).toBe('1');
+    expect(screen.getByLabelText('Quantity after correction, line 1')).toHaveValue(2);
+    expect(screen.getByLabelText('Unit price after correction, line 1')).toHaveValue(50);
+    expect(screen.getByLabelText('Quantity after correction, line 2')).toHaveValue(1);
   });
 
   it('renders nothing while the invoice has no authoritative content', async () => {
@@ -107,10 +100,9 @@ describe('CorrectionLineGrid', () => {
       suggestedLines: [{ originalLineNumber: 1, suggestedQuantity: 1 }],
     });
 
-    const qty = await screen.findByLabelText('Quantity after correction, line 1');
     // Two of three units are being credited back — the remaining quantity is
     // what the proposal computed, never the as-invoiced 3.
-    expect(qty.value).toBe('1');
+    expect(await screen.findByLabelText('Quantity after correction, line 1')).toHaveValue(1);
   });
 
   it('marks a line absent from suggestedLines as untouched, and a suggested one as not', async () => {
@@ -285,6 +277,6 @@ describe('CorrectionLineGrid', () => {
       />,
     );
 
-    expect(screen.getByLabelText('Quantity after correction, line 1').value).toBe('2');
+    expect(screen.getByLabelText('Quantity after correction, line 1')).toHaveValue(2);
   });
 });
