@@ -49,8 +49,15 @@ string PublicBase = BridgeConfig.PublicBase;
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(k =>
 {
-    k.ListenAnyIP(BridgeConfig.HttpsPort,
-        o => o.UseHttps(BridgeConfig.CertificatePath, BridgeConfig.CertificatePassword));
+    // Only when a certificate is configured. Binding HTTPS with no cert path
+    // throws at startup, and a bridge that refuses to boot because nobody gave
+    // it a certificate is worse than one serving the plain-HTTP port
+    // OpenLinker actually uses.
+    if (BridgeConfig.HttpsConfigured)
+    {
+        k.ListenAnyIP(BridgeConfig.HttpsPort,
+            o => o.UseHttps(BridgeConfig.CertificatePath, BridgeConfig.CertificatePassword));
+    }
     // Drugi port, zwykly HTTP - tylko po to, zeby przegladarka mogla pobrac zdjecie.
     k.ListenAnyIP(BridgeConfig.HttpPort);
 });
@@ -83,12 +90,19 @@ app.Use(async (ctx, next) =>
     if (ctx.Request.Path.StartsWithSegments("/health") ||
         ctx.Request.Path.StartsWithSegments("/gt-image") ||
         ctx.Request.Path.StartsWithSegments("/api")) { await next(); return; }
-    var h = ctx.Request.Headers.Authorization.ToString();
-    if (h.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
+    // Unconfigured means CLOSED, checked before the comparison rather than
+    // after it. With blank credentials the equality below would happily match
+    // a request that also sent blanks, so an unconfigured bridge would be an
+    // open one - the failure direction a missing credential must never take.
+    if (BridgeConfig.ShimAuthConfigured)
     {
-        var raw = Encoding.UTF8.GetString(Convert.FromBase64String(h[6..].Trim()));
-        var i = raw.IndexOf(':');
-        if (i > 0 && raw[..i] == User && raw[(i + 1)..] == Pass) { await next(); return; }
+        var h = ctx.Request.Headers.Authorization.ToString();
+        if (h.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase))
+        {
+            var raw = Encoding.UTF8.GetString(Convert.FromBase64String(h[6..].Trim()));
+            var i = raw.IndexOf(':');
+            if (i > 0 && raw[..i] == User && raw[(i + 1)..] == Pass) { await next(); return; }
+        }
     }
     ctx.Response.StatusCode = 401;
     await ctx.Response.WriteAsJsonAsync(new { code = "woocommerce_rest_authentication_error", message = "bad credentials" });
@@ -104,12 +118,20 @@ app.Use(async (ctx, next) =>
     if (!ctx.Request.Path.StartsWithSegments("/api")) { await next(); return; }
     var bearer = ctx.Request.Headers.Authorization.ToString();
     var xToken = ctx.Request.Headers["x-bridge-token"].ToString();
-    var ok = bearer == $"Bearer {InvoiceToken}" || xToken == InvoiceToken;
+    // `TokenAuthConfigured` FIRST: with a blank token the x-bridge-token
+    // comparison is "" == "", which every request with no header satisfies -
+    // so an unconfigured bridge would accept everything. Unset means closed.
+    var ok = BridgeConfig.TokenAuthConfigured
+             && (bearer == $"Bearer {InvoiceToken}" || xToken == InvoiceToken);
     if (!ok)
     {
         ctx.Response.StatusCode = 401;
         await ctx.Response.WriteAsJsonAsync(new { success = false, data = (object?)null,
-            error = new { code = "unauthorized", reason = "bad or missing bridge token", correlationId = (string?)null } });
+            error = new { code = "unauthorized",
+                reason = BridgeConfig.TokenAuthConfigured
+                    ? "bad or missing bridge token"
+                    : "bridge token is not configured - set InvoiceToken in appsettings.json or OL_BRIDGE_INVOICE_TOKEN",
+                correlationId = (string?)null } });
         return;
     }
     await next();
