@@ -23,6 +23,67 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A stacked branch that will not merge may be a parallel lineage, not a stale copy
+
+**Context**: the pack-bench stack (#3330-#3439). `#3386` reported
+`mergeable_state: dirty` and the three PRs above it `unknown`, because GitHub
+cannot evaluate past a base that does not merge. A three-dot merge preview
+reported 19 conflicting files.
+
+**Problem**: the obvious reading - "the top was cut before the review fixes
+landed below, so bring the base up" - was wrong, and acting on it would have
+been destructive. The merge base between the two halves was the FIRST commit of
+the whole stack, and the upper half's twelve commits were its own pre-review
+versions of the same twelve features the lower half carried in twenty-three
+(original plus fixes). Bringing the base up would have applied every one of
+them twice; that is why nineteen files conflicted rather than two or three.
+
+**Rule**: when a stacked branch will not merge, find the merge base between the
+two sides before choosing how to reconcile them. A base at or near the stack's
+root means the branches are parallel lineages of the same work, and the answer
+is a rebase onto the reviewed lineage that DROPS the duplicated commits, never
+a merge. Resolve each conflict by asking which side is a SUPERSET rather than
+which is newer: a review fix is usually an addition to the same region, so
+"take mine" is how one gets reverted silently. Where both sides fixed the same
+thing differently, merge the two intents rather than picking a side.
+
+**Applies to**: any stack of PRs whose lower half has been force-pushed with
+review fixes.
+
+**Source**: #3439 (the pack-bench stack), 2026-09-23.
+
+---
+
+## Run the gate AFTER a rebase - a clean replay is not a result
+
+**Context**: the same rebase - 64 commits replayed with nine hand-resolved
+conflicts, reported as `Successfully rebased`.
+
+**Problem**: it was not successful. A conflict marker had reached a commit, and
+two test assertions named a refusal reason the code cannot return - both halves
+of the stack had added the same guard and named its refusal differently, so
+unifying the name left the reopen tests asserting a value the reopen union does
+not carry. `toMatchObject` with a string literal is not checked against a
+union, so `tsc` passed and those tests would have failed only when somebody ran
+them. A third defect was the rebase's own doing: a migration renumber authored
+late replayed in date order, dozens of commits after the one that CREATES that
+migration, silently reinstating the timestamp collision a reviewer had blocked
+on.
+
+**Rule**: after any rebase, run the full gate and redeploy before claiming it
+worked - lint, type-check, and whatever live verification the change has. Then
+re-read the ORDER of the replayed commits: one authored late but belonging
+early lands in the wrong place, and that failure is a property of the stack
+rather than of any file, so no per-file check finds it. `GIT_SEQUENCE_EDITOR`
+pointed at a script folds it back where it belongs without an interactive
+editor.
+
+**Applies to**: any rebase of more than a handful of commits.
+
+**Source**: #3439, 2026-09-23.
+
+---
+
 ## A client-side gate needs a permission the role can actually hold
 
 **Context**: #3424. The pack bench's two write controls - `Claim this parcel` and `Take next task` -
