@@ -757,7 +757,11 @@ describe('BenchWorkService (#2416)', () => {
         new BenchExecutorResolver(connections, integrations),
         { list, get: jest.fn(), applyAction: jest.fn(), listSiblingWorkIds: jest.fn() } as never,
         { findByIds: jest.fn() } as unknown as IOrderRecordService,
-        { claimParcel: jest.fn() } as never
+        { claimParcel: jest.fn() } as never,
+        {
+          getVariantsByIds: jest.fn().mockResolvedValue([]),
+          getProductsByIds: jest.fn().mockResolvedValue([]),
+        } as never
       );
 
       // Built from LOCAL date components rather than a fixed UTC string — the

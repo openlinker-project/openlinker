@@ -674,7 +674,7 @@ describe('BenchParcelView (#2418)', () => {
       expect(screen.queryByRole('button', { name: /mark as done here/i })).not.toBeInTheDocument();
     });
 
-    it('should complete straight through when both papers were already printed, and return to the list', async () => {
+    it('should complete straight through when both papers were already printed, and STAY on the parcel', async () => {
       const user = userEvent.setup();
       const completeParcel = vi.fn().mockResolvedValue({
         outcome: 'completed',
@@ -703,7 +703,11 @@ describe('BenchParcelView (#2418)', () => {
         expect(completeParcel).toHaveBeenCalledWith('w-1', 9);
       });
       await waitFor(() => {
-        expect(onClose).toHaveBeenCalled();
+        // STAYS OPEN, deliberately (#3415). Closing here shut the pane on the
+        // very success that renders "Take this back", and there is no second
+        // route in: a completed row is dropped from both rail sections and
+        // "Packed today" is a read-only log. The undo was unreachable.
+        expect(onClose).not.toHaveBeenCalled();
       });
     });
 
@@ -791,7 +795,7 @@ describe('BenchParcelView (#2418)', () => {
       expect(onClose).not.toHaveBeenCalled();
     });
 
-    it('should treat "already-completed" as good news, not an error, and return to the list', async () => {
+    it('should treat "already-completed" as good news, not an error, and STAY on the parcel', async () => {
       const completeParcel = vi.fn().mockResolvedValue({
         outcome: 'refused',
         reason: 'already-completed',
@@ -810,7 +814,11 @@ describe('BenchParcelView (#2418)', () => {
       await user.click(await screen.findByRole('button', { name: /mark as done here/i }));
 
       await waitFor(() => {
-        expect(onClose).toHaveBeenCalled();
+        // STAYS OPEN, deliberately (#3415). Closing here shut the pane on the
+        // very success that renders "Take this back", and there is no second
+        // route in: a completed row is dropped from both rail sections and
+        // "Packed today" is a read-only log. The undo was unreachable.
+        expect(onClose).not.toHaveBeenCalled();
       });
     });
 

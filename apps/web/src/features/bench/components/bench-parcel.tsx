@@ -934,7 +934,7 @@ export function BenchParcelView({
               genuine write with a genuine control, distinct from the
               no-commit rule above, which is about the box's CONTENTS having
               nothing to press rather than about this later question. */}
-          <BenchCompletionPanel workId={workId} parcel={parcel} onCompleted={onClose} />
+          <BenchCompletionPanel workId={workId} parcel={parcel} />
 
           {reopenNotice === null ? null : <Alert tone="warning">{reopenNotice}</Alert>}
 

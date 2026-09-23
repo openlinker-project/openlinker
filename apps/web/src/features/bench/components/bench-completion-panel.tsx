@@ -81,13 +81,11 @@ export interface BenchCompletionPanelProps {
    * a moment too late. Never called on `not-closed`, `version-conflict` or
    * `not-claimable-by-viewer` — those are reasons to stay and read the notice.
    */
-  readonly onCompleted: () => void;
 }
 
 export function BenchCompletionPanel({
   workId,
   parcel,
-  onCompleted,
 }: BenchCompletionPanelProps): ReactElement {
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
@@ -154,7 +152,19 @@ export function BenchCompletionPanel({
       {
         onSuccess: (result) => {
           if (result.outcome === 'completed' || result.reason === 'already-completed') {
-            onCompleted();
+            // The pane STAYS OPEN on the completed state. It used to call
+            // `onCompleted`, wired straight to `onClose`, so the parcel shut
+            // the moment it was marked done - and once #3415 gave a
+            // completion a way back, that closed the pane on the very success
+            // that would otherwise render "Take this back", making the undo
+            // unreachable: `groupBenchWork` drops a completed row from both
+            // rail sections, and "Packed today" is a read-only log that
+            // cannot be opened. So there was no second route in.
+            //
+            // Nothing needs doing here now: the mutation hook already wrote
+            // the fresh parcel into the cache, so this panel re-renders into
+            // its completed branch on its own. The packer leaves by picking
+            // their next parcel, which replaces the pane anyway.
             return;
           }
           // A refusal is a 200 carrying its own reason, never an error — the
