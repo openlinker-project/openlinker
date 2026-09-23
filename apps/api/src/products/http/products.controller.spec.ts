@@ -8,6 +8,7 @@
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { ProductImageProxyService } from '../application/services/product-image-proxy.service';
 import { ProductsController, VariantsController } from './products.controller';
 import { PRODUCTS_SERVICE_TOKEN, TAX_RATE_JOURNAL_SERVICE_TOKEN } from '@openlinker/core/products';
 import type {
@@ -174,6 +175,11 @@ describe('ProductsController', () => {
         { provide: OFFER_MAPPINGS_SERVICE_TOKEN, useValue: mockOfferMappings },
         { provide: SHOP_PRODUCT_MAPPINGS_SERVICE_TOKEN, useValue: mockShopProductMappings },
         { provide: TAX_RATE_JOURNAL_SERVICE_TOKEN, useValue: mockTaxRateJournal },
+        // Stubbed rather than omitted: the controller takes it by CLASS, so an
+        // absent provider fails the whole module and with it every test in this
+        // file - which is how it went unnoticed, since nothing here exercises
+        // the image route it was added for.
+        { provide: ProductImageProxyService, useValue: { getImage: jest.fn() } },
       ],
     }).compile();
 

@@ -74,6 +74,13 @@ const PACKER_REACHABLE_ANY_ROLE_ROUTES: readonly string[] = [
   'ProductsController.listVariantsByProduct',
   'ProductsController.getVariantSummary',
   'ProductsController.getTaxRateJournal',
+  // The picture of the thing. A packer matches what is in their hand against
+  // what is on the screen, and a catalogue photo is the fastest way to do
+  // that - which is the whole reason the bench renders one. It discloses the
+  // same product a packer may already read through `getProduct` beside it,
+  // in a different encoding, so it is strictly narrower than the route it
+  // accompanies rather than a new disclosure.
+  'ProductsController.getProductImage',
   'VariantsController.searchVariants',
 
   // The `/count` siblings of the three LIST reads above (#2943). Each answers ONE
@@ -191,6 +198,13 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // scan already enforces; attributed to the verified token's own user, same
   // as verifyUnit.
   'BenchParcelController.completeParcel',
+  // #3415. The way back from that completion, and the reason it needs one: the
+  // only other route back was `reopenParcel` above, which UNPACKS the box, so a
+  // packer who tapped the wrong row had to re-scan a parcel that was packed
+  // correctly. It clears the completion and nothing else, is scoped exactly as
+  // `completeParcel` is - the same eligibility rule, the same ADR-074 lock -
+  // and is attributed to the verified token's own user.
+  'BenchParcelController.undoCompletion',
   // #3413. Two reads, scoped exactly as listBenchWork scopes them.
   'BenchWorkController.listPackedToday',
   'BenchWorkController.getMetrics',
@@ -214,6 +228,16 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // oversight.
   'BenchDocumentsController.downloadInvoice',
   'BenchDocumentsController.listUnlabelled',
+  // #3415. The label, and it is granted for a NARROWER reason than the invoice
+  // above: the sheet goes on the outside of the box and `ShipmentResponseDto`
+  // carries no recipient, so the bytes disclose less than the invoice a packer
+  // is already trusted with. The route exists at all because the stamp that
+  // records the print used to live on the open `ShipmentController.downloadLabel`
+  // route, which carries no role check - so ANY viewer fetching the PDF to look
+  // at it marked the label printed, and that silenced the prompt warning a
+  // packer they had not printed it. Reached through the work, like its invoice
+  // sibling, so it cannot be walked to another parcel's label.
+  'BenchDocumentsController.downloadLabel',
 ];
 
 function walk(dir: string, out: string[] = []): string[] {
