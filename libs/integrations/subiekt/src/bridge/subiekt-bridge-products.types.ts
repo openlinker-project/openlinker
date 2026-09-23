@@ -70,6 +70,35 @@ export interface BridgeProduct {
    * simply means "no images", the behaviour every Subiekt product had before.
    */
   zdjecia?: string[] | null;
+  /**
+   * `tw__Towar.tw_IdGrupa` - the towar's group in Subiekt's single, FLAT
+   * `sl_GrupaTw` list. `null` when the towar carries none.
+   *
+   * OPTIONAL so a bridge predating the field keeps deserialising; its absence
+   * means "this bridge does not report a group", which the adapter reports as
+   * no categories rather than as an empty group.
+   */
+  grupaId?: number | null;
+  /** `sl_GrupaTw.grt_Nazwa` for {@link grupaId}, so a caller needs no second read. */
+  grupaNazwa?: string | null;
+}
+
+/**
+ * One Subiekt towar group (`sl_GrupaTw`).
+ *
+ * FLAT, not a tree: the table has exactly three columns (`grt_Id`,
+ * `grt_Nazwa`, `grt_NrAnalityka`) and carries no parent reference, so a
+ * Subiekt group has no depth and no ancestry to project. That is a property of
+ * Subiekt GT, not a gap in this mapping.
+ */
+export interface BridgeCategory {
+  id: number;
+  nazwa: string;
+}
+
+/** `GET /api/products/categories` response (`data`). */
+export interface BridgeListCategoriesResponse {
+  categories: BridgeCategory[];
 }
 
 export interface BridgeCreateProductRequest {
