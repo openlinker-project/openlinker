@@ -1,3 +1,11 @@
+// SNAPSHOT, not a mirror. Copied 2026-09-23 from the Windows host at
+// /mnt/c/Users/42zer/gtspike/bridge/OrdersEndpoints.cs. **Nothing in this repository
+// compares this file to the bridge it came from**, so the honest reading is
+// "what the bridge looked like when someone last looked", never "what the
+// bridge is". The published, reviewable source is
+// openlinker-project/openlinker-subiekt-bridge, `bridge-gt/OrdersEndpoints.cs` — check
+// there before trusting anything here for a behaviour that matters.
+//
 // OrdersEndpoints.cs.ready — the bridge's order (ZK) endpoints, committed for
 // review under the same .cs.ready convention as Invoicing.cs.ready.
 //

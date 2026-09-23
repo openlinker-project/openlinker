@@ -88,6 +88,17 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  *   Connection config field names ('subiektBridgeUrl', ...) - form fields.
  *
  * Do not "finish the rename" by touching those later.
+ *
+ * WHAT THE GUARD ACTUALLY CHECKS, since a header like this is the most likely
+ * thing a future author reads before picking a number.
+ * `check-migration-timestamps.mjs` enforces a 13-digit prefix, a class suffix
+ * matching it, prefix uniqueness WITHIN ONE TREE, and ordering against
+ * `origin/main`. It knows nothing about an unmerged sibling branch, so two
+ * branches can each hold the same free-looking number and both pass their own
+ * lint. The hazard of that is UNDEFINED ORDERING between the two plus a hard
+ * lint failure when the second one merges - NOT a silent skip. TypeORM decides
+ * what is pending by CLASS NAME, so a duplicate timestamp runs both; it is a
+ * RENAME that re-runs a migration.
  */
 export class SplitSubiektProductLines1898000000000 implements MigrationInterface {
   name = 'SplitSubiektProductLines1898000000000';

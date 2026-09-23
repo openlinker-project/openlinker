@@ -1,3 +1,11 @@
+// SNAPSHOT, not a mirror. Copied 2026-09-23 from the Windows host at
+// /mnt/c/Users/42zer/gtspike/bridge/Invoicing.cs. **Nothing in this repository
+// compares this file to the bridge it came from**, so the honest reading is
+// "what the bridge looked like when someone last looked", never "what the
+// bridge is". The published, reviewable source is
+// openlinker-project/openlinker-subiekt-bridge, `bridge-gt/Invoicing.cs` — check
+// there before trusting anything here for a behaviour that matters.
+//
 // Invoicing.cs.ready — the bridge's invoicing endpoint, AS OF #3436, committed
 // per piotrswierzy's review on PR #3436 (the .cs.ready convention #3365
 // established for the same reason: a reviewer needs something to read and a

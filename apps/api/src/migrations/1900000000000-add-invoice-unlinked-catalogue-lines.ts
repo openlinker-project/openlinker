@@ -51,6 +51,16 @@
  * `SplitSubiektProductLines1898000000000` - two classes, one timestamp, both
  * recorded as applied.
  *
+ *
+ * WHAT THE GUARD ACTUALLY CHECKS, since this header is the most likely thing a
+ * future author reads before picking a number. `check-migration-timestamps.mjs`
+ * enforces exactly three things: a 13-digit prefix, a class suffix matching that
+ * prefix, prefix uniqueness WITHIN ONE TREE, and ordering against `origin/main`.
+ * It knows nothing about an unmerged sibling branch, so two branches can each
+ * hold the same free-looking number and both pass their own lint. The hazard of
+ * that is UNDEFINED ORDERING between the two plus a hard lint failure when the
+ * second one merges - it is NOT a silent skip, and treating it as one is what
+ * made a rename look free here.
  * That correction is what makes a RENAME the dangerous operation here, not a
  * collision: a renamed class is a NEW migration to TypeORM, so `up()` runs
  * again on every database that applied an earlier name. This file's `up()` was

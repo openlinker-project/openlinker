@@ -119,6 +119,26 @@ for that hardware/driver before relying on the receipt path live.
 
 ---
 
+## Deployment order (identity rename)
+
+**Ship `web` no later than `api`/`worker`/`migrate`, never after.**
+
+The migration that renamed `subiekt` to `subiekt-gt` / `subiekt-nexo` runs behind the `migrate`
+gate, so the API and worker can never see a half-renamed database. `web` has no such gate — it is
+a separately built bundle with its own lifecycle.
+
+A stale `web` surviving the migration still POSTs `platformType: 'subiekt'`, and
+`ConnectionService.create` does **not** validate the platform against the adapter registry. The
+result is a connection row that exists, is visible in the list, and is recognised by no adapter —
+with a log warning as the only signal. Nothing fails loudly, and the operator has no way to tell
+from the screen.
+
+The remedy if it happens: the connection carries a `platformType` no manifest claims, so it can be
+identified with `SELECT id, name, "platformType" FROM connections WHERE "platformType" = 'subiekt'`
+and either re-pointed at the right product or deleted. Discovered while shipping the identity
+split (#3448/#3464); recorded here rather than in that pull request because a pull-request body is
+not where an operator looks.
+
 ## Troubleshooting
 
 | Symptom | Cause / fix |

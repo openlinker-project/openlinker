@@ -1,3 +1,11 @@
+// SNAPSHOT, not a mirror. Copied 2026-09-23 from the Windows host at
+// /mnt/c/Users/42zer/gtspike/bridge/Kontrahent.cs. **Nothing in this repository
+// compares this file to the bridge it came from**, so the honest reading is
+// "what the bridge looked like when someone last looked", never "what the
+// bridge is". The published, reviewable source is
+// openlinker-project/openlinker-subiekt-bridge, `bridge-gt/Kontrahent.cs` — check
+// there before trusting anything here for a behaviour that matters.
+//
 // Kontrahent.cs.ready — the bridge's ONE buyer-identity resolver, AS OF #3462.
 //
 // A FULL DUMP of the file as it exists on the Windows host at
