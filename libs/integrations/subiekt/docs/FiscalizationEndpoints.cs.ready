@@ -1,3 +1,5 @@
+
+
 // FiscalizationEndpoints.cs — READY TO PASTE onto the Windows bridge.
 //
 // NOT compiled, NOT run, NOT tested against a live Subiekt/fiscal printer.
@@ -51,17 +53,18 @@ using Microsoft.Data.SqlClient;
 
 public static class FiscalizationEndpoints
 {
+    // Program.cs's global token-auth middleware already gates every /api/*
+    // path (it runs before routing reaches here) - this file needs no auth
+    // check of its own, and InvoiceToken is a Program.cs top-level-statement
+    // local that this file cannot reach anyway.
+    // One source of configuration for every file that talks to SQL - see
+    // BridgeConfig.cs. Was a `const` literal here and in five sibling files.
+    private static readonly string ConnStr = BridgeConfig.ConnectionString;
+
     public static void MapFiscalizationEndpoints(this WebApplication app)
     {
         app.MapPost("/api/fiscalize", async (HttpRequest req) =>
         {
-            // --- auth (mirrors every other /api/* route) -----------------
-            var bearer = req.Headers.Authorization.ToString();
-            var xToken = req.Headers["x-bridge-token"].ToString();
-            var ok = bearer == $"Bearer {InvoiceToken}" || xToken == InvoiceToken;
-            if (!ok)
-                return Results.Json(new { success = false, data = (object?)null, error = "unauthorized" }, statusCode: 401);
-
             FiscalizeRequest body;
             try
             {
@@ -211,7 +214,15 @@ public static class FiscalizationEndpoints
     {
         await using var c = new SqlConnection(ConnStr);
         await c.OpenAsync();
-        await using var cmd = new SqlCommand("SELECT dok_StatusFiskalny FROM dok__Dokument WHERE dok_Id = @id", c);
+        // Column confirmed live this session: dok_StatusFiskal (NOT
+        // dok_StatusFiskalny). Every document in this DB reads status 0 -
+        // uf_Konfiguracja (fiscal-device config table) is EMPTY on this test
+        // machine, so no document has ever been fiscalized here and the
+        // success value genuinely cannot be observed. MapFiscalStatus below
+        // stays a fiscal-safe "unknown" placeholder for that reason, not out
+        // of laziness - do not guess a success code without a real device.
+        await using var cmd = new SqlCommand(
+            "SELECT dok_StatusFiskal FROM dok__Dokument WHERE dok_Id = @id", c);
         cmd.Parameters.AddWithValue("@id", dokId);
         var r = await cmd.ExecuteScalarAsync();
         var raw = r is null || r is DBNull ? (int?)null : Convert.ToInt32(r);
@@ -228,7 +239,7 @@ public static class FiscalizationEndpoints
         // as the same doc_Typ (UNVERIFIED — confirm DodajPAf() does not use a
         // distinct dok_Typ before relying on this).
         await using var cmd = new SqlCommand(
-            "SELECT TOP 1 dok_Id, dok_NrPelny, dok_StatusFiskalny FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_Typ = 21", c);
+            "SELECT TOP 1 dok_Id, dok_NrPelny, dok_StatusFiskal FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_Typ = 21", c);
         cmd.Parameters.AddWithValue("@k", Trim30(key));
         await using var r = await cmd.ExecuteReaderAsync();
         if (!await r.ReadAsync()) return null;

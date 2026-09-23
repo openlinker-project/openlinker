@@ -40,6 +40,22 @@ export interface BridgeOrderBuyer {
   ulica?: string;
   kodPocztowy?: string;
   miejscowosc?: string;
+  /**
+   * ISO 3166-1 alpha-2 country of the buyer's address, resolved bridge-side
+   * against `sl_Panstwo.pa_KodPanstwaISO` and written to the kontrahent's
+   * `adr__Ewid.adr_IdPanstwo`.
+   *
+   * Omitted leaves the column NULL, which is what every kontrahent OpenLinker
+   * created carried before this field existed - so an EU buyer looked
+   * domestic to Subiekt and its own VAT classification had nothing to work
+   * from. OpenLinker supplies the FACT and never the conclusion: whether a
+   * sale is WDT is Subiekt's and the accountant's call, exactly as the
+   * tax-rate chain leaves the rate to the product.
+   *
+   * An unrecognised code resolves to nothing and is ignored, never guessed
+   * at: a wrong country is worse than an absent one.
+   */
+  countryCode?: string;
 }
 
 /** `POST /api/orders` request. */
