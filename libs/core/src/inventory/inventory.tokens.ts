@@ -41,5 +41,5 @@ export const INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN = Symbol(
 // Post-sale master stock re-read, shared by the order-sync and post-document
 // callers so the two cannot build a different dedupe key (Z3)
 export const POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN = Symbol(
-  'PostSaleInventoryRefreshService'
+  'IPostSaleInventoryRefreshService'
 );

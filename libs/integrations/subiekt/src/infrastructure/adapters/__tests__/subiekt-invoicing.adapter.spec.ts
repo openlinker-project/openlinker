@@ -315,6 +315,15 @@ describe('SubiektInvoicingAdapter', () => {
         expect(result.unlinkedCatalogueLines).toBe(1);
       });
 
+      it('counts a line whose productId is the empty string', async () => {
+        const { adapter } = makeAdapter();
+        // It names a product and supplies no id for it, so it goes out
+        // free-text exactly like an unmapped one. Reporting it as linked
+        // would be the silent case this field exists to remove.
+        const result = await adapter.issueInvoice(command({ lines: linesFor('') }));
+        expect(result.unlinkedCatalogueLines).toBe(1);
+      });
+
       it('does not count a line that carries no productId at all', async () => {
         const { adapter } = makeAdapter();
         // A shipping or hand-written line has no product to map; calling it

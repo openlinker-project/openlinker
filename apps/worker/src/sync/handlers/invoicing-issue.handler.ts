@@ -155,22 +155,6 @@ export class InvoicingIssueHandler implements SyncJobHandler {
   }
 
   /**
-   * DEEP payload validation (F5). Returns the typed payload on success; returns
-   * `null` to signal a `business_failure` outcome on ANY violation:
-   *  - `schemaVersion === 1`;
-   *  - `connectionId` / `orderId` / `idempotencyKey` / `currency` non-empty strings;
-   *  - `lines` an array of `1..MAX_INVOICE_LINES` items, each with `quantity` a
-   *    finite number `> 0` and `unitPriceGross` a finite number `>= 0`;
-   *  - `buyer.type ∈ BuyerTypeValues`; `buyer.name` non-empty; `buyer.address`
-   *    present with required string fields; `buyer.taxId` `null` OR
-   *    `{ value }` with `value` non-empty and `scheme` OPTIONAL (#3224 - core
-   *    hands the number over untagged); `buyer.email` (#1797) absent
-   *    (pre-existing payload), `null`, OR a `string` — never any other type.
-   *
-   * PII: on violation logs ONLY the failed field name(s) + `orderId` /
-   * `connectionId` / `schemaVersion` — NEVER `payload` / `buyer` / `lines`.
-   */
-  /**
    * Ask for a master stock re-read now that the document — and with it, on a
    * document-moves-stock master, the warehouse release — has committed.
    *
@@ -206,6 +190,22 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     }
   }
 
+  /**
+   * DEEP payload validation (F5). Returns the typed payload on success; returns
+   * `null` to signal a `business_failure` outcome on ANY violation:
+   *  - `schemaVersion === 1`;
+   *  - `connectionId` / `orderId` / `idempotencyKey` / `currency` non-empty strings;
+   *  - `lines` an array of `1..MAX_INVOICE_LINES` items, each with `quantity` a
+   *    finite number `> 0` and `unitPriceGross` a finite number `>= 0`;
+   *  - `buyer.type ∈ BuyerTypeValues`; `buyer.name` non-empty; `buyer.address`
+   *    present with required string fields; `buyer.taxId` `null` OR
+   *    `{ value }` with `value` non-empty and `scheme` OPTIONAL (#3224 - core
+   *    hands the number over untagged); `buyer.email` (#1797) absent
+   *    (pre-existing payload), `null`, OR a `string` — never any other type.
+   *
+   * PII: on violation logs ONLY the failed field name(s) + `orderId` /
+   * `connectionId` / `schemaVersion` — NEVER `payload` / `buyer` / `lines`.
+   */
   private validatePayload(job: SyncJob): InvoicingIssuePayloadV1 | null {
     const p = job.payload as unknown as Partial<InvoicingIssuePayloadV1>;
 

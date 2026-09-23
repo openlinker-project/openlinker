@@ -107,19 +107,30 @@ export class FiscalizationRegisterHandler implements SyncJobHandler {
       // committed. Keyed on the registration record, hence a distinct event
       // from the order-scoped refresh; wrapped so it can never change the
       // outcome of a registration that already happened.
-      try {
-        await this.postSaleInventoryRefresh.enqueue({
-          productIds: payload.lines
-            .map((line) => line.productId)
-            .filter((id): id is string => typeof id === 'string' && id !== ''),
-          keyScope: `receipt:${record.id}`,
-        });
-      } catch (error) {
-        this.logger.warn(
-          `post-receipt master inventory refresh could not be enqueued for orderId=${payload.orderId}: ` +
-            `${error instanceof Error ? error.name : 'unknown error'}. ` +
-            `The scheduled inventory sweep remains the backstop.`,
-        );
+      //
+      // GATED ON `registered`, unlike the invoicing arm, because `register`
+      // resolves whatever the record's own status is - a rejected or in-doubt
+      // attempt returns normally. `resumeExisting` reuses the SAME record id,
+      // so an ungated enqueue here would spend `receipt:{id}` on an attempt
+      // that moved no stock and leave the later successful one with a key the
+      // forever-unique index has already consumed: the refresh would never
+      // fire and the drift would wait for the next sweep. Nothing is lost on
+      // the other branches - no stock moved, so there is nothing to re-read.
+      if (record.status === 'registered') {
+        try {
+          await this.postSaleInventoryRefresh.enqueue({
+            productIds: payload.lines
+              .map((line) => line.productId)
+              .filter((id): id is string => typeof id === 'string' && id !== ''),
+            keyScope: `receipt:${record.id}`,
+          });
+        } catch (error) {
+          this.logger.warn(
+            `post-receipt master inventory refresh could not be enqueued for orderId=${payload.orderId}: ` +
+              `${error instanceof Error ? error.name : 'unknown error'}. ` +
+              `The scheduled inventory sweep remains the backstop.`,
+          );
+        }
       }
       return { outcome: 'ok' };
     } catch (error) {
