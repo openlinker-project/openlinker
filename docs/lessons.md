@@ -23,6 +23,67 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A push plan built from pre-rebase subjects silently drops commits made after it
+
+**Context**: the pack-bench stack (#3330-#3439). After rebasing fourteen
+branches, a script remapped each branch tip to its new sha by matching the
+commit SUBJECT recorded before the rebase, then force-pushed each one.
+
+**Problem**: two commits authored AFTER the boundaries were recorded - a lessons
+entry and ten web-test fixes - sat above the matched tip, so they were never in
+the plan and were never pushed. Everything reported success: fourteen `ok` rows,
+every lease honoured, no error anywhere. CI then ran against a head that
+predated the fixes, and the ten failures it reported had already been fixed
+locally, which reads as "the fixes did not work" rather than "the fixes are not
+there".
+
+**Rule**: a push plan is a snapshot, and anything committed after it is outside
+it. Either build the plan immediately before pushing, or - better - assert
+afterwards that the working branch's own `HEAD` equals what was pushed for it,
+since that is the one boundary a subject match cannot get wrong (the topmost
+branch's tip is the only one that keeps moving while work continues). `git log
+origin/<branch>..HEAD` answering non-empty after a push meant to be complete is
+the check; it costs one command and it is the difference between reading CI as a
+result and reading it as a stale artefact.
+
+**Applies to**: any scripted multi-branch push, especially in a stacked-PR flow
+where the tip branch is also the working branch.
+
+**Source**: #3439 (the pack-bench stack), 2026-09-23.
+
+---
+
+## A test fixture that contradicts the call under test passes until a guard is added
+
+**Context**: ADR-074 gained a rule that a parcel cannot be made exclusive
+without an assigned packer (#3360).
+
+**Problem**: four cases in `fulfillment-worklist.service.spec.ts` asked for
+`selfServeEligible: false` against `workAt()`, whose default is
+`assignedToUserId: null` - so every one of them was asserting behaviour for
+"exclusive to nobody", the state the new guard forbids. They had passed for
+years because nothing checked the combination, and they all failed the moment
+something did. The same shape as the #2380 entry below, arriving from the other
+direction: there a fixture described a state the code could not produce, here a
+fixture described one the code should not accept.
+
+**Rule**: when a shared fixture factory has a permissive default, a case that
+overrides one field and leaves the rest is asserting about whatever the default
+happens to be - which is fine until that combination acquires a meaning. On
+adding a cross-field rule, grep the fixture's own default for the other side of
+it rather than waiting for the suite; and repair such a case by giving it a
+fixture consistent with its own call, never by relaxing the new guard. The
+lost-race case here is the worked example: its premise is that its own
+`assignToPacker` lost, so the honest re-read is a row assigned to somebody else,
+which is both more realistic than the unassigned row it had and the shape the
+rule needs.
+
+**Applies to**: any spec suite built on a `makeX(over)` factory.
+
+**Source**: #3360, 2026-09-23.
+
+---
+
 ## A stacked branch that will not merge may be a parallel lineage, not a stale copy
 
 **Context**: the pack-bench stack (#3330-#3439). `#3386` reported
