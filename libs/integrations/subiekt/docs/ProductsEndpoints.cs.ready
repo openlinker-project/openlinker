@@ -71,6 +71,16 @@ public static class ProductsEndpoints
             return Ok(new { products });
         });
 
+        // Registered BEFORE the {symbol} route for readability only: ASP.NET
+        // Core prefers a literal segment over a route parameter whatever the
+        // registration order, so "categories" could never be read as a towar
+        // symbol. Kept adjacent so the precedence is visible to the next reader.
+        app.MapGet("/api/products/categories", async () =>
+        {
+            var categories = await ListCategories();
+            return Ok(new { categories });
+        });
+
         app.MapGet("/api/products/{symbol}", async (string symbol) =>
         {
             var product = await ReadProduct(symbol);
@@ -138,10 +148,12 @@ public static class ProductsEndpoints
         await c.OpenAsync();
         await using var cmd = new SqlCommand(
             @"SELECT TOP (@lim) t.tw_Symbol, t.tw_Nazwa, t.tw_Opis, t.tw_JednMiary, t.tw_Masa,
-                     c.tc_CenaNetto1, c.tc_CenaBrutto1, v.vat_Stawka, t.tw_Id
+                     c.tc_CenaNetto1, c.tc_CenaBrutto1, v.vat_Stawka, t.tw_Id,
+                     g.grt_Id, g.grt_Nazwa
               FROM tw__Towar t
               LEFT JOIN tw_Cena c ON c.tc_IdTowar = t.tw_Id
               LEFT JOIN sl_StawkaVAT v ON v.vat_Id = t.tw_IdVatSp
+              LEFT JOIN sl_GrupaTw g ON g.grt_Id = t.tw_IdGrupa
               WHERE t.tw_Usuniety = 0 AND (t.tw_Symbol LIKE @q OR t.tw_Nazwa LIKE @q)
               ORDER BY t.tw_Id", c);
         cmd.Parameters.AddWithValue("@lim", limit);
@@ -163,16 +175,36 @@ public static class ProductsEndpoints
         return list;
     }
 
+    /// <summary>The whole sl_GrupaTw list, ordered by name so an operator
+    /// picking one from a dropdown sees a stable, readable order rather than
+    /// insertion order. Unfiltered: Subiekt carries no active/archived flag
+    /// for a group, so there is nothing to filter on and inventing one would
+    /// hide groups the operator can see in Subiekt itself.</summary>
+    private static async Task<List<BridgeCategoryDto>> ListCategories()
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT grt_Id, grt_Nazwa FROM sl_GrupaTw ORDER BY grt_Nazwa", c);
+        var list = new List<BridgeCategoryDto>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            list.Add(new BridgeCategoryDto(r.GetInt32(0), r.GetString(1).Trim()));
+        return list;
+    }
+
     private static async Task<BridgeProductDto?> ReadProduct(string symbol)
     {
         await using var c = new SqlConnection(ConnStr);
         await c.OpenAsync();
         await using var cmd = new SqlCommand(
             @"SELECT TOP 1 t.tw_Symbol, t.tw_Nazwa, t.tw_Opis, t.tw_JednMiary, t.tw_Masa,
-                     c.tc_CenaNetto1, c.tc_CenaBrutto1, v.vat_Stawka, t.tw_Id
+                     c.tc_CenaNetto1, c.tc_CenaBrutto1, v.vat_Stawka, t.tw_Id,
+                     g.grt_Id, g.grt_Nazwa
               FROM tw__Towar t
               LEFT JOIN tw_Cena c ON c.tc_IdTowar = t.tw_Id
               LEFT JOIN sl_StawkaVAT v ON v.vat_Id = t.tw_IdVatSp
+              LEFT JOIN sl_GrupaTw g ON g.grt_Id = t.tw_IdGrupa
               WHERE t.tw_Symbol = @sym AND t.tw_Usuniety = 0", c);
         cmd.Parameters.AddWithValue("@sym", symbol);
         await using var r = await cmd.ExecuteReaderAsync();
@@ -198,9 +230,7 @@ public static class ProductsEndpoints
 
     /// <summary>The bridge's own externally-addressable base, shared with
     /// Program.cs's image route. Same env var, same default.</summary>
-    private static readonly string PublicBase =
-        Environment.GetEnvironmentVariable("OL_BRIDGE_PUBLIC_BASE")
-        ?? "http://host.docker.internal:5056";
+    private static readonly string PublicBase = BridgeConfig.PublicBase;
 
     /// <summary>Image URLs for a towar, main image first, or an empty list.
     /// One row per image so a towar with several is published with all of
@@ -246,7 +276,11 @@ public static class ProductsEndpoints
         r.IsDBNull(3) ? null : r.GetString(3).Trim(),
         r.IsDBNull(4) ? null : r.GetDecimal(4),
         FormatVatRate(r.IsDBNull(7) ? null : r.GetDecimal(7)),
-        images);
+        images,
+        // tw__Towar.tw_IdGrupa -> sl_GrupaTw. Null when the towar carries no
+        // group; the LEFT JOIN means that is the same read either way.
+        r.IsDBNull(9) ? null : r.GetInt32(9),
+        r.IsDBNull(10) ? null : r.GetString(10).Trim());
 
     /// <summary>First barcode only (MVP - see file header). #3353: the
     /// PRIMARY source is now the scalar default-barcode column
@@ -411,7 +445,20 @@ public sealed record BridgeProductDto(
     /// to be reachable from the OL worker (OL_BRIDGE_PUBLIC_BASE), not from the
     /// public internet. Without them a Subiekt-sourced product cannot be
     /// published at all - Allegro refuses an offer with no image.</summary>
-    List<string>? Zdjecia = null);
+    List<string>? Zdjecia = null,
+    /// <summary>tw__Towar.tw_IdGrupa - the towar's group in Subiekt's single,
+    /// FLAT sl_GrupaTw list. Null when the towar carries none.</summary>
+    int? GrupaId = null,
+    /// <summary>sl_GrupaTw.grt_Nazwa for GrupaId, so a caller that only wants
+    /// to display the group needs no second read.</summary>
+    string? GrupaNazwa = null);
+
+/// <summary>One row of sl_GrupaTw. The table has exactly three columns
+/// (grt_Id, grt_Nazwa, grt_NrAnalityka) and NO parent reference, so a Subiekt
+/// towar group is flat: there is no depth and no ancestry to report. Emitting
+/// a synthetic hierarchy - by reading grt_NrAnalityka as a path, say - would
+/// invent a shape Subiekt does not have.</summary>
+public sealed record BridgeCategoryDto(int Id, string Nazwa);
 
 public sealed class CreateProductRequest
 {
