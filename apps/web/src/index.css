@@ -23847,15 +23847,23 @@ legend.analytics-settings-dialog__label {
   flex-direction: column;
 }
 
+/* The "nothing here" sentence, which sat flush against the card's left edge
+   once the list stopped padding it. The mockup's `.lane__empty` shape. */
+.assign-packing-work-lane > .text-muted {
+  padding: var(--space-4);
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
 .assign-packing-work-card-list {
   display: flex;
   flex-direction: column;
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--border-subtle);
-  border-top: none;
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  /* No border of its own any more: the lane above is a real card with
+     `overflow: hidden`, so the list's own box drew a second frame a hair
+     inside the first. */
 }
 
 .assign-packing-work-card {
@@ -24064,16 +24072,23 @@ legend.analytics-settings-dialog__label {
   text-align: left;
 }
 
+/* A CARD, matching the mockup's own `.lane` - a real border, a surface, and
+   nothing between its head and its rows.
+   It used to carry `border: 1px dashed transparent` and no background, so the
+   2px accent bar below was drawn on nothing at all: a bare rule floating above
+   a heading it touched, with the rows drifting beneath it on a flex `gap`.
+   That stray line is what broke the page.
+   The drag highlight still lives on this border - style and colour change, the
+   1px width does not, so nothing shifts when it activates, which is the
+   property the dashed-transparent version was reaching for. */
 .assign-packing-work-lane {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
   position: relative;
   overflow: hidden;
-  /* #3426 — the drag-over highlight lives on the same rule as the layout,
-     transparent border by default so nothing shifts when it activates. */
-  border: 1px dashed transparent;
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
+  background: var(--bg-surface);
   transition: border-color 0.1s ease, background-color 0.1s ease;
 }
 
@@ -24082,7 +24097,11 @@ legend.analytics-settings-dialog__label {
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   gap: var(--space-3);
-  padding-bottom: var(--space-2);
+  /* Real padding on all four sides, the mockup's `--space-3 --space-4`. It
+     had `padding-bottom` alone, so the heading was pinned to the accent bar
+     above it and to the card's left edge. */
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface-muted);
 }
 
 .assign-packing-work-lane__title {
