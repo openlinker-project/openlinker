@@ -97,6 +97,37 @@ WHERE w.id LIKE 'ol_fwork_e2e_%'
     SELECT 1 FROM fulfillment_work_lines l WHERE l."fulfillmentWorkId" = w.id
   );
 
+-- A closed box must look closed. `parcelClosedAt` alone leaves the parcel
+-- reading "All 0 units matched" over a green "This box is closed" panel — the
+-- seed contradicting itself, and a screenshot of it contradicting the product.
+-- In the real flow the last verification is what sets both.
+UPDATE fulfillment_work_lines
+SET "fulfilledQuantity" = "totalQuantity" - "cancelledQuantity"
+WHERE "fulfillmentWorkId" IN (
+  SELECT id FROM fulfillment_works
+  WHERE id LIKE 'ol_fwork_e2e_%' AND "parcelClosedAt" IS NOT NULL
+);
+
+-- …and the bench reads its counts from `fulfillment_work_verifications`, ONE
+-- ROW PER UNIT, not from `fulfilledQuantity`. Without these the closed box
+-- rendered "All 0 units matched" under a green "This box is closed" panel.
+INSERT INTO fulfillment_work_verifications (
+  id, "fulfillmentWorkId", "workLineId", "gestureId", "verifiedByUserId", "verifiedAt"
+)
+SELECT
+  gen_random_uuid(), w.id, l.id, gen_random_uuid(),
+  w."packedByUserId",
+  w."parcelClosedAt" - (unit || ' seconds')::interval
+FROM fulfillment_works w
+JOIN fulfillment_work_lines l ON l."fulfillmentWorkId" = w.id
+CROSS JOIN LATERAL generate_series(1, GREATEST(0, l."totalQuantity" - l."cancelledQuantity")) AS unit
+WHERE w.id LIKE 'ol_fwork_e2e_%'
+  AND w."parcelClosedAt" IS NOT NULL
+  AND w."packedByUserId" IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM fulfillment_work_verifications v WHERE v."fulfillmentWorkId" = w.id
+  );
+
 -- The held one needs a hold to be held by.
 INSERT INTO fulfillment_holds (
   id, "fulfillmentWorkId", reason, note, "placedByUserId", "placedAt", "createdAt", "updatedAt"
@@ -118,3 +149,36 @@ SELECT status,
 FROM fulfillment_works
 WHERE id LIKE 'ol_fwork_e2e_%'
 GROUP BY 1, 2 ORDER BY 1, 2;
+
+-- ── A packed box the carrier refused a label for ──────────────────────────
+--
+-- Surface F's own state ("Packed, but there is no label") is reachable only
+-- where a shipment EXISTS and carries no `providerShipmentId` — that is what
+-- `BenchDocumentsService` reads as `unavailable`. Nothing in the demo data
+-- produces one, so the state could never be exercised or screenshotted.
+--
+-- Attached to the one seeded work whose parcel is already closed, because the
+-- state is about a FINISHED box that cannot go out; on an open one it would
+-- describe nothing.
+INSERT INTO shipments (
+  id, "orderId", "connectionId", "shippingMethod", status, direction,
+  "fulfillmentWorkId", "providerShipmentId", "errorMessage", "providerCode",
+  "failedAt", "createdAt", "updatedAt"
+)
+SELECT
+  'ol_shipment_e2e_unlabelled',
+  w."orderId",
+  '9893d237-1200-4cd4-bb81-f5b4f88590a1',
+  'inpost_locker',
+  'failed',
+  'outbound',
+  w.id,
+  NULL,
+  'Sender address incomplete - missing building number',
+  'VALIDATION_FAILED',
+  now() - interval '20 minutes',
+  now() - interval '20 minutes',
+  now() - interval '20 minutes'
+FROM fulfillment_works w
+WHERE w.id = 'ol_fwork_e2e_28'
+ON CONFLICT (id) DO NOTHING;

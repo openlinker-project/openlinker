@@ -187,6 +187,58 @@ const STATES = [
     },
   },
   {
+    id: 'bench-hold',
+    group: 'bench',
+    actor: 'packer',
+    title: 'A held parcel — do not pack, and it says why',
+    async reach(page) {
+      await page.goto(`${BASE}/bench`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1200);
+      const tab = page.getByRole('tab', { name: /on hold/i });
+      if ((await tab.count()) > 0) await tab.first().click();
+      await page.waitForTimeout(800);
+      const row = page.locator('[data-testid="bench-section-hold"] .bench-work-row__surface').first();
+      if ((await row.count()) > 0) await row.click();
+      await page.waitForTimeout(1500);
+    },
+    async check(page) {
+      const panel = await page.locator('[data-testid="bench-tab-panel-hold"]').count();
+      if (panel === 0) return 'the hold tab did not render';
+      const rows = await page.locator('.bench-work-row').count();
+      return rows > 0 ? true : 'the hold tab is empty — no held work on this stack';
+    },
+  },
+  {
+    id: 'bench-unlabelled',
+    group: 'bench',
+    actor: 'packer',
+    title: 'Packed, and the carrier would not give us a label',
+    async reach(page) {
+      await page.goto(`${BASE}/bench`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1500);
+      // The section lives at the bottom of a rail that scrolls, so a screenshot
+      // taken here shows the queue and not the state. OPEN the parcel — the
+      // point of the capture is Surface F itself, not the row that leads to it.
+      const row = page
+        .locator('[data-testid="bench-section-waiting-on-carrier"] button')
+        .first();
+      if ((await row.count()) > 0) {
+        await row.scrollIntoViewIfNeeded();
+        await row.click();
+        await page.waitForTimeout(1800);
+      }
+    },
+    async check(page) {
+      // Reached only where a shipment actually failed. Reported as unreachable
+      // rather than passed, so the sweep never claims to have seen a state it
+      // could not produce.
+      const section = await page.locator('[data-testid="bench-section-waiting-on-carrier"]').count();
+      if (section === 0) return 'no parcel on this stack is waiting on a carrier';
+      const panel = await page.locator('[data-testid="bench-documents-unlabelled"]').count();
+      return panel > 0 ? true : 'the row is listed but its unlabelled panel did not open';
+    },
+  },
+  {
     id: 'bench-phone',
     group: 'bench',
     actor: 'packer',
@@ -450,8 +502,17 @@ for (const state of STATES) {
     outcome = 'error';
     detail = error instanceof Error ? error.message : String(error);
   }
+  // A screenshot must never decide the run. A `fullPage` capture waits for
+  // fonts and can time out on a long board, and losing every later state's
+  // verdict to a missing picture is the wrong trade — the assertion above is
+  // the evidence, the picture is the illustration.
   const shot = `${OUT}/${state.id}.png`;
-  await page.screenshot({ path: shot, fullPage: true });
+  let shotTaken = true;
+  try {
+    await page.screenshot({ path: shot, fullPage: true, timeout: 15_000 });
+  } catch {
+    shotTaken = false;
+  }
   await ctx.close();
 
   console.log(
@@ -464,7 +525,7 @@ for (const state of STATES) {
     title: state.title,
     outcome,
     detail,
-    screenshot: shot,
+    screenshot: shotTaken ? shot : null,
   });
 }
 
