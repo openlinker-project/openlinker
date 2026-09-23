@@ -246,7 +246,17 @@ export function ReturnCustodyPanel({
 
   const renderCustody = (line: ReturnLine): ReactNode => {
     const canReceive = outstandingToReceive(line) > 0;
-    const canDispose = outstandingToDispose(line) > 0;
+    // #3466 — a line with an outstanding (unattested) restock block must not
+    // accept a fresh Dispose: `outstandingToDispose` never shrinks after a
+    // blocked write, so nothing else stopped the same units being resubmitted
+    // over and over, each mint a NEW blocked act and the restock-blocked
+    // notice's summed quantity growing without bound. The notice (rendered
+    // above the table) plus its "Mark stock handled manually" action is the
+    // only way out — never a second Dispose attempt on top of it.
+    const hasOutstandingBlock = detail.restockBlocks.some(
+      (block) => block.returnLineId === line.id
+    );
+    const canDispose = outstandingToDispose(line) > 0 && !hasOutstandingBlock;
     // Opens on whatever the line is waiting for, so the common case is one
     // press to expand and one to submit.
     const mode: FlowMode = modeByLine[line.id] ?? (canReceive ? 'receive' : 'dispose');
@@ -298,7 +308,11 @@ export function ReturnCustodyPanel({
           ) : null}
 
           {!canReceive && !canDispose ? (
-            <p className="text-muted">{RETURN_DISPOSE_COPY.nothingToDispose}</p>
+            <p className="text-muted">
+              {hasOutstandingBlock
+                ? RETURN_DISPOSE_COPY.awaitingAttestation
+                : RETURN_DISPOSE_COPY.nothingToDispose}
+            </p>
           ) : null}
 
           <ReturnNotReturnedAction

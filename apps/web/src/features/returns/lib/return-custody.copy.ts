@@ -65,6 +65,14 @@ export const RETURN_DISPOSE_COPY = {
   overDisposition: 'You only have {n} received unit(s) left to deal with on this line.',
   nothingToDispose: 'Every received unit on this line has already been dealt with.',
   /**
+   * Rendered instead of `nothingToDispose` when the reason Dispose is
+   * unavailable is an outstanding block, not a genuinely empty line (#3466) —
+   * saying "already dealt with" there would be a false claim about a write
+   * that was refused, not confirmed.
+   */
+  awaitingAttestation:
+    'This line has a stock write waiting on you — see the notice above and mark it handled before disposing more.',
+  /**
    * Past-tense and event-shaped, naming the ACTION — distinct from the notice,
    * which is present-tense and names the remediation. The two are visible
    * together for a moment after a blocked dispose and must not read as two
@@ -126,6 +134,8 @@ export const RETURN_CUSTODY_ERROR_COPY = {
     'nothing-advised': 'The source advised no units on this line, so there is nothing to write off.',
     'illegal-transition':
       'This line is already finished, so it cannot change. Reload the page to see where it ended up.',
+    'restock-already-blocked':
+      'This line already has a stock write waiting on you — mark it handled before disposing more.',
   } as Record<string, string>,
 } as const;
 
