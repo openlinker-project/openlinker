@@ -46,6 +46,31 @@ export const CoreSalesDocumentKindValues = ['invoice', 'fiscal-receipt'] as cons
 export type CoreSalesDocumentKind = (typeof CoreSalesDocumentKindValues)[number];
 
 /**
+ * The dual-role CONFIG sentinel (#3195): a connection whose operator wants it
+ * to issue EITHER document kind, decided per order.
+ *
+ * This is a `config.salesDocument.documentKind` VALUE only - it is recognized
+ * by `readSalesDocumentRouting` as a legitimate configured kind, but it NEVER
+ * appears on a `SalesDocumentRoutingCandidate` row, and it is not a member of
+ * `CoreSalesDocumentKindValues`. A candidate row must always name exactly one
+ * concrete kind so `resolveSalesDocumentRouting`'s "invoice XOR receipt, never
+ * both" rule (decision 3a) is enforced over the candidate SET, never inside
+ * one ambiguous row. `expandSalesDocumentRoutingCandidates`
+ * (`domain-services/expand-sales-document-routing-candidates.ts`) is the one
+ * place a `'both'`-configured connection turns into two independent candidate
+ * rows, one per kind, sharing the connection id.
+ *
+ * RESERVED WORD (#3194 review): decision 10's open-world vocabulary lets a
+ * regime declare a `documentKind` core has never seen, but the literal
+ * string `'both'` is claimed by THIS sentinel and must never be reused as a
+ * genuine per-regime kind - `readSalesDocumentRouting` recognizes it as the
+ * dual-role config value, not as a document a regime issues, so a regime
+ * naming its own kind exactly `'both'` would silently expand into two
+ * candidate rows instead of being treated as one concrete kind.
+ */
+export const SALES_DOCUMENT_KIND_BOTH = 'both';
+
+/**
  * Open string set: well-known values come from `CoreSalesDocumentKindValues`,
  * but a regime/adapter may declare a kind core has never seen (ADR-041
  * decision 10) — never a closed union, on the same precedent as `Capability`
@@ -96,6 +121,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * `documentKind` reads the new `config.salesDocument.documentKind` key — a
  * non-empty string is trusted verbatim (open-world, decision 10); anything
  * missing, blank, or non-string coerces to `null` (not a routing candidate).
+ * This includes the `'both'` dual-role sentinel (#3195,
+ * {@link SALES_DOCUMENT_KIND_BOTH}) — this reader does no expansion of its
+ * own, it merely returns the configured string verbatim like any other kind;
+ * `expandSalesDocumentRoutingCandidates` is what turns `'both'` into two
+ * candidate rows.
  */
 export function readSalesDocumentRouting(config: unknown): SalesDocumentRoutingConfig {
   const record = isRecord(config) ? config : {};
