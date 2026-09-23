@@ -12,6 +12,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { describeUndoCompletionRefusal, describeVerificationRefusal } from './bench-parcel-presentation';
+import { benchWorkCopy } from './bench-work.copy';
 
 describe('describeVerificationRefusal', () => {
   it('sends the packer back to the trolley only when the box really must not be packed', () => {
@@ -80,5 +81,24 @@ describe('describeUndoCompletionRefusal', () => {
     expect(describeUndoCompletionRefusal('not-claimable-by-viewer')).not.toBe(
       describeUndoCompletionRefusal('not-completed')
     );
+  });
+});
+
+// ── #3438 review: two reasons, one state, two sentences ────────────────────
+describe("the claim refusal and the act refusal stay distinguishable", () => {
+  it('does not send a packer standing over an open box to "try a different one"', () => {
+    // `'not-claimable'` (a refused CLAIM) and `'not-claimable-by-viewer'` (a
+    // refused ACT on a parcel already open) both come from the same ADR-074
+    // lock. `bench-parcel.types.ts` argues in one place why they are kept
+    // apart; this is what stops a later tidy routing both to one string.
+    //
+    // The direction that matters: "That one is already assigned to someone.
+    // Try a different one." is right for a claim and wrong for a packer who
+    // is already holding the box.
+    const claimSentence = benchWorkCopy.tabs.takeNextLocked;
+    const actSentence = describeVerificationRefusal('not-claimable-by-viewer', undefined);
+
+    expect(actSentence).not.toBe(claimSentence);
+    expect(actSentence).not.toMatch(/try a different one/i);
   });
 });

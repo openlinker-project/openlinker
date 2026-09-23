@@ -381,10 +381,33 @@ export interface BenchActivityEntryView {
 /**
  * Why a self-claim was refused (#3412, epic #3401).
  *
- * A NARROWER union than `BenchParcelRefusal`: `'not-claimable'` is the
- * ADR-074 lock (`isClaimableByViewer`), which has no counterpart on that
- * type — refusing a scan and refusing a claim are different questions with
- * partly-overlapping but not identical reasons.
+ * ## `'not-claimable'` and `'not-claimable-by-viewer'` name ONE state on
+ * purpose, and this is the one place that says why (#3438 review)
+ *
+ * Both come from `isClaimableByViewer` — the ADR-074 lock. `claimParcel`
+ * refuses with the first; `verifyUnit`, `reopenParcel` and `undoLastScan`
+ * refuse with the second. Two names for one condition is normally a smell, so
+ * the argument has to be somewhere, and this is it rather than a sentence on
+ * each.
+ *
+ * They are kept apart because the ACT differs and the packer's next step
+ * differs with it:
+ *
+ *   - refusing a CLAIM means *you cannot take this one* — the remedy is to
+ *     take a different parcel, and the copy says so
+ *     (`benchWorkCopy.tabs.takeNextLocked`: "That one is already assigned to
+ *     someone. Try a different one.");
+ *   - refusing an ACT on a parcel already open means *this box is not yours
+ *     to work* — the remedy is to put it down, and the copy says that instead
+ *     (`benchParcelCopy…notYours` / `…refusedLocked`).
+ *
+ * Collapsing them would make one of those two sentences wrong for the
+ * situation it appeared in, and "try a different one" told to a packer
+ * standing over an open box is the worse direction of the two.
+ *
+ * `bench-parcel-presentation.test.ts` asserts the two sentences stay
+ * DISTINGUISHABLE, so a later tidy that routes both to one string fails
+ * rather than quietly undoing this.
  */
 export const BenchClaimRefusalValues = [
   'held',
