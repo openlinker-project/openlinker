@@ -1313,7 +1313,49 @@ export class InvoiceService implements IInvoiceService {
       issuedLineSnapshot,
       documentContent,
       sourceDocument: sourceDocument ?? null,
+      // Carried forward from the document being corrected when the correction
+      // adapter reports nothing of its own.
+      //
+      // A correction is a NEW record, and every read surface resolves an
+      // order's document with `findLatestByOrderId` - so leaving this null
+      // would make the "these lines never reached the warehouse" warning
+      // disappear the moment anyone corrected the invoice for any unrelated
+      // reason, while the stock still had not moved. Inheriting is the
+      // truthful answer: correcting a document does not link its lines to a
+      // catalogue. An adapter that DOES report its own count overrides it,
+      // which is why this is a `??` and not an override.
+      unlinkedCatalogueLines:
+        issueResult.unlinkedCatalogueLines ??
+        (await this.readOriginalUnlinkedCatalogueLines(cmd)),
     });
+  }
+
+  /**
+   * The corrected document's own unlinked-line count, or `null` when it cannot
+   * be read.
+   *
+   * Best-effort by design: this is supplementary operator information, so a
+   * lookup failure must never fail a correction that the provider has already
+   * accepted. `null` then means "not reported", which is the same thing every
+   * pre-#3445 row says.
+   */
+  private async readOriginalUnlinkedCatalogueLines(
+    cmd: IssueCorrectionCommand,
+  ): Promise<number | null> {
+    try {
+      const original = await this.repo.findByProviderInvoiceId(
+        cmd.connectionId,
+        cmd.originalProviderInvoiceId,
+      );
+      return original?.unlinkedCatalogueLines ?? null;
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the corrected document's unlinked-catalogue-line count for order ${cmd.orderId}: ${
+          error instanceof Error ? error.name : 'unknown error'
+        }. The correction is unaffected; the count is reported as not available.`,
+      );
+      return null;
+    }
   }
 
   async getInvoice(query: GetInvoiceByOrderQuery): Promise<InvoiceRecord | null> {

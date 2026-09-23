@@ -151,8 +151,10 @@ export class InvoiceRecord {
      *
      * `null` on every row issued before this column existed, and on every row
      * from a provider that does not report linkage. Both read as "not
-     * reported", which is why {@link hasUnlinkedCatalogueLines} tests `> 0`
-     * rather than nullability.
+     * reported" — a surface must test `> 0` rather than nullability, which
+     * {@link hasUnlinkedCatalogueLines} does as a convenience for a caller
+     * that only needs the yes/no question; a caller naming the count (e.g.
+     * "2 lines") reads this field directly instead.
      */
     public readonly unlinkedCatalogueLines: number | null = null,
   ) {}

@@ -7,7 +7,7 @@
  *
  * @module apps/worker/src/sync/handlers/__tests__
  */
-import type { PostSaleInventoryRefreshService } from '@openlinker/core/inventory';
+import type { IPostSaleInventoryRefreshService } from '@openlinker/core/inventory';
 import { FiscalizationRegisterHandler, MAX_FISCAL_LINES } from '../fiscalization-register.handler';
 import {
   MissingIdempotencyKeyException,
@@ -58,7 +58,7 @@ function makeJob(payload: unknown): SyncJobEntity {
 describe('FiscalizationRegisterHandler', () => {
   let fiscalRegistrations: jest.Mocked<IFiscalRegistrationService>;
   let handler: FiscalizationRegisterHandler;
-  let postSaleInventoryRefresh: jest.Mocked<PostSaleInventoryRefreshService>;
+  let postSaleInventoryRefresh: jest.Mocked<IPostSaleInventoryRefreshService>;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
 
   beforeEach(() => {
@@ -80,7 +80,7 @@ describe('FiscalizationRegisterHandler', () => {
     };
     postSaleInventoryRefresh = {
       enqueue: jest.fn().mockResolvedValue(undefined),
-    } as unknown as jest.Mocked<PostSaleInventoryRefreshService>;
+    } as unknown as jest.Mocked<IPostSaleInventoryRefreshService>;
     handler = new FiscalizationRegisterHandler(fiscalRegistrations, postSaleInventoryRefresh);
     warnSpy = jest
       .spyOn(
@@ -304,6 +304,72 @@ describe('FiscalizationRegisterHandler', () => {
       await expect(handler.execute(makeJob(makePayload()))).rejects.toBeInstanceOf(
         SyncJobExecutionError,
       );
+    });
+  });
+
+  describe('post-receipt master inventory refresh', () => {
+    it('enqueues a refresh keyed on the registered record id, with productIds from the payload lines, when status is registered', async () => {
+      fiscalRegistrations.register.mockResolvedValue({
+        id: 'fiscal-record-99',
+        status: 'registered',
+      } as never);
+
+      await handler.execute(
+        makeJob(
+          makePayload({
+            lines: [
+              {
+                name: 'Widget',
+                quantity: 1,
+                unitPriceGross: 10,
+                taxRate: '',
+                sku: null,
+                productId: 'ol_product_1',
+              },
+              // A line with no product (e.g. a manual charge) carries no
+              // productId — must be filtered out, not passed through blank.
+              { name: 'Shipping', quantity: 1, unitPriceGross: 5, taxRate: '', sku: null },
+              {
+                name: 'Gadget',
+                quantity: 1,
+                unitPriceGross: 20,
+                taxRate: '',
+                sku: null,
+                productId: '',
+              },
+            ],
+          }),
+        ),
+      );
+
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalledWith({
+        productIds: ['ol_product_1'],
+        keyScope: 'receipt:fiscal-record-99',
+      });
+    });
+
+    it('does not enqueue when the record did not reach registered (nothing moved to re-read)', async () => {
+      fiscalRegistrations.register.mockResolvedValue({
+        id: 'fiscal-record-99',
+        status: 'failed',
+        failureMode: 'rejected',
+      } as never);
+
+      await handler.execute(makeJob(makePayload()));
+
+      expect(postSaleInventoryRefresh.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('a rejecting enqueue does not change the returned outcome', async () => {
+      fiscalRegistrations.register.mockResolvedValue({
+        id: 'fiscal-record-99',
+        status: 'registered',
+      } as never);
+      postSaleInventoryRefresh.enqueue.mockRejectedValue(new Error('queue unavailable'));
+
+      const result = await handler.execute(makeJob(makePayload()));
+
+      expect(result).toEqual({ outcome: 'ok' });
     });
   });
 
