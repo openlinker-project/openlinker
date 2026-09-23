@@ -1,10 +1,11 @@
-// InventoryEndpoints.cs.ready - the bridge's stock read. Mirrored for the first time here: it now reports
-// `domyslnyMagazynId` alongside the per-magazyn rows, so the adapter can
-// publish the RELEASE warehouse's stock instead of the sum of every one.
+// InventoryEndpoints.cs.ready - the bridge's stock read. Mirrored for the first
+// time here: it now reports `domyslnyMagazynId` alongside the per-magazyn rows,
+// so the adapter can publish the RELEASE warehouse's stock instead of the sum of
+// every one.
 //
 // A FULL DUMP of the file as it exists on the Windows host at
-// /mnt/c/Users/42zer/gtspike/bridge/InventoryEndpoints.cs - not a diff - for the same
-// reason the sibling mirrors are full dumps.
+// /mnt/c/Users/42zer/gtspike/bridge/InventoryEndpoints.cs - not a diff - for the
+// same reason the sibling mirrors are full dumps.
 //
 // NOT compiled or type-checked by this repo's CI - there is no C# build here.
 

@@ -176,6 +176,20 @@ export class InvoiceRecordOrmEntity {
   buyerTaxId!: string | null;
 
   /**
+   * How many of this document's lines the provider could not link to its own
+   * catalogue and issued as free text — see
+   * `IssueInvoiceResult.unlinkedCatalogueLines`.
+   *
+   * `NULL` means the provider does not report linkage (most do not), which is
+   * a different statement from `0`, "every line was linked". Not indexed: it is
+   * read through the invoice projection the order surfaces already load, and
+   * nothing filters or sorts on it — promoting it to a queryable order-level
+   * axis is the answer if operators ever need a worklist.
+   */
+  @Column({ type: 'integer', nullable: true })
+  unlinkedCatalogueLines!: number | null;
+
+  /**
    * Neutral issued-document content snapshot (§7.3), captured at issue time.
    * `null` until a document is issued (or when the adapter surfaces no content).
    */

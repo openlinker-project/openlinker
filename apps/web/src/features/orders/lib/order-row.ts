@@ -207,3 +207,57 @@ export function taxRateConflictBadge(): { label: string; hint: string } {
     hint: "The invoice used the shop's rate; the channel reported a different one.",
   };
 }
+
+/**
+ * How many of the document's lines the provider could not link to its own
+ * catalogue.
+ *
+ * Reads the tri-state ONCE, here, so no surface has to decide for itself what
+ * an absent value means. Absent / `null` is "this provider does not report
+ * linkage" (inFakt, KSeF and eparagony never will), and `0` is "every line was
+ * linked" - two different facts that both answer "no badge", which is exactly
+ * why a truthiness test on the field would be wrong in the dangerous
+ * direction: it reads the same for a document nobody checked as for one that
+ * checked clean.
+ *
+ * Returns `0` for both, and the count otherwise. A negative value is treated
+ * as not reported rather than trusted, since it cannot be a line count.
+ */
+export function unlinkedCatalogueLineCount(invoice?: ParsedOrderInvoice | null): number {
+  const count = invoice?.unlinkedCatalogueLines;
+  if (typeof count !== 'number' || !Number.isFinite(count) || count <= 0) return 0;
+  return count;
+}
+
+/**
+ * The unlinked-catalogue-lines badge.
+ *
+ * Its OWN resolver, for the same reason `taxRateConflictBadge` is: it must NOT
+ * pass through `invoiceSupersedesBlock`. An issued document is the ordinary
+ * case here - the document is precisely what went out carrying free-text lines
+ * - so routing this through the sales-document block machinery would suppress
+ * the badge for every order it is about.
+ *
+ * The count is in the label because the operator is looking at a document
+ * whose lines they can count, and the hint names the consequence rather than
+ * the mechanism: "did not reach the warehouse" is what they can act on,
+ * "ob_TowId is NULL" is not.
+ *
+ * It is a BADGE only - no chip, no aggregate count. The value lives on the
+ * invoice projection rather than on a queryable `order_records` column, so
+ * there is nothing to filter or count on. If operators ever need a worklist of
+ * affected orders, the answer is to promote it to an independently-filterable
+ * order-level axis (the `taxRateConflict` shape), not to scan this projection.
+ *
+ * Returns `null` when nothing is unlinked, so the caller is a plain render.
+ */
+export function unlinkedCatalogueLinesBadge(
+  invoice?: ParsedOrderInvoice | null,
+): { label: string; hint: string } | null {
+  const count = unlinkedCatalogueLineCount(invoice);
+  if (count === 0) return null;
+  return {
+    label: count === 1 ? '1 line not in catalogue' : `${String(count)} lines not in catalogue`,
+    hint: 'The document was issued, but these lines did not match a product in the accounting system, so they did not reach the warehouse and stock was not reduced. Map the product, then correct the stock by hand.',
+  };
+}
