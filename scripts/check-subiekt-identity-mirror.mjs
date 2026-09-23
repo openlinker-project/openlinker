@@ -38,7 +38,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -55,14 +55,26 @@ export const RETIRED_IDENTITIES = ['subiekt', 'subiekt.invoicing.v1'];
 /**
  * Read `key: 'value'` or `key = 'value'` for a given key name.
  *
- * Deliberately anchored on the key so a comment mentioning the value cannot
- * satisfy it - the migration and several docblocks quote the retired literals
- * on purpose, and a looser regex would read those as declarations.
+ * Anchored on the key so a comment mentioning the value cannot satisfy it -
+ * the migration and several docblocks quote the retired literals on purpose,
+ * and a looser regex would read those as declarations.
+ *
+ * REQUIRES A UNIQUE MATCH. An earlier version took the first one, which is a
+ * false-PASS waiting to happen on the least distinctive key checked here:
+ * `id`. Today the plugin's own `id` is the first in its file, so it read
+ * correctly by luck; the day somebody adds `setupCard: { id: '...' }` above
+ * it, a genuinely drifted plugin id would be shadowed and the check would go
+ * green. Two matches now return `AMBIGUOUS`, which the caller reports as a
+ * violation - noisy, never silent.
  */
+export const AMBIGUOUS = Symbol('ambiguous-declaration');
+
 export function parseAssignedString(source, key) {
-  const pattern = new RegExp(`(?:^|[\\s{,])${key}\\s*[:=]\\s*'([^']*)'`, 'm');
-  const match = pattern.exec(stripComments(source));
-  return match ? match[1] : null;
+  const pattern = new RegExp(`(?:^|[\\s{,])${key}\\s*[:=]\\s*'([^']*)'`, 'gm');
+  const matches = [...stripComments(source).matchAll(pattern)];
+  if (matches.length === 0) return null;
+  if (matches.length > 1) return AMBIGUOUS;
+  return matches[0][1];
 }
 
 /**
@@ -83,6 +95,14 @@ export function diffIdentity(name, expected, sites) {
   for (const site of sites) {
     if (site.value === null) {
       violations.push(`${name}: could not find a declaration in ${site.label}`);
+      continue;
+    }
+    if (site.value === AMBIGUOUS) {
+      violations.push(
+        `${name}: ${site.label} contains MORE THAN ONE declaration, so this check ` +
+          `cannot tell which one is the identity. Disambiguate the file or narrow the check - ` +
+          `silently reading the first would let a drifted value pass.`
+      );
       continue;
     }
     if (site.value !== expected) {
@@ -214,15 +234,47 @@ function selfCheck() {
     diffIdentity('k', 'subiekt-gt', [{ label: 'x', value: null }]).length === 1,
     'a missing declaration is a violation, never a silent pass'
   );
+  assert(
+    parseAssignedString(`const a = { id: 'WRONG' };\nconst b = { id: 'subiekt-gt' };`, 'id') ===
+      AMBIGUOUS,
+    'two declarations of one key are AMBIGUOUS, not first-match-wins'
+  );
+  assert(
+    diffIdentity('k', 'subiekt-gt', [{ label: 'x', value: AMBIGUOUS }]).length === 1,
+    'an ambiguous declaration is reported as a violation'
+  );
+  // Fail-closed on syntax this check does not parse. Prettier pins single
+  // quotes here, so these are unlikely - but an unparsed declaration must read
+  // as "could not find" rather than as agreement.
+  assert(
+    parseAssignedString(`  platformType: "subiekt-gt",`, 'platformType') === null,
+    'double quotes are not parsed, and fail closed'
+  );
+  assert(
+    parseAssignedString('  platformType: `subiekt-gt`,', 'platformType') === null,
+    'template literals are not parsed, and fail closed'
+  );
+  assert(
+    parseAssignedString(`const SUBIEKT_ADAPTER_KEY = OTHER_CONST;`, 'SUBIEKT_ADAPTER_KEY') === null,
+    'a const reference is not parsed, and fails closed'
+  );
 
   console.log(`check-subiekt-identity-mirror --self-check passed (${assertions.length} assertions)`);
 }
 
-if (process.argv.includes('--self-check')) {
-  selfCheck();
-} else {
-  main().catch((error) => {
-    console.error(`check-subiekt-identity-mirror: ${error.message}`);
-    process.exit(1);
-  });
+// Only act when run as a script. The pure parsers above are exported so a test
+// can exercise them, and an import that also ran `main()` would read three
+// files and `process.exit(1)` as a side effect of being imported.
+const isDirectRun =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectRun) {
+  if (process.argv.includes('--self-check')) {
+    selfCheck();
+  } else {
+    main().catch((error) => {
+      console.error(`check-subiekt-identity-mirror: ${error.message}`);
+      process.exit(1);
+    });
+  }
 }
