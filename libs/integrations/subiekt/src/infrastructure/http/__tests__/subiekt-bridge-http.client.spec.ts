@@ -257,9 +257,13 @@ describe('SubiektBridgeHttpClient', () => {
       expect(err).toBeInstanceOf(SubiektBridgeAuthError);
       // A 401 must NOT be surfaced as a fiscal rejection.
       expect(err).not.toBeInstanceOf(SubiektRejectedError);
+      // The bridge's OWN reason is appended now, which is the point of carrying
+      // it: "not configured" and "wrong value" need different remedies and only
+      // the bridge knows which applies.
       expect((err as Error).message).toBe(
-        'Subiekt bridge authentication failed (check bridge token/credentials)',
+        'Subiekt bridge authentication failed (check bridge token/credentials): invalid NIP',
       );
+      expect((err as SubiektBridgeAuthError).reason).toBe('invalid NIP');
       expect((err as SubiektBridgeAuthError).status).toBe(401);
     });
 
