@@ -253,7 +253,9 @@ describe('StockAndPricingSection', () => {
       renderWithProviders(<Harness initialStockLocationOverride="ol_location_1" />, { apiClient });
 
       await screen.findByLabelText("Assign a location to this connection's stock");
-      expect(screen.getByRole('option', { name: /Main warehouse \(WH1\) — inactive/ })).toBeInTheDocument();
+      expect(
+        await screen.findByRole('option', { name: /Main warehouse \(WH1\) — inactive/ }),
+      ).toBeInTheDocument();
     });
 
     it('states the assertion-not-detection copy when the group is open', async () => {

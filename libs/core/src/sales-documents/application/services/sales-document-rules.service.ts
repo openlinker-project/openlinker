@@ -45,9 +45,14 @@ import {
 import {
   SALES_DOCUMENT_REST_OF_WORLD_COUNTRY,
   type SalesDocumentOrderFacts,
+  type SalesDocumentRuleFact,
 } from '../../domain/types/sales-document-order-facts.types';
 import type { SalesDocumentDecision } from '../../domain/types/sales-document-decision.types';
 import type { SalesDocumentCountrySummary } from '../../domain/types/sales-document-country-summary.types';
+import {
+  SALES_DOCUMENT_DRY_RUN_CANDIDATE_RULE_ID,
+  type SalesDocumentDryRunCandidate,
+} from '../../domain/types/sales-document-dry-run.types';
 import { evaluateSalesDocumentRules } from '../../domain/domain-services/evaluate-sales-document-rules';
 import {
   detectSalesDocumentRuleOverlap,
@@ -328,6 +333,73 @@ export class SalesDocumentRulesService implements ISalesDocumentRulesService {
         now,
       })
     );
+  }
+
+  /**
+   * Dry-run an in-progress rule candidate against a sample order (#3191) —
+   * see the interface's own doc comment for the full contract. PERSISTS
+   * NOTHING: every step below is a read, and no repository `create` /
+   * `upsert` / `delete` is ever reached from this method.
+   */
+  async dryRunRule(
+    rawCandidate: SalesDocumentDryRunCandidate,
+    rawSampleOrder: SalesDocumentOrderFacts,
+    now: Date = new Date(),
+  ): Promise<SalesDocumentDecision> {
+    // Same defense-in-depth guard `createRule` runs, on the same raw
+    // (pre-normalisation) conditions, for the same reason: a condition this
+    // build cannot narrow through `isSalesDocumentCondition` must be refused
+    // rather than silently evaluated as "never matches".
+    this.assertConditionsWellFormed(rawCandidate.conditions);
+
+    const candidateCountry = this.normaliseCountry(rawCandidate.country);
+    const candidateConditions = this.normaliseConditionCountries(rawCandidate.conditions);
+    // Same normalisation `resolveRouting` applies to the order and for the
+    // same reason (#3176) — a lowercase sample-order country must compare
+    // equal to an uppercase-scoped candidate/persisted rule.
+    const order = { ...rawSampleOrder, country: this.normaliseCountry(rawSampleOrder.country) };
+
+    // The candidate is evaluated as ALWAYS effective — a dry run tests
+    // conditions, not a calendar the composer has not necessarily filled in
+    // yet — and carries the reserved sentinel id rather than a real one.
+    const candidateRule: SalesDocumentRuleFact = {
+      id: SALES_DOCUMENT_DRY_RUN_CANDIDATE_RULE_ID,
+      conditions: candidateConditions,
+      documentKind: rawCandidate.documentKind,
+      connectionId: rawCandidate.connectionId,
+      effectiveFrom: new Date(0),
+      effectiveTo: null,
+    };
+
+    // The SAME four reads `resolveRouting` performs for a real order — no
+    // repository method is duplicated or reimplemented for this path.
+    const [countryRules, countryDefaults, restOfWorldRules, restOfWorldDefaults] =
+      await Promise.all([
+        this.ruleRepository.findByCountry(order.country),
+        this.countryDefaultRepository.findByCountry(order.country),
+        this.ruleRepository.findByCountry(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY),
+        this.countryDefaultRepository.findByCountry(SALES_DOCUMENT_REST_OF_WORLD_COUNTRY),
+      ]);
+
+    // Fold the candidate into whichever scope it would actually occupy once
+    // saved — never both, and never unconditionally: a candidate scoped to a
+    // country the sample order is not delivering to would not be considered
+    // for that order once saved either, so it must not be considered here.
+    const candidateCountryRules =
+      candidateCountry === order.country ? [...countryRules, candidateRule] : countryRules;
+    const candidateRestOfWorldRules =
+      candidateCountry === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY
+        ? [...restOfWorldRules, candidateRule]
+        : restOfWorldRules;
+
+    return evaluateSalesDocumentRules({
+      order,
+      countryRules: candidateCountryRules,
+      countryDefaults,
+      restOfWorldRules: candidateRestOfWorldRules,
+      restOfWorldDefaults,
+      now,
+    });
   }
 
   /**

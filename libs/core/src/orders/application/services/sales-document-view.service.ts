@@ -51,6 +51,7 @@ import {
   ISalesDocumentRulesService,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
   chooseSalesDocumentDecision,
+  expandSalesDocumentRoutingCandidates,
   readSalesDocumentRouting,
 } from '@openlinker/core/sales-documents';
 import type {
@@ -403,11 +404,14 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
    * The install's sales-document candidate connections, reduced to what the
    * resolve depends on.
    *
-   * Mirrors `AutoIssueTriggerService`'s own candidate build, including
-   * `selfRoutesDocumentKind: false`: no adapter in this repo declares
-   * `SelfRoutingDocumentKind` (#2158 shipped the mechanism, not a consumer),
-   * and constructing every candidate's adapter to ask a question that can only
-   * answer `false` would turn a list read into per-connection I/O.
+   * Mirrors `AutoIssueTriggerService`'s own candidate build — both call the
+   * shared `expandSalesDocumentRoutingCandidates` (#3195), so a dual-role
+   * `documentKind: 'both'` connection expands into the identical two rows on
+   * both sides — including `selfRoutesDocumentKind: false`: no adapter in this
+   * repo declares `SelfRoutingDocumentKind` (#2158 shipped the mechanism, not
+   * a consumer), and constructing every candidate's adapter to ask a question
+   * that can only answer `false` would turn a list read into per-connection
+   * I/O.
    */
   private async loadRoutingCandidates(): Promise<SalesDocumentRoutingCandidate[]> {
     const connections = await this.connections.list({ status: 'active' });
@@ -417,15 +421,15 @@ export class SalesDocumentViewService implements ISalesDocumentViewService {
           connection.enabledCapabilities.includes(INVOICING_CAPABILITY) ||
           connection.enabledCapabilities.includes(FISCALIZATION_CAPABILITY),
       )
-      .map((connection: Connection) => {
+      .flatMap((connection: Connection) => {
         const routing = readSalesDocumentRouting(connection.config);
-        return {
+        return expandSalesDocumentRoutingCandidates({
           connectionId: connection.id,
           documentKind: routing.documentKind,
           isPrimary: routing.isPrimary,
           enabledCapabilities: connection.enabledCapabilities,
           selfRoutesDocumentKind: false,
-        };
+        });
       });
   }
 }
