@@ -65,9 +65,9 @@ public static class OrdersEndpoints
     // UNCONFIRMED - see file header note 1.
     private const string DokDataKolumna = "dok_DataWyst";
 
-    private const string ConnStr =
-        @"Server=DESKTOP-FJ0P3NU\INSERTNEXO;Database=DEMO;Integrated Security=True;"
-      + "TrustServerCertificate=True;Encrypt=False;Connect Timeout=10";
+    // One source of configuration for every file that talks to SQL - see
+    // BridgeConfig.cs. Was a `const` literal here and in five sibling files.
+    private static readonly string ConnStr = BridgeConfig.ConnectionString;
 
     // Local envelope helpers - Program.cs's own Envelope<T>/Rejected are local
     // functions scoped to its top-level statements, not visible from this file,
@@ -220,6 +220,11 @@ public static class OrdersEndpoints
             }
         }
 
+        // Resolved BEFORE EnsureKontrahent, which is synchronous and runs on
+        // the COM apartment thread. One shared resolver with the invoice path,
+        // so the two cannot map the same code to different countries.
+        var panstwoId = await Invoicing.ResolveCountryId(req.Buyer.CountryCode);
+
         int kontrahentId = Sfera.EnsureKontrahent(new KontrahentInfo
         {
             Symbol = symbol,
@@ -228,6 +233,7 @@ public static class OrdersEndpoints
             Ulica = req.Buyer.Ulica ?? "",
             Kod = req.Buyer.KodPocztowy ?? "",
             Miejscowosc = req.Buyer.Miejscowosc ?? "",
+            PanstwoId = panstwoId,
         }, existingId: existingKontrahentId);
 
         var zkReq = new ZkRequest
@@ -478,6 +484,10 @@ public sealed class OrderBuyerDto
     public string? Ulica { get; set; }
     public string? KodPocztowy { get; set; }
     public string? Miejscowosc { get; set; }
+    /// <summary>ISO-3166-1 alpha-2, resolved against sl_Panstwo. Until now
+    /// OpenLinker did not send a country on the ZK path at all, so every
+    /// kontrahent it created looked domestic to Subiekt.</summary>
+    public string? CountryCode { get; set; }
 }
 
 public sealed class OrderLineDto
