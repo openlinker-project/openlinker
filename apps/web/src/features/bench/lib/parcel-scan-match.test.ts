@@ -52,6 +52,9 @@ function parcel(lines: readonly BenchParcelLine[]): BenchParcel {
     holdReason: null,
     closedAt: null,
     packedByUserId: null,
+    invoicePrintedAt: null,
+    labelPrintedAt: null,
+    completedAt: null,
     lines,
   };
 }

@@ -85,6 +85,9 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     holdReason: null,
     closedAt: null,
     packedByUserId: null,
+    invoicePrintedAt: null,
+    labelPrintedAt: null,
+    completedAt: null,
     lines: [line()],
     ...over,
   };
@@ -160,7 +163,18 @@ describe('BenchParcelView (#2418)', () => {
     resetGestureLogForTests();
   });
 
-  // ── RULE 1 — there is no commit control (D18/E5) ────────────────────────
+  // ── RULE 1 — there is no commit control on an OPEN box (D18/E5) ─────────
+  //
+  // This fixture is OPEN (`closedAt: null`, the `parcel()` default), which is
+  // the whole scope of the rule this test pins: D18 is about the box's
+  // CONTENTS closing with nothing to press, not about what happens once it
+  // already has. Pack-bench completion's "Mark as done here" is a genuine, later
+  // write with a genuine control behind it (see `BenchCompletionPanel`'s own
+  // docblock) and is rendered only once `closed` is true — so it can never
+  // appear in THIS list, and this exhaustive assertion needs no exception for
+  // it. The companion test below, in the "E5 / E6" block, asserts the mirror
+  // image: on a CLOSED, not-yet-completed box, "Mark as done here" is exactly the
+  // one NEW control the exhaustive set gains.
   it('should render NO control that could commit or close the box', async () => {
     mount(parcel());
     await screen.findByTestId('bench-parcel');
@@ -189,7 +203,7 @@ describe('BenchParcelView (#2418)', () => {
         '⧉',
         '⧉',
         // E4's hand-confirm — one per unverified line, and the fixture has one.
-        'Confirm this line',
+        'Confirm this item',
         // The hero card's own hand-confirm (mockup-parity epic #3401). The
         // SAME act as the row's, on the one line the box is waiting for next,
         // and it goes through the same `submit` — so it commits nothing the
@@ -283,7 +297,7 @@ describe('BenchParcelView (#2418)', () => {
   it('should promise the packer that the box closes itself', async () => {
     mount(parcel());
     expect(
-      await screen.findByText(/This box closes itself the moment the last line is verified/i)
+      await screen.findByText(/This box closes itself the moment the last item is verified/i)
     ).toBeInTheDocument();
   });
 
@@ -307,7 +321,7 @@ describe('BenchParcelView (#2418)', () => {
     resetGestureLogForTests();
     const confirmed = mount(parcel(), { verifyUnit: vi.fn().mockResolvedValue(after) });
     await screen.findByTestId('bench-parcel');
-    await user.click(screen.getByRole('button', { name: /confirm this line/i }));
+    await user.click(screen.getByRole('button', { name: /confirm this item/i }));
     await waitFor(() => {
       expect(screen.getByTestId('bench-parcel-line').textContent).toContain('1 of 2');
     });
@@ -327,7 +341,7 @@ describe('BenchParcelView (#2418)', () => {
 
   // ── "C" hand-confirms the first open line (#3339) ────────────────────────
   describe('the "c" keyboard shortcut', () => {
-    it('should send the exact same request a click on "Confirm this line" would', async () => {
+    it('should send the exact same request a click on "Confirm this item" would', async () => {
       const verifyUnit = vi.fn().mockResolvedValue(verified());
       mount(parcel(), { verifyUnit });
       await screen.findByTestId('bench-parcel');
@@ -522,7 +536,7 @@ describe('BenchParcelView (#2418)', () => {
     expect(await screen.findByText(/On hold — do not pack this box/i)).toBeInTheDocument();
     expect(screen.getByText(/payment_review/)).toBeInTheDocument();
     // And no confirm control while the box may not be packed.
-    expect(screen.queryByRole('button', { name: /confirm this line/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /confirm this item/i })).toBeNull();
   });
 
   it('should say a refusal it does not recognise is still a refusal', async () => {
@@ -619,5 +633,231 @@ describe('BenchParcelView (#2418)', () => {
     await user.click(await screen.findByRole('button', { name: /reopen this box/i }));
 
     expect(await screen.findByText(/there is nothing to reopen/i)).toBeInTheDocument();
+  });
+
+  // ── Pack-bench completion — the second, explicit act after a box closes ──
+  describe('pack-bench completion', () => {
+    /**
+     * The other half of RULE 1's story. That test pins the OPEN surface's
+     * exhaustive control set and needs no exception for this control, because
+     * it can never render there. This one pins the mirror fact: once the box
+     * is CLOSED, "Mark as done here" is a real, offered control — a commit-sounding
+     * name that is correct here precisely because it is a genuine write
+     * (pack-bench completion), not the box's contents auto-closing.
+     */
+    it('should offer "Mark as done here" on a closed, not-yet-completed box', async () => {
+      mount(parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: null }));
+
+      expect(
+        await screen.findByRole('button', { name: /mark as done here/i })
+      ).toBeInTheDocument();
+    });
+
+    it('should NOT offer "Mark as done here" on an open box', async () => {
+      mount(parcel());
+      await screen.findByTestId('bench-parcel');
+
+      expect(screen.queryByRole('button', { name: /mark as done here/i })).not.toBeInTheDocument();
+    });
+
+    it('should show it was already marked sent, with no button left to press', async () => {
+      mount(
+        parcel({
+          closedAt: '2026-09-04T14:32:00Z',
+          completedAt: '2026-09-04T14:40:00Z',
+        })
+      );
+
+      expect(await screen.findByTestId('bench-parcel-completed')).toBeInTheDocument();
+      expect(screen.getByText(/Marked done at/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /mark as done here/i })).not.toBeInTheDocument();
+    });
+
+    it('should complete straight through when both papers were already printed, and return to the list', async () => {
+      const user = userEvent.setup();
+      const completeParcel = vi.fn().mockResolvedValue({
+        outcome: 'completed',
+        reason: null,
+        parcel: parcel({
+          closedAt: '2026-09-04T14:32:00Z',
+          completedAt: '2026-09-04T14:40:00Z',
+        }),
+      });
+      const { onClose } = mount(
+        parcel({
+          closedAt: '2026-09-04T14:32:00Z',
+          version: 9,
+          invoicePrintedAt: '2026-09-04T14:33:00Z',
+          labelPrintedAt: '2026-09-04T14:34:00Z',
+        }),
+        { completeParcel }
+      );
+
+      await user.click(await screen.findByRole('button', { name: /mark as done here/i }));
+
+      // No dialog: nothing was left unprinted, so pressing it went straight
+      // through rather than asking first.
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      await waitFor(() => {
+        expect(completeParcel).toHaveBeenCalledWith('w-1', 9);
+      });
+      await waitFor(() => {
+        expect(onClose).toHaveBeenCalled();
+      });
+    });
+
+    it('should ask first when the label was never printed, naming what is missing', async () => {
+      const user = userEvent.setup();
+      const completeParcel = vi.fn();
+      mount(
+        parcel({
+          closedAt: '2026-09-04T14:32:00Z',
+          invoicePrintedAt: '2026-09-04T14:33:00Z',
+          labelPrintedAt: null,
+        }),
+        { completeParcel }
+      );
+
+      await user.click(await screen.findByRole('button', { name: /mark as done here/i }));
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(/label.*has not been printed yet/i)).toBeInTheDocument();
+      // Never says the invoice is missing when only the label is.
+      expect(within(dialog).queryByText(/invoice.*has not been printed yet/i)).not.toBeInTheDocument();
+      expect(completeParcel).not.toHaveBeenCalled();
+    });
+
+    it('should print the label from inside the confirm, and let the packer go ahead anyway', async () => {
+      const user = userEvent.setup();
+      const downloadLabel = vi.fn().mockResolvedValue(new Blob(['%PDF']));
+      const completeParcel = vi.fn().mockResolvedValue({
+        outcome: 'completed',
+        reason: null,
+        parcel: parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }),
+      });
+      const { apiClient } = mount(
+        parcel({
+          closedAt: '2026-09-04T14:32:00Z',
+          version: 9,
+          invoicePrintedAt: '2026-09-04T14:33:00Z',
+          labelPrintedAt: null,
+        }),
+        { completeParcel }
+      );
+      apiClient.shipments.downloadLabel = downloadLabel;
+
+      await user.click(await screen.findByRole('button', { name: /mark as done here/i }));
+      const dialog = await screen.findByRole('dialog');
+
+      await user.click(within(dialog).getByRole('button', { name: /print the label/i }));
+      await waitFor(() => {
+        expect(downloadLabel).toHaveBeenCalledWith('ol_shipment_1');
+      });
+
+      // The packer goes ahead regardless — the dialog never blocks a
+      // completion that the operator wants to make now.
+      await user.click(within(dialog).getByRole('button', { name: /mark as done anyway/i }));
+      await waitFor(() => {
+        expect(completeParcel).toHaveBeenCalledWith('w-1', 9);
+      });
+    });
+
+    it('should say a stale token means the screen has moved on, and NOT return to the list', async () => {
+      const user = userEvent.setup();
+      const completeParcel = vi.fn().mockResolvedValue({
+        outcome: 'refused',
+        reason: 'version-conflict',
+        parcel: parcel({ closedAt: '2026-09-04T14:32:00Z', version: 10 }),
+      });
+      const { onClose } = mount(
+        parcel({
+          closedAt: '2026-09-04T14:32:00Z',
+          version: 9,
+          invoicePrintedAt: '2026-09-04T14:33:00Z',
+          labelPrintedAt: '2026-09-04T14:34:00Z',
+        }),
+        { completeParcel }
+      );
+
+      await user.click(await screen.findByRole('button', { name: /mark as done here/i }));
+
+      expect(await screen.findByText(/somebody else changed this box/i)).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('should treat "already-completed" as good news, not an error, and return to the list', async () => {
+      const completeParcel = vi.fn().mockResolvedValue({
+        outcome: 'refused',
+        reason: 'already-completed',
+        parcel: parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:31:00Z' }),
+      });
+      const { onClose } = mount(
+        parcel({
+          closedAt: '2026-09-04T14:32:00Z',
+          invoicePrintedAt: '2026-09-04T14:33:00Z',
+          labelPrintedAt: '2026-09-04T14:34:00Z',
+        }),
+        { completeParcel }
+      );
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole('button', { name: /mark as done here/i }));
+
+      await waitFor(() => {
+        expect(onClose).toHaveBeenCalled();
+      });
+    });
+
+    /**
+     * The live defect this feature shipped with: on a box the carrier refused
+     * a label for, the completion hint claimed the box was "labelled, and on
+     * the trolley" four lines under `BenchDocumentsPanel`'s own "this box
+     * cannot go out". The copy must never assert a label exists, and the
+     * control must still be offered — the packer really is finished with the
+     * box, whatever the carrier did with it (see the completion copy's own
+     * docblock).
+     */
+    it('should offer completion, honestly worded, on a box the carrier refused a label for', async () => {
+      mount(
+        parcel({
+          closedAt: '2026-09-04T14:32:00Z',
+          invoicePrintedAt: '2026-09-04T14:33:00Z',
+        }),
+        {
+          getDocuments: vi.fn().mockResolvedValue({
+            workId: 'w-1',
+            invoice: {
+              state: 'ready',
+              invoiceId: 'inv-1',
+              documentNumber: 'FV/2026/09/0412',
+              issuedAt: '2026-09-01T09:14:00Z',
+              blockReason: null,
+              unresolvedReason: null,
+            },
+            label: {
+              state: 'unavailable',
+              shipmentId: null,
+              carrier: null,
+              trackingNumber: null,
+              providerCode: 'ADDR_INCOMPLETE',
+              carrierMessage: null,
+              carrierMessageRedacted: false,
+              failedAt: '2026-09-04T14:20:00Z',
+            },
+          }),
+        }
+      );
+
+      // The unlabelled panel's own claim: this box cannot go out.
+      expect(await screen.findByTestId('bench-documents-unlabelled')).toBeInTheDocument();
+
+      // The completion control is still offered — the packer's part is done —
+      // and its hint never claims the box is labelled or sent.
+      expect(screen.getByRole('button', { name: /mark as done here/i })).toBeInTheDocument();
+      expect(screen.queryByText(/labelled/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/on the trolley/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/\bsent\b/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/off your bench now/i)).toBeInTheDocument();
+    });
   });
 });

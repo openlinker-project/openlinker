@@ -19,6 +19,7 @@ import {
   parseBenchActivityEntries,
   parseBenchClaimNextResult,
   parseBenchClaimResult,
+  parseBenchCompleteResult,
   parseBenchDocuments,
   parseBenchMetrics,
   parseBenchPackedTodayList,
@@ -33,6 +34,7 @@ import type {
   BenchActivityEntry,
   BenchClaimNextResult,
   BenchClaimResult,
+  BenchCompleteResult,
   BenchDocuments,
   BenchMetrics,
   BenchPackedTodayList,
@@ -86,6 +88,12 @@ export interface BenchApi {
   ) => Promise<BenchVerificationResult>;
   /** Reopen a box closed by mistake. `expectedVersion` is the token read with the parcel. */
   reopenParcel: (workId: string, expectedVersion?: number) => Promise<BenchReopenResult>;
+  /**
+   * Declare a closed parcel finished and off the bench (pack-bench
+   * completion). `expectedVersion` is the token read with the parcel; a stale
+   * one answers a `version-conflict` refusal with nothing written.
+   */
+  completeParcel: (workId: string, expectedVersion: number) => Promise<BenchCompleteResult>;
   /** The invoice that goes inside the box and the label that goes on it. */
   getDocuments: (workId: string) => Promise<BenchDocuments>;
   /** The rendered invoice for this parcel's own order. Creates nothing. */
@@ -148,6 +156,14 @@ export function createBenchApi(request: ApiRequest, requestBlob: ApiBlobRequest)
     async reopenParcel(workId, expectedVersion): Promise<BenchReopenResult> {
       return parseBenchReopenResult(
         await request<unknown>(`${work(workId)}/reopen`, {
+          method: 'POST',
+          body: JSON.stringify({ expectedVersion }),
+        })
+      );
+    },
+    async completeParcel(workId, expectedVersion): Promise<BenchCompleteResult> {
+      return parseBenchCompleteResult(
+        await request<unknown>(`${work(workId)}/complete`, {
           method: 'POST',
           body: JSON.stringify({ expectedVersion }),
         })

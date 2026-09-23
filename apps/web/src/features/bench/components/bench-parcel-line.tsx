@@ -36,12 +36,25 @@ import type { ReactElement } from 'react';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { BenchParcelLine } from '../api/bench-parcel.types';
+import { narrowAttributes } from '../lib/bench-parcel-attributes';
 import { benchLineState, type BenchLineState } from '../lib/bench-parcel-presentation';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import { BenchThumb } from './bench-thumb';
 
 export interface BenchParcelLineRowProps {
   readonly line: BenchParcelLine;
+  /**
+   * The attribute keys that differ across THIS parcel's lines, from
+   * `distinguishingAttributeKeys`. Computed once by the parent, because it is a
+   * property of the box's contents rather than of any one row.
+   */
+  readonly distinguishingAttributes: ReadonlySet<string>;
+  /**
+   * Whether any line in this box carries a bin code. False collapses the
+   * Location column for the whole table — see `bench-parcel.tsx`, which owns
+   * the decision because it is a fact about the box, not about one row.
+   */
+  readonly hasBins: boolean;
   /** Whether the box is still open. A closed box offers no confirm control. */
   readonly open: boolean;
   /** E4's path. Sends exactly what a scan sends. */
@@ -81,6 +94,8 @@ const BADGE_TEXT: Readonly<Record<BenchLineState, string>> = {
 
 export function BenchParcelLineRow({
   line,
+  distinguishingAttributes,
+  hasBins,
   open,
   onConfirm,
   pendingCount = 0,
@@ -90,12 +105,13 @@ export function BenchParcelLineRow({
   const pending = pendingCount > 0;
   const remaining = Math.max(0, line.requiredQuantity - line.verifiedQuantity);
   const codes = benchParcelCopy.lines.codes({ ean: line.ean, sku: line.sku });
+  const visibleAttributes = narrowAttributes(line.attributes, distinguishingAttributes);
 
   return (
     <li
       className={`bench-parcel-line bench-parcel-line--${state}${
         pending ? ' bench-parcel-line--pending' : ''
-      }`}
+      }${hasBins ? '' : ' bench-parcel-line--no-bins'}`}
       data-testid="bench-parcel-line"
       data-line-id={line.workLineId}
     >
@@ -119,9 +135,9 @@ export function BenchParcelLineRow({
         <span className="bench-parcel-line__name">
           {line.name ?? benchParcelCopy.lines.unnamed}
         </span>
-        {line.attributes === null || Object.keys(line.attributes).length === 0 ? null : (
+        {visibleAttributes === null ? null : (
           <span className="bench-parcel-line__attributes">
-            {benchParcelCopy.lines.attributesText(line.attributes)}
+            {benchParcelCopy.lines.attributesText(visibleAttributes)}
           </span>
         )}
         {line.weightGrams === null && line.lengthMm === null ? null : (
@@ -155,13 +171,19 @@ export function BenchParcelLineRow({
         <span className="bench-parcel-line__count-value">
           {benchParcelCopy.lines.count(line.verifiedQuantity, line.requiredQuantity)}
         </span>
-        <span className="bench-parcel-line__count-note">
-          {state === 'verified'
-            ? benchParcelCopy.lines.allIn
-            : state === 'not-started'
-              ? benchParcelCopy.lines.noneYet
-              : benchParcelCopy.lines.stillToScan(remaining)}
-        </span>
+        {/* Only where it says something the badge to the right does not.
+            A not-started row rendered `not scanned yet` here AND
+            `Not scanned yet` as its badge — the same four words twice on one
+            row, on the densest part of the screen; a verified row said
+            `all in` beside `Verified`, which is the same fact reworded. The
+            remaining count on a part-scanned row is the one case the badge
+            cannot carry, and the mockup's own quantity cell holds nothing
+            but `X of Y` for the other two. */}
+        {state === 'in-progress' && remaining > 0 ? (
+          <span className="bench-parcel-line__count-note">
+            {benchParcelCopy.lines.stillToScan(remaining)}
+          </span>
+        ) : null}
       </div>
 
       <div className="bench-parcel-line__state">
@@ -190,6 +212,20 @@ export function BenchParcelLineRow({
           <>
             <Button
               tone="secondary"
+              // The VISIBLE text is the same four words on every row and on the
+              // hero, because they are the same act. The accessible name is
+              // not: a row confirms THIS item while the hero confirms whichever
+              // item the box is waiting for next, so leaving both announced as
+              // "Confirm this item" gives a screen-reader user several
+              // identically-named buttons that do different things. Naming the
+              // product resolves that without putting a second word on screen.
+              // (Until the wording was unified, the two were told apart only by
+              // "line" versus "item" — an accident, not a decision.)
+              aria-label={
+                line.name === null
+                  ? undefined
+                  : benchParcelCopy.lines.confirmActionFor(line.name)
+              }
               // Deliberately NOT disabled while a gesture is out (#2905
               // review). The mutation observer is shared by every line, so
               // `verify.isPending` greyed line B out because line A was in

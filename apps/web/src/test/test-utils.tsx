@@ -926,6 +926,9 @@ export function createMockApiClient(
       reopenParcel: vi
         .fn<BenchApi['reopenParcel']>()
         .mockRejectedValue(new Error('bench.reopenParcel not stubbed')),
+      completeParcel: vi
+        .fn<BenchApi['completeParcel']>()
+        .mockRejectedValue(new Error('bench.completeParcel not stubbed')),
       // The neutral "no paper exists yet" answer: an unissued invoice and a
       // box no label was ever bought for. Every nullable field is spelled out
       // rather than omitted, so a surface reading one gets `null` — the value

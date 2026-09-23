@@ -28,7 +28,7 @@ import {
   type InvoiceAbsenceAudience,
   type SalesDocumentGateReasonCopy,
 } from '../../sales-documents';
-import type { BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
+import type { BenchDocuments, BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
 import { benchParcelCopy } from './bench-parcel.copy';
 
 /** How far one line has got. Never says HOW its units were confirmed. */
@@ -194,6 +194,61 @@ export function describeReopenRefusal(reason: string | null): string {
     default:
       return copy.reopenUnknownRefusal;
   }
+}
+
+/**
+ * Why a completion was refused.
+ *
+ * `not-closed` should never be reachable — the control is offered only on a
+ * closed box — but is named rather than folded into the default: a race with
+ * a reopen from a second terminal is real, and a packer told nothing would
+ * keep pressing a button that cannot work until they reload. `already-completed`
+ * is deliberately NOT an error in the caller's eyes even though it shares this
+ * function with the real refusals — the box really is finished, so the caller
+ * treats that one reason as a reason to move on rather than to stay and retry.
+ */
+export function describeCompletionRefusal(reason: string | null): string {
+  const copy = benchParcelCopy.completion;
+  switch (reason) {
+    case 'not-closed':
+      return copy.refusedNotClosed;
+    case 'already-completed':
+      return copy.refusedAlreadyCompleted;
+    case 'version-conflict':
+      return copy.refusedStale;
+    case 'not-claimable-by-viewer':
+      return copy.refusedLocked;
+    default:
+      return copy.refusedUnknown;
+  }
+}
+
+/**
+ * What a completion confirm must ask about before it may proceed straight
+ * through.
+ *
+ * Reads the SAME two facts the documents panel renders — `state === 'ready'`
+ * from the current documents read, `*PrintedAt` from the parcel itself — so
+ * this can never disagree with what the packer sees on the open box. A
+ * document that is not `ready` (missing, or issued-but-not-printable) is
+ * never reported as "unprinted": there is nothing this bench could print for
+ * it, and naming it here would send the packer looking for a print button
+ * that does not exist.
+ */
+export interface BenchCompletionPrintGaps {
+  readonly invoiceUnprinted: boolean;
+  readonly labelUnprinted: boolean;
+}
+
+export function completionPrintGaps(
+  parcel: BenchParcel,
+  documents: BenchDocuments | undefined
+): BenchCompletionPrintGaps {
+  return {
+    invoiceUnprinted:
+      documents?.invoice.state === 'ready' && parcel.invoicePrintedAt === null,
+    labelUnprinted: documents?.label.state === 'ready' && parcel.labelPrintedAt === null,
+  };
 }
 
 /**

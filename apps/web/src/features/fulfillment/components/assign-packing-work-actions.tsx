@@ -41,10 +41,33 @@
  * carrying actions at all, and gating them on the lane would reinstate the
  * one-way hold in a narrower form.
  *
+ * ## The action set lives behind an overflow menu, not inline
+ *
+ * A live board carries the full `supportedActions` set inline — up to five
+ * buttons (Schedule / Put on hold / Mark in progress / Force cancel / Move
+ * to the front) beside the checkbox beside the select — and only the
+ * Unassigned lane's cards carry the checkbox, so a plain packer's card was
+ * shorter than an unassigned one. Two different row heights on the SAME
+ * component is most of what read as a board whose rows do not line up.
+ *
+ * The mockup's own answer is `.lane-card__menu`: a single trigger per card,
+ * a popover holding the rest. This borrows that shape for the SERVER-
+ * declared action set specifically — the "Move to" select and the
+ * self-serve checkbox stay inline, matching the mockup's own inline
+ * `__pickable`, because those two are this screen's own staffing controls
+ * and not part of what `FulfillmentTaskActions` renders.
+ *
+ * `FulfillmentTaskActions` itself is unchanged — same server-declared list,
+ * same per-hold `release_hold` fan-out, same unrecognised-action fallback —
+ * it is only relocated into the popover's content, and every one of its own
+ * callbacks is wrapped to close the menu first: a menu that stays open after
+ * the action it held was clicked would still cover the row underneath it.
+ *
  * @module apps/web/src/features/fulfillment/components
  */
-import type { ChangeEvent, ReactElement } from 'react';
+import { useState, type ChangeEvent, type ReactElement } from 'react';
 
+import { Popover, PopoverContent, PopoverTrigger } from '../../../shared/ui/popover';
 import { Select } from '../../../shared/ui/select';
 import type { PackerSummary } from '../../users';
 import type { FulfillmentTask, FulfillmentTaskHold } from '../api/fulfillment.types';
@@ -83,10 +106,18 @@ export function AssignPackingWorkActions({
   onReleaseHold,
   onForceCancel,
 }: AssignPackingWorkActionsProps): ReactElement | null {
+  // Above the early return — a hook cannot be called conditionally, and
+  // `visible` can flip between renders of the SAME task row.
+  const [menuOpen, setMenuOpen] = useState(false);
+
   if (!visible) return null;
 
   const disabled = busy || readOnly;
   const isUnassigned = task.assignedToUserId === null;
+  // Rendered but disabled — see `ReadOnlyLock` inside `FulfillmentTaskActions`
+  // — never hidden. Hiding a legal action set on demoReadOnly would say
+  // "nothing is legal here" when the truth is "you may not do it".
+  const hasActions = task.supportedActions.length > 0;
 
   const handleMoveTo = (event: ChangeEvent<HTMLSelectElement>): void => {
     const value = event.target.value;
@@ -130,20 +161,48 @@ export function AssignPackingWorkActions({
       ) : null}
 
       {/* One control per entry of `task.supportedActions`, and nothing else
-          decides. This screen used to render a single hardcoded Hold button
-          gated on `isUnassigned`, which meant it could put work on hold and
-          could not take it off again — `release_hold` had no path in the
-          product outside the worklist this screen replaced. */}
-      <FulfillmentTaskActions
-        task={task}
-        visible={visible}
-        readOnly={readOnly}
-        busy={busy}
-        onInvoke={onInvoke}
-        onHold={onHold}
-        onReleaseHold={onReleaseHold}
-        onForceCancel={onForceCancel}
-      />
+          decides — unchanged from before this menu existed, only relocated.
+          This screen used to render a single hardcoded Hold button gated on
+          `isUnassigned`, which meant it could put work on hold and could
+          not take it off again — `release_hold` had no path in the product
+          outside the worklist this screen replaced. */}
+      {hasActions ? (
+        <Popover open={menuOpen} onOpenChange={setMenuOpen} dismissOnViewportChange>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="assign-packing-work-card__menu-trigger"
+              aria-label={ASSIGN_PACKING_WORK_COPY.row.moreActionsLabel}
+            >
+              ⋮
+            </button>
+          </PopoverTrigger>
+          <PopoverContent className="assign-packing-work-card__menu" align="end">
+            <FulfillmentTaskActions
+              task={task}
+              visible={visible}
+              readOnly={readOnly}
+              busy={busy}
+              onInvoke={(action) => {
+                setMenuOpen(false);
+                onInvoke(action);
+              }}
+              onHold={() => {
+                setMenuOpen(false);
+                onHold();
+              }}
+              onReleaseHold={(hold) => {
+                setMenuOpen(false);
+                onReleaseHold(hold);
+              }}
+              onForceCancel={() => {
+                setMenuOpen(false);
+                onForceCancel();
+              }}
+            />
+          </PopoverContent>
+        </Popover>
+      ) : null}
     </div>
   );
 }

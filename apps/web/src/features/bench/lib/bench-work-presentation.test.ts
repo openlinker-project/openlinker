@@ -33,6 +33,7 @@ function work(over: Partial<BenchWork> = {}): BenchWork {
     supportedActions: ['expedite'],
     assignmentState: 'unassigned',
     claimable: true,
+    completedAt: null,
     ...over,
   };
 }
@@ -63,6 +64,23 @@ describe('sectionOf / groupBenchWork (#2416, story B4)', () => {
     const { toPack, doNotPack } = groupBenchWork(rows);
     expect(toPack.map((row) => row.workId)).toEqual(['a', 'c']);
     expect(doNotPack.map((row) => row.workId)).toEqual(['b']);
+  });
+
+  // Pack-bench completion. `BenchWorkService` deliberately keeps returning a
+  // completed row rather than filtering it out server-side, so the reading
+  // side has to drop it — and it must leave BOTH sections, never `doNotPack`,
+  // because a completed box did not become something to hold back, it left
+  // the bench entirely.
+  it('should drop a COMPLETED row from both sections, whatever its state', () => {
+    const rows = [
+      work({ workId: 'a' }),
+      work({ workId: 'b', completedAt: '2026-09-04T14:32:00Z' }),
+      work({ workId: 'c', state: 'held', completedAt: '2026-09-04T14:32:00Z' }),
+      work({ workId: 'd', state: 'held' }),
+    ];
+    const { toPack, doNotPack } = groupBenchWork(rows);
+    expect(toPack.map((row) => row.workId)).toEqual(['a']);
+    expect(doNotPack.map((row) => row.workId)).toEqual(['d']);
   });
 });
 

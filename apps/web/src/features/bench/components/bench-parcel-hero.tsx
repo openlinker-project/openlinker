@@ -28,7 +28,7 @@
  * `onScanValue` hands the typed string to the parcel view's own matcher — the
  * identical function the document-level scanner listener calls, minting an
  * identical gesture id and sending an identical request. `onConfirm` is the
- * same `submit` the per-line "Confirm this line" button already uses. So this
+ * same `submit` the per-row "Confirm this item" button already uses. So this
  * component adds a visible way in and NOT a second way in: nothing here can
  * record a unit the two existing paths could not, and nothing recorded
  * through it is distinguishable afterwards, which is D20 by construction.
@@ -47,6 +47,7 @@ import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { BenchParcelLine } from '../api/bench-parcel.types';
 import { isEditableTarget } from '../lib/scanner-gesture';
+import { narrowAttributes } from '../lib/bench-parcel-attributes';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import { BenchCopyButton } from './bench-copy-button';
 import { BenchThumb } from './bench-thumb';
@@ -54,6 +55,12 @@ import { BenchThumb } from './bench-thumb';
 export interface BenchParcelHeroProps {
   /** The line this box is waiting for next. Derived by the caller. */
   readonly line: BenchParcelLine;
+  /**
+   * The attribute keys that differ across this parcel's lines. See
+   * `bench-parcel-attributes.ts` — the hero narrows to the same subset the
+   * table does, so one item does not read two different ways on one screen.
+   */
+  readonly distinguishingAttributes: ReadonlySet<string>;
   /** Whether the box may still take units. A closed or refused box offers none. */
   readonly open: boolean;
   /** H1 — a bench that cannot reach OpenLinker must not look as if it can. */
@@ -71,6 +78,7 @@ export interface BenchParcelHeroProps {
 
 export function BenchParcelHero({
   line,
+  distinguishingAttributes,
   open,
   unreachable,
   pendingCount,
@@ -120,10 +128,9 @@ export function BenchParcelHero({
   }, [line.verifiedQuantity]);
 
   const remaining = Math.max(0, line.requiredQuantity - line.verifiedQuantity);
+  const visibleAttributes = narrowAttributes(line.attributes, distinguishingAttributes);
   const attributes =
-    line.attributes === null || Object.keys(line.attributes).length === 0
-      ? null
-      : benchParcelCopy.lines.attributesText(line.attributes);
+    visibleAttributes === null ? null : benchParcelCopy.lines.attributesText(visibleAttributes);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();

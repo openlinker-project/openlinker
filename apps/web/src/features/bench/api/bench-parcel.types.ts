@@ -77,6 +77,21 @@ export interface BenchParcel {
   /** When the last verification shut the box, or `null` while it is open. */
   readonly closedAt: string | null;
   readonly packedByUserId: string | null;
+  /**
+   * When this parcel's invoice was FIRST printed, or `null` if never. A
+   * reprint never moves it — the question is whether it was ever printed,
+   * because that is what the pack-bench completion confirm reads.
+   */
+  readonly invoicePrintedAt: string | null;
+  /** The label sibling of `invoicePrintedAt`. Same reading. */
+  readonly labelPrintedAt: string | null;
+  /**
+   * When an operator declared this parcel finished and off the bench, or
+   * `null` until that act. A distinct, later instant from `closedAt` — the
+   * box can be correctly packed for a while before anyone confirms the label
+   * is on it and it has actually left.
+   */
+  readonly completedAt: string | null;
   readonly lines: readonly BenchParcelLine[];
 }
 
@@ -93,6 +108,25 @@ export interface BenchReopenResult {
   /** `reopened` | `refused`. */
   readonly outcome: string;
   /** `shipped` | `not-closed`, or `null`. */
+  readonly reason: string | null;
+  readonly parcel: BenchParcel;
+}
+
+/**
+ * What declaring a parcel finished and off the bench answers (pack-bench
+ * completion).
+ *
+ * `parcel` comes back on every outcome, exactly as it does on a verification —
+ * a refusal re-renders the box as it now stands rather than leaving a stale
+ * one on screen.
+ */
+export interface BenchCompleteResult {
+  /** `completed` | `refused`. */
+  readonly outcome: string;
+  /**
+   * `not-closed` | `already-completed` | `version-conflict` |
+   * `not-claimable-by-viewer`, or `null` on `completed`, or something newer.
+   */
   readonly reason: string | null;
   readonly parcel: BenchParcel;
 }

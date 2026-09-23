@@ -42,7 +42,18 @@ export function sectionOf(work: BenchWork): BenchSection {
   return work.state === 'packable' ? 'to-pack' : 'do-not-pack';
 }
 
-/** Split the list into its two sections, preserving the server's order within each. */
+/**
+ * Split the list into its two sections, preserving the server's order within
+ * each.
+ *
+ * A row whose `completedAt` is set (pack-bench completion) leaves BOTH
+ * sections rather than joining `doNotPack` — it did not become something to
+ * hold back, it left the bench entirely, and "on hold" would be a false
+ * statement about a box that is already gone. The server deliberately keeps
+ * returning it (see `BenchWorkService`'s own docblock for why: the exclusion
+ * is drawn here, on the reading side, rather than by a query change), so this
+ * is the one place the drop happens.
+ */
 export function groupBenchWork(works: readonly BenchWork[]): {
   toPack: BenchWork[];
   doNotPack: BenchWork[];
@@ -50,6 +61,7 @@ export function groupBenchWork(works: readonly BenchWork[]): {
   const toPack: BenchWork[] = [];
   const doNotPack: BenchWork[] = [];
   for (const work of works) {
+    if (work.completedAt !== null) continue;
     if (sectionOf(work) === 'to-pack') toPack.push(work);
     else doNotPack.push(work);
   }

@@ -33,6 +33,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanup, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AssignPackingWorkPage } from './assign-packing-work-page';
@@ -336,6 +337,7 @@ describe('fulfilment screen copy audit', () => {
   });
 
   it('is clean when the server offers an action this build has no copy for', async () => {
+    const user = userEvent.setup();
     renderState({
       list: vi.fn().mockResolvedValue({
         works: [task({ supportedActions: ['expedite_pick'] })],
@@ -344,15 +346,22 @@ describe('fulfilment screen copy audit', () => {
         offset: 0,
       }),
     });
+    // The action set lives behind the row's overflow menu — see
+    // `assign-packing-work-actions.tsx`'s own docblock — so this audit must
+    // open it, or a banned term hiding in an unrendered menu would pass by
+    // never reaching the DOM at all.
+    await user.click(await screen.findByRole('button', { name: 'More actions' }));
     await screen.findAllByRole('button', { name: 'Expedite pick' });
     expectCleanCopy('Expedite pick');
   });
 
   it('is clean in the demo read-only render', async () => {
+    const user = userEvent.setup();
     renderState({
       list: vi.fn().mockResolvedValue({ works: [task()], total: 1, limit: 25, offset: 0 }),
       demoMode: true,
     });
+    await user.click(await screen.findByRole('button', { name: 'More actions' }));
     await waitFor(() => {
       expect(screen.getAllByRole('button', { name: 'Close' }).length).toBeGreaterThan(0);
     });

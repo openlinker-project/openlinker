@@ -67,6 +67,26 @@ export const ASSIGN_PACKING_WORK_COPY = {
       `${String(parts.units)} ${parts.units === 1 ? 'unit' : 'units'}`,
   },
 
+  /**
+   * Column heads above a lane's cards (the mockup's `.lane__col-heads`),
+   * naming the three fixed columns a row's identity, buyer and summary line
+   * sit in. No head for the drag grip or the staffing controls — the grip is
+   * decorative and the controls are self-explanatory (a labelled select and
+   * a labelled checkbox need no column caption).
+   */
+  columns: {
+    order: 'Order',
+    buyer: 'Buyer',
+    details: 'Details',
+  },
+
+  /** The mockup's drag grip (`⠿`) — decorative, `aria-hidden`; the native
+   * `title` is its only text, read on hover by a mouse user, who is the
+   * only user who can drag at all. */
+  drag: {
+    gripHint: 'Drag to move to a packer',
+  },
+
   lane: {
     unassignedTitle: 'Unassigned',
     /** A task assigned to a user id no longer in the active packer roster. */
@@ -87,6 +107,15 @@ export const ASSIGN_PACKING_WORK_COPY = {
     moveToLabel: 'Move to',
     moveToUnassigned: 'Unassigned',
     selfServeLabel: 'Anyone may claim this',
+    /**
+     * The overflow-menu trigger holding the server-declared action set
+     * (Hold, Release hold, Force cancel, …) — the mockup's own reason for a
+     * card-level menu: five inline buttons made every card a different
+     * height and the row stopped lining up. The "Move to" select and the
+     * self-serve checkbox stay inline; only the action SET moves behind
+     * this trigger.
+     */
+    moreActionsLabel: 'More actions',
     // No `hold` key: this screen's own "Hold" label is gone. Every action
     // label now comes from `fulfillmentActionLabel` via `FulfillmentTaskActions`,
     // so the button reads "Put on hold" here exactly as it does on the order

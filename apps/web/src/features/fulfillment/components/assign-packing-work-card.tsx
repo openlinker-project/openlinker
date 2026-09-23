@@ -32,11 +32,22 @@
  */
 import type { LiHTMLAttributes, ReactElement } from 'react';
 
-import { formatAbsoluteTime } from '../../../shared/format/format-date';
+import { formatShipBy, type ShipByLevel } from '../../../shared/format/format-ship-by';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
 import { fulfillmentStatusLabel } from '../lib/fulfillment-task.copy';
+
+/**
+ * Ship-by urgency level (#927) → StatusBadge tone — the `order-detail-page` /
+ * `orders-list-page` precedent. `formatShipBy` stays free of a `shared/ui`
+ * dependency, so the mapping lives at the call site.
+ */
+const SHIP_BY_TONE: Record<ShipByLevel, StatusBadgeTone> = {
+  ok: 'info',
+  soon: 'warning',
+  overdue: 'error',
+};
 
 export interface AssignPackingWorkCardProps {
   readonly task: FulfillmentTask;
@@ -44,6 +55,14 @@ export interface AssignPackingWorkCardProps {
   readonly actions: ReactElement | null;
   /** Drag-source props plus the assignment-only class; see the lane section. */
   readonly rootProps?: LiHTMLAttributes<HTMLLIElement>;
+  /**
+   * Whether THIS card is a drag source — mirrors the lane section's own
+   * `dragEnabled` gate. The grip is purely visual (the `<li>` itself already
+   * carries `draggable` via `rootProps`), so it must not render on an axis
+   * where drag is off, or it would advertise an affordance the row does not
+   * have.
+   */
+  readonly dragEnabled?: boolean;
 }
 
 /**
@@ -57,8 +76,15 @@ function badgeFor(task: FulfillmentTask): { tone: StatusBadgeTone; label: string
   if (hold !== undefined) {
     return { tone: 'error', label: ASSIGN_PACKING_WORK_COPY.card.heldBadge };
   }
-  if (task.dispatchByAt != null) {
-    return { tone: 'warning', label: formatAbsoluteTime(task.dispatchByAt) };
+  // A board spans several days, so a bare time-of-day ("11:59 PM") is
+  // ambiguous about which day it means, and a single hardcoded `warning`
+  // tone stopped meaning anything once every row wore it. `formatShipBy`
+  // (#927) carries both the day-scale phrase and the real urgency level;
+  // `null` — no or an unparseable deadline — renders nothing, never a
+  // false countdown.
+  const shipBy = formatShipBy(task.dispatchByAt ?? null);
+  if (shipBy !== null) {
+    return { tone: SHIP_BY_TONE[shipBy.level], label: shipBy.remaining };
   }
   if (task.status !== 'open') {
     // Humanised, never raw. `status` is a server vocabulary the FE
@@ -76,6 +102,7 @@ export function AssignPackingWorkCard({
   task,
   actions,
   rootProps = {},
+  dragEnabled = false,
 }: AssignPackingWorkCardProps): ReactElement {
   const badge = badgeFor(task);
   const units = task.lines.reduce((sum, line) => sum + line.totalQuantity, 0);
@@ -88,29 +115,66 @@ export function AssignPackingWorkCard({
       data-task-id={task.id}
       {...restRootProps}
     >
-      <div className="assign-packing-work-card__identity">
-        <div className="assign-packing-work-card__top">
-          <span className="assign-packing-work-card__ref">
-            {task.orderReference ?? task.id}
-          </span>
-          {badge === null ? null : (
-            <StatusBadge tone={badge.tone} compact>
-              {badge.label}
-            </StatusBadge>
-          )}
-        </div>
-        {/* Absent rather than placeheld — see the module docblock. */}
-        {task.buyerNameMasked == null ? null : (
-          <span className="assign-packing-work-card__buyer">{task.buyerNameMasked}</span>
-        )}
-        <span className="assign-packing-work-card__meta">
-          {ASSIGN_PACKING_WORK_COPY.card.summary({
-            lines: task.lines.length,
-            units,
-          })}
-          {task.locationName == null ? null : <> · {task.locationName}</>}
+      {/* Visual only — the `<li>` itself is the real drag source (see
+          `rootProps`). Absent on an axis where drag is off, matching the
+          card's own `draggable` state. */}
+      {dragEnabled ? (
+        <span
+          className="assign-packing-work-card__grip"
+          aria-hidden="true"
+          title={ASSIGN_PACKING_WORK_COPY.drag.gripHint}
+        >
+          ⠿
         </span>
+      ) : null}
+
+      {/* Fixed-width column: ref on its own line, badge below it when
+          present. Grouping them in one box, rather than letting the badge
+          float free after the ref text, is what keeps `__buyer`'s left edge
+          constant regardless of how long a given badge's label is. */}
+      <div className="assign-packing-work-card__ref-cell">
+        {/* Truncated with an ellipsis (CSS), never wrapped - a real
+            reference here is often a 36-char internal id with no source
+            reference to fall back from, and a `title` is what a desk
+            surface's hover affords instead of the tail. */}
+        <span
+          className="assign-packing-work-card__ref"
+          title={task.orderReference ?? task.id}
+        >
+          {task.orderReference ?? task.id}
+        </span>
+        {badge === null ? (
+          // Same box, invisible — a row with nothing to say here must not
+          // become one line SHORTER than a row with a badge, or every lane
+          // on this board (most of them holding a mix of badged and plain
+          // tasks) has rows of two different heights. The cell stays two
+          // rows tall by design; only whether the second one is READ
+          // varies.
+          <span className="assign-packing-work-card__badge-slot" aria-hidden="true">
+            <StatusBadge tone="neutral" compact>
+              {' '}
+            </StatusBadge>
+          </span>
+        ) : (
+          <StatusBadge tone={badge.tone} compact>
+            {badge.label}
+          </StatusBadge>
+        )}
       </div>
+
+      {/* Always rendered, even with nothing inside it — an absent buyer name
+          is a blank cell, not a missing one, so the columns after it never
+          shift left. See the module docblock on why it is blank rather than
+          placeheld. */}
+      <span className="assign-packing-work-card__buyer">{task.buyerNameMasked ?? ''}</span>
+
+      <span className="assign-packing-work-card__meta">
+        {ASSIGN_PACKING_WORK_COPY.card.summary({
+          lines: task.lines.length,
+          units,
+        })}
+        {task.locationName == null ? null : <> · {task.locationName}</>}
+      </span>
 
       <div className="assign-packing-work-card__actions">{actions}</div>
     </li>

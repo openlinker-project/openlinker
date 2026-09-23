@@ -71,8 +71,7 @@ export const benchParcelCopy = {
     /** The mockup's own caption above the item list. */
     allItemsCaption: 'All items in this parcel',
     groupByLocationLabel: 'Group by bin',
-    groupByLocationNote:
-      'Sorts this parcel\u2019s own items by bin. Not a picking route across several orders, which is what most tools mean by grouping by location.',
+    groupByLocationNote: 'Sorts this box\u2019s own items by bin.',
     colItem: 'Item',
     colIdentifiers: 'Identifiers',
     colLocation: 'Location',
@@ -83,21 +82,39 @@ export const benchParcelCopy = {
     badgeNotScanned: 'Not scanned yet',
     matchedHeading: 'Matched · in the box',
     /**
-     * E4. Named for what it does — confirm this line — and never for how. There
+     * E4. Named for what it does — confirm this item — and never for how. There
      * is deliberately no second word anywhere that would let a reader, or a
      * screenshot, tell the two paths apart afterwards.
      */
-    confirmAction: 'Confirm this line',
+    confirmAction: 'Confirm this item',
+    /**
+     * The same act, named for a screen reader so several rows' buttons are not
+     * all announced identically. Never rendered on screen — see the `aria-label`
+     * in `bench-parcel-line.tsx` for why the visible text stays uniform.
+     */
+    confirmActionFor: (item: string): string => `Confirm ${item}`,
     confirmHint: 'For an item whose barcode is damaged, missing or will not read.',
     /**
-     * The variant's distinguishing attributes (colour, size, …), rendered as
-     * one line (#3417, mockup-parity epic #3401). Sorted by key so the same
-     * variant always reads in the same order across a render.
+     * The variant's attributes, one line (#3417, mockup-parity epic #3401).
+     * Sorted by key so the same variant always reads the same way.
+     *
+     * The NAME is rendered beside the value, not dropped. This shipped as
+     * values-only on the assumption that a variant's attributes are the
+     * distinguishing ones — colour, size — where "Red · M" reads perfectly.
+     * Real catalogue data is not like that: a live PrestaShop product here
+     * carries `{Wariant: "…50ml", "Reklamowany w TV": "tak", "Kosmetyk
+     * ekskluzywny": "tak", "Produkt dla mężczyzn": "tak"}`, which rendered as
+     * `tak · tak · tak · …` — three identical words that tell a packer holding
+     * the box precisely nothing.
+     *
+     * A value with no name is only readable when the name is obvious from the
+     * value, and nothing guarantees that. Naming it costs a few characters and
+     * always reads.
      */
     attributesText: (attrs: Record<string, string>): string =>
       Object.keys(attrs)
         .sort()
-        .map((key) => attrs[key])
+        .map((key) => `${key}: ${attrs[key] ?? ''}`)
         .join(' · '),
     /** Operator-authored bin/shelf code, rendered as a short label (#3402/#3410). */
     binCodeLabel: (code: string): string => `Bin ${code}`,
@@ -126,7 +143,7 @@ export const benchParcelCopy = {
     parcelClosed:
       'Nothing was recorded. This box is already closed. Reopen it first if something needs changing.',
     noSuchLine:
-      'Nothing was recorded. That line is not part of this box any more. The screen has been refreshed.',
+      'Nothing was recorded. That item is not part of this box any more. The screen has been refreshed.',
     /** A refusal this build does not recognise. Never silently swallowed. */
     unknownRefusal:
       'Nothing was recorded, and this bench cannot say why. Show this screen to your supervisor.',
@@ -187,10 +204,61 @@ export const benchParcelCopy = {
     reopenFailed: 'That did not go through. Nothing changed — try again.',
   },
 
+  /**
+   * Pack-bench completion — the second, explicit act after a box closes.
+   * Closing (the last scan) says the ITEMS are right; this says the PACKER
+   * has finished with the box. Offered only on a closed box, and distinct
+   * from the no-commit rule above: that rule is about the box's CONTENTS
+   * having nothing to press, not about this later question, which has a real
+   * control and a real write behind it.
+   *
+   * ## Why this says "off the bench" and never "sent" or "on the trolley"
+   *
+   * The earlier wording claimed the box was labelled and on its way, which is
+   * false on a box the carrier refused a label for — `BenchDocumentsPanel`
+   * says so, four lines above this control, in the same breath as "this box
+   * cannot go out". A packer pressing the button had just told the office
+   * something untrue. "Off the bench" is true either way: it records that
+   * THIS PACKER is finished with the box, never that a carrier accepted it —
+   * an unlabelled box legitimately leaves the bench for a dispatch queue, and
+   * `completedAt` is the packer's act, not a claim about the carrier's. See
+   * `BenchCompletionPanel`'s own docblock.
+   */
+  completion: {
+    action: 'Mark as done here',
+    hint: "This tells the office you're finished with this box — it's off your bench now.",
+    doneNotice: (formattedAt: string): string => `Marked done at ${formattedAt}.`,
+    confirmTitle: 'Before you mark it done',
+    /** Named for WHAT is missing, never a bare "are you sure". */
+    confirmBodyBoth: 'Neither the label nor the invoice for this box has been printed yet.',
+    confirmBodyLabel: 'The label for this box has not been printed yet.',
+    confirmBodyInvoice: 'The invoice for this box has not been printed yet.',
+    /**
+     * Read live off the current parcel, so if the packer prints from inside
+     * this dialog, the sentence catches up rather than keeping the gap it
+     * opened with.
+     */
+    confirmBodyNoneLeft: 'Both papers are printed now.',
+    confirmHint: 'Print them now, or go ahead if you already printed them somewhere else.',
+    printInvoiceAction: 'Print the invoice',
+    printLabelAction: 'Print the label',
+    printFailed: 'That did not print. Try again, or go ahead anyway.',
+    confirmAction: 'Mark as done anyway',
+    cancelAction: 'Not yet',
+    refusedNotClosed: 'This box is not closed yet, so there is nothing to mark done. Carry on scanning.',
+    refusedAlreadyCompleted: 'This box was already marked done.',
+    refusedStale: 'Somebody else changed this box. This screen now shows the latest — try again.',
+    refusedLocked:
+      'This box is assigned to someone else right now, so it cannot be marked done from here.',
+    refusedUnknown:
+      'That did not go through, and this bench cannot say why. Show this screen to your supervisor.',
+    failed: 'That did not go through. Nothing changed — try again.',
+  },
+
   /** E5's promise, rendered on the verifying surface. */
   footer: {
     noCommit:
-      'This box closes itself the moment the last line is verified. There is nothing here to press.',
+      'This box closes itself the moment the last item is verified. There is nothing here to press.',
     scannerReady: 'Scanner in · keyboard not needed',
     /**
      * The "C" shortcut has no visible control of its own to attach a hint
@@ -309,10 +377,8 @@ export const benchParcelCopy = {
     matched: 'Matched',
     scanPlaceholder: 'Scan or type SKU / EAN, then press Enter',
     confirmAction: 'Confirm this item',
-    scanHint:
-      'Scanning counts on its own — no button needed. Use Confirm this item only when a barcode is damaged, missing or will not read.',
-    keyboardHint:
-      'Keyboard, when you are not scanning: C confirms this item · U undoes the last scan · Esc returns to the scan box.',
+    scanHint: 'Scanning counts on its own. Confirm by hand only when a barcode will not read.',
+    keyboardHint: 'C confirm · U undo · Esc back to the scan box',
     countOf: (required: number): string => `of ${String(required)}`,
     /** The progress bar's own right-hand figure. */
     percent: (value: number): string => `${String(value)}%`,
@@ -390,8 +456,21 @@ export const benchParcelCopy = {
     labelHint: 'Stick it flat on the largest side. Cover nothing else with it.',
     invoiceTitle: (number: string | null): string =>
       number === null ? 'Invoice for this order' : `Invoice ${number}`,
-    labelTitle: (carrier: string | null): string =>
-      carrier === null ? 'Label for this box' : `${carrier} label`,
+    /**
+     * Deliberately does NOT name the carrier.
+     *
+     * `Shipment.carrier` holds the adapter's own key — `inpost`, lowercase —
+     * so interpolating it printed `inpost label` at a packer, an internal
+     * identifier dressed as a sentence. Title-casing it would produce
+     * `Inpost`, which is a different wrong answer, and no display-name map
+     * exists to look the real one up in.
+     *
+     * Nothing is lost by leaving it out: the order head one row above already
+     * names the carrier correctly, from the SOURCE's own delivery-method label
+     * ("InPost Paczkomat"), and the tracking number sits directly under this
+     * heading. The carrier arrives here only to be recorded, not rendered.
+     */
+    labelTitle: (): string => 'Label for this box',
     trackingLabel: 'Tracking',
     printFailed: 'That did not print. Nothing changed — try again.',
 
@@ -436,20 +515,6 @@ export const benchParcelCopy = {
         body: 'This order is not on any list OpenLinker keeps. Send the box, and mention it to the office.',
       },
     },
-  },
-
-  /**
-   * #3420 (epic #3401) — the camera-preview button. Rendered inert, exactly
-   * as the mockup's own comment admits: there is no pack-station camera in
-   * OpenLinker, so nothing here would show a real feed. The honesty is the
-   * feature — a silently-missing button invites a packer to wonder if it is
-   * broken; a button that says plainly what it is not does not.
-   */
-  cameraPreview: {
-    action: 'Show camera preview',
-    disclaimer:
-      'No pack-station camera exists in OpenLinker today — nothing here would show a real feed.',
-    toast: 'No camera is wired up — this button is a mockup idea, not a real feature.',
   },
 
   /** F3/F4 — packed, and it cannot go out. */

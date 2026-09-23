@@ -73,6 +73,9 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     holdReason: null,
     closedAt: null,
     packedByUserId: null,
+    invoicePrintedAt: null,
+    labelPrintedAt: null,
+    completedAt: null,
     lines: [line()],
     ...over,
   };
@@ -592,7 +595,7 @@ describe('bench under failure (#2421)', () => {
 
       // Shown-and-refused, not hidden: a control that vanishes reads as a
       // missing feature and the packer hunts for it.
-      const confirm = await screen.findByRole('button', { name: /confirm this line/i });
+      const confirm = await screen.findByRole('button', { name: /confirm this item/i });
       expect(confirm).toBeDisabled();
       expect(screen.getByText(/Not while the bench is out of touch/i)).toBeInTheDocument();
       await user.click(confirm);

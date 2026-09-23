@@ -232,6 +232,7 @@ describe('AssignPackingWorkPage', () => {
     });
 
     it('offers Release hold on a held task — the gate this screen used to be missing', async () => {
+      const user = userEvent.setup();
       renderPage({
         list: vi.fn().mockResolvedValue(
           page([
@@ -251,7 +252,10 @@ describe('AssignPackingWorkPage', () => {
       });
 
       await screen.findAllByRole('combobox', { name: 'Move to' });
-      expect(within(desktop()).getByRole('button', { name: 'Release hold' })).toBeInTheDocument();
+      // The action set lives behind the row's overflow menu now — see
+      // `assign-packing-work-actions.tsx`'s own docblock.
+      await user.click(within(desktop()).getByRole('button', { name: 'More actions' }));
+      expect(await screen.findByRole('button', { name: 'Release hold' })).toBeInTheDocument();
     });
 
     it('offers no button when the server allows a release but reports no hold', async () => {
@@ -273,12 +277,14 @@ describe('AssignPackingWorkPage', () => {
       // made this a one-way gate: a held task could never be released from
       // the only screen that could hold it. `supportedActions` is the gate
       // now, so an assigned task still offers whatever the server declared.
+      const user = userEvent.setup();
       renderPage({
         list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'u_a' })])),
       });
 
       await screen.findAllByRole('combobox', { name: 'Move to' });
-      expect(within(desktop()).getByRole('button', { name: 'Put on hold' })).toBeInTheDocument();
+      await user.click(within(desktop()).getByRole('button', { name: 'More actions' }));
+      expect(await screen.findByRole('button', { name: 'Put on hold' })).toBeInTheDocument();
     });
   });
 

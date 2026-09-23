@@ -23822,56 +23822,127 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-5);
 }
 
-/* ── Assign-board task card (#3340; mobile-first rebuild, epic #3401) ─────
- * The mockup's `.lane-card`: reference and one badge, the buyer, the counts,
- * then the staffing controls. ONE card at every width - it reflows rather
- * than swapping to a second component, because the question a supervisor is
- * answering ("who packs this?") does not change with the screen.
+/* ── Assign-board task card (#3340; column-aligned rebuild, epic #3401) ───
+ * The mockup's `.lane-card`: a table-like row inside ONE bordered lane,
+ * separated from its neighbours by a hairline rather than each being its
+ * own bordered box. Wide, every column has a FIXED flex-basis, which is
+ * what makes `__ref`, `__buyer` and `__meta` line up from row to row
+ * regardless of what any one row's badge or summary text happens to say -
+ * a `flex: 1 1 <basis>` column still grows to fill leftover space, but its
+ * STARTING edge, and every fixed column after it, never moves.
  *
- * Wide, everything sits on one line. Narrow, the controls drop under the
- * identity rather than squeezing beside it. */
+ * The ref+badge pair is grouped into one fixed-width cell (`__ref-cell`)
+ * rather than letting the badge float free after the ref text: a badge is
+ * free-width content, so if it sat directly in the row's flex flow the
+ * column after it would shift with every row's badge length. Boxing them
+ * together and letting the BOX wrap internally (badge onto its own line)
+ * keeps every sibling column's x-position constant no matter how long one
+ * row's badge text is.
+ *
+ * Narrow, the mockup's own `@media` rule takes over: the row wraps and the
+ * meta line drops to its own full-width row. That reflow is kept exactly
+ * where the mockup puts it and nowhere else - desktop does not wrap. */
+.assign-packing-work-lane__table {
+  display: flex;
+  flex-direction: column;
+}
+
 .assign-packing-work-card-list {
-  display: grid;
-  gap: var(--space-2);
+  display: flex;
+  flex-direction: column;
   margin: 0;
   padding: 0;
   list-style: none;
+  border: 1px solid var(--border-subtle);
+  border-top: none;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
 .assign-packing-work-card {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-  padding: var(--space-3) var(--space-4);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.assign-packing-work-card__identity {
-  display: grid;
-  gap: 3px;
-  flex: 1 1 16rem;
+.assign-packing-work-card-list > .assign-packing-work-card:last-child {
+  border-bottom: none;
+}
+
+.assign-packing-work-card:hover {
+  background: var(--bg-surface-muted);
+}
+
+/* Decorative only - the `<li>` itself is the real drag source (see
+ * `assign-packing-work-draggable`). Absent whenever drag is off.
+ *
+ * A FIXED box, not an auto-sized one — the col-heads row renders an
+ * invisible stand-in of this exact class (`__col-head-spacer`) so the
+ * heads line up with the columns they name, and an auto-sized glyph
+ * measures a different width depending on which container's inherited
+ * font it renders under (the heads' own mono/uppercase font vs the row's
+ * plain one). A fixed width removes the font as a variable entirely. */
+.assign-packing-work-card__grip {
+  flex: 0 0 0.875rem;
+  font-size: 0.8125rem;
+  line-height: 1;
+  text-align: center;
+  color: var(--text-disabled);
+  user-select: none;
+}
+
+.assign-packing-work-card__ref-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 0 0 11rem;
   min-width: 0;
 }
 
-.assign-packing-work-card__top {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  flex-wrap: wrap;
+/* The invisible stand-in for a row with no badge to show - same box, same
+   height, so a lane's mix of badged and plain tasks doesn't read as two
+   different row shapes. See the component's own docblock. */
+.assign-packing-work-card__badge-slot {
+  /* `display: inline-flex`, matching `.status-badge`'s own display - a
+     plain `<span>` wrapper is an INLINE box with no display of its own,
+     so its line-box height falls back to the ref-cell's inherited
+     line-height (taller than the badge's own 19px), making a placeholder
+     row a few pixels taller than a real-badge row despite both wrapping
+     an identically-sized `StatusBadge`. */
+  display: inline-flex;
+  visibility: hidden;
 }
 
+/* Truncate, never wrap - the `.bench-work-row__reference` treatment. A real
+ * reference here is a 36-char internal id when the order carries no source
+ * reference, and a fixed-width cell that wraps it to two lines - three with
+ * the badge below - makes THAT row the tallest in the lane for no reason a
+ * reader needs: a reference is recognisable from its first characters, and
+ * `title` carries the full value for the hover a desk surface affords. */
 .assign-packing-work-card__ref {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
 }
 
 .assign-packing-work-card__buyer {
+  /* No grow, unlike the mockup's own `flex: 1 1 160px` - a growable column
+     between two fixed ones takes a DIFFERENT width on every row (whatever
+     that row's own actions/badge content leaves as "remaining space"),
+     which moves `__meta`'s left edge exactly as much as a free-floating
+     badge would have. `__actions`' own `margin-left: auto` is what absorbs
+     the row's leftover space instead, so every fixed column keeps the
+     same x on every row. */
+  flex: 0 0 10rem;
+  min-width: 0;
   font-size: 0.8125rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -23879,29 +23950,135 @@ legend.analytics-settings-dialog__label {
 }
 
 .assign-packing-work-card__meta {
+  flex: 0 0 13rem;
   font-size: 0.75rem;
   color: var(--text-muted);
-  text-wrap: pretty;
 }
 
 /* The controls keep their own width on a desk and take the full row on a
    phone, where a 44 px select beside a checkbox beside a button does not
    fit and splitting them across two lines reads as two decisions. */
 .assign-packing-work-card__actions {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
+  margin-left: auto;
 }
 
 @media (max-width: 640px) {
   .assign-packing-work-card {
     align-items: stretch;
+    flex-wrap: wrap;
     gap: var(--space-3);
   }
 
-  .assign-packing-work-card__identity,
+  .assign-packing-work-card__ref-cell,
+  .assign-packing-work-card__buyer {
+    flex: 1 1 auto;
+  }
+
+  .assign-packing-work-card__meta,
   .assign-packing-work-card__actions {
     flex: 1 1 100%;
   }
+
+  /* Full row width to stack in - see `.assign-packing-work-actions`'s own
+   * comment on why it stays `nowrap` on a desk. */
+  .assign-packing-work-actions {
+    flex-wrap: wrap;
+  }
+
+  .assign-packing-work-actions .control--select {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+}
+
+/* ── Lane column heads (the mockup's `.lane__col-heads`) ──────────────────
+ * One per lane, above its rows, naming the three fixed columns above. It
+ * shares `.assign-packing-work-lane__table` with the card list below it
+ * (no gap between them, borders that meet edge-to-edge) so the two read as
+ * one bordered surface rather than a caption floating over nothing. */
+.assign-packing-work-lane__col-heads {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 6px var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-disabled);
+  border: 1px solid var(--border-subtle);
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.assign-packing-work-lane__col-head--ref {
+  flex: 0 0 11rem;
+}
+
+/* No grow, matching `.assign-packing-work-card__buyer`'s own rule — a
+   growable head here would take whatever space the row's grip column
+   would otherwise reserve, decoupling the head from the column it names. */
+.assign-packing-work-lane__col-head--buyer {
+  flex: 0 0 10rem;
+}
+
+.assign-packing-work-lane__col-head--meta {
+  flex: 0 0 13rem;
+}
+
+/* Same box as the row's own grip, invisible — see the component's docblock
+   on why the heads need a stand-in for it. */
+.assign-packing-work-lane__col-head-spacer {
+  visibility: hidden;
+}
+
+@media (max-width: 640px) {
+  .assign-packing-work-lane__col-heads {
+    display: none;
+  }
+}
+
+/* ── Task action overflow menu (the mockup's `.lane-card__menu`) ─────────
+ * Up to five server-declared actions plus one per active hold made every
+ * card a different height, which is most of what read as a board whose
+ * rows did not line up - see `assign-packing-work-actions.tsx`'s own
+ * docblock. Only the trigger sits inline; the action set moves into this
+ * popover. */
+.assign-packing-work-card__menu-trigger {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.assign-packing-work-card__menu-trigger:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.assign-packing-work-card__menu {
+  min-width: 200px;
+  padding: 4px;
+}
+
+.assign-packing-work-card__menu .fulfilment-task__actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding-top: 0;
+}
+
+.assign-packing-work-card__menu .fulfilment-task__actions .button {
+  display: block;
+  width: 100%;
+  text-align: left;
 }
 
 .assign-packing-work-lane {
@@ -24057,9 +24234,30 @@ legend.analytics-settings-dialog__label {
 .assign-packing-work-actions {
   align-items: center;
   display: flex;
-  flex-wrap: wrap;
+  /* The mockup keeps `__pickable` inline at a fixed `flex: 0 0 168px`
+   * beside the select and the actions - one line. `flex-wrap: wrap` here
+   * used to let the select's own global `width: 100%` rule (`.control,
+   * select { width: 100% }`, meant for a stacked form field) claim the
+   * whole row and push the checkbox and the "More actions" trigger onto a
+   * line of their own - every card on the board two rows tall, and a
+   * packer lane's cards (no checkbox) shorter than the Unassigned lane's.
+   * The select is bounded below instead, so this never has to wrap on a
+   * desk; it wraps again at phone width, alongside the rest of the card. */
+  flex-wrap: nowrap;
   gap: var(--space-2);
   justify-content: flex-end;
+}
+
+/* Bounds the "Move to" select against its own global `width: 100%` rule -
+ * see `.assign-packing-work-actions`'s own comment. Sized for the longest
+ * real value seen on the board (`e2e-packer-manual`, 18 chars) with room
+ * to spare; `flex-shrink: 1` so it still yields before it forces the row
+ * to overflow on a narrower desk. */
+.assign-packing-work-actions .control--select {
+  flex: 0 1 11rem;
+  width: auto;
+  min-width: 0;
+  max-width: 11rem;
 }
 
 .assign-packing-work-actions__self-serve {
@@ -24725,8 +24923,18 @@ legend.analytics-settings-dialog__label {
    is what a bare `<button>` inherits here: it pins `height: 2rem` and paints
    the accent background, so the card's own content overflowed a 32 px box and
    the action strip below it landed on top of the meta line. */
+/* `grid-template-columns` is load-bearing, not decorative: with no explicit
+   track the browser auto-sizes the implicit single column to its widest
+   child's UNCONSTRAINED content width — the same "table-layout: auto"
+   behaviour grids fall back to — so a row whose reference had no wrap point
+   (no space or hyphen for the browser to break on) grew wider than the
+   340 px rail and got hard-clipped by `.bench-panel`'s `overflow: hidden`,
+   always from the right, i.e. the badge. `minmax(0, 1fr)` caps the track at
+   the rail's own width so every child is forced to size — and, where it
+   can't, shrink — within it instead. */
 .bench-work-row__surface {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 3px;
   width: 100%;
   height: auto;
@@ -24793,11 +25001,22 @@ legend.analytics-settings-dialog__label {
   box-shadow: var(--shadow-focus);
 }
 
+/* `min-width: 0` overrides a grid item's default `auto` (content-based)
+   minimum — the same reason a flex item needs it — so this row can actually
+   shrink to the track width the rule above now caps it at, instead of
+   pushing that track wider. The badge (B4's one carrier of state, never
+   truncated) is pinned at its full size; the reference is the one that
+   gives, in the rule below. */
 .bench-work-row__top {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+.bench-work-row__top .status-badge {
+  flex-shrink: 0;
 }
 
 .bench-work-row__buyer {
@@ -24821,7 +25040,19 @@ legend.analytics-settings-dialog__label {
   color: var(--text-primary);
 }
 
+/* Truncates rather than wrapping. Two things this fixes at once: it's what
+   gives room to the badge above (the reference is the one that gives, never
+   the status), and it keeps every row the same one-line height — a
+   hyphenated reference (a UUID) previously wrapped onto a second line at
+   this same width, wherever it happened to have a break point, which made
+   row height depend on the shape of the id rather than its content. A
+   reference is recognisable from its first characters, so truncating the
+   tail loses nothing a packer reads it for. */
 .bench-work-row__reference {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   font-weight: 600;
@@ -25373,30 +25604,11 @@ legend.analytics-settings-dialog__label {
   margin: var(--space-2) 0 0;
 }
 
-/* #3420 (epic #3401) — the inert camera-preview row. Small and muted on
-   purpose, matching the mockup's own footnote treatment. */
-.bench-documents__camera-preview {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  font-size: 0.7rem;
-  color: var(--text-muted);
-}
-
 /* The topbar is the one row that cannot wrap without hiding the sign-out, so
    on a phone the two pieces that are merely orientation give way: the
    breadcrumb (the bench is the only screen a packer has) and the name beside
    the avatar (the identity bar under it already says who is signed in). */
 
-
-/* The footnote rows carry a control and a sentence; narrow, the sentence has
-   to drop below the control rather than run under it. */
-@media (max-width: 640px) {
-  .bench-documents__camera-preview {
-    flex-wrap: wrap;
-  }
-}
 
 /* ══ THE COMPACT BENCH (mobile-first rebuild, epic #3401) ═══════════════════
  *
@@ -26259,6 +26471,18 @@ legend.analytics-settings-dialog__label {
   grid-template-columns:
     44px minmax(0, 1.7fr) minmax(0, 1fr) 6.5rem 7rem 8.5rem 9.5rem;
   align-items: center;
+
+/* No line in this box carries a bin code, so the Location column has nothing
+   to put in it on any row. An always-empty column with a heading is the same
+   dead affordance as a control that does nothing: it takes width a packer's
+   eye has to cross and promises information that is not coming. `binCode` is
+   real and operator-authored (#3402) — this collapses the column only where
+   the data is genuinely absent, and it comes back the moment a bin is set. */
+.bench-parcel__lines-head--no-bins,
+.bench-parcel-line--no-bins {
+  grid-template-columns:
+    44px minmax(0, 1.7fr) minmax(0, 1fr) 0 7rem 8.5rem 9.5rem;
+}
   gap: var(--space-3);
 }
 
@@ -26524,6 +26748,47 @@ legend.analytics-settings-dialog__label {
   text-wrap: pretty;
 }
 
+/* ── Pack-bench completion (mockup-parity bench, #3340) ──────────────────── */
+.bench-parcel__completion {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.bench-parcel__completion .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.bench-parcel__completion-hint {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-parcel__completion-done {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--status-success-fg);
+}
+
+.bench-parcel__completion-print-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.bench-parcel__completion-print-actions .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
 /* ── Recent activity (#3411, mockup-parity epic #3401) ──────────────────── */
 .bench-activity {
   margin-top: var(--space-4);
@@ -26562,7 +26827,37 @@ legend.analytics-settings-dialog__label {
   color: var(--text-disabled);
   font-size: 0.75rem;
   flex-shrink: 0;
-  width: 48px;
+  /* Wide enough for a 12-hour clock's own widest rendering, and told not to
+     wrap. At 48px `1:16 AM` broke after the digits, so every row in the log
+     was two lines with `AM` alone on the second — and the rows below it no
+     longer lined up with their own timestamps. */
+  width: 4.5rem;
+  white-space: nowrap;
+}
+
+/* The ship-by field carries the clock time AND how long is left, because the
+   bench is a touch kiosk with no hover and the second half used to live in a
+   `title`. Toned by urgency, and written in words as well — colour is never
+   the only signal on this surface. */
+.bench-parcel__ship-by {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.bench-parcel__ship-by-remaining {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.bench-parcel__ship-by-remaining--soon {
+  color: var(--status-warning-fg);
+}
+
+.bench-parcel__ship-by-remaining--overdue {
+  color: var(--status-error-fg);
+  font-weight: 600;
 }
 
 .bench-parcel__footer {

@@ -167,10 +167,10 @@ export const benchWorkCopy = {
   },
   truncated: {
     /** Said when the read hit its cap, rather than quietly showing part of it. */
-    note: 'There is more work than fits on this screen. The oldest work is the part shown — still most urgent first; pack some and the rest will appear.',
+    note: 'More work than fits here. Pack some and the rest appears.',
   },
   footer: {
-    honesty: 'OpenLinker cannot see your shelves. This list says what has been routed here and when it must go out — never whether the goods are in front of you.',
+    honesty: 'OpenLinker cannot see your shelves — this is what must go out, and when.',
     liveness: 'Updates by itself',
   },
   errors: {

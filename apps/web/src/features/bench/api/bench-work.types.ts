@@ -42,6 +42,16 @@ export interface BenchWork {
   assignmentState: string;
   /** May THIS packer claim (open, verify) this parcel? See `assignmentState`. */
   claimable: boolean;
+  /**
+   * When an operator declared this parcel finished and off the bench
+   * (pack-bench completion), or `null` until that act.
+   *
+   * The server deliberately keeps returning a completed row here rather than
+   * filtering it out of the query — see `BenchWorkService`'s own docblock —
+   * so the exclusion from "at this bench" is drawn on the READING side, by
+   * `groupBenchWork`.
+   */
+  completedAt: string | null;
 }
 
 /** Whether packing work can reach this bench at all. */

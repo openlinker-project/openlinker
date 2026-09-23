@@ -179,23 +179,60 @@ export function AssignPackingWorkLaneSection({
       {lane.tasks.length === 0 ? (
         <p className="text-muted">{ASSIGN_PACKING_WORK_COPY.lane.empty}</p>
       ) : (
-        /* ONE list at every width (#3401). The dual desktop-row/mobile-card
-           pair here was `FulfillmentWorklistRow` + `FulfillmentTaskCard`,
-           borrowed from the EXECUTION worklist - and on a phone that card
-           stacked every column as a label/value pair, so a supervisor saw a
-           screenful of `ol_location_...` and `ol_variant_...` per task. This
-           board's card reflows instead of swapping, because the question is
-           the same on a phone as on a desk. */
-        <ul className="assign-packing-work-card-list">
-          {lane.tasks.map((task) => (
-            <AssignPackingWorkCard
-              key={task.id}
-              task={task}
-              actions={renderActions(task)}
-              rootProps={buildRootProps(task)}
-            />
-          ))}
-        </ul>
+        // One bordered surface, not two: the col-heads and the card list
+        // share this wrapper so no flex gap opens between them, and their
+        // own borders (rounded top / rounded bottom, meeting edge with none
+        // between) read as a single box, the way a caption sits flush on
+        // top of a table rather than floating above it.
+        <div className="assign-packing-work-lane__table">
+          {/* The mockup's `.lane__col-heads` — named once per lane, above its
+              rows, and not at all on an empty lane (there is nothing above).
+              No head for the grip or the controls; see the copy's own
+              docblock. */}
+          <div className="assign-packing-work-lane__col-heads" aria-hidden="true">
+            {/* A same-sized, invisible stand-in for the row's own grip —
+                present in EVERY row when `dragEnabled`, so without one here
+                the heads would sit 20-odd pixels to the left of the columns
+                they name. Reusing the grip's own class is what keeps the
+                two widths identical without a second measurement to keep
+                in sync. */}
+            {dragEnabled ? (
+              <span
+                className="assign-packing-work-card__grip assign-packing-work-lane__col-head-spacer"
+                aria-hidden="true"
+              >
+                ⠿
+              </span>
+            ) : null}
+            <span className="assign-packing-work-lane__col-head assign-packing-work-lane__col-head--ref">
+              {ASSIGN_PACKING_WORK_COPY.columns.order}
+            </span>
+            <span className="assign-packing-work-lane__col-head assign-packing-work-lane__col-head--buyer">
+              {ASSIGN_PACKING_WORK_COPY.columns.buyer}
+            </span>
+            <span className="assign-packing-work-lane__col-head assign-packing-work-lane__col-head--meta">
+              {ASSIGN_PACKING_WORK_COPY.columns.details}
+            </span>
+          </div>
+          {/* ONE list at every width (#3401). The dual desktop-row/mobile-card
+             pair here was `FulfillmentWorklistRow` + `FulfillmentTaskCard`,
+             borrowed from the EXECUTION worklist - and on a phone that card
+             stacked every column as a label/value pair, so a supervisor saw a
+             screenful of `ol_location_...` and `ol_variant_...` per task. This
+             board's card reflows instead of swapping, because the question is
+             the same on a phone as on a desk. */}
+          <ul className="assign-packing-work-card-list">
+            {lane.tasks.map((task) => (
+              <AssignPackingWorkCard
+                key={task.id}
+                task={task}
+                actions={renderActions(task)}
+                rootProps={buildRootProps(task)}
+                dragEnabled={dragEnabled}
+              />
+            ))}
+          </ul>
+        </div>
       )}
     </section>
   );

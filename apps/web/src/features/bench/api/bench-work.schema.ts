@@ -46,6 +46,7 @@ export const benchWorkSchema = z.object({
   // the copy layer rather than failing the whole row's parse.
   assignmentState: z.string(),
   claimable: z.boolean(),
+  completedAt: nullableString,
 });
 
 export const benchRoutingReadinessSchema = z.object({

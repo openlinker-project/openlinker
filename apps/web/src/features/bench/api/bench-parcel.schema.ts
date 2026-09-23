@@ -25,6 +25,7 @@ import type {
   BenchActivityEntry,
   BenchClaimNextResult,
   BenchClaimResult,
+  BenchCompleteResult,
   BenchDocuments,
   BenchMetrics,
   BenchPackedTodayList,
@@ -85,6 +86,9 @@ export const benchParcelSchema = z.object({
   holdReason: nullableString,
   closedAt: nullableString,
   packedByUserId: nullableString,
+  invoicePrintedAt: nullableString,
+  labelPrintedAt: nullableString,
+  completedAt: nullableString,
   lines: z.array(benchParcelLineSchema),
 });
 
@@ -95,6 +99,12 @@ export const benchVerificationResultSchema = z.object({
 });
 
 export const benchReopenResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export const benchCompleteResultSchema = z.object({
   outcome: z.string(),
   reason: nullableString,
   parcel: benchParcelSchema,
@@ -160,6 +170,10 @@ export function parseBenchVerificationResult(payload: unknown): BenchVerificatio
 
 export function parseBenchReopenResult(payload: unknown): BenchReopenResult {
   return benchReopenResultSchema.parse(payload);
+}
+
+export function parseBenchCompleteResult(payload: unknown): BenchCompleteResult {
+  return benchCompleteResultSchema.parse(payload);
 }
 
 export function parseBenchDocuments(payload: unknown): BenchDocuments {

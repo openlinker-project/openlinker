@@ -523,17 +523,23 @@ export function BenchWorkList({
       ) : null}
 
       <footer className="bench-work-list__footer">
-        {/* Everything here is a STANDING fact about the list rather than about
-            any row, and at the top of a 340 px column each one displaced the
-            control a packer actually reaches for. */}
+        {/* Two lines, from five. This footer carried a page of manual under a
+            list a packer works at speed: how the search box matches (the
+            placeholder already shows that), what "routed here" means and which
+            orders never appear (system vocabulary a packer holding a tote does
+            not need), and that the list refreshes itself (the empty state
+            already says so, where it matters).
+
+            What survives is what nothing else says: whose bench this is and
+            the order the rows are in, and the one fact a packer could
+            otherwise read wrong — the counts describe what must GO OUT, not
+            what is on the shelf. `bench-work.copy.test.ts` asserts that second
+            line exists, so it is a guard rather than a preference. */}
         <span>
           {query.data?.executorName ?? benchWorkCopy.header.fallbackTitle} ·{' '}
           {benchWorkCopy.header.orderingNote}
         </span>
-        <span>{benchWorkCopy.search.hint}</span>
-        <span>{benchWorkCopy.scope.note}</span>
         <span>{benchWorkCopy.footer.honesty}</span>
-        <span>{benchWorkCopy.footer.liveness}</span>
       </footer>
     </div>
   );

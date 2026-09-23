@@ -4,7 +4,7 @@
  * Everything that happens to one parcel: it opens, units go into it, and it
  * shuts itself.
  *
- * ## There is NO commit control, and its absence is the design (D18/E5)
+ * ## There is NO commit control on an OPEN box, and its absence is the design (D18/E5)
  *
  * No "Done", no "Close parcel", no "Confirm", no "Finish" — not disabled, not
  * hidden behind a condition, not as a fallback. The API has no close route to
@@ -12,8 +12,20 @@
  * transaction; a button here would have nothing to press. The footer states the
  * promise to the packer in the mockup's own words, and
  * `bench-parcel.test.tsx` fails the build on any button whose accessible name
- * reads like a commit — the browser-side twin of the backend's
- * `no-parcel-commit-control.spec.ts`.
+ * reads like a commit ON THE OPEN SURFACE — the browser-side twin of the
+ * backend's `no-parcel-commit-control.spec.ts`.
+ *
+ * `BenchCompletionPanel`, rendered only once the box is CLOSED, is not an
+ * exception to this rule — it is a different question. Closing (the last
+ * scan) says the ITEMS are right; that panel's "Mark as done here" says the
+ * PACKER is finished with the box — never that a carrier accepted it, which
+ * is why the copy says "off the bench" rather than "sent" or "labelled" (see
+ * that panel's own docblock for the live defect that wording caused on an
+ * unlabelled parcel). It was previously invisible and has a real API route
+ * behind it. D18 is about the box's contents having nothing to press; it
+ * says nothing about what happens after the box is already shut, so the
+ * guard test's exhaustive list is scoped to the open surface and never sees
+ * this control.
  *
  * ## The wrong item never leaves the browser (E2)
  *
@@ -90,6 +102,7 @@ import {
   isParcelClosed,
   parcelTotals,
 } from '../lib/bench-parcel-presentation';
+import { distinguishingAttributeKeys } from '../lib/bench-parcel-attributes';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import {
   isBenchAudioMuted,
@@ -101,6 +114,7 @@ import { matchScanToParcelLine, outstandingScanCodes } from '../lib/parcel-scan-
 import { isEditableTarget } from '../lib/scanner-gesture';
 import { beginGesture } from '../lib/scanner-gesture-log';
 import { BenchActivityPanel } from './bench-activity-panel';
+import { BenchCompletionPanel } from './bench-completion-panel';
 import { BenchCopyButton } from './bench-copy-button';
 import { BenchDocumentsPanel } from './bench-documents';
 import { BenchParcelHero } from './bench-parcel-hero';
@@ -451,7 +465,7 @@ export function BenchParcelView({
 
   /**
    * "C" hand-confirms the first not-yet-satisfied line — a keyboard
-   * equivalent of pressing the topmost visible "Confirm this line" button
+   * equivalent of pressing the topmost visible "Confirm this item" button
    * (#3339, mockup fix). Deliberately NOT a full ShipStation-style hotkey
    * set: the mockup also demonstrated "U" (undo) and "N" (take next task),
    * but neither has a real counterpart here — this app has no undo
@@ -609,6 +623,23 @@ export function BenchParcelView({
     : parcel.lines;
   const progressPercent =
     totals.required === 0 ? 100 : Math.round((totals.verified / totals.required) * 100);
+  /**
+   * Computed once for the whole box, never per row: which attribute actually
+   * tells these items apart is a fact about the box's contents. See
+   * `bench-parcel-attributes.ts` for why the full set is the wrong thing to
+   * print — the demo catalogue sends three attributes identical on every line.
+   */
+  const distinguishingAttributes = distinguishingAttributeKeys(parcel.lines);
+  /**
+   * Whether ANY line in this box has a bin. `binCode` is real and
+   * operator-authored (#3402), but an install that has never entered one
+   * renders an empty Location column on every row and a "Group by bin"
+   * checkbox that regroups nothing — a heading promising information that is
+   * not coming, and a control that cannot do anything. Both come back the
+   * moment a single bin is set.
+   */
+  const hasBins = parcel.lines.some((line) => line.binCode !== null);
+  const deadline = describeBenchDeadline(parcel.dispatchByAt);
 
   return (
     <section
@@ -661,11 +692,25 @@ export function BenchParcelView({
           <div className="bench-parcel__identity">
             <span className="bench-parcel__field-label">{benchParcelCopy.header.dispatchByLabel}</span>
             {/* The CLOCK TIME, as the mockup shows it — a packer reads this
-                against the clock on the wall. The relative phrasing
-                (`describeBenchDeadline`) belongs on the rail, where the row
-                has no room for both and urgency is what is being ranked. */}
-            <span className="mono" title={describeBenchDeadline(parcel.dispatchByAt).headline}>
-              {formatAbsoluteTime(parcel.dispatchByAt)}
+                against the clock on the wall — AND how long is left, which
+                used to live only in a `title`. This is a touch kiosk with no
+                hover, so a tooltip is unreachable here; the mockup's own round-3
+                note ("every tooltip-only hint moved onto the screen as visible
+                text") is the rule being followed. Without it the head read
+                `5:44 AM` while the row the packer had just left read
+                `Past its deadline` — two surfaces, one parcel, no way to tell
+                from this one that the time had already gone. */}
+            <span className="bench-parcel__ship-by">
+              <span className="mono">{formatAbsoluteTime(parcel.dispatchByAt)}</span>
+              {deadline.remaining === null ? null : (
+                <span
+                  className={`bench-parcel__ship-by-remaining bench-parcel__ship-by-remaining--${
+                    deadline.level ?? 'ok'
+                  }`}
+                >
+                  {deadline.remaining}
+                </span>
+              )}
             </span>
           </div>
         )}
@@ -721,6 +766,7 @@ export function BenchParcelView({
       {heroLine === undefined || layout !== 'desktop' ? null : (
         <BenchParcelHero
           line={heroLine}
+          distinguishingAttributes={distinguishingAttributes}
           open={!closed && !refused}
           unreachable={reachability.unreachable}
           pendingCount={inFlight[heroLine.workLineId] ?? 0}
@@ -883,6 +929,13 @@ export function BenchParcelView({
           <p>{benchParcelCopy.closed.body(totals.verified)}</p>
           <p className="bench-parcel__closed-next">{benchParcelCopy.closed.next}</p>
 
+          {/* Pack-bench completion — the second, explicit act after a box
+              closes. See `BenchCompletionPanel`'s own docblock: this is a
+              genuine write with a genuine control, distinct from the
+              no-commit rule above, which is about the box's CONTENTS having
+              nothing to press rather than about this later question. */}
+          <BenchCompletionPanel workId={workId} parcel={parcel} onCompleted={onClose} />
+
           {reopenNotice === null ? null : <Alert tone="warning">{reopenNotice}</Alert>}
 
           {/* E6. The only correction path this surface has, because auto-close
@@ -921,23 +974,30 @@ export function BenchParcelView({
               would say each fact twice. */}
           <div className="bench-parcel__lines-caption">
             <span>{benchParcelCopy.lines.allItemsCaption}</span>
-            <label className="bench-parcel__group-by">
-              <input
-                type="checkbox"
-                checked={groupByBin}
-                onChange={(event) => {
-                  setGroupByBin(event.target.checked);
-                }}
-              />
-              {benchParcelCopy.lines.groupByLocationLabel}
-            </label>
+            {hasBins ? (
+              <label className="bench-parcel__group-by">
+                <input
+                  type="checkbox"
+                  checked={groupByBin}
+                  onChange={(event) => {
+                    setGroupByBin(event.target.checked);
+                  }}
+                />
+                {benchParcelCopy.lines.groupByLocationLabel}
+              </label>
+            ) : null}
           </div>
-          <p className="bench-parcel__lines-note">{benchParcelCopy.lines.groupByLocationNote}</p>
-          <div className="bench-parcel__lines-head" aria-hidden="true">
+          {hasBins ? (
+            <p className="bench-parcel__lines-note">{benchParcelCopy.lines.groupByLocationNote}</p>
+          ) : null}
+          <div
+            className={`bench-parcel__lines-head${hasBins ? '' : ' bench-parcel__lines-head--no-bins'}`}
+            aria-hidden="true"
+          >
             <span />
             <span>{benchParcelCopy.lines.colItem}</span>
             <span>{benchParcelCopy.lines.colIdentifiers}</span>
-            <span>{benchParcelCopy.lines.colLocation}</span>
+            {hasBins ? <span>{benchParcelCopy.lines.colLocation}</span> : <span />}
             <span className="bench-parcel__lines-head-right">
               {benchParcelCopy.lines.colScanned}
             </span>
@@ -951,6 +1011,8 @@ export function BenchParcelView({
             <BenchParcelLineRow
               key={line.workLineId}
               line={line}
+              distinguishingAttributes={distinguishingAttributes}
+              hasBins={hasBins}
               open={!refused}
               pendingCount={inFlight[line.workLineId] ?? 0}
               unreachable={reachability.unreachable}

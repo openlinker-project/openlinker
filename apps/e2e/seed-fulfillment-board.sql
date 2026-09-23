@@ -97,6 +97,19 @@ WHERE w.id LIKE 'ol_fwork_e2e_%'
     SELECT 1 FROM fulfillment_work_lines l WHERE l."fulfillmentWorkId" = w.id
   );
 
+-- Two parcels are CLOSED on purpose, and they are closed for different states:
+--   _28 is closed AND the carrier refused it a label   -> "packed, no label"
+--   _13 is closed AND a label was bought automatically -> completion with a
+--       document that could have been printed and was not, which is the only
+--       shape that makes the confirm dialog appear at all.
+-- Set by UPDATE rather than in the INSERT above, because that insert is
+-- `ON CONFLICT DO NOTHING` and would leave an existing row's fixture state
+-- wherever the last run left it.
+UPDATE fulfillment_works
+SET "parcelClosedAt" = COALESCE("parcelClosedAt", now() - interval '1 hour'),
+    "packedByUserId" = COALESCE("packedByUserId", 'ca560b27-bcd2-4d62-bb7f-b6952f7207f1'::uuid)
+WHERE id IN ('ol_fwork_e2e_13', 'ol_fwork_e2e_28');
+
 -- A closed box must look closed. `parcelClosedAt` alone leaves the parcel
 -- reading "All 0 units matched" over a green "This box is closed" panel — the
 -- seed contradicting itself, and a screenshot of it contradicting the product.
@@ -127,6 +140,17 @@ WHERE w.id LIKE 'ol_fwork_e2e_%'
   AND NOT EXISTS (
     SELECT 1 FROM fulfillment_work_verifications v WHERE v."fulfillmentWorkId" = w.id
   );
+
+-- Completion is a ONE-WAY act with no undo in the product, so a sweep that
+-- exercises it spends its own fixture: the second run finds the box already
+-- marked done and the control correctly gone. These rows are fixtures rather
+-- than an operator's real work, so the seed resets them — re-running it puts
+-- the bench back where the first run found it. Real parcels are untouched:
+-- the predicate is the seed's own id prefix.
+UPDATE fulfillment_works
+SET "completedAt" = NULL, "completedByUserId" = NULL,
+    "invoicePrintedAt" = NULL, "labelPrintedAt" = NULL
+WHERE id LIKE 'ol_fwork_e2e_%';
 
 -- The held one needs a hold to be held by.
 INSERT INTO fulfillment_holds (

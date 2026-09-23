@@ -37,6 +37,7 @@ function work(over: Partial<BenchWork> = {}): BenchWork {
     supportedActions: ['expedite'],
     assignmentState: 'unassigned',
     claimable: true,
+    completedAt: null,
     ...over,
   };
 }
@@ -280,7 +281,7 @@ describe('BenchWorkList (#2416)', () => {
   it('should say when it is showing only part of the work', async () => {
     mount(payload({ total: 900 }));
 
-    expect(await screen.findByText(/more work than fits on this screen/i)).toBeInTheDocument();
+    expect(await screen.findByText(/more work than fits here/i)).toBeInTheDocument();
   });
 
   describe('the ADR-074 assignment axis (#3341)', () => {

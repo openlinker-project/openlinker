@@ -48,6 +48,49 @@ const TABLET = { width: 820, height: 1180 };
 const AUTO_DISPATCH_WORK = 'ol_fwork_e2e_13';
 
 /**
+ * The seeded parcel that is CLOSED and carries a label nobody printed.
+ *
+ * Deliberately NOT the other closed one (`_28`): that one's carrier refused it
+ * a label and no invoice was ever made, so there is nothing this bench could
+ * print for it and completion correctly goes straight through. Pointing the
+ * dialog states at it tested the wrong parcel and read as a missing feature.
+ */
+const CLOSED_WORK = 'ol_fwork_e2e_13';
+
+/**
+ * Open the closed parcel from the rail.
+ *
+ * It lives in the "waiting on carrier" section rather than among the work to
+ * pack, because it is finished and unlabelled — so the rail has to be scrolled
+ * to reach it, and a capture taken without opening it shows the queue instead
+ * of the state.
+ */
+async function openClosedParcel(page) {
+  await page.goto(`${BASE}/bench`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1500);
+  for (const selector of [
+    `.bench-work-row__surface`,
+    `[data-testid="bench-section-waiting-on-carrier"] button`,
+  ]) {
+    const row = page.locator(selector).filter({ hasText: CLOSED_WORK }).first();
+    if ((await row.count()) > 0) {
+      await row.scrollIntoViewIfNeeded();
+      await row.click();
+      await page.waitForTimeout(1800);
+      return;
+    }
+  }
+  // Fall back to the section's own first row: the seeded closed parcel is the
+  // only thing in it, and its reference is friendlier than its work id.
+  const first = page.locator(`[data-testid="bench-section-waiting-on-carrier"] button`).first();
+  if ((await first.count()) > 0) {
+    await first.scrollIntoViewIfNeeded();
+    await first.click();
+    await page.waitForTimeout(1800);
+  }
+}
+
+/**
  * `reach` navigates and settles. `check` returns true, or a string explaining
  * what it saw instead — never a bare false, because "it did not render" and
  * "it rendered the wrong thing" send you to different places.
@@ -466,9 +509,70 @@ const STATES = [
   },
 
   // ── Not built yet — declared so the sweep reports them ────────────────────
-  { id: 'bench-finish-no-dialog-when-printed', group: 'post-pack', pending: 'A4/A5' },
-  { id: 'bench-finish-dialog-when-not-printed', group: 'post-pack', pending: 'A4/A5' },
-  { id: 'bench-handed-over-leaves-the-queue', group: 'post-pack', pending: 'A4/A5' },
+  {
+    id: 'bench-completion-control',
+    group: 'post-pack',
+    actor: 'packer',
+    title: 'A closed box offers one explicit way to finish with it',
+    async reach(page) {
+      await openClosedParcel(page);
+    },
+    async check(page) {
+      const action = await page.getByRole('button', { name: /mark as done here/i }).count();
+      if (action === 0) return 'the closed box offers no way to finish with it';
+      // Never a claim the product cannot support: the same box may have been
+      // refused a label, and "sent" or "labelled" would be false there.
+      const overclaims = await page
+        .locator('.bench-completion')
+        .filter({ hasText: /\b(sent|labelled|labeled|shipped)\b/i })
+        .count();
+      return overclaims === 0 ? true : 'the control claims more than completion records';
+    },
+  },
+  {
+    id: 'bench-completion-asks-when-nothing-printed',
+    group: 'post-pack',
+    actor: 'packer',
+    title: 'Nothing printed — it asks first, and names what is missing',
+    async reach(page) {
+      await openClosedParcel(page);
+      const action = page.getByRole('button', { name: /mark as done here/i }).first();
+      if ((await action.count()) === 0) return;
+      await action.click();
+      await page.waitForTimeout(900);
+    },
+    async check(page) {
+      const dialog = page.getByRole('dialog');
+      if ((await dialog.count()) === 0) return 'it went straight through with nothing printed';
+      // "Are you sure" would be a dialog that tells the packer nothing.
+      const named = await dialog
+        .filter({ hasText: /(label|invoice).*has not been printed|Neither the label nor the invoice/i })
+        .count();
+      return named > 0 ? true : 'the dialog does not name what was not printed';
+    },
+  },
+  {
+    id: 'bench-completion-offers-both-ways-out',
+    group: 'post-pack',
+    actor: 'packer',
+    title: 'The dialog lets a packer print now, or go ahead anyway',
+    async reach(page) {
+      await openClosedParcel(page);
+      const action = page.getByRole('button', { name: /mark as done here/i }).first();
+      if ((await action.count()) === 0) return;
+      await action.click();
+      await page.waitForTimeout(900);
+    },
+    async check(page) {
+      const dialog = page.getByRole('dialog');
+      if ((await dialog.count()) === 0) return 'no dialog to inspect';
+      const print = await dialog.getByRole('button', { name: /print the (label|invoice)/i }).count();
+      const anyway = await dialog.getByRole('button', { name: /anyway/i }).count();
+      if (print === 0) return 'no way to print from inside the dialog';
+      // A packer who printed at another terminal must not be stuck here.
+      return anyway > 0 ? true : 'no way past the warning';
+    },
+  },
   {
     id: 'label-bought-automatically',
     group: 'auto',
