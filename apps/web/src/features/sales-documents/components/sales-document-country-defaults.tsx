@@ -36,7 +36,7 @@ import { useDemoMode } from '../../system';
 import { useSalesDocumentCountryDefaultsQuery } from '../hooks/use-sales-document-country-defaults-query';
 import { useUpsertSalesDocumentCountryDefaultMutation } from '../hooks/use-upsert-sales-document-country-default-mutation';
 import { useDeleteSalesDocumentCountryDefaultMutation } from '../hooks/use-delete-sales-document-country-default-mutation';
-import { deriveSalesDocumentRows } from '../lib/derive-sales-document-rows';
+import { deriveSalesDocumentRows, isActiveRoutable } from '../lib/derive-sales-document-rows';
 import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
 import type { ConcreteDocumentKind, SalesDocumentKind } from '../api/sales-documents.types';
 
@@ -142,9 +142,9 @@ export function SalesDocumentCountryDefaults({
   // same config for routing on the backend. Every other role expands to the
   // one row it always did.
   const candidates: CountryDefaultCandidate[] = rows
-    .filter((row) => row.status === 'active' && row.documentKind !== null)
+    .filter(isActiveRoutable)
     .flatMap((row): CountryDefaultCandidate[] => {
-      // The `.filter` above already excludes `null`, but a plain boolean
+      // `isActiveRoutable` already excludes `null`, but a plain boolean
       // predicate doesn't narrow the element type for `.flatMap` — re-assert
       // it here so `row.documentKind` below is `SalesDocumentKind`, not
       // `SalesDocumentKind | null`.

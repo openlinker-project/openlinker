@@ -48,7 +48,7 @@
 import type { Connection, ConnectionStatus } from '../../connections';
 import type { SalesDocumentRule } from '../api/sales-document-rules.types';
 import type { SalesDocumentRow } from '../api/sales-documents.types';
-import { deriveSalesDocumentRows } from './derive-sales-document-rows';
+import { deriveSalesDocumentRows, isActiveRoutable } from './derive-sales-document-rows';
 
 type InactiveConnectionStatus = Exclude<ConnectionStatus, 'active'>;
 
@@ -108,16 +108,17 @@ function resolveWarning(
   }
 
   const base = { connectionId, connectionName: connection.name, affectedRuleCount: 1 };
-  if (connection.status !== 'active') {
-    return { ...base, reason: 'not-active', status: connection.status };
-  }
   // `row === undefined` folds "no row at all" (no Invoicing/Fiscalization
   // capability enabled, so `deriveSalesDocumentRows` never produced one) into
   // the same "issues nothing" reading a `documentKind: null` row gets.
-  if ((row?.documentKind ?? null) === null) {
-    return { ...base, reason: 'issues-nothing' };
+  const documentKind = row?.documentKind ?? null;
+  if (isActiveRoutable({ status: connection.status, documentKind })) {
+    return null;
   }
-  return null;
+  if (connection.status !== 'active') {
+    return { ...base, reason: 'not-active', status: connection.status };
+  }
+  return { ...base, reason: 'issues-nothing' };
 }
 
 /**

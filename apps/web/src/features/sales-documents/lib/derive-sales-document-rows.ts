@@ -32,6 +32,18 @@ function isSalesDocumentKind(value: unknown): value is SalesDocumentKind {
 }
 
 /**
+ * Whether a row is an active, routable candidate — `status === 'active' &&
+ * documentKind !== null`, mirroring `AutoIssueTriggerService`'s own
+ * "active connection with a resolved kind" reading (#3366). Pulled out of
+ * `detectSalesDocumentConflict` / `SalesDocumentCountryDefaults` /
+ * `findSalesDocumentDestinationWarnings`, which each restated this
+ * predicate inline — a pure refactor with no behaviour change.
+ */
+export function isActiveRoutable(row: Pick<SalesDocumentRow, 'status' | 'documentKind'>): boolean {
+  return row.status === 'active' && row.documentKind !== null;
+}
+
+/**
  * Every connection with `Invoicing` or `Fiscalization` enabled, reduced to
  * the routing facts the table edits. A connection with neither capability
  * (or disabled entirely — capability enablement is a separate axis from

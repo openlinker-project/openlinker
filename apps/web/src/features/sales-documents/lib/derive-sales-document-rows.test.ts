@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Connection } from '../../connections';
-import { deriveSalesDocumentRows } from './derive-sales-document-rows';
+import { deriveSalesDocumentRows, isActiveRoutable } from './derive-sales-document-rows';
 
 function makeConnection(overrides: Partial<Connection> = {}): Connection {
   return {
@@ -92,5 +92,19 @@ describe('deriveSalesDocumentRows', () => {
     ]);
 
     expect(rows[0].triggerModel).toBe('auto-on-paid');
+  });
+});
+
+describe('isActiveRoutable', () => {
+  it('should return true when the connection is active and documentKind is set', () => {
+    expect(isActiveRoutable({ status: 'active', documentKind: 'invoice' })).toBe(true);
+  });
+
+  it('should return false when the connection is not active', () => {
+    expect(isActiveRoutable({ status: 'disabled', documentKind: 'invoice' })).toBe(false);
+  });
+
+  it('should return false when documentKind is null', () => {
+    expect(isActiveRoutable({ status: 'active', documentKind: null })).toBe(false);
   });
 });
