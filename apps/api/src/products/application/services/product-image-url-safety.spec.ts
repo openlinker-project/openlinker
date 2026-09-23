@@ -20,6 +20,11 @@ describe('isProductImageUrlAllowed', () => {
       ['dotted hex', 'http://0xa9.0xfe.0xa9.0xfe/'],
       ['dotted octal', 'http://0251.0376.0251.0376/'],
       ['IPv4-mapped IPv6', 'http://[::ffff:169.254.169.254]/'],
+      // The spelling the PREDICATE actually sees: WHATWG `URL` re-serialises
+      // the mapped tail as hex pieces, so the dotted row above never exercised
+      // the branch it looks like it exercises. Both are kept - one is what a
+      // hostile shop writes, the other is what the code receives.
+      ['IPv4-mapped IPv6, hex pieces', 'http://[::ffff:a9fe:a9fe]/'],
     ])('should refuse the cloud metadata service written as %s', (_form, url) => {
       expect(allowed(url)).toBe(false);
     });

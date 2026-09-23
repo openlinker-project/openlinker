@@ -820,9 +820,11 @@ describe('BenchWorkService (#2416)', () => {
     it.each([[true], [false]])(
       'forwards its own filter arguments to listBenchWork (supervises=%s)',
       async (supervises: boolean) => {
-        const { service } = harness({
-          page: { works: [workView({ id: 'w-top' })], total: 1 },
-        });
+        // An EMPTY page on purpose: the forward happens before any candidate is
+        // chosen, so this exercises exactly the property under test and never
+        // reaches `claimParcel` - whose harness default resolves `undefined`,
+        // which is what the first version of this case tripped over.
+        const { service } = harness({ page: { works: [], total: 0 } });
         const listSpy = jest.spyOn(service, 'listBenchWork');
 
         await service.claimNext('viewer-1', supervises);

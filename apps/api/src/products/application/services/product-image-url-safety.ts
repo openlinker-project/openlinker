@@ -104,6 +104,20 @@ function canonicaliseNumericIpv4(hostname: string): string | null {
 }
 
 /**
+ * Turn the two 16-bit hex pieces of an IPv4-mapped IPv6 tail into dotted-quad.
+ *
+ * `a9fe:a9fe` is `169.254.169.254`. Separate from `canonicaliseNumericIpv4`
+ * because that one answers "is this hostname secretly an IPv4 literal" over a
+ * whole host, while this decodes a tail already known to be the mapped half of
+ * an IPv6 address.
+ */
+function hexPiecesToDottedQuad(tail: string): string {
+  const [high, low] = tail.split(':').map((piece) => Number.parseInt(piece, 16));
+  if (!Number.isInteger(high) || !Number.isInteger(low)) return tail;
+  return [(high >>> 8) & 0xff, high & 0xff, (low >>> 8) & 0xff, low & 0xff].join('.');
+}
+
+/**
  * Whether a canonical address is one this proxy must never reach.
  *
  * Link-local ONLY, in both families, plus the unspecified address. Every
@@ -116,7 +130,20 @@ function isBlockedAddress(canonicalHost: string): boolean {
     // An IPv4-mapped IPv6 address re-expresses an IPv4 one, so it is
     // unwrapped and re-tested rather than waved through: `::ffff:169.254.169.254`
     // is the metadata address wearing a different spelling.
-    if (host.startsWith('::ffff:')) return isBlockedAddress(host.slice('::ffff:'.length));
+    //
+    // BOTH tails are handled, and the second one is the one that matters:
+    // WHATWG `URL` re-serialises the mapped part as hex pieces, so
+    // `http://[::ffff:169.254.169.254]/` reaches this function as
+    // `::ffff:a9fe:a9fe` and the dotted form is what a hand-written test
+    // passes rather than what the code ever sees. Verified against Node
+    // rather than assumed.
+    if (host.startsWith('::ffff:')) {
+      const tail = host.slice('::ffff:'.length);
+      const dotted = /^[0-9a-f]{1,4}:[0-9a-f]{1,4}$/.test(tail)
+        ? hexPiecesToDottedQuad(tail)
+        : tail;
+      return isBlockedAddress(dotted);
+    }
     // IPv6 link-local. Unique-local (fc00::/7) is NOT blocked, for the same
     // reason RFC1918 is not: that is where a container network lives.
     return host.startsWith('fe80') || host === '::';

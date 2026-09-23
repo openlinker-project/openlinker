@@ -137,6 +137,8 @@ function harness() {
     listSiblingWorkIds: jest.fn().mockResolvedValue(new Map()),
     list: jest.fn(),
     applyAction: jest.fn(),
+    // `claimParcel`'s own write - the assignment rather than a verification.
+    claimAssignment: jest.fn(),
   } as unknown as IFulfillmentWorklistService;
 
   const verification = {
@@ -144,6 +146,8 @@ function harness() {
     verifyUnit: jest.fn(),
     reopenParcel: jest.fn(),
     voidLastVerification: jest.fn(),
+    complete: jest.fn(),
+    undoCompletion: jest.fn(),
   } as unknown as IFulfillmentVerificationService;
 
   const orders = {
@@ -180,6 +184,9 @@ function harness() {
       users
     ),
     verification,
+    // `claimParcel`'s write target lives here rather than on the verification
+    // service, so the case that names it needs the mock back.
+    worklist,
   };
 }
 
@@ -200,6 +207,9 @@ const PRIVATE_HELPERS = new Set([
   'refusalFor',
   'project',
   'describeLines',
+  // Declared `private async`; it stamps the actor's presence and takes no
+  // decision, so the lock has nothing to say about it.
+  'noteActivity',
 ]);
 
 /**
@@ -209,17 +219,65 @@ const PRIVATE_HELPERS = new Set([
  * whose it is, exactly as the worklist shows it to them coloured `assigned to
  * a colleague` rather than hiding the row.
  */
-const READ_METHODS = new Set(['getParcel', 'getWorkForDocuments']);
+const READ_METHODS = new Set([
+  'getParcel',
+  'getWorkForDocuments',
+  // Reads and merges the verification ledger. Governed by the same story-D2
+  // rule as its neighbours: a packer excluded from an assignment may still see
+  // what happened to the parcel.
+  'listActivity',
+]);
 
 /**
  * Mutations. Every one of these MUST refuse a viewer `isClaimableByViewer`
  * excludes, and must never reach its underlying verification-service write.
  */
-const GUARDED_MUTATIONS = ['verifyUnit', 'reopenParcel', 'undoLastScan'] as const;
+const GUARDED_MUTATIONS = [
+  'verifyUnit',
+  'reopenParcel',
+  'undoLastScan',
+  'claimParcel',
+  'completeParcel',
+  'undoCompletion',
+] as const;
 
 interface GuardedMutationCase {
   readonly method: (typeof GUARDED_MUTATIONS)[number];
-  readonly verificationWriteMethod: keyof IFulfillmentVerificationService;
+  /**
+   * The write this method must not reach. Most cases write through the
+   * verification service; `claimParcel` writes the ASSIGNMENT instead, so it
+   * names the worklist one - dropping the assertion for it would lose it on
+   * exactly the method where "refused before writing" matters most.
+   */
+  readonly verificationWriteMethod?: keyof IFulfillmentVerificationService;
+  readonly worklistWriteMethod?: keyof IFulfillmentWorklistService;
+  /**
+   * The reason THIS method answers with. Per case rather than shared, because
+   * the six guards do not agree - and the disagreement is worth seeing rather
+   * than smoothing over with a looser assertion:
+   *
+   * | method | reason |
+   * |---|---|
+   * | `verifyUnit`, `completeParcel`, `undoCompletion` | `not-claimable-by-viewer` |
+   * | `claimParcel` | `not-claimable` |
+   * | `reopenParcel`, `undoLastScan` | `not-packable` |
+   *
+   * `claimParcel`'s is deliberate and documented at `BenchClaimRefusalValues`
+   * - claiming is how a viewer BECOMES the assignee, so the refusal names the
+   * claim rather than the viewer.
+   *
+   * The last row is NOT deliberate, and this table is where it becomes
+   * visible. `BenchVerificationRefusalValues`' own docblock records why
+   * `'not-packable'` was wrong for this condition: it is the reason a HELD or
+   * CANCELLED parcel gets, so a packer whose supervisor locked the box
+   * mid-pack is told *"this box must not be packed - take it back to the
+   * trolley"* about a parcel that is perfectly fine. That was fixed for scans
+   * by widening the union; `reopenParcel` and `undoLastScan` never got the
+   * same treatment and still report it. Closing it means widening two more
+   * unions plus their DTO and FE copy, so it is recorded here rather than
+   * changed under a test fix.
+   */
+  readonly expectedReason: string;
   /** A viewer NOT `user-9`, the id `lockedWork` assigns. Refused either way. */
   readonly callAsExcludedViewer: (
     service: BenchParcelService
@@ -229,6 +287,7 @@ interface GuardedMutationCase {
 const CASES: readonly GuardedMutationCase[] = [
   {
     method: 'verifyUnit',
+    expectedReason: 'not-claimable-by-viewer',
     verificationWriteMethod: 'verifyUnit',
     callAsExcludedViewer: (service) =>
       service.verifyUnit({
@@ -240,15 +299,37 @@ const CASES: readonly GuardedMutationCase[] = [
   },
   {
     method: 'reopenParcel',
+    expectedReason: 'not-packable',
     verificationWriteMethod: 'reopenParcel',
     callAsExcludedViewer: (service) =>
       service.reopenParcel({ workId: 'work-1', reopenedByUserId: 'user-1' }),
   },
   {
     method: 'undoLastScan',
+    expectedReason: 'not-packable',
     verificationWriteMethod: 'voidLastVerification',
     callAsExcludedViewer: (service) =>
       service.undoLastScan({ workId: 'work-1', actorUserId: 'user-1' }),
+  },
+  {
+    method: 'claimParcel',
+    expectedReason: 'not-claimable',
+    worklistWriteMethod: 'claimAssignment',
+    callAsExcludedViewer: (service) => service.claimParcel('work-1', 'user-1'),
+  },
+  {
+    method: 'completeParcel',
+    expectedReason: 'not-claimable-by-viewer',
+    verificationWriteMethod: 'complete',
+    callAsExcludedViewer: (service) =>
+      service.completeParcel({ workId: 'work-1', completedByUserId: 'user-1', expectedVersion: 1 }),
+  },
+  {
+    method: 'undoCompletion',
+    expectedReason: 'not-claimable-by-viewer',
+    verificationWriteMethod: 'undoCompletion',
+    callAsExcludedViewer: (service) =>
+      service.undoCompletion({ workId: 'work-1', undoneByUserId: 'user-1', expectedVersion: 1 }),
   },
 ];
 
@@ -261,6 +342,7 @@ const CASES: readonly GuardedMutationCase[] = [
  */
 const NULLABLE_VIEWER_CASE: GuardedMutationCase = {
   method: 'reopenParcel',
+  expectedReason: 'not-packable',
   verificationWriteMethod: 'reopenParcel',
   callAsExcludedViewer: (service) =>
     service.reopenParcel({ workId: 'work-1', reopenedByUserId: null }),
@@ -284,13 +366,26 @@ describe('bench assignment-lock guard coverage (#3435 review)', () => {
 
   it.each(CASES)(
     '$method refuses a viewer isClaimableByViewer excludes, and never reaches its write',
-    async ({ verificationWriteMethod, callAsExcludedViewer }) => {
-      const { service, verification } = harness();
+    async ({
+      verificationWriteMethod,
+      worklistWriteMethod,
+      expectedReason,
+      callAsExcludedViewer,
+    }) => {
+      const { service, verification, worklist } = harness();
 
       const result = await callAsExcludedViewer(service);
 
-      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-packable' });
-      expect(verification[verificationWriteMethod]).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ outcome: 'refused', reason: expectedReason });
+
+      // Every case names exactly one write target; asserting the count keeps a
+      // case that names NEITHER from passing this half vacuously.
+      const target =
+        verificationWriteMethod !== undefined
+          ? verification[verificationWriteMethod]
+          : worklist[worklistWriteMethod as keyof IFulfillmentWorklistService];
+      expect(typeof target).toBe('function');
+      expect(target).not.toHaveBeenCalled();
     }
   );
 
