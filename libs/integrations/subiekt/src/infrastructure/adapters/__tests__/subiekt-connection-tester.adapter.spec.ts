@@ -20,14 +20,14 @@ function makeConnection(
 ): Connection {
   return new Connection(
     'conn-1',
-    'subiekt' as never,
+    'subiekt-gt' as never,
     'Test',
     'active' as never,
     (overrides.config ?? { bridgeBaseUrl: 'http://192.168.1.10:5000' }) as never,
     overrides.credentialsRef ?? '',
     new Date(),
     new Date(),
-    'subiekt.invoicing.v1',
+    'subiekt.gt.v1',
     ['Invoicing'],
   );
 }

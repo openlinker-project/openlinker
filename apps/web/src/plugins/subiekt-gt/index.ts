@@ -9,8 +9,11 @@
  *    capability descriptors (AC-8), the structured-config section (Bridge URL +
  *    trigger model + capability toggles), and the Bearer bridge-token
  *    credentials panel.
- * Subiekt GT issues invoices via the OpenLinker Sfera bridge (BE adapter
- * `subiekt.invoicing.v1`, capability `Invoicing`; tester registration #753).
+ * Subiekt GT is reached through the OpenLinker Sfera GT bridge (BE adapter
+ * `subiekt.gt.v1`, platformType `subiekt-gt`; tester registration #753).
+ * Subiekt nexo is a DIFFERENT product with a different bridge and a different
+ * wire contract - it has no adapter here, and if one is built it gets its own
+ * plugin, its own id and its own platformType.
  *
  * ---
  * I18N — PL strings DEFERRED (AC "PL + EN locale strings").
@@ -35,7 +38,7 @@
  * `LocaleProvider`'s `catalog` prop later WITHOUT editing any #759 component.
  * AC explicitly recorded as deferred — not silently unmet.
  *
- * @module plugins/subiekt
+ * @module plugins/subiekt-gt
  */
 import type { OpenLinkerPlugin } from '../../shared/plugins';
 import { definePlugin } from '../define-plugin';
@@ -48,19 +51,23 @@ import { SUBIEKT_CAPABILITY_DESCRIPTORS } from './subiekt-capability-descriptors
 import { subiektConnectionConfig } from './subiekt-connection-config';
 
 export const subiektPlugin: OpenLinkerPlugin = definePlugin({
-  id: 'subiekt',
-  platformType: 'subiekt',
+  // `subiekt-gt`, matching the backend manifest exactly. Subiekt GT and
+  // Subiekt nexo are two separate entities and are never joined: a nexo
+  // plugin, if one is ever built, registers its own id and platformType here
+  // rather than sharing these.
+  id: 'subiekt-gt',
+  platformType: 'subiekt-gt',
   build: {
     routes: [subiektSetupRoute],
   },
   platform: {
-    displayName: 'Subiekt GT (Sfera bridge)',
+    displayName: 'Subiekt GT (Sfera GT bridge)',
     setupCard: {
       title: 'Subiekt GT',
       description:
-        'Issue invoices in Subiekt GT via classic COM automation (Sfera GT), through the OpenLinker bridge running on your Windows machine.',
-      to: '/connections/new/subiekt',
-      badge: 'Sfera bridge',
+        'Connect Subiekt GT through the OpenLinker bridge on your Windows machine: read the product catalogue and stock levels, receive orders, and issue invoices and receipts with their warehouse release.',
+      to: '/connections/new/subiekt-gt',
+      badge: 'Sfera GT bridge',
     },
     capabilityDescriptors: SUBIEKT_CAPABILITY_DESCRIPTORS,
     connectionConfig: subiektConnectionConfig,

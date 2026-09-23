@@ -1,11 +1,22 @@
 /**
  * Subiekt Plugin Descriptor (#753)
  *
- * Framework-neutral `AdapterPlugin` for the Subiekt nexo (Sfera bridge)
- * invoicing integration. Holds the static manifest (capability `'Invoicing'`),
- * the side-registrations the host wires at boot (config-shape validator,
- * connection tester, retry classifier), and the per-connection
- * `createCapabilityAdapter` factory.
+ * Framework-neutral `AdapterPlugin` for the **Subiekt GT** (Sfera GT bridge)
+ * integration. Holds the static manifest, the side-registrations the host
+ * wires at boot (config-shape validator, connection tester, retry classifier,
+ * auth-failure classifier), and the per-connection `createCapabilityAdapter`
+ * factory.
+ *
+ * SUBIEKT GT AND SUBIEKT nexo ARE TWO SEPARATE ENTITIES and must never be
+ * joined anywhere in this application. They are different InsERT products
+ * reached through different bridges with different wire contracts: four of the
+ * routes this adapter calls (`/api/orders`, `/api/orders/feed`,
+ * `/api/inventory/adjust`, `/api/products/categories`, `/api/fiscalize`) do
+ * not exist on the nexo bridge at all, and where the routes do overlap the
+ * envelopes differ. A nexo adapter, if one is ever built, gets its OWN
+ * `platformType` and its OWN `adapterKey` - never a shared one, never an alias
+ * that maps the old bare `'subiekt'` onto either of them, because such an
+ * alias would be ambiguous the moment the second entity exists.
  *
  * Subiekt needs no plugin-specific NestJS providers, so the host wires it via
  * `createNestAdapterModule` — see `subiekt-integration.module.ts`.
@@ -35,8 +46,14 @@ import { buildSubiektSchedulerTasks } from './infrastructure/scheduler/subiekt-s
  * returns this same reference so static and runtime views cannot drift.
  */
 export const subiektAdapterManifest: AdapterMetadata = {
-  adapterKey: 'subiekt.invoicing.v1',
-  platformType: 'subiekt',
+  // `subiekt-gt`, not the bare `subiekt` this shipped as: the bare name could
+  // not tell GT from nexo, and the operator's connection list showed both
+  // under one identifier. The key drops `invoicing` for the same reason the
+  // name gained `-gt` - it described a fifth of what the adapter does (it is
+  // also the product master, the inventory master, an order source and an
+  // order destination).
+  adapterKey: 'subiekt.gt.v1',
+  platformType: 'subiekt-gt',
   // NOTE: 'Fiscalization' is deliberately NOT listed here yet (#3365 review).
   // The adapter exists in TypeScript, but the bridge-side endpoint it talks to
   // (FiscalizationEndpoints.cs) has never been copied onto the Windows bridge,
@@ -64,7 +81,7 @@ export const subiektAdapterManifest: AdapterMetadata = {
   // different InsERT product with its own, unrelated .NET Sfera API
   // (InsERT.Moria.Sfera). Corrected from an earlier, factually wrong label —
   // the installed product was confirmed live this session (InsERT GT 1.89 SP1).
-  displayName: 'Subiekt GT (Sfera bridge)',
+  displayName: 'Subiekt GT (Sfera GT bridge)',
   version: '1.0.0',
   isDefault: true,
   // #1810 §1 — the Sfera bridge runs on the operator's own machine (not a

@@ -8,7 +8,7 @@
  * plugin registry (drives the connection-type picker). Behavioural coverage
  * lives in the consumer-side tests (subiekt-setup-form / subiekt-structured-section).
  *
- * @module plugins/subiekt
+ * @module plugins/subiekt-gt
  */
 import { describe, expect, it } from 'vitest';
 
@@ -23,17 +23,17 @@ import {
 describe('subiektPlugin', () => {
   describe('identity', () => {
     it('has the stable kebab-case id', () => {
-      expect(subiektPlugin.id).toBe('subiekt');
+      expect(subiektPlugin.id).toBe('subiekt-gt');
     });
     it('declares the matching platformType', () => {
-      expect(subiektPlugin.platformType).toBe('subiekt');
+      expect(subiektPlugin.platformType).toBe('subiekt-gt');
     });
   });
 
   describe('build contributions', () => {
     it('contributes the guided setup route (#1199)', () => {
       const paths = (subiektPlugin.build?.routes ?? []).map((route) => route.path);
-      expect(paths).toContain('connections/new/subiekt');
+      expect(paths).toContain('connections/new/subiekt-gt');
     });
     it('does NOT contribute API namespaces', () => {
       expect(subiektPlugin.build?.apiNamespaces).toBeUndefined();
@@ -42,11 +42,11 @@ describe('subiektPlugin', () => {
 
   describe('platform contributions', () => {
     it('declares the display name', () => {
-      expect(subiektPlugin.platform?.displayName).toBe('Subiekt GT (Sfera bridge)');
+      expect(subiektPlugin.platform?.displayName).toBe('Subiekt GT (Sfera GT bridge)');
     });
     it('contributes the setup card pointing to the guided wizard (#1199)', () => {
-      expect(subiektPlugin.platform?.setupCard?.to).toBe('/connections/new/subiekt');
-      expect(subiektPlugin.platform?.setupCard?.badge).toBe('Sfera bridge');
+      expect(subiektPlugin.platform?.setupCard?.to).toBe('/connections/new/subiekt-gt');
+      expect(subiektPlugin.platform?.setupCard?.badge).toBe('Sfera GT bridge');
     });
     it('contributes StructuredConfigSection + CredentialsPanel + capabilityDescriptors (#759)', () => {
       expect(subiektPlugin.platform?.StructuredConfigSection).toBeDefined();
@@ -77,8 +77,8 @@ describe('subiektPlugin', () => {
 
   describe('registration', () => {
     it('is present in the live plugin registry (drives the connection-type picker)', () => {
-      expect(plugins.map((p) => p.id)).toContain('subiekt');
-      expect(plugins.map((p) => p.platformType)).toContain('subiekt');
+      expect(plugins.map((p) => p.id)).toContain('subiekt-gt');
+      expect(plugins.map((p) => p.platformType)).toContain('subiekt-gt');
     });
   });
 });

@@ -41,7 +41,7 @@ describe('SubiektInventoryMasterAdapter', () => {
     logger = { log: jest.fn(), debug: jest.fn(), warn: jest.fn(), error: jest.fn() };
 
     identifierMapping.getExternalIds.mockResolvedValue([
-      { externalId: TOWAR_SYMBOL, platformType: 'subiekt', connectionId: CONNECTION_ID, entityType: 'Product' },
+      { externalId: TOWAR_SYMBOL, platformType: 'subiekt-gt', connectionId: CONNECTION_ID, entityType: 'Product' },
     ]);
 
     adapter = new SubiektInventoryMasterAdapter(

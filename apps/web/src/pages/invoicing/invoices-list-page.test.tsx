@@ -45,7 +45,7 @@ function makeInvoice(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     id: 'inv_1',
     connectionId: 'conn_1',
     orderId: 'order_1',
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: 'issued',
     providerInvoiceId: 'pi_1',
@@ -123,7 +123,7 @@ describe('InvoicesListPage', () => {
     // Status badge (issued) renders in both the desktop table cell and the
     // mobile card-view meta. The regulatory label is regulator-neutral
     // (#3181 — this list mixes rows from every provider, e.g. this fixture's
-    // own `providerType: 'subiekt'`, so it must never assume KSeF): "Accepted"
+    // own `providerType: 'subiekt-gt'`, so it must never assume KSeF): "Accepted"
     // appears both as the row badge AND as a filter <option> (the filter
     // reuses the badge label map, #1585 F7), so assert the non-option badge
     // element specifically.

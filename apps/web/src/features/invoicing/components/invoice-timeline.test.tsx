@@ -17,7 +17,7 @@ function makeInvoice(over: Partial<InvoiceRecord> = {}): InvoiceRecord {
     id: 'inv_1',
     connectionId: 'conn_1',
     orderId: 'ord_1',
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: 'issued',
     providerInvoiceId: 'pi_1',

@@ -1,7 +1,7 @@
 /**
  * SubiektInvoiceDetailSection tests (#1241)
  *
- * @module plugins/subiekt/components
+ * @module plugins/subiekt-gt/components
  */
 import { cleanup, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -9,14 +9,14 @@ import { renderWithProviders, sampleConnection } from '../../../test/test-utils'
 import type { InvoiceRecord } from '../../../features/invoicing';
 import { SubiektInvoiceDetailSection } from './subiekt-invoice-detail-section';
 
-const subiektConnection = { ...sampleConnection, platformType: 'subiekt' };
+const subiektConnection = { ...sampleConnection, platformType: 'subiekt-gt' };
 
 function makeInvoice(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
   return {
     id: 'ol_invoice_test',
     connectionId: subiektConnection.id,
     orderId: 'ol_order_test',
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: 'issued',
     providerInvoiceId: 'subiekt-101',

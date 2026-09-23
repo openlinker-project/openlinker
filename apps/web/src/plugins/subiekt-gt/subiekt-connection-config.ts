@@ -26,7 +26,7 @@
  * `subiektCapabilities`) remain host-inlined for now — their #1330 migration is
  * out of scope for #1324.
  *
- * @module plugins/subiekt
+ * @module plugins/subiekt-gt
  */
 import { z } from 'zod';
 import type { ConnectionConfigContribution } from '../../shared/plugins';

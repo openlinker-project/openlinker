@@ -178,7 +178,7 @@ describe('SubiektInvoicingAdapter', () => {
       const result = await adapter.issueInvoice(command());
       const record = result.record;
       expect(record.providerType).toBe(SUBIEKT_PROVIDER_TYPE);
-      expect(SUBIEKT_PROVIDER_TYPE).toBe('subiekt');
+      expect(SUBIEKT_PROVIDER_TYPE).toBe('subiekt-gt');
       // NEUTRAL, never the bridge-native 'faktura'.
       expect(record.documentType).toBe('invoice');
     });

@@ -2,11 +2,11 @@
  * SubiektStructuredSection tests (#759 + #1324)
  *
  * Renders the plugin-owned structured section the way EditConnectionForm does
- * (via renderWithProviders, so usePlatform('subiekt') resolves the registered
+ * (via renderWithProviders, so usePlatform('subiekt-gt') resolves the registered
  * plugin and its capabilityDescriptors). The #1324 payment/bank/cash-register
  * queries are mocked at the feature-hook boundary so no real HTTP fires.
  *
- * @module plugins/subiekt/components
+ * @module plugins/subiekt-gt/components
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- test harness wraps RHF with a flexible form type */
 import { readFileSync } from 'node:fs';
@@ -43,7 +43,7 @@ const subiektConnection: Connection = {
   ...sampleConnection,
   id: 'subiekt_1',
   name: 'Subiekt GT',
-  platformType: 'subiekt',
+  platformType: 'subiekt-gt',
   config: {},
   adapterKey: 'subiekt.bridge.v1',
 };

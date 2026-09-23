@@ -100,14 +100,14 @@ function makeConnection(triggerModel: string | undefined, overrides: Partial<Con
   };
   return {
     id: overrides.id ?? 'conn-inv-1',
-    platformType: 'subiekt',
+    platformType: 'subiekt-gt',
     name: 'Invoicing conn',
     status: 'active',
     config: overrides.config ?? defaultConfig,
     credentialsRef: 'cred-1',
     createdAt: new Date(),
     updatedAt: new Date(),
-    adapterKey: 'subiekt',
+    adapterKey: 'subiekt-gt',
     enabledCapabilities: ['Invoicing'],
     ...overrides,
   } as Connection;

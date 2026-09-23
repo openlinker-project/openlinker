@@ -40,7 +40,16 @@ export function buildSubiektSchedulerTasks(): SchedulerTaskConfig[] {
   return [
     {
       taskId: 'subiekt-bridge-reachability-sweep',
-      platformType: 'subiekt',
+      // `subiekt-gt` must match the manifest's platformType exactly: the
+      // scheduler filters connections on this value and, finding none, logs at
+      // DEBUG and returns. A mismatch is therefore silent - no error, no
+      // failed job, just a sweep that never runs again.
+      platformType: 'subiekt-gt',
+      // `jobType`, the cursor key below and the idempotency-key templates keep
+      // the bare `subiekt` prefix DELIBERATELY. They are persisted values:
+      // renaming jobType breaks the registered SyncJobType union, and renaming
+      // the cursor key restarts the order feed from the beginning and
+      // re-ingests the whole history. Identity changed; stored keys did not.
       jobType: 'subiekt.bridge.reachabilitySweep',
       cronExpression: SUBIEKT_BRIDGE_REACHABILITY_SWEEP_CRON,
       enabledEnvVar: 'OL_SUBIEKT_BRIDGE_REACHABILITY_SWEEP_SCHEDULER_ENABLED',
@@ -52,7 +61,7 @@ export function buildSubiektSchedulerTasks(): SchedulerTaskConfig[] {
     },
     {
       taskId: 'subiekt-orders-poll',
-      platformType: 'subiekt',
+      platformType: 'subiekt-gt',
       requiredCapability: 'OrderSource',
       jobType: 'marketplace.orders.poll',
       cronExpression: SUBIEKT_ORDERS_POLL_CRON,

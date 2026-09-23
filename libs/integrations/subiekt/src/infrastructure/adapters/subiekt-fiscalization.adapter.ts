@@ -60,7 +60,7 @@ import { SubiektConfigException } from '../../domain/exceptions/subiekt-config.e
 import { isBridgeUrlSafe } from '../http/subiekt-url-safety';
 
 /** Provider identifier stamped onto the neutral result (mirrors `SUBIEKT_PROVIDER_TYPE`). */
-export const SUBIEKT_FISCAL_PROVIDER_TYPE = 'subiekt';
+export const SUBIEKT_FISCAL_PROVIDER_TYPE = 'subiekt-gt';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
