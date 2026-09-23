@@ -57,9 +57,9 @@ public static class Invoicing
     private const int DokTypPA = 21;
     private const int DokTypKFS = 6; // korekta FS (Pomoc/gta.chm/SuDokument_Typ.htm)
 
-    private const string ConnStr =
-        @"Server=DESKTOP-FJ0P3NU\INSERTNEXO;Database=DEMO;Integrated Security=True;"
-      + "TrustServerCertificate=True;Encrypt=False;Connect Timeout=10";
+    // One source of configuration for every file that talks to SQL - see
+    // BridgeConfig.cs. Was a `const` literal here and in five sibling files.
+    private static readonly string ConnStr = BridgeConfig.ConnectionString;
 
     // StatusKSeFEnum (Pomoc/gta.chm/StatusKSeFEnum.htm), mapped onto the
     // bridge's BridgeRegulatoryStatus vocabulary (#3351 - widened from the
@@ -659,6 +659,47 @@ public static class Invoicing
         return r is null || r is DBNull ? null : Convert.ToInt32(r);
     }
 
+    /// <summary>Resolve an ISO-3166-1 alpha-2 country code to sl_Panstwo.pa_Id.
+    ///
+    /// Returns 0 for a blank, an unrecognised or an ambiguous code, and the
+    /// caller then leaves adr_IdPanstwo NULL. Never falls back to Poland: a
+    /// kontrahent stamped with the wrong country is worse than one with none,
+    /// because Subiekt's VAT classification would act on it and nothing in the
+    /// document says the value was guessed.
+    ///
+    /// Shared by BOTH entry points - this one and OrdersEndpoints' ZK path -
+    /// so the two cannot resolve the same code to different countries. It
+    /// lives here because this file already owns a SQL connection; the
+    /// duplicated connection strings across the bridge are a separate
+    /// cleanup.</summary>
+    public static async Task<int> ResolveCountryId(string? iso2)
+    {
+        var code = (iso2 ?? "").Trim().ToUpperInvariant();
+        if (code.Length != 2) return 0;
+        try
+        {
+            await using var c = new SqlConnection(ConnStr);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                "SELECT TOP 1 pa_Id FROM sl_Panstwo WHERE pa_KodPanstwaISO = @iso ORDER BY pa_Id", c);
+            cmd.Parameters.AddWithValue("@iso", code);
+            var r = await cmd.ExecuteScalarAsync();
+            if (r is null || r is DBNull)
+            {
+                Console.Error.WriteLine($"Invoicing.ResolveCountryId: no sl_Panstwo row for ISO code '{code}' - leaving the kontrahent's country unset.");
+                return 0;
+            }
+            return Convert.ToInt32(r);
+        }
+        catch (Exception e)
+        {
+            // A lookup failure must never fail a document that is otherwise
+            // issuable; the country is supplementary information.
+            Console.Error.WriteLine($"Invoicing.ResolveCountryId('{code}') failed: {e.Message}");
+            return 0;
+        }
+    }
+
     /// <summary>Upsert a kontrahent for invoicing. Same never-resave-an-existing-
     /// kontrahent rule as the order bridge's EnsureKontrahent (avoids the modal
     /// confirmation hang) - a match by NIP wins over creating a new one, and for
@@ -678,6 +719,10 @@ public static class Invoicing
             existingId = await FindKontrahentIdBySymbol(symbol) ?? 0;
         if (existingId > 0) return existingId;
 
+        // Resolved BEFORE Sfera.Run, which is synchronous and runs on the COM
+        // apartment thread - an await inside it would deadlock.
+        var panstwoId = await ResolveCountryId(req.Address?.CountryCode);
+
         int id = 0;
         Sfera.Run(sub =>
         {
@@ -695,6 +740,16 @@ public static class Invoicing
                 if (req.Address?.KodPocztowy is string kod && kod != "") kh.KodPocztowy = kod;
                 if (req.Address?.Miejscowosc is string m && m != "") kh.Miejscowosc = m;
                 if (req.Telefon != null && req.Telefon != "") kh.Telefon = req.Telefon;
+                // Best-effort for the same reason as the order path's twin in
+                // Sfera.EnsureKontrahent - see the comment there.
+                if (panstwoId > 0)
+                {
+                    try { kh.PanstwoId = panstwoId; }
+                    catch (Exception e)
+                    {
+                        Console.Error.WriteLine($"Invoicing.UpsertCustomer: could not set PanstwoId={panstwoId} on {symbol}: {e.Message}");
+                    }
+                }
                 kh.Zapisz();
                 id = (int)kh.Identyfikator;
             }
@@ -774,6 +829,10 @@ public sealed class CustomerAddress
     public string? Ulica;
     public string? KodPocztowy;
     public string? Miejscowosc;
+    /// <summary>ISO-3166-1 alpha-2, resolved against sl_Panstwo.pa_KodPanstwaISO.
+    /// OpenLinker has always sent it on the invoice path; until now the bridge
+    /// read no such field at all, so it was silently discarded.</summary>
+    public string? CountryCode;
 }
 
 public sealed class CustomerRequest

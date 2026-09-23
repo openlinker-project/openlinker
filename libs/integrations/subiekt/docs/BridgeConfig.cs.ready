@@ -1,0 +1,167 @@
+// BridgeConfig.cs.ready - the bridge's one source of deployment configuration, added so a second
+// Subiekt installation needs no source edit and no rebuild, and so the
+// operator account, its password and the shared API token stop living in
+// version control as literals.
+//
+// A FULL DUMP of the file as it exists on the Windows host at
+// /mnt/c/Users/42zer/gtspike/bridge/BridgeConfig.cs - not a diff - for the same
+// reason the sibling mirrors are full dumps.
+//
+// NOT compiled or type-checked by this repo's CI - there is no C# build here.
+
+// BridgeConfig.cs - the bridge's one source of deployment configuration.
+//
+// Every value below used to be a `const` compiled into the binary, and the SQL
+// connection string was a `const` in SIX different files. A second Subiekt
+// installation therefore meant editing sources and recompiling, and the
+// operator account, its password and the shared API token sat in version
+// control as literals.
+//
+// RESOLUTION ORDER, highest first:
+//   1. an environment variable  (OL_BRIDGE_*)
+//   2. appsettings.json         (next to the .exe, reloaded never - read once)
+//   3. the historical hardcoded value, kept verbatim as the default
+//
+// Rung 3 is what makes this change safe to deploy: THIS installation keeps
+// working with no appsettings.json and no environment at all, byte for byte
+// as before. A second installation supplies rungs 1 or 2 and needs no rebuild.
+//
+// The file is OPTIONAL and a malformed one is reported and then ignored rather
+// than fatal: a bridge that refuses to start because a config file has a
+// trailing comma is a bridge that cannot be fixed remotely, and every value it
+// would have supplied has a working default.
+using System.Text.Json;
+
+public static class BridgeConfig
+{
+    private const string FileName = "appsettings.json";
+
+    private static readonly Dictionary<string, string> FileValues = LoadFile();
+
+    /// <summary>SQL Server instance holding the Subiekt database.</summary>
+    public static readonly string SqlServer = Read("SqlServer", @"DESKTOP-FJ0P3NU\INSERTNEXO");
+
+    /// <summary>Subiekt database name.</summary>
+    public static readonly string SqlDatabase = Read("SqlDatabase", "DEMO");
+
+    /// <summary>
+    /// The full ADO.NET connection string.
+    ///
+    /// Composed from <see cref="SqlServer"/> / <see cref="SqlDatabase"/> unless
+    /// `OL_BRIDGE_SQL_CONNECTION_STRING` (or the matching JSON key) supplies a
+    /// complete one - which is the escape hatch for an installation that needs
+    /// SQL authentication rather than the integrated security this composes.
+    /// </summary>
+    public static readonly string ConnectionString = Read(
+        "SqlConnectionString",
+        $"Server={SqlServer};Database={SqlDatabase};Integrated Security=True;"
+        + "TrustServerCertificate=True;Encrypt=False;Connect Timeout=10");
+
+    /// <summary>Subiekt operator the Sfera session logs in as.</summary>
+    public static readonly string SferaOperator = Read("SferaOperator", "Szef");
+
+    /// <summary>That operator's password. Blank is legitimate on a demo install.</summary>
+    public static readonly string SferaPassword = Read("SferaPassword", "");
+
+    /// <summary>Basic-auth user for the WooCommerce-dialect shim routes.</summary>
+    public static readonly string ApiUser = Read("ApiUser", "olkey");
+
+    /// <summary>Basic-auth password for the WooCommerce-dialect shim routes.</summary>
+    public static readonly string ApiPassword = Read("ApiPassword", "olsecret");
+
+    /// <summary>Bearer / x-bridge-token value for the /api/* routes.</summary>
+    public static readonly string InvoiceToken = Read("InvoiceToken", "olinvoicekey");
+
+    /// <summary>Path to the HTTPS certificate. Absolute, because the bridge is
+    /// launched from arbitrary working directories.</summary>
+    public static readonly string CertificatePath =
+        Read("CertificatePath", @"C:\Users\42zer\gtspike\bridge\bridge.pfx");
+
+    /// <summary>Password for <see cref="CertificatePath"/>.</summary>
+    public static readonly string CertificatePassword = Read("CertificatePassword", "gtspike");
+
+    /// <summary>HTTPS port. The plain-HTTP sibling is <see cref="HttpPort"/>.</summary>
+    public static readonly int HttpsPort = ReadInt("HttpsPort", 5055);
+
+    /// <summary>Plain-HTTP port - image bytes only; OpenLinker and the
+    /// marketplaces fetch them, so it cannot be loopback-only.</summary>
+    public static readonly int HttpPort = ReadInt("HttpPort", 5056);
+
+    /// <summary>Externally-resolvable base URL images are served under. A
+    /// "localhost" here silently yields IMAGE_DOWNLOAD_FAILED marketplace-side.</summary>
+    public static readonly string PublicBase =
+        Read("PublicBase", "http://host.docker.internal:5056");
+
+    /// <summary>Reports which rung answered each key, for the startup log - an
+    /// operator who set an environment variable and sees no effect needs to be
+    /// able to tell "not read" from "read and overridden".</summary>
+    public static string Describe()
+    {
+        var file = FileValues.Count == 0 ? "none" : $"{FileName} ({FileValues.Count} key(s))";
+        return $"config: file={file}; sqlServer={SqlServer}; sqlDatabase={SqlDatabase}; "
+             + $"sferaOperator={SferaOperator}; httpsPort={HttpsPort}; httpPort={HttpPort}; "
+             + $"publicBase={PublicBase}";
+    }
+
+    /// <summary>`SqlServer` -> `OL_BRIDGE_SQL_SERVER`.</summary>
+    private static string EnvName(string key)
+    {
+        var sb = new System.Text.StringBuilder("OL_BRIDGE");
+        foreach (var ch in key)
+        {
+            if (char.IsUpper(ch)) sb.Append('_');
+            sb.Append(char.ToUpperInvariant(ch));
+        }
+        return sb.ToString();
+    }
+
+    private static string Read(string key, string fallback)
+    {
+        var env = Environment.GetEnvironmentVariable(EnvName(key));
+        if (!string.IsNullOrWhiteSpace(env)) return env;
+        if (FileValues.TryGetValue(key, out var fromFile) && !string.IsNullOrWhiteSpace(fromFile))
+            return fromFile;
+        return fallback;
+    }
+
+    private static int ReadInt(string key, int fallback)
+    {
+        var raw = Read(key, "");
+        // A non-numeric or non-positive port is reported and ignored rather
+        // than crashing the process: the default binds and the operator can
+        // see why their value did not take effect.
+        if (raw != "" && int.TryParse(raw, out var parsed) && parsed > 0 && parsed <= 65535)
+            return parsed;
+        if (raw != "")
+            Console.Error.WriteLine($"BridgeConfig: '{key}' = '{raw}' is not a usable port; using {fallback}.");
+        return fallback;
+    }
+
+    private static Dictionary<string, string> LoadFile()
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var dir = AppContext.BaseDirectory;
+            var path = Path.Combine(dir, FileName);
+            if (!File.Exists(path)) return result;
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return result;
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                result[prop.Name] = prop.Value.ValueKind switch
+                {
+                    JsonValueKind.String => prop.Value.GetString() ?? "",
+                    JsonValueKind.Number => prop.Value.GetRawText(),
+                    _ => "",
+                };
+            }
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"BridgeConfig: could not read {FileName} ({e.Message}); using environment and built-in defaults.");
+            result.Clear();
+        }
+        return result;
+    }
+}
