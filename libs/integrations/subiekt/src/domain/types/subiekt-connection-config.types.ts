@@ -1,7 +1,7 @@
 /**
  * Subiekt Connection Config Types (#753)
  *
- * Non-secret per-connection configuration for the Subiekt nexo invoicing
+ * Non-secret per-connection configuration for the Subiekt GT invoicing
  * adapter. `bridgeBaseUrl` is the root URL of the LOCAL Windows bridge service
  * (#752) that wraps InsERT's Sfera SDK — NOT Subiekt itself. Named to make that
  * explicit. Decorator-free; the class-validator schema lives in the application

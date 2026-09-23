@@ -12,7 +12,7 @@
  * A panel test asserts the body key so a mismatch fails loudly. The token is
  * NEVER routed through `mergeStructuredIntoConfig` / `config`.
  *
- * @module plugins/subiekt/components
+ * @module plugins/subiekt-gt/components
  */
 import { useState, type FormEvent, type ReactElement } from 'react';
 import type { Connection } from '../../../features/connections';

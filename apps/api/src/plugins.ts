@@ -50,8 +50,10 @@ export const apiPlugins: PluginEntry[] = [
   WooCommerceIntegrationModule,
   ErliIntegrationModule,
   KsefIntegrationModule,
-  // #753: Subiekt nexo invoicing adapter — registered so the host can resolve
-  // the 'Invoicing' capability for subiekt connections.
+  // #753: Subiekt GT adapter (Sfera GT bridge) — registered so the host can
+  // resolve the capabilities of `subiekt-gt` connections. Subiekt nexo is a
+  // separate product with no adapter here; if one is built it registers its
+  // own module beside this one, never through it.
   SubiektIntegrationModule,
   // #1281: Infakt accounting invoicing adapter (KSeF submitted via Infakt).
   InfaktIntegrationModule,

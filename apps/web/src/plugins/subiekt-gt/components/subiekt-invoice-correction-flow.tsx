@@ -14,7 +14,7 @@
  * corrections. The host dialog owns the outer chrome; this component is
  * content-only — call `onClose` to close the dialog.
  *
- * @module plugins/subiekt/components
+ * @module plugins/subiekt-gt/components
  */
 import { type ReactElement, useState, useRef } from 'react';
 import { useTranslation } from '../../../shared/i18n';

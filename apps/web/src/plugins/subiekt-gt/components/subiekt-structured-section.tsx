@@ -21,7 +21,7 @@
  *   - Capability toggles → whole-object `config.capabilities` via
  *     `CapabilityTogglesSection`
  *
- * @module plugins/subiekt/components
+ * @module plugins/subiekt-gt/components
  */
 import { useMemo, type ReactElement } from 'react';
 import { FormField } from '../../../shared/ui/form-field';
