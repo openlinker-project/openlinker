@@ -30,6 +30,7 @@ import {
   SUBIEKT_SETUP_DEFAULT_VALUES,
   subiektSetupSchema,
   toCreateConnectionInput,
+  type SubiektProductIdentity,
   type SubiektSetupFormSubmission,
   type SubiektSetupFormValues,
 } from './subiekt-setup.schema';
@@ -41,7 +42,18 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 
-export function SubiektSetupForm(): ReactElement {
+/**
+ * One form, two products. `identity` is REQUIRED and has no default: Subiekt
+ * GT and Subiekt nexo speak different bridges, so defaulting one of them would
+ * create a connection pointed at the wrong adapter - and it would do so
+ * silently, because `ConnectionService.create` does not validate the platform
+ * against the registry.
+ */
+export function SubiektSetupForm({
+  identity,
+}: {
+  identity: SubiektProductIdentity;
+}): ReactElement {
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
@@ -72,7 +84,7 @@ export function SubiektSetupForm(): ReactElement {
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
+      const created = await createConnection.mutateAsync(toCreateConnectionInput(values, identity));
       form.reset(values, { keepValues: true, keepDirty: false });
       setCreatedConnectionId(created.id);
       showToast({

@@ -6,13 +6,20 @@
 import type { ReactElement } from 'react';
 import { SubiektSetupForm } from '../../features/connections/components/subiekt-setup-form';
 import { PageLayout } from '../../shared/ui/page-layout';
+import type { SubiektProductIdentity } from '../../features/connections/components/subiekt-setup.schema';
 
-export function SubiektSetupPage(): ReactElement {
+export function SubiektSetupPage({
+  identity,
+  productName,
+}: {
+  identity: SubiektProductIdentity;
+  productName: string;
+}): ReactElement {
   return (
     <PageLayout
       eyebrow="Integrations"
-      title="Connect Subiekt"
-      description="Point OpenLinker at your OpenLinker Sfera bridge. OpenLinker uses it to issue invoices in Subiekt GT for your orders."
+      title={`Connect ${productName}`}
+      description={`Point OpenLinker at your ${productName} bridge. OpenLinker uses it to work with ${productName} for your orders.`}
       summary={
         <div className="toolbar__group">
           <span className="toolbar-chip">Sfera bridge</span>
@@ -20,7 +27,7 @@ export function SubiektSetupPage(): ReactElement {
         </div>
       }
     >
-      <SubiektSetupForm />
+      <SubiektSetupForm identity={identity} />
     </PageLayout>
   );
 }

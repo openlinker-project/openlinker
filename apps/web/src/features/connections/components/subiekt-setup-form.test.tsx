@@ -14,12 +14,13 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { SubiektSetupForm } from './subiekt-setup-form';
+import { SUBIEKT_GT_IDENTITY } from './subiekt-setup.schema';
 
 describe('SubiektSetupForm', () => {
   afterEach(cleanup);
 
   it('renders the form fields', () => {
-    renderWithProviders(<SubiektSetupForm />);
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />);
     expect(screen.getByLabelText('Connection name')).toBeInTheDocument();
     expect(screen.getByLabelText('Bridge URL')).toBeInTheDocument();
     expect(screen.getByLabelText('Request timeout (ms, optional)')).toBeInTheDocument();
@@ -27,7 +28,7 @@ describe('SubiektSetupForm', () => {
   });
 
   it('requires connection name to be non-empty', async () => {
-    renderWithProviders(<SubiektSetupForm />);
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />);
     fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
 
     await waitFor(() => {
@@ -36,7 +37,7 @@ describe('SubiektSetupForm', () => {
   });
 
   it('requires the bridge URL to be non-empty', async () => {
-    renderWithProviders(<SubiektSetupForm />);
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />);
     fireEvent.change(screen.getByLabelText('Connection name'), {
       target: { value: 'My Subiekt' },
     });
@@ -48,7 +49,7 @@ describe('SubiektSetupForm', () => {
   });
 
   it('rejects a bridge URL without an http(s) protocol', async () => {
-    renderWithProviders(<SubiektSetupForm />);
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />);
     fireEvent.change(screen.getByLabelText('Connection name'), {
       target: { value: 'My Subiekt' },
     });
@@ -68,7 +69,7 @@ describe('SubiektSetupForm', () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Subiekt' });
     const apiClient = createMockApiClient({ connections: { create } });
 
-    renderWithProviders(<SubiektSetupForm />, { apiClient });
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
 
     fireEvent.change(screen.getByLabelText('Connection name'), {
       target: { value: 'My Subiekt' },
@@ -99,7 +100,7 @@ describe('SubiektSetupForm', () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Subiekt' });
     const apiClient = createMockApiClient({ connections: { create } });
 
-    renderWithProviders(<SubiektSetupForm />, { apiClient });
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
 
     fireEvent.change(screen.getByLabelText('Connection name'), {
       target: { value: 'My Subiekt' },
@@ -129,7 +130,7 @@ describe('SubiektSetupForm', () => {
   });
 
   it('rejects a timeout below the allowed minimum', async () => {
-    renderWithProviders(<SubiektSetupForm />);
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />);
     fireEvent.change(screen.getByLabelText('Connection name'), {
       target: { value: 'My Subiekt' },
     });
@@ -155,7 +156,7 @@ describe('SubiektSetupForm', () => {
       .mockResolvedValue({ success: true, status: 200, message: 'OK', latencyMs: 42 });
     const apiClient = createMockApiClient({ connections: { create, test } });
 
-    renderWithProviders(<SubiektSetupForm />, { apiClient });
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
 
     fireEvent.change(screen.getByLabelText('Connection name'), {
       target: { value: 'My Subiekt' },
@@ -181,7 +182,7 @@ describe('SubiektSetupForm', () => {
       .mockResolvedValue({ success: false, status: 502, message: 'Bridge unreachable', latencyMs: 10 });
     const apiClient = createMockApiClient({ connections: { create, test } });
 
-    renderWithProviders(<SubiektSetupForm />, { apiClient });
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
 
     fireEvent.change(screen.getByLabelText('Connection name'), {
       target: { value: 'My Subiekt' },
@@ -206,7 +207,7 @@ describe('SubiektSetupForm', () => {
     const test = vi.fn().mockRejectedValue(new Error('Bridge offline'));
     const apiClient = createMockApiClient({ connections: { create, test } });
 
-    renderWithProviders(<SubiektSetupForm />, { apiClient });
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
 
     fireEvent.change(screen.getByLabelText('Connection name'), {
       target: { value: 'My Subiekt' },
@@ -234,7 +235,7 @@ describe('SubiektSetupForm', () => {
       .mockRejectedValueOnce(new Error('Bridge offline'));
     const apiClient = createMockApiClient({ connections: { create, test } });
 
-    renderWithProviders(<SubiektSetupForm />, { apiClient });
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
 
     fireEvent.change(screen.getByLabelText('Connection name'), {
       target: { value: 'My Subiekt' },

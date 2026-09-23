@@ -718,6 +718,7 @@ module.exports = {
         'libs/integrations/inpost/**/*.ts',
         'libs/integrations/ksef/**/*.ts',
         'libs/integrations/subiekt/**/*.ts',
+        'libs/integrations/subiekt-nexo/**/*.ts',
         'libs/integrations/woocommerce/**/*.ts',
         // #2390 / ADR-055: `libs/oms` ships no HTTP client by design — the
         // OL-OMS answers from OpenLinker's own tables. Banned here (and
