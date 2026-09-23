@@ -66,7 +66,12 @@ describe('SubiektSetupForm', () => {
     });
   });
 
-  it('submits an http LAN bridge URL with no credentials and no timeout', async () => {
+  // The "no credentials" half of this test's original subject is gone: both
+  // bridges refuse every `/api/*` route without a token, so `tokenRequired` is
+  // true for both identities and there is no valid submit that omits one. What
+  // it still asserts is the other two halves - a plain-http LAN address is
+  // accepted, and a blank timeout emits no `timeoutMs` rather than a zero.
+  it('submits an http LAN bridge URL, and omits timeoutMs when the field is blank', async () => {
     const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Subiekt' });
     const apiClient = createMockApiClient({ connections: { create } });
 
@@ -94,9 +99,11 @@ describe('SubiektSetupForm', () => {
         }),
       );
     });
-    // No credentials object when the bridge token is blank.
     const payload = create.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload).not.toHaveProperty('credentials');
+    // A token was supplied, so credentials ARE emitted - and `config` above
+    // carries no `timeoutMs` key at all, rather than a 0 the bridge client
+    // would read as "no timeout".
+    expect(payload).toHaveProperty('credentials');
     expect(payload).not.toHaveProperty('enabledCapabilities');
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
   });
@@ -331,14 +338,18 @@ describe('SubiektSetupForm', () => {
   });
 
   it('names the product it is connecting, on both routes', () => {
+    // The callout names the product TWICE (once for where the bridge runs, once
+    // for what OpenLinker talks to), so the `All` queries are load-bearing here:
+    // `getByText` throws on a second match and `queryByText` throws too, which
+    // would make a correct render read as a broken one.
     const { unmount } = renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />);
-    expect(screen.getByText(/Subiekt GT/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Subiekt GT/).length).toBeGreaterThan(0);
     unmount();
 
     // The callout used to hardcode "Subiekt GT", so a nexo operator was told to
     // run the bridge on the machine where the OTHER product is installed.
     renderWithProviders(<SubiektSetupForm identity={SUBIEKT_NEXO_IDENTITY} />);
-    expect(screen.getByText(/Subiekt nexo/)).toBeInTheDocument();
-    expect(screen.queryByText(/Subiekt GT/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Subiekt nexo/).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/Subiekt GT/)).toHaveLength(0);
   });
 });

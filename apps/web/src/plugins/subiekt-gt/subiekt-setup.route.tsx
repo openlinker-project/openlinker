@@ -9,7 +9,7 @@
  */
 import type { RouteObject } from 'react-router-dom';
 import type { RouteCrumbHandle } from '../../app/nav-registry.types';
-import { SUBIEKT_GT_IDENTITY } from '../../features/connections/components/subiekt-setup.schema';
+import { SUBIEKT_GT_IDENTITY } from '../../features/connections';
 
 export const subiektSetupRoute: RouteObject = {
   path: 'connections/new/subiekt-gt',
