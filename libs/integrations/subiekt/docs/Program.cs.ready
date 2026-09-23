@@ -28,30 +28,38 @@ using System.Globalization;
 using System.Text;
 using Microsoft.Data.SqlClient;
 
-const string ConnStr =
-    @"Server=DESKTOP-FJ0P3NU\INSERTNEXO;Database=DEMO;Integrated Security=True;"
-  + "TrustServerCertificate=True;Encrypt=False;Connect Timeout=10";
-
-const string User = "olkey";
-const string Pass = "olsecret";
-const string InvoiceToken = "olinvoicekey";
+// Deployment configuration - see BridgeConfig.cs. These were `const` literals
+// compiled into the binary (and BridgeConfig.ConnectionString was a `const` in six separate files),
+// which made a second installation an edit-and-recompile and put the shared
+// API credentials in version control.
+// NOT a local: a `static` local function further down cannot capture one, and
+// the SQL helpers in this file are static. BridgeConfig's own field IS the
+// single source, so there is nothing to keep in step.
+string User = BridgeConfig.ApiUser;
+string Pass = BridgeConfig.ApiPassword;
+string InvoiceToken = BridgeConfig.InvoiceToken;
 const int VariationIdOffset = 1_000_000;
 const int ModelIdOffset = 900_000;
 // Image URLs are fetched by OpenLinker (and by Allegro, through it), so they must
 // resolve from OUTSIDE this machine's loopback. "localhost" silently yields
 // IMAGE_DOWNLOAD_FAILED on the marketplace side.
-string PublicBase = Environment.GetEnvironmentVariable("OL_BRIDGE_PUBLIC_BASE")
-                    ?? "http://host.docker.internal:5056";
+// OL_BRIDGE_PUBLIC_BASE still wins, through BridgeConfig's own env rung.
+string PublicBase = BridgeConfig.PublicBase;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(k =>
 {
-    k.ListenAnyIP(5055, o => o.UseHttps(@"C:\Users\42zer\gtspike\bridge\bridge.pfx", "gtspike"));
+    k.ListenAnyIP(BridgeConfig.HttpsPort,
+        o => o.UseHttps(BridgeConfig.CertificatePath, BridgeConfig.CertificatePassword));
     // Drugi port, zwykly HTTP - tylko po to, zeby przegladarka mogla pobrac zdjecie.
-    k.ListenAnyIP(5056);
+    k.ListenAnyIP(BridgeConfig.HttpPort);
 });
 builder.Logging.ClearProviders().AddSimpleConsole(o => { o.SingleLine = true; o.TimestampFormat = "HH:mm:ss "; });
 var app = builder.Build();
+// Which rung answered, in one line: an operator who set an environment
+// variable and sees no effect must be able to tell "not read" from
+// "read and overridden". Secrets are deliberately NOT echoed.
+app.Logger.LogInformation("{Config}", BridgeConfig.Describe());
 
 // Warm Subiekt up now, not on the first order - a cold attach can take well
 // over a minute, past OpenLinker's own HTTP timeout on the sync call.
@@ -166,7 +174,7 @@ static Row Read(SqlDataReader r) => new(
 
 static async Task<List<Row>> Query(string sql, params (string, object)[] ps)
 {
-    await using var c = new SqlConnection(ConnStr);
+    await using var c = new SqlConnection(BridgeConfig.ConnectionString);
     await c.OpenAsync();
     await using var cmd = new SqlCommand(sql, c);
     foreach (var (n, v) in ps) cmd.Parameters.AddWithValue(n, v);
@@ -262,7 +270,7 @@ object ProductOf(List<Row> g, Dictionary<int, List<string>> cechy)
 async Task<Dictionary<int, List<string>>> Cechy()
 {
     var map = new Dictionary<int, List<string>>();
-    await using var c = new SqlConnection(ConnStr);
+    await using var c = new SqlConnection(BridgeConfig.ConnectionString);
     await c.OpenAsync();
     await using var cmd = new SqlCommand(
         "SELECT ct.cht_IdTowar, s.ctw_Nazwa FROM tw_CechaTw ct JOIN sl_CechaTw s ON s.ctw_Id = ct.cht_IdCecha ORDER BY ct.cht_IdTowar", c);
@@ -346,7 +354,7 @@ static string Iso(DateTime d, int id) => d.Date.AddSeconds(id).ToString("yyyy-MM
 
 async Task<List<object>> ReadOrders(string extraWhere, params (string, object)[] ps)
 {
-    await using var c = new SqlConnection(ConnStr);
+    await using var c = new SqlConnection(BridgeConfig.ConnectionString);
     await c.OpenAsync();
     await using var cmd = new SqlCommand(OrderSelect + extraWhere + " ORDER BY d.dok_Id", c);
     foreach (var (n, v) in ps) cmd.Parameters.AddWithValue(n, v);
@@ -476,7 +484,7 @@ app.MapGet("/wp-json/wc/v3/orders/{id:int}", async (int id) =>
 
 app.MapGet("/wp-json/wc/v3/products/categories", async () =>
 {
-    await using var c = new SqlConnection(ConnStr);
+    await using var c = new SqlConnection(BridgeConfig.ConnectionString);
     await c.OpenAsync();
     await using var cmd = new SqlCommand("SELECT grt_Id, grt_Nazwa FROM sl_GrupaTw ORDER BY grt_Nazwa", c);
     await using var r = await cmd.ExecuteReaderAsync();
@@ -500,7 +508,7 @@ app.MapGet("/wp-json/wc/v3/taxes", async (HttpRequest req) =>
     // OpenLinker pyta o konkretna klase i wymaga DOKLADNIE JEDNEGO wiersza dla
     // kraju sklepu - kilka wierszy o roznych stawkach to dla niego 'ambiguous'.
     var wanted = req.Query["class"].ToString();
-    await using var c = new SqlConnection(ConnStr);
+    await using var c = new SqlConnection(BridgeConfig.ConnectionString);
     await c.OpenAsync();
     await using var cmd = new SqlCommand(
         "SELECT DISTINCT v.vat_Id, v.vat_Stawka FROM sl_StawkaVAT v WHERE v.vat_Stawka IS NOT NULL ORDER BY v.vat_Stawka DESC", c);
@@ -536,7 +544,7 @@ app.MapGet("/wp-json/wc/v3/taxes", async (HttpRequest req) =>
 // Zdjecie towaru prosto z tw_ZdjecieTw (blob w bazie GT).
 app.MapGet("/gt-image/{towarId:int}", async (int towarId) =>
 {
-    await using var c = new SqlConnection(ConnStr);
+    await using var c = new SqlConnection(BridgeConfig.ConnectionString);
     await c.OpenAsync();
     await using var cmd = new SqlCommand(
         "SELECT TOP 1 zd_Zdjecie FROM tw_ZdjecieTw WHERE zd_IdTowar = @id ORDER BY zd_Glowne DESC, zd_Id", c);
@@ -553,7 +561,7 @@ app.MapGet("/wp-json/wc/v3/system_status", () => Results.Ok(new
 }));
 
 
-// â”€â”€â”€ zapis wysylki do Subiekta â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── zapis wysylki do Subiekta ────────────────────────────────────────────────
 // WooCommerce-owy PUT /orders/{id}. Adapter WC w OL przysyla tylko {status} -
 // numer przesylki gubi po drodze, wiec przewoznika/paczkomat czytamy z meta_data
 // albo z pol wlasnych requestu, ktore przysle dopiero prawdziwy adapter Subiekta.
@@ -564,7 +572,7 @@ async Task<Dictionary<string, string>> ReadShippingBlock(int dokId)
     var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     try
     {
-        await using var c = new SqlConnection(ConnStr);
+        await using var c = new SqlConnection(BridgeConfig.ConnectionString);
         await c.OpenAsync();
         await using var cmd = new SqlCommand("SELECT dok_UwagiExt FROM dok__Dokument WHERE dok_Id = @id", c);
         cmd.Parameters.AddWithValue("@id", dokId);
@@ -666,14 +674,14 @@ app.MapPut("/wp-json/wc/v3/orders/{id:int}", async (int id, HttpRequest req) =>
 });
 
 
-// â”€â”€â”€ kontrahenci â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── kontrahenci ──────────────────────────────────────────────────────────────
 // OL provisions a customer before creating the order, so the bridge maps a WC
 // customer onto a Subiekt kontrahent. WC customer id == kh_Id.
 
 async Task<int?> FindKontrahentIdByEmail(string email)
 {
     if (string.IsNullOrWhiteSpace(email)) return null;
-    await using var c = new SqlConnection(ConnStr);
+    await using var c = new SqlConnection(BridgeConfig.ConnectionString);
     await c.OpenAsync();
     await using var cmd = new SqlCommand(
         "SELECT TOP 1 kh_Id FROM kh__Kontrahent WHERE kh_EMail = @e ORDER BY kh_Id", c);
@@ -685,7 +693,7 @@ async Task<int?> FindKontrahentIdByEmail(string email)
 async Task<int?> FindKontrahentIdBySymbol(string symbol)
 {
     if (string.IsNullOrWhiteSpace(symbol)) return null;
-    await using var c = new SqlConnection(ConnStr);
+    await using var c = new SqlConnection(BridgeConfig.ConnectionString);
     await c.OpenAsync();
     await using var cmd = new SqlCommand(
         "SELECT TOP 1 kh_Id FROM kh__Kontrahent WHERE kh_Symbol = @s ORDER BY kh_Id", c);
@@ -696,7 +704,7 @@ async Task<int?> FindKontrahentIdBySymbol(string symbol)
 
 async Task<object?> KontrahentDto(int id)
 {
-    await using var c = new SqlConnection(ConnStr);
+    await using var c = new SqlConnection(BridgeConfig.ConnectionString);
     await c.OpenAsync();
     await using var cmd = new SqlCommand(
         "SELECT kh_Id, kh_Symbol, ISNULL(kh_EMail,''), ISNULL(kh_Nazwa,'') FROM kh__Kontrahent WHERE kh_Id = @id", c);
@@ -774,6 +782,8 @@ app.MapPost("/wp-json/wc/v3/customers", async (HttpRequest req) =>
         Kod         = JStr(root, "billing", "postcode"),
         Miejscowosc = JStr(root, "billing", "city"),
         Email       = email,
+        // Same resolver as the ZK and invoice paths; 0 leaves the column NULL.
+        PanstwoId   = await Invoicing.ResolveCountryId(JStr(root, "billing", "country")),
     };
 
     try
@@ -798,11 +808,11 @@ app.MapPut("/wp-json/wc/v3/customers/{id:int}", async (int id) =>
     return dto is null ? Results.NotFound(new { code = "woocommerce_rest_invalid_id" }) : Results.Ok(dto);
 });
 
-// â”€â”€â”€ tworzenie zamowienia â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── tworzenie zamowienia ─────────────────────────────────────────────────────
 
 async Task<string?> SymbolOfTowar(int towarId)
 {
-    await using var c = new SqlConnection(ConnStr);
+    await using var c = new SqlConnection(BridgeConfig.ConnectionString);
     await c.OpenAsync();
     await using var cmd = new SqlCommand("SELECT tw_Symbol FROM tw__Towar WHERE tw_Id = @id", c);
     cmd.Parameters.AddWithValue("@id", towarId);
@@ -903,7 +913,7 @@ app.MapPost("/wp-json/wc/v3/orders", async (HttpRequest req) =>
     }
 });
 
-// â”€â”€â”€ invoicing bridge: subiekt.invoicing.v1's frozen contract â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── invoicing bridge: subiekt.invoicing.v1's frozen contract ────────────────
 // Routes + envelope shape reconciled 1:1 against
 // libs/integrations/subiekt/src/{bridge/subiekt-bridge.types.ts,
 // infrastructure/http/subiekt-bridge-http.client.ts}. See Invoicing.cs for the
@@ -933,7 +943,7 @@ app.MapPost("/api/invoices", async (HttpRequest req) =>
         PaymentMethod = root.TryGetProperty("paymentMethod", out var pm) && pm.ValueKind == System.Text.Json.JsonValueKind.String ? pm.GetString() : null,
         BankAccountId = root.TryGetProperty("bankAccountId", out var ba) && ba.TryGetInt32(out var bav) ? bav : null,
         StanowiskoKasoweId = root.TryGetProperty("stanowiskoKasoweId", out var sk) && sk.TryGetInt32(out var skv) ? skv : null,
-        // #3431 follow-up: the ZK's own numeric dok_Id, resolved OL-side —
+        // #3431 follow-up: the ZK's own numeric dok_Id, resolved OL-side -
         // see IssueRequest.ZkId's docblock.
         ZkId = root.TryGetProperty("zkId", out var zk) && zk.TryGetInt32(out var zkv) ? zkv : null,
     };
@@ -951,7 +961,7 @@ app.MapPost("/api/invoices", async (HttpRequest req) =>
         if (buyer.TryGetProperty("address", out var addr) && addr.ValueKind == System.Text.Json.JsonValueKind.Object)
         {
             string AStr(string name) => addr.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() ?? "" : "";
-            custReq.Address = new CustomerAddress { Ulica = AStr("ulica"), KodPocztowy = AStr("kodPocztowy"), Miejscowosc = AStr("miejscowosc") };
+            custReq.Address = new CustomerAddress { Ulica = AStr("ulica"), KodPocztowy = AStr("kodPocztowy"), Miejscowosc = AStr("miejscowosc"), CountryCode = AStr("countryCode") };
         }
         try { ir.KontrahentId = await Invoicing.UpsertCustomer(custReq); }
         catch (Exception e)
@@ -1009,7 +1019,7 @@ app.MapPost("/api/invoices", async (HttpRequest req) =>
     }
 });
 
-// Correction (faktura korygujÄ…ca): see Invoicing.IssueCorrection for the
+// Correction (faktura korygująca): see Invoicing.IssueCorrection for the
 // SuDokument.NaPodstawie(origId) link (confirmed live against gta.chm example 7).
 app.MapPost("/api/invoices/{origId:int}/corrections", async (int origId, HttpRequest req) =>
 {
@@ -1080,7 +1090,7 @@ app.MapPost("/api/customers/upsert", async (HttpRequest req) =>
     if (root.TryGetProperty("address", out var addr) && addr.ValueKind == System.Text.Json.JsonValueKind.Object)
     {
         string AStr(string name) => addr.TryGetProperty(name, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() ?? "" : "";
-        custReq.Address = new CustomerAddress { Ulica = AStr("ulica"), KodPocztowy = AStr("kodPocztowy"), Miejscowosc = AStr("miejscowosc") };
+        custReq.Address = new CustomerAddress { Ulica = AStr("ulica"), KodPocztowy = AStr("kodPocztowy"), Miejscowosc = AStr("miejscowosc"), CountryCode = AStr("countryCode") };
     }
 
     try

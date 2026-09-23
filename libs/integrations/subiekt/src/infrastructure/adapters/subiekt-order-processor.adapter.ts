@@ -107,6 +107,14 @@ function resolveBuyer(order: OrderCreate): BridgeOrderBuyer {
     ulica: addr?.address1,
     kodPocztowy: addr?.postalCode,
     miejscowosc: addr?.city,
+    // Carried verbatim and never interpreted here (ADR-026 keeps country
+    // specifics in the provider): the bridge resolves it against
+    // `sl_Panstwo`, and Subiekt decides what the country MEANS for VAT. A
+    // blank is omitted rather than sent, so an address with no country leaves
+    // the column NULL instead of resolving to nothing bridge-side.
+    ...(addr?.country !== undefined && addr.country.trim() !== ''
+      ? { countryCode: addr.country.trim() }
+      : {}),
   };
 }
 
