@@ -65,13 +65,13 @@ export const RETURN_DISPOSE_COPY = {
   overDisposition: 'You only have {n} received unit(s) left to deal with on this line.',
   nothingToDispose: 'Every received unit on this line has already been dealt with.',
   /**
-   * Rendered instead of `nothingToDispose` when the reason Dispose is
-   * unavailable is an outstanding block, not a genuinely empty line (#3466) —
-   * saying "already dealt with" there would be a false claim about a write
-   * that was refused, not confirmed.
+   * Shown in the dispose form, beside a disabled `Restock`, while the line has
+   * an outstanding restock block (#3466). It says "restocking", not
+   * "disposing", on purpose: scrap stays available and the server accepts it,
+   * so the form must not suggest the whole disposition is locked.
    */
   awaitingAttestation:
-    'This line has a stock write waiting on you — see the notice above and mark it handled before disposing more.',
+    'This line has a stock write waiting on you — see the notice above and mark it handled before restocking more. You can still scrap these units.',
   /**
    * Past-tense and event-shaped, naming the ACTION — distinct from the notice,
    * which is present-tense and names the remediation. The two are visible
@@ -135,7 +135,7 @@ export const RETURN_CUSTODY_ERROR_COPY = {
     'illegal-transition':
       'This line is already finished, so it cannot change. Reload the page to see where it ended up.',
     'restock-already-blocked':
-      'This line already has a stock write waiting on you — mark it handled before disposing more.',
+      'This line already has a stock write waiting on you — mark it handled before restocking more.',
   } as Record<string, string>,
 } as const;
 

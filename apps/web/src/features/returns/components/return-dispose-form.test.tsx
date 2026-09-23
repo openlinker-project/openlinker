@@ -51,6 +51,7 @@ function renderForm(
   overrides: {
     line?: Partial<ReturnLine>;
     isOrphan?: boolean;
+    restockBlocked?: boolean;
     onSubmit?: (input: {
       quantity: number;
       disposition: 'restock' | 'scrap';
@@ -67,6 +68,7 @@ function renderForm(
       onCancel={vi.fn()}
       onSubmit={onSubmit}
       pending={false}
+      restockBlocked={overrides.restockBlocked ?? false}
       restockTarget={target}
     />,
   );
@@ -121,6 +123,31 @@ describe('ReturnDisposeForm (#2380)', () => {
 
     expect(screen.getByText(RETURN_DISPOSE_COPY.orphanBlocked)).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /restock/i })).toBeDisabled();
+  });
+
+  it('should disable only Restock while the line has an outstanding restock block (#3466)', () => {
+    renderForm(resolved, { restockBlocked: true });
+
+    expect(screen.getByText(RETURN_DISPOSE_COPY.awaitingAttestation)).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /restock/i })).toBeDisabled();
+    // Scrap makes no master write and the server accepts it on a blocked line.
+    expect(screen.getByRole('radio', { name: /scrap/i })).not.toBeDisabled();
+    expect(screen.getByRole('radio', { name: /scrap/i })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('should submit a scrap on a blocked line', async () => {
+    const onSubmit = renderForm(resolved, {
+      restockBlocked: true,
+      line: { quantityReceived: 3 },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: RETURN_DISPOSE_COPY.submit }));
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ quantity: 3, disposition: 'scrap' }),
+      ),
+    );
   });
 
   it('should default to the units received but not yet dealt with', () => {

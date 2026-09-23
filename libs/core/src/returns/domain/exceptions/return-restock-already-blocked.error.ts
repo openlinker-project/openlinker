@@ -19,6 +19,23 @@
  * never rolled back"*) — it is to stop the duplicate act from being created at
  * all. `markStockHandledManually` remains the only way to clear a block.
  *
+ * **Only a restock is refused.** A scrap makes no master write, cannot produce
+ * a block, and is accepted on a blocked line; the operator UI mirrors that by
+ * disabling only `Restock`.
+ *
+ * **Known trade-off: a block whose cause can clear is no longer retryable.**
+ * The refusal ignores WHY the outstanding act is blocked. `adapter-unresolved`
+ * is transient (#1947), `no-inventory-master` is fixed by configuration, and
+ * `in_doubt` means the master write may already have landed. Before this guard
+ * an operator who fixed the cause could re-dispose and let OpenLinker write the
+ * stock. Now the only exit is the attestation, which records
+ * `restockedBy: 'operator_out_of_band'`, a false statement if the operator
+ * fixed the config and wanted OpenLinker to retry. This is accepted
+ * deliberately, because the unbounded duplicate acts were worse. The proper
+ * fix is to re-drive the EXISTING blocked act under its original `seq` and
+ * idempotency key rather than minting a new one; that is a follow-up, not part
+ * of this guard.
+ *
  * @module domain/exceptions
  */
 export class ReturnRestockAlreadyBlockedError extends Error {
@@ -28,7 +45,7 @@ export class ReturnRestockAlreadyBlockedError extends Error {
   constructor(public readonly lineId: string) {
     super(
       `Return line ${lineId} already has an outstanding blocked restock; ` +
-        'mark it handled before disposing more — nothing was changed'
+        'mark it handled before restocking more — nothing was changed'
     );
     this.name = 'ReturnRestockAlreadyBlockedError';
     Error.captureStackTrace(this, this.constructor);

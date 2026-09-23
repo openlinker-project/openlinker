@@ -415,6 +415,8 @@ describe('ReturnCustodyService', () => {
       });
 
       it('should scope the outstanding-block read to THIS line', async () => {
+        repository.findOutstandingRestockEvents.mockResolvedValueOnce([]);
+
         await service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' });
 
         expect(repository.findOutstandingRestockEvents).toHaveBeenCalledWith(LINE_ID);

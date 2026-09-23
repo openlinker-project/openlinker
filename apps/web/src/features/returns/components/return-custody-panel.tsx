@@ -121,6 +121,12 @@ export function ReturnCustodyPanel({
       ),
     }))
     .filter(({ blocks, attestations }) => blocks.length > 0 || attestations.length > 0);
+  // #3466 — lines with an outstanding (unattested) restock block. The server
+  // refuses a second restock on them (409 `restock-already-blocked`), so the
+  // dispose form disables `Restock` there — but only `Restock`: scrap makes no
+  // master write, the server accepts it, and hiding it would make the UI
+  // stricter than the gate it mirrors.
+  const restockBlockedLineIds = new Set(detail.restockBlocks.map((block) => block.returnLineId));
   const outstandingLines = detail.lines.filter((line) => outstandingToReceive(line) > 0);
 
   const setError = (lineId: string, message: string | null): void => {
@@ -246,17 +252,7 @@ export function ReturnCustodyPanel({
 
   const renderCustody = (line: ReturnLine): ReactNode => {
     const canReceive = outstandingToReceive(line) > 0;
-    // #3466 — a line with an outstanding (unattested) restock block must not
-    // accept a fresh Dispose: `outstandingToDispose` never shrinks after a
-    // blocked write, so nothing else stopped the same units being resubmitted
-    // over and over, each mint a NEW blocked act and the restock-blocked
-    // notice's summed quantity growing without bound. The notice (rendered
-    // above the table) plus its "Mark stock handled manually" action is the
-    // only way out — never a second Dispose attempt on top of it.
-    const hasOutstandingBlock = detail.restockBlocks.some(
-      (block) => block.returnLineId === line.id
-    );
-    const canDispose = outstandingToDispose(line) > 0 && !hasOutstandingBlock;
+    const canDispose = outstandingToDispose(line) > 0;
     // Opens on whatever the line is waiting for, so the common case is one
     // press to expand and one to submit.
     const mode: FlowMode = modeByLine[line.id] ?? (canReceive ? 'receive' : 'dispose');
@@ -300,6 +296,7 @@ export function ReturnCustodyPanel({
               error={error}
               isOrphan={isOrphan}
               line={line}
+              restockBlocked={restockBlockedLineIds.has(line.id)}
               onCancel={() => setError(line.id, null)}
               onSubmit={(input) => runDispose(line, input)}
               pending={dispose.isPending && pendingLineId === line.id}
@@ -308,11 +305,7 @@ export function ReturnCustodyPanel({
           ) : null}
 
           {!canReceive && !canDispose ? (
-            <p className="text-muted">
-              {hasOutstandingBlock
-                ? RETURN_DISPOSE_COPY.awaitingAttestation
-                : RETURN_DISPOSE_COPY.nothingToDispose}
-            </p>
+            <p className="text-muted">{RETURN_DISPOSE_COPY.nothingToDispose}</p>
           ) : null}
 
           <ReturnNotReturnedAction

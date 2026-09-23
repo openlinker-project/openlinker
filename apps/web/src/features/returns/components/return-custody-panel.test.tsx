@@ -8,10 +8,11 @@
  * fresh idempotency-key `seq` (#2368), so the master-side dedup never caught
  * it, and the restock-blocked banner's summed quantity grew without bound.
  *
- * These tests cover the frontend half of the fix: the Dispose form must not
- * render at all while a line has an outstanding block, must render the
- * dedicated `awaitingAttestation` copy instead of the generic
- * `nothingToDispose` sentence, and must reappear once the block clears (a real
+ * These tests cover the frontend half of the fix: while a line has an
+ * outstanding block the Dispose form stays, but with `Restock` disabled and the
+ * dedicated `awaitingAttestation` copy shown. Scrap stays available, because
+ * the server accepts it (it makes no master write). `Restock` comes back once
+ * the block clears (a real
  * `ReturnDetail` re-render, standing in for the query-invalidation this
  * component receives its `detail` prop through — the panel is a pure function
  * of that prop and does no fetching of its own).
@@ -134,28 +135,32 @@ async function expandLine(): Promise<void> {
   );
 }
 
-describe('ReturnCustodyPanel — restock block gates Dispose (#3466)', () => {
-  it('should NOT render the Dispose action while the line has an outstanding block', async () => {
+describe('ReturnCustodyPanel — restock block gates Restock, not Dispose (#3466)', () => {
+  it('should keep the Dispose form but disable Restock while the line has an outstanding block', async () => {
     renderPanel(makeDetail({ restockBlocks: [makeBlock()] }));
     await expandLine();
 
-    // The form itself — the actual guard under test — must not render.
+    // The form stays: scrap makes no master write and the server accepts it on
+    // a blocked line, so hiding the form would be stricter than the gate.
     expect(
-      screen.queryByRole('spinbutton', { name: RETURN_DISPOSE_COPY.quantityLabel }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('spinbutton', { name: RETURN_DISPOSE_COPY.quantityLabel }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /restock/i })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /scrap/i })).not.toBeDisabled();
     expect(screen.getByText(RETURN_DISPOSE_COPY.awaitingAttestation)).toBeInTheDocument();
     // The generic "already dealt with" sentence would be a false claim about a
     // write that was REFUSED, not confirmed — it must never render here.
     expect(screen.queryByText(RETURN_DISPOSE_COPY.nothingToDispose)).not.toBeInTheDocument();
   });
 
-  it('should render the Dispose action normally when the line has no block', async () => {
+  it('should render the Dispose form with Restock available when the line has no block', async () => {
     renderPanel(makeDetail({ restockBlocks: [] }));
     await expandLine();
 
     // A single outstanding line with no receive left to do opens straight on
     // the dispose form (no mode switch needed).
     expect(screen.getByRole('spinbutton', { name: RETURN_DISPOSE_COPY.quantityLabel })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /restock/i })).not.toBeDisabled();
     expect(screen.queryByText(RETURN_DISPOSE_COPY.awaitingAttestation)).not.toBeInTheDocument();
   });
 
@@ -167,13 +172,14 @@ describe('ReturnCustodyPanel — restock block gates Dispose (#3466)', () => {
     );
     await expandLine();
 
-    expect(screen.getByRole('spinbutton', { name: RETURN_DISPOSE_COPY.quantityLabel })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /restock/i })).not.toBeDisabled();
+    expect(screen.queryByText(RETURN_DISPOSE_COPY.awaitingAttestation)).not.toBeInTheDocument();
   });
 
-  it('should let the Dispose form reappear once the block clears', async () => {
+  it('should re-enable Restock once the block clears', async () => {
     const { rerender } = renderPanel(makeDetail({ restockBlocks: [makeBlock()] }));
     await expandLine();
-    expect(screen.getByText(RETURN_DISPOSE_COPY.awaitingAttestation)).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /restock/i })).toBeDisabled();
 
     // Stands in for the real flow: `markStockHandledManually` resolves the
     // block server-side, the detail query invalidates, and the next read comes
@@ -187,7 +193,7 @@ describe('ReturnCustodyPanel — restock block gates Dispose (#3466)', () => {
       />,
     );
 
-    expect(screen.getByRole('spinbutton', { name: RETURN_DISPOSE_COPY.quantityLabel })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /restock/i })).not.toBeDisabled();
     expect(screen.queryByText(RETURN_DISPOSE_COPY.awaitingAttestation)).not.toBeInTheDocument();
   });
 });
@@ -218,7 +224,7 @@ describe('ReturnCustodyPanel — backend guard reaches the operator as a sentenc
 
     expect(
       await screen.findByText(
-        'This line already has a stock write waiting on you — mark it handled before disposing more.',
+        'This line already has a stock write waiting on you — mark it handled before restocking more.',
       ),
     ).toBeInTheDocument();
   });

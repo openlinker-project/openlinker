@@ -88,16 +88,24 @@ Wire into `libs/core/src/returns/index.ts` (barrel export) and
 `ReturnRefusal` union, add to `@Catch(...)`, add to the `CONFLICT` group in
 `resolveStatus`, add to the `reason`-carrying group in `resolveReason`).
 
-**Frontend** — `return-custody-panel.tsx`: compute each line's outstanding
-`blocks` array once (reusing the existing per-line filter already used for
-`linesWithCustodyNotices`) and require `blocks.length === 0` alongside
-`outstandingToDispose(line) > 0` for `canDispose`. When blocked, the segmented
-receive/dispose control's Dispose branch does not render — only the existing
-`ReturnRestockBlockedNotice` (already rendered separately, unconditionally
-below) shows, which already carries the "Mark stock handled manually" CTA.
+**Frontend** — `return-custody-panel.tsx`: build one `Set` of line ids with an
+outstanding block and pass `restockBlocked` into `ReturnDisposeForm`. The form
+disables only the `Restock` option (the same mechanism as an orphan or an
+unresolved restock target) and shows `awaitingAttestation` beside it. Scrap
+stays available, because the server accepts it on a blocked line: hiding the
+whole form would make the UI stricter than the gate it mirrors (review
+finding). The existing `ReturnRestockBlockedNotice` keeps the "Mark stock
+handled manually" CTA.
+
+**Known trade-off (review finding).** The guard ignores why a block exists, so
+a block whose cause can clear (`adapter-unresolved`, `no-inventory-master`,
+`in_doubt`) can no longer be retried. The only exit is the attestation, which
+records the stock as handled out of band. This is accepted deliberately and
+documented on the error. Follow-up: re-drive the existing blocked act under its
+original `seq` / idempotency key.
 
 `return-custody.copy.ts`: add
-`'restock-already-blocked': 'This line already has a stock write waiting on you — mark it handled before disposing more.'`
+`'restock-already-blocked': 'This line already has a stock write waiting on you — mark it handled before restocking more.'`
 to `RETURN_CUSTODY_ERROR_COPY.byReason`. No changes needed to
 `custody-error.ts` — it already reads `reason` generically from any 409 body.
 
@@ -108,11 +116,12 @@ to `RETURN_CUSTODY_ERROR_COPY.byReason`. No changes needed to
 3. `libs/core/src/returns/application/services/return-custody.service.ts` — add the guard inside `disposeLine`'s restock branch.
 4. `apps/api/src/common/filters/returns-exception.filter.ts` — wire the new error into the filter (import, union, `@Catch`, `resolveStatus`, `resolveReason`).
 5. `apps/web/src/features/returns/lib/return-custody.copy.ts` — add the `byReason` entry.
-6. `apps/web/src/features/returns/components/return-custody-panel.tsx` — thread per-line `blocks` into `canDispose`.
+6. `apps/web/src/features/returns/components/return-custody-panel.tsx` + `return-dispose-form.tsx` — pass `restockBlocked` per line; the form disables only `Restock`.
 7. Tests:
    - `return-custody.service.spec.ts` — a `restock` dispose on a line with an outstanding blocked event throws `ReturnRestockAlreadyBlockedError` and writes no new event row; a `scrap` dispose on the same line still succeeds; a line with only *attested* (non-outstanding) history still allows a fresh restock dispose.
    - `returns-exception.filter.spec.ts` — new error maps to 409 with `reason: 'restock-already-blocked'`.
-   - `return-custody-panel.test.tsx` — Dispose form does not render when a line has an outstanding block; it reappears (and a real dispose can be submitted) after `markStockHandledManually` resolves.
+   - `return-custody-panel.test.tsx` — on a blocked line the Dispose form stays with `Restock` disabled and scrap enabled; `Restock` comes back once the block clears.
+   - `return-dispose-form.test.tsx` — `restockBlocked` disables only `Restock`, defaults to scrap, and a scrap submits.
 
 ## 5. Validate
 
