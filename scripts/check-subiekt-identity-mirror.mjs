@@ -85,6 +85,33 @@ export function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 }
 
+
+/**
+ * The body of `export const NAME... = { ... };`.
+ *
+ * Needed because the setup schema now declares TWO identity objects, so
+ * `parseAssignedString(source, 'platformType')` sees two declarations and
+ * correctly refuses as AMBIGUOUS. Scoping to one object's body first is what
+ * makes each key unique again - the ambiguity guard is doing its job, not
+ * getting in the way.
+ */
+export function parseObjectConstBody(source, name) {
+  const clean = stripComments(source);
+  const at = clean.indexOf(`${name}`);
+  if (at === -1) return null;
+  const open = clean.indexOf('{', at);
+  if (open === -1) return null;
+  let depth = 0;
+  for (let i = open; i < clean.length; i += 1) {
+    if (clean[i] === '{') depth += 1;
+    else if (clean[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return clean.slice(open, i + 1);
+    }
+  }
+  return null;
+}
+
 /**
  * Compare one logical value across every site that declares it.
  * `sites` is `[{ label, value }]`; returns violation strings.
@@ -127,60 +154,104 @@ async function read(relativePath) {
 }
 
 async function main() {
-  const [manifestSource, schemaSource, pluginSource] = await Promise.all([
-    read(BACKEND_MANIFEST),
-    read(FRONTEND_SCHEMA),
-    read(FRONTEND_PLUGIN),
-  ]);
+  const products = [
+    {
+      label: 'Subiekt GT',
+      manifest: 'libs/integrations/subiekt/src/subiekt-plugin.ts',
+      schemaConst: 'SUBIEKT_GT_IDENTITY',
+      plugin: 'apps/web/src/plugins/subiekt-gt/index.ts',
+    },
+    {
+      label: 'Subiekt nexo',
+      manifest: 'libs/integrations/subiekt-nexo/src/subiekt-plugin.ts',
+      schemaConst: 'SUBIEKT_NEXO_IDENTITY',
+      plugin: 'apps/web/src/plugins/subiekt-nexo/index.ts',
+    },
+  ];
 
-  const backendAdapterKey = parseAssignedString(manifestSource, 'adapterKey');
-  const backendPlatformType = parseAssignedString(manifestSource, 'platformType');
+  const schemaSource = await read(FRONTEND_SCHEMA);
+  const violations = [];
+  const summary = [];
 
-  if (backendAdapterKey === null || backendPlatformType === null) {
-    console.error(
-      `check-subiekt-identity-mirror: could not read adapterKey / platformType from ${BACKEND_MANIFEST}. ` +
-        `That file is the source of truth for this invariant, so the check cannot proceed.`
+  for (const product of products) {
+    const manifestSource = await read(product.manifest);
+    const pluginSource = await read(product.plugin);
+
+    const adapterKey = parseAssignedString(manifestSource, 'adapterKey');
+    const platformType = parseAssignedString(manifestSource, 'platformType');
+
+    if (typeof adapterKey !== 'string' || typeof platformType !== 'string') {
+      console.error(
+        `check-subiekt-identity-mirror: could not read adapterKey / platformType from ${product.manifest}. ` +
+          `That file is the source of truth for this invariant, so the check cannot proceed.`
+      );
+      process.exit(1);
+    }
+
+    const identityBody = parseObjectConstBody(schemaSource, product.schemaConst);
+    if (identityBody === null) {
+      violations.push(
+        `${product.label}: ${FRONTEND_SCHEMA} declares no ${product.schemaConst}. ` +
+          `The setup form would have no identity to send for this product.`
+      );
+      continue;
+    }
+
+    violations.push(
+      ...diffIdentity(`${product.label} adapterKey`, adapterKey, [
+        {
+          label: `${FRONTEND_SCHEMA} (${product.schemaConst})`,
+          value: parseAssignedString(identityBody, 'adapterKey'),
+        },
+      ]),
+      ...diffIdentity(`${product.label} platformType`, platformType, [
+        {
+          label: `${FRONTEND_SCHEMA} (${product.schemaConst})`,
+          value: parseAssignedString(identityBody, 'platformType'),
+        },
+        {
+          label: `${product.plugin} (plugin.platformType)`,
+          value: parseAssignedString(pluginSource, 'platformType'),
+        },
+        {
+          label: `${product.plugin} (plugin.id)`,
+          value: parseAssignedString(pluginSource, 'id'),
+        },
+      ])
     );
-    process.exit(1);
+
+    summary.push(`${product.label} '${platformType}' / '${adapterKey}'`);
   }
 
-  const violations = [
-    ...diffIdentity('adapterKey', backendAdapterKey, [
-      {
-        label: `${FRONTEND_SCHEMA} (SUBIEKT_ADAPTER_KEY)`,
-        value: parseAssignedString(schemaSource, 'SUBIEKT_ADAPTER_KEY'),
-      },
-    ]),
-    ...diffIdentity('platformType', backendPlatformType, [
-      {
-        label: `${FRONTEND_SCHEMA} (toCreateConnectionInput)`,
-        value: parseAssignedString(schemaSource, 'platformType'),
-      },
-      {
-        label: `${FRONTEND_PLUGIN} (plugin.platformType)`,
-        value: parseAssignedString(pluginSource, 'platformType'),
-      },
-      {
-        label: `${FRONTEND_PLUGIN} (plugin.id)`,
-        value: parseAssignedString(pluginSource, 'id'),
-      },
-    ]),
-  ];
+  // The two products must not collide with each other either - one shared
+  // identity is the whole defect this guard exists to prevent.
+  const gtBody = parseObjectConstBody(schemaSource, 'SUBIEKT_GT_IDENTITY');
+  const nexoBody = parseObjectConstBody(schemaSource, 'SUBIEKT_NEXO_IDENTITY');
+  if (gtBody !== null && nexoBody !== null) {
+    for (const key of ['platformType', 'adapterKey']) {
+      const a = parseAssignedString(gtBody, key);
+      const b = parseAssignedString(nexoBody, key);
+      if (typeof a === 'string' && a === b) {
+        violations.push(
+          `Subiekt GT and Subiekt nexo share ${key} '${a}'. They are two separate products ` +
+            `with two separate bridges and must never carry one identity.`
+        );
+      }
+    }
+  }
 
   if (violations.length > 0) {
     console.error('check-subiekt-identity-mirror: FAILED');
     for (const violation of violations) console.error(`  - ${violation}`);
     console.error(
       '\n  A drift here does not fail the build or any test. It fails when an operator ' +
-        'clicks "add connection", minting a connection no adapter recognises.'
+        'clicks "add connection", minting a connection no adapter recognises - or worse, ' +
+        'one pointed at the OTHER product\'s bridge.'
     );
     process.exit(1);
   }
 
-  console.log(
-    `check-subiekt-identity-mirror: OK (platformType '${backendPlatformType}', ` +
-      `adapterKey '${backendAdapterKey}' identical across the manifest and 3 frontend copy/copies)`
-  );
+  console.log(`check-subiekt-identity-mirror: OK (${summary.join('; ')})`);
 }
 
 function selfCheck() {

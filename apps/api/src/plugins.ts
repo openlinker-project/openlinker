@@ -36,6 +36,7 @@ import { WooCommerceIntegrationModule } from '@openlinker/integrations-woocommer
 import { ErliIntegrationModule } from '@openlinker/integrations-erli';
 import { KsefIntegrationModule } from '@openlinker/integrations-ksef';
 import { SubiektIntegrationModule } from '@openlinker/integrations-subiekt';
+import { SubiektIntegrationModule as SubiektNexoIntegrationModule } from '@openlinker/integrations-subiekt-nexo';
 import { InfaktIntegrationModule } from '@openlinker/integrations-infakt';
 import { EparagonyIntegrationModule } from '@openlinker/integrations-eparagony';
 import { FxIntegrationModule } from '@openlinker/integrations-fx';
@@ -51,10 +52,16 @@ export const apiPlugins: PluginEntry[] = [
   ErliIntegrationModule,
   KsefIntegrationModule,
   // #753: Subiekt GT adapter (Sfera GT bridge) — registered so the host can
-  // resolve the capabilities of `subiekt-gt` connections. Subiekt nexo is a
-  // separate product with no adapter here; if one is built it registers its
-  // own module beside this one, never through it.
+  // resolve the capabilities of `subiekt-gt` connections. Subiekt GT and
+  // Subiekt nexo are two separate products with two separate bridges and two
+  // separate wire contracts; each registers its own module, and neither
+  // routes through the other.
   SubiektIntegrationModule,
+  // Subiekt nexo (Sfera bridge) invoicing adapter — `subiekt-nexo` /
+  // `subiekt.nexo.v1`, capability `Invoicing`. See the note above: this is
+  // NOT the same product as Subiekt GT and must never share an identifier
+  // with it.
+  SubiektNexoIntegrationModule,
   // #1281: Infakt accounting invoicing adapter (KSeF submitted via Infakt).
   InfaktIntegrationModule,
   // #1908 / ADR-042: eparagony.pl fiscalization adapter - resolves the

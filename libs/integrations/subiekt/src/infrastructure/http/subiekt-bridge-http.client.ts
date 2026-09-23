@@ -117,6 +117,17 @@ export interface SubiektBridgeHttpClientOptions {
   fetchImpl?: FetchLike;
 }
 
+/**
+ * Escapes a literal for use inside a `RegExp`. The bridge token is operator-
+ * chosen, so it may legitimately contain `.`, `+`, `$` or any other
+ * metacharacter; interpolating it unescaped would either throw or match the
+ * wrong thing, and the one place it is used is a redaction that must not fail
+ * open.
+ */
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export class SubiektBridgeHttpClient implements SubiektBridgeClient {
   private readonly logger = new Logger(SubiektBridgeHttpClient.name);
   private readonly baseUrl: string;
@@ -204,17 +215,34 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
   }
 
   /**
-   * Connectivity probe for the connection tester. Issues `GET /health` and
-   * resolves when the bridge is reachable (any non-transport response, incl. a
-   * 4xx). Rejects with `SubiektBridgeUnreachableError` / `SubiektConfigException`
-   * only when the bridge could not be reached. Not part of the frozen
-   * `SubiektBridgeClient` surface.
+   * Probe for the connection tester and the reachability sweep: is the bridge
+   * reachable AND does it accept our credentials?
+   *
+   * It deliberately does NOT use `/health`. Both bridges exempt `/health` from
+   * their auth middleware, so a connection carrying no token at all passed the
+   * old probe and then failed 401 on its first real call — the operator was
+   * shown a green tick for a configuration that could never work, and the
+   * reachability sweep was blind to a rotated bridge token, the single most
+   * likely way a working connection stops working.
+   *
+   * `/api/bank-accounts` is the probe instead because the auth middleware sits
+   * in FRONT of every `/api/*` route on both bridges, so any answer other than
+   * 401/403 proves authorization passed — and it is a plain read with no side
+   * effects, which a probe that may run on a schedule has to be.
+   *
+   * Resolves when the bridge is reachable and authorized, including when it
+   * answers with a business rejection (that still proves both). Rejects with
+   * `SubiektBridgeAuthError` on 401/403, carrying the bridge's own reason, and
+   * with `SubiektBridgeUnreachableError` / `SubiektConfigException` when the
+   * bridge could not be reached. Not part of the frozen `SubiektBridgeClient`
+   * surface.
    */
-  async checkHealth(): Promise<void> {
+  async checkReachableAndAuthorized(): Promise<void> {
     try {
-      await this.getJson<unknown>(SUBIEKT_BRIDGE_ENDPOINTS.health);
+      await this.getJson<unknown>(SUBIEKT_BRIDGE_ENDPOINTS.bankAccounts);
     } catch (error: unknown) {
-      // A business rejection means the bridge IS reachable — a passing probe.
+      // A business rejection means the bridge IS reachable and DID accept our
+      // credentials — it got past the auth middleware to produce one.
       if (error instanceof SubiektRejectedError) {
         return;
       }
@@ -314,9 +342,19 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
 
     if (response.status === 401 || response.status === 403) {
       // BRIDGE AUTH / CONFIG problem (bad/missing token or credentials) — NOT a
-      // fiscal rejection. Surface a clear, terminal auth error; never read or
-      // log the body/token.
-      throw new SubiektBridgeAuthError(response.status);
+      // fiscal rejection. Surface a clear, terminal auth error.
+      //
+      // The body IS read here, deliberately reversing the earlier "never read
+      // the body" rule. The bridge distinguishes two states the operator must
+      // act on differently — a wrong token versus a bridge where `InvoiceToken`
+      // was never set, which closes every `/api/*` route — and it says which in
+      // `error.reason`. Withholding that turned both into one generic sentence
+      // and sent the operator looking for a bad value when nothing was set.
+      //
+      // The rule the original comment was protecting (never surface the token)
+      // is kept by `redactToken`, which is stronger than not reading at all: it
+      // holds even for a bridge that echoes the credential, ours or anyone's.
+      throw new SubiektBridgeAuthError(response.status, await this.readAuthReason(response));
     }
 
     if (response.status >= 400) {
@@ -368,5 +406,58 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
       // Non-JSON / empty body — fall through to the status-based reason.
     }
     return `HTTP ${response.status}`;
+  }
+
+  /**
+   * The bridge's own explanation for a 401 / 403, safe to show an operator, or
+   * `undefined` when it gave none.
+   *
+   * `readRejectionReason` falls back to `HTTP <status>` when the body carries
+   * nothing readable. On the auth path that string adds nothing the error's own
+   * `status` does not already say, so it is mapped to `undefined` rather than
+   * padding the message with a number.
+   */
+  private async readAuthReason(response: Response): Promise<string | undefined> {
+    const raw = await this.readRejectionReason(response);
+    if (raw === `HTTP ${response.status}`) {
+      return undefined;
+    }
+    const safe = this.redactToken(raw);
+    return safe.length > 0 ? safe : undefined;
+  }
+
+  /**
+   * Removes the bridge token from a string taken off the wire.
+   *
+   * This is what lets the 401 path read the response body at all. The body
+   * comes from a service OpenLinker does not control, so "our bridge does not
+   * echo the token" is not a property this client may rely on. Capping the
+   * length bounds the same risk for anything else a hostile or broken bridge
+   * might put there.
+   */
+  private redactToken(text: string): string {
+    const MAX = 300;
+    // Below this, `split/join` would shred unrelated body text rather than
+    // redact a credential - a two-character token would turn the bridge's own
+    // sentence into noise, and the redaction would be the thing that made the
+    // message unreadable. A secret that short is not one worth protecting.
+    const MIN_REDACTABLE = 8;
+    let out = text;
+    const token = this.token;
+    if (token !== undefined && token.length >= MIN_REDACTABLE) {
+      // The argument for reading the body at all is that "our bridge does not
+      // echo the token" is not a property this client may rely on. The same
+      // reasoning forbids assuming the echo is byte-identical, so the forms a
+      // bridge realistically produces are all replaced: the token verbatim, a
+      // percent-encoded copy (a `WWW-Authenticate` challenge or a URL it was
+      // interpolated into), and either in a different case.
+      const forms = [token, encodeURIComponent(token)].filter(
+        (f, i, all) => f.length > 0 && all.indexOf(f) === i,
+      );
+      for (const form of forms) {
+        out = out.replace(new RegExp(escapeRegExp(form), 'gi'), '[redacted]');
+      }
+    }
+    return out.length > MAX ? `${out.slice(0, MAX)}…` : out;
   }
 }

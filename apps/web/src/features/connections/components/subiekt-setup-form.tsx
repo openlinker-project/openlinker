@@ -1,25 +1,33 @@
 /**
  * Subiekt Setup Form
  *
- * Single-step guided wizard for creating a Subiekt GT connection (#1199).
- * Collects:
+ * Single-step guided wizard for creating a Subiekt connection (#1199). ONE form
+ * serves both products; everything that differs between them arrives on
+ * `identity`. Collects:
  *   - Connection name
- *   - Bridge base URL (the OpenLinker Sfera bridge, a LAN service — http allowed)
+ *   - Bridge base URL (a LAN service — http allowed; the port differs per product)
  *   - Optional request timeout (advanced)
- *   - Optional shared bridge token (only for a secured bridge)
+ *   - Bridge token, REQUIRED for both shipped products
+ *
+ * The token is required because both bridges refuse every `/api/*` request
+ * without one. It used to be labelled optional and described as "leave blank
+ * for an unauthenticated LAN bridge", which was the opposite of what the bridge
+ * does — and the connection test agreed, because it probed the one route the
+ * bridge exempts from auth.
  *
  * After a successful create the form surfaces a "Test connection" affordance
  * that calls the generic `/connections/:id/test` endpoint (backed by
- * `SubiektConnectionTesterAdapter`, which probes the bridge health) and renders
- * the `ConnectionTestResult`. Abandon-prevention triggers a native confirm
- * dialog when the form is dirty and the tab is closed before creation.
+ * `SubiektConnectionTesterAdapter`, which now probes an AUTHORIZED route, so a
+ * pass means the credential works) and renders the `ConnectionTestResult`.
+ * Abandon-prevention triggers a native confirm dialog when the form is dirty
+ * and the tab is closed before creation.
  *
  * The bridge token is write-only: it is never read back into form state or
  * rendered after submit, and never appears in the ConnectionTestResult.
  *
  * @module features/connections/components
  */
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
@@ -28,8 +36,9 @@ import { useTestConnectionMutation } from '../hooks/use-test-connection-mutation
 import type { ConnectionTestResult } from '../api/connections.types';
 import {
   SUBIEKT_SETUP_DEFAULT_VALUES,
-  subiektSetupSchema,
+  buildSubiektSetupSchema,
   toCreateConnectionInput,
+  type SubiektProductIdentity,
   type SubiektSetupFormSubmission,
   type SubiektSetupFormValues,
 } from './subiekt-setup.schema';
@@ -41,7 +50,18 @@ import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
 import { useToast } from '../../../shared/ui/toast-provider';
 
-export function SubiektSetupForm(): ReactElement {
+/**
+ * One form, two products. `identity` is REQUIRED and has no default: Subiekt
+ * GT and Subiekt nexo speak different bridges, so defaulting one of them would
+ * create a connection pointed at the wrong adapter - and it would do so
+ * silently, because `ConnectionService.create` does not validate the platform
+ * against the registry.
+ */
+export function SubiektSetupForm({
+  identity,
+}: {
+  identity: SubiektProductIdentity;
+}): ReactElement {
   const createConnection = useCreateConnectionMutation();
   const testConnection = useTestConnectionMutation();
   const { showToast } = useToast();
@@ -49,9 +69,13 @@ export function SubiektSetupForm(): ReactElement {
   const [createdConnectionId, setCreatedConnectionId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null);
 
+  // Per product: the bridge-URL example in the validation message and whether
+  // a token is required both depend on which Subiekt this is.
+  const schema = useMemo(() => buildSubiektSetupSchema(identity), [identity]);
+
   const form = useForm<SubiektSetupFormValues, undefined, SubiektSetupFormSubmission>({
     defaultValues: SUBIEKT_SETUP_DEFAULT_VALUES,
-    resolver: zodResolver(subiektSetupSchema),
+    resolver: zodResolver(schema),
     mode: 'onBlur',
   });
 
@@ -72,7 +96,7 @@ export function SubiektSetupForm(): ReactElement {
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      const created = await createConnection.mutateAsync(toCreateConnectionInput(values));
+      const created = await createConnection.mutateAsync(toCreateConnectionInput(values, identity));
       form.reset(values, { keepValues: true, keepDirty: false });
       setCreatedConnectionId(created.id);
       showToast({
@@ -112,9 +136,11 @@ export function SubiektSetupForm(): ReactElement {
       ) : null}
 
       <Alert tone="info" title="Before you start">
-        Run the OpenLinker <strong>Sfera bridge</strong> on the Windows machine where Subiekt GT
-        is installed, then paste the bridge URL below. OpenLinker talks to Subiekt only through that
-        bridge to issue invoices — it never connects to Subiekt directly.
+        Run the OpenLinker bridge on the Windows machine where{' '}
+        <strong>{identity.productName}</strong> is installed, give it a token in its{' '}
+        <code>appsettings.json</code>, then paste that machine&rsquo;s address and the same token
+        below. OpenLinker talks to {identity.productName} only through the bridge — it never
+        connects to it directly.
       </Alert>
 
       <FormField
@@ -135,12 +161,12 @@ export function SubiektSetupForm(): ReactElement {
         label="Bridge URL"
         name="bridgeBaseUrl"
         error={form.formState.errors.bridgeBaseUrl?.message}
-        description="The OpenLinker Sfera bridge address. Usually a LAN address — http is allowed (e.g. http://127.0.0.1:5000)."
+        description={`The bridge address, without a path. Usually a LAN address — http is allowed (e.g. ${identity.bridgeUrlExample}).`}
       >
         <Input
           {...form.register('bridgeBaseUrl')}
           className="mono-text"
-          placeholder="http://127.0.0.1:5000"
+          placeholder={identity.bridgeUrlExample}
           autoComplete="off"
           invalid={Boolean(form.formState.errors.bridgeBaseUrl)}
         />
@@ -162,10 +188,10 @@ export function SubiektSetupForm(): ReactElement {
       </FormField>
 
       <FormField
-        label="Bridge token (optional)"
+        label={identity.tokenRequired ? 'Bridge token' : 'Bridge token (optional)'}
         name="bridgeToken"
         error={form.formState.errors.bridgeToken?.message}
-        description="Advanced — only if your bridge is secured with a shared token. Leave blank for an unauthenticated LAN bridge. Stored securely on the server and never shown again."
+        description={`You choose this value yourself — it is not issued by anyone. ${identity.tokenConfigHint} Paste the same value here. Stored securely on the server and never shown again.`}
       >
         <Input
           {...form.register('bridgeToken')}
