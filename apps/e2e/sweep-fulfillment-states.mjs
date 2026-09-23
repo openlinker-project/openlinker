@@ -115,6 +115,17 @@ const SCAN_LOCK_OTHER_PACKER = 'e4a80767-0cd9-4831-98a9-ec47fc507a1e'; // e2e-pa
 const SCAN_CLOSE_WORK = 'ol_fwork_e2e_23';
 
 /** A clean, unassigned, single-unit parcel for the self-claim state. */
+/**
+ * The packer the station-label state writes to and restores.
+ *
+ * It is the `packer` actor's own row: the bench renders the SIGNED-IN
+ * packer's binding, never the order's, so borrowing somebody else's would
+ * assert nothing.
+ */
+const STATION_LABEL_USER = 'anna.pakowska';
+const STATION_LABEL_VALUE = 'Zebra ZD420 / Bench 3';
+let stationLabelOriginal = null;
+
 const CLAIM_WORK = 'ol_fwork_e2e_21';
 
 /**
@@ -186,6 +197,8 @@ let boardConflictOriginalVersion = null;
 let scanCloseMidParcel = null;
 /** The "assigned to you" set before "take next task" was pressed. */
 let takeNextBefore = null;
+/** Whether the printer line rendered BEFORE a label was set. */
+let stationLabelUnsetCount = null;
 
 /**
  * Open the closed parcel from the rail.
@@ -1140,6 +1153,113 @@ const STATES = [
       } finally {
         resetPackedWork(PACKED_TODAY_WORK);
       }
+    },
+  },
+  {
+    id: 'bench-says-which-printer-the-paper-comes-out-of',
+    group: 'bench',
+    actor: 'packer',
+    title: "The bench names the packer's own printer, and says nothing when there is none",
+    async reach(page) {
+      // Captured with NO label first: the honest empty state is half of what
+      // this asserts, and it is the half a screenshot of the set state hides.
+      stationLabelOriginal = psql(
+        `SELECT COALESCE(pack_station_label, '') FROM users WHERE username = '${STATION_LABEL_USER}';`
+      );
+      psql(`UPDATE users SET pack_station_label = NULL WHERE username = '${STATION_LABEL_USER}';`);
+      if (!(await openFromRail(page, CLAIM_WORK))) return;
+      stationLabelUnsetCount = await page
+        .locator('[data-testid="bench-documents-printer"]')
+        .count();
+
+      psql(
+        `UPDATE users SET pack_station_label = '${STATION_LABEL_VALUE}' ` +
+          `WHERE username = '${STATION_LABEL_USER}';`
+      );
+      // A full reload: the label rides on the session, which is read at sign-in.
+      await page.goto(`${BASE}/bench`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1200);
+      await openFromRail(page, CLAIM_WORK);
+    },
+    async check(page) {
+      try {
+        if (stationLabelUnsetCount !== 0) {
+          return 'rendered a printer line for a packer who has no printer set';
+        }
+        const line = page.locator('[data-testid="bench-documents-printer"]');
+        if ((await line.count()) === 0) return 'the printer line never appeared once a label was set';
+        const text = (await line.first().textContent()) ?? '';
+        if (!text.includes(STATION_LABEL_VALUE)) {
+          return `the line does not name the packer's own printer: "${text}"`;
+        }
+        // The mockup's "this station's printer, always" is deliberately NOT
+        // copied - the label lives on the USER and follows them between
+        // benches, so that clause would be the one false thing on the line.
+        return /this station|always/i.test(text)
+          ? `claims the printer belongs to the station: "${text}"`
+          : true;
+      } finally {
+        psql(
+          stationLabelOriginal === ''
+            ? `UPDATE users SET pack_station_label = NULL WHERE username = '${STATION_LABEL_USER}';`
+            : `UPDATE users SET pack_station_label = '${stationLabelOriginal}' WHERE username = '${STATION_LABEL_USER}';`
+        );
+        stationLabelOriginal = null;
+        stationLabelUnsetCount = null;
+      }
+    },
+  },
+  {
+    id: 'bench-connectivity-never-blames-the-scanner',
+    group: 'bench',
+    actor: 'packer',
+    title: 'The connectivity readout reports what the bench can prove, not the hardware',
+    async reach(page) {
+      await page.goto(`${BASE}/bench`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1800);
+    },
+    async check(page) {
+      const el = page.locator('[data-testid="bench-connectivity"]');
+      if ((await el.count()) === 0) return 'no connectivity readout is rendered';
+
+      const state = await el.first().getAttribute('data-connectivity');
+      if (state !== 'ok') return `reads "${state}" on a stack that is demonstrably up`;
+
+      // The decision this state exists to pin (#3407): nothing here can
+      // observe a keyboard-wedge scanner, so no wording may claim to.
+      const everything = `${(await el.first().textContent()) ?? ''} ${(await el.first().getAttribute('title')) ?? ''}`;
+      if (/scanner|hardware|usb|cable|printer/i.test(everything)) {
+        return `claims to know about hardware it cannot observe: "${everything.trim()}"`;
+      }
+      // And no copy may imply the offline queue `use-bench-reachability.ts`
+      // refuses to build.
+      return /sync|queue/i.test(everything)
+        ? `implies scans are queued for later: "${everything.trim()}"`
+        : true;
+    },
+  },
+  {
+    id: 'board-counts-packers-at-their-benches',
+    group: 'board',
+    actor: 'admin',
+    title: 'The metric row carries all three cards, and the third one counts presence',
+    async reach(page) {
+      await page.goto(`${BASE}/fulfillment`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(2500);
+    },
+    async check(page) {
+      for (const label of ['Unassigned right now', 'Oldest unassigned', 'Packers at their benches']) {
+        if ((await page.getByText(label, { exact: true }).count()) === 0) {
+          return `the "${label}" card is missing`;
+        }
+      }
+      // A roster read that FAILED must read "Not known", never `0` - so on a
+      // healthy stack the card must carry a real number rather than that.
+      const card = page.getByText('Packers at their benches', { exact: true }).first().locator('..');
+      const text = ((await card.textContent()) ?? '').replace(/\s+/g, ' ');
+      return /Packers at their benches\s*\d+/.test(text)
+        ? true
+        : `the count is not a number - the card reads "${text.trim()}"`;
     },
   },
 ];
