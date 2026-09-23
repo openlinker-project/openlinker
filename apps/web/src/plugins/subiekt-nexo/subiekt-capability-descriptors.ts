@@ -18,7 +18,7 @@
  * <Select> keeps a stable plugin-local import.
  *
  * PERSISTENCE PATH: the selected model persists at NESTED `config.invoicing.triggerModel`
- * (NOT a flat `config.subiektNexoTriggerModel`). The BE reader `getInvoiceTriggerModel`
+ * (NOT a flat `config.subiektTriggerModel`). The BE reader `getInvoiceTriggerModel`
  * reads `config['invoicing']['triggerModel']` and defaults to `'manual'` when
  * absent/unrecognized. A flat key would be silently ignored → always `'manual'`.
  */

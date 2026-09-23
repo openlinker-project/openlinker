@@ -4,7 +4,7 @@
  * Plugin-owned structured-config inputs rendered inside `EditConnectionForm`
  * when the connection's `platformType` is `'subiekt-nexo'`. Carries:
  *
- *   - Bridge URL  → flat `config.subiektNexoBridgeUrl` (synced via syncStructuredToJson)
+ *   - Bridge URL  → flat `config.subiektBridgeUrl` (synced via syncStructuredToJson)
  *   - Trigger Model dropdown (AC-2) → NESTED `config.invoicing.triggerModel`
  *   - Payment / bank / cash-register (#1324) → one `InlineDisclosure`:
  *       - payment method (cash/transfer) → flat `config.defaultPaymentMethod`
@@ -118,28 +118,28 @@ export function SubiektStructuredSection({
     <>
       <FormField
         label={t('subiekt.settings.bridgeUrl.label', 'Bridge URL')}
-        name="subiektNexoBridgeUrl"
-        error={form.formState.errors.subiektNexoBridgeUrl?.message}
+        name="subiektBridgeUrl"
+        error={form.formState.errors.subiektBridgeUrl?.message}
       >
         <Input
-          value={form.watch('subiektNexoBridgeUrl') ?? ''}
-          onChange={(event) => syncStructuredToJson('subiektNexoBridgeUrl', event.target.value)}
+          value={form.watch('subiektBridgeUrl') ?? ''}
+          onChange={(event) => syncStructuredToJson('subiektBridgeUrl', event.target.value)}
           placeholder="https://localhost:5005"
           disabled={!configIsParseable}
-          invalid={Boolean(form.formState.errors.subiektNexoBridgeUrl)}
+          invalid={Boolean(form.formState.errors.subiektBridgeUrl)}
         />
       </FormField>
 
       <FormField
         label={t('subiekt.settings.triggerModel.label', 'Invoice trigger')}
-        name="subiektNexoTriggerModel"
-        error={form.formState.errors.subiektNexoTriggerModel?.message}
+        name="subiektTriggerModel"
+        error={form.formState.errors.subiektTriggerModel?.message}
       >
         <Select
-          value={form.watch('subiektNexoTriggerModel') ?? ''}
-          onChange={(event) => syncStructuredToJson('subiektNexoTriggerModel', event.target.value)}
+          value={form.watch('subiektTriggerModel') ?? ''}
+          onChange={(event) => syncStructuredToJson('subiektTriggerModel', event.target.value)}
           disabled={!configIsParseable}
-          invalid={Boolean(form.formState.errors.subiektNexoTriggerModel)}
+          invalid={Boolean(form.formState.errors.subiektTriggerModel)}
         >
           <option value="">{t('subiekt.settings.triggerModel.unset', 'Not set')}</option>
           {SUBIEKT_TRIGGER_MODELS.map((model) => (

@@ -22,7 +22,7 @@
  * stay statically typed in `subiekt-structured-section.tsx`. It enters the TS
  * import graph through `plugins/subiekt/index.ts` → `plugins/index.ts`.
  *
- * The pre-existing Subiekt fields (`subiektNexoBridgeUrl`, `subiektNexoTriggerModel`,
+ * The pre-existing Subiekt fields (`subiektBridgeUrl`, `subiektTriggerModel`,
  * `subiektCapabilities`) remain host-inlined for now — their #1330 migration is
  * out of scope for #1324.
  *

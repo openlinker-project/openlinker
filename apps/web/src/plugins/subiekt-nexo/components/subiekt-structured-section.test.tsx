@@ -61,8 +61,8 @@ function Harness({
 }: HarnessProps): ReactElement {
   const form = useForm<any>({
     defaultValues: {
-      subiektNexoBridgeUrl: '',
-      subiektNexoTriggerModel: '',
+      subiektBridgeUrl: '',
+      subiektTriggerModel: '',
       subiektNexoPaymentMethod: '',
       subiektNexoBankAccountId: '',
       subiektNexoStanowiskoKasoweId: '',
@@ -105,7 +105,7 @@ describe('SubiektStructuredSection', () => {
   });
   afterEach(cleanup);
 
-  it('propagates Bridge URL changes via syncStructuredToJson under the subiektNexoBridgeUrl key', () => {
+  it('propagates Bridge URL changes via syncStructuredToJson under the subiektBridgeUrl key', () => {
     const syncStructuredToJson = vi.fn();
     renderWithProviders(<Harness syncStructuredToJson={syncStructuredToJson} />);
 
@@ -113,7 +113,7 @@ describe('SubiektStructuredSection', () => {
     fireEvent.change(input, { target: { value: 'https://bridge.example.com' } });
 
     expect(syncStructuredToJson).toHaveBeenCalledWith(
-      'subiektNexoBridgeUrl',
+      'subiektBridgeUrl',
       'https://bridge.example.com',
     );
   });
@@ -126,14 +126,14 @@ describe('SubiektStructuredSection', () => {
     expect(screen.getByRole('option', { name: 'Batched' })).toBeInTheDocument();
   });
 
-  it('routes the trigger Select change to the subiektNexoTriggerModel field', () => {
+  it('routes the trigger Select change to the subiektTriggerModel field', () => {
     const syncStructuredToJson = vi.fn();
     renderWithProviders(<Harness syncStructuredToJson={syncStructuredToJson} />);
 
     const select = screen.getByLabelText('Invoice trigger');
     fireEvent.change(select, { target: { value: 'auto-on-paid' } });
 
-    expect(syncStructuredToJson).toHaveBeenCalledWith('subiektNexoTriggerModel', 'auto-on-paid');
+    expect(syncStructuredToJson).toHaveBeenCalledWith('subiektTriggerModel', 'auto-on-paid');
   });
 
   it('renders one capability toggle per adapter descriptor entry', () => {
@@ -161,7 +161,7 @@ describe('SubiektStructuredSection', () => {
   });
 
   it('pre-selects the trigger dropdown from the hydrated form value', () => {
-    renderWithProviders(<Harness defaultValues={{ subiektNexoTriggerModel: 'batched' }} />);
+    renderWithProviders(<Harness defaultValues={{ subiektTriggerModel: 'batched' }} />);
     expect(screen.getByLabelText('Invoice trigger')).toHaveValue('batched');
   });
 
