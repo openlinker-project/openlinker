@@ -40,16 +40,17 @@ const RETIRED_IDENTITIES = ['subiekt', 'subiekt.invoicing.v1'];
 
 describe('Subiekt identity is split (GT vs nexo)', () => {
   it('registers Subiekt GT under its own platformType', () => {
-    // `platformType` is optional on the plugin type (a plugin may contribute
-    // only nav or routes), so narrow before matching rather than asserting it
-    // is present - a build-only plugin must not fail this guard.
-    const subiektPlugins = plugins.filter((plugin) =>
-      plugin.platformType?.startsWith('subiekt')
+    // Deliberately a `find`, not a count. An earlier version asserted that
+    // exactly ONE Subiekt-family plugin exists, which would have failed the
+    // day somebody added the nexo plugin - the very future this file's header
+    // promises to allow. Uniqueness of the platformType is a separate
+    // question, and the third test below is the one that asks it.
+    const subiektGt = plugins.find(
+      (plugin) => plugin.platformType === SUBIEKT_GT_PLATFORM_TYPE
     );
 
-    expect(subiektPlugins).toHaveLength(1);
-    expect(subiektPlugins[0]?.platformType).toBe(SUBIEKT_GT_PLATFORM_TYPE);
-    expect(subiektPlugins[0]?.id).toBe(SUBIEKT_GT_PLATFORM_TYPE);
+    expect(subiektGt).toBeDefined();
+    expect(subiektGt?.id).toBe(SUBIEKT_GT_PLATFORM_TYPE);
   });
 
   it('never registers a plugin under a retired Subiekt identity', () => {

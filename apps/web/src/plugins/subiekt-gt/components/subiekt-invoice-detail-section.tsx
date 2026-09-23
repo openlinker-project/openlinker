@@ -6,7 +6,7 @@
  * Subiekt (#1230) and links the PDF Subiekt renders. The slot is hidden when
  * neither regulatory data nor a PDF URL is present (nothing to show).
  *
- * @module plugins/subiekt/components
+ * @module plugins/subiekt-gt/components
  */
 import type { ReactElement } from 'react';
 import { useTranslation } from '../../../shared/i18n';

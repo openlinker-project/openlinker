@@ -4,7 +4,7 @@
  * In-memory double of `SubiektBridgeClient` — a **plugin-internal contract**,
  * not a core `*.port.ts` (a deliberate, novel use of the `/testing` seam). It
  * lets Mac/Linux contributors develop and unit-test the real Subiekt adapter
- * (#753) without a Windows VM or a live Sfera bridge — Subiekt nexo is
+ * (#753) without a Windows VM or a live Sfera bridge — Subiekt GT is
  * Windows-only and cannot be containerized, so the real dependency is
  * categorically un-runnable here (the textbook case for an in-memory fake).
  *
