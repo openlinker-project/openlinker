@@ -753,10 +753,12 @@ public static class Invoicing
                 // Sfera.EnsureKontrahent - see the comment there.
                 if (panstwoId > 0)
                 {
-                    try { kh.PanstwoId = panstwoId; }
+                    // `Panstwo`, not `PanstwoId` - see the twin in
+                    // Sfera.EnsureKontrahent for how that was established.
+                    try { kh.Panstwo = panstwoId; }
                     catch (Exception e)
                     {
-                        Console.Error.WriteLine($"Invoicing.UpsertCustomer: could not set PanstwoId={panstwoId} on {symbol}: {e.Message}");
+                        Console.Error.WriteLine($"Invoicing.UpsertCustomer: could not set Panstwo={panstwoId} on {symbol}: {e.Message}");
                     }
                 }
                 kh.Zapisz();

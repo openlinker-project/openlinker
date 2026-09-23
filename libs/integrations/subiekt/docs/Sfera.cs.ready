@@ -212,10 +212,16 @@ public static class Sfera
                 // behaviour (column left NULL) rather than throwing.
                 if (k.PanstwoId > 0)
                 {
-                    try { kh.PanstwoId = k.PanstwoId; }
+                    // The GT kontrahent's country property is `Panstwo`, NOT
+                    // `PanstwoId` - probed against the live COM object, which
+                    // raises a COMException for every other spelling tried
+                    // (IdPanstwo, KodPanstwa, Kraj, KrajId, IdKraju,
+                    // AdrPanstwoId). It takes the sl_Panstwo id, which is what
+                    // lands in adr__Ewid.adr_IdPanstwo.
+                    try { kh.Panstwo = k.PanstwoId; }
                     catch (Exception e)
                     {
-                        Console.Error.WriteLine($"Sfera.EnsureKontrahent: could not set PanstwoId={k.PanstwoId} on {k.Symbol}: {e.Message}");
+                        Console.Error.WriteLine($"Sfera.EnsureKontrahent: could not set Panstwo={k.PanstwoId} on {k.Symbol}: {e.Message}");
                     }
                 }
                 kh.Zapisz();
