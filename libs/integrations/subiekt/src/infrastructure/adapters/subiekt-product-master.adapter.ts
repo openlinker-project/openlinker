@@ -60,6 +60,7 @@ import type {
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type {
   BridgeCreateProductRequest,
+  BridgeListCategoriesResponse,
   BridgeListProductSymbolsResponse,
   BridgeProduct,
   BridgeSearchProductsResponse,
@@ -79,6 +80,30 @@ import type { SubiektTransportRetryability } from '../../domain/types/subiekt-tr
 import { isBridgeUrlSafe } from '../http/subiekt-url-safety';
 
 /** Read the retryability phase, defaulting to the fiscal-safe `'indeterminate'` (mirrors the Inventory/Invoicing adapters' identical helper). */
+/**
+ * Project a towar's group onto the neutral `Category[]`.
+ *
+ * Pure, and deliberately conservative about what counts as "has a group":
+ * both an absent field (a bridge predating it) and a `null` (a towar with no
+ * group) answer `[]`, because neither is something an operator can map. A
+ * group id with no name still answers a category - the id is the mappable
+ * fact and a missing label is a display problem, not an absent group - while
+ * a name with no id answers `[]`, since there is no key to map against.
+ */
+function toDomainCategories(bridgeProduct: BridgeProduct): Category[] {
+  const id = bridgeProduct.grupaId;
+  if (typeof id !== 'number' || !Number.isFinite(id)) {
+    return [];
+  }
+  const name = bridgeProduct.grupaNazwa;
+  return [
+    {
+      id: String(id),
+      name: typeof name === 'string' && name !== '' ? name : String(id),
+    },
+  ];
+}
+
 function readRetryability(error: SubiektBridgeUnreachableError): SubiektTransportRetryability {
   const phase = (error as { retryability?: unknown }).retryability;
   return phase === 'safe' || phase === 'indeterminate' ? phase : 'indeterminate';
@@ -276,11 +301,70 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
     return Promise.reject(new SubiektProductNotSupportedException('upsertProductVariant'));
   }
 
-  getProductCategories(_productId: string): Promise<Category[]> {
-    return Promise.reject(new SubiektProductNotSupportedException('getProductCategories'));
+  /**
+   * The towar's group, as a single-element `Category[]`.
+   *
+   * Subiekt GT gives a towar exactly ONE group (`tw__Towar.tw_IdGrupa`), so
+   * this never returns more than one entry - the array is the port's shape,
+   * not a claim that a product can sit in several categories here.
+   *
+   * An empty array means the towar carries no group, and is deliberately the
+   * same answer as "this bridge does not report one": in both cases there is
+   * nothing to map, and the alternative (throwing, as this used to) makes a
+   * perfectly ordinary ungrouped product fail a catalogue read.
+   */
+  async getProductCategories(productId: string): Promise<Category[]> {
+    const symbol = await this.resolveExternalSymbol(productId);
+    if (symbol === null) {
+      throw new MasterProductNotFoundError(productId, this.connection.id);
+    }
+    try {
+      const bridgeProduct = await this.getJson<BridgeProduct>(
+        `/api/products/${encodeURIComponent(symbol)}`,
+      );
+      return toDomainCategories(bridgeProduct);
+    } catch (error: unknown) {
+      if (error instanceof SubiektRejectedError) {
+        throw new MasterProductNotFoundError(productId, this.connection.id, error);
+      }
+      throw this.translateBridgeError(error);
+    }
+  }
+
+  /**
+   * The connection's whole group list (`sl_GrupaTw`), for the category-mapping
+   * surface.
+   *
+   * FLAT by construction: `sl_GrupaTw` has no parent column, so no `parentId`
+   * and no `depth` are emitted. Synthesising either - for instance by reading
+   * `grt_NrAnalityka` as a path - would invent a hierarchy Subiekt does not
+   * have, and an operator mapping against it would be mapping against a shape
+   * that exists nowhere but here.
+   *
+   * `active` is likewise omitted rather than defaulted to `true`: Subiekt
+   * carries no such flag for a group, and the neutral `Category` already
+   * documents an absent value as "defaults to true".
+   */
+  async getCategories(): Promise<Category[]> {
+    try {
+      const response = await this.getJson<BridgeListCategoriesResponse>(
+        '/api/products/categories',
+      );
+      return response.categories.map((category) => ({
+        id: String(category.id),
+        name: category.nazwa,
+      }));
+    } catch (error: unknown) {
+      throw this.translateBridgeError(error);
+    }
   }
 
   assignCategories(_productId: string, _categoryIds: string[]): Promise<void> {
+    // Read-only by decision, not by accident: nothing in OpenLinker needs to
+    // WRITE a Subiekt group in order to map categories, and a write here would
+    // move a towar between the operator's own groups on the strength of a
+    // mapping they authored for a marketplace. Honest failure, matching
+    // `deleteProduct` / `upsertProductVariant`.
     return Promise.reject(new SubiektProductNotSupportedException('assignCategories'));
   }
 

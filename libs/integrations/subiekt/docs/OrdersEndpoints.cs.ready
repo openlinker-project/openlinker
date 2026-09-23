@@ -223,7 +223,14 @@ public static class OrdersEndpoints
         // Resolved BEFORE EnsureKontrahent, which is synchronous and runs on
         // the COM apartment thread. One shared resolver with the invoice path,
         // so the two cannot map the same code to different countries.
-        var panstwoId = await Invoicing.ResolveCountryId(req.Buyer.CountryCode);
+        //
+        // Skipped entirely for a repeat buyer: EnsureKontrahent returns an
+        // existing kontrahent untouched, so the lookup's result would be
+        // discarded and the SELECT is pure waste on the most common order
+        // there is.
+        var panstwoId = existingKontrahentId == 0
+            ? await Invoicing.ResolveCountryId(req.Buyer.CountryCode)
+            : 0;
 
         int kontrahentId = Sfera.EnsureKontrahent(new KontrahentInfo
         {
