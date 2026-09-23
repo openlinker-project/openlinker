@@ -63,39 +63,54 @@ becomes a **faktura** (B2B); **without** one it becomes a **paragon** (B2C).
    a **foreground console process**; the console window must stay open, and closing it stops
    the bridge (there is no background service — see the prerequisites note above).
 2. **Ports.** The bridge listens on two ports:
-   - **5055 (HTTPS, self-signed certificate)** — the API OpenLinker talks to.
-   - **5056 (plain HTTP)** — used only so a browser or image-fetcher (OpenLinker, and
-     Allegro through it) can retrieve bridge-hosted images without having to trust the
-     self-signed cert.
-3. **`OL_BRIDGE_PUBLIC_BASE`.** The one environment variable the bridge reads. It defaults
-   to `http://host.docker.internal:5056` and is used to build the public URLs the bridge
-   returns for images — those URLs are fetched from *outside* the bridge machine (by
-   OpenLinker, and by Allegro through it), so they must never resolve to `localhost`. Set it
-   to a reachable address for your deployment if the default doesn't apply (e.g. OpenLinker
-   isn't running in a container on the same Docker host).
-4. **Authentication is fixed, not configured via environment variables.** The bridge ships
-   with:
-   - a **Basic-auth username/password pair** for its general (product/order/inventory)
-     endpoints, and
-   - a **separate bearer token** for the invoicing endpoints specifically (accepted as
-     either `Authorization: Bearer <token>` or an `x-bridge-token: <token>` header).
+   - **5056 (plain HTTP)** — always open. With no certificate configured this is the port
+     OpenLinker reaches the bridge on, and the one bridge-hosted images are served from.
+   - **5055 (HTTPS)** — opens only when `CertificatePath` / `CertificatePassword` are set.
+     Use it when the bridge and OpenLinker are not on the same trusted network.
+3. **Choose the bridge token yourself.** `InvoiceToken` is a shared secret **you invent**.
+   Nobody issues it, it is not printed anywhere, and it is not compiled into the binary.
+   Put a long random string in the bridge's `appsettings.json` (or set
+   `OL_BRIDGE_INVOICE_TOKEN`), and paste **the same value** into the *Bridge token* field
+   in [Part B](#part-b--connect-subiekt-in-openlinker). The two must match exactly.
 
-   Both are hardcoded constants in the bridge, not read from an environment variable or
-   config file — consult the bridge operator/deployment owner for the actual values used in
-   your deployment, and configure the matching OpenLinker connection credentials
-   ([Part B](#part-b--connect-subiekt-in-openlinker)) to match.
-5. **Firewall.** Allow inbound TCP on the bridge ports (5055 and, if you need image
-   fetching to work, 5056).
-6. **Smoke-test** from the machine where OpenLinker runs:
+   Until you set it, every `/api/*` request answers `401` with
+   `bridge token is not configured`. That is deliberate — a credential compiled into a
+   binary is a credential everybody has — but it means an unset token is not a "no
+   security" mode, it is a bridge that serves OpenLinker nothing.
+
+   > An earlier version of this guide said the credentials were "hardcoded constants in
+   > the bridge" and told you to consult your bridge operator. That was wrong, and wrong
+   > in the direction that leaves you stuck: there is nobody to consult.
+
+   The bridge's other settings resolve the same way — environment variable
+   `OL_BRIDGE_<KEY_UPPER_SNAKE>`, then `appsettings.json` beside the executable, then a
+   built-in default. `PublicBase` (`OL_BRIDGE_PUBLIC_BASE`, default
+   `http://host.docker.internal:5056`) builds the public URLs the bridge returns for
+   images; those are fetched from *outside* the bridge machine, so they must never resolve
+   to `localhost`.
+4. **Firewall.** Allow inbound TCP on the bridge ports:
    ```powershell
-   Invoke-RestMethod https://<bridge-host>:5055/health -SkipCertificateCheck
+   New-NetFirewallRule -DisplayName "OpenLinker Subiekt GT bridge" -Direction Inbound `
+     -Protocol TCP -LocalPort 5055,5056 -Action Allow -Profile Private
    ```
-   `/health` is anonymous (no auth required) and reports whether the bridge's Sfera GT
-   session is up and Subiekt is reachable.
+   Scope it to the profile your LAN actually uses. The bridge's only authentication is the
+   shared token, so do not expose these ports to the internet.
+5. **Smoke-test** from the machine where OpenLinker runs — **both halves**:
+   ```powershell
+   # Is it up? /health is anonymous by design.
+   Invoke-RestMethod http://<bridge-host>:5056/health
 
-> A healthy bridge's console shows it listening on both ports and logs a successful Sfera
-> GT session start. OpenLinker's **Test connection** (Part B) exercises the same `/health`
-> probe end-to-end.
+   # Does the token work? /health cannot tell you - it is exempt from auth.
+   Invoke-RestMethod http://<bridge-host>:5056/api/bank-accounts `
+     -Headers @{ Authorization = "Bearer <your-token>" }
+   ```
+   A `200` with a `{ success: true, ... }` envelope means the token works. A `401` means it
+   does not, and the response body says which problem you have — a wrong value, or a bridge
+   where `InvoiceToken` was never set.
+
+> A healthy bridge's console shows it listening and logs a successful Sfera GT session
+> start. OpenLinker's **Test connection** (Part B) runs the authorized check above, so a
+> green result there means reachable **and** authorized.
 
 ---
 
@@ -116,30 +131,37 @@ Fill the wizard:
 
 - **Connection name** — a label, e.g. `My Subiekt`.
 - **Bridge URL** — the bridge address, **without** `/api` (the adapter appends the paths),
-  e.g. `https://192.168.1.50:5055`.
-- **Bridge token** *(optional, advanced)* — the bearer token the bridge's invoicing
-  endpoints expect (see [Part A](#part-a--run-the-bridge-on-windows)). Stored encrypted,
-  never shown again.
+  e.g. `http://192.168.1.50:5056`, or `https://192.168.1.50:5055` once you configure a
+  certificate.
+- **Bridge token** — **required**. The value you chose in
+  [Part A](#part-a--run-the-bridge-on-windows) step 3. The bridge rejects every request
+  without it. Stored encrypted, never shown again.
 
 ![Subiekt guided wizard - filled form](./assets/09-ol-wizard-filled.png)
 
-Click **Connect Subiekt**. After it's created, click **Test connection** — this probes the
-bridge `/health`.
+Click **Connect Subiekt**. After it's created, click **Test connection** — this probes an
+authorized bridge route, so a green result means the bridge is reachable **and** your token
+works.
 
 ![Connection created — Test connection](./assets/12-ol-subiekt-created.png)
 
 ![Connection test passed](./assets/13-ol-test-ok.png)
 
-The new connection shows up with the **Invoicing** capability:
+The new connection shows up with its capabilities — `Invoicing`, `ProductMaster`,
+`InventoryMaster`, `OrderSource` and `OrderProcessorManager`:
 
 ![Connections list with the Subiekt connection](./assets/14-ol-connections-with-subiekt.png)
 
 ![Subiekt connection detail](./assets/15-ol-subiekt-detail.png)
 
 > **Advanced mode (alternative).** You can also add the connection via **Add connection →
-> Use advanced mode**: `Platform type = Subiekt`, `Adapter key = subiekt.invoicing.v1`,
-> `Enabled capabilities = Invoicing`, `Credentials JSON = { "bridgeToken": "<token>" }`,
-> `Config JSON = { "bridgeBaseUrl": "https://<host>:5055", "invoicing": { "triggerModel": "manual" } }`.
+> Use advanced mode**: `Platform type = subiekt-gt`, `Adapter key = subiekt.gt.v1`,
+> `Credentials JSON = { "bridgeToken": "<token>" }`,
+> `Config JSON = { "bridgeBaseUrl": "http://<host>:5056", "invoicing": { "triggerModel": "manual" } }`.
+> Leave `Enabled capabilities` empty so the API fills it from the adapter manifest — typing a
+> narrower set here is how a connection silently loses a capability it should have had.
+> **Do not type `subiekt` or `subiekt.invoicing.v1`**: those are retired, nothing validates
+> them, and the connection would be created and then recognised by no adapter.
 
 ---
 
@@ -159,7 +181,7 @@ the settings. Everything you set in the wizard is editable here, plus:
 - **Rotate bridge token** — replace the stored bearer token without restarting the API
   (e.g. after the bridge's token is rotated). The token is write-only — stored
   encrypted, never shown back.
-- **Adapter key** — `subiekt.invoicing.v1` (inferred from the platform; rarely changed).
+- **Adapter key** — `subiekt.gt.v1` (inferred from the platform; rarely changed).
 
 Click **Save changes**.
 

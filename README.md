@@ -49,7 +49,8 @@ If you sell on your own shop *and* on marketplaces like Allegro, you've already 
 | **[AI router](./libs/integrations/ai/)** *(Anthropic, OpenAI)* | Content suggestion | ✅ Live |
 | **[InPost](./libs/integrations/inpost/)** *([guide](./libs/integrations/inpost/docs/setup-guide.md))* | Shipping *(ShipX — paczkomat + kurier, labels, webhooks)* | ✅ Live |
 | **[DPD](./libs/integrations/dpd-polska/)** *([guide](./libs/integrations/dpd-polska/docs/setup-guide.md))* | Shipping *(REST labels + protocols, SOAP tracking)* | ✅ Live |
-| **[Subiekt nexo](./libs/integrations/subiekt/)** *([guide](./libs/integrations/subiekt/docs/setup-guide.md) · [tutorial](./libs/integrations/subiekt/docs/tutorial.md))* | Invoicing *(via Sfera bridge — first `InvoicingPort` adapter)* | ✅ Live |
+| **[Subiekt GT](./libs/integrations/subiekt/)** *([guide](./libs/integrations/subiekt/docs/setup-guide.md) · [tutorial](./libs/integrations/subiekt/docs/tutorial.md))* | Invoicing · Catalogue · Stock · Order ingestion · Order creation *(via the Sfera GT bridge, COM automation)* | ✅ Live |
+| **[Subiekt nexo](./libs/integrations/subiekt-nexo/)** *([guide](./libs/integrations/subiekt-nexo/docs/setup-guide.md) · [tutorial](./libs/integrations/subiekt-nexo/docs/tutorial.md))* | Invoicing *(via the Sfera bridge — first `InvoicingPort` adapter)* | ✅ Live |
 | **[KSeF](./libs/integrations/ksef/)** *([guide](./libs/integrations/ksef/docs/setup-guide.md) · [tutorial](./libs/integrations/ksef/docs/tutorial.md))* | Invoicing *(Polish national e-invoicing)* | ✅ Live |
 | **[Infakt](./libs/integrations/infakt/)** | Invoicing *(accounting SaaS — issues invoices and relays them to KSeF on the seller's behalf)* | ✅ Live |
 | Shopify · BigCommerce · Magento | Shop | 📋 Planned |
@@ -71,7 +72,7 @@ OpenLinker is built around a small set of capability ports. Each integration imp
 | **Orders** | Ingest from any source *(event journal or watermark)*; create + manage them in a destination shop | PrestaShop *(source + destination)* · WooCommerce *(source + destination)* · Allegro *(source)* · Erli *(source)* |
 | **Offers / listings** | Manage marketplace offers — categories, prices, quantities, seller policies, GPSR data | Allegro · Erli |
 | **Shipping** | Generate labels + handover protocols, fetch tracking *(via `ShippingProviderManagerPort`)* | Allegro · InPost · DPD |
-| **Invoicing** | Issue fiscal documents and, where supported, submit them to a tax authority for clearance *(via `InvoicingPort`)* | Subiekt nexo · KSeF · Infakt |
+| **Invoicing** | Issue fiscal documents and, where supported, submit them to a tax authority for clearance *(via `InvoicingPort`)* | Subiekt GT · Subiekt nexo · KSeF · Infakt |
 | **Content suggestion** | Provider-agnostic AI completions with editable, versioned prompts | AI router *(Anthropic, OpenAI)* |
 | **Auth & ops** | Per-integration connection testers, webhook provisioners, OAuth, retry classifiers, credentials/config validators | All integrations |
 
@@ -128,7 +129,7 @@ How OpenLinker measures against the standard set of multichannel-orchestration f
 | **Orders** | | |
 | Ingest orders from any source *(marketplace or shop)* | ✅ | `OrderSourcePort` |
 | Create + manage orders in destination shop | ✅ | `OrderProcessorManagerPort` |
-| Generate invoices / fiscal documents *(+ tax-authority clearance)* | ✅ | `InvoicingPort` — Subiekt nexo, KSeF, Infakt |
+| Generate invoices / fiscal documents *(+ tax-authority clearance)* | ✅ | `InvoicingPort` — Subiekt GT, Subiekt nexo, KSeF, Infakt |
 | Accounting export / GL / valuation | — | *Out of scope; integrate accounting separately* |
 | **Inventory & catalog** | | |
 | Read products, variants, attributes | ✅ | `ProductMasterPort` |

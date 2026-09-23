@@ -106,7 +106,7 @@ Fill the wizard:
 - **Connection name** — a label, e.g. `My Subiekt`.
 - **Bridge URL** — the bridge address, **without** `/api` (the adapter appends the paths),
   e.g. `https://192.168.1.50:5005`.
-- **Bridge token** *(optional, advanced)* — the same value as the bridge's `Auth__ApiKey`,
+- **Bridge token** — **required**. The same value as the bridge's `Auth__ApiKey`,
   for a secured bridge. Stored encrypted, never shown again.
 
 ![Subiekt guided wizard - filled form](./assets/09-ol-wizard-filled.png)
@@ -125,7 +125,7 @@ The new connection shows up with the **Invoicing** capability:
 ![Subiekt connection detail](./assets/15-ol-subiekt-detail.png)
 
 > **Advanced mode (alternative).** You can also add the connection via **Add connection →
-> Use advanced mode**: `Platform type = Subiekt`, `Adapter key = subiekt.invoicing.v1`,
+> Use advanced mode**: `Platform type = subiekt-nexo`, `Adapter key = subiekt.nexo.v1`,
 > `Enabled capabilities = Invoicing`, `Credentials JSON = { "bridgeToken": "<token>" }`,
 > `Config JSON = { "bridgeBaseUrl": "https://<host>:5005", "invoicing": { "triggerModel": "manual" } }`.
 
@@ -147,7 +147,7 @@ the settings. Everything you set in the wizard is editable here, plus:
 - **Rotate bridge token** — replace the stored Bearer token without restarting the API
   (e.g. after rotating `Auth__ApiKey` on the bridge). The token is write-only — stored
   encrypted, never shown back.
-- **Adapter key** — `subiekt.invoicing.v1` (inferred from the platform; rarely changed).
+- **Adapter key** — `subiekt.nexo.v1` (inferred from the platform; rarely changed).
 
 Click **Save changes**.
 

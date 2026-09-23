@@ -179,8 +179,9 @@ The canonical OL-owned order-lifecycle state machine (authoritative
 `CorrectionIssuer`; Infakt implements `RegulatoryStatusReader` (it relays to
 KSeF rather than transmitting directly), `CorrectionIssuer`,
 `RegulatoryDocumentReader`, and `BankAccountsReader` / `BankAccountDefaultSetter`;
-Subiekt nexo implements `RegulatoryStatusReader`, `CorrectionIssuer`, and
-`BankAccountsReader` / `BankAccountDefaultSetter`; eparagony.pl implements
+Subiekt GT and Subiekt nexo each implement `RegulatoryStatusReader`,
+`CorrectionIssuer`, and `BankAccountsReader` / `BankAccountDefaultSetter` —
+two separate InsERT products on two separate bridges, never one adapter; eparagony.pl implements
 `RegulatoryStatusReader` and `CorrectionIssuer` (#3193), on the same relay
 split as Infakt for the base document — it hands the document to the national
 e-invoicing hub on the seller's behalf and reads back the clearance, never

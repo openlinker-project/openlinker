@@ -15,7 +15,8 @@ order → invoice flow.
   demo/trial database; a production nexo requires the paid Sfera add-on).
 - **.NET 8 runtime** on the Windows machine.
 - The [`openlinker-subiekt-bridge`](https://github.com/openlinker-project/openlinker-subiekt-bridge)
-  repository cloned (not yet published).
+  repository cloned. It is public; the nexo bridge lives in `bridge/` and is run from
+  source, so the machine also needs the **.NET 8 SDK**, not just the runtime.
 - OpenLinker running (API + worker + web) and reachable from the Windows machine.
 - A **source connection** (e.g. PrestaShop or Allegro) already set up in OpenLinker
   so that orders flow in.
@@ -156,7 +157,7 @@ Click the connection to view its detail page:
 ![Subiekt connection detail — capabilities, status, edit surface](./assets/15-ol-subiekt-detail.png)
 
 > **Advanced mode (alternative):** Add connection → Use advanced mode:
-> `Platform type = subiekt`, `Adapter key = subiekt.invoicing.v1`,
+> `Platform type = subiekt-nexo`, `Adapter key = subiekt.nexo.v1`,
 > `Enabled capabilities = Invoicing`,
 > `Credentials JSON = { "bridgeToken": "<token>" }`,
 > `Config JSON = { "bridgeBaseUrl": "http://<host>:5005" }`.

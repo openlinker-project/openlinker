@@ -13,7 +13,7 @@
  * routes this adapter calls (`/api/orders`, `/api/orders/feed`,
  * `/api/inventory/adjust`, `/api/products/categories`, `/api/fiscalize`) do
  * not exist on the nexo bridge at all, and where the routes do overlap the
- * envelopes differ. A nexo adapter, if one is ever built, gets its OWN
+ * envelopes differ. The nexo adapter (`@openlinker/integrations-subiekt-nexo`) has its OWN
  * `platformType` and its OWN `adapterKey` - never a shared one, never an alias
  * that maps the old bare `'subiekt'` onto either of them, because such an
  * alias would be ambiguous the moment the second entity exists.

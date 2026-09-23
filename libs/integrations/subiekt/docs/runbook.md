@@ -9,7 +9,8 @@ Operational reference for the Subiekt GT integration. For the step-by-step setup
 
 OpenLinker → (HTTPS + Bearer) → **Subiekt Bridge** (`openlinker-subiekt`, .NET 8, on the
 Windows box next to Subiekt) → Sfera GT (COM automation, ProgID `InsERT.GT`) →
-**Subiekt GT**. Adapter key `subiekt.invoicing.v1`, capability `Invoicing`.
+**Subiekt GT**. Adapter key `subiekt.gt.v1`, platform type `subiekt-gt`, capabilities
+`Invoicing`, `ProductMaster`, `InventoryMaster`, `OrderSource`, `OrderProcessorManager`.
 
 Sfera GT is the classic COM automation surface InsERT GT products expose (ProgID
 `InsERT.GT`) — it is **not** the same thing as the separate .NET Sfera SDK
@@ -21,8 +22,8 @@ Sfera GT is the classic COM automation surface InsERT GT products expose (ProgID
 
 | Field (wizard) | Config key | Notes |
 |---|---|---|
-| Bridge URL | `config.bridgeBaseUrl` | `https://<host>:5005` — **no** `/api` suffix. |
-| Bridge token | credential `bridgeToken` | Basic-auth credential pair for general endpoints, sent as `Authorization: Bearer` (the only header the bridge checks — a redundant `x-bridge-token` header is also sent but ignored). Invoicing endpoints use a **separate** bearer/`x-token` value. Both are fixed values configured on the bridge — consult the bridge operator for the actual values used in your deployment. Stored encrypted. |
+| Bridge URL | `config.bridgeBaseUrl` | `http://<host>:5056`, or `https://<host>:5055` once a certificate is configured — **no** `/api` suffix. |
+| Bridge token | credential `bridgeToken` | **Required.** The bridge's `InvoiceToken`, which the operator chooses and sets in the bridge's `appsettings.json` (or `OL_BRIDGE_INVOICE_TOKEN`). Sent as both `Authorization: Bearer` and `x-bridge-token`; the bridge accepts either. Without it every `/api/*` route answers 401. Stored encrypted. |
 | Request timeout | `config.timeoutMs` | optional, 1000–120000 ms. |
 | Trigger model | `config.invoicing.triggerModel` | `manual` \| `auto-on-paid` \| `auto-on-shipped` \| `batched`. |
 
@@ -36,23 +37,33 @@ means an operator physically or remotely re-running `start-bridge.bat`.
 
 The bridge listens on two ports:
 
-- **5055 (HTTPS, self-signed cert)** — the port OpenLinker talks to.
-- **5056 (plain HTTP)** — used only so a browser or image-fetcher can reach the bridge without
-  cert-trust issues.
+- **5056 (plain HTTP)** — always open. With no certificate configured, this is the port
+  OpenLinker reaches the bridge on, and the one images are served from.
+- **5055 (HTTPS)** — opens only when `CertificatePath` / `CertificatePassword` are set. Use it
+  when the bridge and OpenLinker are not on the same trusted network.
 
-Auth is two fixed, hardcoded credentials baked into the bridge (`Program.cs`), not environment
-variables: a Basic-auth username/password pair for general endpoints, and a separate
-Bearer/`x-token` value for invoicing endpoints specifically. Consult the bridge operator for the
-actual values used in your deployment.
+Auth is two credentials the **operator chooses**: `ApiUser` / `ApiPassword` guard the
+WooCommerce-dialect shim routes, and `InvoiceToken` guards every `/api/*` route — the one
+OpenLinker uses. Neither has a default, and unset means the routes they guard are CLOSED, not
+open: a credential compiled into a binary is a credential everybody has.
 
-The one real environment variable the bridge reads is `OL_BRIDGE_PUBLIC_BASE` (defaults to
-`http://host.docker.internal:5056`) — it controls how image URLs the bridge returns are
-resolved, since OpenLinker and Allegro fetch those images from outside the bridge machine's own
-loopback.
+> An earlier version of this runbook said these were "hardcoded constants baked into the
+> bridge" and told the reader to consult their bridge operator. That was wrong, and wrong in
+> the direction that leaves an operator stuck: there is nobody to consult, and until the value
+> is set the bridge serves OpenLinker nothing.
 
-- **Firewall.** Open inbound TCP on the bridge ports (5055 for OpenLinker, 5056 if
-  browser/image access is needed from elsewhere).
-- **Auth.** `/health` is anonymous; every `/api/*` route requires the Bearer token (401 otherwise).
+Every key resolves in the same order: the environment variable `OL_BRIDGE_<KEY_UPPER_SNAKE>`,
+then `appsettings.json` beside the executable, then a built-in default. So the invoicing token
+is `OL_BRIDGE_INVOICE_TOKEN` or `InvoiceToken` in the file, and `OL_BRIDGE_PUBLIC_BASE` /
+`PublicBase` is one key among many rather than the only one — it controls how image URLs the
+bridge returns are resolved, since OpenLinker and Allegro fetch those images from outside the
+bridge machine's own loopback.
+
+- **Firewall.** Open inbound TCP on the bridge ports (5056, and 5055 once TLS is configured).
+- **Auth.** Every `/api/*` route requires the Bearer token and answers 401 without it.
+  `/health` is anonymous by design, so **a passing `/health` proves nothing about the token** —
+  check `GET /api/bank-accounts` with the token instead. OpenLinker's own *Test connection*
+  does exactly that.
 
 ## <a name="license"></a>License note
 
@@ -67,12 +78,12 @@ your partner before going live.
 | Subiekt | Status |
 |---|---|
 | **GT** | ✅ Full support — driven via Sfera GT (COM automation, ProgID `InsERT.GT`). Verified live against InsERT GT 1.89 SP1. |
-| **nexo** | ❌ Not supported by this integration (a different bridge, targeting the .NET Sfera SDK, would be required). |
+| **nexo** | ❌ Not served by *this* adapter — it is a different product on a different bridge. Use [`@openlinker/integrations-subiekt-nexo`](../../subiekt-nexo/README.md), which ships alongside. |
 
 | Component | Verified |
 |---|---|
 | Bridge runtime | .NET 8 (`net8.0-windows`) |
-| OpenLinker adapter | `subiekt.invoicing.v1` |
+| OpenLinker adapter | `subiekt.gt.v1` |
 | Subiekt GT | InsERT GT 1.89 SP1 |
 | Order source (example) | PrestaShop 9.0.2 webservice |
 

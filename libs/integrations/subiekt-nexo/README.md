@@ -23,7 +23,7 @@ to Invoice (faktura) and does not derive the type from the NIP.
 
 | Property | Value |
 |---|---|
-| **Adapter key** | `subiekt.invoicing.v1` |
+| **Adapter key** | `subiekt.nexo.v1` |
 | **Platform type** | `subiekt` |
 | **Package** | `@openlinker/integrations-subiekt-nexo` |
 
