@@ -118,6 +118,7 @@ describe('PriceChangesService', () => {
   let connections: { get: jest.Mock; list: jest.Mock; update: jest.Mock };
   let productsService: { getVariantsByIds: jest.Mock; getProductsByIds: jest.Mock };
   let jobEnqueue: { enqueueJob: jest.Mock };
+  let destinationCurrencyResolution: { resolveForConnection: jest.Mock };
   let service: PriceChangesService;
 
   beforeEach(() => {
@@ -155,6 +156,11 @@ describe('PriceChangesService', () => {
       getProductsByIds: jest.fn().mockResolvedValue([]),
     };
     jobEnqueue = { enqueueJob: jest.fn().mockResolvedValue({ jobId: 'job-1', isExisting: false }) };
+    // Defaults to `null` — no adapter-declared value — so every existing
+    // test relying on the `config.currency` fallback (or on `null` when
+    // unset) is unaffected; tests exercising the adapter-declared
+    // resolution path override this per-case (#3203).
+    destinationCurrencyResolution = { resolveForConnection: jest.fn().mockResolvedValue(null) };
 
     service = new PriceChangesService(
       episodes as never,
@@ -162,7 +168,8 @@ describe('PriceChangesService', () => {
       bulkBatches as never,
       connections as never,
       productsService as never,
-      jobEnqueue as never
+      jobEnqueue as never,
+      destinationCurrencyResolution as never
     );
   });
 
@@ -583,6 +590,37 @@ describe('PriceChangesService', () => {
       expect(page.hiddenStaleCount).toBe(2);
       expect(page.total).toBe(50);
       expect(page.hasMore).toBe(true);
+    });
+
+    it('prefers config.currency over the adapter-declared value when they disagree (#3159 review, BLOCKING)', async () => {
+      episodes.findOpenAll.mockResolvedValue([buildEpisode({ id: 'ep-1', destinationConnectionId: DEST_ID })]);
+      connections.list.mockResolvedValue([buildConnection({ currency: 'EUR' })]);
+      destinationCurrencyResolution.resolveForConnection.mockResolvedValue('PLN');
+
+      const page = await service.listOpen({});
+
+      expect(destinationCurrencyResolution.resolveForConnection).toHaveBeenCalledWith(DEST_ID);
+      expect(page.items[0].destinationCurrency).toBe('EUR');
+    });
+
+    it('falls back to config.currency when the adapter declares nothing', async () => {
+      episodes.findOpenAll.mockResolvedValue([buildEpisode({ id: 'ep-1', destinationConnectionId: DEST_ID })]);
+      connections.list.mockResolvedValue([buildConnection({ currency: 'PLN' })]);
+      destinationCurrencyResolution.resolveForConnection.mockResolvedValue(null);
+
+      const page = await service.listOpen({});
+
+      expect(page.items[0].destinationCurrency).toBe('PLN');
+    });
+
+    it('reports destinationCurrency: null when neither the adapter nor config.currency resolves', async () => {
+      episodes.findOpenAll.mockResolvedValue([buildEpisode({ id: 'ep-1', destinationConnectionId: DEST_ID })]);
+      connections.list.mockResolvedValue([buildConnection()]);
+      destinationCurrencyResolution.resolveForConnection.mockResolvedValue(null);
+
+      const page = await service.listOpen({});
+
+      expect(page.items[0].destinationCurrency).toBeNull();
     });
 
     it('passes a bounded page (default limit) down to the repository, plus includeRecentlyResolved', async () => {
