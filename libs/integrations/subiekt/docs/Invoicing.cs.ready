@@ -661,6 +661,15 @@ public static class Invoicing
 
     /// <summary>Resolve an ISO-3166-1 alpha-2 country code to sl_Panstwo.pa_Id.
     ///
+    /// NOT the same policy as the PRINTED DOCUMENT's buyer block, and the two
+    /// must not be made to match by copying one into the other. That one
+    /// (BridgeAddress.countryCode on the TypeScript side) defaults a blank to
+    /// "PL", because a printed invoice has to show some country and the
+    /// document is Polish. THIS one stores a country on the operator's own
+    /// kontrahent RECORD, which Subiekt's VAT classification then acts on -
+    /// so a guess here moves money, and an unknown code deliberately writes
+    /// nothing at all.
+    ///
     /// Returns 0 for a blank, an unrecognised or an ambiguous code, and the
     /// caller then leaves adr_IdPanstwo NULL. Never falls back to Poland: a
     /// kontrahent stamped with the wrong country is worse than one with none,

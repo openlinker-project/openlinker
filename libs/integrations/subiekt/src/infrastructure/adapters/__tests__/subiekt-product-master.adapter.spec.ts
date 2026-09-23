@@ -162,14 +162,14 @@ describe('SubiektProductMasterAdapter', () => {
     expect(variants[0].sku).toBe('SKU-1');
   });
 
-  it('deleteProduct / getProductCategories / assignCategories / upsertProductVariant throw SubiektProductNotSupportedException', async () => {
+  it('deleteProduct / assignCategories / upsertProductVariant throw SubiektProductNotSupportedException', async () => {
     const adapter = buildAdapter((() => Promise.resolve(jsonResponse(200, envelope({})))) as FetchLike);
     await expect(adapter.deleteProduct('ol_product_1')).rejects.toBeInstanceOf(
       SubiektProductNotSupportedException,
     );
-    await expect(adapter.getProductCategories('ol_product_1')).rejects.toBeInstanceOf(
-      SubiektProductNotSupportedException,
-    );
+    // `getProductCategories` no longer refuses - it reads the towar's group.
+    // `assignCategories` still does, and deliberately: nothing in OpenLinker
+    // needs to WRITE a Subiekt group in order to map categories.
     await expect(adapter.assignCategories('ol_product_1', ['x'])).rejects.toBeInstanceOf(
       SubiektProductNotSupportedException,
     );
@@ -274,6 +274,124 @@ describe('SubiektProductMasterAdapter', () => {
       await expect(
         adapter.readProductTaxRate({ productId: 'ol_product_unmapped' }),
       ).rejects.toBeInstanceOf(MasterProductNotFoundError);
+    });
+  });
+  describe('categories (sl_GrupaTw)', () => {
+    const productWithGroup = (
+      grupaId: number | null,
+      grupaNazwa: string | null,
+    ): Record<string, unknown> => ({
+      symbol: 'DZSO100',
+      nazwa: 'Perfumy',
+      cenaSprzedazyNetto: null,
+      cenaSprzedazyBrutto: 10,
+      waluta: 'PLN',
+      opis: null,
+      kodKreskowy: null,
+      jednostkaMiary: 'szt.',
+      waga: null,
+      grupaId,
+      grupaNazwa,
+    });
+
+    const seedProduct = (): void => {
+      idMapping.seed({
+        entityType: 'Product',
+        externalId: 'DZSO100',
+        connectionId: 'conn-1',
+        internalId: 'ol_product_1',
+      });
+    };
+
+    it('getCategories returns the flat group list with no parentId and no depth', async () => {
+      // sl_GrupaTw has no parent column, so a hierarchy here would be one this
+      // adapter invented and an operator would be mapping against a shape that
+      // exists nowhere but here.
+      const adapter = buildAdapter(
+        (() =>
+          Promise.resolve(
+            jsonResponse(
+              200,
+              envelope({
+                categories: [
+                  { id: 3, nazwa: 'Perfumy' },
+                  { id: 6, nazwa: 'Wody' },
+                ],
+              }),
+            ),
+          )) as FetchLike,
+      );
+
+      const categories = await adapter.getCategories();
+
+      expect(categories).toEqual([
+        { id: '3', name: 'Perfumy' },
+        { id: '6', name: 'Wody' },
+      ]);
+      expect(categories[0]).not.toHaveProperty('parentId');
+      expect(categories[0]).not.toHaveProperty('depth');
+    });
+
+    it('getCategories asks the bridge for the group list, not for a product', async () => {
+      let requestedUrl = '';
+      const adapter = buildAdapter(((url: string) => {
+        requestedUrl = url;
+        return Promise.resolve(jsonResponse(200, envelope({ categories: [] })));
+      }) as FetchLike);
+
+      await adapter.getCategories();
+
+      expect(requestedUrl).toContain('/api/products/categories');
+    });
+
+    it('getProductCategories returns the towar single group', async () => {
+      seedProduct();
+      const adapter = buildAdapter(
+        (() =>
+          Promise.resolve(jsonResponse(200, envelope(productWithGroup(3, 'Perfumy'))))) as FetchLike,
+      );
+
+      // Subiekt gives a towar exactly ONE group, so this can never be more
+      // than one entry - the array is the port shape, not a claim otherwise.
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([
+        { id: '3', name: 'Perfumy' },
+      ]);
+    });
+
+    it('returns an empty array for a towar with no group', async () => {
+      seedProduct();
+      const adapter = buildAdapter(
+        (() =>
+          Promise.resolve(jsonResponse(200, envelope(productWithGroup(null, null))))) as FetchLike,
+      );
+
+      // An ungrouped towar is entirely ordinary. Throwing here - which is what
+      // this method used to do unconditionally - made a normal catalogue read
+      // fail.
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([]);
+    });
+
+    it('falls back to the id as the label when the group carries no name', async () => {
+      seedProduct();
+      const adapter = buildAdapter(
+        (() => Promise.resolve(jsonResponse(200, envelope(productWithGroup(3, null))))) as FetchLike,
+      );
+
+      // The id is the mappable fact; a missing label is a display problem, not
+      // an absent group.
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([
+        { id: '3', name: '3' },
+      ]);
+    });
+
+    it('reports an unmapped product as a master-side absence, not as an empty category list', async () => {
+      const adapter = buildAdapter(
+        (() => Promise.resolve(jsonResponse(200, envelope(productWithGroup(3, 'Perfumy'))))) as FetchLike,
+      );
+
+      await expect(adapter.getProductCategories('ol_product_unknown')).rejects.toBeInstanceOf(
+        MasterProductNotFoundError,
+      );
     });
   });
 });
