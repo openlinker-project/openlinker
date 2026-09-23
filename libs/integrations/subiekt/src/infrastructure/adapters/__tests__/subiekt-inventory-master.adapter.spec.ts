@@ -53,7 +53,10 @@ describe('SubiektInventoryMasterAdapter', () => {
   });
 
   describe('getInventory', () => {
-    it('should sum stan/stanRez across every magazyn position when no locationId is given', async () => {
+    it('should fall back to summing every magazyn when the bridge reports no release warehouse (pre-field bridge)', async () => {
+      // A bridge predating `domyslnyMagazynId`. Summing is an over-count on a
+      // multi-warehouse install, but picking a warehouse on no information at
+      // all would be worse — so the pre-fix behaviour is preserved verbatim.
       bridge.getStock.mockResolvedValue({
         towarSymbol: TOWAR_SYMBOL,
         positions: [
@@ -68,6 +71,100 @@ describe('SubiektInventoryMasterAdapter', () => {
       expect(inventory.reserved).toBe(2);
       expect(inventory.available).toBe(13);
       expect(inventory.productId).toBe(PRODUCT_ID);
+      expect(inventory.locationId).toBeUndefined();
+    });
+
+    it('should publish ONLY the release magazyn the bridge names, not the sum', async () => {
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [
+          { magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 },
+          { magazynId: 2, magazynSymbol: 'MAP', stan: 2, stanRez: 0 },
+        ],
+        domyslnyMagazynId: 1,
+      });
+
+      const inventory = await adapter.getInventory(PRODUCT_ID);
+
+      // 508 was the oversell: the 2 units in MAP can never ship.
+      expect(inventory.quantity).toBe(506);
+      expect(inventory.available).toBe(506);
+    });
+
+    it('should warn when a towar is stocked in several magazyny and the connection names none', async () => {
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [
+          { magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 },
+          { magazynId: 2, magazynSymbol: 'MAP', stan: 2, stanRez: 0 },
+        ],
+        domyslnyMagazynId: 1,
+      });
+
+      await adapter.getInventory(PRODUCT_ID);
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('subiekt_inventory_multi_magazyn_default'),
+        expect.objectContaining({ usingMagazynId: 1, magazynIds: [1, 2] }),
+      );
+    });
+
+    it('should NOT warn when the towar sits in a single magazyn', async () => {
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [{ magazynId: 1, magazynSymbol: 'MAG', stan: 28, stanRez: 0 }],
+        domyslnyMagazynId: 1,
+      });
+
+      await adapter.getInventory(PRODUCT_ID);
+
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('should prefer the operator-configured magazyn over the bridge default', async () => {
+      const configured = new SubiektInventoryMasterAdapter(
+        bridge as unknown as SubiektInventoryBridgeClient,
+        identifierMapping,
+        CONNECTION_ID,
+        logger,
+        2,
+      );
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [
+          { magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 },
+          { magazynId: 2, magazynSymbol: 'MAP', stan: 2, stanRez: 0 },
+        ],
+        domyslnyMagazynId: 1,
+      });
+
+      const inventory = await configured.getInventory(PRODUCT_ID);
+
+      expect(inventory.quantity).toBe(2);
+      // An explicit operator choice is a fact, not a guess — nothing to warn about.
+      expect(logger.warn).not.toHaveBeenCalled();
+    });
+
+    it('should let an explicit caller locationId win over both', async () => {
+      const configured = new SubiektInventoryMasterAdapter(
+        bridge as unknown as SubiektInventoryBridgeClient,
+        identifierMapping,
+        CONNECTION_ID,
+        logger,
+        1,
+      );
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [
+          { magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 },
+          { magazynId: 2, magazynSymbol: 'MAP', stan: 2, stanRez: 0 },
+        ],
+        domyslnyMagazynId: 1,
+      });
+
+      const inventory = await configured.getInventory(PRODUCT_ID, '2');
+
+      expect(inventory.quantity).toBe(2);
     });
 
     it('should filter to one magazyn when locationId is given', async () => {
@@ -125,6 +222,64 @@ describe('SubiektInventoryMasterAdapter', () => {
       });
 
       await expect(adapter.getAvailableQuantity(PRODUCT_ID)).resolves.toBe(10);
+    });
+
+    it('should return ONLY the release warehouse (stan - stanRez), not the sum across magazyny', async () => {
+      // Same oversell the `getInventory` fix closes, one level down: a sale
+      // releases from ONE warehouse, so `getAvailableQuantity` must resolve
+      // the release magazyn exactly as `getInventory` does rather than
+      // re-summing every position it happens to read.
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [
+          { magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 6 },
+          { magazynId: 2, magazynSymbol: 'MAP', stan: 2, stanRez: 0 },
+        ],
+        domyslnyMagazynId: 1,
+      });
+
+      // 508 - 6 = 502 would be the oversell; only magazyn 1's own figure may
+      // be published.
+      await expect(adapter.getAvailableQuantity(PRODUCT_ID)).resolves.toBe(500);
+    });
+
+    it('should honour an explicit stockMagazynId over the bridge default', async () => {
+      const configured = new SubiektInventoryMasterAdapter(
+        bridge as unknown as SubiektInventoryBridgeClient,
+        identifierMapping,
+        CONNECTION_ID,
+        logger,
+        2,
+      );
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [
+          { magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 },
+          { magazynId: 2, magazynSymbol: 'MAP', stan: 2, stanRez: 1 },
+        ],
+        domyslnyMagazynId: 1,
+      });
+
+      await expect(configured.getAvailableQuantity(PRODUCT_ID)).resolves.toBe(1);
+    });
+
+    it('should throw SubiektConfigException when the configured stockMagazynId names no position this towar is stocked in', async () => {
+      const configured = new SubiektInventoryMasterAdapter(
+        bridge as unknown as SubiektInventoryBridgeClient,
+        identifierMapping,
+        CONNECTION_ID,
+        logger,
+        99,
+      );
+      bridge.getStock.mockResolvedValue({
+        towarSymbol: TOWAR_SYMBOL,
+        positions: [{ magazynId: 1, magazynSymbol: 'MAG', stan: 506, stanRez: 0 }],
+        domyslnyMagazynId: 1,
+      });
+
+      await expect(configured.getAvailableQuantity(PRODUCT_ID)).rejects.toBeInstanceOf(
+        SubiektConfigException,
+      );
     });
   });
 
