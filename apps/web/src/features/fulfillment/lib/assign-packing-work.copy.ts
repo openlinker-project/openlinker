@@ -138,7 +138,7 @@ export const ASSIGN_PACKING_WORK_COPY = {
 
   empty: {
     title: 'Nothing to assign right now',
-    message: 'No fulfilment tasks are waiting. That is normal unless fulfilment routing is switched on.',
+    message: 'Nothing is waiting to be packed. With fulfilment routing switched off, that is expected.',
   },
 
   rosterError: {
