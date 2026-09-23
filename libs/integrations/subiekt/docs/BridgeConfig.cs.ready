@@ -63,22 +63,47 @@ public static class BridgeConfig
     /// <summary>That operator's password. Blank is legitimate on a demo install.</summary>
     public static readonly string SferaPassword = Read("SferaPassword", "");
 
-    /// <summary>Basic-auth user for the WooCommerce-dialect shim routes.</summary>
-    public static readonly string ApiUser = Read("ApiUser", "olkey");
+    /// <summary>Basic-auth user for the WooCommerce-dialect shim routes.
+    ///
+    /// NO DEFAULT, and that is the point: a credential compiled into a binary
+    /// that ships in a public repository is a credential everybody has. An
+    /// unset value leaves the routes it guards CLOSED (see AuthConfigured),
+    /// so a bridge nobody configured refuses work rather than accepting it
+    /// from anyone who read the source.</summary>
+    public static readonly string ApiUser = Read("ApiUser", "");
 
-    /// <summary>Basic-auth password for the WooCommerce-dialect shim routes.</summary>
-    public static readonly string ApiPassword = Read("ApiPassword", "olsecret");
+    /// <summary>Basic-auth password for the WooCommerce-dialect shim routes.
+    /// Unset closes those routes - see ApiUser.</summary>
+    public static readonly string ApiPassword = Read("ApiPassword", "");
 
-    /// <summary>Bearer / x-bridge-token value for the /api/* routes.</summary>
-    public static readonly string InvoiceToken = Read("InvoiceToken", "olinvoicekey");
+    /// <summary>Bearer / x-bridge-token value for the /api/* routes. Unset
+    /// closes them - see ApiUser.</summary>
+    public static readonly string InvoiceToken = Read("InvoiceToken", "");
+
+    /// <summary>Are the shim routes' Basic credentials configured? Both halves
+    /// must be present: a blank password with a set user is a configuration
+    /// nobody intends and would otherwise admit an empty password.</summary>
+    public static bool ShimAuthConfigured => ApiUser != "" && ApiPassword != "";
+
+    /// <summary>Is the /api/* token configured?</summary>
+    public static bool TokenAuthConfigured => InvoiceToken != "";
 
     /// <summary>Path to the HTTPS certificate. Absolute, because the bridge is
-    /// launched from arbitrary working directories.</summary>
-    public static readonly string CertificatePath =
-        Read("CertificatePath", @"C:\Users\42zer\gtspike\bridge\bridge.pfx");
+    /// launched from arbitrary working directories.
+    ///
+    /// NO DEFAULT. A path baked into the binary names one machine's file
+    /// layout and cannot be right anywhere else, and its passphrase below
+    /// would be a plaintext password shipped in source. Unset simply means
+    /// the HTTPS listener is not opened; the plain-HTTP port still serves,
+    /// which is the port OpenLinker actually reaches the bridge on.</summary>
+    public static readonly string CertificatePath = Read("CertificatePath", "");
 
-    /// <summary>Password for <see cref="CertificatePath"/>.</summary>
-    public static readonly string CertificatePassword = Read("CertificatePassword", "gtspike");
+    /// <summary>Password for <see cref="CertificatePath"/>. No default - see
+    /// there.</summary>
+    public static readonly string CertificatePassword = Read("CertificatePassword", "");
+
+    /// <summary>Is there a certificate to open the HTTPS listener with?</summary>
+    public static bool HttpsConfigured => CertificatePath != "";
 
     /// <summary>HTTPS port. The plain-HTTP sibling is <see cref="HttpPort"/>.</summary>
     public static readonly int HttpsPort = ReadInt("HttpsPort", 5055);
@@ -100,7 +125,8 @@ public static class BridgeConfig
         var file = FileValues.Count == 0 ? "none" : $"{FileName} ({FileValues.Count} key(s))";
         return $"config: file={file}; sqlServer={SqlServer}; sqlDatabase={SqlDatabase}; "
              + $"sferaOperator={SferaOperator}; httpsPort={HttpsPort}; httpPort={HttpPort}; "
-             + $"publicBase={PublicBase}";
+             + $"publicBase={PublicBase}; httpsConfigured={HttpsConfigured}; shimAuthConfigured={ShimAuthConfigured}; "
+             + $"tokenAuthConfigured={TokenAuthConfigured}";
     }
 
     /// <summary>`SqlServer` -> `OL_BRIDGE_SQL_SERVER`.</summary>
