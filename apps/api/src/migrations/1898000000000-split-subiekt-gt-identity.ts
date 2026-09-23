@@ -58,9 +58,21 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  *       not identity.
  *
  * Do not "finish the rename" by touching those later.
+ *
+ * ON THE TIMESTAMP
+ *
+ * `1898000000000`, chosen after scanning EVERY ref rather than this branch's
+ * migrations directory. TypeORM keys applied migrations by timestamp, not by
+ * class name or file name, so two migrations sharing one timestamp means the
+ * second to run is SILENTLY skipped - no error, and `migration:show` reports
+ * nothing pending. That has already happened three times on this repo:
+ * `1893000000000` and `1894000000000` are each claimed twice today, and
+ * `1897000000000` was taken by a branch that appeared between this file being
+ * written and being reviewed. A directory listing on your own branch is not a
+ * sufficient check; scan the refs.
  */
-export class SplitSubiektGtIdentity1897000000000 implements MigrationInterface {
-  name = 'SplitSubiektGtIdentity1897000000000';
+export class SplitSubiektGtIdentity1898000000000 implements MigrationInterface {
+  name = 'SplitSubiektGtIdentity1898000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Collision guard, FIRST and before any write.
