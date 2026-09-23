@@ -40,6 +40,14 @@ const PHONE = { width: 390, height: 844 };
 const TABLET = { width: 820, height: 1180 };
 
 /**
+ * The work a label was bought for AUTOMATICALLY, with no operator click — the
+ * seeded row `seed-fulfillment-board.sql` produces and the auto-dispatch job
+ * then acts on. Named here rather than inlined so the one state that depends
+ * on a specific row says which row, and fails legibly if the seed changes.
+ */
+const AUTO_DISPATCH_WORK = 'ol_fwork_e2e_13';
+
+/**
  * `reach` navigates and settles. `check` returns true, or a string explaining
  * what it saw instead — never a bare false, because "it did not render" and
  * "it rendered the wrong thing" send you to different places.
@@ -461,7 +469,39 @@ const STATES = [
   { id: 'bench-finish-no-dialog-when-printed', group: 'post-pack', pending: 'A4/A5' },
   { id: 'bench-finish-dialog-when-not-printed', group: 'post-pack', pending: 'A4/A5' },
   { id: 'bench-handed-over-leaves-the-queue', group: 'post-pack', pending: 'A4/A5' },
-  { id: 'label-bought-automatically', group: 'auto', pending: 'A6' },
+  {
+    id: 'label-bought-automatically',
+    group: 'auto',
+    actor: 'packer',
+    title: 'A label the packer never asked for is waiting to print',
+    async reach(page) {
+      // Asserted through the PACKER's own screen rather than a database row:
+      // what the feature promises is that the paper is there when the box
+      // reaches the bench, and a row in `shipments` does not promise that.
+      await page.goto(`${BASE}/bench`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1500);
+      // Found by walking the rail rather than typing into the search box: the
+      // rail's search matches the order reference and the buyer's name and
+      // deliberately not the work id (`matchesBenchSearch`), so a search for
+      // one silently matches nothing and the state fails for the wrong reason.
+      const row = page
+        .locator('.bench-work-row__surface')
+        .filter({ hasText: AUTO_DISPATCH_WORK })
+        .first();
+      if ((await row.count()) === 0) return;
+      await row.scrollIntoViewIfNeeded();
+      await row.click();
+      await page.waitForTimeout(1800);
+    },
+    async check(page) {
+      const panel = page.locator('[data-testid="bench-documents"]');
+      if ((await panel.count()) === 0) return 'the documents panel did not render';
+      const print = await page.getByRole('button', { name: /print label/i }).count();
+      return print > 0
+        ? true
+        : 'no label to print — the automatic purchase did not reach this parcel';
+    },
+  },
 ];
 
 async function signIn(browser, actor, viewport) {
