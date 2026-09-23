@@ -80,7 +80,7 @@ export function KsefInvoiceCorrectionFlow({
   // Same read `CorrectionLineGrid` uses internally — resolved here too so this
   // component can decide WHICH table to render (react-query dedupes the
   // fetch by query key, so this costs no extra request).
-  const { linesAreAuthoritative } = useInvoiceContentQuery(invoice.id);
+  const { linesAreAuthoritative, query: contentQuery } = useInvoiceContentQuery(invoice.id);
 
   // Per-mount stable idempotency key — prevents duplicate KOR issuance on timeout/retry.
   const idempotencyKeyRef = useRef(
@@ -238,7 +238,9 @@ export function KsefInvoiceCorrectionFlow({
         </p>
       ) : null}
 
-      {linesAreAuthoritative ? (
+      {contentQuery.isLoading ? (
+        <p className="text-muted">{t('ksef.correction.loadingLines', 'Loading invoice lines…')}</p>
+      ) : linesAreAuthoritative ? (
         <CorrectionLineGrid
           invoiceId={invoice.id}
           suggestedLines={suggestedLines}

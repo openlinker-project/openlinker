@@ -38,8 +38,8 @@ import type { ReturnRefundBlockReason } from './return-money.copy';
  * The refusal code, read from the 409 body.
  *
  * `null` for anything that is not one of the reasons this build recognises,
- * so a body shape this build predates degrades to the generic conflict
- * sentence rather than rendering `undefined` at the operator.
+ * so a body shape this build predates degrades — see `describeRefundError`
+ * for where that degrade lands, which is NOT always the same sentence.
  */
 export function readRefundBlockReason(error: unknown): ReturnRefundBlockReason | null {
   if (!(error instanceof ApiError)) return null;
@@ -49,6 +49,28 @@ export function readRefundBlockReason(error: unknown): ReturnRefundBlockReason |
   return typeof reason === 'string' && reason in RETURN_REFUND_ERROR_COPY.byReason
     ? (reason as ReturnRefundBlockReason)
     : null;
+}
+
+/**
+ * True when the 409 body carries a `reason` field at all, whether or not
+ * this build recognises its value.
+ *
+ * Splits `readRefundBlockReason`'s single `null` into the two causes that
+ * `describeRefundError` must NOT answer the same way. A body with **no**
+ * `reason` field is `ReturnRefundContendedError` — a genuine stale-row race,
+ * for which the reload-and-retry `conflict` copy is correct. A body that
+ * DOES carry a `reason`, just one this build predates (a future
+ * `ReturnRefundBlockReasonValues` member), is a permanent business refusal
+ * this build cannot name — and `conflict`'s "reload and try again" is false
+ * for that case in the same way it was false for `already-attempted` before
+ * this file existed: reloading changes nothing, and for a fiscal document
+ * that cannot be withdrawn, telling the operator to retry is the wrong
+ * direction to be wrong in. That case must fall to the generic sentence.
+ */
+function hasRefundBlockReasonField(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  const details: unknown = error.details;
+  return typeof details === 'object' && details !== null && 'reason' in details;
 }
 
 /** One sentence describing why the refund confirmation did not go through. */
@@ -65,7 +87,13 @@ export function describeRefundError(error: unknown): string {
 
   if (error.status === 409) {
     const reason = readRefundBlockReason(error);
-    return reason !== null ? RETURN_REFUND_ERROR_COPY.byReason[reason] : RETURN_REFUND_ERROR_COPY.conflict;
+    if (reason !== null) return RETURN_REFUND_ERROR_COPY.byReason[reason];
+    // No `reason` at all → the genuine contended-row race. A `reason` this
+    // build does not recognise → an unnamed permanent refusal, which must
+    // NOT render as a stale-row race it is not.
+    return hasRefundBlockReasonField(error)
+      ? RETURN_REFUND_ERROR_COPY.generic
+      : RETURN_REFUND_ERROR_COPY.conflict;
   }
 
   if (error.status === 403) {

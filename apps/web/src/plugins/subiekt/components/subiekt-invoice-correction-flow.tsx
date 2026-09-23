@@ -65,7 +65,7 @@ export function SubiektInvoiceCorrectionFlow({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
-  const { linesAreAuthoritative } = useInvoiceContentQuery(invoice.id);
+  const { linesAreAuthoritative, query: contentQuery } = useInvoiceContentQuery(invoice.id);
 
   const [reason, setReason] = useState('');
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
@@ -213,7 +213,9 @@ export function SubiektInvoiceCorrectionFlow({
         </p>
       ) : null}
 
-      {linesAreAuthoritative ? (
+      {contentQuery.isLoading ? (
+        <p className="text-muted">{t('subiekt.correction.loadingLines', 'Loading invoice lines…')}</p>
+      ) : linesAreAuthoritative ? (
         <CorrectionLineGrid
           invoiceId={invoice.id}
           suggestedLines={suggestedLines}

@@ -76,7 +76,7 @@ export function InfaktInvoiceCorrectionFlow({
   const { t } = useTranslation();
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
-  const { linesAreAuthoritative } = useInvoiceContentQuery(invoice.id);
+  const { linesAreAuthoritative, query: contentQuery } = useInvoiceContentQuery(invoice.id);
 
   // Per-mount stable idempotency key — prevents duplicate KOR issuance on timeout/retry.
   const idempotencyKeyRef = useRef(
@@ -231,7 +231,9 @@ export function InfaktInvoiceCorrectionFlow({
         </p>
       ) : null}
 
-      {linesAreAuthoritative ? (
+      {contentQuery.isLoading ? (
+        <p className="text-muted">{t('infakt.correction.loadingLines', 'Loading invoice lines…')}</p>
+      ) : linesAreAuthoritative ? (
         <CorrectionLineGrid
           invoiceId={invoice.id}
           suggestedLines={suggestedLines}

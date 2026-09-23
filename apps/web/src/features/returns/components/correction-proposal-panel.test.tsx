@@ -68,6 +68,7 @@ function renderPanel(
     changeId?: string | null;
     writeAccess?: typeof WRITE_ACCESS;
     recordCorrectionProposal?: Mock<(returnId: string) => Promise<ReturnCorrectionProposalResult>>;
+    orphan?: boolean;
   } = {},
 ) {
   const recordCorrectionProposal =
@@ -89,6 +90,7 @@ function renderPanel(
         proposal={p}
         changeId={overrides.changeId ?? null}
         writeAccess={overrides.writeAccess ?? WRITE_ACCESS}
+        orphan={overrides.orphan}
       />,
       { apiClient },
     ),
@@ -401,5 +403,22 @@ describe('CorrectionProposalPanel — record for review (#3092)', () => {
 
     expect(await screen.findByText(RETURN_PROPOSAL_COPY.recordError)).toBeInTheDocument();
     expect(screen.queryByText(RETURN_PROPOSAL_COPY.recordedBadge)).not.toBeInTheDocument();
+  });
+});
+
+describe('CorrectionProposalPanel — orphan shell (#3094, PR #3379 review)', () => {
+  it('owns its own section shell + heading, at the #correction anchor', () => {
+    renderPanel(null, { orphan: true });
+
+    const heading = screen.getByText(RETURN_PROPOSAL_COPY.sectionTitle);
+    expect(heading.closest('section')).toHaveAttribute('id', 'correction');
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.orphanAbsent)).toBeInTheDocument();
+  });
+
+  it('never renders the proposal body, even if a proposal is somehow supplied alongside orphan', () => {
+    renderPanel(proposal([line()]), { orphan: true });
+
+    expect(screen.queryByText(RETURN_PROPOSAL_COPY.headlineLabel)).not.toBeInTheDocument();
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.orphanAbsent)).toBeInTheDocument();
   });
 });

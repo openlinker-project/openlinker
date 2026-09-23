@@ -72,6 +72,7 @@
  * @module apps/web/src/features/returns/components
  */
 import { useState, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
@@ -106,6 +107,16 @@ interface CorrectionProposalPanelProps {
    *  GET preview — see `ReturnCorrectionProposalResponseDto.changeId`. */
   changeId: string | null;
   writeAccess: { canWrite: boolean; demoReadOnly: boolean; visible: boolean };
+  /**
+   * `credit-absent-orphan` (#3094). The page never REQUESTS a proposal for an
+   * unmatched return — the route answers 409 — so `proposal`/`outcome` are
+   * meaningless here; this branch owns the shell + `orphanAbsent` copy
+   * itself, rather than the page reconstructing the section title a second
+   * time (PR #3379 review: needing `RETURN_PROPOSAL_COPY.sectionTitle`
+   * exported so the page could rebuild this component's own header was the
+   * symptom that the shell had two owners).
+   */
+  orphan?: boolean;
 }
 
 export function CorrectionProposalPanel({
@@ -114,16 +125,18 @@ export function CorrectionProposalPanel({
   outcome,
   changeId,
   writeAccess,
+  orphan = false,
 }: CorrectionProposalPanelProps): ReactElement {
   const { showToast } = useToast();
   const record = useRecordCorrectionProposalMutation(returnId);
   const [correctionOpen, setCorrectionOpen] = useState(false);
 
-  // Called unconditionally (React hook rules — the early `proposal === null`
-  // return below must not skip a hook call). Both degrade to their own
-  // disabled/loading query state when there is nothing to resolve yet:
-  // `useInvoiceQuery` no-ops on an empty id (`enabled: Boolean(invoiceId)`),
-  // and the connections list is needed regardless of which outcome renders.
+  // Called unconditionally (React hook rules — the early `orphan` /
+  // `proposal === null` returns below must not skip a hook call). Both
+  // degrade to their own disabled/loading query state when there is nothing
+  // to resolve yet: `useInvoiceQuery` no-ops on an empty id (`enabled:
+  // Boolean(invoiceId)`), and the connections list is needed regardless of
+  // which outcome renders.
   const invoiceQuery = useInvoiceQuery(proposal?.invoiceRecordId ?? '');
   const connectionsQuery = useConnectionsQuery();
   const connections = connectionsQuery.data ?? [];
@@ -132,6 +145,15 @@ export function CorrectionProposalPanel({
   const invoicingConnection = lock?.connection ?? null;
   const platform = usePlatform(invoicingConnection?.platformType);
   const InvoiceCorrectionFlow = platform?.invoiceCorrectionFlow ?? null;
+
+  if (orphan) {
+    return (
+      <section className="returns-proposal-panel" id="correction">
+        <h2 className="section-title">{RETURN_PROPOSAL_COPY.sectionTitle}</h2>
+        <p className="text-muted">{RETURN_PROPOSAL_COPY.orphanAbsent}</p>
+      </section>
+    );
+  }
 
   if (proposal === null) {
     const badge = RETURN_PROPOSAL_COPY.outcomeBadges[outcome];
@@ -337,7 +359,10 @@ export function CorrectionProposalPanel({
               {RETURN_PROPOSAL_COPY.handoff}
             </Button>
             {lock?.isStale ? (
-              <p className="text-muted">{RETURN_PROPOSAL_COPY.handoffConnectionStale}</p>
+              <p className="text-muted">
+                {RETURN_PROPOSAL_COPY.handoffConnectionStale}{' '}
+                <Link to={`/invoices/${invoice.id}`}>{RETURN_PROPOSAL_COPY.viewInvoice}</Link>
+              </p>
             ) : null}
             <Dialog open={correctionOpen} onOpenChange={setCorrectionOpen}>
               {/* Wide: the correction-line grid (#3090) is a 5-column table
@@ -363,7 +388,20 @@ export function CorrectionProposalPanel({
         ) : invoiceQuery.isLoading || connectionsQuery.isLoading ? (
           <p className="text-muted">{RETURN_PROPOSAL_COPY.handoffLoading}</p>
         ) : (
-          <p className="text-muted">{RETURN_PROPOSAL_COPY.handoffUnavailable}</p>
+          <p className="text-muted">
+            {RETURN_PROPOSAL_COPY.handoffUnavailable}
+            {/* The dialog removed a shortcut, not the destination — the
+                invoice's own page still exists and still has the provider
+                region, so a resolved invoice with no on-page flow is not a
+                dead end (PR #3379 review). No `invoice` at all (unresolved
+                proposal, unresolved invoice id) has nowhere real to link. */}
+            {invoice ? (
+              <>
+                {' '}
+                <Link to={`/invoices/${invoice.id}`}>{RETURN_PROPOSAL_COPY.viewInvoice}</Link>
+              </>
+            ) : null}
+          </p>
         )}
       </footer>
     </section>

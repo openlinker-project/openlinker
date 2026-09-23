@@ -53,7 +53,6 @@ import {
   RETURN_DETAIL_HEADER_COPY,
   RETURN_LINES_COPY,
   RETURN_ORPHAN_BANNER_COPY,
-  RETURN_PROPOSAL_COPY,
   RETURN_SOURCE_PANEL_COPY,
   ReturnCustodyPanel,
   ReturnMoneyPanel,
@@ -357,12 +356,18 @@ export function ReturnDetailPage(): ReactElement {
           ORPHAN — the backend answers 409 (attribute it first) — but the
           section still renders, with a fixed message rather than silently
           disappearing: `credit-absent-orphan` keeps the page's section count
-          stable instead of making #correction a dead anchor. */}
+          stable instead of making #correction a dead anchor. The orphan
+          shell is owned by the panel itself (`orphan` prop) — see that
+          component's docblock for why the page must not rebuild it. */}
       {detail.bucket === 'orphan' ? (
-        <section className="returns-proposal-panel" id="correction">
-          <h2 className="section-title">{RETURN_PROPOSAL_COPY.sectionTitle}</h2>
-          <p className="text-muted">{RETURN_PROPOSAL_COPY.orphanAbsent}</p>
-        </section>
+        <CorrectionProposalPanel
+          returnId={returnId}
+          outcome=""
+          proposal={null}
+          changeId={null}
+          writeAccess={writeAccess}
+          orphan
+        />
       ) : proposalQuery.data !== undefined ? (
         <CorrectionProposalPanel
           returnId={returnId}

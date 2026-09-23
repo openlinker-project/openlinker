@@ -110,6 +110,16 @@ export function CorrectionLineGrid({
   // moment — an operator's in-progress edits must not be clobbered by a
   // proposal refetch racing the dialog being open, and the suggestion is a
   // one-time starting point, not a value this grid keeps in sync with.
+  //
+  // `lines` DOES stay a dep — an ordinary background refetch while the
+  // dialog is open (react-query's default `refetchOnWindowFocus: true`,
+  // this app's 30s `staleTime`) must not re-run this and wipe an
+  // in-progress edit. That is safe only because of TanStack Query's
+  // `structuralSharing`: a refetch that resolves to a deeply-equal payload
+  // keeps `query.data`'s object reference, so `lines` (derived from it
+  // above) is unchanged and this effect does not re-fire. A refetch that
+  // genuinely changed the content — a rare race, not the common case this
+  // guards — legitimately re-initialises the grid.
   useEffect(() => {
     if (!lines) return;
     setRows(buildInitialRows(lines, suggestedLines));
@@ -156,16 +166,17 @@ export function CorrectionLineGrid({
     });
   }
 
-  const suggestedPositions = new Set((suggestedLines ?? []).map((s) => s.originalLineNumber));
-
   const totalCredit = lines.reduce((sum, line, i) => {
     const position = i + 1;
     const row = rows.get(position);
     if (!row) return sum;
     const unitGross = unitGrossOf(line);
+    if (unitGross === undefined) return sum;
     const qty = row.qty.trim() === '' ? line.quantity : parseFloat(row.qty);
-    if (unitGross === undefined || Number.isNaN(qty)) return sum;
-    return sum + (line.quantity - qty) * unitGross;
+    const price = row.price.trim() === '' ? undefined : parseFloat(row.price);
+    const effectivePrice = price !== undefined && !Number.isNaN(price) ? price : unitGross;
+    if (Number.isNaN(qty)) return sum;
+    return sum + line.quantity * unitGross - qty * effectivePrice;
   }, 0);
 
   return (
@@ -198,11 +209,23 @@ export function CorrectionLineGrid({
             const row = rows.get(position) ?? { qty: '', price: '' };
             const unitGross = unitGrossOf(line);
             const qty = row.qty.trim() === '' ? undefined : parseFloat(row.qty);
+            const priceRaw = row.price.trim() === '' ? undefined : parseFloat(row.price);
+            const effectivePrice =
+              priceRaw !== undefined && !Number.isNaN(priceRaw) ? priceRaw : unitGross;
             const credit =
-              unitGross !== undefined && qty !== undefined && !Number.isNaN(qty)
-                ? (line.quantity - qty) * unitGross
+              unitGross !== undefined &&
+              effectivePrice !== undefined &&
+              qty !== undefined &&
+              !Number.isNaN(qty)
+                ? line.quantity * unitGross - qty * effectivePrice
                 : 0;
-            const untouched = !suggestedPositions.has(position);
+            const touched =
+              (qty !== undefined && !Number.isNaN(qty) && qty !== line.quantity) ||
+              (priceRaw !== undefined &&
+                !Number.isNaN(priceRaw) &&
+                unitGross !== undefined &&
+                Math.abs(priceRaw - unitGross) > 0.005);
+            const untouched = !touched;
             return (
               <tr key={position} className={untouched ? 'credit-row--untouched' : undefined}>
                 <td className="credit-grid__lp">{position}</td>

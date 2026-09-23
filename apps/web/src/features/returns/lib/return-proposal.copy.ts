@@ -37,11 +37,13 @@ export const RETURN_PROPOSAL_COPY = {
   noAutoIssue:
     'OpenLinker never issues a credit note on its own. It matches the returned lines to the invoice and shows you what it found; issuing is always your decision.',
   /**
-   * Opens the provider's own `InvoiceCorrectionFlow` in a dialog on this
-   * page (#3094 amendment) — never a link, and never a second
-   * implementation of that flow.
+   * Opens the provider's own `InvoiceCorrectionFlow` in a dialog on THIS
+   * page (#3094 amendment) — never navigation. Deliberately not "…on the
+   * invoice": that phrase read as a `/invoices/:id` link (what it replaced)
+   * and is misleading now that the flow opens here, with the operator's
+   * unsaved page state still around them (PR #3379 review).
    */
-  handoff: 'Review and issue on the invoice',
+  handoff: 'Review and issue correction',
   handoffDialogTitle: 'Issue correction',
   reviewCta: 'Confirm these matches',
   /** While the invoice + connection reads this needs are still in flight. */
@@ -58,10 +60,15 @@ export const RETURN_PROPOSAL_COPY = {
    * No `InvoiceCorrectionFlow` is registered for this invoice's platform, or
    * the invoice/connection could not be resolved at all. Never a fabricated
    * link — the mockup's own gap legend calls a dead link "drift, not a
-   * design choice".
+   * design choice". A real, resolved invoice still gets a real route to its
+   * own page (`viewInvoice` below) — that page still exists and still has
+   * the provider region; the dialog removed a shortcut, not the destination
+   * (PR #3379 review).
    */
   handoffUnavailable:
     'No correction flow is available for this invoice from here yet.',
+  /** The fallback route when the on-page dialog cannot help — the invoice's own page. */
+  viewInvoice: 'View the invoice',
 
   /**
    * The action this panel actually performs — recording an ADR-044 change
