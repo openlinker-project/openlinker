@@ -32,15 +32,22 @@
  * promote it to an independently-filterable order-level axis (the
  * `taxRateConflict` shape), not to index this column.
  *
- * Prefix `1893000000000` is strictly greater than the current tail
- * (`1892000000000`).
+ * Prefix `1894000000000`, not `1893000000000`: that timestamp is already
+ * claimed by `AddFulfillmentWorkAssignment1893000000000` on the unmerged
+ * pack-bench branches, and TypeORM keys an applied migration by TIMESTAMP, not
+ * by name - so on any database that ran theirs first, this one is recorded as
+ * already applied and SILENTLY SKIPPED. The column is then missing while
+ * `migration:show` reports nothing pending, and the feature is dead with no
+ * error anywhere. Caught on a live stand, not in review:
+ * `check-migration-timestamps.mjs` compares against `origin/main` only, so a
+ * collision with a branch that has not merged yet is invisible to it.
  *
  * @module apps/api/src/migrations
  */
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddInvoiceUnlinkedCatalogueLines1893000000000 implements MigrationInterface {
-  name = 'AddInvoiceUnlinkedCatalogueLines1893000000000';
+export class AddInvoiceUnlinkedCatalogueLines1894000000000 implements MigrationInterface {
+  name = 'AddInvoiceUnlinkedCatalogueLines1894000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "invoice_records" ADD "unlinkedCatalogueLines" integer`);
