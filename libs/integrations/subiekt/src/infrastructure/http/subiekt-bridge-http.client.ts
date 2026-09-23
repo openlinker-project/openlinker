@@ -117,6 +117,17 @@ export interface SubiektBridgeHttpClientOptions {
   fetchImpl?: FetchLike;
 }
 
+/**
+ * Escapes a literal for use inside a `RegExp`. The bridge token is operator-
+ * chosen, so it may legitimately contain `.`, `+`, `$` or any other
+ * metacharacter; interpolating it unescaped would either throw or match the
+ * wrong thing, and the one place it is used is a redaction that must not fail
+ * open.
+ */
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export class SubiektBridgeHttpClient implements SubiektBridgeClient {
   private readonly logger = new Logger(SubiektBridgeHttpClient.name);
   private readonly baseUrl: string;
@@ -426,9 +437,26 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
    */
   private redactToken(text: string): string {
     const MAX = 300;
+    // Below this, `split/join` would shred unrelated body text rather than
+    // redact a credential - a two-character token would turn the bridge's own
+    // sentence into noise, and the redaction would be the thing that made the
+    // message unreadable. A secret that short is not one worth protecting.
+    const MIN_REDACTABLE = 8;
     let out = text;
-    if (this.token !== undefined && this.token.length > 0) {
-      out = out.split(this.token).join('[redacted]');
+    const token = this.token;
+    if (token !== undefined && token.length >= MIN_REDACTABLE) {
+      // The argument for reading the body at all is that "our bridge does not
+      // echo the token" is not a property this client may rely on. The same
+      // reasoning forbids assuming the echo is byte-identical, so the forms a
+      // bridge realistically produces are all replaced: the token verbatim, a
+      // percent-encoded copy (a `WWW-Authenticate` challenge or a URL it was
+      // interpolated into), and either in a different case.
+      const forms = [token, encodeURIComponent(token)].filter(
+        (f, i, all) => f.length > 0 && all.indexOf(f) === i,
+      );
+      for (const form of forms) {
+        out = out.replace(new RegExp(escapeRegExp(form), 'gi'), '[redacted]');
+      }
     }
     return out.length > MAX ? `${out.slice(0, MAX)}…` : out;
   }
