@@ -39,6 +39,8 @@ function buildLine(overrides: Partial<Record<string, unknown>> = {}): ReturnLine
     null,
     null,
     null,
+    null,
+    null,
     'W-1',
     o.name === undefined ? 'Widget' : o.name,
     'other',

@@ -147,6 +147,7 @@ export class ReturnsService implements IReturnsService {
     const summary: ReturnOrderLineResolutionSummary = {
       resolved: 0,
       alreadyResolved: 0,
+      catalogIdentityBackfilled: 0,
       unresolved: {},
       skipped: null,
     };
@@ -167,10 +168,33 @@ export class ReturnsService implements IReturnsService {
     }
 
     for (const line of record.lines) {
-      // Already answered — skip without touching the row. The claim below would
-      // return `false` anyway; not issuing the statement keeps a re-run free.
+      // Already answered — never re-run the MATCH rule (#3171's claim is
+      // fill-in-when-NULL and would return `false` anyway). But a line
+      // resolved before #3450 added catalogue identity carries no
+      // `resolvedProductId`; backfill it from the SAME order line the row
+      // already names, rather than re-deriving a match that could land on a
+      // different line if the order has since changed.
       if (line.resolvedOrderLineId !== null) {
         summary.alreadyResolved += 1;
+
+        if (line.resolvedProductId === null) {
+          const matched = orderLines.find(
+            (candidate) => candidate.id === line.resolvedOrderLineId
+          );
+          if (
+            matched !== undefined &&
+            (matched.productId !== undefined || matched.variantId !== undefined)
+          ) {
+            const backfilled = await this.repository.backfillResolvedCatalogIdentity(line.id, {
+              productId: matched.productId,
+              variantId: matched.variantId,
+            });
+            if (backfilled) {
+              summary.catalogIdentityBackfilled += 1;
+            }
+          }
+        }
+
         continue;
       }
 
@@ -190,7 +214,8 @@ export class ReturnsService implements IReturnsService {
 
       const claimed = await this.repository.claimOrderLineResolution(
         line.id,
-        resolution.orderLineId
+        resolution.orderLineId,
+        { productId: resolution.productId, variantId: resolution.variantId }
       );
       if (claimed) {
         summary.resolved += 1;

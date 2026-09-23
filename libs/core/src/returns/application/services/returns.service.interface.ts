@@ -141,6 +141,17 @@ export interface ReturnOrderLineResolutionSummary {
    * failure — the desired end state was reached either way.
    */
   alreadyResolved: number;
+  /**
+   * Of `alreadyResolved`, how many had their `resolvedProductId` /
+   * `resolvedVariantId` filled in JUST NOW (#3450) — an already-resolved line
+   * from before those columns existed, or one whose first resolution predates
+   * this pass ever populating them. `claimOrderLineResolution`'s `IS NULL`
+   * guard on `resolvedOrderLineId` means such a line is never re-entered
+   * through the normal `resolved` branch, so this counter is the ONLY signal
+   * that the backfill arm (rather than a no-op skip) ran for a given pass.
+   * Always `<= alreadyResolved`.
+   */
+  catalogIdentityBackfilled: number;
   /** Lines left `null`, keyed by why. Reported, never defaulted. */
   unresolved: Partial<Record<ReturnOrderLineUnresolvedReason, number>>;
   /**

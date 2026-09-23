@@ -668,28 +668,46 @@ export class ReturnCustodyService implements IReturnCustodyService {
   /**
    * Which product/variant do these units go back into?
    *
-   * **A return line carries no product id**, and cannot: `resolvedOrderLineId`
-   * is a by-value reference INTO the order snapshot's jsonb (there is no order
-   * lines table), and since #3171 it is written only at ingestion and stays
-   * `null` for an orphan or a line the resolver could not settle. The sku is
-   * therefore the only coordinate always available here, resolved through
-   * `IProductsService`.
+   * Two coordinates, tried in order, never merged. **Primary:**
+   * `ReturnLine.resolvedProductId` / `resolvedVariantId` (#3450) — the
+   * already-resolved catalogue identity `ReturnOrderLineResolverService`
+   * denormalized onto the line via `resolveOrderLinesForReturn` at
+   * `resolvedOrderLineId`-claim time, i.e. the moment the source's order line
+   * was matched. When both are present this costs NO catalogue lookup at
+   * all: the identity was settled once, upstream, and is read back verbatim.
+   * **Fallback:** the sku, resolved through `IProductsService`, for a line
+   * whose order-line resolution never ran (an orphan, ingestion predating
+   * #3171, or a resolution the domain service could not settle) or that
+   * resolved to an order line with no `variantId` at all (`OrderItem.variantId`
+   * is itself optional) — a source is never obligated to supply a sku either,
+   * which is exactly why this is a fallback and not the only path.
    *
-   * Both failure modes BLOCK rather than guess. A sku OL has never catalogued is
-   * a real state — a marketplace can report one, and the parcel still arrived —
-   * and a sku matching several variants must not be resolved by picking the
-   * first, for the same reason an ambiguous inventory master must not: the wrong
-   * variant is real stock in the wrong place, and no later log line recovers it.
+   * `resolveRestockTarget` deliberately does NOT read the order snapshot
+   * itself: `libs/core/src/returns` must not take the orders-module edge one
+   * live `getOrderRecord` call would cost (`ReturnOrderLineResolverService`'s
+   * own docblock), so the catalogue identity has to already be sitting on the
+   * row by the time this runs — which is what the denormalization buys.
+   *
+   * Every failure mode BLOCKS rather than guesses. A sku OL has never
+   * catalogued is a real state — a marketplace can report one, and the parcel
+   * still arrived — and a sku matching several variants must not be resolved
+   * by picking the first, for the same reason an ambiguous inventory master
+   * must not: the wrong variant is real stock in the wrong place, and no
+   * later log line recovers it.
    */
   private async resolveRestockTarget(
     line: ReturnLine
   ): Promise<{ productId: string; variantId: string } | { blocked: RestockOutcome }> {
+    if (line.resolvedProductId !== null && line.resolvedVariantId !== null) {
+      return { productId: line.resolvedProductId, variantId: line.resolvedVariantId };
+    }
+
     const sku = line.sku?.trim() ?? '';
     if (sku === '') {
       return {
         blocked: blockedBeforeMaster(
           'unresolved-product',
-          'this return line carries no sku, so OpenLinker cannot tell which product to restock'
+          'this return line carries no sku and no resolved order-line identity, so OpenLinker cannot tell which product to restock'
         ),
       };
     }
