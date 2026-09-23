@@ -129,7 +129,11 @@ export function BenchWorkList({
   // `@Roles('admin','operator')`. A packer holds no permissions at all, so the
   // control is invisible to one — which is story B5's "someone with write
   // access", not a second permission invented for this surface.
-  const write = useWriteAccess('orders:write', demoMode);
+  // `bench:write`, never `orders:write` (#3424): a packer holds the first and
+  // not the second, so gating on the second hid both claim controls from the
+  // only role that presses them while the API behind them accepted a packer
+  // all along.
+  const write = useWriteAccess('bench:write', demoMode);
   // A3. See `use-bench-interactive.ts` — a covered surface takes the listener
   // off, so a scan at a locked bench raises nothing behind the lock.
   const interactive = useBenchInteractive();

@@ -102,9 +102,90 @@ const SCAN_LOCK_OTHER_PACKER = 'e4a80767-0cd9-4831-98a9-ec47fc507a1e'; // e2e-pa
  * hardcoded number, since a prior run (or manual poking) may have already
  * moved it off its seeded `1`.
  */
+/**
+ * The parcel the scan states drive, and the only fixture in the seed with
+ * TWO units on ONE line - which is what lets one state prove both halves of
+ * D18 at once: that the counter moves on the first scan, and that the box
+ * shuts itself on the last one rather than waiting for a control.
+ *
+ * Its EAN is read off the screen rather than written here. The seed builds
+ * these works from real demo orders, so the barcode moves with the catalogue;
+ * a hardcoded one would pass today and silently scan the wrong item later.
+ */
+const SCAN_CLOSE_WORK = 'ol_fwork_e2e_23';
+
+/** A clean, unassigned, single-unit parcel for the self-claim state. */
+const CLAIM_WORK = 'ol_fwork_e2e_21';
+
+/**
+ * A clean, unassigned, single-unit parcel used by the packed-today state,
+ * which closes it with one scan.
+ *
+ * Distinct from `CLAIM_WORK` deliberately: that state leaves its row
+ * assigned mid-run, and a second state closing the same parcel would be
+ * asserting against the first one's leftovers rather than against a fixture.
+ */
+const PACKED_TODAY_WORK = 'ol_fwork_e2e_14';
+
+/**
+ * Put a work object back the way the seed leaves it.
+ *
+ * The scan states are the only ones in this file that create ledger rows, and
+ * `seed-fulfillment-board.sql` resets `completedAt` and the print stamps but
+ * NOT verifications - so a run that did not clean up would leave the next one
+ * scanning a parcel that is already closed, which reads as the feature being
+ * broken rather than as a dirty fixture.
+ */
+function resetPackedWork(workId) {
+  psql(
+    `DELETE FROM fulfillment_work_verifications WHERE "fulfillmentWorkId" = '${workId}'; ` +
+      `UPDATE fulfillment_works SET "parcelClosedAt" = NULL, "packedByUserId" = NULL, ` +
+      `"packedByService" = NULL, "completedAt" = NULL, "completedByUserId" = NULL, ` +
+      `"assignedToUserId" = NULL WHERE id = '${workId}';`
+  );
+}
+
+/**
+ * Open a work object from the rail and return its row.
+ *
+ * Always a CLICK, never a deep link: `openWorkId` lives in component state
+ * alone, so there is no URL that opens a parcel and a state that tried would
+ * assert against the queue instead.
+ */
+async function openFromRail(page, workId) {
+  await page.goto(`${BASE}/bench`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1500);
+  const row = page.locator(`.bench-work-row[data-work-id="${workId}"]`);
+  if ((await row.count()) === 0) return false;
+  await row.scrollIntoViewIfNeeded();
+  await row.locator('.bench-work-row__surface').first().click();
+  await page.waitForTimeout(1500);
+  return true;
+}
+
+/**
+ * The EAN the hero is showing, read off the page.
+ *
+ * `.bench-hero__ids` renders `EAN 5900232580286 - SKU ...`, so the barcode is
+ * the first run of digits after the label. Returns null rather than guessing
+ * when the hero shows no EAN at all, which is a real state for a variant with
+ * no barcode and must fail the check loudly rather than scan an empty string.
+ */
+async function readHeroEan(page) {
+  const ids = page.locator('.bench-hero__ids').first();
+  if ((await ids.count()) === 0) return null;
+  const text = (await ids.textContent()) ?? '';
+  const hit = /EAN\s+([0-9]{6,14})/i.exec(text);
+  return hit === null ? null : hit[1];
+}
+
 const BOARD_CONFLICT_WORK = 'ol_fwork_e2e_10';
 const BOARD_CONFLICT_PACKER = 'ca560b27-bcd2-4d62-bb7f-b6952f7207f1'; // anna.pakowska
 let boardConflictOriginalVersion = null;
+/** The counter read mid-parcel, carried from `reach` to `check`. */
+let scanCloseMidParcel = null;
+/** The "assigned to you" set before "take next task" was pressed. */
+let takeNextBefore = null;
 
 /**
  * Open the closed parcel from the rail.
@@ -878,6 +959,186 @@ const STATES = [
           );
           boardConflictOriginalVersion = null;
         }
+      }
+    },
+  },
+  {
+    id: 'bench-scan-closes-the-box',
+    group: 'bench',
+    actor: 'packer',
+    title: 'Scanning the last unit closes the box by itself, with no control to press',
+    async reach(page) {
+      resetPackedWork(SCAN_CLOSE_WORK);
+      if (!(await openFromRail(page, SCAN_CLOSE_WORK))) return;
+
+      const ean = await readHeroEan(page);
+      if (ean === null) return;
+
+      // Desktop only, and that is a property of the product rather than of
+      // this state: the hero scan field renders above 900px, and the sweep's
+      // packer viewport is 1440 wide.
+      const field = page.locator('#bench-hero-scan');
+      if ((await field.count()) === 0) return;
+
+      await field.fill(ean);
+      await field.press('Enter');
+      await page.waitForTimeout(1500);
+
+      // Captured mid-parcel, deliberately: one unit in, one to go, which is
+      // the half a screenshot of the closed state cannot show.
+      //
+      // ONE read, not two: `.bench-hero__count-of` is nested INSIDE
+      // `.bench-hero__count-value`, so the outer element's text already reads
+      // "1 of 2" and concatenating the pair produced "1 of 2 of 2".
+      const midCount = await page.locator('.bench-hero__count-value').first().textContent();
+      scanCloseMidParcel = (midCount ?? '').replace(/\s+/g, ' ').trim();
+
+      await field.fill(ean);
+      await field.press('Enter');
+      await page.waitForTimeout(1800);
+    },
+    async check(page) {
+      try {
+        if (scanCloseMidParcel !== '1 of 2') {
+          return `the counter did not move to 1 of 2 after the first scan (read "${scanCloseMidParcel}")`;
+        }
+        const closed = page.locator('[data-testid="bench-parcel-closed"]');
+        if ((await closed.count()) === 0) return 'the box did not close on the last unit';
+        const text = (await closed.first().textContent()) ?? '';
+        // "All 2 units matched", never "All 0" - an empty parcel reports the
+        // same shape and once passed this assertion while proving nothing.
+        return /all\s+2\s+units?\s+matched/i.test(text)
+          ? true
+          : `closed, but does not report the two units it matched: "${text}"`;
+      } finally {
+        resetPackedWork(SCAN_CLOSE_WORK);
+        scanCloseMidParcel = null;
+      }
+    },
+  },
+  {
+    id: 'bench-claim-succeeds',
+    group: 'bench',
+    actor: 'packer',
+    title: 'Claiming an unassigned parcel moves it under "assigned to you"',
+    async reach(page) {
+      psql(`UPDATE fulfillment_works SET "assignedToUserId" = NULL WHERE id = '${CLAIM_WORK}';`);
+      if (!(await openFromRail(page, CLAIM_WORK))) return;
+      const claim = page.getByRole('button', { name: /claim this parcel/i }).first();
+      if ((await claim.count()) === 0) return;
+      await claim.click();
+      await page.waitForTimeout(1800);
+    },
+    async check(page) {
+      try {
+        const row = page.locator(`.bench-work-row[data-work-id="${CLAIM_WORK}"]`);
+        if ((await row.count()) === 0) return 'the claimed parcel left the rail entirely';
+        // Asserted on the DOM, never on a toast: a toast says the request was
+        // accepted, and what matters is that the rail now agrees.
+        const state = await row.first().getAttribute('data-assignment-state');
+        if (state !== 'mine') return `still reads as "${state}" rather than mine`;
+        const inMine = await page
+          .locator('[data-testid="bench-section-assigned-to-you"]')
+          .locator(`.bench-work-row[data-work-id="${CLAIM_WORK}"]`)
+          .count();
+        return inMine > 0
+          ? true
+          : 'reads as mine but did not move into the "assigned to you" section';
+      } finally {
+        psql(`UPDATE fulfillment_works SET "assignedToUserId" = NULL WHERE id = '${CLAIM_WORK}';`);
+      }
+    },
+  },
+  {
+    id: 'bench-take-next-succeeds',
+    group: 'bench',
+    actor: 'packer',
+    title: '"Take next task" hands the packer exactly one parcel',
+    async reach(page) {
+      await page.goto(`${BASE}/bench`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1800);
+
+      // The SERVER picks, by deadline, so this state cannot name the row it
+      // expects up front. It records the set before and compares after.
+      takeNextBefore = await page
+        .locator('[data-testid="bench-section-assigned-to-you"] .bench-work-row')
+        .evaluateAll((rows) => rows.map((r) => r.getAttribute('data-work-id')));
+
+      const button = page.getByRole('button', { name: /take next task/i }).first();
+      if ((await button.count()) === 0) return;
+      await button.click();
+      await page.waitForTimeout(2000);
+    },
+    async check(page) {
+      const after = await page
+        .locator('[data-testid="bench-section-assigned-to-you"] .bench-work-row')
+        .evaluateAll((rows) => rows.map((r) => r.getAttribute('data-work-id')));
+      const before = takeNextBefore ?? [];
+      const gained = after.filter((id) => !before.includes(id));
+      takeNextBefore = null;
+
+      if (gained.length === 0) return 'no parcel arrived in "assigned to you"';
+      // EXACTLY one: handing a packer two parcels at once is the failure this
+      // state exists to catch, not a harmless surplus.
+      if (gained.length > 1) return `took ${gained.length} parcels at once: ${gained.join(', ')}`;
+
+      const claimed = gained[0];
+      psql(`UPDATE fulfillment_works SET "assignedToUserId" = NULL WHERE id = '${claimed}';`);
+      return true;
+    },
+  },
+  {
+    id: 'bench-packed-parcel-leaves-the-queue',
+    group: 'bench',
+    actor: 'packer',
+    title: 'A packed parcel leaves the queue and lands in "packed today"',
+    async reach(page) {
+      resetPackedWork(PACKED_TODAY_WORK);
+      if (!(await openFromRail(page, PACKED_TODAY_WORK))) return;
+
+      const ean = await readHeroEan(page);
+      if (ean === null) return;
+      const field = page.locator('#bench-hero-scan');
+      if ((await field.count()) === 0) return;
+
+      await field.fill(ean);
+      await field.press('Enter');
+      await page.waitForTimeout(2500);
+
+      // The rail keeps packed work behind its own tab, so this is where the
+      // state has to look. Checking the default tab found nothing and read as
+      // "the parcel never got packed" - which was a statement about the tab,
+      // not about the parcel.
+      const doneTab = page.getByRole('tab', { name: /packed today/i }).first();
+      if ((await doneTab.count()) > 0) {
+        await doneTab.click();
+        await page.waitForTimeout(1500);
+      }
+    },
+    async check(page) {
+      try {
+        const packed = page
+          .locator('[data-testid="bench-section-packed-today"]')
+          .locator('[data-testid="bench-packed-today-row"]');
+        if ((await packed.count()) === 0) return 'nothing appeared under "packed today"';
+
+        // It must ALSO be gone from the work still to do. A parcel that shows
+        // in both places is the defect a packed-today assertion alone misses,
+        // so the state goes back to the work tab rather than trusting that a
+        // row absent from THIS tab is absent from the queue.
+        const toPack = page.getByRole('tab', { name: /to pack/i }).first();
+        if ((await toPack.count()) > 0) {
+          await toPack.click();
+          await page.waitForTimeout(1500);
+        }
+        const stillQueued = await page
+          .locator(`.bench-work-row[data-work-id="${PACKED_TODAY_WORK}"]`)
+          .count();
+        return stillQueued === 0
+          ? true
+          : 'landed in "packed today" but is still sitting in the queue as well';
+      } finally {
+        resetPackedWork(PACKED_TODAY_WORK);
       }
     },
   },
