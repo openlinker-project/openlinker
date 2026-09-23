@@ -161,15 +161,23 @@ export class SplitSubiektGtIdentity1898000000000 implements MigrationInterface {
     // 2. integration_credentials. No `connectionId` column; reached through
     //    `connections.credentialsRef`. The string arm additionally catches a
     //    credential row left behind by a deleted connection.
+    //    NOTE THE `'db:' ||`. `ConnectionService` stores the reference as
+    //    `db:{uuid}` (`connection.service.ts` composes it, and
+    //    `CredentialsResolverService` strips the prefix back off), while
+    //    `integration_credentials.ref` holds the bare uuid. Joining the two
+    //    columns directly compares `'aaaa-...'` against `'db:aaaa-...'` and
+    //    never matches - which is the SAME dead-string-match defect this
+    //    rewrite removed from `identifier_mappings`, one table over. Verified
+    //    against live data: the direct comparison is false for a genuinely
+    //    related pair, the prefixed one is true.
     await queryRunner.query(
       `UPDATE "integration_credentials"
          SET "platformType" = 'subiekt-gt'
          WHERE lower("platformType") = 'subiekt'
-            OR "ref" IN (
+            OR ('db:' || "ref") IN (
                  SELECT "credentialsRef" FROM "connections"
                   WHERE ("adapterKey" = 'subiekt.invoicing.v1'
                          OR lower("platformType") = 'subiekt')
-                    AND "credentialsRef" IS NOT NULL
                     AND "credentialsRef" <> ''
                )`
     );
@@ -206,54 +214,47 @@ export class SplitSubiektGtIdentity1898000000000 implements MigrationInterface {
             OR lower("platformType") = 'subiekt'`
     );
 
-    // Verification. This RAISES rather than warns, deliberately.
+    // Verification. RAISES rather than warns, and anchors on the RELATION
+    // rather than on a string. Both halves of that are deliberate, and both
+    // replace a version that could not do its job.
     //
-    // The first draft used RAISE WARNING here and called it "visibility". It
-    // was decoration: `data-source.ts` sets `logging` from NODE_ENV and never
-    // sets `logNotifications`, and TypeORM attaches a `notice` listener only
-    // when that option is on - so in the environment this ships to (compose
-    // runs `migrate` with NODE_ENV=production) the message went nowhere at
-    // all. A leftover mapping row is not a cosmetic blemish, it is the
-    // id-minting failure this whole migration exists to prevent, so the
-    // honest response is to fail the deploy and roll back.
+    // It raises because the first draft used RAISE WARNING and called it
+    // "visibility". That was decoration: `data-source.ts` sets `logging` from
+    // NODE_ENV and never sets `logNotifications`, and TypeORM attaches a
+    // `notice` listener only when that option is on - so in the environment
+    // this ships to (compose runs `migrate` with NODE_ENV=production) the
+    // message went nowhere at all.
+    //
+    // It anchors on the relation because the second draft counted rows still
+    // matching `lower(platformType) = 'subiekt'` - which is the very predicate
+    // each UPDATE above had just used, so the count was unsatisfiable by
+    // construction and the assertion could not fire on ANY input. A check that
+    // restates its own UPDATE proves nothing; the thing worth asserting is
+    // that no child row disagrees with its own connection, because THAT
+    // disagreement is the failure mode, and it is reachable whenever a row was
+    // matched by a different rule than its parent.
     await queryRunner.query(`
       DO $$
       DECLARE
-        left_connections  integer;
-        left_credentials  integer;
-        left_mappings     integer;
-        left_invoices     integer;
-        left_fiscal       integer;
+        stranded_mappings    integer;
+        stranded_credentials integer;
       BEGIN
-        SELECT COUNT(*) INTO left_connections FROM "connections"                 WHERE lower("platformType") = 'subiekt' OR "adapterKey" = 'subiekt.invoicing.v1';
-        SELECT COUNT(*) INTO left_credentials FROM "integration_credentials"     WHERE lower("platformType") = 'subiekt';
-        SELECT COUNT(*) INTO left_mappings    FROM "identifier_mappings"         WHERE lower("platformType") = 'subiekt';
-        SELECT COUNT(*) INTO left_invoices    FROM "invoice_records"             WHERE lower("providerType") = 'subiekt';
-        SELECT COUNT(*) INTO left_fiscal      FROM "fiscal_registration_records" WHERE lower("providerType") = 'subiekt';
-
-        IF left_connections + left_credentials + left_mappings + left_invoices + left_fiscal > 0 THEN
-          RAISE EXCEPTION
-            'Subiekt GT identity split left rows on the legacy identity and has been rolled back: connections=%, integration_credentials=%, identifier_mappings=%, invoice_records=%, fiscal_registration_records=%. A leftover identifier_mappings row means every lookup for that connection would MISS and fresh internal ids would be minted on every sync.',
-            left_connections, left_credentials, left_mappings, left_invoices, left_fiscal;
-        END IF;
-      END$$;
-    `);
-
-    // A mapping must never disagree with its own connection - that disagreement
-    // IS the failure mode, so it is asserted rather than assumed.
-    await queryRunner.query(`
-      DO $$
-      DECLARE mismatched integer;
-      BEGIN
-        SELECT COUNT(*) INTO mismatched
+        SELECT COUNT(*) INTO stranded_mappings
           FROM "identifier_mappings" m
           JOIN "connections" c ON c."id" = m."connectionId"
          WHERE c."platformType" = 'subiekt-gt'
            AND m."platformType" <> 'subiekt-gt';
-        IF mismatched > 0 THEN
+
+        SELECT COUNT(*) INTO stranded_credentials
+          FROM "integration_credentials" ic
+          JOIN "connections" c ON c."credentialsRef" = 'db:' || ic."ref"
+         WHERE c."platformType" = 'subiekt-gt'
+           AND ic."platformType" <> 'subiekt-gt';
+
+        IF stranded_mappings + stranded_credentials > 0 THEN
           RAISE EXCEPTION
-            'Subiekt GT identity split rolled back: % identifier_mappings row(s) disagree with their own connection''s platformType. Lookups would miss and fresh internal ids would be minted.',
-            mismatched;
+            'Subiekt GT identity split rolled back: % identifier_mappings and % integration_credentials row(s) disagree with their own connection. A disagreeing mapping means every lookup for that connection MISSES and a fresh internal id is minted on every sync.',
+            stranded_mappings, stranded_credentials;
         END IF;
       END$$;
     `);
@@ -262,6 +263,10 @@ export class SplitSubiektGtIdentity1898000000000 implements MigrationInterface {
   public async down(queryRunner: QueryRunner): Promise<void> {
     const set = SplitSubiektGtIdentity1898000000000.SUBIEKT_CONNECTIONS_REVERSE;
 
+    // The `connectionId IN (SET)` arm `up()`'s guard carries is omitted here
+    // on purpose: after a successful `up()` every row this rollback touches
+    // already carries `subiekt-gt`, so the string projection is a superset of
+    // the update set and adding the join would widen nothing.
     await queryRunner.query(`
       DO $$
       DECLARE collisions integer;
@@ -292,11 +297,10 @@ export class SplitSubiektGtIdentity1898000000000 implements MigrationInterface {
       `UPDATE "integration_credentials"
          SET "platformType" = 'subiekt'
          WHERE "platformType" = 'subiekt-gt'
-            OR "ref" IN (
+            OR ('db:' || "ref") IN (
                  SELECT "credentialsRef" FROM "connections"
                   WHERE ("adapterKey" = 'subiekt.gt.v1'
                          OR lower("platformType") = 'subiekt-gt')
-                    AND "credentialsRef" IS NOT NULL
                     AND "credentialsRef" <> ''
                )`
     );
@@ -316,7 +320,16 @@ export class SplitSubiektGtIdentity1898000000000 implements MigrationInterface {
     // `adapterKey` is reverted only where it is the one `up()` wrote, so a
     // connection carrying a different explicit key keeps it.
     //
-    // KNOWN LOSS, stated rather than hidden: `up()` also stamped
+    // KNOWN LOSSES, stated rather than hidden. There are two.
+    //
+    // (1) Case. A connection created as `Subiekt` (capital S - which
+    // `setup-guide.md` instructs) comes back as lowercase `subiekt`, because
+    // `up()` normalised on the way out and nothing records the original
+    // spelling. Its mappings and credential row normalise with it. Harmless:
+    // the round trip lands MORE self-consistent than it started, and the
+    // explicit `adapterKey` is what resolves the adapter either way.
+    //
+    // (2) `adapterKey`: `up()` also stamped
     // `subiekt.gt.v1` onto a connection that originally had NO explicit
     // adapterKey, and nothing records which those were - so the round trip
     // returns them carrying `subiekt.invoicing.v1` instead of NULL.
