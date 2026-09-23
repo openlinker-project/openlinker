@@ -50,7 +50,7 @@ import { inpostPlugin } from './inpost';
 import { ksefPlugin } from './ksef';
 import { omsPlugin } from './oms';
 import { prestashopPlugin } from './prestashop';
-import { subiektPlugin } from './subiekt';
+import { subiektPlugin } from './subiekt-gt';
 import { woocommercePlugin } from './woocommerce';
 
 export const plugins: readonly OpenLinkerPlugin[] = [

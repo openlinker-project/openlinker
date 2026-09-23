@@ -157,7 +157,17 @@ describe('toIssueInvoiceCommand', () => {
     // An empty rate here is the honest passthrough of an order line that never
     // got one, NOT a default (#2257): the mapper names no rate of its own, and
     // the gate refuses such an order before it reaches a provider.
-    expect(cmd.lines[0]).toEqual({ name: 'Named', quantity: 2, unitPriceGross: 10, taxRate: '' });
+    // `productId` rides along so a destination that keeps a catalogue can link
+    // the line to a real product instead of emitting free text - a free-text
+    // line moves no stock, so no warehouse release can be issued for it
+    // (#3445). It is carried, never invented: a line without one omits it.
+    expect(cmd.lines[0]).toEqual({
+      name: 'Named',
+      productId: 'prod-1',
+      quantity: 2,
+      unitPriceGross: 10,
+      taxRate: '',
+    });
     expect(cmd.lines[1].name).toBe('SKU-9');
     expect(cmd.lines[2].name).toBe('PID-5');
   });

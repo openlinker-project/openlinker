@@ -2,7 +2,7 @@
  * Subiekt Structured Section (#759 + #1324)
  *
  * Plugin-owned structured-config inputs rendered inside `EditConnectionForm`
- * when the connection's `platformType` is `'subiekt'`. Carries:
+ * when the connection's `platformType` is `'subiekt-gt'`. Carries:
  *
  *   - Bridge URL  → flat `config.subiektBridgeUrl` (synced via syncStructuredToJson)
  *   - Trigger Model dropdown (AC-2) → NESTED `config.invoicing.triggerModel`

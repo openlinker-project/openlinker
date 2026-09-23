@@ -15,7 +15,7 @@ import { SubiektConfigException } from '../domain/exceptions/subiekt-config.exce
 function makeConnection(overrides: Partial<{ config: Record<string, unknown>; credentialsRef: string }> = {}): Connection {
   return new Connection(
     'conn-1',
-    'subiekt' as never,
+    'subiekt-gt' as never,
     'Test',
     'active' as never,
     (overrides.config ?? { bridgeBaseUrl: 'http://192.168.1.10:5000' }) as never,
@@ -45,9 +45,9 @@ describe('createSubiektPlugin', () => {
       expect(subiektAdapterManifest.supportedCapabilities).toContain('Invoicing');
     });
 
-    it("adapterKey is 'subiekt.invoicing.v1' and platformType is 'subiekt'", () => {
-      expect(subiektAdapterManifest.adapterKey).toBe('subiekt.invoicing.v1');
-      expect(subiektAdapterManifest.platformType).toBe('subiekt');
+    it("adapterKey is 'subiekt.gt.v1' and platformType is 'subiekt-gt'", () => {
+      expect(subiektAdapterManifest.adapterKey).toBe('subiekt.gt.v1');
+      expect(subiektAdapterManifest.platformType).toBe('subiekt-gt');
     });
 
     it('createSubiektPlugin().manifest === subiektAdapterManifest (no drift)', () => {
@@ -130,7 +130,7 @@ describe('createSubiektPlugin', () => {
       expect(schedulerTaskRegister).toHaveBeenCalledWith(
         expect.objectContaining({
           taskId: 'subiekt-bridge-reachability-sweep',
-          platformType: 'subiekt',
+          platformType: 'subiekt-gt',
           jobType: 'subiekt.bridge.reachabilitySweep',
         }),
       );

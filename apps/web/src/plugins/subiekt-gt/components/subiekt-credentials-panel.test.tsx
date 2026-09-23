@@ -5,7 +5,7 @@
  * importantly the credential KEY (`bridgeToken`, Decision 7) so a drift from
  * the Subiekt BE adapter contract fails loudly.
  *
- * @module plugins/subiekt/components
+ * @module plugins/subiekt-gt/components
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -22,7 +22,7 @@ const subiektConnection: Connection = {
   ...sampleConnection,
   id: 'subiekt_1',
   name: 'Subiekt GT',
-  platformType: 'subiekt',
+  platformType: 'subiekt-gt',
   config: {},
   adapterKey: 'subiekt.bridge.v1',
 };

@@ -82,8 +82,8 @@ describe('SubiektSetupForm', () => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'My Subiekt',
-          platformType: 'subiekt',
-          adapterKey: 'subiekt.invoicing.v1',
+          platformType: 'subiekt-gt',
+          adapterKey: 'subiekt.gt.v1',
           config: { bridgeBaseUrl: 'http://127.0.0.1:5000' },
         }),
       );

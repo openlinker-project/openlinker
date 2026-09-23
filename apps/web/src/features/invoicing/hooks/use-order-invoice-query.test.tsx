@@ -31,7 +31,7 @@ const invoice = (over: Partial<InvoiceRecord> = {}): InvoiceRecord => ({
   id: 'inv_1',
   connectionId: 'c1',
   orderId: 'o1',
-  providerType: 'subiekt',
+  providerType: 'subiekt-gt',
   documentType: 'invoice',
   status: 'issued',
   providerInvoiceId: 'pi',

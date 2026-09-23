@@ -32,14 +32,14 @@ function transportFailure(code: string): FetchLike {
 function connection(): Connection {
   return new Connection(
     'conn-1',
-    'subiekt',
+    'subiekt-gt',
     'Subiekt GT (test)',
     'active',
     { bridgeBaseUrl: 'http://localhost:5056' },
     '',
     new Date(),
     new Date(),
-    'subiekt.invoicing.v1',
+    'subiekt.gt.v1',
     ['ProductMaster'],
   );
 }

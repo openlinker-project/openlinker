@@ -75,8 +75,14 @@ import { toBridgeUpsertCustomerRequest } from '../mappers/subiekt-customer.mappe
 import { toBridgeKorektaLine, toBridgeLines } from '../mappers/subiekt-line.mapper';
 import { toNeutralRegulatoryStatus } from '../mappers/subiekt-regulatory-status.mapper';
 
-/** Provider identifier stamped onto returned `InvoiceRecord`s. */
-export const SUBIEKT_PROVIDER_TYPE = 'subiekt';
+/**
+ * Provider identifier stamped onto returned `InvoiceRecord`s.
+ *
+ * `subiekt-gt`, never the bare `subiekt`: a document issued through the Sfera
+ * GT bridge must be distinguishable from one a future nexo adapter would
+ * issue, and this value is what an operator reads on the document row.
+ */
+export const SUBIEKT_PROVIDER_TYPE = 'subiekt-gt';
 
 /**
  * Neutral document types this provider issues. `credit-note` / `corrected` (#1229)

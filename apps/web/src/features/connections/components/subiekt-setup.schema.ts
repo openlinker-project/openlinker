@@ -19,7 +19,14 @@
 import { z } from 'zod';
 import type { CreateConnectionInput } from '../api/connections.types';
 
-export const SUBIEKT_ADAPTER_KEY = 'subiekt.invoicing.v1';
+/**
+ * Must stay byte-identical to `subiektAdapterManifest.adapterKey` in
+ * `libs/integrations/subiekt`. The browser cannot import `@openlinker/core`
+ * (#591), so this is a mirror; a drift here does not fail at boot or at
+ * type-check - it fails silently the moment an operator clicks "add
+ * connection", minting a connection no adapter recognises.
+ */
+export const SUBIEKT_ADAPTER_KEY = 'subiekt.gt.v1';
 
 const startsWithHttpProtocol = (value: string): boolean =>
   value.startsWith('http://') || value.startsWith('https://');
@@ -67,7 +74,7 @@ export function toCreateConnectionInput(
 
   const input: CreateConnectionInput = {
     name: values.name,
-    platformType: 'subiekt',
+    platformType: 'subiekt-gt',
     adapterKey: SUBIEKT_ADAPTER_KEY,
     config,
     // enabledCapabilities OMITTED on purpose — `ConnectionService.create`

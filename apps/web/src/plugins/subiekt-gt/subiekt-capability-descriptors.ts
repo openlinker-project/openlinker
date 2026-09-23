@@ -6,7 +6,7 @@
  * descriptor map, NEVER as literals in the shared `CapabilityTogglesSection`.
  * The generic section reads its labels from `PlatformContribution.capabilityDescriptors`.
  *
- * @module plugins/subiekt
+ * @module plugins/subiekt-gt
  */
 
 /**

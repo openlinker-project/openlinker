@@ -105,7 +105,7 @@ function makeRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
     overrides.id ?? 'rec-1',
     overrides.connectionId ?? CONNECTION,
     overrides.orderId ?? ORDER,
-    overrides.providerType ?? 'subiekt',
+    overrides.providerType ?? 'subiekt-gt',
     overrides.documentType ?? '',
     (overrides.status ?? 'pending'),
     overrides.providerInvoiceId === undefined ? null : overrides.providerInvoiceId,
@@ -142,7 +142,7 @@ function makeIssuedFromAdapter(): IssueInvoiceResult {
       // documentType the keyless caller omitted. The service must backfill both
       // onto the projection (it created the pending row with providerType '' and
       // documentType '').
-      providerType: 'subiekt',
+      providerType: 'subiekt-gt',
       documentType: 'invoice',
       providerInvoiceId: 'PROV-123',
       providerInvoiceNumber: 'FV/2026/1',
@@ -324,7 +324,7 @@ describe('InvoiceService', () => {
       expect(adapter.issueInvoice).toHaveBeenCalledWith({ ...cmd, issuedAt: expect.any(Date) });
       expect(repo.updateOutcome).toHaveBeenCalledWith('rec-1', expect.objectContaining({
         status: 'issued',
-        providerType: 'subiekt',
+        providerType: 'subiekt-gt',
         documentType: 'invoice',
         providerInvoiceId: 'PROV-123',
         providerInvoiceNumber: 'FV/2026/1',
@@ -469,7 +469,7 @@ describe('InvoiceService', () => {
 
       expect(repo.updateOutcome).toHaveBeenCalledWith(
         'rec-1',
-        expect.objectContaining({ providerType: 'subiekt', documentType: 'invoice' }),
+        expect.objectContaining({ providerType: 'subiekt-gt', documentType: 'invoice' }),
       );
     });
 

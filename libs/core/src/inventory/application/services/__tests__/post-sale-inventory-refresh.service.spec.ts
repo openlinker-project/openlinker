@@ -41,7 +41,7 @@ describe('PostSaleInventoryRefreshService', () => {
 
   const withMapping = (connectionId: string, externalId: string): void => {
     identifierMapping.getExternalIds.mockResolvedValue([
-      { externalId, connectionId, platformType: 'subiekt', entityType: 'Product' },
+      { externalId, connectionId, platformType: 'subiekt-gt', entityType: 'Product' },
     ]);
   };
 
@@ -154,7 +154,7 @@ describe('PostSaleInventoryRefreshService', () => {
             {
               externalId: 'DZSO100',
               connectionId: MASTER_CONN,
-              platformType: 'subiekt',
+              platformType: 'subiekt-gt',
               entityType: 'Product',
             },
           ])

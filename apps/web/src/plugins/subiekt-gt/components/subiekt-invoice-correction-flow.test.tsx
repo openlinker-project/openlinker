@@ -1,7 +1,7 @@
 /**
  * SubiektInvoiceCorrectionFlow tests (#1241)
  *
- * @module plugins/subiekt/components
+ * @module plugins/subiekt-gt/components
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -9,14 +9,14 @@ import { renderWithProviders, createMockApiClient, sampleConnection } from '../.
 import type { InvoiceRecord } from '../../../features/invoicing';
 import { SubiektInvoiceCorrectionFlow } from './subiekt-invoice-correction-flow';
 
-const subiektConnection = { ...sampleConnection, platformType: 'subiekt' };
+const subiektConnection = { ...sampleConnection, platformType: 'subiekt-gt' };
 
 function makeInvoice(overrides: Partial<InvoiceRecord> = {}): InvoiceRecord {
   return {
     id: 'ol_invoice_test',
     connectionId: subiektConnection.id,
     orderId: 'ol_order_test',
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: 'issued',
     providerInvoiceId: 'subiekt-101',

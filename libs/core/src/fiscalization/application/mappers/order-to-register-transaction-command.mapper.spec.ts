@@ -38,8 +38,18 @@ describe('toRegisterTransactionCommand', () => {
     expect(cmd.idempotencyKey).toBe('fiscal:conn-1:ol_order_1');
     expect(cmd.currency).toBe('PLN');
     expect(cmd.totalGross).toBe(49.2);
+    // `productId` rides along beside `sku` so a destination that keeps a
+    // catalogue can link the line to a real product instead of emitting free
+    // text - a free-text line moves no stock (#3445). Carried, never invented.
     expect(cmd.lines).toEqual([
-      { name: 'Widget', quantity: 2, unitPriceGross: 24.6, taxRate: '', sku: 'W-1' },
+      {
+        name: 'Widget',
+        productId: 'ol_product_1',
+        quantity: 2,
+        unitPriceGross: 24.6,
+        taxRate: '',
+        sku: 'W-1',
+      },
     ]);
   });
 
