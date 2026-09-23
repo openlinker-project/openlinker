@@ -441,6 +441,8 @@ export class SubiektBridgeHttpClient implements SubiektBridgeClient {
     // redact a credential - a two-character token would turn the bridge's own
     // sentence into noise, and the redaction would be the thing that made the
     // message unreadable. A secret that short is not one worth protecting.
+    // `subiekt-credentials.types.ts` states the guarantee this floor leaves
+    // bounded, and why the gap is not closed by bounding the field instead.
     const MIN_REDACTABLE = 8;
     let out = text;
     const token = this.token;
