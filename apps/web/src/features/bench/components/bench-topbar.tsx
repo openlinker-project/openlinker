@@ -77,7 +77,10 @@ export function BenchTopbar({ signedInName, canLeaveBench }: BenchTopbarProps): 
   // Read, never derived here: the parcel pane is what reports a request that
   // got no answer, so a second `useBenchReachability()` call would give this
   // indicator a copy nobody reports into and an amber that never fires.
-  const { connectivity } = useBenchReachabilityContext();
+  // `?? 'ok'` is right HERE and wrong in the parcel pane: this is a readout
+  // with nothing to report into, so with no provider it has genuinely nothing
+  // to say and the quiet state is the honest one.
+  const connectivity = useBenchReachabilityContext()?.connectivity ?? 'ok';
   const connectivityCopy =
     connectivity === 'link-down'
       ? benchTopbarCopy.connectivity.linkDown

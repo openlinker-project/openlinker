@@ -87,7 +87,7 @@ import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useBenchParcelQuery } from '../hooks/use-bench-parcel-query';
 import { useBenchLayout } from '../hooks/use-bench-layout';
 import { useBenchPresenceQuery } from '../hooks/use-bench-presence';
-import { isUnreachableFailure } from '../hooks/use-bench-reachability';
+import { isUnreachableFailure, useBenchReachability } from '../hooks/use-bench-reachability';
 import { useBenchReachabilityContext } from '../hooks/bench-reachability-context';
 import { useBenchReopenMutation } from '../hooks/use-bench-reopen-mutation';
 import { useBenchUndoMutation } from '../hooks/use-bench-undo-mutation';
@@ -157,12 +157,19 @@ export function BenchParcelView({
   const verify = useBenchVerifyMutation();
   const reopen = useBenchReopenMutation();
   const undo = useBenchUndoMutation();
-  // The context, not a fresh call (#3407): `BenchSurface` holds the one
-  // instance so the topbar indicator reads the same state this pane reports
-  // into. Outside a provider the context's fallback is the `ok` shape with
-  // no-op reporters, which is what keeps a test that mounts this pane alone
-  // working rather than crashing.
-  const reachability = useBenchReachabilityContext();
+  // Prefer the SHARED instance (#3407): `BenchSurface` holds the one the
+  // topbar indicator reads, so this pane's reports and that readout cannot
+  // disagree. Outside a provider - a test mounting this pane alone - the own
+  // instance below is used instead, which is exactly the pre-context
+  // behaviour; a no-op fallback was tried first and silently cost the pane its
+  // ability to report at all.
+  //
+  // Both are evaluated because a hook cannot be called conditionally. The
+  // unused one costs a `useState` and two window listeners, which is the price
+  // of the pane working identically in and out of a provider.
+  const ownReachability = useBenchReachability();
+  const sharedReachability = useBenchReachabilityContext();
+  const reachability = sharedReachability ?? ownReachability;
   // A3. Off while the idle lock covers the bench — see the hook's docblock for
   // why a locked terminal must not keep announcing the packer who walked away.
   const presence = useBenchPresenceQuery(workId, { enabled: useBenchInteractive() });

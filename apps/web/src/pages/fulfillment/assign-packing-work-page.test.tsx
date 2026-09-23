@@ -543,7 +543,8 @@ describe('AssignPackingWorkPage', () => {
       const card = (await screen.findByText('Packers at their benches')).closest(
         '.metric-card'
       ) as HTMLElement;
-      expect(within(card).getByText('Not known')).toBeInTheDocument();
+      // A dash, labelled - never the digit, and never an unlabelled glyph.
+      expect(within(card).getByLabelText('Not known')).toBeInTheDocument();
       expect(within(card).queryByText('0')).not.toBeInTheDocument();
     });
   });

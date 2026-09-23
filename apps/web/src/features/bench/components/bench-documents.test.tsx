@@ -319,7 +319,14 @@ describe('BenchDocumentsPanel (#2418)', () => {
 
       const line = await screen.findByTestId('bench-documents-printer');
       expect(line).toHaveTextContent('Printing to Zebra ZD420 · Bench 3');
-      expect(line).toHaveTextContent("this station's printer, always");
+      // And NOT the mockup's trailing "this station's printer, always": the
+      // label is stored on the USER, so it follows the packer to whichever
+      // bench they sign in at. Asserted rather than merely omitted, because a
+      // reassurance that is wrong about where the paper comes out is worse
+      // than none, and this clause is exactly what a later parity pass
+      // re-adds. See `benchParcelCopy.documents.printingTo`.
+      expect(line).not.toHaveTextContent(/station/i);
+      expect(line).not.toHaveTextContent(/always/i);
     });
 
     it('should render nothing when the packer has no station label set', async () => {

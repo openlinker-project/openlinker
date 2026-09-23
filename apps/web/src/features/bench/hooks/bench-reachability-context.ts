@@ -13,12 +13,18 @@
  * The indicator is a READOUT; the parcel pane is the reporter. If the two ever
  * disagree, the readout is the thing that is wrong.
  *
- * The default is the `ok` shape with no-op reporters rather than `null`,
- * because a consumer rendered outside the provider - a test mounting the
- * parcel pane on its own, today - should degrade to "nothing to report" rather
- * than crash, and `unreachable: false` is the safe direction: it refuses no
- * work it should have accepted, and the first real failure still flips it once
- * a provider is present.
+ * The default is `null` - "no provider here" - and NOT an `ok`-shaped object
+ * with no-op reporters. That was the first version and it was wrong in a way
+ * worth recording: this hook is STATEFUL, so a pane handed no-op reporters can
+ * call `reportUnreachable()` on a failed request and change nothing, and then
+ * never renders the banner that says the bench cannot reach OpenLinker. Six
+ * #2421 tests that mount the pane on its own caught it; a host that rendered
+ * the pane outside the surface would have had the same hole in production,
+ * silently, because a pane that refuses nothing looks exactly like a pane with
+ * nothing to refuse.
+ *
+ * A consumer therefore falls back to its OWN `useBenchReachability()` when the
+ * context is absent, which is precisely its pre-context behaviour.
  *
  * @module apps/web/src/features/bench/hooks
  */
@@ -26,15 +32,9 @@ import { createContext, useContext } from 'react';
 
 import type { BenchReachability } from './use-bench-reachability';
 
-const FALLBACK: BenchReachability = {
-  unreachable: false,
-  connectivity: 'ok',
-  reportUnreachable: () => {},
-  reportReached: () => {},
-};
+export const BenchReachabilityContext = createContext<BenchReachability | null>(null);
 
-export const BenchReachabilityContext = createContext<BenchReachability>(FALLBACK);
-
-export function useBenchReachabilityContext(): BenchReachability {
+/** The shared instance, or `null` when this subtree has no provider. */
+export function useBenchReachabilityContext(): BenchReachability | null {
   return useContext(BenchReachabilityContext);
 }

@@ -8,14 +8,27 @@
  * landed above rather than below `formatShipBy`.
  */
 import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AssignPackingWorkCard } from './assign-packing-work-card';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 
-afterEach(cleanup);
-
 const NOW_ISO = '2026-06-01T12:00:00.000Z';
+
+// The badge renders an AGE, so the clock is an input and has to be pinned.
+// Without this the suite read `Date.now()` and compared a fixed 2026-06-01
+// stamp against whenever it happened to run - the "52m" case measured months
+// and failed, while the cases asserting an ABSENT badge passed for the wrong
+// reason and would have kept passing however wrong the arithmetic got.
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(NOW_ISO));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  cleanup();
+});
 
 function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
   return {
