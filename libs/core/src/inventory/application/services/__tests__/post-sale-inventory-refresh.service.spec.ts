@@ -168,6 +168,15 @@ describe('PostSaleInventoryRefreshService', () => {
     expect(jobQueue.enqueue).toHaveBeenCalledTimes(1);
   });
 
+  it('never throws when the capability registry lookup itself rejects', async () => {
+    integrationsService.listCapabilityAdapters.mockRejectedValue(new Error('registry unavailable'));
+
+    await expect(
+      service.enqueue({ productIds: ['ol_product_1'], keyScope: 'invoice:inv-1' })
+    ).resolves.toBeUndefined();
+    expect(jobQueue.enqueue).not.toHaveBeenCalled();
+  });
+
   it('never throws when the queue itself rejects — the sweep is the backstop', async () => {
     withMaster(MASTER_CONN);
     withMapping(MASTER_CONN, 'DZSO100');

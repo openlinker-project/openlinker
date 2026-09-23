@@ -15,9 +15,11 @@
  * TRI-STATE, and the states are not interchangeable: `NULL` = this provider
  * does not report linkage at all (inFakt, KSeF and eparagony never will —
  * they have no catalogue to link to); `0` = every line was linked; `> 0` = that
- * many were not. A surface must therefore test `> 0` rather than nullability,
- * which is what `InvoiceRecord.hasUnlinkedCatalogueLines` exists to make hard
- * to get wrong.
+ * many were not. A surface must therefore test `> 0` rather than nullability;
+ * `InvoiceRecord.hasUnlinkedCatalogueLines` is the convenience derivation for
+ * a caller that only needs the yes/no question, but every shipped consumer
+ * needs the count itself (to name it, e.g. "2 lines") and reads the raw
+ * column.
  *
  * Nullable with NO default and NO backfill: every existing row predates the
  * column and nothing records what its documents' linkage was, so `NULL` —

@@ -80,10 +80,22 @@ export class PostSaleInventoryRefreshService implements IPostSaleInventoryRefres
       return;
     }
 
-    const inventoryMasters = await this.integrationsService.listCapabilityAdapters<unknown>({
-      capability: 'InventoryMaster',
-      lazy: true,
-    });
+    let inventoryMasters;
+    try {
+      inventoryMasters = await this.integrationsService.listCapabilityAdapters<unknown>({
+        capability: 'InventoryMaster',
+        lazy: true,
+      });
+    } catch (error) {
+      // The registry lookup is as much a fallible call as the queue enqueue
+      // below, and this method's whole contract is that it never throws.
+      this.logger.warn(
+        `Failed to enqueue post-sale master inventory refresh (scope ${input.keyScope}): capability registry lookup failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return;
+    }
     if (inventoryMasters.length === 0) {
       return;
     }

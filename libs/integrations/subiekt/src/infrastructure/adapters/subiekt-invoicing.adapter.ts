@@ -177,9 +177,20 @@ export class SubiektInvoicingAdapter
     // Count LINES, not products: two lines of the same unmapped product are two
     // lines the warehouse will not see, and the operator is looking at a
     // document whose lines are what they can count.
-    const unlinkedCatalogueLines = cmd.lines.filter(
-      (line) => line.productId !== undefined && unmappedProductIds.has(line.productId),
-    ).length;
+    //
+    // The three cases are deliberately distinct. A line with NO `productId` is
+    // a shipping or hand-written line - there is no product to link, so it is
+    // not a defect and is not counted. A line whose `productId` is the EMPTY
+    // STRING names a product and supplies no id for it: it cannot be looked
+    // up, so it goes out free-text exactly like an unmapped one, and counting
+    // it is the whole point - the alternative reports it as linked while the
+    // warehouse never sees it. Everything else is counted iff the lookup came
+    // back with no catalogue symbol.
+    const unlinkedCatalogueLines = cmd.lines.filter((line) => {
+      if (line.productId === undefined) return false;
+      if (line.productId === '') return true;
+      return unmappedProductIds.has(line.productId);
+    }).length;
 
     try {
       const response = await this.bridge.issueInvoice({
