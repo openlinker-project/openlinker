@@ -27,6 +27,22 @@
  * sync already wrote. That containment is the whole security argument, so it
  * must not be relaxed into a `?url=` parameter for convenience.
  *
+ * ## The stored url is NOT uniformly operator-authored
+ *
+ * Index-not-url bounds the reachable set to what the catalogue sync wrote -
+ * and the WooCommerce product mapper writes `i.src` VERBATIM from the shop's
+ * own response, as the Allegro one does. So a hostile or compromised shop
+ * chooses part of that set, and this service reaches it from inside the
+ * backend's network. `isProductImageUrlAllowed` is the second bound that
+ * follows from that: link-local and the metadata hostnames are refused, on
+ * every hop, while the private ranges the feature exists to reach stay
+ * allowed. Its own module docblock explains why it is not `isUrlSsrfSafe`.
+ *
+ * Redirects are followed BY HAND for the same reason. `redirect: 'follow'`
+ * checks the first url and then goes wherever the shop points, which makes
+ * the check a formality - a 302 to `169.254.169.254` would have sailed
+ * through it.
+ *
  * Everything else here is a bound rather than a policy: a timeout, a byte
  * cap, http/https only, and a refusal to pass through anything the upstream
  * did not label as an image.
@@ -36,6 +52,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import { Logger } from '@openlinker/shared/logging';
+import { isProductImageUrlAllowed } from './product-image-url-safety';
 
 /** Long enough for a shop under load, short enough not to hold a worker. */
 const FETCH_TIMEOUT_MS = 8_000;
@@ -50,6 +67,17 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 /** What a browser will render in an `<img>`. Anything else is refused. */
 const ALLOWED_TYPE_PREFIX = 'image/';
 
+/**
+ * How many redirects to follow before giving up.
+ *
+ * Followed by hand rather than by `redirect: 'follow'`, so that every hop's
+ * host is re-checked - otherwise the check applies to the first url only and
+ * a shop can 302 to anywhere. Three is generous for a CDN or an http-to-https
+ * upgrade and short enough that a redirect loop ends as a failed thumbnail
+ * rather than as a held worker.
+ */
+const MAX_REDIRECTS = 3;
+
 export interface ProductImage {
   readonly bytes: Buffer;
   readonly contentType: string;
@@ -58,7 +86,10 @@ export interface ProductImage {
 export type ProductImageFailure =
   /** No such product, or it carries no image at that index. */
   | 'not-found'
-  /** The stored value is not a fetchable http(s) url. */
+  /**
+   * The stored value is not a fetchable http(s) url, or names a host this
+   * proxy refuses to reach - see `isProductImageUrlAllowed`.
+   */
   | 'unusable-url'
   /** The shop did not answer, answered an error, or answered too slowly. */
   | 'upstream-unavailable'
@@ -68,6 +99,17 @@ export type ProductImageFailure =
 export type ProductImageResult =
   | { readonly kind: 'image'; readonly image: ProductImage }
   | { readonly kind: 'failure'; readonly reason: ProductImageFailure };
+
+/**
+ * Whether a status is one that carries a `Location` worth following.
+ *
+ * The set, not `>= 300 && < 400`: 304 and 305 carry no redirect target a
+ * fetch should chase, and treating them as one would follow a stale header
+ * or, for 305, a proxy instruction.
+ */
+function isRedirect(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
+}
 
 @Injectable()
 export class ProductImageProxyService {
@@ -95,9 +137,15 @@ export class ProductImageProxyService {
       return { kind: 'failure', reason: 'unusable-url' };
     }
 
-    if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+    // Protocol AND host, in one predicate, so the two cannot be checked in
+    // two places and drift. Logged distinctly from a malformed url: a refused
+    // HOST is the interesting line in an incident, and reading it as "the
+    // catalogue holds a broken value" would send an operator looking at the
+    // wrong thing entirely.
+    if (!isProductImageUrlAllowed(target)) {
       this.logger.warn(
-        `product_image_unusable_url productId=${productId} protocol=${target.protocol}`
+        `product_image_refused_host productId=${productId} index=${String(index)} ` +
+          `protocol=${target.protocol} host=${target.hostname}`
       );
       return { kind: 'failure', reason: 'unusable-url' };
     }
@@ -116,7 +164,51 @@ export class ProductImageProxyService {
     }, FETCH_TIMEOUT_MS);
 
     try {
-      const response = await fetch(target, { signal: abort.signal, redirect: 'follow' });
+      let current = target;
+      let response = await fetch(current, { signal: abort.signal, redirect: 'manual' });
+
+      // Every hop re-checked, never `redirect: 'follow'`: that checks the url
+      // the catalogue holds and then goes wherever the shop sends it, so a
+      // 302 to the metadata service would bypass the gate above entirely.
+      for (let hop = 0; hop < MAX_REDIRECTS && isRedirect(response.status); hop += 1) {
+        const location = response.headers.get('location');
+        if (location === null || location === '') break;
+
+        let next: URL;
+        try {
+          // Resolved against the CURRENT url, so a relative `Location` works
+          // and an absolute one still names its own host.
+          next = new URL(location, current);
+        } catch {
+          this.logger.warn(
+            `product_image_refused_host productId=${productId} index=${String(index)} ` +
+              `reason=unparseable-redirect`
+          );
+          return { kind: 'failure', reason: 'unusable-url' };
+        }
+
+        if (!isProductImageUrlAllowed(next)) {
+          this.logger.warn(
+            `product_image_refused_host productId=${productId} index=${String(index)} ` +
+              `hop=${String(hop + 1)} protocol=${next.protocol} host=${next.hostname}`
+          );
+          return { kind: 'failure', reason: 'unusable-url' };
+        }
+
+        current = next;
+        response = await fetch(current, { signal: abort.signal, redirect: 'manual' });
+      }
+
+      // Still redirecting past the cap: a loop, or a chain longer than any
+      // real image needs. Reported as the shop being unreachable, which is
+      // what it amounts to from here.
+      if (isRedirect(response.status)) {
+        this.logger.warn(
+          `product_image_upstream_status productId=${productId} index=${String(index)} ` +
+            `reason=too-many-redirects`
+        );
+        return { kind: 'failure', reason: 'upstream-unavailable' };
+      }
 
       if (!response.ok) {
         this.logger.warn(

@@ -160,8 +160,22 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // name, email and BOTH un-redacted addresses under the default
   // `OL_STORE_PII=true`, a superset of the customer register. This projection is
   // an explicit allowlist: a reference, a buyer name, the lines' catalogue
-  // identity and counts. No address, no email, no phone, no total, no price. A
-  // parcel routed to any other executor answers 404.
+  // identity and counts, and - since #3409 - the order total, its currency,
+  // the carrier and the ship-by deadline. No address, no email, no phone.
+  //
+  // The four commercial fields are a DELIBERATE widening, not a leak: every
+  // one of them is printed on the documents the packer is about to put in the
+  // box, so withholding them from the screen while handing them over on paper
+  // protected nothing and cost the packer the check that catches a wrong
+  // parcel. The line that matters is unchanged - a packer still cannot reach
+  // an address, a contact detail, or any order they are not packing.
+  //
+  // ADR-062 is NOT the authority for this list and must not be cited as one:
+  // its subject is what crosses to a PLUGIN (`RoutingInput`, `HostServices`,
+  // the router port), and it says nothing about what OpenLinker's own HTTP
+  // surfaces show a signed-in operator. This spec is that authority.
+  //
+  // A parcel routed to any other executor answers 404.
   'BenchParcelController.getParcel',
 
   // #2418, Surface E. The two writes a bench makes. Both are scoped to a parcel

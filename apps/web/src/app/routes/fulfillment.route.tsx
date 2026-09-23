@@ -18,6 +18,15 @@
  * been in the nav and in shared links, and breaking a bookmark to make a
  * point about topology is not worth it.
  *
+ * It is TEMPORARY, and saying so is the point (#3415 review) - a redirect
+ * with no stated expiry is how a route list grows. Nothing in the tree points
+ * at the old path any more: the nav registry moved with the merge and the
+ * user guide's own reference moved in the same pass, so the only thing this
+ * route now serves is a bookmark or a link somebody pasted into a chat before
+ * the merge. Remove it one minor release after this ships; there is no data
+ * behind it and no migration to run, so the removal is a deleted export and a
+ * `route-lazy.test.ts` count.
+ *
  * @module app/routes
  */
 import { Navigate } from 'react-router-dom';
@@ -38,7 +47,8 @@ export const fulfillmentRoute: RouteObject = {
 };
 
 /**
- * The old staffing-board path.
+ * The old staffing-board path. TEMPORARY - see the module docblock for when
+ * it goes and why it is safe to take it.
  *
  * Eager `element`, not `lazy` — matching `analyticsLegacyRedirectRoute`, and
  * the reason `route-lazy.test.ts`'s count drops by one rather than staying
