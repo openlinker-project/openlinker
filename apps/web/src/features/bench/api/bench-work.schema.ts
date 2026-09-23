@@ -31,6 +31,19 @@ export const benchWorkSchema = z.object({
   parcelIndex: z.number(),
   parcelTotal: z.number(),
   lineCount: z.number(),
+  // Defaulted, like every other additive field on this read: a response from
+  // an API that predates the item list renders a row with no products rather
+  // than failing the whole rail.
+  items: z
+    .array(
+      z.object({
+        name: z.string().nullish().transform((value) => value ?? null),
+        quantity: z.number(),
+        imageUrl: z.string().nullish().transform((value) => value ?? null),
+      })
+    )
+    .nullish()
+    .transform((value) => value ?? []),
   unitsToVerify: z.number(),
   // See the types module: never `z.enum`.
   state: z.string(),

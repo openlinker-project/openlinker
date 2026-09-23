@@ -463,7 +463,11 @@ export function AssignPackingWorkPage(): ReactElement {
         ) : null}
       </div>
 
-      <div className="toolbar" role="group" aria-label={FULFILLMENT_WORKLIST_COPY.filter.groupLabel}>
+      <div
+        className="toolbar assign-packing-work-filters"
+        role="group"
+        aria-label={FULFILLMENT_WORKLIST_COPY.filter.groupLabel}
+      >
         {/* `key` is the URL's own value, so the box REMOUNTS whenever the
             filter changes from outside it — which is what makes `Clear
             filters` clear the text as well as the list. An uncontrolled input

@@ -50,6 +50,7 @@ import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-bad
 import type { BenchWork } from '../api/bench-work.types';
 import { describeBenchDeadline, expediteActionFor } from '../lib/bench-work-presentation';
 import { benchWorkCopy } from '../lib/bench-work.copy';
+import { BenchThumb } from './bench-thumb';
 
 export interface BenchWorkRowProps {
   readonly work: BenchWork;
@@ -129,19 +130,81 @@ export function BenchWorkRow({
       </StatusBadge>
     );
 
+  const hiddenItemCount = Math.max(0, work.lineCount - work.items.length);
+
   const body = (
     <>
+      {/* WHAT IS IN THE BOX, first and loudest (#3415).
+          The row used to lead with the order reference, which on this data is
+          a 36-character uuid - the biggest thing on the row and the one thing
+          a packer cannot act on. They are choosing which trolley to walk to,
+          so the row leads with the goods and keeps the reference underneath as
+          the value they read out when they ring the office.
+          The deadline badge keeps its place beside it: it is the OTHER thing a
+          packer triages on, and demoting it would trade one problem for another. */}
+      {/* The badge sits on its OWN line above the goods, not beside them.
+          Beside them it is `flex-shrink: 0` against a rail barely 330px wide,
+          so "Kubek ceramiczny bialy 300ml" arrived as "Kubek cer..." - the
+          row led with the products and then refused to show them. A packer
+          reads the deadline first and the names second, so stacking costs one
+          line and buys the full width for the thing the row is about. */}
+      {badge === null ? null : <span className="bench-work-row__flag">{badge}</span>}
+
       <span className="bench-work-row__top">
-        <span className="bench-work-row__reference">{work.orderReference}</span>
-        {badge}
+        <span className="bench-work-row__items">
+          {work.items.length === 0 ? (
+            // A parcel whose every line was cancelled to zero. The row still
+            // renders and is still openable - saying nothing here would make
+            // it look broken rather than empty.
+            <span className="bench-work-row__item bench-work-row__item--empty">
+              {benchWorkCopy.row.summary({
+                parcelIndex: work.parcelIndex,
+                parcelTotal: work.parcelTotal,
+                lineCount: work.lineCount,
+                unitsToVerify: work.unitsToVerify,
+              })}
+            </span>
+          ) : (
+            work.items.map((item, index) => (
+              <span
+                className="bench-work-row__item"
+                key={`${item.name ?? 'unnamed'}:${String(index)}`}
+              >
+                <BenchThumb
+                  className="bench-work-row__thumb"
+                  imageUrl={item.imageUrl}
+                  name={item.name}
+                />
+                <span className="bench-work-row__item-qty tabular">
+                  {benchWorkCopy.row.itemQuantity(item.quantity)}
+                </span>
+                <span
+                  className={
+                    item.name === null
+                      ? 'bench-work-row__item-name bench-work-row__item-name--unnamed'
+                      : 'bench-work-row__item-name'
+                  }
+                  title={item.name ?? undefined}
+                >
+                  {item.name ?? benchWorkCopy.row.itemUnnamed}
+                </span>
+              </span>
+            ))
+          )}
+          {hiddenItemCount === 0 ? null : (
+            <span className="bench-work-row__item-more">
+              {benchWorkCopy.row.itemsMore(hiddenItemCount)}
+            </span>
+          )}
+        </span>
       </span>
 
       {work.buyerName === null ? null : (
         <span className="bench-work-row__buyer">{work.buyerName}</span>
       )}
 
-      {/* The mockup's own meta line: parcel, counts, then the work id in
-          mono — the value a packer reads out when they ring the office. */}
+      {/* Demoted, never deleted. Parcel, counts, the order reference and then
+          the work id in mono - the two values a packer reads out on the phone. */}
       <span className="bench-work-row__meta" id={metaId}>
         {benchWorkCopy.row.summary({
           parcelIndex: work.parcelIndex,
@@ -149,6 +212,10 @@ export function BenchWorkRow({
           lineCount: work.lineCount,
           unitsToVerify: work.unitsToVerify,
         })}
+        {' · '}
+        <span className="mono bench-work-row__reference" title={work.orderReference}>
+          {work.orderReference}
+        </span>
         {' · '}
         <span className="mono">{work.workId}</span>
         {/* #3341, ADR-074. In the meta rather than in a second badge: the

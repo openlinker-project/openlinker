@@ -21,6 +21,13 @@ function view(over: Partial<BenchWorkListView> = {}): BenchWorkListView {
         parcelIndex: 1,
         parcelTotal: 2,
         lineCount: 2,
+        // #3415 - the rail leads with what is in the box. Two named lines and
+        // one un-resolvable variant, because `null` is a real answer here and
+        // the projection must carry it through rather than drop the row.
+        items: [
+          { name: 'Linen tea towel', quantity: 2, imageUrl: '/v1/products/ol_product_1/image/0' },
+          { name: null, quantity: 1, imageUrl: null },
+        ],
         unitsToVerify: 6,
         state: 'packable',
         holdReason: null,

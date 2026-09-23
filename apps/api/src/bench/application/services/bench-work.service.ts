@@ -89,6 +89,9 @@ import {
   BENCH_PARCEL_SERVICE_TOKEN,
   type IBenchParcelService,
 } from '../interfaces/bench-parcel.service.interface';
+import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
+
+import { productImageProxyPath } from '../../../products/http/product-image-path';
 import type { IBenchWorkService } from '../interfaces/bench-work.service.interface';
 import type { BenchClaimNextResultView } from '../types/bench-parcel.types';
 import type {
@@ -117,6 +120,17 @@ import type {
  */
 export const BENCH_WORK_HARD_CAP = 5 * FULFILLMENT_WORKLIST_MAX_LIMIT;
 
+/**
+ * How many product lines a rail row shows before it stops (#3415).
+ *
+ * Three, because the row has to stay one glanceable block in a scrolling
+ * list - a twelve-line parcel rendering twelve names turns one row into a
+ * screenful and the rail stops being scannable, which is the whole reason a
+ * packer looks at it. `lineCount` keeps the honest total beside them, so the
+ * surface can say how many more there are rather than implying this is all.
+ */
+const RAIL_ITEM_LIMIT = 3;
+
 @Injectable()
 export class BenchWorkService implements IBenchWorkService {
   private readonly logger = new Logger(BenchWorkService.name);
@@ -128,7 +142,11 @@ export class BenchWorkService implements IBenchWorkService {
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
     @Inject(BENCH_PARCEL_SERVICE_TOKEN)
-    private readonly parcels: IBenchParcelService
+    private readonly parcels: IBenchParcelService,
+    // #3415 — the rail leads with what is IN the box, so it needs the
+    // catalogue. Read in ONE batch per page (see `project`), never per row.
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly products: IProductsService
   ) {}
 
   async listBenchWork(viewerId: string, supervises: boolean): Promise<BenchWorkListView> {
@@ -368,16 +386,35 @@ export class BenchWorkService implements IBenchWorkService {
     if (works.length === 0) return [];
 
     const orderIds = [...new Set(works.map((work) => work.orderId))];
-    // Both batched across the whole page, never per row — the #2083 rule.
-    const [orders, siblingIds] = await Promise.all([
+    // Batched across the whole page, never per row — the #2083 rule. The
+    // variant read is one query for EVERY line of every row on the page, and
+    // the product read one more; a per-row resolve would be an N+1 on the
+    // rail, which is the hottest read this bench has.
+    const variantIds = [
+      ...new Set(works.flatMap((work) => work.lines.map((line) => line.productVariantId))),
+    ];
+    const [orders, siblingIds, variants] = await Promise.all([
       this.orders.findByIds(orderIds),
       this.worklist.listSiblingWorkIds(orderIds),
+      variantIds.length === 0 ? Promise.resolve([]) : this.products.getVariantsByIds(variantIds),
     ]);
+    const productIds = [...new Set(variants.map((variant) => variant.productId))];
+    const products =
+      productIds.length === 0 ? [] : await this.products.getProductsByIds(productIds);
+    const variantById = new Map(variants.map((variant) => [variant.id, variant]));
+    const productById = new Map(products.map((product) => [product.id, product]));
     const orderById = new Map(orders.map((order) => [order.internalOrderId, order]));
 
     return works
       .map((work) =>
-        this.toView(work, orderById.get(work.orderId), siblingIds.get(work.orderId), viewerId)
+        this.toView(
+          work,
+          orderById.get(work.orderId),
+          siblingIds.get(work.orderId),
+          viewerId,
+          variantById,
+          productById
+        )
       )
       .sort((a, b) =>
         compareBenchWork(
@@ -399,7 +436,15 @@ export class BenchWorkService implements IBenchWorkService {
     work: FulfillmentWorkView,
     order: OrderRecord | undefined,
     siblings: readonly string[] | undefined,
-    viewerId: string
+    viewerId: string,
+    variantById: ReadonlyMap<string, { readonly productId: string }>,
+    // Structural, and it carries `images` because `productImageProxyPath`
+    // reads it - typing this as `{ name }` alone compiled under ts-jest and
+    // failed the real build, which is the one that matters.
+    productById: ReadonlyMap<
+      string,
+      { readonly id: string; readonly name: string; readonly images: readonly string[] | null }
+    >
   ): BenchWorkView {
     const hold = work.activeHolds[0];
     // Story D2's shared rule — the SAME function `BenchParcelService` refuses
@@ -433,6 +478,24 @@ export class BenchWorkService implements IBenchWorkService {
       parcelIndex: index >= 0 ? index + 1 : 1,
       parcelTotal: parcels.length,
       lineCount: work.lines.length,
+      // What is in the box, capped. Cancelled units are subtracted for the
+      // same reason `unitsToVerify` below subtracts them: nobody will put them
+      // in, so showing them would have a packer looking for something that is
+      // not going in the parcel. A line cancelled to zero is dropped entirely.
+      items: work.lines
+        .map((line) => {
+          const variant = variantById.get(line.productVariantId);
+          const product = variant === undefined ? undefined : productById.get(variant.productId);
+          return {
+            // `null`, never a placeholder: a variant absent from the catalogue
+            // is a fact the packer can act on, and a fabricated name is not.
+            name: product?.name ?? null,
+            quantity: Math.max(0, line.totalQuantity - line.cancelledQuantity),
+            imageUrl: productImageProxyPath(product),
+          };
+        })
+        .filter((item) => item.quantity > 0)
+        .slice(0, RAIL_ITEM_LIMIT),
       // Units still to be confirmed against the box. Cancelled units are
       // subtracted because nobody will put them in; `fulfilledQuantity` is
       // deliberately NOT consulted — see the view type's module note on B2.

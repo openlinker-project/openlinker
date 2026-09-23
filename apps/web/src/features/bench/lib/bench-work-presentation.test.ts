@@ -25,6 +25,7 @@ function work(over: Partial<BenchWork> = {}): BenchWork {
     parcelIndex: 1,
     parcelTotal: 1,
     lineCount: 2,
+    items: [],
     unitsToVerify: 3,
     state: 'packable',
     holdReason: null,

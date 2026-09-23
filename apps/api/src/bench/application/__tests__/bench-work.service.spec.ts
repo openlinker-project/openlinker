@@ -144,7 +144,14 @@ function harness(options: {
     new BenchExecutorResolver(connections, integrations),
     { list, get: jest.fn(), applyAction: jest.fn(), listSiblingWorkIds: siblings } as never,
     { findByIds } as unknown as IOrderRecordService,
-    parcels as never
+    parcels as never,
+    // The catalogue read the rail's item list needs. Stubbed empty: every test
+    // in this harness is about scoping, sorting and eligibility, and a row with
+    // no resolvable products still carries its counts.
+    {
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
+      getProductsByIds: jest.fn().mockResolvedValue([]),
+    } as never
   );
 
   return {
@@ -479,7 +486,11 @@ describe('BenchWorkService (#2416)', () => {
           listSiblingWorkIds: jest.fn().mockResolvedValue(new Map()),
         } as never,
         { findByIds: jest.fn().mockResolvedValue([orderRecord()]) } as unknown as IOrderRecordService,
-        { claimParcel: jest.fn() } as never
+        { claimParcel: jest.fn() } as never,
+        {
+      getVariantsByIds: jest.fn().mockResolvedValue([]),
+      getProductsByIds: jest.fn().mockResolvedValue([]),
+    } as never
       );
 
       const view = await service.listBenchWork('viewer-1', true);

@@ -201,6 +201,12 @@ export class BenchWorkController {
         parcelIndex: work.parcelIndex,
         parcelTotal: work.parcelTotal,
         lineCount: work.lineCount,
+        // Field by field, never a spread — the DTO module's own rule.
+        items: work.items.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          imageUrl: item.imageUrl,
+        })),
         unitsToVerify: work.unitsToVerify,
         state: work.state,
         holdReason: work.holdReason,

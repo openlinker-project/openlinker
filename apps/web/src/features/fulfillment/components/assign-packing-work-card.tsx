@@ -146,11 +146,20 @@ export function AssignPackingWorkCard({
       >
         {task.orderReference ?? task.id}
       </span>
-      {badge === null ? null : (
-        <StatusBadge tone={badge.tone} compact>
-          {badge.label}
-        </StatusBadge>
-      )}
+      {/* A WRAPPER holds the column width, never the badge itself. Sizing the
+          badge to the slot stretched its pill to twice the width its words
+          need, which reads as a progress bar rather than a chip. The wrapper
+          is always rendered so the columns after it start at the same x on
+          every row - our data has rows with no deadline, which the mockup's
+          own data does not, and the ragged edge that left is what read as
+          unfinished. */}
+      <span className="assign-packing-work-card__flag">
+        {badge === null ? null : (
+          <StatusBadge tone={badge.tone} compact>
+            {badge.label}
+          </StatusBadge>
+        )}
+      </span>
 
       {/* Always rendered, even with nothing inside it — an absent buyer name
           is a blank cell, not a missing one, so the columns after it never

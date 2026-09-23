@@ -29,6 +29,12 @@ function work(over: Partial<BenchWork> = {}): BenchWork {
     parcelIndex: 1,
     parcelTotal: 2,
     lineCount: 4,
+    // Two named lines against a lineCount of 4, so the overflow line has
+    // something real to say rather than being exercised only at zero.
+    items: [
+      { name: 'Linen tea towel', quantity: 2, imageUrl: null },
+      { name: 'Black Tiger 50ml', quantity: 1, imageUrl: null },
+    ],
     unitsToVerify: 6,
     state: 'packable',
     holdReason: null,

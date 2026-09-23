@@ -79,7 +79,6 @@ export const benchWorkCopy = {
     nothingLeftHere: 'Nothing left for you to do here',
     /** The unlabelled row's own badge. */
     unlabelledBadge: 'Packed · no label',
-    /** #3412 — pull the oldest-deadline unassigned parcel into your own queue. */
     takeNextAction: 'Take next task',
     takeNextEmpty: 'Nothing unassigned right now.',
     takeNextFailed: 'That did not go through. The list has been refreshed — try again.',
@@ -115,6 +114,23 @@ export const benchWorkCopy = {
     body: 'Pick a parcel from the list on the left to start scanning it into a box.',
   },
   row: {
+    /**
+     * What a row says about a line whose variant is not in the catalogue.
+     *
+     * Deliberately not a guess and not a blank: a packer meeting this needs to
+     * know the row is real and its name is not, so they look at the parcel
+     * rather than at a gap.
+     */
+    itemUnnamed: 'Product not in the catalogue',
+    /**
+     * The overflow line, worded so it reads as "there is more" rather than as
+     * a truncation fault. The server caps the list; `lineCount` is the total.
+     */
+    itemsMore: (count: number): string =>
+      count === 1 ? '1 more item in this box' : `${String(count)} more items in this box`,
+    /** Prefix on the quantity, so "2" cannot be misread as a line number. */
+    itemQuantity: (quantity: number): string => `${String(quantity)} x`,
+    /** #3412 — pull the oldest-deadline unassigned parcel into your own queue. */
     expeditedBadge: 'Moved to the front',
     expeditedHint: 'Someone asked for this one to go out ahead of its deadline order.',
     heldBadge: 'On hold',

@@ -23862,7 +23862,11 @@ legend.analytics-settings-dialog__label {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-4);
+  /* Was `--space-2` top and bottom, which put ~49px rows of mixed type sizes
+     hard against each other and read as one grey block rather than as a list
+     somebody could scan. A supervisor triages this page by eye, so the row
+     needs enough height to be a target and enough air to be a unit. */
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -23914,6 +23918,33 @@ legend.analytics-settings-dialog__label {
   font-size: 0.8125rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+/* A FIXED slot, so every column after it starts at the same x.
+   The mockup's own data carries a badge on every card, so its markup needs no
+   slot - ours does not, and matching the markup on data the mockup never had
+   left the buyer column jumping left wherever a row had no deadline. The
+   ragged edge is what reads as unfinished. `justify-content: flex-start` keeps
+   a short badge from stretching. */
+/* The shared `.toolbar` is `space-between`, which is right for a bar with a
+   heading on one side and a button on the other. This one holds two sibling
+   filters, and flinging them to opposite ends of a 1100px bar left a void
+   down the middle that read as a missing control. Scoped rather than changed
+   on `.toolbar` itself, which every other screen in the app shares. */
+.assign-packing-work-filters {
+  justify-content: flex-start;
+  gap: var(--space-3);
+}
+
+.assign-packing-work-filters > * {
+  flex: 0 1 20rem;
+}
+
+.assign-packing-work-card__flag {
+  flex: 0 0 7.5rem;
+  display: flex;
+  justify-content: flex-start;
+  min-width: 0;
 }
 
 .assign-packing-work-card__buyer {
@@ -24222,7 +24253,15 @@ legend.analytics-settings-dialog__label {
 .assign-packing-work-actions__self-serve {
   align-items: center;
   display: flex;
-  font-size: 0.8125rem;
+  /* Quieter than the row it sits on, deliberately. It renders on EVERY card,
+     and on a board of fourteen unassigned parcels it was fourteen identical
+     ticks and fourteen copies of the same five words running down the page -
+     louder than the products, the buyer and the deadline it sits beside, and
+     none of it changing. It is a per-row setting an operator changes rarely,
+     so it recedes until they look for it. The control itself is untouched:
+     same size, same hit area, same keyboard behaviour. */
+  font-size: 0.75rem;
+  color: var(--text-muted);
   gap: var(--space-1);
   white-space: nowrap;
 }
@@ -24968,7 +25007,10 @@ legend.analytics-settings-dialog__label {
    gives, in the rule below. */
 .bench-work-row__top {
   display: flex;
-  align-items: baseline;
+  /* `flex-start`, not `baseline`: this row now holds a stacked list of items
+     beside the badge, and a baseline would pin the badge to the FIRST item's
+     text and leave it drifting as the list grows. */
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
   min-width: 0;
@@ -24980,6 +25022,106 @@ legend.analytics-settings-dialog__label {
 
 .bench-work-row__buyer {
   font-size: 0.8125rem;
+}
+
+/* ── Rail row: what is in the box (#3415) ────────────────────────────────
+   The row leads with the goods. A packer scanning this rail is choosing
+   which trolley to walk to, and the order reference they used to lead with
+   is a 36-character uuid on this data - the loudest thing on the row and
+   the one thing they cannot act on.
+   The list is capped server-side at three, so these rules size for three
+   and the overflow line carries the rest. */
+
+/* The badge's own line. `flex-start` so a badge never stretches to the rail
+   width - it is a chip, and a full-width chip reads as a banner. */
+.bench-work-row__flag {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: var(--space-1);
+}
+
+.bench-work-row__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.bench-work-row__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* The fallback line for a parcel whose every unit was cancelled. Muted,
+   because it is a statement about an absence rather than a product. */
+.bench-work-row__item--empty {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* 28px, deliberately smaller than the parcel pane's own thumb: this is a
+   recognition cue in a scrolling list, not the picture a packer checks the
+   item against once the box is open. */
+.bench-work-row__thumb {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--bg-surface-muted);
+}
+
+.bench-work-row__thumb--empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Fixed base so every name starts at the same x, whatever the quantity. A
+   ragged left edge down a list of three is what made the old meta line hard
+   to scan. */
+.bench-work-row__item-qty {
+  flex: 0 0 auto;
+  min-width: 2.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Truncated, never wrapped, for the reason the reference was: a wrapping
+   name makes row height depend on the length of a product name, and a rail
+   of uneven rows cannot be scanned. The full name rides in `title`. */
+.bench-work-row__item-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* A line whose variant is not in the catalogue. Italic and muted so it reads
+   as a missing answer rather than as a product called that. */
+.bench-work-row__item-name--unnamed {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.bench-work-row__item-more {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  /* Indented to the name column, so it reads as the tail of the list rather
+     than as a new fact about the parcel. */
+  padding-left: calc(28px + var(--space-2) + 2.25rem + var(--space-2));
 }
 
 /* Tint and left rule follow the state the row already states in words. */
@@ -25009,12 +25151,18 @@ legend.analytics-settings-dialog__label {
    tail loses nothing a packer reads it for. */
 .bench-work-row__reference {
   min-width: 0;
+  /* Capped so a 36-character uuid cannot push the work id onto a third line
+     of grey. A reference is recognisable from its head; the tail is what a
+     packer copies, and the `title` carries it in full. */
+  max-width: 14ch;
+  display: inline-block;
+  vertical-align: bottom;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  font-weight: 600;
+  /* Sits in the meta line since #3415, so it takes that line's size and
+     colour rather than the heading weight it used to carry - it is the value
+     a packer reads out on the phone, not the one they pick a trolley by. */
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }

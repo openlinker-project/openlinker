@@ -16,6 +16,16 @@ import {
   type BenchWorkState,
 } from '../../application/types/bench-work.types';
 
+export class BenchWorkItemResponseDto {
+  @ApiProperty({ nullable: true, description: 'Null when the variant is not in the catalogue' })
+  name!: string | null;
+
+  @ApiProperty() quantity!: number;
+
+  @ApiProperty({ nullable: true, description: "The parent product's image, or null" })
+  imageUrl!: string | null;
+}
+
 export class BenchWorkResponseDto {
   @ApiProperty() workId!: string;
   @ApiProperty({ description: 'Optimistic token. Required to act on this parcel.' })
@@ -45,6 +55,14 @@ export class BenchWorkResponseDto {
   })
   parcelTotal!: number;
   @ApiProperty() lineCount!: number;
+
+  @ApiProperty({
+    type: [BenchWorkItemResponseDto],
+    description:
+      'What is in the box, capped at a few lines so one rail row stays glanceable. ' +
+      '`lineCount` above is the honest total, so a surface can say how many more there are.',
+  })
+  items!: BenchWorkItemResponseDto[];
   @ApiProperty({
     description:
       'Units to confirm against the box. This is NOT a readiness signal: OpenLinker cannot see a ' +
