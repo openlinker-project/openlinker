@@ -18,7 +18,7 @@ export const subiektNexoSetupRoute: RouteObject = {
     const { SubiektSetupPage } = await import('../../pages/connections/subiekt-setup-page');
     return {
       Component: () => (
-        <SubiektSetupPage identity={SUBIEKT_NEXO_IDENTITY} productName="Subiekt nexo" />
+        <SubiektSetupPage identity={SUBIEKT_NEXO_IDENTITY} />
       ),
     };
   },

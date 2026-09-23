@@ -3,14 +3,21 @@
  *
  * Implements `ConnectionTesterPort`. Reads `bridgeBaseUrl`, builds the HTTP
  * client INSIDE a catch-all (so a construction `SubiektConfigException` becomes
- * a failed `ConnectionTestResult`, never a throw), and does a cheap
- * `GET /health` probe.
+ * a failed `ConnectionTestResult`, never a throw), and probes an AUTHORIZED
+ * bridge route.
+ *
+ * What a pass means: the bridge is reachable AND it accepted our credentials.
+ * It used to mean reachable ALONE, because the probe was `GET /health`, which
+ * the bridge exempts from its auth middleware — so a connection with no token
+ * passed the test and then failed 401 on its first invoice.
  *
  * Credentials guard: resolve the bridge token ONLY when
- * `connection.credentialsRef` is truthy; otherwise probe with no token. Never
- * call `credentialsResolver.get('')`. NEVER throws — all failures become a
- * structured `ConnectionTestResult { success:false }`. The token is never logged
- * or echoed.
+ * `connection.credentialsRef` is truthy; otherwise probe with no token — which
+ * is now a probe that FAILS against a bridge with `Auth.Enabled`, and that is
+ * the point. Never call `credentialsResolver.get('')`. NEVER throws — all
+ * failures become a structured `ConnectionTestResult { success:false }`. The
+ * token is never logged or echoed; the client redacts it from any bridge-
+ * supplied reason before it reaches the message.
  *
  * @module libs/integrations/subiekt-nexo/src/infrastructure/adapters
  * @implements {ConnectionTesterPort}
@@ -78,9 +85,11 @@ export class SubiektConnectionTesterAdapter implements ConnectionTesterPort {
         fetchImpl,
       });
 
-      // Cheap connectivity probe — GET /health. A 4xx still proves the bridge
-      // is reachable; only transport failures bubble up.
-      await client.checkHealth();
+      // Probe an AUTHORIZED route, not /health. The bridge exempts /health from
+      // auth, so the previous probe answered "OK" for a connection with no token
+      // whose every invoice would then 401 — a green tick on a broken setup.
+      // See `checkReachableAndAuthorized`.
+      await client.checkReachableAndAuthorized();
 
       return {
         success: true,

@@ -3,8 +3,9 @@
  *
  * Coverage for the single-step Subiekt setup wizard: field rendering, required
  * validation, create-payload mapping (bridge URL + numeric timeout coercion +
- * optional write-only bridge token), and the post-create "Test connection"
- * flow that surfaces a ConnectionTestResult.
+ * the write-only bridge token), the per-product copy that arrives on
+ * `identity`, and the post-create "Test connection" flow that surfaces a
+ * ConnectionTestResult.
  */
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -14,7 +15,7 @@ import {
   renderWithProviders,
 } from '../../../test/test-utils';
 import { SubiektSetupForm } from './subiekt-setup-form';
-import { SUBIEKT_GT_IDENTITY } from './subiekt-setup.schema';
+import { SUBIEKT_GT_IDENTITY, SUBIEKT_NEXO_IDENTITY } from './subiekt-setup.schema';
 
 describe('SubiektSetupForm', () => {
   afterEach(cleanup);
@@ -24,7 +25,7 @@ describe('SubiektSetupForm', () => {
     expect(screen.getByLabelText('Connection name')).toBeInTheDocument();
     expect(screen.getByLabelText('Bridge URL')).toBeInTheDocument();
     expect(screen.getByLabelText('Request timeout (ms, optional)')).toBeInTheDocument();
-    expect(screen.getByLabelText('Bridge token (optional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Bridge token')).toBeInTheDocument();
   });
 
   it('requires connection name to be non-empty', async () => {
@@ -75,7 +76,11 @@ describe('SubiektSetupForm', () => {
       target: { value: 'My Subiekt' },
     });
     fireEvent.change(screen.getByLabelText('Bridge URL'), {
-      target: { value: 'http://127.0.0.1:5000' },
+      target: { value: 'http://127.0.0.1:5056' },
+    });
+    // The token is REQUIRED now, so every happy-path submit has to supply one.
+    fireEvent.change(screen.getByLabelText('Bridge token'), {
+      target: { value: 'a-token' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
 
@@ -85,7 +90,7 @@ describe('SubiektSetupForm', () => {
           name: 'My Subiekt',
           platformType: 'subiekt-gt',
           adapterKey: 'subiekt.gt.v1',
-          config: { bridgeBaseUrl: 'http://127.0.0.1:5000' },
+          config: { bridgeBaseUrl: 'http://127.0.0.1:5056' },
         }),
       );
     });
@@ -111,7 +116,7 @@ describe('SubiektSetupForm', () => {
     fireEvent.change(screen.getByLabelText('Request timeout (ms, optional)'), {
       target: { value: '30000' },
     });
-    fireEvent.change(screen.getByLabelText('Bridge token (optional)'), {
+    fireEvent.change(screen.getByLabelText('Bridge token'), {
       target: { value: 'shared-secret-token' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
@@ -135,7 +140,11 @@ describe('SubiektSetupForm', () => {
       target: { value: 'My Subiekt' },
     });
     fireEvent.change(screen.getByLabelText('Bridge URL'), {
-      target: { value: 'http://127.0.0.1:5000' },
+      target: { value: 'http://127.0.0.1:5056' },
+    });
+    // The token is REQUIRED now, so every happy-path submit has to supply one.
+    fireEvent.change(screen.getByLabelText('Bridge token'), {
+      target: { value: 'a-token' },
     });
     fireEvent.change(screen.getByLabelText('Request timeout (ms, optional)'), {
       target: { value: '500' },
@@ -162,7 +171,11 @@ describe('SubiektSetupForm', () => {
       target: { value: 'My Subiekt' },
     });
     fireEvent.change(screen.getByLabelText('Bridge URL'), {
-      target: { value: 'http://127.0.0.1:5000' },
+      target: { value: 'http://127.0.0.1:5056' },
+    });
+    // The token is REQUIRED now, so every happy-path submit has to supply one.
+    fireEvent.change(screen.getByLabelText('Bridge token'), {
+      target: { value: 'a-token' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
 
@@ -188,7 +201,11 @@ describe('SubiektSetupForm', () => {
       target: { value: 'My Subiekt' },
     });
     fireEvent.change(screen.getByLabelText('Bridge URL'), {
-      target: { value: 'http://127.0.0.1:5000' },
+      target: { value: 'http://127.0.0.1:5056' },
+    });
+    // The token is REQUIRED now, so every happy-path submit has to supply one.
+    fireEvent.change(screen.getByLabelText('Bridge token'), {
+      target: { value: 'a-token' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
 
@@ -213,7 +230,11 @@ describe('SubiektSetupForm', () => {
       target: { value: 'My Subiekt' },
     });
     fireEvent.change(screen.getByLabelText('Bridge URL'), {
-      target: { value: 'http://127.0.0.1:5000' },
+      target: { value: 'http://127.0.0.1:5056' },
+    });
+    // The token is REQUIRED now, so every happy-path submit has to supply one.
+    fireEvent.change(screen.getByLabelText('Bridge token'), {
+      target: { value: 'a-token' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
 
@@ -241,7 +262,11 @@ describe('SubiektSetupForm', () => {
       target: { value: 'My Subiekt' },
     });
     fireEvent.change(screen.getByLabelText('Bridge URL'), {
-      target: { value: 'http://127.0.0.1:5000' },
+      target: { value: 'http://127.0.0.1:5056' },
+    });
+    // The token is REQUIRED now, so every happy-path submit has to supply one.
+    fireEvent.change(screen.getByLabelText('Bridge token'), {
+      target: { value: 'a-token' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
 
@@ -256,5 +281,64 @@ describe('SubiektSetupForm', () => {
     fireEvent.click(testButton);
     expect(await screen.findByText('Unable to test connection')).toBeInTheDocument();
     expect(screen.queryByText('Connection test failed')).not.toBeInTheDocument();
+  });
+  // --- the defects this wizard used to ship ----------------------------------
+
+  it('refuses to submit without a bridge token', async () => {
+    // Both bridges reject every /api/* request without one, so a connection
+    // created without a token cannot work. The field used to say "optional"
+    // and "leave blank for an unauthenticated LAN bridge" — the opposite.
+    const create = vi.fn();
+    const apiClient = createMockApiClient({ connections: { create } });
+
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+    fireEvent.change(screen.getByLabelText('Connection name'), {
+      target: { value: 'My Subiekt' },
+    });
+    fireEvent.change(screen.getByLabelText('Bridge URL'), {
+      target: { value: 'http://127.0.0.1:5056' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Bridge token is required/)[0]).toBeInTheDocument();
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('labels the token as required, not optional', () => {
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />);
+    expect(screen.getByLabelText('Bridge token')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Bridge token (optional)')).not.toBeInTheDocument();
+  });
+
+  it('suggests THIS product\u2019s bridge port, not one shared wrong number', () => {
+    // GT listens on 5056, nexo on 5005. The wizard used to suggest 5000 to both,
+    // which is neither, so an operator who trusted the hint could reach nothing.
+    const { unmount } = renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />);
+    expect(screen.getByLabelText('Bridge URL')).toHaveAttribute(
+      'placeholder',
+      'http://127.0.0.1:5056',
+    );
+    unmount();
+
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_NEXO_IDENTITY} />);
+    expect(screen.getByLabelText('Bridge URL')).toHaveAttribute(
+      'placeholder',
+      'http://127.0.0.1:5005',
+    );
+  });
+
+  it('names the product it is connecting, on both routes', () => {
+    const { unmount } = renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />);
+    expect(screen.getByText(/Subiekt GT/)).toBeInTheDocument();
+    unmount();
+
+    // The callout used to hardcode "Subiekt GT", so a nexo operator was told to
+    // run the bridge on the machine where the OTHER product is installed.
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_NEXO_IDENTITY} />);
+    expect(screen.getByText(/Subiekt nexo/)).toBeInTheDocument();
+    expect(screen.queryByText(/Subiekt GT/)).not.toBeInTheDocument();
   });
 });
