@@ -35,6 +35,7 @@ const buildWork = (overrides: Partial<FulfillmentWork> = {}): FulfillmentWork =>
   deliveryMethod: 'courier',
   assignedConnectionId: CONNECTION_ID,
   assignedToUserId: null,
+  unassignedSince: null,
   selfServeEligible: true,
   status: 'open',
   requestStatus: 'unsubmitted',

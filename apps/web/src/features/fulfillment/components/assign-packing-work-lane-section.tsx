@@ -28,11 +28,17 @@
  * the ordinary accent, because it is a real (if departed) person's work,
  * not a pool. The load bar and its threshold tones are `lane.tasks.length`
  * read through `laneLoadPercent`/`laneLoadTone` — the SAME count already
- * rendered beside it, never a second, possibly-drifting source. Station and
- * online-presence text (the mockup's `lane__station`) is not rendered: it
- * needs a presence signal this system does not have yet (tracked
- * separately); rendering a fabricated "online" claim would be worse than
- * omitting the line.
+ * rendered beside it, never a second, possibly-drifting source.
+ *
+ * ## Station and presence (#3424)
+ *
+ * The mockup's `lane__station` line — withheld until now for want of a
+ * presence signal (`PackerSummary.online` / `stationLabel`, #3424) — renders
+ * for a lane that has a real roster `packer`, i.e. every packer lane except
+ * an off-roster one. An off-roster lane's `packer` is `null` exactly like the
+ * Unassigned lane's, but it gets neither line: there is no roster entry left
+ * to read presence off, and inventing one would misreport a departed
+ * packer's status.
  *
  * @module apps/web/src/features/fulfillment/components
  */
@@ -162,6 +168,14 @@ export function AssignPackingWorkLaneSection({
               {ASSIGN_PACKING_WORK_COPY.lane.unassignedSubtitle}
             </p>
           ) : null}
+          {/* #3424 — a real roster packer's station + presence. See the
+              module docblock on why an off-roster lane (`packer === null`,
+              not the pinned lane) gets neither this nor the line above. */}
+          {!isUnassignedLane && lane.packer ? (
+            <p className="assign-packing-work-lane__subtitle">
+              {ASSIGN_PACKING_WORK_COPY.lane.packerSubtitle(lane.packer)}
+            </p>
+          ) : null}
         </div>
         {/* NOT on the unassigned lane — the mockup gives it no load bar, and
             the reason is that "load" is a statement about a PERSON. The pool
@@ -212,6 +226,9 @@ export function AssignPackingWorkLaneSection({
                 actions={renderActions(task)}
                 rootProps={buildRootProps(task)}
                 dragEnabled={dragEnabled}
+                // #3424 — the "Sat unassigned" badge is unassigned-lane-only;
+                // see `assign-packing-work-card.tsx`'s `badgeFor`.
+                inUnassignedLane={isUnassignedLane}
               />
             ))}
           </ul>

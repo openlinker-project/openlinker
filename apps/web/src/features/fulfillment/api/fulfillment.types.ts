@@ -111,6 +111,14 @@ export interface FulfillmentTask {
    */
   assignedToUserId: string | null;
   /**
+   * When the task most recently BECAME unassigned (#3424). `null` on an
+   * ASSIGNED row means "assigned right now" — render nothing. `null` on an
+   * UNASSIGNED row means the row predates this column: an UNKNOWN age, not
+   * a zero one — render nothing rather than "0m". Optional against an API
+   * that predates it, the `orderReference` precedent above.
+   */
+  unassignedSince?: string | null;
+  /**
    * Whether a packer other than `assignedToUserId` may still claim this
    * task. `true` is the advisory default; server-side enforcement of
    * `false` lives at the pack bench, not here.

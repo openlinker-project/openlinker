@@ -71,6 +71,18 @@ export interface FulfillmentWorkView {
    * `assignedConnectionId` — that one is the HOLDER connection.
    */
   readonly assignedToUserId: string | null;
+
+  /**
+   * When this parcel last became unassigned, ISO-8601, or `null` (#3424).
+   *
+   * `null` means two different things and the caller must read it against
+   * `assignedToUserId` rather than alone: on an ASSIGNED row it means "it is
+   * assigned right now, there is no waiting to report"; on an UNASSIGNED row
+   * it means the row predates this column, which is an UNKNOWN age, never a
+   * zero one. A board rendering "sat unassigned 0m" for the second case would
+   * claim a parcel just arrived when it may have waited a week.
+   */
+  readonly unassignedSince: string | null;
   /**
    * Whether a packer other than `assignedToUserId` may still work this
    * parcel. `true` is the advisory default. Server-side enforcement of

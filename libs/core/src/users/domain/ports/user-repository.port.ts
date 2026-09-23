@@ -36,6 +36,29 @@ export interface UserRepositoryPort {
    * change on their own account after registration.
    */
   updateAnalyticsConsent(userId: string, analyticsConsent: boolean): Promise<void>;
+  /**
+   * The packer's own bench/printer label (#3424). Its own narrow write rather
+   * than a field on `save`, because `save` round-trips a whole user read
+   * elsewhere and would let a stale read revert a label a peer just set.
+   *
+   * An empty or whitespace-only label is stored as `null` by the caller, not
+   * as `''`: "no label" has one spelling, so a reader never has to test two.
+   */
+  updatePackStationLabel(userId: string, packStationLabel: string | null): Promise<void>;
+
+  /**
+   * Stamp `lastActiveAt` to the DATABASE's clock (#3424).
+   *
+   * Takes no instant, deliberately. The board renders an online/offline
+   * verdict by comparing this against `now()`, so a worker running a few
+   * seconds ahead would make a packer read as active into the future - the
+   * same reason `inventory_items.updatedAt` became database-stamped in #2071.
+   *
+   * Best-effort by contract: it is called from the bench's hot paths and must
+   * never be the reason a pack action fails, so callers swallow its errors.
+   */
+  touchLastActive(userId: string): Promise<void>;
+
   approveUser(userId: string, role: UserRole): Promise<void>;
   deleteById(userId: string): Promise<void>;
 

@@ -62,6 +62,10 @@ import {
 } from '@openlinker/core/inventory';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import {
+  USER_MANAGEMENT_SERVICE_TOKEN,
+  type IUserManagementService,
+} from '../../../users/user-management.service.interface';
+import {
   SHIPMENT_QUERY_SERVICE_TOKEN,
   ReservationConsumeCandidateStatusValues,
   type IShipmentQueryService,
@@ -121,7 +125,13 @@ export class BenchParcelService implements IBenchParcelService {
     @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
     private readonly shipments: IShipmentQueryService,
     @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
-    private readonly inventory: IInventoryQueryService
+    private readonly inventory: IInventoryQueryService,
+    // #3424 - the presence heartbeat. Bumped by the ACTS below and never by a
+    // read, so a bench tab left open on the rail does not advertise a staffed
+    // station; `recordBenchActivity` is best-effort by contract and never
+    // throws, so no pack action can fail because of it.
+    @Inject(USER_MANAGEMENT_SERVICE_TOKEN)
+    private readonly users: IUserManagementService
   ) {}
 
   async getParcel(workId: string): Promise<BenchParcelView> {
@@ -130,11 +140,32 @@ export class BenchParcelService implements IBenchParcelService {
     return await this.project(work, state);
   }
 
+  /**
+   * Record that this packer just acted at a bench (#3424).
+   *
+   * Fired from the four ACTS below - scan, undo, claim, complete - and never
+   * from a read, so a bench tab left open on the rail overnight does not keep
+   * advertising a staffed station. It is also fired on the REFUSED paths of
+   * those acts, deliberately: a packer who scanned the wrong item, or reached
+   * a parcel someone else holds, is unambiguously standing at a bench, and
+   * reading them as offline for being turned away would be wrong about the
+   * one thing this signal exists to say.
+   *
+   * Awaited rather than fire-and-forget: the underlying call is contractually
+   * incapable of rejecting, so awaiting costs one indexed primary-key UPDATE
+   * and buys an ordering guarantee - a floating promise could land after the
+   * response and leave a test asserting the board's own reading of it flaky.
+   */
+  private async noteActivity(userId: string): Promise<void> {
+    await this.users.recordBenchActivity(userId);
+  }
+
   async getWorkForDocuments(workId: string): Promise<FulfillmentWorkView> {
     return await this.loadBenchWork(workId);
   }
 
   async verifyUnit(input: BenchVerifyUnitInput): Promise<BenchVerificationResultView> {
+    await this.noteActivity(input.verifiedByUserId);
     const work = await this.loadBenchWork(input.workId);
 
     // Story D2, at the write. A parcel the list would refuse must be refused
@@ -316,6 +347,7 @@ export class BenchParcelService implements IBenchParcelService {
   }
 
   async claimParcel(workId: string, viewerId: string): Promise<BenchClaimResultView> {
+    await this.noteActivity(viewerId);
     const work = await this.loadBenchWork(workId);
 
     const refusal = this.refusalFor(work);
@@ -379,6 +411,7 @@ export class BenchParcelService implements IBenchParcelService {
    * finished by someone else either.
    */
   async completeParcel(input: BenchCompleteInput): Promise<BenchCompleteResultView> {
+    await this.noteActivity(input.completedByUserId);
     const work = await this.loadBenchWork(input.workId);
 
     if (!isClaimableByViewer(work, input.completedByUserId)) {
@@ -449,6 +482,7 @@ export class BenchParcelService implements IBenchParcelService {
   }
 
   async undoLastScan(input: BenchUndoInput): Promise<BenchUndoResultView> {
+    await this.noteActivity(input.actorUserId);
     const work = await this.loadBenchWork(input.workId);
 
     // ADR-074 (#3336/#3337), same rule as `verifyUnit` above: a packer

@@ -35,14 +35,21 @@ export interface ApproveUserInput {
 }
 
 /**
- * Minimal roster entry from `GET /users/packers` (#3340) — id + username
- * only. NOT a narrowed `UserSummary`: that endpoint is reachable by
- * `operator` as well as `admin`, so its response deliberately carries no
- * email/status/createdAt.
+ * Minimal roster entry from `GET /users/packers` (#3340; `online` /
+ * `stationLabel` added #3424) — NOT a narrowed `UserSummary`: that endpoint
+ * is reachable by `operator` as well as `admin`, so its response
+ * deliberately carries no email/status/createdAt.
  */
 export interface PackerSummary {
   id: string;
   username: string;
+  /**
+   * Server-derived presence, already thresholded — render it, never
+   * recompute it from anything else this app holds.
+   */
+  online: boolean;
+  /** Operator-typed free text, e.g. "Bench 3 / Zebra ZD420". `null` = unset. */
+  stationLabel: string | null;
 }
 
 export interface PackerListResponse {

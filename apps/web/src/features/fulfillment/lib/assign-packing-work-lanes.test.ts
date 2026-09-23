@@ -46,8 +46,8 @@ function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
   };
 }
 
-const packerA: PackerSummary = { id: 'u_a', username: 'packer-a' };
-const packerB: PackerSummary = { id: 'u_b', username: 'packer-b' };
+const packerA: PackerSummary = { id: 'u_a', username: 'packer-a', online: true, stationLabel: null };
+const packerB: PackerSummary = { id: 'u_b', username: 'packer-b', online: true, stationLabel: null };
 
 describe('groupTasksByPacker', () => {
   it('puts the unassigned lane first even when it is empty', () => {
@@ -118,7 +118,8 @@ describe('laneLoadTone', () => {
 function lane(id: string, taskCount: number): AssignPackingWorkLane {
   return {
     id,
-    packer: id === UNASSIGNED_LANE_ID ? null : { id, username: id },
+    packer:
+      id === UNASSIGNED_LANE_ID ? null : { id, username: id, online: true, stationLabel: null },
     tasks: Array.from({ length: taskCount }, (_, i) => task({ id: `${id}-${String(i)}` })),
   };
 }

@@ -40,6 +40,8 @@ const makeService = (): jest.Mocked<IUserManagementService> => ({
   reactivateUser: jest.fn(),
   deleteUser: jest.fn(),
   confirmEmail: jest.fn(),
+  setPackStationLabel: jest.fn(),
+  recordBenchActivity: jest.fn(),
 });
 
 describe('UsersController', () => {

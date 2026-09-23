@@ -35,6 +35,7 @@ import type { LiHTMLAttributes, ReactElement } from 'react';
 import { formatShipBy, type ShipByLevel } from '../../../shared/format/format-ship-by';
 import { StatusBadge, type StatusBadgeTone } from '../../../shared/ui/status-badge';
 import type { FulfillmentTask } from '../api/fulfillment.types';
+import { formatUnassignedAge } from '../lib/assign-packing-work-duration';
 import { ASSIGN_PACKING_WORK_COPY } from '../lib/assign-packing-work.copy';
 import { fulfillmentStatusLabel } from '../lib/fulfillment-task.copy';
 
@@ -63,15 +64,31 @@ export interface AssignPackingWorkCardProps {
    * have.
    */
   readonly dragEnabled?: boolean;
+  /**
+   * Whether this card is rendered inside the pinned Unassigned lane — gates
+   * the "Sat unassigned" badge (#3424), which asserts something true only of
+   * the pool. A task carries `unassignedSince` regardless of which lane it
+   * is drawn into (the location axis, #2410, shares the same read), so the
+   * gate cannot live on the task alone; it has to come from the caller that
+   * knows which lane it placed the card in.
+   */
+  readonly inUnassignedLane?: boolean;
 }
 
 /**
  * ONE badge, carrying the most salient thing about the task — the same rule
- * the bench rail follows. A hold outranks a deadline because it is why the
- * box must not be packed at all; a deadline outranks the plain state because
- * the state is already implied by the lane the card sits in.
+ * the bench rail follows. A hold outranks everything else because it is why
+ * the box must not be packed at all; the ship-by deadline outranks the
+ * "sat unassigned" signal because it is an external commitment to the buyer,
+ * while sitting unassigned is an internal staffing signal — the very thing
+ * this board exists to fix, so it does not need to shout over a real
+ * deadline to get looked at; the plain state is last because it is already
+ * implied by the lane the card sits in.
  */
-function badgeFor(task: FulfillmentTask): { tone: StatusBadgeTone; label: string } | null {
+function badgeFor(
+  task: FulfillmentTask,
+  inUnassignedLane: boolean
+): { tone: StatusBadgeTone; label: string } | null {
   const hold = task.activeHolds[0];
   if (hold !== undefined) {
     return { tone: 'error', label: ASSIGN_PACKING_WORK_COPY.card.heldBadge };
@@ -85,6 +102,15 @@ function badgeFor(task: FulfillmentTask): { tone: StatusBadgeTone; label: string
   const shipBy = formatShipBy(task.dispatchByAt ?? null);
   if (shipBy !== null) {
     return { tone: SHIP_BY_TONE[shipBy.level], label: shipBy.remaining };
+  }
+  // #3424 — pool-only, and only when the age is known (see
+  // `formatUnassignedAge`'s own null-handling: `null` in either sense of
+  // `unassignedSince` renders nothing, never a fabricated "0m").
+  if (inUnassignedLane) {
+    const age = formatUnassignedAge(task.unassignedSince ?? null);
+    if (age !== null) {
+      return { tone: 'error', label: ASSIGN_PACKING_WORK_COPY.card.sitUnassignedBadge(age) };
+    }
   }
   if (task.status !== 'open') {
     // Humanised, never raw. `status` is a server vocabulary the FE
@@ -103,8 +129,9 @@ export function AssignPackingWorkCard({
   actions,
   rootProps = {},
   dragEnabled = false,
+  inUnassignedLane = false,
 }: AssignPackingWorkCardProps): ReactElement {
-  const badge = badgeFor(task);
+  const badge = badgeFor(task, inUnassignedLane);
   const units = task.lines.reduce((sum, line) => sum + line.totalQuantity, 0);
   const { className: rootClassName, ...restRootProps } = rootProps;
 

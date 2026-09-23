@@ -395,6 +395,7 @@ export class FulfillmentWorkController {
       deliveryMethod: view.deliveryMethod,
       assignedConnectionId: view.assignedConnectionId,
       assignedToUserId: view.assignedToUserId,
+      unassignedSince: view.unassignedSince,
       selfServeEligible: view.selfServeEligible,
       status: view.status,
       requestStatus: view.requestStatus,

@@ -81,6 +81,15 @@ export class FulfillmentWorkResponseDto {
       'distinct from assignedConnectionId, the holder connection.',
   })
   assignedToUserId!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When this parcel last became unassigned, ISO-8601 (#3424). Read it ' +
+      'TOGETHER with assignedToUserId: null on an assigned row means there is ' +
+      'no waiting to report, while null on an unassigned row means the row ' +
+      'predates this field - an unknown age, never a zero one.',
+  })
+  unassignedSince!: string | null;
   @ApiProperty({
     description:
       'Whether a packer other than assignedToUserId may still work this parcel. true is the ' +

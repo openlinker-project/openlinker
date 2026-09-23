@@ -59,6 +59,12 @@ export {
 } from './lib/assign-packing-work-lanes';
 export type { AssignPackingWorkLane } from './lib/assign-packing-work-lanes';
 export { ASSIGN_PACKING_WORK_COPY } from './lib/assign-packing-work.copy';
+// #3424 — the "Oldest unassigned" metric's inputs; the badge's own use of
+// this module stays internal to the card component.
+export {
+  formatUnassignedAge,
+  oldestUnassignedSince,
+} from './lib/assign-packing-work-duration';
 
 export {
   describeFulfillmentActionError,

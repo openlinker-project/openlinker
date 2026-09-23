@@ -65,6 +65,12 @@ export const fulfillmentTaskSchema = z.object({
   locationName: nullableString,
   assignedConnectionId: nullableString,
   assignedToUserId: nullableString,
+  // #3424 — nullish, not `.optional()`: an API that predates the column
+  // sends nothing, and an API that carries it sends `null` on an assigned
+  // row. Both normalise to `null`, which the card reads as "render nothing"
+  // — never as a zero-length wait, per the module docblock's `.nullish()`
+  // rule.
+  unassignedSince: nullableString,
   selfServeEligible: z.boolean(),
   status: z.string(),
   requestStatus: z.string(),

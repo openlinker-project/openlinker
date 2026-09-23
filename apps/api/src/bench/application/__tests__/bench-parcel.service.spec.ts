@@ -24,6 +24,7 @@ import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import type { IProductsService } from '@openlinker/core/products';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
 
+import type { IUserManagementService } from '../../../users/user-management.service.interface';
 import { BenchExecutorResolver } from '../services/bench-executor.resolver';
 import {
   BenchParcelNotAtThisBenchError,
@@ -180,6 +181,10 @@ function harness(options: {
     findBinCodesByVariantIds: jest.fn().mockResolvedValue(new Map()),
   } as unknown as IInventoryQueryService;
 
+  const users = {
+    recordBenchActivity: jest.fn().mockResolvedValue(undefined),
+  } as unknown as IUserManagementService;
+
   return {
     service: new BenchParcelService(
       executors,
@@ -188,7 +193,8 @@ function harness(options: {
       orders,
       products,
       shipments,
-      inventory
+      inventory,
+      users
     ),
     verification,
     orders,

@@ -18,6 +18,7 @@
  * | `locationId` / `deliveryMethod` | `create` | **insert-only** — the router is the single producer. If re-routing mints a NEW row these are never updated; if it ever updates in place, a round-trip from a stale read would silently revert the re-route. Insert-only forces #2395 to choose explicitly |
  * | `assignedConnectionId` | `create`, `assignHolder`, `clearHolder` | settable at insert (ADR-054 R1 creates work ALREADY ASSIGNED, in one transaction); afterwards only the two narrow claims move it |
  * | `assignedToUserId` | `create` (always `null`), `assignToPacker`, `clearAssignment` (#3336, ADR-074), `claimAssignment` (#3340 follow-up) | a distinct PERSON axis from `assignedConnectionId`'s HOLDER connection; unlike that pair, `assignToPacker` is not claim-once — a supervisor may reassign, so its guard is existence-only, not `IS NULL`. `claimAssignment` is the FOURTH named writer (the `status` / `requestStatus` convention): the exclusive unassigned -> assigned-to-me transition a packer's own self-claim needs, guarded `IS NULL`, so two concurrent claims on one unassigned parcel cannot both report success. `clearAssignment` ALSO resets `selfServeEligible` to `true`, in the same statement — see that column's row |
+ * | `unassignedSince` | `create` (always `NOW()`), `assignToPacker`, `claimAssignment`, `clearAssignment` (#3424) | never its own write. It moves in the SAME guarded statement as `assignedToUserId`, in lock-step with it: cleared when the column gains a value, re-stamped `NOW()` when it loses one. A separate UPDATE could land after a concurrent transition re-stamped it, leaving a parcel that is assigned and still counted as waiting. `NOW()` is Postgres's clock, not the worker's (the #2071 rule) - the board renders an AGE from it, so a process running ahead would render a negative one |
  * | `selfServeEligible` | `create` (always `true`), `setSelfServeEligible`, `clearAssignment` (always `true`, #3336, ADR-074) | advisory by default; enforcement of `false` lives in `BenchParcelService.verifyUnit` (#3337) — a human-packer guard, not `FulfillmentHandshakeService`, which negotiates with holder connections (ADR-054's executor axis, #2399) and has no concept of an acting user. **`clearAssignment` resets it to `true`** — review round 2 on #3360 found the alternative (leaving it untouched) left a residual: `assignToPacker(A) -> setSelfServeEligible(false) -> clearAssignment -> assignToPacker(B)` would lock B to an exclusivity decision nobody made about them. `#3337`'s guard testing `assignedToUserId !== null` before refusing only covers the parcel while it sits unassigned; it says nothing once B is assigned, which is exactly the window this reset closes |
  * | `status` | `create`, `transitionStatus`, `cancel` | |
  * | `requestStatus` | `create`, `transitionRequestStatus`, `claimDispatchAttempt`, `recordAcceptance`, `recordRejection` | the handshake (#2399) owns it; the router holds a stale copy by construction. A NAMED additional writer is this table's convention (`status` and `assignedConnectionId` each already list three); an UNNAMED one is the defect it guards against. **#2712's timeout sweep adds NO writer here** — it reaps THROUGH `recordRejection`, deliberately, so the guarded `submitted -> rejected` transition and the rejection row stay one statement pair with one owner |
@@ -242,6 +243,13 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     // correctness never depends on TypeORM's undefined-skips-to-DB-default
     // behaviour (#3336, ADR-074).
     header.assignedToUserId = null;
+    // The clock on "how long has this sat unassigned" starts at creation, not
+    // at the first time somebody un-assigns it (#3424). A work object is born
+    // unassigned, so a `null` here would make every never-assigned parcel -
+    // which is the whole board on a fresh install - read as having waited no
+    // time at all, and the board's "oldest unassigned" metric would report
+    // the one parcel a supervisor happened to hand back.
+    header.unassignedSince = new Date();
     header.selfServeEligible = true;
     header.status = input.status ?? 'open';
     header.requestStatus = input.requestStatus ?? 'unsubmitted';
@@ -423,7 +431,15 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     return this.applyGuardedUpdate('assignToPacker', (qb) =>
       this.withVersionGuard(
         qb
-          .set({ assignedToUserId: userId, version: () => '"version" + 1' })
+          // `unassignedSince` is cleared in the SAME guarded statement, never
+          // as a second write (#3424): a separate UPDATE could land after a
+          // concurrent `clearAssignment` re-stamped it, leaving a parcel that
+          // is assigned and still counted as waiting.
+          .set({
+            assignedToUserId: userId,
+            unassignedSince: null,
+            version: () => '"version" + 1',
+          })
           .where('"id" = :id', { id: workId }),
         expectedVersion
       )
@@ -460,7 +476,11 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     // must always allow.
     return this.applyGuardedUpdate('claimAssignment', (qb) =>
       qb
-        .set({ assignedToUserId: userId, version: () => '"version" + 1' })
+        .set({
+          assignedToUserId: userId,
+          unassignedSince: null,
+          version: () => '"version" + 1',
+        })
         .where('"id" = :id', { id: workId })
         .andWhere('"assignedToUserId" IS NULL')
     );
@@ -485,8 +505,14 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     return this.applyGuardedUpdate('clearAssignment', (qb) =>
       this.withVersionGuard(
         qb
+          // `NOW()` is Postgres's clock, not the worker's (#3424) - the same
+          // rule `inventory_items.updatedAt` follows since #2071, and for the
+          // same reason: the board compares this stamp against `now()` when
+          // it renders "sat unassigned 52m", so a value stamped by a process
+          // running a few seconds ahead would render a negative age.
           .set({
             assignedToUserId: null,
+            unassignedSince: () => 'NOW()',
             selfServeEligible: true,
             version: () => '"version" + 1',
           })
@@ -1399,6 +1425,7 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       deliveryMethod: header.deliveryMethod,
       assignedConnectionId: header.assignedConnectionId,
       assignedToUserId: header.assignedToUserId,
+      unassignedSince: header.unassignedSince,
       selfServeEligible: header.selfServeEligible,
       // Narrow-or-fallback, never a blind cast — both guards ship in this same
       // context (#2391), so unlike `HoldReason` there is no leaf constraint

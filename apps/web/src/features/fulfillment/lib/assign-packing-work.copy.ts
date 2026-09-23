@@ -41,17 +41,24 @@ export const ASSIGN_PACKING_WORK_COPY = {
   },
 
   /**
-   * #3428 — the metric row above the board. Only "Unassigned right now" is
-   * shipped — it is a pure count over lanes already read for the board, so
-   * it needs no new backend signal. "Oldest unassigned" and "Packers at
-   * their benches" both need a presence/unassigned-since signal this system
-   * does not have yet (their write semantics — when does "unassigned
-   * since" get stamped, and what counts as "at the bench" — are undecided,
-   * not merely unwired), so neither is rendered rather than showing a
-   * fabricated or misleading number.
+   * #3428 shipped "Unassigned right now" — a pure count over lanes already
+   * read for the board, needing no backend signal. #3424 adds "Oldest
+   * unassigned", now that `unassignedSince` exists.
+   *
+   * "Packers at their benches" is STILL not shipped, deliberately: a live
+   * presence roster now exists (`PackerSummary.online`), but that metric was
+   * never one of #3424's three additions and adding it here would be
+   * inventing a fourth. It stays a one-line change for whoever picks it up
+   * — count `packers.filter((p) => p.online).length`.
    */
   metrics: {
     unassignedLabel: 'Unassigned right now',
+    oldestUnassignedLabel: 'Oldest unassigned',
+    /**
+     * Rendered via `EmptyValue` when no pooled task has a known age — an
+     * empty pool, or every pooled row predates the `unassignedSince` column.
+     */
+    oldestUnassignedEmptyLabel: 'No unassigned tasks with a known wait time',
   },
 
   /**
@@ -65,6 +72,14 @@ export const ASSIGN_PACKING_WORK_COPY = {
     summary: (parts: { readonly lines: number; readonly units: number }): string =>
       `${String(parts.lines)} ${parts.lines === 1 ? 'item' : 'items'}, ` +
       `${String(parts.units)} ${parts.units === 1 ? 'unit' : 'units'}`,
+    /**
+     * #3424 — the pool's own neglect signal: a task has sat in Unassigned
+     * for `age` (already compactly formatted, e.g. `"52m"`). `age` is a
+     * pre-formatted string rather than a raw instant, so this stays a pure
+     * sentence-builder and the rounding rule lives in exactly one place
+     * (`assign-packing-work-duration.ts`).
+     */
+    sitUnassignedBadge: (age: string): string => `Sat unassigned ${age}`,
   },
 
   /** The mockup's drag grip (`⠿`) — decorative, `aria-hidden`; the native
@@ -83,11 +98,26 @@ export const ASSIGN_PACKING_WORK_COPY = {
     lightestLoadTag: 'lightest load',
     /**
      * #3429 — the mockup's `.lane__station` text under "Unassigned", verbatim.
-     * Static copy, unlike a packer lane's station/presence line (deliberately
-     * NOT rendered — see `assign-packing-work-lane-section.tsx`'s docblock):
-     * this one needs no backend signal at all.
+     * Static copy, unlike a packer lane's station/presence line: that one
+     * needed a backend signal this system did not have (see
+     * `assign-packing-work-lane-section.tsx`'s docblock on why it was
+     * withheld) — #3424 supplies it, in `packerSubtitle` below.
      */
     unassignedSubtitle: 'Visible to every packer until claimed or assigned',
+    /**
+     * #3424 — a packer lane's own `.lane__station` line: the operator-typed
+     * station plus live presence, e.g. "Bench 3 / Zebra ZD420 · online". A
+     * packer with no `stationLabel` gets presence alone ("online" /
+     * "offline") rather than an empty line — the mockup's format assumes a
+     * station is always set, which this roster does not guarantee. Offline
+     * says so explicitly: a blank line where presence should be reads as
+     * "no signal", not "not at the bench", which is a different and false
+     * claim (see the lane section's own docblock).
+     */
+    packerSubtitle: (packer: { readonly online: boolean; readonly stationLabel: string | null }): string => {
+      const presence = packer.online ? 'online' : 'offline';
+      return packer.stationLabel === null ? presence : `${packer.stationLabel} · ${presence}`;
+    },
   },
 
   row: {

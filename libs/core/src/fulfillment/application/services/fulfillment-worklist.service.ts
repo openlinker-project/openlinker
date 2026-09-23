@@ -449,6 +449,7 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
       deliveryMethod: work.deliveryMethod,
       assignedConnectionId: work.assignedConnectionId,
       assignedToUserId: work.assignedToUserId,
+      unassignedSince: work.unassignedSince?.toISOString() ?? null,
       selfServeEligible: work.selfServeEligible,
       status: work.status,
       requestStatus: work.requestStatus,

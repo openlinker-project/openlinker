@@ -50,10 +50,12 @@ import {
   FulfillmentTaskActionDialog,
   UNASSIGNED_LANE_ID,
   clearFulfillmentFilters,
+  formatUnassignedAge,
   groupTasksByPacker,
   groupTasksIntoLanes,
   hasActiveFulfillmentFilters,
   lightestLoadLaneIds,
+  oldestUnassignedSince,
   readFulfillmentFilters,
   readFulfillmentOffset,
   setFulfillmentFilterParam,
@@ -70,6 +72,7 @@ import { useWriteAccess } from '../../shared/auth/use-permission';
 import { ApiError } from '../../shared/api/api-error';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
+import { EmptyValue } from '../../shared/ui/empty-value';
 import { EmptyState, ErrorState } from '../../shared/ui/feedback-state';
 import { Input } from '../../shared/ui/input';
 import { MetricCard } from '../../shared/ui/metric-card';
@@ -167,6 +170,10 @@ export function AssignPackingWorkPage(): ReactElement {
   // one axis is worse than one that is absent, and the tasks answer the same
   // question on every axis.
   const unassignedCount = tasks.filter((task) => task.assignedToUserId === null).length;
+  // #3424 — same "counted from the TASKS" rule as `unassignedCount` just
+  // above: the oldest wait in the pool is a fact about this page's tasks,
+  // not about any one lane, and reads correctly on both grouping axes.
+  const oldestUnassignedAge = formatUnassignedAge(oldestUnassignedSince(tasks));
 
   const setFilter = (key: 'orderId' | 'locationId', value: string): void => {
     setSearchParams(setFulfillmentFilterParam(searchParams, key, value));
@@ -508,9 +515,9 @@ export function AssignPackingWorkPage(): ReactElement {
         <Alert tone="warning">{ASSIGN_PACKING_WORK_COPY.rosterError.message}</Alert>
       ) : null}
 
-      {/* #3428 — one card shipped ("Unassigned right now"), a pure count over
-          lanes already read for the board. "Oldest unassigned" and "Packers
-          at their benches" are not rendered — see the copy module's own
+      {/* #3428 shipped "Unassigned right now". #3424 adds "Oldest
+          unassigned", now that `unassignedSince` exists. "Packers at their
+          benches" is still not rendered — see the copy module's own
           docblock for why. Only shown once the board has real data to
           summarise. */}
       {tasksQuery.isPending || tasksQuery.isError ? null : (
@@ -518,6 +525,14 @@ export function AssignPackingWorkPage(): ReactElement {
           <MetricCard
             label={ASSIGN_PACKING_WORK_COPY.metrics.unassignedLabel}
             value={unassignedCount}
+          />
+          <MetricCard
+            label={ASSIGN_PACKING_WORK_COPY.metrics.oldestUnassignedLabel}
+            value={
+              oldestUnassignedAge ?? (
+                <EmptyValue label={ASSIGN_PACKING_WORK_COPY.metrics.oldestUnassignedEmptyLabel} />
+              )
+            }
           />
         </div>
       )}

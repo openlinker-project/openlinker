@@ -127,6 +127,22 @@ export interface FulfillmentWork {
   readonly assignedToUserId: string | null;
 
   /**
+   * When this parcel last became unassigned - stamped at creation, cleared
+   * the moment `assignedToUserId` gains a value, and re-stamped the moment it
+   * loses one (#3424).
+   *
+   * It moves in the SAME guarded statement as `assignedToUserId`, never as a
+   * write of its own, so the pair cannot disagree: there is no window in
+   * which a parcel is assigned and still counted as waiting.
+   *
+   * `null` therefore means "assigned right now", NOT "never waited" - a
+   * caller rendering an age reads the value and the assignment together, and
+   * a `null` on an UNASSIGNED row means only that the row predates this
+   * column, which is an unknown age rather than a zero one.
+   */
+  readonly unassignedSince: Date | null;
+
+  /**
    * Whether a packer other than `assignedToUserId` may still claim this
    * parcel. `true` (the schema default) is the advisory reading ADR-074
    * chose: a locked, assigned-only parcel is the explicit exception a

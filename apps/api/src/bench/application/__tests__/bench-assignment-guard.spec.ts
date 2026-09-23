@@ -50,10 +50,12 @@ import type {
   IFulfillmentWorklistService,
   ParcelVerificationState,
 } from '@openlinker/core/fulfillment';
+import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import type { IProductsService } from '@openlinker/core/products';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
 
+import type { IUserManagementService } from '../../../users/user-management.service.interface';
 import { BenchExecutorResolver } from '../services/bench-executor.resolver';
 import { BenchParcelService } from '../services/bench-parcel.service';
 
@@ -68,6 +70,7 @@ const lockedWork = (): FulfillmentWorkView =>
     deliveryMethod: null,
     assignedConnectionId: EXECUTOR_ID,
     assignedToUserId: 'user-9',
+    unassignedSince: null,
     selfServeEligible: false,
     status: 'open',
     requestStatus: 'accepted',
@@ -79,6 +82,10 @@ const lockedWork = (): FulfillmentWorkView =>
     expeditedAt: null,
     parcelClosedAt: null,
     packedByUserId: null,
+    invoicePrintedAt: null,
+    labelPrintedAt: null,
+    completedAt: null,
+    completedByUserId: null,
     createdAt: new Date('2026-09-01T09:00:00Z'),
     updatedAt: new Date('2026-09-01T09:00:00Z'),
     lines: [
@@ -153,8 +160,25 @@ function harness() {
     findByFulfillmentWorkIds: jest.fn().mockResolvedValue(new Map()),
   } as unknown as IShipmentQueryService;
 
+  const inventory = {
+    findBinCodesByVariantIds: jest.fn().mockResolvedValue(new Map()),
+  } as unknown as IInventoryQueryService;
+
+  const users = {
+    recordBenchActivity: jest.fn().mockResolvedValue(undefined),
+  } as unknown as IUserManagementService;
+
   return {
-    service: new BenchParcelService(executors, worklist, verification, orders, products, shipments),
+    service: new BenchParcelService(
+      executors,
+      worklist,
+      verification,
+      orders,
+      products,
+      shipments,
+      inventory,
+      users
+    ),
     verification,
   };
 }
