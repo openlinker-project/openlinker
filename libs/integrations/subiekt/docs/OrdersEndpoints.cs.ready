@@ -186,39 +186,31 @@ public static class OrdersEndpoints
         }
 
         // #3369 idempotency fix, part 2: EnsureKontrahent's existingId=0 path
-        // ALWAYS creates a fresh kontrahent — confirmed live this session to
-        // produce duplicate customer records (NORBERTKULUS(1)/(2)/(3)) under
-        // exactly this retry scenario. Resolve an existing kontrahent first:
-        // by NIP when the buyer supplied one (same lookup Invoicing.cs's
-        // UpsertCustomer uses — a NIP is a real, stable natural key), else by
-        // the same deterministic Symbol MakeSymbol would derive for THIS
-        // buyer name (a repeat retail order under the same buyer name then
-        // correctly resolves to the kontrahent the first attempt created,
-        // rather than minting another one every time).
-        var symbol = MakeSymbol(req.Buyer.Nazwa);
-        int existingKontrahentId = 0;
-        if (req.Buyer.Nip is string nip && nip != "")
-            existingKontrahentId = await FindKontrahentIdByNip(nip) ?? 0;
-        if (existingKontrahentId == 0)
-        {
-            existingKontrahentId = await FindKontrahentIdBySymbol(symbol) ?? 0;
-            // A symbol is only the buyer's NAME, uppercased and cut to 16
-            // characters - it is NOT an identity. Every "Jan Kowalski" in
-            // Poland derives the same one, and two different surnames sharing
-            // a 16-character prefix collide as well. Reusing such a match
-            // would issue the second buyer's faktura to the first buyer's name
-            // and address, which the operator cannot see from Subiekt.
-            // So a symbol match is VERIFIED against the address before it is
-            // trusted; a mismatch falls through to creation, where Subiekt
-            // suffixes the symbol itself. A NIP match above needs no such
-            // check - a tax id IS an identity.
-            if (existingKontrahentId != 0 &&
-                !await KontrahentMatchesAddress(existingKontrahentId, req.Buyer))
-            {
-                Console.Error.WriteLine($"OrdersEndpoints.CreateOrder: kontrahent {existingKontrahentId} shares the derived symbol '{symbol}' but its address differs - treating as a DIFFERENT buyer and creating a new record.");
-                existingKontrahentId = 0;
-            }
-        }
+        // ALWAYS creates a fresh kontrahent, so a retry would mint a duplicate.
+        // Resolve an existing one first - by NIP when the buyer supplied one,
+        // else by the deterministic symbol derived from the buyer's name.
+        //
+        // A symbol is only the buyer's NAME, uppercased and cut to 16
+        // characters - it is NOT an identity. Every "Jan Kowalski" in Poland
+        // derives the same one, and two different surnames sharing a
+        // 16-character prefix collide as well. So a symbol match is VERIFIED
+        // against the address before it is trusted; a mismatch falls through to
+        // creation, where Subiekt suffixes the symbol itself. A NIP match needs
+        // no such check - a tax id IS an identity. `Kontrahent.Resolve` is that
+        // whole rule.
+        //
+        // THE SUFFIX IS THE POINT. The comment above this block used to promise
+        // that "a repeat retail order under the same buyer name correctly
+        // resolves to the kontrahent the first attempt created". It did not.
+        // The old lookup matched the BASE symbol exactly, so the moment Subiekt
+        // suffixed a record to `NORBERTKULUS(5)` that record became invisible
+        // to every later order - which then found whatever older record held
+        // the bare symbol, failed the address check against it, and created
+        // `(6)`. Observed live on 2026-09-23: two purchases by one buyer, two
+        // kontrahenci. `Kontrahent.FindBySymbol` sees the `(n)` variants.
+        var symbol = Kontrahent.MakeSymbol(req.Buyer.Nazwa);
+        var existingKontrahentId = await Kontrahent.Resolve(
+            req.Buyer.Nip, symbol, req.Buyer.KodPocztowy, req.Buyer.Miejscowosc) ?? 0;
 
         // Resolved BEFORE EnsureKontrahent, which is synchronous and runs on
         // the COM apartment thread. One shared resolver with the invoice path,
@@ -266,53 +258,6 @@ public static class OrdersEndpoints
         return new CreateOrderResponse(docId, numer);
     }
 
-    /// <summary>#3369 idempotency pre-check — see CreateOrder's own comment.
-    /// Filters on 'ZK %' rather than dok_Typ for the same unconfirmed-numeric-code
-    /// reason ListOrderFeed does (file header note 2).</summary>
-    /// <summary>Is the kontrahent found by a derived NAME symbol actually the
-    /// same buyer? Compares the postcode and town, which is the best identity
-    /// a marketplace retail order carries (Allegro's e-mail is masked and
-    /// rotates per transaction, so it is no key at all). Returns TRUE when the
-    /// incoming order supplies neither field - absence is not evidence of a
-    /// different person, and refusing to reuse on it would mint a duplicate
-    /// for every buyer whose address the source withholds.</summary>
-    private static async Task<bool> KontrahentMatchesAddress(int kontrahentId, OrderBuyerDto buyer)
-    {
-        var kod = (buyer.KodPocztowy ?? "").Trim();
-        var miasto = (buyer.Miejscowosc ?? "").Trim();
-        if (kod == "" && miasto == "") return true;
-
-        try
-        {
-            await using var c = new SqlConnection(ConnStr);
-            await c.OpenAsync();
-            await using var cmd = new SqlCommand(
-                "SELECT TOP 1 ISNULL(adr_Kod,''), ISNULL(adr_Miejscowosc,'') " +
-                "FROM kh__Kontrahent k LEFT JOIN adr__Ewid a ON a.adr_IdObiektu = k.kh_Id " +
-                "AND a.adr_TypAdresu = 1 " +
-                "WHERE k.kh_Id = @id", c);
-            cmd.Parameters.AddWithValue("@id", kontrahentId);
-            await using var r = await cmd.ExecuteReaderAsync();
-            if (!await r.ReadAsync()) return true; // no address on file - cannot disprove
-            var storedKod = r.GetString(0).Trim();
-            var storedMiasto = r.GetString(1).Trim();
-            if (storedKod == "" && storedMiasto == "") return true;
-
-            if (kod != "" && storedKod != "" &&
-                !string.Equals(kod, storedKod, StringComparison.OrdinalIgnoreCase)) return false;
-            if (miasto != "" && storedMiasto != "" &&
-                !string.Equals(miasto, storedMiasto, StringComparison.OrdinalIgnoreCase)) return false;
-            return true;
-        }
-        catch (Exception e)
-        {
-            // A verification that cannot run must not block an order that is
-            // already paid: fall back to the pre-check behaviour (reuse).
-            Console.Error.WriteLine($"OrdersEndpoints.KontrahentMatchesAddress: check failed for {kontrahentId} - {e.Message}; reusing the match.");
-            return true;
-        }
-    }
-
     private static async Task<(int Id, string Numer)?> FindExistingZk(string orderRef)
     {
         await using var c = new SqlConnection(ConnStr);
@@ -327,52 +272,6 @@ public static class OrdersEndpoints
 
     /// <summary>dok_NrPelnyOryg is varchar(30) - refused outright past that length.</summary>
     private static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
-
-    /// <summary>Same lookup as Invoicing.cs's FindKontrahentIdByNip (kh__Kontrahent
-    /// carries no NIP column of its own - it lives on the kontrahent's primary
-    /// address, adr__Ewid.adr_TypAdresu = 1). Duplicated rather than shared across
-    /// files per this bridge's existing per-endpoint-file convention (each of
-    /// Invoicing.cs/ProductsEndpoints.cs/OrdersEndpoints.cs already owns its own
-    /// local ConnStr and raw-SQL helpers).</summary>
-    private static async Task<int?> FindKontrahentIdByNip(string nip)
-    {
-        await using var c = new SqlConnection(ConnStr);
-        await c.OpenAsync();
-        await using var cmd = new SqlCommand(
-            @"SELECT TOP 1 k.kh_Id FROM kh__Kontrahent k
-              JOIN adr__Ewid a ON a.adr_IdObiektu = k.kh_Id AND a.adr_TypAdresu = 1
-              WHERE a.adr_NIP = @nip ORDER BY k.kh_Id", c);
-        cmd.Parameters.AddWithValue("@nip", nip);
-        var r = await cmd.ExecuteScalarAsync();
-        return r is null || r is DBNull ? null : Convert.ToInt32(r);
-    }
-
-    /// <summary>#3369 fix: a NIP-less (private/retail) buyer has no natural key
-    /// Invoicing.cs's NIP lookup can use - MakeSymbol derives a DETERMINISTIC
-    /// symbol from the buyer name (unless the name yields no usable characters,
-    /// in which case it falls back to a randomised "ZAMhhmmssfff" that can never
-    /// collide with a prior attempt by design, so a repeat lookup there correctly
-    /// finds nothing and creates fresh - there is no natural key for an unnamed
-    /// buyer). An exact-symbol match means a prior order under the SAME derived
-    /// symbol already created this kontrahent; reuse it instead of minting another.</summary>
-    private static async Task<int?> FindKontrahentIdBySymbol(string symbol)
-    {
-        if (symbol.StartsWith("ZAM", StringComparison.Ordinal)) return null;
-        await using var c = new SqlConnection(ConnStr);
-        await c.OpenAsync();
-        await using var cmd = new SqlCommand(
-            "SELECT TOP 1 kh_Id FROM kh__Kontrahent WHERE kh_Symbol = @sym ORDER BY kh_Id", c);
-        cmd.Parameters.AddWithValue("@sym", symbol);
-        var r = await cmd.ExecuteScalarAsync();
-        return r is null || r is DBNull ? null : Convert.ToInt32(r);
-    }
-
-    private static string MakeSymbol(string name)
-    {
-        var baseSym = name.ToUpperInvariant();
-        var sym = new string(baseSym.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_').Take(16).ToArray());
-        return sym == "" ? "ZAM" + DateTime.Now.ToString("HHmmssfff") : sym;
-    }
 
     /// <summary>
     /// Watermark-cursor page over ZK documents. 'since' is an ISO timestamp

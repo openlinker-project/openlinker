@@ -38,8 +38,11 @@ public static class BridgeConfig
 
     private static readonly Dictionary<string, string> FileValues = LoadFile();
 
-    /// <summary>SQL Server instance holding the Subiekt database.</summary>
-    public static readonly string SqlServer = Read("SqlServer", @"DESKTOP-FJ0P3NU\INSERTNEXO");
+    /// <summary>SQL Server instance holding the Subiekt database. The default
+    /// is InsERT's own installer default, which is what a stock installation
+    /// uses; a machine name compiled in here would name one host and be wrong
+    /// everywhere else.</summary>
+    public static readonly string SqlServer = Read("SqlServer", @"localhost\INSERTNEXO");
 
     /// <summary>Subiekt database name.</summary>
     public static readonly string SqlDatabase = Read("SqlDatabase", "DEMO");

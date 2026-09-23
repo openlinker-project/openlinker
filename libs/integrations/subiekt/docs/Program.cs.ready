@@ -712,17 +712,6 @@ async Task<int?> FindKontrahentIdByEmail(string email)
     return r is null || r is DBNull ? null : Convert.ToInt32(r);
 }
 
-async Task<int?> FindKontrahentIdBySymbol(string symbol)
-{
-    if (string.IsNullOrWhiteSpace(symbol)) return null;
-    await using var c = new SqlConnection(BridgeConfig.ConnectionString);
-    await c.OpenAsync();
-    await using var cmd = new SqlCommand(
-        "SELECT TOP 1 kh_Id FROM kh__Kontrahent WHERE kh_Symbol = @s ORDER BY kh_Id", c);
-    cmd.Parameters.AddWithValue("@s", symbol);
-    var r = await cmd.ExecuteScalarAsync();
-    return r is null || r is DBNull ? null : Convert.ToInt32(r);
-}
 
 async Task<object?> KontrahentDto(int id)
 {
@@ -790,7 +779,16 @@ app.MapPost("/wp-json/wc/v3/customers", async (HttpRequest req) =>
     var sym = new string(baseSym.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_').Take(16).ToArray());
     if (sym == "") sym = "OL" + DateTime.Now.ToString("HHmmss");
 
-    var existing = (await FindKontrahentIdByEmail(email)) ?? (await FindKontrahentIdBySymbol(sym));
+    // `Kontrahent.FindBySymbol` rather than the local exact-match lookup: it
+    // also sees Subiekt's own `SYMBOL(n)` variants, so a buyer whose record was
+    // once suffixed is found again instead of gaining a fresh kontrahent every
+    // time. Email stays the first key here - the shim derives its symbol from
+    // the email local-part, so the email IS the stronger identity on this path.
+    var existing = (await FindKontrahentIdByEmail(email))
+        ?? (await Kontrahent.FindBySymbol(
+                sym,
+                JStr(root, "billing", "postcode"),
+                JStr(root, "billing", "city")));
 
     var info = new KontrahentInfo
     {
