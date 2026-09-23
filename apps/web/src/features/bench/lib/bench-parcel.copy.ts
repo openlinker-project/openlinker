@@ -540,6 +540,21 @@ export const benchParcelCopy = {
         body: 'This order is not on any list OpenLinker keeps. Send the box, and mention it to the office.',
       },
     },
+
+    /**
+     * The mockup's "Printing to Zebra ZD420 · Bench 3", from the signed-in
+     * packer's own `packStationLabel` (#3404). Never rendered at all when
+     * unset — an empty "Printing to —" line is noise at a touch screen, not
+     * reassurance.
+     *
+     * The mockup's trailing clause, "this station's printer, always", is
+     * dropped rather than copied. The label is stored on the USER, not on the
+     * terminal, so it follows the packer to whichever bench they sign in at —
+     * which makes "this station's, always" the one thing about it that is not
+     * true. A reassurance that is wrong about where the paper comes out is
+     * worse than no reassurance at all.
+     */
+    printingTo: (label: string): string => `Printing to ${label}`,
   },
 
   /** F3/F4 — packed, and it cannot go out. */

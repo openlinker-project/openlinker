@@ -51,7 +51,11 @@ function label(over: Partial<BenchLabel> = {}): BenchLabel {
   };
 }
 
-function mount(documents: Partial<BenchDocuments> = {}, unlabelledTotal = 0) {
+function mount(
+  documents: Partial<BenchDocuments> = {},
+  unlabelledTotal = 0,
+  packStationLabel: string | null = null,
+) {
   const apiClient = createMockApiClient({
     bench: {
       getDocuments: vi.fn().mockResolvedValue({
@@ -73,7 +77,11 @@ function mount(documents: Partial<BenchDocuments> = {}, unlabelledTotal = 0) {
     apiClient,
     ...renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={6} />, {
       apiClient,
-      sessionAdapter: createAuthenticatedSessionAdapter({ ...PACKER, permissions: [] }),
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        ...PACKER,
+        permissions: [],
+        packStationLabel,
+      }),
     }),
   };
 }
@@ -302,5 +310,24 @@ describe('BenchDocumentsPanel (#2418)', () => {
     await screen.findByRole('button', { name: 'Print invoice' });
     expect(screen.queryByRole('button', { name: /camera/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/camera/i)).not.toBeInTheDocument();
+  });
+
+  // #3404 — the packer/printer binding made visible.
+  describe('the printer-binding line', () => {
+    it("should render the signed-in packer's own station label", async () => {
+      mount({}, 0, 'Zebra ZD420 · Bench 3');
+
+      const line = await screen.findByTestId('bench-documents-printer');
+      expect(line).toHaveTextContent('Printing to Zebra ZD420 · Bench 3');
+      expect(line).toHaveTextContent("this station's printer, always");
+    });
+
+    it('should render nothing when the packer has no station label set', async () => {
+      mount({}, 0, null);
+
+      await screen.findByRole('button', { name: 'Print invoice' });
+      expect(screen.queryByTestId('bench-documents-printer')).not.toBeInTheDocument();
+      expect(screen.queryByText(/printing to/i)).not.toBeInTheDocument();
+    });
   });
 });

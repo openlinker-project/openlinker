@@ -1142,6 +1142,7 @@ export function createMockApiClient(
       approve: vi.fn().mockResolvedValue(undefined),
       reject: vi.fn().mockResolvedValue(undefined),
       updateRole: vi.fn().mockResolvedValue(undefined),
+      updatePackStationLabel: vi.fn().mockResolvedValue(undefined),
       deactivate: vi.fn().mockResolvedValue(undefined),
       reactivate: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),

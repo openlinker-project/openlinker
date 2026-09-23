@@ -25672,6 +25672,27 @@ legend.analytics-settings-dialog__label {
   color: var(--text-muted);
 }
 
+/* ── The printer-binding line (mockup-parity epic #3401, #3437) ──────────
+ * The mockup's line under `.docs`: "Printing to Zebra ZD420 · Bench 3 — this
+ * station's printer, always." Rendered from the signed-in packer's own
+ * `packStationLabel`; absent entirely when unset. */
+.bench-documents__printer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.71875rem;
+  color: var(--text-muted);
+}
+
+.bench-documents__printer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: var(--status-success);
+}
+
 /* ── Copy control (mockup-parity epic #3401) ─────────────────────────────
  * The mockup's `.copy-btn`. Always visible, never hover-revealed: at a bench
  * nobody hovers, so a control that appears on hover is a control that is not
@@ -26428,6 +26449,53 @@ legend.analytics-settings-dialog__label {
 
 .bench-topbar__spacer {
   flex: 1;
+}
+
+/* #3422 - the connectivity readout. Colour is never the only signal: the dot
+   is always paired with its own word, per the accessibility rule that also
+   governs `StatusBadge`. The three tones map to #3407's three states, and the
+   middle one is NOT "hardware" - see `bench-topbar.tsx`. */
+.bench-topbar__conn {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.bench-topbar__conn-dot {
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 8px;
+  width: 8px;
+  background: var(--status-success);
+}
+
+.bench-topbar__conn--server-unreachable .bench-topbar__conn-dot {
+  background: var(--status-warning);
+}
+
+.bench-topbar__conn--link-down .bench-topbar__conn-dot {
+  background: var(--status-error);
+}
+
+/* The label carries the tone too, so the state survives a monochrome screen
+   and a colour-blind reader. */
+.bench-topbar__conn--server-unreachable .bench-topbar__conn-label {
+  color: var(--status-warning);
+}
+
+.bench-topbar__conn--link-down .bench-topbar__conn-label {
+  color: var(--status-error);
+}
+
+/* The label is the first thing to go at phone width - the dot keeps the
+   state on screen, and the `title` keeps the detail reachable. */
+@media (max-width: 560px) {
+  .bench-topbar__conn-label {
+    display: none;
+  }
 }
 
 .bench-topbar__user-chip {

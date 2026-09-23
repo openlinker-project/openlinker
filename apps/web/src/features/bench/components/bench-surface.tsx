@@ -26,6 +26,8 @@ import { benchIdentityCopy } from '../lib/bench-identity.copy';
 import { BenchIdentityBar } from './bench-identity-bar';
 import { BenchIdentityOverlay } from './bench-identity-overlay';
 import { BenchTopbar } from './bench-topbar';
+import { BenchReachabilityContext } from '../hooks/bench-reachability-context';
+import { useBenchReachability } from '../hooks/use-bench-reachability';
 
 export interface BenchSurfaceProps {
   /** The bench body. Never unmounted, so its state survives a lock or a switch. */
@@ -55,7 +57,13 @@ export function BenchSurface({ children, idleTimeoutMs }: BenchSurfaceProps): Re
   // locked bench from advertising a door out of itself.
   const canLeaveBench = usePermission('orders:write');
 
+  // #3407/#3422 - held HERE, above both the topbar that reads it and the
+  // parcel pane that reports into it. See `bench-reachability-context.ts` for
+  // why a second call of the hook would be inert rather than merely redundant.
+  const reachability = useBenchReachability();
+
   return (
+    <BenchReachabilityContext.Provider value={reachability}>
     <div className="bench">
       {/* #3423 (epic #3401) — bench-owned, never `AppShell`. See the module docblock. */}
       <BenchTopbar signedInName={identity.signedInName} canLeaveBench={canLeaveBench} />
@@ -85,5 +93,6 @@ export function BenchSurface({ children, idleTimeoutMs }: BenchSurfaceProps): Re
         </BenchInteractiveContext.Provider>
       </BenchIdentityOverlay>
     </div>
+    </BenchReachabilityContext.Provider>
   );
 }

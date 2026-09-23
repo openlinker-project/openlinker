@@ -512,6 +512,40 @@ describe('AssignPackingWorkPage', () => {
 
       expect(screen.queryByText('Unassigned right now')).not.toBeInTheDocument();
     });
+
+    // ── #3428's third card ──────────────────────────────────────────────
+    it('counts the packers the roster reports as at their benches', async () => {
+      renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ id: 'a', assignedToUserId: null })])),
+        listPackers: vi.fn().mockResolvedValue({
+          packers: [
+            { id: 'u_a', username: 'packer-a', online: true, stationLabel: 'Bench 1' },
+            { id: 'u_b', username: 'packer-b', online: false, stationLabel: null },
+            { id: 'u_c', username: 'packer-c', online: true, stationLabel: null },
+          ],
+        }),
+      });
+
+      const card = (await screen.findByText('Packers at their benches')).closest(
+        '.metric-card'
+      ) as HTMLElement;
+      expect(within(card).getByText('2')).toBeInTheDocument();
+    });
+
+    it('says "not known" rather than zero when the roster could not be read', async () => {
+      // The page deliberately survives a failed roster read, so a `0` here
+      // would report an empty warehouse when the truth is that nobody asked.
+      renderPage({
+        list: vi.fn().mockResolvedValue(page([task({ id: 'a', assignedToUserId: null })])),
+        listPackers: vi.fn().mockRejectedValue(new Error('roster is down')),
+      });
+
+      const card = (await screen.findByText('Packers at their benches')).closest(
+        '.metric-card'
+      ) as HTMLElement;
+      expect(within(card).getByText('Not known')).toBeInTheDocument();
+      expect(within(card).queryByText('0')).not.toBeInTheDocument();
+    });
   });
 
   // ── #3426 — native drag-and-drop, additive to "Move to" ──────────────

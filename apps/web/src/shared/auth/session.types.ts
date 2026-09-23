@@ -55,6 +55,14 @@ export interface MeResponse {
    * missing value as no consent (opt-in default).
    */
   analyticsConsent?: boolean;
+  /**
+   * The signed-in user's own bench/printer label (#3404), e.g.
+   * "Zebra ZD420 · Bench 3", or `null` if unset. Optional so a payload from
+   * an API predating this field is tolerated. This is always the VIEWER'S
+   * own value — never a colleague's — so there is no PII concern in `/auth/me`
+   * carrying it.
+   */
+  packStationLabel?: string | null;
 }
 
 export interface SessionUser {
@@ -65,6 +73,8 @@ export interface SessionUser {
   permissions: Permission[];
   /** Account opt-in for demo-only usage analytics (#1743). Absent ⇒ opt-in (off). */
   analyticsConsent?: boolean;
+  /** The signed-in user's own bench/printer label (#3404). Absent/null ⇒ unset. */
+  packStationLabel?: string | null;
 }
 
 export interface Session {

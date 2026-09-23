@@ -17,6 +17,12 @@ export interface UserSummary {
   role: UserRole;
   status: UserStatus;
   createdAt: string;
+  /**
+   * This user's own free-text bench/printer label (#3404), e.g.
+   * "Zebra ZD420 / Bench 3", or `null` if unset. Operator configuration set
+   * by an admin — see `PATCH /users/:id/pack-station-label`.
+   */
+  packStationLabel: string | null;
 }
 
 export interface UserListResponse {
@@ -54,4 +60,21 @@ export interface PackerSummary {
 
 export interface PackerListResponse {
   packers: PackerSummary[];
+}
+
+/**
+ * Mirrors `PACK_STATION_LABEL_MAX_LENGTH` in
+ * `apps/api/src/users/dto/update-pack-station-label.dto.ts`. `apps/web`
+ * cannot import from `apps/api` (#591's rule applied one package over), so
+ * this is a hand-kept copy — extend both in the same change.
+ */
+export const PACK_STATION_LABEL_MAX_LENGTH = 120;
+
+/**
+ * `PATCH /users/:id/pack-station-label` request body. `null` is an explicit
+ * CLEAR, which is why the field is nullable rather than optional — see the
+ * dialog schema for the `''` (form) → `null` (wire) mapping.
+ */
+export interface UpdatePackStationLabelInput {
+  packStationLabel: string | null;
 }

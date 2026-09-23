@@ -515,11 +515,10 @@ export function AssignPackingWorkPage(): ReactElement {
         <Alert tone="warning">{ASSIGN_PACKING_WORK_COPY.rosterError.message}</Alert>
       ) : null}
 
-      {/* #3428 shipped "Unassigned right now". #3424 adds "Oldest
-          unassigned", now that `unassignedSince` exists. "Packers at their
-          benches" is still not rendered — see the copy module's own
-          docblock for why. Only shown once the board has real data to
-          summarise. */}
+      {/* #3428's three cards, complete: "Unassigned right now", "Oldest
+          unassigned" (on #3424's `unassignedSince`) and "Packers at their
+          benches" (on #3424's presence threshold). Only shown once the board
+          has real data to summarise. */}
       {tasksQuery.isPending || tasksQuery.isError ? null : (
         <div className="assign-packing-work-metrics">
           <MetricCard
@@ -531,6 +530,22 @@ export function AssignPackingWorkPage(): ReactElement {
             value={
               oldestUnassignedAge ?? (
                 <EmptyValue label={ASSIGN_PACKING_WORK_COPY.metrics.oldestUnassignedEmptyLabel} />
+              )
+            }
+          />
+          {/* A FAILED roster read renders "Not known", never `0`. The page
+              deliberately keeps working without a roster, so a zero here
+              would report an empty warehouse when the truth is that the
+              question was never answered. */}
+          <MetricCard
+            label={ASSIGN_PACKING_WORK_COPY.metrics.packersAtBenchesLabel}
+            value={
+              packersQuery.isError || packersQuery.isPending ? (
+                <EmptyValue
+                  label={ASSIGN_PACKING_WORK_COPY.metrics.packersAtBenchesUnknownLabel}
+                />
+              ) : (
+                packers.filter((packer) => packer.online).length
               )
             }
           />

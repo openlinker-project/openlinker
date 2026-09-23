@@ -87,7 +87,8 @@ import { useBenchInteractive } from '../hooks/use-bench-interactive';
 import { useBenchParcelQuery } from '../hooks/use-bench-parcel-query';
 import { useBenchLayout } from '../hooks/use-bench-layout';
 import { useBenchPresenceQuery } from '../hooks/use-bench-presence';
-import { useBenchReachability, isUnreachableFailure } from '../hooks/use-bench-reachability';
+import { isUnreachableFailure } from '../hooks/use-bench-reachability';
+import { useBenchReachabilityContext } from '../hooks/bench-reachability-context';
 import { useBenchReopenMutation } from '../hooks/use-bench-reopen-mutation';
 import { useBenchUndoMutation } from '../hooks/use-bench-undo-mutation';
 import { useBenchVerifyMutation } from '../hooks/use-bench-verify-mutation';
@@ -156,7 +157,12 @@ export function BenchParcelView({
   const verify = useBenchVerifyMutation();
   const reopen = useBenchReopenMutation();
   const undo = useBenchUndoMutation();
-  const reachability = useBenchReachability();
+  // The context, not a fresh call (#3407): `BenchSurface` holds the one
+  // instance so the topbar indicator reads the same state this pane reports
+  // into. Outside a provider the context's fallback is the `ok` shape with
+  // no-op reporters, which is what keeps a test that mounts this pane alone
+  // working rather than crashing.
+  const reachability = useBenchReachabilityContext();
   // A3. Off while the idle lock covers the bench — see the hook's docblock for
   // why a locked terminal must not keep announcing the packer who walked away.
   const presence = useBenchPresenceQuery(workId, { enabled: useBenchInteractive() });

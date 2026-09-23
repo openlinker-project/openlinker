@@ -23,6 +23,58 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A client-side gate needs a permission the role can actually hold
+
+**Context**: #3424. The pack bench's two write controls - `Claim this parcel` and `Take next task` -
+were gated on `useWriteAccess('orders:write')`. The routes behind them are
+`@Roles('admin', 'operator', 'packer')` and work correctly for a packer.
+
+**Problem**: `ROLE_PERMISSIONS.packer` was `[]`, deliberately, on the reasoning that granting a
+permission "merely to populate the Record" would light up a nav surface a packer must not see. So
+both controls rendered **zero times for the only role that would press them**, while the API
+accepted that role perfectly well. Nothing failed: lint, type-check and the whole unit suite were
+green, because a control that never renders breaks no assertion. It surfaced only when a live E2E
+state tried to click one and found `count: 0`. An empty permission row is not automatically a
+narrower role - here it was a broken one.
+
+**Rule**: when a control is gated client-side, check that the ROLES allowed by the route behind it
+can hold the permission the gate reads. If none can, the control is dead code that type-checks.
+Where the existing permissions are all too wide (as `orders:write` was), add a narrow one scoped to
+that surface and keep the roles holding it identical to the route's own `@Roles` list - the
+permission gates the control, the decorator gates the route, and a UI that hides what the route
+allows is the same class of defect as one that offers what the route refuses.
+
+**Applies to**: `apps/web/**` `useWriteAccess` / `usePermission` call sites;
+`libs/core/src/users/domain/types/role.types.ts`.
+
+**Source**: #3424 (`bench:write`), ADR-071.
+
+---
+
+## When you cannot run the suites, grep for the assertions type-check cannot see
+
+**Context**: #3424 and the #3415 review, developed on a machine that cannot sustain `pnpm test`.
+The gate was `pnpm lint`, `pnpm type-check`, `pnpm check:invariants` and a live E2E sweep.
+
+**Problem**: `tsc` catches a widened INTERFACE at every consumer, so adding a field to
+`FulfillmentWork` failed loudly in three fixtures and was fixed. It cannot see a widened VALUE
+asserted at runtime: changing `ROLE_PERMISSIONS.packer` from `[]` to `['bench:write']` type-checks
+cleanly and breaks `expect(ROLE_PERMISSIONS.packer).toEqual([])` in a tripwire spec written
+specifically to catch that change. Found by grep during a pre-review sweep, not by the gate.
+
+**Rule**: after widening any exported VALUE - an `as const` array, a `Record` row, a DTO's projected
+field set - grep the spec files for a runtime equality on it before claiming the change is verified:
+`toEqual(`, `toHaveLength(`, `toStrictEqual(` naming the identifier or its container. Check the same
+way for a DTO that SPREADS a widened entity, which silently puts the new field on an API response no
+type error will report. State in the PR that the suites were not run, and name what was run instead.
+
+**Applies to**: any change to `role.types.ts`, `*Values` arrays, `ROLE_PERMISSIONS`, or a domain
+entity's constructor, made without running `pnpm test`.
+
+**Source**: #3424, #3415 review.
+
+---
+
 ## A claim about a dependency's internals must be read against the installed version
 
 **Context**: #2957 split a paginated read into a fast page and a separate total. The change had to

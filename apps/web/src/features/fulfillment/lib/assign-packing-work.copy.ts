@@ -45,15 +45,23 @@ export const ASSIGN_PACKING_WORK_COPY = {
    * read for the board, needing no backend signal. #3424 adds "Oldest
    * unassigned", now that `unassignedSince` exists.
    *
-   * "Packers at their benches" is STILL not shipped, deliberately: a live
-   * presence roster now exists (`PackerSummary.online`), but that metric was
-   * never one of #3424's three additions and adding it here would be
-   * inventing a fourth. It stays a one-line change for whoever picks it up
-   * — count `packers.filter((p) => p.online).length`.
+   * "Packers at their benches" ships with #3424's presence signal behind it.
+   *
+   * The count itself is one line; what it needed was the two states a bare
+   * `filter(...).length` gets wrong. A roster read that FAILED must not render
+   * `0` - the page already tolerates that failure and keeps working, so a zero
+   * there would report an empty warehouse when the truth is that nobody asked.
+   * And `online` is a threshold over a heartbeat bumped by BENCH ACTIVITY, so
+   * a genuine `0` means nobody has touched a bench recently, not that nobody
+   * is signed in - which is why the label says "at their benches" rather than
+   * "online".
    */
   metrics: {
     unassignedLabel: 'Unassigned right now',
     oldestUnassignedLabel: 'Oldest unassigned',
+    packersAtBenchesLabel: 'Packers at their benches',
+    /** Shown when the roster could not be read - never a `0`, which would be a claim. */
+    packersAtBenchesUnknownLabel: 'Not known',
     /**
      * Rendered via `EmptyValue` when no pooled task has a known age — an
      * empty pool, or every pooled row predates the `unassignedSince` column.

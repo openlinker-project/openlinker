@@ -42,6 +42,7 @@
 import { useState, type ReactElement } from 'react';
 
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { useSession } from '../../../shared/auth/use-session';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
@@ -105,6 +106,11 @@ export function BenchDocumentsPanel({
   const apiClient = useApiClient();
   const documents = useBenchDocumentsQuery(workId);
   const [printError, setPrintError] = useState<string | null>(null);
+  // #3404 — the signed-in PACKER's own binding, never the order's. `?? null`
+  // rather than `undefined`: a session predating this field must read as
+  // "unset" the same way an explicit clear does.
+  const { session } = useSession();
+  const stationLabel = session.user?.packStationLabel ?? null;
 
   const data = documents.data;
   const unlabelled = data?.label.state === 'unavailable';
@@ -295,6 +301,17 @@ export function BenchDocumentsPanel({
         </div>
       ) : null}
       </div>
+
+      {/* The mockup's printer-binding line, made from the signed-in packer's
+          own `packStationLabel` (#3404) — never this parcel's, never the
+          order's. Rendered NOTHING when unset: an empty "Printing to —" line
+          is noise at a touch screen, not reassurance. */}
+      {stationLabel === null ? null : (
+        <p className="bench-documents__printer" data-testid="bench-documents-printer">
+          <span className="bench-documents__printer-dot" aria-hidden="true" />
+          {benchParcelCopy.documents.printingTo(stationLabel)}
+        </p>
+      )}
 
       {unlabelled && invoice.state === 'ready' ? (
         <p className="bench-documents__invoice-still-fine">
