@@ -28,6 +28,7 @@ import {
 
 import {
   BenchClaimRefusalValues,
+  BenchCompletionRefusalValues,
   BenchParcelRefusalValues,
 } from '../../application/types/bench-parcel.types';
 
@@ -161,6 +162,26 @@ export class BenchParcelResponseDto {
   })
   packedByUserId!: string | null;
 
+  @ApiProperty({
+    nullable: true,
+    description:
+      "When this parcel's invoice was FIRST printed, or null if never. A reprint never moves it — the question is whether it was ever printed.",
+  })
+  invoicePrintedAt!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'The label sibling of invoicePrintedAt. Same reading.',
+  })
+  labelPrintedAt!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'When an operator declared this parcel finished and off the bench, or null until that act. A distinct, later completion instant from closedAt.',
+  })
+  completedAt!: string | null;
+
   @ApiProperty({ type: [BenchParcelLineResponseDto] })
   lines!: BenchParcelLineResponseDto[];
 }
@@ -261,6 +282,17 @@ export class BenchPresenceResponseDto {
       'Everyone else who has it open, most recently seen first, NEVER including the caller. An EMPTY array means "nobody else" and is a first-class answer — a failed read answers a non-2xx instead, because "nobody else is in this box" is a reassurance a failed read has no standing to give.',
   })
   others!: BenchPresenceViewerResponseDto[];
+}
+
+export class BenchCompleteResultResponseDto {
+  @ApiProperty({ enum: ['completed', 'refused'] })
+  outcome!: string;
+
+  @ApiProperty({ nullable: true, enum: BenchCompletionRefusalValues })
+  reason!: string | null;
+
+  @ApiProperty({ type: BenchParcelResponseDto })
+  parcel!: BenchParcelResponseDto;
 }
 
 export class BenchUndoResultResponseDto {

@@ -46,6 +46,10 @@ const work = (over: Partial<FulfillmentWork> = {}): FulfillmentWork => ({
   parcelClosedAt: null,
   packedByUserId: null,
   packedByService: null,
+  invoicePrintedAt: null,
+  labelPrintedAt: null,
+  completedAt: null,
+  completedByUserId: null,
   lines: [line()],
   createdAt: new Date('2026-09-01T09:00:00Z'),
   updatedAt: new Date('2026-09-01T09:00:00Z'),
@@ -66,6 +70,9 @@ interface Harness {
       | 'reopenParcel'
       | 'findLatestActiveVerification'
       | 'voidVerificationById'
+      | 'markInvoicePrinted'
+      | 'markLabelPrinted'
+      | 'claimCompletion'
     >
   >;
 }
@@ -79,6 +86,10 @@ function harness(options: {
   reopened?: boolean;
   latestActive?: { id: string; workLineId: string } | null;
   voided?: boolean;
+  /** pack-bench completion */
+  invoicePrinted?: boolean;
+  labelPrinted?: boolean;
+  completed?: boolean;
 }): Harness {
   const queue = [...(options.counts ?? [[], []])];
   const repo = {
@@ -97,6 +108,9 @@ function harness(options: {
       .fn()
       .mockResolvedValue(options.latestActive === undefined ? null : options.latestActive),
     voidVerificationById: jest.fn().mockResolvedValue(options.voided ?? true),
+    markInvoicePrinted: jest.fn().mockResolvedValue(options.invoicePrinted ?? true),
+    markLabelPrinted: jest.fn().mockResolvedValue(options.labelPrinted ?? true),
+    claimCompletion: jest.fn().mockResolvedValue(options.completed ?? true),
   } as unknown as Harness['repo'];
 
   return {
@@ -488,6 +502,105 @@ describe('FulfillmentVerificationService (#2418)', () => {
       });
 
       expect(result).toMatchObject({ outcome: 'refused', reason: 'nothing-to-undo' });
+    });
+  });
+
+  describe('markInvoicePrinted / markLabelPrinted (pack-bench completion)', () => {
+    it('passes through the repository answer for a first print', async () => {
+      const { service, repo } = harness({ invoicePrinted: true });
+      const at = new Date();
+
+      await expect(service.markInvoicePrinted('work-1', at)).resolves.toBe(true);
+      expect(repo.markInvoicePrinted).toHaveBeenCalledWith('work-1', at);
+    });
+
+    it('passes through `false` for a reprint, without throwing', async () => {
+      const { service } = harness({ invoicePrinted: false });
+
+      await expect(service.markInvoicePrinted('work-1', new Date())).resolves.toBe(false);
+    });
+
+    it('passes through the label stamp identically', async () => {
+      const { service, repo } = harness({ labelPrinted: true });
+      const at = new Date();
+
+      await expect(service.markLabelPrinted('work-1', at)).resolves.toBe(true);
+      expect(repo.markLabelPrinted).toHaveBeenCalledWith('work-1', at);
+    });
+  });
+
+  describe('complete (pack-bench completion)', () => {
+    it('reports completed on a successful claim', async () => {
+      const { service, repo } = harness({ completed: true });
+
+      const result = await service.complete({
+        workId: 'work-1',
+        completedByUserId: 'user-1',
+        expectedVersion: 3,
+      });
+
+      expect(result).toEqual({ outcome: 'completed' });
+      expect(repo.claimCompletion).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workId: 'work-1',
+          completedByUserId: 'user-1',
+          expectedVersion: 3,
+        })
+      );
+    });
+
+    it('refuses `version-conflict` FIRST when the re-read shows a different version — the safe direction', async () => {
+      const { service } = harness({
+        completed: false,
+        work: work({ version: 9, parcelClosedAt: null }),
+      });
+
+      const result = await service.complete({
+        workId: 'work-1',
+        completedByUserId: 'user-1',
+        expectedVersion: 3,
+      });
+
+      expect(result).toEqual({ outcome: 'refused', reason: 'version-conflict' });
+    });
+
+    it('refuses `not-closed` when the version matches but the parcel is not packed', async () => {
+      const { service } = harness({
+        completed: false,
+        work: work({ version: 3, parcelClosedAt: null }),
+      });
+
+      const result = await service.complete({
+        workId: 'work-1',
+        completedByUserId: 'user-1',
+        expectedVersion: 3,
+      });
+
+      expect(result).toEqual({ outcome: 'refused', reason: 'not-closed' });
+    });
+
+    it('refuses `already-completed` when the version matches and the parcel is closed', async () => {
+      const { service } = harness({
+        completed: false,
+        work: work({ version: 3, parcelClosedAt: new Date(), completedAt: new Date() }),
+      });
+
+      const result = await service.complete({
+        workId: 'work-1',
+        completedByUserId: 'user-1',
+        expectedVersion: 3,
+      });
+
+      expect(result).toEqual({ outcome: 'refused', reason: 'already-completed' });
+    });
+
+    it('throws FulfillmentWorkNotFoundError when the work vanished between the claim and the re-read', async () => {
+      const { service, repo } = harness({ completed: false });
+      repo.findById.mockResolvedValueOnce(null);
+
+      await expect(
+        service.complete({ workId: 'work-1', completedByUserId: 'user-1', expectedVersion: 3 })
+      ).rejects.toThrow('work-1');
     });
   });
 });

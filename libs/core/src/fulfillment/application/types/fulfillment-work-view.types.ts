@@ -111,6 +111,27 @@ export interface FulfillmentWorkView {
    * an internal actor an operator surface has no use for.
    */
   readonly packedByUserId: string | null;
+  /**
+   * When this parcel's invoice was FIRST printed (pack-bench completion), or `null` if never.
+   * Fill-in-when-NULL — a reprint never moves it. On the allowlist because the
+   * bench's own document surface (`BenchDocumentsController`) reads it to
+   * decide whether "print the invoice" or "reprint it" is the honest label.
+   */
+  readonly invoicePrintedAt: Date | null;
+  /** The label sibling of `invoicePrintedAt` (pack-bench completion). Same reading. */
+  readonly labelPrintedAt: Date | null;
+  /**
+   * When an operator declared this parcel finished and off the bench (pack-bench completion),
+   * or `null` until that act. A DISTINCT completion instant from
+   * `parcelClosedAt` — see `FulfillmentWork.completedAt`'s own docblock for
+   * why the two are never merged.
+   */
+  readonly completedAt: Date | null;
+  /**
+   * Who declared it — a USER ID, matching `packedByUserId`'s own reading:
+   * resolving a name is the consumer's, and this view holds no PII.
+   */
+  readonly completedByUserId: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly lines: readonly FulfillmentWorkLineView[];

@@ -64,6 +64,11 @@ function workView(over: Partial<FulfillmentWorkView> = {}): FulfillmentWorkView 
     activeHolds: [],
     supportedActions: ['expedite'],
     version: 5,
+    packedByUserId: null,
+    invoicePrintedAt: null,
+    labelPrintedAt: null,
+    completedAt: null,
+    completedByUserId: null,
     ...over,
   } as FulfillmentWorkView;
 }
@@ -160,7 +165,7 @@ describe('BenchWorkService (#2416)', () => {
     it('should ask only for work assigned to the packing connection', async () => {
       const { service, list } = harness();
 
-      await service.listBenchWork('viewer-1');
+      await service.listBenchWork('viewer-1', true);
 
       expect(list).toHaveBeenCalledWith(expect.objectContaining({ assignedConnectionId: ['conn-oms'] }));
     });
@@ -170,7 +175,7 @@ describe('BenchWorkService (#2416)', () => {
       // and one it rejected never will be.
       const { service, list } = harness();
 
-      await service.listBenchWork('viewer-1');
+      await service.listBenchWork('viewer-1', true);
 
       expect(list).toHaveBeenCalledWith(expect.objectContaining({ requestStatus: ['accepted'] }));
     });
@@ -178,7 +183,7 @@ describe('BenchWorkService (#2416)', () => {
     it('should exclude closed and incomplete work, and INCLUDE cancelled', async () => {
       const harnessed = harness();
 
-      await harnessed.service.listBenchWork('viewer-1');
+      await harnessed.service.listBenchWork('viewer-1', true);
 
       const statuses = harnessed.lastFilter().status ?? [];
       expect(statuses).not.toContain('closed');
@@ -193,7 +198,7 @@ describe('BenchWorkService (#2416)', () => {
       // rows survive truncation. Newest-first would drop the most overdue.
       const { service, list } = harness();
 
-      await service.listBenchWork('viewer-1');
+      await service.listBenchWork('viewer-1', true);
 
       expect(list).toHaveBeenCalledWith(expect.objectContaining({ orderBy: 'createdAt_ASC' }));
     });
@@ -204,7 +209,7 @@ describe('BenchWorkService (#2416)', () => {
       // is set up" for ever.
       const { service } = harness();
 
-      const view = await service.listBenchWork('viewer-1');
+      const view = await service.listBenchWork('viewer-1', true);
 
       expect(view.routing.ready).toBe(true);
       expect(view.works).toHaveLength(1);
@@ -213,7 +218,7 @@ describe('BenchWorkService (#2416)', () => {
     it('should ignore a connection whose adapter is not the packing one', async () => {
       const { service } = harness({ adapterKey: 'somebody.else.v1' });
 
-      const view = await service.listBenchWork('viewer-1');
+      const view = await service.listBenchWork('viewer-1', true);
 
       expect(view.routing).toEqual({ ready: false, reason: 'no-packing-connection' });
       expect(view.works).toEqual([]);
@@ -222,7 +227,7 @@ describe('BenchWorkService (#2416)', () => {
     it('should ignore a connection that is not active', async () => {
       const { service } = harness({ connections: [connection({ status: 'disabled' } as never)] });
 
-      expect((await service.listBenchWork('viewer-1')).routing.ready).toBe(false);
+      expect((await service.listBenchWork('viewer-1', true)).routing.ready).toBe(false);
     });
 
     it('should ignore a connection that has not enabled packing', async () => {
@@ -230,7 +235,7 @@ describe('BenchWorkService (#2416)', () => {
         connections: [connection({ enabledCapabilities: ['OrderSource'] } as never)],
       });
 
-      expect((await service.listBenchWork('viewer-1')).routing.ready).toBe(false);
+      expect((await service.listBenchWork('viewer-1', true)).routing.ready).toBe(false);
     });
   });
 
@@ -238,7 +243,7 @@ describe('BenchWorkService (#2416)', () => {
     it('should report NOT READY as its own fact rather than as an empty list', async () => {
       const { service } = harness({ connections: [] });
 
-      const view = await service.listBenchWork('viewer-1');
+      const view = await service.listBenchWork('viewer-1', true);
 
       expect(view.routing).toEqual({ ready: false, reason: 'no-packing-connection' });
       expect(view.executorName).toBeNull();
@@ -247,7 +252,7 @@ describe('BenchWorkService (#2416)', () => {
     it('should report READY with an empty list when there is simply nothing to pack', async () => {
       const { service } = harness({ page: { works: [], total: 0 } });
 
-      const view = await service.listBenchWork('viewer-1');
+      const view = await service.listBenchWork('viewer-1', true);
 
       // Same empty array, different fact — which is the whole of B3.
       expect(view.routing).toEqual({ ready: true });
@@ -269,7 +274,7 @@ describe('BenchWorkService (#2416)', () => {
         },
       });
 
-      const view = await service.listBenchWork('viewer-1');
+      const view = await service.listBenchWork('viewer-1', true);
 
       // 4 total − 1 cancelled = 3. The 3 already "fulfilled" is deliberately
       // not subtracted: OpenLinker cannot see a shelf, and a smaller number
@@ -280,7 +285,7 @@ describe('BenchWorkService (#2416)', () => {
     it('should carry the order reference and buyer name, and NOTHING else from the snapshot', async () => {
       const { service } = harness();
 
-      const [row] = (await service.listBenchWork('viewer-1')).works;
+      const [row] = (await service.listBenchWork('viewer-1', true)).works;
 
       expect(row.orderReference).toBe('OL-4471');
       expect(row.buyerName).toBe('Jan Wiśniewski');
@@ -291,7 +296,7 @@ describe('BenchWorkService (#2416)', () => {
     it('should fall back to the internal id when the source names no reference', async () => {
       const { service } = harness({ orders: [orderRecord({ orderSnapshot: {} } as never)] });
 
-      expect((await service.listBenchWork('viewer-1')).works[0].orderReference).toBe('ol_order_1');
+      expect((await service.listBenchWork('viewer-1', true)).works[0].orderReference).toBe('ol_order_1');
     });
 
     it('should report a MISSING buyer name as null rather than a placeholder', async () => {
@@ -301,7 +306,7 @@ describe('BenchWorkService (#2416)', () => {
         orders: [orderRecord({ orderSnapshot: { orderNumber: 'OL-4471' } } as never)],
       });
 
-      expect((await service.listBenchWork('viewer-1')).works[0].buyerName).toBeNull();
+      expect((await service.listBenchWork('viewer-1', true)).works[0].buyerName).toBeNull();
     });
 
     it('reports `mine` and `claimable: true` for a parcel assigned to the viewer', async () => {
@@ -309,7 +314,7 @@ describe('BenchWorkService (#2416)', () => {
         page: { works: [workView({ assignedToUserId: 'viewer-1', selfServeEligible: false })] },
       });
 
-      const [row] = (await service.listBenchWork('viewer-1')).works;
+      const [row] = (await service.listBenchWork('viewer-1', true)).works;
 
       expect(row.assignmentState).toBe('mine');
       expect(row.claimable).toBe(true);
@@ -320,7 +325,7 @@ describe('BenchWorkService (#2416)', () => {
         page: { works: [workView({ assignedToUserId: null, selfServeEligible: true })] },
       });
 
-      const [row] = (await service.listBenchWork('viewer-1')).works;
+      const [row] = (await service.listBenchWork('viewer-1', true)).works;
 
       expect(row.assignmentState).toBe('unassigned');
       expect(row.claimable).toBe(true);
@@ -333,7 +338,7 @@ describe('BenchWorkService (#2416)', () => {
         },
       });
 
-      const [row] = (await service.listBenchWork('viewer-1')).works;
+      const [row] = (await service.listBenchWork('viewer-1', true)).works;
 
       expect(row.assignmentState).toBe('assigned-other');
       expect(row.claimable).toBe(false);
@@ -346,7 +351,7 @@ describe('BenchWorkService (#2416)', () => {
         },
       });
 
-      const [row] = (await service.listBenchWork('viewer-1')).works;
+      const [row] = (await service.listBenchWork('viewer-1', true)).works;
 
       expect(row.assignmentState).toBe('assigned-other');
       expect(row.claimable).toBe(true);
@@ -367,7 +372,7 @@ describe('BenchWorkService (#2416)', () => {
         },
       });
 
-      const [row] = (await service.listBenchWork('viewer-1')).works;
+      const [row] = (await service.listBenchWork('viewer-1', true)).works;
 
       expect(row.state).toBe('held');
       expect(row.holdReason).toBe('address-invalid');
@@ -376,7 +381,7 @@ describe('BenchWorkService (#2416)', () => {
     it('should mark a cancelled parcel cancelled', async () => {
       const { service } = harness({ page: { works: [workView({ status: 'cancelled' })] } });
 
-      expect((await service.listBenchWork('viewer-1')).works[0].state).toBe('cancelled');
+      expect((await service.listBenchWork('viewer-1', true)).works[0].state).toBe('cancelled');
     });
 
     it('should count EVERY parcel of the order, not only the ones on this bench', async () => {
@@ -387,7 +392,7 @@ describe('BenchWorkService (#2416)', () => {
         siblingIds: new Map([['ol_order_1', ['w-0', 'w-1', 'w-2']]]),
       });
 
-      const [row] = (await service.listBenchWork('viewer-1')).works;
+      const [row] = (await service.listBenchWork('viewer-1', true)).works;
 
       expect(row.parcelIndex).toBe(2);
       expect(row.parcelTotal).toBe(3);
@@ -396,7 +401,7 @@ describe('BenchWorkService (#2416)', () => {
     it('should say "1 of 1" rather than "of 0" when siblings cannot be read', async () => {
       const { service } = harness({ siblingIds: new Map() });
 
-      const [row] = (await service.listBenchWork('viewer-1')).works;
+      const [row] = (await service.listBenchWork('viewer-1', true)).works;
 
       expect(row.parcelIndex).toBe(1);
       expect(row.parcelTotal).toBe(1);
@@ -419,7 +424,7 @@ describe('BenchWorkService (#2416)', () => {
         ],
       });
 
-      const view = await service.listBenchWork('viewer-1');
+      const view = await service.listBenchWork('viewer-1', true);
 
       expect(view.works.map((row) => row.workId)).toEqual(['pushed', 'soon', 'late']);
     });
@@ -436,7 +441,7 @@ describe('BenchWorkService (#2416)', () => {
         ],
       });
 
-      await service.listBenchWork('viewer-1');
+      await service.listBenchWork('viewer-1', true);
 
       expect(findByIds).toHaveBeenCalledTimes(1);
       expect(siblings).toHaveBeenCalledTimes(1);
@@ -477,7 +482,7 @@ describe('BenchWorkService (#2416)', () => {
         { claimParcel: jest.fn() } as never
       );
 
-      const view = await service.listBenchWork('viewer-1');
+      const view = await service.listBenchWork('viewer-1', true);
 
       const ids = view.works.map((row) => row.workId);
       expect(new Set(ids).size).toBe(ids.length);
@@ -488,7 +493,81 @@ describe('BenchWorkService (#2416)', () => {
     it('should report the unpaged total so a truncated list can say so', async () => {
       const { service } = harness({ page: { works: [workView()], total: 900 } });
 
-      expect((await service.listBenchWork('viewer-1')).total).toBe(900);
+      expect((await service.listBenchWork('viewer-1', true)).total).toBe(900);
+    });
+  });
+
+  describe('supervises (#3340, ADR-071)', () => {
+    it('a packer omits assigned-other rows and `total` matches what they were given', async () => {
+      const { service } = harness({
+        page: {
+          works: [
+            workView({ id: 'w-mine', assignedToUserId: 'viewer-1' }),
+            workView({ id: 'w-unassigned', assignedToUserId: null }),
+            workView({ id: 'w-other', assignedToUserId: 'someone-else' }),
+          ],
+          total: 3,
+        },
+      });
+
+      const view = await service.listBenchWork('viewer-1', false);
+
+      expect(view.works.map((w) => w.workId)).toEqual(['w-mine', 'w-unassigned']);
+      expect(view.works.every((w) => w.assignmentState !== 'assigned-other')).toBe(true);
+      expect(view.total).toBe(2);
+    });
+
+    it('a supervisor keeps assigned-other rows and the unfiltered total', async () => {
+      const { service } = harness({
+        page: {
+          works: [
+            workView({ id: 'w-mine', assignedToUserId: 'viewer-1' }),
+            workView({ id: 'w-unassigned', assignedToUserId: null }),
+            workView({ id: 'w-other', assignedToUserId: 'someone-else' }),
+          ],
+          total: 3,
+        },
+      });
+
+      const view = await service.listBenchWork('viewer-1', true);
+
+      // Lexicographic tiebreak in `compareBenchWork` — every row here shares
+      // the same (absent) urgency signal, so workId decides the order.
+      expect(view.works.map((w) => w.workId)).toEqual(['w-mine', 'w-other', 'w-unassigned']);
+      expect(view.total).toBe(3);
+    });
+
+    it('drops an assigned-other row even when self-serve makes it claimable', async () => {
+      // The grouping is by ASSIGNMENT STATE, not by claimability — a
+      // self-serve-eligible parcel locked to someone else still belongs in
+      // "Assigned to other packers", and a packer must not see that section.
+      const { service } = harness({
+        page: {
+          works: [workView({ assignedToUserId: 'someone-else', selfServeEligible: true })],
+        },
+      });
+
+      const view = await service.listBenchWork('viewer-1', false);
+
+      expect(view.works).toEqual([]);
+      expect(view.total).toBe(0);
+    });
+
+    it('subtracts only the hidden count from an already-truncated total', async () => {
+      const { service } = harness({
+        page: {
+          works: [
+            workView({ id: 'w-mine', assignedToUserId: 'viewer-1' }),
+            workView({ id: 'w-other', assignedToUserId: 'someone-else' }),
+          ],
+          total: 900,
+        },
+      });
+
+      const view = await service.listBenchWork('viewer-1', false);
+
+      expect(view.works.map((w) => w.workId)).toEqual(['w-mine']);
+      expect(view.total).toBe(899);
     });
   });
 
@@ -527,7 +606,7 @@ describe('BenchWorkService (#2416)', () => {
           },
         });
 
-        const view = await service.listBenchWork('viewer-1');
+        const view = await service.listBenchWork('viewer-1', true);
 
         expect(view.works).toHaveLength(1);
         expect(view.works[0].state).toBe(expected);
@@ -550,7 +629,7 @@ describe('BenchWorkService (#2416)', () => {
         page: { works: [workView({ version: 41 })], total: 1 },
       });
 
-      expect((await service.listBenchWork('viewer-1')).works[0].version).toBe(41);
+      expect((await service.listBenchWork('viewer-1', true)).works[0].version).toBe(41);
     });
 
     it('passes `supportedActions` through verbatim rather than deriving its own', async () => {
@@ -570,7 +649,7 @@ describe('BenchWorkService (#2416)', () => {
         },
       });
 
-      expect((await service.listBenchWork('viewer-1')).works[0].supportedActions).toEqual(actions);
+      expect((await service.listBenchWork('viewer-1', true)).works[0].supportedActions).toEqual(actions);
     });
 
     it('does not withhold actions from a HELD parcel — that is the worklist’s call', async () => {
@@ -598,7 +677,7 @@ describe('BenchWorkService (#2416)', () => {
         },
       });
 
-      const row = (await service.listBenchWork('viewer-1')).works[0];
+      const row = (await service.listBenchWork('viewer-1', true)).works[0];
 
       expect(row.state).toBe('held');
       expect(row.supportedActions).toEqual(['release_hold']);
@@ -780,6 +859,29 @@ describe('BenchWorkService (#2416)', () => {
       const result = await service.claimNext('viewer-1');
 
       expect(result).toEqual({ outcome: 'nothing-to-claim' });
+    });
+
+    it('claims a self-serve-eligible assigned-other row for a packer, unchanged by #3340', async () => {
+      // A packer's OWN listBenchWork call would never show this row (it is
+      // `assigned-other`), but claimNext reads with `supervises: true`
+      // internally — see the module comment — and the row is genuinely
+      // claimable via self-serve, so the outcome must not change.
+      const { service, parcels } = harness({
+        page: {
+          works: [workView({ id: 'w-selfserve', assignedToUserId: 'someone-else', selfServeEligible: true })],
+          total: 1,
+        },
+      });
+      parcels.claimParcel.mockResolvedValue({
+        outcome: 'claimed',
+        reason: null,
+        parcel: { workId: 'w-selfserve' },
+      });
+
+      const result = await service.claimNext('viewer-1');
+
+      expect(parcels.claimParcel).toHaveBeenCalledWith('w-selfserve', 'viewer-1');
+      expect(result).toEqual({ outcome: 'claimed', parcel: { workId: 'w-selfserve' } });
     });
   });
 });

@@ -113,6 +113,20 @@ export interface BenchWorkView {
    * except one locked to a DIFFERENT packer with `selfServeEligible: false`.
    */
   readonly claimable: boolean;
+  /**
+   * When an operator declared this parcel finished and off the bench
+   * (pack-bench completion), or `null` until that act.
+   *
+   * On the allowlist so a consumer CAN move a completed parcel out of the
+   * "to pack" queue on its own — the same reading the module note above
+   * already applies to `parcelClosedAt`, which this list has never filtered
+   * on: a closed-but-not-yet-completed parcel stays selectable by
+   * `status`/`requestStatus` today, so a completed one is deliberately
+   * treated the same way here rather than removed by a new SQL filter. See
+   * `BenchWorkService`'s own module docblock for the fuller reasoning; this
+   * field is what makes the decision reversible on the reading side alone.
+   */
+  readonly completedAt: string | null;
 }
 
 /**

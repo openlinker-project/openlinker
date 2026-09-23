@@ -248,6 +248,59 @@ export interface FulfillmentWork {
   /** The service that packed it (#2413). `null` when a human did. */
   readonly packedByService: string | null;
 
+  /**
+   * When this parcel's invoice was FIRST printed at the bench, or `null` if
+   * never. Fill-in-when-NULL (pack-bench completion): a reprint never moves it, because the
+   * question this answers is "was it ever printed", and a later value would
+   * make a reprint look like the original print. Stamped by
+   * `markInvoicePrinted`, best-effort, alongside the download that serves the
+   * document — see that method's docblock for why a failed stamp must never
+   * fail or delay the print itself.
+   */
+  readonly invoicePrintedAt: Date | null;
+
+  /**
+   * When this parcel's shipping label was FIRST fetched for printing, or
+   * `null` if never. Same fill-in-when-NULL reading as `invoicePrintedAt`, and
+   * the same reason: a reprint of a label already on file is not a second
+   * origination of it.
+   *
+   * Stamped from `GET /shipments/:id/label` — a route this table cannot see,
+   * since a shipment carries its own `fulfillmentWorkId` by value and the two
+   * contexts do not share a transaction. Best-effort: a failed stamp must never
+   * fail or delay the label download.
+   */
+  readonly labelPrintedAt: Date | null;
+
+  /**
+   * When an operator declared this parcel finished and off the bench — the
+   * label applied, the invoice inside, box on the trolley (`W3401` completion
+   * research). `null` until that act.
+   *
+   * A DISTINCT completion instant from `parcelClosedAt` (D18's silent
+   * auto-close on the last verification) and deliberately so: closing the box
+   * is an inferred consequence of packing, while completion is the one explicit
+   * act this model adds — the industry's dominant pattern (ShipHero's
+   * "Complete Order", Brightpearl's `Packed` state before `Shipped`) for
+   * *something finished, and somebody said so*. At-most-once, claimed by
+   * `claimCompletion` guarded `WHERE "completedAt" IS NULL AND "parcelClosedAt"
+   * IS NOT NULL` — a parcel cannot be completed before it is packed.
+   */
+  readonly completedAt: Date | null;
+
+  /**
+   * Who declared the completion. `null` until `completedAt` is set, and always
+   * set alongside it in the SAME statement — there is no service-actor
+   * variant here (unlike `packedByUserId` / `packedByService`), because a
+   * completion is always an operator act at a terminal in front of the parcel,
+   * never something a background process performs on a work object's behalf.
+   *
+   * No FK, matching every other user-id reference on this table
+   * (`packedByUserId`, `assignedToUserId`): a dangling id from a deleted user
+   * is the honest outcome for an audit fact.
+   */
+  readonly completedByUserId: string | null;
+
   readonly lines: readonly FulfillmentWorkLine[];
   readonly createdAt: Date;
   readonly updatedAt: Date;

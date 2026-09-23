@@ -14,6 +14,18 @@
  * closes itself the moment the last line is verified. There is nothing here to
  * press."*
  *
+ * ## `completion` is NOT a close route, and is not an exception to D18
+ *
+ * D18 is about the BOX contents — packing closes silently on the last
+ * verification, so there is nothing for a "Done" button to confirm THERE.
+ * Completion is a different question, asked strictly AFTER a parcel is already
+ * closed: has the finished box actually left the bench (label on, invoice
+ * inside, on the trolley)? That act was previously invisible, and industry
+ * practice (ShipHero's "Complete Order", Brightpearl's `Packed` state before
+ * `Shipped`) treats it as its own explicit step, separate from printing. It is
+ * therefore a genuine write with no D18 conflict, and is recorded as such in
+ * `no-parcel-commit-route.spec.ts`'s allow-list rather than smuggled in.
+ *
  * ## Auth
  *
  * `JwtAuthGuard` is global, so per the house convention no redundant
@@ -57,17 +69,20 @@ import { BenchParcelNotAtThisBenchError } from '../application/services/bench-pa
 import type {
   BenchActivityEntryView,
   BenchClaimResultView,
+  BenchCompleteResultView,
   BenchParcelView,
   BenchReopenResultView,
   BenchUndoResultView,
   BenchVerificationResultView,
 } from '../application/types/bench-parcel.types';
+import { CompleteParcelDto } from './dto/complete-parcel.dto';
 import { ReopenParcelDto } from './dto/reopen-parcel.dto';
 import { VerifyUnitDto } from './dto/verify-unit.dto';
 import { toParcelResponseDto } from './dto/bench-parcel.mapper';
 import {
   BenchActivityEntryResponseDto,
   BenchClaimResultResponseDto,
+  BenchCompleteResultResponseDto,
   BenchParcelResponseDto,
   BenchPresenceResponseDto,
   BenchReopenResultResponseDto,
@@ -209,6 +224,45 @@ export class BenchParcelController {
     }
     const result = await this.run(() => this.parcels.claimParcel(workId, user.id));
     return this.toClaimDto(result);
+  }
+
+  @Post(':workId/complete')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Declare this parcel finished and off the bench',
+    description:
+      'Everything after the last scan — the label applied, the invoice inside, the box on the ' +
+      'trolley — was previously invisible: closing the box (the last verification) records that ' +
+      'the ITEMS are correct, never that the parcel is actually done and gone. This is that ' +
+      'second, explicit act. Refused `not-closed` before the box is packed, ' +
+      '`already-completed` on a repeat, `version-conflict` on a stale token, and ' +
+      '`not-claimable-by-viewer` under the same ADR-074 lock a scan enforces.',
+  })
+  @ApiResponse({ status: 201, type: BenchCompleteResultResponseDto })
+  @ApiResponse({ status: 401, description: 'A completion must name the packer' })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  async completeParcel(
+    @Param('workId') workId: string,
+    @Body() dto: CompleteParcelDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchCompleteResultResponseDto> {
+    // The #2890 F1 discipline verbatim: this write records who finished the
+    // parcel, so it must not be reachable without a principal.
+    if (!user?.id) {
+      throw new UnauthorizedException('A completion must name the packer');
+    }
+
+    const result = await this.run(() =>
+      this.parcels.completeParcel({
+        workId,
+        // The verified token's user, never the body's — the same reason
+        // `verifyUnit` sources attribution from `user.id` rather than a
+        // client-suppliable field.
+        completedByUserId: user.id,
+        expectedVersion: dto.expectedVersion,
+      })
+    );
+    return this.toCompleteDto(result);
   }
 
   @Get(':workId/activity')
@@ -355,6 +409,14 @@ export class BenchParcelController {
       kind: entry.kind,
       at: entry.at,
       byUserId: entry.byUserId,
+    };
+  }
+
+  private toCompleteDto(result: BenchCompleteResultView): BenchCompleteResultResponseDto {
+    return {
+      outcome: result.outcome,
+      reason: result.reason,
+      parcel: this.toParcelDto(result.parcel),
     };
   }
 

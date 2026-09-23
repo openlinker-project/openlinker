@@ -52,6 +52,10 @@ const workView = (over: Partial<FulfillmentWorkView> = {}): FulfillmentWorkView 
     expeditedAt: null,
     parcelClosedAt: null,
     packedByUserId: null,
+    invoicePrintedAt: null,
+    labelPrintedAt: null,
+    completedAt: null,
+    completedByUserId: null,
     createdAt: new Date('2026-09-01T09:00:00Z'),
     updatedAt: new Date('2026-09-01T09:00:00Z'),
     lines: [
@@ -85,6 +89,8 @@ function harness(options: {
   siblings?: Map<string, string[]>;
   executorActive?: boolean;
   markPacked?: jest.Mock;
+  /** pack-bench completion */
+  complete?: jest.Mock;
 }) {
   const work = options.work ?? workView();
 
@@ -120,6 +126,9 @@ function harness(options: {
     reopenParcel: jest.fn(),
     voidLastVerification: jest.fn(),
     listVerifications: jest.fn().mockResolvedValue([]),
+    markInvoicePrinted: jest.fn().mockResolvedValue(true),
+    markLabelPrinted: jest.fn().mockResolvedValue(true),
+    complete: options.complete ?? jest.fn().mockResolvedValue({ outcome: 'completed' }),
   } as unknown as IFulfillmentVerificationService;
 
   const orders = {
@@ -478,6 +487,10 @@ describe('BenchParcelService (#2418)', () => {
       // `totalAmount`/`currency`/`carrierName`/`dispatchByAt` are a
       // DELIBERATE reversal of #2413's original "no total, no price"
       // exclusion (#3409, epic #3401) — see the type docblock.
+      // `invoicePrintedAt`/`labelPrintedAt`/`completedAt` (pack-bench completion)
+      // are likewise on this allowlist deliberately — they carry no PII and
+      // an interruption firing on one is exactly the guarantee this list
+      // states, not a leak.
       const { service } = harness({});
       const parcel = await service.getParcel('work-1');
 
@@ -488,7 +501,10 @@ describe('BenchParcelService (#2418)', () => {
           'closedAt',
           'currency',
           'dispatchByAt',
+          'completedAt',
           'holdReason',
+          'invoicePrintedAt',
+          'labelPrintedAt',
           'lines',
           'orderReference',
           'packedByUserId',
@@ -752,6 +768,76 @@ describe('BenchParcelService (#2418)', () => {
 
       expect(result).toMatchObject({ outcome: 'refused', reason: 'held' });
       expect(worklist.updateAssignment).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pack-bench completion — complete this parcel', () => {
+    it('claims the completion and re-projects the FRESH work, never the stale one', async () => {
+      const closedWork = workView({ parcelClosedAt: new Date(), version: 4 });
+      const freshWork = workView({
+        parcelClosedAt: closedWork.parcelClosedAt,
+        version: 5,
+        completedAt: new Date(),
+        completedByUserId: 'user-1',
+      });
+      const { service, verification, worklist } = harness({
+        work: closedWork,
+        complete: jest.fn().mockResolvedValue({ outcome: 'completed' }),
+      });
+      // `loadBenchWork` reads `worklist.get` once for the initial load and
+      // AGAIN after a successful claim — the second call must answer with the
+      // freshly-written row, matching `claimParcel`'s own re-fetch discipline.
+      (worklist.get as jest.Mock).mockResolvedValueOnce(closedWork).mockResolvedValueOnce(freshWork);
+
+      const result = await service.completeParcel({
+        workId: 'work-1',
+        completedByUserId: 'user-1',
+        expectedVersion: 4,
+      });
+
+      expect(result.outcome).toBe('completed');
+      expect(result.reason).toBeNull();
+      expect(result.parcel.completedAt).toBe(freshWork.completedAt?.toISOString());
+      expect(verification.complete).toHaveBeenCalledWith({
+        workId: 'work-1',
+        completedByUserId: 'user-1',
+        expectedVersion: 4,
+      });
+    });
+
+    it('refuses `not-claimable-by-viewer` under the SAME ADR-074 lock a scan enforces', async () => {
+      const { service, verification } = harness({
+        work: workView({
+          parcelClosedAt: new Date(),
+          assignedToUserId: 'user-2',
+          selfServeEligible: false,
+        }),
+      });
+
+      const result = await service.completeParcel({
+        workId: 'work-1',
+        completedByUserId: 'user-1',
+        expectedVersion: 4,
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-claimable-by-viewer' });
+      expect(verification.complete).not.toHaveBeenCalled();
+    });
+
+    it('surfaces a core refusal verbatim, re-projecting the ORIGINAL work (nothing was written)', async () => {
+      const { service } = harness({
+        work: workView({ parcelClosedAt: null, version: 4 }),
+        complete: jest.fn().mockResolvedValue({ outcome: 'refused', reason: 'not-closed' }),
+      });
+
+      const result = await service.completeParcel({
+        workId: 'work-1',
+        completedByUserId: 'user-1',
+        expectedVersion: 4,
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-closed' });
+      expect(result.parcel.completedAt).toBeNull();
     });
   });
 

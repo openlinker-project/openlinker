@@ -30,6 +30,9 @@
  * | `version` | every applied HEADER transition | computed in SQL (`version + 1`), never from a caller's read. This includes `assignToPacker` / `clearAssignment` / `setSelfServeEligible` (#3336) — a supervisor's staffing decision therefore invalidates the token of a packer mid-parcel, whose next action bounces via #2406's `expectedVersion` and must re-fetch |
  * | `fulfilledQuantity` / `cancelledQuantity` | `recordLineProgress` (#2400) | a create carries zeros and would erase real progress |
  * | `updatedAt` | every applied transition | written IMPLICITLY by TypeORM's `@UpdateDateColumn` injection, and explicitly by `recordLineProgress`. Named here because it has a real downstream consumer — `IDX_fulfillment_works_request_status` and ADR-054's timeout sweep both read it — and a column whose writer is a framework default is exactly the one a writer table must not omit |
+ * | `invoicePrintedAt` | `markInvoicePrinted` (pack-bench completion) | fill-in-when-NULL, `WHERE "invoicePrintedAt" IS NULL`; DOES NOT bump `version` — a display-only fact, the `fulfilledQuantity` reading above |
+ * | `labelPrintedAt` | `markLabelPrinted` (pack-bench completion) | same shape as `invoicePrintedAt`, called from a SIBLING context (`shipping`, off `Shipment.fulfillmentWorkId`) rather than from this one |
+ * | `completedAt` / `completedByUserId` | `claimCompletion` (pack-bench completion) | one pair, one statement, at-most-once — guarded `"completedAt" IS NULL AND "parcelClosedAt" IS NOT NULL` (the `claimParcelClose` idiom). Unlike the two print columns above this DOES bump `version`: it is the terminal legality-gated act on this surface |
  *
  * **`recordLineProgress` deliberately does NOT bump the header's `version`.**
  * It writes `fulfillment_work_lines`, a different row, and the token guards
@@ -76,6 +79,7 @@ import { FulfillmentWorkNotFoundError } from '../../../domain/exceptions/fulfill
 import type {
   CancelFulfillmentWorkInput,
   ClaimFulfillmentDispatchInput,
+  ClaimFulfillmentCompletionInput,
   ClaimParcelCloseInput,
   CreateFulfillmentWorkInput,
   FulfillmentWorkRepositoryPort,
@@ -250,6 +254,13 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     header.acceptedAt = null;
     header.externalWorkId = null;
     header.version = 0;
+    // Never printed or completed at creation: both are acts that happen
+    // strictly after the work exists, and a create carrying anything but
+    // `null` here would fabricate history for a parcel nobody has touched yet.
+    header.invoicePrintedAt = null;
+    header.labelPrintedAt = null;
+    header.completedAt = null;
+    header.completedByUserId = null;
 
     const lineEntities = input.lines.map((line) => {
       const entity = new FulfillmentWorkLineOrmEntity();
@@ -682,6 +693,51 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         `releaseDispatchRelay: work ${workId} had no relay claim to release (already released or absent)`
       );
     }
+  }
+
+  async markInvoicePrinted(workId: string, at: Date): Promise<boolean> {
+    // Fill-in-when-NULL, and deliberately no `version` bump — see the ORM
+    // column's own docblock. A reprint is a no-op (`false`), never an error:
+    // the caller (a document download) must not surface this as a failure.
+    return this.applyGuardedUpdate('markInvoicePrinted', (qb) =>
+      qb
+        .set({ invoicePrintedAt: at })
+        .where('"id" = :id', { id: workId })
+        .andWhere('"invoicePrintedAt" IS NULL')
+    );
+  }
+
+  async markLabelPrinted(workId: string, at: Date): Promise<boolean> {
+    // Same shape as `markInvoicePrinted`. The caller lives in a SIBLING
+    // context (`shipping`, off `Shipment.fulfillmentWorkId`) — this method
+    // itself is unaware of that and takes only the work id it is handed.
+    return this.applyGuardedUpdate('markLabelPrinted', (qb) =>
+      qb
+        .set({ labelPrintedAt: at })
+        .where('"id" = :id', { id: workId })
+        .andWhere('"labelPrintedAt" IS NULL')
+    );
+  }
+
+  async claimCompletion(input: ClaimFulfillmentCompletionInput): Promise<boolean> {
+    // At-most-once claim, guarded on BOTH the negative precondition
+    // (`"completedAt" IS NULL`) and the positive one that must already hold
+    // (`"parcelClosedAt" IS NOT NULL`) — a parcel cannot be completed before
+    // it is packed. Bumps `version`, unlike the two print marks above: this is
+    // the terminal legality-gated act on this surface, so a client polling the
+    // parcel must see it as a state change.
+    return this.applyGuardedUpdate('claimCompletion', (qb) => {
+      const guarded = qb
+        .set({
+          completedAt: input.completedAt,
+          completedByUserId: input.completedByUserId,
+          version: () => '"version" + 1',
+        })
+        .where('"id" = :id', { id: input.workId })
+        .andWhere('"completedAt" IS NULL')
+        .andWhere('"parcelClosedAt" IS NOT NULL');
+      return this.withVersionGuard(guarded, input.expectedVersion);
+    });
   }
 
   async cancel(input: CancelFulfillmentWorkInput): Promise<boolean> {
@@ -1271,6 +1327,10 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       parcelClosedAt: header.parcelClosedAt,
       packedByUserId: header.packedByUserId,
       packedByService: header.packedByService,
+      invoicePrintedAt: header.invoicePrintedAt,
+      labelPrintedAt: header.labelPrintedAt,
+      completedAt: header.completedAt,
+      completedByUserId: header.completedByUserId,
       lines: lines.map((line) => this.toLineDomain(line)),
       createdAt: header.createdAt,
       updatedAt: header.updatedAt,

@@ -43,6 +43,24 @@
  * executor" is a third of that rule. See that file for why the registry is
  * asked rather than `connection.adapterKey` compared.
  *
+ * ## Completion (pack-bench completion) does not narrow `collectWorks`' SQL selection
+ *
+ * A parcel already carries `parcelClosedAt` for a while before anything reads
+ * `status`/`requestStatus` differently — this list has NEVER filtered on
+ * `parcelClosedAt`, so a packed-but-not-yet-completed parcel already stays
+ * selectable here today, exactly as before this change. Adding a
+ * `completedAt IS NULL` filter to `collectWorks` would be a NEW behaviour
+ * change riding inside this slice rather than something the four new columns
+ * require, and `listPackedToday` is UNCHANGED for the identical reason: it
+ * keys on `parcelClosedAt` (when it was packed), never on `completedAt`
+ * (when it left), so today's "packed today" count is unaffected by whether a
+ * parcel has since been completed.
+ *
+ * `BenchWorkView.completedAt` is exposed instead, precisely so a consumer of
+ * this list CAN choose to move a completed row out of its own rendering of
+ * "to pack" without a backend behaviour change — the field is additive, the
+ * query is not.
+ *
  * @module apps/api/src/bench/application/services
  * @implements {IBenchWorkService}
  */
@@ -113,7 +131,7 @@ export class BenchWorkService implements IBenchWorkService {
     private readonly parcels: IBenchParcelService
   ) {}
 
-  async listBenchWork(viewerId: string): Promise<BenchWorkListView> {
+  async listBenchWork(viewerId: string, supervises: boolean): Promise<BenchWorkListView> {
     const executors = await this.executors.listPackingExecutors();
 
     // Nothing is set up to send work here. Reported as its own fact rather than
@@ -126,7 +144,20 @@ export class BenchWorkService implements IBenchWorkService {
     }
 
     const { works, total } = await this.collectWorks(executors.map((c) => c.id));
-    const rows = await this.project(works, viewerId);
+    const projected = await this.project(works, viewerId);
+
+    // A packer sees their own work and the unassigned pool — never a row
+    // locked to somebody else (pack-bench completion, ADR-071). They cannot act on it anyway
+    // (`isClaimableByViewer` already refuses it), and it carries a buyer name
+    // read off the order snapshot, so it is dropped here rather than merely
+    // hidden by the frontend. `total` is adjusted by exactly what was dropped
+    // from THIS page, so it keeps reporting "what matches" for the rows the
+    // viewer was actually given — including the truncation signal above
+    // `BENCH_WORK_HARD_CAP`, which this filter must not silently erase.
+    const rows = supervises
+      ? projected
+      : projected.filter((row) => row.assignmentState !== 'assigned-other');
+    const hidden = projected.length - rows.length;
 
     return {
       works: rows,
@@ -136,15 +167,21 @@ export class BenchWorkService implements IBenchWorkService {
       // guess to render as a heading.
       executorName: executors.length === 1 ? executors[0].name : null,
       routing: { ready: true },
-      total,
+      total: total - hidden,
     };
   }
 
   async claimNext(viewerId: string): Promise<BenchClaimNextResultView> {
     // Reuses listBenchWork's OWN sort and eligibility — no second ordering to
     // keep in sync with compareBenchWork, and `claimable` is the same
-    // predicate `claimParcel` re-checks at write time.
-    const { works } = await this.listBenchWork(viewerId);
+    // predicate `claimParcel` re-checks at write time. Asks with `supervises:
+    // true` — the unfiltered set — because a row assigned to somebody else is
+    // never claimable in the first place (`isClaimableByViewer` refuses it, and
+    // the `find` below additionally requires `assignmentState !== 'mine'`), so
+    // whether such a row is present or absent from this internal read cannot
+    // change which candidate is picked; asking for the full set is simplest and
+    // keeps this method's own behaviour unchanged by the pack-bench completion filter.
+    const { works } = await this.listBenchWork(viewerId, true);
     const top = works.find(
       (row) => row.state === 'packable' && row.claimable && row.assignmentState !== 'mine'
     );
@@ -397,6 +434,7 @@ export class BenchWorkService implements IBenchWorkService {
       supportedActions: work.supportedActions,
       assignmentState,
       claimable,
+      completedAt: work.completedAt?.toISOString() ?? null,
     };
   }
 }

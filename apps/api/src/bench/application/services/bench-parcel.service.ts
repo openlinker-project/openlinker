@@ -74,6 +74,7 @@ import {
 } from '../bench-work-eligibility';
 import { readBuyerName, readOrderReference } from '../bench-order-facts';
 import type {
+  BenchCompleteInput,
   BenchReopenInput,
   BenchUndoInput,
   BenchVerifyUnitInput,
@@ -82,6 +83,7 @@ import type {
 import type {
   BenchActivityEntryView,
   BenchClaimResultView,
+  BenchCompleteResultView,
   BenchParcelLineView,
   BenchParcelRefusal,
   BenchParcelView,
@@ -337,6 +339,49 @@ export class BenchParcelService implements IBenchParcelService {
     return { outcome: 'claimed', reason: null, parcel: await this.project(claimed, state) };
   }
 
+  /**
+   * Declare a parcel finished and off the bench (pack-bench completion).
+   *
+   * Story D2 does NOT apply here — a completed parcel is by definition
+   * already closed, so `held`/`cancelled` can never be true of it, and
+   * `refusalFor` would answer `null` on every reachable row. What DOES
+   * transfer is the ADR-074 lock: the same reason `verifyUnit` re-checks
+   * `isClaimableByViewer` rather than trusting a stale list row, this write
+   * must too, since a parcel locked to a different packer must not be
+   * finished by someone else either.
+   */
+  async completeParcel(input: BenchCompleteInput): Promise<BenchCompleteResultView> {
+    const work = await this.loadBenchWork(input.workId);
+
+    if (!isClaimableByViewer(work, input.completedByUserId)) {
+      const state = await this.verification.getState(input.workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-claimable-by-viewer',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    const result = await this.verification.complete({
+      workId: input.workId,
+      completedByUserId: input.completedByUserId,
+      expectedVersion: input.expectedVersion,
+    });
+
+    if (result.outcome === 'refused') {
+      const state = await this.verification.getState(input.workId);
+      return { outcome: 'refused', reason: result.reason, parcel: await this.project(work, state) };
+    }
+
+    // The claim moved `completedAt` and bumped `version` on the ROW `work`
+    // was loaded from before this write — re-fetch, the `claimParcel`
+    // precedent, or the projection would report a stale token and a `null`
+    // `completedAt` for a completion this very call just recorded.
+    const fresh = await this.worklist.get(input.workId);
+    const state = await this.verification.getState(input.workId);
+    return { outcome: 'completed', reason: null, parcel: await this.project(fresh, state) };
+  }
+
   async undoLastScan(input: BenchUndoInput): Promise<BenchUndoResultView> {
     const work = await this.loadBenchWork(input.workId);
 
@@ -559,6 +604,16 @@ export class BenchParcelService implements IBenchParcelService {
       holdReason: hold?.reason ?? null,
       closedAt: state.closedAt?.toISOString() ?? null,
       packedByUserId: state.packedByUserId,
+      // From `work`, unlike `closedAt`/`packedByUserId`/`version` above: none
+      // of `verifyUnit` / `reopenParcel` / `undoLastScan` / `claimParcel`
+      // writes these three fields, so the work loaded before THIS call's own
+      // write (if any) already carries their correct value. The one write
+      // that changes `completedAt` — `completeParcel` — re-fetches `work`
+      // itself before calling `project`, exactly as `claimParcel` already
+      // does for `assignedToUserId`.
+      invoicePrintedAt: work.invoicePrintedAt?.toISOString() ?? null,
+      labelPrintedAt: work.labelPrintedAt?.toISOString() ?? null,
+      completedAt: work.completedAt?.toISOString() ?? null,
       lines,
     };
   }
@@ -608,7 +663,7 @@ export class BenchParcelService implements IBenchParcelService {
         // #3410 (epic #3401) — the parent PRODUCT's image; ProductVariant
         // carries none of its own.
         //
-        // The PROXY path, never the stored url (#3340 follow-up): what the
+        // The PROXY path, never the stored url (pack-bench completion follow-up): what the
         // catalogue sync wrote is the address the BACKEND used to reach the
         // shop, which on a compose deployment the browser cannot resolve at
         // all. See `products/application/services/product-image-proxy.service.ts`.

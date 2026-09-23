@@ -331,3 +331,51 @@ export type ReopenParcelResult =
       readonly reason: ParcelReopenRefusal;
       readonly state: ParcelVerificationState;
     };
+
+/**
+ * Why a completion was refused (pack-bench completion).
+ *
+ * Closed, and — like `ParcelVerificationRefusalValues`' `'not-packable'` —
+ * NARROWER than what a caller may render: `apps/api/src/bench` widens this
+ * with its own `'not-claimable-by-viewer'` (the ADR-074 pre-assignment lock),
+ * produced nowhere in this context because it depends on WHO is asking, which
+ * this core service never learns. The three below are the ones a bare
+ * conditional UPDATE on this aggregate can distinguish.
+ */
+export const FulfillmentCompletionRefusalValues = [
+  /** The parcel is not packed yet — a completion cannot precede a close. */
+  'not-closed',
+  /** Somebody already declared this parcel completed. */
+  'already-completed',
+  /** The token was stale — somebody moved the work first. Re-read and retry. */
+  'version-conflict',
+] as const;
+
+export type FulfillmentCompletionRefusal = (typeof FulfillmentCompletionRefusalValues)[number];
+
+/**
+ * Declare a parcel finished and off the bench (pack-bench completion) — a distinct, explicit
+ * completion act from D18's silent auto-close on the last verification.
+ *
+ * `expectedVersion` is REQUIRED, unlike `ReopenParcelInput`'s optional one:
+ * there is no unguarded path to this write, because a completion is the
+ * terminal act on the parcel and a lost race here is a box that leaves the
+ * bench twice in the record.
+ */
+export interface CompleteInput {
+  readonly workId: string;
+  readonly completedByUserId: string;
+  readonly expectedVersion: number;
+}
+
+/**
+ * What `complete` answers.
+ *
+ * Deliberately carries no `state`: unlike `verifyUnit` / `reopenParcel`, a
+ * completion never changes the verification ledger or its counters, so there is
+ * nothing this service can add that the caller's own re-read of the work
+ * object does not already answer more cheaply.
+ */
+export type CompleteResult =
+  | { readonly outcome: 'completed' }
+  | { readonly outcome: 'refused'; readonly reason: FulfillmentCompletionRefusal };

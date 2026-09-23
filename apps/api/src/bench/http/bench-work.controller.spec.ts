@@ -29,6 +29,7 @@ function view(over: Partial<BenchWorkListView> = {}): BenchWorkListView {
         supportedActions: ['expedite'],
         assignmentState: 'unassigned',
         claimable: true,
+        completedAt: null,
       },
     ],
     executorName: 'Warehouse packing',
@@ -86,5 +87,42 @@ describe('BenchWorkController (#2416)', () => {
     ).listBenchWork({ id: 'viewer-1', username: 'viewer', role: 'packer' });
 
     expect(dto.routing).toEqual({ ready: false, reason: 'no-packing-connection' });
+  });
+
+  describe('supervises (#3340, ADR-071)', () => {
+    function benchWith(): { controller: BenchWorkController; listBenchWork: jest.Mock } {
+      const listBenchWork = jest.fn().mockResolvedValue(view());
+      const bench: IBenchWorkService = {
+        listBenchWork,
+        claimNext: jest.fn(),
+        listPackedToday: jest.fn(),
+        getMetrics: jest.fn(),
+      };
+      return { controller: new BenchWorkController(bench), listBenchWork };
+    }
+
+    it('resolves `supervises: false` from a permission, not from the role name, for packer', async () => {
+      const { controller, listBenchWork } = benchWith();
+
+      await controller.listBenchWork({ id: 'p-1', username: 'anna', role: 'packer' });
+
+      expect(listBenchWork).toHaveBeenCalledWith('p-1', false);
+    });
+
+    it('resolves `supervises: true` for operator', async () => {
+      const { controller, listBenchWork } = benchWith();
+
+      await controller.listBenchWork({ id: 'o-1', username: 'olga', role: 'operator' });
+
+      expect(listBenchWork).toHaveBeenCalledWith('o-1', true);
+    });
+
+    it('resolves `supervises: true` for admin', async () => {
+      const { controller, listBenchWork } = benchWith();
+
+      await controller.listBenchWork({ id: 'a-1', username: 'adam', role: 'admin' });
+
+      expect(listBenchWork).toHaveBeenCalledWith('a-1', true);
+    });
   });
 });

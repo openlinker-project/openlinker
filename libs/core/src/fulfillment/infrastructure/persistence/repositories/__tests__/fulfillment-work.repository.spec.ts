@@ -192,6 +192,127 @@ describe('FulfillmentWorkRepository', () => {
     });
   });
 
+  describe('markInvoicePrinted / markLabelPrinted (pack-bench completion)', () => {
+    it('should stamp invoicePrintedAt on the first call', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      const at = new Date();
+      await expect(repo.markInvoicePrinted('w1', at)).resolves.toBe(true);
+      expect(argsOf(qb.andWhere as Mock)).toContain('"invoicePrintedAt" IS NULL');
+      expect(firstArgOf<Record<string, unknown>>(qb.set as Mock)).toEqual({
+        invoicePrintedAt: at,
+      });
+    });
+
+    it('should report not-applied on a reprint, without erroring', async () => {
+      const qb = updateQueryBuilder({ affected: 0 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.markInvoicePrinted('w1', new Date())).resolves.toBe(false);
+    });
+
+    it('should NOT bump version — a display-only fact, not a legality-gated one', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await repo.markInvoicePrinted('w1', new Date());
+
+      const setArg = firstArgOf<Record<string, unknown>>(qb.set as Mock);
+      expect(setArg).not.toHaveProperty('version');
+    });
+
+    it('should stamp labelPrintedAt on the first call, and never bump version', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      const at = new Date();
+      await expect(repo.markLabelPrinted('w1', at)).resolves.toBe(true);
+      expect(argsOf(qb.andWhere as Mock)).toContain('"labelPrintedAt" IS NULL');
+      const setArg = firstArgOf<Record<string, unknown>>(qb.set as Mock);
+      expect(setArg).toEqual({ labelPrintedAt: at });
+      expect(setArg).not.toHaveProperty('version');
+    });
+
+    it('should report not-applied on a repeated label stamp', async () => {
+      const qb = updateQueryBuilder({ affected: 0 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.markLabelPrinted('w1', new Date())).resolves.toBe(false);
+    });
+  });
+
+  describe('claimCompletion (pack-bench completion)', () => {
+    it('should claim exactly once, guarded on the negative AND the prerequisite state', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      const at = new Date();
+      await expect(
+        repo.claimCompletion({
+          workId: 'w1',
+          completedAt: at,
+          completedByUserId: 'u1',
+          expectedVersion: 3,
+        })
+      ).resolves.toBe(true);
+
+      const guards = argsOf(qb.andWhere as Mock);
+      expect(guards).toContain('"completedAt" IS NULL');
+      expect(guards).toContain('"parcelClosedAt" IS NOT NULL');
+      expect(guards).toContain('"version" = :expectedVersion');
+      expect(firstArgOf<Record<string, unknown>>(qb.set as Mock)).toMatchObject({
+        completedAt: at,
+        completedByUserId: 'u1',
+      });
+    });
+
+    it('should DO bump version — the terminal legality-gated act on this surface', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await repo.claimCompletion({
+        workId: 'w1',
+        completedAt: new Date(),
+        completedByUserId: 'u1',
+        expectedVersion: 0,
+      });
+
+      const setArg = firstArgOf<Record<string, unknown>>(qb.set as Mock);
+      expect((setArg.version as () => string)()).toBe('"version" + 1');
+    });
+
+    it('should report not-applied when the guard does not hold', async () => {
+      const qb = updateQueryBuilder({ affected: 0 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(
+        repo.claimCompletion({
+          workId: 'w1',
+          completedAt: new Date(),
+          completedByUserId: 'u1',
+          expectedVersion: 0,
+        })
+      ).resolves.toBe(false);
+    });
+  });
+
   describe('assignment (#3336, ADR-074)', () => {
     it('should assign a packer with no IS NULL guard — reassignment is legal', async () => {
       const qb = updateQueryBuilder({ affected: 1 });

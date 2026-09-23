@@ -20,6 +20,15 @@
  * *"the bench reaches the parcel through the work, never by enumerating a
  * register"*, which is #2413's own principle rather than a new one.
  *
+ * ## The invoice print is stamped, best-effort (pack-bench completion)
+ *
+ * `FulfillmentWork.invoicePrintedAt` records the FIRST time this route served
+ * bytes, fill-in-when-NULL so a reprint never moves it. The stamp is written
+ * AFTER the document is already in hand and wrapped in its own try/catch: a
+ * print that worked and a stamp that failed must serve the exact same 200 a
+ * stamp that succeeded would have, because the packer's box does not care
+ * whether OpenLinker remembered it printed the invoice.
+ *
  * @module apps/api/src/bench/http
  */
 import {
@@ -41,8 +50,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
   FulfillmentWorkNotFoundError,
   type FulfillmentWorkView,
+  type IFulfillmentVerificationService,
 } from '@openlinker/core/fulfillment';
 import {
   INVOICE_SERVICE_TOKEN,
@@ -89,7 +100,9 @@ export class BenchDocumentsController {
     @Inject(INVOICE_SERVICE_TOKEN)
     private readonly invoices: IInvoiceService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrations: IIntegrationsService
+    private readonly integrations: IIntegrationsService,
+    @Inject(FULFILLMENT_VERIFICATION_SERVICE_TOKEN)
+    private readonly verification: IFulfillmentVerificationService
   ) {}
 
   @Get('work/:workId/documents')
@@ -183,6 +196,21 @@ export class BenchDocumentsController {
     }
 
     const document = await adapter.getRegulatoryDocument(record, 'rendered');
+
+    // Best-effort (pack-bench completion): the print itself already succeeded above, so a
+    // failure to STAMP that it happened must never turn a working download
+    // into a 500, or delay it further than one indexed UPDATE. Fill-in-when-
+    // NULL on the repository side means a reprint is a harmless no-op here
+    // too — this call site never needs to know which.
+    try {
+      await this.verification.markInvoicePrinted(work.id, new Date());
+    } catch (error) {
+      this.logger.warn(
+        `bench_invoice_print_stamp_failed workId=${workId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
     res.setHeader('Content-Type', document.contentType);
     res.setHeader(
       'Content-Disposition',

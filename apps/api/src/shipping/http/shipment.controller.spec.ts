@@ -37,6 +37,7 @@ import {
   OrderNotDispatchablePaymentStatusException,
 } from '@openlinker/core/shipping';
 
+import type { IFulfillmentVerificationService } from '@openlinker/core/fulfillment';
 import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import { ROLE_PERMISSIONS, UserRoleValues } from '@openlinker/core/users';
 import type { UserRole } from '@openlinker/core/users';
@@ -109,6 +110,7 @@ describe('ShipmentController', () => {
   let notification: jest.Mocked<IShipmentDispatchNotificationService>;
   let labelService: jest.Mocked<IShipmentLabelService>;
   let orders: jest.Mocked<IOrderRecordService>;
+  let fulfillmentVerification: jest.Mocked<IFulfillmentVerificationService>;
   let controller: ShipmentController;
 
   beforeEach(() => {
@@ -155,6 +157,16 @@ describe('ShipmentController', () => {
       getCurrencyMismatchOrdersByConnection: jest.fn(),
       getProductMatchingErrorOrders: jest.fn(),
     };
+    fulfillmentVerification = {
+      getState: jest.fn(),
+      verifyUnit: jest.fn(),
+      reopenParcel: jest.fn(),
+      voidLastVerification: jest.fn(),
+      listVerifications: jest.fn(),
+      markInvoicePrinted: jest.fn(),
+      markLabelPrinted: jest.fn().mockResolvedValue(true),
+      complete: jest.fn(),
+    };
     controller = new ShipmentController(
       query,
       dispatch,
@@ -163,6 +175,7 @@ describe('ShipmentController', () => {
       notification,
       labelService,
       orders,
+      fulfillmentVerification,
     );
   });
 

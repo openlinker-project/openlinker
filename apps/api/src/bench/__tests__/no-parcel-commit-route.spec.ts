@@ -47,12 +47,20 @@ const BENCH_HTTP_ROOT = resolve(__dirname, '..', 'http');
  * than reopening one as a side effect). `presence` (#3406) closes nothing
  * either — it is an ephemeral Redis TTL heartbeat with no effect on parcel
  * state at all. `claim` (#3412) is a self-assignment write, not a packing
- * one — it moves `assignedToUserId`, never `parcelClosedAt`. All listed as
+ * one — it moves `assignedToUserId`, never `parcelClosedAt`. `completion`
+ * (pack-bench completion) is a fourth kind of write, not a third spelling of a close: D18 is
+ * about the box CONTENTS, closed silently on the last verification with
+ * nothing left for a control to confirm, while completion asks whether an
+ * ALREADY-CLOSED parcel has actually left the bench — a later, explicit act
+ * with real prior art (ShipHero's "Complete Order", Brightpearl's `Packed`
+ * state before `Shipped`) for treating it as its own step. Listed here as a
+ * decision, never smuggled past the guard. All listed as
  * deliberate writes rather than silently exempted from the guard this file
  * exists to be.
  */
 const EXPECTED_BENCH_WRITES = [
   'POST bench/work/:workId/claim',
+  'POST bench/work/:workId/complete',
   'POST bench/work/:workId/presence',
   'POST bench/work/:workId/reopen',
   'POST bench/work/:workId/verifications',
@@ -134,8 +142,19 @@ describe('the bench API exposes no parcel-commit route (#2418, D18)', () => {
     // The allow-list above is the guard; this is the reader-facing half, so a
     // failure names the decision rather than only the diff. GET included: a
     // close reached by a read would be worse, not better.
-    const suspicious = ROUTES.filter((route) =>
-      /close|commit|finish|seal|complete|done/i.test(route.path)
+    //
+    // `POST bench/work/:workId/complete` is EXCLUDED from this scan, not from
+    // the guard: it is already in `EXPECTED_BENCH_WRITES` above, with the
+    // reasoning spelled out there — the decided, documented completion act, a
+    // fourth kind of write and not a spelling of the D18 close this scan
+    // exists to catch. Excluding it here (by exact path, not by loosening the
+    // keyword) is what keeps the scan able to catch the NEXT undecided one,
+    // including a second route that also happens to use the word "complete".
+    const DECIDED_COMPLETION_ROUTE = 'POST bench/work/:workId/complete';
+    const suspicious = ROUTES.filter(
+      (route) =>
+        `${route.verb} ${route.path}` !== DECIDED_COMPLETION_ROUTE &&
+        /close|commit|finish|seal|complete|done/i.test(route.path)
     ).map(
       (route) =>
         `${route.verb} ${route.path} reads like a parcel commit. Decision D18: the box closes ` +

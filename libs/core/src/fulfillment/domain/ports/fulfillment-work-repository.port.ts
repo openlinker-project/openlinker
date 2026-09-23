@@ -431,6 +431,24 @@ export interface VoidLastVerificationWriteInput {
   readonly voidedAt: Date;
 }
 
+/**
+ * The explicit completion claim (pack-bench completion) — an operator declaring a parcel
+ * finished and off the bench (label applied, invoice inside, box on the
+ * trolley).
+ *
+ * `completedByUserId` is REQUIRED and never `null`: a completion is always an
+ * operator act at a terminal in front of the parcel, unlike `packedByUserId`,
+ * which carries a service-actor alternative for an executor that packs
+ * without a human. There is no such alternative here.
+ */
+export interface ClaimFulfillmentCompletionInput {
+  readonly workId: string;
+  readonly completedAt: Date;
+  readonly completedByUserId: string;
+  /** See `CancelFulfillmentWorkInput.expectedVersion`. Required: there is no unguarded completion. */
+  readonly expectedVersion: number;
+}
+
 /** Opening it again (#2418, E6/D19). */
 export interface ReopenParcelWriteInput {
   readonly workId: string;
@@ -811,6 +829,44 @@ export interface FulfillmentWorkRepositoryPort {
     input: ReopenParcelWriteInput,
     transaction?: FulfillmentWorkTransaction
   ): Promise<boolean>;
+
+  /**
+   * Stamp the FIRST time this parcel's invoice was printed at the bench
+   * (pack-bench completion). Fill-in-when-NULL — `WHERE "invoicePrintedAt" IS NULL` — so a
+   * reprint never moves it: the question is "was it ever printed", and a
+   * later value would make a reprint look like the original print.
+   *
+   * `false` means it was already recorded — an ordinary, successful outcome
+   * and never an error. Does NOT bump `version`: this is a display-only fact,
+   * the same reading `recordLineProgress`'s counters carry.
+   */
+  markInvoicePrinted(workId: string, at: Date): Promise<boolean>;
+
+  /**
+   * The label sibling of `markInvoicePrinted` (pack-bench completion). Same shape, same
+   * fill-in-when-NULL claim, same no-version-bump reading. Called from a
+   * SIBLING context (`shipping`) that resolves this work id off
+   * `Shipment.fulfillmentWorkId` (#2402) — this method itself takes only the
+   * id it is handed.
+   */
+  markLabelPrinted(workId: string, at: Date): Promise<boolean>;
+
+  /**
+   * Declare this parcel finished and off the bench — the explicit
+   * completion act the pack-bench completion research found missing.
+   * `"completedAt"` and `"completedByUserId"` in ONE guarded UPDATE
+   * (`WHERE "completedAt" IS NULL AND "parcelClosedAt" IS NOT NULL`), the
+   * `claimParcelClose` at-most-once idiom: a parcel cannot be completed
+   * twice, and cannot be completed before it is packed.
+   *
+   * Bumps `version`, unlike the two print marks above: unlike those, this IS
+   * the terminal legality-gated act on this surface.
+   *
+   * `false` means the guard did not hold — the caller re-reads to tell a
+   * stale token apart from an already-completed or not-yet-closed parcel,
+   * the `transitionStatus` / `applyAction` convention.
+   */
+  claimCompletion(input: ClaimFulfillmentCompletionInput): Promise<boolean>;
 
   /**
    * Locate the most recent ACTIVE verification on a work, without voiding it

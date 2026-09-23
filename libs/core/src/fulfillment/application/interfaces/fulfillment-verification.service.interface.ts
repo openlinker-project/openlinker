@@ -32,6 +32,8 @@
  * @module libs/core/src/fulfillment/application/interfaces
  */
 import type {
+  CompleteInput,
+  CompleteResult,
   ParcelVerificationEvent,
   ParcelVerificationState,
   ReopenParcelInput,
@@ -97,4 +99,32 @@ export interface IFulfillmentVerificationService {
    * passthrough of the repository read, for a "recent activity" log.
    */
   listVerifications(workId: string): Promise<readonly ParcelVerificationEvent[]>;
+
+  /**
+   * Stamp the FIRST time this parcel's invoice was printed (pack-bench completion). A pure
+   * passthrough to the repository's fill-in-when-NULL claim — `false` means
+   * it was already recorded, an ordinary outcome the caller need not act on.
+   *
+   * Never throws for an unknown work id: the caller (a document download)
+   * already resolved the work to serve the document, so a passthrough
+   * `false` is indistinguishable from, and as harmless as, a benign reprint.
+   */
+  markInvoicePrinted(workId: string, at: Date): Promise<boolean>;
+
+  /** The label sibling of `markInvoicePrinted` (pack-bench completion). Same contract. */
+  markLabelPrinted(workId: string, at: Date): Promise<boolean>;
+
+  /**
+   * Declare a parcel finished and off the bench (pack-bench completion) — a distinct,
+   * explicit completion act from D18's silent auto-close.
+   *
+   * Never throws for a modelled refusal: a not-yet-closed parcel, an
+   * already-completed one and a stale token are all ordinary answers a
+   * packer must be shown, not errors.
+   *
+   * @throws {FulfillmentWorkNotFoundError} the work vanished between the
+   *   failed claim and the re-read that explains it — not reachable through
+   *   any shipped caller, which always resolves the work first.
+   */
+  complete(input: CompleteInput): Promise<CompleteResult>;
 }

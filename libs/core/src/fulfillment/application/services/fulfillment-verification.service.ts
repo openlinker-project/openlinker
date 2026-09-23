@@ -56,6 +56,8 @@ import type {
 } from '../../domain/ports/fulfillment-work-repository.port';
 import {
   requiredUnitsForLine,
+  type CompleteInput,
+  type CompleteResult,
   type ParcelVerificationEvent,
   type ParcelVerificationLineState,
   type ParcelVerificationState,
@@ -275,6 +277,43 @@ export class FulfillmentVerificationService implements IFulfillmentVerificationS
 
   async listVerifications(workId: string): Promise<readonly ParcelVerificationEvent[]> {
     return this.works.listVerifications(workId);
+  }
+
+  async markInvoicePrinted(workId: string, at: Date): Promise<boolean> {
+    return this.works.markInvoicePrinted(workId, at);
+  }
+
+  async markLabelPrinted(workId: string, at: Date): Promise<boolean> {
+    return this.works.markLabelPrinted(workId, at);
+  }
+
+  async complete(input: CompleteInput): Promise<CompleteResult> {
+    const applied = await this.works.claimCompletion({
+      workId: input.workId,
+      completedAt: new Date(),
+      completedByUserId: input.completedByUserId,
+      expectedVersion: input.expectedVersion,
+    });
+    if (applied) return { outcome: 'completed' } as const;
+
+    // The guard did not hold. Re-read to tell three different causes apart —
+    // the `FulfillmentWorklistService.applyAction` convention: the version
+    // check comes FIRST, because a peer writing between the failed UPDATE and
+    // this re-read makes a state refusal look like a version conflict, which
+    // is the safe direction (the caller re-reads and retries) and can never
+    // turn a real conflict into a false success.
+    const work = await this.works.findById(input.workId);
+    if (work === null) throw new FulfillmentWorkNotFoundError(input.workId);
+
+    if (work.version !== input.expectedVersion) {
+      return { outcome: 'refused', reason: 'version-conflict' } as const;
+    }
+    if (work.parcelClosedAt === null) {
+      return { outcome: 'refused', reason: 'not-closed' } as const;
+    }
+    // Version matched and the parcel is closed, so the only remaining cause
+    // is that somebody already declared the completion.
+    return { outcome: 'refused', reason: 'already-completed' } as const;
   }
 
   /** Every line full. An empty work is deliberately NOT complete — see below. */

@@ -185,6 +185,12 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // worklist listBenchWork returns; delegates to claimParcel for the actual
   // write and re-check.
   'BenchWorkController.claimNext',
+  // pack-bench completion. Declare a parcel finished and off the bench — the completion act
+  // after the last scan (label applied, invoice inside, box on the
+  // trolley). Scoped exactly as getParcel scopes it, plus the ADR-074 lock a
+  // scan already enforces; attributed to the verified token's own user, same
+  // as verifyUnit.
+  'BenchParcelController.completeParcel',
   // #3413. Two reads, scoped exactly as listBenchWork scopes them.
   'BenchWorkController.listPackedToday',
   'BenchWorkController.getMetrics',

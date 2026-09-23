@@ -375,6 +375,10 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
       expeditedAt: work.expeditedAt,
       parcelClosedAt: work.parcelClosedAt,
       packedByUserId: work.packedByUserId,
+      invoicePrintedAt: work.invoicePrintedAt,
+      labelPrintedAt: work.labelPrintedAt,
+      completedAt: work.completedAt,
+      completedByUserId: work.completedByUserId,
       createdAt: work.createdAt,
       updatedAt: work.updatedAt,
       lines: work.lines.map((line) => ({

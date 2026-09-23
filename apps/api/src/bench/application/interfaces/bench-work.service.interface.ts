@@ -17,17 +17,29 @@ export interface IBenchWorkService {
    * Everything routed to OpenLinker's own packing executor and accepted there,
    * urgency first.
    *
-   * Takes NO filter. The scope is a property of the bench, not a request
-   * parameter: a packer must not be able to widen the read to another
-   * executor's work by editing a query string, and there is nothing on this
-   * surface a narrower one would serve — the search field filters rows the
-   * browser already holds.
+   * Takes NO filter that a caller could edit. The scope is a property of the
+   * bench, not a request parameter: a packer must not be able to widen the
+   * read to another executor's work by editing a query string, and there is
+   * nothing on this surface a narrower one would serve — the search field
+   * filters rows the browser already holds.
    *
    * `viewerId` (#3341, ADR-074) is the authenticated caller's own user id,
    * never optional — it is what each row's `assignmentState` / `claimable`
    * is computed against.
+   *
+   * `supervises` (#3340, ADR-071) says whether this caller may see work
+   * currently assigned to SOMEBODY ELSE — true for an admin or operator, who
+   * use the bench to supervise or cover a shift, false for a packer, who sees
+   * only their own work and the unassigned pool. **Required, not
+   * optional-with-default**: a caller that forgot to pass it would silently
+   * widen the read, and widening is the wrong failure direction for a scope
+   * that exists to hide another packer's parcels (and the buyer name each one
+   * carries). It MUST be derived from the authenticated principal's own
+   * permissions, never from a request parameter — exactly like `viewerId`
+   * above, a packer must not be able to flip this by editing the request; the
+   * caller resolves it from `@CurrentUser()`, not from a query string or body.
    */
-  listBenchWork(viewerId: string): Promise<BenchWorkListView>;
+  listBenchWork(viewerId: string, supervises: boolean): Promise<BenchWorkListView>;
 
   /**
    * "Take next task" (#3412) — picks the TOP eligible row from the

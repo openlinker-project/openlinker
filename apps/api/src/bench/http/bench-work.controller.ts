@@ -26,10 +26,20 @@
  * rows the browser already holds, which is also why it can match a buyer's
  * surname without sending one to the server.
  *
+ * ## `Assigned to other packers` is admin/operator only (#3340, ADR-071)
+ *
+ * A packer's own row is dropped SERVER-SIDE for a row locked to somebody
+ * else, never merely hidden by the frontend: it carries a buyer name off the
+ * order snapshot, and `isClaimableByViewer` already refuses it, so a packer
+ * has no use for it and every reason not to receive it. `supervises()` below
+ * decides who keeps it, resolved from the caller's own permissions rather
+ * than a request flag a packer could edit.
+ *
  * @module apps/api/src/bench/http
  */
 import { Controller, Get, Inject, Post, UnauthorizedException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ROLE_PERMISSIONS } from '@openlinker/core/users';
 
 import {
   BENCH_WORK_SERVICE_TOKEN,
@@ -75,7 +85,7 @@ export class BenchWorkController {
   async listBenchWork(
     @CurrentUser() actor: AuthenticatedUser
   ): Promise<BenchWorkListResponseDto> {
-    return this.toDto(await this.bench.listBenchWork(actor.id));
+    return this.toDto(await this.bench.listBenchWork(actor.id, this.supervises(actor)));
   }
 
   @Post('work/claim-next')
@@ -124,6 +134,25 @@ export class BenchWorkController {
   @ApiResponse({ status: 200, type: BenchMetricsResponseDto })
   async getMetrics(): Promise<BenchMetricsResponseDto> {
     return this.toMetricsDto(await this.bench.getMetrics(new Date()));
+  }
+
+  /**
+   * May this caller see work assigned to OTHER packers (#3340, ADR-071)?
+   *
+   * A PERMISSION test, not a role-name comparison — `packer` is deliberately
+   * granted NO permissions at all (`ROLE_PERMISSIONS`, `role.types.ts`), so
+   * testing for `orders:write` separates admin/operator from packer exactly as
+   * a `role !== 'packer'` compare would, and additionally gives a future role
+   * with no permissions the same narrow answer a new `packer`-shaped role
+   * ought to get, rather than silently defaulting it to supervisory — the
+   * `hasShipmentsWrite` precedent on `ShipmentController` /
+   * `BenchDocumentsController` verbatim. `viewer` also lacks `orders:write` but
+   * cannot reach this route at all (`@Roles('admin', 'operator', 'packer')`
+   * above), so the two cases this needs to tell apart are covered.
+   */
+  private supervises(user: AuthenticatedUser): boolean {
+    const permissions = ROLE_PERMISSIONS[user.role];
+    return permissions?.includes('orders:write') ?? false;
   }
 
   private toPackedTodayDto(view: BenchPackedTodayListView): BenchPackedTodayListResponseDto {
@@ -177,6 +206,7 @@ export class BenchWorkController {
         supportedActions: [...work.supportedActions],
         assignmentState: work.assignmentState,
         claimable: work.claimable,
+        completedAt: work.completedAt,
       })),
       executorName: view.executorName,
       routing: {

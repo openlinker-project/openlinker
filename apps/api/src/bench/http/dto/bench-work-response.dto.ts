@@ -78,6 +78,15 @@ export class BenchWorkResponseDto {
       "path's own re-check — never the source of truth for it.",
   })
   claimable!: boolean;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'When an operator declared this parcel finished and off the bench, or null until that act. ' +
+      'The backend does not itself remove a completed parcel from this list — a closed-but-' +
+      'unhandled parcel already stays selectable here — so a consumer may use this field to move ' +
+      'such a row out of its own rendering of "to pack".',
+  })
+  completedAt!: string | null;
 }
 
 export class BenchRoutingReadinessResponseDto {

@@ -41,10 +41,11 @@
  *
  * @module apps/api/src/bench/application/types
  */
-import type {
-  ParcelReopenRefusal,
-  ParcelUndoRefusal,
-  ParcelVerificationRefusal,
+import {
+  FulfillmentCompletionRefusalValues,
+  type ParcelReopenRefusal,
+  type ParcelUndoRefusal,
+  type ParcelVerificationRefusal,
 } from '@openlinker/core/fulfillment';
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type {
@@ -161,6 +162,19 @@ export interface BenchParcelView {
   readonly closedAt: string | null;
   /** The last verifier (D13). `null` while the box is open. */
   readonly packedByUserId: string | null;
+  /**
+   * When this parcel's invoice was FIRST printed (pack-bench completion), or `null` if never.
+   * A reprint never moves it — see `FulfillmentWorkView.invoicePrintedAt`.
+   */
+  readonly invoicePrintedAt: string | null;
+  /** The label sibling of `invoicePrintedAt` (pack-bench completion). Same reading. */
+  readonly labelPrintedAt: string | null;
+  /**
+   * When an operator declared this parcel finished and off the bench
+   * (pack-bench completion), or `null` until that act — a distinct, later completion instant
+   * from `closedAt`. See `POST :workId/completion`.
+   */
+  readonly completedAt: string | null;
   readonly lines: readonly BenchParcelLineView[];
 }
 
@@ -344,6 +358,28 @@ export type BenchClaimRefusal = (typeof BenchClaimRefusalValues)[number];
 export interface BenchClaimResultView {
   readonly outcome: 'claimed' | 'refused';
   readonly reason: BenchClaimRefusal | null;
+  readonly parcel: BenchParcelView;
+}
+
+/**
+ * Why a completion was refused (pack-bench completion).
+ *
+ * A WIDER union than core's own `FulfillmentCompletionRefusalValues`, the
+ * `BenchClaimRefusalValues` shape: `'not-claimable-by-viewer'` is the ADR-074
+ * pre-assignment lock, checked here rather than in core because it depends
+ * on WHO is asking — core's verification service never learns a viewer id.
+ */
+export const BenchCompletionRefusalValues = [
+  ...FulfillmentCompletionRefusalValues,
+  'not-claimable-by-viewer',
+] as const;
+
+export type BenchCompletionRefusal = (typeof BenchCompletionRefusalValues)[number];
+
+/** What declaring a parcel completed answers (pack-bench completion). */
+export interface BenchCompleteResultView {
+  readonly outcome: 'completed' | 'refused';
+  readonly reason: BenchCompletionRefusal | null;
   readonly parcel: BenchParcelView;
 }
 
