@@ -18,8 +18,24 @@
  * such rather than skipped silently — the point of the sweep is to say what is
  * missing, and an omitted row cannot.
  */
+import { execSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
+
+/**
+ * One SQL statement against the real stack's Postgres. There is no psql on
+ * the host — every call goes through the container the stack actually runs
+ * in. Used only by the handful of states that reach behind the UI to force a
+ * condition the product has no button for (a concurrent edit, a supervisor's
+ * lock taking effect mid-pack), and each such state restores the row it
+ * touched before it returns.
+ */
+function psql(sql) {
+  return execSync(
+    'docker exec -i ol-apw-verify-postgres psql -U postgres -d openlinker -tA -v ON_ERROR_STOP=1',
+    { input: sql, encoding: 'utf8' }
+  ).trim();
+}
 
 const arg = (name, fallback) => {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -58,6 +74,39 @@ const AUTO_DISPATCH_WORK = 'ol_fwork_e2e_13';
 const CLOSED_WORK = 'ol_fwork_e2e_13';
 
 /**
+ * The OTHER closed parcel, used ONLY by the take-it-back state.
+ *
+ * It needs a box it can complete ITSELF, and `CLOSED_WORK` above has already
+ * been completed by the two dialog states by the time it runs - leaving no
+ * "Mark as done here" to press and nothing to take back. `_28` carries no
+ * label and no invoice, so its completion goes straight through with no
+ * dialog, which is exactly what this state wants: it is about the undo, not
+ * about the prompt.
+ */
+const UNDO_WORK = 'ol_fwork_e2e_28';
+
+/**
+ * A packable, unassigned, self-serve-eligible parcel used ONLY by the
+ * scan-lock state below — nothing else in this file opens it by name. It is
+ * mutated mid-state (a fake supervisor lock, forced from behind the UI) and
+ * restored to these exact values before the state returns.
+ */
+const SCAN_LOCK_WORK = 'ol_fwork_e2e_09';
+/** A real seeded packer, distinct from both actors, playing "someone else". */
+const SCAN_LOCK_OTHER_PACKER = 'e4a80767-0cd9-4831-98a9-ec47fc507a1e'; // e2e-packer-manual
+
+/**
+ * A seeded, unassigned parcel used ONLY by the board version-conflict state
+ * below. Its `version` is captured before the state bumps it behind the UI,
+ * and restored to that captured value once the state has finished — never a
+ * hardcoded number, since a prior run (or manual poking) may have already
+ * moved it off its seeded `1`.
+ */
+const BOARD_CONFLICT_WORK = 'ol_fwork_e2e_10';
+const BOARD_CONFLICT_PACKER = 'ca560b27-bcd2-4d62-bb7f-b6952f7207f1'; // anna.pakowska
+let boardConflictOriginalVersion = null;
+
+/**
  * Open the closed parcel from the rail.
  *
  * It lives in the "waiting on carrier" section rather than among the work to
@@ -65,14 +114,14 @@ const CLOSED_WORK = 'ol_fwork_e2e_13';
  * to reach it, and a capture taken without opening it shows the queue instead
  * of the state.
  */
-async function openClosedParcel(page) {
+async function openClosedParcel(page, workId = CLOSED_WORK) {
   await page.goto(`${BASE}/bench`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1500);
   for (const selector of [
     `.bench-work-row__surface`,
     `[data-testid="bench-section-waiting-on-carrier"] button`,
   ]) {
-    const row = page.locator(selector).filter({ hasText: CLOSED_WORK }).first();
+    const row = page.locator(selector).filter({ hasText: workId }).first();
     if ((await row.count()) > 0) {
       await row.scrollIntoViewIfNeeded();
       await row.click();
@@ -510,6 +559,62 @@ const STATES = [
 
   // ── Not built yet — declared so the sweep reports them ────────────────────
   {
+    id: 'bench-label-print-goes-through-the-bench',
+    group: 'auto',
+    actor: 'packer',
+    title: 'Printing the label goes through the bench route, not the shipment one',
+    async reach(page) {
+      await page.goto(`${BASE}/bench`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1500);
+      const row = page
+        .locator('.bench-work-row__surface')
+        .filter({ hasText: AUTO_DISPATCH_WORK })
+        .first();
+      if ((await row.count()) === 0) return;
+      await row.scrollIntoViewIfNeeded();
+      await row.click();
+      await page.waitForTimeout(1800);
+    },
+    async check(page) {
+      const print = page.getByRole('button', { name: /print label/i }).first();
+      if ((await print.count()) === 0) return 'no print-label control on this parcel';
+
+      const seenUrls = [];
+      page.on('request', (req) => seenUrls.push(req.url()));
+      const responsePromise = page
+        .waitForResponse((res) => res.url().includes('/documents/label'), { timeout: 20_000 })
+        .catch(() => null);
+      await print.click();
+      const response = await responsePromise;
+      await page.waitForTimeout(500);
+
+      const hit = seenUrls.find((u) => u.includes('/documents/label'));
+      if (hit === undefined) return 'the print click made no request to a label route';
+      if (!hit.includes('/bench/work/')) return `the label request went to ${hit}, not the bench route`;
+      if (hit.includes('/shipments/'))
+        return `the label request also reached the legacy shipments route: ${hit}`;
+      if (response !== null && response.status() >= 400)
+        return `the label request answered ${String(response.status())}`;
+
+      const stamped = psql(
+        `SELECT "labelPrintedAt" IS NOT NULL FROM fulfillment_works WHERE id = '${AUTO_DISPATCH_WORK}';`
+      );
+
+      // Put the stamp back. This state PRINTS, and "nothing printed yet" is
+      // exactly the precondition the two completion-dialog states below rely
+      // on - so leaving the stamp behind silently removes their dialog and
+      // reads as a missing feature rather than as this state's leftovers. The
+      // scan-lock state restores its own mutation for the same reason.
+      psql(
+        `UPDATE fulfillment_works SET "labelPrintedAt" = NULL WHERE id = '${AUTO_DISPATCH_WORK}';`
+      );
+
+      return stamped === 't'
+        ? true
+        : 'labelPrintedAt was not stamped in the database after printing through the bench';
+    },
+  },
+  {
     id: 'bench-completion-control',
     group: 'post-pack',
     actor: 'packer',
@@ -604,6 +709,176 @@ const STATES = [
       return print > 0
         ? true
         : 'no label to print — the automatic purchase did not reach this parcel';
+    },
+  },
+
+  // ── Four behaviours with no live coverage yet (#3340 follow-ups) ──────────
+  {
+    id: 'bench-completion-can-be-taken-back',
+    group: 'post-pack',
+    actor: 'packer',
+    title: 'A completion can be taken back without reopening the box',
+    async reach(page) {
+      await openClosedParcel(page, UNDO_WORK);
+      const markDone = page.getByRole('button', { name: /mark as done here/i }).first();
+      if ((await markDone.count()) === 0) return; // already completed from a prior run
+
+      // Waited for EXPLICITLY, never a blind timeout: the completion POST
+      // fires straight off this click when there is no print gap, or off the
+      // dialog's "anyway" a moment later when there is one — either way this
+      // is the one request that actually records the act, and a fixed delay
+      // guessed wrong under real backend latency and left the row stuck
+      // completed with nothing to undo it.
+      const isCompleteResponse = (res) =>
+        res.request().method() === 'POST' &&
+        res.url().includes('/complete') &&
+        !res.url().includes('/complete/undo');
+      const completed = page.waitForResponse(isCompleteResponse, { timeout: 15_000 }).catch(() => null);
+
+      await markDone.click();
+      await page.waitForTimeout(600);
+      const dialog = page.getByRole('dialog');
+      if ((await dialog.count()) > 0) {
+        const anyway = dialog.getByRole('button', { name: /anyway/i }).first();
+        if ((await anyway.count()) > 0) await anyway.click();
+      }
+      await completed;
+      await page.waitForTimeout(500);
+    },
+    async check(page) {
+      // Asserted through what a packer can actually see, never a data-testid:
+      // the two this check first reached for (`bench-parcel-completed`,
+      // `bench-parcel-closed`) exist nowhere in the app, so every run answered
+      // "never reached the completed state" about a parcel the database showed
+      // as completed. A selector that cannot match is not a strict assertion,
+      // it is an assertion about nothing.
+      const undoAction = page.getByRole('button', { name: /take this back/i }).first();
+      if ((await undoAction.count()) === 0) {
+        return 'the parcel is not showing as completed - nothing offers to take it back';
+      }
+      const undone = page
+        .waitForResponse(
+          (res) => res.request().method() === 'POST' && res.url().includes('/complete/undo'),
+          { timeout: 15_000 }
+        )
+        .catch(() => null);
+      await undoAction.click();
+      await undone;
+      await page.waitForTimeout(500);
+
+      const stillOffered = await page.getByRole('button', { name: /take this back/i }).count();
+      if (stillOffered > 0) return 'it still reads as completed after taking it back';
+
+      // This doubles as the proof that the box stayed CLOSED, which is the
+      // whole point of the feature: "Mark as done here" is offered only on a
+      // closed parcel (D18), so its return means the completion was undone
+      // WITHOUT reopening the box. A reopen would have put the parcel back to
+      // scanning and this control would be gone.
+      const markDoneAgain = await page.getByRole('button', { name: /mark as done here/i }).count();
+      if (markDoneAgain === 0) {
+        return 'taking it back did not restore the completion control - the box looks reopened';
+      }
+
+      // And the scans themselves must stand. A reopen clears them.
+      const zeroed = await page.getByText(/All 0 units matched/i).count();
+      return zeroed === 0
+        ? true
+        : 'the scan count reset to zero - the box was reopened rather than un-completed';
+    },
+  },
+  {
+    id: 'bench-scan-locked-mid-pack-does-not-say-trolley',
+    group: 'bench',
+    actor: 'packer',
+    title: 'A parcel locked to another packer mid-pack does not say "take it to the trolley"',
+    async reach(page) {
+      await page.goto(`${BASE}/bench`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(1500);
+      const row = page
+        .locator('.bench-work-row__surface')
+        .filter({ hasText: SCAN_LOCK_WORK })
+        .first();
+      if ((await row.count()) === 0) return;
+      await row.scrollIntoViewIfNeeded();
+      await row.click();
+      await page.waitForTimeout(1500);
+
+      // The lock takes effect WHILE the packer already has the parcel open —
+      // a supervisor reassigning it mid-pack. There is no product control for
+      // this yet, so it is forced from behind the UI.
+      psql(
+        `UPDATE fulfillment_works SET "assignedToUserId" = '${SCAN_LOCK_OTHER_PACKER}', ` +
+          `"selfServeEligible" = false WHERE id = '${SCAN_LOCK_WORK}';`
+      );
+
+      const confirm = page.getByRole('button', { name: /confirm this item/i }).first();
+      if ((await confirm.count()) > 0) {
+        await confirm.click();
+        await page.waitForTimeout(1200);
+      }
+    },
+    async check(page) {
+      try {
+        const alert = page.getByRole('alert');
+        if ((await alert.count()) === 0) return 'no refusal was rendered for the scan';
+        const text = (await alert.first().textContent()) ?? '';
+        if (/trolley/i.test(text)) return `still says to take it back to the trolley: "${text}"`;
+        return /another packer/i.test(text)
+          ? true
+          : `refused, but does not name the assignment: "${text}"`;
+      } finally {
+        // Leave the row exactly as this state found it, whatever the check found.
+        psql(
+          `UPDATE fulfillment_works SET "assignedToUserId" = NULL, "selfServeEligible" = true ` +
+            `WHERE id = '${SCAN_LOCK_WORK}';`
+        );
+      }
+    },
+  },
+  {
+    id: 'board-move-refused-when-somebody-moved-it-first',
+    group: 'board',
+    actor: 'admin',
+    title: 'A move sent against a stale version is refused, not silently applied',
+    async reach(page) {
+      await page.goto(`${BASE}/fulfillment`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(2000);
+      const card = page.locator(`.assign-packing-work-card[data-task-id="${BOARD_CONFLICT_WORK}"]`);
+      if ((await card.count()) === 0) return;
+      await card.scrollIntoViewIfNeeded();
+
+      boardConflictOriginalVersion = psql(
+        `SELECT version FROM fulfillment_works WHERE id = '${BOARD_CONFLICT_WORK}';`
+      );
+      // Somebody else's write lands on the row the board already rendered —
+      // there is no product control for this, so it is forced from behind.
+      psql(`UPDATE fulfillment_works SET version = version + 1 WHERE id = '${BOARD_CONFLICT_WORK}';`);
+
+      const select = card.getByRole('combobox', { name: /move to/i });
+      if ((await select.count()) > 0) {
+        await select.selectOption(BOARD_CONFLICT_PACKER);
+        await page.waitForTimeout(1200);
+      }
+    },
+    async check(page) {
+      try {
+        const conflictToast = page
+          .locator('.toast__description')
+          .filter({ hasText: /somebody changed this task first/i });
+        if ((await conflictToast.count()) > 0) return true;
+        const succeeded = await page.getByText('Task moved.').count();
+        return succeeded > 0
+          ? 'the stale move went through and was toasted as a success'
+          : 'no conflict toast appeared for the stale move';
+      } finally {
+        if (boardConflictOriginalVersion !== null) {
+          psql(
+            `UPDATE fulfillment_works SET version = ${boardConflictOriginalVersion} ` +
+              `WHERE id = '${BOARD_CONFLICT_WORK}';`
+          );
+          boardConflictOriginalVersion = null;
+        }
+      }
     },
   },
 ];
