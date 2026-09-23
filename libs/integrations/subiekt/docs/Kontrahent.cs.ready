@@ -1,0 +1,193 @@
+// SNAPSHOT, not a mirror. Copied 2026-09-23 from the Windows host at
+// /mnt/c/Users/42zer/gtspike/bridge/Kontrahent.cs. **Nothing in this repository
+// compares this file to the bridge it came from**, so the honest reading is
+// "what the bridge looked like when someone last looked", never "what the
+// bridge is". The published, reviewable source is
+// openlinker-project/openlinker-subiekt-bridge, `bridge-gt/Kontrahent.cs` — check
+// there before trusting anything here for a behaviour that matters.
+//
+// Kontrahent.cs.ready — the bridge's ONE buyer-identity resolver, AS OF #3462.
+//
+// A FULL DUMP of the file as it exists on the Windows host at
+// /mnt/c/Users/42zer/gtspike/bridge/Kontrahent.cs — not a diff — for the same
+// reason the sibling mirrors are full dumps.
+//
+// WHY IT EXISTS. "Which kontrahent is this buyer" used to live in THREE copies:
+// the order path, the invoicing path and the WooCommerce shim. All three matched
+// the symbol exactly, and Subiekt appends a suffix when a symbol collides — so
+// the moment it stored a buyer as NORBERTKULUS(5) that record became invisible to
+// every one of them and the next order created yet another contractor. Observed
+// live on 2026-09-23: two purchases by the same person landed on contractors 94
+// and 95, which makes "how often does this customer buy" unanswerable.
+//
+// The resolver matches the base symbol AND Subiekt's SYMBOL(n) variants, verifies
+// the address before accepting a match, and falls back to the tax id where one is
+// given. It is deliberately NOT a LIKE query: the symbol is built from the buyer's
+// name and can legitimately contain `_`, which LIKE reads as a wildcard.
+//
+// NOT compiled or type-checked by this repo's CI — there is no C# build here.
+// The compiled, reviewable copy lives in the bridge repository:
+// openlinker-project/openlinker-subiekt-bridge, `bridge-gt/Kontrahent.cs` (PR #7).
+
+// Kontrahent.cs - one rule for "which Subiekt kontrahent is this buyer?".
+//
+// WHY THIS FILE EXISTS
+//
+// The rule lived in THREE copies - OrdersEndpoints, Invoicing and Program's
+// WooCommerce shim - and all three carried the same defect, which is what
+// three copies of a rule reliably produce.
+//
+// The defect: the lookup was `WHERE kh_Symbol = @sym`, an exact match on the
+// BASE symbol. When Subiekt cannot use the symbol it was handed (because some
+// other kontrahent already holds it) it appends its own counter, so the record
+// is stored as `NORBERTKULUS(5)`. The next order derives `NORBERTKULUS` again,
+// the exact-match lookup cannot see `(5)`, the address check against whatever
+// old record DOES hold the base symbol fails, and a brand-new kontrahent is
+// created - `(6)`. Then `(7)`. Every order, forever.
+//
+// Observed live on 2026-09-23: two purchases by one buyer produced kontrahent
+// 94 `NORBERTKULUS(5)` and kontrahent 95 `NORBERTKULUS(6)`. That defeats the
+// entire point of writing the buyer into Subiekt, which is to see how often a
+// customer buys from you.
+//
+// THE RULE, in order:
+//
+//   1. NIP, when the buyer supplied one. A tax id IS an identity, so a match
+//      needs no further checking.
+//   2. Symbol - the base one AND Subiekt's own `(n)` variants of it - with the
+//      address VERIFIED before the match is trusted. Two unrelated people
+//      called Jan Kowalski derive the same symbol, and reusing that match
+//      would issue the second one's document to the first one's name and
+//      address, which the operator cannot see from Subiekt.
+//   3. No match: the caller creates, and Subiekt suffixes if it must. Next
+//      time, step 2 finds it.
+//
+// Candidates are ordered oldest-first, so a repeat buyer converges on their
+// FIRST record rather than drifting onto the newest duplicate.
+using Microsoft.Data.SqlClient;
+
+public static class Kontrahent
+{
+    /// <summary>
+    /// The deterministic symbol derived from a buyer's name. Subiekt's
+    /// `kh_Symbol` is 16 characters and is the operator-facing key.
+    ///
+    /// `fallbackPrefix` names the caller when the name yields nothing usable,
+    /// so an unnamed buyer does not collide across paths.
+    /// </summary>
+    public static string MakeSymbol(string name, string fallbackPrefix = "ZAM")
+    {
+        var baseSym = (name ?? "").ToUpperInvariant();
+        var sym = new string(baseSym.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_').Take(16).ToArray());
+        return sym == "" ? fallbackPrefix + DateTime.Now.ToString("HHmmssfff") : sym;
+    }
+
+    /// <summary>
+    /// kh__Kontrahent carries no NIP column of its own - it lives on the
+    /// linked address row.
+    /// </summary>
+    public static async Task<int?> FindByNip(string? nip)
+    {
+        if (string.IsNullOrWhiteSpace(nip)) return null;
+        await using var c = new SqlConnection(BridgeConfig.ConnectionString);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT TOP 1 k.kh_Id FROM kh__Kontrahent k
+              JOIN adr__Ewid a ON a.adr_IdObiektu = k.kh_Id AND a.adr_TypAdresu = 1
+              WHERE a.adr_NIP = @nip ORDER BY k.kh_Id", c);
+        cmd.Parameters.AddWithValue("@nip", nip.Trim());
+        var r = await cmd.ExecuteScalarAsync();
+        return r is null || r is DBNull ? null : Convert.ToInt32(r);
+    }
+
+    /// <summary>
+    /// The base symbol plus Subiekt's own `SYMBOL(n)` variants, oldest first,
+    /// returning the first whose address matches the buyer's.
+    ///
+    /// Deliberately NOT a `LIKE` - `MakeSymbol` admits `_`, which `LIKE` reads
+    /// as a single-character wildcard, so `JAN_KOWAL` would match `JANXKOWAL`.
+    /// The prefix test below has no wildcard semantics at all.
+    /// </summary>
+    public static async Task<int?> FindBySymbol(string symbol, string? kod, string? miasto)
+    {
+        if (string.IsNullOrWhiteSpace(symbol)) return null;
+
+        var candidates = new List<int>();
+        await using (var c = new SqlConnection(BridgeConfig.ConnectionString))
+        {
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                @"SELECT kh_Id FROM kh__Kontrahent
+                   WHERE kh_Symbol = @sym
+                      OR (LEN(kh_Symbol) > LEN(@sym)
+                          AND LEFT(kh_Symbol, LEN(@sym)) = @sym
+                          AND SUBSTRING(kh_Symbol, LEN(@sym) + 1, 1) = '(')
+                   ORDER BY kh_Id", c);
+            cmd.Parameters.AddWithValue("@sym", symbol);
+            await using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync()) candidates.Add(r.GetInt32(0));
+        }
+
+        foreach (var id in candidates)
+            if (await MatchesAddress(id, kod, miasto))
+                return id;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Is this kontrahent's address consistent with the buyer's?
+    ///
+    /// Fails OPEN on every unknown: no address on file, nothing to compare, or
+    /// a read error all answer true. A false negative here creates a duplicate
+    /// kontrahent, which is untidy; a false POSITIVE bills one person's
+    /// document to another's name and address, which the operator cannot see
+    /// from Subiekt. So the check only ever REFUSES on a positive
+    /// contradiction.
+    /// </summary>
+    public static async Task<bool> MatchesAddress(int kontrahentId, string? kod, string? miasto)
+    {
+        var wantKod = (kod ?? "").Trim();
+        var wantMiasto = (miasto ?? "").Trim();
+        if (wantKod == "" && wantMiasto == "") return true;
+
+        try
+        {
+            await using var c = new SqlConnection(BridgeConfig.ConnectionString);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                "SELECT TOP 1 ISNULL(adr_Kod,''), ISNULL(adr_Miejscowosc,'') " +
+                "FROM kh__Kontrahent k LEFT JOIN adr__Ewid a ON a.adr_IdObiektu = k.kh_Id " +
+                "AND a.adr_TypAdresu = 1 WHERE k.kh_Id = @id", c);
+            cmd.Parameters.AddWithValue("@id", kontrahentId);
+            await using var r = await cmd.ExecuteReaderAsync();
+            if (!await r.ReadAsync()) return true;
+
+            var storedKod = r.GetString(0).Trim();
+            var storedMiasto = r.GetString(1).Trim();
+            if (storedKod == "" && storedMiasto == "") return true;
+
+            if (wantKod != "" && storedKod != "" &&
+                !string.Equals(wantKod, storedKod, StringComparison.OrdinalIgnoreCase)) return false;
+            if (wantMiasto != "" && storedMiasto != "" &&
+                !string.Equals(wantMiasto, storedMiasto, StringComparison.OrdinalIgnoreCase)) return false;
+            return true;
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"Kontrahent.MatchesAddress({kontrahentId}): {e.Message} - treating as a match.");
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// The whole rule in one call: NIP, else address-verified symbol, else
+    /// null for "create a new one".
+    /// </summary>
+    public static async Task<int?> Resolve(string? nip, string symbol, string? kod, string? miasto)
+    {
+        var byNip = await FindByNip(nip);
+        if (byNip is not null) return byNip;
+        return await FindBySymbol(symbol, kod, miasto);
+    }
+}

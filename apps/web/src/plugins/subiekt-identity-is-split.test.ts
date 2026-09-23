@@ -3,10 +3,9 @@
  *
  * They are two separate InsERT products reached through two different bridges
  * with different wire contracts - four of the routes the GT adapter calls do
- * not exist on the nexo bridge at all. Only GT has an adapter here today, and
- * if a nexo one is ever built it must register its OWN `id` and its OWN
- * `platformType`, never share GT's and never revive the bare legacy `'subiekt'`
- * that could not tell them apart.
+ * not exist on the nexo bridge at all. Both products have a plugin here, and
+ * each registers its OWN `id` and its OWN `platformType` - never shared, and
+ * never the bare legacy `'subiekt'` that could not tell them apart.
  *
  * This is deliberately a SEPARATE file from `subiekt-gt/subiekt.test.ts`. That
  * one asserts what the GT plugin is; this one asserts what NO plugin may be,

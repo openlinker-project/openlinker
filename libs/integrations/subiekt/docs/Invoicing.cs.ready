@@ -1,3 +1,11 @@
+// SNAPSHOT, not a mirror. Copied 2026-09-23 from the Windows host at
+// /mnt/c/Users/42zer/gtspike/bridge/Invoicing.cs. **Nothing in this repository
+// compares this file to the bridge it came from**, so the honest reading is
+// "what the bridge looked like when someone last looked", never "what the
+// bridge is". The published, reviewable source is
+// openlinker-project/openlinker-subiekt-bridge, `bridge-gt/Invoicing.cs` — check
+// there before trusting anything here for a behaviour that matters.
+//
 // Invoicing.cs.ready — the bridge's invoicing endpoint, AS OF #3436, committed
 // per piotrswierzy's review on PR #3436 (the .cs.ready convention #3365
 // established for the same reason: a reviewer needs something to read and a
@@ -402,6 +410,19 @@ public static class Invoicing
             dynamic d = req.DocumentType == "PA" ? mgr.DodajPA() : mgr.DodajFS();
             try
             {
+                // A PARAGON DOES NOT KEEP A CUSTOMER, and that is Subiekt's
+                // rule rather than a gap here. Probed live on 2026-09-23: set
+                // KontrahentId=79 on a DodajPA() document, read it straight
+                // back, and it is EMPTY - while the identical assignment on a
+                // DodajFS() document persists (FS 35/2026 carries kontrahent
+                // 79). The assignment is left in place because it is correct
+                // and load-bearing for FS/KFS; on PA it is simply dropped.
+                //
+                // The buyer is NOT lost: the ZK the receipt came from carries
+                // the kontrahent, so "who bought this" is answerable in Subiekt
+                // from the order document. Wanting it ON the receipt means
+                // issuing an FS instead, which is a fiscal decision and not
+                // this bridge's to make.
                 d.KontrahentId = req.KontrahentId;
                 d.LiczonyOdCenBrutto = true; // gross-priced, same ADR-014 stance as ZK
 
@@ -720,12 +741,18 @@ public static class Invoicing
     {
         int existingId = 0;
         if (req.Nip != null && req.Nip != "")
-            existingId = await FindKontrahentIdByNip(req.Nip) ?? 0;
+            existingId = await Kontrahent.FindByNip(req.Nip) ?? 0;
         if (existingId > 0) return existingId;
 
         var symbol = MakeSymbol(req.NazwaSkrocona);
+        // `Kontrahent.FindBySymbol` rather than the old exact-match lookup: it
+        // also sees Subiekt's own `SYMBOL(n)` variants, and verifies the
+        // address before trusting a match. Without the first half, a buyer
+        // whose record Subiekt once suffixed could never be found again and
+        // gained a fresh kontrahent on every single order.
         if (!symbol.StartsWith("INV", StringComparison.Ordinal))
-            existingId = await FindKontrahentIdBySymbol(symbol) ?? 0;
+            existingId = await Kontrahent.FindBySymbol(
+                symbol, req.Address?.KodPocztowy, req.Address?.Miejscowosc) ?? 0;
         if (existingId > 0) return existingId;
 
         // Resolved BEFORE Sfera.Run, which is synchronous and runs on the COM

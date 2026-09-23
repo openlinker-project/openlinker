@@ -2,15 +2,17 @@
 /**
  * check-subiekt-identity-mirror.mjs
  *
- * Lint-time invariant for the Subiekt GT identity mirror.
+ * Lint-time invariant for the Subiekt identity mirrors - BOTH products.
  *
  * Subiekt GT and Subiekt nexo are two separate InsERT products with two
- * different bridges and two different wire contracts. GT is the only one with
- * an adapter in this tree, and it owns `platformType: 'subiekt-gt'` /
- * `adapterKey: 'subiekt.gt.v1'`. The browser bundle cannot import
- * `@openlinker/core` (#591), so the connection form and the FE plugin each
- * carry their own COPY of those two strings - three independent copies of one
- * identity.
+ * different bridges and two different wire contracts, and each has an adapter
+ * in this tree: GT owns `platformType: 'subiekt-gt'` / `adapterKey:
+ * 'subiekt.gt.v1'`, nexo owns `'subiekt-nexo'` / `'subiekt.nexo.v1'`. The
+ * browser bundle cannot import `@openlinker/core` (#591), so for each product
+ * the connection form and the FE plugin each carry their own COPY of those two
+ * strings - three independent copies of one identity, twice over. This script
+ * additionally refuses a shared pair, since two products resolving to one
+ * adapter is the failure the split exists to prevent.
  *
  * A drifted copy is not cosmetic, and it is not caught by anything else:
  *
@@ -28,8 +30,8 @@
  *
  * It also refuses the RETIRED identities outright. `'subiekt'` was ambiguous
  * between the two products and `'subiekt.invoicing.v1'` named a fifth of what
- * the adapter does; neither may come back on any side, and a future nexo
- * plugin must bring its own pair rather than reviving these.
+ * the adapter does; neither may come back on any side, and each product brings
+ * its own pair rather than reviving these.
  *
  * Both sides are parsed TEXTUALLY so this stays a zero-dependency
  * `check:invariants` step like its siblings. Run with `--self-check` to

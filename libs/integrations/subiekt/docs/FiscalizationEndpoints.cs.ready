@@ -1,3 +1,11 @@
+// SNAPSHOT, not a mirror. Copied 2026-09-23 from the Windows host at
+// /mnt/c/Users/42zer/gtspike/bridge/FiscalizationEndpoints.cs. **Nothing in this repository
+// compares this file to the bridge it came from**, so the honest reading is
+// "what the bridge looked like when someone last looked", never "what the
+// bridge is". The published, reviewable source is
+// openlinker-project/openlinker-subiekt-bridge, `bridge-gt/FiscalizationEndpoints.cs` — check
+// there before trusting anything here for a behaviour that matters.
+//
 // FiscalizationEndpoints.cs — READY TO PASTE onto the Windows bridge.
 //
 // NOT compiled, NOT run, NOT tested against a live Subiekt/fiscal printer.
@@ -8,6 +16,59 @@
 // (the pre-existing stub there), build, and verify against
 // libs/integrations/subiekt/src/bridge/subiekt-bridge-fiscalization.types.ts
 // (the TS side this was written against).
+//
+// Mechanism per Pomoc/gta.chm (SuDokument_RejestrujNaUF.htm,
+// SuDokument_DrukarkaFiskalnaId.htm, SuDokument_StatusFiskalny.htm,
+// SuDokumentyManager_DodajPAf.htm) and the VBA example on the
+// DrukarkaFiskalnaId page:
+//
+//   oDok = SuDokumentyManager.DodajPAf()   ' paragon fiskalny (GT >= 1.12)
+//   oDok.RejestrujNaUF = True              ' (GT >= 1.23)
+//   oDok.DrukarkaFiskalnaId = <id>         ' -> uf_Konfiguracja.uko_Id
+//   oDok.Zapisz()
+//   oDok.Drukuj(True)                      ' drives the physical printer
+//   ' StatusFiskalny now reflects the outcome — VALUES UNCONFIRMED, see below.
+//
+// UNVERIFIED / TODO before trusting this in production:
+//   1. Confirm `dok_StatusFiskalny`'s numeric enum (this session could not
+//      query `dok__Dokument` nor `uf_Konfiguracja` live). MapFiscalStatus()
+//      below is a PLACEHOLDER that treats everything as "unknown" (fiscal-safe)
+//      except a status this build has no evidence for yet — DO NOT ship it
+//      as-is without confirming at least the success value live.
+//   2. Confirm `uf_Konfiguracja` actually has a configured device row on the
+//      target machine. If it does not, `RejestrujNaUF=True` + `Drukuj(True)`
+//      may hang on a nonexistent physical device — the 30s Sfera.Run timeout
+//      below (chosen deliberately SHORTER than the other endpoints' 90-120s,
+//      because a hang here means a physical device that isn't there, not a
+//      slow-but-real Subiekt operation) will recycle the worker rather than
+//      wedge the bridge, but VERIFY this cautiously, ideally with someone at
+//      the physical printer, before pointing it at a production device.
+//   3. Confirm `DodajPAf()` alone doesn't ALSO fiscalize on `Zapisz()` before
+//      `Drukuj` is called — if it does, the flow below double-registers.
+//
+// Auth / envelope: mirrors every other bridge endpoint (Bearer / x-bridge-token
+// against the same `InvoiceToken` constant in Program.cs; {success,data,error}
+// envelope). This file assumes `InvoiceToken`, `ConnStr`, and the auth-check
+// pattern from Program.cs/Invoicing.cs are in scope the same way they are for
+// the other Endpoints partial-class files — adjust the `using`/constant
+// references to match whatever the sibling `InventoryEndpoints.cs` /
+// `OrdersEndpoints.cs` forks settled on, if they diverge.
+//
+// Below this line is a FULL DUMP of the file as it exists on the Windows host,
+// including its own banner - the same shape every sibling mirror has.
+
+// FiscalizationEndpoints.cs - fiscal registration (paragon fiskalny) over Sfera GT.
+//
+// NOT VERIFIED AGAINST A FISCAL PRINTER. It compiles, and its mechanism is
+// taken from the GT documentation cited below, but no part of it has been run
+// against real hardware. That is why `Fiscalization` is deliberately absent
+// from the OpenLinker plugin's advertised capabilities: a capability name
+// belongs in a manifest together with an adapter shown to deliver it, not on
+// the strength of untested code.
+//
+// Before enabling it, verify against
+// libs/integrations/subiekt/src/bridge/subiekt-bridge-fiscalization.types.ts,
+// which is the contract this was written to.
 //
 // Mechanism per Pomoc/gta.chm (SuDokument_RejestrujNaUF.htm,
 // SuDokument_DrukarkaFiskalnaId.htm, SuDokument_StatusFiskalny.htm,

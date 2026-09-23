@@ -194,7 +194,7 @@ file - there is no `NexoPassword`/`SferaPassword`-style setting. Instead:
 
 - **General endpoints** (products, inventory, orders - the WooCommerce-dialect surface)
   are protected by a **fixed Basic-auth username/password pair** baked into the bridge.
-- **Invoicing endpoints** (`/api/*` - the `subiekt.invoicing.v1` contract) are protected
+- **Invoicing endpoints** (`/api/*` - the `subiekt.gt.v1` contract) are protected
   by a **separate bearer token**, sent by OpenLinker as either an `Authorization: Bearer
   <token>` header or an `x-bridge-token: <token>` header.
 
@@ -312,8 +312,8 @@ curl -sk https://172.26.96.1:5055/health
 In the OpenLinker web UI (`http://localhost:4173`) go to **Connections → Add connection** and
 pick **Subiekt GT** (or use advanced mode). Use the **gateway URL** as the bridge base URL:
 
-- **Platform type** `subiekt`
-- **Adapter key** `subiekt.invoicing.v1`
+- **Platform type** `subiekt-gt`
+- **Adapter key** `subiekt.gt.v1`
 - **Enabled capabilities** `Invoicing`
 - **Config JSON** `{ "bridgeBaseUrl": "https://172.26.96.1:5055" }` (your gateway IP, **no**
   `/api` suffix)

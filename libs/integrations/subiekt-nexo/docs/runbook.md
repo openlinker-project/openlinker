@@ -9,7 +9,7 @@ Operational reference for the Subiekt nexo integration. For the step-by-step set
 
 OpenLinker → (HTTPS + Bearer) → **Subiekt Bridge** (`openlinker-subiekt`, .NET 8, on the
 Windows box next to Subiekt) → Sfera SDK → **Subiekt nexo**. Adapter key
-`subiekt.invoicing.v1`, capability `Invoicing`.
+`subiekt.nexo.v1`, platform type `subiekt-nexo`, capability `Invoicing`.
 
 ---
 
@@ -49,12 +49,12 @@ calls fail. Confirm the licence and session limits with InsERT / your partner be
 |---|---|
 | **nexo PRO** | ✅ Full support (Sfera ships with the package). |
 | **nexo (vanilla)** | ⚠️ Best-effort — depends on Sfera availability in the licence. |
-| **GT** | ❌ Not supported in v1 (a separate bridge would be required). |
+| **GT** | ❌ Not served by *this* adapter — it is a different product on a different bridge. Use [`@openlinker/integrations-subiekt`](../../subiekt/README.md), which ships alongside and does more than invoicing. |
 
 | Component | Verified |
 |---|---|
 | Bridge runtime | .NET 8 (`net8.0-windows`) |
-| OpenLinker adapter | `subiekt.invoicing.v1` |
+| OpenLinker adapter | `subiekt.nexo.v1` |
 | Order source (example) | PrestaShop 9.0.2 webservice |
 
 ---

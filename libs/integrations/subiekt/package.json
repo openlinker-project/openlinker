@@ -1,7 +1,7 @@
 {
   "name": "@openlinker/integrations-subiekt",
   "version": "0.1.0",
-  "description": "Subiekt nexo (Sfera bridge) invoicing adapter for OpenLinker",
+  "description": "Subiekt GT (Sfera GT bridge) adapter for OpenLinker - invoicing, catalogue, stock, order ingestion and order creation",
   "license": "Apache-2.0",
   "author": "OpenLinker",
   "private": true,

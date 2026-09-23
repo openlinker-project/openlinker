@@ -1,3 +1,11 @@
+// SNAPSHOT, not a mirror. Copied 2026-09-23 from the Windows host at
+// /mnt/c/Users/42zer/gtspike/bridge/BridgeConfig.cs. **Nothing in this repository
+// compares this file to the bridge it came from**, so the honest reading is
+// "what the bridge looked like when someone last looked", never "what the
+// bridge is". The published, reviewable source is
+// openlinker-project/openlinker-subiekt-bridge, `bridge-gt/BridgeConfig.cs` — check
+// there before trusting anything here for a behaviour that matters.
+//
 // BridgeConfig.cs.ready - the bridge's one source of deployment configuration, added so a second
 // Subiekt installation needs no source edit and no rebuild, and so the
 // operator account, its password and the shared API token stop living in
@@ -38,8 +46,11 @@ public static class BridgeConfig
 
     private static readonly Dictionary<string, string> FileValues = LoadFile();
 
-    /// <summary>SQL Server instance holding the Subiekt database.</summary>
-    public static readonly string SqlServer = Read("SqlServer", @"DESKTOP-FJ0P3NU\INSERTNEXO");
+    /// <summary>SQL Server instance holding the Subiekt database. The default
+    /// is InsERT's own installer default, which is what a stock installation
+    /// uses; a machine name compiled in here would name one host and be wrong
+    /// everywhere else.</summary>
+    public static readonly string SqlServer = Read("SqlServer", @"localhost\INSERTNEXO");
 
     /// <summary>Subiekt database name.</summary>
     public static readonly string SqlDatabase = Read("SqlDatabase", "DEMO");

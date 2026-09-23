@@ -317,8 +317,8 @@ IP. Two options:
 In the OpenLinker web UI (`http://localhost:4173`) go to **Connections → Add connection** and
 pick **Subiekt nexo** (or use advanced mode). Use the **gateway URL** as the bridge base URL:
 
-- **Platform type** `subiekt`
-- **Adapter key** `subiekt.invoicing.v1`
+- **Platform type** `subiekt-nexo`
+- **Adapter key** `subiekt.nexo.v1`
 - **Enabled capabilities** `Invoicing`
 - **Config JSON** `{ "bridgeBaseUrl": "http://172.26.96.1:5005" }` (your gateway IP, **no**
   `/api` suffix)

@@ -2,10 +2,11 @@
  * Guard: Subiekt GT and Subiekt nexo never share an identity (backend half).
  *
  * Subiekt GT and Subiekt nexo are two separate InsERT products reached through
- * two different bridges with different wire contracts. Only GT has an adapter
- * here; if a nexo one is ever built it gets its own `platformType` and its own
- * `adapterKey`, and no alias maps the retired bare `'subiekt'` onto either -
- * such an alias would be ambiguous the moment the second product exists.
+ * two different bridges with different wire contracts. Both now have an adapter:
+ * this one, and `@openlinker/integrations-subiekt-nexo`. Each owns its own
+ * `platformType` and its own `adapterKey`, and no alias maps the retired bare
+ * `'subiekt'` onto either - such an alias is ambiguous now that the second
+ * product exists, which is the whole reason it was retired.
  *
  * Separate from `subiekt-plugin.spec.ts`, which asserts what the manifest IS.
  * This asserts what it must NEVER be, plus the cross-file agreements that have

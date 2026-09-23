@@ -52,9 +52,9 @@ import { subiektConnectionConfig } from './subiekt-connection-config';
 
 export const subiektPlugin: OpenLinkerPlugin = definePlugin({
   // `subiekt-gt`, matching the backend manifest exactly. Subiekt GT and
-  // Subiekt nexo are two separate entities and are never joined: a nexo
-  // plugin, if one is ever built, registers its own id and platformType here
-  // rather than sharing these.
+  // Subiekt nexo are two separate entities and are never joined: the nexo
+  // plugin lives at `plugins/subiekt-nexo/` and carries its own id and
+  // platformType rather than sharing these.
   id: 'subiekt-gt',
   platformType: 'subiekt-gt',
   build: {

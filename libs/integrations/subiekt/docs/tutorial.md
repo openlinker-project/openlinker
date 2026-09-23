@@ -17,7 +17,9 @@ order → invoice flow.
   by Subiekt nexo — the bridge does not use that SDK at all.
 - **.NET 8 runtime** on the Windows machine.
 - The [`openlinker-subiekt-bridge`](https://github.com/openlinker-project/openlinker-subiekt-bridge)
-  repository cloned (not yet published).
+  repository cloned. It is public; the GT bridge lives in `bridge-gt/` and is run from
+  source with `dotnet run`, so the machine also needs the **.NET 8 SDK**, not just the
+  runtime. There is no installer and no packaged `.exe` to download.
 - OpenLinker running (API + worker + web) and reachable from the Windows machine.
 - A **source connection** (e.g. PrestaShop or Allegro) already set up in OpenLinker
   so that orders flow in.
@@ -32,33 +34,52 @@ started via a `.bat` launcher script.
 
 ### 1a — Configure `appsettings.json`
 
-Open `bridge/Subiekt.Bridge.Api/appsettings.json` and fill in the Sfera GT
-connection details. Secrets go in **environment variables only** — never in
-the file.
+Copy the template that ships beside the bridge and edit your copy:
+
+```powershell
+cd openlinker-subiekt-bridge\bridge-gt
+copy appsettings.example.json appsettings.json
+notepad appsettings.json
+```
+
+The file lives **next to the executable**, and it is flat — one level of keys, no
+sections:
 
 ```json
 {
-  "Port": 5005,
-  "Auth": { "Enabled": true, "ApiKey": "" },
-  "Sfera": {
-    "SqlServer":   "localhost\\INSERTGT",
-    "SqlDatabase": "Demo",
-    "SqlUseWindowsAuth": true,
-    "GtUser":      "Szef"
-  }
+  "SqlServer": "YOUR-HOST\\INSERTGT",
+  "SqlDatabase": "YOUR-DB",
+  "SferaOperator": "Szef",
+  "SferaPassword": "",
+  "InvoiceToken": "pick-a-long-random-string",
+  "HttpPort": 5056,
+  "HttpsPort": 5055
 }
 ```
 
-> **Auth is two fixed credential pairs, not user-configurable.** The bridge is
-> deployed with a fixed Basic-auth username/password pair for its general
-> endpoints, and a separate bearer token (`x-token`) for the invoicing endpoints
-> specifically. These values are set by whoever built and deployed the bridge —
-> consult your bridge operator for the actual credentials used in your
-> deployment; they are not something you configure per-installation.
+Every key also resolves from an environment variable named
+`OL_BRIDGE_<KEY_UPPER_SNAKE_CASE>` — `SqlServer` is `OL_BRIDGE_SQL_SERVER`,
+`InvoiceToken` is `OL_BRIDGE_INVOICE_TOKEN` — which takes precedence over the file.
+Anything you leave out falls back to a built-in default, except the three credentials,
+which have none.
 
-> **Windows auth:** `SqlUseWindowsAuth: true` uses the current Windows session —
-> no SQL password needed. Set `false` and supply a SQL password if you use
-> SQL Server auth instead.
+> **`SqlConnectionString`** overrides `SqlServer` / `SqlDatabase` entirely. Use it when
+> the installation needs SQL authentication rather than the integrated security the other
+> two compose.
+
+### 1a-bis — Choose the bridge token
+
+`InvoiceToken` is a shared secret **you invent**. Nobody issues it, it is not printed
+anywhere, and it is not compiled into the binary. Pick a long random string, put it here,
+and paste **the same value** into the *Bridge token* field in Part 2.
+
+Until you set it, every `/api/*` request answers `401` with
+`bridge token is not configured`. An unset token is not a "no security" mode — it is a
+bridge that serves OpenLinker nothing.
+
+> An earlier version of this tutorial said auth was "two fixed credential pairs, not
+> user-configurable" and told you to consult your bridge operator. That was wrong, and
+> wrong in the direction that leaves you stuck: there is nobody to consult.
 
 ### 1b — Configure the public base URL (optional)
 
@@ -88,15 +109,26 @@ session opened successfully.
 
 The bridge listens on two ports:
 
-- **5055** — HTTPS, using a self-signed certificate.
-- **5056** — plain HTTP, used only so a browser or image-fetcher can reach the
-  bridge without needing to trust the self-signed cert.
+- **5056** — plain HTTP, always open. With no certificate configured this is the port
+  OpenLinker reaches the bridge on, and the one images are served from.
+- **5055** — HTTPS, opens only when `CertificatePath` / `CertificatePassword` are set.
 
 ### 1d — Smoke-test the bridge
 
-From a browser or `curl`/`Invoke-RestMethod`, hit the bridge's health endpoint
-and confirm it reports the Sfera GT session as valid and Subiekt GT as
-reachable.
+Run both checks **from the machine OpenLinker runs on**, not from the Windows box:
+
+```powershell
+# Is it up? /health is anonymous by design.
+Invoke-RestMethod http://<bridge-host>:5056/health
+
+# Does the token work? /health cannot tell you - it is exempt from auth.
+Invoke-RestMethod http://<bridge-host>:5056/api/bank-accounts `
+  -Headers @{ Authorization = "Bearer <your-token>" }
+```
+
+The first reports whether the Sfera GT session is valid and Subiekt GT is reachable.
+The second is the one that proves your token works — a `200` with a
+`{ success: true, ... }` envelope. A `401` names which problem you have.
 
 This tutorial was verified live against **InsERT GT 1.89 SP1**.
 
@@ -143,7 +175,7 @@ Click the connection to view its detail page:
 ![Subiekt connection detail — capabilities, status, edit surface](./assets/15-ol-subiekt-detail.png)
 
 > **Advanced mode (alternative):** Add connection → Use advanced mode:
-> `Platform type = subiekt`, `Adapter key = subiekt.invoicing.v1`,
+> `Platform type = subiekt-gt`, `Adapter key = subiekt.gt.v1`,
 > `Enabled capabilities = Invoicing`,
 > `Credentials JSON = { "bridgeToken": "<token>" }`,
 > `Config JSON = { "bridgeBaseUrl": "http://<host>:5005" }`.

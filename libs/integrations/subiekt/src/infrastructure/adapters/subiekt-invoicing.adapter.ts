@@ -79,7 +79,7 @@ import { toNeutralRegulatoryStatus } from '../mappers/subiekt-regulatory-status.
  * Provider identifier stamped onto returned `InvoiceRecord`s.
  *
  * `subiekt-gt`, never the bare `subiekt`: a document issued through the Sfera
- * GT bridge must be distinguishable from one a future nexo adapter would
+ * GT bridge must be distinguishable from one the nexo adapter would
  * issue, and this value is what an operator reads on the document row.
  */
 export const SUBIEKT_PROVIDER_TYPE = 'subiekt-gt';
