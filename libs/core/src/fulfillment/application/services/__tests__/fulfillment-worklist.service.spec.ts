@@ -14,6 +14,7 @@ import { UnsupportedFulfillmentWorkActionError } from '../../../domain/exception
 import type { FulfillmentWorkRepositoryPort } from '../../../domain/ports/fulfillment-work-repository.port';
 import type { FulfillmentHold } from '../../../domain/types/fulfillment-hold.types';
 import type { FulfillmentWork } from '../../../domain/types/fulfillment-work.types';
+import { ExclusiveAssignmentRequiresPackerError } from '../../../domain/exceptions/exclusive-assignment-requires-packer.error';
 import { FulfillmentWorklistService } from '../fulfillment-worklist.service';
 
 const workAt = (over: Partial<FulfillmentWork> = {}): FulfillmentWork => ({
@@ -445,6 +446,9 @@ describe('FulfillmentWorklistService', () => {
       const repo = makeRepo({
         assignToPacker: jest.fn().mockResolvedValue(true),
         setSelfServeEligible: jest.fn().mockResolvedValue(true),
+        // The row this call's own first write produced (#3360) — the case is
+        // about version arithmetic, so its fixture must not contradict it.
+        findById: jest.fn().mockResolvedValue(workAt({ assignedToUserId: 'user-9' })),
       });
 
       await makeService(repo).updateAssignment({
@@ -464,7 +468,12 @@ describe('FulfillmentWorklistService', () => {
       const repo = makeRepo({
         assignToPacker: jest.fn().mockResolvedValue(false),
         setSelfServeEligible: jest.fn().mockResolvedValue(true),
-        findById: jest.fn().mockResolvedValue(workAt({ version: 4 })),
+        // Assigned to SOMEBODY ELSE: the premise is that this call's
+        // `assignToPacker` lost the race, so a re-read returns what the winner
+        // wrote, not an unassigned row (#3360).
+        findById: jest.fn().mockResolvedValue(
+          workAt({ version: 4, assignedToUserId: 'user-other' })
+        ),
       });
 
       await makeService(repo).updateAssignment({

@@ -808,6 +808,29 @@ describe('BenchWorkService (#2416)', () => {
   });
 
   describe('claimNext (#3412)', () => {
+    // ADR-074 / #3439 review — the filter-parity rule, asserted rather than
+    // stated. `claimNext` picks from `listBenchWork`'s own result, so the two
+    // must be scoped alike or the button reaches work the screen does not
+    // show: a parcel arriving on a packer's bench with no row on their rail to
+    // explain it.
+    //
+    // The interface's `SameFilterArguments` alias pins the SIGNATURES; this
+    // pins the FORWARD, which a compiler cannot see. The original defect had
+    // matching signatures and passed the literal `true`.
+    it.each([[true], [false]])(
+      'forwards its own filter arguments to listBenchWork (supervises=%s)',
+      async (supervises: boolean) => {
+        const { service } = harness({
+          page: { works: [workView({ id: 'w-top' })], total: 1 },
+        });
+        const listSpy = jest.spyOn(service, 'listBenchWork');
+
+        await service.claimNext('viewer-1', supervises);
+
+        expect(listSpy).toHaveBeenCalledWith('viewer-1', supervises);
+      }
+    );
+
     it('delegates the top eligible row to claimParcel', async () => {
       const { service, parcels } = harness({
         page: { works: [workView({ id: 'w-top' })], total: 1 },

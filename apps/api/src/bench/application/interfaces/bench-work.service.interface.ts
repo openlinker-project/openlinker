@@ -75,3 +75,34 @@ export interface IBenchWorkService {
    */
   getMetrics(now: Date): Promise<BenchMetricsView>;
 }
+
+/**
+ * `claimNext` must take the SAME filter arguments as `listBenchWork` (ADR-074,
+ * #3439 review).
+ *
+ * `claimNext` picks its candidate from `listBenchWork`'s own result, so a
+ * filter added to one and not the other lets the button reach work the screen
+ * does not show — a parcel appearing on a packer's bench with no row on their
+ * rail to explain where it came from. The rule was stated in prose in two
+ * places and *had already been got wrong once*, which is the argument for a
+ * guard rather than a third sentence.
+ *
+ * A type-level assertion rather than a test, because the failure it catches is
+ * a SIGNATURE divergence and that is exactly what a compiler sees: mutual
+ * assignability collapses to `never` the moment either parameter list gains a
+ * member the other lacks, and the `true` assignment below stops compiling.
+ *
+ * It cannot see a body that takes both arguments and forwards a literal (the
+ * shape of the original defect) — `bench-work.service.spec.ts` pins that half.
+ */
+type SameFilterArguments<A extends unknown[], B extends unknown[]> = A extends B
+  ? B extends A
+    ? true
+    : never
+  : never;
+
+const _claimNextTakesTheSameFilterAsListBenchWork: SameFilterArguments<
+  Parameters<IBenchWorkService['listBenchWork']>,
+  Parameters<IBenchWorkService['claimNext']>
+> = true;
+void _claimNextTakesTheSameFilterAsListBenchWork;

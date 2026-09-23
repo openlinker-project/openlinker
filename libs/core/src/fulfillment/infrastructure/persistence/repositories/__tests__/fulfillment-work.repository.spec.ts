@@ -359,6 +359,16 @@ describe('FulfillmentWorkRepository', () => {
       // Mirrors `clearHolder` — guarded so a redundant clear reports the
       // ordinary no-op outcome rather than a false "applied".
       expect(argsOf(qb.andWhere as Mock)).toContain('"assignedToUserId" IS NOT NULL');
+
+      // ADR-074 / #3360: the exclusivity flag is reset in the SAME statement.
+      // Asserted on the `set` payload rather than through a second call,
+      // because "same statement" is the property — two writes would leave a
+      // window in which the parcel is unassigned AND still locked, which is
+      // exactly the state `CHK_fulfillment_works_exclusive_needs_packer`
+      // forbids.
+      const setArg = firstArgOf<Record<string, unknown>>(qb.set as Mock);
+      expect(setArg.assignedToUserId).toBeNull();
+      expect(setArg.selfServeEligible).toBe(true);
     });
 
     it('should reset selfServeEligible to true in the same statement (ADR-074 review round 2)', async () => {
