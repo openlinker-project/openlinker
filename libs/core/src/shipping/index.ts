@@ -90,6 +90,18 @@ export type {
 export type { ShipmentCod } from './domain/types/shipment-cod.types';
 export type { ShipmentInsuredValue } from './domain/types/shipment-insured-value.types';
 
+// Auto-dispatch parcel derivation (#3340, closing #2729) — pure functions the
+// `fulfillment.work.autoDispatch` worker handler composes with a variant
+// weight lookup and an order read. Exported at the barrel because a host app
+// cannot reach a deep `libs/core/src/shipping/domain/*` path (#591).
+export {
+  AutoDispatchRefusalReasonValues,
+  resolveAutoDispatchDeliveryIntent,
+  resolveAutoDispatchParcel,
+  resolveAutoDispatchRecipient,
+} from './domain/auto-dispatch';
+export type { AutoDispatchRefusalReason, AutoDispatchWorkLine } from './domain/auto-dispatch';
+
 export type { TrackingSnapshot, KnownCarrier } from './domain/types/tracking-snapshot.types';
 export { KnownCarrierValues } from './domain/types/tracking-snapshot.types';
 export type { KnownProviderRejectionCode } from './domain/types/shipping-provider-rejection.types';

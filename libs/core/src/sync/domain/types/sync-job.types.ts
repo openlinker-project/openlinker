@@ -225,6 +225,17 @@ export const JobTypeValues = [
   // per-scope lane accounting for the whole installation.
   'fulfillment.work.dispatch',
 
+  // Auto-dispatch (#3340, closing #2729). Enqueued by the dispatch handler
+  // above, ONLY when the accepting holder's connection has opted in
+  // (`Connection.config.autoDispatch.enabled`, off by default), the moment
+  // the executor ACCEPTS the work. Buys the shipping label so a packer only
+  // has to print and pack — an outbound carrier call with its own failure
+  // modes and its own retry ladder, which is exactly why it is a separate job
+  // rather than bought inline inside the handshake. `connectionId` is the
+  // SAME executor connection the sibling job above uses, for the identical
+  // #2609 reason.
+  'fulfillment.work.autoDispatch',
+
   // Routing commit (#2395, `W3a-6`, ADR-054 R1). Decides where ONE order is
   // fulfilled from and commits the decision plus its work rows atomically.
   //
