@@ -47,9 +47,9 @@ using Microsoft.Data.SqlClient;
 
 public static class ProductsEndpoints
 {
-    private const string ConnStr =
-        @"Server=DESKTOP-FJ0P3NU\INSERTNEXO;Database=DEMO;Integrated Security=True;"
-      + "TrustServerCertificate=True;Encrypt=False;Connect Timeout=10";
+    // One source of configuration for every file that talks to SQL - see
+    // BridgeConfig.cs. Was a `const` literal here and in five sibling files.
+    private static readonly string ConnStr = BridgeConfig.ConnectionString;
 
     private static IResult Ok<T>(T data) => Results.Ok(new { success = true, data, error = (object?)null });
     private static IResult Fail(string error, int status = 422) =>
