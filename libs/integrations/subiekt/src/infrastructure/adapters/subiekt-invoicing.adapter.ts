@@ -173,7 +173,24 @@ export class SubiektInvoicingAdapter
     // Resolve each line's Subiekt catalogue symbol so the document carries real
     // catalogue positions instead of free-text service lines — see
     // `resolveTowarSymbols` and the line mapper's header.
-    const symbolByProductId = await this.resolveTowarSymbols(cmd.lines);
+    const { symbolByProductId, unmappedProductIds } = await this.resolveTowarSymbols(cmd.lines);
+    // Count LINES, not products: two lines of the same unmapped product are two
+    // lines the warehouse will not see, and the operator is looking at a
+    // document whose lines are what they can count.
+    //
+    // The three cases are deliberately distinct. A line with NO `productId` is
+    // a shipping or hand-written line - there is no product to link, so it is
+    // not a defect and is not counted. A line whose `productId` is the EMPTY
+    // STRING names a product and supplies no id for it: it cannot be looked
+    // up, so it goes out free-text exactly like an unmapped one, and counting
+    // it is the whole point - the alternative reports it as linked while the
+    // warehouse never sees it. Everything else is counted iff the lookup came
+    // back with no catalogue symbol.
+    const unlinkedCatalogueLines = cmd.lines.filter((line) => {
+      if (line.productId === undefined) return false;
+      if (line.productId === '') return true;
+      return unmappedProductIds.has(line.productId);
+    }).length;
 
     try {
       const response = await this.bridge.issueInvoice({
@@ -234,7 +251,13 @@ export class SubiektInvoicingAdapter
       );
       // Subiekt does not surface a seller identity or a source document
       // (the bridge is a local adapter with no authority submission).
-      return { record };
+      //
+      // `unlinkedCatalogueLines` is always reported here, INCLUDING the `0`
+      // case: on this provider a linked line is the normal, correct outcome,
+      // so omitting the field would make "every line reached the warehouse"
+      // indistinguishable from "this provider does not report linkage" (the
+      // `null` a non-catalogue provider leaves behind).
+      return { record, unlinkedCatalogueLines };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }
@@ -396,7 +419,7 @@ export class SubiektInvoicingAdapter
    */
   private async resolveTowarSymbols(
     lines: readonly { productId?: string }[],
-  ): Promise<Map<string, string>> {
+  ): Promise<{ symbolByProductId: Map<string, string>; unmappedProductIds: Set<string> }> {
     const resolved = new Map<string, string>();
     const productIds = [
       ...new Set(
@@ -406,7 +429,7 @@ export class SubiektInvoicingAdapter
       ),
     ];
     if (productIds.length === 0) {
-      return resolved;
+      return { symbolByProductId: resolved, unmappedProductIds: new Set() };
     }
 
     const unmapped: string[] = [];
@@ -441,7 +464,7 @@ export class SubiektInvoicingAdapter
         { connectionId: this.connectionId, productIds: unmapped },
       );
     }
-    return resolved;
+    return { symbolByProductId: resolved, unmappedProductIds: new Set(unmapped) };
   }
 
   /**

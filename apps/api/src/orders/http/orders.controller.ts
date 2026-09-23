@@ -1138,6 +1138,7 @@ export class OrdersController {
       clearanceReference: record.clearanceReference,
       confirmationDocumentAvailable,
       blocksIssuanceElsewhere: record.blocksIssuanceElsewhere,
+      unlinkedCatalogueLines: record.unlinkedCatalogueLines,
     };
   }
 

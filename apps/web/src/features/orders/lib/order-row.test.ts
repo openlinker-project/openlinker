@@ -3,7 +3,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ParsedOrderInvoice } from '../api/order-snapshot.schema';
-import { paymentBadge, invoiceBadge, invoicingBlockedBadge } from './order-row';
+import {
+  paymentBadge,
+  invoiceBadge,
+  invoicingBlockedBadge,
+  unlinkedCatalogueLineCount,
+  unlinkedCatalogueLinesBadge,
+} from './order-row';
 import { SalesDocumentGateBlockReasonValues } from '../api/orders.types';
 import type { SalesDocumentGateBlockReasonValue } from '../api/orders.types';
 
@@ -165,5 +171,57 @@ describe('invoicingBlockedBadge (#2100)', () => {
       // colour with no explanation, which is exactly what #2100 exists to fix.
       expect(badge?.hint.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('unlinkedCatalogueLines (Subiekt free-text lines)', () => {
+  const invoice = (unlinkedCatalogueLines?: number | null): ParsedOrderInvoice => ({
+    invoiceId: 'inv-1',
+    status: 'issued',
+    regulatoryStatus: 'not-applicable',
+    blocksIssuanceElsewhere: true,
+    ...(unlinkedCatalogueLines === undefined ? {} : { unlinkedCatalogueLines }),
+  });
+
+  it('reads an absent field and an explicit null alike as "not reported"', () => {
+    // The two are the same fact - this provider has no catalogue to link to -
+    // and neither is a claim that the document was clean.
+    expect(unlinkedCatalogueLineCount(invoice(undefined))).toBe(0);
+    expect(unlinkedCatalogueLineCount(invoice(null))).toBe(0);
+    expect(unlinkedCatalogueLineCount(undefined)).toBe(0);
+  });
+
+  it('reads a reported zero as "every line was linked"', () => {
+    expect(unlinkedCatalogueLineCount(invoice(0))).toBe(0);
+    expect(unlinkedCatalogueLinesBadge(invoice(0))).toBeNull();
+  });
+
+  it('renders no badge for a provider that does not report linkage', () => {
+    // inFakt / KSeF / eparagony leave the column null forever; a badge there
+    // would accuse every one of their documents of something they never claim.
+    expect(unlinkedCatalogueLinesBadge(invoice(null))).toBeNull();
+  });
+
+  it('names the count, singular and plural', () => {
+    expect(unlinkedCatalogueLinesBadge(invoice(1))?.label).toBe('1 line not in catalogue');
+    expect(unlinkedCatalogueLinesBadge(invoice(3))?.label).toBe('3 lines not in catalogue');
+  });
+
+  it('states the consequence, not the mechanism', () => {
+    const hint = unlinkedCatalogueLinesBadge(invoice(2))?.hint ?? '';
+    expect(hint).toContain('did not reach the warehouse');
+    // The operator cannot act on an ob_TowId; they can act on "map the product".
+    expect(hint).toContain('Map the product');
+  });
+
+  it('ignores a value that cannot be a line count', () => {
+    expect(unlinkedCatalogueLineCount(invoice(-1))).toBe(0);
+    expect(unlinkedCatalogueLineCount(invoice(Number.NaN))).toBe(0);
+  });
+
+  it('renders the badge even though the document was issued', () => {
+    // The whole point: an issued document is the ordinary case here, so
+    // anything keyed on "a document exists" would suppress it every time.
+    expect(unlinkedCatalogueLinesBadge(invoice(2))).not.toBeNull();
   });
 });

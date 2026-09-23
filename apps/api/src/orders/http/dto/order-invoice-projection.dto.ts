@@ -76,4 +76,22 @@ export class OrderInvoiceProjectionDto {
       'True when this record represents a document that plausibly exists at the provider (pending/issuing/issued, or a non-rejected failure). False only for a terminal rejected failure. Mirrors InvoiceRecord.blocksIssuanceElsewhere.',
   })
   blocksIssuanceElsewhere!: boolean;
+
+  /**
+   * How many of the document's lines the provider could not link to its own
+   * catalogue and issued as free text.
+   *
+   * Projected as the raw count rather than the entity's
+   * `hasUnlinkedCatalogueLines` boolean, because the operator-facing sentence
+   * names the number ("2 lines"), and a boolean cannot tell `null` (this
+   * provider does not report linkage) from `0` (every line was linked) — two
+   * states a surface must not collapse.
+   */
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description:
+      'How many of this document lines the provider could not link to a record in its own catalogue and therefore issued as free text - on Subiekt such a line does not move warehouse stock. Tri-state: null = this provider does not report linkage at all (inFakt/KSeF/eparagony never will), 0 = every line was linked, > 0 = that many were not. It is what OpenLinker believed BEFORE submitting, not a provider confirmation.',
+  })
+  unlinkedCatalogueLines!: number | null;
 }
