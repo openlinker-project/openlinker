@@ -686,7 +686,11 @@ describe('InvoicingController', () => {
             clearanceReference: null,
             documentNumber: 'FV/2026/1',
             issueDate: '2026-06-23',
-            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '' }],
+            // Rebuilt from the ORDER, so the line carries `productId` (see the
+            // sibling assertion below, which reads the persisted issuedLineSnapshot
+            // instead and therefore does not). `objectContaining` does not recurse
+            // into this array - it is compared field for field.
+            lines: [{ name: 'Widget', productId: 'p_1', quantity: 1, unitPriceGross: 100, taxRate: '' }],
           }),
         }),
       );
