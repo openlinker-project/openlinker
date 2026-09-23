@@ -70,6 +70,7 @@ import type {
   BenchActivityEntryView,
   BenchClaimResultView,
   BenchCompleteResultView,
+  BenchUndoCompletionResultView,
   BenchParcelView,
   BenchReopenResultView,
   BenchUndoResultView,
@@ -83,6 +84,7 @@ import {
   BenchActivityEntryResponseDto,
   BenchClaimResultResponseDto,
   BenchCompleteResultResponseDto,
+  BenchUndoCompletionResultResponseDto,
   BenchParcelResponseDto,
   BenchPresenceResponseDto,
   BenchReopenResultResponseDto,
@@ -265,6 +267,44 @@ export class BenchParcelController {
     return this.toCompleteDto(result);
   }
 
+  @Post(':workId/complete/undo')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Take back a completion, and keep every scan',
+    description:
+      'The way back from "done" that is not a reopen. A reopen unpacks the box; this undoes the ' +
+      'second, explicit act alone, so the contents stay exactly as verified and only the ' +
+      'completion is cleared. Without it a completion is a one-way door and the only way back ' +
+      'makes a packer re-do a box that was packed correctly. Refused `not-completed` when the ' +
+      'parcel was never marked done, `version-conflict` on a stale token, and ' +
+      '`not-claimable-by-viewer` under the SAME ADR-074 lock completing it enforces.',
+  })
+  @ApiResponse({ status: 201, type: BenchUndoCompletionResultResponseDto })
+  @ApiResponse({ status: 401, description: 'Taking back a completion must name the packer' })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  async undoCompletion(
+    @Param('workId') workId: string,
+    @Body() dto: CompleteParcelDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchUndoCompletionResultResponseDto> {
+    // Named for the same reason `completeParcel` is: this write records who
+    // took the completion back, so it must not be reachable without a
+    // principal.
+    if (!user?.id) {
+      throw new UnauthorizedException('Taking back a completion must name the packer');
+    }
+
+    const result = await this.run(() =>
+      this.parcels.undoCompletion({
+        workId,
+        // The verified token's user, never the body's.
+        undoneByUserId: user.id,
+        expectedVersion: dto.expectedVersion,
+      })
+    );
+    return this.toUndoCompletionDto(result);
+  }
+
   @Get(':workId/activity')
   @Roles('admin', 'operator', 'packer')
   @ApiOperation({
@@ -413,6 +453,16 @@ export class BenchParcelController {
   }
 
   private toCompleteDto(result: BenchCompleteResultView): BenchCompleteResultResponseDto {
+    return {
+      outcome: result.outcome,
+      reason: result.reason,
+      parcel: this.toParcelDto(result.parcel),
+    };
+  }
+
+  private toUndoCompletionDto(
+    result: BenchUndoCompletionResultView
+  ): BenchUndoCompletionResultResponseDto {
     return {
       outcome: result.outcome,
       reason: result.reason,

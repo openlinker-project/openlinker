@@ -91,6 +91,8 @@ function harness(options: {
   markPacked?: jest.Mock;
   /** pack-bench completion */
   complete?: jest.Mock;
+  undoCompletion?: jest.Mock;
+  claimAssignment?: jest.Mock;
 }) {
   const work = options.work ?? workView();
 
@@ -118,6 +120,8 @@ function harness(options: {
     list: jest.fn(),
     applyAction: jest.fn(),
     updateAssignment: jest.fn().mockResolvedValue(work),
+    claimAssignment:
+      options.claimAssignment ?? jest.fn().mockResolvedValue({ claimed: true, work }),
   } as unknown as IFulfillmentWorklistService;
 
   const verification = {
@@ -129,6 +133,8 @@ function harness(options: {
     markInvoicePrinted: jest.fn().mockResolvedValue(true),
     markLabelPrinted: jest.fn().mockResolvedValue(true),
     complete: options.complete ?? jest.fn().mockResolvedValue({ outcome: 'completed' }),
+    undoCompletion:
+      options.undoCompletion ?? jest.fn().mockResolvedValue({ outcome: 'undone' }),
   } as unknown as IFulfillmentVerificationService;
 
   const orders = {
@@ -277,10 +283,10 @@ describe('BenchParcelService (#2418)', () => {
         verifiedByUserId: 'user-1', // not user-9
       });
 
-      // The reason names the ACTOR, never `not-packable` — that reason is a
-      // fact about the parcel, and this parcel is perfectly packable, by
-      // someone else (#3361 review).
-      expect(result).toMatchObject({ outcome: 'refused', reason: 'assigned-to-another-packer' });
+      // NOT `not-packable` - that is the held/cancelled reason, which the
+      // bench renders as "take it back to the trolley". This parcel is fine;
+      // it is just not this packer's any more.
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-claimable-by-viewer' });
       expect(verification.verifyUnit).not.toHaveBeenCalled();
     });
 
@@ -384,7 +390,7 @@ describe('BenchParcelService (#2418)', () => {
         reopenedByUserId: 'user-1', // not user-9
       });
 
-      expect(result).toMatchObject({ outcome: 'refused', reason: 'assigned-to-another-packer' });
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-claimable-by-viewer' });
       expect(verification.reopenParcel).not.toHaveBeenCalled();
     });
 
@@ -401,7 +407,7 @@ describe('BenchParcelService (#2418)', () => {
         reopenedByUserId: null,
       });
 
-      expect(result).toMatchObject({ outcome: 'refused', reason: 'assigned-to-another-packer' });
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-claimable-by-viewer' });
       expect(verification.reopenParcel).not.toHaveBeenCalled();
     });
 
@@ -490,12 +496,16 @@ describe('BenchParcelService (#2418)', () => {
       // `invoicePrintedAt`/`labelPrintedAt`/`completedAt` (pack-bench completion)
       // are likewise on this allowlist deliberately — they carry no PII and
       // an interruption firing on one is exactly the guarantee this list
-      // states, not a leak.
+      // states, not a leak. `assignedToUserId` (#3415) joins them on the same
+      // terms: a raw OL user id is not buyer data, and it is what lets a
+      // packer who loses a claim race be told who holds the parcel now rather
+      // than being refused by nobody in particular.
       const { service } = harness({});
       const parcel = await service.getParcel('work-1');
 
       expect(Object.keys(parcel).sort()).toEqual(
         [
+          'assignedToUserId',
           'buyerName',
           'carrierName',
           'closedAt',
@@ -732,8 +742,44 @@ describe('BenchParcelService (#2418)', () => {
   });
 
   describe('#3412 — claim this parcel', () => {
-    it('claims an unassigned packable parcel for the viewer', async () => {
+    it('claims an UNASSIGNED parcel through the guarded transition, not the open write', async () => {
       const { service, worklist } = harness({});
+
+      const result = await service.claimParcel('work-1', 'user-1');
+
+      expect(result.outcome).toBe('claimed');
+      expect(worklist.claimAssignment).toHaveBeenCalledWith('work-1', 'user-1');
+      // The open write is what let two packers both be told they got it.
+      expect(worklist.updateAssignment).not.toHaveBeenCalled();
+    });
+
+    it('refuses the LOSER of a race, and names who actually holds it now', async () => {
+      // Both packers tapped a parcel neither had. Before this, both writes
+      // landed and both answered "claimed", and the loser walked off with a
+      // box somebody else was already packing.
+      const winner = workView({ assignedToUserId: 'user-2', version: 5 });
+      const { service } = harness({
+        claimAssignment: jest.fn().mockResolvedValue({ claimed: false, work: winner }),
+      });
+
+      const result = await service.claimParcel('work-1', 'user-1');
+
+      expect(result).toMatchObject({
+        outcome: 'refused',
+        reason: 'claimed-by-someone-else',
+      });
+      // The FRESH row, so the refusal can say who holds it - a refusal naming
+      // nobody sends the packer to a supervisor for a race they can retry past.
+      expect(result.parcel.assignedToUserId).toBe('user-2');
+    });
+
+    it('still takes the OPEN write for an already-assigned parcel, so a reclaim is not refused', async () => {
+      // ADR-074 is advisory: reclaiming your own parcel, and a supervisor's
+      // reassignment, both live here. Routing them through the guarded claim
+      // would refuse both as "somebody else has it".
+      const { service, worklist } = harness({
+        work: workView({ assignedToUserId: 'user-1', selfServeEligible: true }),
+      });
 
       const result = await service.claimParcel('work-1', 'user-1');
 
@@ -742,6 +788,7 @@ describe('BenchParcelService (#2418)', () => {
         workId: 'work-1',
         assignedToUserId: 'user-1',
       });
+      expect(worklist.claimAssignment).not.toHaveBeenCalled();
     });
 
     it('refuses `not-claimable` when the parcel is locked to a different packer', async () => {
@@ -753,6 +800,9 @@ describe('BenchParcelService (#2418)', () => {
 
       expect(result).toMatchObject({ outcome: 'refused', reason: 'not-claimable' });
       expect(worklist.updateAssignment).not.toHaveBeenCalled();
+      // `not-claimable` and `claimed-by-someone-else` must not blur: this one
+      // is a standing fact about who the parcel is for, the other a race.
+      expect(worklist.claimAssignment).not.toHaveBeenCalled();
     });
 
     it('refuses a held parcel with the SAME reason the list would colour it', async () => {
@@ -838,6 +888,93 @@ describe('BenchParcelService (#2418)', () => {
 
       expect(result).toMatchObject({ outcome: 'refused', reason: 'not-closed' });
       expect(result.parcel.completedAt).toBeNull();
+    });
+  });
+
+  describe('#3415 — take a completion back without unpacking the box', () => {
+    it('clears the completion, keeps the box closed, and re-projects the FRESH work', async () => {
+      // The whole point: `parcelClosedAt` survives, so no scan is re-done.
+      const closedAt = new Date();
+      const completedWork = workView({
+        parcelClosedAt: closedAt,
+        version: 5,
+        completedAt: new Date(),
+        completedByUserId: 'user-1',
+      });
+      const freshWork = workView({
+        parcelClosedAt: closedAt,
+        version: 6,
+        completedAt: null,
+        completedByUserId: null,
+      });
+      const { service, verification, worklist } = harness({ work: completedWork });
+      (worklist.get as jest.Mock)
+        .mockResolvedValueOnce(completedWork)
+        .mockResolvedValueOnce(freshWork);
+      (verification.getState as jest.Mock).mockResolvedValue(state({ closedAt }));
+
+      const result = await service.undoCompletion({
+        workId: 'work-1',
+        undoneByUserId: 'user-1',
+        expectedVersion: 5,
+      });
+
+      expect(result.outcome).toBe('undone');
+      expect(result.reason).toBeNull();
+      expect(result.parcel.completedAt).toBeNull();
+      // The box stays closed and no scan is re-done. Asserted two ways
+      // because this is the whole difference from a reopen: the projected
+      // state still carries the close, and nothing reopened it.
+      expect(result.parcel.closedAt).toBe(closedAt.toISOString());
+      expect(verification.reopenParcel).not.toHaveBeenCalled();
+      expect(verification.undoCompletion).toHaveBeenCalledWith({
+        workId: 'work-1',
+        expectedVersion: 5,
+      });
+    });
+
+    it('refuses under the SAME ADR-074 lock completing it enforces', async () => {
+      // If these two ever disagreed, a packer locked out of FINISHING a box
+      // could still un-finish one, which takes a parcel back off a shelf
+      // somebody else is about to ship.
+      const { service, verification } = harness({
+        work: workView({
+          parcelClosedAt: new Date(),
+          completedAt: new Date(),
+          assignedToUserId: 'user-2',
+          selfServeEligible: false,
+        }),
+      });
+
+      const result = await service.undoCompletion({
+        workId: 'work-1',
+        undoneByUserId: 'user-1',
+        expectedVersion: 5,
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-claimable-by-viewer' });
+      expect(verification.undoCompletion).not.toHaveBeenCalled();
+    });
+
+    it('surfaces a core refusal verbatim, re-projecting the ORIGINAL work', async () => {
+      const completedAt = new Date();
+      const { service } = harness({
+        work: workView({ parcelClosedAt: new Date(), completedAt, version: 5 }),
+        undoCompletion: jest
+          .fn()
+          .mockResolvedValue({ outcome: 'refused', reason: 'version-conflict' }),
+      });
+
+      const result = await service.undoCompletion({
+        workId: 'work-1',
+        undoneByUserId: 'user-1',
+        expectedVersion: 4,
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'version-conflict' });
+      // Nothing was written, so the completion the caller tried to take back
+      // is still there - the projection must not pretend otherwise.
+      expect(result.parcel.completedAt).toBe(completedAt.toISOString());
     });
   });
 

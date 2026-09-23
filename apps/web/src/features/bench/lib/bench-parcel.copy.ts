@@ -138,8 +138,15 @@ export const benchParcelCopy = {
       `Third scan turned down — this box takes ${String(parts.required)}. The count stayed at ${String(parts.kept)}. The bench beeped.`,
     overPackedBadge: 'Extra scan refused',
     notPackable: 'Nothing was recorded. This box must not be packed — take it back to the trolley.',
-    /** ADR-074 / #3336 / #3337 / #3341 — the assignment-lock refusal. */
-    assignedToAnotherPacker: 'Nothing was recorded. This box is assigned to another packer.',
+    /**
+     * The lock, which is NOT `notPackable` and must never borrow its words.
+     * That sentence sends the packer back to the trolley, which is right for a
+     * held or cancelled box and wrong here: this box is fine, somebody else is
+     * packing it. It names the remedy a packer can actually act on - take
+     * another box - rather than leaving them holding this one.
+     */
+    notYours:
+      'Nothing was recorded. This box belongs to another packer now. Take the next one instead.',
     parcelClosed:
       'Nothing was recorded. This box is already closed. Reopen it first if something needs changing.',
     noSuchLine:
@@ -253,6 +260,24 @@ export const benchParcelCopy = {
     refusedUnknown:
       'That did not go through, and this bench cannot say why. Show this screen to your supervisor.',
     failed: 'That did not go through. Nothing changed — try again.',
+
+    // ── Take it back (#3415) — the way back from "done" that is not a reopen ──
+    // A reopen unpacks the box; this clears only the "done" mark, so the
+    // wording must never suggest the contents are touched.
+    undoAction: 'Take this back',
+    undoHint: 'The box stays packed exactly as it is — only the "done" mark clears.',
+    undoneNotice: 'Taken back. This box is on your bench again.',
+    undoRefusedNotCompleted: 'This box was never marked done, so there is nothing to take back.',
+    undoRefusedStale: 'Somebody else changed this box. This screen now shows the latest — try again.',
+    /**
+     * The completion lock, said the same way `refusedLocked` says it above —
+     * both are the ADR-074 pre-assignment lock, checked at the same seam.
+     */
+    undoRefusedLocked:
+      'This box is assigned to someone else right now, so it cannot be taken back from here.',
+    undoRefusedUnknown:
+      'That did not go through, and this bench cannot say why. Show this screen to your supervisor.',
+    undoFailed: 'That did not go through. Nothing changed — try again.',
   },
 
   /** E5's promise, rendered on the verifying surface. */

@@ -120,6 +120,7 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
   it('should report a malformed payload as terminal without calling anything', async () => {
     expect(await handler.execute(job({ workId: '', orderId: 'o' }))).toEqual({
       outcome: 'business_failure',
+      outcomeReason: 'auto_dispatch_payload_invalid',
     });
     expect(integrations.getAdapter).not.toHaveBeenCalled();
   });
@@ -127,7 +128,7 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
   it('should refuse (not-enabled) when the connection has not opted in', async () => {
     integrations.getAdapter.mockResolvedValue({ connection: { config: {} }, metadata: {} });
 
-    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure' });
+    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure', outcomeReason: 'auto_dispatch_not_enabled' });
     expect(worklist.get).not.toHaveBeenCalled();
     expect(shipmentDispatch.dispatch).not.toHaveBeenCalled();
   });
@@ -154,7 +155,7 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
   it('should refuse (no-weight) when a variant carries no weight and no fallback is configured', async () => {
     products.getVariantsByIds.mockResolvedValue([{ id: 'v1', weightGrams: null }]);
 
-    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure' });
+    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure', outcomeReason: 'auto_dispatch_no_weight' });
     expect(shipmentDispatch.dispatch).not.toHaveBeenCalled();
   });
 
@@ -190,7 +191,7 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
       readyRecord({ shippingAddress: undefined, billingAddress: undefined })
     );
 
-    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure' });
+    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure', outcomeReason: 'auto_dispatch_no_address' });
     expect(shipmentDispatch.dispatch).not.toHaveBeenCalled();
   });
 
@@ -203,6 +204,9 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
       deliveryIntent: 'address',
       paczkomatId: undefined,
       orderId: 'ol_order_1',
+      // The #2402 work-to-shipment link, stamped at the source rather than
+      // repaired afterwards — this handler knows which work it is buying for.
+      fulfillmentWorkId: 'w1',
       recipient: {
         firstName: 'Anna',
         lastName: 'Kowalska',
@@ -247,7 +251,7 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
       new OrderNotDispatchablePaymentStatusException('ol_order_1', 'awaiting')
     );
 
-    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure' });
+    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure', outcomeReason: 'auto_dispatch_work_not_eligible' });
   });
 
   it('should report a held order as a TERMINAL business_failure (work-not-eligible)', async () => {
@@ -255,7 +259,7 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
       new OrderNotDispatchableHeldException('ol_order_1', 'hold-1', 'fraud_review')
     );
 
-    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure' });
+    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure', outcomeReason: 'auto_dispatch_work_not_eligible' });
   });
 
   it('should report an unresolvable delivery shape as a TERMINAL business_failure (no-delivery-method)', async () => {
@@ -263,7 +267,7 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
       new UndispatchableResolutionException('no supported method')
     );
 
-    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure' });
+    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure', outcomeReason: 'auto_dispatch_no_delivery_method' });
   });
 
   it('should treat a carrier rejection as RETRYABLE', async () => {
@@ -289,7 +293,13 @@ describe('FulfillmentWorkAutoDispatchHandler', () => {
   it('should skip the variant lookup entirely for a work with no lines', async () => {
     worklist.get.mockResolvedValue(workView({ lines: [] }));
 
-    expect(await handler.execute(job(validPayload))).toEqual({ outcome: 'business_failure' });
+    // Reported under the no-weight code: a work with no lines has no weight to
+    // total, so it takes the same `resolveParcel` refusal, and the code says
+    // where the handler actually went rather than inventing a seventh branch.
+    expect(await handler.execute(job(validPayload))).toEqual({
+      outcome: 'business_failure',
+      outcomeReason: 'auto_dispatch_no_weight',
+    });
     expect(products.getVariantsByIds).not.toHaveBeenCalled();
   });
 });

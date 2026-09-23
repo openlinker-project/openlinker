@@ -40,6 +40,14 @@
  * must be able to finish in one more press rather than being stuck reading a
  * warning it cannot act on.
  *
+ * ## Taking it back (#3415) is not the reopen
+ *
+ * A completion used to be a one-way door — `reopen` was the only route
+ * back, and it UNPACKS the box, so a packer who marked the wrong parcel
+ * done had to re-scan one that was already correct. The completed branch
+ * below therefore offers its own, lighter control that clears `completedAt`
+ * alone; every scan and the closed box stand untouched.
+ *
  * @module apps/web/src/features/bench/components
  */
 import { useState, type ReactElement } from 'react';
@@ -53,8 +61,13 @@ import { formatAbsoluteTime } from '../../../shared/format/format-date';
 import type { BenchParcel } from '../api/bench-parcel.types';
 import { benchQueryKeys } from '../api/bench-work.query-keys';
 import { useBenchCompleteMutation } from '../hooks/use-bench-complete-mutation';
+import { useBenchUndoCompletionMutation } from '../hooks/use-bench-undo-completion-mutation';
 import { useBenchDocumentsQuery } from '../hooks/use-bench-documents-query';
-import { completionPrintGaps, describeCompletionRefusal } from '../lib/bench-parcel-presentation';
+import {
+  completionPrintGaps,
+  describeCompletionRefusal,
+  describeUndoCompletionRefusal,
+} from '../lib/bench-parcel-presentation';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import { printBlob } from '../lib/bench-print';
 
@@ -80,16 +93,54 @@ export function BenchCompletionPanel({
   const queryClient = useQueryClient();
   const documents = useBenchDocumentsQuery(workId);
   const complete = useBenchCompleteMutation();
+  const undoCompletion = useBenchUndoCompletionMutation();
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [printError, setPrintError] = useState<string | null>(null);
+  const [undoNotice, setUndoNotice] = useState<string | null>(null);
 
   if (parcel.completedAt !== null) {
+    // Offered ONLY here — a completed box is the sole state this control
+    // means anything for. Pressing it clears `completedAt` alone (never
+    // touching a scan), so on success the parcel re-renders below this
+    // branch's own guard and the ordinary completion action reappears.
+    const runUndo = (): void => {
+      setUndoNotice(null);
+      undoCompletion.mutate(
+        { workId, expectedVersion: parcel.version },
+        {
+          onSuccess: (result) => {
+            // `result.parcel` already replaced the cache (the mutation
+            // hook's own `setQueryData`), so a real `undone` falls straight
+            // out of this branch on the next render — nothing left to do
+            // here but let a refusal speak.
+            if (result.outcome === 'undone') return;
+            setUndoNotice(describeUndoCompletionRefusal(result.reason));
+          },
+          onError: () => {
+            setUndoNotice(benchParcelCopy.completion.undoFailed);
+          },
+        }
+      );
+    };
+
     return (
-      <p className="bench-parcel__completion-done" data-testid="bench-parcel-completed">
-        {benchParcelCopy.completion.doneNotice(formatAbsoluteTime(parcel.completedAt))}
-      </p>
+      <div className="bench-parcel__completion">
+        <p className="bench-parcel__completion-done" data-testid="bench-parcel-completed">
+          {benchParcelCopy.completion.doneNotice(formatAbsoluteTime(parcel.completedAt))}
+        </p>
+        {undoNotice === null ? null : <Alert tone="warning">{undoNotice}</Alert>}
+        <Button
+          tone="secondary"
+          disabled={undoCompletion.isPending}
+          onClick={runUndo}
+          data-testid="bench-parcel-undo-completion-action"
+        >
+          {benchParcelCopy.completion.undoAction}
+        </Button>
+        <p className="bench-parcel__completion-hint">{benchParcelCopy.completion.undoHint}</p>
+      </div>
     );
   }
 
@@ -156,8 +207,11 @@ export function BenchCompletionPanel({
       setPrintError(benchParcelCopy.completion.printFailed);
       return;
     }
-    void apiClient.shipments
-      .downloadLabel(shipmentId)
+    // Through the WORK, never the shipment id — this is the route that
+    // stamps the print (#3340), which is what this panel's own gap check
+    // reads after `refreshAfterPrint()`.
+    void apiClient.bench
+      .downloadLabel(workId)
       .then((blob) => {
         if (printBlob(blob)) refreshAfterPrint();
         else setPrintError(benchParcelCopy.completion.printFailed);

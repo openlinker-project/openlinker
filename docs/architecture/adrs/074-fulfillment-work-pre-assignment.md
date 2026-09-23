@@ -127,6 +127,41 @@ decision one layer below the matrix, and the matrix must not grow a row for it.
 - The bench's list/claim read projects the two new fields so a row can render "assigned to you" /
   "unassigned" / "assignment only."
 
+## Amendment (#3415): "visible-but-muted" is the SUPERVISOR's view, not the packer's
+
+The decision above says an assigned parcel renders "visible-but-muted, the Jira-swimlane treatment
+over Cin7's hide-entirely one". That sentence was written against one screen and there are two, with
+different jobs, so it is narrowed here rather than reversed.
+
+**What is unchanged.** Assignment is still advisory at the DATA level: the row stays claimable, the
+claim is still first-click-wins, `selfServeEligible: false` is still the only hard lock, and no
+column changes. Nothing about the write path or the schema moves.
+
+**What is narrowed.** The muted treatment belongs to the **assign board** (`/fulfillment`), where a
+supervisor is rebalancing and must see every packer's lane to do it — that is what a Jira swimlane
+is. It does not belong on the **pack bench rail**, where a packer is working their own queue. There,
+another packer's parcel is a row you can act on and should not: it is noise on the one screen whose
+whole job is "what do I pack next", and the muted treatment invites exactly the cross-claim the
+supervisor's assignment was meant to prevent. Jira draws the same line — swimlanes on the board,
+"My issues" on the individual's filter.
+
+So the bench rail shows a packer **their own assigned work and the unassigned pool, and nothing
+else**. A supervisor (`orders:write`) keeps the full list, muted rows included; the bench's own
+`supervises` flag is what separates them, and it is the SAME flag on both reads:
+
+- `listBenchWork(viewerId, supervises)` filters the rail.
+- `claimNext(viewerId, supervises)` draws from that same filtered set.
+
+The second is load-bearing and was got wrong once. An unfiltered `claimNext` beside a filtered list
+hands a packer a parcel their own screen refuses to show them — the box appears on their bench with
+no row to explain where it came from. The rule is that these two reads answer the same question, so
+they take the same argument; a future filter added to one must be added to the other.
+
+**Cost, stated.** A packer can no longer see that a parcel exists but belongs to someone else, so
+"why is that order not moving" is a question only a supervisor can answer. That is the trade the
+narrowing makes, and it is the right way round: the packer's screen gets quieter, and the person who
+can actually re-route the work is the person who can see it.
+
 ## References
 
 - Related issues: #3329, #3331

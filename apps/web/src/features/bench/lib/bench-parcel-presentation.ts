@@ -170,8 +170,8 @@ export function describeVerificationRefusal(
       });
     case 'not-packable':
       return copy.notPackable;
-    case 'assigned-to-another-packer':
-      return copy.assignedToAnotherPacker;
+    case 'not-claimable-by-viewer':
+      return copy.notYours;
     case 'parcel-closed':
       return copy.parcelClosed;
     case 'no-such-line':
@@ -189,7 +189,7 @@ export function describeReopenRefusal(reason: string | null): string {
       return copy.reopenShipped;
     case 'not-closed':
       return copy.reopenNotClosed;
-    case 'assigned-to-another-packer':
+    case 'not-claimable-by-viewer':
       return copy.reopenAssignedToAnotherPacker;
     default:
       return copy.reopenUnknownRefusal;
@@ -220,6 +220,32 @@ export function describeCompletionRefusal(reason: string | null): string {
       return copy.refusedLocked;
     default:
       return copy.refusedUnknown;
+  }
+}
+
+/**
+ * Why taking back a completion was refused.
+ *
+ * The counterpart to `describeCompletionRefusal`, over the WIDER refusal
+ * union `undoCompletion` shares with it — `not-claimable-by-viewer` is the
+ * same ADR-074 lock, checked at the same seam. `not-completed` should never
+ * be reachable — the control is offered only on a completed box — but is
+ * named rather than folded into the default for the same reason
+ * `describeCompletionRefusal`'s `not-closed` is: a race with a second
+ * terminal is real, and a packer told nothing would keep pressing a button
+ * that cannot work until they reload.
+ */
+export function describeUndoCompletionRefusal(reason: string | null): string {
+  const copy = benchParcelCopy.completion;
+  switch (reason) {
+    case 'not-completed':
+      return copy.undoRefusedNotCompleted;
+    case 'version-conflict':
+      return copy.undoRefusedStale;
+    case 'not-claimable-by-viewer':
+      return copy.undoRefusedLocked;
+    default:
+      return copy.undoRefusedUnknown;
   }
 }
 

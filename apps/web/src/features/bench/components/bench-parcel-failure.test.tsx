@@ -73,6 +73,7 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     holdReason: null,
     closedAt: null,
     packedByUserId: null,
+    assignedToUserId: null,
     invoicePrintedAt: null,
     labelPrintedAt: null,
     completedAt: null,

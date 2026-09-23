@@ -22,6 +22,7 @@ export function toParcelResponseDto(view: BenchParcelView): BenchParcelResponseD
     totalAmount: view.totalAmount,
     currency: view.currency,
     carrierName: view.carrierName,
+    assignedToUserId: view.assignedToUserId,
     dispatchByAt: view.dispatchByAt,
     parcelIndex: view.parcelIndex,
     parcelTotal: view.parcelTotal,

@@ -136,8 +136,11 @@ export function BenchDocumentsPanel({
       setPrintError(benchParcelCopy.documents.printFailed);
       return;
     }
-    void apiClient.shipments
-      .downloadLabel(label.shipmentId)
+    // Through the WORK, never the shipment id — this is the route that
+    // stamps the print (#3340). `apiClient.shipments.downloadLabel` still
+    // exists for every other caller of a shipment's label, but it does not.
+    void apiClient.bench
+      .downloadLabel(workId)
       .then((blob) => {
         if (!printBlob(blob)) setPrintError(benchParcelCopy.documents.printFailed);
       })

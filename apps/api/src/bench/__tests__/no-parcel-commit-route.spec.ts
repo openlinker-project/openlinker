@@ -54,13 +54,18 @@ const BENCH_HTTP_ROOT = resolve(__dirname, '..', 'http');
  * ALREADY-CLOSED parcel has actually left the bench — a later, explicit act
  * with real prior art (ShipHero's "Complete Order", Brightpearl's `Packed`
  * state before `Shipped`) for treating it as its own step. Listed here as a
- * decision, never smuggled past the guard. All listed as
- * deliberate writes rather than silently exempted from the guard this file
- * exists to be.
+ * decision, never smuggled past the guard. `complete/undo` (#3415) is the
+ * `verifications/undo` case one act up: it is the OPPOSITE of a commit,
+ * clearing `completedAt` alone while every scan and `parcelClosedAt` stand,
+ * and it exists because a completion was otherwise a one-way door whose only
+ * exit was `reopen` - which unpacks a box that was packed correctly. All
+ * listed as deliberate writes rather than silently exempted from the guard
+ * this file exists to be.
  */
 const EXPECTED_BENCH_WRITES = [
   'POST bench/work/:workId/claim',
   'POST bench/work/:workId/complete',
+  'POST bench/work/:workId/complete/undo',
   'POST bench/work/:workId/presence',
   'POST bench/work/:workId/reopen',
   'POST bench/work/:workId/verifications',
@@ -150,10 +155,16 @@ describe('the bench API exposes no parcel-commit route (#2418, D18)', () => {
     // exists to catch. Excluding it here (by exact path, not by loosening the
     // keyword) is what keeps the scan able to catch the NEXT undecided one,
     // including a second route that also happens to use the word "complete".
-    const DECIDED_COMPLETION_ROUTE = 'POST bench/work/:workId/complete';
+    // Exact paths, never a looser keyword, for the reason stated above: a
+    // third route spelling "complete" must still fail here. `complete/undo`
+    // earns its place by being the opposite of a commit - see the docblock.
+    const DECIDED_COMPLETION_ROUTES = new Set([
+      'POST bench/work/:workId/complete',
+      'POST bench/work/:workId/complete/undo',
+    ]);
     const suspicious = ROUTES.filter(
       (route) =>
-        `${route.verb} ${route.path}` !== DECIDED_COMPLETION_ROUTE &&
+        !DECIDED_COMPLETION_ROUTES.has(`${route.verb} ${route.path}`) &&
         /close|commit|finish|seal|complete|done/i.test(route.path)
     ).map(
       (route) =>

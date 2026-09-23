@@ -929,6 +929,9 @@ export function createMockApiClient(
       completeParcel: vi
         .fn<BenchApi['completeParcel']>()
         .mockRejectedValue(new Error('bench.completeParcel not stubbed')),
+      undoCompletion: vi
+        .fn<BenchApi['undoCompletion']>()
+        .mockRejectedValue(new Error('bench.undoCompletion not stubbed')),
       // The neutral "no paper exists yet" answer: an unissued invoice and a
       // box no label was ever bought for. Every nullable field is spelled out
       // rather than omitted, so a surface reading one gets `null` — the value
@@ -957,6 +960,11 @@ export function createMockApiClient(
       downloadInvoice: vi
         .fn<BenchApi['downloadInvoice']>()
         .mockRejectedValue(new Error('bench.downloadInvoice not stubbed')),
+      // #3340 — the ONLY print call that stamps `labelPrintedAt`. Reachable
+      // through the work, never the shipment id.
+      downloadLabel: vi
+        .fn<BenchApi['downloadLabel']>()
+        .mockRejectedValue(new Error('bench.downloadLabel not stubbed')),
       listUnlabelledParcels: vi
         .fn<BenchApi['listUnlabelledParcels']>()
         .mockResolvedValue({ parcels: [], total: 0, truncated: false }),

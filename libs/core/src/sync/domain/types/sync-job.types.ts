@@ -327,7 +327,27 @@ export type JobOutcome = (typeof JobOutcomeValues)[number];
  *   (#1599) — `master.product.syncByExternalId` returns `business_failure`
  *   with this reason rather than retrying a permanent condition.
  */
-export const JobOutcomeReasonValues = ['master_deleted'] as const;
+export const JobOutcomeReasonValues = [
+  'master_deleted',
+  // Auto-dispatch (#3415). Every one of these is a SETTLED refusal the handler
+  // already named in a log line and in its own header table — the codes exist
+  // so the Jobs surface can say which, rather than rendering six different
+  // terminal states as one undifferentiated "business failure" an operator has
+  // to open the log to tell apart. `already-has-label` is deliberately absent:
+  // it answers `ok`, because buying at most once is the guard working.
+  'auto_dispatch_payload_invalid',
+  'auto_dispatch_not_enabled',
+  'auto_dispatch_no_weight',
+  'auto_dispatch_no_address',
+  'auto_dispatch_no_delivery_method',
+  'auto_dispatch_work_not_eligible',
+  // #3340 follow-up: a split order's second (and later) work cannot be
+  // attributed a shipment `findActiveByOrderId` resolves by ORDER, not by
+  // work — see `FulfillmentWorkDispatchConflictException`. Terminal: the
+  // ambiguity is a persisted-state fact about the order, and blindly
+  // retrying the same job cannot resolve it.
+  'auto_dispatch_shipment_claimed_by_sibling_work',
+] as const;
 
 /**
  * Job Outcome Reason

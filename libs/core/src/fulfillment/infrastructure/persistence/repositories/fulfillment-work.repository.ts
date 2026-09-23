@@ -17,7 +17,7 @@
  * | `id` / `orderId` | `create` | insert-only; `text NOT NULL`, no DB default |
  * | `locationId` / `deliveryMethod` | `create` | **insert-only** — the router is the single producer. If re-routing mints a NEW row these are never updated; if it ever updates in place, a round-trip from a stale read would silently revert the re-route. Insert-only forces #2395 to choose explicitly |
  * | `assignedConnectionId` | `create`, `assignHolder`, `clearHolder` | settable at insert (ADR-054 R1 creates work ALREADY ASSIGNED, in one transaction); afterwards only the two narrow claims move it |
- * | `assignedToUserId` | `create` (always `null`), `assignToPacker`, `clearAssignment` (#3336, ADR-074) | a distinct PERSON axis from `assignedConnectionId`'s HOLDER connection; unlike that pair, `assignToPacker` is not claim-once — a supervisor may reassign, so its guard is existence-only, not `IS NULL`. `clearAssignment` ALSO resets `selfServeEligible` to `true`, in the same statement — see that column's row |
+ * | `assignedToUserId` | `create` (always `null`), `assignToPacker`, `clearAssignment` (#3336, ADR-074), `claimAssignment` (#3340 follow-up) | a distinct PERSON axis from `assignedConnectionId`'s HOLDER connection; unlike that pair, `assignToPacker` is not claim-once — a supervisor may reassign, so its guard is existence-only, not `IS NULL`. `claimAssignment` is the FOURTH named writer (the `status` / `requestStatus` convention): the exclusive unassigned -> assigned-to-me transition a packer's own self-claim needs, guarded `IS NULL`, so two concurrent claims on one unassigned parcel cannot both report success. `clearAssignment` ALSO resets `selfServeEligible` to `true`, in the same statement — see that column's row |
  * | `selfServeEligible` | `create` (always `true`), `setSelfServeEligible`, `clearAssignment` (always `true`, #3336, ADR-074) | advisory by default; enforcement of `false` lives in `BenchParcelService.verifyUnit` (#3337) — a human-packer guard, not `FulfillmentHandshakeService`, which negotiates with holder connections (ADR-054's executor axis, #2399) and has no concept of an acting user. **`clearAssignment` resets it to `true`** — review round 2 on #3360 found the alternative (leaving it untouched) left a residual: `assignToPacker(A) -> setSelfServeEligible(false) -> clearAssignment -> assignToPacker(B)` would lock B to an exclusivity decision nobody made about them. `#3337`'s guard testing `assignedToUserId !== null` before refusing only covers the parcel while it sits unassigned; it says nothing once B is assigned, which is exactly the window this reset closes |
  * | `status` | `create`, `transitionStatus`, `cancel` | |
  * | `requestStatus` | `create`, `transitionRequestStatus`, `claimDispatchAttempt`, `recordAcceptance`, `recordRejection` | the handshake (#2399) owns it; the router holds a stale copy by construction. A NAMED additional writer is this table's convention (`status` and `assignedConnectionId` each already list three); an UNNAMED one is the defect it guards against. **#2712's timeout sweep adds NO writer here** — it reaps THROUGH `recordRejection`, deliberately, so the guarded `submitted -> rejected` transition and the rejection row stay one statement pair with one owner |
@@ -32,7 +32,7 @@
  * | `updatedAt` | every applied transition | written IMPLICITLY by TypeORM's `@UpdateDateColumn` injection, and explicitly by `recordLineProgress`. Named here because it has a real downstream consumer — `IDX_fulfillment_works_request_status` and ADR-054's timeout sweep both read it — and a column whose writer is a framework default is exactly the one a writer table must not omit |
  * | `invoicePrintedAt` | `markInvoicePrinted` (pack-bench completion) | fill-in-when-NULL, `WHERE "invoicePrintedAt" IS NULL`; DOES NOT bump `version` — a display-only fact, the `fulfilledQuantity` reading above |
  * | `labelPrintedAt` | `markLabelPrinted` (pack-bench completion) | same shape as `invoicePrintedAt`, called from a SIBLING context (`shipping`, off `Shipment.fulfillmentWorkId`) rather than from this one |
- * | `completedAt` / `completedByUserId` | `claimCompletion` (pack-bench completion) | one pair, one statement, at-most-once — guarded `"completedAt" IS NULL AND "parcelClosedAt" IS NOT NULL` (the `claimParcelClose` idiom). Unlike the two print columns above this DOES bump `version`: it is the terminal legality-gated act on this surface |
+ * | `completedAt` / `completedByUserId` | `claimCompletion` (pack-bench completion), `undoCompletion` (#3340 follow-up), `reopenParcel` (#3340 follow-up) | `claimCompletion` is one pair, one statement, at-most-once — guarded `"completedAt" IS NULL AND "parcelClosedAt" IS NOT NULL` (the `claimParcelClose` idiom). `undoCompletion` is its mirror, guarded `"completedAt" IS NOT NULL` — the undo an operator's mis-tap needs without `reopenParcel`'s destructive re-verification. `reopenParcel` is a THIRD, NAMED writer: reopening the box always clears a stale completion in the SAME statement, because a parcel cannot be both reopened and completed and a second write here is exactly the crash window that stranded a completed-then-reopened parcel in no list at all. All three bump `version`: the terminal legality-gated act on this surface |
  *
  * **`recordLineProgress` deliberately does NOT bump the header's `version`.**
  * It writes `fulfillment_work_lines`, a different row, and the token guards
@@ -80,6 +80,7 @@ import type {
   CancelFulfillmentWorkInput,
   ClaimFulfillmentDispatchInput,
   ClaimFulfillmentCompletionInput,
+  UndoFulfillmentCompletionInput,
   ClaimParcelCloseInput,
   CreateFulfillmentWorkInput,
   FulfillmentWorkRepositoryPort,
@@ -403,18 +404,69 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     );
   }
 
-  async assignToPacker(workId: string, userId: string): Promise<boolean> {
+  async assignToPacker(
+    workId: string,
+    userId: string,
+    expectedVersion?: number
+  ): Promise<boolean> {
     // Unlike `assignHolder`, deliberately NOT guarded `IS NULL` — ADR-074
     // requires a supervisor to be able to reassign an idle parcel, so the
-    // only precondition is that the work object still exists.
+    // only STATE precondition is that the work object still exists.
+    //
+    // `expectedVersion` (#3340 second follow-up) is an orthogonal, OPTIONAL
+    // lost-update guard, never an exclusivity one: two supervisors dragging
+    // the same task to two different packers both got a 200 before this,
+    // because "no state precondition" was read as "no precondition at all".
+    // A caller that supplies the token it read is protected from overwriting
+    // a peer's write it never saw; a caller that omits it (or any caller
+    // predating this change) keeps the exact unconditional write above.
     return this.applyGuardedUpdate('assignToPacker', (qb) =>
-      qb
-        .set({ assignedToUserId: userId, version: () => '"version" + 1' })
-        .where('"id" = :id', { id: workId })
+      this.withVersionGuard(
+        qb
+          .set({ assignedToUserId: userId, version: () => '"version" + 1' })
+          .where('"id" = :id', { id: workId }),
+        expectedVersion
+      )
     );
   }
 
-  async clearAssignment(workId: string): Promise<boolean> {
+  async claimAssignment(workId: string, userId: string): Promise<boolean> {
+    // A THIRD, NAMED writer of `assignedToUserId` (the table's own
+    // convention: `status` and `requestStatus` each already carry several).
+    // Deliberately NOT the same write as `assignToPacker` — that one is the
+    // supervisor's unconditional reassignment and must stay unconditional, or
+    // ADR-074's advisory model (self-serve reassignment, reclaiming your own
+    // parcel) would start refusing writes it must always allow.
+    //
+    // This one is the EXCLUSIVE unassigned -> assigned-to-me transition a
+    // packer's own self-claim needs: guarded `"assignedToUserId" IS NULL`, so
+    // of two concurrent claims on one unassigned parcel, only the first to
+    // reach Postgres wins — the loser's write affects zero rows and must be
+    // told the truth rather than a false `claimed`. The caller decides WHEN
+    // to use this write versus `assignToPacker` (only when the parcel read as
+    // unassigned; an already-assigned-and-claimable parcel keeps using the
+    // unconditional write, since re-asserting an advisory hold is not a race
+    // that needs exclusivity).
+    //
+    // This guard closes the unassigned -> mine transition ONLY, and that is
+    // deliberate rather than a gap: a supervisor's `assignToPacker` PATCH
+    // stays unconditional, so a supervisor reassigning an already-assigned
+    // parcel can still race the packer who currently holds it, and both may
+    // hear "claimed" (or "assigned") back. That is ADR-074's advisory model
+    // working exactly as specified — assignment is a staffing hint, not an
+    // exclusive lock, once a parcel is already assigned to someone — not a
+    // second bug to close here. Do not widen this guard to cover that path;
+    // doing so would make self-serve reassignment start refusing writes it
+    // must always allow.
+    return this.applyGuardedUpdate('claimAssignment', (qb) =>
+      qb
+        .set({ assignedToUserId: userId, version: () => '"version" + 1' })
+        .where('"id" = :id', { id: workId })
+        .andWhere('"assignedToUserId" IS NULL')
+    );
+  }
+
+  async clearAssignment(workId: string, expectedVersion?: number): Promise<boolean> {
     // Resets `selfServeEligible` back to `true` in the SAME statement —
     // review round 2 on #3360. `selfServeEligible` is a decision ABOUT the
     // cleared packer, not a standing property of the parcel: without the
@@ -424,30 +476,49 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
     // `assignedToUserId !== null` first only closes the window while the
     // parcel sits unassigned; it says nothing once B is assigned, which is
     // exactly the case this reset covers.
+    //
+    // `expectedVersion` (#3340 second follow-up), optional, additive — see
+    // `assignToPacker`'s note. Composed with the existing `IS NOT NULL`
+    // guard: a stale token on an already-unassigned row still reports
+    // `false` for the ordinary reason (nothing to clear), never a spurious
+    // conflict, because both predicates must hold for `true`.
     return this.applyGuardedUpdate('clearAssignment', (qb) =>
-      qb
-        .set({
-          assignedToUserId: null,
-          selfServeEligible: true,
-          version: () => '"version" + 1',
-        })
-        .where('"id" = :id', { id: workId })
-        .andWhere('"assignedToUserId" IS NOT NULL')
+      this.withVersionGuard(
+        qb
+          .set({
+            assignedToUserId: null,
+            selfServeEligible: true,
+            version: () => '"version" + 1',
+          })
+          .where('"id" = :id', { id: workId })
+          .andWhere('"assignedToUserId" IS NOT NULL'),
+        expectedVersion
+      )
     );
   }
 
-  async setSelfServeEligible(workId: string, selfServeEligible: boolean): Promise<boolean> {
+  async setSelfServeEligible(
+    workId: string,
+    selfServeEligible: boolean,
+    expectedVersion?: number
+  ): Promise<boolean> {
     // Locking a parcel (`false`) is a decision ABOUT an assigned packer, so it
     // is refused on an unassigned row rather than left to mint the "exclusive
     // to nobody" state the CHECK constraint above and `clearAssignment`'s
     // reset both exist to close. The `true` direction is deliberately
-    // unguarded: it is the column default and the state `clearAssignment`
-    // restores, so refusing it would refuse a no-op.
+    // unguarded beyond existence: it is the column default and the state
+    // `clearAssignment` restores, so refusing it would refuse a no-op.
+    //
+    // `expectedVersion` (#3340 second follow-up), optional, additive — see
+    // `assignToPacker`'s note; composed with the guard above rather than
+    // replacing it, so a version conflict and an unassigned-lock refusal
+    // remain distinguishable causes for the SAME `false`.
     return this.applyGuardedUpdate('setSelfServeEligible', (qb) => {
       const query = qb
         .set({ selfServeEligible, version: () => '"version" + 1' })
         .where('"id" = :id', { id: workId });
-      return selfServeEligible ? query : query.andWhere('"assignedToUserId" IS NOT NULL');
+      const guarded = selfServeEligible ? query : query.andWhere('"assignedToUserId" IS NOT NULL');
+      return this.withVersionGuard(guarded, expectedVersion);
     });
   }
 
@@ -736,6 +807,32 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
         .where('"id" = :id', { id: input.workId })
         .andWhere('"completedAt" IS NULL')
         .andWhere('"parcelClosedAt" IS NOT NULL');
+      return this.withVersionGuard(guarded, input.expectedVersion);
+    });
+  }
+
+  async undoCompletion(input: UndoFulfillmentCompletionInput): Promise<boolean> {
+    // The undo `claimCompletion` needed: an operator who tapped "done" by
+    // mistake must be able to take it back WITHOUT the destructive
+    // `reopenParcel` ceremony, which voids every scan on the parcel.
+    // Undoing touches only the two columns `claimCompletion` wrote —
+    // `parcelClosedAt` and every verification stay untouched — so a mis-tap
+    // costs nothing but re-declaring the box done.
+    //
+    // Guarded `"completedAt" IS NOT NULL`, the mirror of `claimCompletion`'s
+    // own guard: at-most-once in the other direction, so a repeat undo
+    // (or a race with a concurrent one) reports `false` rather than clearing
+    // an already-clear pair. Bumps `version` — the same legality-gated-act
+    // reasoning `claimCompletion` states for itself.
+    return this.applyGuardedUpdate('undoCompletion', (qb) => {
+      const guarded = qb
+        .set({
+          completedAt: null,
+          completedByUserId: null,
+          version: () => '"version" + 1',
+        })
+        .where('"id" = :id', { id: input.workId })
+        .andWhere('"completedAt" IS NOT NULL');
       return this.withVersionGuard(guarded, input.expectedVersion);
     });
   }
@@ -1517,6 +1614,19 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
           parcelClosedAt: null,
           packedByUserId: null,
           packedByService: null,
+          // A completed parcel cannot survive being reopened — "this box is
+          // not finished after all" is what a reopen MEANS, so `completedAt`
+          // / `completedByUserId` are cleared in this SAME statement rather
+          // than a second write a crash between the two could leave half-
+          // applied. Before this fix, `reopenParcel` guarded only on
+          // `parcelClosedAt`, so a completed-then-reopened parcel kept its
+          // stale `completedAt` while `parcelClosedAt` went NULL — a state no
+          // list query selects: the bench rail filters on `completedAt`,
+          // "packed today" keys on `parcelClosedAt` (which this write just
+          // cleared), and the unlabelled-parcels list requires
+          // `parcelClosed: true`. The parcel became findable by nobody.
+          completedAt: null,
+          completedByUserId: null,
           version: () => '"version" + 1',
         })
         .where('"id" = :id', { id: input.workId })

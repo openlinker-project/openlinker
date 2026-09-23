@@ -171,17 +171,22 @@ export class BenchWorkService implements IBenchWorkService {
     };
   }
 
-  async claimNext(viewerId: string): Promise<BenchClaimNextResultView> {
+  async claimNext(viewerId: string, supervises: boolean): Promise<BenchClaimNextResultView> {
     // Reuses listBenchWork's OWN sort and eligibility — no second ordering to
-    // keep in sync with compareBenchWork, and `claimable` is the same
-    // predicate `claimParcel` re-checks at write time. Asks with `supervises:
-    // true` — the unfiltered set — because a row assigned to somebody else is
-    // never claimable in the first place (`isClaimableByViewer` refuses it, and
-    // the `find` below additionally requires `assignmentState !== 'mine'`), so
-    // whether such a row is present or absent from this internal read cannot
-    // change which candidate is picked; asking for the full set is simplest and
-    // keeps this method's own behaviour unchanged by the pack-bench completion filter.
-    const { works } = await this.listBenchWork(viewerId, true);
+    // keep in sync with `compareBenchWork`, and `claimable` is the same
+    // predicate `claimParcel` re-checks at write time.
+    //
+    // Asks for the caller's OWN visible set, never the unfiltered one. This
+    // read used to pass `supervises: true`, justified by the claim that a row
+    // assigned to somebody else is never claimable anyway — which is false:
+    // `isClaimableByViewer`'s first line returns `true` for anything with
+    // `selfServeEligible`, and that column defaults `true`, so it is true of
+    // essentially every row. The consequence was that "Take next task" could
+    // hand a packer a parcel their own rail refuses to show them, on a screen
+    // that had just told them there was nothing there. Whatever the list is
+    // scoped to, the button must pick from the same set: a control that can
+    // reach past what the operator can see is one they cannot reason about.
+    const { works } = await this.listBenchWork(viewerId, supervises);
     const top = works.find(
       (row) => row.state === 'packable' && row.claimable && row.assignmentState !== 'mine'
     );
@@ -192,7 +197,15 @@ export class BenchWorkService implements IBenchWorkService {
     // claimed it first), so the actual eligibility decision is made fresh,
     // never trusted from the row that picked the candidate.
     const result = await this.parcels.claimParcel(top.workId, viewerId);
-    if (result.outcome === 'refused') return { outcome: 'nothing-to-claim' };
+    if (result.outcome === 'refused') {
+      // Reported as a REFUSAL, never as an empty queue. Reaching here means a
+      // candidate was found and lost — a race, with the rail still showing the
+      // row — so answering 'nothing-to-claim' would state the opposite of what
+      // the packer can see. `reason` is non-null on this arm by the result
+      // type's own contract; the fallback keeps the narrowing honest rather
+      // than asserting it.
+      return { outcome: 'refused', reason: result.reason ?? 'not-claimable' };
+    }
     return { outcome: 'claimed', parcel: result.parcel };
   }
 

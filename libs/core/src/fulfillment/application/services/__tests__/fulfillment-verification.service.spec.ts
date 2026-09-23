@@ -73,6 +73,7 @@ interface Harness {
       | 'markInvoicePrinted'
       | 'markLabelPrinted'
       | 'claimCompletion'
+      | 'undoCompletion'
     >
   >;
 }
@@ -90,6 +91,8 @@ function harness(options: {
   invoicePrinted?: boolean;
   labelPrinted?: boolean;
   completed?: boolean;
+  /** #3340 follow-up */
+  undone?: boolean;
 }): Harness {
   const queue = [...(options.counts ?? [[], []])];
   const repo = {
@@ -111,6 +114,7 @@ function harness(options: {
     markInvoicePrinted: jest.fn().mockResolvedValue(options.invoicePrinted ?? true),
     markLabelPrinted: jest.fn().mockResolvedValue(options.labelPrinted ?? true),
     claimCompletion: jest.fn().mockResolvedValue(options.completed ?? true),
+    undoCompletion: jest.fn().mockResolvedValue(options.undone ?? true),
   } as unknown as Harness['repo'];
 
   return {
@@ -600,6 +604,60 @@ describe('FulfillmentVerificationService (#2418)', () => {
 
       await expect(
         service.complete({ workId: 'work-1', completedByUserId: 'user-1', expectedVersion: 3 })
+      ).rejects.toThrow('work-1');
+    });
+  });
+
+  describe('undoCompletion (#3340 follow-up) — the mirror of complete', () => {
+    it('reports undone on a successful claim', async () => {
+      const { service, repo } = harness({ undone: true });
+
+      const result = await service.undoCompletion({ workId: 'work-1', expectedVersion: 3 });
+
+      expect(result).toEqual({ outcome: 'undone' });
+      expect(repo.undoCompletion).toHaveBeenCalledWith({
+        workId: 'work-1',
+        expectedVersion: 3,
+      });
+    });
+
+    it('refuses `version-conflict` FIRST when the re-read shows a different version — the safe direction', async () => {
+      const { service } = harness({
+        undone: false,
+        work: work({ version: 9, completedAt: null }),
+      });
+
+      const result = await service.undoCompletion({ workId: 'work-1', expectedVersion: 3 });
+
+      expect(result).toEqual({ outcome: 'refused', reason: 'version-conflict' });
+    });
+
+    it('refuses `not-completed` when the version matches but there was nothing to undo', async () => {
+      const { service } = harness({
+        undone: false,
+        work: work({ version: 3, parcelClosedAt: new Date(), completedAt: null }),
+      });
+
+      const result = await service.undoCompletion({ workId: 'work-1', expectedVersion: 3 });
+
+      expect(result).toEqual({ outcome: 'refused', reason: 'not-completed' });
+    });
+
+    it('never touches parcelClosedAt or the verification ledger — unlike reopenParcel', async () => {
+      const { service, repo } = harness({ undone: true });
+
+      await service.undoCompletion({ workId: 'work-1', expectedVersion: 3 });
+
+      expect(repo.reopenParcel).not.toHaveBeenCalled();
+      expect(repo.voidVerificationById).not.toHaveBeenCalled();
+    });
+
+    it('throws FulfillmentWorkNotFoundError when the work vanished between the claim and the re-read', async () => {
+      const { service, repo } = harness({ undone: false });
+      repo.findById.mockResolvedValueOnce(null);
+
+      await expect(
+        service.undoCompletion({ workId: 'work-1', expectedVersion: 3 })
       ).rejects.toThrow('work-1');
     });
   });

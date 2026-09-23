@@ -184,15 +184,24 @@ export interface FulfillmentTaskFilters {
 }
 
 /**
- * Body of `PATCH /fulfillment/works/:workId/assignment` (#3337, ADR-074).
+ * Body of `PATCH /fulfillment/works/:workId/assignment` (#3337, ADR-074;
+ * `expectedVersion` #3340 second follow-up).
  *
- * Both fields optional and independently applied — `undefined` means "leave
- * alone". `assignedToUserId: null` clears an assignment; a string id sets or
- * reassigns it. NOT gated by `expectedVersion` — ADR-074 places this outside
- * the legality matrix `applyAction` enforces, so there is no optimistic
- * token to send.
+ * `assignedToUserId` / `selfServeEligible` are optional and independently
+ * applied — `undefined` means "leave alone". `assignedToUserId: null` clears
+ * an assignment; a string id sets or reassigns it.
+ *
+ * `expectedVersion` is a THIRD, independently optional field — a lost-update
+ * guard, not a staffing field. ADR-074 places assignment outside the
+ * legality matrix `applyAction` enforces (which SYSTEM may act), which says
+ * nothing about a stale-write guard (an orthogonal concern: has a PEER
+ * written since this caller read the row). This board always sends it,
+ * carrying the version the row was RENDERED with — never one re-read at
+ * click time, or a fresher value would make the 409 this guard exists to
+ * raise unreachable and hand the last writer the win.
  */
 export interface UpdateFulfillmentWorkAssignmentRequest {
   assignedToUserId?: string | null;
   selfServeEligible?: boolean;
+  expectedVersion?: number;
 }

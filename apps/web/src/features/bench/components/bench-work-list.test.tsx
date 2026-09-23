@@ -479,6 +479,24 @@ describe('BenchWorkList (#2416)', () => {
       expect(claimParcel).toHaveBeenCalledWith('w-open');
     });
 
+    it('says WHY a claim was refused, instead of leaving the screen unmoved', async () => {
+      // A refusal is a 200, so nothing here throws — before this the packer
+      // clicked "Claim this parcel" and got no feedback of any kind.
+      const claimParcel = vi.fn().mockResolvedValue({
+        outcome: 'refused',
+        reason: 'held',
+        parcel: { workId: 'w-open' } as unknown,
+      });
+      mount(
+        payload({ works: [work({ workId: 'w-open', assignmentState: 'unassigned' })] }),
+        { canWrite: true, bench: { claimParcel } }
+      );
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Claim this parcel' }));
+
+      expect(await screen.findByText('That one just went on hold. Try again.')).toBeInTheDocument();
+    });
+
     it('offers "Take next task", and names it plainly when nothing is unassigned', async () => {
       const claimNext = vi.fn().mockResolvedValue({ outcome: 'nothing-to-claim', parcel: null });
       mount(payload({ works: [work()] }), { canWrite: true, bench: { claimNext } });
@@ -487,6 +505,55 @@ describe('BenchWorkList (#2416)', () => {
 
       expect(claimNext).toHaveBeenCalled();
       expect(await screen.findByText('Nothing unassigned right now.')).toBeInTheDocument();
+    });
+
+    it('says someone got there first when a peer wins the race, never that the queue is empty', async () => {
+      // The rail behind the message is holding a row, so the empty-queue
+      // sentence would contradict what the packer is looking at. This is the
+      // RACE reason — a peer claimed it between the read and the write —
+      // never the standing lock, which gets its own sentence below.
+      const claimNext = vi
+        .fn()
+        .mockResolvedValue({ outcome: 'refused', parcel: null, reason: 'claimed-by-someone-else' });
+      mount(payload({ works: [work()] }), { canWrite: true, bench: { claimNext } });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Take next task' }));
+
+      expect(
+        await screen.findByText('Someone got there first. Try again — there may be more.')
+      ).toBeInTheDocument();
+      expect(screen.queryByText('Nothing unassigned right now.')).not.toBeInTheDocument();
+    });
+
+    it('names a hold as a hold rather than as a lost race', async () => {
+      const claimNext = vi
+        .fn()
+        .mockResolvedValue({ outcome: 'refused', parcel: null, reason: 'held' });
+      mount(payload({ works: [work()] }), { canWrite: true, bench: { claimNext } });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Take next task' }));
+
+      expect(await screen.findByText('That one just went on hold. Try again.')).toBeInTheDocument();
+    });
+
+    it('names the standing lock rather than a lost race, when the parcel is not claimable at all', async () => {
+      // `not-claimable` is the ADR-074 pre-assignment lock — a standing fact
+      // about who this parcel is for, distinct from `claimed-by-someone-else`
+      // above. Sending a packer to "try again" for a parcel that will keep
+      // refusing them is the wrong remedy.
+      const claimNext = vi
+        .fn()
+        .mockResolvedValue({ outcome: 'refused', parcel: null, reason: 'not-claimable' });
+      mount(payload({ works: [work()] }), { canWrite: true, bench: { claimNext } });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Take next task' }));
+
+      expect(
+        await screen.findByText('That one is already assigned to someone. Try a different one.')
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Someone got there first. Try again — there may be more.')
+      ).not.toBeInTheDocument();
     });
 
     it('renders the packed-today tab as a read-only log with no open control', async () => {

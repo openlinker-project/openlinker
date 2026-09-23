@@ -26,6 +26,7 @@
  * | `no-weight` | `business_failure` — a variant carries no weight and no fallback is configured; deterministic until an operator acts |
  * | `no-address` | `business_failure` — the recipient projection could not produce a deliverable address |
  * | `no-delivery-method` (`UndispatchableResolutionException`) | `business_failure` — the resolved processor cannot fulfil this delivery shape; a routing/config fact, not a timing one |
+ * | `shipment-claimed-by-sibling-work` (`FulfillmentWorkDispatchConflictException`, #3340 follow-up) | `business_failure` — a split order's ALREADY-active shipment cannot be attributed to this work; a persisted-state fact, not a timing one |
  * | `work-not-eligible`, SETTLED state (order held / payment not cleared) | `business_failure` — the order's current state refuses dispatch; the state is durable, and blindly retrying re-crosses no boundary that would answer differently |
  * | `work-not-eligible`, TIMING state (work/order not found yet, snapshot not readable yet) | **throws** (retryable) — this is exactly the same race `FulfillmentWorkDispatchHandler.resolveShipTo` already tolerates |
  * | carrier rejection / contended dispatch / any other adapter or infra failure | **throws** (retryable) — a carrier timeout or a transient outage is not something this handler can rule out fixing itself; the per-adapter `RetryClassifierPort` (if any) gets the final say via the ordinary retry ladder |
@@ -57,6 +58,7 @@ import {
 } from '@openlinker/core/orders';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import {
+  FulfillmentWorkDispatchConflictException,
   OrderNotDispatchableHeldException,
   OrderNotDispatchablePaymentStatusException,
   SHIPMENT_DISPATCH_SERVICE_TOKEN,
@@ -99,7 +101,9 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
 
   async execute(job: SyncJob): Promise<SyncJobHandlerResult> {
     const payload = this.validatePayload(job);
-    if (payload === null) return { outcome: 'business_failure' };
+    if (payload === null) {
+      return { outcome: 'business_failure', outcomeReason: 'auto_dispatch_payload_invalid' };
+    }
 
     // `not-enabled` — re-checked here even though the producer already gated
     // the enqueue on it, because the connection may have been reconfigured in
@@ -110,7 +114,7 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
         `fulfillment.work.autoDispatch refused (not-enabled): workId=${payload.workId} ` +
           `connectionId=${job.connectionId}`
       );
-      return { outcome: 'business_failure' };
+      return { outcome: 'business_failure', outcomeReason: 'auto_dispatch_not_enabled' };
     }
 
     // `already-has-label` — buy at most once. Not a failure: the "buy at most
@@ -135,7 +139,7 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
         `fulfillment.work.autoDispatch refused (no-weight): workId=${payload.workId} ` +
           `connectionId=${job.connectionId}`
       );
-      return { outcome: 'business_failure' };
+      return { outcome: 'business_failure', outcomeReason: 'auto_dispatch_no_weight' };
     }
 
     const record = await this.orderRecords.getOrderRecord(payload.orderId);
@@ -182,7 +186,7 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
         `fulfillment.work.autoDispatch refused (no-address): workId=${payload.workId} ` +
           `orderId=${payload.orderId}`
       );
-      return { outcome: 'business_failure' };
+      return { outcome: 'business_failure', outcomeReason: 'auto_dispatch_no_address' };
     }
 
     const input: ShipmentDispatchInput = {
@@ -193,6 +197,13 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
       orderId: payload.orderId,
       recipient,
       parcel,
+      // #3340 follow-up: this handler is one of TWO jobs a split order can
+      // enqueue (one per FulfillmentWork), and `dispatch()` resolves an
+      // "already active" shipment by ORDER alone. Naming the work here is
+      // what lets the seam tell "this is my own label" apart from "a sibling
+      // work already has a label and this is not it" — see
+      // `FulfillmentWorkDispatchConflictException`.
+      fulfillmentWorkId: payload.workId,
     };
 
     try {
@@ -222,7 +233,7 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
           `fulfillment.work.autoDispatch refused (work-not-eligible): workId=${payload.workId} ` +
             `orderId=${payload.orderId} reason=${error.message}`
         );
-        return { outcome: 'business_failure' };
+        return { outcome: 'business_failure', outcomeReason: 'auto_dispatch_work_not_eligible' };
       }
       if (error instanceof UndispatchableResolutionException) {
         // `no-delivery-method` — a routing/config fact (the resolved
@@ -232,7 +243,23 @@ export class FulfillmentWorkAutoDispatchHandler implements SyncJobHandler {
           `fulfillment.work.autoDispatch refused (no-delivery-method): workId=${payload.workId} ` +
             `orderId=${payload.orderId} reason=${error.message}`
         );
-        return { outcome: 'business_failure' };
+        return { outcome: 'business_failure', outcomeReason: 'auto_dispatch_no_delivery_method' };
+      }
+      if (error instanceof FulfillmentWorkDispatchConflictException) {
+        // #3340 follow-up: the order has more than one live work and the
+        // already-active shipment `dispatch()` found cannot be attributed to
+        // THIS one. Terminal — the ambiguity is a persisted-state fact about
+        // the order (#2727 is the line-grain fix), and a blind retry cannot
+        // resolve it; an operator dispatches this work's own label by hand.
+        this.logger.warn(
+          'fulfillment.work.autoDispatch refused ' +
+            `(shipment-claimed-by-sibling-work): workId=${payload.workId} ` +
+            `orderId=${payload.orderId} reason=${error.message}`
+        );
+        return {
+          outcome: 'business_failure',
+          outcomeReason: 'auto_dispatch_shipment_claimed_by_sibling_work',
+        };
       }
       // `carrier-refused` and every other adapter/infra failure (a
       // `ShippingProviderRejectionException`, a `ShipmentDispatchContendedException`,

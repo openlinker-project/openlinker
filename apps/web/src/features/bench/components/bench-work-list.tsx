@@ -88,6 +88,30 @@ export interface BenchWorkListProps {
 
 type BenchRailTab = 'bench' | 'hold' | 'done';
 
+/**
+ * Which sentence a refused claim gets — either "take next task" or a direct
+ * "claim this parcel" (#3412/#3415).
+ *
+ * `not-claimable` and `claimed-by-someone-else` are DIFFERENT facts and must
+ * read differently: the first is the standing ADR-074 lock — a supervisor
+ * assigned this parcel elsewhere, and retrying changes nothing — while the
+ * second is a peer winning the race between the read that offered it and the
+ * write, which a retry genuinely can win. Telling a packer "this is not
+ * yours" about a parcel that was theirs to take a moment ago sends them to a
+ * supervisor for nothing.
+ *
+ * An unrecognised reason falls back to the race sentence rather than to the
+ * lock or the empty-queue one: this build not knowing the word is not
+ * evidence of a standing lock or an empty queue, and "try again" is the safe
+ * reading of a refusal this build cannot name.
+ */
+function claimNextRefusalNotice(reason: string | null): string {
+  if (reason === 'held') return benchWorkCopy.tabs.takeNextHeld;
+  if (reason === 'cancelled') return benchWorkCopy.tabs.takeNextCancelled;
+  if (reason === 'not-claimable') return benchWorkCopy.tabs.takeNextLocked;
+  return benchWorkCopy.tabs.takeNextTaken;
+}
+
 export function BenchWorkList({
   now,
   onOpenParcel,
@@ -114,6 +138,16 @@ export function BenchWorkList({
   const [rejectedScan, setRejectedScan] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<BenchRailTab>('bench');
   const [claimNextNotice, setClaimNextNotice] = useState<string | null>(null);
+  /**
+   * Why the last DIRECT claim was refused, or `null`.
+   *
+   * Separate from `claimNextNotice` because the two sit in different places —
+   * that one under the "Take next task" button it belongs to, this one in the
+   * alert strip beside `claim.error`, which is the other way this same button
+   * can fail. Sharing one slot would put a message about a parcel the packer
+   * picked under a button they did not press.
+   */
+  const [claimRefusal, setClaimRefusal] = useState<string | null>(null);
 
   /** Lets the `N` hotkey reach the handler defined below. */
   const takeNextRef = useRef<() => void>(() => undefined);
@@ -222,6 +256,14 @@ export function BenchWorkList({
       onSuccess: (result) => {
         if (result.outcome === 'nothing-to-claim') {
           setClaimNextNotice(benchWorkCopy.tabs.takeNextEmpty);
+          return;
+        }
+        if (result.outcome === 'refused') {
+          // NOT the empty-queue message. A parcel was found and lost, so the
+          // rail is still holding rows and "nothing here" would contradict
+          // what the packer is looking at. Every reason says "try again",
+          // because in each case there genuinely may be more.
+          setClaimNextNotice(claimNextRefusalNotice(result.reason));
         }
       },
     });
@@ -255,7 +297,18 @@ export function BenchWorkList({
             onClaim={
               canClaim
                 ? (target: BenchWork): void => {
-                    claim.mutate(target.workId);
+                    setClaimRefusal(null);
+                    claim.mutate(target.workId, {
+                      onSuccess: (result) => {
+                        // A refusal arrives as a 200, so `claim.error` stays
+                        // null and nothing rendered at all: the packer clicked
+                        // and the screen did not move. Reported here instead,
+                        // in the same words the "take next" refusal uses.
+                        if (result.outcome === 'refused') {
+                          setClaimRefusal(claimNextRefusalNotice(result.reason));
+                        }
+                      },
+                    });
                   }
                 : undefined
             }
@@ -417,6 +470,8 @@ export function BenchWorkList({
       ) : null}
 
       {claim.error ? <Alert tone="warning">{benchWorkCopy.tabs.claimFailed}</Alert> : null}
+
+      {claimRefusal === null ? null : <Alert tone="warning">{claimRefusal}</Alert>}
 
       {write.demoReadOnly ? <Alert tone="info">{DEMO_READ_ONLY_ACTION_MESSAGE}</Alert> : null}
 

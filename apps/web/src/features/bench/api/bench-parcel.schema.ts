@@ -32,6 +32,7 @@ import type {
   BenchParcel,
   BenchPresence,
   BenchReopenResult,
+  BenchUndoCompletionResult,
   BenchUndoResult,
   BenchUnlabelledParcelList,
   BenchVerificationResult,
@@ -86,6 +87,7 @@ export const benchParcelSchema = z.object({
   holdReason: nullableString,
   closedAt: nullableString,
   packedByUserId: nullableString,
+  assignedToUserId: nullableString,
   invoicePrintedAt: nullableString,
   labelPrintedAt: nullableString,
   completedAt: nullableString,
@@ -176,6 +178,16 @@ export function parseBenchCompleteResult(payload: unknown): BenchCompleteResult 
   return benchCompleteResultSchema.parse(payload);
 }
 
+export const benchUndoCompletionResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export function parseBenchUndoCompletionResult(payload: unknown): BenchUndoCompletionResult {
+  return benchUndoCompletionResultSchema.parse(payload);
+}
+
 export function parseBenchDocuments(payload: unknown): BenchDocuments {
   return benchDocumentsSchema.parse(payload);
 }
@@ -208,6 +220,10 @@ export function parseBenchClaimResult(payload: unknown): BenchClaimResult {
 export const benchClaimNextResultSchema = z.object({
   outcome: z.string(),
   parcel: benchParcelSchema.nullish().transform((value) => value ?? null),
+  // Nullish-defaulted, so a response from an API that predates the refusal arm
+  // parses as "no reason given" rather than failing the whole read — which on
+  // this surface would turn a lost race into an error toast.
+  reason: z.string().nullish().transform((value) => value ?? null),
 });
 
 export function parseBenchClaimNextResult(payload: unknown): BenchClaimNextResult {

@@ -142,23 +142,35 @@ export function AssignPackingWorkActions({
         ))}
       </Select>
 
-      {/* Self-serve is a property of an UNASSIGNED task — "anyone may claim
-          this" means nothing once somebody has it — so this gate stays. The
-          action set below is deliberately NOT gated on it: what is legal is
-          the server's answer, not the lane's. */}
-      {isUnassigned ? (
-        <label className="assign-packing-work-actions__self-serve">
-          <input
-            type="checkbox"
-            checked={task.selfServeEligible}
-            disabled={disabled}
-            onChange={(event) => {
-              onToggleSelfServe(event.target.checked);
-            }}
-          />
-          {ASSIGN_PACKING_WORK_COPY.row.selfServeLabel}
-        </label>
-      ) : null}
+      {/* Rendered on EVERY row, assigned or not. It used to be gated on
+          `isUnassigned`, justified by "anyone may claim this means nothing
+          once somebody has it" - which is the opposite of what ADR-074 says.
+          Assignment there is ADVISORY: an assigned parcel stays claimable by
+          any packer, and unticking this is named in the ADR as the explicit
+          escape hatch for a supervisor who wants a HARD assignment. The
+          server agrees - `isClaimableByViewer` reads `selfServeEligible`
+          first, on assigned rows included. So the gate made the one control
+          the ADR provides for hard assignment unreachable from the only
+          screen that assigns anything.
+
+          The label changes with the row's state because the question does:
+          on a pooled row it is about who may pick it up, on an owned one
+          about whether the owner is the only one who may. The action set
+          below is still deliberately NOT gated on it - what is legal is the
+          server's answer, not the lane's. */}
+      <label className="assign-packing-work-actions__self-serve">
+        <input
+          type="checkbox"
+          checked={task.selfServeEligible}
+          disabled={disabled}
+          onChange={(event) => {
+            onToggleSelfServe(event.target.checked);
+          }}
+        />
+        {isUnassigned
+          ? ASSIGN_PACKING_WORK_COPY.row.selfServeLabel
+          : ASSIGN_PACKING_WORK_COPY.row.selfServeAssignedLabel}
+      </label>
 
       {/* One control per entry of `task.supportedActions`, and nothing else
           decides — unchanged from before this menu existed, only relocated.

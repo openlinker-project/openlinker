@@ -83,6 +83,24 @@ export const benchWorkCopy = {
     takeNextAction: 'Take next task',
     takeNextEmpty: 'Nothing unassigned right now.',
     takeNextFailed: 'That did not go through. The list has been refreshed — try again.',
+    /**
+     * A parcel WAS found and then lost, so this must not say the queue is
+     * empty — the rail behind the message is still showing rows, and a packer
+     * reading "nothing here" over a full list concludes the button is broken.
+     */
+    takeNextTaken: 'Someone got there first. Try again — there may be more.',
+    /** The same race, but the parcel went on hold rather than to a packer. */
+    takeNextHeld: 'That one just went on hold. Try again.',
+    /** The order was cancelled between picking it and taking it. */
+    takeNextCancelled: 'That order was just cancelled. Try again.',
+    /**
+     * The standing ADR-074 lock, NOT a lost race — a different fact from
+     * `takeNextTaken` and must not borrow its words. That sentence tells a
+     * packer to try again for a parcel that will keep refusing them; this one
+     * names the actual state, so they stop retrying a box that was never
+     * going to open.
+     */
+    takeNextLocked: 'That one is already assigned to someone. Try a different one.',
     noSectionMatches: 'Nothing here matches what you typed.',
   },
 

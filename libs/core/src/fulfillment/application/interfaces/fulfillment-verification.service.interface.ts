@@ -38,6 +38,8 @@ import type {
   ParcelVerificationState,
   ReopenParcelInput,
   ReopenParcelResult,
+  UndoCompletionInput,
+  UndoCompletionResult,
   UndoLastVerificationInput,
   UndoLastVerificationResult,
   VerifyUnitInput,
@@ -127,4 +129,16 @@ export interface IFulfillmentVerificationService {
    *   any shipped caller, which always resolves the work first.
    */
   complete(input: CompleteInput): Promise<CompleteResult>;
+
+  /**
+   * Take back a declared completion (#3340 follow-up) — the undo `complete`
+   * needed. Unlike `reopenParcel`, this touches ONLY `completedAt` /
+   * `completedByUserId`: the box itself was correctly packed, so the
+   * verification ledger and `parcelClosedAt` are untouched.
+   *
+   * Never throws for a modelled refusal: a parcel that was never completed
+   * and a stale token are both ordinary answers a caller must be shown, not
+   * errors.
+   */
+  undoCompletion(input: UndoCompletionInput): Promise<UndoCompletionResult>;
 }

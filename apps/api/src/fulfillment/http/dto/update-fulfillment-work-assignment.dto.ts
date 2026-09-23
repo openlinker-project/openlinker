@@ -1,23 +1,29 @@
 /**
- * Assignment PATCH request DTO (#3337, ADR-074)
+ * Assignment PATCH request DTO (#3337, ADR-074; `expectedVersion` #3340
+ * second follow-up)
  *
- * Both fields are optional and independently applied — `undefined` means
- * "leave alone". `assignedToUserId` additionally distinguishes `null` (clear)
- * from a UUID (set/reassign): `@ValidateIf` skips `@IsUUID` when the value is
- * `null`, so a caller may send either without one shape failing the other
- * (the `pricing-sync-setting.dto.ts` precedent for a nullable-but-typed
- * field).
+ * `assignedToUserId` and `selfServeEligible` are optional and independently
+ * applied — `undefined` means "leave alone". `assignedToUserId` additionally
+ * distinguishes `null` (clear) from a UUID (set/reassign): `@ValidateIf`
+ * skips `@IsUUID` when the value is `null`, so a caller may send either
+ * without one shape failing the other (the `pricing-sync-setting.dto.ts`
+ * precedent for a nullable-but-typed field).
  *
- * The core service refuses a body naming NEITHER field
+ * The core service refuses a body naming NEITHER of those two fields
  * (`EmptyFulfillmentWorkAssignmentUpdateError`) — this DTO does not, because
  * "both absent" and "both explicitly omitted by a client that sent `{}`" are
  * indistinguishable at the transport layer, and the service's refusal already
  * covers it with a name a client can act on.
  *
+ * `expectedVersion` is a THIRD, independently optional field: a lost-update
+ * guard, not a staffing field, so its absence is never a reason to refuse the
+ * body — omitting it keeps a pre-existing caller's unconditional write
+ * unchanged.
+ *
  * @module apps/api/src/fulfillment/http/dto
  */
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsUUID, ValidateIf } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsUUID, Min, ValidateIf } from 'class-validator';
 
 export class UpdateFulfillmentWorkAssignmentDto {
   @ApiPropertyOptional({
@@ -42,4 +48,16 @@ export class UpdateFulfillmentWorkAssignmentDto {
   @IsOptional()
   @IsBoolean()
   selfServeEligible?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'The version this caller read the parcel at (#3340 second follow-up). When supplied, ' +
+      "every write this PATCH performs is guarded against it and a peer's write that moved " +
+      'the version first answers 409 rather than being silently overwritten. Omit to keep the ' +
+      'pre-existing unconditional behaviour.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  expectedVersion?: number;
 }

@@ -95,6 +95,13 @@ export const ASSIGN_PACKING_WORK_COPY = {
     moveToUnassigned: 'Unassigned',
     selfServeLabel: 'Anyone may claim this',
     /**
+     * The SAME control on a row that already has a packer. It is not a
+     * different setting - it is the one ADR-074 calls the escape hatch - but
+     * it answers a different question there, so it says so. Unticked it is a
+     * hard assignment: the named packer, nobody else.
+     */
+    selfServeAssignedLabel: 'Anyone may still take this',
+    /**
      * The overflow-menu trigger holding the server-declared action set
      * (Hold, Release hold, Force cancel, …) — the mockup's own reason for a
      * card-level menu: five inline buttons made every card a different
@@ -107,7 +114,26 @@ export const ASSIGN_PACKING_WORK_COPY = {
     // label now comes from `fulfillmentActionLabel` via `FulfillmentTaskActions`,
     // so the button reads "Put on hold" here exactly as it does on the order
     // panel — one action, one word for it.
+    /**
+     * Why these are five sentences and not one (#3415).
+     *
+     * They used to share `moveFailed`, whose second half - "Nothing has
+     * changed" - is a CLAIM, and on a 5xx or a dropped connection it is a
+     * claim OpenLinker cannot make: the write may well have landed. The
+     * others each have a different remedy, and a supervisor told "could not
+     * move this task" when the real answer is "somebody moved it first" will
+     * try the same thing again.
+     *
+     * `staffingFailed` is the fallback rather than a sixth case, and it is
+     * deliberately vague about what did or did not happen, because an
+     * unrecognised status is exactly the case where we do not know.
+     */
     moveFailed: 'Could not move this task. Nothing has changed.',
+    moveForbidden: 'You are not allowed to reassign work.',
+    moveNotFound: 'That task is no longer here. The board has been refreshed.',
+    moveConflict: 'Somebody changed this task first. The board has been refreshed.',
+    moveUnknown: 'That did not go through, and we could not tell whether it landed. Check the board.',
+    selfServeFailed: 'Could not change who may claim this. Nothing has changed.',
     /** #3429 — only errors toasted before; a successful staffing change said nothing. */
     moveSucceeded: 'Task moved.',
     selfServeUpdated: 'Self-serve eligibility updated.',

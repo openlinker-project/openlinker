@@ -271,12 +271,20 @@ export class FulfillmentWorkController {
     summary: "A supervisor's staffing decision for one parcel",
     description:
       "Pre-assign, reassign or clear a packer, and/or set whether other packers may still " +
-      "work it. NOT gated by the optimistic token — ADR-074 places this outside the " +
-      "authority-matrix legality this surface's actions enforce.",
+      'work it. ADR-074 places this outside the authority-matrix LEGALITY `applyAction`\'s ' +
+      "actions enforce — which system may act — but that says nothing about a lost-update " +
+      'guard, which is an orthogonal concern: an OPTIONAL `expectedVersion` protects a ' +
+      "caller's own read from being silently overwritten by a peer's write it never saw. " +
+      'A mismatch answers 409 with the current version and a refreshed action set, the same ' +
+      'shape every other guarded action on this surface already answers with.',
   })
   @ApiResponse({ status: 200, type: FulfillmentWorkResponseDto })
   @ApiResponse({ status: 400, description: 'Neither field was supplied' })
   @ApiResponse({ status: 404, description: 'No such fulfilment task' })
+  @ApiResponse({
+    status: 409,
+    description: 'expectedVersion was supplied and somebody else moved the work first',
+  })
   async updateAssignment(
     @Param('workId') workId: string,
     @Body() body: UpdateFulfillmentWorkAssignmentDto
@@ -286,6 +294,7 @@ export class FulfillmentWorkController {
         workId,
         assignedToUserId: body.assignedToUserId,
         selfServeEligible: body.selfServeEligible,
+        expectedVersion: body.expectedVersion,
       });
       return this.toDto(work, await this.loadFacts([work]));
     } catch (error) {

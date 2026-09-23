@@ -432,6 +432,185 @@ describe('FulfillmentWorkRepository', () => {
     });
   });
 
+  describe('claimAssignment (#3340 follow-up) — the exclusive unassigned -> mine transition', () => {
+    it('should guard on "assignedToUserId" IS NULL, unlike assignToPacker', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.claimAssignment('w1', 'user-1')).resolves.toBe(true);
+      expect(argsOf(qb.andWhere as Mock)).toContain('"assignedToUserId" IS NULL');
+      expect(firstArgOf<Record<string, unknown>>(qb.set as Mock)).toMatchObject({
+        assignedToUserId: 'user-1',
+      });
+    });
+
+    it('should report not-applied — never a false success — when a peer claimed it first', async () => {
+      const qb = updateQueryBuilder({ affected: 0 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.claimAssignment('w1', 'user-1')).resolves.toBe(false);
+    });
+
+    it('should bump version — the terminal legality-gated act on this surface', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await repo.claimAssignment('w1', 'user-1');
+
+      const setArg = firstArgOf<Record<string, unknown>>(qb.set as Mock);
+      expect((setArg.version as () => string)()).toBe('"version" + 1');
+    });
+  });
+
+  describe('assignToPacker / clearAssignment / setSelfServeEligible — the lost-update guard (#3340 second follow-up)', () => {
+    it('should compose the optional expectedVersion guard with assignToPacker’s existence-only precondition', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await repo.assignToPacker('w1', 'user-1', 4);
+
+      expect(argsOf(qb.andWhere as Mock)).toContain('"version" = :expectedVersion');
+      expect(argsOf(qb.andWhere as Mock)).not.toContain('"assignedToUserId" IS NULL');
+    });
+
+    it('should NOT add a version guard when expectedVersion is omitted — every pre-existing caller unchanged', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await repo.assignToPacker('w1', 'user-1');
+
+      expect(argsOf(qb.andWhere as Mock)).not.toContain('"version" = :expectedVersion');
+    });
+
+    it('should compose the version guard with clearAssignment’s own IS NOT NULL precondition', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await repo.clearAssignment('w1', 4);
+
+      const guards = argsOf(qb.andWhere as Mock);
+      expect(guards).toContain('"assignedToUserId" IS NOT NULL');
+      expect(guards).toContain('"version" = :expectedVersion');
+    });
+
+    it('should apply the version guard to setSelfServeEligible too', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await repo.setSelfServeEligible('w1', true, 4);
+
+      expect(argsOf(qb.andWhere as Mock)).toContain('"version" = :expectedVersion');
+    });
+  });
+
+  describe('undoCompletion (#3340 follow-up) — the mirror of claimCompletion', () => {
+    it('should guard on "completedAt" IS NOT NULL and clear both completion columns', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.undoCompletion({ workId: 'w1', expectedVersion: 3 })).resolves.toBe(true);
+
+      const guards = argsOf(qb.andWhere as Mock);
+      expect(guards).toContain('"completedAt" IS NOT NULL');
+      expect(guards).toContain('"version" = :expectedVersion');
+      expect(firstArgOf<Record<string, unknown>>(qb.set as Mock)).toMatchObject({
+        completedAt: null,
+        completedByUserId: null,
+      });
+    });
+
+    it('should bump version, mirroring claimCompletion', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await repo.undoCompletion({ workId: 'w1', expectedVersion: 0 });
+
+      const setArg = firstArgOf<Record<string, unknown>>(qb.set as Mock);
+      expect((setArg.version as () => string)()).toBe('"version" + 1');
+    });
+
+    it('should report not-applied when the guard does not hold', async () => {
+      const qb = updateQueryBuilder({ affected: 0 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.undoCompletion({ workId: 'w1', expectedVersion: 0 })).resolves.toBe(false);
+    });
+  });
+
+  describe('reopenParcel clears a stale completion (#3340 follow-up)', () => {
+    /** `reopenParcel` needs BOTH a header UPDATE and a verification-void UPDATE, in one transaction. */
+    const makeReopenManager = (headerAffected: number) => {
+      const headerQb = updateQueryBuilder({ affected: headerAffected });
+      const voidQb = updateQueryBuilder({ affected: 0 });
+      const calls: unknown[] = [];
+      const manager = {
+        createQueryBuilder: jest.fn(() => {
+          calls.push(undefined);
+          return calls.length === 1 ? headerQb : voidQb;
+        }),
+      };
+      return { manager, headerQb, voidQb };
+    };
+
+    it('should clear completedAt and completedByUserId in the SAME statement as parcelClosedAt', async () => {
+      const { manager, headerQb } = makeReopenManager(1);
+      const { repo } = makeRepository({
+        dataSource: { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) },
+      });
+
+      const result = await repo.reopenParcel({
+        workId: 'w1',
+        reopenedByUserId: 'user-1',
+        reopenedAt: new Date(),
+      });
+
+      expect(result).toBe(true);
+      expect(firstArgOf<Record<string, unknown>>(headerQb.set as Mock)).toMatchObject({
+        parcelClosedAt: null,
+        packedByUserId: null,
+        packedByService: null,
+        completedAt: null,
+        completedByUserId: null,
+      });
+    });
+
+    it('should report not-applied, and void nothing, when the parcel was not closed', async () => {
+      const { manager, voidQb } = makeReopenManager(0);
+      const { repo } = makeRepository({
+        dataSource: { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) },
+      });
+
+      const result = await repo.reopenParcel({
+        workId: 'w1',
+        reopenedByUserId: 'user-1',
+        reopenedAt: new Date(),
+      });
+
+      expect(result).toBe(false);
+      expect(voidQb.execute).not.toHaveBeenCalled();
+    });
+  });
+
   describe('empty transition preconditions', () => {
     it('should report not-applied rather than emitting IN () for an empty from-set', async () => {
       // `IN ()` is a syntax error, not an empty set — the caller would otherwise

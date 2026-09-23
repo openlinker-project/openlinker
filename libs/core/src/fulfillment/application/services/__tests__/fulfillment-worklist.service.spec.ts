@@ -354,7 +354,7 @@ describe('FulfillmentWorklistService', () => {
 
       await makeService(repo).updateAssignment({ workId: 'work-1', assignedToUserId: 'user-9' });
 
-      expect(repo.assignToPacker).toHaveBeenCalledWith('work-1', 'user-9');
+      expect(repo.assignToPacker).toHaveBeenCalledWith('work-1', 'user-9', undefined);
     });
 
     it('should clear an assignment on an explicit null, never on omission', async () => {
@@ -365,7 +365,7 @@ describe('FulfillmentWorklistService', () => {
 
       await makeService(repo).updateAssignment({ workId: 'work-1', assignedToUserId: null });
 
-      expect(repo.clearAssignment).toHaveBeenCalledWith('work-1');
+      expect(repo.clearAssignment).toHaveBeenCalledWith('work-1', undefined);
       expect(repo.assignToPacker).not.toHaveBeenCalled();
     });
 
@@ -382,7 +382,7 @@ describe('FulfillmentWorklistService', () => {
 
       await makeService(repo).updateAssignment({ workId: 'work-1', selfServeEligible: false });
 
-      expect(repo.setSelfServeEligible).toHaveBeenCalledWith('work-1', false);
+      expect(repo.setSelfServeEligible).toHaveBeenCalledWith('work-1', false, undefined);
       expect(assignToPacker).not.toHaveBeenCalled();
     });
 
@@ -432,11 +432,92 @@ describe('FulfillmentWorklistService', () => {
         selfServeEligible: false,
       });
 
-      expect(repo.assignToPacker).toHaveBeenCalledWith('work-1', 'user-9');
-      expect(repo.setSelfServeEligible).toHaveBeenCalledWith('work-1', false);
+      expect(repo.assignToPacker).toHaveBeenCalledWith('work-1', 'user-9', undefined);
+      expect(repo.setSelfServeEligible).toHaveBeenCalledWith('work-1', false, undefined);
     });
 
-    it('should raise not-found when the work object is gone, regardless of which write "failed"', async () => {
+    it('threads the bumped version forward when both axes are supplied with an expectedVersion', async () => {
+      // #3340 second follow-up: the SECOND write must be guarded against the
+      // version the FIRST write's own bump produces, never the caller's
+      // original token — or a legitimate two-field PATCH would fail its own
+      // second half every single time.
+      const repo = makeRepo({
+        assignToPacker: jest.fn().mockResolvedValue(true),
+        setSelfServeEligible: jest.fn().mockResolvedValue(true),
+      });
+
+      await makeService(repo).updateAssignment({
+        workId: 'work-1',
+        assignedToUserId: 'user-9',
+        selfServeEligible: false,
+        expectedVersion: 4,
+      });
+
+      expect(repo.assignToPacker).toHaveBeenCalledWith('work-1', 'user-9', 4);
+      expect(repo.setSelfServeEligible).toHaveBeenCalledWith('work-1', false, 5);
+    });
+
+    it('does not advance the threaded version when the first write did not apply', async () => {
+      // If the first write lost the race, the second must be guarded against
+      // the CALLER's original token, not a bump that never happened.
+      const repo = makeRepo({
+        assignToPacker: jest.fn().mockResolvedValue(false),
+        setSelfServeEligible: jest.fn().mockResolvedValue(true),
+        findById: jest.fn().mockResolvedValue(workAt({ version: 4 })),
+      });
+
+      await makeService(repo).updateAssignment({
+        workId: 'work-1',
+        assignedToUserId: 'user-9',
+        selfServeEligible: false,
+        expectedVersion: 4,
+      });
+
+      expect(repo.setSelfServeEligible).toHaveBeenCalledWith('work-1', false, 4);
+    });
+
+    it('raises a version conflict when a guarded write did not apply and the version genuinely differs', async () => {
+      const repo = makeRepo({
+        assignToPacker: jest.fn().mockResolvedValue(false),
+        findById: jest.fn().mockResolvedValue(workAt({ version: 7 })),
+      });
+
+      const error = await makeService(repo)
+        .updateAssignment({ workId: 'work-1', assignedToUserId: 'user-9', expectedVersion: 4 })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(FulfillmentWorkVersionConflictError);
+    });
+
+    it('does NOT raise a conflict for the ordinary no-op the write already tolerated', async () => {
+      // clearAssignment on an already-unassigned row: the version matches
+      // exactly what the caller supplied, so the guard's own STATE
+      // precondition (not a lost update) is what refused.
+      const repo = makeRepo({
+        clearAssignment: jest.fn().mockResolvedValue(false),
+        findById: jest.fn().mockResolvedValue(workAt({ version: 4 })),
+      });
+
+      await expect(
+        makeService(repo).updateAssignment({
+          workId: 'work-1',
+          assignedToUserId: null,
+          expectedVersion: 4,
+        })
+      ).resolves.toBeDefined();
+    });
+
+    it('leaves expectedVersion untouched (never called with it) when the caller omits it', async () => {
+      const repo = makeRepo({
+        assignToPacker: jest.fn().mockResolvedValue(true),
+      });
+
+      await makeService(repo).updateAssignment({ workId: 'work-1', assignedToUserId: 'user-9' });
+
+      expect(repo.assignToPacker).toHaveBeenCalledWith('work-1', 'user-9', undefined);
+    });
+
+    it('raises not-found when the work object is gone, regardless of which write "failed"', async () => {
       const repo = makeRepo({
         assignToPacker: jest.fn().mockResolvedValue(false),
         findById: jest.fn().mockResolvedValue(null),

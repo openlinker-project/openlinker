@@ -272,4 +272,33 @@ export interface UpdateFulfillmentWorkAssignmentInput {
   readonly workId: string;
   readonly assignedToUserId?: string | null;
   readonly selfServeEligible?: boolean;
+  /**
+   * An OPTIONAL lost-update guard (#3340 second follow-up) — orthogonal to
+   * ADR-074's "outside the authority matrix" placement, which is about
+   * LEGALITY (which system may act), not about protecting a caller's own
+   * read from being silently overwritten. Without it, two supervisors
+   * dragging the same task to two different packers both received a 200,
+   * last write winning with neither told.
+   *
+   * Optional so every existing caller (one that has not read a version to
+   * supply) keeps today's unconditional behaviour on deploy. When supplied,
+   * a mismatch — on EITHER write this input fans out to — raises
+   * `FulfillmentWorkVersionConflictError`, the `applyAction` convention.
+   */
+  readonly expectedVersion?: number;
+}
+
+/**
+ * What `claimAssignment` answers (#3340 follow-up).
+ *
+ * `work` is the FRESH read either way — a successful claim's own effect, or
+ * (on `claimed: false`) the row a peer's claim just moved underneath the
+ * caller. A caller must never project the pre-write object it read before
+ * calling this method: that is precisely the stale-view bug this method
+ * exists to close (two packers both being told they "claimed" a parcel that
+ * only one of them actually holds).
+ */
+export interface ClaimFulfillmentWorkAssignmentResult {
+  readonly claimed: boolean;
+  readonly work: FulfillmentWorkView;
 }

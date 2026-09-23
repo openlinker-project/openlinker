@@ -85,6 +85,7 @@ function parcel(over: Partial<BenchParcel> = {}): BenchParcel {
     holdReason: null,
     closedAt: null,
     packedByUserId: null,
+    assignedToUserId: null,
     invoicePrintedAt: null,
     labelPrintedAt: null,
     completedAt: null,
@@ -727,7 +728,12 @@ describe('BenchParcelView (#2418)', () => {
       expect(completeParcel).not.toHaveBeenCalled();
     });
 
-    it('should print the label from inside the confirm, and let the packer go ahead anyway', async () => {
+    // Regression (#3340): the label print used to go through
+    // `apiClient.shipments.downloadLabel(shipmentId)`, the route any caller
+    // with a shipment id can reach and which no longer stamps a print. It now
+    // goes through `apiClient.bench.downloadLabel(workId)` — the ONLY route
+    // that stamps `labelPrintedAt`, reachable only through the work.
+    it('should print the label THROUGH THE WORK, not the shipment id, and let the packer go ahead anyway', async () => {
       const user = userEvent.setup();
       const downloadLabel = vi.fn().mockResolvedValue(new Blob(['%PDF']));
       const completeParcel = vi.fn().mockResolvedValue({
@@ -744,14 +750,14 @@ describe('BenchParcelView (#2418)', () => {
         }),
         { completeParcel }
       );
-      apiClient.shipments.downloadLabel = downloadLabel;
+      apiClient.bench.downloadLabel = downloadLabel;
 
       await user.click(await screen.findByRole('button', { name: /mark as done here/i }));
       const dialog = await screen.findByRole('dialog');
 
       await user.click(within(dialog).getByRole('button', { name: /print the label/i }));
       await waitFor(() => {
-        expect(downloadLabel).toHaveBeenCalledWith('ol_shipment_1');
+        expect(downloadLabel).toHaveBeenCalledWith('w-1');
       });
 
       // The packer goes ahead regardless — the dialog never blocks a
@@ -858,6 +864,178 @@ describe('BenchParcelView (#2418)', () => {
       expect(screen.queryByText(/on the trolley/i)).not.toBeInTheDocument();
       expect(screen.queryByText(/\bsent\b/i)).not.toBeInTheDocument();
       expect(screen.getByText(/off your bench now/i)).toBeInTheDocument();
+    });
+  });
+
+  // ── Take back a completion (#3415) — the way back that is not a reopen ──
+  describe('take back a completion', () => {
+    it('should offer "Take this back" only once the parcel is completed', async () => {
+      mount(parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: null }));
+      await screen.findByRole('button', { name: /mark as done here/i });
+
+      expect(
+        screen.queryByRole('button', { name: /take this back/i })
+      ).not.toBeInTheDocument();
+    });
+
+    it('should offer "Take this back" on a completed parcel', async () => {
+      mount(
+        parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' })
+      );
+
+      expect(
+        await screen.findByRole('button', { name: /take this back/i })
+      ).toBeInTheDocument();
+    });
+
+    it('should send the token read WITH the parcel', async () => {
+      const user = userEvent.setup();
+      const undoCompletion = vi.fn().mockResolvedValue({
+        outcome: 'undone',
+        reason: null,
+        parcel: parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: null, version: 11 }),
+      });
+      mount(
+        parcel({
+          closedAt: '2026-09-04T14:32:00Z',
+          completedAt: '2026-09-04T14:40:00Z',
+          version: 10,
+        }),
+        { undoCompletion }
+      );
+
+      await user.click(await screen.findByRole('button', { name: /take this back/i }));
+
+      await waitFor(() => {
+        expect(undoCompletion).toHaveBeenCalledWith('w-1', 10);
+      });
+    });
+
+    it('should return to the ordinary completion action once undone', async () => {
+      const user = userEvent.setup();
+      const undoCompletion = vi.fn().mockResolvedValue({
+        outcome: 'undone',
+        reason: null,
+        parcel: parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: null, version: 11 }),
+      });
+      mount(
+        parcel({
+          closedAt: '2026-09-04T14:32:00Z',
+          completedAt: '2026-09-04T14:40:00Z',
+          version: 10,
+        }),
+        { undoCompletion }
+      );
+
+      await user.click(await screen.findByRole('button', { name: /take this back/i }));
+
+      // The undo mutation's own `setQueryData` replaces the cache with the
+      // fresh, un-completed parcel, so the panel falls back out of the
+      // completed branch on the next render.
+      expect(
+        await screen.findByRole('button', { name: /mark as done here/i })
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /take this back/i })).not.toBeInTheDocument();
+    });
+
+    it('should say a stale token means the screen has moved on', async () => {
+      const user = userEvent.setup();
+      const undoCompletion = vi.fn().mockResolvedValue({
+        outcome: 'refused',
+        reason: 'version-conflict',
+        parcel: parcel({
+          closedAt: '2026-09-04T14:32:00Z',
+          completedAt: '2026-09-04T14:40:00Z',
+          version: 11,
+        }),
+      });
+      mount(
+        parcel({
+          closedAt: '2026-09-04T14:32:00Z',
+          completedAt: '2026-09-04T14:40:00Z',
+          version: 10,
+        }),
+        { undoCompletion }
+      );
+
+      await user.click(await screen.findByRole('button', { name: /take this back/i }));
+
+      expect(await screen.findByText(/somebody else changed this box/i)).toBeInTheDocument();
+    });
+
+    /**
+     * `not-completed` is only ever reached when the box was ALREADY un-done
+     * by a peer — core's own comment on the guard states `completedAt` is
+     * already `null` by the time this reason is reached. The parcel the
+     * server returns therefore already carries the state the packer was
+     * asking for, and the cache write that fact triggers takes the panel
+     * straight back to its ordinary, not-yet-completed shape — the same good
+     * ending as a genuine `undone`, reached by a different route.
+     */
+    it('should land on the ordinary completion action, when a race already undid it', async () => {
+      const user = userEvent.setup();
+      const undoCompletion = vi.fn().mockResolvedValue({
+        outcome: 'refused',
+        reason: 'not-completed',
+        parcel: parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: null }),
+      });
+      mount(
+        parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }),
+        { undoCompletion }
+      );
+
+      await user.click(await screen.findByRole('button', { name: /take this back/i }));
+
+      expect(
+        await screen.findByRole('button', { name: /mark as done here/i })
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /take this back/i })).not.toBeInTheDocument();
+    });
+
+    /**
+     * The ADR-074 lock, and it must NOT reuse the trolley-bound wording a held
+     * or cancelled box gets (`verify.notPackable`) — this box is fine, it is
+     * simply assigned to someone else right now, and sending a packer to the
+     * trolley over it would be a real operational error rather than a
+     * wording one.
+     */
+    it('should name the lock without sending the packer back to the trolley', async () => {
+      const user = userEvent.setup();
+      const undoCompletion = vi.fn().mockResolvedValue({
+        outcome: 'refused',
+        reason: 'not-claimable-by-viewer',
+        parcel: parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }),
+      });
+      mount(
+        parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }),
+        { undoCompletion }
+      );
+
+      await user.click(await screen.findByRole('button', { name: /take this back/i }));
+
+      expect(
+        await screen.findByText(/assigned to someone else right now/i)
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/trolley/i)).not.toBeInTheDocument();
+    });
+
+    it('should say something went through wrong, for a refusal this build does not recognise', async () => {
+      const user = userEvent.setup();
+      const undoCompletion = vi.fn().mockResolvedValue({
+        outcome: 'refused',
+        reason: 'something-newer',
+        parcel: parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }),
+      });
+      mount(
+        parcel({ closedAt: '2026-09-04T14:32:00Z', completedAt: '2026-09-04T14:40:00Z' }),
+        { undoCompletion }
+      );
+
+      await user.click(await screen.findByRole('button', { name: /take this back/i }));
+
+      expect(
+        await screen.findByText(/this bench cannot say why/i)
+      ).toBeInTheDocument();
     });
   });
 });

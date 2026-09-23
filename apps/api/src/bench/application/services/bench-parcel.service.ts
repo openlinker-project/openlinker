@@ -75,6 +75,7 @@ import {
 import { readBuyerName, readOrderReference } from '../bench-order-facts';
 import type {
   BenchCompleteInput,
+  BenchUndoCompletionInput,
   BenchReopenInput,
   BenchUndoInput,
   BenchVerifyUnitInput,
@@ -84,6 +85,7 @@ import type {
   BenchActivityEntryView,
   BenchClaimResultView,
   BenchCompleteResultView,
+  BenchUndoCompletionResultView,
   BenchParcelLineView,
   BenchParcelRefusal,
   BenchParcelView,
@@ -172,7 +174,12 @@ export class BenchParcelService implements IBenchParcelService {
       const state = await this.verification.getState(input.workId);
       return {
         outcome: 'refused',
-        reason: 'assigned-to-another-packer',
+        // NOT `'not-packable'`, which is what a held or cancelled parcel
+        // answers and which the bench renders as "take it back to the
+        // trolley". A parcel a supervisor locked mid-pack is perfectly
+        // packable - just not by this packer - so sending it back to the
+        // trolley would be an operational error, not a wording one.
+        reason: 'not-claimable-by-viewer',
         parcel: await this.project(work, state),
       };
     }
@@ -228,7 +235,7 @@ export class BenchParcelService implements IBenchParcelService {
       const state = await this.verification.getState(input.workId);
       return {
         outcome: 'refused',
-        reason: 'assigned-to-another-packer',
+        reason: 'not-claimable-by-viewer',
         parcel: await this.project(work, state),
       };
     }
@@ -326,10 +333,31 @@ export class BenchParcelService implements IBenchParcelService {
       };
     }
 
+    // An UNASSIGNED parcel is claimed through the guarded transition, so two
+    // packers tapping it at the same moment cannot both be told they got it.
+    // `updateAssignment` is existence-only guarded by design - ADR-074's
+    // advisory model needs it that way for a supervisor's reassignment - so
+    // under it both writes landed and both answered `'claimed'`, and the loser
+    // walked off with a parcel somebody else was already packing.
+    if (work.assignedToUserId === null) {
+      const { claimed, work: fresh } = await this.worklist.claimAssignment(workId, viewerId);
+      const state = await this.verification.getState(workId);
+      return {
+        // The FRESH row on both arms, never the pre-write one: on a loss it is
+        // what names the actual holder, and on a win it carries the bumped
+        // token the caller's next guarded action must send.
+        outcome: claimed ? 'claimed' : 'refused',
+        reason: claimed ? null : 'claimed-by-someone-else',
+        parcel: await this.project(fresh, state),
+      };
+    }
+
     // Idempotent: claiming a parcel already assigned to THIS viewer (or
-    // unassigned-but-self-serve) writes the identical value again rather
-    // than being special-cased, so a double-tap or a retried request is
-    // harmless.
+    // assigned elsewhere but still self-serve) writes the identical value
+    // again rather than being special-cased, so a double-tap or a retried
+    // request is harmless. Deliberately NOT routed through the guarded claim
+    // above, which would refuse both of those as "somebody else has it" -
+    // including the packer reclaiming their own parcel.
     const claimed = await this.worklist.updateAssignment({
       workId,
       assignedToUserId: viewerId,
@@ -380,6 +408,44 @@ export class BenchParcelService implements IBenchParcelService {
     const fresh = await this.worklist.get(input.workId);
     const state = await this.verification.getState(input.workId);
     return { outcome: 'completed', reason: null, parcel: await this.project(fresh, state) };
+  }
+
+  async undoCompletion(
+    input: BenchUndoCompletionInput
+  ): Promise<BenchUndoCompletionResultView> {
+    const work = await this.loadBenchWork(input.workId);
+
+    // The SAME lock `completeParcel` checks, checked the same way and first.
+    // Undoing a completion writes the very column completing it wrote, so if
+    // these two ever disagreed a packer locked out of finishing a box could
+    // still un-finish one - which is the worse direction, because it takes a
+    // parcel back off a shelf somebody else is about to ship.
+    if (!isClaimableByViewer(work, input.undoneByUserId)) {
+      const state = await this.verification.getState(input.workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-claimable-by-viewer',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    const result = await this.verification.undoCompletion({
+      workId: input.workId,
+      expectedVersion: input.expectedVersion,
+    });
+
+    if (result.outcome === 'refused') {
+      const state = await this.verification.getState(input.workId);
+      return { outcome: 'refused', reason: result.reason, parcel: await this.project(work, state) };
+    }
+
+    // Re-fetched for the reason `completeParcel` re-fetches: the write cleared
+    // `completedAt` and bumped `version` on the row `work` was loaded from, so
+    // projecting the stale copy would hand back a token that is already dead
+    // and a `completedAt` for a completion this call just took back.
+    const fresh = await this.worklist.get(input.workId);
+    const state = await this.verification.getState(input.workId);
+    return { outcome: 'undone', reason: null, parcel: await this.project(fresh, state) };
   }
 
   async undoLastScan(input: BenchUndoInput): Promise<BenchUndoResultView> {
@@ -611,6 +677,7 @@ export class BenchParcelService implements IBenchParcelService {
       // that changes `completedAt` — `completeParcel` — re-fetches `work`
       // itself before calling `project`, exactly as `claimParcel` already
       // does for `assignedToUserId`.
+      assignedToUserId: work.assignedToUserId,
       invoicePrintedAt: work.invoicePrintedAt?.toISOString() ?? null,
       labelPrintedAt: work.labelPrintedAt?.toISOString() ?? null,
       completedAt: work.completedAt?.toISOString() ?? null,

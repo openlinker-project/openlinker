@@ -20,6 +20,19 @@
  * bench, so a failed or skipped stamp must never turn a working download
  * into an error.
  *
+ * ## `GET :id/label` no longer stamps a print (moved to the bench, #3340)
+ *
+ * This route carries no `@Roles` — a viewer may legitimately download a label
+ * to look at it — and any caller may reach it with nothing more than a
+ * shipment id, so a fetch here is not evidence a packer printed anything. It
+ * used to stamp `FulfillmentWork.labelPrintedAt` on every successful fetch,
+ * which meant a stray GET (a viewer opening the PDF, an automated re-read)
+ * silenced the pack-bench completion dialog's "the label is not printed"
+ * warning for a box that never actually had its label printed. The stamp now
+ * lives solely on `GET /bench/work/:workId/documents/label` — reachable only
+ * through the work, by the bench — which resolves this same shipment through
+ * the identical `IBenchDocumentsService` label projection this route serves.
+ *
  * @module apps/api/src/shipping/http
  */
 
@@ -86,10 +99,6 @@ import {
   buildOrderSummary,
   type OrderSummary,
 } from '@openlinker/core/orders';
-import {
-  FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
-  type IFulfillmentVerificationService,
-} from '@openlinker/core/fulfillment';
 import { ROLE_PERMISSIONS } from '@openlinker/core/users';
 import { Logger } from '@openlinker/shared/logging';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
@@ -128,8 +137,6 @@ export class ShipmentController {
     private readonly label: IShipmentLabelService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
     private readonly orders: IOrderRecordService,
-    @Inject(FULFILLMENT_VERIFICATION_SERVICE_TOKEN)
-    private readonly fulfillmentVerification: IFulfillmentVerificationService,
   ) {}
 
   @AnyRole()
@@ -267,28 +274,6 @@ export class ShipmentController {
       // failure body is the one command-style error surface a viewer reaches —
       // gate its carrier text on the same predicate as the persisted field.
       throw this.toHttpException(error, this.hasShipmentsWrite(user));
-    }
-
-    // Stamped OUTSIDE the try/catch above and in a try/catch of its own
-    // (pack-bench completion): this route is shared by every caller of a shipment's label,
-    // not only the pack bench, and a shipment need not carry a
-    // `fulfillmentWorkId` at all (#2402 links only routed, OMS-fulfilled
-    // work). The print itself has already succeeded and its bytes are
-    // already on the wire — a failure here, or the ordinary absence of a
-    // linked parcel, must never turn a working download into an error.
-    try {
-      const shipment = await this.query.getById(id);
-      if (shipment?.fulfillmentWorkId) {
-        await this.fulfillmentVerification.markLabelPrinted(
-          shipment.fulfillmentWorkId,
-          new Date(),
-        );
-      }
-    } catch (error) {
-      this.logger.warn(
-        `bench_label_print_stamp_failed shipmentId=${id}: ` +
-          `${error instanceof Error ? error.message : String(error)}`,
-      );
     }
   }
 

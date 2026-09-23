@@ -64,8 +64,7 @@ function mount(documents: Partial<BenchDocuments> = {}, unlabelledTotal = 0) {
         .fn()
         .mockResolvedValue({ parcels: [], total: unlabelledTotal, truncated: false }),
       downloadInvoice: vi.fn().mockResolvedValue(new Blob(['%PDF'])),
-    },
-    shipments: {
+      // #3340 — the label print goes through the work, not the shipment id.
       downloadLabel: vi.fn().mockResolvedValue(new Blob(['%PDF'])),
     },
   });

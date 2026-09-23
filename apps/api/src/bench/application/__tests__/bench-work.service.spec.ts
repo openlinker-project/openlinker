@@ -803,7 +803,7 @@ describe('BenchWorkService (#2416)', () => {
         parcel: { workId: 'w-top' },
       });
 
-      const result = await service.claimNext('viewer-1');
+      const result = await service.claimNext('viewer-1', true);
 
       expect(parcels.claimParcel).toHaveBeenCalledWith('w-top', 'viewer-1');
       expect(result).toEqual({ outcome: 'claimed', parcel: { workId: 'w-top' } });
@@ -825,7 +825,7 @@ describe('BenchWorkService (#2416)', () => {
         parcel: { workId: 'w-next' },
       });
 
-      await service.claimNext('viewer-1');
+      await service.claimNext('viewer-1', true);
 
       expect(parcels.claimParcel).toHaveBeenCalledWith('w-next', 'viewer-1');
     });
@@ -840,13 +840,16 @@ describe('BenchWorkService (#2416)', () => {
         },
       });
 
-      const result = await service.claimNext('viewer-1');
+      const result = await service.claimNext('viewer-1', true);
 
       expect(result).toEqual({ outcome: 'nothing-to-claim' });
       expect(parcels.claimParcel).not.toHaveBeenCalled();
     });
 
-    it('reports nothing-to-claim when the delegated claim loses the race and is refused', async () => {
+    it('says the claim was REFUSED, not that the queue was empty, when it loses the race', async () => {
+      // The two facts are different and used to collapse into one. A candidate
+      // was found, so the packer's rail is visibly holding rows; telling them
+      // there is nothing to take contradicts what they can see.
       const { service, parcels } = harness({
         page: { works: [workView({ id: 'w-top' })], total: 1 },
       });
@@ -856,19 +859,65 @@ describe('BenchWorkService (#2416)', () => {
         parcel: { workId: 'w-top' },
       });
 
-      const result = await service.claimNext('viewer-1');
+      const result = await service.claimNext('viewer-1', true);
 
+      expect(result).toEqual({ outcome: 'refused', reason: 'not-claimable' });
+    });
+
+    it('carries the refusal reason through rather than flattening every refusal into one', async () => {
+      const { service, parcels } = harness({
+        page: { works: [workView({ id: 'w-top' })], total: 1 },
+      });
+      parcels.claimParcel.mockResolvedValue({
+        outcome: 'refused',
+        reason: 'held',
+        parcel: { workId: 'w-top' },
+      });
+
+      const result = await service.claimNext('viewer-1', true);
+
+      expect(result).toEqual({ outcome: 'refused', reason: 'held' });
+    });
+
+    it('never hands a packer a row their own list would not show them', async () => {
+      // This test used to assert the opposite, on the reasoning that an
+      // `assigned-other` row is not claimable anyway. It is:
+      // `isClaimableByViewer` returns true for anything `selfServeEligible`,
+      // and that column defaults true. So reading with `supervises: true`
+      // here let "Take next task" hand a packer a parcel their rail had just
+      // refused to show them — a control reaching past what the operator can
+      // see, on the screen that told them there was nothing there.
+      const { service, parcels } = harness({
+        page: {
+          works: [
+            workView({
+              id: 'w-selfserve',
+              assignedToUserId: 'someone-else',
+              selfServeEligible: true,
+            }),
+          ],
+          total: 1,
+        },
+      });
+
+      const result = await service.claimNext('viewer-1', false);
+
+      expect(parcels.claimParcel).not.toHaveBeenCalled();
       expect(result).toEqual({ outcome: 'nothing-to-claim' });
     });
 
-    it('claims a self-serve-eligible assigned-other row for a packer, unchanged by #3340', async () => {
-      // A packer's OWN listBenchWork call would never show this row (it is
-      // `assigned-other`), but claimNext reads with `supervises: true`
-      // internally — see the module comment — and the row is genuinely
-      // claimable via self-serve, so the outcome must not change.
+    it('still offers that row to a supervisor, whose list does show it', async () => {
+      // The rule is that the button and the list agree — not that the row is
+      // unreachable. A caller who can see it can take it.
       const { service, parcels } = harness({
         page: {
-          works: [workView({ id: 'w-selfserve', assignedToUserId: 'someone-else', selfServeEligible: true })],
+          works: [
+            workView({
+              id: 'w-selfserve',
+              assignedToUserId: 'someone-else',
+              selfServeEligible: true,
+            }),
+          ],
           total: 1,
         },
       });
@@ -878,7 +927,7 @@ describe('BenchWorkService (#2416)', () => {
         parcel: { workId: 'w-selfserve' },
       });
 
-      const result = await service.claimNext('viewer-1');
+      const result = await service.claimNext('viewer-1', true);
 
       expect(parcels.claimParcel).toHaveBeenCalledWith('w-selfserve', 'viewer-1');
       expect(result).toEqual({ outcome: 'claimed', parcel: { workId: 'w-selfserve' } });

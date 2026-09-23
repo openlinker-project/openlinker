@@ -106,7 +106,7 @@ export class BenchWorkController {
     if (!user?.id) {
       throw new UnauthorizedException('A claim must name the packer');
     }
-    return this.toClaimNextDto(await this.bench.claimNext(user.id));
+    return this.toClaimNextDto(await this.bench.claimNext(user.id, this.supervises(user)));
   }
 
   @Get('work/packed-today')
@@ -180,9 +180,12 @@ export class BenchWorkController {
 
   private toClaimNextDto(view: BenchClaimNextResultView): BenchClaimNextResultResponseDto {
     if (view.outcome === 'nothing-to-claim') {
-      return { outcome: 'nothing-to-claim', parcel: null };
+      return { outcome: 'nothing-to-claim', parcel: null, reason: null };
     }
-    return { outcome: 'claimed', parcel: toParcelResponseDto(view.parcel) };
+    if (view.outcome === 'refused') {
+      return { outcome: 'refused', parcel: null, reason: view.reason };
+    }
+    return { outcome: 'claimed', parcel: toParcelResponseDto(view.parcel), reason: null };
   }
 
   private toDto(view: BenchWorkListView): BenchWorkListResponseDto {

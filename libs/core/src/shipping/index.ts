@@ -157,6 +157,7 @@ export { ShipmentNotFoundException } from './domain/exceptions/shipment-not-foun
 export { UndispatchableResolutionException } from './domain/exceptions/undispatchable-resolution.exception';
 export { OrderNotDispatchablePaymentStatusException } from './domain/exceptions/order-not-dispatchable-payment-status.exception';
 export { OrderNotDispatchableHeldException } from './domain/exceptions/order-not-dispatchable-held.exception';
+export { FulfillmentWorkDispatchConflictException } from './domain/exceptions/fulfillment-work-dispatch-conflict.exception';
 export { ShipmentNotCancellableException } from './domain/exceptions/shipment-not-cancellable.exception';
 export { ShipmentCancellationNotSupportedException } from './domain/exceptions/shipment-cancellation-not-supported.exception';
 export { PickupPointFinderNotSupportedException } from './domain/exceptions/pickup-point-finder-not-supported.exception';

@@ -48,7 +48,12 @@ export interface IBenchWorkService {
    * both already computed by `listBenchWork` / `compareBenchWork`, so this
    * is a thin wrapper rather than a second ordering to keep in sync.
    */
-  claimNext(viewerId: string): Promise<BenchClaimNextResultView>;
+  /**
+   * `supervises` carries the same meaning as on `listBenchWork`, and for the
+   * same reason: this method picks its candidate FROM that list, so the two
+   * must be scoped alike or the button reaches work the screen does not show.
+   */
+  claimNext(viewerId: string, supervises: boolean): Promise<BenchClaimNextResultView>;
 
   /**
    * Parcels THIS bench closed today, newest-closed first (#3413).

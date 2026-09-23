@@ -379,3 +379,48 @@ export interface CompleteInput {
 export type CompleteResult =
   | { readonly outcome: 'completed' }
   | { readonly outcome: 'refused'; readonly reason: FulfillmentCompletionRefusal };
+
+/**
+ * Why an undo was refused (#3340 follow-up).
+ *
+ * Narrower than `FulfillmentCompletionRefusal`: `'already-completed'` has no
+ * counterpart here (there is nothing "already" about undoing — the parcel is
+ * either completed or it is not), and `'not-closed'` cannot happen either — a
+ * completion implies the parcel was already closed, so undoing it never asks
+ * that question. `apps/api/src/bench` widens this with its own
+ * `'not-claimable-by-viewer'`, the `FulfillmentCompletionRefusalValues` /
+ * `BenchCompletionRefusalValues` precedent — this service never learns a
+ * viewer id.
+ */
+export const FulfillmentCompletionUndoRefusalValues = [
+  /** The parcel was never completed, or a peer already undid it. */
+  'not-completed',
+  /** The token was stale — somebody moved the work first. Re-read and retry. */
+  'version-conflict',
+] as const;
+
+export type FulfillmentCompletionUndoRefusal =
+  (typeof FulfillmentCompletionUndoRefusalValues)[number];
+
+/**
+ * Undo a declared completion (#3340 follow-up) — the operator's own mistake,
+ * not `reopenParcel`'s territory: it must leave `parcelClosedAt` and the whole
+ * verification ledger untouched, since the box itself was correctly packed.
+ *
+ * `expectedVersion` is REQUIRED, mirroring `CompleteInput`'s own reasoning:
+ * there is no unguarded path to this write.
+ */
+export interface UndoCompletionInput {
+  readonly workId: string;
+  readonly expectedVersion: number;
+}
+
+/**
+ * What `undoCompletion` answers.
+ *
+ * Deliberately carries no `state`, the `CompleteResult` precedent: undoing a
+ * completion never changes the verification ledger or its counters either.
+ */
+export type UndoCompletionResult =
+  | { readonly outcome: 'undone' }
+  | { readonly outcome: 'refused'; readonly reason: FulfillmentCompletionUndoRefusal };

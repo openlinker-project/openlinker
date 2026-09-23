@@ -26,6 +26,7 @@ import {
   parseBenchParcel,
   parseBenchPresence,
   parseBenchReopenResult,
+  parseBenchUndoCompletionResult,
   parseBenchUndoResult,
   parseBenchUnlabelledParcelList,
   parseBenchVerificationResult,
@@ -41,6 +42,7 @@ import type {
   BenchParcel,
   BenchPresence,
   BenchReopenResult,
+  BenchUndoCompletionResult,
   BenchUndoResult,
   BenchUnlabelledParcelList,
   BenchVerificationResult,
@@ -94,10 +96,28 @@ export interface BenchApi {
    * one answers a `version-conflict` refusal with nothing written.
    */
   completeParcel: (workId: string, expectedVersion: number) => Promise<BenchCompleteResult>;
+  /**
+   * Take back a completion, and keep every scan (#3415).
+   *
+   * The way back from "done" that is not a reopen — a reopen unpacks the
+   * whole box, this clears `completedAt` alone. `expectedVersion` is the
+   * token read with the parcel, exactly as `completeParcel`'s is.
+   */
+  undoCompletion: (workId: string, expectedVersion: number) => Promise<BenchUndoCompletionResult>;
   /** The invoice that goes inside the box and the label that goes on it. */
   getDocuments: (workId: string) => Promise<BenchDocuments>;
   /** The rendered invoice for this parcel's own order. Creates nothing. */
   downloadInvoice: (workId: string) => Promise<Blob>;
+  /**
+   * The rendered label for this parcel's own shipment (#3340).
+   *
+   * The ONLY print call the bench should make — `shipments.downloadLabel`
+   * still exists for every other caller of a shipment's label, but it no
+   * longer marks anything printed. This route does, because it is reachable
+   * only through the WORK, which is what lets the stamp be attributed to a
+   * packer's box rather than to any caller who happens to know a shipment id.
+   */
+  downloadLabel: (workId: string) => Promise<Blob>;
   /** Finished boxes with no label on them, here and in dispatch. */
   listUnlabelledParcels: () => Promise<BenchUnlabelledParcelList>;
 
@@ -169,11 +189,22 @@ export function createBenchApi(request: ApiRequest, requestBlob: ApiBlobRequest)
         })
       );
     },
+    async undoCompletion(workId, expectedVersion): Promise<BenchUndoCompletionResult> {
+      return parseBenchUndoCompletionResult(
+        await request<unknown>(`${work(workId)}/complete/undo`, {
+          method: 'POST',
+          body: JSON.stringify({ expectedVersion }),
+        })
+      );
+    },
     async getDocuments(workId): Promise<BenchDocuments> {
       return parseBenchDocuments(await request<unknown>(`${work(workId)}/documents`));
     },
     async downloadInvoice(workId): Promise<Blob> {
       return requestBlob(`${work(workId)}/documents/invoice`);
+    },
+    async downloadLabel(workId): Promise<Blob> {
+      return requestBlob(`${work(workId)}/documents/label`);
     },
     async listUnlabelledParcels(): Promise<BenchUnlabelledParcelList> {
       return parseBenchUnlabelledParcelList(await request<unknown>('/bench/unlabelled-parcels'));

@@ -54,8 +54,9 @@ export interface FulfillmentApi {
   ) => Promise<FulfillmentTask>;
   /**
    * A supervisor's staffing decision (#3337, ADR-074) — assign, reassign,
-   * clear, and/or toggle self-serve eligibility. NOT gated by
-   * `expectedVersion` — see the request type's own docblock.
+   * clear, and/or toggle self-serve eligibility. `expectedVersion` is an
+   * independent, optional lost-update guard — see the request type's own
+   * docblock.
    */
   updateAssignment: (
     workId: string,

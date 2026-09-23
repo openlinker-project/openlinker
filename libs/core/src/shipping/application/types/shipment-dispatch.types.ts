@@ -39,6 +39,22 @@ export type ShipmentDispatchInput = {
    * the intent from it. Removed next release.
    */
   shippingMethod?: ShippingMethod;
+  /**
+   * The `FulfillmentWork` this dispatch is meant to satisfy (#3340 follow-up).
+   * Optional — a caller with no work in hand (the manual HTTP dispatch route)
+   * omits it and the seam behaves exactly as before.
+   *
+   * When present, it is authoritative: `dispatchViaShippingProvider` prefers
+   * it over #2727's per-order `resolveWorkLink` guess when stamping a NEW
+   * shipment's `fulfillmentWorkId`, and — on a SPLIT order, where the order
+   * carries more than one live work — it is what lets the seam tell "this
+   * active shipment already satisfies MY work" apart from "this active
+   * shipment satisfies a SIBLING work and must not be handed back to me as if
+   * it were mine." Without it, `findActiveByOrderId` resolves by ORDER alone
+   * and a second work's dispatch silently receives the first work's shipment.
+   * See `FulfillmentWorkDispatchConflictException`.
+   */
+  fulfillmentWorkId?: string;
   // `deliveryMethodId` is omitted: the seam resolves the provider delivery
   // method from `sourceDeliveryMethodId` (#833 ADR-012), never the caller.
   // `shippingMethod` is omitted from the command pick and re-declared optional

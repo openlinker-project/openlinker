@@ -18,6 +18,7 @@ import {
 } from '../../test/test-utils';
 import type { FulfillmentTask } from '../../features/fulfillment';
 import type { SessionUser } from '../../shared/auth/session.types';
+import { ApiError } from '../../shared/api/api-error';
 
 afterEach(cleanup);
 
@@ -138,7 +139,74 @@ describe('AssignPackingWorkPage', () => {
     await user.selectOptions(select, 'packer-a');
 
     await waitFor(() => {
-      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', { assignedToUserId: 'u_a' });
+      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+        assignedToUserId: 'u_a',
+        expectedVersion: 1,
+      });
+    });
+  });
+
+  it('sends the version the row was RENDERED with, not a hardcoded 1', async () => {
+    // A version of 1 alone would pass even if the field were hardcoded — a
+    // row at some other version proves it is read from the task, not from a
+    // constant.
+    const user = userEvent.setup();
+    const { updateAssignment } = renderPage({
+      list: vi.fn().mockResolvedValue(page([task({ version: 7 })])),
+    });
+
+    await screen.findAllByRole('combobox', { name: 'Move to' });
+    const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
+    await user.selectOptions(select, 'packer-a');
+
+    await waitFor(() => {
+      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+        assignedToUserId: 'u_a',
+        expectedVersion: 7,
+      });
+    });
+  });
+
+  it('sends the CURRENT rendered version after the board refreshes, not the one from initial mount', async () => {
+    // Proves the token tracks whatever is on screen right now rather than a
+    // value captured once and never revisited: a self-serve toggle succeeds
+    // at version 3, its own success invalidates the board, the refetch comes
+    // back at version 4 for the same row, and a second write — the "Move to"
+    // select — must carry THAT version, not the stale one from before the
+    // refresh.
+    const user = userEvent.setup();
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce(page([task({ version: 3, assignedToUserId: null })]))
+      .mockResolvedValueOnce(page([task({ version: 4, assignedToUserId: null })]));
+    const updateAssignment = vi.fn().mockResolvedValue(task());
+    const { updateAssignment: updateAssignmentSpy } = renderPage({ list, updateAssignment });
+
+    await screen.findAllByRole('checkbox', { name: 'Anyone may claim this' });
+    await user.click(within(desktop()).getByRole('checkbox', { name: 'Anyone may claim this' }));
+
+    await waitFor(() => {
+      expect(updateAssignmentSpy).toHaveBeenNthCalledWith(1, 'ol_work_1', {
+        selfServeEligible: false,
+        expectedVersion: 3,
+      });
+    });
+    // The self-serve write's own success invalidated the board; wait for the
+    // refetch (list's second, version-4 response) to actually land before
+    // acting again, or the second click could race a render that has not
+    // committed yet.
+    await waitFor(() => {
+      expect(list).toHaveBeenCalledTimes(2);
+    });
+    await screen.findAllByRole('combobox', { name: 'Move to' });
+    const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
+    await user.selectOptions(select, 'packer-a');
+
+    await waitFor(() => {
+      expect(updateAssignmentSpy).toHaveBeenNthCalledWith(2, 'ol_work_1', {
+        assignedToUserId: 'u_a',
+        expectedVersion: 4,
+      });
     });
   });
 
@@ -153,7 +221,34 @@ describe('AssignPackingWorkPage', () => {
     await user.selectOptions(select, 'Unassigned');
 
     await waitFor(() => {
-      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', { assignedToUserId: null });
+      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+        assignedToUserId: null,
+        expectedVersion: 1,
+      });
+    });
+  });
+
+  it('offers the self-serve control on an ASSIGNED row, where it is the hard lock', async () => {
+    // It used to render only on unassigned rows, which made ADR-074's own
+    // escape hatch - assigned to one packer and nobody else - unreachable from
+    // the only screen that assigns anything. The label changes because the
+    // question does.
+    const user = userEvent.setup();
+    const { updateAssignment } = renderPage({
+      list: vi.fn().mockResolvedValue(page([task({ assignedToUserId: 'packer-a' })])),
+    });
+
+    await screen.findAllByRole('checkbox', { name: 'Anyone may still take this' });
+    const checkbox = within(desktop()).getByRole('checkbox', {
+      name: 'Anyone may still take this',
+    });
+    await user.click(checkbox);
+
+    await waitFor(() => {
+      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+        selfServeEligible: false,
+        expectedVersion: 1,
+      });
     });
   });
 
@@ -166,7 +261,10 @@ describe('AssignPackingWorkPage', () => {
     await user.click(checkbox);
 
     await waitFor(() => {
-      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', { selfServeEligible: false });
+      expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+        selfServeEligible: false,
+        expectedVersion: 1,
+      });
     });
   });
 
@@ -195,7 +293,10 @@ describe('AssignPackingWorkPage', () => {
       expect(screen.queryByText('Task moved.')).not.toBeInTheDocument();
     });
 
-    it('does not toast success on a failed move — only the existing error path fires', async () => {
+    it('does not toast success on a failed move, and does not claim nothing happened', async () => {
+      // A plain thrown Error is a failure we cannot classify, so the honest
+      // answer is that we do not know whether it landed. Saying "nothing has
+      // changed" here would be a claim, not a hedge.
       const user = userEvent.setup();
       renderPage({ updateAssignment: vi.fn().mockRejectedValue(new Error('boom')) });
 
@@ -204,9 +305,50 @@ describe('AssignPackingWorkPage', () => {
       await user.selectOptions(select, 'packer-a');
 
       expect(
-        await screen.findByText('Could not move this task. Nothing has changed.')
+        await screen.findByText(
+          'That did not go through, and we could not tell whether it landed. Check the board.'
+        )
       ).toBeInTheDocument();
       expect(screen.queryByText('Task moved.')).not.toBeInTheDocument();
+    });
+
+    it('says somebody got there first on a 409, and actually refreshes the board', async () => {
+      const list = vi.fn().mockResolvedValue(page([task()]));
+      const user = userEvent.setup();
+      renderPage({
+        list,
+        updateAssignment: vi.fn().mockRejectedValue(new ApiError('conflict', 409, null)),
+      });
+
+      await screen.findAllByRole('combobox', { name: 'Move to' });
+      const select = within(desktop()).getByRole('combobox', { name: 'Move to' });
+      await user.selectOptions(select, 'packer-a');
+
+      expect(
+        await screen.findByText('Somebody changed this task first. The board has been refreshed.')
+      ).toBeInTheDocument();
+      // The sentence claims a refresh happened — so it has to, or this is a
+      // toast lying to the operator about what the board did.
+      await waitFor(() => {
+        expect(list).toHaveBeenCalledTimes(2);
+      });
+    });
+
+    it('names a refused self-serve toggle as its own thing, not as a failed move', async () => {
+      const user = userEvent.setup();
+      renderPage({
+        updateAssignment: vi.fn().mockRejectedValue(new ApiError('bad request', 400, null)),
+      });
+
+      await screen.findAllByRole('checkbox', { name: 'Anyone may claim this' });
+      await user.click(within(desktop()).getByRole('checkbox', { name: 'Anyone may claim this' }));
+
+      expect(
+        await screen.findByText('Could not change who may claim this. Nothing has changed.')
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText('Could not move this task. Nothing has changed.')
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -405,7 +547,10 @@ describe('AssignPackingWorkPage', () => {
       fireEvent.drop(destinationLane, { dataTransfer: fakeDataTransfer() });
 
       await waitFor(() => {
-        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', { assignedToUserId: 'u_a' });
+        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+          assignedToUserId: 'u_a',
+          expectedVersion: 1,
+        });
       });
     });
 
@@ -437,7 +582,10 @@ describe('AssignPackingWorkPage', () => {
       await user.selectOptions(select, 'packer-a');
 
       await waitFor(() => {
-        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', { assignedToUserId: 'u_a' });
+        expect(updateAssignment).toHaveBeenCalledWith('ol_work_1', {
+          assignedToUserId: 'u_a',
+          expectedVersion: 1,
+        });
       });
     });
 

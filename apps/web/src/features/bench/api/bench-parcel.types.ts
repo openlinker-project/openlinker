@@ -78,6 +78,14 @@ export interface BenchParcel {
   readonly closedAt: string | null;
   readonly packedByUserId: string | null;
   /**
+   * Who this parcel is assigned to, or `null` for the unassigned pool.
+   *
+   * A raw OL user id, like `packedByUserId` beside it — never a name, and
+   * never rendered directly. Carried so a lost claim race can name who
+   * actually holds the parcel now, rather than a refusal that names nobody.
+   */
+  readonly assignedToUserId: string | null;
+  /**
    * When this parcel's invoice was FIRST printed, or `null` if never. A
    * reprint never moves it — the question is whether it was ever printed,
    * because that is what the pack-bench completion confirm reads.
@@ -126,6 +134,24 @@ export interface BenchCompleteResult {
   /**
    * `not-closed` | `already-completed` | `version-conflict` |
    * `not-claimable-by-viewer`, or `null` on `completed`, or something newer.
+   */
+  readonly reason: string | null;
+  readonly parcel: BenchParcel;
+}
+
+/**
+ * What taking back a completion answers.
+ *
+ * The counterpart to `BenchCompleteResult` — a completion used to be a
+ * one-way door, and this clears `completedAt` alone. Every scan and the
+ * closed box stand; the box is not reopened.
+ */
+export interface BenchUndoCompletionResult {
+  /** `undone` | `refused`. */
+  readonly outcome: string;
+  /**
+   * `not-completed` | `version-conflict` | `not-claimable-by-viewer`, or
+   * `null` on `undone`, or something newer.
    */
   readonly reason: string | null;
   readonly parcel: BenchParcel;
@@ -209,16 +235,36 @@ export interface BenchUndoResult {
 export interface BenchClaimResult {
   /** `claimed` | `refused`. */
   readonly outcome: string;
-  /** `held` | `cancelled` | `not-claimable`, or `null`. */
+  /**
+   * `held` | `cancelled` | `not-claimable` | `claimed-by-someone-else`, or
+   * `null`.
+   *
+   * `not-claimable` is the standing ADR-074 lock; `claimed-by-someone-else`
+   * is a peer winning the race between the read that offered this parcel and
+   * the write — a different fact, and the two must read differently. See
+   * `parcel.assignedToUserId` for who holds it now.
+   */
   readonly reason: string | null;
   readonly parcel: BenchParcel;
 }
 
 /** What "take next task" answers (#3412). */
 export interface BenchClaimNextResult {
-  /** `claimed` | `nothing-to-claim`. */
+  /**
+   * `claimed` | `nothing-to-claim` | `refused`.
+   *
+   * The last two are different facts and must stay apart on screen:
+   * `nothing-to-claim` means the queue was empty, `refused` means a parcel was
+   * found and lost — usually to another packer, in the moment between the read
+   * and the write, with the rail still showing the row.
+   */
   readonly outcome: string;
   readonly parcel: BenchParcel | null;
+  /**
+   * `held` | `cancelled` | `not-claimable` | `claimed-by-someone-else`.
+   * Non-null only on `refused`.
+   */
+  readonly reason: string | null;
 }
 
 /** One OTHER packer who currently has this parcel open (#3406). */

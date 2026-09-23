@@ -67,6 +67,7 @@ import {
 import { usePackersQuery, type PackerSummary } from '../../features/users';
 import { useDemoMode } from '../../features/system';
 import { useWriteAccess } from '../../shared/auth/use-permission';
+import { ApiError } from '../../shared/api/api-error';
 import { Alert } from '../../shared/ui/alert';
 import { Button } from '../../shared/ui/button';
 import { EmptyState, ErrorState } from '../../shared/ui/feedback-state';
@@ -122,9 +123,11 @@ export function AssignPackingWorkPage(): ReactElement {
    * Which task has an ASSIGNMENT write in flight.
    *
    * Deliberately separate from `actions.busyTaskId`: assignment is not an
-   * action and carries no `expectedVersion` (ADR-074 puts it outside the
-   * legality matrix), so it has neither the runner's 409 contract nor its
-   * dialog. Two writes, two busy flags, one disabled state at the control.
+   * action (ADR-074 puts WHO-may-assign outside the legality matrix
+   * `applyAction` enforces), so a 409 here is only ever the orthogonal
+   * lost-update guard, never `action_not_legal` — it has neither the
+   * runner's two-code 409 contract nor its dialog. Two writes, two busy
+   * flags, one disabled state at the control.
    */
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null);
   // Every ACTION goes through the shared runner (#3257): the 409 contract, the
@@ -198,6 +201,34 @@ export function AssignPackingWorkPage(): ReactElement {
     setFilter(key, event.currentTarget.value.trim());
   };
 
+  /**
+   * Which failure sentence a staffing write gets (#3415).
+   *
+   * Four unrelated failures used to share one, and its "Nothing has changed"
+   * half is a claim rather than a hedge - true of a refusal, false of a 409,
+   * and unknowable on a 5xx or a dropped connection, which is precisely when
+   * a supervisor most needs to be told to go and look.
+   *
+   * A 401 is deliberately absent: the session layer already redirects, so a
+   * toast about it would talk over a page that is on its way out.
+   */
+  const staffingFailureMessage = (error: unknown, isMove: boolean): string => {
+    if (error instanceof ApiError) {
+      if (error.isForbidden()) return ASSIGN_PACKING_WORK_COPY.row.moveForbidden;
+      if (error.isNotFound()) return ASSIGN_PACKING_WORK_COPY.row.moveNotFound;
+      if (error.isConflict()) return ASSIGN_PACKING_WORK_COPY.row.moveConflict;
+      if (error.isServerError() || error.isNetworkError()) {
+        return ASSIGN_PACKING_WORK_COPY.row.moveUnknown;
+      }
+      // A 4xx we do recognise as deterministic: the server refused, so
+      // nothing changed and saying so is honest.
+      return isMove
+        ? ASSIGN_PACKING_WORK_COPY.row.moveFailed
+        : ASSIGN_PACKING_WORK_COPY.row.selfServeFailed;
+    }
+    return ASSIGN_PACKING_WORK_COPY.row.moveUnknown;
+  };
+
   const setAssignment = (
     task: FulfillmentTask,
     body: { assignedToUserId?: string | null; selfServeEligible?: boolean }
@@ -212,14 +243,22 @@ export function AssignPackingWorkPage(): ReactElement {
       'assignedToUserId' in body
         ? ASSIGN_PACKING_WORK_COPY.row.moveSucceeded
         : ASSIGN_PACKING_WORK_COPY.row.selfServeUpdated;
+    // `task.version` is the one this control was RENDERED with, never a
+    // fresher value re-read at click time — see
+    // `UpdateFulfillmentWorkAssignmentRequest`'s own docblock for why: a
+    // fresher token would make the 409 this guard exists to raise
+    // unreachable and hand the last writer the win.
     assignmentMutation.mutate(
-      { workId: task.id, ...body },
+      { workId: task.id, expectedVersion: task.version, ...body },
       {
         onSuccess: () => {
           showToast({ tone: 'success', description: successMessage });
         },
-        onError: () => {
-          showToast({ tone: 'error', description: ASSIGN_PACKING_WORK_COPY.row.moveFailed });
+        onError: (error) => {
+          showToast({
+            tone: 'error',
+            description: staffingFailureMessage(error, 'assignedToUserId' in body),
+          });
         },
         onSettled: () => {
           setBusyTaskId(null);
