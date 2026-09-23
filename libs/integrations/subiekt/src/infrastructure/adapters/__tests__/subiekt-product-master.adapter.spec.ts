@@ -384,6 +384,36 @@ describe('SubiektProductMasterAdapter', () => {
       ]);
     });
 
+    it('falls back to the id when the group name is the EMPTY STRING, not only when it is null', async () => {
+      seedProduct();
+      const adapter = buildAdapter(
+        (() => Promise.resolve(jsonResponse(200, envelope(productWithGroup(3, ''))))) as FetchLike,
+      );
+
+      // The bridge `.Trim()`s the name, so a whitespace-only `grt_Nazwa`
+      // arrives as `''` rather than null - the case a null-only test does not
+      // reach, and the one that would render a category labelled with nothing.
+      await expect(adapter.getProductCategories('ol_product_1')).resolves.toEqual([
+        { id: '3', name: '3' },
+      ]);
+    });
+
+    it('translates a bridge "no such towar" into a master-side absence', async () => {
+      seedProduct();
+      const adapter = buildAdapter(
+        (() =>
+          Promise.resolve(
+            jsonResponse(404, { success: false, data: null, error: 'No product with symbol DZSO100.' }),
+          )) as FetchLike,
+      );
+
+      // The mapping exists, so this is Subiekt reporting the towar gone - the
+      // same signal `getProduct` translates, rather than a transport failure.
+      await expect(adapter.getProductCategories('ol_product_1')).rejects.toBeInstanceOf(
+        MasterProductNotFoundError,
+      );
+    });
+
     it('reports an unmapped product as a master-side absence, not as an empty category list', async () => {
       const adapter = buildAdapter(
         (() => Promise.resolve(jsonResponse(200, envelope(productWithGroup(3, 'Perfumy'))))) as FetchLike,
