@@ -39,10 +39,13 @@ public static class Sfera
         public Exception? Error;
     }
 
-    public static string Server = @"DESKTOP-FJ0P3NU\INSERTNEXO";
-    public static string Database = "DEMO";
-    public static string Operator = "Szef";
-    public static string Password = "";
+    // Still mutable (a host may override before Start()), but seeded from
+    // BridgeConfig rather than from literals compiled into the binary - the
+    // operator name and its password were credentials living in source.
+    public static string Server = BridgeConfig.SqlServer;
+    public static string Database = BridgeConfig.SqlDatabase;
+    public static string Operator = BridgeConfig.SferaOperator;
+    public static string Password = BridgeConfig.SferaPassword;
 
     public static void Start()
     {
@@ -201,6 +204,20 @@ public static class Sfera
                 if (k.Kod != "")        kh.KodPocztowy = k.Kod;
                 if (k.Miejscowosc != "") kh.Miejscowosc = k.Miejscowosc;
                 if (k.Email != "")      kh.EMail      = k.Email;
+                // Country is what lets Subiekt's own VAT classification tell a
+                // domestic sale from an intra-EU one; without it every buyer
+                // looked Polish. Best-effort on purpose: an older Sfera build
+                // that does not expose PanstwoId must not fail an order that is
+                // already paid, so a missing property degrades to the previous
+                // behaviour (column left NULL) rather than throwing.
+                if (k.PanstwoId > 0)
+                {
+                    try { kh.PanstwoId = k.PanstwoId; }
+                    catch (Exception e)
+                    {
+                        Console.Error.WriteLine($"Sfera.EnsureKontrahent: could not set PanstwoId={k.PanstwoId} on {k.Symbol}: {e.Message}");
+                    }
+                }
                 kh.Zapisz();
                 id = (int)kh.Identyfikator;
             }
@@ -456,6 +473,10 @@ public sealed class KontrahentInfo
     public string Kod = "";
     public string Miejscowosc = "";
     public string Email = "";
+    /// <summary>sl_Panstwo.pa_Id resolved from the caller's ISO-3166-1 alpha-2
+    /// code; 0 means "not supplied or not recognised", and the column is then
+    /// left NULL rather than defaulted to Poland. See EnsureKontrahent.</summary>
+    public int PanstwoId = 0;
 }
 
 public sealed class ZkLine

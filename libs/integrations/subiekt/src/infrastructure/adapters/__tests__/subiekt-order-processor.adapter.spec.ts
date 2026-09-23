@@ -60,7 +60,7 @@ describe('SubiektOrderProcessorAdapter', () => {
 
     expect(ref).toEqual({ orderId: '7', orderNumber: 'ZK 7/2026' });
     expect(capturedBody).toMatchObject({
-      buyer: { nazwa: 'Acme Sp. z o.o.', nip: '1234567890' },
+      buyer: { nazwa: 'Acme Sp. z o.o.', nip: '1234567890', countryCode: 'PL' },
       // The Subiekt symbol comes from the identifier_mappings row (SYM-1),
       // NEVER from the raw order-item sku (SKU-1) — see the class docblock.
       lines: [{ symbol: 'SYM-1', ilosc: 2, wartoscBrutto: 39.98 }],
@@ -149,6 +149,72 @@ describe('SubiektOrderProcessorAdapter', () => {
     // applied to an ambiguous createOrder timeout, risking a duplicate ZK.
     await rejection.catch((error: SubiektBridgeTransportError) => {
       expect(error.retryability).toBe('indeterminate');
+    });
+  });
+  describe('buyer country (adr__Ewid.adr_IdPanstwo)', () => {
+    const captureBuyer = async (
+      country: string | undefined,
+    ): Promise<Record<string, unknown>> => {
+      let captured: { buyer: Record<string, unknown> } | undefined;
+      const fetchImpl = ((_url: RequestInfo | URL, init?: RequestInit) => {
+        captured = JSON.parse(init!.body as string) as { buyer: Record<string, unknown> };
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ success: true, data: { id: 9, numer: 'ZK 9/2026' }, error: null }),
+            { status: 200 },
+          ),
+        );
+      }) as unknown as typeof fetch;
+
+      const client = new SubiektOrdersBridgeClient('http://127.0.0.1:5056', { fetchImpl });
+      const identifierMapping = new InMemoryIdentifierMappingAdapter();
+      identifierMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: 'SYM-1',
+        connectionId: CONNECTION_ID,
+        internalId: 'ol_product_x',
+      });
+      const adapter = new SubiektOrderProcessorAdapter(
+        client,
+        identifierMapping,
+        CONNECTION_ID,
+        noopLogger,
+      );
+
+      await adapter.createOrder({
+        status: 'pending',
+        items: [{ id: '1', productId: 'ol_product_x', quantity: 1, price: 10, sku: 'SKU-1' }],
+        totals: { subtotal: 10, tax: 0, shipping: 0, total: 10, currency: 'PLN' },
+        billingAddress: {
+          firstName: 'Jan',
+          lastName: 'Kowalski',
+          address1: 'Testowa 1',
+          city: 'Warszawa',
+          postalCode: '00-001',
+          country: country as string,
+        },
+        orderNumber: 'OL-101',
+      } as OrderCreate);
+
+      return captured!.buyer;
+    };
+
+    it('sends the address country so Subiekt can tell a domestic sale from an intra-EU one', async () => {
+      // Carried verbatim: the bridge resolves it against sl_Panstwo and
+      // Subiekt decides what the country MEANS for VAT. OL supplies the fact,
+      // never the conclusion.
+      expect(await captureBuyer('DE')).toMatchObject({ countryCode: 'DE' });
+    });
+
+    it('trims surrounding whitespace rather than sending a code that resolves to nothing', async () => {
+      expect(await captureBuyer('  PL  ')).toMatchObject({ countryCode: 'PL' });
+    });
+
+    it('omits the field entirely for a blank country', async () => {
+      // Omitted leaves adr_IdPanstwo NULL, which is what every kontrahent OL
+      // created carried before this field existed. Sending "" would make the
+      // bridge run a lookup that can only fail.
+      expect(await captureBuyer('   ')).not.toHaveProperty('countryCode');
     });
   });
 });
