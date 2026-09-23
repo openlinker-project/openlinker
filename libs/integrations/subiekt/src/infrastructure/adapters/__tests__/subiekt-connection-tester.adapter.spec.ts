@@ -205,6 +205,48 @@ describe('SubiektConnectionTesterAdapter', () => {
     expect(result.message).toContain('[redacted]');
   });
 
+  it.each([
+    ['a different case', 'token SUPER-SECRET-TOKEN was rejected'],
+    ['a percent-encoded copy', 'see /auth?t=super-secret%2Dtoken for details'],
+    ['a WWW-Authenticate-style challenge', 'Bearer realm="bridge", token="super-secret-token"'],
+  ])('redacts the token echoed back as %s', async (_label, reason) => {
+    // The argument for reading the 401 body at all is that "our bridge does not
+    // echo the token" is not a property this client may rely on - so it must not
+    // assume the echo is byte-identical either.
+    fetchMock.mockResolvedValue(
+      jsonResponse(401, { success: false, data: null, error: { code: 'unauthorized', reason } }),
+    );
+    const get = jest.fn().mockResolvedValue({ bridgeToken: 'super-secret-token' });
+    const resolver = { get } as unknown as CredentialsResolverPort;
+
+    const result = await tester.test(makeConnection({ credentialsRef: 'cred-1' }), resolver);
+
+    expect(result.success).toBe(false);
+    expect(result.message.toLowerCase()).not.toContain('super-secret-token');
+    expect(result.message).toContain('[redacted]');
+  });
+
+  it('does NOT redact a token too short to redact safely', async () => {
+    // `split/join` on a two-character secret would shred the bridge's own
+    // sentence - the redaction would become the thing that made the message
+    // unreadable. A secret that short is not one worth protecting.
+    fetchMock.mockResolvedValue(
+      jsonResponse(401, {
+        success: false,
+        data: null,
+        error: { code: 'unauthorized', reason: 'bridge token is not configured' },
+      }),
+    );
+    const get = jest.fn().mockResolvedValue({ bridgeToken: 'ab' });
+    const resolver = { get } as unknown as CredentialsResolverPort;
+
+    const result = await tester.test(makeConnection({ credentialsRef: 'cred-1' }), resolver);
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('bridge token is not configured');
+    expect(result.message).not.toContain('[redacted]');
+  });
+
   it('401 with an unreadable body does not pad the message with "HTTP 401"', async () => {
     fetchMock.mockResolvedValue({
       status: 401,
