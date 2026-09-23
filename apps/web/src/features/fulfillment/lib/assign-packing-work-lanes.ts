@@ -124,7 +124,15 @@ export function laneLoadTone(taskCount: number): LaneLoadTone {
  *   data does not support.
  */
 export function lightestLoadLaneIds(lanes: readonly AssignPackingWorkLane[]): ReadonlySet<string> {
-  const packerLanes = lanes.filter((lane) => lane.id !== UNASSIGNED_LANE_ID);
+  // A lane with no packer behind it is never a candidate. The tag is a
+  // SUGGESTION — "give the next parcel to this person" — so it must not land
+  // on the unassigned pool (not a person) nor on an off-roster lane, which is
+  // work still assigned to somebody who has left the roster and is by
+  // definition the emptiest. Recommending a deactivated packer is the one
+  // reading of "lightest load" that is actively wrong.
+  const packerLanes = lanes.filter(
+    (lane) => lane.id !== UNASSIGNED_LANE_ID && lane.packer !== null
+  );
   if (packerLanes.length < 2) return new Set();
 
   const counts = packerLanes.map((lane) => lane.tasks.length);

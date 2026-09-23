@@ -128,39 +128,29 @@ export function AssignPackingWorkCard({
         </span>
       ) : null}
 
-      {/* Fixed-width column: ref on its own line, badge below it when
-          present. Grouping them in one box, rather than letting the badge
-          float free after the ref text, is what keeps `__buyer`'s left edge
-          constant regardless of how long a given badge's label is. */}
-      <div className="assign-packing-work-card__ref-cell">
-        {/* Truncated with an ellipsis (CSS), never wrapped - a real
-            reference here is often a 36-char internal id with no source
-            reference to fall back from, and a `title` is what a desk
-            surface's hover affords instead of the tail. */}
-        <span
-          className="assign-packing-work-card__ref"
-          title={task.orderReference ?? task.id}
-        >
-          {task.orderReference ?? task.id}
-        </span>
-        {badge === null ? (
-          // Same box, invisible — a row with nothing to say here must not
-          // become one line SHORTER than a row with a badge, or every lane
-          // on this board (most of them holding a mix of badged and plain
-          // tasks) has rows of two different heights. The cell stays two
-          // rows tall by design; only whether the second one is READ
-          // varies.
-          <span className="assign-packing-work-card__badge-slot" aria-hidden="true">
-            <StatusBadge tone="neutral" compact>
-              {' '}
-            </StatusBadge>
-          </span>
-        ) : (
-          <StatusBadge tone={badge.tone} compact>
-            {badge.label}
-          </StatusBadge>
-        )}
-      </div>
+      {/* Reference and badge sit SIDE BY SIDE in the row, as siblings — the
+          mockup's `.lane-card__top { display: contents }`. They were briefly
+          stacked in a box of their own to keep `__buyer`'s left edge steady
+          while badge widths varied; a fixed base on the reference does that
+          on one line instead, and one line is what makes every row the same
+          height. An absent badge therefore needs no invisible stand-in: on a
+          single-line row it costs no height to leave out.
+
+          Truncated with an ellipsis (CSS), never wrapped — a real reference
+          here is often a 36-char internal id where the order carries no
+          source reference, and `title` gives a desk surface's hover the tail
+          that truncation takes. */}
+      <span
+        className="assign-packing-work-card__ref"
+        title={task.orderReference ?? task.id}
+      >
+        {task.orderReference ?? task.id}
+      </span>
+      {badge === null ? null : (
+        <StatusBadge tone={badge.tone} compact>
+          {badge.label}
+        </StatusBadge>
+      )}
 
       {/* Always rendered, even with nothing inside it — an absent buyer name
           is a blank cell, not a missing one, so the columns after it never

@@ -67,19 +67,6 @@ export const ASSIGN_PACKING_WORK_COPY = {
       `${String(parts.units)} ${parts.units === 1 ? 'unit' : 'units'}`,
   },
 
-  /**
-   * Column heads above a lane's cards (the mockup's `.lane__col-heads`),
-   * naming the three fixed columns a row's identity, buyer and summary line
-   * sit in. No head for the drag grip or the staffing controls — the grip is
-   * decorative and the controls are self-explanatory (a labelled select and
-   * a labelled checkbox need no column caption).
-   */
-  columns: {
-    order: 'Order',
-    buyer: 'Buyer',
-    details: 'Details',
-  },
-
   /** The mockup's drag grip (`⠿`) — decorative, `aria-hidden`; the native
    * `title` is its only text, read on hover by a mouse user, who is the
    * only user who can drag at all. */

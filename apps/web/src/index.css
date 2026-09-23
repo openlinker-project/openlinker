@@ -23892,29 +23892,6 @@ legend.analytics-settings-dialog__label {
   user-select: none;
 }
 
-.assign-packing-work-card__ref-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  flex: 0 0 11rem;
-  min-width: 0;
-}
-
-/* The invisible stand-in for a row with no badge to show - same box, same
-   height, so a lane's mix of badged and plain tasks doesn't read as two
-   different row shapes. See the component's own docblock. */
-.assign-packing-work-card__badge-slot {
-  /* `display: inline-flex`, matching `.status-badge`'s own display - a
-     plain `<span>` wrapper is an INLINE box with no display of its own,
-     so its line-box height falls back to the ref-cell's inherited
-     line-height (taller than the badge's own 19px), making a placeholder
-     row a few pixels taller than a real-badge row despite both wrapping
-     an identically-sized `StatusBadge`. */
-  display: inline-flex;
-  visibility: hidden;
-}
-
 /* Truncate, never wrap - the `.bench-work-row__reference` treatment. A real
  * reference here is a 36-char internal id when the order carries no source
  * reference, and a fixed-width cell that wraps it to two lines - three with
@@ -23922,7 +23899,13 @@ legend.analytics-settings-dialog__label {
  * reader needs: a reference is recognisable from its first characters, and
  * `title` carries the full value for the hover a desk surface affords. */
 .assign-packing-work-card__ref {
-  width: 100%;
+  /* The mockup's `.lane-card__ref` is `flex: 0 0 72px`, sized for `OL-4471`.
+     Ours is wider because a real reference here is frequently the order's
+     internal id — 36 characters — where the source supplied none, and 72px
+     would ellipsise every one of those to `ec6e…`. Fixed rather than
+     growable for the mockup's own reason: a column that sizes to its own
+     row's content puts every row's next column at a different x. */
+  flex: 0 0 9rem;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -23951,8 +23934,16 @@ legend.analytics-settings-dialog__label {
 
 .assign-packing-work-card__meta {
   flex: 0 0 13rem;
+  min-width: 0;
   font-size: 0.75rem;
   color: var(--text-muted);
+  /* One line, like every other column. A location name long enough to wrap
+     ("2 items, 9 units · E2E bench warehouse") made that row 5px taller than
+     its neighbours — the last of the raggedness, and invisible until a lane
+     happened to hold one. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* The controls keep their own width on a desk and take the full row on a
@@ -23971,7 +23962,7 @@ legend.analytics-settings-dialog__label {
     gap: var(--space-3);
   }
 
-  .assign-packing-work-card__ref-cell,
+  .assign-packing-work-card__ref,
   .assign-packing-work-card__buyer {
     flex: 1 1 auto;
   }
@@ -23998,63 +23989,24 @@ legend.analytics-settings-dialog__label {
  * shares `.assign-packing-work-lane__table` with the card list below it
  * (no gap between them, borders that meet edge-to-edge) so the two read as
  * one bordered surface rather than a caption floating over nothing. */
-.assign-packing-work-lane__col-heads {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 6px var(--space-4);
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--text-disabled);
-  border: 1px solid var(--border-subtle);
-  border-bottom: none;
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-}
-
-.assign-packing-work-lane__col-head--ref {
-  flex: 0 0 11rem;
-}
-
-/* No grow, matching `.assign-packing-work-card__buyer`'s own rule — a
-   growable head here would take whatever space the row's grip column
-   would otherwise reserve, decoupling the head from the column it names. */
-.assign-packing-work-lane__col-head--buyer {
-  flex: 0 0 10rem;
-}
-
-.assign-packing-work-lane__col-head--meta {
-  flex: 0 0 13rem;
-}
-
-/* Same box as the row's own grip, invisible — see the component's docblock
-   on why the heads need a stand-in for it. */
-.assign-packing-work-lane__col-head-spacer {
-  visibility: hidden;
-}
-
-@media (max-width: 640px) {
-  .assign-packing-work-lane__col-heads {
-    display: none;
-  }
-}
-
-/* ── Task action overflow menu (the mockup's `.lane-card__menu`) ─────────
- * Up to five server-declared actions plus one per active hold made every
- * card a different height, which is most of what read as a board whose
- * rows did not line up - see `assign-packing-work-actions.tsx`'s own
- * docblock. Only the trigger sits inline; the action set moves into this
- * popover. */
 .assign-packing-work-card__menu-trigger {
-  flex: 0 0 auto;
-  padding: 2px 8px;
-  font-size: 1rem;
-  line-height: 1;
-  color: var(--text-muted);
-  background: none;
-  border: none;
+  /* The mockup's `.btn--sm`: 28px, bordered, sitting on the row's own line
+     beside the assignment control — not a bare glyph floating at the edge,
+     which is what it read as. The set behind it is the server's, so it
+     cannot be named for one action the way the mockup's static `Hold`
+     button is; the shape is what carries over. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -24162,6 +24114,13 @@ legend.analytics-settings-dialog__label {
 }
 
 .assign-packing-work-lane__identity {
+  /* Grows, so the count stays pinned at the trailing edge on EVERY lane —
+     the mockup uses a dedicated `.lane__spacer` for this, which only works
+     while something else in the head is there to be pushed against. The
+     unassigned lane has no load bar (it is not a person), and without a
+     grower here its count jumped back against the subtitle while every
+     other lane's sat at the right. */
+  flex: 1 1 auto;
   min-width: 0;
 }
 

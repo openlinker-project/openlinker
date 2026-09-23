@@ -163,14 +163,22 @@ export function AssignPackingWorkLaneSection({
             </p>
           ) : null}
         </div>
-        <div className="assign-packing-work-lane__load">
-          <div className="assign-packing-work-lane__load-bar">
-            <div
-              className={`assign-packing-work-lane__load-fill assign-packing-work-lane__load-fill--${loadTone}`}
-              style={{ width: `${String(loadPercent)}%` }}
-            />
+        {/* NOT on the unassigned lane — the mockup gives it no load bar, and
+            the reason is that "load" is a statement about a PERSON. The pool
+            is a queue; a full one means there is work to hand out, not that
+            somebody is overloaded, and rendering it here painted the busiest
+            possible bar across the top of a healthy board. A lane that is not
+            about a person has nothing to compare. */}
+        {isUnassignedLane ? null : (
+          <div className="assign-packing-work-lane__load">
+            <div className="assign-packing-work-lane__load-bar">
+              <div
+                className={`assign-packing-work-lane__load-fill assign-packing-work-lane__load-fill--${loadTone}`}
+                style={{ width: `${String(loadPercent)}%` }}
+              />
+            </div>
           </div>
-        </div>
+        )}
         <span className="assign-packing-work-lane__count tabular text-muted">
           {lane.tasks.length}
         </span>
@@ -179,41 +187,16 @@ export function AssignPackingWorkLaneSection({
       {lane.tasks.length === 0 ? (
         <p className="text-muted">{ASSIGN_PACKING_WORK_COPY.lane.empty}</p>
       ) : (
-        // One bordered surface, not two: the col-heads and the card list
-        // share this wrapper so no flex gap opens between them, and their
-        // own borders (rounded top / rounded bottom, meeting edge with none
-        // between) read as a single box, the way a caption sits flush on
-        // top of a table rather than floating above it.
+        // The lane's rows, flush inside the lane's own border — no gap, no
+        // second box. The wrapper survives the column heads it was added for
+        // because it is still what keeps the list's corners meeting the
+        // lane's.
         <div className="assign-packing-work-lane__table">
-          {/* The mockup's `.lane__col-heads` — named once per lane, above its
-              rows, and not at all on an empty lane (there is nothing above).
-              No head for the grip or the controls; see the copy's own
-              docblock. */}
-          <div className="assign-packing-work-lane__col-heads" aria-hidden="true">
-            {/* A same-sized, invisible stand-in for the row's own grip —
-                present in EVERY row when `dragEnabled`, so without one here
-                the heads would sit 20-odd pixels to the left of the columns
-                they name. Reusing the grip's own class is what keeps the
-                two widths identical without a second measurement to keep
-                in sync. */}
-            {dragEnabled ? (
-              <span
-                className="assign-packing-work-card__grip assign-packing-work-lane__col-head-spacer"
-                aria-hidden="true"
-              >
-                ⠿
-              </span>
-            ) : null}
-            <span className="assign-packing-work-lane__col-head assign-packing-work-lane__col-head--ref">
-              {ASSIGN_PACKING_WORK_COPY.columns.order}
-            </span>
-            <span className="assign-packing-work-lane__col-head assign-packing-work-lane__col-head--buyer">
-              {ASSIGN_PACKING_WORK_COPY.columns.buyer}
-            </span>
-            <span className="assign-packing-work-lane__col-head assign-packing-work-lane__col-head--meta">
-              {ASSIGN_PACKING_WORK_COPY.columns.details}
-            </span>
-          </div>
+          {/* NO column heads. `.lane__col-heads` exists in the mockup's CSS and
+              its markup never instantiates it — a lane is a list of rows, not a
+              table, and a heading strip over four-word rows read as a table
+              somebody had half-built. The columns are legible from the rows
+              themselves: a mono reference, a badge, a name, a muted summary. */}
           {/* ONE list at every width (#3401). The dual desktop-row/mobile-card
              pair here was `FulfillmentWorklistRow` + `FulfillmentTaskCard`,
              borrowed from the EXECUTION worklist - and on a phone that card
