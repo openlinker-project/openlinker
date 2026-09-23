@@ -220,10 +220,14 @@ describe('CorrectionLineGrid', () => {
 
     // Expected credit: quantity(3) * unitGross(100) - qty(3) * newPrice(90) = 30.00,
     // rendered negated in the row's Credit cell.
-    const rowCredit = await screen.findByText('-30.00', { selector: '.credit-cell--credit span' });
+    // Scoped to tbody: the tfoot total shares the `.credit-cell--credit` class
+    // and, on a single-line grid, the same -30.00.
+    const rowCredit = await screen.findByText('-30.00', {
+      selector: 'tbody .credit-cell--credit span',
+    });
     expect(rowCredit).toBeInTheDocument();
     expect(
-      screen.queryByText('0.00', { selector: '.credit-cell--credit span' }),
+      screen.queryByText('0.00', { selector: 'tbody .credit-cell--credit span' }),
     ).not.toBeInTheDocument();
   });
 
