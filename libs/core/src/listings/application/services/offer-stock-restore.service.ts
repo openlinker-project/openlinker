@@ -38,6 +38,15 @@
  * the hold being cancelled — short by exactly the cancelled amount, on a live
  * offer, silently and forever.
  *
+ * **#3479 adds a fourth step, run between the dispatch check and the restore:**
+ * `reverseSaleDecrements()` raises every one of the order's applied `order_sale`
+ * decrements (#3453) back into the product master that owns each line, and its
+ * result is threaded into `publishRestoredAtp()` as a SECOND parameter — the
+ * same signature-carries-the-dependency shape (2) already uses for `release` —
+ * because that read must see the raised quantity, not the pre-cancellation one.
+ * It shares the dispatch-check short-circuit above it: a cancellation after the
+ * parcel left the bench restores neither the offer nor the master.
+ *
  * CRASH-KILL, not merely throw. This sequence deliberately has NO claim marker
  * of its own. The release's terminal status IS its record, and it is the same
  * fact the ATP read consults; the restore is an ABSOLUTE set, never a delta. So
@@ -72,10 +81,13 @@ import {
   AVAILABILITY_SERVICE_TOKEN,
   IAvailabilityService,
   IInventoryQueryService,
+  IInventorySaleReversalService,
   INVENTORY_QUERY_SERVICE_TOKEN,
+  INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
   IReservationService,
   RESERVATION_SERVICE_TOKEN,
   type CloseForOrderResult,
+  type ReverseSaleForOrderResult,
 } from '@openlinker/core/inventory';
 import {
   IShipmentQueryService,
@@ -119,6 +131,8 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     private readonly reservations: IReservationService,
     @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
     private readonly shipments: IShipmentQueryService,
+    @Inject(INVENTORY_SALE_REVERSAL_SERVICE_TOKEN)
+    private readonly saleReversal: IInventorySaleReversalService,
   ) {}
 
   async restoreStockForCancelledOrder(
@@ -152,7 +166,57 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
       return this.skipped(release, 'skipped-consumed');
     }
 
-    return this.publishRestoredAtp(release, connectionId, internalOrderId);
+    // STEP 3 (#3479) — give back what #3453 took. Runs BEFORE the offer
+    // restore below, deliberately: `publishRestoredAtp` reads the master's
+    // available-to-promise, and that read must see the raised quantity, not
+    // the pre-cancellation one. Its result is threaded into `publishRestoredAtp`
+    // as a parameter — the ordering lives in the SIGNATURE, not only in this
+    // call sequence (#3491 review; the (2)/(3) shape above applied a second
+    // time). Skipped entirely for an order with no applied `order_sale`
+    // decrement — the routine case (storefront orders, or any order the OMS
+    // never routed) — where `reverseForOrder` is a no-op.
+    const reversal = await this.reverseSaleDecrements(connectionId, internalOrderId);
+
+    return this.publishRestoredAtp(release, reversal, connectionId, internalOrderId);
+  }
+
+  /**
+   * Raise every one of the order's `order_sale` decrements back into their
+   * owning product master.
+   *
+   * Never throws — a per-line failure is ERROR-LOGGED here and nowhere else.
+   * It is **not** reported on the order's `stock-decrement-blocked` attention
+   * state: `InventorySaleDecrementService`'s attention fold deliberately
+   * excludes every `sale-reversal:`-prefixed row from `#3453`'s own decrement
+   * rows, so a failed reversal is invisible on the order and the error log is
+   * the only signal (#3491 review — a prior version of this comment claimed
+   * the opposite). Failing the whole cancellation sequence over it would
+   * re-run the release and the offer restore for no reason — both of which
+   * are unrelated to whether the reversal landed.
+   */
+  private async reverseSaleDecrements(
+    connectionId: string,
+    internalOrderId: string,
+  ): Promise<ReverseSaleForOrderResult> {
+    try {
+      const result = await this.saleReversal.reverseForOrder(internalOrderId);
+      const failed = result.lines.filter(
+        (line) => line.status !== 'applied' && line.status !== 'deduplicated',
+      );
+      if (failed.length > 0) {
+        this.logger.error(
+          `Stock-reversal did not raise the product master for ${failed.length} line(s) ` +
+            `[connectionId=${connectionId}, orderId=${internalOrderId}]`,
+        );
+      }
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Stock-reversal threw while cancelling the order [connectionId=${connectionId}, ` +
+          `orderId=${internalOrderId}]: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { lines: [] };
+    }
   }
 
   /**
@@ -190,21 +254,35 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
   /**
    * Publish the recomputed available-to-promise to the marketplace.
    *
-   * `release` is threaded in as the FIRST PARAMETER and is not optional: the
-   * natural way to obtain one is to call {@link releaseHolds}, so the dependency
-   * is visible in the signature rather than in a comment.
+   * `release` and `reversal` are both threaded in as PARAMETERS, ahead of the
+   * two plain ids, and neither is optional: the natural way to obtain either
+   * is to call {@link releaseHolds} / `reverseSaleDecrements` first, so both
+   * dependencies are visible in the signature rather than only in a comment
+   * (#3491 review — `reversal` mirrors the shape `release` already had).
    *
-   * Its honest limit (#2628 review): `CloseForOrderResult` is a STRUCTURAL type,
-   * so an object literal of the same shape type-checks and a determined
-   * reordering still compiles. This makes the order obvious and hard to invert
-   * by accident; it is not a compile-time proof. The shared-recorder spec is
-   * what actually pins the two effects in sequence — see the class docblock.
+   * Its honest limit (#2628 review): both are STRUCTURAL types, so an object
+   * literal of the same shape type-checks and a determined reordering still
+   * compiles. This makes the order obvious and hard to invert by accident; it
+   * is not a compile-time proof. The shared-recorder spec is what actually
+   * pins the effects in sequence — see the class docblock.
    */
   private async publishRestoredAtp(
     release: CloseForOrderResult,
+    reversal: ReverseSaleForOrderResult,
     connectionId: string,
     internalOrderId: string,
   ): Promise<OfferStockRestoreResult> {
+    if (reversal.lines.length > 0) {
+      // Visibility that the ATP read below is reading a master the reversal
+      // just raised, not merely one #3453 previously lowered — the reversal's
+      // own per-line failures are logged where they happen
+      // (`reverseSaleDecrements`); this is the ordering fact, not a retry of
+      // that logging.
+      this.logger.debug(
+        `Restoring ATP after reversing ${reversal.lines.length} sale decrement(s) ` +
+          `[connectionId=${connectionId}, orderId=${internalOrderId}]`,
+      );
+    }
     // Resolve the destination restorer before the per-variant reads below: the
     // ingestion hook enqueues this job on every `→ cancelled` transition
     // regardless of marketplace, so most invocations are for connections that
