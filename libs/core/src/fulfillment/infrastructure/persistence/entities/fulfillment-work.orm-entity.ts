@@ -70,6 +70,24 @@ import {
   'CHK_fulfillment_works_closed_parcel_actor',
   'NOT ("parcelClosedAt" IS NOT NULL AND "packedByUserId" IS NULL AND "packedByService" IS NULL)'
 )
+// An EXCLUSIVE assignment must name the packer it is exclusive TO (ADR-074).
+// `selfServeEligible = false` on an unassigned row is a lock belonging to
+// nobody — this file's repository closes that at both writers
+// (`clearAssignment` resets the flag, `setSelfServeEligible(false)` is guarded
+// on an assignee existing). THIRD named `@Check` on this table — see the
+// sibling above for why they are separate rather than widened: this one
+// quantifies over a different pair of columns, under a different condition,
+// and is fixed differently.
+//
+// Declared under the SAME NAME as the migration, per this file's own naming
+// discipline — the integration harness builds schema by `synchronize`, so an
+// anonymous one would carry a hash name there and
+// `fulfillment-work-migration-parity.int-spec.ts` compares CHECK definitions
+// between the two schemas.
+@Check(
+  'CHK_fulfillment_works_exclusive_needs_packer',
+  'NOT ("selfServeEligible" = false AND "assignedToUserId" IS NULL)'
+)
 // The grouping key. Its LEADING COLUMN serves every `WHERE "orderId" = ?`
 // lookup, so there is deliberately no separate (orderId) index — the same
 // argument this tree makes against a redundant index on `return_lines`.
@@ -150,6 +168,36 @@ export class FulfillmentWorkOrmEntity {
   /** The holder. `null` before assignment and again after a rejection. */
   @Column({ type: 'uuid', nullable: true })
   assignedConnectionId!: string | null;
+
+  /**
+   * A supervisor's advisory pre-assignment of this parcel to a specific
+   * PACKER (ADR-074, #3336) — a distinct axis from `assignedConnectionId`
+   * (ADR-054's HOLDER connection, the executor). `null` = unassigned.
+   * `uuid`, matching the sibling `packedByUserId` column on this table.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  assignedToUserId!: string | null;
+
+  /**
+   * Whether a packer OTHER than `assignedToUserId` may still claim this
+   * parcel. `true` (the default) is ADR-074's advisory reading — a
+   * locked-to-one-packer assignment is the exception an operator opts into,
+   * not the default. Enforcement of `false` lives in
+   * `BenchParcelService.verifyUnit` (#3337) — a human-packer guard, not
+   * `FulfillmentHandshakeService`, which negotiates with holder connections
+   * (ADR-054's executor axis, #2399) and has no concept of an acting user;
+   * this column only records the decision.
+   *
+   * **`clearAssignment` resets this to `true` in the same statement that
+   * nulls `assignedToUserId`.** The flag is a decision about the packer being
+   * cleared, not a standing property of the parcel — leaving it behind would
+   * lock the NEXT assignee to an exclusivity nobody chose for them. See
+   * `CHK_fulfillment_works_exclusive_needs_packer` above, which is the
+   * DB-level backstop for the one representable-and-wrong shape this leaves:
+   * an exclusive lock with nobody assigned to hold it.
+   */
+  @Column({ type: 'boolean', default: true })
+  selfServeEligible!: boolean;
 
   /** `FulfillmentWorkStatus`. Narrowed on read by `isFulfillmentWorkStatus`. */
   @Column({ type: 'varchar', length: 32, default: 'open' })
@@ -265,6 +313,13 @@ export class FulfillmentWorkOrmEntity {
    * full-entity `save()`, and this aggregate is written exclusively by narrow
    * conditional UPDATEs, which it would never observe. Each transition carries
    * `version = version + 1` in its own `SET`.
+   *
+   * `assignToPacker` / `clearAssignment` / `setSelfServeEligible` (#3336) bump
+   * it too, deliberately — the row genuinely changed. The consequence is felt
+   * by a packer mid-parcel: a supervisor's staffing decision on this work
+   * object (a reassignment, or flipping `selfServeEligible`) invalidates the
+   * token the bench is holding, so that packer's next action answers 409 via
+   * `supportedActions` / `expectedVersion` and must re-fetch.
    */
   @Column({ type: 'integer', default: 0 })
   version!: number;

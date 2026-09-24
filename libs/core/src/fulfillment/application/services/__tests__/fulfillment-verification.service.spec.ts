@@ -31,6 +31,8 @@ const work = (over: Partial<FulfillmentWork> = {}): FulfillmentWork => ({
   locationId: null,
   deliveryMethod: null,
   assignedConnectionId: 'conn-1',
+  assignedToUserId: null,
+  selfServeEligible: true,
   status: 'open',
   requestStatus: 'accepted',
   assignmentAttempt: 0,

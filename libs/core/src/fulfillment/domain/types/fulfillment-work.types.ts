@@ -116,6 +116,29 @@ export interface FulfillmentWork {
   /** The holder. `null` until a router assigns one, and again after a rejection. */
   readonly assignedConnectionId: string | null;
 
+  /**
+   * A supervisor's advisory pre-assignment of this parcel to a specific
+   * packer, `null` for none (ADR-074, #3336).
+   *
+   * A distinct axis from `assignedConnectionId` (ADR-054's HOLDER
+   * connection): this one names a PERSON inside an already-accepted holder,
+   * and never touches the executor handshake (#2399/#2712).
+   */
+  readonly assignedToUserId: string | null;
+
+  /**
+   * Whether a packer other than `assignedToUserId` may still claim this
+   * parcel. `true` (the schema default) is the advisory reading ADR-074
+   * chose: a locked, assigned-only parcel is the explicit exception a
+   * supervisor opts into, not the default. Server-side enforcement of
+   * `false` lives in `BenchParcelService.verifyUnit` (#3337) — a
+   * human-packer guard, not `FulfillmentHandshakeService`, which negotiates
+   * with holder connections (ADR-054's executor axis, #2399) and has no
+   * concept of an acting user; this field only records the operator's
+   * decision.
+   */
+  readonly selfServeEligible: boolean;
+
   readonly status: FulfillmentWorkStatus;
   readonly requestStatus: FulfillmentRequestStatus;
 

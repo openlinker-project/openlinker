@@ -192,6 +192,125 @@ describe('FulfillmentWorkRepository', () => {
     });
   });
 
+  describe('assignment (#3336, ADR-074)', () => {
+    it('should assign a packer with no IS NULL guard — reassignment is legal', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.assignToPacker('w1', 'user-1')).resolves.toBe(true);
+      // Unlike `assignHolder`, `assignToPacker` guards only on the row's
+      // existence — ADR-074 requires a supervisor to be able to reassign an
+      // idle parcel, so no `IS NULL` clause may appear here.
+      expect(argsOf(qb.andWhere as Mock)).not.toContain('"assignedToUserId" IS NULL');
+    });
+
+    it('should report not-applied when the work object no longer exists', async () => {
+      const qb = updateQueryBuilder({ affected: 0 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.assignToPacker('w1', 'user-1')).resolves.toBe(false);
+    });
+
+    it('should bump the version on assignToPacker, because it is a header transition', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await repo.assignToPacker('w1', 'user-1');
+
+      const setArg = firstArgOf<Record<string, unknown>>(qb.set as Mock);
+      expect(setArg.assignedToUserId).toBe('user-1');
+      expect((setArg.version as () => string)()).toBe('"version" + 1');
+    });
+
+    it('should clear an assignment only when one exists', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.clearAssignment('w1')).resolves.toBe(true);
+      // Mirrors `clearHolder` — guarded so a redundant clear reports the
+      // ordinary no-op outcome rather than a false "applied".
+      expect(argsOf(qb.andWhere as Mock)).toContain('"assignedToUserId" IS NOT NULL');
+    });
+
+    it('should reset selfServeEligible to true in the same statement (ADR-074 review round 2)', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await repo.clearAssignment('w1');
+
+      // Without this, `assignToPacker(A) -> setSelfServeEligible(false) ->
+      // clearAssignment -> assignToPacker(B)` would leave B exclusively
+      // locked by a decision nobody made about them.
+      const setArg = firstArgOf<Record<string, unknown>>(qb.set as Mock);
+      expect(setArg.assignedToUserId).toBeNull();
+      expect(setArg.selfServeEligible).toBe(true);
+    });
+
+    it('should report not-applied clearing an already-unassigned parcel', async () => {
+      const qb = updateQueryBuilder({ affected: 0 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.clearAssignment('w1')).resolves.toBe(false);
+    });
+
+    it('should refuse to lock an unassigned parcel (ADR-074 - exclusive-to-nobody)', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.setSelfServeEligible('w1', false)).resolves.toBe(true);
+
+      const setArg = firstArgOf<Record<string, unknown>>(qb.set as Mock);
+      expect(setArg.selfServeEligible).toBe(false);
+      expect(argsOf(qb.andWhere as Mock)).toContain('"assignedToUserId" IS NOT NULL');
+    });
+
+    it('should leave the true direction unguarded, since it is the state clearAssignment restores', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.setSelfServeEligible('w1', true)).resolves.toBe(true);
+
+      expect(qb.andWhere as Mock).not.toHaveBeenCalled();
+    });
+
+    it('should report not-applied for setSelfServeEligible when the work is gone', async () => {
+      const qb = updateQueryBuilder({ affected: 0 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.setSelfServeEligible('w1', true)).resolves.toBe(false);
+    });
+
+    it('should convert an unexpected database error into a domain error', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      (qb.execute as Mock).mockRejectedValue(new Error('connection reset'));
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.assignToPacker('w1', 'user-1')).rejects.toBeInstanceOf(
+        FulfillmentPersistenceError
+      );
+    });
+  });
+
   describe('empty transition preconditions', () => {
     it('should report not-applied rather than emitting IN () for an empty from-set', async () => {
       // `IN ()` is a syntax error, not an empty set — the caller would otherwise

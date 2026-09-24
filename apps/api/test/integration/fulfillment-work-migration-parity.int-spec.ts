@@ -414,6 +414,12 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       // a plausible edit — and one that would leave both schemas matching and
       // the constraint's own name gone.
       'CHK_fulfillment_works_closed_parcel_actor',
+      // #3360 (ADR-074). Named for the same reason: it is the THIRD `@Check`
+      // on this table, quantifying over `selfServeEligible`/`assignedToUserId`
+      // rather than the packing-actor pair above, and a silent drop here would
+      // leave both sides matching while re-admitting the "exclusive to nobody"
+      // state the migration comment says it exists to close.
+      'CHK_fulfillment_works_exclusive_needs_packer',
       // #2727. Named here rather than left to the definition diff because this
       // file's prose reasons about it: it deliberately OMITS the obvious
       // `"shippedQuantity" <= "quantity"` clause (re-ingestion rewrites the
@@ -510,6 +516,17 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
       'NOT',
     ]) {
       expect(closedParcelActor).toContain(clause);
+    }
+
+    // The exclusivity predicate (ADR-074), clause by clause: both columns must
+    // appear under a `NOT (… AND …)`, or a weakening applied to both schemas
+    // at once still passes the definition-equality assertion above.
+    const exclusiveNeedsPacker = checksOf(fromMigration).find((entry) =>
+      entry.startsWith('CHK_fulfillment_works_exclusive_needs_packer')
+    );
+    expect(exclusiveNeedsPacker).toBeDefined();
+    for (const clause of ['"selfServeEligible" = false', '"assignedToUserId" IS NULL', 'NOT']) {
+      expect(exclusiveNeedsPacker).toContain(clause);
     }
 
     const foreignKeys = fromMigration.filter((r) => r.contype === 'f');

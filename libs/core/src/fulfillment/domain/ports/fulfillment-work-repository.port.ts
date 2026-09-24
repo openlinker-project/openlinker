@@ -500,6 +500,43 @@ export interface FulfillmentWorkRepositoryPort {
   clearHolder(workId: string): Promise<boolean>;
 
   /**
+   * Pre-assign this parcel to a packer (ADR-074, #3336). Unlike
+   * `assignHolder`, this is NOT a claim-once primitive: ADR-074 requires a
+   * supervisor to be able to REASSIGN an idle parcel, so the guard is only
+   * that the row exists — an already-assigned work object may be
+   * reassigned, overwriting the prior `assignedToUserId` unconditionally.
+   *
+   * `false` means the work object no longer exists; an ordinary outcome
+   * (the parcel closed or was cancelled between the read and this call), not
+   * an error.
+   */
+  assignToPacker(workId: string, userId: string): Promise<boolean>;
+
+  /**
+   * Clear a pre-assignment. Guarded `IS NOT NULL`, mirroring `clearHolder` —
+   * `false` means the parcel was already unassigned, an ordinary no-op.
+   *
+   * Also resets `selfServeEligible` to `true`, in the SAME statement, so an
+   * exclusivity decision about the cleared packer is never inherited by
+   * whoever is assigned next (ADR-074 review round 2) — the flag is a
+   * decision about a specific assignee, not a standing property of the
+   * parcel.
+   */
+  clearAssignment(workId: string): Promise<boolean>;
+
+  /**
+   * Set whether a packer other than `assignedToUserId` may still claim this
+   * parcel (ADR-074). `true` is unguarded beyond the row existing — it is
+   * both the column default and the state `clearAssignment` restores, so
+   * refusing it would refuse a no-op. `false` is additionally guarded
+   * `assignedToUserId IS NOT NULL`: an exclusive lock naming no packer is
+   * the unrepresentable state `CHK_fulfillment_works_exclusive_needs_packer`
+   * backstops at the database, and this guard is what keeps that state from
+   * being reachable through this port in the first place.
+   */
+  setSelfServeEligible(workId: string, selfServeEligible: boolean): Promise<boolean>;
+
+  /**
    * Claim a dispatch: move `requestStatus` to `submitted` and increment
    * `assignmentAttempt`, in ONE conditional UPDATE, returning the attempt the
    * statement persisted — or `null` when the guard did not hold.

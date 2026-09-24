@@ -20,6 +20,8 @@ const workAt = (over: Partial<FulfillmentWork> = {}): FulfillmentWork => ({
   locationId: 'loc-1',
   deliveryMethod: 'courier',
   assignedConnectionId: 'conn-1',
+  assignedToUserId: null,
+  selfServeEligible: true,
   status: 'open',
   requestStatus: 'unsubmitted',
   assignmentAttempt: 0,
