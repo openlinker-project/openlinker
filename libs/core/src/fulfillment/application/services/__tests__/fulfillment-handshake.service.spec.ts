@@ -34,6 +34,9 @@ const buildWork = (overrides: Partial<FulfillmentWork> = {}): FulfillmentWork =>
   locationId: 'loc-1',
   deliveryMethod: 'courier',
   assignedConnectionId: CONNECTION_ID,
+  assignedToUserId: null,
+  unassignedSince: null,
+  selfServeEligible: true,
   status: 'open',
   requestStatus: 'unsubmitted',
   assignmentAttempt: 0,
@@ -47,6 +50,10 @@ const buildWork = (overrides: Partial<FulfillmentWork> = {}): FulfillmentWork =>
   parcelClosedAt: null,
   packedByUserId: null,
   packedByService: null,
+  invoicePrintedAt: null,
+  labelPrintedAt: null,
+  completedAt: null,
+  completedByUserId: null,
   lines: [
     {
       id: 'line-1',

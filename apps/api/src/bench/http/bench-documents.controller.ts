@@ -20,6 +20,30 @@
  * *"the bench reaches the parcel through the work, never by enumerating a
  * register"*, which is #2413's own principle rather than a new one.
  *
+ * ## The invoice print is stamped, best-effort (pack-bench completion)
+ *
+ * `FulfillmentWork.invoicePrintedAt` records the FIRST time this route served
+ * bytes, fill-in-when-NULL so a reprint never moves it. The stamp is written
+ * AFTER the document is already in hand and wrapped in its own try/catch: a
+ * print that worked and a stamp that failed must serve the exact same 200 a
+ * stamp that succeeded would have, because the packer's box does not care
+ * whether OpenLinker remembered it printed the invoice.
+ *
+ * ## The label print is stamped HERE, never on the general shipment route
+ *
+ * `GET /shipments/:id/label` serves any caller for any reason — it carries no
+ * `@Roles`, a viewer may legitimately download a label to look at it, and a
+ * script re-reading it proves nothing about a packer's box. A fetch there is
+ * therefore not evidence anyone printed anything, and stamping it there was
+ * the bug: it silenced `BenchCompletionPanel`'s "the label is not printed"
+ * confirmation on a box a packer never actually printed a label for. This
+ * route is the ONLY place `FulfillmentWork.labelPrintedAt` is written — it is
+ * reachable solely through the work, by the bench, the same shape the invoice
+ * stamp above already has — and it resolves the shipment the SAME way the
+ * documents read does (`IBenchDocumentsService.getDocuments`'s label view),
+ * never by taking a caller-supplied shipment id, so this route cannot be
+ * walked to print — and stamp — another parcel's label.
+ *
  * @module apps/api/src/bench/http
  */
 import {
@@ -41,8 +65,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  FULFILLMENT_VERIFICATION_SERVICE_TOKEN,
   FulfillmentWorkNotFoundError,
   type FulfillmentWorkView,
+  type IFulfillmentVerificationService,
 } from '@openlinker/core/fulfillment';
 import {
   INVOICE_SERVICE_TOKEN,
@@ -51,12 +77,17 @@ import {
   type InvoicingPort,
 } from '@openlinker/core/invoicing';
 import { INTEGRATIONS_SERVICE_TOKEN, IIntegrationsService } from '@openlinker/core/integrations';
+import {
+  SHIPMENT_LABEL_SERVICE_TOKEN,
+  type IShipmentLabelService,
+} from '@openlinker/core/shipping';
 import { ROLE_PERMISSIONS } from '@openlinker/core/users';
 import { Logger } from '@openlinker/shared/logging';
 
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { extensionForContentType } from '../../shipping/http/shipment.controller';
 import {
   BENCH_DOCUMENTS_SERVICE_TOKEN,
   type IBenchDocumentsService,
@@ -89,7 +120,11 @@ export class BenchDocumentsController {
     @Inject(INVOICE_SERVICE_TOKEN)
     private readonly invoices: IInvoiceService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrations: IIntegrationsService
+    private readonly integrations: IIntegrationsService,
+    @Inject(FULFILLMENT_VERIFICATION_SERVICE_TOKEN)
+    private readonly verification: IFulfillmentVerificationService,
+    @Inject(SHIPMENT_LABEL_SERVICE_TOKEN)
+    private readonly labelDocuments: IShipmentLabelService
   ) {}
 
   @Get('work/:workId/documents')
@@ -183,12 +218,90 @@ export class BenchDocumentsController {
     }
 
     const document = await adapter.getRegulatoryDocument(record, 'rendered');
+
+    // Best-effort (pack-bench completion): the print itself already succeeded above, so a
+    // failure to STAMP that it happened must never turn a working download
+    // into a 500, or delay it further than one indexed UPDATE. Fill-in-when-
+    // NULL on the repository side means a reprint is a harmless no-op here
+    // too — this call site never needs to know which.
+    try {
+      await this.verification.markInvoicePrinted(work.id, new Date());
+    } catch (error) {
+      this.logger.warn(
+        `bench_invoice_print_stamp_failed workId=${workId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
     res.setHeader('Content-Type', document.contentType);
     res.setHeader(
       'Content-Disposition',
       `inline; filename="invoice-${record.id}"`
     );
     return new StreamableFile(Buffer.from(document.content));
+  }
+
+  @Get('work/:workId/documents/label')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: "Print this parcel's label",
+    description:
+      "The label document for the shipment linked to this work — the ONLY route that stamps " +
+      '`FulfillmentWork.labelPrintedAt`, and it does so because it is the only place a print can ' +
+      'be attributed to this parcel. `GET /shipments/:id/label` still serves the same bytes for ' +
+      'any caller with a shipment id, but no longer marks anything printed. 404 when the parcel ' +
+      "has no label — the same reading the documents read above already gives that box's label " +
+      'state.',
+  })
+  @ApiProduces('application/pdf')
+  @ApiResponse({ status: 200, description: 'Label document bytes (Content-Type per provider)' })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench, or no label for it' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The label could not be retrieved from the shipping provider. One neutral refusal, because ' +
+      "the provider's own words must not reach a packer.",
+  })
+  async downloadLabel(
+    @Param('workId') workId: string,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<StreamableFile> {
+    const work = await this.resolveWork(workId);
+    // `canSeeCarrierText: false` — this route only needs the label's
+    // `shipmentId`, never the carrier's own rejection prose.
+    const view = await this.documents.getDocuments(work, false);
+    if (view.label.state !== 'ready') {
+      throw new NotFoundException('No label for this parcel');
+    }
+
+    let document: Awaited<ReturnType<IShipmentLabelService['fetchLabel']>>;
+    try {
+      document = await this.labelDocuments.fetchLabel(view.label.shipmentId);
+    } catch (error) {
+      this.logger.warn(
+        `bench_label_fetch_failed workId=${workId} shipmentId=${view.label.shipmentId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+      throw new ConflictException('This label could not be retrieved. Check with dispatch.');
+    }
+
+    // Stamped AFTER the bytes are already in hand, in its OWN try/catch
+    // (pack-bench completion, see the module header): the print already
+    // succeeded, so a failed stamp must serve the exact same 200 a
+    // successful one would.
+    try {
+      await this.verification.markLabelPrinted(work.id, new Date());
+    } catch (error) {
+      this.logger.warn(
+        `bench_label_print_stamp_failed workId=${workId}: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    const ext = extensionForContentType(document.contentType);
+    res.setHeader('Content-Type', document.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="ol-shipment-label-${workId}.${ext}"`);
+    return new StreamableFile(Buffer.from(document.body));
   }
 
   @Get('unlabelled-parcels')

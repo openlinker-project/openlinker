@@ -1175,22 +1175,68 @@ async function ensureCarrierFullyDelivered(conn: Connection, idCarrier: number):
  * so PS treats the carrier as available + priced. Flat rate (12.50) covering
  * any cart 0–10000 in either price or weight.
  */
+/**
+ * Get-or-create the one permissive 0-10000 range a carrier needs.
+ *
+ * The caller deletes every range for the carrier first, so an INSERT looks
+ * safe - and is not, because two specs seeding the same carrier against one
+ * shared container interleave their DELETEs and INSERTs and the second insert
+ * collides on `(id_carrier, delimiter1, delimiter2)`. Recovering the peer's row
+ * is correct rather than merely tolerable: the fixture needs such a range to
+ * EXIST, and it does not care whose it is.
+ *
+ * Narrowed to the duplicate-key error on purpose - any other failure is a real
+ * one and must not be swallowed into a second SELECT that then returns nothing.
+ *
+ * Known, accepted residual: the recovered row can still be deleted out from
+ * under this call by the very peer that created it (its own DELETE may not
+ * have run yet, or a third spec's delete may land after the recovery SELECT).
+ * Not worth a lock or a retry loop here - `ps_delivery` carries no FK to the
+ * range tables, the rows are re-seeded by whichever spec runs next, and the
+ * downstream `INSERT IGNORE` absorbs the duplicate. If this ever surfaces as a
+ * flake, it looks like one spec's carrier silently un-priced, not like a
+ * failure in this function.
+ */
+async function insertOrRecoverRange(
+  conn: Connection,
+  table: 'ps_range_price' | 'ps_range_weight',
+  idCarrier: number
+): Promise<number> {
+  try {
+    const [inserted] = await conn.execute<ResultSetHeader>(
+      `INSERT INTO ${table} (id_carrier, delimiter1, delimiter2)
+       VALUES (?, 0.000000, 10000.000000)`,
+      [idCarrier]
+    );
+    return inserted.insertId;
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'ER_DUP_ENTRY') throw error;
+    // The key column is DERIVED from the table name rather than written out,
+    // because the two tables carry different ones (`id_range_price` /
+    // `id_range_weight`) and a single literal would be wrong for one of them.
+    // `ps_x -> id_x` is PrestaShop's own convention and the one this file
+    // already leans on throughout (`id_carrier`, `id_zone`, `id_shop`).
+    const idColumn = table.replace(/^ps_/, 'id_');
+    const [rows] = await conn.execute<RowDataPacket[]>(
+      `SELECT ${idColumn} AS id FROM ${table}
+        WHERE id_carrier = ? AND delimiter1 = 0.000000 AND delimiter2 = 10000.000000
+        LIMIT 1`,
+      [idCarrier]
+    );
+    const recovered = rows[0]?.id as number | undefined;
+    if (recovered === undefined) throw error;
+    return recovered;
+  }
+}
+
 async function seedDeliveryRows(
   conn: Connection,
   idCarrier: number,
   zones: Array<{ id_zone: number }>,
   shops: Array<{ id_shop: number }>
 ): Promise<void> {
-  const [priceRangeResult] = await conn.execute<ResultSetHeader>(
-    `INSERT INTO ps_range_price (id_carrier, delimiter1, delimiter2)
-     VALUES (?, 0.000000, 10000.000000)`,
-    [idCarrier]
-  );
-  const [weightRangeResult] = await conn.execute<ResultSetHeader>(
-    `INSERT INTO ps_range_weight (id_carrier, delimiter1, delimiter2)
-     VALUES (?, 0.000000, 10000.000000)`,
-    [idCarrier]
-  );
+  const priceRangeId = await insertOrRecoverRange(conn, 'ps_range_price', idCarrier);
+  const weightRangeId = await insertOrRecoverRange(conn, 'ps_range_weight', idCarrier);
   for (const zone of zones) {
     for (const shop of shops) {
       // Two ps_delivery rows per (carrier, zone, shop) — one keyed to the
@@ -1202,12 +1248,12 @@ async function seedDeliveryRows(
       await conn.execute(
         `INSERT IGNORE INTO ps_delivery (id_carrier, id_range_price, id_range_weight, id_zone, id_shop, id_shop_group, price)
          VALUES (?, ?, 0, ?, ?, NULL, 12.50)`,
-        [idCarrier, priceRangeResult.insertId, zone.id_zone, shop.id_shop]
+        [idCarrier, priceRangeId, zone.id_zone, shop.id_shop]
       );
       await conn.execute(
         `INSERT IGNORE INTO ps_delivery (id_carrier, id_range_price, id_range_weight, id_zone, id_shop, id_shop_group, price)
          VALUES (?, 0, ?, ?, ?, NULL, 12.50)`,
-        [idCarrier, weightRangeResult.insertId, zone.id_zone, shop.id_shop]
+        [idCarrier, weightRangeId, zone.id_zone, shop.id_shop]
       );
     }
   }

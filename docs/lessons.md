@@ -23,6 +23,180 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## A push plan built from pre-rebase subjects silently drops commits made after it
+
+**Context**: the pack-bench stack (#3330-#3439). After rebasing fourteen
+branches, a script remapped each branch tip to its new sha by matching the
+commit SUBJECT recorded before the rebase, then force-pushed each one.
+
+**Problem**: two commits authored AFTER the boundaries were recorded - a lessons
+entry and ten web-test fixes - sat above the matched tip, so they were never in
+the plan and were never pushed. Everything reported success: fourteen `ok` rows,
+every lease honoured, no error anywhere. CI then ran against a head that
+predated the fixes, and the ten failures it reported had already been fixed
+locally, which reads as "the fixes did not work" rather than "the fixes are not
+there".
+
+**Rule**: a push plan is a snapshot, and anything committed after it is outside
+it. Either build the plan immediately before pushing, or - better - assert
+afterwards that the working branch's own `HEAD` equals what was pushed for it,
+since that is the one boundary a subject match cannot get wrong (the topmost
+branch's tip is the only one that keeps moving while work continues). `git log
+origin/<branch>..HEAD` answering non-empty after a push meant to be complete is
+the check; it costs one command and it is the difference between reading CI as a
+result and reading it as a stale artefact.
+
+**Applies to**: any scripted multi-branch push, especially in a stacked-PR flow
+where the tip branch is also the working branch.
+
+**Source**: #3439 (the pack-bench stack), 2026-09-23.
+
+---
+
+## A test fixture that contradicts the call under test passes until a guard is added
+
+**Context**: ADR-074 gained a rule that a parcel cannot be made exclusive
+without an assigned packer (#3360).
+
+**Problem**: four cases in `fulfillment-worklist.service.spec.ts` asked for
+`selfServeEligible: false` against `workAt()`, whose default is
+`assignedToUserId: null` - so every one of them was asserting behaviour for
+"exclusive to nobody", the state the new guard forbids. They had passed for
+years because nothing checked the combination, and they all failed the moment
+something did. The same shape as the #2380 entry below, arriving from the other
+direction: there a fixture described a state the code could not produce, here a
+fixture described one the code should not accept.
+
+**Rule**: when a shared fixture factory has a permissive default, a case that
+overrides one field and leaves the rest is asserting about whatever the default
+happens to be - which is fine until that combination acquires a meaning. On
+adding a cross-field rule, grep the fixture's own default for the other side of
+it rather than waiting for the suite; and repair such a case by giving it a
+fixture consistent with its own call, never by relaxing the new guard. The
+lost-race case here is the worked example: its premise is that its own
+`assignToPacker` lost, so the honest re-read is a row assigned to somebody else,
+which is both more realistic than the unassigned row it had and the shape the
+rule needs.
+
+**Applies to**: any spec suite built on a `makeX(over)` factory.
+
+**Source**: #3360, 2026-09-23.
+
+---
+
+## A stacked branch that will not merge may be a parallel lineage, not a stale copy
+
+**Context**: the pack-bench stack (#3330-#3439). `#3386` reported
+`mergeable_state: dirty` and the three PRs above it `unknown`, because GitHub
+cannot evaluate past a base that does not merge. A three-dot merge preview
+reported 19 conflicting files.
+
+**Problem**: the obvious reading - "the top was cut before the review fixes
+landed below, so bring the base up" - was wrong, and acting on it would have
+been destructive. The merge base between the two halves was the FIRST commit of
+the whole stack, and the upper half's twelve commits were its own pre-review
+versions of the same twelve features the lower half carried in twenty-three
+(original plus fixes). Bringing the base up would have applied every one of
+them twice; that is why nineteen files conflicted rather than two or three.
+
+**Rule**: when a stacked branch will not merge, find the merge base between the
+two sides before choosing how to reconcile them. A base at or near the stack's
+root means the branches are parallel lineages of the same work, and the answer
+is a rebase onto the reviewed lineage that DROPS the duplicated commits, never
+a merge. Resolve each conflict by asking which side is a SUPERSET rather than
+which is newer: a review fix is usually an addition to the same region, so
+"take mine" is how one gets reverted silently. Where both sides fixed the same
+thing differently, merge the two intents rather than picking a side.
+
+**Applies to**: any stack of PRs whose lower half has been force-pushed with
+review fixes.
+
+**Source**: #3439 (the pack-bench stack), 2026-09-23.
+
+---
+
+## Run the gate AFTER a rebase - a clean replay is not a result
+
+**Context**: the same rebase - 64 commits replayed with nine hand-resolved
+conflicts, reported as `Successfully rebased`.
+
+**Problem**: it was not successful. A conflict marker had reached a commit, and
+two test assertions named a refusal reason the code cannot return - both halves
+of the stack had added the same guard and named its refusal differently, so
+unifying the name left the reopen tests asserting a value the reopen union does
+not carry. `toMatchObject` with a string literal is not checked against a
+union, so `tsc` passed and those tests would have failed only when somebody ran
+them. A third defect was the rebase's own doing: a migration renumber authored
+late replayed in date order, dozens of commits after the one that CREATES that
+migration, silently reinstating the timestamp collision a reviewer had blocked
+on.
+
+**Rule**: after any rebase, run the full gate and redeploy before claiming it
+worked - lint, type-check, and whatever live verification the change has. Then
+re-read the ORDER of the replayed commits: one authored late but belonging
+early lands in the wrong place, and that failure is a property of the stack
+rather than of any file, so no per-file check finds it. `GIT_SEQUENCE_EDITOR`
+pointed at a script folds it back where it belongs without an interactive
+editor.
+
+**Applies to**: any rebase of more than a handful of commits.
+
+**Source**: #3439, 2026-09-23.
+
+---
+
+## A client-side gate needs a permission the role can actually hold
+
+**Context**: #3424. The pack bench's two write controls - `Claim this parcel` and `Take next task` -
+were gated on `useWriteAccess('orders:write')`. The routes behind them are
+`@Roles('admin', 'operator', 'packer')` and work correctly for a packer.
+
+**Problem**: `ROLE_PERMISSIONS.packer` was `[]`, deliberately, on the reasoning that granting a
+permission "merely to populate the Record" would light up a nav surface a packer must not see. So
+both controls rendered **zero times for the only role that would press them**, while the API
+accepted that role perfectly well. Nothing failed: lint, type-check and the whole unit suite were
+green, because a control that never renders breaks no assertion. It surfaced only when a live E2E
+state tried to click one and found `count: 0`. An empty permission row is not automatically a
+narrower role - here it was a broken one.
+
+**Rule**: when a control is gated client-side, check that the ROLES allowed by the route behind it
+can hold the permission the gate reads. If none can, the control is dead code that type-checks.
+Where the existing permissions are all too wide (as `orders:write` was), add a narrow one scoped to
+that surface and keep the roles holding it identical to the route's own `@Roles` list - the
+permission gates the control, the decorator gates the route, and a UI that hides what the route
+allows is the same class of defect as one that offers what the route refuses.
+
+**Applies to**: `apps/web/**` `useWriteAccess` / `usePermission` call sites;
+`libs/core/src/users/domain/types/role.types.ts`.
+
+**Source**: #3424 (`bench:write`), ADR-071.
+
+---
+
+## When you cannot run the suites, grep for the assertions type-check cannot see
+
+**Context**: #3424 and the #3415 review, developed on a machine that cannot sustain `pnpm test`.
+The gate was `pnpm lint`, `pnpm type-check`, `pnpm check:invariants` and a live E2E sweep.
+
+**Problem**: `tsc` catches a widened INTERFACE at every consumer, so adding a field to
+`FulfillmentWork` failed loudly in three fixtures and was fixed. It cannot see a widened VALUE
+asserted at runtime: changing `ROLE_PERMISSIONS.packer` from `[]` to `['bench:write']` type-checks
+cleanly and breaks `expect(ROLE_PERMISSIONS.packer).toEqual([])` in a tripwire spec written
+specifically to catch that change. Found by grep during a pre-review sweep, not by the gate.
+
+**Rule**: after widening any exported VALUE - an `as const` array, a `Record` row, a DTO's projected
+field set - grep the spec files for a runtime equality on it before claiming the change is verified:
+`toEqual(`, `toHaveLength(`, `toStrictEqual(` naming the identifier or its container. Check the same
+way for a DTO that SPREADS a widened entity, which silently puts the new field on an API response no
+type error will report. State in the PR that the suites were not run, and name what was run instead.
+
+**Applies to**: any change to `role.types.ts`, `*Values` arrays, `ROLE_PERMISSIONS`, or a domain
+entity's constructor, made without running `pnpm test`.
+
+**Source**: #3424, #3415 review.
+
+---
+
 ## A claim about a dependency's internals must be read against the installed version
 
 **Context**: #2957 split a paginated read into a fast page and a separate total. The change had to

@@ -22,15 +22,34 @@
 import { z } from 'zod';
 
 import type {
+  BenchActivityEntry,
+  BenchClaimNextResult,
+  BenchClaimResult,
+  BenchCompleteResult,
   BenchDocuments,
+  BenchMetrics,
+  BenchPackedTodayList,
   BenchParcel,
+  BenchPresence,
   BenchReopenResult,
+  BenchUndoCompletionResult,
+  BenchUndoResult,
   BenchUnlabelledParcelList,
   BenchVerificationResult,
 } from './bench-parcel.types';
 
 const nullableString = z
   .string()
+  .nullish()
+  .transform((value) => value ?? null);
+
+const nullableNumber = z
+  .number()
+  .nullish()
+  .transform((value) => value ?? null);
+
+const nullableAttributes = z
+  .record(z.string(), z.string())
   .nullish()
   .transform((value) => value ?? null);
 
@@ -43,6 +62,13 @@ export const benchParcelLineSchema = z.object({
   gtin: nullableString,
   requiredQuantity: z.number(),
   verifiedQuantity: z.number(),
+  imageUrl: nullableString,
+  attributes: nullableAttributes,
+  binCode: nullableString,
+  weightGrams: nullableNumber,
+  lengthMm: nullableNumber,
+  widthMm: nullableNumber,
+  heightMm: nullableNumber,
 });
 
 export const benchParcelSchema = z.object({
@@ -50,6 +76,10 @@ export const benchParcelSchema = z.object({
   version: z.number(),
   orderReference: z.string(),
   buyerName: nullableString,
+  totalAmount: nullableNumber,
+  currency: nullableString,
+  carrierName: nullableString,
+  dispatchByAt: nullableString,
   parcelIndex: z.number(),
   parcelTotal: z.number(),
   // See the types module: never `z.enum` on a server-owned vocabulary.
@@ -57,6 +87,10 @@ export const benchParcelSchema = z.object({
   holdReason: nullableString,
   closedAt: nullableString,
   packedByUserId: nullableString,
+  assignedToUserId: nullableString,
+  invoicePrintedAt: nullableString,
+  labelPrintedAt: nullableString,
+  completedAt: nullableString,
   lines: z.array(benchParcelLineSchema),
 });
 
@@ -67,6 +101,12 @@ export const benchVerificationResultSchema = z.object({
 });
 
 export const benchReopenResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export const benchCompleteResultSchema = z.object({
   outcome: z.string(),
   reason: nullableString,
   parcel: benchParcelSchema,
@@ -134,10 +174,115 @@ export function parseBenchReopenResult(payload: unknown): BenchReopenResult {
   return benchReopenResultSchema.parse(payload);
 }
 
+export function parseBenchCompleteResult(payload: unknown): BenchCompleteResult {
+  return benchCompleteResultSchema.parse(payload);
+}
+
+export const benchUndoCompletionResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export function parseBenchUndoCompletionResult(payload: unknown): BenchUndoCompletionResult {
+  return benchUndoCompletionResultSchema.parse(payload);
+}
+
 export function parseBenchDocuments(payload: unknown): BenchDocuments {
   return benchDocumentsSchema.parse(payload);
 }
 
 export function parseBenchUnlabelledParcelList(payload: unknown): BenchUnlabelledParcelList {
   return benchUnlabelledParcelListSchema.parse(payload);
+}
+
+export const benchUndoResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  workLineId: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export function parseBenchUndoResult(payload: unknown): BenchUndoResult {
+  return benchUndoResultSchema.parse(payload);
+}
+
+export const benchClaimResultSchema = z.object({
+  outcome: z.string(),
+  reason: nullableString,
+  parcel: benchParcelSchema,
+});
+
+export function parseBenchClaimResult(payload: unknown): BenchClaimResult {
+  return benchClaimResultSchema.parse(payload);
+}
+
+export const benchClaimNextResultSchema = z.object({
+  outcome: z.string(),
+  parcel: benchParcelSchema.nullish().transform((value) => value ?? null),
+  // Nullish-defaulted, so a response from an API that predates the refusal arm
+  // parses as "no reason given" rather than failing the whole read — which on
+  // this surface would turn a lost race into an error toast.
+  reason: z.string().nullish().transform((value) => value ?? null),
+});
+
+export function parseBenchClaimNextResult(payload: unknown): BenchClaimNextResult {
+  return benchClaimNextResultSchema.parse(payload);
+}
+
+export const benchPresenceSchema = z.object({
+  collision: z.boolean(),
+  // Defaulted, so an API that predates the roster parses to "nobody else"
+  // rather than failing the whole read — which on this surface would mean a
+  // packer loses the collision warning AND gets an error where the banner
+  // would have been.
+  others: z.array(z.object({ displayName: z.string() })).default([]),
+});
+
+export function parseBenchPresence(payload: unknown): BenchPresence {
+  return benchPresenceSchema.parse(payload);
+}
+
+export const benchActivityEntrySchema = z.object({
+  workLineId: z.string(),
+  name: nullableString,
+  kind: z.string(),
+  at: z.string(),
+  byUserId: nullableString,
+});
+
+export function parseBenchActivityEntries(payload: unknown): readonly BenchActivityEntry[] {
+  return z.array(benchActivityEntrySchema).parse(payload);
+}
+
+export const benchPackedTodayListSchema = z.object({
+  works: z
+    .array(
+      z.object({
+        workId: z.string(),
+        orderReference: z.string(),
+        buyerName: nullableString,
+        parcelIndex: z.number(),
+        parcelTotal: z.number(),
+        closedAt: z.string(),
+        packedByUserId: nullableString,
+      })
+    )
+    .nullish()
+    .transform((value) => value ?? []),
+  total: z.number(),
+});
+
+export function parseBenchPackedTodayList(payload: unknown): BenchPackedTodayList {
+  return benchPackedTodayListSchema.parse(payload);
+}
+
+export const benchMetricsSchema = z.object({
+  packedToday: z.number(),
+  packedYesterday: z.number(),
+  toPackAllBenches: z.number(),
+});
+
+export function parseBenchMetrics(payload: unknown): BenchMetrics {
+  return benchMetricsSchema.parse(payload);
 }

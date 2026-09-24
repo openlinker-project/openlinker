@@ -141,9 +141,19 @@ describe('Fulfillment Work Schema Integration', () => {
         // populated, and a holder may report neither.
         'acceptedAt timestamp with time zone NULL',
         'assignedConnectionId uuid NULL',
+        // ADR-074's PERSON axis, distinct from the holder connection above.
+        // `uuid`, matching `packedByUserId` rather than the `text` internal
+        // ids elsewhere on this table: it names an OL user row.
+        'assignedToUserId uuid NULL',
         'assignmentAttempt integer NOT NULL DEFAULT 0',
         'cancellationReason character varying(64) NULL',
         'cancelledAt timestamp with time zone NULL',
+        // The completion pair - the packer saying "this box is off my bench",
+        // which is a different fact from `parcelClosedAt` below (the box
+        // shutting on its own count) and from `status` (the executor finishing
+        // the job). Three instants, three subjects, no overlap.
+        'completedAt timestamp with time zone NULL',
+        'completedByUserId uuid NULL',
         'createdAt timestamp with time zone NOT NULL DEFAULT now()',
         'deliveryMethod text NULL',
         'dispatchRelayedAt timestamp with time zone NULL',
@@ -153,6 +163,11 @@ describe('Fulfillment Work Schema Integration', () => {
         'expeditedAt timestamp with time zone NULL',
         'externalWorkId text NULL',
         'id text NOT NULL',
+        // Stamped only by the bench's own print routes, never by the open
+        // `/shipments/:id/label` read - the distinction that stops a viewer
+        // opening a PDF from marking the label printed.
+        'invoicePrintedAt timestamp with time zone NULL',
+        'labelPrintedAt timestamp with time zone NULL',
         'locationId text NULL',
         'orderId text NOT NULL',
         // #2413, ADR-071 decision 2. `uuid` for the user id (the order-grain
@@ -167,7 +182,16 @@ describe('Fulfillment Work Schema Integration', () => {
         // is the executor finishing the whole job rather than the box shutting.
         'parcelClosedAt timestamp with time zone NULL',
         "requestStatus character varying(32) NOT NULL DEFAULT 'unsubmitted'::character varying",
+        // ADR-074: assignment is ADVISORY, so the DEFAULT is `true` and a hard
+        // lock is the exception a supervisor opts into. The default is
+        // asserted rather than the column alone - flipping it would make every
+        // new parcel exclusive and break nothing else visibly.
+        'selfServeEligible boolean NOT NULL DEFAULT true',
         "status character varying(32) NOT NULL DEFAULT 'open'::character varying",
+        // #3424. Moves in the SAME guarded statement as `assignedToUserId`,
+        // never on its own - see the per-column writer table in
+        // fulfillment-work.repository.ts.
+        'unassignedSince timestamp with time zone NULL',
         'updatedAt timestamp with time zone NOT NULL DEFAULT now()',
         'version integer NOT NULL DEFAULT 0',
       ]);

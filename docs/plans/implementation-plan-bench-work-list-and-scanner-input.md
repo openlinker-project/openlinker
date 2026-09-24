@@ -99,8 +99,15 @@ Buyer name is a deliberate disclosure and is consistent with #2413's review: the
 withholds buyer data; a signed-in packer is shown it, because it is on the label they are about to
 stick on the box. `ShipmentResponseDto` already reaches a packer under the same reasoning.
 
-Nothing else from the snapshot crosses — no address, no email, no phone, no totals. Field-by-field,
-never a spread (the `FulfillmentWorkView` rule).
+Nothing else from the snapshot crosses — no address, no email, no phone. Field-by-field, never a
+spread (the `FulfillmentWorkView` rule).
+
+**Amended at #3409:** the order total, its currency, the carrier and the ship-by deadline now DO
+cross, on the parcel projection. The sentence above said "no totals" and stopped being true there.
+The reasoning is the same one that admits the buyer's name: all four are printed on the documents
+the packer is about to put in the box, so withholding them from the screen protected nothing while
+costing the packer the check that catches a wrong parcel. `apps/api/src/auth/packer-exclusion.spec.ts`
+is the authority for the list as it actually stands.
 
 ### 2.5 Route and role
 

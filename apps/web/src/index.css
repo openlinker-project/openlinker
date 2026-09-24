@@ -23778,131 +23778,511 @@ legend.analytics-settings-dialog__label {
   gap: var(--space-3);
 }
 
-/* ── Fulfilment worklist (#2410) ─────────────────────────────────────────── */
+/* ── Assign Packing Work board (#3340) ──────────────────────────────────── */
 
-.fulfilment-worklist-lane {
+/* #3428 — the metric row. Flex, not a fixed-column grid: only one of the
+   mockup's three cards is shipped, and a fixed grid would leave visibly
+   empty cells rather than a naturally-sized row. */
+.assign-packing-work-metrics {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--space-4);
   margin-bottom: var(--space-5);
 }
 
-.fulfilment-worklist-lane__head {
-  align-items: baseline;
-  border-bottom: 1px solid var(--border-subtle);
+.assign-packing-work-metrics .metric-card {
+  min-width: 160px;
+}
+
+/* The board is paged, so a lane holds only this page's tasks. Stated once
+   above the lanes rather than on each — see the page's own comment. */
+.assign-packing-work-scope-note {
+  margin: 0 0 var(--space-3);
+  font-size: 0.8125rem;
+}
+
+/* The grouping-axis switch, and the one thing that changes with it. The note
+   sits beside the control rather than under the board, because the control is
+   what the operator just used. */
+.assign-packing-work-groupby {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
-  padding-bottom: var(--space-1);
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
-.fulfilment-worklist-lane__title {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  margin: 0;
-}
-
-.fulfilment-worklist-lane__method {
+.assign-packing-work-groupby__note {
   font-size: 0.8125rem;
 }
 
-.fulfilment-worklist-lane__count {
-  font-size: 0.8125rem;
-  margin-left: auto;
-}
-
-.fulfilment-worklist-lane__scope {
-  font-size: 0.75rem;
-  margin: 0;
-}
-
-/* The two surfaces. Both are always rendered — the breakpoint below decides
-   which one is visible, so the desktop rows and the cards can never show a
-   different set of tasks. */
-.fulfilment-worklist__desktop,
-.fulfilment-worklist__cards {
+.assign-packing-work-board {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  list-style: none;
+  gap: var(--space-5);
+}
+
+/* ── Assign-board task card (#3340; column-aligned rebuild, epic #3401) ───
+ * The mockup's `.lane-card`: a table-like row inside ONE bordered lane,
+ * separated from its neighbours by a hairline rather than each being its
+ * own bordered box. Wide, every column has a FIXED flex-basis, which is
+ * what makes `__ref`, `__buyer` and `__meta` line up from row to row
+ * regardless of what any one row's badge or summary text happens to say -
+ * a `flex: 1 1 <basis>` column still grows to fill leftover space, but its
+ * STARTING edge, and every fixed column after it, never moves.
+ *
+ * The ref+badge pair is grouped into one fixed-width cell (`__ref-cell`)
+ * rather than letting the badge float free after the ref text: a badge is
+ * free-width content, so if it sat directly in the row's flex flow the
+ * column after it would shift with every row's badge length. Boxing them
+ * together and letting the BOX wrap internally (badge onto its own line)
+ * keeps every sibling column's x-position constant no matter how long one
+ * row's badge text is.
+ *
+ * Narrow, the mockup's own `@media` rule takes over: the row wraps and the
+ * meta line drops to its own full-width row. That reflow is kept exactly
+ * where the mockup puts it and nowhere else - desktop does not wrap. */
+.assign-packing-work-lane__table {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The "nothing here" sentence, which sat flush against the card's left edge
+   once the list stopped padding it. The mockup's `.lane__empty` shape. */
+.assign-packing-work-lane > .text-muted {
+  padding: var(--space-4);
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.assign-packing-work-card-list {
+  display: flex;
+  flex-direction: column;
   margin: 0;
   padding: 0;
+  list-style: none;
+  /* No border of its own any more: the lane above is a real card with
+     `overflow: hidden`, so the list's own box drew a second frame a hair
+     inside the first. */
 }
 
-.fulfilment-worklist-row {
-  align-items: center;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  display: grid;
-  gap: var(--space-3);
-  grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) auto auto;
-  padding: var(--space-2) var(--space-3);
-}
-
-.fulfilment-worklist-row[data-held='true'] {
-  border-color: var(--status-warning-border);
-}
-
-.fulfilment-worklist-row__identity {
+.assign-packing-work-card {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: var(--space-3);
+  /* Was `--space-2` top and bottom, which put ~49px rows of mixed type sizes
+     hard against each other and read as one grey block rather than as a list
+     somebody could scan. A supervisor triages this page by eye, so the row
+     needs enough height to be a target and enough air to be a unit. */
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.assign-packing-work-card-list > .assign-packing-work-card:last-child {
+  border-bottom: none;
+}
+
+.assign-packing-work-card:hover {
+  background: var(--bg-surface-muted);
+}
+
+/* Decorative only - the `<li>` itself is the real drag source (see
+ * `assign-packing-work-draggable`). Absent whenever drag is off.
+ *
+ * A FIXED box, not an auto-sized one — the col-heads row renders an
+ * invisible stand-in of this exact class (`__col-head-spacer`) so the
+ * heads line up with the columns they name, and an auto-sized glyph
+ * measures a different width depending on which container's inherited
+ * font it renders under (the heads' own mono/uppercase font vs the row's
+ * plain one). A fixed width removes the font as a variable entirely. */
+.assign-packing-work-card__grip {
+  flex: 0 0 0.875rem;
+  font-size: 0.8125rem;
+  line-height: 1;
+  text-align: center;
+  color: var(--text-disabled);
+  user-select: none;
+}
+
+/* Truncate, never wrap - the `.bench-work-row__reference` treatment. A real
+ * reference here is a 36-char internal id when the order carries no source
+ * reference, and a fixed-width cell that wraps it to two lines - three with
+ * the badge below - makes THAT row the tallest in the lane for no reason a
+ * reader needs: a reference is recognisable from its first characters, and
+ * `title` carries the full value for the hover a desk surface affords. */
+.assign-packing-work-card__ref {
+  /* The mockup's `.lane-card__ref` is `flex: 0 0 72px`, sized for `OL-4471`.
+     Ours is wider because a real reference here is frequently the order's
+     internal id — 36 characters — where the source supplied none, and 72px
+     would ellipsise every one of those to `ec6e…`. Fixed rather than
+     growable for the mockup's own reason: a column that sizes to its own
+     row's content puts every row's next column at a different x. */
+  flex: 0 0 9rem;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A FIXED slot, so every column after it starts at the same x.
+   The mockup's own data carries a badge on every card, so its markup needs no
+   slot - ours does not, and matching the markup on data the mockup never had
+   left the buyer column jumping left wherever a row had no deadline. The
+   ragged edge is what reads as unfinished. `justify-content: flex-start` keeps
+   a short badge from stretching. */
+/* The shared `.toolbar` is `space-between`, which is right for a bar with a
+   heading on one side and a button on the other. This one holds two sibling
+   filters, and flinging them to opposite ends of a 1100px bar left a void
+   down the middle that read as a missing control. Scoped rather than changed
+   on `.toolbar` itself, which every other screen in the app shares. */
+.assign-packing-work-filters {
+  justify-content: flex-start;
+  gap: var(--space-3);
+}
+
+.assign-packing-work-filters > * {
+  flex: 0 1 20rem;
+}
+
+.assign-packing-work-card__flag {
+  flex: 0 0 7.5rem;
+  display: flex;
+  justify-content: flex-start;
   min-width: 0;
 }
 
-.fulfilment-worklist-row__id,
-.fulfilment-worklist-row__order {
+.assign-packing-work-card__buyer {
+  /* No grow, unlike the mockup's own `flex: 1 1 160px` - a growable column
+     between two fixed ones takes a DIFFERENT width on every row (whatever
+     that row's own actions/badge content leaves as "remaining space"),
+     which moves `__meta`'s left edge exactly as much as a free-floating
+     badge would have. `__actions`' own `margin-left: auto` is what absorbs
+     the row's leftover space instead, so every fixed column keeps the
+     same x on every row. */
+  flex: 0 0 10rem;
+  min-width: 0;
+  font-size: 0.8125rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.fulfilment-worklist-row__id {
-  font-size: 0.8125rem;
-}
-
-.fulfilment-worklist-row__order {
+.assign-packing-work-card__meta {
+  flex: 0 0 13rem;
+  min-width: 0;
   font-size: 0.75rem;
+  color: var(--text-muted);
+  /* One line, like every other column. A location name long enough to wrap
+     ("2 items, 9 units · E2E bench warehouse") made that row 5px taller than
+     its neighbours — the last of the raggedness, and invisible until a lane
+     happened to hold one. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.fulfilment-worklist-row__state {
-  align-items: flex-start;
+/* The controls keep their own width on a desk and take the full row on a
+   phone, where a 44 px select beside a checkbox beside a button does not
+   fit and splitting them across two lines reads as two decisions. */
+.assign-packing-work-card__actions {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin-left: auto;
+}
+
+@media (max-width: 640px) {
+  .assign-packing-work-card {
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .assign-packing-work-card__ref,
+  .assign-packing-work-card__buyer {
+    flex: 1 1 auto;
+  }
+
+  .assign-packing-work-card__meta,
+  .assign-packing-work-card__actions {
+    flex: 1 1 100%;
+  }
+
+  /* Full row width to stack in - see `.assign-packing-work-actions`'s own
+   * comment on why it stays `nowrap` on a desk. */
+  .assign-packing-work-actions {
+    flex-wrap: wrap;
+  }
+
+  .assign-packing-work-actions .control--select {
+    flex: 1 1 auto;
+    max-width: none;
+  }
+}
+
+/* ── Lane column heads (the mockup's `.lane__col-heads`) ──────────────────
+ * One per lane, above its rows, naming the three fixed columns above. It
+ * shares `.assign-packing-work-lane__table` with the card list below it
+ * (no gap between them, borders that meet edge-to-edge) so the two read as
+ * one bordered surface rather than a caption floating over nothing. */
+.assign-packing-work-card__menu-trigger {
+  /* The mockup's `.btn--sm`: 28px, bordered, sitting on the row's own line
+     beside the assignment control — not a bare glyph floating at the edge,
+     which is what it read as. The set behind it is the server's, so it
+     cannot be named for one action the way the mockup's static `Hold`
+     button is; the shape is what carries over. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.assign-packing-work-card__menu-trigger:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.assign-packing-work-card__menu {
+  min-width: 200px;
+  padding: 4px;
+}
+
+.assign-packing-work-card__menu .fulfilment-task__actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding-top: 0;
+}
+
+.assign-packing-work-card__menu .fulfilment-task__actions .button {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+
+/* A CARD, matching the mockup's own `.lane` - a real border, a surface, and
+   nothing between its head and its rows.
+   It used to carry `border: 1px dashed transparent` and no background, so the
+   2px accent bar below was drawn on nothing at all: a bare rule floating above
+   a heading it touched, with the rows drifting beneath it on a flex `gap`.
+   That stray line is what broke the page.
+   The drag highlight still lives on this border - style and colour change, the
+   1px width does not, so nothing shifts when it activates, which is the
+   property the dashed-transparent version was reaching for. */
+.assign-packing-work-lane {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  transition: border-color 0.1s ease, background-color 0.1s ease;
+}
+
+.assign-packing-work-lane__head {
+  align-items: center;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  gap: var(--space-3);
+  /* Real padding on all four sides, the mockup's `--space-3 --space-4`. It
+     had `padding-bottom` alone, so the heading was pinned to the accent bar
+     above it and to the card's left edge. */
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface-muted);
+}
+
+.assign-packing-work-lane__title {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.assign-packing-work-lane__count {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 2ch;
+  text-align: right;
+}
+
+/* #3427 — avatar, "no longer a packer" icon, load bar, top accent. */
+.assign-packing-work-lane::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--border-strong);
+}
+
+.assign-packing-work-lane--unassigned::before {
+  background: var(--status-warning);
+}
+
+.assign-packing-work-lane__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), var(--status-review));
+  color: var(--text-inverse);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65625rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.assign-packing-work-lane__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--status-warning-soft);
+  border: 1px solid var(--status-warning-border);
+  color: var(--status-warning-fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.assign-packing-work-lane__identity {
+  /* Grows, so the count stays pinned at the trailing edge on EVERY lane —
+     the mockup uses a dedicated `.lane__spacer` for this, which only works
+     while something else in the head is there to be pushed against. The
+     unassigned lane has no load bar (it is not a person), and without a
+     grower here its count jumped back against the subtitle while every
+     other lane's sat at the right. */
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-.fulfilment-worklist-row__substate {
-  font-size: 0.75rem;
+.assign-packing-work-lane__subtitle {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin: 0;
 }
 
-.fulfilment-worklist-row__lines {
-  font-size: 0.8125rem;
-  white-space: nowrap;
-}
-
-.fulfilment-worklist-row__actions {
+.assign-packing-work-lane__load {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  width: 140px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.assign-packing-work-lane__load-bar {
+  flex: 1;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-canvas);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.assign-packing-work-lane__load-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+}
+
+.assign-packing-work-lane__load-fill--normal {
+  background: var(--status-success);
+}
+
+.assign-packing-work-lane__load-fill--busy {
+  background: var(--status-warning);
+}
+
+.assign-packing-work-lane__load-fill--over {
+  background: var(--status-error);
+}
+
+/* #3426 — the drag-over highlight, and the drag source's cursor. Additive
+   to the "Move to" select; drag is never the only way to reassign a row. */
+.assign-packing-work-lane--drag-over {
+  background: var(--accent-primary-soft);
+  border-color: var(--accent-primary-border);
+}
+
+.assign-packing-work-draggable {
+  cursor: grab;
+}
+
+.assign-packing-work-draggable:active {
+  cursor: grabbing;
+}
+
+/* #3429 — "pulled out of self-serve": the mockup's own
+   `.lane-card--assignment-only`, muted background + dimmed self-serve label. */
+.assign-packing-work-lane-card--assignment-only {
+  background: var(--bg-surface-muted);
+}
+
+.assign-packing-work-lane-card--assignment-only .assign-packing-work-actions__self-serve {
+  color: var(--text-disabled);
+}
+
+.assign-packing-work-actions {
+  align-items: center;
+  display: flex;
+  /* The mockup keeps `__pickable` inline at a fixed `flex: 0 0 168px`
+   * beside the select and the actions - one line. `flex-wrap: wrap` here
+   * used to let the select's own global `width: 100%` rule (`.control,
+   * select { width: 100% }`, meant for a stacked form field) claim the
+   * whole row and push the checkbox and the "More actions" trigger onto a
+   * line of their own - every card on the board two rows tall, and a
+   * packer lane's cards (no checkbox) shorter than the Unassigned lane's.
+   * The select is bounded below instead, so this never has to wrap on a
+   * desk; it wraps again at phone width, alongside the rest of the card. */
+  flex-wrap: nowrap;
   gap: var(--space-2);
   justify-content: flex-end;
 }
 
-/* The breakpoint switch. Each `display: none` MUST stay inside its own media
-   block: hoisted out, the desktop grid renders on a phone (or the cards render
-   beside it on a desktop) and both surfaces show at once. */
-@media (min-width: 768px) {
-  .fulfilment-worklist__cards {
-    display: none;
-  }
+/* Bounds the "Move to" select against its own global `width: 100%` rule -
+ * see `.assign-packing-work-actions`'s own comment. Sized for the longest
+ * real value seen on the board (`e2e-packer-manual`, 18 chars) with room
+ * to spare; `flex-shrink: 1` so it still yields before it forces the row
+ * to overflow on a narrower desk. */
+.assign-packing-work-actions .control--select {
+  flex: 0 1 11rem;
+  width: auto;
+  min-width: 0;
+  max-width: 11rem;
 }
 
-@media (max-width: 767px) {
-  .fulfilment-worklist__desktop {
-    display: none;
-  }
+.assign-packing-work-actions__self-serve {
+  align-items: center;
+  display: flex;
+  /* Quieter than the row it sits on, deliberately. It renders on EVERY card,
+     and on a board of fourteen unassigned parcels it was fourteen identical
+     ticks and fourteen copies of the same five words running down the page -
+     louder than the products, the buyer and the deadline it sits beside, and
+     none of it changing. It is a per-row setting an operator changes rarely,
+     so it recedes until they look for it. The control itself is untouched:
+     same size, same hit area, same keyboard behaviour. */
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  gap: var(--space-1);
+  white-space: nowrap;
 }
 
 /* ── Sales-document glyph + headline (#2535) ───────────────────────────
@@ -24172,44 +24552,236 @@ legend.analytics-settings-dialog__label {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.5rem 1rem;
+  gap: var(--space-4);
+  margin: 0 var(--space-5);
+  padding: var(--space-3) var(--space-5);
+  background: var(--bg-surface-muted);
   border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.875rem;
+}
+
+/* The mockup says out loud what the switch DOES, next to the control, rather
+   than leaving it to a `title` a gloved hand never hovers. */
+.bench-identity-bar__hint {
+  margin-left: auto;
+  margin-right: var(--space-4);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+@media (max-width: 900px) {
+  .bench-identity-bar__hint {
+    display: none;
+  }
 }
 
 /* ── Pack bench — work list (#2416, W3b-3) ──────────────────────────────────
  *
- * Sized for a bench rather than a desk: the deadline headline and the order
- * reference are the two things read from arm's length across a room, so they
- * carry the largest type on the surface, and every control clears the 44 px
- * touch floor unconditionally — not behind a `pointer: coarse` media query,
- * because a bench terminal is routinely a mouse-driven all-in-one and the
- * guarantee is about gloved hands, not about the input device.
+ * Sized for a bench rather than a desk. The 44 px touch floor is unconditional
+ * — not behind a `pointer: coarse` media query, because a bench terminal is
+ * routinely a mouse-driven all-in-one and the guarantee is about gloved hands,
+ * not about the input device.
+ *
+ * It covers the SCAN PATH, which is what the mockup itself decided: its own
+ * `.hero-line__scan .btn, .rail__search + div .btn, .hero-line__scan input`
+ * rule raises the scan field, the hand-confirm, the undo and the take-next
+ * button to 44 px and leaves the rail's SEARCH and TABS at 36 px. Those two
+ * are navigation a packer uses between boxes rather than controls they hit
+ * with a full hand mid-pack, so the row-action and parcel-surface floors
+ * (asserted by `bench-parcel-targets.test.ts`) are the binding ones and the
+ * rail's own chrome follows the mockup.
  *
  * State is carried by TEXT and by SECTION (story B4). Everything below is an
  * addition to that, never the carrier — `bench-work-row.test.tsx` asserts state
  * from `textContent` alone, so removing all of this would leave the surface
  * correct and merely plain.
  */
-.bench-work-list {
+/* ── Two-pane bench shell (mockup-parity epic #3401) ─────────────────────
+ * `docs/plans/mockups/pack-bench-redesign.html`'s `.bench-grid`: a 340 px
+ * rail beside a 1fr panel. A packer reads what is next off the rail while
+ * their hands are in the current box, so the two are side by side and not
+ * one after the other — see `bench-page.tsx`'s own docblock. Collapses to
+ * one column below the mockup's own 900 px breakpoint. */
+/* `.bench-shell`, NOT `.bench-body` — the identity overlay already owns that
+   class for the subtree it conceals, and two elements carrying it nested one
+   inside the other applied the page gutter twice (48px instead of 24px). */
+.bench-shell {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-5) var(--space-6);
+  gap: var(--space-5);
+  padding: var(--space-5);
   min-height: 100vh;
   background: var(--bg-canvas);
 }
 
-.bench-work-list__header {
+.bench-grid {
   display: grid;
-  gap: 2px;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
 }
 
-.bench-work-list__title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+@media (max-width: 900px) {
+  .bench-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Both panes carry the mockup's `.panel` chrome — a surface, a hairline and
+   a radius — so the rail reads as a column rather than as loose rows on the
+   canvas. */
+.bench-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+}
+
+.bench-rail {
+  position: sticky;
+  top: var(--space-4);
+  max-height: calc(100vh - var(--space-6));
+  overflow-y: auto;
+}
+
+.bench-parcel-placeholder {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: center;
+  align-content: center;
+  min-height: 24rem;
+  padding: var(--space-6);
+  text-align: center;
+}
+
+.bench-parcel-placeholder__title {
   margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.bench-parcel-placeholder__body {
+  margin: 0;
+  max-width: 28rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-work-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.bench-rail__search {
+  padding: var(--space-4);
+}
+
+.bench-rail__search input {
+  width: 100%;
+  height: 36px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface-muted);
+  color: var(--text-primary);
+  padding: 0 var(--space-3);
+  font-size: 0.8125rem;
+}
+
+.bench-rail__search input::placeholder {
+  color: var(--text-disabled);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+
+.bench-rail__search input:focus-visible {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+.bench-rail__take-next {
+  display: grid;
+  gap: 6px;
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+.bench-rail__take-next .bench-work-list__take-next-notice {
+  padding: 0;
+  margin: 0;
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.bench-rail__take-next .button {
+  width: 100%;
+  min-height: 2.75rem;
+}
+
+.bench-rail__tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.bench-rail__tab {
+  flex: 1;
+  text-align: center;
+  padding: var(--space-2) var(--space-1);
+  min-height: 0;
+  height: 36px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.bench-rail__tab[aria-selected='true'] {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.bench-rail__tab .mono {
+  margin-left: 4px;
+  color: var(--text-disabled);
+}
+
+.bench-rail__section-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* The mockup accents the section a packer's own work is in, and tints the
+   hold section's label with the status hue it already uses on those rows. */
+.bench-rail__section-label--mine {
+  color: var(--accent-primary-hover);
+}
+
+.bench-rail__section-label--hold {
+  color: var(--status-error-fg);
+}
+
+.bench-rail__list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0 var(--space-2) var(--space-3);
+  list-style: none;
 }
 
 .bench-work-list__ordering {
@@ -24229,6 +24801,49 @@ legend.analytics-settings-dialog__label {
   line-height: 1.55;
   color: var(--text-secondary);
   text-wrap: pretty;
+}
+
+/* ── Metric row (#3413, mockup-parity epic #3401) ────────────────────────── */
+.bench-metric-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-4);
+}
+
+.bench-metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+
+.bench-metric-card__label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bench-metric-card__value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.bench-metric-card__trend {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--status-success-fg);
+  font-weight: 500;
 }
 
 .bench-work-list__search {
@@ -24285,17 +24900,247 @@ legend.analytics-settings-dialog__label {
   list-style: none;
 }
 
+/* The mockup's `.rail-row`: a compact card sized for a 340 px column, not
+   the four-column dashboard grid this was before #3401. State is still
+   carried by WORDS and by SECTION — every tint below is an addition. */
 .bench-work-row {
   display: grid;
-  grid-template-columns: minmax(11rem, 14rem) minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--space-4);
-  min-height: 6rem;
+  gap: 3px;
   padding: var(--space-3);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-left: 6px solid var(--border-strong);
-  border-radius: var(--radius-lg);
+  background: transparent;
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-md);
+}
+
+.bench-work-row:hover {
+  background: var(--bg-surface-muted);
+}
+
+.bench-work-row--mine {
+  border-color: var(--accent-primary-border);
+  background: var(--accent-primary-soft);
+}
+
+/* Unassigned: available to anyone, and visually quieter than a row that is
+   already yours. The mockup's own `.rail-row--open` treatment. */
+.bench-work-row--open {
+  border-style: dashed;
+  border-color: var(--border-default);
+}
+
+.bench-work-row[aria-current='true'] {
+  background: var(--accent-primary-soft);
+  border-color: var(--border-default);
+  border-left-color: var(--accent-primary);
+}
+
+/* The whole card is the target — see the component docblock. */
+/* Undoes the global `button, .button` rule near the top of this file, which
+   is what a bare `<button>` inherits here: it pins `height: 2rem` and paints
+   the accent background, so the card's own content overflowed a 32 px box and
+   the action strip below it landed on top of the meta line. */
+/* `grid-template-columns` is load-bearing, not decorative: with no explicit
+   track the browser auto-sizes the implicit single column to its widest
+   child's UNCONSTRAINED content width — the same "table-layout: auto"
+   behaviour grids fall back to — so a row whose reference had no wrap point
+   (no space or hyphen for the browser to break on) grew wider than the
+   340 px rail and got hard-clipped by `.bench-panel`'s `overflow: hidden`,
+   always from the right, i.e. the badge. `minmax(0, 1fr)` caps the track at
+   the rail's own width so every child is forced to size — and, where it
+   can't, shrink — within it instead. */
+.bench-work-row__surface {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  text-align: left;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  white-space: normal;
+  font: inherit;
+  font-weight: 400;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* The same global rule paints `button:hover` / `:active` solid accent with
+   white text. A bare `<button>` used as a LAYOUT surface has to opt out of
+   every one of those states, not just the resting one — a pointer left over
+   a clicked row turned the whole card orange. */
+.bench-work-row__surface:hover,
+.bench-work-row__surface:active,
+.bench-rail-row__open:hover,
+.bench-rail-row__open:active,
+.bench-rail__tab:hover,
+.bench-rail__tab:active {
+  background: none;
+  border-color: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+
+.bench-rail-row__open,
+.bench-rail__tab {
+  height: auto;
+  min-height: 2.75rem;
+  font-weight: 500;
+  border-radius: 0;
+  box-shadow: none;
+  white-space: normal;
+  font-weight: inherit;
+}
+
+.bench-rail__tab {
+  border-bottom: 2px solid transparent;
+  height: 36px;
+  min-height: 0;
+  font-weight: 500;
+}
+
+.bench-rail__tab[aria-selected='true'] {
+  border-bottom-color: var(--accent-primary);
+}
+
+.bench-work-row__surface--static {
+  cursor: default;
+}
+
+.bench-work-row__surface:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-focus);
+}
+
+/* `min-width: 0` overrides a grid item's default `auto` (content-based)
+   minimum — the same reason a flex item needs it — so this row can actually
+   shrink to the track width the rule above now caps it at, instead of
+   pushing that track wider. The badge (B4's one carrier of state, never
+   truncated) is pinned at its full size; the reference is the one that
+   gives, in the rule below. */
+.bench-work-row__top {
+  display: flex;
+  /* `flex-start`, not `baseline`: this row now holds a stacked list of items
+     beside the badge, and a baseline would pin the badge to the FIRST item's
+     text and leave it drifting as the list grows. */
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.bench-work-row__top .status-badge {
+  flex-shrink: 0;
+}
+
+.bench-work-row__buyer {
+  font-size: 0.8125rem;
+}
+
+/* ── Rail row: what is in the box (#3415) ────────────────────────────────
+   The row leads with the goods. A packer scanning this rail is choosing
+   which trolley to walk to, and the order reference they used to lead with
+   is a 36-character uuid on this data - the loudest thing on the row and
+   the one thing they cannot act on.
+   The list is capped server-side at three, so these rules size for three
+   and the overflow line carries the rest. */
+
+/* The badge's own line. `flex-start` so a badge never stretches to the rail
+   width - it is a chip, and a full-width chip reads as a banner. */
+.bench-work-row__flag {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: var(--space-1);
+}
+
+.bench-work-row__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.bench-work-row__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* The fallback line for a parcel whose every unit was cancelled. Muted,
+   because it is a statement about an absence rather than a product. */
+.bench-work-row__item--empty {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* 28px, deliberately smaller than the parcel pane's own thumb: this is a
+   recognition cue in a scrolling list, not the picture a packer checks the
+   item against once the box is open. */
+.bench-work-row__thumb {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--bg-surface-muted);
+}
+
+.bench-work-row__thumb--empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Fixed base so every name starts at the same x, whatever the quantity. A
+   ragged left edge down a list of three is what made the old meta line hard
+   to scan. */
+.bench-work-row__item-qty {
+  flex: 0 0 auto;
+  min-width: 2.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Truncated, never wrapped, for the reason the reference was: a wrapping
+   name makes row height depend on the length of a product name, and a rail
+   of uneven rows cannot be scanned. The full name rides in `title`. */
+.bench-work-row__item-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* A line whose variant is not in the catalogue. Italic and muted so it reads
+   as a missing answer rather than as a product called that. */
+.bench-work-row__item-name--unnamed {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.bench-work-row__item-more {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  /* Indented to the name column, so it reads as the tail of the list rather
+     than as a new fact about the parcel. */
+  padding-left: calc(28px + var(--space-2) + 2.25rem + var(--space-2));
 }
 
 /* Tint and left rule follow the state the row already states in words. */
@@ -24310,36 +25155,41 @@ legend.analytics-settings-dialog__label {
   border-left-color: var(--text-muted);
 }
 
-.bench-work-row__deadline,
-.bench-work-row__identity {
-  display: grid;
-  gap: 3px;
-}
-
 .bench-work-row__deadline-headline {
-  font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
-.bench-work-row__deadline-detail {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-}
-
+/* Truncates rather than wrapping. Two things this fixes at once: it's what
+   gives room to the badge above (the reference is the one that gives, never
+   the status), and it keeps every row the same one-line height — a
+   hyphenated reference (a UUID) previously wrapped onto a second line at
+   this same width, wherever it happened to have a break point, which made
+   row height depend on the shape of the id rather than its content. A
+   reference is recognisable from its first characters, so truncating the
+   tail loses nothing a packer reads it for. */
 .bench-work-row__reference {
-  font-family: var(--font-mono);
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  min-width: 0;
+  /* Capped so a 36-character uuid cannot push the work id onto a third line
+     of grey. A reference is recognisable from its head; the tail is what a
+     packer copies, and the `title` carries it in full. */
+  max-width: 14ch;
+  display: inline-block;
+  vertical-align: bottom;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Sits in the meta line since #3415, so it takes that line's size and
+     colour rather than the heading weight it used to carry - it is the value
+     a packer reads out on the phone, not the one they pick a trolley by. */
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
 
 .bench-work-row__meta,
 .bench-work-row__note {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
+  font-size: 0.75rem;
+  color: var(--text-muted);
   text-wrap: pretty;
 }
 
@@ -24348,12 +25198,62 @@ legend.analytics-settings-dialog__label {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.bench-work-row__actions {
+  margin-top: 6px;
+}
+
+
+/* Small enough for a 340 px column, and still over the 44 px touch floor the
+   section header insists on — height comes from `min-height`, not from type.
+   Light, because the row itself is now the primary target. */
+/* Type is compact for a 340 px column; HEIGHT is not, and must not be. The
+   44 px floor below is unconditional and `bench-parcel-targets.test.ts` pins
+   it, so a row carrying an action is ~50 px taller than the mockup's. That
+   difference is invisible to the audience: both controls are write-gated, so
+   a PACKER sees a row of exactly the mockup's height and only an operator
+   sees the taller one. */
+.bench-work-row__actions .button {
+  padding-inline: var(--space-2);
+  font-size: 0.7rem;
+}
+
+/* Every remaining prose block in the rail is inset to the panel's own gutter;
+   at full width they ran past the column's border. */
+.bench-work-list__scope,
+.bench-work-list__truncated,
+.bench-work-list__no-matches,
+.bench-work-list__done-note,
+.bench-work-list__take-next-notice {
+  padding-inline: var(--space-4);
+  font-size: 0.75rem;
+}
+
+.bench-work-list__footer {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  text-wrap: pretty;
 }
 
 /* The 44 px floor, unconditional. See the section header. */
 .bench-work-row__actions .button {
   min-height: 2.75rem;
   min-width: 2.75rem;
+}
+
+/* #3341 — replaces the open control when the viewer may not claim this parcel. */
+.bench-work-row__locked-note {
+  font-size: 0.8125rem;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .bench-work-empty {
@@ -24386,17 +25286,6 @@ legend.analytics-settings-dialog__label {
   color: var(--text-muted);
 }
 
-.bench-work-list__footer {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-top: auto;
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border-default);
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  text-wrap: pretty;
-}
 
 /* One column below the tablet breakpoint: the row's four columns cannot hold
    their meaning at a narrow width, and reflowing keeps every part visible
@@ -24407,6 +25296,62 @@ legend.analytics-settings-dialog__label {
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
   }
+}
+
+/* ── Rail row (#3416, mockup-parity epic #3401) ──────────────────────────
+ * The lighter row used by the "waiting on carrier" and "packed today"
+ * sections — flex rather than `.bench-work-row`'s four-column grid, since
+ * neither row carries a deadline countdown or an actions column. */
+.bench-rail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 3.5rem;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+
+.bench-rail-row--done {
+  background: var(--bg-surface-muted);
+}
+
+.bench-rail-row__open {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.bench-rail-row__identity {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.bench-rail-row__reference {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-rail-row__meta {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
 }
 
 /* ── Pack bench — the open box (#2418 layout, #2421 story C4) ────────────────
@@ -24439,16 +25384,207 @@ legend.analytics-settings-dialog__label {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  padding: var(--space-5) var(--space-6);
-  min-height: 100vh;
-  background: var(--bg-canvas);
+  padding: var(--space-5);
+  background: transparent;
+}
+
+/* ── The hero scan card (mockup-parity epic #3401) ───────────────────────
+ * The mockup's `.hero-line`: the ONE item the box is waiting for next,
+ * lifted out of the list and given the width of the pane, with the visible
+ * scan field on it. Before #3401 this surface had no scan field at all —
+ * the listener was on the document, so a bench with a keyboard-wedge reader
+ * looked like a screen with nothing to type into. */
+.bench-hero {
+  display: flex;
+  gap: var(--space-5);
+  align-items: center;
+  flex-wrap: wrap;
+  padding: var(--space-5);
+  border: 1px solid var(--accent-primary-border);
+  border-radius: var(--radius-xl);
+  background: var(--accent-primary-soft);
+}
+
+.bench-hero__swatch {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  display: block;
+  object-fit: cover;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+  background: var(--bg-surface-elevated);
+}
+
+.bench-hero__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.bench-hero__name {
+  margin: 0 0 4px;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.bench-hero__attrs {
+  margin: 0 0 6px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.bench-hero__ids {
+  margin: 0 0 10px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.bench-hero__scan {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.bench-hero__scan input {
+  flex: 1;
+  min-width: 12rem;
+  max-width: 320px;
+  /* The 44 px touch floor, unconditional — see this section's header. */
+  min-height: 2.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  padding: 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.bench-hero__scan input:focus-visible {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+.bench-hero__scan .button {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+.bench-hero__hint {
+  margin: 8px 0 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+.bench-hero__keys {
+  margin: 6px 0 0;
+  font-size: 0.7rem;
+  color: var(--text-disabled);
+}
+
+.bench-hero__count {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.bench-hero__count-value {
+  margin: 0;
+  font-size: 1.875rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-hero__count-of {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.bench-hero__count-label {
+  margin: 4px 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bench-hero__pending {
+  margin: 4px 0 0;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+/* The mockup's own breakpoint for both. */
+@media (max-width: 640px) {
+  .bench-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .bench-hero__count {
+    text-align: left;
+  }
+
+  .bench-documents__cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── The progress bar (mockup-parity epic #3401) ─────────────────────────
+ * The mockup's `.progress-block`. The bar is an ADDITION to the count
+ * beside it — deleting this block leaves "3 of 6 units scanned" on screen
+ * and the surface correct. */
+.bench-parcel__progress-block {
+  display: grid;
+  gap: 6px;
+}
+
+.bench-parcel__progress-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.bench-parcel__progress-top .mono {
+  color: var(--text-muted);
+}
+
+.bench-parcel__progress-track {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface-muted);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.bench-parcel__progress-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--status-success);
+  transition: width 0.3s var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bench-parcel__progress-fill {
+    transition: none;
+  }
 }
 
 .bench-parcel__header {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-4);
+  gap: var(--space-5);
+  margin: calc(var(--space-5) * -1) calc(var(--space-5) * -1) 0;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .bench-parcel__identity {
@@ -24456,17 +25592,998 @@ legend.analytics-settings-dialog__label {
   gap: 2px;
 }
 
-.bench-parcel__reference {
+/* The mockup's `.order-head__field dt`: a mono-caps term over its value.
+   Deliberately NOT `.eyebrow`, which is 12 px bold accent — six accent
+   headings across one strip made the head shout and pushed it onto a second
+   row, which is what buried the hero below the fold. */
+.bench-parcel__field-label {
   font-family: var(--font-mono);
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 0.65rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* `.order-head__field dd`. One size for every value on the strip. */
+.bench-parcel__identity > span:not(.bench-parcel__field-label) {
+  font-size: 0.875rem;
+}
+
+/* #3418 (epic #3401) — pushes the status pill and the back control to the
+   row's trailing edge, matching the mockup's `.order-head__spacer`. */
+.bench-parcel__header-spacer {
+  flex: 1;
+}
+
+.bench-parcel__header-trailing {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* ── The two papers, as cards (mockup-parity epic #3401) ─────────────────
+ * The mockup's `.docs`: one card for what goes IN the box and one for what
+ * goes ON it, side by side, so the distinction is structural rather than
+ * something a packer has to read for. */
+.bench-documents__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--space-4);
+}
+
+.bench-documents__card {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  align-content: start;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-muted);
+}
+
+.bench-documents__card h3 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.bench-documents__card h4 {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.bench-documents__card p {
+  margin: 0;
+  font-size: 0.78125rem;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+/* The mockup's `.doc-card__slot`: which side of the box this paper is for. */
+.bench-documents__card .bench-documents__slot {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── The printer-binding line (mockup-parity epic #3401, #3437) ──────────
+ * The mockup's line under `.docs`: "Printing to Zebra ZD420 · Bench 3 — this
+ * station's printer, always." Rendered from the signed-in packer's own
+ * `packStationLabel`; absent entirely when unset. */
+.bench-documents__printer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.71875rem;
+  color: var(--text-muted);
+}
+
+.bench-documents__printer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: var(--status-success);
+}
+
+/* ── Copy control (mockup-parity epic #3401) ─────────────────────────────
+ * The mockup's `.copy-btn`. Always visible, never hover-revealed: at a bench
+ * nobody hovers, so a control that appears on hover is a control that is not
+ * there. Opts out of the global `button` treatment the same way the layout
+ * surfaces above do. */
+.bench-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  min-height: 0;
+  margin-left: var(--space-2);
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1;
+  box-shadow: none;
+  vertical-align: middle;
+}
+
+.bench-copy-button:hover,
+.bench-copy-button:active {
+  background: var(--bg-surface-muted);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+/* ── The item-list caption strip (mockup-parity epic #3401) ──────────────── */
+.bench-parcel__group-by {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.bench-parcel__lines-note {
+  margin: 0;
+  padding: 6px var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.6875rem;
+  color: var(--text-disabled);
+  text-wrap: pretty;
+}
+
+/* Reserves the row so the transient badge never reflows the card under a
+   packer's hands (the mockup's own `min-height:18px`). */
+.bench-hero__feedback {
+  min-height: 1.25rem;
+  margin: var(--space-2) 0 0;
+}
+
+/* The topbar is the one row that cannot wrap without hiding the sign-out, so
+   on a phone the two pieces that are merely orientation give way: the
+   breadcrumb (the bench is the only screen a packer has) and the name beside
+   the avatar (the identity bar under it already says who is signed in). */
+
+
+/* ══ THE COMPACT BENCH (mobile-first rebuild, epic #3401) ═══════════════════
+ *
+ * A phone or tablet bench is REBUILT around the bottom of the screen, not the
+ * desktop bench narrowed. A packer here holds a box in one hand, so every
+ * control is sticky furniture in thumb reach and the reading matter scrolls
+ * above it. `use-bench-layout.ts` decides which tree renders; this block
+ * styles the pieces that only exist in the compact one.
+ *
+ * The 44 px touch floor is at its most load-bearing here, and every control
+ * below clears it unconditionally.
+ */
+.bench-shell--compact {
+  padding: var(--space-3);
+  gap: var(--space-3);
+  /* The dock is sticky inside the scroll, so the shell must not clip it. */
+  overflow: visible;
+}
+
+.bench-shell--compact .bench-panel {
+  overflow: visible;
+}
+
+/* ── The two-storey dock ───────────────────────────────────────────────── */
+.bench-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 15;
+  margin: var(--space-4) calc(var(--space-5) * -1) calc(var(--space-5) * -1);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--accent-primary-border);
+  box-shadow: var(--shadow-md);
+  /* Sits above the home indicator where the device has one. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Storey 1: the item switcher. A 52 px row that still says which item you are
+   on and how many units are left, so opening it is a choice rather than the
+   only way to know. */
+.bench-dock__handle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 52px;
+  min-height: 52px;
+  padding: 0 var(--space-4);
+  border: none;
+  border-radius: 0;
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+  text-align: left;
+  box-shadow: none;
+  white-space: normal;
+}
+
+.bench-dock__handle:hover,
+.bench-dock__handle:active {
+  background: var(--bg-surface-hover);
+  border-color: transparent;
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.bench-dock__handle-title {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.bench-dock__handle-name {
+  flex-grow: 1;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bench-dock__handle-left {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--status-warning-fg);
+}
+
+.bench-dock__items {
+  max-height: 44vh;
+  overflow-y: auto;
+  padding: 0 var(--space-2) var(--space-2);
+  background: var(--bg-surface-elevated);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.bench-dock__item-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bench-dock__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 60px;
+  height: auto;
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 400;
+  text-align: left;
+  box-shadow: none;
+  white-space: normal;
+}
+
+.bench-dock__item:hover,
+.bench-dock__item:active {
+  background: var(--bg-surface-hover);
+  border-color: transparent;
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.bench-dock__item--active,
+.bench-dock__item--active:hover {
+  background: var(--accent-primary-soft);
+  border-color: var(--accent-primary-border);
+}
+
+.bench-dock__item-mark {
+  display: flex;
+  justify-content: center;
+  width: 20px;
+  flex-shrink: 0;
+  color: var(--status-success);
+}
+
+.bench-dock__item-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--text-disabled);
+}
+
+.bench-dock__item--active .bench-dock__item-dot {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.bench-dock__item-body {
+  display: grid;
+  gap: 2px;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.bench-dock__item-name {
+  font-size: 0.875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bench-dock__item-codes {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bench-dock__item-count {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
   font-variant-numeric: tabular-nums;
+}
+
+.bench-dock__switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  height: auto;
+  margin-top: var(--space-1);
+  padding: 0 var(--space-2);
+  border: none;
+  border-top: 1px solid var(--border-default);
+  border-radius: 0;
+  background: none;
+  color: var(--accent-primary-hover);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+.bench-dock__switch:hover,
+.bench-dock__switch:active {
+  background: none;
+  border-color: transparent;
+  border-top: 1px solid var(--border-default);
+  color: var(--accent-primary-active);
+  box-shadow: none;
+}
+
+/* Storey 2: the scan dock itself. */
+.bench-dock__scan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.bench-dock__item-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.bench-dock__thumb {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+}
+
+.bench-dock__strip-body {
+  display: grid;
+  gap: 2px;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.bench-dock__strip-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bench-dock__strip-codes {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bench-dock__strip-pending {
+  font-size: 0.6875rem;
+  color: var(--text-secondary);
+}
+
+.bench-dock__count {
+  flex-shrink: 0;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-dock__count-value {
+  font-size: 1.625rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.bench-dock__count-of {
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+}
+
+.bench-dock__controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* The one primary action on the surface, and the largest control on it. */
+.bench-dock__camera {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 56px;
+  min-height: 56px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--accent-primary);
+  background: var(--accent-primary);
+  color: var(--text-on-primary);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.bench-dock__camera:hover,
+.bench-dock__camera:active {
+  background: var(--accent-primary-hover);
+  border-color: var(--accent-primary-hover);
+  color: var(--text-on-primary);
+}
+
+.bench-dock__camera[disabled] {
+  opacity: 0.5;
+}
+
+.bench-dock__type {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.bench-dock__primary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* On a phone the field sits OVER its button rather than beside it: side by
+   side, "Confirm this item" clipped at the right edge, and shortening the
+   label to fit would have made the two paths read as different acts. */
+.bench-dock--phone .bench-dock__type {
+  flex-direction: column;
+}
+
+.bench-dock--phone .bench-dock__type .button {
+  width: 100%;
+}
+
+.bench-dock__type input {
+  flex-grow: 1;
+  min-width: 0;
+  min-height: 48px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  padding: 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.bench-dock__type input:focus-visible {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-focus);
+}
+
+.bench-dock__controls .button {
+  min-height: 48px;
+}
+
+.bench-dock__problem {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  text-wrap: pretty;
+}
+
+/* Tablet: the same two storeys, turned sideways. The camera sits on the side a
+   hand rests on when the device is propped. */
+@media (min-width: 641px) {
+  .bench-dock--tablet .bench-dock__scan {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-5);
+    padding: var(--space-4) var(--space-5);
+  }
+
+  .bench-dock--tablet .bench-dock__primary {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    align-self: center;
+    width: 232px;
+  }
+
+  /* No camera on this browser: the column has only the undo in it, so it
+     narrows rather than holding a camera-sized hole. */
+  .bench-dock--tablet .bench-dock__primary:not(:has(.bench-dock__camera)) {
+    width: auto;
+  }
+
+  .bench-dock--tablet .bench-dock__camera {
+    height: 80px;
+    min-height: 80px;
+  }
+
+  .bench-dock--tablet .bench-dock__controls {
+    display: contents;
+  }
+
+  .bench-dock--tablet .bench-dock__item-strip {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .bench-dock--tablet .bench-dock__type {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .bench-dock--tablet .bench-dock__count {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+
+  .bench-dock--tablet .bench-dock__count-value {
+    font-size: 2.25rem;
+  }
+
+  .bench-dock--tablet .bench-dock__problem {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── The camera sheet ──────────────────────────────────────────────────── */
+.bench-camera {
+  position: fixed;
+  inset: 0;
+  bottom: auto;
+  height: 58vh;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.bench-camera__bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.bench-camera__round {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.bench-camera__round:hover,
+.bench-camera__round:active {
+  background: var(--bg-surface-hover);
+  border-color: transparent;
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.bench-camera__round--on {
+  color: var(--status-warning);
+}
+
+.bench-camera__frame {
+  flex-grow: 1;
+  min-height: 0;
+  position: relative;
+  margin: 0 var(--space-5);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.bench-camera__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* A BAR, not a square: a shipping barcode is wide, and a square reticle
+   teaches the packer to hold the phone too close to read one. */
+.bench-camera__reticle {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 34%;
+  transform: translateY(-50%);
+  border: 3px solid var(--accent-primary);
+  border-radius: var(--radius-lg);
+}
+
+.bench-camera__aim,
+.bench-camera__note,
+.bench-camera__read {
+  margin: 0;
+  padding: 0 var(--space-5);
+  text-align: center;
+  text-wrap: pretty;
+}
+
+.bench-camera__aim {
+  padding-top: var(--space-3);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.bench-camera__read {
+  padding-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--status-success-fg);
+}
+
+.bench-camera__note {
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-3);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+/* ── The work list, as a sheet over the box ────────────────────────────── */
+.bench-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-canvas);
+}
+
+.bench-sheet__bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-shell);
+}
+
+.bench-sheet__close {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+.bench-sheet__close:hover,
+.bench-sheet__close:active {
+  background: var(--bg-surface-hover);
+  border-color: transparent;
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+.bench-sheet__body {
+  flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ── Bench topbar (#3423, mockup-parity epic #3401) ──────────────────────
+ * A bench-owned header, NOT `AppShell` — `/bench` stays outside
+ * `AuthenticatedAppLayout` by design (#2413). Mirrors the mockup's
+ * `.topbar`/`.shell-brand`/`.shell-crumbs`/`.shell-user-chip` visually. */
+.bench-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: 52px;
+  padding: 0 var(--space-5);
+  background: var(--bg-shell);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.bench-topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bench-topbar__brand-mark {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--accent-primary);
+  display: grid;
+  place-items: center;
+  color: var(--text-on-primary);
+  font-weight: 700;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.bench-topbar__brand-name {
+  font-weight: 600;
+  font-size: 0.875rem;
   letter-spacing: -0.02em;
 }
 
-.bench-parcel__buyer {
-  font-size: 1.125rem;
+.bench-topbar__crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-default);
+}
+
+.bench-topbar__crumbs-current {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* The crumb's parent, live for a viewer who can use it (#3340 follow-up).
+   Reads as text until hovered, because a breadcrumb that shouts is a
+   breadcrumb competing with the work. */
+.bench-topbar__crumbs-up {
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+
+.bench-topbar__crumbs-up:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.bench-topbar__crumbs-up:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+/* The explicit exit. It survives the phone breakpoint that folds the crumbs
+   away, which is the width where a typed URL is least available. */
+.bench-topbar__leave {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 0.78125rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.bench-topbar__leave:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.bench-topbar__leave:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-focus);
+}
+
+.bench-topbar__spacer {
+  flex: 1;
+}
+
+/* #3422 - the connectivity readout. Colour is never the only signal: the dot
+   is always paired with its own word, per the accessibility rule that also
+   governs `StatusBadge`. The three tones map to #3407's three states, and the
+   middle one is NOT "hardware" - see `bench-topbar.tsx`. */
+.bench-topbar__conn {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.bench-topbar__conn-dot {
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 8px;
+  width: 8px;
+  background: var(--status-success);
+}
+
+.bench-topbar__conn--server-unreachable .bench-topbar__conn-dot {
+  background: var(--status-warning);
+}
+
+.bench-topbar__conn--link-down .bench-topbar__conn-dot {
+  background: var(--status-error);
+}
+
+/* The label carries the tone too, so the state survives a monochrome screen
+   and a colour-blind reader. */
+.bench-topbar__conn--server-unreachable .bench-topbar__conn-label {
+  color: var(--status-warning);
+}
+
+.bench-topbar__conn--link-down .bench-topbar__conn-label {
+  color: var(--status-error);
+}
+
+/* The label is the first thing to go at phone width - the dot keeps the
+   state on screen, and the `title` keeps the detail reachable. */
+@media (max-width: 560px) {
+  .bench-topbar__conn-label {
+    display: none;
+  }
+}
+
+.bench-topbar__user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px 10px 3px 3px;
+  border-radius: var(--radius-pill);
+  height: 32px;
+}
+
+.bench-topbar__user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-primary), var(--status-review));
+  color: var(--text-inverse);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65625rem;
   font-weight: 600;
+  flex-shrink: 0;
+}
+
+.bench-topbar__user-name {
+  font-size: 0.78125rem;
+  font-weight: 500;
+}
+
+@media (max-width: 560px) {
+  /* `.theme-toggle` is `overflow: hidden`, so a topbar that merely ran out of
+     room CLIPPED its third option rather than scrolling — "System" became
+     unreachable with nothing to say so. The bar wraps instead, which needs
+     the fixed 52 px height released. */
+  .bench-topbar {
+    height: auto;
+    flex-wrap: wrap;
+    row-gap: var(--space-2);
+    padding-block: var(--space-2);
+  }
+
+  .bench-topbar__crumbs {
+    display: none;
+  }
+
+  .bench-topbar__user-name {
+    display: none;
+  }
+
+  /* TWO rows, not three. The spacer grows on a desk to push the trailing
+     group right; wrapping, that growth put the avatar on a line of its own. */
+  .bench-topbar__spacer {
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  .bench-topbar .theme-toggle {
+    margin-left: auto;
+  }
+
+  /* The identity row follows the topbar's own gutter on a phone; the 24 px
+     inset it carries on a desk made it read as a floating strip. */
+  .bench-identity-bar {
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+  }
+}
+
+/* `.order-head__ref` — the one value on the strip the mockup lifts, and only
+   by a point. */
+.bench-parcel__reference {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.bench-parcel__buyer {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* #3409 (epic #3401) — the order-head fields reversing the PII exclusion. */
+.bench-parcel__total {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .bench-parcel__scope,
@@ -24489,24 +26606,128 @@ legend.analytics-settings-dialog__label {
   color: var(--text-primary);
 }
 
+.bench-parcel__progress-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.bench-parcel__undo-notice {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
 .bench-parcel__lines {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* ── The item list, on the mockup's column rhythm (epic #3401) ───────────
+ * `.lines-wrap` in the mockup is a real `<table>` with ITEM / IDENTIFIERS /
+ * LOCATION / SCANNED / STATUS. The columns are reproduced here as one shared
+ * grid template on the header strip and on every row, so the eye runs down a
+ * column — but the rows stay generous `<li>`s rather than table cells,
+ * because the 44 px touch floor at a bench is not negotiable and a dense
+ * table row cannot hold it. */
+.bench-parcel__lines-wrap {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.bench-parcel__lines-caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.bench-parcel__lines-head,
 .bench-parcel-line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  /* Leading `auto` is the #3410 thumbnail column — absent from the grid, not
+     merely hidden, when a line's `imageUrl` is null (the `<img>` renders
+     nothing, so this column collapses to its content, 0). */
+  /* FIXED trailing tracks, not `auto`. The header strip and the rows are two
+     separate grids, so an `auto` track sized to a column label in one and to
+     a 44 px button in the other — the labels stood off their own columns. */
+  grid-template-columns:
+    44px minmax(0, 1.7fr) minmax(0, 1fr) 6.5rem 7rem 8.5rem 9.5rem;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border: 2px solid var(--border-default);
-  border-radius: var(--radius-lg);
+
+/* No line in this box carries a bin code, so the Location column has nothing
+   to put in it on any row. An always-empty column with a heading is the same
+   dead affordance as a control that does nothing: it takes width a packer's
+   eye has to cross and promises information that is not coming. `binCode` is
+   real and operator-authored (#3402) — this collapses the column only where
+   the data is genuinely absent, and it comes back the moment a bin is set. */
+.bench-parcel__lines-head--no-bins,
+.bench-parcel-line--no-bins {
+  grid-template-columns:
+    44px minmax(0, 1.7fr) minmax(0, 1fr) 0 7rem 8.5rem 9.5rem;
+}
+  gap: var(--space-3);
+}
+
+.bench-parcel__lines-head {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface-muted);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.bench-parcel__lines-head-right {
+  text-align: right;
+}
+
+/* Reserves the thumbnail column so the labels sit over their own cells. */
+.bench-parcel__lines-head > span:first-child {
+  width: 44px;
+}
+
+.bench-parcel-line {
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 0;
   background: var(--bg-surface);
+  /* The touch floor, unconditional — see this section's header. */
+  min-height: 3.5rem;
+}
+
+.bench-parcel-line:first-child {
+  border-top: none;
+}
+
+.bench-parcel-line__location {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+.bench-parcel-line__location .bench-parcel-line__bin-code {
+  white-space: nowrap;
+}
+
+.bench-parcel-line__state,
+.bench-parcel-line__actions {
+  justify-self: end;
+  min-width: 0;
 }
 
 /* Tints. Additions to the words, never the carrier — see rule 2 above. */
@@ -24520,7 +26741,7 @@ legend.analytics-settings-dialog__label {
 }
 
 .bench-parcel-line__name {
-  font-size: 1.25rem;
+  font-size: 0.9375rem;
   font-weight: 600;
   line-height: 1.3;
   text-wrap: pretty;
@@ -24528,19 +26749,93 @@ legend.analytics-settings-dialog__label {
 
 .bench-parcel-line__codes {
   font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+/* ── Catalogue detail on the line card (#3410/#3417, mockup-parity epic #3401) ── */
+.bench-parcel-line__thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+/* No picture, or one that did not load (#3340 follow-up). All three bench
+   slots keep their own size and border above and share only this: the item's
+   initial, centred, so an empty square says "no photo" instead of nothing.
+   `BenchThumb` decides WHICH of the two states applies; see its docblock. */
+.bench-hero__swatch--empty,
+.bench-dock__thumb--empty,
+.bench-parcel-line__thumb--empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-weight: 600;
+  line-height: 1;
+  user-select: none;
+}
+
+.bench-hero__swatch--empty {
+  font-size: 1.5rem;
+}
+
+.bench-dock__thumb--empty,
+.bench-parcel-line__thumb--empty {
+  font-size: 1.125rem;
+}
+
+.bench-parcel-line__attributes {
   font-size: 0.875rem;
   color: var(--text-secondary);
 }
 
+.bench-parcel-line__physical {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.bench-parcel-line__bin-code {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface-muted);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+/* Without this the child spans are inline and the product name runs straight
+   into its own EAN — "Canvas tote bagEAN 5901234123488". */
+.bench-parcel-line__identity {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
 .bench-parcel-line__count {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   justify-items: end;
+  min-width: 0;
+  text-align: right;
 }
 
 .bench-parcel-line__count-value {
   font-family: var(--font-mono);
-  font-size: 2.25rem;
+  font-size: 1.125rem;
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -24549,10 +26844,12 @@ legend.analytics-settings-dialog__label {
 
 .bench-parcel-line__count-note {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
+  font-size: 0.6rem;
+  line-height: 1.35;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-secondary);
+  text-wrap: pretty;
 }
 
 .bench-parcel-line__state {
@@ -24645,6 +26942,118 @@ legend.analytics-settings-dialog__label {
   text-wrap: pretty;
 }
 
+/* ── Pack-bench completion (mockup-parity bench, #3340) ──────────────────── */
+.bench-parcel__completion {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.bench-parcel__completion .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.bench-parcel__completion-hint {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.bench-parcel__completion-done {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--status-success-fg);
+}
+
+.bench-parcel__completion-print-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.bench-parcel__completion-print-actions .button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* ── Recent activity (#3411, mockup-parity epic #3401) ──────────────────── */
+.bench-activity {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.bench-activity h3 {
+  margin: 0 0 var(--space-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--text-muted);
+}
+
+.bench-activity ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.bench-activity li {
+  display: flex;
+  gap: var(--space-3);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  align-items: baseline;
+}
+
+.bench-activity time {
+  font-family: var(--font-mono);
+  color: var(--text-disabled);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+  /* Wide enough for a 12-hour clock's own widest rendering, and told not to
+     wrap. At 48px `1:16 AM` broke after the digits, so every row in the log
+     was two lines with `AM` alone on the second — and the rows below it no
+     longer lined up with their own timestamps. */
+  width: 4.5rem;
+  white-space: nowrap;
+}
+
+/* The ship-by field carries the clock time AND how long is left, because the
+   bench is a touch kiosk with no hover and the second half used to live in a
+   `title`. Toned by urgency, and written in words as well — colour is never
+   the only signal on this surface. */
+.bench-parcel__ship-by {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.bench-parcel__ship-by-remaining {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.bench-parcel__ship-by-remaining--soon {
+  color: var(--status-warning-fg);
+}
+
+.bench-parcel__ship-by-remaining--overdue {
+  color: var(--status-error-fg);
+  font-weight: 600;
+}
+
 .bench-parcel__footer {
   display: flex;
   align-items: center;
@@ -24673,18 +27082,49 @@ legend.analytics-settings-dialog__label {
   }
 }
 
-/* One column below the tablet breakpoint, for the reason the work row reflows:
-   the four columns cannot hold their meaning narrow, and hiding the state
-   column would drop the part that must never depend on anything but text. */
-@media (max-width: 768px) {
+/* ── The item list below a desktop pane (mockup-parity epic #3401) ───────
+ * The seven-column rhythm needs ~600 px of pane. Between 900 px and 1200 px
+ * the rail is still beside the parcel, so the pane is ~570 px and the fixed
+ * tracks overflowed it — the identifiers column collapsed to one character
+ * per line and the confirm control hung off the panel.
+ *
+ * Below 1200 px the row becomes a card: the thumbnail keeps its column and
+ * everything else stacks beside it. The column HEADINGS go with it — labels
+ * over columns that no longer exist are worse than none, and on a phone they
+ * rendered as an unreadable `ITEMIDENTIFIERS SC` band. */
+@media (max-width: 1199px) {
+  .bench-parcel__lines-head {
+    display: none;
+  }
+
   .bench-parcel-line {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: start;
+    row-gap: 6px;
+  }
+
+  .bench-parcel-line > *:not(.bench-parcel-line__thumb) {
+    grid-column: 2;
   }
 
   .bench-parcel-line__count,
   .bench-parcel-line__state,
   .bench-parcel-line__actions {
+    justify-self: start;
     justify-items: start;
+    text-align: left;
+  }
+}
+
+/* One column on a phone: even the thumbnail's own column costs more than it
+   returns when the name beside it has 46 characters of room. */
+@media (max-width: 640px) {
+  .bench-parcel-line {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .bench-parcel-line > *:not(.bench-parcel-line__thumb) {
+    grid-column: 1;
   }
 }
 

@@ -1,9 +1,10 @@
 export { RegisterForm } from './components/register-form';
 export { createUsersApi } from './api/users.api';
 export type { UsersApi } from './api/users.api';
-export type { UserSummary, UserListResponse, UserListFilters, UserStatus, UserRole, ApproveUserInput } from './api/users.types';
+export type { UserSummary, UserListResponse, UserListFilters, UserStatus, UserRole, ApproveUserInput, PackerSummary, PackerListResponse } from './api/users.types';
 export { usersQueryKeys } from './api/users.query-keys';
 export { useUsersQuery } from './hooks/use-users-query';
+export { usePackersQuery } from './hooks/use-packers-query';
 export { useApproveUserMutation } from './hooks/use-approve-user-mutation';
 export { useRejectUserMutation } from './hooks/use-reject-user-mutation';
 export { useUpdateRoleMutation } from './hooks/use-update-role-mutation';

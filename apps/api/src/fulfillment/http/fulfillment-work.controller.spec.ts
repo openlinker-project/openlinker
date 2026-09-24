@@ -59,6 +59,54 @@ const view = (overrides: Partial<FulfillmentWorkView> = {}): FulfillmentWorkView
 
 const user: AuthenticatedUser = { id: 'user-1', username: 'op', role: 'operator' };
 
+/**
+ * The three collaborator reads this controller composes (#3425 / #3426).
+ *
+ * Built fresh per test rather than shared, because the batching assertions
+ * below are about CALL COUNTS — a shared mock would accumulate them across
+ * tests and the constant-query-count proof would silently stop proving
+ * anything.
+ */
+/**
+ * One batched read: takes the page's ids, answers the rows it found.
+ *
+ * Typed rather than a bare `jest.fn()` so `mock.calls[0][0]` is a
+ * `readonly string[]` — the constant-query-count proof below asserts on the
+ * ids each read was given, and an `any` there would let that assertion pass
+ * against anything at all.
+ */
+type BatchedRead = jest.Mock<Promise<Record<string, unknown>[]>, [readonly string[]]>;
+
+const batchedRead = (): BatchedRead =>
+  jest
+    .fn<Promise<Record<string, unknown>[]>, [readonly string[]]>()
+    .mockResolvedValue([]);
+
+const collaborators = (): {
+  orders: { findByIds: BatchedRead };
+  locations: { getLocationsByIds: BatchedRead };
+  products: { getVariantsByIds: BatchedRead; getProductsByIds: BatchedRead };
+} => ({
+  orders: { findByIds: batchedRead() },
+  locations: { getLocationsByIds: batchedRead() },
+  products: { getVariantsByIds: batchedRead(), getProductsByIds: batchedRead() },
+});
+
+type Collaborators = ReturnType<typeof collaborators>;
+
+const build = (
+  worklist: jest.Mocked<IFulfillmentWorklistService>,
+  deps: Collaborators = collaborators()
+): Collaborators & { controller: FulfillmentWorkController } => ({
+  controller: new FulfillmentWorkController(
+    worklist,
+    deps.orders as never,
+    deps.locations as never,
+    deps.products as never
+  ),
+  ...deps,
+});
+
 const body = (overrides: Partial<ApplyFulfillmentWorkActionDto> = {}) =>
   ({ expectedVersion: 3, ...overrides }) as ApplyFulfillmentWorkActionDto;
 
@@ -72,7 +120,7 @@ describe('FulfillmentWorkController', () => {
       get: jest.fn(),
       applyAction: jest.fn(),
     } as unknown as jest.Mocked<IFulfillmentWorklistService>;
-    controller = new FulfillmentWorkController(worklist);
+    controller = build(worklist).controller;
   });
 
   describe('applyAction', () => {
@@ -247,6 +295,206 @@ describe('FulfillmentWorkController', () => {
 
       expect(page.limit).toBe(100);
       expect(page.total).toBe(1);
+    });
+  });
+
+  describe('#3425 — masked buyer name, dispatch deadline, carrier', () => {
+    it('masks the buyer name to a first initial and surname, never the full name', async () => {
+      worklist.get.mockResolvedValue(view());
+      const { controller: c, orders } = build(worklist);
+      orders.findByIds.mockResolvedValue([
+        {
+          internalOrderId: 'ol_order_1',
+          dispatchByAt: new Date('2026-09-04T15:00:00Z'),
+          orderSnapshot: { shippingAddress: { firstName: 'Anna', lastName: 'Kowalska' } },
+        },
+      ]);
+
+      const dto = await c.get('work-1');
+
+      expect(dto.buyerNameMasked).toBe('A. Kowalska');
+      expect(dto.dispatchByAt).toBe('2026-09-04T15:00:00.000Z');
+      expect(JSON.stringify(dto)).not.toContain('Anna');
+    });
+
+    it('reports null rather than a placeholder when the order cannot be read', async () => {
+      worklist.get.mockResolvedValue(view());
+
+      const dto = await controller.get('work-1');
+
+      expect(dto.buyerNameMasked).toBeNull();
+      expect(dto.dispatchByAt).toBeNull();
+      expect(dto.carrierName).toBeNull();
+    });
+
+    it('batches ONE order read for a whole page, never one per row', async () => {
+      worklist.list.mockResolvedValue({
+        works: [view({ id: 'w-1', orderId: 'ol_order_1' }), view({ id: 'w-2', orderId: 'ol_order_1' })],
+        total: 2,
+        limit: 100,
+        offset: 0,
+      });
+      const { controller: c, orders } = build(worklist);
+
+      await c.list({} as never);
+
+      expect(orders.findByIds).toHaveBeenCalledTimes(1);
+      expect(orders.findByIds).toHaveBeenCalledWith(['ol_order_1']);
+    });
+  });
+
+  describe('#3426 — order reference, location name, product name', () => {
+    const line = (id: string, variantId: string): FulfillmentWorkView['lines'][number] =>
+      ({
+        id,
+        orderLineId: `line-${id}`,
+        productVariantId: variantId,
+        totalQuantity: 1,
+        fulfilledQuantity: 0,
+        cancelledQuantity: 0,
+      }) as FulfillmentWorkView['lines'][number];
+
+    it("carries the source's own order reference, the location name and the product name", async () => {
+      // The whole point of the change: the mockup's lane card leads with
+      // "OL-4471", not with ol_order_0aaeb3c4….
+      worklist.get.mockResolvedValue(
+        view({ locationId: 'ol_location_1', lines: [line('l-1', 'ol_variant_1')] })
+      );
+      const { controller: c, orders, locations, products } = build(worklist);
+      orders.findByIds.mockResolvedValue([
+        { internalOrderId: 'ol_order_1', orderSnapshot: { orderNumber: 'OL-4471' } },
+      ]);
+      locations.getLocationsByIds.mockResolvedValue([
+        { id: 'ol_location_1', name: 'Main warehouse' },
+      ]);
+      products.getVariantsByIds.mockResolvedValue([
+        { id: 'ol_variant_1', productId: 'ol_product_1' },
+      ]);
+      products.getProductsByIds.mockResolvedValue([{ id: 'ol_product_1', name: 'Ceramic mug' }]);
+
+      const dto = await c.get('work-1');
+
+      expect(dto.orderReference).toBe('OL-4471');
+      expect(dto.locationName).toBe('Main warehouse');
+      expect(dto.lines[0].productName).toBe('Ceramic mug');
+      // The ids stay on the row — the names are ADDITIVE, never a replacement.
+      expect(dto.orderId).toBe('ol_order_1');
+      expect(dto.locationId).toBe('ol_location_1');
+      expect(dto.lines[0].productVariantId).toBe('ol_variant_1');
+    });
+
+    it('answers null — never the internal id — when the order is not in order_records', async () => {
+      // A work holds orderId by value with no FK, so it can outlive or precede
+      // its order record. `null` says "OpenLinker cannot see this order", which
+      // a supervisor can act on; ol_order_… dressed as a reference cannot.
+      worklist.get.mockResolvedValue(view());
+
+      const dto = await controller.get('work-1');
+
+      expect(dto.orderReference).toBeNull();
+      expect(dto.orderReference).not.toBe('ol_order_1');
+    });
+
+    it('answers null for a location that is gone, and for a work that has none', async () => {
+      worklist.list.mockResolvedValue({
+        works: [
+          view({ id: 'w-1', locationId: 'ol_location_gone' }),
+          // ADR-058 decision 2 — the master declines to locate its stock.
+          view({ id: 'w-2', locationId: null }),
+        ],
+        total: 2,
+        limit: 100,
+        offset: 0,
+      });
+      const { controller: c, locations } = build(worklist);
+      locations.getLocationsByIds.mockResolvedValue([]);
+
+      const page = await c.list({} as never);
+
+      expect(page.works[0].locationName).toBeNull();
+      expect(page.works[1].locationName).toBeNull();
+      // A null locationId is never asked about — that is not a lookup miss.
+      expect(locations.getLocationsByIds).toHaveBeenCalledWith(['ol_location_gone']);
+    });
+
+    it('answers null for a variant absent from the catalogue, never a placeholder', async () => {
+      worklist.get.mockResolvedValue(view({ lines: [line('l-1', 'ol_variant_gone')] }));
+      const { controller: c } = build(worklist);
+
+      const dto = await c.get('work-1');
+
+      expect(dto.lines[0].productName).toBeNull();
+    });
+
+    it('resolves a page of N works in a CONSTANT number of reads, not N', async () => {
+      // THE regression this guards. Every field added here is a cross-context
+      // join, and the obvious implementation of each is one read per row. The
+      // assertion is on the counts, so an N+1 reintroduced later fails here
+      // rather than on a production page of 50.
+      const N = 50;
+      const works = Array.from({ length: N }, (_, i) =>
+        view({
+          id: `w-${i}`,
+          // Distinct ids throughout, so nothing passes by accidental de-duping.
+          orderId: `ol_order_${i}`,
+          locationId: `ol_location_${i}`,
+          lines: [line(`l-${i}a`, `ol_variant_${i}a`), line(`l-${i}b`, `ol_variant_${i}b`)],
+        })
+      );
+      worklist.list.mockResolvedValue({ works, total: N, limit: 100, offset: 0 });
+      const { controller: c, orders, locations, products } = build(worklist);
+      products.getVariantsByIds.mockResolvedValue(
+        works.flatMap((w) =>
+          w.lines.map((l) => ({ id: l.productVariantId, productId: `ol_product_${l.id}` }))
+        )
+      );
+
+      const page = await c.list({} as never);
+
+      expect(page.works).toHaveLength(N);
+      expect(orders.findByIds).toHaveBeenCalledTimes(1);
+      expect(locations.getLocationsByIds).toHaveBeenCalledTimes(1);
+      expect(products.getVariantsByIds).toHaveBeenCalledTimes(1);
+      expect(products.getProductsByIds).toHaveBeenCalledTimes(1);
+
+      // …and each of those four carries the WHOLE page's ids, which is what
+      // makes "called once" mean batched rather than merely truncated.
+      expect(orders.findByIds.mock.calls[0][0]).toHaveLength(N);
+      expect(locations.getLocationsByIds.mock.calls[0][0]).toHaveLength(N);
+      expect(products.getVariantsByIds.mock.calls[0][0]).toHaveLength(N * 2);
+      expect(products.getProductsByIds.mock.calls[0][0]).toHaveLength(N * 2);
+    });
+
+    it('asks about each distinct id ONCE when a page repeats one', async () => {
+      // A page routinely names one location many times over; the parameter
+      // list should be bounded by the distinct ids, not by the page size.
+      worklist.list.mockResolvedValue({
+        works: [
+          view({ id: 'w-1', orderId: 'ol_order_1', locationId: 'ol_location_1' }),
+          view({ id: 'w-2', orderId: 'ol_order_1', locationId: 'ol_location_1' }),
+        ],
+        total: 2,
+        limit: 100,
+        offset: 0,
+      });
+      const { controller: c, orders, locations } = build(worklist);
+
+      await c.list({} as never);
+
+      expect(orders.findByIds).toHaveBeenCalledWith(['ol_order_1']);
+      expect(locations.getLocationsByIds).toHaveBeenCalledWith(['ol_location_1']);
+    });
+
+    it('issues no read at all for an empty page', async () => {
+      worklist.list.mockResolvedValue({ works: [], total: 0, limit: 100, offset: 0 });
+      const { controller: c, orders, locations, products } = build(worklist);
+
+      await c.list({} as never);
+
+      expect(orders.findByIds).not.toHaveBeenCalled();
+      expect(locations.getLocationsByIds).not.toHaveBeenCalled();
+      expect(products.getVariantsByIds).not.toHaveBeenCalled();
+      expect(products.getProductsByIds).not.toHaveBeenCalled();
     });
   });
 });

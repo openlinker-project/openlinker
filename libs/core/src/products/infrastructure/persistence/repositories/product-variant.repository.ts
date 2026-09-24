@@ -376,6 +376,11 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
       taxRateCountry: entity.taxRateCountry,
       taxRateReadAt: entity.taxRateReadAt,
       taxRateUnknownReason: readTaxRateUnknownReason(entity.taxRateUnknownReason),
+      // #3403 — operator-authored, read-only at this layer (see toOrmEntity).
+      weightGrams: entity.weightGrams,
+      lengthMm: entity.lengthMm,
+      widthMm: entity.widthMm,
+      heightMm: entity.heightMm,
       createdAt: entity.createdAt,
       updatedAt: entity.updatedAt,
     };
@@ -406,7 +411,31 @@ export class ProductVariantRepository implements ProductVariantRepositoryPort {
     // upsert carries no rate, so writing them here would blank an override
     // `recordTaxRate` had just written. Same single-writer rule as the
     // product side.
+    //
+    // The four #3403 physical-dimension columns are absent for the SAME
+    // reason: they are operator-authored, never sync-derived, and a master
+    // re-sync must not silently blank a value someone typed in.
+    // `recordPhysicalDimensions` is their dedicated writer.
     return entity;
+  }
+
+  /**
+   * Record operator-authored physical dimensions (#3403, mockup-parity epic
+   * #3401). The dedicated single writer for these four columns — the
+   * `recordTaxRate` precedent — so the master-sync upsert (`toOrmEntity`,
+   * above) can never blank a value an operator typed in. `null` clears a
+   * field back to "not recorded".
+   */
+  async recordPhysicalDimensions(
+    variantId: string,
+    dims: {
+      readonly weightGrams?: number | null;
+      readonly lengthMm?: number | null;
+      readonly widthMm?: number | null;
+      readonly heightMm?: number | null;
+    }
+  ): Promise<void> {
+    await this.repository.update({ id: variantId }, dims);
   }
 
   /**

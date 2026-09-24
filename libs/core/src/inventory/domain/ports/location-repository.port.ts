@@ -44,6 +44,24 @@ export interface LocationRepositoryPort {
   /** @returns the location, or `null` when no row carries that id */
   findById(id: string): Promise<InventoryLocation | null>;
 
+  /**
+   * Batched by-id read — ONE query for a page of ids, never one per id
+   * (#3426, the `OrderRecordRepositoryPort.findByIds` / `getProductsByIds`
+   * precedent).
+   *
+   * Exists because a surface that renders a page of rows each naming a
+   * location needs their names, and resolving those with `findById` is the
+   * N+1 this method's existence forbids.
+   *
+   * An id with no row is simply ABSENT from the result — the same "absent id
+   * = no match" convention `findByIds` already uses — so the caller keys a
+   * `Map` off the result and reads a miss as `null` rather than expecting the
+   * array to line up positionally with its input.
+   *
+   * @returns the matching locations, in no guaranteed order
+   */
+  findByIds(ids: readonly string[]): Promise<InventoryLocation[]>;
+
   /** Filtered, paginated listing ordered by `code` for a stable page boundary. */
   list(
     filters: InventoryLocationFilters,

@@ -23,10 +23,12 @@
  * @module apps/web/src/features/bench/lib
  */
 import {
+  resolveInvoiceAbsenceAudience,
   resolveSalesDocumentReasonCopy,
+  type InvoiceAbsenceAudience,
   type SalesDocumentGateReasonCopy,
 } from '../../sales-documents';
-import type { BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
+import type { BenchDocuments, BenchParcel, BenchParcelLine } from '../api/bench-parcel.types';
 import { benchParcelCopy } from './bench-parcel.copy';
 
 /** How far one line has got. Never says HOW its units were confirmed. */
@@ -168,6 +170,8 @@ export function describeVerificationRefusal(
       });
     case 'not-packable':
       return copy.notPackable;
+    case 'not-claimable-by-viewer':
+      return copy.notYours;
     case 'parcel-closed':
       return copy.parcelClosed;
     case 'no-such-line':
@@ -177,7 +181,13 @@ export function describeVerificationRefusal(
   }
 }
 
-/** Why a reopen was turned down. `shipped` gets its own words — the box has gone. */
+/**
+ * Why a reopen was turned down. `shipped` gets its own words — the box has
+ * gone. `not-packable` (#3435 review) is the same ADR-074 assignment-lock
+ * reason `describeVerificationRefusal` already renders above — this branch
+ * overloads that one reason across every mutation the lock refuses, rather
+ * than minting a per-method spelling, so the copy is reused verbatim here too.
+ */
 export function describeReopenRefusal(reason: string | null): string {
   const copy = benchParcelCopy.closed;
   switch (reason) {
@@ -185,9 +195,92 @@ export function describeReopenRefusal(reason: string | null): string {
       return copy.reopenShipped;
     case 'not-closed':
       return copy.reopenNotClosed;
+    case 'not-packable':
+      return benchParcelCopy.verify.notPackable;
     default:
       return copy.reopenUnknownRefusal;
   }
+}
+
+/**
+ * Why a completion was refused.
+ *
+ * `not-closed` should never be reachable — the control is offered only on a
+ * closed box — but is named rather than folded into the default: a race with
+ * a reopen from a second terminal is real, and a packer told nothing would
+ * keep pressing a button that cannot work until they reload. `already-completed`
+ * is deliberately NOT an error in the caller's eyes even though it shares this
+ * function with the real refusals — the box really is finished, so the caller
+ * treats that one reason as a reason to move on rather than to stay and retry.
+ */
+export function describeCompletionRefusal(reason: string | null): string {
+  const copy = benchParcelCopy.completion;
+  switch (reason) {
+    case 'not-closed':
+      return copy.refusedNotClosed;
+    case 'already-completed':
+      return copy.refusedAlreadyCompleted;
+    case 'version-conflict':
+      return copy.refusedStale;
+    case 'not-claimable-by-viewer':
+      return copy.refusedLocked;
+    default:
+      return copy.refusedUnknown;
+  }
+}
+
+/**
+ * Why taking back a completion was refused.
+ *
+ * The counterpart to `describeCompletionRefusal`, over the WIDER refusal
+ * union `undoCompletion` shares with it — `not-claimable-by-viewer` is the
+ * same ADR-074 lock, checked at the same seam. `not-completed` should never
+ * be reachable — the control is offered only on a completed box — but is
+ * named rather than folded into the default for the same reason
+ * `describeCompletionRefusal`'s `not-closed` is: a race with a second
+ * terminal is real, and a packer told nothing would keep pressing a button
+ * that cannot work until they reload.
+ */
+export function describeUndoCompletionRefusal(reason: string | null): string {
+  const copy = benchParcelCopy.completion;
+  switch (reason) {
+    case 'not-completed':
+      return copy.undoRefusedNotCompleted;
+    case 'version-conflict':
+      return copy.undoRefusedStale;
+    case 'not-claimable-by-viewer':
+      return copy.undoRefusedLocked;
+    default:
+      return copy.undoRefusedUnknown;
+  }
+}
+
+/**
+ * What a completion confirm must ask about before it may proceed straight
+ * through.
+ *
+ * Reads the SAME two facts the documents panel renders — `state === 'ready'`
+ * from the current documents read, `*PrintedAt` from the parcel itself — so
+ * this can never disagree with what the packer sees on the open box. A
+ * document that is not `ready` (missing, or issued-but-not-printable) is
+ * never reported as "unprinted": there is nothing this bench could print for
+ * it, and naming it here would send the packer looking for a print button
+ * that does not exist.
+ */
+export interface BenchCompletionPrintGaps {
+  readonly invoiceUnprinted: boolean;
+  readonly labelUnprinted: boolean;
+}
+
+export function completionPrintGaps(
+  parcel: BenchParcel,
+  documents: BenchDocuments | undefined
+): BenchCompletionPrintGaps {
+  return {
+    invoiceUnprinted:
+      documents?.invoice.state === 'ready' && parcel.invoicePrintedAt === null,
+    labelUnprinted: documents?.label.state === 'ready' && parcel.labelPrintedAt === null,
+  };
 }
 
 /**
@@ -208,5 +301,18 @@ export function describeInvoiceBlock(
   return resolveSalesDocumentReasonCopy(
     blockReason as Parameters<typeof resolveSalesDocumentReasonCopy>[0],
     unresolvedReason as Parameters<typeof resolveSalesDocumentReasonCopy>[1]
+  );
+}
+
+/**
+ * Who, if anyone, already knows this box went out without an invoice.
+ *
+ * Delegates for the same reason `describeInvoiceBlock` does — the rule is the
+ * sales-document vocabulary's, not the bench's, and a copy of it here would be
+ * a second answer the guarded one does not govern.
+ */
+export function describeInvoiceAbsenceAudience(blockReason: string | null): InvoiceAbsenceAudience {
+  return resolveInvoiceAbsenceAudience(
+    blockReason as Parameters<typeof resolveInvoiceAbsenceAudience>[0]
   );
 }

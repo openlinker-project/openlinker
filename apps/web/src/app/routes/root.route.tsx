@@ -45,7 +45,10 @@ import {
 } from './prompt-templates-legacy-redirects.route';
 import { automationsRoute } from './automations.route';
 import { returnsRoute } from './returns.route';
-import { fulfillmentRoute } from './fulfillment.route';
+import {
+  assignPackingWorkLegacyRedirectRoute,
+  fulfillmentRoute,
+} from './fulfillment.route';
 import { operationalSettingsRoute } from './operational-settings.route';
 import { salesDocumentsRoute } from './sales-documents.route';
 import { sourcingRulesRoute } from './sourcing-rules.route';
@@ -74,6 +77,7 @@ export const coreChildren: RouteObject[] = [
   shipmentsRoute,
   returnsRoute,
   fulfillmentRoute,
+  assignPackingWorkLegacyRedirectRoute,
   automationsRoute,
   invoicesRoute,
   salesDocumentsListRoute,

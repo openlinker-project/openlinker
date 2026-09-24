@@ -28,6 +28,15 @@
  * Listeners are `passive` and on `window` with capture, so activity inside a
  * modal or an overlay still counts.
  *
+ * ## The optional warning phase (#3408)
+ *
+ * `warningMs` + `onWarning` add a SECOND, earlier one-shot timer sharing the
+ * exact same arm/clear/reset lifecycle as the terminal one — the same
+ * activity that re-arms `onIdle` re-arms the warning, because a countdown
+ * that ignored activity would contradict the "tap anywhere to stay signed
+ * in" it exists to offer. It fires once per idle period, exactly like
+ * `onIdle`, and both are cleared together by `reset()`.
+ *
  * @module apps/web/src/shared/hooks
  */
 import { useCallback, useEffect, useRef } from 'react';
@@ -49,6 +58,21 @@ export interface UseIdleTimeoutOptions {
   readonly onIdle: () => void;
   /** When false the timer is cleared and no listeners are attached. */
   readonly enabled?: boolean;
+  /**
+   * Milliseconds of inactivity before `onWarning` fires — MUST be less than
+   * `timeoutMs`, or the warning would fire after (or with) the lock itself.
+   * Omit both this and `onWarning` for the pre-#3408 two-state behaviour.
+   */
+  readonly warningMs?: number;
+  /** Called once, `warningMs` into the idle period — see the module docblock. */
+  readonly onWarning?: () => void;
+  /**
+   * Called when activity dismisses an already-fired warning — i.e. exactly
+   * when the countdown the consumer is showing should disappear. Never
+   * called for activity reaching an already-LOCKED bench (see the module
+   * docblock's "does not un-fire the terminal timeout").
+   */
+  readonly onWarningDismissed?: () => void;
 }
 
 export interface UseIdleTimeoutResult {
@@ -60,33 +84,58 @@ export function useIdleTimeout({
   timeoutMs,
   onIdle,
   enabled = true,
+  warningMs,
+  onWarning,
+  onWarningDismissed,
 }: UseIdleTimeoutOptions): UseIdleTimeoutResult {
   const onIdleRef = useRef(onIdle);
   onIdleRef.current = onIdle;
+  const onWarningRef = useRef(onWarning);
+  onWarningRef.current = onWarning;
+  const onWarningDismissedRef = useRef(onWarningDismissed);
+  onWarningDismissedRef.current = onWarningDismissed;
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firedRef = useRef(false);
+
+  // The optional, earlier warning timer — same lifecycle, second clock.
+  const warnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const warnFiredRef = useRef(false);
+  const warningEnabled = warningMs !== undefined && onWarningRef.current !== undefined;
 
   const clear = useCallback((): void => {
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
     }
+    if (warnTimerRef.current !== null) {
+      clearTimeout(warnTimerRef.current);
+      warnTimerRef.current = null;
+    }
   }, []);
 
   const arm = useCallback((): void => {
     clear();
     // Once fired, stay fired until `reset()` — see property (1).
-    if (firedRef.current) return;
-    timerRef.current = setTimeout(() => {
-      firedRef.current = true;
-      timerRef.current = null;
-      onIdleRef.current();
-    }, timeoutMs);
-  }, [clear, timeoutMs]);
+    if (!firedRef.current) {
+      timerRef.current = setTimeout(() => {
+        firedRef.current = true;
+        timerRef.current = null;
+        onIdleRef.current();
+      }, timeoutMs);
+    }
+    if (warningEnabled && !warnFiredRef.current) {
+      warnTimerRef.current = setTimeout(() => {
+        warnFiredRef.current = true;
+        warnTimerRef.current = null;
+        onWarningRef.current?.();
+      }, warningMs);
+    }
+  }, [clear, timeoutMs, warningEnabled, warningMs]);
 
   const reset = useCallback((): void => {
     firedRef.current = false;
+    warnFiredRef.current = false;
     arm();
   }, [arm]);
 
@@ -99,9 +148,19 @@ export function useIdleTimeout({
     arm();
 
     const onActivity = (): void => {
-      // Activity does NOT un-fire an elapsed timeout: once the surface has
+      // Activity does NOT un-fire the TERMINAL timeout: once the surface has
       // locked, a stray pointermove from someone walking past must not unlock
-      // it. `arm()` no-ops while `firedRef` is set.
+      // it. `arm()` no-ops the main timer while `firedRef` is set.
+      //
+      // The WARNING is different on purpose — it is a dismissible soft state,
+      // not a fired guarantee, and "tap anywhere to stay signed in" is
+      // meaningless if the banner cannot be dismissed by tapping anywhere.
+      // Only while NOT yet truly locked: an activity event reaching a
+      // genuinely locked bench must not revive anything.
+      if (!firedRef.current && warnFiredRef.current) {
+        warnFiredRef.current = false;
+        onWarningDismissedRef.current?.();
+      }
       arm();
     };
     const onVisibility = (): void => {

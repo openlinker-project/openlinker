@@ -207,6 +207,7 @@ describe('ListingsController', () => {
     recordTaxRate: jest.fn(),
     findTaxRate: jest.fn(),
     clearTaxRate: jest.fn(),
+    recordPhysicalDimensions: jest.fn(),
     };
     categoryResolution = {
       resolveCategory: jest.fn(),

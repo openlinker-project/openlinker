@@ -37,6 +37,17 @@ const BASE_TONE: Record<JobStatus, StatusBadgeTone> = {
  */
 const OUTCOME_REASON_LABEL: Record<JobOutcomeReason, string> = {
   master_deleted: 'source deleted',
+  // Auto-dispatch (#3415). Each names the thing an operator would have to
+  // change — a label that only restated "refused" would leave them opening
+  // the log to learn which of six refusals it was. Typed as an exhaustive
+  // Record on purpose: a seventh code cannot ship without a label.
+  auto_dispatch_payload_invalid: 'malformed job',
+  auto_dispatch_not_enabled: 'auto-label off',
+  auto_dispatch_no_weight: 'no weight',
+  auto_dispatch_no_address: 'no address',
+  auto_dispatch_no_delivery_method: 'no delivery method',
+  auto_dispatch_work_not_eligible: 'order not ready',
+  auto_dispatch_shipment_claimed_by_sibling_work: 'other parcel has label',
 };
 
 interface SyncJobStatusBadgeProps {

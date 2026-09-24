@@ -46,12 +46,15 @@ export class UserRepository implements UserRepositoryPort {
 
   async findAll(opts?: {
     status?: UserStatus;
+    role?: UserRole;
     page?: number;
     pageSize?: number;
   }): Promise<{ users: User[]; total: number }> {
     const page = opts?.page ?? 0;
     const pageSize = opts?.pageSize ?? 25;
-    const where = opts?.status ? { status: opts.status } : {};
+    const where: { status?: UserStatus; role?: UserRole } = {};
+    if (opts?.status) where.status = opts.status;
+    if (opts?.role) where.role = opts.role;
 
     const [entities, total] = await this.ormRepository.findAndCount({
       where,
@@ -77,6 +80,21 @@ export class UserRepository implements UserRepositoryPort {
 
   async updateAnalyticsConsent(userId: string, analyticsConsent: boolean): Promise<void> {
     await this.ormRepository.update({ id: userId }, { analyticsConsent });
+  }
+
+  async updatePackStationLabel(userId: string, packStationLabel: string | null): Promise<void> {
+    await this.ormRepository.update({ id: userId }, { packStationLabel });
+  }
+
+  async touchLastActive(userId: string): Promise<void> {
+    // `NOW()` rather than `new Date()`: see the port's own note. A raw
+    // fragment because TypeORM's typed `update` takes values, not expressions.
+    await this.ormRepository
+      .createQueryBuilder()
+      .update()
+      .set({ lastActiveAt: () => 'NOW()' })
+      .where('"id" = :id', { id: userId })
+      .execute();
   }
 
   async approveUser(userId: string, role: UserRole): Promise<void> {
@@ -181,7 +199,9 @@ export class UserRepository implements UserRepositoryPort {
       status,
       entity.createdAt,
       entity.updatedAt,
-      entity.analyticsConsent ?? false
+      entity.analyticsConsent ?? false,
+      entity.packStationLabel ?? null,
+      entity.lastActiveAt ?? null
     );
   }
 }

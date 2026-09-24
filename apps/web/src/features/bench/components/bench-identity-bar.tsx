@@ -45,6 +45,10 @@ export function BenchIdentityBar({
           </>
         )}
       </span>
+      {/* Said beside the control, not only in a `title` — nobody hovers at a
+          bench. Hidden on a narrow screen, where it would push the control
+          off the row. */}
+      <span className="bench-identity-bar__hint">{benchIdentityCopy.bar.switchHint}</span>
       <Button
         type="button"
         className="button--sm"
