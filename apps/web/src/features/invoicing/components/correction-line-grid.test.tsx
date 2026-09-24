@@ -20,7 +20,7 @@
  *
  * @module apps/web/src/features/invoicing/components
  */
-import { act, cleanup, fireEvent, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders, createMockApiClient } from '../../../test/test-utils';
 import type { CorrectionLineInput, IssuedDocumentLine } from '../api/invoicing.types';
@@ -46,7 +46,7 @@ function renderGrid(options: {
   linesIndexedByCorrection?: boolean;
   suggestedLines?: CorrectionSuggestedLine[];
   onChange?: (lines: CorrectionLineInput[]) => void;
-}): { onChange: ReturnType<typeof vi.fn> } {
+}): { onChange: ReturnType<typeof vi.fn>; getContent: ReturnType<typeof vi.fn> } {
   const onChange = options.onChange ?? vi.fn();
   const getContent = vi.fn().mockResolvedValue({
     linesIndexedByCorrection: options.linesIndexedByCorrection ?? true,
@@ -62,7 +62,7 @@ function renderGrid(options: {
     { apiClient: createMockApiClient({ invoicing: { getContent } }) },
   );
 
-  return { onChange: onChange as ReturnType<typeof vi.fn> };
+  return { onChange: onChange as ReturnType<typeof vi.fn>, getContent };
 }
 
 describe('CorrectionLineGrid', () => {
@@ -80,15 +80,24 @@ describe('CorrectionLineGrid', () => {
   });
 
   it('renders nothing while the invoice has no authoritative content', async () => {
-    const { onChange } = renderGrid({
+    const { onChange, getContent } = renderGrid({
       lines: [line()],
       linesIndexedByCorrection: false,
     });
 
-    // Give the query a tick to settle — the grid never mounts a table, so
-    // there is nothing to `findBy`; asserting on absence directly would race
-    // the loading state and pass for the wrong reason.
-    await act(() => Promise.resolve());
+    // The grid never mounts a table here, so there is nothing to `findBy` —
+    // and both assertions below are ALSO true while the query is still
+    // pending, so settling must be proven rather than assumed. Wait for the
+    // fetch to be issued, await its own promise, then yield one macrotask:
+    // TanStack's notifyManager delivers the resolved state on a
+    // `setTimeout(0)`, which a bare microtask tick does not flush.
+    // Verified red-first: with `linesIndexedByCorrection: true` this exact
+    // settle renders the table and the `queryByRole('table')` assertion fails.
+    await waitFor(() => expect(getContent).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await getContent.mock.results[0]?.value;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
@@ -105,7 +114,7 @@ describe('CorrectionLineGrid', () => {
     expect(await screen.findByLabelText('Quantity after correction, line 1')).toHaveValue(1);
   });
 
-  it('marks a line absent from suggestedLines as untouched, and a suggested one as not', async () => {
+  it('marks a line whose values still match the invoice as untouched, and a suggested line pre-filled below it as touched', async () => {
     renderGrid({
       lines: [line({ name: 'Suggested' }), line({ name: 'Not suggested' })],
       suggestedLines: [{ originalLineNumber: 1, suggestedQuantity: 1 }],
@@ -202,10 +211,11 @@ describe('CorrectionLineGrid', () => {
       target: { value: '0' }, // credits all of line 2's 50.00
     });
 
-    // Rendered as a negative figure (a credit reduces what is owed) — the
-    // footer cell is the last `.credit-cell--credit` in the table.
-    const totalCell = screen.getAllByText((_, el) => el?.className === 'mono-text tabular').at(-1);
-    expect(totalCell).toHaveTextContent('-150.00');
+    // Rendered as a negative figure (a credit reduces what is owed), in the
+    // footer — scoped to tfoot, mirroring the tbody-scoped row assertions.
+    expect(
+      screen.getByText('-150.00', { selector: 'tfoot .credit-cell--credit span' }),
+    ).toBeInTheDocument();
   });
 
   it('credits the price difference in the row cell on a price-only edit, quantity unchanged (PR #3379 review)', async () => {
@@ -238,10 +248,9 @@ describe('CorrectionLineGrid', () => {
       target: { value: '90' },
     });
 
-    const totalCells = await screen.findAllByText(
-      (_, el) => el?.className === 'mono-text tabular',
-    );
-    expect(totalCells.at(-1)).toHaveTextContent('-30.00');
+    expect(
+      await screen.findByText('-30.00', { selector: 'tfoot .credit-cell--credit span' }),
+    ).toBeInTheDocument();
   });
 
   it('reports 0.00 credit and renders it as an em dash when nothing changed', async () => {
