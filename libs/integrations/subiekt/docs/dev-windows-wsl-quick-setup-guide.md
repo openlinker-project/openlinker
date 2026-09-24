@@ -189,19 +189,22 @@ bridge, and keep it closed while the bridge is running.
 
 ### 3.2 - Credentials and configuration
 
-The bridge does **not** read a Sfera password from an environment variable or config
-file - there is no `NexoPassword`/`SferaPassword`-style setting. Instead:
+The bridge reads every credential from its own configuration - `appsettings.json` next
+to `GtBridge.exe`, or an `OL_BRIDGE_*` environment variable, which wins. **None of them
+has a built-in default**: unset leaves the routes they guard closed, because a credential
+compiled into a binary is a credential everybody has.
 
-- **General endpoints** (products, inventory, orders - the WooCommerce-dialect surface)
-  are protected by a **fixed Basic-auth username/password pair** baked into the bridge.
-- **Invoicing endpoints** (`/api/*` - the `subiekt.gt.v1` contract) are protected
-  by a **separate bearer token**, sent by OpenLinker as either an `Authorization: Bearer
-  <token>` header or an `x-bridge-token: <token>` header.
+- **`/api/*`** - every route OpenLinker uses (products, inventory, orders, invoicing,
+  models) - is guarded by `InvoiceToken`, sent as `Authorization: Bearer <token>` or
+  `x-bridge-token: <token>`.
+- **`/wp-json/wc/v3/*`** - the retired WooCommerce-dialect shim from the original spike,
+  which OpenLinker no longer uses - is guarded by `ApiUser` / `ApiPassword`.
 
-Both values are configured into the bridge itself, not into OpenLinker or into a shared
-`.env`. **Consult the bridge operator/maintainer for the actual credential values used
-in your deployment** - they are not documented here and should never be hardcoded into a
-shared config file.
+So the values are yours to choose and set, not something to obtain from anyone: pick
+them, put them in `appsettings.json` on the bridge machine, and give the same
+`InvoiceToken` to the OpenLinker connection. An earlier version of this section said the
+credentials were hardcoded and told you to consult the bridge maintainer for them; that
+was wrong in both halves.
 
 The Sfera GT **database connection** is a plain SQL Server connection string, e.g.
 (values are per-machine - this is a worked dev example, not a fixed requirement):
@@ -312,8 +315,8 @@ curl -sk https://172.26.96.1:5055/health
 In the OpenLinker web UI (`http://localhost:4173`) go to **Connections → Add connection** and
 pick **Subiekt GT** (or use advanced mode). Use the **gateway URL** as the bridge base URL:
 
-- **Platform type** `subiekt-gt`
-- **Adapter key** `subiekt.gt.v1`
+- **Platform type** `subiekt`
+- **Adapter key** `subiekt.invoicing.v1`
 - **Enabled capabilities** `Invoicing`
 - **Config JSON** `{ "bridgeBaseUrl": "https://172.26.96.1:5055" }` (your gateway IP, **no**
   `/api` suffix)

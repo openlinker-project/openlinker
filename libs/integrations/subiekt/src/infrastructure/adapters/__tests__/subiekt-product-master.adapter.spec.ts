@@ -29,6 +29,65 @@ function transportFailure(code: string): FetchLike {
     Promise.reject(Object.assign(new Error('fetch failed'), { cause: { code } }))) as FetchLike;
 }
 
+/**
+ * A `BridgeProduct` with every required field filled, so a test names only the
+ * fields it is actually about.
+ */
+function bridgeProduct(
+  symbol: string,
+  nazwa: string,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    symbol,
+    nazwa,
+    cenaSprzedazyNetto: null,
+    cenaSprzedazyBrutto: null,
+    waluta: 'PLN',
+    opis: null,
+    kodKreskowy: null,
+    jednostkaMiary: null,
+    waga: null,
+    stawkaVat: null,
+    ...overrides,
+  };
+}
+
+/**
+ * A fetch mock that answers by ROUTE rather than returning one body for every
+ * call. The adapter now reads three different bridge routes on one operation
+ * (`/api/products`, `/api/models`, `/api/models/{id}`), so a single-body mock
+ * would let a test pass while the adapter called the wrong one.
+ */
+function routed(
+  symbolsBody: Record<string, unknown> = {},
+  modelsBody: Record<string, unknown> = {},
+  modelBody?: Record<string, unknown>,
+  productBody?: Record<string, unknown>,
+): FetchLike {
+  return ((url: string) => {
+    const path = String(url);
+    if (/\/api\/models\/\d+/.test(path)) {
+      return Promise.resolve(
+        modelBody
+          ? jsonResponse(200, envelope(modelBody))
+          : jsonResponse(404, { success: false, data: null, error: 'no such model' }),
+      );
+    }
+    if (path.includes('/api/models')) {
+      return Promise.resolve(jsonResponse(200, envelope({ models: [], ...modelsBody })));
+    }
+    if (/\/api\/products\/.+/.test(path)) {
+      return Promise.resolve(
+        productBody
+          ? jsonResponse(200, envelope(productBody))
+          : jsonResponse(404, { success: false, data: null, error: 'no such towar' }),
+      );
+    }
+    return Promise.resolve(jsonResponse(200, envelope({ symbols: [], ...symbolsBody })));
+  }) as unknown as FetchLike;
+}
+
 function connection(): Connection {
   return new Connection(
     'conn-1',
@@ -128,38 +187,107 @@ describe('SubiektProductMasterAdapter', () => {
     await expect(adapter.getProduct('ol_product_1')).rejects.toBeInstanceOf(MasterProductNotFoundError);
   });
 
-  it('listExternalIds returns the bridge-reported symbols verbatim', async () => {
-    const fetchImpl: FetchLike = (() =>
-      Promise.resolve(jsonResponse(200, envelope({ symbols: ['A-1', 'B-2'] })))) as FetchLike;
+  it('listExternalIds returns the bridge-reported symbols verbatim when no towar is modelled', async () => {
+    const adapter = buildAdapter(routed({ symbols: ['A-1', 'B-2'] }, { models: [] }));
+    await expect(adapter.listExternalIds({ limit: 50 })).resolves.toEqual(['A-1', 'B-2']);
+  });
+
+  it('listExternalIds reports a model ONCE in place of each of its members', async () => {
+    const adapter = buildAdapter(
+      routed(
+        { symbols: ['WOBLACK100', 'DZFOREVER', 'WOBLACK50', 'WOBLACK70'] },
+        { models: [{ modelId: 1, modelNazwa: 'Black Tiger', symbole: ['WOBLACK100', 'WOBLACK50', 'WOBLACK70'] }] },
+      ),
+    );
+    // Three members collapse to one key, and the ungrouped towar is untouched.
+    await expect(adapter.listExternalIds({ limit: 50 })).resolves.toEqual(['model:1', 'DZFOREVER']);
+  });
+
+  it('listExternalIds degrades to plain symbols when the bridge serves no /api/models', async () => {
+    // A bridge predating models 404s that route. That must read as "nothing is
+    // modelled" - the pre-model behaviour - never as a failed enumeration.
+    const fetchImpl: FetchLike = ((url: string) =>
+      url.includes('/api/models')
+        ? Promise.resolve(jsonResponse(404, { success: false, data: null, error: 'no such route' }))
+        : Promise.resolve(jsonResponse(200, envelope({ symbols: ['A-1', 'B-2'] })))) as unknown as FetchLike;
     const adapter = buildAdapter(fetchImpl);
     await expect(adapter.listExternalIds({ limit: 50 })).resolves.toEqual(['A-1', 'B-2']);
   });
 
-  it('getProductVariants returns exactly one synthetic variant per product', async () => {
-    await idMapping.createMapping('Product', 'SKU-1', 'conn-1', 'ol_product_x');
-    const fetchImpl: FetchLike = (() =>
-      Promise.resolve(
-        jsonResponse(
-          200,
-          envelope({
-            symbol: 'SKU-1',
-            nazwa: 'Thing',
-            cenaSprzedazyNetto: null,
-            cenaSprzedazyBrutto: 10,
-            waluta: 'PLN',
-            opis: null,
-            kodKreskowy: null,
-            jednostkaMiary: null,
-            waga: null,
-          }),
-        ),
-      )) as FetchLike;
+  it('getProductVariants returns one variant per model member, each with its own barcode and label', async () => {
+    await idMapping.createMapping('Product', 'model:1', 'conn-1', 'ol_product_model');
+    const adapter = buildAdapter(
+      routed(
+        {},
+        {},
+        {
+          modelId: 1,
+          modelNazwa: 'Black Tiger woda toaletowa',
+          pozycje: [
+            bridgeProduct('WOBLACK100', 'Black Tiger woda toaletowa 100ml', { kodKreskowy: '5900232204731', cenaSprzedazyBrutto: 551.02 }),
+            bridgeProduct('WOBLACK50', 'Black Tiger woda toaletowa 50ml', { kodKreskowy: '5900232580286', cenaSprzedazyBrutto: 309.94 }),
+          ],
+        },
+      ),
+    );
 
-    const adapter = buildAdapter(fetchImpl);
+    const variants = await adapter.getProductVariants('ol_product_model');
+    expect(variants).toHaveLength(2);
+    expect(variants.map((v) => v.sku)).toEqual(['WOBLACK100', 'WOBLACK50']);
+    // The barcode is per towar, so it must be per variant - a shared one would
+    // make two siblings the same product to a marketplace.
+    expect(variants.map((v) => v.ean)).toEqual(['5900232204731', '5900232580286']);
+    // The axis Subiekt does not carry, derived from the names.
+    expect(variants.map((v) => v.attributes)).toEqual([{ Wariant: '100ml' }, { Wariant: '50ml' }]);
+    expect(variants.map((v) => v.price)).toEqual([551.02, 309.94]);
+  });
+
+  it('getProduct on a model reports the model name and every member image', async () => {
+    await idMapping.createMapping('Product', 'model:1', 'conn-1', 'ol_product_model');
+    const adapter = buildAdapter(
+      routed(
+        {},
+        {},
+        {
+          modelId: 1,
+          modelNazwa: 'Black Tiger woda toaletowa',
+          pozycje: [
+            bridgeProduct('WOBLACK100', 'Black Tiger woda toaletowa 100ml', { zdjecia: ['http://b/gt-image/30'] }),
+            bridgeProduct('WOBLACK50', 'Black Tiger woda toaletowa 50ml', { zdjecia: ['http://b/gt-image/31'] }),
+          ],
+        },
+      ),
+    );
+
+    const product = await adapter.getProduct('ol_product_model');
+    expect(product.name).toBe('Black Tiger woda toaletowa');
+    expect(product.sku).toBe('MODEL-1');
+    // A grouped listing wants the whole gallery, and the members are the photos.
+    expect(product.images).toEqual(['http://b/gt-image/30', 'http://b/gt-image/31']);
+  });
+
+  it('getProduct on a towar that has since JOINED a model reports it deleted at the master', async () => {
+    // The towar is a variant now, not a product. Saying so routes it into the
+    // ordinary deletion path, which pauses its offers; serving it anyway would
+    // leave two OpenLinker products claiming one towar.
+    await idMapping.createMapping('Product', 'WOBLACK100', 'conn-1', 'ol_product_old');
+    const adapter = buildAdapter(
+      routed({}, {}, undefined, bridgeProduct('WOBLACK100', 'Black Tiger 100ml', { modelId: 1 })),
+    );
+    await expect(adapter.getProduct('ol_product_old')).rejects.toBeInstanceOf(MasterProductNotFoundError);
+  });
+
+  it('getProductVariants returns exactly one synthetic variant for a towar in no model', async () => {
+    await idMapping.createMapping('Product', 'SKU-1', 'conn-1', 'ol_product_x');
+    const adapter = buildAdapter(
+      routed({}, {}, undefined, bridgeProduct('SKU-1', 'Thing', { cenaSprzedazyBrutto: 10 })),
+    );
     const variants = await adapter.getProductVariants('ol_product_x');
     expect(variants).toHaveLength(1);
     expect(variants[0].productId).toBe('ol_product_x');
     expect(variants[0].sku).toBe('SKU-1');
+    // No sibling to be distinguished from, so no axis is invented.
+    expect(variants[0].attributes).toBeNull();
   });
 
   it('deleteProduct / assignCategories / upsertProductVariant throw SubiektProductNotSupportedException', async () => {

@@ -52,6 +52,109 @@ describe('SubiektInventoryMasterAdapter', () => {
     );
   });
 
+  describe('a model-keyed product (several towary, one product)', () => {
+    const MODEL_PRODUCT_ID = 'ol_product_model';
+    let modelAdapter: SubiektInventoryMasterAdapter;
+
+    beforeEach(() => {
+      identifierMapping.getExternalIds.mockImplementation((entityType: string, internalId: string) => {
+        if (entityType === 'Product' && internalId === MODEL_PRODUCT_ID) {
+          return Promise.resolve([
+            { externalId: 'model:1', platformType: 'subiekt-gt', connectionId: CONNECTION_ID, entityType: 'Product' },
+          ]);
+        }
+        if (entityType === 'ProductVariant' && internalId === 'ol_variant_50') {
+          return Promise.resolve([
+            { externalId: 'WOBLACK50', platformType: 'subiekt-gt', connectionId: CONNECTION_ID, entityType: 'ProductVariant' },
+          ]);
+        }
+        return Promise.resolve([]);
+      });
+      identifierMapping.getOrCreateInternalId.mockImplementation((_t: string, externalId: string) =>
+        Promise.resolve(`ol_variant_${externalId}`),
+      );
+      bridge.getStock.mockImplementation((symbol: string) =>
+        Promise.resolve({
+          towarSymbol: symbol,
+          positions: [{ magazynId: 1, magazynSymbol: 'GŁ', stan: symbol === 'WOBLACK100' ? 517 : 516, stanRez: 0 }],
+          domyslnyMagazynId: 1,
+        }),
+      );
+
+      modelAdapter = new SubiektInventoryMasterAdapter(
+        bridge as unknown as SubiektInventoryBridgeClient,
+        identifierMapping,
+        CONNECTION_ID,
+        logger,
+        undefined,
+        () => Promise.resolve(['WOBLACK100', 'WOBLACK50']),
+      );
+    });
+
+    it('listInventory emits one row PER VARIANT, each stamped with its variantId', async () => {
+      // The whole point. MasterInventorySyncService keys a row to
+      // `Inventory.variantId`, falling back to "the product's lone variant"
+      // only when there IS one. A model-keyed product has several, so without
+      // the stamp every variant would miss its stock silently.
+      const rows = await modelAdapter.listInventory(MODEL_PRODUCT_ID);
+
+      expect(rows).toHaveLength(2);
+      expect(rows.map((r) => r.variantId)).toEqual(['ol_variant_WOBLACK100', 'ol_variant_WOBLACK50']);
+      expect(rows.map((r) => r.quantity)).toEqual([517, 516]);
+      expect(rows.every((r) => r.productId === MODEL_PRODUCT_ID)).toBe(true);
+    });
+
+    it('getInventory reports the model TOTAL, not one member', async () => {
+      const inventory = await modelAdapter.getInventory(MODEL_PRODUCT_ID);
+      expect(inventory.quantity).toBe(517 + 516);
+    });
+
+    it('getAvailableQuantity sums every member', async () => {
+      await expect(modelAdapter.getAvailableQuantity(MODEL_PRODUCT_ID)).resolves.toBe(517 + 516);
+    });
+
+    it('adjustInventory REFUSES without a variantId rather than picking a member', async () => {
+      // Moving "the product's" stock is not a defined act for a model, and a
+      // silent pick would move real stock on the wrong towar.
+      await expect(
+        modelAdapter.adjustInventory({ productId: MODEL_PRODUCT_ID, quantity: 5 }),
+      ).rejects.toBeInstanceOf(SubiektConfigException);
+      expect(bridge.adjust).not.toHaveBeenCalled();
+    });
+
+    it('adjustInventory targets the towar the variantId names', async () => {
+      bridge.adjust.mockResolvedValue({ deduplicated: false, documentId: 1, documentNumber: 'PW 1/2026', stanAfter: 521 });
+      await modelAdapter.adjustInventory({
+        productId: MODEL_PRODUCT_ID,
+        variantId: 'ol_variant_50',
+        quantity: 5,
+      });
+      expect(bridge.adjust).toHaveBeenCalledWith(expect.objectContaining({ towarSymbol: 'WOBLACK50' }));
+    });
+
+    it('reports a host built with NO model reader as a wiring fault, never as empty stock', async () => {
+      const unwired = new SubiektInventoryMasterAdapter(
+        bridge as unknown as SubiektInventoryBridgeClient,
+        identifierMapping,
+        CONNECTION_ID,
+        logger,
+      );
+      await expect(unwired.listInventory(MODEL_PRODUCT_ID)).rejects.toBeInstanceOf(SubiektConfigException);
+    });
+
+    it('treats a model whose every member is gone as a master-side deletion', async () => {
+      const emptied = new SubiektInventoryMasterAdapter(
+        bridge as unknown as SubiektInventoryBridgeClient,
+        identifierMapping,
+        CONNECTION_ID,
+        logger,
+        undefined,
+        () => Promise.resolve([]),
+      );
+      await expect(emptied.listInventory(MODEL_PRODUCT_ID)).rejects.toBeInstanceOf(MasterProductNotFoundError);
+    });
+  });
+
   describe('getInventory', () => {
     it('should fall back to summing every magazyn when the bridge reports no release warehouse (pre-field bridge)', async () => {
       // A bridge predating `domyslnyMagazynId`. Summing is an over-count on a
@@ -198,7 +301,7 @@ describe('SubiektInventoryMasterAdapter', () => {
   });
 
   describe('listInventory', () => {
-    it('should return exactly one product-level entry (no per-variant combinations)', async () => {
+    it('should return exactly one product-level entry for a towar in NO model', async () => {
       bridge.getStock.mockResolvedValue({
         towarSymbol: TOWAR_SYMBOL,
         positions: [{ magazynId: 1, magazynSymbol: 'GŁ', stan: 7, stanRez: 0 }],

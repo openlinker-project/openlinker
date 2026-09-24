@@ -85,12 +85,28 @@ ISO-3166-1 alpha-2 against Subiekt's own `sl_Panstwo` dictionary.
 Each of these is a design decision, not a gap waiting to be filled - know the
 reason before you ask for the feature.
 
-1. **Product variants.** Subiekt GT has no variant axis: every variant a
-   product might have is its own separate towar with its own symbol. There is
-   nothing in the Subiekt data model to map OpenLinker's product/variant split
-   onto. Each towar therefore becomes one OpenLinker product with a single
-   synthetic variant, and `upsertProductVariant` fails honestly rather than
-   silently pretending to write a variant that has no home in Subiekt.
+1. **Writing variants back.** Reading them works: a Subiekt MODEL
+   (`sl_ModelTw`) becomes one OpenLinker product and the towary in it become
+   its variants, so a three-size article publishes as one grouped listing. What
+   this package will not do is create or reshape a model - `upsertProductVariant`
+   fails honestly rather than pretending to write a grouping Subiekt expects an
+   operator to author.
+
+   Two things follow, and both are operator-visible. A towar the operator has
+   NOT put in a model is still its own product with one synthetic variant -
+   OpenLinker never infers grouping from names, so three same-family towary
+   left ungrouped in Subiekt stay three products here. And a towar that JOINS a
+   model stops being a product: OpenLinker reports it deleted at the master, its
+   variants go stale and its offers pause, so the article has to be published
+   again under the grouped product. That is loud on purpose. The alternative -
+   leaving the old product alive - would have two OpenLinker products claiming
+   one towar, both syncing and both publishable.
+
+   Note this section previously said flatly that Subiekt GT has no variant
+   axis. It does not have an ATTRIBUTE axis - nothing in `sl_ModelTw` or
+   `sl_ModelTowar` records what distinguishes one member from another, so the
+   label is derived from the member's own name - but the grouping itself is
+   real and had simply never been read.
 
 2. **Net-priced (VAT-exclusive) orders.** This is a core OpenLinker policy,
    not a Subiekt limitation: OpenLinker never computes tax, and per ADR-026 it

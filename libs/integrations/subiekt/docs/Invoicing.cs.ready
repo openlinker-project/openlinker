@@ -1,43 +1,13 @@
-// SNAPSHOT, not a mirror. Copied 2026-09-23 from the Windows host at
-// /mnt/c/Users/42zer/gtspike/bridge/Invoicing.cs. **Nothing in this repository
-// compares this file to the bridge it came from**, so the honest reading is
-// "what the bridge looked like when someone last looked", never "what the
-// bridge is". The published, reviewable source is
-// openlinker-project/openlinker-subiekt-bridge, `bridge-gt/Invoicing.cs` — check
-// there before trusting anything here for a behaviour that matters.
+// Invoicing.cs.ready - mirror of the bridge source, committed for review.
 //
-// Invoicing.cs.ready — the bridge's invoicing endpoint, AS OF #3436, committed
-// per piotrswierzy's review on PR #3436 (the .cs.ready convention #3365
-// established for the same reason: a reviewer needs something to read and a
-// second operator needs something to paste).
+// A FULL DUMP of `bridge-gt/Invoicing.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
 //
-// UNLIKE FiscalizationEndpoints.cs.ready, this file IS live-verified — see
-// libs/integrations/subiekt/docs/warehouse-release-wz.md for the full
-// evidence trail (SQL before/after, HTTP responses, bridge log lines,
-// covering BOTH the auto-release-detected branch and the explicit-create
-// branch of EnsureWarehouseRelease).
-//
-// This is a FULL DUMP of the file as it exists on the Windows host at
-// /mnt/c/Users/42zer/gtspike/bridge/Invoicing.cs right now — not a diff, not
-// an extract of only the new methods — because the bridge has no git history
-// of its own on that machine and a partial extract would leave a reader
-// unable to tell what else the file does around the new methods. The #3431
-// warehouse-release addition is EnsureWarehouseRelease (and its three
-// helpers, FindZkIdByOrderRef / FindExistingWz / FindAutoReleasedWzForInvoice)
-// plus the two call sites inside the issue-invoice and retry-existing-invoice
-// paths — search for "EnsureWarehouseRelease" to find every touch point.
-//
-// NOT compiled or type-checked by this repo's CI — there is no C# build here.
-// To deploy this on another install's bridge: paste this file's body over
-// C:\...\gtspike\bridge\Invoicing.cs, rebuild, and reconcile against
-// libs/integrations/subiekt/src/bridge/subiekt-bridge.types.ts (the TS side
-// this was written against — see BridgeIssueInvoiceResponse.warehouseReleaseNumber).
-//
-// The InvoiceToken / ConnStr constants this file references are defined in
-// Program.cs.ready (committed alongside this file) and are this LOCAL SANDBOX
-// bridge's own dev-only auth token and a Windows-integrated-auth SQL Server
-// connection string — not a production secret, and already referenced
-// elsewhere in this package's tests/types (grep "olinvoicekey").
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// from the same source in the same commit, so drift between the three is a
+// review finding rather than something to discover at runtime.
 
 /*
  * Invoicing bridge for @openlinker/integrations-subiekt (subiekt.invoicing.v1).
@@ -372,44 +342,65 @@ public static class Invoicing
         // Idempotency: a retried call with the same key returns the SAME
         // document rather than issuing a second one (fiscal safety).
         var key = req.IdempotencyKey != "" ? req.IdempotencyKey : req.OrderId;
-        var existing = await FindByIdempotencyKey(key, dokTyp);
-        if (existing is not null)
-        {
-            var (exId, exNumer) = existing.Value;
-            var (regStatus, ksefNr) = await ReadKsefStatus(exId);
-            // #3431: the invoice already exists (this is a retry), but a
-            // crash may have happened BETWEEN the original invoice commit and
-            // its WZ commit - always re-check/re-attempt, never assume a
-            // found invoice means its stock was already released too.
-            var wzNumerExisting = await DocumentCarriesStockMovement(exId)
-                ? null
-                : await EnsureWarehouseRelease(req.OrderId, key, exId, req.ZkId, req.Lines);
-            return new IssueResult(exId, exNumer, "issued", regStatus, null, ksefNr, wzNumerExisting);
-        }
 
-        // Line VAT rates must resolve BEFORE the Sfera call - a bad rate is a
-        // caller error (400), not a mid-write fiscal failure.
-        var vatIds = new List<int>();
-        foreach (var line in req.Lines)
+        // #1-review fix (idempotency race): the whole check-then-write
+        // sequence below - including EnsureWarehouseRelease's own inner
+        // check-then-write for the linked WZ - used to have no lock between
+        // the SELECT and the COM write. Two overlapping calls under the SAME
+        // key (a caller retry racing an original call still in flight -
+        // Sfera.Run's COM-side wait outlives the HTTP request) could both
+        // read "not found" and both issue a fiscal document, and/or both
+        // release the same warehouse stock. Serialized per reduced key.
+        return await IdempotencyLock.RunExclusive(ReduceIdempotencyKey(key), async () =>
         {
-            if (!decimal.TryParse(line.StawkaVAT, NumberStyles.Any, CultureInfo.InvariantCulture, out var rate))
-                throw new InvoiceValidationException($"stawkaVAT '{line.StawkaVAT}' is not numeric - only percent-rate codes are supported by this bridge.");
-            var vatId = await ResolveVatId(rate);
-            if (vatId is null)
-                throw new InvoiceValidationException($"No VAT rate {line.StawkaVAT}% configured in sl_StawkaVAT.");
-            vatIds.Add(vatId.Value);
-        }
-
-        int docId = 0;
-        string numer = "";
-        Sfera.Run(sub =>
-        {
-            dynamic mgr = sub.SuDokumentyManager;
-            // SuDokumentyManager.DodajFS() / DodajPA() - confirmed live
-            // (Pomoc/gta.chm/SuDokumentyManager_DodajFS.htm, _DodajPA.htm).
-            dynamic d = req.DocumentType == "PA" ? mgr.DodajPA() : mgr.DodajFS();
-            try
+            var existing = await FindByIdempotencyKey(key, dokTyp);
+            if (existing is not null)
             {
+                var (exId, exNumer) = existing.Value;
+                var (regStatus, ksefNr) = await ReadKsefStatus(exId);
+                // #3431: the invoice already exists (this is a retry), but a
+                // crash may have happened BETWEEN the original invoice commit and
+                // its WZ commit - always re-check/re-attempt, never assume a
+                // found invoice means its stock was already released too.
+                var wzNumerExisting = await DocumentCarriesStockMovement(exId)
+                    ? null
+                    : await EnsureWarehouseRelease(req.OrderId, key, exId, req.ZkId, req.Lines);
+                return new IssueResult(exId, exNumer, "issued", regStatus, null, ksefNr, wzNumerExisting);
+            }
+
+            // Line VAT rates must resolve BEFORE the Sfera call - a bad rate is a
+            // caller error (400), not a mid-write fiscal failure.
+            //
+            // #2-review fix: `StawkaVAT` used to default to "23" on the C#
+            // side (a plain field initializer), so a caller that OMITTED the
+            // field entirely got a SILENT 23% assumption - the explicit
+            // validation below only ever fired for a present-but-invalid
+            // value, never for an absent one. `StawkaVAT` is now nullable
+            // with no default, and an absent/blank rate holds the document
+            // instead of guessing one.
+            var vatIds = new List<int>();
+            foreach (var line in req.Lines)
+            {
+                if (string.IsNullOrWhiteSpace(line.StawkaVAT))
+                    throw new InvoiceValidationException("Each invoice line requires an explicit stawkaVAT - no rate was supplied, and this bridge refuses to assume one.");
+                if (!decimal.TryParse(line.StawkaVAT, NumberStyles.Any, CultureInfo.InvariantCulture, out var rate))
+                    throw new InvoiceValidationException($"stawkaVAT '{line.StawkaVAT}' is not numeric - only percent-rate codes are supported by this bridge.");
+                var vatId = await ResolveVatId(rate);
+                if (vatId is null)
+                    throw new InvoiceValidationException($"No VAT rate {line.StawkaVAT}% configured in sl_StawkaVAT.");
+                vatIds.Add(vatId.Value);
+            }
+
+            int docId = 0;
+            string numer = "";
+            Sfera.Run(sub =>
+            {
+                dynamic mgr = sub.SuDokumentyManager;
+                // SuDokumentyManager.DodajFS() / DodajPA() - confirmed live
+                // (Pomoc/gta.chm/SuDokumentyManager_DodajFS.htm, _DodajPA.htm).
+                dynamic d = req.DocumentType == "PA" ? mgr.DodajPA() : mgr.DodajFS();
+                try
+                {
                 // A PARAGON DOES NOT KEEP A CUSTOMER, and that is Subiekt's
                 // rule rather than a gap here. Probed live on 2026-09-23: set
                 // KontrahentId=79 on a DodajPA() document, read it straight
@@ -477,23 +468,24 @@ public static class Invoicing
                 docId = (int)d.Identyfikator;
                 numer = Convert.ToString(d.NumerPelny) ?? "";
             }
-            finally { try { d.Zamknij(); } catch { } }
-        }, TimeSpan.FromSeconds(120));
+                finally { try { d.Zamknij(); } catch { } }
+            }, TimeSpan.FromSeconds(120));
 
-        // #3352: this discarded the KSeF number ReadKsefStatus already reads,
-        // so clearanceReference stayed null on every Subiekt document forever
-        // even after KSeF assigned a real number.
-        var (finalRegStatus, finalKsefNr) = await ReadKsefStatus(docId);
-        // #3431: release the order's warehouse stock via a linked WZ. Left
-        // OUTSIDE the Sfera.Run above so a WZ failure never rolls back or
-        // masks the already-committed invoice - the invoice is real fiscal
-        // state and must be reported as issued regardless. An exception here
-        // propagates to the caller as a genuine request failure (retryable;
-        // EnsureWarehouseRelease's idempotency check makes the retry safe).
-        var wzNumer = await DocumentCarriesStockMovement(docId)
-            ? null
-            : await EnsureWarehouseRelease(req.OrderId, key, docId, req.ZkId, req.Lines);
-        return new IssueResult(docId, numer, "issued", finalRegStatus, null, finalKsefNr, wzNumer);
+            // #3352: this discarded the KSeF number ReadKsefStatus already reads,
+            // so clearanceReference stayed null on every Subiekt document forever
+            // even after KSeF assigned a real number.
+            var (finalRegStatus, finalKsefNr) = await ReadKsefStatus(docId);
+            // #3431: release the order's warehouse stock via a linked WZ. Left
+            // OUTSIDE the Sfera.Run above so a WZ failure never rolls back or
+            // masks the already-committed invoice - the invoice is real fiscal
+            // state and must be reported as issued regardless. An exception here
+            // propagates to the caller as a genuine request failure (retryable;
+            // EnsureWarehouseRelease's idempotency check makes the retry safe).
+            var wzNumer = await DocumentCarriesStockMovement(docId)
+                ? null
+                : await EnsureWarehouseRelease(req.OrderId, key, docId, req.ZkId, req.Lines);
+            return new IssueResult(docId, numer, "issued", finalRegStatus, null, finalKsefNr, wzNumer);
+        });
     }
 
     private static async Task<(string RegulatoryStatus, string? Ksef)> ReadKsefStatus(int dokId)
@@ -549,63 +541,102 @@ public static class Invoicing
         // OrderId): a correction request carries no natural fallback key, and the
         // bridge contract states idempotencyKey is optional - a caller that omits
         // it accepts the risk of a duplicate korekta on a retried call.
-        if (req.IdempotencyKey != "")
+        //
+        // #1-review fix (idempotency race): serialized on the reduced key when
+        // one is supplied, same reasoning as IssueInvoice - two overlapping
+        // calls under the SAME key must not both observe "not found" and both
+        // issue a korekta. A blank key runs unlocked, unchanged.
+        var lockKey = req.IdempotencyKey != "" ? ReduceIdempotencyKey(req.IdempotencyKey) : "";
+        return await IdempotencyLock.RunExclusive(lockKey, async () =>
         {
-            var existing = await FindByIdempotencyKey(req.IdempotencyKey, DokTypKFS);
-            if (existing is not null)
+            if (req.IdempotencyKey != "")
             {
-                var (exId, exNumer) = existing.Value;
-                return new CorrectionResult(exId, exNumer, origId, req.Przyczyna, "issued");
-            }
-        }
-
-        int docId = 0;
-        string numer = "";
-        int linkedOrigId = 0;
-        Sfera.Run(sub =>
-        {
-            dynamic mgr = sub.SuDokumentyManager;
-            dynamic d = mgr.DodajKFS();
-            try
-            {
-                // THE LINK: NaPodstawie(origId) both stamps DoDokumentuId and
-                // auto-loads d.Pozycje from the original document's own lines.
-                d.NaPodstawie(origId);
-
-                foreach (var line in req.Lines)
+                var existing = await FindByIdempotencyKey(req.IdempotencyKey, DokTypKFS);
+                if (existing is not null)
                 {
-                    dynamic poz = d.Pozycje.Element(line.Lp);
-
-                    // "Before korekta" snapshot, read back from the auto-loaded
-                    // position - the only source of truth for a field the caller
-                    // did not override.
-                    decimal beforeQty = Convert.ToDecimal(poz.IloscJm);
-                    decimal beforeTotal = Convert.ToDecimal(poz.WartoscBruttoPoRabacie);
-                    decimal beforeUnitPrice = beforeQty != 0m ? beforeTotal / beforeQty : 0m;
-
-                    decimal finalQty = line.NowaIlosc ?? beforeQty;
-                    decimal finalUnitPrice = line.NowaCena ?? beforeUnitPrice;
-                    decimal finalTotal = finalQty * finalUnitPrice;
-
-                    poz.IloscJmPoKorekcie = finalQty;
-                    poz.WartoscBruttoPrzedRabatemPoKorekcie = finalTotal;
-                    poz.WartoscBruttoPoRabaciePoKorekcie = finalTotal;
+                    var (exId, exNumer) = existing.Value;
+                    // A retry: report what the ORIGINAL call already committed,
+                    // not a fabricated "everything is fine" answer.
+                    var alreadyReleased = await DocumentCarriesStockMovement(exId);
+                    return new CorrectionResult(exId, exNumer, origId, req.Przyczyna, "issued", null, alreadyReleased);
                 }
-
-                if (req.Przyczyna != "") d.Uwagi = req.Przyczyna;
-                if (req.IdempotencyKey != "") d.NumerOryginalny = ReduceIdempotencyKey(req.IdempotencyKey);
-
-                d.Zapisz();
-                docId = (int)d.Identyfikator;
-                numer = Convert.ToString(d.NumerPelny) ?? "";
-                // Verification: read the link back from the object we just saved,
-                // rather than trusting the origId we passed in.
-                try { linkedOrigId = (int)d.DoDokumentuId; } catch { linkedOrigId = 0; }
             }
-            finally { try { d.Zamknij(); } catch { } }
-        }, TimeSpan.FromSeconds(120));
 
-        return new CorrectionResult(docId, numer, linkedOrigId, req.Przyczyna == "" ? null : req.Przyczyna, "issued");
+            int docId = 0;
+            string numer = "";
+            int linkedOrigId = 0;
+            // #4-review fix: this bridge has NO confirmed-live way to reverse a
+            // warehouse movement (there is no gta.chm-cited, live-tested COM
+            // primitive here the way DodajPW/DodajRW/DodajWZ are for the other
+            // write paths), so a quantity-REDUCING correction (a partial
+            // return) is not given an invented, unverified stock write - that
+            // would risk moving the WRONG quantity against the WRONG towar
+            // silently, which is worse than moving nothing. Instead the
+            // per-line quantity delta is tracked and reported back on
+            // CorrectionResult.QuantityDeltas so the caller (who already knows
+            // which towar each Lp is, from the invoice it issued) can decide
+            // what to do - typically POST /api/inventory/adjust, the
+            // confirmed-live PW/RW primitive, for exactly the returned amount.
+            var quantityDeltas = new List<CorrectionQuantityDelta>();
+            Sfera.Run(sub =>
+            {
+                dynamic mgr = sub.SuDokumentyManager;
+                dynamic d = mgr.DodajKFS();
+                try
+                {
+                    // THE LINK: NaPodstawie(origId) both stamps DoDokumentuId and
+                    // auto-loads d.Pozycje from the original document's own lines.
+                    d.NaPodstawie(origId);
+
+                    foreach (var line in req.Lines)
+                    {
+                        dynamic poz = d.Pozycje.Element(line.Lp);
+
+                        // "Before korekta" snapshot, read back from the auto-loaded
+                        // position - the only source of truth for a field the caller
+                        // did not override.
+                        decimal beforeQty = Convert.ToDecimal(poz.IloscJm);
+                        decimal beforeTotal = Convert.ToDecimal(poz.WartoscBruttoPoRabacie);
+                        decimal beforeUnitPrice = beforeQty != 0m ? beforeTotal / beforeQty : 0m;
+
+                        decimal finalQty = line.NowaIlosc ?? beforeQty;
+                        decimal finalUnitPrice = line.NowaCena ?? beforeUnitPrice;
+                        decimal finalTotal = finalQty * finalUnitPrice;
+
+                        poz.IloscJmPoKorekcie = finalQty;
+                        poz.WartoscBruttoPrzedRabatemPoKorekcie = finalTotal;
+                        poz.WartoscBruttoPoRabaciePoKorekcie = finalTotal;
+
+                        if (beforeQty != finalQty)
+                            quantityDeltas.Add(new CorrectionQuantityDelta(line.Lp, beforeQty - finalQty));
+                    }
+
+                    if (req.Przyczyna != "") d.Uwagi = req.Przyczyna;
+                    if (req.IdempotencyKey != "") d.NumerOryginalny = ReduceIdempotencyKey(req.IdempotencyKey);
+
+                    d.Zapisz();
+                    docId = (int)d.Identyfikator;
+                    numer = Convert.ToString(d.NumerPelny) ?? "";
+                    // Verification: read the link back from the object we just saved,
+                    // rather than trusting the origId we passed in.
+                    try { linkedOrigId = (int)d.DoDokumentuId; } catch { linkedOrigId = 0; }
+                }
+                finally { try { d.Zamknij(); } catch { } }
+            }, TimeSpan.FromSeconds(120));
+
+            var stockAutoReleased = await DocumentCarriesStockMovement(docId);
+            if (!stockAutoReleased && quantityDeltas.Count > 0)
+            {
+                Console.Error.WriteLine(
+                    $"Invoicing.IssueCorrection: korekta {numer} (doc {docId}, of original {origId}) " +
+                    $"changed quantity on {quantityDeltas.Count} line(s) and Subiekt did not auto-release " +
+                    "the warehouse movement (dok_JestRuchMag=0) - no confirmed-live way to reverse stock " +
+                    "on a KFS exists in this bridge yet, so stock was NOT adjusted. See CorrectionResult.QuantityDeltas.");
+            }
+
+            return new CorrectionResult(docId, numer, linkedOrigId, req.Przyczyna == "" ? null : req.Przyczyna,
+                "issued", quantityDeltas.Count > 0 ? quantityDeltas : null, stockAutoReleased);
+        });
     }
 
     public static async Task<List<BankAccountRow>> ListBankAccounts()
@@ -739,61 +770,72 @@ public static class Invoicing
     /// excluded from that lookup, since it must never dedupe against itself.</summary>
     public static async Task<int> UpsertCustomer(CustomerRequest req)
     {
-        int existingId = 0;
-        if (req.Nip != null && req.Nip != "")
-            existingId = await Kontrahent.FindByNip(req.Nip) ?? 0;
-        if (existingId > 0) return existingId;
-
-        var symbol = MakeSymbol(req.NazwaSkrocona);
-        // `Kontrahent.FindBySymbol` rather than the old exact-match lookup: it
-        // also sees Subiekt's own `SYMBOL(n)` variants, and verifies the
-        // address before trusting a match. Without the first half, a buyer
-        // whose record Subiekt once suffixed could never be found again and
-        // gained a fresh kontrahent on every single order.
-        if (!symbol.StartsWith("INV", StringComparison.Ordinal))
-            existingId = await Kontrahent.FindBySymbol(
-                symbol, req.Address?.KodPocztowy, req.Address?.Miejscowosc) ?? 0;
-        if (existingId > 0) return existingId;
-
-        // Resolved BEFORE Sfera.Run, which is synchronous and runs on the COM
-        // apartment thread - an await inside it would deadlock.
-        var panstwoId = await ResolveCountryId(req.Address?.CountryCode);
-
-        int id = 0;
-        Sfera.Run(sub =>
+        // #1-review fix (idempotency race): UpsertCustomer's own check-then-
+        // create (NIP/symbol lookup, then DodajKontrahenta) had the identical
+        // shape as the fiscal-document guards - two overlapping calls for the
+        // same buyer could both read "not found" and both create a
+        // kontrahent. Serialized on the strongest identity available (NIP
+        // when supplied, else the deterministic name-derived symbol) so two
+        // concurrent upserts for the SAME buyer serialize together.
+        var lockKey = req.Nip is { Length: > 0 } nipKey ? $"nip:{nipKey}" : $"sym:{MakeSymbol(req.NazwaSkrocona)}";
+        return await IdempotencyLock.RunExclusive(lockKey, async () =>
         {
-            dynamic khMgr = sub.KontrahenciManager;
-            dynamic kh = khMgr.DodajKontrahenta();
-            try
+            int existingId = 0;
+            if (req.Nip != null && req.Nip != "")
+                existingId = await Kontrahent.FindByNip(req.Nip) ?? 0;
+            if (existingId > 0) return existingId;
+
+            var symbol = MakeSymbol(req.NazwaSkrocona);
+            // `Kontrahent.FindBySymbol` rather than the old exact-match lookup: it
+            // also sees Subiekt's own `SYMBOL(n)` variants, and verifies the
+            // address before trusting a match. Without the first half, a buyer
+            // whose record Subiekt once suffixed could never be found again and
+            // gained a fresh kontrahent on every single order.
+            if (!symbol.StartsWith("INV", StringComparison.Ordinal))
+                existingId = await Kontrahent.FindBySymbol(
+                    symbol, req.Address?.KodPocztowy, req.Address?.Miejscowosc) ?? 0;
+            if (existingId > 0) return existingId;
+
+            // Resolved BEFORE Sfera.Run, which is synchronous and runs on the COM
+            // apartment thread - an await inside it would deadlock.
+            var panstwoId = await ResolveCountryId(req.Address?.CountryCode);
+
+            int id = 0;
+            Sfera.Run(sub =>
             {
-                kh.Symbol = symbol;
-                // Headless mode requires Nazwa (short name) too, not just
-                // NazwaPelna - see the matching fix + comment in Sfera.cs.
-                kh.Nazwa = Trim50(req.NazwaSkrocona != "" ? req.NazwaSkrocona : kh.Symbol);
-                kh.NazwaPelna = req.NazwaSkrocona;
-                if (req.Nip != null && req.Nip != "") kh.NIP = req.Nip;
-                if (req.Address?.Ulica is string ul && ul != "") kh.Ulica = ul;
-                if (req.Address?.KodPocztowy is string kod && kod != "") kh.KodPocztowy = kod;
-                if (req.Address?.Miejscowosc is string m && m != "") kh.Miejscowosc = m;
-                if (req.Telefon != null && req.Telefon != "") kh.Telefon = req.Telefon;
-                // Best-effort for the same reason as the order path's twin in
-                // Sfera.EnsureKontrahent - see the comment there.
-                if (panstwoId > 0)
+                dynamic khMgr = sub.KontrahenciManager;
+                dynamic kh = khMgr.DodajKontrahenta();
+                try
                 {
-                    // `Panstwo`, not `PanstwoId` - see the twin in
-                    // Sfera.EnsureKontrahent for how that was established.
-                    try { kh.Panstwo = panstwoId; }
-                    catch (Exception e)
+                    kh.Symbol = symbol;
+                    // Headless mode requires Nazwa (short name) too, not just
+                    // NazwaPelna - see the matching fix + comment in Sfera.cs.
+                    kh.Nazwa = Trim50(req.NazwaSkrocona != "" ? req.NazwaSkrocona : kh.Symbol);
+                    kh.NazwaPelna = req.NazwaSkrocona;
+                    if (req.Nip != null && req.Nip != "") kh.NIP = req.Nip;
+                    if (req.Address?.Ulica is string ul && ul != "") kh.Ulica = ul;
+                    if (req.Address?.KodPocztowy is string kod && kod != "") kh.KodPocztowy = kod;
+                    if (req.Address?.Miejscowosc is string m && m != "") kh.Miejscowosc = m;
+                    if (req.Telefon != null && req.Telefon != "") kh.Telefon = req.Telefon;
+                    // Best-effort for the same reason as the order path's twin in
+                    // Sfera.EnsureKontrahent - see the comment there.
+                    if (panstwoId > 0)
                     {
-                        Console.Error.WriteLine($"Invoicing.UpsertCustomer: could not set Panstwo={panstwoId} on {symbol}: {e.Message}");
+                        // `Panstwo`, not `PanstwoId` - see the twin in
+                        // Sfera.EnsureKontrahent for how that was established.
+                        try { kh.Panstwo = panstwoId; }
+                        catch (Exception e)
+                        {
+                            Console.Error.WriteLine($"Invoicing.UpsertCustomer: could not set Panstwo={panstwoId} on {symbol}: {e.Message}");
+                        }
                     }
+                    kh.Zapisz();
+                    id = (int)kh.Identyfikator;
                 }
-                kh.Zapisz();
-                id = (int)kh.Identyfikator;
-            }
-            finally { try { kh.Zamknij(); } catch { } }
-        }, TimeSpan.FromSeconds(90));
-        return id;
+                finally { try { kh.Zamknij(); } catch { } }
+            }, TimeSpan.FromSeconds(90));
+            return id;
+        });
     }
 
     private static string MakeSymbol(string name)
@@ -819,7 +861,10 @@ public sealed class InvoiceLine
     public string? TowarSymbol;
     public decimal Ilosc;
     public decimal CenaBrutto;
-    public string StawkaVAT = "23";
+    /// <summary>#2-review fix: NO default. A default of "23" here meant an
+    /// omitted rate was silently treated as 23% VAT rather than holding the
+    /// document - see IssueInvoice's explicit-presence check.</summary>
+    public string? StawkaVAT;
     public string? Name;
 }
 
@@ -860,7 +905,19 @@ public sealed class CorrectionRequest
     public List<CorrectionLine> Lines = new();
 }
 
-public sealed record CorrectionResult(int ProviderInvoiceId, string ProviderInvoiceNumber, int KorygowanyId, string? Przyczyna, string State);
+/// <summary>Per-line quantity change on a korekta - positive `Delta` means the
+/// quantity was REDUCED by that many units (a partial return: stock should
+/// come back up by this much) and negative means it was INCREASED. See
+/// Invoicing.IssueCorrection's "#4-review fix" comment for why this bridge
+/// reports the delta instead of writing a stock movement for it.</summary>
+public sealed record CorrectionQuantityDelta(int Lp, decimal Delta);
+
+public sealed record CorrectionResult(int ProviderInvoiceId, string ProviderInvoiceNumber, int KorygowanyId, string? Przyczyna, string State,
+    List<CorrectionQuantityDelta>? QuantityDeltas = null,
+    /// <summary>True when Subiekt itself carried the warehouse movement for
+    /// this korekta (dok_JestRuchMag=1 on the KFS document) - i.e. QuantityDeltas,
+    /// if any, were already applied by Subiekt and need no caller action.</summary>
+    bool StockAutoReleased = false);
 
 public sealed class CustomerAddress
 {

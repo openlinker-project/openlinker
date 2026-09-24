@@ -91,20 +91,27 @@ export class SubiektAdapterFactory {
       fetchImpl,
     });
 
+    const productMaster = new SubiektProductMasterAdapter(
+      config.bridgeBaseUrl,
+      identifierMapping,
+      connection,
+      { token, timeoutMs: config.timeoutMs, fetchImpl, logger },
+    );
+
     const adapters: SubiektAdapters = {
       invoicing: new SubiektInvoicingAdapter(client, identifierMapping, connection.id, logger, config),
-      productMaster: new SubiektProductMasterAdapter(config.bridgeBaseUrl, identifierMapping, connection, {
-        token,
-        timeoutMs: config.timeoutMs,
-        fetchImpl,
-        logger,
-      }),
+      productMaster,
       inventoryMaster: new SubiektInventoryMasterAdapter(
         inventoryClient,
         identifierMapping,
         connection.id,
         logger,
         config.stockMagazynId,
+        // Subiekt keeps stock per TOWAR while OpenLinker keys a model's
+        // product by the model, so the inventory side has to be able to ask
+        // which towary a model holds. One bound question rather than the whole
+        // product adapter, so it cannot start reaching for a second capability.
+        (modelId: number) => productMaster.readModelMemberSymbols(modelId),
       ),
       orderSource: new SubiektOrderSourceAdapter(ordersClient, logger),
       orderProcessor: new SubiektOrderProcessorAdapter(

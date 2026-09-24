@@ -1,27 +1,13 @@
-// SNAPSHOT, not a mirror. Copied 2026-09-23 from the Windows host at
-// /mnt/c/Users/42zer/gtspike/bridge/ProductsEndpoints.cs. **Nothing in this repository
-// compares this file to the bridge it came from**, so the honest reading is
-// "what the bridge looked like when someone last looked", never "what the
-// bridge is". The published, reviewable source is
-// openlinker-project/openlinker-subiekt-bridge, `bridge-gt/ProductsEndpoints.cs` — check
-// there before trusting anything here for a behaviour that matters.
+// ProductsEndpoints.cs.ready - mirror of the bridge source, committed for review.
 //
-// ProductsEndpoints.cs.ready — the bridge's ProductMaster endpoints, committed
-// for review under the same .cs.ready convention as Invoicing.cs.ready.
+// A FULL DUMP of `bridge-gt/ProductsEndpoints.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
 //
-// A FULL DUMP of the file as it exists on the Windows host at
-// /mnt/c/Users/42zer/gtspike/bridge/ProductsEndpoints.cs — not a diff.
-//
-// Live-verified change carried here:
-//   - BridgeProductDto.Zdjecia + ReadImageUrls: the catalogue read now carries
-//     the towar's image URLs, served from Subiekt's own tw_ZdjecieTw blobs via
-//     the bridge's existing /gt-image/{towarId} route. Only OpenLinker fetches
-//     them (it downloads the bytes and re-uploads them to the channel's CDN),
-//     so OL_BRIDGE_PUBLIC_BASE only has to be reachable from the worker.
-//     Without them a Subiekt-sourced product could not be published at all —
-//     Allegro refuses an offer carrying no image.
-//
-// NOT compiled or type-checked by this repo's CI — there is no C# build here.
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// from the same source in the same commit, so drift between the three is a
+// review finding rather than something to discover at runtime.
 
 // ProductsEndpoints - ProductMaster capability.
 //
@@ -60,8 +46,13 @@ public static class ProductsEndpoints
     private static readonly string ConnStr = BridgeConfig.ConnectionString;
 
     private static IResult Ok<T>(T data) => Results.Ok(new { success = true, data, error = (object?)null });
-    private static IResult Fail(string error, int status = 422) =>
-        Results.Json(new { success = false, data = (object?)null, error }, statusCode: status);
+    // #11-review fix: this used to emit a bare STRING `error`, the same
+    // envelope mismatch flagged for FiscalizationEndpoints.cs - every other
+    // /api/* file (OrdersEndpoints/InventoryEndpoints/Invoicing via
+    // Program.cs) sends {code,reason,correlationId,failureMode} and
+    // SubiektBridgeHttpClient (TS) reads `error.reason`.
+    private static IResult Fail(string code, string reason, int status = 422, string failureMode = "rejected") =>
+        Results.Json(new { success = false, data = (object?)null, error = new { code, reason, correlationId = (string?)null, failureMode } }, statusCode: status);
 
     public static void MapProductsEndpoints(this WebApplication app)
     {
@@ -71,11 +62,11 @@ public static class ProductsEndpoints
             return Ok(new { symbols });
         });
 
-        app.MapGet("/api/products/search", async (string? q, int? limit) =>
+        app.MapGet("/api/products/search", async (HttpRequest req, string? q, int? limit) =>
         {
             if (string.IsNullOrWhiteSpace(q))
-                return Fail("q is required", 400);
-            var products = await SearchProducts(q, limit ?? 25);
+                return Fail("bad_request", "q is required", 400);
+            var products = await SearchProducts(q, limit ?? 25, BridgeConfig.ResolveImageBase(req));
             return Ok(new { products });
         });
 
@@ -89,28 +80,54 @@ public static class ProductsEndpoints
             return Ok(new { categories });
         });
 
-        app.MapGet("/api/products/{symbol}", async (string symbol) =>
+        app.MapGet("/api/products/{symbol}", async (HttpRequest req, string symbol) =>
         {
-            var product = await ReadProduct(symbol);
-            return product is null ? Fail($"No product with symbol {symbol}.", 404) : Ok(product);
+            var product = await ReadProduct(symbol, BridgeConfig.ResolveImageBase(req));
+            return product is null ? Fail("not_found", $"No product with symbol {symbol}.", 404) : Ok(product);
+        });
+
+        // --- models --------------------------------------------------------
+        // A Subiekt MODEL (sl_ModelTw) is the operator's own grouping of towary
+        // that are one article in several sizes or finishes. It is the only
+        // variant-shaped fact Subiekt carries, and nothing on this surface read
+        // it until now - which is why every Subiekt product reached OpenLinker
+        // as a standalone item with one synthetic variant.
+        //
+        // Deliberately NOT sl_GrupaTw: that is a flat assortment group, reported
+        // separately as GrupaId/GrupaNazwa, and treating it as a variant axis
+        // would group unrelated articles that merely file together.
+        app.MapGet("/api/models", async (int? limit, int? offset) =>
+        {
+            var models = await ListModels(limit ?? 100, offset ?? 0);
+            return Ok(new { models });
+        });
+
+        app.MapGet("/api/models/{modelId:int}", async (HttpRequest req, int modelId) =>
+        {
+            var model = await ReadModel(modelId, BridgeConfig.ResolveImageBase(req));
+            return model is null ? Fail("not_found", $"No model with id {modelId}.", 404) : Ok(model);
         });
 
         app.MapPost("/api/products", async (HttpRequest req) =>
         {
             CreateProductRequest? body;
             try { body = await req.ReadFromJsonAsync<CreateProductRequest>(); }
-            catch (Exception e) { return Fail($"bad request: {e.Message}", 400); }
+            catch (Exception e) { return Fail("bad_request", $"bad request: {e.Message}", 400); }
             if (body is null || string.IsNullOrWhiteSpace(body.Symbol) || string.IsNullOrWhiteSpace(body.Nazwa))
-                return Fail("symbol and nazwa are required", 400);
+                return Fail("bad_request", "symbol and nazwa are required", 400);
 
             try
             {
-                var product = await CreateProduct(body);
+                var product = await CreateProduct(body, BridgeConfig.ResolveImageBase(req));
                 return Ok(product);
+            }
+            catch (TimeoutException e)
+            {
+                return Fail("sfera_error", e.Message, failureMode: "in-doubt");
             }
             catch (Exception e)
             {
-                return Fail(e.Message);
+                return Fail("sfera_error", e.Message);
             }
         });
 
@@ -118,22 +135,115 @@ public static class ProductsEndpoints
         {
             UpdateProductRequest? body;
             try { body = await req.ReadFromJsonAsync<UpdateProductRequest>(); }
-            catch (Exception e) { return Fail($"bad request: {e.Message}", 400); }
-            if (body is null) return Fail("body is required", 400);
+            catch (Exception e) { return Fail("bad_request", $"bad request: {e.Message}", 400); }
+            if (body is null) return Fail("bad_request", "body is required", 400);
 
             try
             {
-                var product = await UpdateProduct(symbol, body);
-                return product is null ? Fail($"No product with symbol {symbol}.", 404) : Ok(product);
+                var product = await UpdateProduct(symbol, body, BridgeConfig.ResolveImageBase(req));
+                return product is null ? Fail("not_found", $"No product with symbol {symbol}.", 404) : Ok(product);
+            }
+            catch (TimeoutException e)
+            {
+                return Fail("sfera_error", e.Message, failureMode: "in-doubt");
             }
             catch (Exception e)
             {
-                return Fail(e.Message);
+                return Fail("sfera_error", e.Message);
             }
         });
     }
 
     // --- SQL reads --------------------------------------------------------
+
+
+    /// <summary>Models with their member symbols, one page at a time.
+    ///
+    /// Paged in SQL (OFFSET/FETCH over sl_ModelTw itself, then joined), never
+    /// by pulling the whole table and slicing in memory: the page has to be a
+    /// page of MODELS, and a naive join-then-skip would cut a model in half and
+    /// report a group missing members it has.
+    ///
+    /// The join to tw__Towar is INNER and filters tw_Usuniety, so a model whose
+    /// every member has been deleted simply does not appear - it cannot be a
+    /// product, and reporting it empty would invite a caller to create one.</summary>
+    private static async Task<List<BridgeModelSummaryDto>> ListModels(int limit, int offset)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT m.mdt_Id, m.mdt_Nazwa, t.tw_Symbol
+              FROM (SELECT mdt_Id, mdt_Nazwa FROM sl_ModelTw
+                    ORDER BY mdt_Id OFFSET @off ROWS FETCH NEXT @lim ROWS ONLY) m
+              JOIN sl_ModelTowar mt ON mt.mtw_IdModel = m.mdt_Id
+              JOIN tw__Towar t ON t.tw_Id = mt.mtw_IdTowar AND t.tw_Usuniety = 0
+              ORDER BY m.mdt_Id, t.tw_Symbol", c);
+        cmd.Parameters.AddWithValue("@off", offset);
+        cmd.Parameters.AddWithValue("@lim", limit);
+
+        var byId = new Dictionary<int, BridgeModelSummaryDto>();
+        var order = new List<int>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            var id = r.GetInt32(0);
+            if (!byId.TryGetValue(id, out var summary))
+            {
+                summary = new BridgeModelSummaryDto(id, r.GetString(1).Trim(), new List<string>());
+                byId[id] = summary;
+                order.Add(id);
+            }
+            summary.Symbole.Add(r.GetString(2).Trim());
+        }
+        return order.Select(id => byId[id]).ToList();
+    }
+
+    /// <summary>One model with every live member hydrated as a full product,
+    /// ordered by symbol. Same column list and same RowToProduct as the single
+    /// product read, so a member reads identically whether it is fetched here
+    /// or at /api/products/{symbol} - a caller must never have to reconcile two
+    /// shapes of the same towar.</summary>
+    private static async Task<BridgeModelDto?> ReadModel(int modelId, string imageBase)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT t.tw_Symbol, t.tw_Nazwa, t.tw_Opis, t.tw_JednMiary, t.tw_Masa,
+                     c.tc_CenaNetto1, c.tc_CenaBrutto1, v.vat_Stawka, t.tw_Id,
+                     g.grt_Id, g.grt_Nazwa, md.mdt_Id, md.mdt_Nazwa
+              FROM sl_ModelTw md
+              JOIN sl_ModelTowar mt ON mt.mtw_IdModel = md.mdt_Id
+              JOIN tw__Towar t ON t.tw_Id = mt.mtw_IdTowar AND t.tw_Usuniety = 0
+              LEFT JOIN tw_Cena c ON c.tc_IdTowar = t.tw_Id
+              LEFT JOIN sl_StawkaVAT v ON v.vat_Id = t.tw_IdVatSp
+              LEFT JOIN sl_GrupaTw g ON g.grt_Id = t.tw_IdGrupa
+              WHERE md.mdt_Id = @id
+              ORDER BY t.tw_Symbol", c);
+        cmd.Parameters.AddWithValue("@id", modelId);
+
+        // Materialise first - ReadFirstBarcode and ReadImageUrls each open their
+        // own connection, which an open reader on this one would block.
+        var rows = new List<(string Symbol, int TowarId, BridgeProductDto Partial)>();
+        string? modelName = null;
+        await using (var r = await cmd.ExecuteReaderAsync())
+        {
+            while (await r.ReadAsync())
+            {
+                modelName ??= r.IsDBNull(12) ? null : r.GetString(12).Trim();
+                rows.Add((r.GetString(0).Trim(), r.GetInt32(8), RowToProduct(r, null)));
+            }
+        }
+        if (rows.Count == 0) return null;
+
+        var pozycje = new List<BridgeProductDto>();
+        foreach (var row in rows)
+            pozycje.Add(row.Partial with
+            {
+                KodKreskowy = await ReadFirstBarcode(row.Symbol),
+                Zdjecia = await ReadImageUrls(row.TowarId, imageBase),
+            });
+        return new BridgeModelDto(modelId, modelName ?? string.Empty, pozycje);
+    }
 
     private static async Task<List<string>> ListSymbols(int limit, int offset)
     {
@@ -150,18 +260,20 @@ public static class ProductsEndpoints
         return list;
     }
 
-    private static async Task<List<BridgeProductDto>> SearchProducts(string q, int limit)
+    private static async Task<List<BridgeProductDto>> SearchProducts(string q, int limit, string imageBase)
     {
         await using var c = new SqlConnection(ConnStr);
         await c.OpenAsync();
         await using var cmd = new SqlCommand(
             @"SELECT TOP (@lim) t.tw_Symbol, t.tw_Nazwa, t.tw_Opis, t.tw_JednMiary, t.tw_Masa,
                      c.tc_CenaNetto1, c.tc_CenaBrutto1, v.vat_Stawka, t.tw_Id,
-                     g.grt_Id, g.grt_Nazwa
+                     g.grt_Id, g.grt_Nazwa, md.mdt_Id, md.mdt_Nazwa
               FROM tw__Towar t
               LEFT JOIN tw_Cena c ON c.tc_IdTowar = t.tw_Id
               LEFT JOIN sl_StawkaVAT v ON v.vat_Id = t.tw_IdVatSp
               LEFT JOIN sl_GrupaTw g ON g.grt_Id = t.tw_IdGrupa
+              LEFT JOIN sl_ModelTowar mt ON mt.mtw_IdTowar = t.tw_Id
+              LEFT JOIN sl_ModelTw md ON md.mdt_Id = mt.mtw_IdModel
               WHERE t.tw_Usuniety = 0 AND (t.tw_Symbol LIKE @q OR t.tw_Nazwa LIKE @q)
               ORDER BY t.tw_Id", c);
         cmd.Parameters.AddWithValue("@lim", limit);
@@ -178,7 +290,7 @@ public static class ProductsEndpoints
             list.Add(row.Partial with
             {
                 KodKreskowy = await ReadFirstBarcode(row.Symbol),
-                Zdjecia = await ReadImageUrls(row.TowarId),
+                Zdjecia = await ReadImageUrls(row.TowarId, imageBase),
             });
         return list;
     }
@@ -201,18 +313,20 @@ public static class ProductsEndpoints
         return list;
     }
 
-    private static async Task<BridgeProductDto?> ReadProduct(string symbol)
+    private static async Task<BridgeProductDto?> ReadProduct(string symbol, string imageBase)
     {
         await using var c = new SqlConnection(ConnStr);
         await c.OpenAsync();
         await using var cmd = new SqlCommand(
             @"SELECT TOP 1 t.tw_Symbol, t.tw_Nazwa, t.tw_Opis, t.tw_JednMiary, t.tw_Masa,
                      c.tc_CenaNetto1, c.tc_CenaBrutto1, v.vat_Stawka, t.tw_Id,
-                     g.grt_Id, g.grt_Nazwa
+                     g.grt_Id, g.grt_Nazwa, md.mdt_Id, md.mdt_Nazwa
               FROM tw__Towar t
               LEFT JOIN tw_Cena c ON c.tc_IdTowar = t.tw_Id
               LEFT JOIN sl_StawkaVAT v ON v.vat_Id = t.tw_IdVatSp
               LEFT JOIN sl_GrupaTw g ON g.grt_Id = t.tw_IdGrupa
+              LEFT JOIN sl_ModelTowar mt ON mt.mtw_IdTowar = t.tw_Id
+              LEFT JOIN sl_ModelTw md ON md.mdt_Id = mt.mtw_IdModel
               WHERE t.tw_Symbol = @sym AND t.tw_Usuniety = 0", c);
         cmd.Parameters.AddWithValue("@sym", symbol);
         await using var r = await cmd.ExecuteReaderAsync();
@@ -223,7 +337,7 @@ public static class ProductsEndpoints
         return partial with
         {
             KodKreskowy = await ReadFirstBarcode(symbol),
-            Zdjecia = await ReadImageUrls(towarId),
+            Zdjecia = await ReadImageUrls(towarId, imageBase),
         };
     }
 
@@ -236,14 +350,14 @@ public static class ProductsEndpoints
     private static string? FormatVatRate(decimal? stawka) =>
         stawka is null ? null : stawka.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
-    /// <summary>The bridge's own externally-addressable base, shared with
-    /// Program.cs's image route. Same env var, same default.</summary>
-    private static readonly string PublicBase = BridgeConfig.PublicBase;
-
     /// <summary>Image URLs for a towar, main image first, or an empty list.
     /// One row per image so a towar with several is published with all of
-    /// them; ordering mirrors /gt-image's own (zd_Glowne DESC, zd_Id).</summary>
-    private static async Task<List<string>> ReadImageUrls(int towarId)
+    /// them; ordering mirrors /gt-image's own (zd_Glowne DESC, zd_Id).
+    ///
+    /// The base arrives as an argument rather than being read from a static:
+    /// with no PublicBase configured it is derived from the address THIS
+    /// request came in on, so it cannot be resolved once at class-load time.</summary>
+    private static async Task<List<string>> ReadImageUrls(int towarId, string imageBase)
     {
         var urls = new List<string>();
         try
@@ -260,7 +374,7 @@ public static class ProductsEndpoints
                 // /gt-image/{towarId} serves the MAIN image only, so only the
                 // first one has a route today; the rest are skipped rather than
                 // pointed at a URL that would return the wrong bytes.
-                if (idx == 0) urls.Add($"{PublicBase}/gt-image/{towarId}");
+                if (idx == 0) urls.Add($"{imageBase}/gt-image/{towarId}");
                 idx++;
             }
         }
@@ -288,7 +402,12 @@ public static class ProductsEndpoints
         // tw__Towar.tw_IdGrupa -> sl_GrupaTw. Null when the towar carries no
         // group; the LEFT JOIN means that is the same read either way.
         r.IsDBNull(9) ? null : r.GetInt32(9),
-        r.IsDBNull(10) ? null : r.GetString(10).Trim());
+        r.IsDBNull(10) ? null : r.GetString(10).Trim(),
+        // sl_ModelTowar -> sl_ModelTw. Null for the overwhelming majority of
+        // towary: a model is something the operator creates deliberately, and
+        // an ungrouped towar is the normal case, not a gap.
+        r.IsDBNull(11) ? null : r.GetInt32(11),
+        r.IsDBNull(12) ? null : r.GetString(12).Trim());
 
     /// <summary>First barcode only (MVP - see file header). #3353: the
     /// PRIMARY source is now the scalar default-barcode column
@@ -342,8 +461,19 @@ public static class ProductsEndpoints
     /// gross-price setter and auto-recalculates net/profit/margin/markup - it
     /// is used here instead. Finds the level by `.Id == 0` rather than assuming
     /// collection index 1 is level 0 (1-indexed COM collection, Id is a
-    /// separate field from position).</summary>
-    private static void SetGrossPriceLevel0(dynamic tw, decimal grossPrice)
+    /// separate field from position).
+    ///
+    /// #3-review fix: TwCena carries no VAT-rate attribute of its own
+    /// (TwCenaMembers.htm), so `.Netto` cannot be derived from the price
+    /// object alone - this used to always divide by 1.23, mispricing every
+    /// SKU not taxed at the standard 23% rate (food, books, medical, exports
+    /// are all routine in PL retail). `vatRatePercent` is now the towar's
+    /// REAL rate, resolved by the caller from `tw_IdVatSp -> sl_StawkaVAT`
+    /// (see ResolveVatRateForSymbolAsync) - only when the caller genuinely
+    /// cannot know it yet (a brand-new towar, whose classification this
+    /// bridge cannot read before it exists) does this fall back to 23%, and
+    /// it says so loudly rather than silently.</summary>
+    private static void SetGrossPriceLevel0(dynamic tw, decimal grossPrice, decimal? vatRatePercent = null)
     {
         dynamic ceny = tw.Ceny;
         int count = ceny.Liczba;
@@ -362,19 +492,34 @@ public static class ProductsEndpoints
         // carrying a valid 23% VAT id - root cause unconfirmed. TwCena.Stala
         // ("this price level is NOT recalculated on a cena-kartotekowa change")
         // is a plausible culprit if it defaults true on a freshly created
-        // towar's level-0 row - cleared defensively before writing. TwCena
-        // carries no VAT-rate attribute of its own (TwCenaMembers.htm), so the
-        // net figure is computed with the standard PL 23% rate rather than a
-        // per-towar lookup - acceptable for MVP, revisit if non-standard-rate
-        // products need this endpoint.
+        // towar's level-0 row - cleared defensively before writing.
         try { target.Stala = false; } catch { }
         target.Brutto = grossPrice;
-        try { target.Netto = Math.Round(grossPrice / 1.23m, 2); } catch { }
+        if (vatRatePercent is null)
+            Console.Error.WriteLine("ProductsEndpoints.SetGrossPriceLevel0: could not resolve the towar's real VAT rate - assuming 23% for the net-price calculation. The towar's real rate will be reported correctly on the next ReadProduct once Subiekt has classified it; re-sync the price then.");
+        var divisor = 1m + (vatRatePercent ?? 23m) / 100m;
+        try { target.Netto = Math.Round(grossPrice / divisor, 2); } catch { }
+    }
+
+    /// <summary>The towar's CURRENT real VAT rate (sl_StawkaVAT.vat_Stawka via
+    /// tw_IdVatSp), or null when the towar carries none / does not exist yet.
+    /// #3-review fix companion - see SetGrossPriceLevel0.</summary>
+    private static async Task<decimal?> ResolveVatRateForSymbolAsync(string symbol)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT v.vat_Stawka FROM tw__Towar t
+              LEFT JOIN sl_StawkaVAT v ON v.vat_Id = t.tw_IdVatSp
+              WHERE t.tw_Symbol = @sym", c);
+        cmd.Parameters.AddWithValue("@sym", symbol);
+        var r = await cmd.ExecuteScalarAsync();
+        return r is null || r is DBNull ? null : Convert.ToDecimal(r);
     }
 
     // --- Sfera writes -------------------------------------------------------
 
-    private static async Task<BridgeProductDto> CreateProduct(CreateProductRequest req)
+    private static async Task<BridgeProductDto> CreateProduct(CreateProductRequest req, string imageBase)
     {
         Sfera.Run(sub =>
         {
@@ -387,10 +532,6 @@ public static class ProductsEndpoints
                 if (!string.IsNullOrEmpty(req.Opis)) tw.Opis = req.Opis;
                 if (req.JednostkaMiary is { Length: > 0 } jm) { try { tw.JednostkaMiary = jm; } catch { } }
                 if (req.Waga is decimal waga) { try { tw.Masa = waga; } catch { } }
-                if (req.CenaSprzedazyBrutto is decimal cena)
-                {
-                    SetGrossPriceLevel0(tw, cena);
-                }
                 tw.Zapisz();
                 if (req.KodKreskowy is { Length: > 0 } ean)
                 {
@@ -407,11 +548,28 @@ public static class ProductsEndpoints
             finally { try { tw.Zamknij(); } catch { } }
         }, TimeSpan.FromSeconds(60));
 
-        return (await ReadProduct(req.Symbol))!;
+        // #3-review fix: price is set as a SEPARATE step, through the same
+        // WczytajTowar/mutate/Zapisz sequence UpdateProduct already uses -
+        // rather than mutating the price sub-object on the still-open
+        // create-Towar and Zapisz()-ing it a second time, an untested COM
+        // sequence. This also means the net price is derived from the
+        // towar's REAL VAT rate, whatever Subiekt just assigned it on
+        // creation, rather than an assumed 23% - see SetGrossPriceLevel0.
+        if (req.CenaSprzedazyBrutto is decimal cena)
+            await UpdateProduct(req.Symbol, new UpdateProductRequest { CenaSprzedazyBrutto = cena }, imageBase);
+
+        return (await ReadProduct(req.Symbol, imageBase))!;
     }
 
-    private static async Task<BridgeProductDto?> UpdateProduct(string symbol, UpdateProductRequest req)
+    private static async Task<BridgeProductDto?> UpdateProduct(string symbol, UpdateProductRequest req, string imageBase)
     {
+        // #3-review fix: resolved BEFORE the Sfera call - the towar already
+        // exists here, so its real VAT rate is knowable in advance (unlike on
+        // CreateProduct's first Zapisz, where the towar does not exist yet).
+        var vatRatePercent = req.CenaSprzedazyBrutto is decimal
+            ? await ResolveVatRateForSymbolAsync(symbol)
+            : null;
+
         bool found = true;
         Sfera.Run(sub =>
         {
@@ -423,13 +581,13 @@ public static class ProductsEndpoints
                 if (req.Nazwa is { Length: > 0 } nazwa) tw.Nazwa = nazwa;
                 if (!string.IsNullOrEmpty(req.Opis)) tw.Opis = req.Opis;
                 if (req.Waga is decimal waga) { try { tw.Masa = waga; } catch { } }
-                if (req.CenaSprzedazyBrutto is decimal cena) SetGrossPriceLevel0(tw, cena);
+                if (req.CenaSprzedazyBrutto is decimal cena) SetGrossPriceLevel0(tw, cena, vatRatePercent);
                 tw.Zapisz();
             }
             finally { try { tw.Zamknij(); } catch { } }
         }, TimeSpan.FromSeconds(60));
 
-        return found ? await ReadProduct(symbol) : null;
+        return found ? await ReadProduct(symbol, imageBase) : null;
     }
 }
 
@@ -444,22 +602,51 @@ public sealed record BridgeProductDto(
     /// the towar carries no VAT-rate assignment (tw_IdVatSp IS NULL), which is a
     /// genuinely different state from a real 0% rate.</summary>
     string? StawkaVat = null,
-    /// <summary>Publicly-addressable URLs of the towar's images, main one
-    /// first, served by this bridge's own /gt-image/{towarId} endpoint from
-    /// the tw_ZdjecieTw blob. Empty when the towar has none.
+    /// <summary>URLs of the towar's images, main one first, served by this
+    /// bridge's own /gt-image/{towarId} endpoint from the tw_ZdjecieTw blob.
+    /// Empty when the towar has none.
     ///
-    /// Only OpenLinker fetches these, never the marketplace: OL downloads the
-    /// bytes and re-uploads them to the channel's own CDN, so the base only has
-    /// to be reachable from the OL worker (OL_BRIDGE_PUBLIC_BASE), not from the
-    /// public internet. Without them a Subiekt-sourced product cannot be
-    /// published at all - Allegro refuses an offer with no image.</summary>
+    /// OPENLINKER DOES NOT FETCH THESE. The previous text here claimed it
+    /// downloads the bytes and re-uploads them to the channel's CDN, and
+    /// concluded the base only had to be reachable from the OL worker. No such
+    /// download exists anywhere in OpenLinker - the URL is copied verbatim into
+    /// its catalogue and dereferenced by the operator's BROWSER and by the
+    /// marketplace. That wrong premise is what made a container-only default
+    /// base look safe; see BridgeConfig.PublicBase. Without an image a
+    /// Subiekt-sourced product cannot be published at all - Allegro refuses an
+    /// offer with no image.</summary>
     List<string>? Zdjecia = null,
     /// <summary>tw__Towar.tw_IdGrupa - the towar's group in Subiekt's single,
     /// FLAT sl_GrupaTw list. Null when the towar carries none.</summary>
     int? GrupaId = null,
     /// <summary>sl_GrupaTw.grt_Nazwa for GrupaId, so a caller that only wants
     /// to display the group needs no second read.</summary>
-    string? GrupaNazwa = null);
+    string? GrupaNazwa = null,
+    /// <summary>sl_ModelTw.mdt_Id of the model this towar belongs to, or null
+    /// when the operator has not grouped it. A model is Subiekt's own, entirely
+    /// operator-authored grouping of towary that are the same article in
+    /// different sizes or finishes - it is the ONLY variant-shaped fact Subiekt
+    /// carries, and it is NOT sl_GrupaTw, which is a flat assortment group and
+    /// is reported separately above.
+    ///
+    /// Reported raw, with no derived label: the model tables carry exactly
+    /// (mdt_Id, mdt_Nazwa) and (mtw_Id, mtw_IdModel, mtw_IdTowar) - there is no
+    /// variant AXIS and no per-member attribute value anywhere in Subiekt, so
+    /// any "100ml" label has to be derived by the caller from the names, and
+    /// that derivation belongs to whoever owns the neutral shape, not here.</summary>
+    int? ModelId = null,
+    /// <summary>sl_ModelTw.mdt_Nazwa for ModelId, so a caller that groups by
+    /// model needs no second read to name the group.</summary>
+    string? ModelNazwa = null);
+
+/// <summary>One model plus the symbols of every towar in it. The list read;
+/// see BridgeModelDto for the hydrated single-model read.</summary>
+public sealed record BridgeModelSummaryDto(int ModelId, string ModelNazwa, List<string> Symbole);
+
+/// <summary>One model with every member hydrated as a full product, ordered by
+/// symbol so a caller that has to pick a representative member (for a group's
+/// own description, weight or VAT rate) gets the same one on every read.</summary>
+public sealed record BridgeModelDto(int ModelId, string ModelNazwa, List<BridgeProductDto> Pozycje);
 
 /// <summary>One row of sl_GrupaTw. The table has exactly three columns
 /// (grt_Id, grt_Nazwa, grt_NrAnalityka) and NO parent reference, so a Subiekt

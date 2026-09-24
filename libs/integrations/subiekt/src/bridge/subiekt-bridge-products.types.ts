@@ -81,6 +81,54 @@ export interface BridgeProduct {
   grupaId?: number | null;
   /** `sl_GrupaTw.grt_Nazwa` for {@link grupaId}, so a caller needs no second read. */
   grupaNazwa?: string | null;
+  /**
+   * `sl_ModelTw.mdt_Id` of the MODEL this towar belongs to, or `null`/absent
+   * when the operator has not grouped it.
+   *
+   * A Subiekt model is the operator's own grouping of towary that are one
+   * article in several sizes or finishes, and it is the only variant-shaped
+   * fact Subiekt carries. It is emphatically NOT {@link grupaId}, which is a
+   * flat assortment group: two towary file together there for accounting
+   * reasons and are not variants of each other.
+   *
+   * A towar carrying this is a VARIANT, not a product — see
+   * `SubiektProductMasterAdapter`, which keys such a product by its model.
+   *
+   * OPTIONAL so a bridge predating the field keeps deserialising; its absence
+   * means "this bridge does not report models", which the adapter reads as
+   * every towar being its own product - exactly the pre-model behaviour.
+   */
+  modelId?: number | null;
+  /** `sl_ModelTw.mdt_Nazwa` for {@link modelId}, so a caller needs no second read. */
+  modelNazwa?: string | null;
+}
+
+/**
+ * One model plus the symbols of every live towar in it (`GET /api/models`).
+ *
+ * A model whose every member has been deleted does not appear at all: it
+ * cannot be a product, and reporting it empty would invite a caller to create
+ * one with no variants.
+ */
+export interface BridgeModelSummary {
+  modelId: number;
+  modelNazwa: string;
+  symbole: string[];
+}
+
+/**
+ * One model with every member hydrated (`GET /api/models/{id}`), ordered by
+ * symbol so a caller that has to pick a representative member gets the same
+ * one on every read.
+ *
+ * `pozycje` entries are byte-identical in shape to what
+ * `GET /api/products/{symbol}` returns for the same towar - a caller must
+ * never have to reconcile two shapes of one towar.
+ */
+export interface BridgeModel {
+  modelId: number;
+  modelNazwa: string;
+  pozycje: BridgeProduct[];
 }
 
 /**
@@ -120,6 +168,11 @@ export interface BridgeUpdateProductRequest {
   opis?: string;
   kodKreskowy?: string;
   waga?: number;
+}
+
+/** `GET /api/models` envelope payload. */
+export interface BridgeListModelsResponse {
+  models: BridgeModelSummary[];
 }
 
 export interface BridgeListProductSymbolsResponse {

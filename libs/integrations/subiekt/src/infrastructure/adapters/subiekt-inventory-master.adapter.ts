@@ -42,6 +42,7 @@ import type {
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
+import { modelIdFromProductKey } from './subiekt-model-key';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type { SubiektInventoryBridgeClient } from '../http/subiekt-inventory-bridge.client';
 import {
@@ -73,10 +74,162 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
      * magazyn the bridge says a movement lands in".
      */
     private readonly stockMagazynId?: number,
+    /**
+     * Symbols of the towary in a Subiekt model, supplied by the factory from
+     * `SubiektProductMasterAdapter.readModelMemberSymbols`.
+     *
+     * OPTIONAL: an install whose operator groups nothing never has a
+     * model-keyed product, so the reader is never called, and a host that
+     * builds this adapter without one behaves exactly as it did before models
+     * existed. Absent WITH a model-keyed product is a wiring fault and is
+     * reported as one rather than silently returning no stock.
+     */
+    private readonly readModelMembers?: (modelId: number) => Promise<string[]>,
   ) {}
 
+  /**
+   * The towar symbols this product's stock is kept under: one for an ordinary
+   * towar, N for a model.
+   *
+   * Subiekt keeps stock per TOWAR and OpenLinker keys a model's product by the
+   * model, so every stock read has to cross that gap exactly once - here.
+   */
+  private async resolveStockSymbols(
+    productId: string,
+  ): Promise<{ symbols: string[]; isModel: boolean }> {
+    const key = await this.resolveTowarSymbol(productId);
+    const modelId = modelIdFromProductKey(key);
+    if (modelId === null) return { symbols: [key], isModel: false };
+    if (!this.readModelMembers) {
+      throw new SubiektConfigException(
+        `Product ${productId} is keyed by Subiekt model ${modelId}, but this adapter was built ` +
+          `without a model-member reader, so its stock cannot be resolved. This is a host wiring ` +
+          `fault, not a configuration one.`,
+        'productId',
+        productId,
+      );
+    }
+    const symbols = await this.readModelMembers(modelId);
+    if (symbols.length === 0) {
+      // Every member deleted at the master: the model is gone as a product.
+      throw new MasterProductNotFoundError(productId, this.connectionId);
+    }
+    return { symbols, isModel: true };
+  }
+
   async getInventory(productId: string, locationId?: string): Promise<Inventory> {
-    const { towarSymbol, positions, domyslnyMagazynId } = await this.readPositions(productId);
+    const { symbols } = await this.resolveStockSymbols(productId);
+    if (symbols.length === 1) {
+      return this.readOneTowarInventory(productId, symbols[0], locationId);
+    }
+    // A model as ONE product-level figure: the sum of its members. Nothing
+    // reads this for a model on the sync path (that is `listInventory`), but
+    // `getAvailableQuantity` does, and answering with one member's stock would
+    // be a number about a different thing than the caller asked for.
+    const parts = await Promise.all(
+      symbols.map((symbol) => this.readOneTowarInventory(productId, symbol, locationId)),
+    );
+    const quantity = parts.reduce((sum, p) => sum + p.quantity, 0);
+    const reserved = parts.reduce((sum, p) => sum + p.reserved, 0);
+    return {
+      id: `subiekt:${this.connectionId}:${productId}`,
+      productId,
+      quantity,
+      reserved,
+      available: Math.max(0, quantity - reserved),
+    };
+  }
+
+  /**
+   * One stock row PER VARIANT, each carrying `variantId`.
+   *
+   * This is what makes a model's stock land correctly.
+   * `MasterInventorySyncService` keys a row to the adapter-supplied
+   * `Inventory.variantId`, falling back to "the product's lone variant" only
+   * when the product HAS exactly one (#822/#823). A model-keyed product has
+   * three, so without the stamp every one of them would miss its stock and the
+   * figure would silently collapse to a product-level row. PrestaShop has
+   * emitted one entry per combination this way since #823; this is the same
+   * shape with towary in place of combinations.
+   *
+   * A towar with no model still returns exactly one entry, and deliberately
+   * WITHOUT a `variantId` - the lone-variant fallback already resolves it, and
+   * stamping one here would make this path depend on a variant mapping the
+   * product sync may not have minted yet.
+   */
+  async listInventory(productId: string): Promise<Inventory[]> {
+    const { symbols, isModel } = await this.resolveStockSymbols(productId);
+    if (!isModel) {
+      return [await this.readOneTowarInventory(productId, symbols[0])];
+    }
+    const out: Inventory[] = [];
+    for (const symbol of symbols) {
+      const variantId = await this.identifierMapping.getOrCreateInternalId(
+        CORE_ENTITY_TYPE.ProductVariant,
+        symbol,
+        this.connectionId,
+      );
+      const inventory = await this.readOneTowarInventory(productId, symbol);
+      out.push({ ...inventory, variantId });
+    }
+    return out;
+  }
+
+  /**
+   * Which towar an adjustment moves.
+   *
+   * For an ordinary towar the product answers it, as before. For a model the
+   * product CANNOT: a model is several towary, each with its own stock, so
+   * moving "the product's" stock is not a defined act - the caller has to say
+   * which variant, and `InventoryAdjustment.variantId` is how. Picking a
+   * member would move real stock on the wrong towar, silently, which is the
+   * one outcome worth refusing outright (PrestaShop refuses the same shape for
+   * a variable product with no `variantId`).
+   */
+  private async resolveAdjustmentSymbol(adjustment: InventoryAdjustment): Promise<string> {
+    const key = await this.resolveTowarSymbol(adjustment.productId);
+    if (modelIdFromProductKey(key) === null) return key;
+
+    if (adjustment.variantId === undefined) {
+      throw new SubiektConfigException(
+        `Product ${adjustment.productId} is a Subiekt model and carries several towary, each with ` +
+          `its own stock. Supply adjustment.variantId to say which one to move.`,
+        'variantId',
+        adjustment.productId,
+      );
+    }
+    const variantMappings = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.ProductVariant,
+      adjustment.variantId,
+    );
+    const mapping = variantMappings.find((e) => e.connectionId === this.connectionId);
+    if (!mapping) {
+      this.logger.warn(
+        `subiekt_inventory_variant_mapping_gap variant=${adjustment.variantId} ` +
+          `connection=${this.connectionId} — no external ID mapping; NOT a master deletion`,
+      );
+      throw new SubiektConfigException(
+        `Variant not found: ${adjustment.variantId} (no external ID mapping for connection ${this.connectionId})`,
+        'variantId',
+        adjustment.variantId,
+      );
+    }
+    // A model member's variant external id IS the towar symbol. The synthetic
+    // form belongs to a product with no model and cannot reach this branch,
+    // but it is stripped anyway so a mis-keyed mapping degrades to the right
+    // towar rather than to a symbol the bridge will 404.
+    return mapping.externalId.endsWith('::variant')
+      ? mapping.externalId.slice(0, -'::variant'.length)
+      : mapping.externalId;
+  }
+
+  /** The pre-model read, for one towar symbol. */
+  private async readOneTowarInventory(
+    productId: string,
+    towarSymbol: string,
+    locationId?: string,
+  ): Promise<Inventory> {
+    const { positions, domyslnyMagazynId } = await this.readPositionsForSymbol(towarSymbol);
     const effectiveLocationId =
       locationId ?? this.resolveReleaseMagazynId(towarSymbol, positions, domyslnyMagazynId);
     const filtered = effectiveLocationId
@@ -85,17 +238,8 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
     return this.toNeutralInventory(productId, towarSymbol, filtered);
   }
 
-  async listInventory(productId: string): Promise<Inventory[]> {
-    // Subiekt GT's TowaryManager carries no documented per-variant combination
-    // concept — one towar is one stock position, so this returns a single
-    // product-level entry (never per-combination), the same shape PrestaShop's
-    // synthetic-variant simple-product path produces.
-    const inventory = await this.getInventory(productId);
-    return [inventory];
-  }
-
   async adjustInventory(adjustment: InventoryAdjustment): Promise<InventoryAdjustmentResult> {
-    const towarSymbol = await this.resolveTowarSymbol(adjustment.productId);
+    const towarSymbol = await this.resolveAdjustmentSymbol(adjustment);
     const magazynId = adjustment.locationId ? Number(adjustment.locationId) : undefined;
 
     try {
@@ -112,7 +256,7 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
       // Read back the SAME magazyn the adjustment landed in, not the sum:
       // reporting a total here would contradict the quantity the caller just
       // moved, on exactly the installs where it matters.
-      const { positions, domyslnyMagazynId } = await this.readPositions(adjustment.productId);
+      const { positions, domyslnyMagazynId } = await this.readPositionsForSymbol(towarSymbol);
       const effectiveLocationId =
         adjustment.locationId ??
         this.resolveReleaseMagazynId(towarSymbol, positions, domyslnyMagazynId);
@@ -161,13 +305,20 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
   }
 
   async getAvailableQuantity(productId: string, locationId?: string): Promise<number> {
-    const { towarSymbol, positions, domyslnyMagazynId } = await this.readPositions(productId);
-    const effectiveLocationId =
-      locationId ?? this.resolveReleaseMagazynId(towarSymbol, positions, domyslnyMagazynId);
-    const filtered = effectiveLocationId
-      ? positions.filter((p) => String(p.magazynId) === effectiveLocationId)
-      : positions;
-    return filtered.reduce((sum, p) => sum + (p.stan - p.stanRez), 0);
+    // Sums every towar the product covers - one for an ordinary towar, all of
+    // them for a model, which is the same figure `getInventory` reports.
+    const { symbols } = await this.resolveStockSymbols(productId);
+    let total = 0;
+    for (const towarSymbol of symbols) {
+      const { positions, domyslnyMagazynId } = await this.readPositionsForSymbol(towarSymbol);
+      const effectiveLocationId =
+        locationId ?? this.resolveReleaseMagazynId(towarSymbol, positions, domyslnyMagazynId);
+      const filtered = effectiveLocationId
+        ? positions.filter((p) => String(p.magazynId) === effectiveLocationId)
+        : positions;
+      total += filtered.reduce((sum, p) => sum + (p.stan - p.stanRez), 0);
+    }
+    return total;
   }
 
   /**
@@ -255,22 +406,19 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
    * Subiekt, not that Subiekt deleted it. Only a bridge-reported "no such
    * towar" for a KNOWN symbol becomes the neutral deletion signal.
    */
-  private async readPositions(productId: string): Promise<{
-    towarSymbol: string;
+  private async readPositionsForSymbol(towarSymbol: string): Promise<{
     positions: BridgeInventoryStockRow[];
     domyslnyMagazynId: number | undefined;
   }> {
-    const towarSymbol = await this.resolveTowarSymbol(productId);
     try {
       const response = await this.bridge.getStock(towarSymbol);
       return {
-        towarSymbol,
         positions: response.positions,
         domyslnyMagazynId: response.domyslnyMagazynId,
       };
     } catch (error: unknown) {
       if (error instanceof SubiektRejectedError && this.looksLikeNotFound(error.reason)) {
-        throw new MasterProductNotFoundError(productId, this.connectionId);
+        throw new MasterProductNotFoundError(towarSymbol, this.connectionId);
       }
       throw this.translateBridgeError(error);
     }

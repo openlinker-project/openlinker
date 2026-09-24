@@ -22,11 +22,38 @@
  * error types (`SubiektBridgeUnreachableError` etc.) so a caller catching
  * those still works uniformly across every Subiekt capability.
  *
- * Variants: Subiekt GT's `TowaryManager` has no distinct "product with N
- * variants" concept matching OL's colour/size model (`DodajKomplet` is a
- * kit/bundle of DIFFERENT towary, not a variant axis on one towar) — so every
- * towar is treated as a simple product with exactly one synthetic variant,
- * the same posture PrestaShop/WooCommerce take for a simple product.
+ * **Variants come from Subiekt MODELS.** An earlier version of this docblock
+ * concluded that Subiekt GT has no variant concept at all, on the strength of
+ * `DodajKomplet` being a kit of DIFFERENT towary rather than an axis on one.
+ * That reasoning was sound and the conclusion was wrong: Subiekt carries
+ * `sl_ModelTw` + `sl_ModelTowar`, the operator's own grouping of towary that
+ * are one article in several sizes, and the retired WooCommerce-shim path had
+ * been reading it since the spike while this native adapter never did - so a
+ * three-size article reached OpenLinker as three unrelated products and the
+ * bulk wizard silently showed one of them.
+ *
+ * The mapping is therefore:
+ *
+ * ```
+ * Subiekt MODEL  -> OL Product         externalId `model:{mdt_Id}`
+ * Subiekt TOWAR  -> OL ProductVariant  externalId `{tw_Symbol}`
+ * towar with no model -> OL Product `{tw_Symbol}` + one synthetic variant
+ *                        `{tw_Symbol}::variant`   (UNCHANGED)
+ * ```
+ *
+ * The towar stays the unit of price, stock, barcode and image either way -
+ * only what counts as a PRODUCT moves. An install with no models behaves
+ * exactly as it did before, which is the overwhelming majority of towary.
+ *
+ * **A towar that JOINS a model stops being a product**, and this adapter says
+ * so out loud: `getProduct` on its bare symbol raises
+ * `MasterProductNotFoundError` and `listExternalIds` stops reporting it, so
+ * the existing master-deletion chain (#1599/#1689) stales its variants and
+ * pauses its offers. That is a real, loud transition rather than a silent one:
+ * leaving the old mapping alive would leave offers pointing at an internal id
+ * nothing syncs any more, with nothing anywhere reporting it. A migration
+ * cannot soften it - the model structure lives in Subiekt, behind the bridge,
+ * on a Windows machine, and no SQL migration can read it.
  *
  * MVP gaps (`SubiektProductNotSupportedException`): `deleteProduct` (Subiekt
  * GT towary are archived, not deleted, at the Sfera level — no confirmed
@@ -52,6 +79,7 @@ import type {
 } from '@openlinker/core/products';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import type { ProductCreate, ProductFilters, ProductUpdate } from '@openlinker/core/products';
+import { deriveVariantLabel, modelIdFromProductKey, modelProductKey } from './subiekt-model-key';
 import type {
   IdentifierMappingPort,
   Connection,
@@ -61,7 +89,9 @@ import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
 import type {
   BridgeCreateProductRequest,
   BridgeListCategoriesResponse,
+  BridgeListModelsResponse,
   BridgeListProductSymbolsResponse,
+  BridgeModel,
   BridgeProduct,
   BridgeSearchProductsResponse,
   BridgeUpdateProductRequest,
@@ -118,6 +148,15 @@ interface BridgeEnvelope<T> {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+/**
+ * How many models one `/api/models` page asks for, and how many pages the
+ * enumeration will walk before giving up. The cap exists so a misbehaving
+ * bridge cannot turn one catalogue enumeration into an unbounded read; it is
+ * reported when it fires rather than silently truncating.
+ */
+const MODEL_PAGE_SIZE = 200;
+const MODEL_PAGE_CAP = 20_000;
+
 export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTaxRateReader {
   private readonly logger: LoggerPort;
   private readonly baseUrl: string;
@@ -143,61 +182,98 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
   }
 
   async getProduct(productId: string): Promise<Product> {
-    const symbol = await this.resolveExternalSymbol(productId);
-    if (symbol === null) {
+    const key = await this.resolveExternalSymbol(productId);
+    if (key === null) {
       throw new MasterProductNotFoundError(productId, this.connection.id);
     }
+    const modelId = modelIdFromProductKey(key);
     try {
-      const bridgeProduct = await this.getJson<BridgeProduct>(`/api/products/${encodeURIComponent(symbol)}`);
+      if (modelId !== null) {
+        const model = await this.getJson<BridgeModel>(`/api/models/${modelId}`);
+        return this.toDomainProductFromModel(productId, model);
+      }
+      const bridgeProduct = await this.getJson<BridgeProduct>(`/api/products/${encodeURIComponent(key)}`);
+      this.assertStillAProduct(productId, bridgeProduct);
       return this.toDomainProduct(productId, bridgeProduct);
     } catch (error: unknown) {
+      // `assertStillAProduct` raises this from inside the try; rethrow it
+      // untouched or the wrapper below would turn a deliberate deletion signal
+      // into a retryable transport error and the offers would never pause.
+      if (error instanceof MasterProductNotFoundError) throw error;
       if (error instanceof SubiektRejectedError) {
-        // The bridge reports "no such towar" via the rejected-request shape —
-        // that IS a master-side deletion for this adapter's purposes.
+        // The bridge reports "no such towar" (and "no such model") via the
+        // rejected-request shape — that IS a master-side deletion for this
+        // adapter's purposes.
         throw new MasterProductNotFoundError(productId, this.connection.id, error);
       }
       throw this.translateBridgeError(error);
     }
   }
 
-  async getProducts(filters?: ProductFilters): Promise<Product[]> {
-    if (filters?.externalIds && filters.externalIds.length > 0) {
-      const results: Product[] = [];
-      for (const symbol of filters.externalIds) {
-        try {
-          const bridgeProduct = await this.getJson<BridgeProduct>(
-            `/api/products/${encodeURIComponent(symbol)}`,
-          );
-          const internalId = await this.identifierMapping.getOrCreateInternalId(
-            CORE_ENTITY_TYPE.Product,
-            symbol,
-            this.connection.id,
-          );
-          results.push(this.toDomainProduct(internalId, bridgeProduct));
-        } catch (error: unknown) {
-          if (error instanceof SubiektRejectedError) {
-            continue; // gone at the master — silently skip, matching a filtered list read
-          }
-          throw this.translateBridgeError(error);
-        }
-      }
-      return results;
-    }
+  /**
+   * A towar the operator has since put into a model is a VARIANT now, not a
+   * product, so a product mapping still keyed on its bare symbol names
+   * something that no longer exists at that grain.
+   *
+   * Raising here routes it into the ordinary master-deletion path (#1599),
+   * which stales the variants and pauses the offers (#1689). The alternative -
+   * keep serving it as a standalone product - would leave two OpenLinker
+   * products claiming the same towar: the model-keyed one and this one, both
+   * syncing, both publishable, and the operator's stock split between them.
+   */
+  private assertStillAProduct(productId: string, bridgeProduct: BridgeProduct): void {
+    if (bridgeProduct.modelId === null || bridgeProduct.modelId === undefined) return;
+    this.logger.log(
+      `subiekt_towar_became_variant symbol=${bridgeProduct.symbol} modelId=${bridgeProduct.modelId} ` +
+        `productId=${productId} connectionId=${this.connection.id} — reporting it deleted at the master ` +
+        `so its offers pause; it is now a variant of ${modelProductKey(bridgeProduct.modelId)}.`,
+    );
+    throw new MasterProductNotFoundError(productId, this.connection.id);
+  }
 
-    const symbols = await this.listSymbols(filters?.limit, filters?.offset);
+  async getProducts(filters?: ProductFilters): Promise<Product[]> {
+    const keys =
+      filters?.externalIds && filters.externalIds.length > 0
+        ? filters.externalIds
+        : await this.listProductKeys(filters?.limit, filters?.offset);
+
     const results: Product[] = [];
-    for (const symbol of symbols) {
-      const bridgeProduct = await this.getJson<BridgeProduct>(
-        `/api/products/${encodeURIComponent(symbol)}`,
-      );
-      const internalId = await this.identifierMapping.getOrCreateInternalId(
-        CORE_ENTITY_TYPE.Product,
-        symbol,
-        this.connection.id,
-      );
-      results.push(this.toDomainProduct(internalId, bridgeProduct));
+    for (const key of keys) {
+      try {
+        results.push(await this.readProductByKey(key));
+      } catch (error: unknown) {
+        if (error instanceof SubiektRejectedError || error instanceof MasterProductNotFoundError) {
+          // Gone at the master, or a symbol that has since become a variant of
+          // a model — silently skipped, matching a filtered list read. The
+          // per-product sync path is where a deletion is ADJUDICATED; a list
+          // read that threw would take the whole page down with one bad id.
+          continue;
+        }
+        throw this.translateBridgeError(error);
+      }
     }
     return results;
+  }
+
+  /**
+   * One product by its external key, whichever kind it is, minting the
+   * internal id the same way for both. The single place that knows a product
+   * key can be a model.
+   */
+  private async readProductByKey(key: string): Promise<Product> {
+    const internalId = await this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.Product,
+      key,
+      this.connection.id,
+    );
+    const modelId = modelIdFromProductKey(key);
+    if (modelId !== null) {
+      const model = await this.getJson<BridgeModel>(`/api/models/${modelId}`);
+      return this.toDomainProductFromModel(internalId, model);
+    }
+    const bridgeProduct = await this.getJson<BridgeProduct>(`/api/products/${encodeURIComponent(key)}`);
+    this.assertStillAProduct(internalId, bridgeProduct);
+    return this.toDomainProduct(internalId, bridgeProduct);
   }
 
   async createProduct(product: ProductCreate): Promise<Product> {
@@ -253,41 +329,87 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
   }
 
   async getProductVariants(productId: string): Promise<ProductVariant[]> {
-    // Synthetic single variant — see the class docblock. Re-fetch the RAW
-    // bridge product (not via getProduct/toDomainProduct, which maps onto
-    // `Product` — a type with no `ean` field at all) so `kodKreskowy` survives
-    // onto the variant, which is the only domain shape that carries barcode.
-    // Previously this always emitted `ean: null, gtin: null` unconditionally,
-    // silently dropping every barcode the bridge reported.
-    const symbol = await this.resolveExternalSymbol(productId);
-    if (symbol === null) {
+    // Re-fetches the RAW bridge payload (never via getProduct/toDomainProduct,
+    // which maps onto `Product` — a type with no `ean` field at all) so
+    // `kodKreskowy` survives onto the variant, the only domain shape that
+    // carries a barcode. An earlier version dropped every barcode here.
+    const key = await this.resolveExternalSymbol(productId);
+    if (key === null) {
       throw new MasterProductNotFoundError(productId, this.connection.id);
     }
-    let bridgeProduct: BridgeProduct;
+    const modelId = modelIdFromProductKey(key);
     try {
-      bridgeProduct = await this.getJson<BridgeProduct>(`/api/products/${encodeURIComponent(symbol)}`);
+      return modelId !== null
+        ? await this.readModelVariants(productId, modelId)
+        : await this.readSyntheticVariant(productId, key);
     } catch (error: unknown) {
+      if (error instanceof MasterProductNotFoundError) throw error;
       if (error instanceof SubiektRejectedError) {
         throw new MasterProductNotFoundError(productId, this.connection.id, error);
       }
       throw this.translateBridgeError(error);
     }
-    const product = this.toDomainProduct(productId, bridgeProduct);
-    const variantExternalId = `${symbol}::variant`;
+  }
+
+  /**
+   * One variant per live towar in the model, keyed by the towar's own symbol.
+   *
+   * The variant external id is the bare symbol rather than anything derived
+   * from the model, so a towar keeps ONE variant identity for the life of the
+   * install: moved between models, or taken out of one entirely, it is still
+   * the same variant and its offers still point at it. Deriving the id from
+   * the model would re-key every sibling the day an operator renames or
+   * rebuilds the grouping.
+   *
+   * Price, barcode and stock are all per towar in Subiekt, so every one of
+   * these is the member's own value and not a share of anything.
+   */
+  private async readModelVariants(productId: string, modelId: number): Promise<ProductVariant[]> {
+    const model = await this.getJson<BridgeModel>(`/api/models/${modelId}`);
+    const variants: ProductVariant[] = [];
+    for (const member of model.pozycje) {
+      const variantInternalId = await this.identifierMapping.getOrCreateInternalId(
+        CORE_ENTITY_TYPE.ProductVariant,
+        member.symbol,
+        this.connection.id,
+      );
+      variants.push({
+        id: variantInternalId,
+        productId,
+        sku: member.symbol,
+        attributes: { Wariant: deriveVariantLabel(model.modelNazwa, member.nazwa) },
+        ean: member.kodKreskowy,
+        gtin: member.kodKreskowy,
+        price: member.cenaSprzedazyBrutto ?? member.cenaSprzedazyNetto ?? undefined,
+      });
+    }
+    return variants;
+  }
+
+  /**
+   * The unchanged pre-model path: a towar in no model is its own product with
+   * exactly one synthetic variant, keyed `{symbol}::variant`. `attributes`
+   * stays null here and must - there is no sibling to be distinguished from,
+   * and `OfferBuilderService` only builds a variant group when a product has
+   * more than one variant anyway.
+   */
+  private async readSyntheticVariant(productId: string, symbol: string): Promise<ProductVariant[]> {
+    const bridgeProduct = await this.getJson<BridgeProduct>(`/api/products/${encodeURIComponent(symbol)}`);
+    this.assertStillAProduct(productId, bridgeProduct);
     const variantInternalId = await this.identifierMapping.getOrCreateInternalId(
       CORE_ENTITY_TYPE.ProductVariant,
-      variantExternalId,
+      `${symbol}::variant`,
       this.connection.id,
     );
     return [
       {
         id: variantInternalId,
         productId,
-        sku: product.sku,
+        sku: bridgeProduct.symbol,
         attributes: null,
         ean: bridgeProduct.kodKreskowy,
         gtin: bridgeProduct.kodKreskowy,
-        price: product.price ?? undefined,
+        price: bridgeProduct.cenaSprzedazyBrutto ?? bridgeProduct.cenaSprzedazyNetto ?? undefined,
       },
     ];
   }
@@ -375,14 +497,19 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
       const response = await this.getJson<BridgeSearchProductsResponse>(
         `/api/products/search?${params.toString()}`,
       );
+      // A hit that is a model MEMBER resolves to its model, so a search never
+      // offers a caller a product that the sync path would refuse to serve.
+      // Deduped: three members of one model are one result, not three.
       const results: Product[] = [];
+      const seen = new Set<string>();
       for (const bridgeProduct of response.products) {
-        const internalId = await this.identifierMapping.getOrCreateInternalId(
-          CORE_ENTITY_TYPE.Product,
-          bridgeProduct.symbol,
-          this.connection.id,
-        );
-        results.push(this.toDomainProduct(internalId, bridgeProduct));
+        const key =
+          bridgeProduct.modelId === null || bridgeProduct.modelId === undefined
+            ? bridgeProduct.symbol
+            : modelProductKey(bridgeProduct.modelId);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        results.push(await this.readProductByKey(key));
       }
       return results;
     } catch (error: unknown) {
@@ -391,7 +518,77 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
   }
 
   async listExternalIds(filters?: { limit?: number; offset?: number }): Promise<string[]> {
-    return this.listSymbols(filters?.limit, filters?.offset);
+    return this.listProductKeys(filters?.limit, filters?.offset);
+  }
+
+  /**
+   * One page of PRODUCT keys: a model's key in place of each of its members,
+   * and the bare symbol for every towar in no model.
+   *
+   * Pages over towary, not over models, because that is the set the sweep's
+   * offset is defined against and the one whose size the operator recognises.
+   * The consequence is that a model spanning a page boundary is reported on
+   * both pages; that costs one redundant, idempotent child sync and is far
+   * cheaper than the alternative, which is re-deriving a joint offset across
+   * two differently-sized sets.
+   *
+   * The model map is read once per call rather than per towar. Asking the
+   * bridge for each symbol's `modelId` individually would be an N+1 over the
+   * whole catalogue on the hottest enumeration path in the integration.
+   */
+  private async listProductKeys(limit?: number, offset?: number): Promise<string[]> {
+    const symbols = await this.listSymbols(limit, offset);
+    const symbolToModelId = await this.readSymbolToModelId();
+    if (symbolToModelId.size === 0) return symbols;
+
+    const keys: string[] = [];
+    const seen = new Set<string>();
+    for (const symbol of symbols) {
+      const modelId = symbolToModelId.get(symbol);
+      const key = modelId === undefined ? symbol : modelProductKey(modelId);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      keys.push(key);
+    }
+    return keys;
+  }
+
+  /**
+   * `tw_Symbol -> mdt_Id` for every modelled towar.
+   *
+   * An empty map is the honest answer for the two cases that look alike from
+   * here and behave identically: an install where the operator groups nothing,
+   * and a bridge too old to serve `/api/models`. Both mean "no towar is a
+   * variant", which is precisely the pre-model behaviour, so a bridge that
+   * 404s this route degrades instead of failing the enumeration.
+   */
+  private async readSymbolToModelId(): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    let offset = 0;
+    for (;;) {
+      let page: BridgeListModelsResponse;
+      try {
+        page = await this.getJson<BridgeListModelsResponse>(
+          `/api/models?limit=${MODEL_PAGE_SIZE}&offset=${offset}`,
+        );
+      } catch (error: unknown) {
+        if (error instanceof SubiektRejectedError) return map;
+        throw this.translateBridgeError(error);
+      }
+      for (const model of page.models) {
+        for (const symbol of model.symbole) map.set(symbol, model.modelId);
+      }
+      if (page.models.length < MODEL_PAGE_SIZE) return map;
+      offset += MODEL_PAGE_SIZE;
+      if (offset >= MODEL_PAGE_CAP) {
+        this.logger.warn(
+          `subiekt_model_enumeration_capped connectionId=${this.connection.id} offset=${offset} — ` +
+            `stopped after ${MODEL_PAGE_CAP} models; towary in models past this point are reported ` +
+            `as standalone products. Raise MODEL_PAGE_CAP if a real install has this many.`,
+        );
+        return map;
+      }
+    }
   }
 
   /**
@@ -456,6 +653,26 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
     }
   }
 
+  /**
+   * The towar symbols in a model, ordered as the bridge orders them.
+   *
+   * Public because `SubiektInventoryMasterAdapter` needs it: Subiekt keeps
+   * stock per TOWAR, so a model-keyed product's stock is its members' stock,
+   * and the inventory adapter has no product bridge of its own. Passed to it
+   * as a bound function by the factory rather than by handing it this whole
+   * adapter - the inventory side needs one question answered, not a second
+   * capability port it might start reaching into.
+   */
+  async readModelMemberSymbols(modelId: number): Promise<string[]> {
+    try {
+      const model = await this.getJson<BridgeModel>(`/api/models/${modelId}`);
+      return model.pozycje.map((member) => member.symbol);
+    } catch (error: unknown) {
+      if (error instanceof SubiektRejectedError) return [];
+      throw this.translateBridgeError(error);
+    }
+  }
+
   /** Internal id -> external symbol, via the connection's own mapping. `null` when unmapped (caller decides deleted vs. never-synced). */
   private async resolveExternalSymbol(internalProductId: string): Promise<string | null> {
     const externalIds = await this.identifierMapping.getExternalIds(
@@ -466,6 +683,36 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
     return match?.externalId ?? null;
   }
 
+  /**
+   * A model as one Product.
+   *
+   * Subiekt's model row carries a name and nothing else, so every other
+   * product-level field is taken from the FIRST member by symbol - a
+   * deterministic pick, so two reads never disagree, and a harmless one
+   * because each of these is carried per variant where it matters. The one
+   * exception is `images`, which unions every member's image in member order:
+   * a grouped listing wants the whole gallery, and the members are the
+   * photographs.
+   *
+   * `sku` is the model key rather than any member's symbol. Borrowing a
+   * member's symbol would put the same string on a product and on a variant,
+   * and would move the product's SKU the day that member leaves the model.
+   */
+  private toDomainProductFromModel(internalId: string, model: BridgeModel): Product {
+    const head = model.pozycje[0];
+    const images = model.pozycje.flatMap((member) => member.zdjecia ?? []);
+    return {
+      id: internalId,
+      name: model.modelNazwa,
+      sku: `MODEL-${model.modelId}`,
+      price: head?.cenaSprzedazyBrutto ?? head?.cenaSprzedazyNetto ?? null,
+      description: head?.opis ?? null,
+      images: images.length > 0 ? images : null,
+      currency: head?.waluta ?? null,
+      weight: head?.waga ?? undefined,
+    };
+  }
+
   private toDomainProduct(internalId: string, bridgeProduct: BridgeProduct): Product {
     return {
       id: internalId,
@@ -474,12 +721,17 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
       price: bridgeProduct.cenaSprzedazyBrutto ?? bridgeProduct.cenaSprzedazyNetto ?? null,
       description: bridgeProduct.opis,
       // Served by the bridge itself from Subiekt's own `tw_ZdjecieTw` blobs.
-      // Only OpenLinker fetches these URLs — it downloads the bytes and
-      // re-uploads them to the channel's CDN — so the bridge's base only has to
-      // be reachable from the worker, not from the public internet. `null`
-      // rather than `[]` when the towar has none, matching the field's "not
-      // known" reading. Without them a Subiekt-sourced product cannot be
-      // published at all: Allegro refuses an offer that carries no image.
+      // OPENLINKER DOES NOT FETCH THESE. This comment used to claim it
+      // downloads the bytes and re-uploads them to the channel's CDN, and
+      // concluded the bridge's base only had to be reachable from the worker.
+      // There is no such download anywhere in OpenLinker: the URL is stored
+      // verbatim and dereferenced by the operator's BROWSER and by the
+      // marketplace. That false premise is what made the bridge's
+      // container-only default base look safe, and the symptom — a thumbnail
+      // that renders exactly like a product with no photo — is why it survived.
+      // `null` rather than `[]` when the towar has none, matching the field's
+      // "not known" reading. Without an image a Subiekt-sourced product cannot
+      // be published at all: Allegro refuses an offer that carries no image.
       images:
         bridgeProduct.zdjecia && bridgeProduct.zdjecia.length > 0 ? bridgeProduct.zdjecia : null,
       currency: bridgeProduct.waluta,

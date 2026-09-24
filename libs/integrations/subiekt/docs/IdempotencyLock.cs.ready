@@ -1,0 +1,74 @@
+// IdempotencyLock.cs.ready - mirror of the bridge source, committed for review.
+//
+// A FULL DUMP of `bridge-gt/IdempotencyLock.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
+//
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// from the same source in the same commit, so drift between the three is a
+// review finding rather than something to discover at runtime.
+
+/*
+ * Per-key serialization for the check-then-act idempotency guards every write
+ * endpoint in this bridge relies on (InventoryEndpoints.AdjustInventory,
+ * OrdersEndpoints.CreateOrder, Invoicing.IssueInvoice/IssueCorrection,
+ * FiscalizationEndpoints).
+ *
+ * Every one of those follows the same shape: a plain SQL SELECT against
+ * dok_NrPelnyOryg for an existing document, and only if not found, a COM
+ * write via Sfera.Run. The lookup and the write are two separate steps with
+ * no lock in between - two overlapping calls under the same idempotency key
+ * (a caller retry racing the original request still in flight; Sfera.Run's
+ * COM-side wait is NOT tied to the HTTP request's cancellation, so a caller
+ * that gave up can still have its original call land) can both observe "not
+ * found" and both write. On this bridge that means a duplicate fiscal
+ * document (FS/PA/KFS) and/or a duplicate stock movement (PW/RW/WZ) - a real
+ * legal/financial defect, not a cosmetic one.
+ *
+ * There is no DB unique constraint on dok_NrPelnyOryg to fall back on (it is
+ * a free-text audit field on an accounting schema this bridge does not own)
+ * and no cross-process lock is available on a single bridge instance, so
+ * this is an in-process mutex keyed on the SAME reduced string that is
+ * actually compared against dok_NrPelnyOryg - two callers racing under the
+ * same logical key but a differently-shaped raw string (e.g. one already
+ * hashed, one not) still serialize together as long as both sides reduce it
+ * the same way before calling in.
+ */
+using System.Collections.Concurrent;
+
+public static class IdempotencyLock
+{
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> Locks = new();
+
+    /// <summary>
+    /// Runs `body` with exclusive access for `key`. A blank key means the
+    /// caller has nothing to serialize on (no idempotency key supplied, and
+    /// no natural fallback either) - runs unlocked, exactly as before this
+    /// existed.
+    /// </summary>
+    public static async Task<T> RunExclusive<T>(string key, Func<Task<T>> body)
+    {
+        if (string.IsNullOrEmpty(key)) return await body();
+
+        var gate = Locks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync();
+        try
+        {
+            return await body();
+        }
+        finally
+        {
+            gate.Release();
+            // Best-effort cleanup so the dictionary does not grow forever.
+            // CurrentCount == 1 means nobody else is waiting on this gate
+            // RIGHT NOW - a race here (a new waiter arriving between the
+            // check and the removal) just means that waiter's SemaphoreSlim
+            // gets discarded and GetOrAdd hands out a fresh one; it can
+            // never mean two callers hold the gate at once, because removal
+            // only ever happens after Release().
+            if (gate.CurrentCount == 1)
+                Locks.TryRemove(new KeyValuePair<string, SemaphoreSlim>(key, gate));
+        }
+    }
+}
