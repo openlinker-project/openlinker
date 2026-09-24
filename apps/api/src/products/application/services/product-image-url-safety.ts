@@ -30,10 +30,16 @@
  * exactly the networks this proxy runs in.
  *
  * So the rule is narrow and it names its own target: link-local and the
- * metadata hostnames are refused, every other private range is allowed, and
- * the containment that does the heavy lifting remains the one the service
- * already had - the caller names an INDEX and never a url, so the reachable
- * set is bounded by what the operator's own catalogue sync wrote.
+ * metadata hostnames are refused, every other private range is allowed -
+ * including loopback (`127.0.0.0/8`, `::1`), which a real
+ * `network_mode: host` deployment can legitimately have as the shop's own
+ * address - and the containment that does the heavy lifting remains the one
+ * the service already had - the caller names an INDEX and never a url, so the
+ * reachable set is bounded by what the operator's own catalogue sync wrote.
+ * What bounds loopback specifically is the content-type gate one layer up
+ * (`product-image-proxy.service.ts`): every failure answers a uniform 404, so
+ * probing an internal port through this route costs an attacker nothing but
+ * response timing.
  *
  * ## Numeric encodings are canonicalised BEFORE the range test
  *

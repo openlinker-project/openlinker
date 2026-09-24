@@ -495,6 +495,10 @@ export class ProductsController {
     // An hour is long enough to spare the shop a request per table render and
     // short enough that a replaced photo appears without a hard refresh.
     response.setHeader('Cache-Control', 'private, max-age=3600');
+    // Belt-and-braces beside the service's own raster allow-list: stops a
+    // mislabelled body being sniffed into HTML by a browser that ignores the
+    // declared Content-Type.
+    response.setHeader('X-Content-Type-Options', 'nosniff');
     response.end(result.image.bytes);
   }
 

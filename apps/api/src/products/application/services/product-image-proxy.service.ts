@@ -64,8 +64,13 @@ const FETCH_TIMEOUT_MS = 8_000;
  */
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
-/** What a browser will render in an `<img>`. Anything else is refused. */
-const ALLOWED_TYPE_PREFIX = 'image/';
+// A raster allow-list, not a prefix: `image/svg+xml` is an `image/` type that
+// executes script when a browser renders it as a document rather than in an
+// `<img>` - navigating directly to this route (a pasted link, a tab opened
+// from an `<img>`'s address) renders the upstream's bytes as a DOCUMENT in
+// this API's own origin, where the HttpOnly refresh cookie and the CSRF
+// pairing live. Every other `image/*` type is inert once served this way.
+const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif']);
 
 /**
  * How many redirects to follow before giving up.
@@ -218,9 +223,15 @@ export class ProductImageProxyService {
       }
 
       const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.toLowerCase().startsWith(ALLOWED_TYPE_PREFIX)) {
+      // Normalised (stripped of `; charset=...`, lowercased) BEFORE the
+      // allow-list check, or a legitimate `image/jpeg; charset=binary`
+      // response would fail an exact `Set` lookup that a `startsWith` never
+      // had to worry about.
+      const normalizedContentType = contentType.split(';')[0]?.trim().toLowerCase() ?? '';
+      if (!ALLOWED_TYPES.has(normalizedContentType)) {
         // A shop that 200s an HTML error page is the common shape here. Passing
-        // it through would put the shop's markup on our origin.
+        // it through would put the shop's markup on our origin. `image/svg+xml`
+        // is refused here too - see the allow-list's own comment.
         this.logger.warn(
           `product_image_not_an_image productId=${productId} contentType=${contentType}`
         );

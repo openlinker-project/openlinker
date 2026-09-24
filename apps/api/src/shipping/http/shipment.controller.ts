@@ -9,17 +9,6 @@
  * `IOrderRecordService` (#770; degrades to null on lookup failure).
  * Domain exceptions are mapped to HTTP at this boundary. Admin + JWT.
  *
- * ## `GET :id/label` stamps a print, best-effort (pack-bench completion)
- *
- * When the shipment carries a `fulfillmentWorkId` (#2402 — only a routed,
- * OMS-fulfilled parcel does), this route stamps
- * `FulfillmentWork.labelPrintedAt` the FIRST time it serves the label bytes,
- * fill-in-when-NULL so a reprint never moves it. The stamp runs strictly
- * AFTER the bytes are already on the wire and in its own try/catch: this
- * route is shared by every label download in the system, not only the pack
- * bench, so a failed or skipped stamp must never turn a working download
- * into an error.
- *
  * ## `GET :id/label` no longer stamps a print (moved to the bench, #3340)
  *
  * This route carries no `@Roles` — a viewer may legitimately download a label
