@@ -107,6 +107,7 @@ import {
 import { useConnectionsQuery } from '../../features/connections';
 import { resolvePlatformLabel } from '../../features/mappings';
 import { usePlatforms } from '../../shared/plugins';
+import { oldestAgeSuffix } from '../../shared/lib/oldest-age-suffix';
 
 const PAGE_SIZE = 20;
 
@@ -350,8 +351,9 @@ const FILTER_PARAMS: readonly string[] = Object.values(NARROWING_FILTER_URL_PARA
  * this row already carries two SLA badges, and a third would compete with them
  * for exactly the attention the SLA ones are for.
  *
- * Returns an empty string when nothing is held or the instant is unreadable -
- * an absent age says less than a wrong one.
+ * `oldestAgeSuffix` (#3194 review) - moved to `shared/lib` and shared with the
+ * invoice list's "Awaiting submission" chip, which duplicated this function
+ * byte-for-byte under its own name before this extraction.
  */
 /**
  * Does any line record a channel rate that disagreed with the shop's (#2254)?
@@ -362,16 +364,6 @@ const FILTER_PARAMS: readonly string[] = Object.values(NARROWING_FILTER_URL_PARA
  */
 function hasTaxRateConflict(parsed: ReturnType<typeof parseOrderSnapshot>): boolean {
   return parsed.items.some((item) => Boolean(item.taxRateChannel));
-}
-
-function blockedAgeSuffix(oldestAt: string | null | undefined): string {
-  if (!oldestAt) return '';
-  const heldSince = new Date(oldestAt).getTime();
-  if (!Number.isFinite(heldSince)) return '';
-  const days = Math.floor((Date.now() - heldSince) / 86_400_000);
-  if (days >= 1) return ` \u00b7 oldest ${String(days)} d`;
-  const hours = Math.floor((Date.now() - heldSince) / 3_600_000);
-  return hours >= 1 ? ` \u00b7 oldest ${String(hours)} h` : '';
 }
 
 function clearAllFilters(setSearchParams: SetURLSearchParams): void {
@@ -1560,7 +1552,7 @@ export function OrdersListPage(): ReactElement {
             Sales documents blocked
             {summary?.salesDocumentBlocked === undefined
               ? ''
-              : ` ${summary.salesDocumentBlocked}${blockedAgeSuffix(
+              : ` ${summary.salesDocumentBlocked}${oldestAgeSuffix(
                   summary.salesDocumentBlockedOldestAt,
                 )}`}
           </Chip>

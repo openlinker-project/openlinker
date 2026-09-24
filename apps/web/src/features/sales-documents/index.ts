@@ -13,6 +13,7 @@ export { SalesDocumentRuleEnginePanel } from './components/sales-document-rule-e
 export type {
   SalesDocumentCapability,
   SalesDocumentKind,
+  ConcreteDocumentKind,
   SalesDocumentRow,
   SalesDocumentConfigPatch,
 } from './api/sales-documents.types';

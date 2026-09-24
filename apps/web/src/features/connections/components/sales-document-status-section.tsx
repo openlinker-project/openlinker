@@ -22,6 +22,7 @@
 import { Link } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import type { Connection } from '../api/connections.types';
+import { Alert } from '../../../shared/ui/alert';
 import { KeyValueList } from '../../../shared/ui/key-value-list';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 
@@ -40,12 +41,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-type DocumentKind = 'invoice' | 'fiscal-receipt';
+type DocumentKind = 'invoice' | 'fiscal-receipt' | 'both';
 
 function readDocumentKind(config: Record<string, unknown>): DocumentKind | null {
   const salesDocument = isRecord(config.salesDocument) ? config.salesDocument : {};
   const raw = salesDocument.documentKind;
-  return raw === 'invoice' || raw === 'fiscal-receipt' ? raw : null;
+  return raw === 'invoice' || raw === 'fiscal-receipt' || raw === 'both' ? raw : null;
 }
 
 function readIsPrimary(config: Record<string, unknown>): boolean {
@@ -63,6 +64,7 @@ function isSalesDocumentCandidate(connection: Connection): boolean {
 const ISSUES_LABEL: Record<DocumentKind, string> = {
   invoice: 'Invoice',
   'fiscal-receipt': 'Fiscal receipt',
+  both: 'Either (invoice or fiscal receipt)',
 };
 
 export function SalesDocumentStatusSection({
@@ -104,6 +106,15 @@ export function SalesDocumentStatusSection({
           },
         ]}
       />
+      {documentKind === 'both' ? (
+        <Alert tone="warning" data-testid="sales-document-dual-role-warning">
+          Issuing either document kind requires a matching sales-document rule for this
+          connection&apos;s markets — the &quot;Primary&quot; status above has no effect here,
+          whether or not it&apos;s set. A rule is the only thing that can decide invoice vs.
+          receipt for a dual-role connection; without one, orders are held rather than
+          auto-issued, because a fiscal document is never guessed.
+        </Alert>
+      ) : null}
       <p className="rate-limit-section__help">
         Read-only. <Link to="/settings/sales-documents">Manage in Settings → Sales documents</Link>
         {otherPrimary ? ` ${otherPrimary.name} is already primary.` : ''}

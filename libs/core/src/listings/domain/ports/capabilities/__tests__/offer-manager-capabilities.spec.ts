@@ -23,6 +23,7 @@ import { isCatalogProductReader } from '../catalog-product-reader.capability';
 import { isOfferCreator } from '../offer-creator.capability';
 import { isOfferReader } from '../offer-reader.capability';
 import { isSellerPoliciesReader } from '../seller-policies-reader.capability';
+import { isOfferCurrencyDeclarer } from '../offer-currency-declarer.capability';
 
 type Guard = (adapter: OfferManagerPort) => boolean;
 
@@ -38,6 +39,7 @@ const cases: ReadonlyArray<readonly [string, Guard, string]> = [
   ['OfferCreator', isOfferCreator, 'createOffer'],
   ['OfferReader', isOfferReader, 'getOffer'],
   ['SellerPoliciesReader', isSellerPoliciesReader, 'fetchSellerPolicies'],
+  ['OfferCurrencyDeclarer', isOfferCurrencyDeclarer, 'getDestinationCurrency'],
 ];
 
 function makeAdapter(extra: Record<string, unknown> = {}): OfferManagerPort {

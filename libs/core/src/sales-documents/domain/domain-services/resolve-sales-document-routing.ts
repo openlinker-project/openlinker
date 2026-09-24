@@ -20,7 +20,12 @@
  * than a breaking signature change.
  *
  * PICKS EXACTLY ONE, NEVER A LIST (decision 3a): invoice XOR receipt, never
- * both, never the same kind on two connections.
+ * both, never the same kind on two connections. One CONNECTION may
+ * legitimately appear as two candidate rows (#3195 — a connection configured
+ * `documentKind: 'both'` expands into an `'invoice'` row and a
+ * `'fiscal-receipt'` row via `expandSalesDocumentRoutingCandidates`), but this
+ * rule is unaffected: only one row total ever wins per order, regardless of
+ * how many rows trace back to the same connection.
  *
  * NEVER SILENTLY PICKS ONE (decision 6): ambiguous input resolves
  * `unresolved`, never an incidental choice — a wrong pick for a fiscal
@@ -96,6 +101,14 @@ export const REQUIRED_CAPABILITY_BY_CORE_KIND: Readonly<Record<CoreSalesDocument
  * to the one bit the resolver needs. A self-routing connection is eligible
  * for selection even with `documentKind: null`, since the destination decides
  * its own kind and the operator never configures one for it.
+ *
+ * `documentKind` here is always a single concrete kind (or `null`) - never the
+ * `'both'` config sentinel (#3195, `SALES_DOCUMENT_KIND_BOTH`). A dual-role
+ * connection's config is expanded, before it ever reaches this resolver, into
+ * two independent candidate rows sharing one `connectionId` - one row per
+ * kind - by `expandSalesDocumentRoutingCandidates`. This resolver carries no
+ * dual-role logic of its own: it has no notion of a connection appearing
+ * twice, since it operates purely over the candidate list it is handed.
  */
 export interface SalesDocumentRoutingCandidate {
   readonly connectionId: string;

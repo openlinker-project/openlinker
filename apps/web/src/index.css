@@ -4900,6 +4900,17 @@ a.delivery-rider-banner__button:focus-visible {
   flex-wrap: wrap;
 }
 
+/* ── Rule composer "Test with a sample order" (#3191) ──
+ * A nested, un-bordered panel rather than a fourth `.rule-composer-section`
+ * card — it is a transient tool inside the Conditions section, not a fourth
+ * grouped step of the rule itself, and it toggles open/closed with the
+ * button that reveals it. */
+.rule-composer-dry-run {
+  border-top: 1px dashed var(--border-subtle);
+  padding-top: var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
 
 /* ── Rule composer readback (#3189) ──
  * The whole rule in one sentence, framed as its own accent block rather than

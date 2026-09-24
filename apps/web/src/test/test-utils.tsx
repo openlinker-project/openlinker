@@ -980,6 +980,9 @@ export function createMockApiClient(
     salesDocumentRules: {
       listRules: vi.fn().mockResolvedValue([]),
       createRule: vi.fn().mockResolvedValue(null),
+      dryRunRule: vi
+        .fn()
+        .mockResolvedValue({ kind: 'unresolved', reason: 'no-configuration-for-country' }),
       deleteRule: vi.fn().mockResolvedValue(undefined),
       // #3190. The empty verdict is the DEFAULT so a composer test that does
       // not opt in renders neither banner: an "overlapping" default would put
