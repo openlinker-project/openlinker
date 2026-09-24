@@ -134,6 +134,27 @@ export class BenchParcelService implements IBenchParcelService {
       };
     }
 
+    // ADR-074 (#3336/#3337): a packer excluded from a locked assignment may
+    // not RECORD progress on it, whatever the list or `getParcel` chose to
+    // show them. This is the actual server-side guarantee — a frontend
+    // affordance that hides the scan control is a convenience on top of this,
+    // never a substitute for it.
+    //
+    // Deliberately NOT folded into `refusalFor` / `BenchParcelRefusal`: that
+    // rule is VIEWER-INDEPENDENT (status, holds) and is shared with the list's
+    // colouring (story D2's "one rule, two callers"). Assignment eligibility
+    // depends on WHO is asking, which `getParcel(workId)` has no actor to
+    // answer for today — widening that read is #3341's rendering work, not
+    // this write-side guarantee.
+    if (this.isExcludedFromAssignment(work, input.verifiedByUserId)) {
+      const state = await this.verification.getState(input.workId);
+      return {
+        outcome: 'refused',
+        reason: 'assigned-to-another-packer',
+        parcel: await this.project(work, state),
+      };
+    }
+
     const result = await this.verification.verifyUnit({
       workId: input.workId,
       workLineId: input.workLineId,
@@ -170,6 +191,21 @@ export class BenchParcelService implements IBenchParcelService {
 
   async reopenParcel(input: BenchReopenInput): Promise<BenchReopenResultView> {
     const work = await this.loadBenchWork(input.workId);
+
+    // ADR-074 (#3336/#3337), the SAME guard `verifyUnit` applies, extended
+    // here after review (#3361): `reopenParcel` writes
+    // `{ parcelClosedAt: null, packedByUserId: null }` on a locked, closed
+    // parcel, erasing the attribution `selfServeEligible: false` exists to
+    // protect. A packer excluded from the lock must not be able to reopen —
+    // and therefore de-attribute — a box someone else packed.
+    if (this.isExcludedFromAssignment(work, input.reopenedByUserId)) {
+      const state = await this.verification.getState(input.workId);
+      return {
+        outcome: 'refused',
+        reason: 'assigned-to-another-packer',
+        parcel: await this.project(work, state),
+      };
+    }
 
     const result = await this.verification.reopenParcel({
       workId: input.workId,
@@ -343,6 +379,26 @@ export class BenchParcelService implements IBenchParcelService {
     if (!isOurs) throw new BenchParcelNotAtThisBenchError(workId);
 
     return work;
+  }
+
+  /**
+   * ADR-074 (#3336/#3337): whether `actorUserId` is excluded from a locked
+   * assignment. Shared by `verifyUnit` and `reopenParcel` (#3361 review) —
+   * the SAME three-condition predicate, so the two write-side guarantees
+   * cannot drift apart. `null` (no principal — `reopenParcel`'s
+   * `@CurrentUser()` is optional by design) is never equal to a real
+   * assignee, so an anonymous reopen against a locked parcel is excluded
+   * too — the fail-closed reading of "who is asking" when nobody answers.
+   */
+  private isExcludedFromAssignment(
+    work: FulfillmentWorkView,
+    actorUserId: string | null
+  ): boolean {
+    return (
+      !work.selfServeEligible &&
+      work.assignedToUserId !== null &&
+      work.assignedToUserId !== actorUserId
+    );
   }
 
   /** Story D2's shared derivation, read as a refusal rather than as a colour. */

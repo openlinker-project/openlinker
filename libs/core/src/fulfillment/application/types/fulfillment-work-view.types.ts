@@ -65,6 +65,19 @@ export interface FulfillmentWorkView {
   readonly locationId: string | null;
   readonly deliveryMethod: string | null;
   readonly assignedConnectionId: string | null;
+  /**
+   * A supervisor's advisory pre-assignment of this parcel to a specific
+   * packer, `null` for none (#3336/#3337, ADR-074). A distinct axis from
+   * `assignedConnectionId` — that one is the HOLDER connection.
+   */
+  readonly assignedToUserId: string | null;
+  /**
+   * Whether a packer other than `assignedToUserId` may still work this
+   * parcel. `true` is the advisory default. Server-side enforcement of
+   * `false` lives in `BenchParcelService.verifyUnit` (#3337), not here — this
+   * field only reports the operator's decision.
+   */
+  readonly selfServeEligible: boolean;
   readonly status: FulfillmentWorkStatus;
   readonly requestStatus: FulfillmentRequestStatus;
   readonly assignmentAttempt: number;
@@ -216,4 +229,26 @@ export interface ApplyFulfillmentWorkActionInput {
   readonly releaseNote?: string | null;
   /** Audit actor, when the caller has one. */
   readonly actorUserId?: string | null;
+}
+
+/**
+ * The assignment PATCH (#3337, ADR-074) — deliberately NOT one of
+ * `ApplyFulfillmentWorkActionInput`'s actions. ADR-074 states the reason:
+ * "a staffing decision one layer below the [ADR-052] authority matrix, not a
+ * new row in it" — and `OPERATOR_INVOCABLE_ACTIONS` is that matrix's own
+ * legality-gated vocabulary. Folding assignment in would make an advisory
+ * staffing act subject to `supportedActions` / `expectedVersion` legality
+ * gating built for execution-state transitions it is not one of.
+ *
+ * Each field is OPTIONAL and independently applied — `undefined` means
+ * "leave alone", never "clear". `assignedToUserId: null` clears an
+ * assignment; a string sets or reassigns it (`assignToPacker` is not
+ * claim-once, so reassigning an already-assigned parcel is legal). At least
+ * one field must be present — the service refuses an all-`undefined` patch
+ * rather than silently no-op-succeeding.
+ */
+export interface UpdateFulfillmentWorkAssignmentInput {
+  readonly workId: string;
+  readonly assignedToUserId?: string | null;
+  readonly selfServeEligible?: boolean;
 }

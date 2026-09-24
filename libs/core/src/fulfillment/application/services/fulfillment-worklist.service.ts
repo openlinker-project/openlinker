@@ -32,6 +32,8 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { Logger } from '@openlinker/shared/logging';
 
+import { EmptyFulfillmentWorkAssignmentUpdateError } from '../../domain/exceptions/empty-fulfillment-work-assignment-update.error';
+import { ExclusiveAssignmentRequiresPackerError } from '../../domain/exceptions/exclusive-assignment-requires-packer.error';
 import { FulfillmentWorkActionNotLegalError } from '../../domain/exceptions/fulfillment-work-action-not-legal.error';
 import { MissingFulfillmentWorkActionFieldError } from '../../domain/exceptions/missing-fulfillment-work-action-field.error';
 import { FulfillmentWorkNotFoundError } from '../../domain/exceptions/fulfillment-work-not-found.error';
@@ -57,6 +59,7 @@ import {
   type FulfillmentWorkPageView,
   type FulfillmentWorkView,
   type OperatorInvocableAction,
+  type UpdateFulfillmentWorkAssignmentInput,
 } from '../types/fulfillment-work-view.types';
 
 /**
@@ -140,6 +143,56 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
         `at version ${String(input.expectedVersion)}`
     );
     return this.get(input.workId);
+  }
+
+  async updateAssignment(
+    input: UpdateFulfillmentWorkAssignmentInput
+  ): Promise<FulfillmentWorkView> {
+    if (input.assignedToUserId === undefined && input.selfServeEligible === undefined) {
+      throw new EmptyFulfillmentWorkAssignmentUpdateError(input.workId);
+    }
+
+    // Each axis is its own narrow conditional UPDATE (the port's own
+    // discipline), applied sequentially rather than in one transaction: both
+    // are advisory staffing facts, not a single atomic decision, and neither
+    // write's success depends on the other's.
+    if (input.assignedToUserId !== undefined) {
+      if (input.assignedToUserId === null) {
+        await this.works.clearAssignment(input.workId);
+      } else {
+        await this.works.assignToPacker(input.workId, input.assignedToUserId);
+      }
+    }
+    if (input.selfServeEligible !== undefined) {
+      const applied = await this.works.setSelfServeEligible(
+        input.workId,
+        input.selfServeEligible
+      );
+      // `false` on the `false` (lock) direction is NOT the ordinary no-op the
+      // rest of this axis tolerates: `setSelfServeEligible` guards it on
+      // `assignedToUserId IS NOT NULL` (ADR-074's "exclusive to nobody" is
+      // unrepresentable), so a refusal here means the caller tried to lock an
+      // unassigned parcel. Read off the RE-READ, never guessed from `applied`
+      // alone, so a benign race (the work vanished between the write and this
+      // check) still reports "not found" rather than a misleading exclusivity
+      // refusal.
+      if (!applied && input.selfServeEligible === false) {
+        const now = await this.works.findById(input.workId);
+        if (now === null) throw new FulfillmentWorkNotFoundError(input.workId);
+        if (now.assignedToUserId === null) {
+          throw new ExclusiveAssignmentRequiresPackerError(input.workId);
+        }
+      }
+    }
+
+    // The boolean outcomes above are not inspected individually: `false` from
+    // any of the three writers means only "the work object no longer exists"
+    // (`assignToPacker` / `setSelfServeEligible`) or "already in that state"
+    // (`clearAssignment`, an ordinary no-op) — this single re-read after the
+    // fact distinguishes both cases at once and is the ONLY place that must.
+    const work = await this.works.findById(input.workId);
+    if (work === null) throw new FulfillmentWorkNotFoundError(input.workId);
+    return this.toView(work, await this.works.listActiveHolds(input.workId));
   }
 
   /**
@@ -310,6 +363,8 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
       locationId: work.locationId,
       deliveryMethod: work.deliveryMethod,
       assignedConnectionId: work.assignedConnectionId,
+      assignedToUserId: work.assignedToUserId,
+      selfServeEligible: work.selfServeEligible,
       status: work.status,
       requestStatus: work.requestStatus,
       assignmentAttempt: work.assignmentAttempt,

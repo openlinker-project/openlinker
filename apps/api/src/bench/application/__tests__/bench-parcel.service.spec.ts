@@ -39,6 +39,8 @@ const workView = (over: Partial<FulfillmentWorkView> = {}): FulfillmentWorkView 
     locationId: null,
     deliveryMethod: null,
     assignedConnectionId: EXECUTOR_ID,
+    assignedToUserId: null,
+    selfServeEligible: true,
     status: 'open',
     requestStatus: 'accepted',
     assignmentAttempt: 0,
@@ -237,6 +239,87 @@ describe('BenchParcelService (#2418)', () => {
       expect(verification.verifyUnit).not.toHaveBeenCalled();
     });
 
+    it('should refuse a scan from a packer excluded by a locked assignment (#3337, ADR-074)', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-9', selfServeEligible: false }),
+      });
+
+      const result = await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1', // not user-9
+      });
+
+      // The reason names the ACTOR, never `not-packable` — that reason is a
+      // fact about the parcel, and this parcel is perfectly packable, by
+      // someone else (#3361 review).
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'assigned-to-another-packer' });
+      expect(verification.verifyUnit).not.toHaveBeenCalled();
+    });
+
+    it('should allow the ASSIGNED packer to scan a locked parcel', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-1', selfServeEligible: false }),
+      });
+      (verification.verifyUnit as jest.Mock).mockResolvedValue({
+        outcome: 'verified',
+        state: state({ closedAt: null }),
+      });
+
+      const result = await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1', // is user-1
+      });
+
+      expect(result.outcome).not.toBe('refused');
+      expect(verification.verifyUnit).toHaveBeenCalled();
+    });
+
+    it('should allow ANY packer when the parcel is assigned but self-serve remains eligible', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-9', selfServeEligible: true }),
+      });
+      (verification.verifyUnit as jest.Mock).mockResolvedValue({
+        outcome: 'verified',
+        state: state({ closedAt: null }),
+      });
+
+      const result = await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1', // not user-9, but advisory-only
+      });
+
+      expect(result.outcome).not.toBe('refused');
+      expect(verification.verifyUnit).toHaveBeenCalled();
+    });
+
+    it('should allow any packer on an unassigned parcel even with self-serve disabled', async () => {
+      // selfServeEligible:false with NO assignedToUserId names no one to
+      // exclude — there is nobody left to be "other than".
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: null, selfServeEligible: false }),
+      });
+      (verification.verifyUnit as jest.Mock).mockResolvedValue({
+        outcome: 'verified',
+        state: state({ closedAt: null }),
+      });
+
+      const result = await service.verifyUnit({
+        workId: 'work-1',
+        workLineId: 'line-1',
+        gestureId: 'g1',
+        verifiedByUserId: 'user-1',
+      });
+
+      expect(result.outcome).not.toBe('refused');
+      expect(verification.verifyUnit).toHaveBeenCalled();
+    });
+
     it('refuses a parcel routed to a DIFFERENT executor outright, not as a refusal body', async () => {
       // A packer has no business reading another executor's parcel contents in
       // order to be told they may not pack them — so this is an error the
@@ -254,6 +337,100 @@ describe('BenchParcelService (#2418)', () => {
       await expect(service.getParcel('work-1')).rejects.toBeInstanceOf(
         BenchParcelNotAtThisBenchError
       );
+    });
+  });
+
+  /**
+   * ADR-074 (#3336/#3337, #3361 review) — the SAME guard `verifyUnit` applies,
+   * on the write `reopenParcel` performs. An excluded packer reopening a
+   * locked, closed parcel would erase `packedByUserId`, the record of who
+   * actually packed it — a hard assignment another packer can reopen and
+   * de-attribute is not one.
+   */
+  describe('story D2 — reopenParcel honours the same assignment lock', () => {
+    it('should refuse a reopen from a packer excluded by a locked assignment', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-9', selfServeEligible: false }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: 'user-1', // not user-9
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'assigned-to-another-packer' });
+      expect(verification.reopenParcel).not.toHaveBeenCalled();
+    });
+
+    it('should refuse an anonymous reopen of a locked parcel', async () => {
+      // `reopenedByUserId: null` — `@CurrentUser()` is optional on this
+      // route by design. `null` is never equal to a real assignee, so an
+      // unattributed caller is excluded too (fail-closed).
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-9', selfServeEligible: false }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: null,
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'assigned-to-another-packer' });
+      expect(verification.reopenParcel).not.toHaveBeenCalled();
+    });
+
+    it('should allow the ASSIGNED packer to reopen a locked parcel', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-1', selfServeEligible: false }),
+      });
+      (verification.reopenParcel as jest.Mock).mockResolvedValue({
+        outcome: 'reopened',
+        state: state({ closedAt: null }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: 'user-1', // is user-1
+      });
+
+      expect(result.outcome).not.toBe('refused');
+      expect(verification.reopenParcel).toHaveBeenCalled();
+    });
+
+    it('should allow ANY packer to reopen when self-serve remains eligible', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: 'user-9', selfServeEligible: true }),
+      });
+      (verification.reopenParcel as jest.Mock).mockResolvedValue({
+        outcome: 'reopened',
+        state: state({ closedAt: null }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: 'user-1', // not user-9, but advisory-only
+      });
+
+      expect(result.outcome).not.toBe('refused');
+      expect(verification.reopenParcel).toHaveBeenCalled();
+    });
+
+    it('should allow any packer to reopen an unassigned parcel even with self-serve disabled', async () => {
+      const { service, verification } = harness({
+        work: workView({ assignedToUserId: null, selfServeEligible: false }),
+      });
+      (verification.reopenParcel as jest.Mock).mockResolvedValue({
+        outcome: 'reopened',
+        state: state({ closedAt: null }),
+      });
+
+      const result = await service.reopenParcel({
+        workId: 'work-1',
+        reopenedByUserId: 'user-1',
+      });
+
+      expect(result.outcome).not.toBe('refused');
+      expect(verification.reopenParcel).toHaveBeenCalled();
     });
   });
 
