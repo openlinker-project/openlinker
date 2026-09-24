@@ -20,6 +20,16 @@ describe('resolvePriceChangeBlockReason', () => {
   it('returns currency-mismatch when the currencies differ', () => {
     expect(resolvePriceChangeBlockReason('PLN', 'EUR')).toBe('currency-mismatch');
   });
+
+  it('normalises case and surrounding whitespace before comparing (#3159 review, SUGGESTION)', () => {
+    // `readConnectionCurrency` reads `config.currency` verbatim — including
+    // a value typed by hand through the raw JSON editor, curl, or MCP, none
+    // of which normalise. A destination hand-set to 'pln' must still match
+    // a 'PLN' source rather than reading as currency-mismatch.
+    expect(resolvePriceChangeBlockReason('PLN', 'pln')).toBeNull();
+    expect(resolvePriceChangeBlockReason(' PLN ', 'PLN')).toBeNull();
+    expect(resolvePriceChangeBlockReason('PLN', ' Pln ')).toBeNull();
+  });
 });
 
 describe('readConnectionCurrency', () => {

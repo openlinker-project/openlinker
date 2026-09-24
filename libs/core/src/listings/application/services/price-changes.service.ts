@@ -58,7 +58,9 @@ import {
   PRICE_CHANGE_EPISODE_REPOSITORY_TOKEN,
   PRICE_CHANGE_AUTO_APPLIED_LOG_REPOSITORY_TOKEN,
   BULK_LISTING_BATCH_REPOSITORY_TOKEN,
+  DESTINATION_CURRENCY_RESOLUTION_SERVICE_TOKEN,
 } from '../../listings.tokens';
+import { IDestinationCurrencyResolutionService } from './destination-currency-resolution.service.interface';
 import type {
   AcceptPriceChangeInput,
   BulkAcceptItemInput,
@@ -114,7 +116,9 @@ export class PriceChangesService implements IPriceChangesService {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly productsService: IProductsService,
     @Inject(JOB_ENQUEUE_TOKEN)
-    private readonly jobEnqueue: JobEnqueuePort
+    private readonly jobEnqueue: JobEnqueuePort,
+    @Inject(DESTINATION_CURRENCY_RESOLUTION_SERVICE_TOKEN)
+    private readonly destinationCurrencyResolution: IDestinationCurrencyResolutionService
   ) {}
 
   async listOpen(filters: PriceChangeEpisodeFilters): Promise<PriceChangeQueuePage> {
@@ -181,9 +185,16 @@ export class PriceChangesService implements IPriceChangesService {
       new Set(visible.flatMap((e) => [e.sourceConnectionId, e.destinationConnectionId]))
     );
     const connectionsById = await this.fetchConnections(connectionIds);
+    const destinationConnectionIds = Array.from(
+      new Set(visible.map((e) => e.destinationConnectionId))
+    );
+    const currenciesByConnectionId = await this.fetchDestinationCurrencies(
+      connectionsById,
+      destinationConnectionIds
+    );
 
     const items = visible.map((episode) =>
-      this.toQueueItem(episode, variantsById, productsById, connectionsById)
+      this.toQueueItem(episode, variantsById, productsById, connectionsById, currenciesByConnectionId)
     );
 
     return { items, hiddenStaleCount, total, hasMore };
@@ -309,8 +320,11 @@ export class PriceChangesService implements IPriceChangesService {
       episode.sourceConnectionId,
       episode.destinationConnectionId,
     ]);
+    const currenciesByConnectionId = await this.fetchDestinationCurrencies(connectionsById, [
+      episode.destinationConnectionId,
+    ]);
 
-    return this.toQueueItem(episode, variantsById, productsById, connectionsById);
+    return this.toQueueItem(episode, variantsById, productsById, connectionsById, currenciesByConnectionId);
   }
 
   async bulkAccept(
@@ -693,11 +707,41 @@ export class PriceChangesService implements IPriceChangesService {
     return new Map(all.filter((c) => idSet.has(c.id)).map((c) => [c.id, c]));
   }
 
+  /**
+   * The destination's REAL currency (#3203), batched once per read — the
+   * same "one round trip, not N sequential calls" rule `fetchConnections`
+   * states above. The operator-set `Connection.config.currency` key
+   * (`readConnectionCurrency`) wins when set (#3159 review, BLOCKING — see
+   * that function's docblock for why the operator's own statement must
+   * never be overridden by a fixed adapter assumption), falling back to the
+   * adapter-declared value (`IDestinationCurrencyResolutionService`) only
+   * when the config key is unset — never a guess when neither resolves.
+   */
+  private async fetchDestinationCurrencies(
+    connectionsById: Map<string, Connection>,
+    destinationConnectionIds: readonly string[]
+  ): Promise<Map<string, string | null>> {
+    const uniqueIds = Array.from(new Set(destinationConnectionIds));
+    const entries = await Promise.all(
+      uniqueIds.map(async (id) => {
+        // No `.catch()` here: `resolveForConnection` never rejects — its
+        // own internal probe already collapses every failure mode to `null`
+        // (see its docblock).
+        const declared = await this.destinationCurrencyResolution.resolveForConnection(id);
+        const connection = connectionsById.get(id);
+        const configured = connection ? readConnectionCurrency(connection.config) : null;
+        return [id, configured ?? declared] as const;
+      })
+    );
+    return new Map(entries);
+  }
+
   private toQueueItem(
     episode: PriceChangeEpisode,
     variantsById: Map<string, ProductVariant>,
     productsById: Map<string, { id: string; name: string }>,
-    connectionsById: Map<string, Connection>
+    connectionsById: Map<string, Connection>,
+    currenciesByConnectionId: Map<string, string | null>
   ): PriceChangeQueueItem {
     const variant = variantsById.get(episode.productVariantId);
     const product = variant ? productsById.get(variant.productId) : undefined;
@@ -720,9 +764,7 @@ export class PriceChangesService implements IPriceChangesService {
       sourceCurrency: episode.sourceCurrency,
       destinationConnectionId: episode.destinationConnectionId,
       destinationLabel: destinationConnection?.name ?? 'Unknown connection',
-      destinationCurrency: destinationConnection
-        ? readConnectionCurrency(destinationConnection.config)
-        : null,
+      destinationCurrency: currenciesByConnectionId.get(episode.destinationConnectionId) ?? null,
       computedOldAmount: episode.computedOldAmount,
       computedNewAmount: episode.computedNewAmount,
       deltaPct: episode.deltaPct(),

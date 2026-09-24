@@ -19,13 +19,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function resolveCapability(connection: Connection): SalesDocumentCapability | null {
-  if (connection.enabledCapabilities.includes('Invoicing')) return 'Invoicing';
-  if (connection.enabledCapabilities.includes('Fiscalization')) return 'Fiscalization';
+  const hasInvoicing = connection.enabledCapabilities.includes('Invoicing');
+  const hasFiscalization = connection.enabledCapabilities.includes('Fiscalization');
+  if (hasInvoicing && hasFiscalization) return 'Both';
+  if (hasInvoicing) return 'Invoicing';
+  if (hasFiscalization) return 'Fiscalization';
   return null;
 }
 
 function isSalesDocumentKind(value: unknown): value is SalesDocumentKind {
   return (SALES_DOCUMENT_KIND_VALUES as readonly unknown[]).includes(value);
+}
+
+/**
+ * Whether a row is an active, routable candidate — `status === 'active' &&
+ * documentKind !== null`, mirroring `AutoIssueTriggerService`'s own
+ * "active connection with a resolved kind" reading (#3366). Pulled out of
+ * `detectSalesDocumentConflict` / `SalesDocumentCountryDefaults` /
+ * `findSalesDocumentDestinationWarnings`, which each restated this
+ * predicate inline — a pure refactor with no behaviour change.
+ */
+export function isActiveRoutable(row: Pick<SalesDocumentRow, 'status' | 'documentKind'>): boolean {
+  return row.status === 'active' && row.documentKind !== null;
 }
 
 /**

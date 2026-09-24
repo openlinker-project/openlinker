@@ -9,8 +9,8 @@
  * an operator configures the provider once and enables the lanes they want.
  *
  * `supportedCapabilities` lists those two plus their sub-capabilities,
- * `FiscalRegistrationLocator` and `RegulatoryStatusReader`, both
- * advertised-without-dispatch (ADR-042 decision 5 / the KSeF
+ * `FiscalRegistrationLocator`, `RegulatoryStatusReader` and `CorrectionIssuer`
+ * (#3193), all advertised-without-dispatch (ADR-042 decision 5 / the KSeF
  * `OfflineResubmitter` precedent, and the same pattern as `CategoryBrowser` /
  * `OfferCreator` / `ShopCategoryBrowser`): a sub-capability is ALWAYS narrowed
  * at the call site with its `is*` guard, never resolved by name from the
@@ -18,9 +18,10 @@
  * and then throw inside `dispatchCapability`, since the dispatch table below
  * carries only the two base capabilities. Those manifest entries exist purely so
  * host/FE discovery (the connection response) can tell that this connection is
- * reconcilable before an operator ever sees an in-doubt row, and that its
- * invoices report a clearance status. Neither is a `CoreCapability`, so neither
- * renders as an operator-tickable toggle.
+ * reconcilable before an operator ever sees an in-doubt row, that its invoices
+ * report a clearance status, and that an already-issued one can be corrected.
+ * None of the three is a `CoreCapability`, so none renders as an
+ * operator-tickable toggle.
  *
  * Adding `Invoicing` here does NOT grant it to any EXISTING connection.
  * `enabledCapabilities` is stamped at create and never retro-filled (#2085), so
@@ -42,20 +43,20 @@
  * as an Invoicing row in Settings -> Sales documents. The wizard therefore sends
  * `enabledCapabilities: ['Fiscalization']` explicitly
  * (`eparagony-setup.schema.ts`), which keeps the invoice lane opt-in on every
- * path into the product, and matches the rule applied to `CorrectionIssuer`
- * below: a capability is claimed together with the ability to deliver it.
+ * path into the product, and matches the rule the "NOT declared" list below
+ * applies: a capability is claimed together with the ability to deliver it.
  *
  * Note what an explicit set cannot carry. `CreateConnectionDto` validates it
  * with `@IsIn(CoreCapabilityValues, { each: true })`, and `FiscalRegistrationLocator`
- * / `RegulatoryStatusReader` are deliberately not core capabilities - passing
- * either would 400. Nothing reads those two names off `enabledCapabilities`
- * anywhere (both are narrowed from the dispatched adapter with their `is*`
- * guard), and `ConnectionCapabilitiesPanel` saves the `isCoreCapability`-filtered
- * set, so a connection created the omitted way used to persist both and then
- * silently lose them on the operator's first capability toggle. Sending
- * `['Fiscalization']` is where such a connection lands either way; the
- * manifest, not `enabledCapabilities`, is what makes the two sub-capabilities
- * discoverable.
+ * / `RegulatoryStatusReader` / `CorrectionIssuer` are deliberately not core
+ * capabilities - passing any would 400. Nothing reads those three names off
+ * `enabledCapabilities` anywhere (all are narrowed from the dispatched adapter
+ * with their `is*` guard), and `ConnectionCapabilitiesPanel` saves the
+ * `isCoreCapability`-filtered set, so a connection created the omitted way used
+ * to persist them and then silently lose them on the operator's first
+ * capability toggle. Sending `['Fiscalization']` is where such a connection
+ * lands either way; the manifest, not `enabledCapabilities`, is what makes the
+ * three sub-capabilities discoverable.
  *
  * NOT declared, and each for a stated reason:
  *   - `FiscalDeviceOperator` (#1910, closed `not_planned`) - the fiscal printer
@@ -63,11 +64,6 @@
  *     service. The vendor exposes `print` and `fiscalize` as booleans inside the
  *     document payload, not as device operations, so there is no device surface
  *     to implement here.
- *   - `CorrectionIssuer` - the vendor models a correction as its own
- *     `eCorrectiveInvoice` document kind with its own before/after metadata
- *     pair, which `EparagonyInvoicingAdapter` does not compose (#3193). It
- *     refuses a correction command pre-call instead, so advertising the name
- *     would promise a document this plugin cannot produce.
  *   - `RegulatoryTransmitter` - this vendor RELAYS to the national e-invoicing
  *     hub on the seller's behalf rather than OpenLinker holding the authority
  *     session, which is why the adapter reads clearance (`RegulatoryStatusReader`)
@@ -105,6 +101,7 @@ export const eparagonyAdapterManifest: AdapterMetadata = {
     'FiscalRegistrationLocator',
     'Invoicing',
     'RegulatoryStatusReader',
+    'CorrectionIssuer',
   ],
   displayName: 'eparagony.pl Documents API v3',
   version: '1.0.0',
@@ -122,19 +119,21 @@ export const eparagonyAdapterManifest: AdapterMetadata = {
 export function createEparagonyPlugin(): AdapterPlugin {
   // One factory for the lifetime of the plugin rather than one per capability
   // resolution (the #2592 hoist, mirroring `createPrestashopPlugin`). Safe
-  // because the factory holds no per-connection state: it takes no constructor
-  // arguments and the connection is a parameter of `createAdapters`.
+  // because the factory holds only a per-connection HTTP-client cache, keyed
+  // to invalidate itself on a config edit or a credential rotation (see the
+  // factory's own header, #3382) - it takes no constructor arguments and the
+  // connection is a parameter of `createAdapters`.
   //
-  // Be precise about what this does and does not buy here. It does NOT make the
-  // OAuth token cache outlive a capability resolution - that cache lives on the
-  // `EparagonyHttpClient`, which `createAdapters` still builds per call, so two
-  // resolutions for one connection still fetch two tokens. What it buys is the
-  // seam: the factory is now the only place a per-connection client could be
-  // cached, and caching one is a separate decision that owes an invalidation
-  // story (rotated credentials, a changed host override) of the kind
-  // `PrestashopAdapterFactory.dropCachesOnShopIdentityChange` carries. The
-  // doubling this slice had to avoid is the one WITHIN a resolution: both
-  // adapters ride the single client `createAdapters` builds.
+  // This IS what makes the OAuth token cache outlive a capability resolution:
+  // `getCapabilityAdapter` still constructs a fresh adapter on every call, but
+  // the factory instance - and with it the client map - is the ONE thing that
+  // survives across those calls, because it is hoisted here rather than
+  // constructed inside `createCapabilityAdapter` below. Hoisting the factory
+  // without also caching the client inside it (the #2592 state before #3382)
+  // bought only the seam, not the reuse: `createAdapters` still built a fresh
+  // client, with a fresh empty token cache, on every call. The doubling within
+  // ONE resolution was never the problem - both adapters have always ridden
+  // the single client `createAdapters` builds for that call.
   const factory = new EparagonyAdapterFactory();
 
   return {

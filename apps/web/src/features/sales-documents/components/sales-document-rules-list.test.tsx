@@ -28,6 +28,22 @@ import { SalesDocumentRulesList } from './sales-document-rules-list';
 import type { SalesDocumentRule } from '../api/sales-document-rules.types';
 import type { Connection } from '../../connections';
 
+/**
+ * Address a rule row by its RULE ID.
+ *
+ * The row's `data-testid` is the mockup's index-keyed `rule-row-{n}` (#3196),
+ * so an id-keyed assertion reads the `id` attribute the reveal effect already
+ * scrolls and focuses by — the same element, and the same route the
+ * `scrolled[0]` assertion below has always used.
+ */
+function ruleCardById(ruleId: string): HTMLElement {
+  const element = document.getElementById(`rule-card-${ruleId}`);
+  if (element === null) {
+    throw new Error(`No rule card rendered for rule id "${ruleId}"`);
+  }
+  return element;
+}
+
 function makeRule(overrides: Partial<SalesDocumentRule> = {}): SalesDocumentRule {
   return {
     id: 'rule_1',
@@ -194,7 +210,7 @@ describe('SalesDocumentRulesList', () => {
       await user.click(await within(composer).findByTestId('rule-conflict-open-existing'));
 
       await waitFor(() =>
-        expect(screen.getByTestId('rule-card-rule_1')).toHaveClass('rule-card--highlighted')
+        expect(ruleCardById('rule_1')).toHaveClass('rule-card--highlighted')
       );
       await waitFor(() => expect(scrolled).toHaveLength(1));
       expect(scrolled[0]).toBe(document.getElementById('rule-card-rule_1'));
@@ -216,13 +232,13 @@ describe('SalesDocumentRulesList', () => {
       const composer = await screen.findByRole('dialog');
       await user.click(await within(composer).findByTestId('rule-conflict-open-existing'));
       await waitFor(() =>
-        expect(screen.getByTestId('rule-card-rule_1')).toHaveClass('rule-card--highlighted')
+        expect(ruleCardById('rule_1')).toHaveClass('rule-card--highlighted')
       );
 
       await user.click(screen.getByRole('button', { name: '+ Add rule' }));
 
       await waitFor(() =>
-        expect(screen.getByTestId('rule-card-rule_1')).not.toHaveClass('rule-card--highlighted')
+        expect(ruleCardById('rule_1')).not.toHaveClass('rule-card--highlighted')
       );
     });
   });

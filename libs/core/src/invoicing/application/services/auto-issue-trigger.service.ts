@@ -145,6 +145,7 @@ import {
   ISalesDocumentRulesService,
   SALES_DOCUMENT_RULES_SERVICE_TOKEN,
   chooseSalesDocumentDecision,
+  expandSalesDocumentRoutingCandidates,
   readSalesDocumentRouting,
 } from '@openlinker/core/sales-documents';
 import type {
@@ -427,15 +428,21 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
     // answer `false` today would be a per-order-transition I/O cost with no
     // observable effect; wiring the real per-connection resolution is
     // deferred until a self-routing adapter actually exists to exercise it.
-    const candidates: SalesDocumentRoutingCandidate[] = connections.map((connection) => {
+    //
+    // `expandSalesDocumentRoutingCandidates` (#3195) is the flatMap: a
+    // connection configured `documentKind: 'both'` becomes TWO candidate
+    // rows (one `'invoice'`, one `'fiscal-receipt'`) sharing this
+    // `connectionId`; every other connection expands to exactly the one row
+    // this site produced before #3195, byte-identical.
+    const candidates: SalesDocumentRoutingCandidate[] = connections.flatMap((connection) => {
       const routing = readSalesDocumentRouting(connection.config);
-      return {
+      return expandSalesDocumentRoutingCandidates({
         connectionId: connection.id,
         documentKind: routing.documentKind,
         isPrimary: routing.isPrimary,
         enabledCapabilities: connection.enabledCapabilities,
         selfRoutesDocumentKind: false,
-      };
+      });
     });
 
     const eligibleCount = candidates.filter((candidate) => candidate.documentKind !== null).length;

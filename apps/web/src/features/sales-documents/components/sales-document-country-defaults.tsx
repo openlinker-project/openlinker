@@ -36,9 +36,9 @@ import { useDemoMode } from '../../system';
 import { useSalesDocumentCountryDefaultsQuery } from '../hooks/use-sales-document-country-defaults-query';
 import { useUpsertSalesDocumentCountryDefaultMutation } from '../hooks/use-upsert-sales-document-country-default-mutation';
 import { useDeleteSalesDocumentCountryDefaultMutation } from '../hooks/use-delete-sales-document-country-default-mutation';
-import { deriveSalesDocumentRows } from '../lib/derive-sales-document-rows';
+import { deriveSalesDocumentRows, isActiveRoutable } from '../lib/derive-sales-document-rows';
 import { SALES_DOCUMENT_REST_OF_WORLD_COUNTRY } from '../api/sales-document-rules.types';
-import type { SalesDocumentKind } from '../api/sales-documents.types';
+import type { ConcreteDocumentKind, SalesDocumentKind } from '../api/sales-documents.types';
 
 interface SalesDocumentCountryDefaultsProps {
   country: string;
@@ -47,7 +47,7 @@ interface SalesDocumentCountryDefaultsProps {
 interface CountryDefaultCandidate {
   connectionId: string;
   name: string;
-  documentKind: SalesDocumentKind;
+  documentKind: ConcreteDocumentKind;
   /** The current default's own connection, offered even without an active role. */
   stale?: boolean;
 }
@@ -67,6 +67,28 @@ function documentKindArticle(kind: SalesDocumentKind): string {
 
 function countryDisplayName(country: string): string {
   return country === SALES_DOCUMENT_REST_OF_WORLD_COUNTRY ? '★ Rest of world' : country;
+}
+
+/**
+ * A dual-role connection (#3195) can appear as TWO candidate rows sharing one
+ * `connectionId` — one per concrete kind — so `connectionId` alone can no
+ * longer key the `<select>` option/value in that one case: two options would
+ * share a value, and picking one could not be told apart from the other.
+ *
+ * The composite `{connectionId}:{documentKind}` key is used ONLY when
+ * `allOptions` actually contains more than one row for that connection id —
+ * every single-role connection (every connection in the tree today) keeps
+ * the bare `connectionId` value it always had, so an existing test asserting
+ * `toHaveValue('conn_x')` or calling `selectOptions(select, 'conn_x')` is
+ * untouched by this change.
+ */
+function candidateOptionValue(
+  candidate: { connectionId: string; documentKind: string },
+  allOptions: readonly { connectionId: string }[],
+): string {
+  const sharesConnectionId =
+    allOptions.filter((option) => option.connectionId === candidate.connectionId).length > 1;
+  return sharesConnectionId ? `${candidate.connectionId}:${candidate.documentKind}` : candidate.connectionId;
 }
 
 export function SalesDocumentCountryDefaults({
@@ -101,18 +123,49 @@ export function SalesDocumentCountryDefaults({
   // `isEligibleCandidate`. It deliberately does NOT mirror the resolver's
   // step-6 kind-to-capability pairing (`invoice` needs `Invoicing`), so a
   // connection whose role contradicts its capability is still offered here
-  // and refused at routing time. `sales-document-rule-composer-dialog.tsx`
-  // answers the same question — which connection may a routing decision
+  // and refused at routing time.
+  //
+  // `sales-document-rule-composer-dialog.tsx` / `sales-document-template-screen.tsx`
+  // answer the same question — which connection may a routing decision
   // name — with the capability predicate alone (`selectInvoicingCandidates`
-  // / `selectFiscalizationCandidates`); converging the two is a follow-up,
-  // not this change.
+  // / `selectFiscalizationCandidates`), and #3232 resolved that as a
+  // DELIBERATE divergence rather than a convergence: this picker needs a
+  // role because the operator never picks a `documentKind` here (it is
+  // derived FROM the role), whereas a rule/template carries its own
+  // `documentKind` and routes without ever consulting the connection's
+  // role. See `find-sales-document-connection-role-gap.ts` for the full
+  // rationale and the pick-time warning that keeps that gap visible.
+  // A dual-role connection (#3195, `documentKind: 'both'`) expands into TWO
+  // candidate rows sharing the connection id — one per concrete kind — so
+  // the operator can pick which kind THIS country falls back to on that
+  // connection, exactly as `expandSalesDocumentRoutingCandidates` expands the
+  // same config for routing on the backend. Every other role expands to the
+  // one row it always did.
   const candidates: CountryDefaultCandidate[] = rows
-    .filter((row) => row.status === 'active' && row.documentKind !== null)
-    .map((row) => ({
-      connectionId: row.connectionId,
-      name: row.name,
-      documentKind: row.documentKind as SalesDocumentKind,
-    }));
+    .filter(isActiveRoutable)
+    .flatMap((row): CountryDefaultCandidate[] => {
+      // `isActiveRoutable` already excludes `null`, but a plain boolean
+      // predicate doesn't narrow the element type for `.flatMap` — re-assert
+      // it here so `row.documentKind` below is `SalesDocumentKind`, not
+      // `SalesDocumentKind | null`.
+      if (row.documentKind === null) {
+        return [];
+      }
+      if (row.documentKind === 'both') {
+        return (['invoice', 'fiscal-receipt'] as const).map((documentKind) => ({
+          connectionId: row.connectionId,
+          name: row.name,
+          documentKind,
+        }));
+      }
+      return [
+        {
+          connectionId: row.connectionId,
+          name: row.name,
+          documentKind: row.documentKind,
+        },
+      ];
+    });
 
   // At most one row per country now (#3177) — the unique index is on
   // `country` alone.
@@ -121,9 +174,15 @@ export function SalesDocumentCountryDefaults({
   // The current default's own connection may have lost its role or gone
   // inactive since it was chosen — offer it anyway rather than letting it
   // silently drop out of the option list (the `resolveIssuingConnection`
-  // "stale but still named" precedent).
+  // "stale but still named" precedent). Matched by connection AND kind
+  // (#3195) — a dual-role connection's persisted default names one concrete
+  // kind, and matching by connectionId alone would (wrongly) count it as
+  // "still a candidate" even if only the OTHER kind survived.
   const currentIsAmongCandidates =
-    current !== null && candidates.some((c) => c.connectionId === current.connectionId);
+    current !== null &&
+    candidates.some(
+      (c) => c.connectionId === current.connectionId && c.documentKind === current.documentKind,
+    );
   const staleCurrentCandidate: CountryDefaultCandidate | null =
     current !== null && !currentIsAmongCandidates
       ? {
@@ -149,22 +208,26 @@ export function SalesDocumentCountryDefaults({
         <Select
           id="sd-country-default"
           data-testid="country-default"
-          value={current?.connectionId ?? ''}
+          value={current ? candidateOptionValue(current, options) : ''}
           disabled={!write.canWrite || isPending}
           onChange={(event) => {
-            const connectionId = event.target.value;
-            if (connectionId === '') {
+            const value = event.target.value;
+            if (value === '') {
               if (current) remove.mutate(current.id);
               return;
             }
-            const candidate = options.find((c) => c.connectionId === connectionId);
+            const candidate = options.find((c) => candidateOptionValue(c, options) === value);
             if (!candidate) return;
-            upsert.mutate({ country, documentKind: candidate.documentKind, connectionId });
+            upsert.mutate({
+              country,
+              documentKind: candidate.documentKind,
+              connectionId: candidate.connectionId,
+            });
           }}
         >
           <option value="">Nothing — hold the order</option>
           {options.map((c) => (
-            <option key={c.connectionId} value={c.connectionId}>
+            <option key={candidateOptionValue(c, options)} value={candidateOptionValue(c, options)}>
               {documentKindLabel(c.documentKind)} · {c.name}
               {c.stale ? ' (no longer eligible)' : ''}
             </option>

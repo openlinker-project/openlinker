@@ -90,3 +90,7 @@ export const PRICE_CHANGE_AUTO_APPLIED_LOG_REPOSITORY_TOKEN = Symbol('PriceChang
 // Price-change apply orchestration (#3144, extracted per #3161 review)
 export const PRICE_CHANGE_APPLY_SERVICE_TOKEN = Symbol('IPriceChangeApplyService');
 export const PRICE_CHANGES_SERVICE_TOKEN = Symbol('IPriceChangesService');
+// Destination currency resolution (#3203)
+export const DESTINATION_CURRENCY_RESOLUTION_SERVICE_TOKEN = Symbol(
+  'IDestinationCurrencyResolutionService'
+);

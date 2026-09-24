@@ -78,6 +78,9 @@ import type {
   SalesDocumentCountryAcknowledgment,
   SalesDocumentCountryDefault,
   SalesDocumentMarketsResponse,
+  SalesDocumentRule,
+  AcceptedFiscalRegistration,
+  FiscalRegistrationRecordSummary,
   SendInvoiceEmailInput,
   SendInvoiceEmailResult,
   Shipment,
@@ -672,6 +675,39 @@ export class ApiClient {
       this.request<void>(`/sales-documents/countries/${country}/acknowledgment`, {
         method: 'DELETE',
       }),
+    /**
+     * GET /sales-documents/rules?country= — the rules the ENGINE will read.
+     * Used to read back a rule the composer saved through the browser, which is
+     * the only evidence that a UI save reached persistence rather than a cache.
+     */
+    rules: (country: string): Promise<SalesDocumentRule[]> =>
+      this.request<SalesDocumentRule[]>(`/sales-documents/rules${buildQuery({ country })}`),
+    deleteRule: (ruleId: string): Promise<void> =>
+      this.request<void>(`/sales-documents/rules/${ruleId}`, { method: 'DELETE' }),
+  };
+
+  // ── Fiscal registrations (#1908, ADR-042) ────────────────────────────────
+  fiscalRegistrations = {
+    /**
+     * POST /fiscal-registrations — **202**, and the 202 is the whole contract:
+     * the request is recorded and a `fiscalization.register` job enqueued, so a
+     * success here never means the sale was registered. The cross-kind 409
+     * (#2157/#3184) is raised HERE rather than by a job failing out of sight,
+     * which is what makes it assertable from a spec.
+     */
+    register: (input: {
+      connectionId: string;
+      orderId: string;
+    }): Promise<AcceptedFiscalRegistration> =>
+      this.request<AcceptedFiscalRegistration>('/fiscal-registrations', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    /** Every fiscal-registration record an order holds, newest first, across connections. */
+    listForOrder: (orderId: string): Promise<FiscalRegistrationRecordSummary[]> =>
+      this.request<FiscalRegistrationRecordSummary[]>(
+        `/fiscal-registrations${buildQuery({ orderId })}`,
+      ),
   };
 
   // ── Invoices ────────────────────────────────────────────────────────────
