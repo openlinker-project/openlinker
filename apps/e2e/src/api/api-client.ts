@@ -485,7 +485,7 @@ export class ApiClient {
   products = {
     list: (query?: ListProductsQuery): Promise<Paginated<Product>> =>
       this.request<Paginated<Product>>(
-        `/products${buildQuery({ search: query?.search, limit: query?.limit, offset: query?.offset })}`,
+        `/products${buildQuery({ search: query?.search, limit: query?.limit, offset: query?.offset, connectionId: query?.connectionId })}`,
       ),
     getById: (productId: string): Promise<Product> =>
       this.request<Product>(`/products/${productId}`),
