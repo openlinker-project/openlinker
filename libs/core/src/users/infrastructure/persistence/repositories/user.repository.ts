@@ -82,6 +82,21 @@ export class UserRepository implements UserRepositoryPort {
     await this.ormRepository.update({ id: userId }, { analyticsConsent });
   }
 
+  async updatePackStationLabel(userId: string, packStationLabel: string | null): Promise<void> {
+    await this.ormRepository.update({ id: userId }, { packStationLabel });
+  }
+
+  async touchLastActive(userId: string): Promise<void> {
+    // `NOW()` rather than `new Date()`: see the port's own note. A raw
+    // fragment because TypeORM's typed `update` takes values, not expressions.
+    await this.ormRepository
+      .createQueryBuilder()
+      .update()
+      .set({ lastActiveAt: () => 'NOW()' })
+      .where('"id" = :id', { id: userId })
+      .execute();
+  }
+
   async approveUser(userId: string, role: UserRole): Promise<void> {
     await this.ormRepository.update({ id: userId }, { role, status: 'active' });
   }
@@ -184,7 +199,9 @@ export class UserRepository implements UserRepositoryPort {
       status,
       entity.createdAt,
       entity.updatedAt,
-      entity.analyticsConsent ?? false
+      entity.analyticsConsent ?? false,
+      entity.packStationLabel ?? null,
+      entity.lastActiveAt ?? null
     );
   }
 }

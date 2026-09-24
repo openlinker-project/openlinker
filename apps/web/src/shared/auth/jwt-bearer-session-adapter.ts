@@ -133,6 +133,10 @@ export function createJwtBearerSessionAdapter({
           // as no consent, matching the backend default (analytics stays off
           // without an affirmative choice).
           analyticsConsent: data.analyticsConsent ?? false,
+          // #3404 — the viewer's own bench/printer label. `?? null` rather
+          // than leaving it `undefined`: a payload predating this field and
+          // an explicitly-cleared label must read identically ("unset").
+          packStationLabel: data.packStationLabel ?? null,
         };
         return {
           status: 'authenticated',

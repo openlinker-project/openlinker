@@ -926,6 +926,12 @@ export function createMockApiClient(
       reopenParcel: vi
         .fn<BenchApi['reopenParcel']>()
         .mockRejectedValue(new Error('bench.reopenParcel not stubbed')),
+      completeParcel: vi
+        .fn<BenchApi['completeParcel']>()
+        .mockRejectedValue(new Error('bench.completeParcel not stubbed')),
+      undoCompletion: vi
+        .fn<BenchApi['undoCompletion']>()
+        .mockRejectedValue(new Error('bench.undoCompletion not stubbed')),
       // The neutral "no paper exists yet" answer: an unissued invoice and a
       // box no label was ever bought for. Every nullable field is spelled out
       // rather than omitted, so a surface reading one gets `null` — the value
@@ -954,9 +960,38 @@ export function createMockApiClient(
       downloadInvoice: vi
         .fn<BenchApi['downloadInvoice']>()
         .mockRejectedValue(new Error('bench.downloadInvoice not stubbed')),
+      // #3340 — the ONLY print call that stamps `labelPrintedAt`. Reachable
+      // through the work, never the shipment id.
+      downloadLabel: vi
+        .fn<BenchApi['downloadLabel']>()
+        .mockRejectedValue(new Error('bench.downloadLabel not stubbed')),
       listUnlabelledParcels: vi
         .fn<BenchApi['listUnlabelledParcels']>()
         .mockResolvedValue({ parcels: [], total: 0, truncated: false }),
+      // #3401 mockup-parity epic. Empty-safe defaults — the same reasoning as
+      // `listWork` above: an unstubbed member must not crash a render with
+      // "is not a function", it must render the surface's own honest empty
+      // state, which every one of `BenchActivityPanel`/`BenchMetricRow`/the
+      // rail's claim controls already degrades to on an empty or failed read.
+      undoLastScan: vi
+        .fn<BenchApi['undoLastScan']>()
+        .mockRejectedValue(new Error('bench.undoLastScan not stubbed')),
+      pingPresence: vi
+        .fn<BenchApi['pingPresence']>()
+        .mockRejectedValue(new Error('bench.pingPresence not stubbed')),
+      claimParcel: vi
+        .fn<BenchApi['claimParcel']>()
+        .mockRejectedValue(new Error('bench.claimParcel not stubbed')),
+      claimNext: vi
+        .fn<BenchApi['claimNext']>()
+        .mockRejectedValue(new Error('bench.claimNext not stubbed')),
+      listActivity: vi.fn<BenchApi['listActivity']>().mockResolvedValue([]),
+      listPackedToday: vi
+        .fn<BenchApi['listPackedToday']>()
+        .mockResolvedValue({ works: [], total: 0 }),
+      getMetrics: vi
+        .fn<BenchApi['getMetrics']>()
+        .mockResolvedValue({ packedToday: 0, packedYesterday: 0, toPackAllBenches: 0 }),
       ...overrides.bench,
     },
     fulfillment: {
@@ -1107,6 +1142,7 @@ export function createMockApiClient(
       approve: vi.fn().mockResolvedValue(undefined),
       reject: vi.fn().mockResolvedValue(undefined),
       updateRole: vi.fn().mockResolvedValue(undefined),
+      updatePackStationLabel: vi.fn().mockResolvedValue(undefined),
       deactivate: vi.fn().mockResolvedValue(undefined),
       reactivate: vi.fn().mockResolvedValue(undefined),
       delete: vi.fn().mockResolvedValue(undefined),

@@ -22,6 +22,7 @@
 import { Module } from '@nestjs/common';
 import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
 import { InventoryModule } from '@openlinker/core/inventory';
+import { UsersApiModule } from '../users/users.module';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ProductsModule } from '@openlinker/core/products';
@@ -50,6 +51,9 @@ import { BenchWorkController } from './http/bench-work.controller';
     ShippingModule,
     IntegrationsModule,
     InventoryModule,
+    // #3424 - the presence heartbeat's one seam. Read-free: the bench calls
+    // `recordBenchActivity` and nothing else here.
+    UsersApiModule,
   ],
   controllers: [BenchWorkController, BenchParcelController, BenchDocumentsController],
   providers: [

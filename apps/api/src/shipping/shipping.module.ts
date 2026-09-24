@@ -10,9 +10,16 @@
  * resolves `PICKUP_POINT_LOOKUP_SERVICE_TOKEN` from the core `ShippingModule`.
  * Mirrors `MappingsApiModule`.
  *
+ * `FulfillmentModule` (pack-bench completion) is imported so `GET :id/label` can resolve
+ * `FULFILLMENT_VERIFICATION_SERVICE_TOKEN` and best-effort stamp
+ * `labelPrintedAt` on a shipment's linked work object — see the controller's
+ * own docblock. `libs/core/src/fulfillment` stays a zero-sibling-edge leaf:
+ * this is an APP-layer composition edge, not a core-to-core one.
+ *
  * @module apps/api/src/shipping
  */
 import { Module } from '@nestjs/common';
+import { FulfillmentModule } from '@openlinker/core/fulfillment';
 import { ShippingModule } from '@openlinker/core/shipping';
 import { OrdersModule } from '@openlinker/core/orders';
 
@@ -20,7 +27,7 @@ import { ShipmentController } from './http/shipment.controller';
 import { PickupPointController } from './http/pickup-point.controller';
 
 @Module({
-  imports: [ShippingModule, OrdersModule],
+  imports: [ShippingModule, OrdersModule, FulfillmentModule],
   controllers: [ShipmentController, PickupPointController],
 })
 export class ShippingApiModule {}

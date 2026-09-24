@@ -41,10 +41,12 @@
  *
  * @module apps/api/src/bench/application/types
  */
-import type {
-  ParcelReopenRefusal,
-  ParcelUndoRefusal,
-  ParcelVerificationRefusal,
+import {
+  FulfillmentCompletionRefusalValues,
+  FulfillmentCompletionUndoRefusalValues,
+  type ParcelReopenRefusal,
+  type ParcelUndoRefusal,
+  ParcelVerificationRefusalValues,
 } from '@openlinker/core/fulfillment';
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
 import type {
@@ -161,14 +163,61 @@ export interface BenchParcelView {
   readonly closedAt: string | null;
   /** The last verifier (D13). `null` while the box is open. */
   readonly packedByUserId: string | null;
+  /**
+   * When this parcel's invoice was FIRST printed (pack-bench completion), or `null` if never.
+   * A reprint never moves it — see `FulfillmentWorkView.invoicePrintedAt`.
+   */
+  readonly invoicePrintedAt: string | null;
+  /**
+   * Who this parcel is assigned to, or `null` for the unassigned pool (#3415).
+   *
+   * A RAW user id, matching `packedByUserId` and `completedByUserId` on this
+   * same view - masking is `bench-presence`'s own concern, and that is about
+   * live viewers rather than about attribution. Carried so a packer who loses
+   * a claim race can be shown who actually holds it now, rather than a
+   * refusal that names nobody.
+   */
+  readonly assignedToUserId: string | null;
+
+  /** The label sibling of `invoicePrintedAt` (pack-bench completion). Same reading. */
+  readonly labelPrintedAt: string | null;
+  /**
+   * When an operator declared this parcel finished and off the bench
+   * (pack-bench completion), or `null` until that act — a distinct, later completion instant
+   * from `closedAt`. See `POST :workId/completion`.
+   */
+  readonly completedAt: string | null;
   readonly lines: readonly BenchParcelLineView[];
 }
+
+/**
+ * Why a SCAN was refused (#3415).
+ *
+ * A WIDER union than core's own `ParcelVerificationRefusalValues`, the same
+ * shape and for the same reason as `BenchCompletionRefusalValues` below:
+ * `'not-claimable-by-viewer'` is the ADR-074 pre-assignment lock, which
+ * depends on WHO is scanning, and core's verification service never learns a
+ * viewer id.
+ *
+ * It exists because the lock used to be reported as `'not-packable'`, the
+ * reason a HELD or CANCELLED parcel gets - so a packer whose supervisor locked
+ * the box mid-pack was told *"this box must not be packed - take it back to
+ * the trolley"*. That box is perfectly fine; it simply is not theirs any more,
+ * and sending a good parcel back to the trolley is an operational error rather
+ * than a wording one.
+ */
+export const BenchVerificationRefusalValues = [
+  ...ParcelVerificationRefusalValues,
+  'not-claimable-by-viewer',
+] as const;
+
+export type BenchVerificationRefusal = (typeof BenchVerificationRefusalValues)[number];
 
 /** What a verification answers — the outcome, and the parcel as it now stands. */
 export interface BenchVerificationResultView {
   readonly outcome: 'verified' | 'deduplicated' | 'refused';
   /** `null` on anything but a refusal. */
-  readonly reason: ParcelVerificationRefusal | null;
+  readonly reason: BenchVerificationRefusal | null;
   /**
    * The whole parcel, re-projected.
    *
@@ -332,12 +381,48 @@ export interface BenchActivityEntryView {
 /**
  * Why a self-claim was refused (#3412, epic #3401).
  *
- * A NARROWER union than `BenchParcelRefusal`: `'not-claimable'` is the
- * ADR-074 lock (`isClaimableByViewer`), which has no counterpart on that
- * type — refusing a scan and refusing a claim are different questions with
- * partly-overlapping but not identical reasons.
+ * ## `'not-claimable'` and `'not-claimable-by-viewer'` name ONE state on
+ * purpose, and this is the one place that says why (#3438 review)
+ *
+ * Both come from `isClaimableByViewer` — the ADR-074 lock. `claimParcel`
+ * refuses with the first; `verifyUnit`, `reopenParcel` and `undoLastScan`
+ * refuse with the second. Two names for one condition is normally a smell, so
+ * the argument has to be somewhere, and this is it rather than a sentence on
+ * each.
+ *
+ * They are kept apart because the ACT differs and the packer's next step
+ * differs with it:
+ *
+ *   - refusing a CLAIM means *you cannot take this one* — the remedy is to
+ *     take a different parcel, and the copy says so
+ *     (`benchWorkCopy.tabs.takeNextLocked`: "That one is already assigned to
+ *     someone. Try a different one.");
+ *   - refusing an ACT on a parcel already open means *this box is not yours
+ *     to work* — the remedy is to put it down, and the copy says that instead
+ *     (`benchParcelCopy…notYours` / `…refusedLocked`).
+ *
+ * Collapsing them would make one of those two sentences wrong for the
+ * situation it appeared in, and "try a different one" told to a packer
+ * standing over an open box is the worse direction of the two.
+ *
+ * `bench-parcel-presentation.test.ts` asserts the two sentences stay
+ * DISTINGUISHABLE, so a later tidy that routes both to one string fails
+ * rather than quietly undoing this.
  */
-export const BenchClaimRefusalValues = ['held', 'cancelled', 'not-claimable'] as const;
+export const BenchClaimRefusalValues = [
+  'held',
+  'cancelled',
+  'not-claimable',
+  /**
+   * A peer claimed this parcel between the read that offered it and the write
+   * (#3415). NOT `'not-claimable'`: that is the ADR-074 lock, a standing fact
+   * about who this parcel is for, whereas this one is a race a packer can
+   * simply lose and retry past. Telling them "this is not yours" about a
+   * parcel that was theirs to take a moment ago sends them to a supervisor
+   * for nothing.
+   */
+  'claimed-by-someone-else',
+] as const;
 export type BenchClaimRefusal = (typeof BenchClaimRefusalValues)[number];
 
 /** What claiming ONE chosen parcel answers (#3412). */
@@ -348,15 +433,75 @@ export interface BenchClaimResultView {
 }
 
 /**
+ * Why a completion was refused (pack-bench completion).
+ *
+ * A WIDER union than core's own `FulfillmentCompletionRefusalValues`, the
+ * `BenchClaimRefusalValues` shape: `'not-claimable-by-viewer'` is the ADR-074
+ * pre-assignment lock, checked here rather than in core because it depends
+ * on WHO is asking — core's verification service never learns a viewer id.
+ */
+export const BenchCompletionRefusalValues = [
+  ...FulfillmentCompletionRefusalValues,
+  'not-claimable-by-viewer',
+] as const;
+
+export type BenchCompletionRefusal = (typeof BenchCompletionRefusalValues)[number];
+
+/** What declaring a parcel completed answers (pack-bench completion). */
+export interface BenchCompleteResultView {
+  readonly outcome: 'completed' | 'refused';
+  readonly reason: BenchCompletionRefusal | null;
+  readonly parcel: BenchParcelView;
+}
+
+/**
+ * Why taking back a completion was refused (#3415).
+ *
+ * A WIDER union than core's own `FulfillmentCompletionUndoRefusalValues`, the
+ * same shape and the same reason as its two siblings above:
+ * `'not-claimable-by-viewer'` is the ADR-074 lock, which depends on WHO is
+ * asking, and core never learns a viewer id.
+ */
+export const BenchUndoCompletionRefusalValues = [
+  ...FulfillmentCompletionUndoRefusalValues,
+  'not-claimable-by-viewer',
+] as const;
+
+export type BenchUndoCompletionRefusal = (typeof BenchUndoCompletionRefusalValues)[number];
+
+/**
+ * What taking back a completion answers.
+ *
+ * `'undone'`, never `'reopened'`: the box stays packed and every scan stands.
+ * Naming it after the reopen would invite a surface to render the two
+ * together, and they leave the parcel in different states.
+ */
+export interface BenchUndoCompletionResultView {
+  readonly outcome: 'undone' | 'refused';
+  readonly reason: BenchUndoCompletionRefusal | null;
+  readonly parcel: BenchParcelView;
+}
+
+/**
  * What "take next task" answers (#3412) — the server picks the top eligible
  * row from the ALREADY-sorted, already-eligibility-filtered worklist and
  * claims it. `'nothing-to-claim'` is a real, ordinary outcome (queue empty),
  * never an error — the worklist can legitimately have nothing this viewer
  * may take.
+ *
+ * `'refused'` is the THIRD outcome and is not the same fact. It means a
+ * candidate WAS picked and the write then said no — almost always because
+ * another packer claimed it in the moment between the read and the write. That
+ * used to collapse into `'nothing-to-claim'`, which told a packer their queue
+ * was empty while the rail in front of them was visibly full: the one reading
+ * that makes the button look broken. It carries the reason rather than a flag,
+ * so a surface can say which refusal it was without re-deriving it — and so a
+ * reason added to `BenchClaimRefusalValues` later reaches this path for free.
  */
 export type BenchClaimNextResultView =
   | { readonly outcome: 'claimed'; readonly parcel: BenchParcelView }
-  | { readonly outcome: 'nothing-to-claim' };
+  | { readonly outcome: 'nothing-to-claim' }
+  | { readonly outcome: 'refused'; readonly reason: BenchClaimRefusal };
 
 /** One packed parcel with no label on it (story F4). */
 export interface BenchUnlabelledParcelView {

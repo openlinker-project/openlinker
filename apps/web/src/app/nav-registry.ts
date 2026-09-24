@@ -39,22 +39,29 @@ export const BASE_NAV_GROUPS: readonly NavRegistryGroup[] = [
       { to: '/customers', label: 'Customers', countKey: 'customers' },
       { to: '/listings', label: 'Listings', countKey: 'listings' },
       { to: '/shipments', label: 'Shipments' },
-      // No `countKey`: the #2406 worklist read exposes no counts endpoint the
+      // ONE entry, since the staffing board and the worklist merged into one
+      // screen. No `countKey`: the #2406 read exposes no counts endpoint the
       // nav could read, and a badge is worse absent than wrong (the `/returns`
-      // precedent one line down).
-      { to: '/fulfillment', label: 'Fulfilment' },
-      // Permission-gated (#3340): neither `GET /users/packers` nor the
-      // assignment PATCH actually requires `orders:write` — both are
-      // `@Roles('admin', 'operator')`. `orders:write` is a deliberate PROXY
-      // for that role set, correct only because `ROLE_PERMISSIONS` grants it
-      // to exactly admin + operator today, the same permission the worklist
-      // page above resolves its own write gate from. There is no
-      // `fulfillment:*` permission a reader could go looking for instead.
-      {
-        to: '/fulfillment/assign',
-        label: 'Assign packing work',
-        requiresPermission: 'orders:write',
-      },
+      // precedent below). Permission-gated (#3340, wording corrected at #3368):
+      // neither `GET /users/packers` nor the assignment `PATCH` actually
+      // requires `orders:write` — both are `@Roles('admin', 'operator')`.
+      // `orders:write` is a deliberate PROXY for that role set, correct only
+      // because `ROLE_PERMISSIONS` grants it to exactly admin + operator
+      // today. There is no `fulfillment:*` permission a reader could go
+      // looking for instead. A `viewer` shown this entry would 403 on the
+      // first request the screen makes.
+      { to: '/fulfillment', label: 'Fulfilment', requiresPermission: 'orders:write' },
+      // The bench itself (#2413) had no way in but a typed URL. A packer still
+      // reaches it that way — they get no sidebar at all, since `/bench` renders
+      // outside `AuthenticatedAppLayout` on purpose — but an admin or operator
+      // checking the floor had to know the path by heart.
+      //
+      // Gated on `orders:write`, held by exactly admin + operator, for the same
+      // reason as the entry above: the bench's own routes are
+      // `@Roles('admin', 'operator', 'packer')`, and `ROLE_PERMISSIONS.packer`
+      // is `[]`, so no permission can name all three. A `viewer` shown this
+      // entry would 403 on the first request the page makes.
+      { to: '/bench', label: 'Pack bench', requiresPermission: 'orders:write' },
       // No `countKey`: the #2334 returns contract exposes no counts endpoint
       // the nav could read, and a badge is worse absent than wrong.
       { to: '/returns', label: 'Returns' },

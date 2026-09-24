@@ -148,6 +148,12 @@ describe('Fulfillment Work Schema Integration', () => {
         'assignmentAttempt integer NOT NULL DEFAULT 0',
         'cancellationReason character varying(64) NULL',
         'cancelledAt timestamp with time zone NULL',
+        // The completion pair - the packer saying "this box is off my bench",
+        // which is a different fact from `parcelClosedAt` below (the box
+        // shutting on its own count) and from `status` (the executor finishing
+        // the job). Three instants, three subjects, no overlap.
+        'completedAt timestamp with time zone NULL',
+        'completedByUserId uuid NULL',
         'createdAt timestamp with time zone NOT NULL DEFAULT now()',
         'deliveryMethod text NULL',
         'dispatchRelayedAt timestamp with time zone NULL',
@@ -157,6 +163,11 @@ describe('Fulfillment Work Schema Integration', () => {
         'expeditedAt timestamp with time zone NULL',
         'externalWorkId text NULL',
         'id text NOT NULL',
+        // Stamped only by the bench's own print routes, never by the open
+        // `/shipments/:id/label` read - the distinction that stops a viewer
+        // opening a PDF from marking the label printed.
+        'invoicePrintedAt timestamp with time zone NULL',
+        'labelPrintedAt timestamp with time zone NULL',
         'locationId text NULL',
         'orderId text NOT NULL',
         // #2413, ADR-071 decision 2. `uuid` for the user id (the order-grain

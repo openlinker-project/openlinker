@@ -54,6 +54,20 @@ export const BenchWorkAssignmentStateValues = ['mine', 'unassigned', 'assigned-o
 export type BenchWorkAssignmentState = (typeof BenchWorkAssignmentStateValues)[number];
 
 /** One parcel on the bench's list. */
+/**
+ * One product line as the RAIL shows it (#3415) - deliberately narrower than
+ * the parcel pane's own line, which carries scan state, barcodes and
+ * attributes a packer needs only once the box is open.
+ */
+export interface BenchWorkItemView {
+  /** `null` when the variant is not in the catalogue. Never a placeholder. */
+  readonly name: string | null;
+  /** How many of this line go in the box. */
+  readonly quantity: number;
+  /** The parent product's image, or `null`. Same proxy path the pane uses. */
+  readonly imageUrl: string | null;
+}
+
 export interface BenchWorkView {
   readonly workId: string;
   /** The optimistic token. Required on any action; a stale one answers 409. */
@@ -85,6 +99,24 @@ export interface BenchWorkView {
   readonly lineCount: number;
   /** Units a packer must confirm against the box. Never a readiness claim. */
   readonly unitsToVerify: number;
+  /**
+   * What is IN the box, for the rail row (#3415).
+   *
+   * A packer picking their next parcel reads what they will be handling, not
+   * an order reference - `ol_fwork_e2e_09` and a random uuid tell them nothing
+   * about which trolley to walk to. So the row leads with these and keeps the
+   * reference underneath.
+   *
+   * CAPPED, and `lineCount` above stays the honest total: a twelve-line parcel
+   * must not turn one rail row into a screenful. A surface renders these and
+   * then says how many more there are, rather than pretending this is all of
+   * them.
+   *
+   * `name` is `null` when the variant is not in the catalogue - the same
+   * honest absence the parcel pane reports, never a placeholder that reads
+   * like a product.
+   */
+  readonly items: readonly BenchWorkItemView[];
   readonly state: BenchWorkState;
   /** Why the parcel is held, when it is. `null` on every other state. */
   readonly holdReason: HoldReason | null;
@@ -113,6 +145,20 @@ export interface BenchWorkView {
    * except one locked to a DIFFERENT packer with `selfServeEligible: false`.
    */
   readonly claimable: boolean;
+  /**
+   * When an operator declared this parcel finished and off the bench
+   * (pack-bench completion), or `null` until that act.
+   *
+   * On the allowlist so a consumer CAN move a completed parcel out of the
+   * "to pack" queue on its own — the same reading the module note above
+   * already applies to `parcelClosedAt`, which this list has never filtered
+   * on: a closed-but-not-yet-completed parcel stays selectable by
+   * `status`/`requestStatus` today, so a completed one is deliberately
+   * treated the same way here rather than removed by a new SQL filter. See
+   * `BenchWorkService`'s own module docblock for the fuller reasoning; this
+   * field is what makes the decision reversible on the reading side alone.
+   */
+  readonly completedAt: string | null;
 }
 
 /**

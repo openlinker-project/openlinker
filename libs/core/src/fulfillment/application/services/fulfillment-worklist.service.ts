@@ -56,6 +56,7 @@ import {
   isOperatorInvocableAction,
   OPERATOR_INVOCABLE_ACTIONS,
   type ApplyFulfillmentWorkActionInput,
+  type ClaimFulfillmentWorkAssignmentResult,
   type FulfillmentWorkPageView,
   type FulfillmentWorkView,
   type OperatorInvocableAction,
@@ -156,43 +157,127 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
     // discipline), applied sequentially rather than in one transaction: both
     // are advisory staffing facts, not a single atomic decision, and neither
     // write's success depends on the other's.
+    //
+    // #3340 second follow-up: `expectedVersion` is threaded FORWARD rather
+    // than re-read between the two writes or merged into one statement. Each
+    // write bumps `version` by exactly 1 in SQL (never from a caller's read —
+    // the table's own invariant), so once the FIRST write is known to have
+    // applied, the SECOND write's guard is deterministically
+    // `expectedVersion + 1` — no extra query, and a caller that supplied both
+    // fields in one PATCH is never failed against the version its OWN first
+    // write just produced. A write that did NOT apply leaves `expectedVersion`
+    // unadvanced, so the second write (if any) is still guarded against the
+    // token the caller actually holds.
+    let expectedVersion = input.expectedVersion;
+
     if (input.assignedToUserId !== undefined) {
-      if (input.assignedToUserId === null) {
-        await this.works.clearAssignment(input.workId);
-      } else {
-        await this.works.assignToPacker(input.workId, input.assignedToUserId);
+      const applied =
+        input.assignedToUserId === null
+          ? await this.works.clearAssignment(input.workId, expectedVersion)
+          : await this.works.assignToPacker(
+              input.workId,
+              input.assignedToUserId,
+              expectedVersion
+            );
+      if (applied) {
+        if (expectedVersion !== undefined) expectedVersion += 1;
+      } else if (expectedVersion !== undefined) {
+        // Could be the ordinary no-op this axis already tolerated (row
+        // missing, or `clearAssignment` on an already-unassigned row) OR a
+        // genuine lost-update conflict — only a re-read tells them apart,
+        // the `applyAction` / `explainRefusal` convention.
+        await this.explainAssignmentRefusal(input.workId, expectedVersion);
       }
     }
     if (input.selfServeEligible !== undefined) {
       const applied = await this.works.setSelfServeEligible(
         input.workId,
-        input.selfServeEligible
+        input.selfServeEligible,
+        expectedVersion
       );
-      // `false` on the `false` (lock) direction is NOT the ordinary no-op the
-      // rest of this axis tolerates: `setSelfServeEligible` guards it on
-      // `assignedToUserId IS NOT NULL` (ADR-074's "exclusive to nobody" is
-      // unrepresentable), so a refusal here means the caller tried to lock an
-      // unassigned parcel. Read off the RE-READ, never guessed from `applied`
-      // alone, so a benign race (the work vanished between the write and this
-      // check) still reports "not found" rather than a misleading exclusivity
-      // refusal.
-      if (!applied && input.selfServeEligible === false) {
+      if (!applied) {
+        // A `false` here has two INDEPENDENT causes and they must not be
+        // conflated: a version conflict (only possible when `expectedVersion`
+        // was supplied, #3340 second follow-up) and, on the `false` (lock)
+        // direction only, the ADR-074 "exclusive to nobody" refusal
+        // `setSelfServeEligible` guards on `assignedToUserId IS NOT NULL`. Read
+        // off ONE re-read, never guessed from `applied` alone, so a benign
+        // race between the failed write and this check can only ever make the
+        // report MORE conservative (a version conflict or "not found" instead
+        // of the exclusivity refusal), never turn a real refusal into a false
+        // success. The version check runs first, mirroring
+        // `explainAssignmentRefusal`'s own precedence for the other axis: the
+        // row having moved since the caller's read is the more fundamental
+        // disagreement, and diagnosing "unassigned" against a state the
+        // caller no longer holds a token for would be answering the wrong
+        // question.
         const now = await this.works.findById(input.workId);
         if (now === null) throw new FulfillmentWorkNotFoundError(input.workId);
-        if (now.assignedToUserId === null) {
+        if (expectedVersion !== undefined && now.version !== expectedVersion) {
+          throw new FulfillmentWorkVersionConflictError(
+            input.workId,
+            expectedVersion,
+            now.version,
+            this.exposedActions(now, await this.works.listActiveHolds(input.workId))
+          );
+        }
+        if (input.selfServeEligible === false && now.assignedToUserId === null) {
           throw new ExclusiveAssignmentRequiresPackerError(input.workId);
         }
       }
     }
 
-    // The boolean outcomes above are not inspected individually: `false` from
-    // any of the three writers means only "the work object no longer exists"
-    // (`assignToPacker` / `setSelfServeEligible`) or "already in that state"
-    // (`clearAssignment`, an ordinary no-op) — this single re-read after the
-    // fact distinguishes both cases at once and is the ONLY place that must.
+    // The boolean outcomes above are not inspected individually beyond the
+    // conflict check just performed: `false` with no `expectedVersion` means
+    // only "the work object no longer exists" (`assignToPacker` /
+    // `setSelfServeEligible`) or "already in that state" (`clearAssignment`,
+    // an ordinary no-op) — this single re-read after the fact distinguishes
+    // both cases at once and is the ONLY place that must, for a caller that
+    // supplied no token at all.
     const work = await this.works.findById(input.workId);
     if (work === null) throw new FulfillmentWorkNotFoundError(input.workId);
     return this.toView(work, await this.works.listActiveHolds(input.workId));
+  }
+
+  /**
+   * Tell a lost-update conflict apart from the ordinary no-op the assignment
+   * writers already tolerated (#3340 second follow-up) — `explainRefusal`'s
+   * shape, narrowed to this axis. A missing row is left for `updateAssignment`'s
+   * own final re-read to report as `FulfillmentWorkNotFoundError`; this method
+   * only ever throws the version conflict, never anything else.
+   */
+  private async explainAssignmentRefusal(
+    workId: string,
+    expectedVersion: number
+  ): Promise<void> {
+    const now = await this.works.findById(workId);
+    if (now === null) return;
+    if (now.version !== expectedVersion) {
+      throw new FulfillmentWorkVersionConflictError(
+        workId,
+        expectedVersion,
+        now.version,
+        this.exposedActions(now, await this.works.listActiveHolds(workId))
+      );
+    }
+    // Version matched, so the guard's own STATE precondition is what refused
+    // — an ordinary, pre-existing no-op (nothing to clear, row gone since).
+  }
+
+  async claimAssignment(
+    workId: string,
+    userId: string
+  ): Promise<ClaimFulfillmentWorkAssignmentResult> {
+    const claimed = await this.works.claimAssignment(workId, userId);
+
+    // The FRESH read either way — a successful claim's own effect, or, on a
+    // lost race, the row the WINNING claim just wrote. Never the pre-write
+    // object the caller may be holding: that staleness is exactly what let
+    // two concurrent claims on one unassigned parcel both report `claimed`
+    // before this method existed.
+    const work = await this.works.findById(workId);
+    if (work === null) throw new FulfillmentWorkNotFoundError(workId);
+    return { claimed, work: this.toView(work, await this.works.listActiveHolds(workId)) };
   }
 
   /**
@@ -364,6 +449,7 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
       deliveryMethod: work.deliveryMethod,
       assignedConnectionId: work.assignedConnectionId,
       assignedToUserId: work.assignedToUserId,
+      unassignedSince: work.unassignedSince?.toISOString() ?? null,
       selfServeEligible: work.selfServeEligible,
       status: work.status,
       requestStatus: work.requestStatus,
@@ -375,6 +461,10 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
       expeditedAt: work.expeditedAt,
       parcelClosedAt: work.parcelClosedAt,
       packedByUserId: work.packedByUserId,
+      invoicePrintedAt: work.invoicePrintedAt,
+      labelPrintedAt: work.labelPrintedAt,
+      completedAt: work.completedAt,
+      completedByUserId: work.completedByUserId,
       createdAt: work.createdAt,
       updatedAt: work.updatedAt,
       lines: work.lines.map((line) => ({

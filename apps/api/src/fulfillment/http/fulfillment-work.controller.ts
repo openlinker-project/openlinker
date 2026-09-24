@@ -62,14 +62,20 @@ import {
   type FulfillmentWorkView,
   type IFulfillmentWorklistService,
 } from '@openlinker/core/fulfillment';
+import { LOCATION_SERVICE_TOKEN, type ILocationService } from '@openlinker/core/inventory';
 import { ORDER_RECORD_SERVICE_TOKEN, type IOrderRecordService, type OrderRecord } from '@openlinker/core/orders';
+import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 
 // Value imports (not `import type`): the @CurrentUser() param type feeds
 // decorator metadata, so erasing it breaks the emitted signature.
 import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
-import { readCarrierName, readMaskedBuyerName } from '../application/fulfillment-work-order-facts';
+import {
+  readCarrierName,
+  readMaskedBuyerName,
+  readOrderReferenceOrNull,
+} from '../application/fulfillment-work-order-facts';
 import { ApplyFulfillmentWorkActionDto } from './dto/apply-fulfillment-work-action.dto';
 import {
   FulfillmentWorkActionNotLegalResponseDto,
@@ -80,6 +86,18 @@ import {
 import { ListFulfillmentWorksQueryDto } from './dto/list-fulfillment-works-query.dto';
 import { UpdateFulfillmentWorkAssignmentDto } from './dto/update-fulfillment-work-assignment.dto';
 
+/**
+ * The page's human-readable facts, resolved once (#3426).
+ *
+ * Maps, never arrays: a miss is `undefined` and reads as `null`, so nothing
+ * positionally zips a batched result against the ids it was asked for.
+ */
+interface WorklistFacts {
+  readonly orderById: Map<string, OrderRecord>;
+  readonly locationNameById: Map<string, string>;
+  readonly productNameByVariantId: Map<string, string | null>;
+}
+
 @ApiBearerAuth()
 @ApiTags('fulfillment')
 @Controller('fulfillment/works')
@@ -88,7 +106,11 @@ export class FulfillmentWorkController {
     @Inject(FULFILLMENT_WORKLIST_SERVICE_TOKEN)
     private readonly worklist: IFulfillmentWorklistService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
-    private readonly orders: IOrderRecordService
+    private readonly orders: IOrderRecordService,
+    @Inject(LOCATION_SERVICE_TOKEN)
+    private readonly locations: ILocationService,
+    @Inject(PRODUCTS_SERVICE_TOKEN)
+    private readonly products: IProductsService
   ) {}
 
   @Get()
@@ -115,17 +137,57 @@ export class FulfillmentWorkController {
   }
 
   /**
-   * One batched order read for a page (#3425) — never one per row. `Map`
-   * built from a single `findByIds` call, so widening this response never
-   * turns a list read into an N+1.
+   * Every human-readable fact this board renders, resolved for a WHOLE PAGE in
+   * a constant number of batched reads (#3425 / #3426) — never one per row.
+   *
+   * Four queries, whatever the page size, and the count is pinned by a spec
+   * (`resolves a page of N works in a CONSTANT number of reads`) rather than
+   * left as an intention. The #2083 `getEarliestOrderDateByConnection` /
+   * #1713 `getLatestInvoicesForOrders` rule: one query per concern across all
+   * the page's ids.
+   *
+   * Three of the four run concurrently; products must follow variants, because
+   * `ProductVariant` carries no name of its own — the name is on `Product`, so
+   * the variant read is what supplies the product ids (the same two-step the
+   * bench's `describeLines` takes).
+   *
+   * Every lookup is a `Map` keyed off the result, and an absent id reads as
+   * `null`. Nothing here positionally zips a result array against its input.
    */
-  private async loadOrders(
-    works: readonly FulfillmentWorkView[]
-  ): Promise<Map<string, OrderRecord>> {
+  private async loadFacts(works: readonly FulfillmentWorkView[]): Promise<WorklistFacts> {
     const orderIds = [...new Set(works.map((w) => w.orderId))];
-    if (orderIds.length === 0) return new Map();
-    const orders = await this.orders.findByIds(orderIds);
-    return new Map(orders.map((order) => [order.internalOrderId, order]));
+    const locationIds = [
+      ...new Set(works.map((w) => w.locationId).filter((id): id is string => id !== null)),
+    ];
+    const variantIds = [
+      ...new Set(works.flatMap((w) => w.lines.map((line) => line.productVariantId))),
+    ];
+
+    const [orders, locations, variants] = await Promise.all([
+      orderIds.length === 0 ? Promise.resolve([]) : this.orders.findByIds(orderIds),
+      locationIds.length === 0
+        ? Promise.resolve([])
+        : this.locations.getLocationsByIds(locationIds),
+      variantIds.length === 0 ? Promise.resolve([]) : this.products.getVariantsByIds(variantIds),
+    ]);
+
+    const productIds = [...new Set(variants.map((variant) => variant.productId))];
+    const products =
+      productIds.length === 0 ? [] : await this.products.getProductsByIds(productIds);
+
+    const productById = new Map(products.map((product) => [product.id, product]));
+    return {
+      orderById: new Map(orders.map((order) => [order.internalOrderId, order])),
+      locationNameById: new Map(locations.map((location) => [location.id, location.name])),
+      // Collapsed to the one fact a line renders, so nothing downstream can
+      // reach a variant or a product field this response has not allowlisted.
+      productNameByVariantId: new Map(
+        variants.map((variant) => [
+          variant.id,
+          productById.get(variant.productId)?.name ?? null,
+        ])
+      ),
+    };
   }
 
   @Get(':workId')
@@ -136,8 +198,7 @@ export class FulfillmentWorkController {
   async get(@Param('workId') workId: string): Promise<FulfillmentWorkResponseDto> {
     try {
       const work = await this.worklist.get(workId);
-      const orders = await this.loadOrders([work]);
-      return this.toDto(work, orders.get(work.orderId));
+      return this.toDto(work, await this.loadFacts([work]));
     } catch (error) {
       throw this.toHttp(error);
     }
@@ -198,8 +259,7 @@ export class FulfillmentWorkController {
         // the audit column exists precisely to answer "who suspended this".
         actorUserId: user.id,
       });
-      const orders = await this.loadOrders([work]);
-      return this.toDto(work, orders.get(work.orderId));
+      return this.toDto(work, await this.loadFacts([work]));
     } catch (error) {
       throw this.toHttp(error);
     }
@@ -211,12 +271,20 @@ export class FulfillmentWorkController {
     summary: "A supervisor's staffing decision for one parcel",
     description:
       "Pre-assign, reassign or clear a packer, and/or set whether other packers may still " +
-      "work it. NOT gated by the optimistic token — ADR-074 places this outside the " +
-      "authority-matrix legality this surface's actions enforce.",
+      'work it. ADR-074 places this outside the authority-matrix LEGALITY `applyAction`\'s ' +
+      "actions enforce — which system may act — but that says nothing about a lost-update " +
+      'guard, which is an orthogonal concern: an OPTIONAL `expectedVersion` protects a ' +
+      "caller's own read from being silently overwritten by a peer's write it never saw. " +
+      'A mismatch answers 409 with the current version and a refreshed action set, the same ' +
+      'shape every other guarded action on this surface already answers with.',
   })
   @ApiResponse({ status: 200, type: FulfillmentWorkResponseDto })
   @ApiResponse({ status: 400, description: 'Neither field was supplied' })
   @ApiResponse({ status: 404, description: 'No such fulfilment task' })
+  @ApiResponse({
+    status: 409,
+    description: 'expectedVersion was supplied and somebody else moved the work first',
+  })
   async updateAssignment(
     @Param('workId') workId: string,
     @Body() body: UpdateFulfillmentWorkAssignmentDto
@@ -226,9 +294,9 @@ export class FulfillmentWorkController {
         workId,
         assignedToUserId: body.assignedToUserId,
         selfServeEligible: body.selfServeEligible,
+        expectedVersion: body.expectedVersion,
       });
-      const orders = await this.loadOrders([work]);
-      return this.toDto(work, orders.get(work.orderId));
+      return this.toDto(work, await this.loadFacts([work]));
     } catch (error) {
       throw this.toHttp(error);
     }
@@ -302,24 +370,32 @@ export class FulfillmentWorkController {
   }
 
   private async toPageDto(page: FulfillmentWorkPageView): Promise<FulfillmentWorkPageResponseDto> {
-    const orders = await this.loadOrders(page.works);
+    // ONE resolution for the whole page, then a pure map per row.
+    const facts = await this.loadFacts(page.works);
     return {
-      works: page.works.map((work) => this.toDto(work, orders.get(work.orderId))),
+      works: page.works.map((work) => this.toDto(work, facts)),
       total: page.total,
       limit: page.limit,
       offset: page.offset,
     };
   }
 
-  private toDto(view: FulfillmentWorkView, order: OrderRecord | undefined): FulfillmentWorkResponseDto {
+  private toDto(view: FulfillmentWorkView, facts: WorklistFacts): FulfillmentWorkResponseDto {
+    const order: OrderRecord | undefined = facts.orderById.get(view.orderId);
     // Field-by-field, never a spread — see the DTO module docblock.
     return {
       id: view.id,
       orderId: view.orderId,
+      // #3426 — the source's own reference. `null`, not the internal id: see
+      // `readOrderReferenceOrNull` for why this board declines that fallback.
+      orderReference: readOrderReferenceOrNull(order),
       locationId: view.locationId,
+      locationName:
+        view.locationId === null ? null : (facts.locationNameById.get(view.locationId) ?? null),
       deliveryMethod: view.deliveryMethod,
       assignedConnectionId: view.assignedConnectionId,
       assignedToUserId: view.assignedToUserId,
+      unassignedSince: view.unassignedSince,
       selfServeEligible: view.selfServeEligible,
       status: view.status,
       requestStatus: view.requestStatus,
@@ -342,6 +418,10 @@ export class FulfillmentWorkController {
         id: line.id,
         orderLineId: line.orderLineId,
         productVariantId: line.productVariantId,
+        // #3426 — the parent product's name. `null`, never a placeholder that
+        // reads like a name: a variant absent from the catalogue is a fact an
+        // operator can act on, and a fabricated label is not.
+        productName: facts.productNameByVariantId.get(line.productVariantId) ?? null,
         totalQuantity: line.totalQuantity,
         fulfilledQuantity: line.fulfilledQuantity,
         cancelledQuantity: line.cancelledQuantity,

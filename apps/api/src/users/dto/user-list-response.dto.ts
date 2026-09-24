@@ -18,6 +18,17 @@ export class UserSummaryDto {
   @ApiProperty({ enum: UserStatusValues }) status!: UserStatus;
   @ApiProperty() createdAt!: Date;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "This user's own bench/printer label (#3404), e.g. \"Zebra ZD420 · " +
+      'Bench 3\", or null if unset. Operator configuration — see ' +
+      "PATCH /users/:id/pack-station-label for the write side and its own " +
+      'note on why this carries no authentication weight (ADR-071).',
+  })
+  packStationLabel!: string | null;
+
   static fromDomain(user: User): UserSummaryDto {
     const dto = new UserSummaryDto();
     dto.id = user.id;
@@ -26,6 +37,7 @@ export class UserSummaryDto {
     dto.role = user.role;
     dto.status = user.status;
     dto.createdAt = user.createdAt;
+    dto.packStationLabel = user.packStationLabel;
     return dto;
   }
 }

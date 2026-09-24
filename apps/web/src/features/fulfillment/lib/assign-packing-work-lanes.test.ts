@@ -9,7 +9,14 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { groupTasksByPacker } from './assign-packing-work-lanes';
+import {
+  groupTasksByPacker,
+  laneLoadPercent,
+  laneLoadTone,
+  lightestLoadLaneIds,
+  UNASSIGNED_LANE_ID,
+  type AssignPackingWorkLane,
+} from './assign-packing-work-lanes';
 import type { FulfillmentTask } from '../api/fulfillment.types';
 import type { PackerSummary } from '../../users';
 
@@ -39,8 +46,8 @@ function task(overrides: Partial<FulfillmentTask> = {}): FulfillmentTask {
   };
 }
 
-const packerA: PackerSummary = { id: 'u_a', username: 'packer-a' };
-const packerB: PackerSummary = { id: 'u_b', username: 'packer-b' };
+const packerA: PackerSummary = { id: 'u_a', username: 'packer-a', online: true, stationLabel: null };
+const packerB: PackerSummary = { id: 'u_b', username: 'packer-b', online: true, stationLabel: null };
 
 describe('groupTasksByPacker', () => {
   it('puts the unassigned lane first even when it is empty', () => {
@@ -83,5 +90,66 @@ describe('groupTasksByPacker', () => {
     expect(offRoster).toBeDefined();
     expect(offRoster?.packer).toBeNull();
     expect(offRoster?.tasks.map((t) => t.id)).toEqual(['a']);
+  });
+});
+
+// ── #3427 — load bar + "lightest load" tag ──────────────────────────────
+describe('laneLoadPercent', () => {
+  it('is 20% per task, capped at 100%', () => {
+    expect(laneLoadPercent(0)).toBe(0);
+    expect(laneLoadPercent(2)).toBe(40);
+    expect(laneLoadPercent(4)).toBe(80);
+    expect(laneLoadPercent(5)).toBe(100);
+    expect(laneLoadPercent(9)).toBe(100);
+  });
+});
+
+describe('laneLoadTone', () => {
+  it('is normal under 3, busy from 3, over from 5', () => {
+    expect(laneLoadTone(0)).toBe('normal');
+    expect(laneLoadTone(2)).toBe('normal');
+    expect(laneLoadTone(3)).toBe('busy');
+    expect(laneLoadTone(4)).toBe('busy');
+    expect(laneLoadTone(5)).toBe('over');
+    expect(laneLoadTone(9)).toBe('over');
+  });
+});
+
+function lane(id: string, taskCount: number): AssignPackingWorkLane {
+  return {
+    id,
+    packer:
+      id === UNASSIGNED_LANE_ID ? null : { id, username: id, online: true, stationLabel: null },
+    tasks: Array.from({ length: taskCount }, (_, i) => task({ id: `${id}-${String(i)}` })),
+  };
+}
+
+describe('lightestLoadLaneIds', () => {
+  it('tags the single packer lane with the strictly lowest count', () => {
+    const lanes = [lane(UNASSIGNED_LANE_ID, 3), lane('u_a', 0), lane('u_b', 2)];
+    expect(lightestLoadLaneIds(lanes)).toEqual(new Set(['u_a']));
+  });
+
+  it('tags every tied lane at the minimum, never an arbitrary one', () => {
+    const lanes = [lane('u_a', 1), lane('u_b', 1), lane('u_c', 3)];
+    expect(lightestLoadLaneIds(lanes)).toEqual(new Set(['u_a', 'u_b']));
+  });
+
+  it('never tags the unassigned lane, whatever its count', () => {
+    const lanes = [lane(UNASSIGNED_LANE_ID, 0), lane('u_a', 1), lane('u_b', 2)];
+    expect(lightestLoadLaneIds(lanes).has(UNASSIGNED_LANE_ID)).toBe(false);
+  });
+
+  it('tags nothing when every packer lane carries the same load', () => {
+    const lanes = [lane('u_a', 2), lane('u_b', 2)];
+    expect(lightestLoadLaneIds(lanes)).toEqual(new Set());
+  });
+
+  it('tags nothing with fewer than two packer lanes — no comparison to make', () => {
+    expect(lightestLoadLaneIds([lane('u_a', 0)])).toEqual(new Set());
+    expect(lightestLoadLaneIds([lane(UNASSIGNED_LANE_ID, 5), lane('u_a', 0)])).toEqual(
+      new Set()
+    );
+    expect(lightestLoadLaneIds([])).toEqual(new Set());
   });
 });

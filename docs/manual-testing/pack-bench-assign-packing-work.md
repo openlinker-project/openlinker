@@ -18,6 +18,18 @@ set up first — see **Prerequisites** below.
 
 ## 1. Automated specs
 
+> **What has actually been run, as of the #3386 review.** The two Playwright
+> specs below are **written and not yet executed against a live stack** — the
+> table that follows describes coverage that is asserted rather than
+> demonstrated, and should be read that way until somebody runs them. What HAS
+> run live, repeatedly, is `apps/e2e/sweep-fulfillment-states.mjs`: 37 states
+> across both screens against a real database, real InPost labels and a real
+> inFakt invoice, including the scan that closes a box, a claim, "take next
+> task", and a packed parcel leaving the queue. Three of its states were
+> deliberately broken and re-run to prove they can fail.
+>
+> This note stays until the two specs below have a green live run of their own.
+
 - **Pack bench**: `apps/e2e/tests/bench/pack-bench-redesign.spec.ts`
 - **Assign Packing Work**: `apps/e2e/tests/bench/assign-packing-work.spec.ts`
 

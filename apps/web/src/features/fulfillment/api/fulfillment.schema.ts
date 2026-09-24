@@ -52,8 +52,25 @@ export const fulfillmentTaskSchema = z.object({
   orderId: z.string(),
   locationId: nullableString,
   deliveryMethod: nullableString,
+  // #3401 — the human facts the assign board renders. Nullish, so the board
+  // keeps parsing against an API that has not shipped them yet and falls back
+  // to the work's own id rather than failing the whole read.
+  orderReference: nullableString,
+  // `buyerNameMasked`, not `buyerName`: the field says on the wire that the
+  // value has been through `maskName` server-side, so no reader can mistake
+  // it for the buyer's own name.
+  buyerNameMasked: nullableString,
+  dispatchByAt: nullableString,
+  carrierName: nullableString,
+  locationName: nullableString,
   assignedConnectionId: nullableString,
   assignedToUserId: nullableString,
+  // #3424 — nullish, not `.optional()`: an API that predates the column
+  // sends nothing, and an API that carries it sends `null` on an assigned
+  // row. Both normalise to `null`, which the card reads as "render nothing"
+  // — never as a zero-length wait, per the module docblock's `.nullish()`
+  // rule.
+  unassignedSince: nullableString,
   selfServeEligible: z.boolean(),
   status: z.string(),
   requestStatus: z.string(),

@@ -596,7 +596,69 @@ The system is organized into the following core bounded contexts:
 - **The #2402 unlinkable branch-1 gap does NOT become reachable here, by construction.** This read model keys on `(shipmentId, orderId, lineId)` and joins on `orderId`; it never consults `fulfillmentWorkId`, so an unlinked shipment contributes its quantities exactly like a linked one. Keying the derivation on the WORK would have inherited the gap wholesale — every such shipment would silently contribute zero. The gap remains open and remains #2402's.
 - **Not shipped in this slice**: the operator-facing FE line panel (issue obligation 4, not one of the six acceptance criteria). The read model is not written-and-never-read regardless — the rollup consumes the derived coverage on every recompute.
 
-### 28. Paginated reads: the total is a second stage
+### 28. The pack bench and the Assign Packing Work board
+
+*See [ADR-071](./architecture/adrs/071-pack-station-principal.md) for why the bench has no
+principal of its own and [ADR-074](./architecture/adrs/074-fulfillment-work-pre-assignment.md) for
+why an assignment is advisory rather than exclusive.*
+
+Two operator surfaces over one aggregate. The **bench** (`/bench`, `apps/api/src/bench`,
+`apps/web/src/features/bench`) is what a packer stands at: a rail of the work they may pack, one
+parcel open at a time, and a scan field. The **board** (`/fulfillment`,
+`apps/api/src/fulfillment/http`, `apps/web/src/features/fulfillment`) is what a supervisor uses to
+put a parcel in front of a named packer before they reach for it. Both read `FulfillmentWork`
+(§ 26) and neither owns state of its own.
+
+- **The bench has no principal, so the ROUTES are what narrow it (ADR-071).** There is no station
+  token, no PIN and no badge; a packer is an ordinary signed-in user, and the only thing making
+  their session narrower than any other is the `packer` role plus the `@Roles('admin', 'operator',
+  'packer')` decorators naming it. That is why `ROLE_PERMISSIONS.packer` held **nothing at all**
+  until #3424, and why the one permission it holds now (`bench:write`) exists solely because the
+  bench's two write CONTROLS are rendered client-side and a client-side gate needs something to
+  read. Before that, `Claim this parcel` and `Take next task` gated on `orders:write` and so never
+  rendered for the one role that would press them, while the API behind them accepted a packer
+  perfectly well - the UI hiding what the route allowed, which is the same class of defect as a UI
+  offering what the route refuses.
+- **`apps/api/src/auth/packer-exclusion.spec.ts` is the authority for what a packer can reach**,
+  route by route, and for what each projection carries. **ADR-062 is not**, and must not be cited
+  as though it were: its subject is what crosses to a PLUGIN (`RoutingInput`, `HostServices`, the
+  router port), not what OpenLinker's own HTTP surfaces disclose to a signed-in operator. Three
+  places in this stack made that citation and one of them used it to assert "no total, no price"
+  about a projection that had carried both since #3409 (ADR-062 now states its own scope).
+- **Two PII disclosures are deliberate and each has a reason on the surface it appears.** The
+  bench's parcel projection carries the buyer's NAME, the order TOTAL and currency, the CARRIER and
+  the SHIP-BY deadline - every one of them printed on the documents the packer is about to put in
+  the box, so withholding them from the screen protected nothing while costing the packer the check
+  that catches a wrong parcel. The board carries the buyer's name **masked** server-side (`A.
+  Kowalska`), which is what lets a supervisor tell two parcels apart without handing a temp the
+  customer register; the un-masked value is never resolved in the DTO mapper, so it does not exist
+  on that path for a later change to leak. Neither surface reaches an address, an email or a phone
+  number.
+- **A product photo is proxied, never linked, and the proxy is a network boundary.**
+  `GET /products/:id/images/:index` fetches the picture through OpenLinker, because the stored url
+  is the one the CATALOGUE SYNC used - on every Docker-compose install that is an internal host a
+  browser cannot resolve (measured: 71 of 71 products with images on the demo database). The caller
+  names an INDEX and never a url, which bounds the reachable set to what the operator's own sync
+  wrote - but the WooCommerce mapper writes `i.src` VERBATIM from the shop's response, so a hostile
+  shop chooses part of that set. Hence `isProductImageUrlAllowed`: link-local and the cloud
+  metadata hostnames refused **on every redirect hop** (followed by hand - `redirect: 'follow'`
+  checks the first url and then goes wherever the shop points), while RFC1918 and loopback stay
+  allowed, because reaching an internal host is the feature rather than the threat. It is
+  deliberately NOT `isUrlSsrfSafe`, which refuses exactly the ranges this must reach. DNS rebinding
+  is stated as open rather than implied closed.
+- **The box shuts on the system's own count, and there is no control that closes it (D18).** The
+  last verification closes the parcel inside the same transaction that records it;
+  `apps/api/src/bench/__tests__/no-parcel-commit-route.spec.ts` fails the build if a bench route
+  path ever gains a `close`/`commit`/`finish`/`seal` verb, and it is extended by naming the exact
+  new path, never by loosening the keyword.
+- **An assignment is a staffing hint, not a lock (ADR-074).** A packer may still claim an assigned
+  parcel unless a supervisor set `selfServeEligible = false`, and "assigned to other packers" is
+  the SUPERVISOR's view - a packer sees their own work and the unassigned pool, and nothing else.
+- **Live coverage is `apps/e2e/sweep-fulfillment-states.mjs`**, 34 states across both surfaces,
+  driven against a real stack. It is not wired to CI (`e2e.yml` is deliberately manual), so it is a
+  gate somebody runs rather than one that runs itself.
+
+### 29. Paginated reads: the total is a second stage
 
 *See `docs/engineering-standards.md` § When A Paginated Total Is Expensive for the repository shape, and `docs/frontend-architecture.md` § Paginated Totals As A Second Stage for the rendering rule.*
 

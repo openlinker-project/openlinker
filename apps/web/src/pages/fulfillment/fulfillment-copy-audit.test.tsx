@@ -33,9 +33,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanup, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { FulfillmentWorklistPage } from './fulfillment-worklist-page';
+import { AssignPackingWorkPage } from './assign-packing-work-page';
 import {
   createAuthenticatedSessionAdapter,
   createMockApiClient,
@@ -178,7 +179,7 @@ function renderState(opts: {
     } as never,
   });
 
-  renderWithProviders(<FulfillmentWorklistPage />, {
+  renderWithProviders(<AssignPackingWorkPage />, {
     apiClient: api,
     route: opts.route ?? '/fulfillment',
     sessionAdapter: createAuthenticatedSessionAdapter(OPERATOR),
@@ -244,7 +245,7 @@ function expectCleanCopy(sentinel: string): void {
   expect(found, 'banned vocabulary reached the screen').toEqual([]);
 }
 
-describe('fulfilment worklist copy audit', () => {
+describe('fulfilment screen copy audit', () => {
   it('reads a non-empty banned-term list from the fenced spec table', () => {
     // The script's own Z1 rule: a scan with an empty deny-list cannot fire, so
     // an unreadable fence is a FAILURE rather than a silent pass.
@@ -256,21 +257,21 @@ describe('fulfilment worklist copy audit', () => {
 
   it('is clean while loading', () => {
     renderState({ list: vi.fn(() => new Promise(() => undefined)) });
-    expectCleanCopy('Loading fulfilment tasks');
+    expectCleanCopy('Loading packing work');
   });
 
   it('is clean on a failed read', async () => {
     renderState({ list: vi.fn().mockRejectedValue(new ApiError('boom', 500, {})) });
-    await screen.findByText('Could not load the fulfilment worklist');
-    expectCleanCopy('Could not load the fulfilment worklist');
+    await screen.findByText('Could not load packing work');
+    expectCleanCopy('Could not load packing work');
   });
 
   it('is clean on an empty unfiltered worklist', async () => {
     renderState({
       list: vi.fn().mockResolvedValue({ works: [], total: 0, limit: 25, offset: 0 }),
     });
-    await screen.findByText('Nothing to work right now');
-    expectCleanCopy('Nothing to work right now');
+    await screen.findByText('Nothing to assign right now');
+    expectCleanCopy('Nothing to assign right now');
   });
 
   it('is clean on an empty filtered worklist', async () => {
@@ -291,8 +292,11 @@ describe('fulfilment worklist copy audit', () => {
     expectCleanCopy('Nothing on this page');
   });
 
-  it('is clean with a populated worklist carrying a held task', async () => {
+  it('is clean with a populated board carrying a held task', async () => {
+    // On the LOCATION axis, because `No location yet` is a lane label — the
+    // packer axis never renders it.
     renderState({
+      route: '/fulfillment?groupBy=location',
       list: vi.fn().mockResolvedValue({
         works: [
           task({
@@ -333,6 +337,7 @@ describe('fulfilment worklist copy audit', () => {
   });
 
   it('is clean when the server offers an action this build has no copy for', async () => {
+    const user = userEvent.setup();
     renderState({
       list: vi.fn().mockResolvedValue({
         works: [task({ supportedActions: ['expedite_pick'] })],
@@ -341,15 +346,22 @@ describe('fulfilment worklist copy audit', () => {
         offset: 0,
       }),
     });
+    // The action set lives behind the row's overflow menu — see
+    // `assign-packing-work-actions.tsx`'s own docblock — so this audit must
+    // open it, or a banned term hiding in an unrendered menu would pass by
+    // never reaching the DOM at all.
+    await user.click(await screen.findByRole('button', { name: 'More actions' }));
     await screen.findAllByRole('button', { name: 'Expedite pick' });
     expectCleanCopy('Expedite pick');
   });
 
   it('is clean in the demo read-only render', async () => {
+    const user = userEvent.setup();
     renderState({
       list: vi.fn().mockResolvedValue({ works: [task()], total: 1, limit: 25, offset: 0 }),
       demoMode: true,
     });
+    await user.click(await screen.findByRole('button', { name: 'More actions' }));
     await waitFor(() => {
       expect(screen.getAllByRole('button', { name: 'Close' }).length).toBeGreaterThan(0);
     });

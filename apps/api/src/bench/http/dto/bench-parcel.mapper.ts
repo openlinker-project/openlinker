@@ -22,6 +22,7 @@ export function toParcelResponseDto(view: BenchParcelView): BenchParcelResponseD
     totalAmount: view.totalAmount,
     currency: view.currency,
     carrierName: view.carrierName,
+    assignedToUserId: view.assignedToUserId,
     dispatchByAt: view.dispatchByAt,
     parcelIndex: view.parcelIndex,
     parcelTotal: view.parcelTotal,
@@ -29,6 +30,9 @@ export function toParcelResponseDto(view: BenchParcelView): BenchParcelResponseD
     holdReason: view.holdReason,
     closedAt: view.closedAt,
     packedByUserId: view.packedByUserId,
+    invoicePrintedAt: view.invoicePrintedAt,
+    labelPrintedAt: view.labelPrintedAt,
+    completedAt: view.completedAt,
     lines: view.lines.map((line) => ({
       workLineId: line.workLineId,
       productVariantId: line.productVariantId,

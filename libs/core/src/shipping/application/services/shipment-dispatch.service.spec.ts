@@ -28,6 +28,7 @@ import { OrderNotDispatchableHeldException } from '../../domain/exceptions/order
 import { OrderNotDispatchablePaymentStatusException } from '../../domain/exceptions/order-not-dispatchable-payment-status.exception';
 import { ShippingProviderRejectionException } from '../../domain/exceptions/shipping-provider-rejection.exception';
 import { ShipmentDispatchContendedException } from '../../domain/exceptions/shipment-dispatch-contended.exception';
+import { FulfillmentWorkDispatchConflictException } from '../../domain/exceptions/fulfillment-work-dispatch-conflict.exception';
 import { Logger } from '@openlinker/shared/logging';
 
 /**
@@ -1251,6 +1252,121 @@ describe('ShipmentDispatchService', () => {
 
       expect(reconciling.findShipmentByReference).toHaveBeenCalled();
       expect(reconciling.generateLabel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a split order never reports another work\'s shipment as its own (#3340 follow-up)', () => {
+    it('should throw when an active shipment already exists, the order is ambiguous, and it is not linked to THIS work', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      // Work A's own shipment, created while the order already had >1 live
+      // work, so #2402's own rule left its link NULL — reproducing the
+      // reported bug exactly: the active row cannot be told apart from "mine"
+      // by its `fulfillmentWorkId` alone.
+      const workASShipment = makeShipment({
+        id: 'ol_shipment_work_a',
+        status: 'generated',
+        providerShipmentId: 'shipx-work-a',
+        fulfillmentWorkId: null,
+      });
+      repository.findActiveByOrderId.mockResolvedValue(workASShipment);
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'ambiguous',
+        workIds: ['ol_fulfillmentwork_a', 'ol_fulfillmentwork_b'],
+      });
+
+      await expect(
+        service.dispatch(makeInput({ fulfillmentWorkId: 'ol_fulfillmentwork_b' })),
+      ).rejects.toBeInstanceOf(FulfillmentWorkDispatchConflictException);
+
+      // Never a false success naming another parcel's shipment.
+      expect(adapter.generateLabel).not.toHaveBeenCalled();
+    });
+
+    it('should NOT throw when the caller supplies no fulfillmentWorkId — the manual route is unaffected', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      const existing = makeShipment({ status: 'generated', providerShipmentId: 'shipx-existing' });
+      repository.findActiveByOrderId.mockResolvedValue(existing);
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'ambiguous',
+        workIds: ['ol_fulfillmentwork_a', 'ol_fulfillmentwork_b'],
+      });
+
+      const result = await service.dispatch(makeInput());
+
+      expect(result).toEqual({ kind: 'dispatched', shipment: existing });
+    });
+
+    it('should NOT throw when the order has only ONE live work, even though the active row is unlinked', async () => {
+      // A legitimate branch-1 row the status poll minted before this order was
+      // routed. No ambiguity exists, so nothing else could own this shipment.
+      routing.resolve.mockResolvedValue(resolution());
+      const existing = makeShipment({
+        status: 'generated',
+        providerShipmentId: 'shipx-single-work',
+        fulfillmentWorkId: null,
+      });
+      repository.findActiveByOrderId.mockResolvedValue(existing);
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'unique',
+        workId: 'ol_fulfillmentwork_only',
+      });
+
+      const result = await service.dispatch(
+        makeInput({ fulfillmentWorkId: 'ol_fulfillmentwork_only' }),
+      );
+
+      expect(result).toEqual({ kind: 'dispatched', shipment: existing });
+    });
+
+    it('should NOT throw when the active shipment is already linked to THIS caller\'s work — an idempotent retry', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      const own = makeShipment({
+        status: 'generated',
+        providerShipmentId: 'shipx-own',
+        fulfillmentWorkId: 'ol_fulfillmentwork_b',
+      });
+      repository.findActiveByOrderId.mockResolvedValue(own);
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'ambiguous',
+        workIds: ['ol_fulfillmentwork_a', 'ol_fulfillmentwork_b'],
+      });
+
+      const result = await service.dispatch(
+        makeInput({ fulfillmentWorkId: 'ol_fulfillmentwork_b' }),
+      );
+
+      expect(result).toEqual({ kind: 'dispatched', shipment: own });
+    });
+
+    it('should stamp the caller-supplied fulfillmentWorkId on a genuinely NEW shipment, preferred over the ambiguous guess', async () => {
+      routing.resolve.mockResolvedValue(
+        resolution({
+          processorKind: FULFILLMENT_PROCESSOR_KIND.OlManagedCarrier,
+          processorConnectionId: INPOST,
+        }),
+      );
+      repository.findActiveByOrderId.mockResolvedValue(null);
+      repository.findBranchOneByOrderAndConnection.mockResolvedValue(null);
+      repository.create.mockResolvedValue(makeShipment());
+      repository.update.mockResolvedValue(makeShipment({ status: 'generated' }));
+      // Even though the per-order guess is ambiguous, the caller KNOWS which
+      // work this dispatch is for.
+      fulfillmentWorks.resolveLinkForOrder.mockResolvedValue({
+        kind: 'ambiguous',
+        workIds: ['ol_fulfillmentwork_a', 'ol_fulfillmentwork_b'],
+      });
+      adapter.generateLabel.mockResolvedValue({
+        providerShipmentId: 'shipx-new',
+        trackingNumber: null,
+        labelPdfRef: 'ref-new',
+      });
+      integrations.getCapabilityAdapter.mockResolvedValue(adapter);
+
+      await service.dispatch(makeInput({ fulfillmentWorkId: 'ol_fulfillmentwork_b' }));
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ fulfillmentWorkId: 'ol_fulfillmentwork_b' }),
+      );
     });
   });
 });

@@ -419,6 +419,73 @@ export class FulfillmentWorkOrmEntity {
   @Column({ type: 'timestamptz', nullable: true })
   parcelClosedAt!: Date | null;
 
+  /**
+   * When this parcel's invoice was FIRST printed at the bench (pack-bench completion), or
+   * `null` if never. Fill-in-when-NULL — `markInvoicePrinted` writes it
+   * `WHERE "invoicePrintedAt" IS NULL`, so a reprint never moves it: the
+   * question is "was it ever printed", and a later value would make a reprint
+   * look like the original print.
+   *
+   * Deliberately does NOT bump `version`: nothing in `supportedActions` or the
+   * ADR-052 authority matrix gates on it, so it is a DISPLAY-ONLY fact — the
+   * `fulfilledQuantity` precedent one row up on this file's own writer table.
+   *
+   * No index: the one thing that reads it is the bench's own parcel
+   * projection, keyed on `id` already.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  invoicePrintedAt!: Date | null;
+
+  /**
+   * When this parcel's shipping label was FIRST fetched for printing (pack-bench completion),
+   * or `null` if never. Same fill-in-when-NULL reading and the same
+   * display-only, no-version-bump treatment as `invoicePrintedAt`.
+   *
+   * Stamped from `GET /shipments/:id/label` — a route in a SIBLING context
+   * (`shipping`), which resolves this work id off `Shipment.fulfillmentWorkId`
+   * (#2402) and calls back into this aggregate's own write seam. That call
+   * crosses no forbidden edge: `shipping` already depends on `fulfillment`
+   * (see `docs/architecture-overview.md § Cross-context dependencies in
+   * core`), and this leaf still injects nothing from `shipping` — the fact
+   * arrives as an argument (a work id), exactly as ADR-053 requires.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  labelPrintedAt!: Date | null;
+
+  /**
+   * When an operator declared this parcel finished and off the bench (pack-bench completion)
+   * — the explicit completion act the `W3401` completion research found missing:
+   * everything after the last scan (label applied, invoice inside, box on the
+   * trolley) was previously invisible. `null` until that act.
+   *
+   * At-most-once CLAIM column, in the `claimParcelClose` /
+   * `claimDispatchRelay` family: `claimCompletion` writes it under `WHERE
+   * "completedAt" IS NULL AND "parcelClosedAt" IS NOT NULL`, so a parcel
+   * cannot be completed twice and cannot be completed before it is packed.
+   * It DOES bump `version` — unlike the two print columns above, a completion
+   * is the terminal legality-gated act on this surface and a client polling
+   * the parcel must see it as a state change.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  completedAt!: Date | null;
+
+  /**
+   * Who declared the completion (pack-bench completion). `null` until `completedAt` is set,
+   * and written in the SAME statement as it, so the two can never disagree.
+   *
+   * `uuid`, matching the sibling `packedByUserId` column on this table (users
+   * are `@PrimaryGeneratedColumn('uuid')` rows). No FK — the by-value
+   * reference this whole table carries throughout — and no service-actor
+   * counterpart: a completion is always an operator act at a terminal in front
+   * of the parcel, never something a background process performs.
+   *
+   * No index: nothing looks up "which parcels did this user complete",
+   * matching `packedByUserId`'s own policy — an index nothing reads is cost on
+   * every write to an already five-writer table (REVIEW C10).
+   */
+  @Column({ type: 'uuid', nullable: true })
+  completedByUserId!: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt!: Date;
 

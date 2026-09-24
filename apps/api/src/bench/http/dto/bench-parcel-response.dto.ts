@@ -28,6 +28,8 @@ import {
 
 import {
   BenchClaimRefusalValues,
+  BenchCompletionRefusalValues,
+  BenchUndoCompletionRefusalValues,
   BenchParcelRefusalValues,
 } from '../../application/types/bench-parcel.types';
 
@@ -161,6 +163,34 @@ export class BenchParcelResponseDto {
   })
   packedByUserId!: string | null;
 
+  @ApiProperty({
+    nullable: true,
+    description:
+      "When this parcel's invoice was FIRST printed, or null if never. A reprint never moves it — the question is whether it was ever printed.",
+  })
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Who this parcel is assigned to, or null for the unassigned pool. A raw user id, like ' +
+      'packedByUserId beside it.',
+  })
+  assignedToUserId!: string | null;
+
+  invoicePrintedAt!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'The label sibling of invoicePrintedAt. Same reading.',
+  })
+  labelPrintedAt!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'When an operator declared this parcel finished and off the bench, or null until that act. A distinct, later completion instant from closedAt.',
+  })
+  completedAt!: string | null;
+
   @ApiProperty({ type: [BenchParcelLineResponseDto] })
   lines!: BenchParcelLineResponseDto[];
 }
@@ -210,15 +240,25 @@ export class BenchClaimResultResponseDto {
 }
 
 export class BenchClaimNextResultResponseDto {
-  @ApiProperty({ enum: ['claimed', 'nothing-to-claim'] })
+  @ApiProperty({ enum: ['claimed', 'nothing-to-claim', 'refused'] })
   outcome!: string;
 
   @ApiProperty({
     nullable: true,
     type: BenchParcelResponseDto,
-    description: 'Null when outcome is nothing-to-claim',
+    description: 'Null on anything but `claimed`',
   })
   parcel!: BenchParcelResponseDto | null;
+
+  @ApiProperty({
+    nullable: true,
+    enum: BenchClaimRefusalValues,
+    description:
+      'Why the claim was refused. Non-null only on `refused`, which means a parcel WAS found ' +
+      'and lost between the read and the write — a different fact from `nothing-to-claim`, ' +
+      'which means the queue itself was empty.',
+  })
+  reason!: string | null;
 }
 
 export class BenchActivityEntryResponseDto {
@@ -240,15 +280,49 @@ export class BenchActivityEntryResponseDto {
   byUserId!: string | null;
 }
 
+export class BenchPresenceViewerResponseDto {
+  @ApiProperty({
+    description:
+      'The other packer\'s name, MASKED by the same rule the Assign Packing Work board masks a buyer name with — "Anna Kowalska" reads "A. Kowalska". A single-token account name passes through whole, having no surname to keep. This is the only field: no user id, no username, no email, no role.',
+  })
+  displayName!: string;
+}
+
 export class BenchPresenceResponseDto {
   @ApiProperty({
     description:
-      'Whether someone OTHER than the caller pinged this same parcel within the presence window. Advisory only — this never gates a write, only warns.',
+      'Whether anyone OTHER than the caller has this parcel open right now — exactly `others.length > 0`. Advisory only: this never gates a write, only warns.',
   })
   collision!: boolean;
 
-  @ApiProperty({ nullable: true, description: "Who else has it open, when `collision` is true" })
-  otherUserId!: string | null;
+  @ApiProperty({
+    type: [BenchPresenceViewerResponseDto],
+    description:
+      'Everyone else who has it open, most recently seen first, NEVER including the caller. An EMPTY array means "nobody else" and is a first-class answer — a failed read answers a non-2xx instead, because "nobody else is in this box" is a reassurance a failed read has no standing to give.',
+  })
+  others!: BenchPresenceViewerResponseDto[];
+}
+
+export class BenchCompleteResultResponseDto {
+  @ApiProperty({ enum: ['completed', 'refused'] })
+  outcome!: string;
+
+  @ApiProperty({ nullable: true, enum: BenchCompletionRefusalValues })
+  reason!: string | null;
+
+  @ApiProperty({ type: BenchParcelResponseDto })
+  parcel!: BenchParcelResponseDto;
+}
+
+export class BenchUndoCompletionResultResponseDto {
+  @ApiProperty({ enum: ['undone', 'refused'] })
+  outcome!: string;
+
+  @ApiProperty({ nullable: true, enum: BenchUndoCompletionRefusalValues })
+  reason!: string | null;
+
+  @ApiProperty({ type: BenchParcelResponseDto })
+  parcel!: BenchParcelResponseDto;
 }
 
 export class BenchUndoResultResponseDto {

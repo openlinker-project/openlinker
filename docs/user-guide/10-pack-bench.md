@@ -74,7 +74,8 @@ continue; anything already scanned survives the lock.
 ## Assign Packing Work
 
 Open **Assign Packing Work** (under **Operations** in the sidebar, or
-`/fulfillment/assign` directly) — admin/operator only. This is a **staffing**
+`/fulfillment` directly) — admin/operator only. The older `/fulfillment/assign`
+address still redirects here, but it will not forever: use `/fulfillment`. This is a **staffing**
 board: it decides who a parcel is earmarked for *before* anyone picks it up,
 which is a different question from the bench's own claim-on-open flow.
 

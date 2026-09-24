@@ -14,6 +14,18 @@
  * closes itself the moment the last line is verified. There is nothing here to
  * press."*
  *
+ * ## `completion` is NOT a close route, and is not an exception to D18
+ *
+ * D18 is about the BOX contents — packing closes silently on the last
+ * verification, so there is nothing for a "Done" button to confirm THERE.
+ * Completion is a different question, asked strictly AFTER a parcel is already
+ * closed: has the finished box actually left the bench (label on, invoice
+ * inside, on the trolley)? That act was previously invisible, and industry
+ * practice (ShipHero's "Complete Order", Brightpearl's `Packed` state before
+ * `Shipped`) treats it as its own explicit step, separate from printing. It is
+ * therefore a genuine write with no D18 conflict, and is recorded as such in
+ * `no-parcel-commit-route.spec.ts`'s allow-list rather than smuggled in.
+ *
  * ## Auth
  *
  * `JwtAuthGuard` is global, so per the house convention no redundant
@@ -57,17 +69,22 @@ import { BenchParcelNotAtThisBenchError } from '../application/services/bench-pa
 import type {
   BenchActivityEntryView,
   BenchClaimResultView,
+  BenchCompleteResultView,
+  BenchUndoCompletionResultView,
   BenchParcelView,
   BenchReopenResultView,
   BenchUndoResultView,
   BenchVerificationResultView,
 } from '../application/types/bench-parcel.types';
+import { CompleteParcelDto } from './dto/complete-parcel.dto';
 import { ReopenParcelDto } from './dto/reopen-parcel.dto';
 import { VerifyUnitDto } from './dto/verify-unit.dto';
 import { toParcelResponseDto } from './dto/bench-parcel.mapper';
 import {
   BenchActivityEntryResponseDto,
   BenchClaimResultResponseDto,
+  BenchCompleteResultResponseDto,
+  BenchUndoCompletionResultResponseDto,
   BenchParcelResponseDto,
   BenchPresenceResponseDto,
   BenchReopenResultResponseDto,
@@ -211,6 +228,83 @@ export class BenchParcelController {
     return this.toClaimDto(result);
   }
 
+  @Post(':workId/complete')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Declare this parcel finished and off the bench',
+    description:
+      'Everything after the last scan — the label applied, the invoice inside, the box on the ' +
+      'trolley — was previously invisible: closing the box (the last verification) records that ' +
+      'the ITEMS are correct, never that the parcel is actually done and gone. This is that ' +
+      'second, explicit act. Refused `not-closed` before the box is packed, ' +
+      '`already-completed` on a repeat, `version-conflict` on a stale token, and ' +
+      '`not-claimable-by-viewer` under the same ADR-074 lock a scan enforces.',
+  })
+  @ApiResponse({ status: 201, type: BenchCompleteResultResponseDto })
+  @ApiResponse({ status: 401, description: 'A completion must name the packer' })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  async completeParcel(
+    @Param('workId') workId: string,
+    @Body() dto: CompleteParcelDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchCompleteResultResponseDto> {
+    // The #2890 F1 discipline verbatim: this write records who finished the
+    // parcel, so it must not be reachable without a principal.
+    if (!user?.id) {
+      throw new UnauthorizedException('A completion must name the packer');
+    }
+
+    const result = await this.run(() =>
+      this.parcels.completeParcel({
+        workId,
+        // The verified token's user, never the body's — the same reason
+        // `verifyUnit` sources attribution from `user.id` rather than a
+        // client-suppliable field.
+        completedByUserId: user.id,
+        expectedVersion: dto.expectedVersion,
+      })
+    );
+    return this.toCompleteDto(result);
+  }
+
+  @Post(':workId/complete/undo')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Take back a completion, and keep every scan',
+    description:
+      'The way back from "done" that is not a reopen. A reopen unpacks the box; this undoes the ' +
+      'second, explicit act alone, so the contents stay exactly as verified and only the ' +
+      'completion is cleared. Without it a completion is a one-way door and the only way back ' +
+      'makes a packer re-do a box that was packed correctly. Refused `not-completed` when the ' +
+      'parcel was never marked done, `version-conflict` on a stale token, and ' +
+      '`not-claimable-by-viewer` under the SAME ADR-074 lock completing it enforces.',
+  })
+  @ApiResponse({ status: 201, type: BenchUndoCompletionResultResponseDto })
+  @ApiResponse({ status: 401, description: 'Taking back a completion must name the packer' })
+  @ApiResponse({ status: 404, description: 'No such parcel at this bench' })
+  async undoCompletion(
+    @Param('workId') workId: string,
+    @Body() dto: CompleteParcelDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchUndoCompletionResultResponseDto> {
+    // Named for the same reason `completeParcel` is: this write records who
+    // took the completion back, so it must not be reachable without a
+    // principal.
+    if (!user?.id) {
+      throw new UnauthorizedException('Taking back a completion must name the packer');
+    }
+
+    const result = await this.run(() =>
+      this.parcels.undoCompletion({
+        workId,
+        // The verified token's user, never the body's.
+        undoneByUserId: user.id,
+        expectedVersion: dto.expectedVersion,
+      })
+    );
+    return this.toUndoCompletionDto(result);
+  }
+
   @Get(':workId/activity')
   @Roles('admin', 'operator', 'packer')
   @ApiOperation({
@@ -259,12 +353,13 @@ export class BenchParcelController {
   @Post(':workId/presence')
   @Roles('admin', 'operator', 'packer')
   @ApiOperation({
-    summary: 'Announce presence on this parcel, and learn whether someone else already has',
+    summary: 'Announce presence on this parcel, and learn who else has it open',
     description:
       'A lightweight, ephemeral Redis TTL signal — advisory only, never a lock. Call it on open ' +
       'and refresh it while the parcel view stays mounted. Scoped exactly as `getParcel` scopes ' +
       "it, so a packer cannot ping a work id outside this bench's own eligibility to learn who " +
-      'else is looking at it.',
+      'else is looking at it. Answers with MASKED names only, never a user id, and never the ' +
+      'caller themselves.',
   })
   @ApiResponse({ status: 201, type: BenchPresenceResponseDto })
   @ApiResponse({ status: 401, description: 'A presence ping must name the packer' })
@@ -280,7 +375,20 @@ export class BenchParcelController {
     // readable for a work id outside this bench's own eligibility, exactly as
     // `getParcel` refuses one.
     await this.run(() => this.parcels.getWorkForDocuments(workId));
-    return this.presence.ping(workId, user.id);
+    // The VERIFIED token's username, never a body field — this is the name a
+    // colleague will read as "who is in this box with me", and the same rule
+    // `verifyUnit` states for attribution applies: a name a client could
+    // supply is a name a client could forge. `username` is the only display
+    // name the users context holds (there is no first/last split), and the
+    // service masks it before storing it.
+    const view = await this.presence.ping(workId, user.id, user.username ?? user.id);
+    // Field by field, never a spread — see the DTO module docblock. A spread
+    // here would silently publish whatever the view type grows next, which on
+    // this particular projection means whatever it grows about a colleague.
+    return {
+      collision: view.collision,
+      others: view.others.map((viewer) => ({ displayName: viewer.displayName })),
+    };
   }
 
   /**
@@ -341,6 +449,24 @@ export class BenchParcelController {
       kind: entry.kind,
       at: entry.at,
       byUserId: entry.byUserId,
+    };
+  }
+
+  private toCompleteDto(result: BenchCompleteResultView): BenchCompleteResultResponseDto {
+    return {
+      outcome: result.outcome,
+      reason: result.reason,
+      parcel: this.toParcelDto(result.parcel),
+    };
+  }
+
+  private toUndoCompletionDto(
+    result: BenchUndoCompletionResultView
+  ): BenchUndoCompletionResultResponseDto {
+    return {
+      outcome: result.outcome,
+      reason: result.reason,
+      parcel: this.toParcelDto(result.parcel),
     };
   }
 

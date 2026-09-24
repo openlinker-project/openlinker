@@ -1,6 +1,7 @@
 import type {
   ApproveUserInput,
   PackerListResponse,
+  UpdatePackStationLabelInput,
   UserListFilters,
   UserListResponse,
 } from './users.types';
@@ -16,6 +17,8 @@ export interface UsersApi {
   approve: (userId: string, input: ApproveUserInput) => Promise<void>;
   reject: (userId: string) => Promise<void>;
   updateRole: (userId: string, input: { role: string }) => Promise<void>;
+  /** `PATCH /users/:id/pack-station-label` (#3404) — admin only. */
+  updatePackStationLabel: (userId: string, input: UpdatePackStationLabelInput) => Promise<void>;
   deactivate: (userId: string) => Promise<void>;
   reactivate: (userId: string) => Promise<void>;
   delete: (userId: string) => Promise<void>;
@@ -51,6 +54,12 @@ export function createUsersApi(request: ApiRequest): UsersApi {
     },
     updateRole(userId, input): Promise<void> {
       return request<void>(`/users/${userId}/role`, {
+        method: 'PATCH',
+        body: JSON.stringify(input),
+      });
+    },
+    updatePackStationLabel(userId, input): Promise<void> {
+      return request<void>(`/users/${userId}/pack-station-label`, {
         method: 'PATCH',
         body: JSON.stringify(input),
       });

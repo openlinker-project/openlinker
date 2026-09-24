@@ -16,6 +16,19 @@
  */
 
 /** One parcel on the bench's list. */
+/** One product line as the rail shows it (#3415). */
+export interface BenchWorkItem {
+  /**
+   * `null` when the variant is not in the catalogue - a real answer a packer
+   * can act on, never to be replaced with a placeholder that reads like a
+   * product name.
+   */
+  name: string | null;
+  quantity: number;
+  /** The API's own proxy path, or `null`. Rendered through `BenchThumb`. */
+  imageUrl: string | null;
+}
+
 export interface BenchWork {
   workId: string;
   version: number;
@@ -26,6 +39,14 @@ export interface BenchWork {
   parcelIndex: number;
   parcelTotal: number;
   lineCount: number;
+  /**
+   * What is in the box (#3415) - what the rail leads with.
+   *
+   * CAPPED by the server, with `lineCount` above as the honest total, so a row
+   * showing two of five lines must say so rather than implying it is all of
+   * them. May be empty: every line cancelled to zero, or a parcel with none.
+   */
+  items: BenchWorkItem[];
   /** Units to confirm against the box. Never a readiness claim. */
   unitsToVerify: number;
   /** `packable` | `held` | `cancelled`, or an unrecognised value from a newer API. */
@@ -42,6 +63,16 @@ export interface BenchWork {
   assignmentState: string;
   /** May THIS packer claim (open, verify) this parcel? See `assignmentState`. */
   claimable: boolean;
+  /**
+   * When an operator declared this parcel finished and off the bench
+   * (pack-bench completion), or `null` until that act.
+   *
+   * The server deliberately keeps returning a completed row here rather than
+   * filtering it out of the query — see `BenchWorkService`'s own docblock —
+   * so the exclusion from "at this bench" is drawn on the READING side, by
+   * `groupBenchWork`.
+   */
+  completedAt: string | null;
 }
 
 /** Whether packing work can reach this bench at all. */
