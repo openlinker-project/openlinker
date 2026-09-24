@@ -17,8 +17,8 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  * resolution never ran (an orphan, a pre-#3171 return) legitimately has
  * neither.
  */
-export class AddReturnLineResolvedCatalogIdentity1893000000000 implements MigrationInterface {
-  name = 'AddReturnLineResolvedCatalogIdentity1893000000000';
+export class AddReturnLineResolvedCatalogIdentity1901000000000 implements MigrationInterface {
+  name = 'AddReturnLineResolvedCatalogIdentity1901000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
