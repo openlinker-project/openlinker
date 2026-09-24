@@ -150,6 +150,11 @@ export interface ReturnOrderLineResolutionSummary {
    * through the normal `resolved` branch, so this counter is the ONLY signal
    * that the backfill arm (rather than a no-op skip) ran for a given pass.
    * Always `<= alreadyResolved`.
+   *
+   * Like the rest of this summary it is logged and backs no operator surface
+   * or metric (the standing #3171 gap): grepping the log for this counter is
+   * the only way to see whether re-driving the pass is still finding legacy
+   * lines to heal.
    */
   catalogIdentityBackfilled: number;
   /** Lines left `null`, keyed by why. Reported, never defaulted. */

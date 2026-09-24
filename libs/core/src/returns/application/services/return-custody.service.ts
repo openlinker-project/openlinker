@@ -675,12 +675,25 @@ export class ReturnCustodyService implements IReturnCustodyService {
    * `resolvedOrderLineId`-claim time, i.e. the moment the source's order line
    * was matched. When both are present this costs NO catalogue lookup at
    * all: the identity was settled once, upstream, and is read back verbatim.
+   * That is a DIFFERENT guarantee from the fallback, not a faster version of
+   * it: the stored identity is a SNAPSHOT of a resolution, while the sku path
+   * is a LIVE one — `IProductsService` is what establishes the variant still
+   * exists and the sku is not ambiguous, and the primary path establishes
+   * neither. A variant deleted, re-keyed or re-mapped between ingestion and
+   * disposal is therefore handed to `adjustInventory` as an id the master may
+   * no longer know, and surfaces as a `master-product-not-found` block AFTER
+   * the boundary crossing rather than as a pre-boundary refusal. Still a
+   * block, never a wrong-stock write — but do not "optimise" by skipping the
+   * sku lookup on the fallback too, and do not read this path as validated.
    * **Fallback:** the sku, resolved through `IProductsService`, for a line
    * whose order-line resolution never ran (an orphan, ingestion predating
    * #3171, or a resolution the domain service could not settle) or that
    * resolved to an order line with no `variantId` at all (`OrderItem.variantId`
    * is itself optional) — a source is never obligated to supply a sku either,
    * which is exactly why this is a fallback and not the only path.
+   * A product-only resolution (`resolvedProductId` set, `resolvedVariantId`
+   * null) is reachable and correct, and always takes this fallback because
+   * the primary path requires BOTH ids.
    *
    * `resolveRestockTarget` deliberately does NOT read the order snapshot
    * itself: `libs/core/src/returns` must not take the orders-module edge one

@@ -252,6 +252,14 @@ export interface ReturnRepositoryPort {
    * forever — the exact bug #3450 reports, permanently unfixed for the
    * historical backlog.
    *
+   * The guard keys on `resolvedProductId` ALONE, deliberately asymmetric with
+   * the restock read (which requires both ids): a product-only resolution
+   * writes `resolvedVariantId = null` and is then permanently excluded from
+   * this pass, which is correct — re-backfilling would write the same nulls,
+   * and such a line takes the sku fallback by design. Do NOT "tighten" the
+   * guard to `resolvedVariantId IS NULL`: every product-only line would then
+   * match on every pass and the backfill would re-run forever.
+   *
    * `false` is ordinary: a concurrent backfill already won, or the row was
    * resolved by a later release that populated the columns already — nothing
    * to do either way, not a failure.
