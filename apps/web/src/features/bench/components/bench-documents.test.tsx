@@ -51,7 +51,11 @@ function label(over: Partial<BenchLabel> = {}): BenchLabel {
   };
 }
 
-function mount(documents: Partial<BenchDocuments> = {}, unlabelledTotal = 0) {
+function mount(
+  documents: Partial<BenchDocuments> = {},
+  unlabelledTotal = 0,
+  packStationLabel: string | null = null,
+) {
   const apiClient = createMockApiClient({
     bench: {
       getDocuments: vi.fn().mockResolvedValue({
@@ -64,8 +68,7 @@ function mount(documents: Partial<BenchDocuments> = {}, unlabelledTotal = 0) {
         .fn()
         .mockResolvedValue({ parcels: [], total: unlabelledTotal, truncated: false }),
       downloadInvoice: vi.fn().mockResolvedValue(new Blob(['%PDF'])),
-    },
-    shipments: {
+      // #3340 — the label print goes through the work, not the shipment id.
       downloadLabel: vi.fn().mockResolvedValue(new Blob(['%PDF'])),
     },
   });
@@ -74,7 +77,11 @@ function mount(documents: Partial<BenchDocuments> = {}, unlabelledTotal = 0) {
     apiClient,
     ...renderWithProviders(<BenchDocumentsPanel workId="w-1" unitsPacked={6} />, {
       apiClient,
-      sessionAdapter: createAuthenticatedSessionAdapter({ ...PACKER, permissions: [] }),
+      sessionAdapter: createAuthenticatedSessionAdapter({
+        ...PACKER,
+        permissions: [],
+        packStationLabel,
+      }),
     }),
   };
 }
@@ -136,6 +143,56 @@ describe('BenchDocumentsPanel (#2418)', () => {
     });
 
     expect(await screen.findByText(/Nothing on this order says why/i)).toBeInTheDocument();
+  });
+
+  // ── Who else knows (#3340 follow-up) ────────────────────────────────────
+  //
+  // The panel used to claim, for EVERY reason and for none, that the order was
+  // "already on their list … you do not need to tell anyone". That is true of
+  // exactly one of these three cases. The other two are the reassuring
+  // direction of wrong: a packer told somebody knows does not mention it.
+  describe('whether anyone else knows the invoice is missing', () => {
+    const missingWith = (blockReason: string | null) =>
+      invoice({
+        state: 'missing',
+        invoiceId: null,
+        documentNumber: null,
+        issuedAt: null,
+        blockReason,
+        unresolvedReason: null,
+      });
+
+    it('should say the office can see it when the reason really is counted', async () => {
+      mount({ invoice: missingWith('missing-tax-rate') });
+
+      expect(await screen.findByText(/The office can see this one/i)).toBeInTheDocument();
+      expect(screen.getByText(/you do not need to write it down/i)).toBeInTheDocument();
+    });
+
+    it('should say nobody is told when the shop only invoices on request', async () => {
+      mount({ invoice: missingWith('trigger-model-manual') });
+
+      // `trigger-model-manual` is excluded from SalesDocumentAttentionReasonValues,
+      // so it enters no count and matches no filter — nothing has been flagged.
+      expect(await screen.findByText(/Nobody is told automatically/i)).toBeInTheDocument();
+      expect(screen.getByText(/tell the office/i)).toBeInTheDocument();
+      expect(screen.queryByText(/The office can see this one/i)).toBeNull();
+    });
+
+    it('should not claim anyone was told when nothing recorded a reason', async () => {
+      mount({ invoice: missingWith(null) });
+
+      expect(await screen.findByText(/Nobody has been told/i)).toBeInTheDocument();
+      expect(screen.getByText(/not on any list OpenLinker keeps/i)).toBeInTheDocument();
+    });
+
+    it('should not claim anyone was told for a reason this build cannot place', async () => {
+      // A reason added to the backend union and not yet mirrored here cannot be
+      // matched by the filter's own `IN (…)` either, so it is not on a list.
+      mount({ invoice: missingWith('some-future-reason') });
+
+      expect(await screen.findByText(/Nobody has been told/i)).toBeInTheDocument();
+    });
   });
 
   it('should say there is nothing to print when the document is not printable', async () => {
@@ -241,5 +298,43 @@ describe('BenchDocumentsPanel (#2418)', () => {
 
     expect(await screen.findByRole('button', { name: /print invoice/i })).toBeInTheDocument();
     expect(screen.getByText(/it is not missing later/i)).toBeInTheDocument();
+  });
+
+  // #3420 was reverted: a control that does nothing is not rescued by a
+  // disclaimer beside it. This asserts it stays gone — the panel's own rule
+  // ("a control wired to nothing is worse than a missing one") has no
+  // exception, and the button is the kind of thing a mockup pass re-adds.
+  it('renders no camera control at all', async () => {
+    mount();
+
+    await screen.findByRole('button', { name: 'Print invoice' });
+    expect(screen.queryByRole('button', { name: /camera/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/camera/i)).not.toBeInTheDocument();
+  });
+
+  // #3404 — the packer/printer binding made visible.
+  describe('the printer-binding line', () => {
+    it("should render the signed-in packer's own station label", async () => {
+      mount({}, 0, 'Zebra ZD420 · Bench 3');
+
+      const line = await screen.findByTestId('bench-documents-printer');
+      expect(line).toHaveTextContent('Printing to Zebra ZD420 · Bench 3');
+      // And NOT the mockup's trailing "this station's printer, always": the
+      // label is stored on the USER, so it follows the packer to whichever
+      // bench they sign in at. Asserted rather than merely omitted, because a
+      // reassurance that is wrong about where the paper comes out is worse
+      // than none, and this clause is exactly what a later parity pass
+      // re-adds. See `benchParcelCopy.documents.printingTo`.
+      expect(line).not.toHaveTextContent(/station/i);
+      expect(line).not.toHaveTextContent(/always/i);
+    });
+
+    it('should render nothing when the packer has no station label set', async () => {
+      mount({}, 0, null);
+
+      await screen.findByRole('button', { name: 'Print invoice' });
+      expect(screen.queryByTestId('bench-documents-printer')).not.toBeInTheDocument();
+      expect(screen.queryByText(/printing to/i)).not.toBeInTheDocument();
+    });
   });
 });

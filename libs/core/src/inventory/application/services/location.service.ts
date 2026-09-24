@@ -75,6 +75,10 @@ export class LocationService implements ILocationService {
     return this.repository.findById(id);
   }
 
+  async getLocationsByIds(ids: readonly string[]): Promise<InventoryLocation[]> {
+    return this.repository.findByIds(ids);
+  }
+
   async listLocations(
     filters: InventoryLocationFilters,
     pagination: InventoryLocationPagination

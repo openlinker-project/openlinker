@@ -40,6 +40,7 @@ export class UserManagementService implements IUserManagementService {
 
   async listUsers(opts?: {
     status?: UserStatus;
+    role?: UserRole;
     page?: number;
     pageSize?: number;
   }): Promise<{ users: User[]; total: number }> {
@@ -119,6 +120,37 @@ export class UserManagementService implements IUserManagementService {
       await this.userRepository.deleteById(userId);
     }
     this.logger.log(`User deleted: ${userId}`);
+  }
+
+  async setPackStationLabel(userId: string, packStationLabel: string | null): Promise<void> {
+    await this.requireUser(userId);
+    // One spelling for "no label": a blank or whitespace-only value collapses
+    // to `null` here rather than reaching the column as `''`, so every reader
+    // tests one thing.
+    const trimmed = packStationLabel === null ? null : packStationLabel.trim();
+    const normalised = trimmed === null || trimmed.length === 0 ? null : trimmed;
+    await this.userRepository.updatePackStationLabel(userId, normalised);
+    // The LABEL is logged, not the value's absence-vs-presence alone: it is
+    // operator configuration, carries no authentication weight, and an
+    // operator asking "why does bench 3 say the wrong printer" needs the
+    // change to be findable.
+    this.logger.log(`Pack station label set: ${userId} -> ${normalised ?? '(cleared)'}`);
+  }
+
+  async recordBenchActivity(userId: string): Promise<void> {
+    // Best-effort, by the interface's own contract. No `requireUser` read
+    // first: this runs on the bench's hot paths, the write is already
+    // primary-key-scoped, and an id that names nobody simply updates no rows.
+    try {
+      await this.userRepository.touchLastActive(userId);
+    } catch (error) {
+      // Swallowed deliberately, and logged at `warn` rather than `error`: the
+      // cost of losing a heartbeat is a swimlane that reads offline for a few
+      // minutes, and the cost of rethrowing is a packer who cannot pack.
+      this.logger.warn(
+        `Bench activity heartbeat failed for ${userId}: ${(error as Error).message}`
+      );
+    }
   }
 
   async confirmEmail(userId: string): Promise<void> {

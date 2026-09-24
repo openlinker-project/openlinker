@@ -68,6 +68,16 @@ describe('UserResponseDto', () => {
       expect(UserResponseDto.fromDomain(declined).analyticsConsent).toBe(false);
     });
 
+    it('should expose the caller\'s own packStationLabel (#3404)', () => {
+      const labelled = new User(
+        'id-1', 'a', null, 'hash', 'packer', 'active', new Date(), new Date(), false, 'Zebra ZD420 · Bench 3'
+      );
+      const unlabelled = new User('id-2', 'b', null, 'hash', 'packer', 'active', new Date(), new Date());
+
+      expect(UserResponseDto.fromDomain(labelled).packStationLabel).toBe('Zebra ZD420 · Bench 3');
+      expect(UserResponseDto.fromDomain(unlabelled).packStationLabel).toBeNull();
+    });
+
     it('should not expose passwordHash', () => {
       const user = new User('id-1', 'testuser', null, 'secret-hash', 'admin', 'active', new Date(), new Date());
 

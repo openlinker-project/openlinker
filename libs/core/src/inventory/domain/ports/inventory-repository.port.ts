@@ -156,6 +156,24 @@ export interface InventoryRepositoryPort {
   ): Promise<readonly VariantStockRow[]>;
 
   /**
+   * Bin/shelf codes per variant (#3402/#3410, mockup-parity epic #3401), for
+   * DISPLAY at the pack bench — never a publishing or availability read.
+   *
+   * A variant may have several live positions (multiple locations, multiple
+   * sources); this returns the FIRST non-null `binCode` found across them, by
+   * no particular ordering. Multi-location bin resolution is out of scope —
+   * a bench displaying one bin per line is the entire mockup requirement, and
+   * an install with genuinely conflicting bins across locations is not
+   * disambiguated by this read. A variant absent from the result has no
+   * recorded bin code anywhere (never a placeholder).
+   *
+   * Excludes stale positions (#1478), matching every other read on this port.
+   */
+  findBinCodesByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<ReadonlyMap<string, string>>;
+
+  /**
    * Every LIVE position an order's lines could be reserved against (#2344).
    *
    * Deliberately **not** a sum and deliberately **not** a single-row resolve:

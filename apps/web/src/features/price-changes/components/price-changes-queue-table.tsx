@@ -29,6 +29,15 @@
  * treatment and its `data-state`/`id`/`data-testid` handles on the row
  * element, which the primitive used to hard-code.
  *
+ * #3325 rolled in here: the connection filter-bar chip counts now read a
+ * real server-side counts-by-connection endpoint
+ * (`usePriceChangeCountsQuery`) instead of a client-side bucketing of a
+ * `CHIP_COUNTS_LIMIT`-bounded unfiltered `usePriceChangesQuery` read, which
+ * under-counted a connection's chip past 200 open episodes across the
+ * install. The "All" chip's own total was always exact (it read the
+ * unfiltered read's own server-computed `total`) — only the per-connection
+ * bucketing suffered. `CHIP_COUNTS_LIMIT` is gone.
+ *
  * #3148 review fixes rolled in here: `BulkPublishProgress` is mounted as a
  * SIBLING of the table's own loading/empty/error branch rather than nested
  * inside it (finding 3 — nesting made it vanish the instant a fully-accepted
@@ -61,6 +70,7 @@ import { formatAmount } from '../../../shared/format/format-amount';
 import { useConnectionsQuery } from '../../connections';
 import { useDemoMode } from '../../system';
 import { usePriceChangesQuery } from '../hooks/use-price-changes-query';
+import { usePriceChangeCountsQuery } from '../hooks/use-price-change-counts-query';
 import { useAcceptPriceChangeMutation } from '../hooks/use-accept-price-change-mutation';
 import { useIgnorePriceChangeMutation } from '../hooks/use-ignore-price-change-mutation';
 import { useEditPriceChangeMutation } from '../hooks/use-edit-price-change-mutation';
@@ -91,17 +101,6 @@ import { useToast } from '../../../shared/ui/toast-provider';
  * destination, making one unfilterable in the queue).
  */
 const DESTINATION_CAPABILITIES = ['OfferManager', 'ProductPublisher'];
-
-/**
- * The chip-count/eligibility read is bounded to the API's own page-size
- * ceiling (#3162), never truly "all" — an install with more than this many
- * open episodes across every connection will under-count the long tail in
- * the per-connection chips specifically (the "All" chip's own count still
- * comes from the authoritative `total`, unaffected by this bound). A real
- * counts-by-connection endpoint would remove the need for this cap
- * entirely (#3164 review) — tracked as a #3237 follow-up, #3325.
- */
-const CHIP_COUNTS_LIMIT = 200;
 
 /**
  * How long the "also set to Automatic" Undo stays offered (#3165 round-3
@@ -215,20 +214,12 @@ export function PriceChangesQueueTable(): ReactElement {
     magnitudeLarge: magnitudeOnly || undefined,
   });
 
-  // The unfiltered read that backs the chip list + per-chip counts (#3164
-  // review) — `query` above is filtered server-side, so once ANY chip is
-  // active its own `items` can no longer answer "how many for every OTHER
-  // chip", which previously collapsed every other chip's count to zero.
-  // No standing poll of its own (#3164 re-review, SUGGESTION): with a filter
-  // active this tab already holds three cache entries against the same
-  // unbounded endpoint (tab badge, filtered rows, these counts), and a chip
-  // count is a slowly-changing sidebar number rather than the working set. It
-  // still refreshes on the ordinary invalidation every accept/ignore/edit
-  // mutation fires, so a count cannot go stale behind an action taken here.
-  const unfilteredQuery = usePriceChangesQuery(
-    { limit: CHIP_COUNTS_LIMIT },
-    { refetchIntervalMs: false },
-  );
+  // The exact, server-side counts-by-connection read that backs the chip
+  // list (#3325) — `query` above is filtered server-side, so once ANY chip
+  // is active its own `items` can no longer answer "how many for every
+  // OTHER chip", which is why this is a SEPARATE, unfiltered read rather
+  // than derived from `query`.
+  const countsQuery = usePriceChangeCountsQuery();
 
   const acceptMutation = useAcceptPriceChangeMutation();
   const ignoreMutation = useIgnorePriceChangeMutation();
@@ -240,7 +231,6 @@ export function PriceChangesQueueTable(): ReactElement {
   const { showToast } = useToast();
 
   const items = query.data?.items ?? [];
-  const unfilteredItems = unfilteredQuery.data?.items ?? [];
 
   const groupCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -282,11 +272,11 @@ export function PriceChangesQueueTable(): ReactElement {
   // (`docs/frontend-architecture.md § Paginated Totals As A Second Stage` — a
   // failed count leaves the placeholder and never renders `0`, because absence
   // and "none matched" are different claims). Every chip reads the same
-  // unfiltered query, so they go dark together rather than each asserting a
+  // counts query, so they go dark together rather than each asserting a
   // confident zero; `?? 0` below stays correct once the data IS known, where a
-  // connection genuinely absent from the map has no open episodes.
-  const chipCountsUnavailable = unfilteredQuery.isError;
-  const chipCountsKnown = !chipCountsUnavailable && unfilteredQuery.data !== undefined;
+  // connection genuinely absent from the response has no open episodes.
+  const chipCountsUnavailable = countsQuery.isError;
+  const chipCountsKnown = !chipCountsUnavailable && countsQuery.data !== undefined;
   const renderChipCount = (value: number) => {
     if (chipCountsUnavailable) {
       return <span className="chip__count">—</span>;
@@ -299,11 +289,11 @@ export function PriceChangesQueueTable(): ReactElement {
 
   const connectionCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const item of unfilteredItems) {
-      counts.set(item.destinationConnectionId, (counts.get(item.destinationConnectionId) ?? 0) + 1);
+    for (const entry of countsQuery.data?.byConnection ?? []) {
+      counts.set(entry.connectionId, entry.count);
     }
     return counts;
-  }, [unfilteredItems]);
+  }, [countsQuery.data]);
 
   const selectableIds = useMemo(() => items.filter(isSelectable).map((i) => i.id), [items]);
   const selectedIds = selectableIds.filter((id) => selected.has(id));
@@ -803,7 +793,7 @@ export function PriceChangesQueueTable(): ReactElement {
       <div className="filter-bar" role="group" aria-label="Filter by connection">
         <span className="filter-bar__label">Connection</span>
         <Chip active={connectionFilter === 'all'} onClick={() => setConnectionFilter('all')}>
-          All {renderChipCount(unfilteredQuery.data?.total ?? 0)}
+          All {renderChipCount(countsQuery.data?.total ?? 0)}
         </Chip>
         {destinationConnections.map((connection) => (
           <Chip

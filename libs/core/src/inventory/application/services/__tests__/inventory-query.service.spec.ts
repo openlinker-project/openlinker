@@ -87,6 +87,7 @@ describe('InventoryQueryService', () => {
       upsert: jest.fn(),
       findMany: jest.fn(),
       findAvailabilityByVariantIds: jest.fn(),
+      findBinCodesByVariantIds: jest.fn(),
       findLivePositionsByProductIds: jest.fn(),
       findStockAggregatesByProductIds: jest.fn(),
       markStaleExceptVariants: jest.fn(),
@@ -263,6 +264,29 @@ describe('InventoryQueryService', () => {
 
       expect(result.map((r) => r.productVariantId)).toEqual(['var-a', 'var-m', 'var-z']);
       expect(result[1]).toEqual({ productVariantId: 'var-m', totalAvailable: 0, locationCount: 0, availableToPromise: 0 });
+    });
+  });
+
+  describe('findBinCodesByVariantIds (#3402/#3410)', () => {
+    it('returns an empty map on empty input without hitting the repository', async () => {
+      const result = await service.findBinCodesByVariantIds([]);
+
+      expect(result).toEqual(new Map());
+      expect(inventoryRepository.findBinCodesByVariantIds).not.toHaveBeenCalled();
+    });
+
+    it('passes the repository map straight through', async () => {
+      inventoryRepository.findBinCodesByVariantIds.mockResolvedValue(
+        new Map([['var-a', 'A-12-3']])
+      );
+
+      const result = await service.findBinCodesByVariantIds(['var-a', 'var-b']);
+
+      expect(result).toEqual(new Map([['var-a', 'A-12-3']]));
+      expect(inventoryRepository.findBinCodesByVariantIds).toHaveBeenCalledWith([
+        'var-a',
+        'var-b',
+      ]);
     });
   });
 

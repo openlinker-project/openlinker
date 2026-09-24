@@ -107,6 +107,14 @@ export interface IPriceChangesService {
    */
   listOpenDestinationConnectionIds(sourceConnectionId: string): Promise<readonly string[]>;
 
+  /**
+   * Open-episode count per destination connection, across the whole install
+   * (#3325 — the review queue's connection filter-bar chip counts, split out
+   * of #3237/#3164 review). Exact — never bounded by a page-size ceiling the
+   * way a client-side bucketing of a limited `listOpen` page was.
+   */
+  countOpenByDestination(): Promise<ReadonlyMap<string, number>>;
+
   accept(episodeId: string, input: AcceptPriceChangeInput): Promise<PriceChangeResolutionResult>;
   ignore(episodeId: string, resolvedByUserId: string | null): Promise<void>;
   /** Re-opens a previously-`ignored` episode (the review queue's row Undo). */

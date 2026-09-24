@@ -63,6 +63,7 @@ import { OfflineResubmitHandler } from './offline-resubmit.handler';
 import { PendingRecoveryHandler } from './pending-recovery.handler';
 import { PaymentStatusRefreshHandler } from './payment-status-refresh.handler';
 import { FulfillmentWorkDispatchHandler } from './fulfillment-work-dispatch.handler';
+import { FulfillmentWorkAutoDispatchHandler } from './fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './fulfillment-work-relay-sweep.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './fulfillment-work-timeout-sweep.handler';
@@ -125,6 +126,7 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly pendingRecoveryHandler: PendingRecoveryHandler,
     private readonly paymentStatusRefreshHandler: PaymentStatusRefreshHandler,
     private readonly fulfillmentWorkDispatchHandler: FulfillmentWorkDispatchHandler,
+    private readonly fulfillmentWorkAutoDispatchHandler: FulfillmentWorkAutoDispatchHandler,
     private readonly fulfillmentWorkRouteHandler: FulfillmentWorkRouteHandler,
     private readonly fulfillmentWorkTimeoutSweepHandler: FulfillmentWorkTimeoutSweepHandler,
     private readonly fulfillmentWorkRelaySweepHandler: FulfillmentWorkRelaySweepHandler
@@ -133,8 +135,8 @@ export class HandlerRegistrationService implements OnModuleInit {
   onModuleInit(): void {
     // Every registration declares its ADR-050 concurrency lane (#2278). The
     // lane is chosen by cost-of-starvation, never by I/O shape or bounded
-    // context — the authoritative table is ADR-050 decision 1, now 16 realtime /
-    // 30 bulk / 5 fiscal / 7 fan-out across 58 job types. Amendments since the
+    // context — the authoritative table is ADR-050 decision 1, now 17 realtime /
+    // 30 bulk / 5 fiscal / 7 fan-out across 59 job types. Amendments since the
     // ADR: `fiscalization.register` joined `fiscal` (#2156),
     // `inventory.provenance.backfill` joined `bulk` (#2317), the three returns
     // types joined realtime/bulk/fan-out (#2330), `returns.orphan.reconcile`
@@ -150,10 +152,14 @@ export class HandlerRegistrationService implements OnModuleInit {
     // alone: it raised the `fan-out` lane's caps instead of moving a job out of
     // it. `fulfillment.work.timeoutSweep` joined `bulk` (#2712) and
     // `fulfillment.work.relaySweep` beside it (#2728) — both cron-paced
-    // reconcilers over work that is already stalled by definition. The tripwire
-    // in `handler-registration.service.spec.ts` is the authority on these
-    // counts — this comment had drifted from it before #2330, and again before
-    // #2728, which is why it is restated here rather than only appended to.
+    // reconcilers over work that is already stalled by definition.
+    // `fulfillment.work.autoDispatch` is the newest `realtime` member (#3340,
+    // closing #2729) — a NEW job type, not a reclassified one, joining its
+    // `fulfillment.work.dispatch` producer for the identical cost-of-starvation
+    // reason. The tripwire in `handler-registration.service.spec.ts` is the
+    // authority on these counts — this comment had drifted from it before
+    // #2330, and again before #2728, which is why it is restated here rather
+    // than only appended to.
 
     // Register generic marketplace handlers (Option B)
     this.handlerRegistry.register(
@@ -559,6 +565,16 @@ export class HandlerRegistrationService implements OnModuleInit {
     this.handlerRegistry.register(
       'fulfillment.work.dispatch',
       this.fulfillmentWorkDispatchHandler,
+      'realtime'
+    );
+
+    // Auto-dispatch (#3340, closing #2729). 'realtime' for the SAME ADR-050
+    // reason its enqueuing sibling above is: someone (the packer at the
+    // bench) is waiting on this, and lateness costs a shipment, not merely a
+    // slow report.
+    this.handlerRegistry.register(
+      'fulfillment.work.autoDispatch',
+      this.fulfillmentWorkAutoDispatchHandler,
       'realtime'
     );
 

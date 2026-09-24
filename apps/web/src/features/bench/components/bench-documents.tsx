@@ -31,19 +31,44 @@
  * produced — and buying one needs the address and the box measurements, which
  * are deliberately not on this screen. The panel names the owner instead.
  *
+ * A third one, *"Show camera preview"*, was briefly rendered anyway (#3420) on
+ * the argument that copy beside it admitted it did nothing. It is gone. A
+ * disclaimer does not make a dead control useful — the packer still reaches
+ * for it, reads that it was never real, and has lost the second it took. The
+ * rule the other two omissions follow has no exception.
+ *
  * @module apps/web/src/features/bench/components
  */
 import { useState, type ReactElement } from 'react';
 
 import { useApiClient } from '../../../app/api/api-client-provider';
+import { useSession } from '../../../shared/auth/use-session';
 import { Alert } from '../../../shared/ui/alert';
 import { Button } from '../../../shared/ui/button';
 import { StatusBadge } from '../../../shared/ui/status-badge';
 import type { BenchLabel } from '../api/bench-parcel.types';
 import { useBenchDocumentsQuery, useBenchUnlabelledQuery } from '../hooks/use-bench-documents-query';
-import { describeInvoiceBlock } from '../lib/bench-parcel-presentation';
+import {
+  describeInvoiceAbsenceAudience,
+  describeInvoiceBlock,
+} from '../lib/bench-parcel-presentation';
 import { benchParcelCopy } from '../lib/bench-parcel.copy';
 import { printBlob } from '../lib/bench-print';
+
+/**
+ * Maps the three audiences onto their copy. A `Record` rather than a chain of
+ * ternaries so that adding a fourth audience is a compile error here, not a
+ * silently-unreachable branch — the bug this whole seam exists to fix was a
+ * message that rendered where it did not apply.
+ */
+const AUDIENCE_COPY: Record<
+  ReturnType<typeof describeInvoiceAbsenceAudience>,
+  { readonly title: string; readonly body: string }
+> = {
+  'on-office-list': benchParcelCopy.documents.audience.onOfficeList,
+  'issued-on-request': benchParcelCopy.documents.audience.issuedOnRequest,
+  'nobody-told': benchParcelCopy.documents.audience.nobodyTold,
+};
 
 export interface BenchDocumentsPanelProps {
   readonly workId: string;
@@ -81,6 +106,11 @@ export function BenchDocumentsPanel({
   const apiClient = useApiClient();
   const documents = useBenchDocumentsQuery(workId);
   const [printError, setPrintError] = useState<string | null>(null);
+  // #3404 — the signed-in PACKER's own binding, never the order's. `?? null`
+  // rather than `undefined`: a session predating this field must read as
+  // "unset" the same way an explicit clear does.
+  const { session } = useSession();
+  const stationLabel = session.user?.packStationLabel ?? null;
 
   const data = documents.data;
   const unlabelled = data?.label.state === 'unavailable';
@@ -92,6 +122,7 @@ export function BenchDocumentsPanel({
   const invoice = data.invoice;
   const label = data.label;
   const invoiceBlock = describeInvoiceBlock(invoice.blockReason, invoice.unresolvedReason);
+  const invoiceAudience = AUDIENCE_COPY[describeInvoiceAbsenceAudience(invoice.blockReason)];
 
   const printInvoice = (): void => {
     setPrintError(null);
@@ -111,8 +142,11 @@ export function BenchDocumentsPanel({
       setPrintError(benchParcelCopy.documents.printFailed);
       return;
     }
-    void apiClient.shipments
-      .downloadLabel(label.shipmentId)
+    // Through the WORK, never the shipment id — this is the route that
+    // stamps the print (#3340). `apiClient.shipments.downloadLabel` still
+    // exists for every other caller of a shipment's label, but it does not.
+    void apiClient.bench
+      .downloadLabel(workId)
       .then((blob) => {
         if (!printBlob(blob)) setPrintError(benchParcelCopy.documents.printFailed);
       })
@@ -182,8 +216,16 @@ export function BenchDocumentsPanel({
         </div>
       ) : null}
 
+      {/* The mockup's `.docs`: the two papers side by side as cards, so a
+          packer sees at a glance that one goes IN the box and one goes ON it.
+          The grid takes 1 or 2 children — the label card is suppressed while
+          the parcel is unlabelled, which has its own treatment above. */}
+      <div className="bench-documents__cards">
       {/* ── The invoice: inside the box. ──────────────────────────────────── */}
-      <div className="bench-documents__invoice" data-testid="bench-documents-invoice">
+      <div
+        className="bench-documents__card bench-documents__invoice"
+        data-testid="bench-documents-invoice"
+      >
         <StatusBadge tone={invoice.state === 'ready' ? 'success' : 'warning'} withDot>
           {invoice.state === 'ready'
             ? benchParcelCopy.documents.readyBadge
@@ -221,9 +263,10 @@ export function BenchDocumentsPanel({
                 ? benchParcelCopy.documents.missingReasonUnknown
                 : `${invoiceBlock.short} — ${invoiceBlock.detail}`}
             </p>
+            {/* Whether anyone else knows — three different answers, never one
+                reassuring one. See `invoice-absence-audience.ts`. */}
             <p className="bench-documents__flagged">
-              <strong>{benchParcelCopy.documents.flaggedTitle}</strong>{' '}
-              {benchParcelCopy.documents.flaggedBody}
+              <strong>{invoiceAudience.title}</strong> {invoiceAudience.body}
             </p>
           </>
         )}
@@ -232,12 +275,15 @@ export function BenchDocumentsPanel({
       {/* ── The label: on the box. Suppressed while unlabelled, which has its
              own treatment above. ──────────────────────────────────────────── */}
       {label.state === 'ready' ? (
-        <div className="bench-documents__label" data-testid="bench-documents-label">
+        <div
+          className="bench-documents__card bench-documents__label"
+          data-testid="bench-documents-label"
+        >
           <StatusBadge tone="success" withDot>
             {benchParcelCopy.documents.readyBadge}
           </StatusBadge>
           <span className="bench-documents__slot">{benchParcelCopy.documents.onLabel}</span>
-          <h3>{benchParcelCopy.documents.labelTitle(label.carrier)}</h3>
+          <h3>{benchParcelCopy.documents.labelTitle()}</h3>
           {label.trackingNumber === null ? null : (
             <p className="bench-documents__tracking">
               {benchParcelCopy.documents.trackingLabel}: {label.trackingNumber}
@@ -254,6 +300,18 @@ export function BenchDocumentsPanel({
           </Button>
         </div>
       ) : null}
+      </div>
+
+      {/* The mockup's printer-binding line, made from the signed-in packer's
+          own `packStationLabel` (#3404) — never this parcel's, never the
+          order's. Rendered NOTHING when unset: an empty "Printing to —" line
+          is noise at a touch screen, not reassurance. */}
+      {stationLabel === null ? null : (
+        <p className="bench-documents__printer" data-testid="bench-documents-printer">
+          <span className="bench-documents__printer-dot" aria-hidden="true" />
+          {benchParcelCopy.documents.printingTo(stationLabel)}
+        </p>
+      )}
 
       {unlabelled && invoice.state === 'ready' ? (
         <p className="bench-documents__invoice-still-fine">

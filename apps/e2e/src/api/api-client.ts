@@ -27,6 +27,7 @@ import type {
   UpdateAnalyticsSettingsInput,
   ProductContentState,
   ApproveUserInput,
+  UserSummary,
   BulkBatchSummary,
   DescriptionFormatView,
   BulkIssueInvoicesInput,
@@ -411,6 +412,15 @@ export class ApiClient {
         body: JSON.stringify(input),
         skipAuth: true,
       }),
+    /**
+     * `GET /auth/me` — the currently authenticated user, resolved server-side
+     * from THIS client's own bearer token. The one honest way to prove a
+     * provisioned account's `id` (read back from the admin's user list) is
+     * the same principal a login actually authenticates as, rather than two
+     * independently-derived values that merely happen to both be non-null
+     * (#3385 review).
+     */
+    me: (): Promise<UserSummary> => this.request<UserSummary>('/auth/me'),
   };
 
   // ── Users (admin only) ────────────────────────────────────────────────────
@@ -436,6 +446,19 @@ export class ApiClient {
      */
     delete: (userId: string): Promise<void> =>
       this.request<void>(`/users/${userId}`, { method: 'DELETE' }),
+  };
+
+  // ── Pack bench (#3342/#3343) ────────────────────────────────────────────
+  bench = {
+    /**
+     * `GET /bench/work` — the install-WIDE worklist (unscoped by packer
+     * identity, spec D2), used by the pack-bench mockup-parity spec to check
+     * whether the worklist is genuinely empty before asserting the
+     * not-routed empty state, since another connection's accepted work is
+     * outside any one seed's control on a shared stack.
+     */
+    listWork: (): Promise<{ works: unknown[] }> =>
+      this.request<{ works: unknown[] }>('/bench/work'),
   };
 
   // ── AI provider settings (admin only) ─────────────────────────────────────

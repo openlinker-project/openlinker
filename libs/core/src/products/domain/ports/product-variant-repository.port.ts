@@ -230,4 +230,21 @@ export interface ProductVariantRepositoryPort {
 
   /** Read the stored override for one variant. `null` when the variant is unknown. */
   findTaxRate(variantId: string): Promise<StoredTaxRate | null>;
+
+  /**
+   * Record operator-authored physical dimensions (#3403, mockup-parity epic
+   * #3401) — the dedicated writer for `weightGrams`/`lengthMm`/`widthMm`/
+   * `heightMm`, mirroring `recordTaxRate`'s single-writer discipline: the
+   * master-sync upsert must never blank a value an operator typed in.
+   * `null` on any field clears it back to "not recorded".
+   */
+  recordPhysicalDimensions(
+    variantId: string,
+    dims: {
+      readonly weightGrams?: number | null;
+      readonly lengthMm?: number | null;
+      readonly widthMm?: number | null;
+      readonly heightMm?: number | null;
+    }
+  ): Promise<void>;
 }

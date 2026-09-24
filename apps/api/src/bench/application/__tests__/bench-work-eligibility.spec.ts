@@ -16,8 +16,10 @@
 import {
   BENCH_WORK_REQUEST_STATUSES,
   BENCH_WORK_STATUSES,
+  deriveBenchWorkAssignmentState,
   deriveBenchWorkState,
   isBenchWorkSelectable,
+  isClaimableByViewer,
   isPackableBenchState,
 } from '../bench-work-eligibility';
 import { BENCH_ELIGIBILITY_FIXTURES } from './bench-eligibility.fixture';
@@ -83,6 +85,81 @@ describe('bench work eligibility (#2418, story D2)', () => {
       // bench is the one case where silence is worse than speech: say nothing
       // and the packer packs it.
       expect(BENCH_WORK_STATUSES).toContain('cancelled');
+    });
+  });
+
+  describe('the ADR-074 assignment axis (#3341)', () => {
+    describe('deriveBenchWorkAssignmentState', () => {
+      it('reports `unassigned` when nobody is named', () => {
+        expect(deriveBenchWorkAssignmentState({ assignedToUserId: null }, 'viewer-1')).toBe(
+          'unassigned'
+        );
+      });
+
+      it('reports `mine` when the viewer is the one named', () => {
+        expect(
+          deriveBenchWorkAssignmentState({ assignedToUserId: 'viewer-1' }, 'viewer-1')
+        ).toBe('mine');
+      });
+
+      it('reports `assigned-other` when someone else is named', () => {
+        expect(
+          deriveBenchWorkAssignmentState({ assignedToUserId: 'someone-else' }, 'viewer-1')
+        ).toBe('assigned-other');
+      });
+    });
+
+    describe('isClaimableByViewer', () => {
+      it('is claimable when nobody is assigned', () => {
+        expect(
+          isClaimableByViewer({ assignedToUserId: null, selfServeEligible: false }, 'viewer-1')
+        ).toBe(true);
+      });
+
+      it('is claimable by the packer it is assigned to', () => {
+        expect(
+          isClaimableByViewer(
+            { assignedToUserId: 'viewer-1', selfServeEligible: false },
+            'viewer-1'
+          )
+        ).toBe(true);
+      });
+
+      it('is claimable by anyone when self-serve is eligible, even if assigned elsewhere', () => {
+        expect(
+          isClaimableByViewer(
+            { assignedToUserId: 'someone-else', selfServeEligible: true },
+            'viewer-1'
+          )
+        ).toBe(true);
+      });
+
+      it('refuses a different packer locked out of a non-self-serve assignment', () => {
+        expect(
+          isClaimableByViewer(
+            { assignedToUserId: 'someone-else', selfServeEligible: false },
+            'viewer-1'
+          )
+        ).toBe(false);
+      });
+
+      it('is claimable by an anonymous viewer when nobody is assigned (#3435 review)', () => {
+        expect(
+          isClaimableByViewer({ assignedToUserId: null, selfServeEligible: false }, null)
+        ).toBe(true);
+      });
+
+      it('refuses an anonymous viewer locked out of a non-self-serve assignment (#3435 review)', () => {
+        // `null` never equals a real `assignedToUserId`, so a caller with no
+        // recorded actor is excluded exactly as a named non-assignee is —
+        // `reopenParcel`'s own `@CurrentUser()` is optional at its route.
+        expect(
+          isClaimableByViewer(
+            { assignedToUserId: 'someone-else', selfServeEligible: false },
+            null
+          )
+        ).toBe(false);
+      });
     });
   });
 });

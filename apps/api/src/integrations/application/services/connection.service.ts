@@ -427,6 +427,47 @@ export class ConnectionService implements IConnectionService {
   }
 
   /**
+   * Core-owned bounds check for `config.autoDispatch` (#3340/#2729) — the
+   * per-connection opt-in to buy a shipping label the moment a routed
+   * `FulfillmentWork` is accepted. Neutral, like the checks above it: every
+   * adapter shares this validation, and the raw JSON editor + curl + MCP all
+   * bypass the connection form's own rules, so a malformed value must be
+   * refused here rather than silently coerced to "off" by
+   * `readAutoDispatchConfig` with no operator feedback — the same
+   * reported-≠-enforced gap `validateStockAndPricingConfig`'s docblock names.
+   *
+   * Never defaults a value in; an absent `autoDispatch` key stays absent.
+   */
+  private validateAutoDispatchConfig(config: Record<string, unknown>): void {
+    const autoDispatch = config.autoDispatch;
+    if (autoDispatch === undefined || autoDispatch === null) return;
+    if (typeof autoDispatch !== 'object' || Array.isArray(autoDispatch)) {
+      throw new BadRequestException('config.autoDispatch must be an object');
+    }
+
+    const { enabled, parcelTemplate, defaultWeightGrams } = autoDispatch as Record<
+      string,
+      unknown
+    >;
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
+      throw new BadRequestException('config.autoDispatch.enabled must be a boolean');
+    }
+    if (parcelTemplate !== undefined && typeof parcelTemplate !== 'string') {
+      throw new BadRequestException('config.autoDispatch.parcelTemplate must be a string');
+    }
+    if (
+      defaultWeightGrams !== undefined &&
+      (typeof defaultWeightGrams !== 'number' ||
+        !Number.isFinite(defaultWeightGrams) ||
+        defaultWeightGrams <= 0)
+    ) {
+      throw new BadRequestException(
+        'config.autoDispatch.defaultWeightGrams must be a number greater than 0'
+      );
+    }
+  }
+
+  /**
    * Core-owned validation for `config.stockLocationOverride` (#3206): the id
    * must resolve to a location this install actually has, AND that location
    * must be ACTIVE. Rejecting here — rather than letting the sync silently
@@ -707,6 +748,7 @@ export class ConnectionService implements IConnectionService {
       if (rest.config !== undefined) {
         this.validateRateLimitConfig(rest.config);
         this.validateStockAndPricingConfig(rest.config);
+        this.validateAutoDispatchConfig(rest.config);
         await this.validateStockLocationOverride(rest.config, undefined);
         await this.validateConfigShape(metadata.adapterKey, rest.config);
         // #2407 — above the credential-persistence block below, which requires
@@ -967,6 +1009,7 @@ export class ConnectionService implements IConnectionService {
       if (patch.config !== undefined && metadata) {
         this.validateRateLimitConfig(patch.config);
         this.validateStockAndPricingConfig(patch.config);
+        this.validateAutoDispatchConfig(patch.config);
         await this.validateStockLocationOverride(patch.config, existing.config);
         await this.validateConfigShape(metadata.adapterKey, patch.config);
         // #2407 — inside this branch, which is correct ONLY because

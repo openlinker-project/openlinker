@@ -65,6 +65,18 @@ export interface PriceChangeListResponse {
   total: number;
 }
 
+/**
+ * `GET /listings/price-changes/counts` (#3325) — the review queue's
+ * connection filter-bar chip counts, exact rather than bounded by the page
+ * size a `list()` read was capped to.
+ */
+export interface PriceChangeCountsResponse {
+  /** Total open episodes across every destination connection. */
+  total: number;
+  /** A connection with zero open episodes is absent from this list, never present with `0`. */
+  byConnection: { connectionId: string; count: number }[];
+}
+
 export interface ListPriceChangesFilters {
   connectionId?: string;
   direction?: 'up' | 'down';

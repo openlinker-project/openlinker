@@ -21,12 +21,22 @@ function view(over: Partial<BenchWorkListView> = {}): BenchWorkListView {
         parcelIndex: 1,
         parcelTotal: 2,
         lineCount: 2,
+        // #3415 - the rail leads with what is in the box. Two named lines and
+        // one un-resolvable variant, because `null` is a real answer here and
+        // the projection must carry it through rather than drop the row.
+        items: [
+          { name: 'Linen tea towel', quantity: 2, imageUrl: '/v1/products/ol_product_1/image/0' },
+          { name: null, quantity: 1, imageUrl: null },
+        ],
         unitsToVerify: 6,
         state: 'packable',
         holdReason: null,
         holdPlacedAt: null,
         expeditedAt: null,
         supportedActions: ['expedite'],
+        assignmentState: 'unassigned',
+        claimable: true,
+        completedAt: null,
       },
     ],
     executorName: 'Warehouse packing',
@@ -37,7 +47,12 @@ function view(over: Partial<BenchWorkListView> = {}): BenchWorkListView {
 }
 
 function controllerFor(result: BenchWorkListView): BenchWorkController {
-  const bench: IBenchWorkService = { listBenchWork: jest.fn().mockResolvedValue(result) };
+  const bench: IBenchWorkService = {
+    listBenchWork: jest.fn().mockResolvedValue(result),
+    claimNext: jest.fn(),
+    listPackedToday: jest.fn(),
+    getMetrics: jest.fn(),
+  };
   return new BenchWorkController(bench);
 }
 
@@ -52,7 +67,7 @@ describe('BenchWorkController (#2416)', () => {
   });
 
   it('should project the list field by field', async () => {
-    const dto = await controllerFor(view()).listBenchWork();
+    const dto = await controllerFor(view()).listBenchWork({ id: 'viewer-1', username: 'viewer', role: 'packer' });
 
     expect(dto.works).toHaveLength(1);
     expect(dto.works[0].orderReference).toBe('OL-4471');
@@ -63,7 +78,7 @@ describe('BenchWorkController (#2416)', () => {
   it('should send an EXPLICIT null reason when routing is ready', async () => {
     // Never an omitted key: `#939` records that an absent optional arrives as
     // `undefined` and drops the surrounding section at the boundary schema.
-    const dto = await controllerFor(view()).listBenchWork();
+    const dto = await controllerFor(view()).listBenchWork({ id: 'viewer-1', username: 'viewer', role: 'packer' });
 
     expect(dto.routing).toEqual({ ready: true, reason: null });
   });
@@ -76,8 +91,45 @@ describe('BenchWorkController (#2416)', () => {
         routing: { ready: false, reason: 'no-packing-connection' },
         total: 0,
       })
-    ).listBenchWork();
+    ).listBenchWork({ id: 'viewer-1', username: 'viewer', role: 'packer' });
 
     expect(dto.routing).toEqual({ ready: false, reason: 'no-packing-connection' });
+  });
+
+  describe('supervises (#3340, ADR-071)', () => {
+    function benchWith(): { controller: BenchWorkController; listBenchWork: jest.Mock } {
+      const listBenchWork = jest.fn().mockResolvedValue(view());
+      const bench: IBenchWorkService = {
+        listBenchWork,
+        claimNext: jest.fn(),
+        listPackedToday: jest.fn(),
+        getMetrics: jest.fn(),
+      };
+      return { controller: new BenchWorkController(bench), listBenchWork };
+    }
+
+    it('resolves `supervises: false` from a permission, not from the role name, for packer', async () => {
+      const { controller, listBenchWork } = benchWith();
+
+      await controller.listBenchWork({ id: 'p-1', username: 'anna', role: 'packer' });
+
+      expect(listBenchWork).toHaveBeenCalledWith('p-1', false);
+    });
+
+    it('resolves `supervises: true` for operator', async () => {
+      const { controller, listBenchWork } = benchWith();
+
+      await controller.listBenchWork({ id: 'o-1', username: 'olga', role: 'operator' });
+
+      expect(listBenchWork).toHaveBeenCalledWith('o-1', true);
+    });
+
+    it('resolves `supervises: true` for admin', async () => {
+      const { controller, listBenchWork } = benchWith();
+
+      await controller.listBenchWork({ id: 'a-1', username: 'adam', role: 'admin' });
+
+      expect(listBenchWork).toHaveBeenCalledWith('a-1', true);
+    });
   });
 });

@@ -105,11 +105,17 @@ export async function findUserByUsername(
   username: string,
   status?: string,
 ): Promise<UserSummary | null> {
-  for (let page = 1; page <= MAX_USER_SCAN_PAGES; page += 1) {
+  // `GET /users`'s `page` is ZERO-based (`list-users-query.dto.ts`: "Zero-based
+  // page number", default 0) — starting this loop at `page = 1` silently
+  // skipped page 0 on every call, which is exactly where a just-registered or
+  // just-inserted user lands (results are `createdAt DESC`). Verified live
+  // against a 2-user stack: `page=1` returned `users: []` with `total: 2`
+  // correct, `page=0` returned both rows.
+  for (let page = 0; page < MAX_USER_SCAN_PAGES; page += 1) {
     const response = await adminClient.users.list({ status, page, pageSize: USER_PAGE_SIZE });
     const hit = response.users.find((u) => u.username === username);
     if (hit) return hit;
-    if (response.users.length < USER_PAGE_SIZE || page * USER_PAGE_SIZE >= response.total) {
+    if (response.users.length < USER_PAGE_SIZE || (page + 1) * USER_PAGE_SIZE >= response.total) {
       return null;
     }
   }

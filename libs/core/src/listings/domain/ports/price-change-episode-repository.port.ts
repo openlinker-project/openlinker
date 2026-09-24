@@ -167,6 +167,15 @@ export interface PriceChangeEpisodeRepositoryPort {
    * (`docs/engineering-standards.md § When A Paginated Total Is Expensive`;
    * the #2083 batched-read rule). Sources with zero open episodes are absent
    * from the map, never present with `0`.
+   *
+   * Cheap despite that doc's "a COUNT under a non-sargable filter scans the
+   * table" warning: `resolvedAt IS NULL` is a plain equality filter on the
+   * OPEN set, which is the working set by definition and small relative to
+   * the episode table's full history, grouped over a handful of source
+   * connections — not the jsonb/ILIKE shape that section warns about.
+   *
+   * @see countOpenByDestination for the mirror grouping (by destination,
+   * across the whole install).
    */
   countOpenBySource(destinationConnectionId: string): Promise<ReadonlyMap<string, number>>;
 
@@ -178,4 +187,30 @@ export interface PriceChangeEpisodeRepositoryPort {
    * every column of every open episode purely to throw the rows away).
    */
   listOpenDestinationConnectionIds(sourceConnectionId: string): Promise<readonly string[]>;
+
+  /**
+   * Open-episode count per DESTINATION connection, across the WHOLE
+   * install — the review queue's connection filter-bar chip counts (#3325,
+   * split out of #3237/#3164 review). The mirror of `countOpenBySource`
+   * (which groups by source for a single destination): this groups by
+   * destination with no scope at all, one `GROUP BY` rather than a
+   * `countOpen({ destinationConnectionId })` call per connection in a loop
+   * (`docs/engineering-standards.md § When A Paginated Total Is Expensive`).
+   *
+   * Strictly-open, matching `countOpen`/`countOpenBySource` — never widened
+   * by `includeRecentlyResolved`, which stays a review-queue LIST concern.
+   * Destinations with zero open episodes are absent from the map, never
+   * present with `0`.
+   *
+   * Cheap for the same reason `countOpenBySource` is: `resolvedAt IS NULL`
+   * is a plain equality filter on the open set (the working set by
+   * definition, not the episode table's full history), grouped over a
+   * handful of destination connections — not the non-sargable jsonb/ILIKE
+   * shape `docs/engineering-standards.md § When A Paginated Total Is
+   * Expensive` warns about.
+   *
+   * @see countOpenBySource for the mirror grouping (by source, scoped to
+   * one destination).
+   */
+  countOpenByDestination(): Promise<ReadonlyMap<string, number>>;
 }

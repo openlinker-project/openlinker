@@ -37,6 +37,8 @@ function makeMocks() {
     updateAnalyticsConsent: jest.fn(),
     deleteAdminAtomically: jest.fn(),
     findStaleViewerAccounts: jest.fn(),
+    updatePackStationLabel: jest.fn(),
+    touchLastActive: jest.fn(),
   };
   const tokenRepo: jest.Mocked<PasswordResetTokenRepositoryPort> = {
     save: jest.fn(),

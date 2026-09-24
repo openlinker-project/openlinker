@@ -817,6 +817,27 @@ describe('ShipmentController', () => {
       expect(send).toHaveBeenCalledWith(Buffer.from(doc.body));
     });
 
+    // Regression (#3340): this route used to stamp `FulfillmentWork.labelPrintedAt`
+    // on every successful fetch, so a viewer's or a script's stray GET silently
+    // marked a label printed the packer never actually printed. It carries no
+    // `@Roles` and any caller may reach it with nothing more than a shipment id,
+    // so a fetch here is not evidence anyone printed anything — the stamp now
+    // lives exclusively on `GET /bench/work/:workId/documents/label`. This route
+    // must therefore neither read the shipment a second time to find its
+    // `fulfillmentWorkId`, nor call any verification seam.
+    it('should NOT stamp a label print, and should not re-read the shipment to look for one', async () => {
+      const doc: LabelDocument = {
+        contentType: 'application/pdf',
+        body: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      };
+      labelService.fetchLabel.mockResolvedValue(doc);
+      const { res } = makeRes();
+
+      await controller.downloadLabel('ol_shipment_1', ADMIN_USER, res);
+
+      expect(query.getById).not.toHaveBeenCalled();
+    });
+
     it('should use the content-type-derived extension for a non-PDF document', async () => {
       labelService.fetchLabel.mockResolvedValue({
         contentType: 'application/zpl',

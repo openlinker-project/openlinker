@@ -57,6 +57,18 @@ export const PermissionValues = [
   'users:read',
   'users:write',
   'customers:read',
+  // The pack bench's own write affordances (#3412/#3424): claiming a parcel
+  // and taking the next task. Its own value rather than `orders:write`
+  // because ADR-071 keeps a packer deliberately narrow - "every temp packer
+  // can read the customer database" is the posture that role exists to
+  // refuse, and `orders:write` is the operator's whole order-mutation grant.
+  //
+  // The roles holding it MUST stay identical to the `@Roles` lists on
+  // `BenchWorkController` and `BenchParcelController`, which are already
+  // `admin` + `operator` + `packer`: this permission gates the UI, the
+  // decorators gate the route, and a UI that offers what the route refuses
+  // (or hides what it allows, which is what happened here) is the defect.
+  'bench:write',
   'shipments:read',
   // DISPLAY-ONLY (#1826): gates carrier-message disclosure on the shipments
   // read paths plus the FE's write affordances. It authorizes no mutation — the
@@ -125,6 +137,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'listings:read',
     'listings:write',
     'customers:read',
+    'bench:write',
     'shipments:read',
     'shipments:write',
     'invoices:read',
@@ -162,5 +175,14 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
    * it can be named for something that exists — ADR-048 decision 1's "no
    * interface without an implementer", applied to a permission.
    */
-  packer: [],
+  // Exactly one permission, and it is the bench's own (#3424). Everything
+  // else a packer may do is gated by a `@Roles(...)` decorator naming the
+  // role directly, which is ADR-071's model: the bench has no principal, so a
+  // packer is an ordinary user and the routes are what narrow them.
+  //
+  // This one exists because the bench's two write CONTROLS are rendered
+  // client-side, and a client-side gate needs a permission to read. Without
+  // it "Claim this parcel" and "Take next task" never rendered at all, while
+  // the API behind them accepted a packer perfectly well.
+  packer: ['bench:write'],
 } as const;

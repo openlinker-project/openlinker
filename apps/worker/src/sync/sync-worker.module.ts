@@ -81,6 +81,7 @@ import { RegulatoryStatusReconcileHandler } from './handlers/regulatory-status-r
 import { OfflineResubmitHandler } from './handlers/offline-resubmit.handler';
 import { PendingRecoveryHandler } from './handlers/pending-recovery.handler';
 import { FulfillmentWorkDispatchHandler } from './handlers/fulfillment-work-dispatch.handler';
+import { FulfillmentWorkAutoDispatchHandler } from './handlers/fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './handlers/fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './handlers/fulfillment-work-relay-sweep.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './handlers/fulfillment-work-timeout-sweep.handler';
@@ -178,6 +179,7 @@ import { HandlerRegistrationService } from './handlers/handler-registration.serv
     PendingRecoveryHandler,
     PaymentStatusRefreshHandler,
     FulfillmentWorkDispatchHandler,
+    FulfillmentWorkAutoDispatchHandler,
     FulfillmentWorkRouteHandler,
     FulfillmentWorkTimeoutSweepHandler,
     FulfillmentWorkRelaySweepHandler,

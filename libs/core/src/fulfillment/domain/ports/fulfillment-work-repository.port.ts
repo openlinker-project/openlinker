@@ -49,6 +49,7 @@ import type {
   FulfillmentWorkListFilter,
   FulfillmentWorkPage,
 } from '../types/fulfillment-worklist-page.types';
+import type { ParcelVerificationEvent } from '../types/fulfillment-verification.types';
 
 /** One line of a work object at creation time. Counters start at zero. */
 export interface CreateFulfillmentWorkLineInput {
@@ -413,6 +414,52 @@ export interface ClaimParcelCloseInput {
   readonly packedByUserId: string | null;
 }
 
+/**
+ * The single most recently verified ACTIVE row for a work, or `null` when
+ * there is none (#3405). Used only to locate the row `voidLastVerification`
+ * then guards its write against.
+ */
+export interface LatestActiveParcelVerification {
+  readonly id: string;
+  readonly workLineId: string;
+}
+
+/** Voiding the single most recent scan (#3405). */
+export interface VoidLastVerificationWriteInput {
+  readonly workId: string;
+  readonly voidedByUserId: string | null;
+  readonly voidedAt: Date;
+}
+
+/**
+ * The explicit completion claim (pack-bench completion) — an operator declaring a parcel
+ * finished and off the bench (label applied, invoice inside, box on the
+ * trolley).
+ *
+ * `completedByUserId` is REQUIRED and never `null`: a completion is always an
+ * operator act at a terminal in front of the parcel, unlike `packedByUserId`,
+ * which carries a service-actor alternative for an executor that packs
+ * without a human. There is no such alternative here.
+ */
+export interface ClaimFulfillmentCompletionInput {
+  readonly workId: string;
+  readonly completedAt: Date;
+  readonly completedByUserId: string;
+  /** See `CancelFulfillmentWorkInput.expectedVersion`. Required: there is no unguarded completion. */
+  readonly expectedVersion: number;
+}
+
+/**
+ * Take back a declared completion (#3340 follow-up) — never `reopenParcel`'s
+ * job: reopening voids the whole verification ledger, and this must not.
+ * `expectedVersion` is required for the same reason `ClaimFulfillmentCompletionInput`'s
+ * is: there is no unguarded write to this column.
+ */
+export interface UndoFulfillmentCompletionInput {
+  readonly workId: string;
+  readonly expectedVersion: number;
+}
+
 /** Opening it again (#2418, E6/D19). */
 export interface ReopenParcelWriteInput {
   readonly workId: string;
@@ -498,6 +545,85 @@ export interface FulfillmentWorkRepositoryPort {
   assignHolder(workId: string, connectionId: string): Promise<boolean>;
   /** Clear the holder after a rejection. */
   clearHolder(workId: string): Promise<boolean>;
+
+  /**
+   * Pre-assign this parcel to a packer (ADR-074, #3336). Unlike
+   * `assignHolder`, this is NOT a claim-once primitive: ADR-074 requires a
+   * supervisor to be able to REASSIGN an idle parcel, so the STATE guard is
+   * only that the row exists — an already-assigned work object may be
+   * reassigned, overwriting the prior `assignedToUserId` unconditionally.
+   *
+   * `expectedVersion` (#3340 second follow-up) is an OPTIONAL, orthogonal
+   * lost-update guard, additive over the state precondition above — never an
+   * exclusivity mechanism. ADR-074 places assignment outside the
+   * authority-matrix LEGALITY `applyAction`'s actions enforce, which says
+   * nothing about whether a lost-update guard belongs here: without one, two
+   * supervisors reassigning the same parcel to two different packers both
+   * received a 200, last write silently winning with neither told. Omitting
+   * it keeps every pre-existing caller's unconditional write unchanged.
+   *
+   * `false` means the guard did not hold — either the work object no longer
+   * exists (the parcel closed or was cancelled), or — when `expectedVersion`
+   * was supplied and does not match — a lost-update conflict. The caller
+   * distinguishes the two with its own re-read, the `applyAction` /
+   * `explainRefusal` convention.
+   */
+  assignToPacker(workId: string, userId: string, expectedVersion?: number): Promise<boolean>;
+
+  /**
+   * Clear a pre-assignment. Guarded `IS NOT NULL`, mirroring `clearHolder` —
+   * `false` means the parcel was already unassigned, an ordinary no-op (or,
+   * with `expectedVersion` supplied and mismatched, a lost-update conflict —
+   * see `assignToPacker`'s note, which applies here verbatim).
+   *
+   * Also resets `selfServeEligible` to `true`, in the SAME statement, so an
+   * exclusivity decision about the cleared packer is never inherited by
+   * whoever is assigned next (ADR-074 review round 2) — the flag is a
+   * decision about a specific assignee, not a standing property of the
+   * parcel.
+   */
+  clearAssignment(workId: string, expectedVersion?: number): Promise<boolean>;
+
+  /**
+   * Claim an UNASSIGNED parcel for `userId` (#3340 follow-up) — the EXCLUSIVE
+   * counterpart to `assignToPacker`'s unconditional, supervisor-shaped write.
+   *
+   * Guarded `WHERE "assignedToUserId" IS NULL`: of two concurrent claims on
+   * one unassigned parcel, only the first to reach this row wins. A caller
+   * must use this ONLY when it read the parcel as unassigned — an
+   * already-assigned-and-still-claimable parcel (self-serve, or reclaiming
+   * your own assignment) stays `assignToPacker`'s unconditional write, since
+   * ADR-074's advisory model has no exclusivity to enforce there and this
+   * guard would wrongly refuse a legitimate reassignment.
+   *
+   * `false` means the guard did not hold — a peer claimed it first. That is
+   * an ordinary outcome the caller must report honestly (the parcel is now
+   * somebody else's), never as the generic `assignToPacker` failure reading
+   * "the work object no longer exists".
+   */
+  claimAssignment(workId: string, userId: string): Promise<boolean>;
+
+  /**
+   * Set whether a packer other than `assignedToUserId` may still claim this
+   * parcel (ADR-074). `true` is unguarded beyond the row existing — it is
+   * both the column default and the state `clearAssignment` restores, so
+   * refusing it would refuse a no-op. `false` is additionally guarded
+   * `assignedToUserId IS NOT NULL`: an exclusive lock naming no packer is
+   * the unrepresentable state `CHK_fulfillment_works_exclusive_needs_packer`
+   * backstops at the database, and this guard is what keeps that state from
+   * being reachable through this port in the first place.
+   *
+   * `expectedVersion` (#3340 second follow-up) is optional and additive — see
+   * `assignToPacker`'s note; the same lost-update reasoning applies here,
+   * composed with the guard above rather than replacing it, so a version
+   * conflict and an unassigned-lock refusal stay distinguishable causes for
+   * the same `false`.
+   */
+  setSelfServeEligible(
+    workId: string,
+    selfServeEligible: boolean,
+    expectedVersion?: number
+  ): Promise<boolean>;
 
   /**
    * Claim a dispatch: move `requestStatus` to `submitted` and increment
@@ -756,4 +882,100 @@ export interface FulfillmentWorkRepositoryPort {
     input: ReopenParcelWriteInput,
     transaction?: FulfillmentWorkTransaction
   ): Promise<boolean>;
+
+  /**
+   * Stamp the FIRST time this parcel's invoice was printed at the bench
+   * (pack-bench completion). Fill-in-when-NULL — `WHERE "invoicePrintedAt" IS NULL` — so a
+   * reprint never moves it: the question is "was it ever printed", and a
+   * later value would make a reprint look like the original print.
+   *
+   * `false` means it was already recorded — an ordinary, successful outcome
+   * and never an error. Does NOT bump `version`: this is a display-only fact,
+   * the same reading `recordLineProgress`'s counters carry.
+   */
+  markInvoicePrinted(workId: string, at: Date): Promise<boolean>;
+
+  /**
+   * The label sibling of `markInvoicePrinted` (pack-bench completion). Same shape, same
+   * fill-in-when-NULL claim, same no-version-bump reading. Called from a
+   * SIBLING context (`shipping`) that resolves this work id off
+   * `Shipment.fulfillmentWorkId` (#2402) — this method itself takes only the
+   * id it is handed.
+   */
+  markLabelPrinted(workId: string, at: Date): Promise<boolean>;
+
+  /**
+   * Declare this parcel finished and off the bench — the explicit
+   * completion act the pack-bench completion research found missing.
+   * `"completedAt"` and `"completedByUserId"` in ONE guarded UPDATE
+   * (`WHERE "completedAt" IS NULL AND "parcelClosedAt" IS NOT NULL`), the
+   * `claimParcelClose` at-most-once idiom: a parcel cannot be completed
+   * twice, and cannot be completed before it is packed.
+   *
+   * Bumps `version`, unlike the two print marks above: unlike those, this IS
+   * the terminal legality-gated act on this surface.
+   *
+   * `false` means the guard did not hold — the caller re-reads to tell a
+   * stale token apart from an already-completed or not-yet-closed parcel,
+   * the `transitionStatus` / `applyAction` convention.
+   */
+  claimCompletion(input: ClaimFulfillmentCompletionInput): Promise<boolean>;
+
+  /**
+   * Undo a declared completion (#3340 follow-up) — the undo `claimCompletion`
+   * needed. An operator who tapped "done" by mistake must be able to take it
+   * back without `reopenParcel`'s destructive ceremony (which voids every
+   * verification): undoing touches ONLY `completedAt` / `completedByUserId`
+   * and leaves `parcelClosedAt` and the whole verification ledger untouched.
+   *
+   * Guarded `WHERE "completedAt" IS NOT NULL` — the mirror of `claimCompletion`'s
+   * own guard, at-most-once in the other direction. Bumps `version`: the same
+   * legality-gated-act reasoning `claimCompletion` states for itself.
+   *
+   * `false` means the guard did not hold — the caller re-reads to tell a stale
+   * token apart from a parcel that was never completed in the first place, the
+   * `complete` / `applyAction` convention.
+   */
+  undoCompletion(input: UndoFulfillmentCompletionInput): Promise<boolean>;
+
+  /**
+   * Locate the most recent ACTIVE verification on a work, without voiding it
+   * (#3405). A plain read: the caller decides whether to refuse (parcel
+   * closed) before spending a write.
+   *
+   * Ordered `verifiedAt DESC` — `CreateDateColumn` is `timestamptz`, whose
+   * resolution makes a genuine tie between two distinct physical scans
+   * vanishingly unlikely on one bench, the same tolerance the rest of this
+   * repository accepts elsewhere (e.g. an equal `observedAt` reading as a job
+   * retry). `null` when nothing is active to undo.
+   */
+  findLatestActiveVerification(
+    workId: string,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<LatestActiveParcelVerification | null>;
+
+  /**
+   * Void ONE row by id (#3405) — the write half of undo-last-scan.
+   *
+   * Guarded on `"voidedAt" IS NULL`, the same at-most-once claim idiom every
+   * other terminal write on this aggregate uses: if the row was already
+   * voided between the read and this write (a concurrent reopen, or a second
+   * undo racing the first), this answers `false` rather than voiding a row
+   * twice or double-decrementing a count that already moved.
+   */
+  voidVerificationById(
+    verificationId: string,
+    input: VoidLastVerificationWriteInput,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<boolean>;
+
+  /**
+   * The whole per-unit ledger for one work, newest first (#3411).
+   *
+   * Every row, active and voided alike — a "recent activity" log needs to
+   * show an undo happened, not just its absence from a count. No `LIMIT`:
+   * a parcel's line count already bounds the ledger's size, and the caller
+   * decides how much of it to render.
+   */
+  listVerifications(workId: string): Promise<readonly ParcelVerificationEvent[]>;
 }

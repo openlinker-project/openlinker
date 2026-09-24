@@ -127,9 +127,13 @@ export const INVENTORY_DB_MANAGED_COLUMNS = ['updatedAt'] as const;
  * `olReservedQuantity`, OL's own reservation counter — and ADR-061's ledger
  * landed it. The group was declared empty in Wave 1b so the fourth ownership
  * answer existed before there was a column needing it: the classification spec
- * forces every new column into exactly one group, and without this group the
- * only available answer for an OL-owned column would have been the master-owned
- * set, which is the one place it must never go.
+ * — `inventory.repository.spec.ts`'s "should classify every declared entity
+ * column into exactly one group", which reads `InventoryItemOrmEntity`'s
+ * columns straight off TypeORM's metadata storage and asserts the set equals
+ * the four groups below combined — forces every new column into exactly one
+ * group, and without this group the only available answer for an OL-owned
+ * column would have been the master-owned set, which is the one place it must
+ * never go.
  *
  * The consequence is live rather than notional now: `olReservedQuantity` is
  * denormalised over the `reservations` ledger and corrected by #2349's
@@ -146,6 +150,10 @@ export const INVENTORY_DB_MANAGED_COLUMNS = ['updatedAt'] as const;
  */
 export const INVENTORY_OL_OWNED_COLUMNS: readonly (keyof InventoryItemOrmEntity)[] = [
   'olReservedQuantity',
+  // #3402, mockup-parity epic #3401. Operator-authored bin/shelf code - a
+  // master sync reports nothing resembling it, and if one ever did, writing
+  // it here would blank an operator's typed-in value on the next pull.
+  'binCode',
 ];
 
 @Injectable()
@@ -420,6 +428,30 @@ export class InventoryRepository implements InventoryRepositoryPort {
       totalReserved: Number(row.totalReserved),
       stockUpdatedAt: row.stockUpdatedAt instanceof Date ? row.stockUpdatedAt : new Date(row.stockUpdatedAt),
     }));
+  }
+
+  async findBinCodesByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<ReadonlyMap<string, string>> {
+    if (variantIds.length === 0) return new Map();
+
+    const rows = await this.repository
+      .createQueryBuilder('inv')
+      .select('inv.productVariantId', 'productVariantId')
+      .addSelect('inv.binCode', 'binCode')
+      .where('inv.productVariantId IN (:...variantIds)', { variantIds: [...variantIds] })
+      .andWhere('inv.isStale = false')
+      .andWhere('inv.binCode IS NOT NULL')
+      .getRawMany<{ productVariantId: string; binCode: string }>();
+
+    const byVariant = new Map<string, string>();
+    for (const row of rows) {
+      // First non-null wins, by no particular ordering — see the port docblock.
+      if (!byVariant.has(row.productVariantId)) {
+        byVariant.set(row.productVariantId, row.binCode);
+      }
+    }
+    return byVariant;
   }
 
   async markStaleExceptVariants(
