@@ -30,7 +30,10 @@
  * 6. **Write** — `adjustInventory(-n)`, keyed `sale:{owner}:{workId}:{lineId}`,
  *    with no `locationId` (OpenLinker's location id is not the adapter's — the
  *    Subiekt adapter reads it as a `magazynId`).
- * 7. **Mirror + propagate** — the master's new quantity is written to
+ * 7. **Close the hold** (#3480) — the line's advisory hold is consumed BEFORE the
+ *    mirror write, so the reduction moves from the hold to the master exactly
+ *    once. A failed decrement keeps its hold.
+ * 8. **Mirror + propagate** — the master's new quantity is written to
  *    `inventory_items` through `setInventory`, which enqueues
  *    `inventory.propagateToMarketplaces`.
  *
@@ -73,8 +76,10 @@ import {
   INVENTORY_REPOSITORY_TOKEN,
   INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
+  RESERVATION_SERVICE_TOKEN,
 } from '../../inventory.tokens';
 import { IInventoryService } from './inventory.service.interface';
+import { IReservationService } from './reservation.service.interface';
 import type {
   DecrementForWorkInput,
   DecrementForWorkResult,
@@ -100,7 +105,9 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
     @Inject(INVENTORY_SERVICE_TOKEN)
     private readonly inventoryService: IInventoryService,
     @Inject(INTEGRATIONS_SERVICE_TOKEN)
-    private readonly integrations: IIntegrationsService
+    private readonly integrations: IIntegrationsService,
+    @Inject(RESERVATION_SERVICE_TOKEN)
+    private readonly reservations: IReservationService
   ) {}
 
   async decrementForWork(input: DecrementForWorkInput): Promise<DecrementForWorkResult> {
@@ -173,11 +180,18 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
         reason: 'source-is-owner',
         detail: 'the order came from this product master, which lowered its own stock',
       });
-      return this.reportRow(line, await this.decrements.findByKey(ref.idempotencyKey), false);
+      const row = await this.decrements.findByKey(ref.idempotencyKey);
+      // The shop already lowered its own stock, so the hold must stop counting
+      // too, or the sale would be subtracted twice (#3480).
+      await this.consumeHoldIfSettled(input.orderId, line.orderLineId, row);
+      return this.reportRow(line, row, false);
     }
 
     const existing = await this.decrements.findByKey(ref.idempotencyKey);
     if (existing !== null && existing.status !== 'retryable') {
+      // A replay of a line that already succeeded re-runs the consume, so a
+      // consume that failed on the first run heals here (it is idempotent).
+      await this.consumeHoldIfSettled(input.orderId, line.orderLineId, existing);
       return this.reportExisting(line, existing, adapters, resolution.position);
     }
 
@@ -210,6 +224,11 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
     await this.decrements.settle(claimed.id, settlement);
 
     if (settlement.status === 'applied' || settlement.status === 'deduplicated') {
+      // Consume BEFORE the mirror write (#3480): the propagation `setInventory`
+      // enqueues then reads an ATP where the hold is already gone and the master
+      // is already lower, so the sale is never subtracted twice — not even for
+      // the moment between the two writes.
+      await this.consumeHold(input.orderId, line.orderLineId);
       await this.mirrorResult(resolution.position, owner, settlement.resultingQuantity, line);
     } else if (settlement.status === 'in_doubt') {
       await this.refreshFromMaster(adapter.adapter, resolution.position, owner, line);
@@ -441,6 +460,52 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
       this.logger.warn(
         `Sale decrement for line ${line.orderLineId} landed, but the stock mirror ` +
           `could not be updated: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  /** Consume the line's hold when its decrement row records a success. */
+  private async consumeHoldIfSettled(
+    orderId: string,
+    orderLineId: string,
+    row: InventorySaleDecrement | null
+  ): Promise<void> {
+    if (row === null) return;
+    if (row.status === 'applied' || row.status === 'deduplicated' || row.status === 'skipped') {
+      await this.consumeHold(orderId, orderLineId);
+    }
+  }
+
+  /**
+   * Close the line's advisory hold as `consumed` (#3480).
+   *
+   * The routed order's hold is stamped `published`, so it subtracts from what
+   * marketplaces are told from the moment the order is routed. Once the master
+   * itself is lower, the hold must stop counting, or the sale is subtracted
+   * twice — and the shortfall reconciler (#2349) opens a false episode on every
+   * low-stock item. A failed decrement never reaches here, so its hold keeps the
+   * stock reduced while the retry runs.
+   *
+   * Best-effort: the decrement is already durable, and a replay re-runs this
+   * idempotently (`releaseHeld` is guarded on `held`).
+   */
+  private async consumeHold(orderId: string, orderLineId: string): Promise<void> {
+    try {
+      const result = await this.reservations.closeForOrder({
+        orderRecordId: orderId,
+        terminalStatus: 'consumed',
+        orderLineIds: [orderLineId],
+      });
+      if (result.failed > 0) {
+        this.logger.error(
+          `Could not close the hold for line ${orderLineId} of order ${orderId} after ` +
+            'its sale decrement; the next run retries it'
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Could not close the hold for line ${orderLineId} of order ${orderId} after its ` +
+          `sale decrement: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

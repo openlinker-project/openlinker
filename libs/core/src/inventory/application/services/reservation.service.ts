@@ -235,7 +235,11 @@ export class ReservationService implements IReservationService {
   }
 
   async closeForOrder(input: CloseForOrderInput): Promise<CloseForOrderResult> {
-    const held = await this.reservations.listHeldByOrderRecordId(input.orderRecordId);
+    const lineFilter =
+      input.orderLineIds === undefined ? null : new Set<string>(input.orderLineIds);
+    const held = (await this.reservations.listHeldByOrderRecordId(input.orderRecordId)).filter(
+      (reservation) => lineFilter === null || lineFilter.has(reservation.orderLineId)
+    );
     if (held.length === 0) {
       // Not a warning. An order legitimately holds nothing when reservations are
       // disabled, when no line resolved to a live position, or when a peer

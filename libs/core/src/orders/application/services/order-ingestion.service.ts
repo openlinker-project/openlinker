@@ -79,6 +79,7 @@ import {
   deriveSaleDecrementEnqueueIntents,
   findUndispatchableWorkIds,
   type FulfillmentBlock,
+  type FulfillmentRouterPort,
   type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
   type RoutingCommitOutcome,
@@ -116,6 +117,19 @@ interface FulfillmentInterceptOutcome {
   readonly held: boolean;
   readonly block: FulfillmentBlock | null;
 }
+
+/**
+ * The fulfilment router this order would be handed to, resolved ONCE (#3480).
+ *
+ * `null` means the pass-through: nobody claims A2, the claim is ambiguous, or the
+ * claimant has no router wired. Resolved before the advisory hold is recorded, so
+ * the hold's immutable `atpEffect` and the intercept that routes the order are
+ * decided from the same answer and cannot disagree.
+ */
+type RoutingTarget = {
+  readonly holder: string;
+  readonly router: FulfillmentRouterPort;
+} | null;
 
 /** The ADR-062 allowlist projection handed to a router. */
 interface RoutingProjection {
@@ -553,7 +567,18 @@ export class OrderIngestionService implements IOrderIngestionService {
     // order row exists, and before destination provisioning. `cancelledFromEarlySignal`
     // (#2069) is threaded through so an order already known-cancelled via the
     // signal is never held, even while `order.status` still lags.
-    await this.reserveOrderInventory(order, connectionId, cancelledFromEarlySignal);
+    // #3480: resolved BEFORE the hold, so an order OpenLinker is about to route
+    // is held as `published` from the start. The hold must also stay before the
+    // intercept: the intercept enqueues the sale decrement, and a hold created
+    // after it could land after its own consume and then subtract for its whole
+    // TTL.
+    const routingTarget = await this.resolveRoutingTarget(order.id);
+    await this.reserveOrderInventory(
+      order,
+      connectionId,
+      cancelledFromEarlySignal,
+      routingTarget !== null && order.shippingAddress !== undefined
+    );
 
     // Cancellation-observe hook (#1146): on the `→ cancelled` transition, enqueue
     // a marketplace.offer.stockRestore job so the destination marketplace's
@@ -620,7 +645,8 @@ export class OrderIngestionService implements IOrderIngestionService {
     const routing = await this.interceptFulfillmentRouting(
       order,
       connectionId,
-      persisted?.shippingAddressHash ?? null
+      persisted?.shippingAddressHash ?? null,
+      routingTarget
     );
     await this.persistFulfillmentOutcome(order.id, routing);
 
@@ -821,6 +847,57 @@ export class OrderIngestionService implements IOrderIngestionService {
   }
 
   /**
+   * Which fulfilment router this order would be handed to (#2396, #3480).
+   *
+   * The selection half of the intercept, split out so it runs ONCE, before the
+   * advisory hold is recorded: the hold's `atpEffect` is insert-only, so it has
+   * to know at creation time whether OpenLinker is about to route the order.
+   *
+   * **Never throws**, exactly as the intercept it was extracted from: a failure
+   * degrades to the pass-through (`null`), which is also what stamps the hold the
+   * way it was stamped before #3480.
+   */
+  private async resolveRoutingTarget(orderId: string): Promise<RoutingTarget> {
+    try {
+      const selection = selectPrimaryFulfillmentRouter(await this.loadRoutingClaimants());
+
+      if (selection.holder === null) {
+        if (isFulfillmentRouterUnroutable(selection.reason)) {
+          this.logger.warn(
+            `Not routing order ${orderId}: reason=${selection.reason} ` +
+              `candidates=[${selection.candidateConnectionIds.join(',')}]. ` +
+              `Following today's path; the ambiguity is reported by the A2 ` +
+              `authority read model (#2352), not persisted here.`
+          );
+        }
+        // `no-claimant` is the pass-through and is not worth a log line per order.
+        return null;
+      }
+
+      const router = await this.routerResolver.resolve(selection.holder);
+      if (router === null) {
+        // The degenerate pass-through (ADR-054). Not an error, and not a block:
+        // the order follows today's path unchanged, so there is nothing held to
+        // explain.
+        this.logger.log(
+          `No fulfilment router is wired for connection ${selection.holder}; ` +
+            `order ${orderId} follows today's path unchanged (#2408/#2409).`
+        );
+        return null;
+      }
+
+      return { holder: selection.holder, router };
+    } catch (error) {
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Fulfilment router selection failed (swallowed, following today's path): ` +
+          `error=${errorName} orderId=${orderId}`
+      );
+      return null;
+    }
+  }
+
+  /**
    * Decide whether fulfilment routing HOLDS this order (#2396, DESIGN §5.5).
    *
    * Three arms, per the issue:
@@ -846,35 +923,15 @@ export class OrderIngestionService implements IOrderIngestionService {
   private async interceptFulfillmentRouting(
     order: Order,
     connectionId: string,
-    shippingAddressHash: string | null
+    shippingAddressHash: string | null,
+    target: RoutingTarget
   ): Promise<FulfillmentInterceptOutcome> {
     try {
-      const selection = selectPrimaryFulfillmentRouter(await this.loadRoutingClaimants());
-
-      if (selection.holder === null) {
-        if (isFulfillmentRouterUnroutable(selection.reason)) {
-          this.logger.warn(
-            `Not routing order ${order.id}: reason=${selection.reason} ` +
-              `candidates=[${selection.candidateConnectionIds.join(',')}]. ` +
-              `Following today's path; the ambiguity is reported by the A2 ` +
-              `authority read model (#2352), not persisted here.`
-          );
-        }
-        // `no-claimant` is the pass-through and is not worth a log line per order.
+      if (target === null) {
+        // The pass-through — see `resolveRoutingTarget`, which logged why.
         return { held: false, block: null };
       }
-
-      const router = await this.routerResolver.resolve(selection.holder);
-      if (router === null) {
-        // The degenerate pass-through (ADR-054). Not an error, and not a block:
-        // the order follows today's path unchanged, so there is nothing held to
-        // explain.
-        this.logger.log(
-          `No fulfilment router is wired for connection ${selection.holder}; ` +
-            `order ${order.id} follows today's path unchanged (#2408/#2409).`
-        );
-        return { held: false, block: null };
-      }
+      const { holder, router } = target;
 
       const projection = this.projectOrderForRouting(order, shippingAddressHash);
       if (projection === null) {
@@ -886,7 +943,7 @@ export class OrderIngestionService implements IOrderIngestionService {
 
       const outcome = await this.routingCommit.route({
         orderId: order.id,
-        routerConnectionId: selection.holder,
+        routerConnectionId: holder,
         lines: projection.lines,
         shipTo: projection.shipTo,
         requestedDeliveryMethod: projection.requestedDeliveryMethod,
@@ -1678,7 +1735,8 @@ export class OrderIngestionService implements IOrderIngestionService {
   private async reserveOrderInventory(
     order: Order,
     connectionId: string,
-    alreadyCancelled = false
+    alreadyCancelled = false,
+    routedByOms = false
   ): Promise<void> {
     try {
       // A kill switch, default ON (#2344 review). The ledger is additive and
@@ -1704,7 +1762,15 @@ export class OrderIngestionService implements IOrderIngestionService {
 
       if (lines.length === 0) return;
 
-      const atpEffect = await this.resolveReservationAtpEffect(order, connectionId);
+      // #3480: an order OpenLinker is about to route stays in OpenLinker — no
+      // destination ever receives it — so its hold must reduce what marketplaces
+      // are told from this moment, whatever the ADR-012 dispatch routing says
+      // (its default `omp_fulfilled` would stamp `diagnostic` and open an
+      // oversell window until the sale decrement lands). The decrement then
+      // consumes the hold, so the units are counted once.
+      const atpEffect: ReservationAtpEffect = routedByOms
+        ? 'published'
+        : await this.resolveReservationAtpEffect(order, connectionId);
 
       let result;
       try {

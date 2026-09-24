@@ -519,6 +519,43 @@ describe('ReservationService', () => {
       });
     });
 
+    // #3480 — the sale decrement confirms per LINE; a line whose decrement failed
+    // must keep its hold.
+    it('should close only the named lines when orderLineIds is given', async () => {
+      reservations.listHeldByOrderRecordId.mockResolvedValue([
+        reservation({ orderLineId: 'line-1', inventoryItemId: 'inv-1' }),
+        reservation({ orderLineId: 'line-2', inventoryItemId: 'inv-2' }),
+      ]);
+      reservations.releaseHeld.mockResolvedValue(reservation({ status: 'consumed' }));
+
+      const result = await service.closeForOrder({
+        orderRecordId: ORDER_ID,
+        terminalStatus: 'consumed',
+        orderLineIds: ['line-2'],
+      });
+
+      expect(result).toEqual({ closed: 1, alreadyTerminal: 0, failed: 0 });
+      expect(reservations.releaseHeld).toHaveBeenCalledTimes(1);
+      expect(reservations.releaseHeld).toHaveBeenCalledWith(
+        expect.objectContaining({ orderLineId: 'line-2', inventoryItemId: 'inv-2' })
+      );
+    });
+
+    it('should close nothing when orderLineIds is empty', async () => {
+      reservations.listHeldByOrderRecordId.mockResolvedValue([
+        reservation({ orderLineId: 'line-1' }),
+      ]);
+
+      const result = await service.closeForOrder({
+        orderRecordId: ORDER_ID,
+        terminalStatus: 'consumed',
+        orderLineIds: [],
+      });
+
+      expect(result).toEqual({ closed: 0, alreadyTerminal: 0, failed: 0 });
+      expect(reservations.releaseHeld).not.toHaveBeenCalled();
+    });
+
     it('should be a no-op when the order holds nothing', async () => {
       // The common case on a default install (reservations disabled, no mapped
       // position, or a peer already consumed) — legitimate, not a warning.
