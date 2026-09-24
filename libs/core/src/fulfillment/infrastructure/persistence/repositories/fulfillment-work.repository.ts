@@ -17,8 +17,8 @@
  * | `id` / `orderId` | `create` | insert-only; `text NOT NULL`, no DB default |
  * | `locationId` / `deliveryMethod` | `create` | **insert-only** — the router is the single producer. If re-routing mints a NEW row these are never updated; if it ever updates in place, a round-trip from a stale read would silently revert the re-route. Insert-only forces #2395 to choose explicitly |
  * | `assignedConnectionId` | `create`, `assignHolder`, `clearHolder` | settable at insert (ADR-054 R1 creates work ALREADY ASSIGNED, in one transaction); afterwards only the two narrow claims move it |
- * | `assignedToUserId` | `create` (always `null`), `assignToPacker`, `clearAssignment` (#3336, ADR-074) | a distinct PERSON axis from `assignedConnectionId`'s HOLDER connection; unlike that pair, `assignToPacker` is not claim-once — a supervisor may reassign, so its guard is existence-only, not `IS NULL`. `clearAssignment` deliberately leaves `selfServeEligible` untouched — see that column's row |
- * | `selfServeEligible` | `create` (always `true`), `setSelfServeEligible` (#3336, ADR-074) | advisory by default; enforcement of `false` lives in `BenchParcelService.verifyUnit` (#3337) — a human-packer guard, not `FulfillmentHandshakeService`, which negotiates with holder connections (ADR-054's executor axis, #2399) and has no concept of an acting user. **`clearAssignment` does NOT reset it to `true`** — a flag set for the cleared packer persists and applies to whoever claims the parcel next. Left this way deliberately rather than papering over it: #3337's guard tests `assignedToUserId !== null` before refusing, so a cleared parcel (`assignedToUserId = null`) is workable by anyone regardless of this flag, and the residual only bites on `assignToPacker(A) -> setSelfServeEligible(false) -> clearAssignment -> assignToPacker(B)`, where B inherits a lock nobody chose for them |
+ * | `assignedToUserId` | `create` (always `null`), `assignToPacker`, `clearAssignment` (#3336, ADR-074) | a distinct PERSON axis from `assignedConnectionId`'s HOLDER connection; unlike that pair, `assignToPacker` is not claim-once — a supervisor may reassign, so its guard is existence-only, not `IS NULL`. `clearAssignment` ALSO resets `selfServeEligible` to `true`, in the same statement — see that column's row |
+ * | `selfServeEligible` | `create` (always `true`), `setSelfServeEligible`, `clearAssignment` (always `true`, #3336, ADR-074) | advisory by default; enforcement of `false` lives in `BenchParcelService.verifyUnit` (#3337) — a human-packer guard, not `FulfillmentHandshakeService`, which negotiates with holder connections (ADR-054's executor axis, #2399) and has no concept of an acting user. **`clearAssignment` resets it to `true`** — review round 2 on #3360 found the alternative (leaving it untouched) left a residual: `assignToPacker(A) -> setSelfServeEligible(false) -> clearAssignment -> assignToPacker(B)` would lock B to an exclusivity decision nobody made about them. `#3337`'s guard testing `assignedToUserId !== null` before refusing only covers the parcel while it sits unassigned; it says nothing once B is assigned, which is exactly the window this reset closes |
  * | `status` | `create`, `transitionStatus`, `cancel` | |
  * | `requestStatus` | `create`, `transitionRequestStatus`, `claimDispatchAttempt`, `recordAcceptance`, `recordRejection` | the handshake (#2399) owns it; the router holds a stale copy by construction. A NAMED additional writer is this table's convention (`status` and `assignedConnectionId` each already list three); an UNNAMED one is the defect it guards against. **#2712's timeout sweep adds NO writer here** — it reaps THROUGH `recordRejection`, deliberately, so the guarded `submitted -> rejected` transition and the rejection row stay one statement pair with one owner |
  * | `assignmentAttempt` | `claimDispatchAttempt` (#2399) | monotonic; a round-trip would reset the idempotency key's stability. #2392's `incrementAssignmentAttempt` is REPLACED, not supplemented: its `WHERE` was `"id" = :id` alone, so any caller could bump the counter out from under a live `submitted` dispatch and invalidate an in-flight key |
@@ -401,24 +401,40 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
   }
 
   async clearAssignment(workId: string): Promise<boolean> {
-    // Deliberately does NOT reset `selfServeEligible` — see that column's row
-    // in the writer table above. Safe because #3337's guard checks
-    // `assignedToUserId !== null` before refusing, so a cleared parcel is
-    // workable by anyone regardless of this flag's value.
+    // Resets `selfServeEligible` back to `true` in the SAME statement —
+    // review round 2 on #3360. `selfServeEligible` is a decision ABOUT the
+    // cleared packer, not a standing property of the parcel: without the
+    // reset, `assignToPacker(A) -> setSelfServeEligible(false) ->
+    // clearAssignment -> assignToPacker(B)` left B exclusively locked by a
+    // choice nobody made about them. `#3337`'s guard testing
+    // `assignedToUserId !== null` first only closes the window while the
+    // parcel sits unassigned; it says nothing once B is assigned, which is
+    // exactly the case this reset covers.
     return this.applyGuardedUpdate('clearAssignment', (qb) =>
       qb
-        .set({ assignedToUserId: null, version: () => '"version" + 1' })
+        .set({
+          assignedToUserId: null,
+          selfServeEligible: true,
+          version: () => '"version" + 1',
+        })
         .where('"id" = :id', { id: workId })
         .andWhere('"assignedToUserId" IS NOT NULL')
     );
   }
 
   async setSelfServeEligible(workId: string, selfServeEligible: boolean): Promise<boolean> {
-    return this.applyGuardedUpdate('setSelfServeEligible', (qb) =>
-      qb
+    // Locking a parcel (`false`) is a decision ABOUT an assigned packer, so it
+    // is refused on an unassigned row rather than left to mint the "exclusive
+    // to nobody" state the CHECK constraint above and `clearAssignment`'s
+    // reset both exist to close. The `true` direction is deliberately
+    // unguarded: it is the column default and the state `clearAssignment`
+    // restores, so refusing it would refuse a no-op.
+    return this.applyGuardedUpdate('setSelfServeEligible', (qb) => {
+      const query = qb
         .set({ selfServeEligible, version: () => '"version" + 1' })
-        .where('"id" = :id', { id: workId })
-    );
+        .where('"id" = :id', { id: workId });
+      return selfServeEligible ? query : query.andWhere('"assignedToUserId" IS NOT NULL');
+    });
   }
 
   async claimDispatchAttempt(input: ClaimFulfillmentDispatchInput): Promise<number | null> {

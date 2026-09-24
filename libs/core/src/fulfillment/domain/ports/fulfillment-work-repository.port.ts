@@ -515,14 +515,24 @@ export interface FulfillmentWorkRepositoryPort {
   /**
    * Clear a pre-assignment. Guarded `IS NOT NULL`, mirroring `clearHolder` —
    * `false` means the parcel was already unassigned, an ordinary no-op.
+   *
+   * Also resets `selfServeEligible` to `true`, in the SAME statement, so an
+   * exclusivity decision about the cleared packer is never inherited by
+   * whoever is assigned next (ADR-074 review round 2) — the flag is a
+   * decision about a specific assignee, not a standing property of the
+   * parcel.
    */
   clearAssignment(workId: string): Promise<boolean>;
 
   /**
    * Set whether a packer other than `assignedToUserId` may still claim this
-   * parcel (ADR-074). An idempotent supervisor toggle — no precondition
-   * beyond the row existing, so `false` means only that the work object no
-   * longer exists.
+   * parcel (ADR-074). `true` is unguarded beyond the row existing — it is
+   * both the column default and the state `clearAssignment` restores, so
+   * refusing it would refuse a no-op. `false` is additionally guarded
+   * `assignedToUserId IS NOT NULL`: an exclusive lock naming no packer is
+   * the unrepresentable state `CHK_fulfillment_works_exclusive_needs_packer`
+   * backstops at the database, and this guard is what keeps that state from
+   * being reachable through this port in the first place.
    */
   setSelfServeEligible(workId: string, selfServeEligible: boolean): Promise<boolean>;
 

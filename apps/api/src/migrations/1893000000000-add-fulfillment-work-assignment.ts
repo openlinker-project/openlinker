@@ -60,9 +60,30 @@ export class AddFulfillmentWorkAssignment1893000000000 implements MigrationInter
     await queryRunner.query(
       `ALTER TABLE "fulfillment_works" ADD COLUMN IF NOT EXISTS "selfServeEligible" BOOLEAN NOT NULL DEFAULT true`
     );
+
+    // ADR-074's unrepresentable state: an exclusive assignment that names no
+    // packer. Added HERE, in the migration that introduces both columns,
+    // rather than in a later one - the constraint is part of what these
+    // columns mean, and a table that carried them without it would admit the
+    // state for however long the two migrations were apart.
+    //
+    // `DROP` first so a re-run is idempotent the way the `ADD COLUMN IF NOT
+    // EXISTS` statements around it are; Postgres has no `ADD CONSTRAINT IF NOT
+    // EXISTS`. The predicate matches the entity's `@Check` verbatim and under
+    // the same name, which `fulfillment-work-migration-parity.int-spec.ts`
+    // compares between the migration-built and `synchronize`-built schemas.
+    await queryRunner.query(
+      `ALTER TABLE "fulfillment_works" DROP CONSTRAINT IF EXISTS "CHK_fulfillment_works_exclusive_needs_packer"`
+    );
+    await queryRunner.query(
+      `ALTER TABLE "fulfillment_works" ADD CONSTRAINT "CHK_fulfillment_works_exclusive_needs_packer" CHECK (NOT ("selfServeEligible" = false AND "assignedToUserId" IS NULL))`
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(
+      `ALTER TABLE "fulfillment_works" DROP CONSTRAINT IF EXISTS "CHK_fulfillment_works_exclusive_needs_packer"`
+    );
     await queryRunner.query(
       `ALTER TABLE "fulfillment_works" DROP COLUMN IF EXISTS "selfServeEligible"`
     );

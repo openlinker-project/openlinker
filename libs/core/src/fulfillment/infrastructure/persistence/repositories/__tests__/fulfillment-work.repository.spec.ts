@@ -240,6 +240,22 @@ describe('FulfillmentWorkRepository', () => {
       expect(argsOf(qb.andWhere as Mock)).toContain('"assignedToUserId" IS NOT NULL');
     });
 
+    it('should reset selfServeEligible to true in the same statement (ADR-074 review round 2)', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await repo.clearAssignment('w1');
+
+      // Without this, `assignToPacker(A) -> setSelfServeEligible(false) ->
+      // clearAssignment -> assignToPacker(B)` would leave B exclusively
+      // locked by a decision nobody made about them.
+      const setArg = firstArgOf<Record<string, unknown>>(qb.set as Mock);
+      expect(setArg.assignedToUserId).toBeNull();
+      expect(setArg.selfServeEligible).toBe(true);
+    });
+
     it('should report not-applied clearing an already-unassigned parcel', async () => {
       const qb = updateQueryBuilder({ affected: 0 });
       const { repo } = makeRepository({
@@ -249,7 +265,7 @@ describe('FulfillmentWorkRepository', () => {
       await expect(repo.clearAssignment('w1')).resolves.toBe(false);
     });
 
-    it('should set self-serve eligibility unconditionally', async () => {
+    it('should refuse to lock an unassigned parcel (ADR-074 - exclusive-to-nobody)', async () => {
       const qb = updateQueryBuilder({ affected: 1 });
       const { repo } = makeRepository({
         works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
@@ -259,6 +275,18 @@ describe('FulfillmentWorkRepository', () => {
 
       const setArg = firstArgOf<Record<string, unknown>>(qb.set as Mock);
       expect(setArg.selfServeEligible).toBe(false);
+      expect(argsOf(qb.andWhere as Mock)).toContain('"assignedToUserId" IS NOT NULL');
+    });
+
+    it('should leave the true direction unguarded, since it is the state clearAssignment restores', async () => {
+      const qb = updateQueryBuilder({ affected: 1 });
+      const { repo } = makeRepository({
+        works: { createQueryBuilder: jest.fn().mockReturnValue(qb) },
+      });
+
+      await expect(repo.setSelfServeEligible('w1', true)).resolves.toBe(true);
+
+      expect(qb.andWhere as Mock).not.toHaveBeenCalled();
     });
 
     it('should report not-applied for setSelfServeEligible when the work is gone', async () => {

@@ -70,6 +70,24 @@ import {
   'CHK_fulfillment_works_closed_parcel_actor',
   'NOT ("parcelClosedAt" IS NOT NULL AND "packedByUserId" IS NULL AND "packedByService" IS NULL)'
 )
+// An EXCLUSIVE assignment must name the packer it is exclusive TO (ADR-074).
+// `selfServeEligible = false` on an unassigned row is a lock belonging to
+// nobody — this file's repository closes that at both writers
+// (`clearAssignment` resets the flag, `setSelfServeEligible(false)` is guarded
+// on an assignee existing). THIRD named `@Check` on this table — see the
+// sibling above for why they are separate rather than widened: this one
+// quantifies over a different pair of columns, under a different condition,
+// and is fixed differently.
+//
+// Declared under the SAME NAME as the migration, per this file's own naming
+// discipline — the integration harness builds schema by `synchronize`, so an
+// anonymous one would carry a hash name there and
+// `fulfillment-work-migration-parity.int-spec.ts` compares CHECK definitions
+// between the two schemas.
+@Check(
+  'CHK_fulfillment_works_exclusive_needs_packer',
+  'NOT ("selfServeEligible" = false AND "assignedToUserId" IS NULL)'
+)
 // The grouping key. Its LEADING COLUMN serves every `WHERE "orderId" = ?`
 // lookup, so there is deliberately no separate (orderId) index — the same
 // argument this tree makes against a redundant index on `return_lines`.
@@ -169,6 +187,14 @@ export class FulfillmentWorkOrmEntity {
    * `FulfillmentHandshakeService`, which negotiates with holder connections
    * (ADR-054's executor axis, #2399) and has no concept of an acting user;
    * this column only records the decision.
+   *
+   * **`clearAssignment` resets this to `true` in the same statement that
+   * nulls `assignedToUserId`.** The flag is a decision about the packer being
+   * cleared, not a standing property of the parcel — leaving it behind would
+   * lock the NEXT assignee to an exclusivity nobody chose for them. See
+   * `CHK_fulfillment_works_exclusive_needs_packer` above, which is the
+   * DB-level backstop for the one representable-and-wrong shape this leaves:
+   * an exclusive lock with nobody assigned to hold it.
    */
   @Column({ type: 'boolean', default: true })
   selfServeEligible!: boolean;
