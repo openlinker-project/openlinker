@@ -1,7 +1,7 @@
 <title>OMS Packing Setup</title>
 <!--
-  OMS onboarding wizard - UX mockup (epic #3104, implementation #3457, E2E #3458).
-  Milestone: "OMS onboarding - pack bench setup wizard".
+  OMS onboarding wizard - UX mockup (epic #3460, implementation #3457, E2E #3458).
+  Milestone: "OMS onboarding wizard".
 
   Durable spec per docs/frontend-architecture.md § UX Mockups. E2E baselines come
   from THIS file, never from the Artifact it was iterated on.
@@ -9,13 +9,14 @@
   How to drive it:
   - The dashed top bar is the mockup's own harness, not product UI.
     [data-testid="mockup-state-chip"][data-preset=...] picks a state;
-    [data-testid="mockup-source-chip"][data-source=...] picks the operator's shop setup.
+    [data-testid="mockup-source-chip"][data-source=...] picks the product master setup.
   - The page writes body[data-state] (full vocabulary: see the comment above
     stateName() in the script) and body[data-source].
   - "Show API calls (devs)" reveals, under each action, the endpoint it calls and
-    every TARGET sentence that depends on a backend issue (#3453, #3454, #3455, #3456).
+    every TARGET sentence with the issue it depends on (#3453, #3455, #3456,
+    #3479, #3480, #3485, #3486, #3487, #3488).
 
-  Scope: one warehouse, fed by one or two shops.
+  Scope (v1): one warehouse, fed by one or two product masters. Two warehouses are #3454.
 -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
@@ -342,6 +343,8 @@ button { font: inherit; }
 .arrow::after { content: ''; position: absolute; left: 50%; bottom: -5px; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--border-strong); border-bottom: 0; }
 
 .inout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.inout--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 960px) { .inout--3 { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .inout { grid-template-columns: 1fr; } }
 .inout__box { border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); border: 1px solid; }
 .inout__box--in { background: var(--status-success-soft); border-color: var(--status-success-border); }
@@ -417,27 +420,25 @@ details.more[open] summary { margin-bottom: var(--space-3); }
 <div class="harness" role="region" aria-label="Mockup controls (not product UI)">
   <div class="harness__row">
     <span class="harness__label">Mockup state</span>
-    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s1">1 · Your shop</button>
-    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s2">2 · Warehouse</button>
-    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s3">3 · Stock</button>
-    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s3-sync">3 · Stock syncing</button>
-    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s4">4 · Packers</button>
-    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s4-pending">4 · Packer added</button>
-    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s5">5 · What changes</button>
-    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s6">6 · Turn on</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s1">1 · Product master</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s1-sync">1 · Stock syncing</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s1-complete">1 · Stock complete</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s2">2 · Packers</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s2-added">2 · Packer added</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s3">3 · What changes</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s4">4 · Turn on</button>
     <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="waiting">Waiting for 1st order</button>
     <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="first">1st order arrived</button>
     <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="live">Status: on</button>
     <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="off">Status: off</button>
   </div>
   <div class="harness__row">
-    <span class="harness__label">Operator's shop</span>
+    <span class="harness__label">Operator's product master</span>
     <button class="chip" type="button" data-testid="mockup-source-chip" data-source="prestashop">PrestaShop</button>
     <button class="chip" type="button" data-testid="mockup-source-chip" data-source="woocommerce">WooCommerce</button>
     <button class="chip" type="button" data-testid="mockup-source-chip" data-source="subiekt">Subiekt GT</button>
-    <button class="chip" type="button" data-testid="mockup-source-chip" data-source="orders-off">PrestaShop, orders switched off</button>
-    <button class="chip" type="button" data-testid="mockup-source-chip" data-source="none">No shop connected</button>
-    <button class="chip" type="button" data-testid="mockup-source-chip" data-source="two">Two shops, one warehouse</button>
+    <button class="chip" type="button" data-testid="mockup-source-chip" data-source="none">No product master connected</button>
+    <button class="chip" type="button" data-testid="mockup-source-chip" data-source="two">Two product masters, one warehouse</button>
     <span class="harness__sep" aria-hidden="true"></span>
     <button class="chip" type="button" id="apiToggle" aria-pressed="false">Show API calls (devs)</button>
   </div>
@@ -477,10 +478,13 @@ details.more[open] summary { margin-bottom: var(--space-3); }
 /* ---------------------------------------------------------------------------
    Frontend-only wizard. Every action maps to an endpoint on main today, except
    where a dev note (toggle "Show API calls") says TARGET.
-   Scope: ONE warehouse, fed by one shop or two (TWO below).
+   Scope (v1): ONE warehouse, fed by one or two product masters (TWO below).
+   Two warehouses are out of scope (v2, #3454).
+   Decision: with the OMS on, a marketplace order stays in OpenLinker and is NOT
+   created in the product master; the product master only has its stock lowered.
    OpenLinker keeps no catalogue or stock of its own: products and stock come
    only from a connection with ProductMaster + InventoryMaster enabled, so step 1
-   is a gate, not a formality.
+   is a gate, not a formality, and it also records where that stock sits.
    ------------------------------------------------------------------------- */
 const TOTAL_STOCK = 4812;
 
@@ -488,26 +492,23 @@ const SOURCES = {
   prestashop: { name: 'PrestaShop', host: 'sklep-example.pl', ordersOn: true, stockWhen: 'when the order is created in PrestaShop' },
   woocommerce: { name: 'WooCommerce', host: 'sklep-example.pl', ordersOn: true, stockWhen: 'when the paid order is created in WooCommerce' },
   subiekt: { name: 'Subiekt GT', host: 'Biuro, Warszawa', ordersOn: true, stockWhen: 'when the invoice or receipt is issued in Subiekt GT (Subiekt then issues the warehouse release, WZ)' },
-  'orders-off': { name: 'PrestaShop', host: 'sklep-example.pl', ordersOn: false, stockWhen: 'when the order is created in PrestaShop' },
 };
 
 const S = {
   source: 'prestashop',   // key of SOURCES, or 'none' | 'two'
   step: 1, maxReached: 1,
-  done: [false, false, false, false, false, false],
+  done: [false, false, false, false],
   view: 'wizard',         // 'wizard' | 'waiting' | 'first' | 'status'
   live: false,
   located: 0, syncing: false,
-  warehouse: { name: 'Main warehouse', code: 'MAIN', country: 'PL', postcode: '00-001' },
+  warehouse: { name: 'Main warehouse', code: 'MAIN' },
   lastCreated: null,      // shows the one-time password right after creating a packer
   packers: [],            // approved packers
   ack: false,
 };
 
 const STEPS = [
-  { title: 'Your shop', meta: 'Where products and stock come from' },
-  { title: 'Add your warehouse', meta: 'Where you pack' },
-  { title: 'Show where your stock is', meta: 'One click' },
+  { title: 'Your product master', meta: 'Products and stock' },
   { title: 'Add packers', meta: 'Optional' },
   { title: 'See what changes', meta: 'Read before turning on' },
   { title: 'Turn it on', meta: '' },
@@ -518,18 +519,19 @@ const $ = (q) => document.querySelector(q);
 const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = (n) => n.toLocaleString('en-US');
 const api = (t) => `<div class="api">${t}</div>`;
-/* Two shops sharing one warehouse (e.g. chemicals in A, electrics in B).
-   Verified on main: every order fans out to EVERY active OrderProcessorManager
-   (order-sync.service.ts:499), so the shop without the product fails
-   ("Product not found", prestashop-order-processor-manager.adapter.ts:274) and a
-   mixed basket fails in both. The same item listed in both shops is two separate
-   OL products with two stock counts (getOrCreateInternalId is per connection). */
+/* Two product masters sharing one warehouse (e.g. chemicals in A, electrics in B).
+   Allowed in v1: both point their stock at the same location, the router sees
+   per-variant stock, a mixed basket is one parcel from one place, and each line
+   knows its owner via inventory_items.sourceConnectionId.
+   Known limits, shown as a warning: the same item listed in both product masters is
+   two separate OL products with two stock counts (getOrCreateInternalId is per
+   connection), and nothing can detect that cheaply. */
 const TWO = [
   { name: 'PrestaShop A', host: 'chemia-example.pl', items: 3120, sells: 'chemicals' },
   { name: 'PrestaShop B', host: 'elektro-example.pl', items: 1692, sells: 'electrics' },
 ];
 const isTwo = () => S.source === 'two';
-const src = () => (isTwo() ? { name: 'your shops', host: '', ordersOn: true, stockWhen: 'when the order is created in the shop that sells the product' } : SOURCES[S.source]);
+const src = () => (isTwo() ? { name: 'your product masters', host: '', ordersOn: true, stockWhen: 'when the order is created in the product master that sells the product' } : SOURCES[S.source]);
 const shops = () => (isTwo() ? TWO : [{ name: SOURCES[S.source].name, host: SOURCES[S.source].host, items: TOTAL_STOCK }]);
 const shopOk = () => isTwo() || Boolean(SOURCES[S.source]);
 const shopNames = () => shops().map((x) => x.name).join(' and ');
@@ -562,115 +564,85 @@ function panel({ why, body, next, back = true }) {
   </section>`;
 }
 
-/* ---------------- step 1: your shop (gate) ---------------- */
+/* ---------------- step 1: your product master ---------------- */
+/* One step, one decision: "this is my product master". The location is created
+   silently with the fixed name "Main warehouse" (shown later only on Fulfilment
+   and Inventory > Locations); the wizard never mentions or asks for it.
+   Two rows under the hood, both required by the router: the product master
+   (who reports how many) and an inventory location (where they physically sit).
+   The location is created by the operator's Confirm click (#2407: "an offer an
+   operator takes, never a seed"), then the product master's stock is pointed at
+   it with stockLocationOverride (#3206). No address is asked: labels take the
+   sender address from the carrier connection (InPost/DPD senderAddress), and
+   country/postcode only matter for routing rules between several warehouses. */
 function step1() {
-  const conn = api('GET /connections &rarr; status=active AND enabledCapabilities &ni; ProductMaster, InventoryMaster<br>soft check: enabledCapabilities &ni; OrderProcessorManager (else stock never drops after a sale)');
+  const gate = api('GET /connections &rarr; one or two connections with status=active AND enabledCapabilities &ni; ProductMaster, InventoryMaster. OrderProcessorManager is NOT required: with the OMS on, OpenLinker lowers the product master\'s stock itself (target, see step 3).');
   if (S.source === 'none') {
     return panel({
-      why: 'OpenLinker has no products or stock of its own. It reads them from your shop or ERP. Connect it first.',
-      body: `<div class="alert alert--error"><span class="alert__title" data-testid="alert-no-shop">No shop connected yet</span><span class="alert__text">Connect the shop or ERP that holds your products and stock, for example PrestaShop, WooCommerce or Subiekt GT. Then come back here.</span></div>${conn}`,
-      next: `<a class="button" href="#" data-testid="link-connect-shop">Connect your shop</a>`,
-    });
-  }
-  if (isTwo()) {
-    const card = (x) => `<div class="item-card"><div class="item-card__main"><span class="item-card__name">${x.name} &middot; ${esc(x.host)}</span>
-        <span class="item-card__sub">Sells ${x.sells}</span>
-        <div class="cap-list"><span class="badge badge--success">&#10003; Products</span><span class="badge badge--success">&#10003; Stock</span><span class="badge badge--success">&#10003; Receives orders</span></div></div>
-        <span class="badge badge--info">Your shop</span></div>`;
-    return panel({
-      why: 'OpenLinker has no products or stock of its own. It reads them from your shops. These two will share one warehouse.',
-      body: `${TWO.map(card).join('')}
-        <div class="alert alert--info"><span class="alert__title" data-testid="alert-two-shops-receive-orders">Keep "Receives orders" on for both shops</span><span class="alert__text">A shop only lowers its stock when it gets the order. If you turn it off on one shop, that shop's stock never goes down after a sale.</span></div>${conn}`,
-      next: `<button data-testid="btn-continue-step-1" class="button" type="button" onclick="markDone(1)">Continue</button>`,
+      why: 'OpenLinker has no products or stock of its own. It reads them from your product master. Connect it first.',
+      body: `<div class="alert alert--error"><span class="alert__title" data-testid="alert-no-product-master">No product master connected yet</span><span class="alert__text">Connect the product master that holds your products and stock, for example PrestaShop, WooCommerce or Subiekt GT. Then come back here.</span></div>${gate}`,
+      next: `<a class="button" href="#" data-testid="link-connect-product-master">Connect your product master</a>`,
     });
   }
   const s = src();
-  const warn = !s.ordersOn
-    ? `<div class="alert alert--warning"><span class="alert__title" data-testid="alert-orders-off">This shop doesn't receive your orders</span><span class="alert__text">Orders from Allegro and Erli are not sent to ${s.name}, so its stock never goes down after a sale, and other channels can sell the same item twice. Turn on <b>Receive orders</b> in the connection settings first.</span></div>`
-    : '';
-  return panel({
-    why: 'OpenLinker has no products or stock of its own. It reads them from your shop. This is the shop it will use.',
-    body: `<div class="item-card">
-        <div class="item-card__main">
-          <span class="item-card__name">${s.name} &middot; ${esc(s.host)}</span>
-          <div class="cap-list">
-            <span class="badge badge--success">&#10003; Products</span>
-            <span class="badge badge--success">&#10003; Stock</span>
-            ${s.ordersOn ? '<span class="badge badge--success">&#10003; Receives orders</span>' : '<span class="badge badge--warn">&#10007; Receives orders</span>'}
-          </div>
-        </div>
-        <span class="badge badge--info">Your shop</span>
-      </div>${warn}${conn}`,
-    next: s.ordersOn
-      ? `<button data-testid="btn-continue-step-1" class="button" type="button" onclick="markDone(1)">Continue</button>`
-      : `<a class="button button--secondary" href="#" data-testid="link-open-connection-settings">Open connection settings</a><button class="button" type="button" disabled>Continue</button>`,
-  });
-}
-
-/* ---------------- step 2: warehouse ---------------- */
-function step2() {
-  const w = S.warehouse;
-  const call = api('POST /connections {platformType:"openlinker"}  (packing connection, no credentials)<br>POST /inventory/locations {code, name, kind:"warehouse", countryIso2, postcode}');
-  const body = S.done[1]
-    ? `<div class="item-card"><div class="item-card__main"><span class="item-card__name">${esc(w.name)} <span class="mono" style="color:var(--text-muted)">${esc(w.code)}</span></span><span class="item-card__sub">${esc(w.postcode)}, Poland</span></div><span class="badge badge--success">Saved</span></div>
-       <p class="field__hint">You can rename it later in Settings &rarr; Inventory locations.</p>${call}`
-    : `<div class="fields">
-        <div class="field field--wide"><label for="wName">Warehouse name</label><input class="input" id="wName" data-testid="input-w-name" value="${esc(w.name)}"><span class="field__hint">The place where you pack. Most shops have one.</span></div>
-        <div class="field"><label for="wCode">Short code</label><input class="input mono" id="wCode" data-testid="input-w-code" value="${esc(w.code)}"><span class="field__hint">Shown on the pack bench.</span></div>
-        <div class="field"><label for="wCountry">Country</label><select class="select" id="wCountry" data-testid="input-w-country"><option value="PL" selected>Poland</option><option value="DE">Germany</option><option value="CZ">Czechia</option></select></div>
-        <div class="field"><label for="wPost">Postcode</label><input class="input" id="wPost" data-testid="input-w-post" value="${esc(w.postcode)}"></div>
-      </div>${call}`;
-  return panel({
-    why: 'OpenLinker needs to know where you pack, so it can send orders there.',
-    body,
-    next: S.done[1]
-      ? `<button data-testid="btn-go-step-3" class="button" type="button" onclick="goStep(3)">Continue</button>`
-      : `<button data-testid="btn-save-warehouse" class="button" type="button" onclick="saveWarehouse()">Save warehouse</button>`,
-  });
-}
-
-/* ---------------- step 3: stock ---------------- */
-function step3() {
   const list = shops();
-  const why = list.length > 1
-    ? 'Your shops don\'t say which warehouse the stock is in. Tell OpenLinker once per shop, and it can pick every order from there.'
-    : `${list[0].name} doesn't say which warehouse its stock is in. Tell OpenLinker once, and it can pick every order from there.`;
-  const cards = list.map((x) => `<div class="item-card"><div class="item-card__main"><span class="item-card__name">${x.name} &middot; ${esc(x.host)}</span><span class="item-card__sub">${fmt(x.items)} stock items</span></div><span class="badge badge--info">Your shop</span></div>`).join('');
-  const calls = api(list.map((x, i) => `PATCH /connections/{shop${i + 1}Id} {config: {...fullConfig, stockLocationOverride: "{MAIN id}"}}`).join('<br>') + '<br>(config is replaced whole: send the existing config back with only this key changed)');
-  if (!S.done[2]) {
+  const names = shopNames();
+  const twoWarn = isTwo()
+    ? `<div class="alert alert--warning"><span class="alert__title" data-testid="alert-two-product-masters">Both product masters send stock to this one place</span><span class="alert__text">Keep each product in one product master only. If the same product is in both, OpenLinker sees two different products with two separate stock counts. A sale lowers the stock only in the product master it came from, so the other one can still sell the last units.</span></div>
+      ${api('Two product masters, one warehouse (v1). Prerequisites before release: #3453 lowers stock per line in the master that owns it (sourceConnectionId) with a per-master idempotency key; a refused or fail-open order stays in OpenLinker instead of fanning out to both masters (new issue); returns (#3486) and cancel (#3479) give stock back to the owning master; the override is set on EVERY master. Each marketplace still reads ONE masterCatalogConnectionId for offers, barcode linking and content (offer-builder.service.ts ~121-131, offer-mapping-sync.service.ts ~286-316): not an OMS blocker, v2 (#3454). Same item in both masters is undetectable today (/variants/search is substring).')}`
+    : '';
+  const setupCalls = api(`On Confirm:<br>POST /connections {platformType:"openlinker", enabledCapabilities:["FulfillmentExecutor"]}  (packing connection, no credentials; without FulfillmentExecutor the dispatch job never resolves an executor and nothing reaches the bench)<br>POST /inventory/locations/bootstrap &rarr; MAIN "Main warehouse" (idempotent; name set silently, never shown in the wizard; renamed later in Inventory &rsaquo; Locations)<br>${list.map((x, i) => `PATCH /connections/{productMaster${i + 1}Id} {config: {...fullConfig, stockLocationOverride: "{MAIN id}"}}`).join('<br>')}<br>(config is replaced whole: send the existing config back with only this key changed)`);
+  if (!S.done[0]) {
     return panel({
-      why,
-      body: `${cards}
-        ${list.map((x, i) => `<label class="choice"><input type="checkbox" id="stock${i}" checked>
-          <span><span class="choice__title">All stock from ${x.name} is in ${esc(S.warehouse.name)}</span><br>
-          <span class="choice__text">Nothing moves. You only tell OpenLinker where the goods are. Stock numbers keep coming from ${x.name}, as today.</span></span></label>`).join('')}
-        ${calls}`,
-      next: `<button data-testid="btn-save-stock" class="button" type="button" onclick="saveStock()">Confirm</button>`,
+      why: 'OpenLinker has no products or stock of its own. It reads them from your product master.',
+      body: `${masterCards()}${twoWarn}${gate}${setupCalls}`,
+      next: `<button data-testid="btn-confirm-product-master" class="button" type="button" onclick="confirmProductMaster()">Confirm</button>`,
     });
   }
   const pct = Math.round((S.located / TOTAL_STOCK) * 100);
   const complete = S.located >= TOTAL_STOCK;
   return panel({
-    why,
-    body: `${cards}
+    why: 'OpenLinker has no products or stock of its own. It reads them from your product master.',
+    body: `${masterCards()}
       <div class="progress" aria-live="polite" data-testid="stock-located-progress">
-        <div class="progress__row"><span>Stock placed in ${esc(S.warehouse.name)}${list.length > 1 ? ', both shops' : ''}</span><span class="progress__num">${fmt(S.located)} of ${fmt(TOTAL_STOCK)}</span></div>
-        <div class="progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="${TOTAL_STOCK}" aria-valuenow="${S.located}" aria-label="Stock placed in warehouse"><div class="progress__fill" style="width:${pct}%"></div></div>
+        <div class="progress__row"><span>Stock from ${names} ready for packing</span><span class="progress__num">${fmt(S.located)} of ${fmt(TOTAL_STOCK)}</span></div>
+        <div class="progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="${TOTAL_STOCK}" aria-valuenow="${S.located}" aria-label="Stock ready for packing"><div class="progress__fill" style="width:${pct}%"></div></div>
       </div>
       ${complete
-        ? `<div class="alert alert--success"><span class="alert__title">All stock is in ${esc(S.warehouse.name)}</span><span class="alert__text">OpenLinker can now pick every product from this warehouse.</span></div>`
-        : `<div class="alert alert--info"><span class="alert__title">Filling in with each stock sync from ${shopNames()}</span><span class="alert__text">You don't need to wait here. Until it reaches ${fmt(TOTAL_STOCK)}, an order for a product not counted yet is handled the old way.</span></div>`}
-      ${api(`GET /inventory?locationId={MAIN id}&limit=1 &rarr; total (${fmt(S.located)})<br>GET /inventory?limit=1 &rarr; total (all rows from your shop${list.length > 1 ? 's' : ''})`)}`,
-    next: `<button data-testid="btn-go-step-4" class="button" type="button" onclick="goStep(4)">Continue</button>`,
+        ? `<div class="alert alert--success"><span class="alert__title">All stock is ready for packing</span><span class="alert__text">OpenLinker can now pack every product.</span></div>`
+        : `<div class="alert alert--info"><span class="alert__title">Filling in with each stock sync from ${names}</span><span class="alert__text">You don't need to wait here. Until it reaches ${fmt(TOTAL_STOCK)}, an order for a product not counted yet is handled the old way.</span></div>`}
+      ${api(`GET /inventory?locationId={MAIN id}&limit=1 &rarr; total (${fmt(S.located)})<br>GET /inventory?limit=1 &rarr; total (all rows from your product master${list.length > 1 ? 's' : ''})<br>The override is applied by the next master inventory sync, not instantly.`)}`,
+    next: `<button data-testid="btn-continue-step-1" class="button" type="button" onclick="markDone(1)">Continue</button>`,
   });
 }
 
-/* ---------------- step 4: packers ---------------- */
+function masterCards() {
+  if (isTwo()) {
+    return TWO.map((x) => `<div class="item-card"><div class="item-card__main"><span class="item-card__name">${x.name} &middot; ${esc(x.host)}</span>
+        <span class="item-card__sub">Sells ${x.sells} &middot; ${fmt(x.items)} stock items</span>
+        <div class="cap-list"><span class="badge badge--success">&#10003; Products</span><span class="badge badge--success">&#10003; Stock</span></div></div>
+        <span class="badge badge--info">Your product master</span></div>`).join('');
+  }
+  const s = src();
+  return `<div class="item-card">
+      <div class="item-card__main">
+        <span class="item-card__name">${s.name} &middot; ${esc(s.host)}</span>
+        <span class="item-card__sub">${fmt(TOTAL_STOCK)} stock items</span>
+        <div class="cap-list">
+          <span class="badge badge--success">&#10003; Products</span>
+          <span class="badge badge--success">&#10003; Stock</span>
+        </div>
+      </div>
+      <span class="badge badge--info">Your product master</span>
+    </div>`;
+}
+
+/* ---------------- step 2: packers ---------------- */
 /* NEW MODULE (backend needed): an admin creates a packer account directly.
    Today there is no way: no POST /users, and self-registration is effectively
    demo-only (the /register link shows only when demoMode is on, LoginForm.tsx:99;
    the API refuses unless OL_REGISTRATION_ENABLED=true). */
-function step4() {
+function step2() {
   const initials = (n) => n.split(' ').map((p) => p[0]).join('').slice(0, 2);
   const list = S.packers.length
     ? `<div><p class="sub-title">Packers (${S.packers.length})</p><div class="users" data-testid="packer-list">${S.packers.map((u) => `<div class="user"><span class="avatar" aria-hidden="true">${initials(u.name)}</span>
@@ -701,110 +673,76 @@ function step4() {
         <p class="field__hint">Change their role to Packer in <a class="linkish" href="#">Users</a>.</p>
       </details>
       ${api('NEW, backend needed: POST /users {name, username, email?, role:"packer"} &rarr; {id, temporaryPassword}, admin only, forces a password change at first sign-in.<br>Today: no admin user creation exists; /register is demo-only (LoginForm.tsx:99, OL_REGISTRATION_ENABLED=false). Issue to file.<br>Existing user: PATCH /users/{id}/role {role:"packer"} (exists).')}`,
-    next: `<button data-testid="btn-continue-step-4" class="button" type="button" onclick="markDone(4)">${S.packers.length ? 'Continue' : 'Skip for now'}</button>`,
+    next: `<button data-testid="btn-continue-step-2" class="button" type="button" onclick="markDone(2)">${S.packers.length ? 'Continue' : 'Skip for now'}</button>`,
   });
 }
 
-/* ---------------- step 5: what changes ---------------- */
-/* TARGET behaviour, per DESIGN-oms-authority-model.md §13.1: a routed order is
-   still created in the shop as a record. main today: order-ingestion.service.ts:628
-   skips syncOrder for a routed order, so the shop never records the sale and its
-   stock does not drop. Backend fix: issue still to be filed. */
-function step5() {
-  if (isTwo()) return step5two();
+/* ---------------- step 3: what changes ---------------- */
+/* Decision: with the OMS on, OpenLinker owns the order. A marketplace order is not
+   created in the product master; the product master only gets its stock lowered.
+   main today already skips syncOrder for a routed order (order-ingestion.service.ts
+   ~628), but nothing lowers the master's stock yet (the only adjustInventory caller
+   is returns restock). */
+function step3() {
   const s = src();
+  const two = isTwo();
+  const shopsTxt = two ? shopNames() : s.name;
   const buyer = `<div class="node"><div class="node__t">Allegro, Erli</div><div class="node__s">A customer buys</div></div><div class="arrow"></div>`;
-  const ol = (t) => `<div class="node"><div class="node__t">OpenLinker</div><div class="node__s">${t}</div></div><div class="arrow"></div>`;
-  const before = `${buyer}${ol('Downloads the order')}
-    <div class="node"><div class="node__t">${s.name}</div><div class="node__s">Gets the order. Stock goes down ${s.stockWhen.replace(/^when /, 'when ')}. You pack from ${s.name}.</div></div>`;
-  const after = `${buyer}${ol(`Downloads the order and sends it to ${esc(S.warehouse.name)}`)}
+  const before = `${buyer}<div class="node"><div class="node__t">OpenLinker</div><div class="node__s">Downloads the order and passes it on</div></div><div class="arrow"></div>
+    <div class="node"><div class="node__t">${shopsTxt}</div><div class="node__s">${two
+      ? 'Both get the order. Each shop takes only its own products, so an order with products from both fails in one of them.'
+      : `Gets the order. Stock goes down there. You pack from ${s.name}.`}</div></div>`;
+  const after = `${buyer}<div class="node"><div class="node__t">OpenLinker</div><div class="node__s">Keeps the order</div></div><div class="arrow"></div>
     <div class="node node--hl"><div class="node__t">Fulfilment &rarr; Pack bench</div><div class="node__s">Arrives as Unassigned. A packer picks it up, scans and packs it.</div></div>
-    <div class="node" style="margin-top:var(--space-2)"><div class="node__t">${s.name}</div><div class="node__s">Still gets the order, so the sale is recorded there. Stock goes down ${s.stockWhen}. Nobody packs it there.</div></div>`;
-  const oldWay = `goes to ${s.name} and is packed there, as today`;
+    <div class="node" style="margin-top:var(--space-2)"><div class="node__t">${shopsTxt}</div><div class="node__s">${two
+      ? "Don't get the order. Stock goes down in the shop that sells each product."
+      : "Doesn't get the order. Only the stock of the sold products goes down."}</div></div>`;
   return panel({
     why: 'Read this before you turn it on. You can turn it off with one click, but orders already sent to the pack bench stay there.',
-    body: `<p style="font-weight:600;">How an order travels</p>
+    body: `<p style="font-weight:600;">How a marketplace order travels</p>
       <div class="flows" data-testid="order-flow-diagram">
         <div class="flow"><span class="flow__label">Today</span><div class="chain">${before}</div></div>
         <div class="flow flow--after"><span class="flow__label">After you turn it on</span><div class="chain">${after}</div></div>
       </div>
-      ${api('TARGET, not on main yet: the routed order is still created in the shop (DESIGN-oms-authority-model.md §13.1). Plain mirror only: no "handled in OpenLinker" marker exists or is designed.<br>main today skips syncOrder for routed orders (order-ingestion.service.ts:628): the shop does not record the sale and its stock does not drop. Backend fix: issue to file.<br>Subiekt GT: needs branch subiekt-gt-full-capabilities; WZ is issued with the FS/PA via the order&#39;s ZK, so it needs the mirror above.<br>Fulfilment &rarr; Unassigned, pack bench printing, automatic labels: branch 3415 (#3340), not on main.')}
-      <div class="inout" data-testid="order-routing-summary">
+      ${api(`TARGET (backend, must ship before the wizard): lower the owning product master&#39;s stock once per line, adjustInventory(-qty, reason:"order_sale", key:"sale:{ownerConnectionId}:{workId}:{lineId}"), then propagate to marketplaces (#3453). Cancel gives it back (#3479); the reservation closes so stock is not subtracted twice (#3480).<br>Already true on main: a routed order is not created in the product master (order-ingestion.service.ts:628).${two ? '<br>"Today" with two masters is verified on main: every order fans out to every OrderProcessorManager (order-sync.service.ts:499) and the shop without the product fails "Product not found" (prestashop-order-processor-manager.adapter.ts:278-284).' : ''}<br>Unassigned, pack bench: branch 3415 (#3340), not on main.`)}
+      <div class="inout inout--3" data-testid="order-routing-summary">
         <div class="inout__box inout__box--in"><p class="inout__title">Goes to the pack bench</p>
-          <ul><li>Every order that comes in after you turn it on, from Allegro, Erli, ${s.name} itself and your other sales channels</li><li>When all its products are in stock in ${esc(S.warehouse.name)}</li></ul></div>
-        <div class="inout__box inout__box--out"><p class="inout__title">Handled the old way</p>
-          <ul><li>An order where even one product is out of stock ${oldWay}</li><li>An order with no delivery address</li><li>Orders already sent to ${s.name} before you turn it on</li></ul></div>
-      ${api('Routing applies to every OrderSource connection, the shop itself included (order-ingestion.service.ts:851, :1122). No shipping address &rarr; skipped (:878). Any routing error fails open to the old path (:912).<br>TARGET for "already sent before": today a re-downloaded old order (status change, poll) is routed too, which risks packing it twice. Needs a backend guard on existing syncStatus. Issue to file.')}
+          <ul><li>New orders from Allegro, Erli and your other marketplaces, placed after you turn it on</li><li>When every product is in stock and the order has a delivery address</li>${two ? `<li>An order with products from both shops is packed as one parcel</li>` : ''}</ul></div>
+        <div class="inout__box inout__box--out"><p class="inout__title">Waits for you in Orders</p>
+          <ul><li>An order where even one product is out of stock</li><li>An order with no delivery address</li></ul></div>
+        <div class="inout__box inout__box--out"><p class="inout__title">Stays as it is today</p>
+          <ul><li>Orders from your ${shopsTxt} store. You pack them there.</li><li>Orders the marketplace ships itself, for example Allegro One Fulfillment</li><li>Orders already in ${shopsTxt} before you turn it on</li></ul></div>
       </div>
+      ${api('TARGET, all in this milestone:<br>- Out of stock / no address / routing error: held in OpenLinker with a visible reason, not sent to the product master (#3485). Today they fail open to the old path (order-ingestion.service.ts:878, :912, :1087).<br>- Storefront orders: routing skips an order whose source connection is itself a product master (#3487). Today routing applies to every OrderSource (:851, :1122).<br>- Marketplace-fulfilled orders: routing skips an order whose delivery method resolves to omp_fulfilled (#3488). Today routing does not look at the delivery method.<br>- Already sent before: not routed on re-ingest (#3455). Today a re-downloaded old order is routed.')}
       <div>
         <p style="font-weight:600; margin-bottom:var(--space-3);">What changes for you</p>
         <ul class="changes" data-testid="what-changes-list">
-          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>Don't pack these orders from ${s.name}.</b><span class="sub">They still show up there. They are packed at the pack bench.</span></span></li>
-          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>The pack bench prints the label and the invoice.</b><span class="sub">It doesn't create them. Invoices are issued as set in Sales documents. Labels are bought in Orders, or automatically if your carrier setup allows it.</span></span></li>
-          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>It applies to all your sales channels at once.</b><span class="sub">You can't turn it on for Allegro only.</span></span></li>
+          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>Marketplace orders stay in OpenLinker.</b><span class="sub">They no longer appear as orders in ${shopsTxt}, and sales reports there won't include them. Only the stock of the sold products goes down there.</span></span></li>
+          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>You buy labels in OpenLinker.</b><span class="sub">In Orders, or with an automation that buys one when an order is packed. Then Allegro and Erli get the shipped status and the tracking number.</span></span></li>
+          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>The pack bench prints the label and the invoice.</b><span class="sub">It doesn't create them. Invoices and receipts follow your Sales documents settings, as today.</span></span></li>
+          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>It applies to all your marketplaces at once.</b><span class="sub">You can't turn it on for Allegro only.</span></span></li>
         </ul>
       </div>
+      ${api('Labels: automatic purchase is an automation rule on T5 order.packed with dispatch-shipment (branch 3415, #2890), not a carrier setting. Shipped status + tracking reach the marketplace only via the shipment dispatch relay (label bought in OL); the work-progress relay has no production caller.<br>Invoices: auto-issue already runs for held orders (order-ingestion.service.ts:758-799); nothing changes, and with no sales-document routing nothing is issued.')}
       <label class="ack" data-testid="ack-what-changes"><input type="checkbox" id="ack" data-testid="input-ack" ${S.ack ? 'checked' : ''} onchange="S.ack=this.checked; render()">
-        <span>I understand that these orders are packed at the pack bench, not from ${s.name}.</span></label>`,
-    next: `<button data-testid="btn-continue-step-5" class="button" type="button" ${S.ack ? '' : 'disabled'} onclick="markDone(5)">Continue</button>`,
+        <span>I understand that marketplace orders stay in OpenLinker, and only stock goes down in ${shopsTxt}.</span></label>`,
+    next: `<button data-testid="btn-continue-step-3" class="button" type="button" ${S.ack ? '' : 'disabled'} onclick="markDone(3)">Continue</button>`,
   });
 }
 
-function step5two() {
-  const [a, b] = TWO;
-  const buyer = `<div class="node"><div class="node__t">Allegro, Erli</div><div class="node__s">A customer buys chemicals</div></div><div class="arrow"></div>`;
-  const failed = (note) => `<div class="node node--fail" style="margin-top:var(--space-2)"><div class="node__t">${b.name}: failed copy</div><div class="node__s">${note}</div></div>`;
-  const before = `${buyer}<div class="node"><div class="node__t">OpenLinker</div><div class="node__s">Downloads the order and sends it to both shops</div></div><div class="arrow"></div>
-    <div class="node"><div class="node__t">${a.name}</div><div class="node__s">Gets the order, stock goes down. You pack from here.</div></div>
-    ${failed("Doesn't sell chemicals, so its copy fails. This already happens today.")}`;
-  const after = `${buyer}<div class="node"><div class="node__t">OpenLinker</div><div class="node__s">Downloads the order and sends it to ${esc(S.warehouse.name)}</div></div><div class="arrow"></div>
-    <div class="node node--hl"><div class="node__t">Fulfilment &rarr; Pack bench</div><div class="node__s">Arrives as Unassigned. A packer picks it up, scans and packs it.</div></div>
-    <div class="node" style="margin-top:var(--space-2)"><div class="node__t">${a.name}</div><div class="node__s">Still gets the order, so the sale is recorded there. Stock goes down. Nobody packs it there.</div></div>
-    <div class="node node--gone" style="margin-top:var(--space-2)"><div class="node__t" style="text-decoration:none">${b.name}</div><div class="node__s">Whether it still gets a copy depends on a change that isn't built yet.</div></div>`;
-  return panel({
-    why: 'Read this before you turn it on. You can turn it off with one click, but orders already sent to the pack bench stay there.',
-    body: `<p style="font-weight:600;">How an order travels</p>
-      <div class="flows" data-testid="order-flow-diagram">
-        <div class="flow"><span class="flow__label">Today</span><div class="chain">${before}</div></div>
-        <div class="flow flow--after"><span class="flow__label">After you turn it on</span><div class="chain">${after}</div></div>
-      </div>
-      ${api('TARGET, not on main yet: the routed order is still created in the shops (DESIGN-oms-authority-model.md §13.1); main skips syncOrder for routed orders (order-ingestion.service.ts:628), so today NO routed order reaches either shop.<br>TARGET UNDECIDED for shop B: the design mirrors to a router-filtered destination set (§5.5), but nothing produces destinationConnectionIds and no rule says which shops it picks. B may get no copy at all.<br>TODAY with packing off: every order goes to every shop that receives orders (order-sync.service.ts:499); the shop without the product fails (prestashop-order-processor-manager.adapter.ts:274) after it already created a guest customer (:240); retry fails the same way. Issue to file.')}
-      <div class="inout" data-testid="order-routing-summary">
-        <div class="inout__box inout__box--in"><p class="inout__title">Goes to the pack bench</p>
-          <ul><li>Every order that comes in after you turn it on, from Allegro, Erli, both shops and your other sales channels</li><li>For products of both shops, when all of them are in stock in ${esc(S.warehouse.name)}</li></ul></div>
-        <div class="inout__box inout__box--out"><p class="inout__title">Handled the old way</p>
-          <ul><li>An order where even one product is out of stock goes to your shops and is packed there, as today</li><li>An order with no delivery address</li><li>Orders already sent to your shops before you turn it on</li></ul></div>
-      </div>
-      <div>
-        <p style="font-weight:600; margin-bottom:var(--space-3);">What to know with two shops</p>
-        <ul class="changes" data-testid="what-changes-list">
-          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>Today, every order shows a failed copy in the shop that doesn't sell it.</b><span class="sub">That is how OpenLinker works with two shops right now, and it may change. Retrying doesn't help: the other shop simply doesn't have the product.</span></span></li>
-          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>An order with products from both shops fails in both shops.</b><span class="sub">It is still packed at the pack bench, but neither shop records it and neither shop's stock goes down. Enter it in the shops by hand.</span></span></li>
-          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>An item listed in both shops has two separate stock counts.</b><span class="sub">Selling it in one shop doesn't lower the count in the other. Keep them in step yourself, or list shared items in one shop only.</span></span></li>
-          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>Don't pack these orders from your shops.</b><span class="sub">The pack bench prints the label and the invoice. It applies to all your sales channels at once.</span></span></li>
-        </ul>
-      </div>
-      ${api('Shared-item check (per SKU, optional): GET /variants/search?search={sku}. It is a substring match on sku/ean/gtin: filter hits by exact sku client-side; a duplicate SKU inside one shop also shows as 2 hits. No cheap whole-catalogue scan exists.<br>Allegro offer linking: SKU linking spans both shops (a SKU in both is left unlinked). Barcode linking uses config.masterCatalogConnectionId on the marketplace connection; with two shops and it unset, barcode linking is off for both.')}
-      <label class="ack" data-testid="ack-what-changes"><input type="checkbox" id="ack" data-testid="input-ack" ${S.ack ? 'checked' : ''} onchange="S.ack=this.checked; render()">
-        <span>I understand that orders mixing products from both shops must be entered in the shops by hand.</span></label>`,
-    next: `<button data-testid="btn-continue-step-5" class="button" type="button" ${S.ack ? '' : 'disabled'} onclick="markDone(5)">Continue</button>`,
-  });
-}
-
-/* ---------------- step 6: turn on ---------------- */
-function step6() {
+/* ---------------- step 4: turn on ---------------- */
+function step4() {
   const s = src();
   const full = S.located >= TOTAL_STOCK;
   const who = S.packers.length ? S.packers.map((u) => u.name).join(', ') : 'No packers yet, admins and operators can pack';
   return panel({
     why: 'Everything is ready. From the moment you turn it on, new orders go to the pack bench.',
     body: `<ul class="checks" data-testid="setup-summary" style="border:1px solid var(--border-subtle); border-radius:var(--radius-md);">
-        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Your shop${isTwo() ? 's' : ''}</span><br><span class="checks__s">${shops().map((x) => `${x.name} &middot; ${esc(x.host)}`).join(', ')}</span></span><button data-testid="btn-go-step-1" class="linkish" type="button" onclick="goStep(1)">View</button></li>
-        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Warehouse</span><br><span class="checks__s">${esc(S.warehouse.name)} &middot; ${esc(S.warehouse.postcode)}</span></span><button data-testid="btn-go-step-2" class="linkish" type="button" onclick="goStep(2)">Change</button></li>
-        <li><span class="tick ${full ? 'tick--ok' : 'tick--warn'}" aria-hidden="true">${full ? '&#10003;' : '&hellip;'}</span><span><span class="checks__t">Stock in the warehouse</span><br><span class="checks__s">${fmt(S.located)} of ${fmt(TOTAL_STOCK)}${full ? '' : ' &middot; still filling in'}</span></span><button data-testid="btn-go-step-3" class="linkish" type="button" onclick="goStep(3)">View</button></li>
-        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Packers</span><br><span class="checks__s">${esc(who)}</span></span><button data-testid="btn-go-step-4" class="linkish" type="button" onclick="goStep(4)">Change</button></li>
+        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Your product master${isTwo() ? 's' : ''}</span><br><span class="checks__s">${shops().map((x) => `${x.name} &middot; ${esc(x.host)}`).join(', ')}</span></span><button data-testid="btn-go-step-1" class="linkish" type="button" onclick="goStep(1)">View</button></li>
+        <li><span class="tick ${full ? 'tick--ok' : 'tick--warn'}" aria-hidden="true">${full ? '&#10003;' : '&hellip;'}</span><span><span class="checks__t">Stock ready for packing</span><br><span class="checks__s">${fmt(S.located)} of ${fmt(TOTAL_STOCK)}${full ? '' : ' &middot; still filling in'}</span></span><button data-testid="btn-go-step-1-stock" class="linkish" type="button" onclick="goStep(1)">View</button></li>
+        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Packers</span><br><span class="checks__s">${esc(who)}</span></span><button data-testid="btn-go-step-2" class="linkish" type="button" onclick="goStep(2)">Change</button></li>
       </ul>
-      ${api('PATCH /connections/{openlinkerId} {config: {...config, sourcingAuthority: {enabled: true}}}<br>(400 if no active warehouse: cannot happen here, step 2 created one)')}`,
+      ${api('PATCH /connections/{openlinkerId} {config: {...config, sourcingAuthority: {enabled: true}}}<br>(400 if no active location: cannot happen here, step 1 created one)')}`,
     next: `<button data-testid="btn-turn-on" class="button" type="button" onclick="turnOn()">Start packing in OpenLinker</button>`,
   });
 }
@@ -814,14 +752,14 @@ function firstOrderView(arrived) {
   const s = src();
   return `<div class="stack">
     <div class="live-banner" data-testid="packing-status-banner" data-live="true"><div><div class="live-banner__t"><span class="pulse" aria-hidden="true"></span>Packing is on</div>
-      <div class="live-banner__s">New orders now go to the pack bench at ${esc(S.warehouse.name)}.</div></div>
+      <div class="live-banner__s">New orders now go to the pack bench.</div></div>
       <a class="button" href="#" data-testid="link-open-fulfilment">Open Fulfilment</a></div>
     <section class="panel" data-testid="first-order-panel">
       <h2 class="section-title">Your first order</h2>
       <div style="padding:0 var(--space-5) var(--space-5)" aria-live="polite">
         ${arrived
-          ? `<div class="order-event"><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><b>Order #A-10482 from Allegro</b> arrived as Unassigned.<br><span class="checks__s">2 products &middot; ${esc(S.warehouse.name)} &middot; 1 min ago &middot; any packer can pick it up, or assign it on Fulfilment</span></span></div>
-             <div class="order-event"><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span>The sale is recorded in ${isTwo() ? TWO[0].name : s.name}, and its stock went down.</span></div>
+          ? `<div class="order-event"><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><b>Order #A-10482 from Allegro</b> arrived as Unassigned.<br><span class="checks__s">2 products &middot; 1 min ago &middot; any packer can pick it up, or assign it on Fulfilment</span></span></div>
+             <div class="order-event"><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span>Stock went down in ${s.name}. The order itself stays in OpenLinker.</span></div>
              <div style="margin-top:var(--space-4); display:flex; gap:var(--space-2); flex-wrap:wrap;"><a class="button" href="#" data-testid="link-open-fulfilment">Open Fulfilment</a><a class="button button--secondary" href="#" data-testid="link-open-pack-bench">Open pack bench</a><button data-testid="btn-go-to-status" class="button button--ghost" type="button" onclick="setPreset('live')">Go to status</button></div>`
           : `<div class="order-event"><span class="spinner" aria-hidden="true"></span><span><b>Waiting for the next order&hellip;</b><br><span class="checks__s">It shows up here as soon as OpenLinker downloads it, usually within a few minutes. You can leave this page.</span></span></div>`}
         ${api('GET /fulfillment/works?limit=1  (polled while this page is open)')}
@@ -838,14 +776,13 @@ function statusView() {
         <div class="live-banner__s">12 orders on Fulfilment, 4 unassigned &middot; last one arrived 4 min ago</div></div>
         <span style="display:flex; gap:var(--space-2); flex-wrap:wrap;"><a class="button" href="#" data-testid="link-open-fulfilment">Open Fulfilment</a><button data-testid="btn-ask-stop" class="button button--secondary" type="button" onclick="askStop()">Stop packing in OpenLinker</button></span></div>`
     : `<div class="live-banner live-banner--off" data-testid="packing-status-banner" data-live="false"><div><div class="live-banner__t"><span class="pulse" aria-hidden="true"></span>Packing is off</div>
-        <div class="live-banner__s">New orders go to ${isTwo() ? 'your shops' : s.name} and are packed there, as before. Your warehouse and stock setup are kept.</div></div>
+        <div class="live-banner__s">New orders go to ${isTwo() ? 'your product masters' : s.name} and are packed there, as before. Your stock setup is kept.</div></div>
         <button data-testid="btn-turn-on" class="button" type="button" onclick="turnOn(true)">Start packing again</button></div>`;
   return `<div class="stack">${banner}
     <section class="panel" data-testid="setup-status"><h2 class="section-title">Setup</h2>
       <ul class="checks">
-        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Your shop${isTwo() ? 's' : ''}</span><br><span class="checks__s">${shops().map((x) => `${x.name} &middot; ${esc(x.host)}`).join(', ')}</span></span><a class="linkish" href="#">Open</a></li>
-        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Warehouse</span><br><span class="checks__s">${esc(S.warehouse.name)} &middot; ${esc(S.warehouse.postcode)}</span></span><a class="linkish" href="#">Edit</a></li>
-        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Stock in the warehouse</span><br><span class="checks__s">${fmt(S.located)} of ${fmt(TOTAL_STOCK)} from ${shopNames()}</span></span><a class="linkish" href="#">View</a></li>
+        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Your product master${isTwo() ? 's' : ''}</span><br><span class="checks__s">${shops().map((x) => `${x.name} &middot; ${esc(x.host)}`).join(', ')}</span></span><a class="linkish" href="#">Open</a></li>
+                <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Stock ready for packing</span><br><span class="checks__s">${fmt(S.located)} of ${fmt(TOTAL_STOCK)} from ${shopNames()}</span></span><a class="linkish" href="#">View</a></li>
         <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Packers</span><br><span class="checks__s">${esc(who)}</span></span><a class="linkish" href="#">Add packers</a></li>
       </ul>
       ${api('<span style="display:block;margin:0 var(--space-5) var(--space-4)">GET /connections · GET /inventory/locations?status=active · GET /inventory?locationId= · GET /fulfillment-authority/status (sourcing row) · GET /fulfillment/works</span>')}
@@ -859,9 +796,9 @@ function askStop() {
     <div class="dialog" data-testid="dialog-stop-packing" data-state="dialog-stop-confirm" role="dialog" aria-modal="true" aria-labelledby="dT" aria-describedby="dD" tabindex="-1" id="dlg">
       <div class="dialog__head"><h2 class="dialog__title" id="dT">Stop packing in OpenLinker?</h2></div>
       <div class="dialog__body" id="dD">
-        <p>New orders go to ${isTwo() ? 'your shops' : s.name} and are packed there, as before.</p>
+        <p>New orders go to ${isTwo() ? 'your product masters' : s.name} and are packed there, as before.</p>
         <p>The 12 orders already on Fulfilment stay there. Finish packing them at the pack bench.</p>
-        <p>Your warehouse and stock setup are kept, so you can start again with one click.</p>
+        <p>Your stock setup is kept, so you can start again with one click.</p>
         ${api('PATCH /connections/{openlinkerId} {config: {...config, sourcingAuthority: {enabled: false}}}')}
       </div>
       <div class="dialog__foot"><button data-testid="btn-close-dialog" class="button button--secondary" type="button" onclick="closeDialog()">Cancel</button><button data-testid="btn-stop-now" class="button button--danger" type="button" onclick="stopNow()">Stop packing</button></div>
@@ -873,12 +810,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDialo
 
 /* ---------------- actions ---------------- */
 function markDone(n) { S.done[n - 1] = true; goStep(Math.min(N, n + 1)); }
-function saveWarehouse() {
-  const v = (id) => $(id).value;
-  S.warehouse = { name: v('#wName') || 'Main warehouse', code: v('#wCode') || 'MAIN', country: v('#wCountry'), postcode: v('#wPost') };
-  S.done[1] = true; S.maxReached = Math.max(S.maxReached, 3); render(true);
-}
-function saveStock() { S.done[2] = true; S.located = 1240; S.syncing = true; S.maxReached = Math.max(S.maxReached, 4); render(true); tick(); }
+function confirmProductMaster() { S.done[0] = true; S.located = 1240; S.syncing = true; render(true); tick(); }
 function addPacker() {
   const name = $('#pName').value.trim(); const login = $('#pLogin').value.trim(); const err = $('#pErr');
   if (!name || !login) { err.textContent = 'Enter a name and a login.'; err.hidden = false; return; }
@@ -893,7 +825,7 @@ function copyPass() {
   const ok = () => { btn.textContent = 'Copied'; setTimeout(() => { if ($('#copyBtn')) $('#copyBtn').textContent = 'Copy password'; }, 1500); };
   try { navigator.clipboard.writeText($('#tmpPass').value).then(ok, () => $('#tmpPass').select()); } catch (e) { $('#tmpPass').select(); }
 }
-function turnOn(again) { S.done[5] = true; S.live = true; S.view = again ? 'status' : 'waiting'; render(true); }
+function turnOn(again) { S.done[3] = true; S.live = true; S.view = again ? 'status' : 'waiting'; render(true); }
 function stopNow() { closeDialog(); S.live = false; S.view = 'status'; render(true); }
 function goStep(n) { S.maxReached = Math.max(S.maxReached, n); S.step = n; S.view = 'wizard'; render(true); }
 
@@ -904,30 +836,30 @@ function tick() {
     if (!S.syncing) return clearInterval(timer);
     S.located = Math.min(TOTAL_STOCK, S.located + 600);
     if (S.located >= TOTAL_STOCK) { S.syncing = false; clearInterval(timer); }
-    if (S.view === 'wizard' && (S.step === 3 || S.step === 6)) render();
+    if (S.view === 'wizard' && (S.step === 1 || S.step === 4)) render();
   }, 1400);
 }
 
 /* ---------------- data-state vocabulary (E2E + implementation tickets cite these) ----------------
-   step-1-shop | step-1-orders-off | step-1-no-shop | step-1-two-shops
-   step-2-warehouse-form | step-2-warehouse-saved
-   step-3-stock-confirm | step-3-stock-syncing | step-3-stock-complete
-   step-4-packers-empty | step-4-packer-added
-   step-5-what-changes | step-5-what-changes-two-shops
-   step-6-turn-on | waiting-first-order | first-order-arrived | status-on | status-off
+   step-1-product-master | step-1-no-product-master | step-1-two-product-masters (two masters, not confirmed yet)
+   step-1-stock-syncing | step-1-stock-complete
+   step-2-packers-empty | step-2-packer-added
+   step-3-what-changes
+   step-4-turn-on | waiting-first-order | first-order-arrived | status-on | status-off
    dialog-stop-confirm (on the dialog element)
-   body[data-source] = prestashop | woocommerce | subiekt | orders-off | none | two */
+   body[data-source] = prestashop | woocommerce | subiekt | none | two */
 function stateName() {
   if (S.view === 'waiting') return 'waiting-first-order';
   if (S.view === 'first') return 'first-order-arrived';
   if (S.view === 'status') return S.live ? 'status-on' : 'status-off';
   switch (S.step) {
-    case 1: return S.source === 'none' ? 'step-1-no-shop' : isTwo() ? 'step-1-two-shops' : S.source === 'orders-off' ? 'step-1-orders-off' : 'step-1-shop';
-    case 2: return S.done[1] ? 'step-2-warehouse-saved' : 'step-2-warehouse-form';
-    case 3: return !S.done[2] ? 'step-3-stock-confirm' : S.located >= TOTAL_STOCK ? 'step-3-stock-complete' : 'step-3-stock-syncing';
-    case 4: return S.packers.length ? 'step-4-packer-added' : 'step-4-packers-empty';
-    case 5: return isTwo() ? 'step-5-what-changes-two-shops' : 'step-5-what-changes';
-    default: return 'step-6-turn-on';
+    case 1:
+      if (S.source === 'none') return 'step-1-no-product-master';
+      if (S.done[0]) return S.located >= TOTAL_STOCK ? 'step-1-stock-complete' : 'step-1-stock-syncing';
+      return isTwo() ? 'step-1-two-product-masters' : 'step-1-product-master';
+    case 2: return S.packers.length ? 'step-2-packer-added' : 'step-2-packers-empty';
+    case 3: return 'step-3-what-changes';
+    default: return 'step-4-turn-on';
   }
 }
 
@@ -937,10 +869,10 @@ function render(moveFocus) {
   $('#navBench').hidden = !S.live;
   $('#pageTitle').textContent = inWizard ? 'Pack orders in OpenLinker' : 'Packing in OpenLinker';
   $('#pageDesc').textContent = inWizard
-    ? 'Pick and pack orders on one screen, with a barcode scanner. Setup takes about 10 minutes. Nothing changes in how your orders are handled until the last step.'
+    ? 'Pick and pack orders on one screen, with a barcode scanner. Setup takes about 5 minutes. Nothing changes in how your orders are handled until the last step.'
     : 'Orders are packed at the pack bench. You can stop this at any time.';
   let html;
-  if (inWizard) html = `<div class="wizard">${stepper()}<div>${[step1, step2, step3, step4, step5, step6][S.step - 1]()}</div></div>`;
+  if (inWizard) html = `<div class="wizard">${stepper()}<div>${[step1, step2, step3, step4][S.step - 1]()}</div></div>`;
   else if (S.view === 'waiting') html = firstOrderView(false);
   else if (S.view === 'first') html = firstOrderView(true);
   else html = statusView();
@@ -961,17 +893,16 @@ function setPreset(p) {
   const upTo = (n) => { for (let i = 0; i < n; i++) S.done[i] = true; S.maxReached = Math.min(N, n + 1); };
   const full = () => { S.located = TOTAL_STOCK; };
   switch (p) {
-    case 's2': upTo(1); S.step = 2; break;
-    case 's3': upTo(2); S.step = 3; break;
-    case 's3-sync': upTo(3); S.step = 3; S.located = 1240; S.syncing = true; tick(); break;
-    case 's4': upTo(3); S.step = 4; full(); break;
-    case 's4-pending': upTo(3); S.step = 4; full(); S.packers = [{ ...ANNA }]; S.lastCreated = { name: ANNA.name, login: ANNA.login, pass: 'Pack-7k2q-m9xd' }; break;
-    case 's5': upTo(4); S.step = 5; full(); break;
-    case 's6': upTo(5); S.step = 6; full(); S.ack = true; S.packers = [{ ...ANNA }]; break;
-    case 'waiting': upTo(6); full(); S.live = true; S.view = 'waiting'; break;
-    case 'first': upTo(6); full(); S.live = true; S.view = 'first'; break;
-    case 'live': upTo(6); full(); S.live = true; S.view = 'status'; S.packers = [{ ...ANNA }]; break;
-    case 'off': upTo(6); full(); S.live = false; S.view = 'status'; S.packers = [{ ...ANNA }]; break;
+    case 's1-sync': S.done[0] = true; S.maxReached = 2; S.located = 1240; S.syncing = true; tick(); break;
+    case 's1-complete': S.done[0] = true; S.maxReached = 2; full(); break;
+    case 's2': upTo(1); S.step = 2; full(); break;
+    case 's2-added': upTo(1); S.step = 2; full(); S.packers = [{ ...ANNA }]; S.lastCreated = { name: ANNA.name, login: ANNA.login, pass: 'Pack-7k2q-m9xd' }; break;
+    case 's3': upTo(2); S.step = 3; full(); break;
+    case 's4': upTo(3); S.step = 4; full(); S.ack = true; S.packers = [{ ...ANNA }]; break;
+    case 'waiting': upTo(4); full(); S.live = true; S.view = 'waiting'; break;
+    case 'first': upTo(4); full(); S.live = true; S.view = 'first'; break;
+    case 'live': upTo(4); full(); S.live = true; S.view = 'status'; S.packers = [{ ...ANNA }]; break;
+    case 'off': upTo(4); full(); S.live = false; S.view = 'status'; S.packers = [{ ...ANNA }]; break;
   }
   document.querySelectorAll('[data-preset]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.preset === p)));
   render(true);
@@ -980,7 +911,7 @@ function syncSourceChips() { document.querySelectorAll('[data-source]').forEach(
 document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => setPreset(b.dataset.preset)));
 document.querySelectorAll('[data-source]').forEach((b) => b.addEventListener('click', () => {
   S.source = b.dataset.source; syncSourceChips();
-  setPreset(shopOk() && src().ordersOn ? currentPreset : 's1');
+  setPreset(shopOk() ? currentPreset : 's1');
 }));
 $('#apiToggle').addEventListener('click', (e) => { const on = document.body.classList.toggle('show-api'); e.currentTarget.setAttribute('aria-pressed', String(on)); });
 
