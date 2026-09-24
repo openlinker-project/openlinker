@@ -1,0 +1,20 @@
+samples in file: 25
+samples reaching a destination create: 0
+
+A  order pushed at stub -> poll enqueued       n=25   min=     21.1  p50=     33.5 (rank 13/25)  p95=     36.4 (rank 24/25)  max=     39.4  HARNESS-CHOSEN, see report
+B  poll enqueued -> poll claimed               n=25   min=      7.6  p50=    508.0 (rank 13/25)  p95=    949.5 (rank 24/25)  max=    985.5
+C  poll claimed -> child enqueued              n=25   min=    286.9  p50=    289.0 (rank 13/25)  p95=    302.4 (rank 24/25)  max=    320.2
+D  child enqueued -> child claimed             n=25   min=    691.5  p50=    720.2 (rank 13/25)  p95=    722.9 (rank 24/25)  max=    724.5
+E  child claimed -> order_records row written  n=25   min=   1135.0  p50=   1139.0 (rank 13/25)  p95=   1144.0 (rank 24/25)  max=   1146.0
+F  order_records written -> destination syncedAt n=0    (never observed)
+G  child claimed -> child terminal             n=25   min=   2528.2  p50=   2549.4 (rank 13/25)  p95=   2565.1 (rank 24/25)  max=   2590.5
+TOTAL  poll enqueued -> destination syncedAt   n=0    (never observed)  excludes hop A
+TOTAL  order pushed -> destination syncedAt    n=0    (never observed)  includes the harness-chosen hop A
+
+poll job claim-instant source: derived=20, latched=5   (latched = observed while running; derived = updatedAt - lastAttemptDurationMs; missing/multi-attempt rows are EXCLUDED from every hop that needs a claim)
+child job claim-instant source: latched=25   (latched = observed while running; derived = updatedAt - lastAttemptDurationMs; missing/multi-attempt rows are EXCLUDED from every hop that needs a claim)
+
+D  child job duration (runner-measured)        n=25   min=   2522.0  p50=   2543.0 (rank 13/25)  p95=   2560.0 (rank 24/25)  max=   2584.0  sync_jobs.lastAttemptDurationMs
+
+heartbeat caveat: 0 of 25 child jobs ran >= 180s, so a LATCHED lockedAt for them could be a heartbeat rewrite rather than the claim instant (0 means the caveat does not bite on this run; the DERIVED source is immune to it either way)
+retry caveat:     0 of 25 child jobs took more than one attempt (lastAttemptDurationMs reports the LAST attempt only)

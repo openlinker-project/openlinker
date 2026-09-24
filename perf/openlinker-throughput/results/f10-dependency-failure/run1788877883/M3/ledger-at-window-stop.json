@@ -1,0 +1,81 @@
+{
+  "syncJobs": [
+    {
+      "n": 6,
+      "status": "dead",
+      "outcome": null,
+      "job_type": "marketplace.offerQuantity.update",
+      "attempts_max": 2,
+      "deferred_rows": 0,
+      "attempts_total": 12,
+      "outcome_reason": null,
+      "attempt_ms_rows": 6,
+      "attempt_ms_total": 812,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 6,
+      "status": "queued",
+      "outcome": null,
+      "job_type": "marketplace.offerQuantity.update",
+      "attempts_max": 2,
+      "deferred_rows": 0,
+      "attempts_total": 12,
+      "outcome_reason": null,
+      "attempt_ms_rows": 6,
+      "attempt_ms_total": 799,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    }
+  ],
+  "lastErrors": [
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer ol_variant_023954ae465446d38a24a0aa8b4d7b63: unknown (Allegro rejected offer quantity command f6364c5b-7ded-4cba-89e5-add3e594db77 for offer ol_variant_023954ae465446d38a24a0aa8b4d7b63: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenan"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer ol_variant_023954ae465446d38a24a0aa8b4d7b63: unknown (Allegro rejected offer quantity command fffd4d0e-623e-4afa-b15d-481eb1ac16d1 for offer ol_variant_023954ae465446d38a24a0aa8b4d7b63: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenan"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer ol_variant_02bca52ae74b47688160745b620553d4: unknown (Allegro rejected offer quantity command 738bb292-71e4-495d-b182-736cbf21e421 for offer ol_variant_02bca52ae74b47688160745b620553d4: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenan"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer ol_variant_0fd14096e3f24e67bc0b6e89ecd05fa5: unknown (Allegro rejected offer quantity command a3ab4d2e-0a89-4cd7-99c7-ba26a5476293 for offer ol_variant_0fd14096e3f24e67bc0b6e89ecd05fa5: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenan"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer ol_variant_3798f07990be42e48e9d6b2a4d56db4c: unknown (Allegro rejected offer quantity command a09d2e21-c6b7-4ad7-a100-925de9532569 for offer ol_variant_3798f07990be42e48e9d6b2a4d56db4c: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenan"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer ol_variant_394ed8bb4c4f49a6b7271abfd343a96e: unknown (Allegro rejected offer quantity command a9bdf0f9-e063-487d-8a57-7274e5c8782a for offer ol_variant_394ed8bb4c4f49a6b7271abfd343a96e: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenan"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer ol_variant_4f0c1449fb5548d5ae4b68d6c959c9b3: unknown (Allegro rejected offer quantity command 301c2f62-c4fb-4ad8-aeee-80328c044a9d for offer ol_variant_4f0c1449fb5548d5ae4b68d6c959c9b3: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenan"
+    },
+    {
+      "n": 1,
+      "last_error": "Offer quantity update failed for offer ol_variant_a7d6b7330b7d4433a52f56cb64b283dd: unknown (Allegro rejected offer quantity command bce9c11e-4de5-420c-9d6b-3cc2b0c6e354 for offer ol_variant_a7d6b7330b7d4433a52f56cb64b283dd: OfferQuantityChangeCommandRejected: Injected synchronous REJECTED for tenan"
+    }
+  ],
+  "orderRecords": {
+    "created": 0,
+    "recordStatus": {},
+    "note": "quantity-write load path - no orders are ingested"
+  },
+  "destinationFanOut": {
+    "note": "quantity-write load path - no destination fan-out"
+  },
+  "groundTruth": {
+    "psOrdersCreated": 0,
+    "psCartsCreated": 0,
+    "claimedSyncedToPrestashop": 0,
+    "claimedButAbsentFromPsOrders": 0,
+    "note": "claimedButAbsentFromPsOrders > 0 is a success report over a failure: OpenLinker recorded syncStatus.status=synced with an externalOrderId that names no row in the shop.\nA nonzero psCartsCreated alongside a zero psOrdersCreated is an orphaned cart - work done at the destination that produced no order."
+  }
+}

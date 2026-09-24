@@ -1,0 +1,4 @@
+armA-simple 4 completed 3 3 0 995e4ed5-3831-497f-940d-248121eb485d
+armB-variable 16 completed 8 8 0 da60962c-0224-4118-ad22-5ad804521c1d
+armC-partial-failure 3 partially-failed 2 1 1 3130f712-e0c2-46e0-8b34-8beb0de52c4e
+armD-ai-description 4 completed 3 3 0 9a723bbf-786f-4753-97a8-f7770a6ab170

@@ -1,0 +1,124 @@
+BEGIN
+INSERT 0 0
+INSERT 0 1
+                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.46..44.21 rows=2 width=408) (actual time=0.642..0.644 rows=1 loops=1)
+   Buffers: shared hit=82
+   ->  LockRows  (cost=0.46..591.08 rows=27 width=408) (actual time=0.641..0.643 rows=1 loops=1)
+         Buffers: shared hit=82
+         ->  Index Scan using "IDX_a2d0990898df9d69d7c3b53ca9" on sync_jobs  (cost=0.46..590.81 rows=27 width=408) (actual time=0.632..0.633 rows=1 loops=1)
+               Index Cond: (((status)::text = 'queued'::text) AND ("nextRunAt" <= now()))
+               Filter: (("jobType")::text = ANY ('{fulfillment.work.dispatch,fulfillment.work.statusSync,invoicing.paymentStatus.refreshByExternalId,marketplace.offer.pauseStale,marketplace.offer.pollCreationStatus,marketplace.offer.refreshSnapshot,marketplace.offer.stockRestore,marketplace.offer.updateFields,marketplace.offerQuantity.update,marketplace.order.fxStamp,marketplace.order.sync,marketplace.return.sync,marketplace.shipment.syncByExternalId,master.inventory.syncByExternalId,master.product.syncByExternalId}'::text[]))
+               Buffers: shared hit=81
+ Planning:
+   Buffers: shared hit=192
+ Planning Time: 2.547 ms
+ Execution Time: 0.755 ms
+(12 rows)
+
+ROLLBACK
+BEGIN
+INSERT 0 1000
+INSERT 0 1
+                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.46..44.21 rows=2 width=408) (actual time=0.400..0.401 rows=1 loops=1)
+   Buffers: shared hit=140
+   ->  LockRows  (cost=0.46..591.08 rows=27 width=408) (actual time=0.399..0.400 rows=1 loops=1)
+         Buffers: shared hit=140
+         ->  Index Scan using "IDX_a2d0990898df9d69d7c3b53ca9" on sync_jobs  (cost=0.46..590.81 rows=27 width=408) (actual time=0.394..0.395 rows=1 loops=1)
+               Index Cond: (((status)::text = 'queued'::text) AND ("nextRunAt" <= now()))
+               Filter: (("jobType")::text = ANY ('{fulfillment.work.dispatch,fulfillment.work.statusSync,invoicing.paymentStatus.refreshByExternalId,marketplace.offer.pauseStale,marketplace.offer.pollCreationStatus,marketplace.offer.refreshSnapshot,marketplace.offer.stockRestore,marketplace.offer.updateFields,marketplace.offerQuantity.update,marketplace.order.fxStamp,marketplace.order.sync,marketplace.return.sync,marketplace.shipment.syncByExternalId,master.inventory.syncByExternalId,master.product.syncByExternalId}'::text[]))
+               Rows Removed by Filter: 1000
+               Buffers: shared hit=139
+ Planning:
+   Buffers: shared hit=189
+ Planning Time: 1.421 ms
+ Execution Time: 0.444 ms
+(13 rows)
+
+ROLLBACK
+BEGIN
+INSERT 0 572
+INSERT 0 1
+                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.46..44.21 rows=2 width=408) (actual time=0.631..0.632 rows=1 loops=1)
+   Buffers: shared hit=156
+   ->  LockRows  (cost=0.46..591.08 rows=27 width=408) (actual time=0.630..0.631 rows=1 loops=1)
+         Buffers: shared hit=156
+         ->  Index Scan using "IDX_a2d0990898df9d69d7c3b53ca9" on sync_jobs  (cost=0.46..590.81 rows=27 width=408) (actual time=0.624..0.625 rows=1 loops=1)
+               Index Cond: (((status)::text = 'queued'::text) AND ("nextRunAt" <= now()))
+               Filter: (("jobType")::text = ANY ('{fulfillment.work.dispatch,fulfillment.work.statusSync,invoicing.paymentStatus.refreshByExternalId,marketplace.offer.pauseStale,marketplace.offer.pollCreationStatus,marketplace.offer.refreshSnapshot,marketplace.offer.stockRestore,marketplace.offer.updateFields,marketplace.offerQuantity.update,marketplace.order.fxStamp,marketplace.order.sync,marketplace.return.sync,marketplace.shipment.syncByExternalId,master.inventory.syncByExternalId,master.product.syncByExternalId}'::text[]))
+               Rows Removed by Filter: 572
+               Buffers: shared hit=155
+ Planning:
+   Buffers: shared hit=189
+ Planning Time: 1.359 ms
+ Execution Time: 0.680 ms
+(13 rows)
+
+ROLLBACK
+BEGIN
+INSERT 0 0
+INSERT 0 1
+                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.46..44.84 rows=2 width=402) (actual time=0.142..0.144 rows=1 loops=1)
+   Buffers: shared hit=17
+   ->  LockRows  (cost=0.46..976.81 rows=44 width=402) (actual time=0.141..0.142 rows=1 loops=1)
+         Buffers: shared hit=17
+         ->  Index Scan using "IDX_a2d0990898df9d69d7c3b53ca9" on sync_jobs  (cost=0.46..976.37 rows=44 width=402) (actual time=0.132..0.133 rows=1 loops=1)
+               Index Cond: (((status)::text = 'queued'::text) AND ("nextRunAt" <= now()))
+               Filter: (("jobType")::text = ANY ('{fulfillment.work.dispatch,fulfillment.work.statusSync,invoicing.paymentStatus.refreshByExternalId,marketplace.offer.pauseStale,marketplace.offer.pollCreationStatus,marketplace.offer.refreshSnapshot,marketplace.offer.stockRestore,marketplace.offer.updateFields,marketplace.offerQuantity.update,marketplace.order.fxStamp,marketplace.order.sync,marketplace.return.sync,marketplace.shipment.syncByExternalId,master.inventory.syncByExternalId,master.product.syncByExternalId}'::text[]))
+               Buffers: shared hit=16
+ Planning:
+   Buffers: shared hit=192
+ Planning Time: 2.609 ms
+ Execution Time: 0.223 ms
+(12 rows)
+
+ROLLBACK
+BEGIN
+INSERT 0 1000
+INSERT 0 1
+                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.46..44.84 rows=2 width=402) (actual time=0.211..0.212 rows=1 loops=1)
+   Buffers: shared hit=134
+   ->  LockRows  (cost=0.46..976.81 rows=44 width=402) (actual time=0.210..0.211 rows=1 loops=1)
+         Buffers: shared hit=134
+         ->  Index Scan using "IDX_a2d0990898df9d69d7c3b53ca9" on sync_jobs  (cost=0.46..976.37 rows=44 width=402) (actual time=0.205..0.205 rows=1 loops=1)
+               Index Cond: (((status)::text = 'queued'::text) AND ("nextRunAt" <= now()))
+               Filter: (("jobType")::text = ANY ('{fulfillment.work.dispatch,fulfillment.work.statusSync,invoicing.paymentStatus.refreshByExternalId,marketplace.offer.pauseStale,marketplace.offer.pollCreationStatus,marketplace.offer.refreshSnapshot,marketplace.offer.stockRestore,marketplace.offer.updateFields,marketplace.offerQuantity.update,marketplace.order.fxStamp,marketplace.order.sync,marketplace.return.sync,marketplace.shipment.syncByExternalId,master.inventory.syncByExternalId,master.product.syncByExternalId}'::text[]))
+               Rows Removed by Filter: 1000
+               Buffers: shared hit=133
+ Planning:
+   Buffers: shared hit=189
+ Planning Time: 1.269 ms
+ Execution Time: 0.250 ms
+(13 rows)
+
+ROLLBACK
+BEGIN
+INSERT 0 545
+INSERT 0 1
+                                                                                                                                                                                                                                                                     QUERY PLAN                                                                                                                                                                                                                                                                      
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Limit  (cost=0.46..44.84 rows=2 width=402) (actual time=0.511..0.512 rows=1 loops=1)
+   Buffers: shared hit=200
+   ->  LockRows  (cost=0.46..976.81 rows=44 width=402) (actual time=0.511..0.512 rows=1 loops=1)
+         Buffers: shared hit=200
+         ->  Index Scan using "IDX_a2d0990898df9d69d7c3b53ca9" on sync_jobs  (cost=0.46..976.37 rows=44 width=402) (actual time=0.506..0.506 rows=1 loops=1)
+               Index Cond: (((status)::text = 'queued'::text) AND ("nextRunAt" <= now()))
+               Filter: (("jobType")::text = ANY ('{fulfillment.work.dispatch,fulfillment.work.statusSync,invoicing.paymentStatus.refreshByExternalId,marketplace.offer.pauseStale,marketplace.offer.pollCreationStatus,marketplace.offer.refreshSnapshot,marketplace.offer.stockRestore,marketplace.offer.updateFields,marketplace.offerQuantity.update,marketplace.order.fxStamp,marketplace.order.sync,marketplace.return.sync,marketplace.shipment.syncByExternalId,master.inventory.syncByExternalId,master.product.syncByExternalId}'::text[]))
+               Rows Removed by Filter: 545
+               Buffers: shared hit=199
+ Planning:
+   Buffers: shared hit=192
+ Planning Time: 1.360 ms
+ Execution Time: 0.584 ms
+(13 rows)
+
+ROLLBACK

@@ -1,0 +1,113 @@
+{
+  "syncJobs": [
+    {
+      "n": 7,
+      "status": "queued",
+      "outcome": null,
+      "job_type": "marketplace.offerQuantity.update",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 0,
+      "attempt_ms_total": 0,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 2,
+      "status": "succeeded",
+      "outcome": "ok",
+      "job_type": "marketplace.offerQuantity.update",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 2,
+      "attempt_ms_total": 270,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 1,
+      "status": "queued",
+      "outcome": null,
+      "job_type": "marketplace.order.sync",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 0,
+      "attempt_ms_total": 0,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 2,
+      "status": "running",
+      "outcome": null,
+      "job_type": "marketplace.order.sync",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 0,
+      "attempt_ms_total": 0,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 9,
+      "status": "succeeded",
+      "outcome": "ok",
+      "job_type": "marketplace.order.sync",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 9,
+      "attempt_ms_total": 52467,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    },
+    {
+      "n": 4,
+      "status": "succeeded",
+      "outcome": "ok",
+      "job_type": "marketplace.orders.poll",
+      "attempts_max": 0,
+      "deferred_rows": 0,
+      "attempts_total": 0,
+      "outcome_reason": null,
+      "attempt_ms_rows": 4,
+      "attempt_ms_total": 1193,
+      "deferred_ms_total": 0,
+      "killed_by_harness": 0
+    }
+  ],
+  "lastErrors": [
+    {
+      "n": 8,
+      "last_error": "Deferred: lane 'realtime' per-scope cap reached within the claim batch — re-queued immediately, no attempt consumed (ADR-050)"
+    }
+  ],
+  "orderRecords": {
+    "created": 11,
+    "recordStatus": {
+      "ready": 11
+    }
+  },
+  "destinationFanOut": {
+    "entriesOther": 0,
+    "entriesFailed": 0,
+    "entriesSynced": 9,
+    "ordersWithNoSyncStatus": 2
+  },
+  "groundTruth": {
+    "psOrdersCreated": 9,
+    "psCartsCreated": 11,
+    "claimedSyncedToPrestashop": 9,
+    "claimedButAbsentFromPsOrders": 0,
+    "note": "claimedButAbsentFromPsOrders > 0 is a success report over a failure: OpenLinker recorded syncStatus.status=synced with an externalOrderId that names no row in the shop.\nA nonzero psCartsCreated alongside a zero psOrdersCreated is an orphaned cart - work done at the destination that produced no order."
+  }
+}
