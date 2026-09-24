@@ -13,10 +13,12 @@ import { InventoryItemOrmEntity } from './infrastructure/persistence/entities/in
 import { InventoryLocationOrmEntity } from './infrastructure/persistence/entities/inventory-location.orm-entity';
 import { ReservationOrmEntity } from './infrastructure/persistence/entities/reservation.orm-entity';
 import { ReservationShortfallEpisodeOrmEntity } from './infrastructure/persistence/entities/reservation-shortfall-episode.orm-entity';
+import { InventorySaleDecrementOrmEntity } from './infrastructure/persistence/entities/inventory-sale-decrement.orm-entity';
 import { InventoryRepository } from './infrastructure/persistence/repositories/inventory.repository';
 import { LocationRepository } from './infrastructure/persistence/repositories/location.repository';
 import { ReservationRepository } from './infrastructure/persistence/repositories/reservation.repository';
 import { ReservationShortfallRepository } from './infrastructure/persistence/repositories/reservation-shortfall.repository';
+import { InventorySaleDecrementRepository } from './infrastructure/persistence/repositories/inventory-sale-decrement.repository';
 import { InventoryService } from './application/services/inventory.service';
 import { PostSaleInventoryRefreshService } from './application/services/post-sale-inventory-refresh.service';
 import { InventorySyncService } from './application/services/inventory-sync.service';
@@ -31,6 +33,7 @@ import { UnavailableOrderHoldReader } from './infrastructure/reservations/unavai
 import type { ObligationReaders } from './domain/types/reservation-obligation.types';
 import { ReservationLedgerReader } from './infrastructure/reservations/reservation-ledger.reader';
 import { InventoryProvenanceBackfillService } from './application/services/inventory-provenance-backfill.service';
+import { InventorySaleDecrementService } from './application/services/inventory-sale-decrement.service';
 import {
   AVAILABILITY_SERVICE_TOKEN,
   RESERVATION_EXPIRY_SERVICE_TOKEN,
@@ -49,6 +52,8 @@ import {
   LOCATION_SERVICE_TOKEN,
   INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
   POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
+  INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN,
+  INVENTORY_SALE_DECREMENT_SERVICE_TOKEN,
 } from './inventory.tokens';
 import { ProductsModule } from '@openlinker/core/products';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -81,6 +86,7 @@ export {
       InventoryLocationOrmEntity,
       ReservationOrmEntity,
       ReservationShortfallEpisodeOrmEntity,
+      InventorySaleDecrementOrmEntity,
     ]),
     ProductsModule, // Required for FK relationship to ProductOrmEntity
     IntegrationsModule, // Required for INTEGRATIONS_SERVICE_TOKEN (marketplace adapter resolution)
@@ -117,6 +123,9 @@ export {
     ReservationLedgerReader,
     AvailabilityService,
     InventoryProvenanceBackfillService,
+    // #3453 — the routed-order sale decrement.
+    InventorySaleDecrementRepository,
+    InventorySaleDecrementService,
     // Then provide token bindings using useExisting
     {
       provide: INVENTORY_REPOSITORY_TOKEN,
@@ -229,6 +238,14 @@ export {
       provide: POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
       useExisting: PostSaleInventoryRefreshService,
     },
+    {
+      provide: INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN,
+      useExisting: InventorySaleDecrementRepository,
+    },
+    {
+      provide: INVENTORY_SALE_DECREMENT_SERVICE_TOKEN,
+      useExisting: InventorySaleDecrementService,
+    },
   ],
   exports: [
     POST_SALE_INVENTORY_REFRESH_SERVICE_TOKEN,
@@ -248,6 +265,7 @@ export {
     RESERVATION_SHORTFALL_SERVICE_TOKEN,
     AVAILABILITY_SERVICE_TOKEN,
     INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
+    INVENTORY_SALE_DECREMENT_SERVICE_TOKEN,
   ],
 })
 export class InventoryModule {}

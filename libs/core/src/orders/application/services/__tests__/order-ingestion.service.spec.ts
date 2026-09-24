@@ -2349,6 +2349,87 @@ describe('OrderIngestionService', () => {
         }
       });
 
+      // #3453 — a routed order is never created in the product master, so its
+      // stock is lowered there by an `inventory.saleDecrement` job per work.
+      describe('lowering product-master stock for the routed work (#3453)', () => {
+        const saleDecrementRequests = () =>
+          jobQueue.enqueue.mock.calls
+            .map(([request]) => request)
+            .filter((request) => request.type === 'inventory.saleDecrement');
+
+        it('should enqueue one sale decrement per routed work, scoped to the order source', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'routed',
+            decisionId: 'dec-1',
+            works: [
+              { workId: 'w-1', assignedConnectionId: 'holder-1' },
+              // A work with no holder was still SOLD — it is decremented too.
+              { workId: 'w-2', assignedConnectionId: null },
+            ],
+          });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(saleDecrementRequests()).toEqual([
+            {
+              type: 'inventory.saleDecrement',
+              // The connection the order came through — never the holder, which
+              // every OMS-packed work shares (#2609).
+              connectionId,
+              payload: { schemaVersion: 1, workId: 'w-1', orderId: 'ol_order_int' },
+              options: { dedupeKey: 'inventory:sale-decrement:w-1' },
+            },
+            {
+              type: 'inventory.saleDecrement',
+              connectionId,
+              payload: { schemaVersion: 1, workId: 'w-2', orderId: 'ol_order_int' },
+              options: { dedupeKey: 'inventory:sale-decrement:w-2' },
+            },
+          ]);
+        });
+
+        // The regression AC: a routed order is NOT created in the product master.
+        it('should not create the order in any destination when it is routed', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'routed',
+            decisionId: 'dec-1',
+            works: [{ workId: 'w-1', assignedConnectionId: 'holder-1' }],
+          });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+          expect(saleDecrementRequests()).toHaveLength(1);
+        });
+
+        it('should enqueue no sale decrement when routing did not route the order', async () => {
+          routingCommit.route.mockResolvedValue({ status: 'contended' });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(saleDecrementRequests()).toEqual([]);
+        });
+
+        // Same fail-open guard as the dispatch producer: an escaping throw would
+        // turn a routed order into "not held" and mirror it everywhere.
+        it('should still hold the order when every sale decrement enqueue fails', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'routed',
+            decisionId: 'dec-1',
+            works: [{ workId: 'w-1', assignedConnectionId: 'holder-1' }],
+          });
+          jobQueue.enqueue.mockImplementation((request) =>
+            request.type === 'inventory.saleDecrement'
+              ? Promise.reject(new Error('redis blip'))
+              : Promise.resolve(undefined as never)
+          );
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        });
+      });
+
       // #2955 — the FIRST producer of `fulfillment.work.dispatch`.
       describe('dispatching the routed work (#2955)', () => {
         const routed = (works: { workId: string; assignedConnectionId: string | null }[]) => {
