@@ -27,6 +27,8 @@ function view(over: Partial<BenchWorkListView> = {}): BenchWorkListView {
         holdPlacedAt: null,
         expeditedAt: null,
         supportedActions: ['expedite'],
+        assignmentState: 'unassigned',
+        claimable: true,
       },
     ],
     executorName: 'Warehouse packing',
@@ -52,7 +54,7 @@ describe('BenchWorkController (#2416)', () => {
   });
 
   it('should project the list field by field', async () => {
-    const dto = await controllerFor(view()).listBenchWork();
+    const dto = await controllerFor(view()).listBenchWork({ id: 'viewer-1', username: 'viewer', role: 'packer' });
 
     expect(dto.works).toHaveLength(1);
     expect(dto.works[0].orderReference).toBe('OL-4471');
@@ -63,7 +65,7 @@ describe('BenchWorkController (#2416)', () => {
   it('should send an EXPLICIT null reason when routing is ready', async () => {
     // Never an omitted key: `#939` records that an absent optional arrives as
     // `undefined` and drops the surrounding section at the boundary schema.
-    const dto = await controllerFor(view()).listBenchWork();
+    const dto = await controllerFor(view()).listBenchWork({ id: 'viewer-1', username: 'viewer', role: 'packer' });
 
     expect(dto.routing).toEqual({ ready: true, reason: null });
   });
@@ -76,7 +78,7 @@ describe('BenchWorkController (#2416)', () => {
         routing: { ready: false, reason: 'no-packing-connection' },
         total: 0,
       })
-    ).listBenchWork();
+    ).listBenchWork({ id: 'viewer-1', username: 'viewer', role: 'packer' });
 
     expect(dto.routing).toEqual({ ready: false, reason: 'no-packing-connection' });
   });

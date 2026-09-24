@@ -13,14 +13,15 @@
  * here, over published `I*Service` interfaces and never a `*RepositoryPort`.
  * **This adds no core cross-context edge and spends no allow-list entry.**
  *
- * ## Story D2 — one eligibility rule, three shared halves
+ * ## Story D2 — one eligibility rule, four shared halves
  *
  * A refusal here reads exactly what the list reads:
  * `BENCH_WORK_STATUSES` / `BENCH_WORK_REQUEST_STATUSES` and
  * `deriveBenchWorkState` (`bench-work-eligibility.ts`), plus
  * `BenchExecutorResolver` for *"assigned to OpenLinker's own packing
- * executor"*. Nothing about eligibility is spelled twice, which is what makes
- * *"the two can never disagree"* structural rather than a promise.
+ * executor"*, plus — since #3341 — `isClaimableByViewer` for the ADR-074
+ * pre-assignment axis. Nothing about eligibility is spelled twice, which is
+ * what makes *"the two can never disagree"* structural rather than a promise.
  *
  * A work that is not this bench's at all answers **404** rather than a refusal:
  * a packer has no business reading another executor's parcel contents in order
@@ -60,7 +61,11 @@ import {
   type IShipmentQueryService,
 } from '@openlinker/core/shipping';
 
-import { deriveBenchWorkState, isBenchWorkSelectable } from '../bench-work-eligibility';
+import {
+  deriveBenchWorkState,
+  isBenchWorkSelectable,
+  isClaimableByViewer,
+} from '../bench-work-eligibility';
 import { readBuyerName, readOrderReference } from '../bench-order-facts';
 import type {
   BenchReopenInput,
@@ -143,10 +148,12 @@ export class BenchParcelService implements IBenchParcelService {
     // Deliberately NOT folded into `refusalFor` / `BenchParcelRefusal`: that
     // rule is VIEWER-INDEPENDENT (status, holds) and is shared with the list's
     // colouring (story D2's "one rule, two callers"). Assignment eligibility
-    // depends on WHO is asking, which `getParcel(workId)` has no actor to
-    // answer for today — widening that read is #3341's rendering work, not
-    // this write-side guarantee.
-    if (this.isExcludedFromAssignment(work, input.verifiedByUserId)) {
+    // depends on WHO is asking, so it reads `isClaimableByViewer` - the SAME
+    // predicate #3341's list now colours a row with, and the same one
+    // `reopenParcel` below reads too (#3361 review folded that guard's
+    // once-separate `isExcludedFromAssignment` helper into this one, so the
+    // two write-side guarantees cannot drift apart).
+    if (!isClaimableByViewer(work, input.verifiedByUserId)) {
       const state = await this.verification.getState(input.workId);
       return {
         outcome: 'refused',
@@ -192,13 +199,17 @@ export class BenchParcelService implements IBenchParcelService {
   async reopenParcel(input: BenchReopenInput): Promise<BenchReopenResultView> {
     const work = await this.loadBenchWork(input.workId);
 
-    // ADR-074 (#3336/#3337), the SAME guard `verifyUnit` applies, extended
-    // here after review (#3361): `reopenParcel` writes
-    // `{ parcelClosedAt: null, packedByUserId: null }` on a locked, closed
-    // parcel, erasing the attribution `selfServeEligible: false` exists to
-    // protect. A packer excluded from the lock must not be able to reopen —
-    // and therefore de-attribute — a box someone else packed.
-    if (this.isExcludedFromAssignment(work, input.reopenedByUserId)) {
+    // ADR-074 (#3336/#3337/#3341): the same lock that refuses `verifyUnit`
+    // must refuse `reopenParcel` too — otherwise a packer excluded from a
+    // locked assignment can reopen a parcel they may not scan into, clearing
+    // `packedByUserId` and erasing the record of who packed it. Reads the
+    // same `isClaimableByViewer` predicate `verifyUnit` reads above rather
+    // than restating the rule, so the two write-side guarantees cannot drift
+    // apart. `input.reopenedByUserId` is nullable at this layer (this
+    // route's `@CurrentUser()` is optional by design), and `isClaimableByViewer`
+    // accepts that directly - null never equals a real assignee, so an
+    // anonymous reopen against a locked parcel is excluded too.
+    if (!isClaimableByViewer(work, input.reopenedByUserId)) {
       const state = await this.verification.getState(input.workId);
       return {
         outcome: 'refused',
@@ -379,26 +390,6 @@ export class BenchParcelService implements IBenchParcelService {
     if (!isOurs) throw new BenchParcelNotAtThisBenchError(workId);
 
     return work;
-  }
-
-  /**
-   * ADR-074 (#3336/#3337): whether `actorUserId` is excluded from a locked
-   * assignment. Shared by `verifyUnit` and `reopenParcel` (#3361 review) —
-   * the SAME three-condition predicate, so the two write-side guarantees
-   * cannot drift apart. `null` (no principal — `reopenParcel`'s
-   * `@CurrentUser()` is optional by design) is never equal to a real
-   * assignee, so an anonymous reopen against a locked parcel is excluded
-   * too — the fail-closed reading of "who is asking" when nobody answers.
-   */
-  private isExcludedFromAssignment(
-    work: FulfillmentWorkView,
-    actorUserId: string | null
-  ): boolean {
-    return (
-      !work.selfServeEligible &&
-      work.assignedToUserId !== null &&
-      work.assignedToUserId !== actorUserId
-    );
   }
 
   /** Story D2's shared derivation, read as a refusal rather than as a colour. */

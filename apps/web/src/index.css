@@ -24405,6 +24405,13 @@ legend.analytics-settings-dialog__label {
   min-width: 2.75rem;
 }
 
+/* #3341 — replaces the open control when the viewer may not claim this parcel. */
+.bench-work-row__locked-note {
+  font-size: 0.8125rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .bench-work-empty {
   display: grid;
   gap: var(--space-3);

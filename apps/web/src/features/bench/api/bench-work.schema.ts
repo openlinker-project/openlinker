@@ -41,6 +41,11 @@ export const benchWorkSchema = z.object({
     .array(z.string())
     .nullish()
     .transform((value) => value ?? []),
+  // #3341 — a server-owned, viewer-relative vocabulary. Plain string, never
+  // `z.enum`, for the same reason `state` is: an unrecognised value degrades in
+  // the copy layer rather than failing the whole row's parse.
+  assignmentState: z.string(),
+  claimable: z.boolean(),
 });
 
 export const benchRoutingReadinessSchema = z.object({

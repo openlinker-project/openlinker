@@ -35,6 +35,8 @@ function work(over: Partial<BenchWork> = {}): BenchWork {
     holdPlacedAt: null,
     expeditedAt: null,
     supportedActions: ['expedite'],
+    assignmentState: 'unassigned',
+    claimable: true,
     ...over,
   };
 }
@@ -65,7 +67,10 @@ const PACKER = {
   analyticsConsent: true,
 } as const;
 
-function mount(data: BenchWorkListData, options: { canWrite?: boolean } = {}) {
+function mount(
+  data: BenchWorkListData,
+  options: { canWrite?: boolean; onOpenParcel?: (work: BenchWork) => void } = {}
+) {
   const apiClient = createMockApiClient({
     bench: {
       listWork: vi.fn().mockResolvedValue(data),
@@ -74,16 +79,19 @@ function mount(data: BenchWorkListData, options: { canWrite?: boolean } = {}) {
   });
   return {
     apiClient,
-    ...renderWithProviders(<BenchWorkList now={new Date('2026-09-04T10:00:00Z')} />, {
-      apiClient,
-      // The query is `enabled` on a signed-in session — the idle lock clears it,
-      // and polling an anonymous bench would be firing unauthenticated reads at
-      // a terminal nobody is standing at. So every case here signs in.
-      sessionAdapter:
-        options.canWrite === true
-          ? createAuthenticatedSessionAdapter()
-          : createAuthenticatedSessionAdapter({ ...PACKER, permissions: [] }),
-    }),
+    ...renderWithProviders(
+      <BenchWorkList now={new Date('2026-09-04T10:00:00Z')} onOpenParcel={options.onOpenParcel} />,
+      {
+        apiClient,
+        // The query is `enabled` on a signed-in session — the idle lock clears it,
+        // and polling an anonymous bench would be firing unauthenticated reads at
+        // a terminal nobody is standing at. So every case here signs in.
+        sessionAdapter:
+          options.canWrite === true
+            ? createAuthenticatedSessionAdapter()
+            : createAuthenticatedSessionAdapter({ ...PACKER, permissions: [] }),
+      }
+    ),
   };
 }
 
@@ -256,5 +264,84 @@ describe('BenchWorkList (#2416)', () => {
     mount(payload({ total: 900 }));
 
     expect(await screen.findByText(/more work than fits on this screen/i)).toBeInTheDocument();
+  });
+
+  describe('the ADR-074 assignment axis (#3341)', () => {
+    it('marks a parcel assigned to the viewer with `mine` and a visible badge', async () => {
+      mount(payload({ works: [work({ assignmentState: 'mine' })] }));
+
+      const row = await screen.findByTestId('bench-work-row');
+      expect(row.dataset.assignmentState).toBe('mine');
+      expect(row.textContent).toContain('Assigned to you');
+    });
+
+    it('marks a parcel assigned to someone else with `assigned-other` and a muted badge', async () => {
+      mount(payload({ works: [work({ assignmentState: 'assigned-other', claimable: false })] }));
+
+      const row = await screen.findByTestId('bench-work-row');
+      expect(row.dataset.assignmentState).toBe('assigned-other');
+      expect(row.textContent).toContain('Assigned to another packer');
+    });
+
+    it('marks an unassigned parcel with `unassigned` and renders no badge for it', async () => {
+      mount(payload({ works: [work({ assignmentState: 'unassigned' })] }));
+
+      const row = await screen.findByTestId('bench-work-row');
+      expect(row.dataset.assignmentState).toBe('unassigned');
+      expect(row.textContent).not.toContain('Assigned to');
+    });
+
+    it('the three states are three DIFFERENT attribute values, not a coincidence', async () => {
+      mount(
+        payload({
+          works: [
+            work({ workId: 'w-mine', assignmentState: 'mine' }),
+            work({ workId: 'w-none', assignmentState: 'unassigned' }),
+            work({ workId: 'w-other', assignmentState: 'assigned-other', claimable: false }),
+          ],
+          total: 3,
+        })
+      );
+
+      const rows = await screen.findAllByTestId('bench-work-row');
+      const states = rows.map((row) => row.dataset.assignmentState);
+      expect(new Set(states).size).toBe(3);
+    });
+
+    it('renders the open control when the viewer may claim the parcel', async () => {
+      const onOpenParcel = vi.fn();
+      mount(payload({ works: [work({ assignmentState: 'unassigned', claimable: true })] }), {
+        canWrite: true,
+        onOpenParcel,
+      });
+
+      expect(await screen.findByRole('button', { name: 'Open parcel' })).toBeInTheDocument();
+    });
+
+    it('replaces the open control with a reason when the viewer may not claim the parcel', async () => {
+      const onOpenParcel = vi.fn();
+      mount(
+        payload({
+          works: [work({ assignmentState: 'assigned-other', claimable: false })],
+        }),
+        { canWrite: true, onOpenParcel }
+      );
+
+      const row = await screen.findByTestId('bench-work-row');
+      expect(within(row).queryByRole('button', { name: 'Open parcel' })).not.toBeInTheDocument();
+      expect(row.textContent).toContain('Only the assigned packer may open this one');
+    });
+
+    it('still offers the open control when self-serve makes an other-assigned parcel claimable', async () => {
+      const onOpenParcel = vi.fn();
+      mount(
+        payload({
+          works: [work({ assignmentState: 'assigned-other', claimable: true })],
+        }),
+        { canWrite: true, onOpenParcel }
+      );
+
+      expect(await screen.findByRole('button', { name: 'Open parcel' })).toBeInTheDocument();
+    });
   });
 });

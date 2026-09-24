@@ -34,6 +34,14 @@ export interface BenchWork {
   holdPlacedAt: string | null;
   expeditedAt: string | null;
   supportedActions: string[];
+  /**
+   * How this parcel's ADR-074 pre-assignment relates to the signed-in packer
+   * (#3341) — `mine` | `unassigned` | `assigned-other`, or an unrecognised
+   * value from a newer API. Computed server-side; never a raw other-packer id.
+   */
+  assignmentState: string;
+  /** May THIS packer claim (open, verify) this parcel? See `assignmentState`. */
+  claimable: boolean;
 }
 
 /** Whether packing work can reach this bench at all. */

@@ -21,6 +21,15 @@
  * is absent this row renders no control for it, because a button wired to
  * nothing is worse than a missing one on a surface someone works at speed.
  *
+ * ## The assignment badge is a UX affordance, never the guarantee (#3341, ADR-074)
+ *
+ * `assignmentState` and `claimable` are computed server-side and read
+ * verbatim — never re-derived from `assignedToUserId` (this row is never
+ * handed that raw id; see `BenchWorkView`'s own docblock for why). Hiding the
+ * open control when `claimable` is false is convenience: the actual guarantee
+ * is `BenchParcelService.verifyUnit`'s own re-check, which still fires even if
+ * this row somehow rendered the control anyway.
+ *
  * @module apps/web/src/features/bench/components
  */
 import type { ReactElement } from 'react';
@@ -66,6 +75,10 @@ export function BenchWorkRow({
       className={`bench-work-row bench-work-row--${work.state}`}
       data-testid="bench-work-row"
       data-work-id={work.workId}
+      // #3341, ADR-074 — the distinct, test-queryable marker for the three
+      // pre-assignment states. Present on every row, including `unassigned`,
+      // so a change of value is always observable even where no badge renders.
+      data-assignment-state={work.assignmentState}
     >
       <div className="bench-work-row__deadline">
         {/* The headline is words, always — never a bare colour bar. */}
@@ -113,6 +126,18 @@ export function BenchWorkRow({
               : benchWorkCopy.row.cancelledBadge}
           </StatusBadge>
         ) : null}
+        {/* `unassigned` renders no badge — the default state is silence, the
+            same rule the `packable` / not-expedited rows already follow. */}
+        {work.assignmentState === 'mine' ? (
+          <StatusBadge tone="info" compact>
+            {benchWorkCopy.row.assignedToYouBadge}
+          </StatusBadge>
+        ) : null}
+        {work.assignmentState === 'assigned-other' ? (
+          <StatusBadge tone="neutral" compact>
+            {benchWorkCopy.row.assignedToOtherBadge}
+          </StatusBadge>
+        ) : null}
       </div>
 
       <div className="bench-work-row__actions">
@@ -131,7 +156,7 @@ export function BenchWorkRow({
               : benchWorkCopy.row.releaseExpediteAction}
           </Button>
         ) : null}
-        {onOpenParcel === undefined ? null : (
+        {onOpenParcel === undefined ? null : work.claimable ? (
           <Button
             tone="primary"
             onClick={() => {
@@ -140,6 +165,12 @@ export function BenchWorkRow({
           >
             {benchWorkCopy.row.openAction}
           </Button>
+        ) : (
+          // Convenience only — see the module docblock. A packer sees why the
+          // control is gone rather than a control that would refuse them.
+          <span className="bench-work-row__locked-note text-muted">
+            {benchWorkCopy.row.lockedForOther}
+          </span>
         )}
       </div>
     </li>

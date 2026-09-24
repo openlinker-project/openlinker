@@ -44,6 +44,15 @@ import type { HoldReason } from '@openlinker/core/order-lifecycle';
 export const BenchWorkStateValues = ['packable', 'held', 'cancelled'] as const;
 export type BenchWorkState = (typeof BenchWorkStateValues)[number];
 
+/**
+ * How a parcel's ADR-074 pre-assignment relates to the viewer reading the list
+ * (#3341). A THIRD axis from `BenchWorkState` — orthogonal, not a sub-state of
+ * it: a held parcel can be `mine`, `unassigned` or `assigned-other` all the
+ * same. See `bench-work-eligibility.ts` for the derivation.
+ */
+export const BenchWorkAssignmentStateValues = ['mine', 'unassigned', 'assigned-other'] as const;
+export type BenchWorkAssignmentState = (typeof BenchWorkAssignmentStateValues)[number];
+
 /** One parcel on the bench's list. */
 export interface BenchWorkView {
   readonly workId: string;
@@ -90,6 +99,20 @@ export interface BenchWorkView {
    * applies to it at all, including no expedite.
    */
   readonly supportedActions: readonly FulfillmentWorkAction[];
+  /**
+   * How this parcel's ADR-074 pre-assignment relates to the VIEWER reading
+   * this list (#3341). Computed server-side against the authenticated
+   * packer's own id — never the raw `assignedToUserId` of another packer,
+   * which this surface has no reason to disclose to a browser.
+   */
+  readonly assignmentState: BenchWorkAssignmentState;
+  /**
+   * May the viewer claim (open, verify) this parcel? A UX affordance on top
+   * of `BenchParcelService.verifyUnit`'s own re-check — see
+   * `isClaimableByViewer`'s docblock. `true` for every `packable` row today
+   * except one locked to a DIFFERENT packer with `selfServeEligible: false`.
+   */
+  readonly claimable: boolean;
 }
 
 /**

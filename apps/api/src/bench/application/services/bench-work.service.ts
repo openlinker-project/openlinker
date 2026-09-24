@@ -60,7 +60,9 @@ import { Logger } from '@openlinker/shared/logging';
 import {
   BENCH_WORK_REQUEST_STATUSES,
   BENCH_WORK_STATUSES,
+  deriveBenchWorkAssignmentState,
   deriveBenchWorkState,
+  isClaimableByViewer,
 } from '../bench-work-eligibility';
 import { readBuyerName, readOrderReference } from '../bench-order-facts';
 import { compareBenchWork } from '../bench-work-ordering';
@@ -101,7 +103,7 @@ export class BenchWorkService implements IBenchWorkService {
     private readonly orders: IOrderRecordService
   ) {}
 
-  async listBenchWork(): Promise<BenchWorkListView> {
+  async listBenchWork(viewerId: string): Promise<BenchWorkListView> {
     const executors = await this.executors.listPackingExecutors();
 
     // Nothing is set up to send work here. Reported as its own fact rather than
@@ -114,7 +116,7 @@ export class BenchWorkService implements IBenchWorkService {
     }
 
     const { works, total } = await this.collectWorks(executors.map((c) => c.id));
-    const rows = await this.project(works);
+    const rows = await this.project(works, viewerId);
 
     return {
       works: rows,
@@ -182,7 +184,10 @@ export class BenchWorkService implements IBenchWorkService {
   }
 
   /** Join the orders, count the siblings, sort by urgency. */
-  private async project(works: readonly FulfillmentWorkView[]): Promise<BenchWorkView[]> {
+  private async project(
+    works: readonly FulfillmentWorkView[],
+    viewerId: string
+  ): Promise<BenchWorkView[]> {
     if (works.length === 0) return [];
 
     const orderIds = [...new Set(works.map((work) => work.orderId))];
@@ -194,7 +199,9 @@ export class BenchWorkService implements IBenchWorkService {
     const orderById = new Map(orders.map((order) => [order.internalOrderId, order]));
 
     return works
-      .map((work) => this.toView(work, orderById.get(work.orderId), siblingIds.get(work.orderId)))
+      .map((work) =>
+        this.toView(work, orderById.get(work.orderId), siblingIds.get(work.orderId), viewerId)
+      )
       .sort((a, b) =>
         compareBenchWork(
           {
@@ -214,7 +221,8 @@ export class BenchWorkService implements IBenchWorkService {
   private toView(
     work: FulfillmentWorkView,
     order: OrderRecord | undefined,
-    siblings: readonly string[] | undefined
+    siblings: readonly string[] | undefined,
+    viewerId: string
   ): BenchWorkView {
     const hold = work.activeHolds[0];
     // Story D2's shared rule — the SAME function `BenchParcelService` refuses
@@ -225,6 +233,11 @@ export class BenchWorkService implements IBenchWorkService {
       requestStatus: work.requestStatus,
       activeHoldCount: work.activeHolds.length,
     });
+    // #3341, ADR-074 — the SAME two shared predicates the write path reads
+    // (`bench-parcel.service.ts`), so list and write can never disagree about
+    // who this parcel is locked to.
+    const assignmentState = deriveBenchWorkAssignmentState(work, viewerId);
+    const claimable = isClaimableByViewer(work, viewerId);
 
     // A parcel whose siblings could not be read is "1 of 1" rather than "1 of 0":
     // the work in the packer's hands exists, so the count must include it.
@@ -255,6 +268,8 @@ export class BenchWorkService implements IBenchWorkService {
       holdPlacedAt: hold?.placedAt.toISOString() ?? null,
       expeditedAt: work.expeditedAt?.toISOString() ?? null,
       supportedActions: work.supportedActions,
+      assignmentState,
+      claimable,
     };
   }
 }

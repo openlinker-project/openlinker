@@ -9,7 +9,12 @@
  * @module apps/api/src/bench/http/dto
  */
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { BenchWorkStateValues, type BenchWorkState } from '../../application/types/bench-work.types';
+import {
+  BenchWorkAssignmentStateValues,
+  BenchWorkStateValues,
+  type BenchWorkAssignmentState,
+  type BenchWorkState,
+} from '../../application/types/bench-work.types';
 
 export class BenchWorkResponseDto {
   @ApiProperty() workId!: string;
@@ -60,6 +65,19 @@ export class BenchWorkResponseDto {
     description: 'What is legal on this parcel now, decided server-side. Empty on a cancelled one.',
   })
   supportedActions!: string[];
+  @ApiProperty({
+    enum: BenchWorkAssignmentStateValues,
+    description:
+      "How this parcel's ADR-074 pre-assignment relates to the caller's own account — computed " +
+      "server-side against the viewer, never a raw other-packer id.",
+  })
+  assignmentState!: BenchWorkAssignmentState;
+  @ApiProperty({
+    description:
+      'May the caller claim (open, verify) this parcel? A UX affordance on top of the write ' +
+      "path's own re-check — never the source of truth for it.",
+  })
+  claimable!: boolean;
 }
 
 export class BenchRoutingReadinessResponseDto {
