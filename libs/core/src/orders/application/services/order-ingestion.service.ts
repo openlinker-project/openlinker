@@ -76,6 +76,7 @@ import {
   ROUTING_COMMIT_SERVICE_TOKEN,
   buildRoutingShipTo,
   deriveFulfillmentDispatchEnqueueIntents,
+  deriveSaleDecrementEnqueueIntents,
   findUndispatchableWorkIds,
   type FulfillmentBlock,
   type FulfillmentRouterResolverPort,
@@ -906,6 +907,9 @@ export class OrderIngestionService implements IOrderIngestionService {
       // `enqueueRoutedDispatchJobs`. Ordering it here keeps `toInterceptOutcome`
       // a pure, synchronous, exhaustive switch.
       await this.enqueueRoutedDispatchJobs(order.id, outcome);
+      // #3453 — a routed order is never created in the product master, so its
+      // stock must be lowered there by OpenLinker. Same never-throws contract.
+      await this.enqueueRoutedSaleDecrementJobs(order.id, connectionId, outcome);
 
       return this.toInterceptOutcome(order.id, outcome);
     } catch (error) {
@@ -1004,6 +1008,62 @@ export class OrderIngestionService implements IOrderIngestionService {
     } catch (error) {
       this.logger.error(
         `Failed to dispatch routed fulfilment work: orderId=${orderId}`,
+        error instanceof Error ? error.stack : undefined
+      );
+    }
+  }
+
+  /**
+   * Lower the sold stock in each routed line's product master (#3453).
+   *
+   * With the OMS on, a routed order is HELD — no `syncOrder`, so the product
+   * master never receives it and its own order flow never lowers its stock. One
+   * `inventory.saleDecrement` job per routed work closes that; the job owns the
+   * per-line at-most-once claim, the owner resolution and the source-is-owner
+   * skip.
+   *
+   * **MUST NOT throw**, for exactly the reason `enqueueRoutedDispatchJobs` must
+   * not: it runs inside the intercept's fail-open `try`, whose catch returns
+   * `{ held: false }` — an escaping throw would mirror an order whose work rows
+   * are already committed. A lost enqueue leaves the master's stock high; the
+   * error log naming the work is the signal, because a retry re-enters
+   * `route()`, answers `already-routed` and reaches no enqueue at all.
+   *
+   * Scoped to the order's SOURCE connection, not the holder: every OMS-packed
+   * work shares one holder, and scoping by it would serialise every decrement in
+   * the installation behind one per-scope cap (#2609).
+   */
+  private async enqueueRoutedSaleDecrementJobs(
+    orderId: string,
+    orderSourceConnectionId: string,
+    outcome: RoutingCommitOutcome
+  ): Promise<void> {
+    try {
+      if (outcome.status !== 'routed') return;
+
+      for (const intent of deriveSaleDecrementEnqueueIntents(
+        outcome.works,
+        orderId,
+        orderSourceConnectionId
+      )) {
+        try {
+          await this.jobQueue.enqueue({
+            type: 'inventory.saleDecrement',
+            connectionId: intent.connectionId,
+            payload: { schemaVersion: 1, workId: intent.workId, orderId: intent.orderId },
+            options: { dedupeKey: intent.dedupeKey },
+          });
+        } catch (error) {
+          this.logger.error(
+            `Failed to enqueue a sale decrement job; the order is routed but the ` +
+              `product master's stock was NOT lowered: orderId=${orderId} workId=${intent.workId}`,
+            error instanceof Error ? error.stack : undefined
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue routed sale decrements: orderId=${orderId}`,
         error instanceof Error ? error.stack : undefined
       );
     }

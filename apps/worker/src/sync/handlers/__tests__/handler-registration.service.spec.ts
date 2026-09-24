@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (17 realtime / 30 bulk / 5 fiscal / 7 fan-out across 59 job types —
+ * table (18 realtime / 30 bulk / 5 fiscal / 7 fan-out across 60 job types —
  * `fiscalization.register` joined `fiscal` post-ADR, #2156;
  * `inventory.provenance.backfill` joined `bulk` with #2317; the three returns
  * types joined realtime/bulk/fan-out with #2330; `returns.orphan.reconcile`
@@ -24,11 +24,12 @@
  * the ADR calls out cannot silently churn. `fulfillment.work.autoDispatch`
  * joined `realtime` with #3340 (closing #2729) — a NEW job type beside its
  * `fulfillment.work.dispatch` producer, for the identical
- * cost-of-starvation reason.
+ * cost-of-starvation reason. `inventory.saleDecrement` joined `realtime`
+ * with #3453 (a late decrement is an oversell window).
  *
  * @module apps/worker/src/sync/handlers
  */
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 57 interchangeable dummy handlers */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-call -- test constructs the service with 58 interchangeable dummy handlers */
 import type { SyncJobHandler } from '@openlinker/core/sync';
 import { JobTypeValues, SyncJobLaneValues } from '@openlinker/core/sync';
 import { SyncJobHandlerRegistry } from '../sync-job-handler.registry';
@@ -39,13 +40,13 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
 
   beforeEach(() => {
     registry = new SyncJobHandlerRegistry();
-    // The constructor takes the registry followed by 57 handler instances.
+    // The constructor takes the registry followed by 58 handler instances.
     // The dummies are DISTINCT objects so that "these two job types share one
     // handler instance" (#2594) is a real assertion rather than a tautology;
     // the partition under test keys on jobType, so they are otherwise
     // interchangeable.
     const handlers = Array.from(
-      { length: 57 },
+      { length: 58 },
       () => ({ execute: jest.fn() }) as unknown as SyncJobHandler
     );
     const service = new (HandlerRegistrationService as any)(registry, ...handlers);
@@ -57,9 +58,9 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 59 job types 17/30/5/7 per ADR-050 decision 1', () => {
-    // 17: four of the SIX fulfilment job types are `realtime` by
-    // cost-of-starvation. The other two, #2712's
+  it('should partition the 60 job types 18/30/5/7 per ADR-050 decision 1', () => {
+    // 18: four of the SIX fulfilment job types — plus `inventory.saleDecrement`
+    // — are `realtime` by cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
     // `fulfillment.work.relaySweep`, are deliberately NOT — see the `bulk`
     // block below. Stated as a count rather than "all of them" because the
@@ -85,7 +86,11 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // buying the label is the same outbound "someone is waiting on this" act
     // as `fulfillment.work.dispatch` — a packer at the bench, this time,
     // rather than the holder's own acceptance.
-    expect(registry.getJobTypesByLane('realtime')).toHaveLength(17);
+    //
+    // #3453's `inventory.saleDecrement` makes it 18: until it runs, the product
+    // master and every other channel still show sold units as in stock, so a
+    // late decrement is an oversell window — the realtime cost of starvation.
+    expect(registry.getJobTypesByLane('realtime')).toHaveLength(18);
     // 27, and every one of the additions since the lane split shares one
     // profile: background catch-up work that enqueues no children, writes
     // locally, and whose lateness costs nobody a request — so `fan-out` (whose
@@ -130,6 +135,12 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(registry.getJobTypesByLane('bulk')).toHaveLength(30);
     expect(registry.getJobTypesByLane('fiscal')).toHaveLength(5);
     expect(registry.getJobTypesByLane('fan-out')).toHaveLength(7);
+  });
+
+  it('should lane the sale decrement realtime (#3453)', () => {
+    // Named for the same reason as the routing commit below: until it runs, the
+    // product master and every other channel still sell units already sold.
+    expect(registry.getLane('inventory.saleDecrement')).toBe('realtime');
   });
 
   it('should lane the routing commit realtime, never bulk (#2395)', () => {

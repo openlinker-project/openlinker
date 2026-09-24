@@ -26,6 +26,7 @@
  *
  * @module libs/core/src/fulfillment/application/interfaces
  */
+import type { FulfillmentWork } from '../../domain/types/fulfillment-work.types';
 import type { FulfillmentWorkLinkResolution } from '../../domain/types/fulfillment-work-link.types';
 
 export interface IFulfillmentWorkQueryService {
@@ -50,4 +51,13 @@ export interface IFulfillmentWorkQueryService {
    * holder rather than a place.
    */
   listBlockingRejectionConnectionIds(orderId: string): Promise<readonly string[]>;
+
+  /**
+   * One work object with its lines, or `null` when no such work exists (#3453).
+   *
+   * The sale decrement's read: a routed work's lines are what OpenLinker lowers
+   * in each line's owning product master. A read by id only — the worklist read
+   * model with its computed `supportedActions` stays #2406's.
+   */
+  findWorkById(workId: string): Promise<FulfillmentWork | null>;
 }

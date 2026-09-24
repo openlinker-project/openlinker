@@ -40,6 +40,7 @@ import type {
   PruneStaleVariantsResult,
   ProvenanceScope,
   DuplicatePositionReport,
+  InventoryOwnerPosition,
   InventoryPositionCandidate,
   DuplicatePositionGroup,
 } from '../../../domain/types/inventory.types';
@@ -393,6 +394,44 @@ export class InventoryRepository implements InventoryRepositoryPort {
       productId: row.productId,
       productVariantId: row.productVariantId ?? null,
       locationId: row.locationId ?? null,
+    }));
+  }
+
+  async findLiveOwnerPositions(
+    productIds: readonly string[]
+  ): Promise<readonly InventoryOwnerPosition[]> {
+    if (productIds.length === 0) return [];
+
+    const rows = await this.repository
+      .createQueryBuilder('inv')
+      .select('inv.id', 'inventoryItemId')
+      .addSelect('inv.productId', 'productId')
+      .addSelect('inv.productVariantId', 'productVariantId')
+      .addSelect('inv.locationId', 'locationId')
+      .addSelect('inv.sourceConnectionId', 'sourceConnectionId')
+      .addSelect('inv.availableQuantity', 'availableQuantity')
+      .addSelect('inv.reservedQuantity', 'reservedQuantity')
+      .where('inv.productId IN (:...productIds)', { productIds: [...productIds] })
+      .andWhere('inv.isStale = false')
+      .orderBy('inv.id', 'ASC')
+      .getRawMany<{
+        inventoryItemId: string;
+        productId: string;
+        productVariantId: string | null;
+        locationId: string | null;
+        sourceConnectionId: string | null;
+        availableQuantity: number | string;
+        reservedQuantity: number | string;
+      }>();
+
+    return rows.map((row) => ({
+      inventoryItemId: row.inventoryItemId,
+      productId: row.productId,
+      productVariantId: row.productVariantId ?? null,
+      locationId: row.locationId ?? null,
+      sourceConnectionId: row.sourceConnectionId ?? null,
+      availableQuantity: Number(row.availableQuantity),
+      reservedQuantity: Number(row.reservedQuantity),
     }));
   }
 

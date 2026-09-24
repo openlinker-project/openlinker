@@ -132,7 +132,11 @@ describe('ShipmentDispatchService', () => {
   let orders: jest.Mocked<IOrderRecordService>;
   let dispatchLock: jest.Mocked<SyncLockPort>;
   let orderHolds: jest.Mocked<IOrderHoldService>;
-  let fulfillmentWorks: { resolveLinkForOrder: jest.Mock; listBlockingRejectionConnectionIds: jest.Mock };
+  let fulfillmentWorks: {
+    resolveLinkForOrder: jest.Mock;
+    listBlockingRejectionConnectionIds: jest.Mock;
+    findWorkById: jest.Mock;
+  };
   let service: ShipmentDispatchService;
 
   beforeEach(() => {
@@ -223,6 +227,7 @@ describe('ShipmentDispatchService', () => {
     fulfillmentWorks = {
       resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
       listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
+      findWorkById: jest.fn().mockResolvedValue(null),
     };
     service = new ShipmentDispatchService(
       repository,

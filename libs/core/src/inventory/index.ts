@@ -45,6 +45,7 @@ export { InventoryItem as InventoryItemEntity } from './domain/entities/inventor
 export { InventoryLocation } from './domain/entities/inventory-location.entity';
 export { Reservation } from './domain/entities/reservation.entity';
 export { ReservationShortfallEpisode } from './domain/entities/reservation-shortfall-episode.entity';
+export { InventorySaleDecrement } from './domain/entities/inventory-sale-decrement.entity';
 
 // Domain exceptions
 export { InventoryReturningUnsupportedError } from './domain/exceptions/inventory-returning-unsupported.error';
@@ -119,6 +120,14 @@ export {
   DetectShortfallsInput,
 } from './application/services/reservation-shortfall.service.interface';
 export { ReservationShortfallService } from './application/services/reservation-shortfall.service';
+export {
+  IInventorySaleDecrementService,
+  DecrementForWorkInput,
+  DecrementForWorkResult,
+  SaleDecrementLineInput,
+  SaleDecrementLineOutcome,
+} from './application/services/inventory-sale-decrement.service.interface';
+export { InventorySaleDecrementService } from './application/services/inventory-sale-decrement.service';
 
 // Application Types
 export {
@@ -159,8 +168,22 @@ export {
   DuplicatePositionGroup,
   DuplicatePositionReport,
   InventoryPositionCandidate,
+  InventoryOwnerPosition,
 } from './domain/types/inventory.types';
 export { LEGACY_SOURCE_CONNECTION_ID } from './domain/types/inventory.types';
+export {
+  InventorySaleDecrementStatusValues,
+  InventorySaleDecrementStatus,
+  InventorySaleDecrementReasonValues,
+  InventorySaleDecrementReason,
+  SaleDecrementAttention,
+  SaleDecrementAttentionRow,
+  SaleDecrementOwnerResolution,
+  buildSaleDecrementIdempotencyKey,
+  buildUnresolvedSaleDecrementKey,
+  deriveSaleDecrementAttention,
+  resolveSaleDecrementOwner,
+} from './domain/types/inventory-sale-decrement.types';
 export {
   AvailabilityScope,
   AvailabilityProvenance,

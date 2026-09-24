@@ -28,7 +28,7 @@ import { resolveAuthorities } from './authority-resolution.types';
 import type { FulfillmentAuthorityBlock } from './fulfillment-authority-outcome.types';
 
 describe('AuthorityAttentionReasonValues', () => {
-  it('should declare exactly the eight spec §4.2 states in table order when read', () => {
+  it('should declare the eight spec §4.2 states in table order, then #3453\'s, when read', () => {
     expect(AuthorityAttentionReasonValues).toEqual([
       'availability-unknown',
       'sourcing-ambiguous',
@@ -38,14 +38,16 @@ describe('AuthorityAttentionReasonValues', () => {
       'returns-disposition-ambiguous',
       'restock-blocked',
       'return-unmatched',
+      'stock-decrement-blocked',
     ]);
   });
 
   // §4.2 tables NINE rows; AF-X is owned by the automation body and models a
   // per-firing lifecycle no entry here carries. Asserted against an explicit
-  // eight so a spec row count can never silently move this union.
+  // count (eight §4.2 states plus #3453's `stock-decrement-blocked`) so a spec
+  // row count can never silently move this union.
   it('should not carry the automation-failure state when read', () => {
-    expect(AuthorityAttentionReasonValues).toHaveLength(8);
+    expect(AuthorityAttentionReasonValues).toHaveLength(9);
     expect(AuthorityAttentionReasonValues as readonly string[]).not.toContain('automation-failed');
   });
 
@@ -142,7 +144,7 @@ describe('AuthorityAttentionCountedReasonValues', () => {
 
   // Pinned so a member silently losing `counted` is a failing test rather than a
   // state that disappears from `Needs attention (N)` with nothing to notice it.
-  it('should count all eight states today when read', () => {
+  it('should count all nine states today when read', () => {
     expect([...AuthorityAttentionCountedReasonValues]).toEqual([
       ...AuthorityAttentionReasonValues,
     ]);

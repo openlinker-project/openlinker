@@ -67,7 +67,8 @@ import { AUTHORITY_QUESTION_DESCRIPTORS, type AuthorityQuestion } from './author
 import type { FulfillmentAuthorityBlock } from './fulfillment-authority-outcome.types';
 
 /**
- * The eight inert states of spec §4.2, in the order that section tables them.
+ * The eight inert states of spec §4.2, in the order that section tables them,
+ * followed by #3453's `stock-decrement-blocked`, which is not a §4.2 row.
  *
  * One member per line, no computed keys and no spread: the repo's mirror scripts
  * read these arrays TEXTUALLY, and #2357's `check-attention-reason-mirror.mjs`
@@ -90,6 +91,12 @@ export const AuthorityAttentionReasonValues = [
   'restock-blocked',
   /** OR-P — a return OL could not attribute to any order. */
   'return-unmatched',
+  /**
+   * SD-B (#3453) — a routed order's stock was not lowered in its product master,
+   * or the outcome is unknown, or the line sold more than OL saw. Not a §4.2 row:
+   * it exists because, with the OMS on, OpenLinker is the one lowering that stock.
+   */
+  'stock-decrement-blocked',
 ] as const;
 
 export type AuthorityAttentionReason = (typeof AuthorityAttentionReasonValues)[number];
@@ -163,6 +170,8 @@ export const AuthorityAttentionProducerValues = [
   'acceptance',
   /** Returns restock disposition (RB-L). */
   'returns-restock',
+  /** The routed-order sale decrement (SD-B, #3453). */
+  'sale-decrement',
 ] as const;
 
 export type AuthorityAttentionProducer = (typeof AuthorityAttentionProducerValues)[number];
@@ -282,6 +291,17 @@ export const AUTHORITY_ATTENTION_REASON_DESCRIPTORS: Readonly<
     equivalentAuthorityKind: null,
     counted: true,
   }),
+  // #3453 — outside spec §4.2 (which predates OL lowering master stock), hence
+  // an issue-numbered row label rather than a spec one.
+  'stock-decrement-blocked': Object.freeze({
+    specRow: 'SD-B',
+    badge: 'blocked',
+    surfaces: Object.freeze(['order'] as const),
+    origin: 'persisted',
+    producer: 'sale-decrement',
+    equivalentAuthorityKind: null,
+    counted: true,
+  }),
 });
 
 /**
@@ -327,6 +347,7 @@ export const AUTHORITY_ATTENTION_PRODUCER_REASONS = Object.freeze({
   routing: 'line-unfulfillable',
   acceptance: 'fulfillment-unaccepted',
   'returns-restock': 'restock-blocked',
+  'sale-decrement': 'stock-decrement-blocked',
 } as const satisfies Record<AuthorityAttentionProducer, AuthorityAttentionReason>);
 
 /** The state(s) `P` may persist. */
