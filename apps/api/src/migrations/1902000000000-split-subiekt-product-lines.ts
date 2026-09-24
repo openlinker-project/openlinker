@@ -99,9 +99,33 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  * lint failure when the second one merges - NOT a silent skip. TypeORM decides
  * what is pending by CLASS NAME, so a duplicate timestamp runs both; it is a
  * RENAME that re-runs a migration.
+ *
+ * RENUMBERED `1898000000000` -> `1902000000000`, and the reason is the hazard
+ * that paragraph above names rather than a collision. `1898` was picked while
+ * it sat in a genuine gap between two UNMERGED siblings (`1897` and `1899` of
+ * the pack-bench stack); that stack has since landed, so `main`'s tail moved to
+ * `1899` and this file fell BELOW it, breaking rule 3 of
+ * `docs/migrations.md` section Timestamp uniqueness invariant. Slotting into a
+ * gap is safe only until the branches around it merge, which is a different and
+ * quieter hazard than a sibling claiming the same number.
+ *
+ * The rename costs nothing here, and NOT because the migration never ran - it
+ * has, on the demo stand. It is because every statement in `up()` converges: the
+ * collision guard is a read, and each UPDATE is scoped by a WHERE that selects
+ * nothing once the rows already carry `subiekt-nexo`. So TypeORM treating
+ * `SplitSubiektProductLines1902000000000` as a new migration re-runs a clean
+ * no-op rather than the `42701 column already exists` that forced
+ * `1900000000000` to write a self-healing DELETE. A stand that applied the
+ * `1898` name keeps that row in `migrations` as a harmless orphan; nothing
+ * reads it, and deleting it would be a write with no defect to fix.
+ *
+ * `1900000000000-add-invoice-unlinked-catalogue-lines` is unaffected - it is
+ * still above the tail - and the two are order-independent: this one rewrites
+ * `identifier_mappings` / `connections` / `integration_credentials`, that one
+ * adds a column to `invoice_records`.
  */
-export class SplitSubiektProductLines1898000000000 implements MigrationInterface {
-  name = 'SplitSubiektProductLines1898000000000';
+export class SplitSubiektProductLines1902000000000 implements MigrationInterface {
+  name = 'SplitSubiektProductLines1902000000000';
 
   /**
    * The connections this migration is about, resolved by EITHER identity axis
@@ -119,7 +143,7 @@ export class SplitSubiektProductLines1898000000000 implements MigrationInterface
         OR lower("platformType") = 'subiekt-nexo'`;
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    const set = SplitSubiektProductLines1898000000000.LEGACY_CONNECTIONS;
+    const set = SplitSubiektProductLines1902000000000.LEGACY_CONNECTIONS;
 
     // Collision guard, FIRST and before any write. Projects the rows that WILL
     // carry `subiekt-nexo` and refuses if two of them would share the unique
@@ -241,7 +265,7 @@ export class SplitSubiektProductLines1898000000000 implements MigrationInterface
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    const set = SplitSubiektProductLines1898000000000.NEXO_CONNECTIONS;
+    const set = SplitSubiektProductLines1902000000000.NEXO_CONNECTIONS;
 
     await queryRunner.query(`
       DO $$

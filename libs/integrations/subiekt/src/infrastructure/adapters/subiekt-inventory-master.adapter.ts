@@ -229,7 +229,7 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
     towarSymbol: string,
     locationId?: string,
   ): Promise<Inventory> {
-    const { positions, domyslnyMagazynId } = await this.readPositionsForSymbol(towarSymbol);
+    const { positions, domyslnyMagazynId } = await this.readPositionsForSymbol(productId, towarSymbol);
     const effectiveLocationId =
       locationId ?? this.resolveReleaseMagazynId(towarSymbol, positions, domyslnyMagazynId);
     const filtered = effectiveLocationId
@@ -256,7 +256,10 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
       // Read back the SAME magazyn the adjustment landed in, not the sum:
       // reporting a total here would contradict the quantity the caller just
       // moved, on exactly the installs where it matters.
-      const { positions, domyslnyMagazynId } = await this.readPositionsForSymbol(towarSymbol);
+      const { positions, domyslnyMagazynId } = await this.readPositionsForSymbol(
+        adjustment.productId,
+        towarSymbol,
+      );
       const effectiveLocationId =
         adjustment.locationId ??
         this.resolveReleaseMagazynId(towarSymbol, positions, domyslnyMagazynId);
@@ -310,7 +313,7 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
     const { symbols } = await this.resolveStockSymbols(productId);
     let total = 0;
     for (const towarSymbol of symbols) {
-      const { positions, domyslnyMagazynId } = await this.readPositionsForSymbol(towarSymbol);
+      const { positions, domyslnyMagazynId } = await this.readPositionsForSymbol(productId, towarSymbol);
       const effectiveLocationId =
         locationId ?? this.resolveReleaseMagazynId(towarSymbol, positions, domyslnyMagazynId);
       const filtered = effectiveLocationId
@@ -406,7 +409,10 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
    * Subiekt, not that Subiekt deleted it. Only a bridge-reported "no such
    * towar" for a KNOWN symbol becomes the neutral deletion signal.
    */
-  private async readPositionsForSymbol(towarSymbol: string): Promise<{
+  private async readPositionsForSymbol(
+    productId: string,
+    towarSymbol: string,
+  ): Promise<{
     positions: BridgeInventoryStockRow[];
     domyslnyMagazynId: number | undefined;
   }> {
@@ -418,7 +424,12 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
       };
     } catch (error: unknown) {
       if (error instanceof SubiektRejectedError && this.looksLikeNotFound(error.reason)) {
-        throw new MasterProductNotFoundError(towarSymbol, this.connectionId);
+        // The INTERNAL product id, not `towarSymbol`. Under a model this
+        // method is called once per member, so the symbol at hand is a
+        // variant's - and `MasterProductNotFoundError.productId` is documented
+        // as internal and renders straight into the one message an operator
+        // reads when stock stops arriving.
+        throw new MasterProductNotFoundError(productId, this.connectionId);
       }
       throw this.translateBridgeError(error);
     }

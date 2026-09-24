@@ -192,15 +192,47 @@ describe('SubiektProductMasterAdapter', () => {
     await expect(adapter.listExternalIds({ limit: 50 })).resolves.toEqual(['A-1', 'B-2']);
   });
 
-  it('listExternalIds reports a model ONCE in place of each of its members', async () => {
+  it('listExternalIds substitutes the model key per MEMBER, keeping the page 1:1 with the towary read', async () => {
     const adapter = buildAdapter(
       routed(
         { symbols: ['WOBLACK100', 'DZFOREVER', 'WOBLACK50', 'WOBLACK70'] },
         { models: [{ modelId: 1, modelNazwa: 'Black Tiger', symbole: ['WOBLACK100', 'WOBLACK50', 'WOBLACK70'] }] },
       ),
     );
-    // Three members collapse to one key, and the ungrouped towar is untouched.
-    await expect(adapter.listExternalIds({ limit: 50 })).resolves.toEqual(['model:1', 'DZFOREVER']);
+
+    // Four symbols in, four keys out - the model key three times over, in the
+    // members' own positions. Collapsing them here would hand `readPagedIds` a
+    // page shorter than the one it asked for, which that helper reads as the
+    // end of the catalogue: the cycle would end at page one, clear its cursor
+    // and log `cycle complete`, on every tick. It dedupes the collected ids
+    // itself, AFTER counting what was read.
+    await expect(adapter.listExternalIds({ limit: 50 })).resolves.toEqual([
+      'model:1',
+      'DZFOREVER',
+      'model:1',
+      'model:1',
+    ]);
+  });
+
+  it('getProducts collapses the repeats listExternalIds deliberately keeps', async () => {
+    // The other side of the same contract: this read has no cursor behind it,
+    // so a model must be fetched and returned once, not once per member.
+    await idMapping.createMapping('Product', 'model:1', 'conn-1', 'ol_product_model');
+    const adapter = buildAdapter(
+      routed(
+        { symbols: ['WOBLACK100', 'WOBLACK50', 'WOBLACK70'] },
+        { models: [{ modelId: 1, modelNazwa: 'Black Tiger', symbole: ['WOBLACK100', 'WOBLACK50', 'WOBLACK70'] }] },
+        {
+          modelId: 1,
+          modelNazwa: 'Black Tiger woda toaletowa',
+          pozycje: [bridgeProduct('WOBLACK100', 'Black Tiger woda toaletowa 100ml')],
+        },
+      ),
+    );
+
+    const products = await adapter.getProducts({ limit: 50 });
+    expect(products).toHaveLength(1);
+    expect(products[0]?.name).toBe('Black Tiger woda toaletowa');
   });
 
   it('listExternalIds degrades to plain symbols when the bridge serves no /api/models', async () => {

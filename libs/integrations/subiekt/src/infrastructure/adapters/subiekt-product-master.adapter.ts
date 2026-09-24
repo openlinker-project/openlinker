@@ -232,10 +232,14 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
   }
 
   async getProducts(filters?: ProductFilters): Promise<Product[]> {
+    // `listProductKeys` is deliberately 1:1 with the towary it read, so a
+    // model appears once per member. Collapse that HERE: this read has no
+    // cursor behind it, and left alone it would fetch `/api/models/{id}` once
+    // per member and return the same Product three times.
     const keys =
       filters?.externalIds && filters.externalIds.length > 0
         ? filters.externalIds
-        : await this.listProductKeys(filters?.limit, filters?.offset);
+        : [...new Set(await this.listProductKeys(filters?.limit, filters?.offset))];
 
     const results: Product[] = [];
     for (const key of keys) {
@@ -525,32 +529,46 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
    * One page of PRODUCT keys: a model's key in place of each of its members,
    * and the bare symbol for every towar in no model.
    *
+   * ONE KEY PER TOWAR READ, repeats included. A model with three members
+   * contributes its key three times, and that is the contract rather than an
+   * oversight: `readPagedIds` (`apps/worker/src/sync/bounded-sweep.ts`) counts
+   * `consumed` from the length of what this returns and infers end-of-catalogue
+   * from a page SHORTER than the size it asked for. Collapsing the repeats here
+   * would hand it 97 keys for a page of 100 on the first page that carries two
+   * members of one model - so the sweep would conclude the catalogue was
+   * exhausted, clear the cursor, log `cycle complete`, and never reach anything
+   * past page one, on every tick, with a healthy-looking log line. It is the
+   * same trap `docs/architecture-overview.md` section 25 records against a
+   * clamped WooCommerce page size.
+   *
+   * The helper dedupes the collected ids itself, after `consumed` is computed,
+   * so the repeats cost nothing downstream. That also subsumes the cross-page
+   * case - a model straddling a page boundary is reported on both - rather than
+   * leaving one of them handled here and the other there.
+   *
+   * A caller with no cursor behind it is free to collapse the repeats, and
+   * `getProducts` does, because it would otherwise fetch and return one model
+   * once per member.
+   *
    * Pages over towary, not over models, because that is the set the sweep's
    * offset is defined against and the one whose size the operator recognises.
-   * The consequence is that a model spanning a page boundary is reported on
-   * both pages; that costs one redundant, idempotent child sync and is far
-   * cheaper than the alternative, which is re-deriving a joint offset across
-   * two differently-sized sets.
    *
-   * The model map is read once per call rather than per towar. Asking the
-   * bridge for each symbol's `modelId` individually would be an N+1 over the
-   * whole catalogue on the hottest enumeration path in the integration.
+   * The model map is read once per CALL rather than per towar - that avoids the
+   * N+1 over the catalogue, and it is worth knowing that a call is one sweep
+   * PAGE, not one cycle: a full cycle re-enumerates every model once per page
+   * (`MODEL_PAGE_SIZE` at a time). At 10 000 towary and 2 000 models that is
+   * ~1 000 extra bridge reads per cycle - bounded, and not worth a cache with
+   * an invalidation story it would have to get right.
    */
   private async listProductKeys(limit?: number, offset?: number): Promise<string[]> {
     const symbols = await this.listSymbols(limit, offset);
     const symbolToModelId = await this.readSymbolToModelId();
     if (symbolToModelId.size === 0) return symbols;
 
-    const keys: string[] = [];
-    const seen = new Set<string>();
-    for (const symbol of symbols) {
+    return symbols.map((symbol) => {
       const modelId = symbolToModelId.get(symbol);
-      const key = modelId === undefined ? symbol : modelProductKey(modelId);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      keys.push(key);
-    }
-    return keys;
+      return modelId === undefined ? symbol : modelProductKey(modelId);
+    });
   }
 
   /**
@@ -694,9 +712,14 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
    * a grouped listing wants the whole gallery, and the members are the
    * photographs.
    *
-   * `sku` is the model key rather than any member's symbol. Borrowing a
-   * member's symbol would put the same string on a product and on a variant,
-   * and would move the product's SKU the day that member leaves the model.
+   * `sku` is derived from the model id, and is deliberately NOT the model KEY.
+   * The key is `model:{id}` (`modelProductKey`) and exists for identifier
+   * mapping; this is the operator-facing string that reaches a listing and an
+   * offer command, where a colon reads as a typo. What matters is what it is
+   * not: borrowing a member's symbol would put one string on both a product and
+   * a variant, and would move the product's SKU the day that member leaves the
+   * model. Nothing resolves a product BY this value, so the two spellings
+   * cannot be mistaken for one lookup.
    */
   private toDomainProductFromModel(internalId: string, model: BridgeModel): Product {
     const head = model.pozycje[0];
