@@ -26,6 +26,7 @@
  */
 import type {
   ParcelReopenRefusal,
+  ParcelUndoRefusal,
   ParcelVerificationRefusal,
 } from '@openlinker/core/fulfillment';
 import type { HoldReason } from '@openlinker/core/order-lifecycle';
@@ -121,6 +122,20 @@ export interface BenchVerificationResultView {
 export interface BenchReopenResultView {
   readonly outcome: 'reopened' | 'refused';
   readonly reason: ParcelReopenRefusal | null;
+  readonly parcel: BenchParcelView;
+}
+
+/**
+ * What an undo-last-scan answers (#3405).
+ *
+ * `workLineId` is `null` except on `outcome: 'voided'` — carried so the FE can
+ * highlight which line's count just went down without re-diffing the whole
+ * projected parcel against its previous view.
+ */
+export interface BenchUndoResultView {
+  readonly outcome: 'voided' | 'refused';
+  readonly reason: ParcelUndoRefusal | null;
+  readonly workLineId: string | null;
   readonly parcel: BenchParcelView;
 }
 

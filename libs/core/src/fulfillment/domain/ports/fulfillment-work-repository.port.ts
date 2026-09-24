@@ -413,6 +413,23 @@ export interface ClaimParcelCloseInput {
   readonly packedByUserId: string | null;
 }
 
+/**
+ * The single most recently verified ACTIVE row for a work, or `null` when
+ * there is none (#3405). Used only to locate the row `voidLastVerification`
+ * then guards its write against.
+ */
+export interface LatestActiveParcelVerification {
+  readonly id: string;
+  readonly workLineId: string;
+}
+
+/** Voiding the single most recent scan (#3405). */
+export interface VoidLastVerificationWriteInput {
+  readonly workId: string;
+  readonly voidedByUserId: string | null;
+  readonly voidedAt: Date;
+}
+
 /** Opening it again (#2418, E6/D19). */
 export interface ReopenParcelWriteInput {
   readonly workId: string;
@@ -791,6 +808,37 @@ export interface FulfillmentWorkRepositoryPort {
    */
   reopenParcel(
     input: ReopenParcelWriteInput,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<boolean>;
+
+  /**
+   * Locate the most recent ACTIVE verification on a work, without voiding it
+   * (#3405). A plain read: the caller decides whether to refuse (parcel
+   * closed) before spending a write.
+   *
+   * Ordered `verifiedAt DESC` — `CreateDateColumn` is `timestamptz`, whose
+   * resolution makes a genuine tie between two distinct physical scans
+   * vanishingly unlikely on one bench, the same tolerance the rest of this
+   * repository accepts elsewhere (e.g. an equal `observedAt` reading as a job
+   * retry). `null` when nothing is active to undo.
+   */
+  findLatestActiveVerification(
+    workId: string,
+    transaction?: FulfillmentWorkTransaction
+  ): Promise<LatestActiveParcelVerification | null>;
+
+  /**
+   * Void ONE row by id (#3405) — the write half of undo-last-scan.
+   *
+   * Guarded on `"voidedAt" IS NULL`, the same at-most-once claim idiom every
+   * other terminal write on this aggregate uses: if the row was already
+   * voided between the read and this write (a concurrent reopen, or a second
+   * undo racing the first), this answers `false` rather than voiding a row
+   * twice or double-decrementing a count that already moved.
+   */
+  voidVerificationById(
+    verificationId: string,
+    input: VoidLastVerificationWriteInput,
     transaction?: FulfillmentWorkTransaction
   ): Promise<boolean>;
 }

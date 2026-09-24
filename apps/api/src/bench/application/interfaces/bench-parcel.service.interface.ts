@@ -17,6 +17,7 @@ import type { FulfillmentWorkView } from '@openlinker/core/fulfillment';
 import type {
   BenchParcelView,
   BenchReopenResultView,
+  BenchUndoResultView,
   BenchVerificationResultView,
 } from '../types/bench-parcel.types';
 
@@ -50,6 +51,12 @@ export interface BenchReopenInput {
   readonly expectedVersion?: number;
 }
 
+/** Undo the single most recent scan (#3405). No line, no gesture id — the packer is undoing the action they just took, not correcting one specific line's count. */
+export interface BenchUndoInput {
+  readonly workId: string;
+  readonly actorUserId: string;
+}
+
 export interface IBenchParcelService {
   /**
    * Open the parcel — what must go in the box, and whether it may be packed.
@@ -80,4 +87,11 @@ export interface IBenchParcelService {
 
   /** Open a box shut by mistake (E6). Refused once the goods have gone (D19). */
   reopenParcel(input: BenchReopenInput): Promise<BenchReopenResultView>;
+
+  /**
+   * Undo the single most recent scan on an OPEN parcel (#3405) — a lighter,
+   * inline correction distinct from `reopenParcel`. Refused `parcel-closed`
+   * rather than reopening the box as a side effect.
+   */
+  undoLastScan(input: BenchUndoInput): Promise<BenchUndoResultView>;
 }

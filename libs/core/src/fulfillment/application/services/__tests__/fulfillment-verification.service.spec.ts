@@ -64,6 +64,8 @@ interface Harness {
       | 'countParcelVerifications'
       | 'claimParcelClose'
       | 'reopenParcel'
+      | 'findLatestActiveVerification'
+      | 'voidVerificationById'
     >
   >;
 }
@@ -75,6 +77,8 @@ function harness(options: {
   inserted?: boolean;
   closed?: boolean;
   reopened?: boolean;
+  latestActive?: { id: string; workLineId: string } | null;
+  voided?: boolean;
 }): Harness {
   const queue = [...(options.counts ?? [[], []])];
   const repo = {
@@ -89,6 +93,10 @@ function harness(options: {
     ),
     claimParcelClose: jest.fn().mockResolvedValue(options.closed ?? true),
     reopenParcel: jest.fn().mockResolvedValue(options.reopened ?? true),
+    findLatestActiveVerification: jest
+      .fn()
+      .mockResolvedValue(options.latestActive === undefined ? null : options.latestActive),
+    voidVerificationById: jest.fn().mockResolvedValue(options.voided ?? true),
   } as unknown as Harness['repo'];
 
   return {
@@ -416,6 +424,70 @@ describe('FulfillmentVerificationService (#2418)', () => {
         hasShipped: false,
       });
       expect(result).toMatchObject({ outcome: 'refused', reason: 'not-closed' });
+    });
+  });
+
+  describe('#3405 — undo the most recent scan', () => {
+    it('voids the latest active row and reports its line', async () => {
+      const { service, repo } = harness({
+        latestActive: { id: 'verification-9', workLineId: 'line-1' },
+        counts: [[{ workLineId: 'line-1', verifiedQuantity: 1 }]],
+      });
+
+      const result = await service.voidLastVerification({
+        workId: 'work-1',
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'voided', workLineId: 'line-1' });
+      expect(repo.voidVerificationById).toHaveBeenCalledWith(
+        'verification-9',
+        expect.objectContaining({ workId: 'work-1', voidedByUserId: 'user-1' }),
+        expect.anything()
+      );
+    });
+
+    it('refuses `parcel-closed` without even looking for a row to void', async () => {
+      const { service, repo } = harness({
+        work: work({ parcelClosedAt: new Date() }),
+        counts: [[]],
+      });
+
+      const result = await service.voidLastVerification({
+        workId: 'work-1',
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'parcel-closed' });
+      expect(repo.findLatestActiveVerification).not.toHaveBeenCalled();
+      expect(repo.voidVerificationById).not.toHaveBeenCalled();
+    });
+
+    it('refuses `nothing-to-undo` when nothing is active', async () => {
+      const { service, repo } = harness({ latestActive: null, counts: [[]] });
+
+      const result = await service.voidLastVerification({
+        workId: 'work-1',
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'nothing-to-undo' });
+      expect(repo.voidVerificationById).not.toHaveBeenCalled();
+    });
+
+    it('refuses `nothing-to-undo` when the write loses the race', async () => {
+      const { service } = harness({
+        latestActive: { id: 'verification-9', workLineId: 'line-1' },
+        voided: false,
+        counts: [[]],
+      });
+
+      const result = await service.voidLastVerification({
+        workId: 'work-1',
+        actorUserId: 'user-1',
+      });
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'nothing-to-undo' });
     });
   });
 });
