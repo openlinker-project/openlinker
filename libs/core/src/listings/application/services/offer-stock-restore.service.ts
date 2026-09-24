@@ -38,6 +38,15 @@
  * the hold being cancelled — short by exactly the cancelled amount, on a live
  * offer, silently and forever.
  *
+ * **#3479 adds a fourth step, run between the dispatch check and the restore:**
+ * `reverseSaleDecrements()` raises every one of the order's applied `order_sale`
+ * decrements (#3453) back into the product master that owns each line, before
+ * `publishRestoredAtp()` reads that same master's available-to-promise — so the
+ * republished offer quantity reflects the given-back unit rather than a stale
+ * one. It shares the dispatch-check short-circuit above it: a cancellation
+ * after the parcel left the bench restores neither the offer nor the master.
+ *
+
  * CRASH-KILL, not merely throw. This sequence deliberately has NO claim marker
  * of its own. The release's terminal status IS its record, and it is the same
  * fact the ATP read consults; the restore is an ABSOLUTE set, never a delta. So
@@ -72,7 +81,9 @@ import {
   AVAILABILITY_SERVICE_TOKEN,
   IAvailabilityService,
   IInventoryQueryService,
+  IInventorySaleReversalService,
   INVENTORY_QUERY_SERVICE_TOKEN,
+  INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
   IReservationService,
   RESERVATION_SERVICE_TOKEN,
   type CloseForOrderResult,
@@ -119,6 +130,8 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
     private readonly reservations: IReservationService,
     @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
     private readonly shipments: IShipmentQueryService,
+    @Inject(INVENTORY_SALE_REVERSAL_SERVICE_TOKEN)
+    private readonly saleReversal: IInventorySaleReversalService,
   ) {}
 
   async restoreStockForCancelledOrder(
@@ -152,7 +165,44 @@ export class OfferStockRestoreService implements IOfferStockRestoreService {
       return this.skipped(release, 'skipped-consumed');
     }
 
+    // STEP 3 (#3479) — give back what #3453 took. Runs BEFORE the offer
+    // restore below, deliberately: `publishRestoredAtp` reads the master's
+    // available-to-promise, and that read must see the raised quantity, not
+    // the pre-cancellation one. Skipped entirely for an order with no applied
+    // `order_sale` decrement — the routine case (storefront orders, or any
+    // order the OMS never routed) — where `reverseForOrder` is a no-op.
+    await this.reverseSaleDecrements(connectionId, internalOrderId);
+
     return this.publishRestoredAtp(release, connectionId, internalOrderId);
+  }
+
+  /**
+   * Raise every one of the order's `order_sale` decrements back into their
+   * owning product master. Never throws: a per-line failure there is reported
+   * on the order via #3453's own attention machinery (surfaced by the
+   * `inventory.saleDecrement` job, not this one), and failing the whole
+   * cancellation sequence over it would re-run the release and the offer
+   * restore for no reason — both of which are unrelated to whether the
+   * reversal landed.
+   */
+  private async reverseSaleDecrements(connectionId: string, internalOrderId: string): Promise<void> {
+    try {
+      const result = await this.saleReversal.reverseForOrder(internalOrderId);
+      const failed = result.lines.filter(
+        (line) => line.status !== 'applied' && line.status !== 'deduplicated',
+      );
+      if (failed.length > 0) {
+        this.logger.error(
+          `Stock-reversal did not raise the product master for ${failed.length} line(s) ` +
+            `[connectionId=${connectionId}, orderId=${internalOrderId}]`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Stock-reversal threw while cancelling the order [connectionId=${connectionId}, ` +
+          `orderId=${internalOrderId}]: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /**

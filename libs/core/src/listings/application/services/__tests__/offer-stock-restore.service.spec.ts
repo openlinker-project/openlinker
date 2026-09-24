@@ -21,6 +21,7 @@ import {
 import type {
   CloseForOrderResult,
   IInventoryQueryService,
+  IInventorySaleReversalService,
   IReservationService,
   VariantAvailability,
   IAvailabilityService,
@@ -65,6 +66,7 @@ describe('OfferStockRestoreService', () => {
   let inventoryQuery: jest.Mocked<IInventoryQueryService>;
   let reservations: jest.Mocked<IReservationService>;
   let shipments: jest.Mocked<IShipmentQueryService>;
+  let saleReversal: jest.Mocked<IInventorySaleReversalService>;
   let restorer: jest.Mocked<OfferManagerPort & OfferStockRestorer>;
   /**
    * One shared recorder across the release and the restore. The types already
@@ -106,6 +108,12 @@ describe('OfferStockRestoreService', () => {
       getActiveByOrderId: jest.fn(),
       hasConsumedReservations: jest.fn().mockResolvedValue(false),
     } as unknown as jest.Mocked<IShipmentQueryService>;
+
+    // #3479 — no order carries an applied `order_sale` decrement by default;
+    // tests that care about the reversal set this explicitly.
+    saleReversal = {
+      reverseForOrder: jest.fn().mockResolvedValue({ lines: [] }),
+    } as unknown as jest.Mocked<IInventorySaleReversalService>;
 
     integrationsService = {
       getCapabilityAdapter: jest.fn().mockResolvedValue(restorer),
@@ -152,7 +160,8 @@ describe('OfferStockRestoreService', () => {
       inventoryQuery,
       availabilityService,
       reservations,
-      shipments
+      shipments,
+      saleReversal
     );
   });
 
@@ -463,6 +472,74 @@ describe('OfferStockRestoreService', () => {
     expect(restorer.restoreStockOnCancellation).toHaveBeenCalledWith([
       { externalOfferId: OFFER_A, quantity: 3 },
     ]);
+  });
+
+  describe('sale-decrement reversal (#3479)', () => {
+    function readyToRestore(): void {
+      orderRecordService.getOrderRecord.mockResolvedValue(orderRecord([{ variantId: VARIANT_A }]));
+      offerMappings.findMappingPage.mockResolvedValue({
+        items: [mapping(VARIANT_A, OFFER_A)],
+        total: 1,
+      });
+      inventoryQuery.getAvailabilityByVariantIds.mockResolvedValue(availability([[VARIANT_A, 7]]));
+    }
+
+    it('should raise the master back BEFORE reading availability to republish', async () => {
+      readyToRestore();
+      const order: string[] = [];
+      saleReversal.reverseForOrder.mockImplementation(() => {
+        order.push('reverse');
+        return Promise.resolve({ lines: [] });
+      });
+      inventoryQuery.getAvailabilityByVariantIds.mockImplementation(() => {
+        order.push('availability');
+        return Promise.resolve(availability([[VARIANT_A, 7]]));
+      });
+
+      await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(saleReversal.reverseForOrder).toHaveBeenCalledWith(ORDER_ID);
+      expect(order).toEqual(['reverse', 'availability']);
+    });
+
+    it('should not reverse an order whose goods already shipped', async () => {
+      readyToRestore();
+      shipments.hasConsumedReservations.mockResolvedValue(true);
+
+      await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(saleReversal.reverseForOrder).not.toHaveBeenCalled();
+    });
+
+    it('should still restore the offer when the reversal reports a failed line', async () => {
+      readyToRestore();
+      saleReversal.reverseForOrder.mockResolvedValue({
+        lines: [
+          {
+            orderLineId: 'line-1',
+            status: 'in_doubt',
+            reason: 'master-error',
+            ownerConnectionId: 'conn-shop',
+            attempted: true,
+          },
+        ],
+      });
+
+      const result = await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(result.outcome).toBe('restored');
+      expect(restorer.restoreStockOnCancellation).toHaveBeenCalled();
+    });
+
+    it('should still restore the offer when the reversal throws', async () => {
+      readyToRestore();
+      saleReversal.reverseForOrder.mockRejectedValue(new Error('reversal blew up'));
+
+      const result = await service.restoreStockForCancelledOrder(CONNECTION_ID, ORDER_ID);
+
+      expect(result.outcome).toBe('restored');
+      expect(restorer.restoreStockOnCancellation).toHaveBeenCalled();
+    });
   });
 
   it('should publish 0 when the restored quantity is below the zero threshold (#2610)', async () => {

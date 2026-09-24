@@ -124,7 +124,12 @@ export class InventorySaleDecrementService implements IInventorySaleDecrementSer
       outcomes.push(await this.decrementLine(input, line, positions, adapters));
     }
 
-    const rows = await this.decrements.findByOrderId(input.orderId);
+    // #3479 shares this table for the sale REVERSAL its cancellation runs
+    // later, keyed `sale-reversal:…` on the same orderId — excluded here so a
+    // reversal row can never be folded into THIS decrement's attention verdict.
+    const rows = (await this.decrements.findByOrderId(input.orderId)).filter(
+      (row) => !row.idempotencyKey.startsWith('sale-reversal:')
+    );
 
     return {
       lines: outcomes,

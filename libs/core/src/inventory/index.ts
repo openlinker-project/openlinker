@@ -128,6 +128,12 @@ export {
   SaleDecrementLineOutcome,
 } from './application/services/inventory-sale-decrement.service.interface';
 export { InventorySaleDecrementService } from './application/services/inventory-sale-decrement.service';
+export {
+  IInventorySaleReversalService,
+  ReverseSaleForOrderResult,
+  SaleReversalLineOutcome,
+} from './application/services/inventory-sale-reversal.service.interface';
+export { InventorySaleReversalService } from './application/services/inventory-sale-reversal.service';
 
 // Application Types
 export {
@@ -181,6 +187,7 @@ export {
   SaleDecrementOwnerResolution,
   buildSaleDecrementIdempotencyKey,
   buildUnresolvedSaleDecrementKey,
+  buildSaleReversalIdempotencyKey,
   deriveSaleDecrementAttention,
   resolveSaleDecrementOwner,
 } from './domain/types/inventory-sale-decrement.types';
