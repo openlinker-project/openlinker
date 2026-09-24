@@ -11,6 +11,7 @@ import type {
   EditPriceChangeInput,
   ListPriceChangesFilters,
   PriceChangeAutoAppliedItem,
+  PriceChangeCountsResponse,
   PriceChangeItem,
   PriceChangeListResponse,
   PriceChangeResolutionResult,
@@ -30,6 +31,8 @@ function buildQuery(filters?: ListPriceChangesFilters): string {
 
 export interface PriceChangesApi {
   list(filters?: ListPriceChangesFilters): Promise<PriceChangeListResponse>;
+  /** Exact open-episode count per destination connection, across the whole install (#3325). */
+  counts(): Promise<PriceChangeCountsResponse>;
   /** Returns the `{ optInApplied? }` body — `accept` answers `200` now, not a bare `204` (#3145/#3162). */
   accept(id: string, input: AcceptPriceChangeInput): Promise<PriceChangeResolutionResult>;
   ignore(id: string): Promise<void>;
@@ -46,6 +49,9 @@ export function createPriceChangesApi(request: ApiRequest): PriceChangesApi {
   return {
     list(filters): Promise<PriceChangeListResponse> {
       return request<PriceChangeListResponse>(`/listings/price-changes${buildQuery(filters)}`);
+    },
+    counts(): Promise<PriceChangeCountsResponse> {
+      return request<PriceChangeCountsResponse>('/listings/price-changes/counts');
     },
     accept(id, input): Promise<PriceChangeResolutionResult> {
       return request<PriceChangeResolutionResult>(`/listings/price-changes/${id}/accept`, {
