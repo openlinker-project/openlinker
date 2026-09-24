@@ -185,6 +185,11 @@
 
   [hidden] { display: none !important; }
   @media (max-width: 860px) { .shell { grid-template-columns: 1fr; } .shell-sidebar { display: none; } .lane__load { width: 100px; } }
+
+  .mockup-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-5); background: var(--bg-surface-muted); border: 1px dashed var(--border-strong); border-radius: var(--radius-md); }
+  .mockup-bar__label { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-muted); margin-right: var(--space-2); }
+  .mockup-pill { border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary); border-radius: var(--radius-pill); padding: 4px 12px; font-size: 12px; font-weight: 500; }
+  .mockup-pill[aria-pressed="true"] { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--text-on-primary); }
 </style>
 
 <div class="shell" data-state="assign">
@@ -227,6 +232,14 @@
       <h1 style="font-size:19px; margin-bottom:4px;">Assign packing work</h1>
       <p style="font-size:13px; color:var(--text-muted); margin:0 0 16px;">Move unassigned parcels onto a packer's queue, or pull one back.</p>
 
+      <div class="mockup-bar" role="group" aria-label="Mockup state switcher">
+        <span class="mockup-bar__label">Mockup · jump to a state</span>
+        <button class="mockup-pill" data-demo-state-btn="default" aria-pressed="true" type="button">Board, resting</button>
+        <button class="mockup-pill" data-demo-state-btn="hold-form-open" aria-pressed="false" type="button">Hold-reason form open</button>
+        <button class="mockup-pill" data-demo-state-btn="drag-over" aria-pressed="false" type="button">Card dragged over a lane</button>
+        <button class="mockup-pill" data-demo-state-btn="assignment-only" aria-pressed="false" type="button">Pulled out of self-serve</button>
+        <button class="mockup-pill" data-demo-state-btn="pickable" aria-pressed="false" type="button">Back in self-serve (pickable)</button>
+      </div>
 
       <div class="metric-row">
         <div class="metric-card"><span class="metric-card__label">Unassigned right now</span><span class="metric-card__value" id="poolCount">3</span></div>
@@ -425,13 +438,18 @@
         if (!draggedCard) return;
         e.preventDefault();
         highlightEl.classList.add('lane__body--drag-over');
+        // Alongside the class, for the same reason every other real
+        // state-producing path in this file sets it (#3338).
+        highlightEl.setAttribute('data-state', 'drag-over');
       });
       triggerEl.addEventListener('dragleave', function () {
         highlightEl.classList.remove('lane__body--drag-over');
+        highlightEl.removeAttribute('data-state');
       });
       triggerEl.addEventListener('drop', function (e) {
         e.preventDefault();
         highlightEl.classList.remove('lane__body--drag-over');
+        highlightEl.removeAttribute('data-state');
         if (!draggedCard) return;
         var body = resolveBody();
         var fromLane = draggedCard.closest('.lane');
@@ -490,6 +508,10 @@
           if (existingForm) { existingForm.remove(); return; }
           var form = document.createElement('div');
           form.className = 'hold-form';
+          // Set on the form itself the moment it opens — a real click on
+          // "Hold" produces the identical marker the demo switcher does, so
+          // a spec has one way to find this state (#3338).
+          form.setAttribute('data-state', 'hold-form-open');
           var optionsHtml = HOLD_REASONS.map(function (r) { return '<option value="' + r[0] + '">' + r[1] + '</option>'; }).join('');
           form.innerHTML =
             '<label style="font-size:11px;color:var(--text-muted)">Reason</label>' +
@@ -516,6 +538,10 @@
       var card = document.createElement('div');
       card.className = 'lane-card';
       card.dataset.parcel = item.ref;
+      // The unassigned pool's own default (checkbox starts checked); an
+      // already-assigned card names no pickable axis at all — it is not in
+      // the unassigned pool, so "pickable" would assert something false.
+      if (isUnassigned) card.setAttribute('data-state', 'pickable');
       card.innerHTML =
         '<div class="lane-card__top"><span class="lane-card__ref">' + item.ref + '</span>' + item.badge + '</div>' +
         '<div class="lane-card__buyer">' + item.buyer + '</div>' +
@@ -539,6 +565,10 @@
       var label = card.querySelector('.lane-card__pickable');
       checkbox.addEventListener('change', function () {
         card.classList.toggle('lane-card--assignment-only', !checkbox.checked);
+        // Set on the card itself, alongside the class — not only by the
+        // demo switcher, so a real checkbox toggle is discoverable by a spec
+        // through the SAME attribute the switcher produces (#3338).
+        card.setAttribute('data-state', checkbox.checked ? 'pickable' : 'assignment-only');
         label.lastChild.textContent = checkbox.checked ? ' Anyone can pick this up' : ' Assignment only — hidden from self-serve';
         toast(checkbox.checked
           ? card.dataset.parcel + ' is back in every packer\'s self-serve queue'
@@ -553,5 +583,75 @@
     // Existing static cards (already-assigned demo data) also get the menu.
     document.querySelectorAll('.lane:not(.lane--unassigned) .lane-card').forEach(wireCard);
     packerLanes().forEach(updateLaneCount);
+
+    // Mockup state switcher (#3338) — unlike the pack-bench mockup's
+    // switcher, these are not mutually-exclusive full-screen states: a hold
+    // form, a drag-over highlight and a pickable toggle are transient
+    // overlays on top of the SAME persistent board. So the switcher drives
+    // the real interaction that produces each `data-state`, through the same
+    // code paths a click/drag/toggle would — never a parallel rendering.
+    (function wireDemoStateSwitcher() {
+      var demoBtns = document.querySelectorAll('[data-demo-state-btn]');
+      var firstUnassignedCard = function () { return unassignedBody.querySelector('.lane-card'); };
+
+      function resetDemo() {
+        // Close any open hold form.
+        var openForm = document.querySelector('.hold-form');
+        if (openForm) openForm.remove();
+        // Close any open move menu.
+        document.querySelectorAll('.lane-card__menu').forEach(function (m) { m.remove(); });
+        // Clear any drag-over highlight (a real drag cannot be left stuck by
+        // a button click, but the demo path can — same reasoning as clearing
+        // it on dragleave/drop above).
+        document.querySelectorAll('.lane__body[data-state="drag-over"]').forEach(function (b) {
+          b.classList.remove('lane__body--drag-over');
+          b.removeAttribute('data-state');
+        });
+        // Re-check the first unassigned card's pickable box, back to the
+        // pool's own default.
+        var card = firstUnassignedCard();
+        if (card) {
+          var checkbox = card.querySelector('[data-pickable]');
+          if (checkbox && !checkbox.checked) {
+            checkbox.checked = true;
+            checkbox.dispatchEvent(new Event('change'));
+          }
+        }
+      }
+
+      function setDemoState(name) {
+        resetDemo();
+        demoBtns.forEach(function (b) {
+          b.setAttribute('aria-pressed', String(b.dataset.demoStateBtn === name));
+        });
+        var card = firstUnassignedCard();
+        if (name === 'hold-form-open' && card) {
+          var holdBtn = card.querySelector('[data-hold-toggle]');
+          if (holdBtn) holdBtn.click();
+        } else if (name === 'drag-over') {
+          var lane = document.querySelector('[data-lane="marta"] [data-body]');
+          if (lane) {
+            lane.classList.add('lane__body--drag-over');
+            lane.setAttribute('data-state', 'drag-over');
+          }
+        } else if (name === 'assignment-only' && card) {
+          var checkbox = card.querySelector('[data-pickable]');
+          if (checkbox && checkbox.checked) {
+            checkbox.checked = false;
+            checkbox.dispatchEvent(new Event('change'));
+          }
+        }
+        // 'default' and 'pickable' need nothing beyond the reset above —
+        // resetDemo() already re-checks the pickable box, which is the same
+        // real interaction the 'pickable' data-state is produced by (#3338
+        // review). Two switcher entries point at one board state on
+        // purpose: 'default' documents the board at rest, 'pickable' gives
+        // that state's own data-state value a discoverable, named route.
+      }
+
+      demoBtns.forEach(function (btn) {
+        btn.addEventListener('click', function () { setDemoState(btn.dataset.demoStateBtn); });
+      });
+    })();
   })();
 </script>

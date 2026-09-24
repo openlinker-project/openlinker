@@ -319,7 +319,7 @@
  <div class="metric-card"><span class="metric-card__label">To pack — all benches</span><span class="metric-card__value">12</span></div>
 </div>
 
- <section data-bench-body="empty" hidden>
+ <section data-bench-body="empty" data-state="empty" hidden>
  <div class="panel empty-state">
  <h2>No work can reach this bench</h2>
  <p>OpenLinker is not sending packing work here, so nothing will appear however long you keep this screen open. Nothing is broken at the bench, and this is not the same as having nothing to pack.</p>
@@ -665,7 +665,7 @@
 
 <div class="toast-stack" id="toastStack"></div>
 
-<div class="lock-overlay" id="lockOverlay">
+<div class="lock-overlay" id="lockOverlay" data-state="locked">
   <div class="lock-card">
     <p style="font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); margin-bottom:6px;">Nobody is signed in</p>
     <h2>This bench is locked</h2>
