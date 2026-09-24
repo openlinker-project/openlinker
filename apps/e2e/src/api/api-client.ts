@@ -438,6 +438,19 @@ export class ApiClient {
       this.request<void>(`/users/${userId}`, { method: 'DELETE' }),
   };
 
+  // ── Pack bench (#3342/#3343) ────────────────────────────────────────────
+  bench = {
+    /**
+     * `GET /bench/work` — the install-WIDE worklist (unscoped by packer
+     * identity, spec D2), used by the pack-bench mockup-parity spec to check
+     * whether the worklist is genuinely empty before asserting the
+     * not-routed empty state, since another connection's accepted work is
+     * outside any one seed's control on a shared stack.
+     */
+    listWork: (): Promise<{ works: unknown[] }> =>
+      this.request<{ works: unknown[] }>('/bench/work'),
+  };
+
   // ── AI provider settings (admin only) ─────────────────────────────────────
   aiProviderSettings = {
     /** Admin-only read; the E2E specs assert only on the resolved/failed status. */
