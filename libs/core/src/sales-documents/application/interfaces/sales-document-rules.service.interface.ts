@@ -16,6 +16,7 @@ import type { SalesDocumentDecision } from '../../domain/types/sales-document-de
 import type { SalesDocumentOrderFacts } from '../../domain/types/sales-document-order-facts.types';
 import type { SalesDocumentCountrySummary } from '../../domain/types/sales-document-country-summary.types';
 import type { SalesDocumentRuleOverlapVerdict } from '../../domain/domain-services/detect-sales-document-rule-overlap';
+import type { SalesDocumentDryRunCandidate } from '../../domain/types/sales-document-dry-run.types';
 
 export interface ISalesDocumentRulesService {
   listRules(country: string): Promise<SalesDocumentRule[]>;
@@ -120,4 +121,32 @@ export interface ISalesDocumentRulesService {
 
   /** Idempotent — clearing an already-unacknowledged country is a no-op. */
   clearAcknowledgment(country: string): Promise<void>;
+
+  /**
+   * Dry-run an in-progress, NEVER-PERSISTED rule candidate against a sample
+   * order (#3191): "what would this order get if I saved this rule?".
+   * Writes NOTHING — no `sales_document_rules` row, no country-default
+   * change, no acknowledgment clear — and is safe to call repeatedly with the
+   * same or a different candidate.
+   *
+   * Loads the SAME persisted rules/defaults `resolveRouting` would (the order's
+   * own country, plus `★ Rest of world`), folds the candidate into whichever of
+   * those two scopes it would actually occupy once saved — `candidate.country`
+   * compared against `sampleOrder.country`, never both unconditionally — and
+   * delegates to the identical pure `evaluateSalesDocumentRules`. A candidate
+   * scoped to a country the sample order is not delivering to therefore never
+   * enters the evaluation, exactly as it would not once saved either.
+   *
+   * The candidate is evaluated as always-effective (no `effectiveFrom` /
+   * `effectiveTo` window) — a dry run tests conditions, not a calendar — and
+   * is stamped with the reserved sentinel id
+   * `SALES_DOCUMENT_DRY_RUN_CANDIDATE_RULE_ID` so a caller can tell "the
+   * candidate itself matched" apart from "an already-saved rule matched".
+   * `now` defaults to the system clock — pass it explicitly in tests.
+   */
+  dryRunRule(
+    candidate: SalesDocumentDryRunCandidate,
+    sampleOrder: SalesDocumentOrderFacts,
+    now?: Date,
+  ): Promise<SalesDocumentDecision>;
 }

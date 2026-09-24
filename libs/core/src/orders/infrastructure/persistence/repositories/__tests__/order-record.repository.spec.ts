@@ -2392,6 +2392,7 @@ describe('OrderRecordRepository', () => {
       const andWhere = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere,
@@ -2410,6 +2411,7 @@ describe('OrderRecordRepository', () => {
       const andWhere = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere,
@@ -2427,6 +2429,7 @@ describe('OrderRecordRepository', () => {
       const andWhere = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere,
@@ -2442,6 +2445,7 @@ describe('OrderRecordRepository', () => {
       const andWhere = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere,
@@ -2463,6 +2467,7 @@ describe('OrderRecordRepository', () => {
       const andWhere = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere,
@@ -2487,6 +2492,7 @@ describe('OrderRecordRepository', () => {
       const andWhere = jest.fn().mockReturnThis();
       (ormRepository.createQueryBuilder as jest.Mock).mockReturnValue({
         orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         skip: jest.fn().mockReturnThis(),
         andWhere,

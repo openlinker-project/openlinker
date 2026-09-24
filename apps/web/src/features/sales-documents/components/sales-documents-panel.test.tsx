@@ -235,4 +235,43 @@ describe('SalesDocumentsPanel', () => {
       await screen.findByText(/Only one connection may go first across ALL of them/i),
     ).toBeInTheDocument();
   });
+
+  it('should render a Both chip and all four issue options for a dual-role connection (#3195)', async () => {
+    const BOTH: Connection = {
+      ...sampleConnection,
+      id: 'conn_eparagony_both',
+      name: 'eparagony.pl (both)',
+      platformType: 'eparagony',
+      enabledCapabilities: ['Invoicing', 'Fiscalization'],
+      supportedCapabilities: ['Invoicing', 'Fiscalization'],
+      config: {
+        salesDocument: { documentKind: 'both' },
+      },
+    };
+    const apiClient = createMockApiClient({
+      connections: { list: vi.fn().mockResolvedValue([BOTH]) },
+    });
+
+    const { container } = renderWithProviders(<SalesDocumentsPanel />, {
+      apiClient,
+      sessionAdapter: createAuthenticatedSessionAdapter(),
+    });
+
+    await screen.findByText('eparagony.pl (both)');
+    // The capability chip is queried via its own class rather than
+    // `getByText('Both')` — the "Both" issue option shares the same visible
+    // text, so a plain text query would ambiguously match both nodes.
+    const capabilityChip = container.querySelector('.status-badge--neutral');
+    expect(capabilityChip).toHaveTextContent('Both');
+
+    const select = screen.getByRole('combobox', { name: /Document eparagony\.pl \(both\) issues/i });
+    const options = within(select).getAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual([
+      'Receipts',
+      'Invoices',
+      'Both',
+      'Nothing',
+    ]);
+    expect(select).toHaveValue('both');
+  });
 });

@@ -14,6 +14,7 @@
  * @module apps/web/src/features/sales-documents/lib
  */
 import type { SalesDocumentRow } from '../api/sales-documents.types';
+import { isActiveRoutable } from './derive-sales-document-rows';
 
 export type SalesDocumentConflictKind = 'multiple-primaries' | 'ambiguous-no-primary';
 
@@ -28,11 +29,21 @@ export type SalesDocumentConflictKind = 'multiple-primaries' | 'ambiguous-no-pri
  * with a configured `documentKind` can never actually compete for the
  * "primary" slot at runtime. Counting it here would show a legal-sounding
  * conflict banner for a state that cannot happen.
+ *
+ * This `status === 'active' && documentKind !== null` predicate is the SAME
+ * one `find-sales-document-destination-warnings.ts` (#3209) and
+ * `sales-document-country-defaults.tsx` (#3210) use — both answer "which
+ * connection may the pre-#2170 fallback resolver name", which is exactly
+ * what a "primary" conflict is about. It is deliberately NOT the predicate
+ * `sales-document-rule-composer-dialog.tsx` / `sales-document-template-screen.tsx`
+ * use (#3232, `find-sales-document-connection-role-gap.ts`) — a rule/template
+ * carries its own `documentKind` and never competes for a "primary" slot at
+ * all, so this conflict check has nothing to say about one.
  */
 export function detectSalesDocumentConflict(
   rows: readonly SalesDocumentRow[],
 ): SalesDocumentConflictKind | null {
-  const eligible = rows.filter((row) => row.status === 'active' && row.documentKind !== null);
+  const eligible = rows.filter(isActiveRoutable);
   if (eligible.length <= 1) return null;
 
   const primaries = eligible.filter((row) => row.isPrimary);

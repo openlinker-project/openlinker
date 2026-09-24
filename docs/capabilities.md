@@ -87,7 +87,7 @@ runtime gate validates a connection's request against the adapter's
 Each is an independent interface + co-located `is{Capability}` guard. Adapters
 declare what they support via `implements <BasePort>, <SubCapability>, …`.
 
-### `OfferManagerPort` (listings) — 20
+### `OfferManagerPort` (listings) — 21
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -111,6 +111,7 @@ declare what they support via `implements <BasePort>, <SubCapability>, …`.
 | `ResponsibleProducerReader` | List GPSR responsible-producer entries. | `fetchResponsibleProducers` | `isResponsibleProducerReader` |
 | `SafetyAttachmentUploader` | Upload a GPSR safety attachment (manual, label, …). | `uploadSafetyAttachment` | `isSafetyAttachmentUploader` |
 | `TaxonomyBorrower` | Reuse another platform's resolved taxonomy for a destination. | `getBorrowedTaxonomy`, `allowsBorrowedCatalogueLookup` (optional) | `isTaxonomyBorrower` |
+| `OfferCurrencyDeclarer` | Declare the connection's real settlement currency, a pure/synchronous adapter-declared value (#3203, mirroring `getDescriptionFormat`) consumed by `DestinationCurrencyResolutionService` to answer the price-change currency-mismatch guard. The declared value is a FALLBACK — the operator-set `Connection.config.currency` key wins when set (#3159 review, BLOCKING), so a wrong fixed assumption (e.g. a non-PL Allegro storefront) always has a remedy. | `getDestinationCurrency` | `isOfferCurrencyDeclarer` |
 
 **Adapter coverage:** Allegro implements every sub-capability except
 `OfferQuantityBatchUpdater`, including `EanCategoryMatcherStreaming` (#2208, epic
@@ -118,9 +119,11 @@ declare what they support via `implements <BasePort>, <SubCapability>, …`.
 `CategoryResolutionService` falls back to the batch method
 (see the [README Implementations](../README.md#implementations)
 section); Erli implements a reconciliation-first subset
-([ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md)).
+([ADR-025](./architecture/adrs/025-erli-marketplace-adapter.md)), plus
+`OfferCurrencyDeclarer` (both Allegro and Erli declare `'PLN'`, matching the
+PL-first / PLN-only assumptions already baked into each adapter).
 
-### `ShopProductManagerPort` (listings) — 4
+### `ShopProductManagerPort` (listings) — 5
 
 | Sub-capability | What it does | Method(s) | Guard |
 |---|---|---|---|
@@ -128,11 +131,15 @@ section); Erli implements a reconciliation-first subset
 | `ShopCategoryBrowser` | Browse the shop's existing category tree (drill-down by parent) so an operator can pick a placement — the shop-side sibling of the marketplace `CategoryBrowser`. Every node is selectable (no leaf gate). Advertised-without-dispatch (not in `CoreCapabilityValues`): declared in the manifest for discovery, resolved by narrowing the `ProductPublisher` adapter. | `browseCategories` | `isShopCategoryBrowser` |
 | `ShopAttributeReader` | Read the shop's store-wide global product attributes + their predefined terms so an operator can pick a structured attribute (linked on publish as `pa_*` + term ids), with free-text custom attributes as the fallback. Advertised-without-dispatch (not in `CoreCapabilityValues`): declared in the manifest for discovery, resolved by narrowing the `ProductPublisher` adapter. | `listAttributes`, `listAttributeTerms` | `isShopAttributeReader` |
 | `ShopProductStatusReader` | Read a previously-published product's live shop-side publication status for the steady-state `ShopStatusSyncService` reconcile (#1845) — the shop-side sibling of `OfferStatusReader`. Optional `getShopVariationStatus` reads a grouped/multi-variant publish's CHILD variation status scoped under its parent (a variation lives at a different shop-native resource than a standalone simple product). Advertised-without-dispatch (not in `CoreCapabilityValues`): declared in the manifest for discovery, resolved by narrowing the `ProductPublisher` adapter. | `getShopProductStatus`, `getShopVariationStatus?` | `isShopProductStatusReader` |
+| `ShopCurrencyDeclarer` | Declare the shop's configured currency, the shop-side sibling of `OfferCurrencyDeclarer` (#3203). Kept optional rather than folded onto the base port, and ASYNC (`Promise<string \| null>`) unlike its marketplace sibling — a shop's real currency typically needs a live read (e.g. a store-settings call), so no in-tree shop adapter implements it yet. | `getDestinationCurrency` | `isShopCurrencyDeclarer` |
 
 **Adapter coverage:** WooCommerce implements `CategoryProvisioner` (write),
 `ShopCategoryBrowser` (read, #1834), `ShopAttributeReader` (read, #1835), and
 `ShopProductStatusReader` (read, #1845, including the grouped-variation-aware
-read) on its `ProductPublisher` adapter.
+read) on its `ProductPublisher` adapter. No shop adapter implements
+`ShopCurrencyDeclarer` yet — a WooCommerce destination still falls back to
+`Connection.config.currency` (or an operator-set value) for the price-change
+currency-mismatch guard.
 
 ### `OrderProcessorManagerPort` / `OrderSourcePort` (orders) — 5
 
@@ -181,13 +188,12 @@ KSeF rather than transmitting directly), `CorrectionIssuer`,
 `RegulatoryDocumentReader`, and `BankAccountsReader` / `BankAccountDefaultSetter`;
 Subiekt nexo implements `RegulatoryStatusReader`, `CorrectionIssuer`, and
 `BankAccountsReader` / `BankAccountDefaultSetter`; eparagony.pl implements
-`RegulatoryStatusReader` only, on the same relay split as Infakt — it hands the
-document to the national e-invoicing hub on the seller's behalf and reads back
-the clearance, never holding the authority session itself. It deliberately does
-NOT implement `CorrectionIssuer`: the vendor models a correction as its own
-`eCorrectiveInvoice` document kind, which the adapter refuses pre-call rather
-than composing (#3193). (See the
-[README Integrations](../README.md#integrations) section.)
+`RegulatoryStatusReader` and `CorrectionIssuer` (#3193), on the same relay
+split as Infakt for the base document — it hands the document to the national
+e-invoicing hub on the seller's behalf and reads back the clearance, never
+holding the authority session itself — while `CorrectionIssuer.issueCorrection`
+composes the vendor's sibling `eCorrectiveInvoice` document kind directly. (See
+the [README Integrations](../README.md#integrations) section.)
 
 See [ADR-026](./architecture/adrs/026-country-agnostic-invoicing-domain.md) for
 the country-agnostic invoicing design.

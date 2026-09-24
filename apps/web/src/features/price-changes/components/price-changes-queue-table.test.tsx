@@ -1,12 +1,15 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   renderWithProviders,
   createMockApiClient,
   createAuthenticatedSessionAdapter,
   sampleConnection,
+  findToastTitle,
+  findToastDescription,
 } from '../../../test/test-utils';
+import { mockMobileViewport } from '../../../test/viewport';
 import { ApiError } from '../../../shared/api/api-error';
 import { PriceChangesQueueTable } from './price-changes-queue-table';
 import type { PriceChangeItem, PriceChangeListResponse } from '../api/price-changes.types';
@@ -141,8 +144,11 @@ describe('PriceChangesQueueTable', () => {
     await userEvent.click(screen.getByTestId('row-accept'));
     await userEvent.click(await screen.findByRole('button', { name: 'Publish price' }));
 
+    // `findToastDescription` (see its docblock in test-utils.tsx) - #3314
     expect(
-      await screen.findByText(/changed again while you were reviewing — refresh and take another look/),
+      await findToastDescription(
+        /changed again while you were reviewing — refresh and take another look/,
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/expected version/)).not.toBeInTheDocument();
   });
@@ -359,7 +365,8 @@ describe('PriceChangesQueueTable', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Keep prices' }));
 
-    expect(await screen.findByText(/Kept 1, but 1 failed/)).toBeInTheDocument();
+    // `findToastDescription` (see its docblock in test-utils.tsx) - #3314
+    expect(await findToastDescription(/Kept 1, but 1 failed/)).toBeInTheDocument();
   });
 
   it('opens the bulk accept dialog and mounts live publish progress on confirm', async () => {
@@ -452,7 +459,10 @@ describe('PriceChangesQueueTable', () => {
     });
 
     // ONE toast naming both sources, not two independent ones.
-    expect(await screen.findByText('Turned on automatic pricing for 2 sources')).toBeInTheDocument();
+    // `findToastTitle` (see its docblock in test-utils.tsx) - #3314. The
+    // `Undo` action label isn't duplicated by Radix's announcer, so it
+    // stays a plain `getAllByText`/`toHaveLength(1)` assertion.
+    expect(await findToastTitle('Turned on automatic pricing for 2 sources')).toBeInTheDocument();
     expect(screen.getAllByText('Undo')).toHaveLength(1);
   });
 
@@ -555,6 +565,236 @@ describe('PriceChangesQueueTable', () => {
       const group = await screen.findByRole('group', { name: 'Filter by connection' });
       const allChip = within(group).getByRole('button', { name: /^All/ });
       expect(allChip.querySelector('.chip__count')).toBeNull();
+    });
+  });
+
+  describe('DataTable migration — row identity and responsive behaviour (#3237)', () => {
+    it('stamps id/data-testid/data-row-id/data-state and the grouping/resolved/flagged classes on the DataTable row', async () => {
+      const items = [
+        // Same group key (productVariantId + sourceConnectionId + sourceOldAmount
+        // + sourceNewAmount) as the third item below — a fanned-out price
+        // change published to two destinations.
+        buildItem({ id: 'ep-1', destinationConnectionId: 'dest-1', destinationLabel: 'Allegro — PL' }),
+        buildItem({
+          id: 'ep-2',
+          productName: 'Second Product',
+          destinationConnectionId: 'dest-2',
+          destinationLabel: 'WooCommerce — EU',
+        }),
+        buildItem({
+          id: 'ep-3',
+          productName: 'Third Product',
+          productVariantId: 'ol_variant_3',
+          sourceConnectionId: 'src-3',
+          needsRefresh: true,
+        }),
+      ];
+      const apiClient = createMockApiClient({
+        priceChanges: { list: vi.fn().mockResolvedValue(buildPage(items, 0, 3)) },
+      });
+
+      renderWithProviders(<PriceChangesQueueTable />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+      await screen.findByText('Ergonomic Office Chair');
+
+      const groupStart = document.getElementById('price-change-row-ep-1');
+      expect(groupStart).not.toBeNull();
+      expect(groupStart).toHaveAttribute('data-testid', 'price-change-row');
+      expect(groupStart).toHaveAttribute('data-row-id', 'ep-1');
+      expect(groupStart).toHaveAttribute('data-state', 'row-pending');
+      expect(groupStart).toHaveClass('is-group-start');
+      expect(groupStart).toHaveClass('is-grouped');
+
+      const groupContinuation = document.getElementById('price-change-row-ep-2');
+      expect(groupContinuation).not.toBeNull();
+      expect(groupContinuation).toHaveClass('is-grouped');
+      expect(groupContinuation).not.toHaveClass('is-group-start');
+      // The continuation row renders the "Also changes here" content, not
+      // the product identity — the one piece of content that actually
+      // encodes grouping.
+      expect(within(groupContinuation as HTMLElement).getByText(/Also changes here/)).toBeInTheDocument();
+
+      const flaggedRow = document.getElementById('price-change-row-ep-3');
+      expect(flaggedRow).not.toBeNull();
+      expect(flaggedRow).toHaveAttribute('data-state', 'row-needs-refresh');
+      expect(flaggedRow).toHaveClass('is-flagged');
+      expect(flaggedRow).not.toHaveClass('is-grouped');
+    });
+
+    it('mutes a resolved row and reports its terminal data-state', async () => {
+      const items = [buildItem({ id: 'ep-1', resolution: 'ignored', resolvedAt: '2026-09-10T11:00:00.000Z' })];
+      const apiClient = createMockApiClient({
+        priceChanges: { list: vi.fn().mockResolvedValue(buildPage(items)) },
+      });
+
+      renderWithProviders(<PriceChangesQueueTable />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+      await screen.findByText('Ergonomic Office Chair');
+
+      const row = document.getElementById('price-change-row-ep-1');
+      expect(row).toHaveClass('is-resolved');
+      expect(row).toHaveAttribute('data-state', 'row-ignored');
+    });
+
+    it('select-all toggles exactly the selectable rows, never a resolved one (#3164 select-all-visible semantics)', async () => {
+      const items = [
+        buildItem({ id: 'ep-1' }),
+        buildItem({
+          id: 'ep-2',
+          productName: 'Second Product',
+          resolution: 'ignored',
+          resolvedAt: '2026-09-10T11:00:00.000Z',
+        }),
+      ];
+      const apiClient = createMockApiClient({
+        priceChanges: { list: vi.fn().mockResolvedValue(buildPage(items, 0, 2)) },
+      });
+
+      renderWithProviders(<PriceChangesQueueTable />, {
+        apiClient,
+        sessionAdapter: createAuthenticatedSessionAdapter(),
+      });
+      await screen.findByText('Ergonomic Office Chair');
+
+      await userEvent.click(screen.getByLabelText('Select all'));
+
+      const checkboxes = screen.getAllByTestId('row-select');
+      expect(checkboxes[0]).toBeChecked();
+      // The resolved row's checkbox is rendered (disabled) but never
+      // selected by "select all" — it isn't in `selectableIds`.
+      expect(checkboxes[1]).not.toBeChecked();
+      expect(checkboxes[1]).toBeDisabled();
+    });
+
+    it('filters via the URL-namespaced queueConn param and requests only that connection', async () => {
+      const marketplaceConnection = {
+        ...sampleConnection,
+        id: 'dest-1',
+        name: 'Allegro — PL',
+        enabledCapabilities: ['OfferManager'],
+      };
+      const list = vi.fn().mockResolvedValue(buildPage([buildItem()], 0, 1));
+      const apiClient = createMockApiClient({
+        connections: { list: vi.fn().mockResolvedValue([marketplaceConnection]) },
+        priceChanges: { list },
+      });
+
+      renderWithProviders(<PriceChangesQueueTable />, { apiClient });
+      await screen.findByText('Ergonomic Office Chair');
+
+      await userEvent.click(screen.getByRole('button', { name: /Allegro — PL/ }));
+
+      await waitFor(() => {
+        expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ connectionId: 'dest-1' }));
+      });
+    });
+
+    describe('mobile card view', () => {
+      afterEach(cleanup);
+
+      it('renders identity, the summary facts and the same row actions from the shared cardView', async () => {
+        const viewport = mockMobileViewport();
+        try {
+          const apiClient = createMockApiClient({
+            priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])) },
+          });
+
+          renderWithProviders(<PriceChangesQueueTable />, {
+            apiClient,
+            sessionAdapter: createAuthenticatedSessionAdapter(),
+          });
+          await screen.findByText('Ergonomic Office Chair');
+
+          // No table at all below the breakpoint — proves this content comes
+          // from `cardView`, which has no `columns` fallback.
+          expect(screen.queryByRole('table')).toBeNull();
+          expect(screen.getByTestId('row-select')).toBeInTheDocument();
+          expect(screen.getByTestId('row-accept')).toBeInTheDocument();
+          expect(screen.getByTestId('row-edit')).toBeInTheDocument();
+          expect(screen.getByTestId('row-ignore')).toBeInTheDocument();
+          expect(screen.getByText(/Price on this connection/)).toBeInTheDocument();
+
+          // And the actions are wired, not decorative — same dialog flow as desktop.
+          await userEvent.click(screen.getByTestId('row-accept'));
+          expect(await screen.findByText('Publish new price')).toBeInTheDocument();
+        } finally {
+          viewport.restore();
+        }
+      });
+
+      it('gives a resolved episode the same at-a-glance treatment mobile lacked from rowClassName (audit follow-up)', async () => {
+        const viewport = mockMobileViewport();
+        try {
+          const apiClient = createMockApiClient({
+            priceChanges: {
+              list: vi
+                .fn()
+                .mockResolvedValue(
+                  buildPage([
+                    buildItem({ id: 'ep-resolved', resolution: 'ignored', resolvedAt: '2026-09-10T11:00:00.000Z' }),
+                  ]),
+                ),
+            },
+          });
+
+          renderWithProviders(<PriceChangesQueueTable />, {
+            apiClient,
+            sessionAdapter: createAuthenticatedSessionAdapter(),
+          });
+          await screen.findByText('Ergonomic Office Chair');
+
+          expect(screen.getByTestId('card-status-resolved')).toHaveTextContent('Resolved');
+          expect(screen.queryByTestId('card-status-flagged')).not.toBeInTheDocument();
+        } finally {
+          viewport.restore();
+        }
+      });
+
+      it('gives a needs-refresh episode the same flagged treatment mobile lacked from rowClassName (audit follow-up)', async () => {
+        const viewport = mockMobileViewport();
+        try {
+          const apiClient = createMockApiClient({
+            priceChanges: {
+              list: vi.fn().mockResolvedValue(buildPage([buildItem({ needsRefresh: true })])),
+            },
+          });
+
+          renderWithProviders(<PriceChangesQueueTable />, {
+            apiClient,
+            sessionAdapter: createAuthenticatedSessionAdapter(),
+          });
+          await screen.findByText('Ergonomic Office Chair');
+
+          expect(screen.getByTestId('card-status-flagged')).toHaveTextContent('Needs refresh');
+          expect(screen.queryByTestId('card-status-resolved')).not.toBeInTheDocument();
+        } finally {
+          viewport.restore();
+        }
+      });
+
+      it('renders no status indicator for an ordinary pending episode', async () => {
+        const viewport = mockMobileViewport();
+        try {
+          const apiClient = createMockApiClient({
+            priceChanges: { list: vi.fn().mockResolvedValue(buildPage([buildItem()])) },
+          });
+
+          renderWithProviders(<PriceChangesQueueTable />, {
+            apiClient,
+            sessionAdapter: createAuthenticatedSessionAdapter(),
+          });
+          await screen.findByText('Ergonomic Office Chair');
+
+          expect(screen.queryByTestId('card-status-resolved')).not.toBeInTheDocument();
+          expect(screen.queryByTestId('card-status-flagged')).not.toBeInTheDocument();
+        } finally {
+          viewport.restore();
+        }
+      });
     });
   });
 });

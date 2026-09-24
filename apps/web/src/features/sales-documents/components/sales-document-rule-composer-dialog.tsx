@@ -49,6 +49,15 @@
  * and every one of them that is not an answer withholds the save, except
  * `unavailable` - a failed check is not evidence of a collision.
  *
+ * CONNECTION CANDIDATES (#3232): the "Integration" select stays
+ * capability-only (`selectInvoicingCandidates` / `selectFiscalizationCandidates`)
+ * rather than also requiring a role (`config.salesDocument.documentKind`) the
+ * way the destination-warnings list (#3209) and the country-default picker
+ * (#3210) do — deliberately, since a rule carries its own `documentKind` and
+ * nothing about DISPATCHING it reads the connection's role at all. See
+ * `find-sales-document-connection-role-gap.ts` for the full rationale and the
+ * pick-time warning that keeps the divergence non-silent.
+ *
  * @module apps/web/src/features/sales-documents/components
  */
 import { useState, type ReactElement } from 'react';
@@ -62,11 +71,12 @@ import { useConnectionsQuery } from '../../connections';
 import { selectInvoicingCandidates } from '../../invoicing';
 import { selectFiscalizationCandidates } from '../../fiscalization';
 import { useCreateSalesDocumentRuleMutation } from '../hooks/use-create-sales-document-rule-mutation';
+import { useDryRunSalesDocumentRuleMutation } from '../hooks/use-dry-run-sales-document-rule-mutation';
 import type {
   CreateSalesDocumentRuleInput,
   SalesDocumentConditionInput,
 } from '../api/sales-document-rules.types';
-import type { SalesDocumentKind } from '../api/sales-documents.types';
+import type { ConcreteDocumentKind } from '../api/sales-documents.types';
 import { describeSalesDocumentRuleDraft } from '../lib/describe-sales-document-rule-draft';
 import { useSalesDocumentRuleOverlapQuery } from '../hooks/use-sales-document-rule-overlap-query';
 import { useSalesDocumentRulesQuery } from '../hooks/use-sales-document-rules-query';
@@ -76,6 +86,11 @@ import {
   describeSalesDocumentOverlapConflictRival,
   describeSalesDocumentOverlapUndecided,
 } from '../lib/describe-sales-document-overlap';
+import { describeSalesDocumentDryRunResult } from '../lib/describe-sales-document-dry-run-result';
+import {
+  describeSalesDocumentConnectionRoleGap,
+  findSalesDocumentConnectionRoleGap,
+} from '../lib/find-sales-document-connection-role-gap';
 
 interface SalesDocumentRuleComposerDialogProps {
   country: string;
@@ -253,9 +268,10 @@ export function SalesDocumentRuleComposerDialog({
 }: SalesDocumentRuleComposerDialogProps): ReactElement {
   const connectionsQuery = useConnectionsQuery();
   const createRule = useCreateSalesDocumentRuleMutation();
+  const dryRun = useDryRunSalesDocumentRuleMutation();
 
   const [conditions, setConditions] = useState<ConditionDraft[]>([newConditionDraft()]);
-  const [documentKind, setDocumentKind] = useState<SalesDocumentKind>('invoice');
+  const [documentKind, setDocumentKind] = useState<ConcreteDocumentKind>('invoice');
   const [connectionId, setConnectionId] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState(() => new Date().toISOString().slice(0, 10));
   const [effectiveTo, setEffectiveTo] = useState('');
@@ -313,11 +329,38 @@ export function SalesDocumentRuleComposerDialog({
     overlapState === 'incomplete' || overlapState === 'settling' || overlapState === 'pending';
   const recheckInFlight = overlapState === 'settling' || overlapState === 'pending';
 
+  // "Test with a sample order" — never persists anything; the sample fields
+  // are local to this dialog and default to the market this composer is
+  // already scoped to, since testing a rule against an order in a country it
+  // could not be scoped under is a configuration mistake the composer should
+  // not invite by defaulting elsewhere.
+  const [sampleOrderOpen, setSampleOrderOpen] = useState(false);
+  const [sampleCountry, setSampleCountry] = useState(country);
+  const [sampleAmount, setSampleAmount] = useState('');
+  const [sampleCurrency, setSampleCurrency] = useState('');
+  const [sampleBuyerHasTaxId, setSampleBuyerHasTaxId] = useState<'unknown' | 'yes' | 'no'>('unknown');
+  // Defaults to gross-priced ('inclusive') — the common case, and the only
+  // value an `orderTotalGross` condition can ever match against (see
+  // checkAmountConditionDataProblem). Leaving this unset silently held every
+  // amount-threshold rule as "net-priced, cannot compare" regardless of the
+  // typed amount, making the flagship PL threshold rule untestable here.
+  const [sampleTaxTreatment, setSampleTaxTreatment] = useState<'inclusive' | 'exclusive'>(
+    'inclusive',
+  );
+
   const connections = connectionsQuery.data ?? [];
   const candidates =
     documentKind === 'invoice'
       ? selectInvoicingCandidates(connections)
       : selectFiscalizationCandidates(connections);
+  // #3232. The candidate list above is deliberately capability-only, wider
+  // than the destination-warnings list (#3209) and the country-default
+  // picker (#3210), which both additionally require a role — see
+  // `find-sales-document-connection-role-gap.ts` for why that is correct
+  // rather than a residual gap. What must not be silent is the operator
+  // discovering the difference only after saving, so a role-less pick is
+  // named here, at pick time.
+  const connectionRoleGap = findSalesDocumentConnectionRoleGap(connectionId, connections);
 
   function reset(): void {
     setConditions([newConditionDraft()]);
@@ -326,6 +369,33 @@ export function SalesDocumentRuleComposerDialog({
     setEffectiveFrom(new Date().toISOString().slice(0, 10));
     setEffectiveTo('');
     createRule.reset();
+    setSampleOrderOpen(false);
+    setSampleCountry(country);
+    setSampleAmount('');
+    setSampleCurrency('');
+    setSampleBuyerHasTaxId('unknown');
+    setSampleTaxTreatment('inclusive');
+    dryRun.reset();
+  }
+
+  function handleDryRun(): void {
+    const totalGross = Number.parseFloat(sampleAmount);
+    // Guarded by the button's own `disabled` below — a malformed sample can
+    // never reach the request.
+    if (!Number.isFinite(totalGross) || sampleCurrency.trim().length === 0) return;
+    dryRun.mutate({
+      country,
+      conditions: conditions.map(toConditionInput),
+      documentKind,
+      connectionId,
+      sampleOrder: {
+        country: sampleCountry.trim().toUpperCase(),
+        totalGross,
+        currency: sampleCurrency.trim().toUpperCase(),
+        taxTreatment: sampleTaxTreatment,
+        buyerHasTaxId: sampleBuyerHasTaxId === 'unknown' ? undefined : sampleBuyerHasTaxId === 'yes',
+      },
+    });
   }
 
   /**
@@ -371,11 +441,25 @@ export function SalesDocumentRuleComposerDialog({
         onOpenChange(next);
       }}
     >
+      {/*
+        `data-testid` values on this dialog are the LITERAL strings
+        `docs/plans/mockups/sales-document-rule-composer.html` declares, so an
+        e2e selects by the mockup's own vocabulary rather than by copy or by a
+        CSS class (#3196). Three the mockup names have no element here at all
+        and are deliberately NOT invented: `rule-condition-remove-{i}` (this
+        composer has no per-row remove control), `rule-test-sample-order` (the
+        dry run, which needs `FulfillmentRouterPort.evaluate`'s sales-document
+        equivalent and has no endpoint) and `rule-market` (the country is
+        carried by the parent routing dialog's heading, not repeated as a pill
+        here). Adding a hook for a control that does not exist would promise
+        coverage of a feature nobody built.
+      */}
       <DialogContent
         aria-describedby={undefined}
         className="dialog__content--elevated"
         overlayClassName="dialog__overlay--elevated"
         style={{ maxWidth: '32rem' }}
+        data-testid="rule-composer"
       >
         <DialogTitle>Add rule</DialogTitle>
 
@@ -391,9 +475,14 @@ export function SalesDocumentRuleComposerDialog({
 
           <div className="rule-composer-conditions">
             {conditions.map((condition, index) => (
-              <div key={index} className="rule-composer-condition-row">
+              <div
+                key={index}
+                className="rule-composer-condition-row"
+                data-testid={`rule-condition-${index}`}
+              >
                 <Select
                   aria-label="Condition field"
+                  data-testid={`rule-condition-field-${index}`}
                   value={condition.kind}
                   onChange={(event) => {
                     const kind = event.target.value as ConditionKind;
@@ -410,6 +499,7 @@ export function SalesDocumentRuleComposerDialog({
                 {condition.kind === 'buyerHasTaxId' ? (
                   <Select
                     aria-label="Buyer has a tax ID value"
+                    data-testid={`rule-condition-value-${index}`}
                     value={String(condition.boolValue)}
                     onChange={(event) =>
                       setConditions((prev) =>
@@ -427,6 +517,7 @@ export function SalesDocumentRuleComposerDialog({
                 {condition.kind === 'orderCountry' ? (
                   <Input
                     aria-label="Order country value"
+                    data-testid={`rule-condition-value-${index}`}
                     value={condition.stringValue}
                     placeholder="e.g. PL"
                     onChange={(event) =>
@@ -441,8 +532,16 @@ export function SalesDocumentRuleComposerDialog({
 
                 {condition.kind === 'orderTotalGross' ? (
                   <div className="rule-composer-condition-row__threshold">
+                    {/*
+                      The mockup's `rule-condition-test-{i}` is the COMPARISON
+                      control. It exists here only for an amount condition —
+                      `buyerHasTaxId` and `orderCountry` carry an implicit `eq`
+                      with no control to hook, which the mockup renders as a
+                      third dropdown this composer does not have.
+                    */}
                     <Select
                       aria-label="Order total comparison"
+                      data-testid={`rule-condition-test-${index}`}
                       value={condition.op}
                       onChange={(event) =>
                         setConditions((prev) =>
@@ -457,6 +556,7 @@ export function SalesDocumentRuleComposerDialog({
                     </Select>
                     <Input
                       aria-label="Order total amount"
+                      data-testid={`rule-condition-amount-${index}`}
                       inputMode="decimal"
                       placeholder="450.00"
                       value={condition.amount}
@@ -470,6 +570,7 @@ export function SalesDocumentRuleComposerDialog({
                     />
                     <Input
                       aria-label="Order total currency"
+                      data-testid={`rule-condition-currency-${index}`}
                       placeholder="PLN"
                       maxLength={3}
                       value={condition.currency}
@@ -489,17 +590,126 @@ export function SalesDocumentRuleComposerDialog({
             ))}
           </div>
 
-          <Button
-            tone="secondary"
-            className="button--sm"
-            onClick={() => setConditions((prev) => [...prev, newConditionDraft()])}
-          >
-            + Add condition
-          </Button>
+          <div className="row" style={{ gap: 'var(--space-2)' }}>
+            <Button
+              tone="secondary"
+              className="button--sm"
+              data-testid="rule-add-condition"
+              onClick={() => setConditions((prev) => [...prev, newConditionDraft()])}
+            >
+              + Add condition
+            </Button>
+            <Button
+              tone="secondary"
+              className="button--sm"
+              data-testid="rule-test-sample-order"
+              onClick={() => setSampleOrderOpen((prev) => !prev)}
+            >
+              Test with a sample order
+            </Button>
+          </div>
           <p className="muted-text rule-composer-section__footnote">
             The underlying <span className="mono-text">field</span> is one closed, cross-country
             vocabulary — never a country-specific string.
           </p>
+
+          {sampleOrderOpen ? (
+            <div className="rule-composer-dry-run" data-testid="rule-test-sample-order-panel">
+              <p className="eyebrow" style={{ marginBottom: 6 }}>
+                Sample order
+              </p>
+              <div className="frame-grid frame-grid--2">
+                <Input
+                  aria-label="Sample order delivery country"
+                  placeholder="e.g. PL"
+                  value={sampleCountry}
+                  onChange={(event) => setSampleCountry(event.target.value.toUpperCase())}
+                />
+                <Select
+                  aria-label="Sample order buyer has a tax ID"
+                  value={sampleBuyerHasTaxId}
+                  onChange={(event) =>
+                    setSampleBuyerHasTaxId(event.target.value as 'unknown' | 'yes' | 'no')
+                  }
+                >
+                  <option value="unknown">Buyer tax ID: unknown</option>
+                  <option value="yes">Buyer tax ID: present</option>
+                  <option value="no">Buyer tax ID: none</option>
+                </Select>
+                <Input
+                  aria-label="Sample order total amount"
+                  inputMode="decimal"
+                  placeholder="450.00"
+                  value={sampleAmount}
+                  onChange={(event) => setSampleAmount(event.target.value)}
+                />
+                <Input
+                  aria-label="Sample order currency"
+                  placeholder="PLN"
+                  maxLength={3}
+                  value={sampleCurrency}
+                  onChange={(event) => setSampleCurrency(event.target.value.toUpperCase())}
+                />
+                <Select
+                  aria-label="Sample order pricing"
+                  value={sampleTaxTreatment}
+                  onChange={(event) =>
+                    setSampleTaxTreatment(event.target.value as 'inclusive' | 'exclusive')
+                  }
+                >
+                  <option value="inclusive">Gross-priced (VAT included)</option>
+                  <option value="exclusive">Net-priced (VAT excluded)</option>
+                </Select>
+              </div>
+              <p className="muted-text" style={{ marginTop: 'var(--space-1)' }}>
+                An amount-threshold condition can only be compared against a gross-priced order —
+                pick net-priced to see how the rule holds an order it cannot evaluate.
+              </p>
+
+              <div className="row" style={{ marginTop: 'var(--space-2)' }}>
+                <Button
+                  className="button--sm"
+                  data-testid="rule-run-sample-order-test"
+                  disabled={
+                    dryRun.isPending ||
+                    connectionId === '' ||
+                    sampleAmount.trim().length === 0 ||
+                    sampleCurrency.trim().length === 0 ||
+                    sampleCountry.trim().length === 0
+                  }
+                  onClick={handleDryRun}
+                >
+                  {dryRun.isPending ? 'Testing…' : 'Run test'}
+                </Button>
+              </div>
+
+              {dryRun.error ? (
+                <Alert tone="error" data-testid="rule-test-sample-order-error">
+                  {dryRun.error.message}
+                </Alert>
+              ) : null}
+
+              {dryRun.data ? (
+                <>
+                  <p data-testid="rule-test-sample-order-result" className="muted-text" style={{ marginTop: 'var(--space-2)' }}>
+                    {describeSalesDocumentDryRunResult(dryRun.data, (id) =>
+                      candidates.find((c) => c.id === id)?.name ?? null,
+                    )}
+                  </p>
+                  {/* #3194 review: the dry run evaluates the draft with
+                      `effectiveFrom: new Date(0)` / `effectiveTo: null` (the
+                      type's own docblock - "testing CONDITIONS, not the
+                      calendar"), so it can silently differ from what the
+                      saved rule with the window set above would actually do.
+                      One line closes that gap rather than leaving it implicit. */}
+                  <p className="muted-text" style={{ marginTop: 'var(--space-1)' }}>
+                    This test ignores the effective window above and checks the
+                    rule&apos;s conditions only.
+                  </p>
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         <section className="rule-composer-section">
@@ -513,9 +723,10 @@ export function SalesDocumentRuleComposerDialog({
               </label>
               <Select
                 id="sd-rule-doctype"
+                data-testid="rule-document-kind"
                 value={documentKind}
                 onChange={(event) => {
-                  setDocumentKind(event.target.value as SalesDocumentKind);
+                  setDocumentKind(event.target.value as ConcreteDocumentKind);
                   setConnectionId('');
                 }}
               >
@@ -529,6 +740,7 @@ export function SalesDocumentRuleComposerDialog({
               </label>
               <Select
                 id="sd-rule-connection"
+                data-testid="rule-connection"
                 value={connectionId}
                 onChange={(event) => setConnectionId(event.target.value)}
               >
@@ -541,6 +753,15 @@ export function SalesDocumentRuleComposerDialog({
               </Select>
             </div>
           </div>
+          {connectionRoleGap !== null ? (
+            <Alert
+              data-testid="rule-connection-role-gap"
+              tone="warning"
+              title="This connection has no role yet"
+            >
+              <p>{describeSalesDocumentConnectionRoleGap(connectionRoleGap)}</p>
+            </Alert>
+          ) : null}
         </section>
 
         <section className="rule-composer-section">
@@ -554,6 +775,7 @@ export function SalesDocumentRuleComposerDialog({
               </label>
               <Input
                 id="sd-rule-from"
+                data-testid="rule-effective-from"
                 type="date"
                 value={effectiveFrom}
                 onChange={(event) => setEffectiveFrom(event.target.value)}
@@ -565,6 +787,7 @@ export function SalesDocumentRuleComposerDialog({
               </label>
               <Input
                 id="sd-rule-to"
+                data-testid="rule-effective-to"
                 type="date"
                 value={effectiveTo}
                 onChange={(event) => setEffectiveTo(event.target.value)}
@@ -728,6 +951,7 @@ export function SalesDocumentRuleComposerDialog({
           <Button
             tone="secondary"
             className="button--sm"
+            data-testid="rule-cancel"
             onClick={() => {
               reset();
               onOpenChange(false);

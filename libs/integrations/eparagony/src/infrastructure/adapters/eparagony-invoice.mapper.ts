@@ -7,8 +7,11 @@
  * status read, and share no field, no rate vocabulary and no arithmetic.
  *
  * Two directions:
- *   - {@link composeInvoiceDocument} - neutral command -> `POST /documents` body,
- *     plus the same per-line figures in the neutral vocabulary.
+ *   - {@link composeInvoiceDocument} / {@link composeCorrectiveInvoiceDocument} -
+ *     neutral command -> `POST /documents` body, plus the same per-line figures
+ *     in the neutral vocabulary. The two share one arithmetic core,
+ *     `composeLineSet`, which a correction runs TWICE: over the original
+ *     ("before") lines and over the corrected ("after") ones.
  *   - {@link toRegulatoryClearanceResult} - document status -> neutral clearance.
  *
  * THE ARITHMETIC IS THE HARD PART, so it is stated here once.
@@ -59,7 +62,9 @@
  */
 import type {
   BuyerAddress,
+  CorrectionLine,
   InvoiceLine,
+  IssueCorrectionCommand,
   IssueInvoiceCommand,
   IssuedDocumentLineAmounts,
   IssuedDocumentSeller,
@@ -81,6 +86,10 @@ import {
   EPARAGONY_STATUS_CONFIRMED,
   EPARAGONY_STATUS_ERROR,
   EPARAGONY_VAT_CALCULATION_SUM_OF_RATES_NET,
+  type EparagonyCorrectedInvoiceMetadata,
+  type EparagonyCorrectingInvoiceMetadata,
+  type EparagonyCorrectiveInvoiceBody,
+  type EparagonyCreateCorrectiveInvoiceRequest,
   type EparagonyCreateInvoiceRequest,
   type EparagonyDocumentStatusResponse,
   type EparagonyEntityAddress,
@@ -169,6 +178,33 @@ export interface ComposedInvoiceDocument {
    * `command.lines`, which is the position the document carries.
    */
   documentLines: IssuedDocumentLineAmounts[];
+}
+
+export interface CreateCorrectiveInvoiceRequestInput {
+  command: IssueCorrectionCommand;
+  config: EparagonyConnectionConfig;
+  documentToken: string;
+  transactionToken: string;
+}
+
+/**
+ * What one corrective composition pass produces - the wire body, and the SAME
+ * per-line CORRECTED ("after") figures {@link composeInvoiceDocument} would
+ * report, keyed the same way `IssuedDocumentContent.lines` pairs against.
+ */
+export interface ComposedCorrectiveInvoiceDocument {
+  request: EparagonyCreateCorrectiveInvoiceRequest;
+  documentLines: IssuedDocumentLineAmounts[];
+}
+
+/** One rate-summarised composition of a line set, shared by an original and a correction. */
+interface ComposedLineSet {
+  lines: EparagonyInvoiceLine[];
+  documentLines: IssuedDocumentLineAmounts[];
+  /** Integer minor units. */
+  grossSaleValue: number;
+  netValueByTaxRate: Partial<Record<EparagonyInvoiceTaxRate, number>>;
+  taxValueByTaxRate: Partial<Record<EparagonyTaxedInvoiceRate, number>>;
 }
 
 /** One line priced in minor units and resolved onto a vendor rate code. */
@@ -261,68 +297,8 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
     );
   }
 
-  const priced = command.lines.map((line, index) => toPricedLine(line, index, command.orderId));
-  const groups = groupByRate(priced);
-
-  // Each line's share of its rate group's net, indexed by the line's ORIGINAL
-  // position. Filled by the rate-group pass and read back by the emit pass -
-  // which is the whole mechanism that keeps the ARITHMETIC per group while the
-  // emitted document stays in the order the command gave. Pre-filled rather
-  // than grown, so the emit pass reads a value for every line by construction.
-  const netByIndex = priced.map(() => 0);
-  const netValueByTaxRate: Partial<Record<EparagonyInvoiceTaxRate, number>> = {};
-  const taxValueByTaxRate: Partial<Record<EparagonyTaxedInvoiceRate, number>> = {};
-  let grossSaleValue = 0;
-
-  for (const [code, members] of groups) {
-    const fraction = invoiceTaxRateFraction(code);
-    const grossGroup = members.reduce((sum, member) => sum + member.grossMinor, 0);
-    // ONE rounding per group; net follows by subtraction so the two always add
-    // back up to the gross the buyer paid.
-    const taxGroup = fraction === 0 ? 0 : roundMinorUnits((grossGroup * fraction) / (1 + fraction));
-    const netGroup = grossGroup - taxGroup;
-
-    grossSaleValue += grossGroup;
-    netValueByTaxRate[code] = netGroup;
-    if (isTaxedInvoiceRate(code)) {
-      taxValueByTaxRate[code] = taxGroup;
-    }
-
-    const allocation = allocateGroupNet(members, netGroup, fraction);
-    members.forEach((member, memberIndex) => {
-      netByIndex[member.index] = allocation[memberIndex];
-    });
-  }
-
-  // Emitted in the order `command.lines` carries, NOT in rate-group order - see
-  // the module docblock. `documentLines` is built in the same pass from the same
-  // numbers, so the reported figures cannot drift from the transmitted ones.
-  const lines: EparagonyInvoiceLine[] = [];
-  const documentLines: IssuedDocumentLineAmounts[] = [];
-  for (const member of priced) {
-    const lineNet = netByIndex[member.index];
-    const netUnitPrice = resolveNetUnitPrice(lineNet, member.line.quantity);
-    // Required on every line, including a zero-rated one, where it is 0.
-    const taxValue = member.grossMinor - lineNet;
-
-    lines.push({
-      productOrServiceName: member.line.name,
-      quantity: member.quantity,
-      netUnitPrice,
-      netTotalLineValue: lineNet,
-      taxRate: member.code,
-      taxValue,
-    });
-    documentLines.push({
-      // 1-based position on the document, which is the position in
-      // `command.lines` - the key core pairs `IssuedDocumentContent.lines` on.
-      lineNumber: member.index + 1,
-      unitNet: toMajorUnits(netUnitPrice),
-      net: toMajorUnits(lineNet),
-      tax: toMajorUnits(taxValue),
-      gross: toMajorUnits(member.grossMinor),
-    });
-  }
+  const { lines, documentLines, grossSaleValue, netValueByTaxRate, taxValueByTaxRate } =
+    composeLineSet(command.lines, command.orderId);
 
   const metadata: EparagonyInvoiceMetadata = {
     vatCalculationMethod: EPARAGONY_VAT_CALCULATION_SUM_OF_RATES_NET,
@@ -398,6 +374,271 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
     request: { posId: config.posId, documentToken, transactionToken, eInvoice },
     documentLines,
   };
+}
+
+/**
+ * Compose the `POST /documents` body for a `PDVatCorrectiveInvoice` - the
+ * vendor's `eCorrectiveInvoice` document kind (#3193).
+ *
+ * The command's `originalDocument` snapshot is the ONLY source of the original
+ * document's facts, per its own contract (#1297): it is caller-assembled from
+ * the issuance-time line snapshot, so it reflects the document AS ISSUED rather
+ * than the order's possibly-edited current state. Nothing here re-derives those
+ * facts from anywhere else.
+ *
+ * The correction's own composed lines are the ORIGINAL lines with each
+ * {@link CorrectionLine}'s deltas applied - a line not named by any correction
+ * entry carries through UNCHANGED, because `correctingMetadata` and `metadata`
+ * state the document's full post-correction totals rather than a diff.
+ *
+ * @throws {EparagonyConfigException} when the correction cannot be expressed at
+ * all: no original-document snapshot, a currency that would require an exchange
+ * rate, a connection missing the seller identity a correction requires
+ * (`merchantTIN` AND `merchantName` AND a complete `merchantAddress` - all
+ * three, unlike a plain invoice where the latter two are optional), an original
+ * with no usable legal number or issue date, an unresolvable rate, a
+ * non-invoiceable amount, or a correction line naming a position the original
+ * document does not have.
+ */
+export function composeCorrectiveInvoiceDocument(
+  input: CreateCorrectiveInvoiceRequestInput,
+): ComposedCorrectiveInvoiceDocument {
+  const { command, config, documentToken, transactionToken } = input;
+  const orderId = command.orderId;
+
+  const originalDocument = command.originalDocument;
+  if (originalDocument === undefined) {
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot correct order ${orderId}: no original-document snapshot was supplied`,
+      'This document cannot be corrected: OpenLinker holds no reconstructable snapshot of the original invoice.',
+    );
+  }
+
+  const currency = originalDocument.currency.trim().toUpperCase();
+  if (currency !== SETTLEMENT_CURRENCY) {
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot correct order ${orderId}: currency ${currency} would require an ` +
+        `exchange rate this adapter has no authoritative source for`,
+      // "unsupported currency" is one of core's CURRENCY_REJECTION_MARKERS, so
+      // this refusal reaches the operator as `invalid-currency` rather than as
+      // the generic provider-rejected copy - the same wording the issue path uses.
+      `Unsupported currency for this invoicing connection: it issues in ${SETTLEMENT_CURRENCY} only.`,
+    );
+  }
+
+  const merchantTIN = readNonEmpty(config.merchantTIN);
+  if (merchantTIN === null) {
+    throw new EparagonyConfigException(
+      // THE REMEDY IS IN THE MESSAGE - see the note above `composeInvoiceDocument`.
+      `eparagony.pl cannot correct order ${orderId}: the connection declares no seller tax ` +
+        `number, which is mandatory on every correction. Set it on the connection and re-issue`,
+      // "tax NUMBER", never "tax id", for the reason the issue path states: core's
+      // `TAX_ID_REJECTION_MARKERS` would classify a missing CONNECTION field as a
+      // problem with the BUYER's data.
+      'This connection has no seller tax number set, which every correction requires. Set it on the connection and re-issue.',
+    );
+  }
+
+  // `merchantName` / `merchantAddress` are OPTIONAL on a plain invoice - the
+  // vendor falls back to the account's own registered identity - but REQUIRED on
+  // `correctingMetadata`, which carries no such fallback. Refusing here rather
+  // than sending an incomplete body turns an opaque vendor validation code into
+  // a refusal that names the connection field to fill in.
+  const merchantName = readNonEmpty(config.merchantName);
+  if (merchantName === null) {
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot correct order ${orderId}: the connection declares no seller name, ` +
+        `which every correction requires. Set it on the connection and re-issue`,
+      'This connection has no seller name set, which every correction requires. Set it on the connection and re-issue.',
+    );
+  }
+  // Read through the SAME completeness check the issue path uses, so a
+  // half-filled address (reachable through the raw JSON editor, and through any
+  // connection configured before the shape validator shipped) reads as absent
+  // rather than rendering "undefined undefined" onto a fiscal document.
+  const merchantAddress = readSellerEntityAddress(config.merchantAddress);
+  if (merchantAddress === null) {
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot correct order ${orderId}: the connection declares no complete seller ` +
+        `address, which every correction requires. Set it on the connection and re-issue`,
+      'This connection has no complete seller address set, which every correction requires. Set it on the connection and re-issue.',
+    );
+  }
+
+  const originalDocumentNumber = readNonEmpty(originalDocument.documentNumber);
+  if (originalDocumentNumber === null) {
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot correct order ${orderId}: the original document carries no legal number`,
+      'The document being corrected has no legal number on file, so the correction cannot reference it.',
+    );
+  }
+  // Shape-checked, never reformatted - the same treatment `saleEndDate` gets on
+  // the issue path. A value the vendor would refuse is better refused here, where
+  // the message can name the document rather than the field.
+  if (!CALENDAR_DATE_PATTERN.test(originalDocument.issueDate)) {
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot correct order ${orderId}: the original document's issue date ` +
+        `"${originalDocument.issueDate}" is not a YYYY-MM-DD calendar date`,
+      'The document being corrected has no usable issue date on file, so the correction cannot reference it.',
+    );
+  }
+
+  if (originalDocument.lines.length === 0) {
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot correct order ${orderId}: the original document has no lines`,
+      'The document being corrected has no lines, so there is nothing to correct.',
+    );
+  }
+  if (command.lines.length === 0) {
+    throw new EparagonyConfigException(
+      `eparagony.pl cannot correct order ${orderId}: the correction names no lines`,
+      'The correction names no lines, so there is nothing to change.',
+    );
+  }
+
+  const correctedFinalLines = applyCorrectionLines(originalDocument.lines, command.lines, orderId);
+
+  // Both halves go through the identical rule, which is what keeps the "before"
+  // and "after" totals comparable rather than merely adjacent.
+  const original = composeLineSet(originalDocument.lines, orderId);
+  const corrected = composeLineSet(correctedFinalLines, orderId);
+
+  const consumerName = originalDocument.buyer.name;
+  const consumerAddress = toEntityAddress(originalDocument.buyer.address, orderId);
+
+  const correctedMetadata: EparagonyCorrectedInvoiceMetadata = {
+    invoiceNumber: originalDocumentNumber,
+    invoiceDate: originalDocument.issueDate,
+    grossSaleValue: original.grossSaleValue,
+  };
+
+  const correctingMetadata: EparagonyCorrectingInvoiceMetadata = {
+    merchantTIN,
+    merchantName,
+    merchantAddress,
+    consumerName,
+    consumerAddress,
+    grossSaleValue: corrected.grossSaleValue,
+  };
+
+  const metadata: EparagonyInvoiceMetadata = {
+    vatCalculationMethod: EPARAGONY_VAT_CALCULATION_SUM_OF_RATES_NET,
+    calculationValidation: EPARAGONY_CALCULATION_VALIDATION_NONE,
+    grossSaleValue: corrected.grossSaleValue,
+    merchantTIN,
+    merchantName,
+    merchantAddress,
+    consumerName,
+    consumerAddress,
+    netValueByTaxRate: corrected.netValueByTaxRate,
+    taxValueByTaxRate: corrected.taxValueByTaxRate,
+    currency: SETTLEMENT_CURRENCY,
+    orderId,
+  };
+
+  // The buyer's own tax number travels verbatim off the ISSUED snapshot, never
+  // re-read from the order (ADR-073 decision 5, and #1297's whole point).
+  const consumerTIN = readNonEmpty(originalDocument.buyer.taxId?.value);
+  if (consumerTIN !== null) {
+    metadata.consumerTIN = consumerTIN;
+  }
+
+  // The CORRECTION's own number when OpenLinker allocated one - never the
+  // original's, which lives only on `correctedMetadata`. This adapter is not a
+  // `DocumentNumberConsumer`, so today the vendor generates it.
+  const documentNumber = readNonEmpty(command.documentNumber);
+  if (documentNumber !== null) {
+    metadata.invoiceNumber = documentNumber;
+  }
+
+  const invoiceDate = toRegimeCalendarDate(command.issuedAt);
+  if (invoiceDate !== null) {
+    metadata.invoiceDate = invoiceDate;
+  }
+
+  const eCorrectiveInvoice: EparagonyCorrectiveInvoiceBody = {
+    invoiceType: EPARAGONY_INVOICE_TYPE_VAT,
+    metadata,
+    correctedMetadata,
+    correctingMetadata,
+    // Optional on the vendor's type and sent anyway: the two summaries state
+    // totals, and without the lines an operator reading the issued correction
+    // cannot see WHICH position moved.
+    correctedLines: original.lines,
+    correctingLines: corrected.lines,
+  };
+
+  const reason = readNonEmpty(command.reason);
+  if (reason !== null) {
+    eCorrectiveInvoice.correctionReason = reason;
+  }
+  if (config.eInvoicingHubEnabled === true) {
+    // On the `eCorrectiveInvoice` object ITSELF, exactly as the hub marker sits
+    // on `eInvoice` - not inside `extensions`.
+    eCorrectiveInvoice.eInvoicingHub = EPARAGONY_EINVOICING_HUB_KSEF;
+  }
+
+  return {
+    request: { posId: config.posId, documentToken, transactionToken, eCorrectiveInvoice },
+    documentLines: corrected.documentLines,
+  };
+}
+
+/**
+ * The original ("before") lines with each {@link CorrectionLine}'s delta
+ * applied, in the original order and at the original 1-based positions. A line
+ * no correction entry names carries through UNCHANGED - the vendor's
+ * `correctingMetadata` states the document's full post-correction totals, so
+ * every original line must be represented in the "after" state whether or not
+ * it changed.
+ *
+ * Never mutates the caller-assembled snapshot: every changed line is a fresh
+ * object, which matters because core persists that same array.
+ *
+ * @throws {EparagonyConfigException} when a correction entry names a position
+ * outside `[1, originalLines.length]`, or the same position more than once -
+ * either would silently misattribute a delta to the wrong line, or drop it.
+ */
+function applyCorrectionLines(
+  originalLines: readonly InvoiceLine[],
+  corrections: readonly CorrectionLine[],
+  orderId: string,
+): InvoiceLine[] {
+  const byLineNumber = new Map<number, CorrectionLine>();
+  for (const correction of corrections) {
+    if (
+      !Number.isInteger(correction.originalLineNumber) ||
+      correction.originalLineNumber < 1 ||
+      correction.originalLineNumber > originalLines.length
+    ) {
+      throw new EparagonyConfigException(
+        `eparagony.pl cannot correct order ${orderId}: correction line number ` +
+          `${String(correction.originalLineNumber)} does not name a line on the original document ` +
+          `(it has ${String(originalLines.length)} line(s))`,
+        'The correction refers to a line that does not exist on the original document.',
+      );
+    }
+    if (byLineNumber.has(correction.originalLineNumber)) {
+      throw new EparagonyConfigException(
+        `eparagony.pl cannot correct order ${orderId}: correction line number ` +
+          `${String(correction.originalLineNumber)} is named more than once`,
+        'The correction names the same original line more than once.',
+      );
+    }
+    byLineNumber.set(correction.originalLineNumber, correction);
+  }
+
+  return originalLines.map((line, index) => {
+    const correction = byLineNumber.get(index + 1);
+    if (correction === undefined) {
+      return line;
+    }
+    return {
+      ...line,
+      quantity: correction.newQuantity ?? line.quantity,
+      unitPriceGross: correction.newUnitPriceGross ?? line.unitPriceGross,
+    };
+  });
 }
 
 /**
@@ -583,6 +824,85 @@ export function readKsefInvoice(
 // ---------------------------------------------------------------------------
 // Lines and money
 // ---------------------------------------------------------------------------
+
+/**
+ * The shared arithmetic core of {@link composeInvoiceDocument} AND
+ * {@link composeCorrectiveInvoiceDocument} - price every line, group by rate,
+ * split gross into net + tax PER GROUP (never per line, see the module
+ * docblock), then emit the wire lines and the neutral `documentLines` in the
+ * order the input carries.
+ *
+ * A correction calls this TWICE - once over the original ("before") lines, once
+ * over the corrected ("after") lines - so both halves of that document are
+ * computed by the identical rule and their totals are comparable rather than
+ * merely adjacent.
+ */
+function composeLineSet(lines: readonly InvoiceLine[], orderId: string): ComposedLineSet {
+  const priced = lines.map((line, index) => toPricedLine(line, index, orderId));
+  const groups = groupByRate(priced);
+
+  // Each line's share of its rate group's net, indexed by the line's ORIGINAL
+  // position. Filled by the rate-group pass and read back by the emit pass -
+  // which is the whole mechanism that keeps the ARITHMETIC per group while the
+  // emitted document stays in the order the input gave. Pre-filled rather than
+  // grown, so the emit pass reads a value for every line by construction.
+  const netByIndex = priced.map(() => 0);
+  const netValueByTaxRate: Partial<Record<EparagonyInvoiceTaxRate, number>> = {};
+  const taxValueByTaxRate: Partial<Record<EparagonyTaxedInvoiceRate, number>> = {};
+  let grossSaleValue = 0;
+
+  for (const [code, members] of groups) {
+    const fraction = invoiceTaxRateFraction(code);
+    const grossGroup = members.reduce((sum, member) => sum + member.grossMinor, 0);
+    // ONE rounding per group; net follows by subtraction so the two always add
+    // back up to the gross the buyer paid.
+    const taxGroup = fraction === 0 ? 0 : roundMinorUnits((grossGroup * fraction) / (1 + fraction));
+    const netGroup = grossGroup - taxGroup;
+
+    grossSaleValue += grossGroup;
+    netValueByTaxRate[code] = netGroup;
+    if (isTaxedInvoiceRate(code)) {
+      taxValueByTaxRate[code] = taxGroup;
+    }
+
+    const allocation = allocateGroupNet(members, netGroup, fraction);
+    members.forEach((member, memberIndex) => {
+      netByIndex[member.index] = allocation[memberIndex];
+    });
+  }
+
+  // Emitted in the order `lines` carries, NOT in rate-group order - see the
+  // module docblock. `documentLines` is built in the same pass from the same
+  // numbers, so the reported figures cannot drift from the transmitted ones.
+  const wireLines: EparagonyInvoiceLine[] = [];
+  const documentLines: IssuedDocumentLineAmounts[] = [];
+  for (const member of priced) {
+    const lineNet = netByIndex[member.index];
+    const netUnitPrice = resolveNetUnitPrice(lineNet, member.line.quantity);
+    // Required on every line, including a zero-rated one, where it is 0.
+    const taxValue = member.grossMinor - lineNet;
+
+    wireLines.push({
+      productOrServiceName: member.line.name,
+      quantity: member.quantity,
+      netUnitPrice,
+      netTotalLineValue: lineNet,
+      taxRate: member.code,
+      taxValue,
+    });
+    documentLines.push({
+      // 1-based position on the document, which is the position in `lines` -
+      // the key core pairs `IssuedDocumentContent.lines` on.
+      lineNumber: member.index + 1,
+      unitNet: toMajorUnits(netUnitPrice),
+      net: toMajorUnits(lineNet),
+      tax: toMajorUnits(taxValue),
+      gross: toMajorUnits(member.grossMinor),
+    });
+  }
+
+  return { lines: wireLines, documentLines, grossSaleValue, netValueByTaxRate, taxValueByTaxRate };
+}
 
 function toPricedLine(line: InvoiceLine, index: number, orderId: string): PricedInvoiceLine {
   const code = resolveInvoiceTaxRateCode(line.taxRate);
