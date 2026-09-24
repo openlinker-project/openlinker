@@ -190,6 +190,13 @@ export class InventoryQueryService implements IInventoryQueryService {
     return this.inventoryRepository.findAvailabilityByVariantIds(variantIds);
   }
 
+  async findBinCodesByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<ReadonlyMap<string, string>> {
+    if (variantIds.length === 0) return new Map();
+    return this.inventoryRepository.findBinCodesByVariantIds(variantIds);
+  }
+
   async getProductStockAggregates(
     productIds: readonly string[]
   ): Promise<readonly ProductStockAggregate[]> {

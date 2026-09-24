@@ -93,6 +93,7 @@ interface Harness {
    * against a field that no longer exists.
    */
   lastFilter: () => FulfillmentWorkListFilter;
+  parcels: { claimParcel: jest.Mock };
 }
 
 function harness(options: {
@@ -127,6 +128,8 @@ function harness(options: {
       .mockResolvedValue({ adapterKey: options.adapterKey ?? OMS_ADAPTER_KEY }),
   } as unknown as IIntegrationsService;
 
+  const parcels = { claimParcel: jest.fn() };
+
   // The executor resolution moved out of this service in #2418, so that story
   // D2's refusal can apply the SAME rule. It is constructed here rather than
   // stubbed: the rules it carries (active, capability enabled, registry-resolved
@@ -135,7 +138,8 @@ function harness(options: {
   const service = new BenchWorkService(
     new BenchExecutorResolver(connections, integrations),
     { list, get: jest.fn(), applyAction: jest.fn(), listSiblingWorkIds: siblings } as never,
-    { findByIds } as unknown as IOrderRecordService
+    { findByIds } as unknown as IOrderRecordService,
+    parcels as never
   );
 
   return {
@@ -147,6 +151,7 @@ function harness(options: {
       if (captured === undefined) throw new Error('listWorks was never called');
       return captured;
     },
+    parcels,
   };
 }
 
@@ -468,7 +473,8 @@ describe('BenchWorkService (#2416)', () => {
           applyAction: jest.fn(),
           listSiblingWorkIds: jest.fn().mockResolvedValue(new Map()),
         } as never,
-        { findByIds: jest.fn().mockResolvedValue([orderRecord()]) } as unknown as IOrderRecordService
+        { findByIds: jest.fn().mockResolvedValue([orderRecord()]) } as unknown as IOrderRecordService,
+        { claimParcel: jest.fn() } as never
       );
 
       const view = await service.listBenchWork('viewer-1');
@@ -596,6 +602,184 @@ describe('BenchWorkService (#2416)', () => {
 
       expect(row.state).toBe('held');
       expect(row.supportedActions).toEqual(['release_hold']);
+    });
+  });
+
+  describe('listPackedToday (#3413)', () => {
+    it('projects the page, newest-closed first, and reports the reference/buyer name', async () => {
+      const older = workView({
+        id: 'w-older',
+        parcelClosedAt: new Date('2026-09-04T09:00:00Z'),
+        packedByUserId: 'user-1',
+      });
+      const newer = workView({
+        id: 'w-newer',
+        orderId: 'ol_order_2',
+        parcelClosedAt: new Date('2026-09-04T14:00:00Z'),
+        packedByUserId: 'user-2',
+      });
+      const { service } = harness({
+        page: { works: [older, newer], total: 2 },
+        orders: [
+          orderRecord({ internalOrderId: 'ol_order_1' }),
+          orderRecord({ internalOrderId: 'ol_order_2', orderSnapshot: { orderNumber: 'OL-9002' } }),
+        ],
+      });
+
+      const result = await service.listPackedToday(
+        new Date('2026-09-04T00:00:00Z'),
+        new Date('2026-09-05T00:00:00Z')
+      );
+
+      expect(result.total).toBe(2);
+      expect(result.works.map((w) => w.workId)).toEqual(['w-newer', 'w-older']);
+      expect(result.works[0].closedAt).toBe('2026-09-04T14:00:00.000Z');
+      expect(result.works[0].orderReference).toBe('OL-9002');
+      expect(result.works[1].packedByUserId).toBe('user-1');
+    });
+
+    it('reports an empty list rather than calling the worklist when there is no packing executor', async () => {
+      const { service, list } = harness({ connections: [] });
+
+      const result = await service.listPackedToday(new Date(), new Date());
+
+      expect(result).toEqual({ works: [], total: 0 });
+      expect(list).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getMetrics (#3413)', () => {
+    it('reads packedToday, packedYesterday (SAME elapsed window) and toPackAllBenches from three scoped counts', async () => {
+      const calls: unknown[] = [];
+      const list = jest.fn((filter) => {
+        calls.push(filter);
+        return Promise.resolve({ works: [], total: calls.length * 10, limit: 1, offset: 0 });
+      });
+
+      const connections: IConnectionService = {
+        list: jest.fn().mockResolvedValue([connection()]),
+      } as unknown as IConnectionService;
+      const integrations: IIntegrationsService = {
+        resolveAdapterMetadata: jest.fn().mockResolvedValue({ adapterKey: OMS_ADAPTER_KEY }),
+      } as unknown as IIntegrationsService;
+
+      const service = new BenchWorkService(
+        new BenchExecutorResolver(connections, integrations),
+        { list, get: jest.fn(), applyAction: jest.fn(), listSiblingWorkIds: jest.fn() } as never,
+        { findByIds: jest.fn() } as unknown as IOrderRecordService,
+        { claimParcel: jest.fn() } as never
+      );
+
+      // Built from LOCAL date components rather than a fixed UTC string — the
+      // implementation is deliberately server-local (no per-bench timezone
+      // concept), so the expectation is computed the same way rather than
+      // assuming the test runner's own timezone is UTC.
+      const now = new Date();
+      now.setHours(14, 30, 0, 0);
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+      const yesterdayStart = new Date(todayStart);
+      yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+      const yesterdayCutoff = new Date(yesterdayStart);
+      yesterdayCutoff.setHours(14, 30, 0, 0);
+
+      const result = await service.getMetrics(now);
+
+      expect(result).toEqual({ packedToday: 10, packedYesterday: 20, toPackAllBenches: 30 });
+
+      const [todayFilter, yesterdayFilter, backlogFilter] = calls as Array<
+        Record<string, unknown>
+      >;
+      expect(todayFilter.parcelClosedAfter).toEqual(todayStart);
+      expect(todayFilter.parcelClosedBefore).toEqual(now);
+      // Same ELAPSED window on yesterday, not the whole day — 14:30 of
+      // elapsed time, applied to yesterday's midnight.
+      expect(yesterdayFilter.parcelClosedAfter).toEqual(yesterdayStart);
+      expect(yesterdayFilter.parcelClosedBefore).toEqual(yesterdayCutoff);
+      // The backlog count never touches parcelClosedAfter/Before, and
+      // excludes `cancelled` from the status set.
+      expect(backlogFilter.parcelClosedAfter).toBeUndefined();
+      expect(backlogFilter.status).not.toContain('cancelled');
+      expect(backlogFilter.parcelClosed).toBe(false);
+    });
+
+    it('reports all-zero rather than calling the worklist when there is no packing executor', async () => {
+      const { service, list } = harness({ connections: [] });
+
+      const result = await service.getMetrics(new Date());
+
+      expect(result).toEqual({ packedToday: 0, packedYesterday: 0, toPackAllBenches: 0 });
+      expect(list).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('claimNext (#3412)', () => {
+    it('delegates the top eligible row to claimParcel', async () => {
+      const { service, parcels } = harness({
+        page: { works: [workView({ id: 'w-top' })], total: 1 },
+      });
+      parcels.claimParcel.mockResolvedValue({
+        outcome: 'claimed',
+        reason: null,
+        parcel: { workId: 'w-top' },
+      });
+
+      const result = await service.claimNext('viewer-1');
+
+      expect(parcels.claimParcel).toHaveBeenCalledWith('w-top', 'viewer-1');
+      expect(result).toEqual({ outcome: 'claimed', parcel: { workId: 'w-top' } });
+    });
+
+    it('skips a row already claimed by the viewer, in favour of the next eligible one', async () => {
+      const { service, parcels } = harness({
+        page: {
+          works: [
+            workView({ id: 'w-mine', assignedToUserId: 'viewer-1', selfServeEligible: false }),
+            workView({ id: 'w-next' }),
+          ],
+          total: 2,
+        },
+      });
+      parcels.claimParcel.mockResolvedValue({
+        outcome: 'claimed',
+        reason: null,
+        parcel: { workId: 'w-next' },
+      });
+
+      await service.claimNext('viewer-1');
+
+      expect(parcels.claimParcel).toHaveBeenCalledWith('w-next', 'viewer-1');
+    });
+
+    it('reports nothing-to-claim when every row is locked to someone else', async () => {
+      const { service, parcels } = harness({
+        page: {
+          works: [
+            workView({ id: 'w-locked', assignedToUserId: 'user-9', selfServeEligible: false }),
+          ],
+          total: 1,
+        },
+      });
+
+      const result = await service.claimNext('viewer-1');
+
+      expect(result).toEqual({ outcome: 'nothing-to-claim' });
+      expect(parcels.claimParcel).not.toHaveBeenCalled();
+    });
+
+    it('reports nothing-to-claim when the delegated claim loses the race and is refused', async () => {
+      const { service, parcels } = harness({
+        page: { works: [workView({ id: 'w-top' })], total: 1 },
+      });
+      parcels.claimParcel.mockResolvedValue({
+        outcome: 'refused',
+        reason: 'not-claimable',
+        parcel: { workId: 'w-top' },
+      });
+
+      const result = await service.claimNext('viewer-1');
+
+      expect(result).toEqual({ outcome: 'nothing-to-claim' });
     });
   });
 });

@@ -173,6 +173,20 @@ const PACKER_GRANTED_ROUTES: readonly string[] = [
   // `getParcel` scopes it. Discloses only another packer's user id, and only
   // while that packer's own ping is fresh.
   'BenchParcelController.pingPresence',
+  // #3411. A read: the verification ledger for one parcel, scoped exactly as
+  // getParcel scopes it. Carries no buyer PII of its own beyond what
+  // getParcel already discloses (a product name per entry).
+  'BenchParcelController.getActivity',
+  // #3412. A self-claim: can only ever assign the caller. Scoped exactly as
+  // getParcel scopes it, plus the ADR-074 lock.
+  'BenchParcelController.claimParcel',
+  // #3412. Server-picked "whatever's next" over the same sorted, filtered
+  // worklist listBenchWork returns; delegates to claimParcel for the actual
+  // write and re-check.
+  'BenchWorkController.claimNext',
+  // #3413. Two reads, scoped exactly as listBenchWork scopes them.
+  'BenchWorkController.listPackedToday',
+  'BenchWorkController.getMetrics',
 
   // #2418, Surface F. The paper for THIS parcel, and the boxes that cannot go
   // out. `getDocuments` and `downloadInvoice` take a WORK id and no invoice id,

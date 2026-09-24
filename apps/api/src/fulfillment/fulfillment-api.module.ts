@@ -12,11 +12,16 @@
  */
 import { Module } from '@nestjs/common';
 import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
+import { OrdersModule } from '@openlinker/core/orders';
 
 import { FulfillmentWorkController } from './http/fulfillment-work.controller';
 
 @Module({
-  imports: [CoreFulfillmentModule],
+  // OrdersModule (#3425, epic #3401): the order join — masked buyer name,
+  // dispatch deadline, carrier — happens HERE, never inside
+  // CoreFulfillmentModule, which is a registered zero-sibling-edge leaf
+  // (ADR-053) forbidden from reading `orders`.
+  imports: [CoreFulfillmentModule, OrdersModule],
   controllers: [FulfillmentWorkController],
 })
 export class FulfillmentApiModule {}

@@ -56,6 +56,7 @@ import type {
 } from '../../domain/ports/fulfillment-work-repository.port';
 import {
   requiredUnitsForLine,
+  type ParcelVerificationEvent,
   type ParcelVerificationLineState,
   type ParcelVerificationState,
   type ReopenParcelInput,
@@ -270,6 +271,10 @@ export class FulfillmentVerificationService implements IFulfillmentVerificationS
         state: this.toState(work, counts),
       } as const;
     });
+  }
+
+  async listVerifications(workId: string): Promise<readonly ParcelVerificationEvent[]> {
+    return this.works.listVerifications(workId);
   }
 
   /** Every line full. An empty work is deliberately NOT complete — see below. */

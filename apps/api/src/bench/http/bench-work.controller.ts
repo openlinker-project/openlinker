@@ -28,15 +28,26 @@
  *
  * @module apps/api/src/bench/http
  */
-import { Controller, Get, Inject } from '@nestjs/common';
+import { Controller, Get, Inject, Post, UnauthorizedException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import {
   BENCH_WORK_SERVICE_TOKEN,
   type IBenchWorkService,
 } from '../application/interfaces/bench-work.service.interface';
-import type { BenchWorkListView } from '../application/types/bench-work.types';
-import { BenchWorkListResponseDto } from './dto/bench-work-response.dto';
+import type { BenchClaimNextResultView } from '../application/types/bench-parcel.types';
+import type {
+  BenchMetricsView,
+  BenchPackedTodayListView,
+  BenchWorkListView,
+} from '../application/types/bench-work.types';
+import { toParcelResponseDto } from './dto/bench-parcel.mapper';
+import { BenchClaimNextResultResponseDto } from './dto/bench-parcel-response.dto';
+import {
+  BenchMetricsResponseDto,
+  BenchPackedTodayListResponseDto,
+  BenchWorkListResponseDto,
+} from './dto/bench-work-response.dto';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../auth/auth.types';
@@ -65,6 +76,84 @@ export class BenchWorkController {
     @CurrentUser() actor: AuthenticatedUser
   ): Promise<BenchWorkListResponseDto> {
     return this.toDto(await this.bench.listBenchWork(actor.id));
+  }
+
+  @Post('work/claim-next')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Take next task',
+    description:
+      'Server-picked "whatever\'s next" — the top eligible row from the SAME sorted, filtered ' +
+      'worklist listBenchWork returns, claimed on the caller\'s behalf. `nothing-to-claim` is an ' +
+      'ordinary outcome, not an error: the queue can legitimately have nothing this packer may ' +
+      'take right now.',
+  })
+  @ApiResponse({ status: 201, type: BenchClaimNextResultResponseDto })
+  @ApiResponse({ status: 401, description: 'A claim must name the packer' })
+  async claimNext(
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<BenchClaimNextResultResponseDto> {
+    if (!user?.id) {
+      throw new UnauthorizedException('A claim must name the packer');
+    }
+    return this.toClaimNextDto(await this.bench.claimNext(user.id));
+  }
+
+  @Get('work/packed-today')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'Parcels this bench has closed today',
+    description:
+      "The 'Packed today' tab — newest-closed first, server's own day boundary (this product has " +
+      'no per-bench timezone concept, exactly as it has no per-bench location).',
+  })
+  @ApiResponse({ status: 200, type: BenchPackedTodayListResponseDto })
+  async listPackedToday(): Promise<BenchPackedTodayListResponseDto> {
+    const { dayStart, dayEnd } = todayBounds(new Date());
+    return this.toPackedTodayDto(await this.bench.listPackedToday(dayStart, dayEnd));
+  }
+
+  @Get('metrics')
+  @Roles('admin', 'operator', 'packer')
+  @ApiOperation({
+    summary: 'The bench metric row',
+    description:
+      "Packed-today count, its trend against the SAME elapsed portion of yesterday, and the " +
+      "outstanding backlog across every connection routed to this bench's packing executor.",
+  })
+  @ApiResponse({ status: 200, type: BenchMetricsResponseDto })
+  async getMetrics(): Promise<BenchMetricsResponseDto> {
+    return this.toMetricsDto(await this.bench.getMetrics(new Date()));
+  }
+
+  private toPackedTodayDto(view: BenchPackedTodayListView): BenchPackedTodayListResponseDto {
+    return {
+      works: view.works.map((row) => ({
+        workId: row.workId,
+        orderReference: row.orderReference,
+        buyerName: row.buyerName,
+        parcelIndex: row.parcelIndex,
+        parcelTotal: row.parcelTotal,
+        closedAt: row.closedAt,
+        packedByUserId: row.packedByUserId,
+      })),
+      total: view.total,
+    };
+  }
+
+  private toMetricsDto(view: BenchMetricsView): BenchMetricsResponseDto {
+    return {
+      packedToday: view.packedToday,
+      packedYesterday: view.packedYesterday,
+      toPackAllBenches: view.toPackAllBenches,
+    };
+  }
+
+  private toClaimNextDto(view: BenchClaimNextResultView): BenchClaimNextResultResponseDto {
+    if (view.outcome === 'nothing-to-claim') {
+      return { outcome: 'nothing-to-claim', parcel: null };
+    }
+    return { outcome: 'claimed', parcel: toParcelResponseDto(view.parcel) };
   }
 
   private toDto(view: BenchWorkListView): BenchWorkListResponseDto {
@@ -101,4 +190,20 @@ export class BenchWorkController {
       total: view.total,
     };
   }
+}
+
+/**
+ * The server's own local-day boundary for `date` (#3413).
+ *
+ * A pure function of its argument — never reads the system clock itself —
+ * so the controller's own `new Date()` call is the ONE place either route
+ * touches the clock, and a test can pin the day boundary by constructing a
+ * fixed `Date` and calling this directly.
+ */
+function todayBounds(date: Date): { dayStart: Date; dayEnd: Date } {
+  const dayStart = new Date(date);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+  return { dayStart, dayEnd };
 }

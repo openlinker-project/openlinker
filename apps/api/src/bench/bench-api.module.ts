@@ -21,6 +21,7 @@
  */
 import { Module } from '@nestjs/common';
 import { FulfillmentModule as CoreFulfillmentModule } from '@openlinker/core/fulfillment';
+import { InventoryModule } from '@openlinker/core/inventory';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { OrdersModule } from '@openlinker/core/orders';
 import { ProductsModule } from '@openlinker/core/products';
@@ -48,6 +49,7 @@ import { BenchWorkController } from './http/bench-work.controller';
     InvoicingModule,
     ShippingModule,
     IntegrationsModule,
+    InventoryModule,
   ],
   controllers: [BenchWorkController, BenchParcelController, BenchDocumentsController],
   providers: [

@@ -67,8 +67,16 @@ import {
 import { readBuyerName, readOrderReference } from '../bench-order-facts';
 import { compareBenchWork } from '../bench-work-ordering';
 import { BenchExecutorResolver } from './bench-executor.resolver';
+import {
+  BENCH_PARCEL_SERVICE_TOKEN,
+  type IBenchParcelService,
+} from '../interfaces/bench-parcel.service.interface';
 import type { IBenchWorkService } from '../interfaces/bench-work.service.interface';
+import type { BenchClaimNextResultView } from '../types/bench-parcel.types';
 import type {
+  BenchMetricsView,
+  BenchPackedTodayListView,
+  BenchPackedTodayRowView,
   BenchRoutingReadiness,
   BenchWorkListView,
   BenchWorkState,
@@ -100,7 +108,9 @@ export class BenchWorkService implements IBenchWorkService {
     @Inject(FULFILLMENT_WORKLIST_SERVICE_TOKEN)
     private readonly worklist: IFulfillmentWorklistService,
     @Inject(ORDER_RECORD_SERVICE_TOKEN)
-    private readonly orders: IOrderRecordService
+    private readonly orders: IOrderRecordService,
+    @Inject(BENCH_PARCEL_SERVICE_TOKEN)
+    private readonly parcels: IBenchParcelService
   ) {}
 
   async listBenchWork(viewerId: string): Promise<BenchWorkListView> {
@@ -127,6 +137,123 @@ export class BenchWorkService implements IBenchWorkService {
       executorName: executors.length === 1 ? executors[0].name : null,
       routing: { ready: true },
       total,
+    };
+  }
+
+  async claimNext(viewerId: string): Promise<BenchClaimNextResultView> {
+    // Reuses listBenchWork's OWN sort and eligibility — no second ordering to
+    // keep in sync with compareBenchWork, and `claimable` is the same
+    // predicate `claimParcel` re-checks at write time.
+    const { works } = await this.listBenchWork(viewerId);
+    const top = works.find(
+      (row) => row.state === 'packable' && row.claimable && row.assignmentState !== 'mine'
+    );
+    if (top === undefined) return { outcome: 'nothing-to-claim' };
+
+    // Delegates to claimParcel for the write AND the re-check: the list
+    // snapshot above can be stale by the time this runs (another packer
+    // claimed it first), so the actual eligibility decision is made fresh,
+    // never trusted from the row that picked the candidate.
+    const result = await this.parcels.claimParcel(top.workId, viewerId);
+    if (result.outcome === 'refused') return { outcome: 'nothing-to-claim' };
+    return { outcome: 'claimed', parcel: result.parcel };
+  }
+
+  async listPackedToday(dayStart: Date, dayEnd: Date): Promise<BenchPackedTodayListView> {
+    const executors = await this.executors.listPackingExecutors();
+    if (executors.length === 0) return { works: [], total: 0 };
+
+    const page = await this.worklist.list({
+      assignedConnectionId: executors.map((c) => c.id),
+      parcelClosedAfter: dayStart,
+      parcelClosedBefore: dayEnd,
+      limit: FULFILLMENT_WORKLIST_MAX_LIMIT,
+    });
+
+    const orderIds = [...new Set(page.works.map((w) => w.orderId))];
+    const orders = orderIds.length === 0 ? [] : await this.orders.findByIds(orderIds);
+    const orderById = new Map(orders.map((order) => [order.internalOrderId, order]));
+    const siblings = await this.worklist.listSiblingWorkIds(orderIds);
+
+    // Newest-closed first — `list`'s own order is `createdAt`, which this
+    // context cannot promise correlates with `parcelClosedAt`, so the small,
+    // already-bounded page is re-sorted above the query, the same "sort
+    // happens above the query" discipline `collectWorks` uses for urgency.
+    const sorted = [...page.works].sort((a, b) => {
+      const at = a.parcelClosedAt?.getTime() ?? 0;
+      const bt = b.parcelClosedAt?.getTime() ?? 0;
+      return bt - at;
+    });
+
+    const rows: BenchPackedTodayRowView[] = sorted
+      // Every row in this page was selected BY `parcelClosedAfter`, so
+      // `parcelClosedAt` is never null here — the guard is a type narrowing,
+      // not a real filter.
+      .filter((w): w is typeof w & { parcelClosedAt: Date } => w.parcelClosedAt !== null)
+      .map((w) => {
+        const order = orderById.get(w.orderId);
+        const parcels = siblings.get(w.orderId) ?? [w.id];
+        const index = parcels.indexOf(w.id);
+        return {
+          workId: w.id,
+          orderReference: readOrderReference(order) ?? w.orderId,
+          buyerName: readBuyerName(order),
+          parcelIndex: index >= 0 ? index + 1 : 1,
+          parcelTotal: parcels.length > 0 ? parcels.length : 1,
+          closedAt: w.parcelClosedAt.toISOString(),
+          packedByUserId: w.packedByUserId,
+        };
+      });
+
+    return { works: rows, total: page.total };
+  }
+
+  async getMetrics(now: Date): Promise<BenchMetricsView> {
+    const executors = await this.executors.listPackingExecutors();
+    if (executors.length === 0) {
+      return { packedToday: 0, packedYesterday: 0, toPackAllBenches: 0 };
+    }
+    const connectionIds = executors.map((c) => c.id);
+
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const elapsedMs = now.getTime() - todayStart.getTime();
+    const yesterdayStart = new Date(todayStart);
+    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+    // The SAME elapsed portion of the day, not the whole of yesterday — see
+    // `BenchMetricsView.packedYesterday`'s docblock for why.
+    const yesterdayCutoff = new Date(yesterdayStart.getTime() + elapsedMs);
+
+    const [packedToday, packedYesterday, toPackAllBenches] = await Promise.all([
+      this.worklist.list({
+        assignedConnectionId: connectionIds,
+        parcelClosedAfter: todayStart,
+        parcelClosedBefore: now,
+        limit: 1,
+      }),
+      this.worklist.list({
+        assignedConnectionId: connectionIds,
+        parcelClosedAfter: yesterdayStart,
+        parcelClosedBefore: yesterdayCutoff,
+        limit: 1,
+      }),
+      this.worklist.list({
+        assignedConnectionId: connectionIds,
+        // `cancelled` is deliberately EXCLUDED here, unlike `listBenchWork`'s
+        // own selection — that list shows a cancelled parcel so a packer
+        // spots a tote that must NOT be packed, but "to pack" is a backlog
+        // count and a cancelled parcel has nothing left to pack.
+        status: BENCH_WORK_STATUSES.filter((status) => status !== 'cancelled'),
+        requestStatus: [...BENCH_WORK_REQUEST_STATUSES],
+        parcelClosed: false,
+        limit: 1,
+      }),
+    ]);
+
+    return {
+      packedToday: packedToday.total,
+      packedYesterday: packedYesterday.total,
+      toPackAllBenches: toPackAllBenches.total,
     };
   }
 

@@ -19,6 +19,7 @@ import type {
   IFulfillmentWorklistService,
   ParcelVerificationState,
 } from '@openlinker/core/fulfillment';
+import type { IInventoryQueryService } from '@openlinker/core/inventory';
 import type { IOrderRecordService, OrderRecord } from '@openlinker/core/orders';
 import type { IProductsService } from '@openlinker/core/products';
 import type { IShipmentQueryService } from '@openlinker/core/shipping';
@@ -110,6 +111,7 @@ function harness(options: {
     listSiblingWorkIds: jest.fn().mockResolvedValue(options.siblings ?? new Map()),
     list: jest.fn(),
     applyAction: jest.fn(),
+    updateAssignment: jest.fn().mockResolvedValue(work),
   } as unknown as IFulfillmentWorklistService;
 
   const verification = {
@@ -117,6 +119,7 @@ function harness(options: {
     verifyUnit: jest.fn(),
     reopenParcel: jest.fn(),
     voidLastVerification: jest.fn(),
+    listVerifications: jest.fn().mockResolvedValue([]),
   } as unknown as IFulfillmentVerificationService;
 
   const orders = {
@@ -158,10 +161,23 @@ function harness(options: {
     findByFulfillmentWorkIds: jest.fn().mockResolvedValue(new Map()),
   } as unknown as IShipmentQueryService;
 
+  const inventory = {
+    findBinCodesByVariantIds: jest.fn().mockResolvedValue(new Map()),
+  } as unknown as IInventoryQueryService;
+
   return {
-    service: new BenchParcelService(executors, worklist, verification, orders, products, shipments),
+    service: new BenchParcelService(
+      executors,
+      worklist,
+      verification,
+      orders,
+      products,
+      shipments,
+      inventory
+    ),
     verification,
     orders,
+    worklist,
   };
 }
 
@@ -457,16 +473,21 @@ describe('BenchParcelService (#2418)', () => {
   describe('story D4 — the projection an interruption watches', () => {
     it('carries exactly the fields it is supposed to and no others', async () => {
       // This list IS the D4 guarantee: an interruption fires when this
-      // projection changes, and nothing here can be moved by a buyer's address
-      // edit — so the promise is a property of the field list rather than of a
-      // comparison somebody wrote carefully.
+      // projection changes, and there is no address, email or phone anywhere
+      // in it — so a buyer's address edit still cannot move any field here.
+      // `totalAmount`/`currency`/`carrierName`/`dispatchByAt` are a
+      // DELIBERATE reversal of #2413's original "no total, no price"
+      // exclusion (#3409, epic #3401) — see the type docblock.
       const { service } = harness({});
       const parcel = await service.getParcel('work-1');
 
       expect(Object.keys(parcel).sort()).toEqual(
         [
           'buyerName',
+          'carrierName',
           'closedAt',
+          'currency',
+          'dispatchByAt',
           'holdReason',
           'lines',
           'orderReference',
@@ -474,19 +495,27 @@ describe('BenchParcelService (#2418)', () => {
           'parcelIndex',
           'parcelTotal',
           'refusal',
+          'totalAmount',
           'version',
           'workId',
         ].sort()
       );
       expect(Object.keys(parcel.lines[0]).sort()).toEqual(
         [
+          'attributes',
+          'binCode',
           'ean',
           'gtin',
+          'heightMm',
+          'imageUrl',
+          'lengthMm',
           'name',
           'productVariantId',
           'requiredQuantity',
           'sku',
           'verifiedQuantity',
+          'weightGrams',
+          'widthMm',
           'workLineId',
         ].sort()
       );
@@ -637,6 +666,92 @@ describe('BenchParcelService (#2418)', () => {
       expect(markPacked).toHaveBeenCalled();
       expect(result.outcome).toBe('verified');
       expect(result.parcel.closedAt).not.toBeNull();
+    });
+  });
+
+  describe('#3411 — recent activity', () => {
+    it('projects a plain verification into one "verified" entry with the product name', async () => {
+      const { service, verification } = harness({});
+      (verification.listVerifications as jest.Mock).mockResolvedValue([
+        {
+          workLineId: 'line-1',
+          verifiedByUserId: 'user-1',
+          verifiedAt: new Date('2026-09-01T14:36:00Z'),
+          voidedAt: null,
+          voidedByUserId: null,
+        },
+      ]);
+
+      const entries = await service.listActivity('work-1');
+
+      expect(entries).toEqual([
+        {
+          workLineId: 'line-1',
+          name: 'Ceramic mug, matte white, 350 ml',
+          kind: 'verified',
+          at: '2026-09-01T14:36:00.000Z',
+          byUserId: 'user-1',
+        },
+      ]);
+    });
+
+    it('splits a voided row into two entries, newest first', async () => {
+      const { service, verification } = harness({});
+      (verification.listVerifications as jest.Mock).mockResolvedValue([
+        {
+          workLineId: 'line-1',
+          verifiedByUserId: 'user-1',
+          verifiedAt: new Date('2026-09-01T14:36:00Z'),
+          voidedAt: new Date('2026-09-01T14:37:00Z'),
+          voidedByUserId: 'user-1',
+        },
+      ]);
+
+      const entries = await service.listActivity('work-1');
+
+      expect(entries.map((e) => e.kind)).toEqual(['undone', 'verified']);
+      expect(entries[0].at).toBe('2026-09-01T14:37:00.000Z');
+      expect(entries[1].at).toBe('2026-09-01T14:36:00.000Z');
+    });
+  });
+
+  describe('#3412 — claim this parcel', () => {
+    it('claims an unassigned packable parcel for the viewer', async () => {
+      const { service, worklist } = harness({});
+
+      const result = await service.claimParcel('work-1', 'user-1');
+
+      expect(result.outcome).toBe('claimed');
+      expect(worklist.updateAssignment).toHaveBeenCalledWith({
+        workId: 'work-1',
+        assignedToUserId: 'user-1',
+      });
+    });
+
+    it('refuses `not-claimable` when the parcel is locked to a different packer', async () => {
+      const { service, worklist } = harness({
+        work: workView({ assignedToUserId: 'user-2', selfServeEligible: false }),
+      });
+
+      const result = await service.claimParcel('work-1', 'user-1');
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'not-claimable' });
+      expect(worklist.updateAssignment).not.toHaveBeenCalled();
+    });
+
+    it('refuses a held parcel with the SAME reason the list would colour it', async () => {
+      const { service, worklist } = harness({
+        work: workView({
+          activeHolds: [
+            { id: 'h1', reason: 'awaiting_stock', note: null, placedAt: new Date() },
+          ] as never,
+        }),
+      });
+
+      const result = await service.claimParcel('work-1', 'user-1');
+
+      expect(result).toMatchObject({ outcome: 'refused', reason: 'held' });
+      expect(worklist.updateAssignment).not.toHaveBeenCalled();
     });
   });
 

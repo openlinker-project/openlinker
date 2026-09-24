@@ -72,7 +72,8 @@ describe('FulfillmentWorkController', () => {
       get: jest.fn(),
       applyAction: jest.fn(),
     } as unknown as jest.Mocked<IFulfillmentWorklistService>;
-    controller = new FulfillmentWorkController(worklist);
+    const orders = { findByIds: jest.fn().mockResolvedValue([]) } as never;
+    controller = new FulfillmentWorkController(worklist, orders);
   });
 
   describe('applyAction', () => {
@@ -247,6 +248,53 @@ describe('FulfillmentWorkController', () => {
 
       expect(page.limit).toBe(100);
       expect(page.total).toBe(1);
+    });
+  });
+
+  describe('#3425 — masked buyer name, dispatch deadline, carrier', () => {
+    it('masks the buyer name to a first initial and surname, never the full name', async () => {
+      worklist.get.mockResolvedValue(view());
+      const orders = { findByIds: jest.fn() } as never;
+      const c = new FulfillmentWorkController(worklist, orders);
+      (orders as { findByIds: jest.Mock }).findByIds.mockResolvedValue([
+        {
+          internalOrderId: 'ol_order_1',
+          dispatchByAt: new Date('2026-09-04T15:00:00Z'),
+          orderSnapshot: { shippingAddress: { firstName: 'Anna', lastName: 'Kowalska' } },
+        },
+      ]);
+
+      const dto = await c.get('work-1');
+
+      expect(dto.buyerNameMasked).toBe('A. Kowalska');
+      expect(dto.dispatchByAt).toBe('2026-09-04T15:00:00.000Z');
+      expect(JSON.stringify(dto)).not.toContain('Anna');
+    });
+
+    it('reports null rather than a placeholder when the order cannot be read', async () => {
+      worklist.get.mockResolvedValue(view());
+
+      const dto = await controller.get('work-1');
+
+      expect(dto.buyerNameMasked).toBeNull();
+      expect(dto.dispatchByAt).toBeNull();
+      expect(dto.carrierName).toBeNull();
+    });
+
+    it('batches ONE order read for a whole page, never one per row', async () => {
+      worklist.list.mockResolvedValue({
+        works: [view({ id: 'w-1', orderId: 'ol_order_1' }), view({ id: 'w-2', orderId: 'ol_order_1' })],
+        total: 2,
+        limit: 100,
+        offset: 0,
+      });
+      const findByIds = jest.fn().mockResolvedValue([]);
+      const c = new FulfillmentWorkController(worklist, { findByIds } as never);
+
+      await c.list({} as never);
+
+      expect(findByIds).toHaveBeenCalledTimes(1);
+      expect(findByIds).toHaveBeenCalledWith(['ol_order_1']);
     });
   });
 });

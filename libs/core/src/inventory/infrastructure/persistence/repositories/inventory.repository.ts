@@ -430,6 +430,30 @@ export class InventoryRepository implements InventoryRepositoryPort {
     }));
   }
 
+  async findBinCodesByVariantIds(
+    variantIds: readonly string[]
+  ): Promise<ReadonlyMap<string, string>> {
+    if (variantIds.length === 0) return new Map();
+
+    const rows = await this.repository
+      .createQueryBuilder('inv')
+      .select('inv.productVariantId', 'productVariantId')
+      .addSelect('inv.binCode', 'binCode')
+      .where('inv.productVariantId IN (:...variantIds)', { variantIds: [...variantIds] })
+      .andWhere('inv.isStale = false')
+      .andWhere('inv.binCode IS NOT NULL')
+      .getRawMany<{ productVariantId: string; binCode: string }>();
+
+    const byVariant = new Map<string, string>();
+    for (const row of rows) {
+      // First non-null wins, by no particular ordering — see the port docblock.
+      if (!byVariant.has(row.productVariantId)) {
+        byVariant.set(row.productVariantId, row.binCode);
+      }
+    }
+    return byVariant;
+  }
+
   async markStaleExceptVariants(
     productId: string,
     keepVariantIds: readonly (string | null)[],

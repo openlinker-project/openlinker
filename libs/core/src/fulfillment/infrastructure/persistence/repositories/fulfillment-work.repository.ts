@@ -112,6 +112,7 @@ import {
   type FulfillmentWorkStatus,
 } from '../../../domain/types/fulfillment-work-status.types';
 import type { FulfillmentWorkRejection } from '../../../domain/types/fulfillment-work-rejection.types';
+import type { ParcelVerificationEvent } from '../../../domain/types/fulfillment-verification.types';
 import {
   clampWorklistLimit,
   clampWorklistOffset,
@@ -1038,6 +1039,18 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
             : 'work.parcelClosedAt IS NULL'
         );
       }
+      // #3413's "packed today" range, independent of `parcelClosed` above —
+      // a half-open window on the caller's own instants.
+      if (filter.parcelClosedAfter !== undefined) {
+        qb.andWhere('work.parcelClosedAt >= :parcelClosedAfter', {
+          parcelClosedAfter: filter.parcelClosedAfter,
+        });
+      }
+      if (filter.parcelClosedBefore !== undefined) {
+        qb.andWhere('work.parcelClosedAt < :parcelClosedBefore', {
+          parcelClosedBefore: filter.parcelClosedBefore,
+        });
+      }
 
       // `createdAt` alone is not unique, so a page boundary landing inside a
       // same-timestamp run would drop or repeat rows between pages. The id is
@@ -1506,6 +1519,25 @@ export class FulfillmentWorkRepository implements FulfillmentWorkRepositoryPort 
       return { id: row.id, workLineId: row.workLineId };
     } catch (error) {
       throw new FulfillmentPersistenceError('findLatestActiveVerification', error);
+    }
+  }
+
+  async listVerifications(workId: string): Promise<readonly ParcelVerificationEvent[]> {
+    try {
+      const rows = await this.verifications
+        .createQueryBuilder('verification')
+        .where('verification.fulfillmentWorkId = :workId', { workId })
+        .orderBy('verification.verifiedAt', 'DESC')
+        .getMany();
+      return rows.map((row) => ({
+        workLineId: row.workLineId,
+        verifiedByUserId: row.verifiedByUserId,
+        verifiedAt: row.verifiedAt,
+        voidedAt: row.voidedAt,
+        voidedByUserId: row.voidedByUserId,
+      }));
+    } catch (error) {
+      throw new FulfillmentPersistenceError('listVerifications', error);
     }
   }
 

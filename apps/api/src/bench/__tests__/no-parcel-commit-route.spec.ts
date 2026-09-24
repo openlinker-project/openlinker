@@ -46,14 +46,18 @@ const BENCH_HTTP_ROOT = resolve(__dirname, '..', 'http');
  * parcel, and it cannot reach a closed box (refused `parcel-closed` rather
  * than reopening one as a side effect). `presence` (#3406) closes nothing
  * either — it is an ephemeral Redis TTL heartbeat with no effect on parcel
- * state at all. Both listed as deliberate writes rather than silently
- * exempted from the guard this file exists to be.
+ * state at all. `claim` (#3412) is a self-assignment write, not a packing
+ * one — it moves `assignedToUserId`, never `parcelClosedAt`. All listed as
+ * deliberate writes rather than silently exempted from the guard this file
+ * exists to be.
  */
 const EXPECTED_BENCH_WRITES = [
+  'POST bench/work/:workId/claim',
   'POST bench/work/:workId/presence',
   'POST bench/work/:workId/reopen',
   'POST bench/work/:workId/verifications',
   'POST bench/work/:workId/verifications/undo',
+  'POST bench/work/claim-next',
 ] as const;
 
 /** Nest's metadata keys. Literals for the reason the coverage spec states. */

@@ -14,13 +14,30 @@
  *
  * It is an explicit ALLOWLIST, field by field, never a spread. The list below IS
  * the surface, and it is also the proof for story D4: an interruption fires when
- * this projection changes, and there is no address, no email, no phone, no
- * total and no price in it — so *"an interruption that fires on a buyer's
- * address edit"* is not something to be careful about, it is not expressible.
+ * this projection changes.
  *
- * `buyerName` is the one PII field, and it is #2416's already-decided
+ * `buyerName` is the one buyer-PII field, and it is #2416's already-decided
  * disclosure: it is the name about to go on the label the same session is
- * allowed to print.
+ * allowed to print. There is still no address, no email and no phone —
+ * #2413's PII-minimization reasoning stands for those three.
+ *
+ * ## `totalAmount`/`currency`/`carrierName`/`dispatchByAt` (#3409, epic #3401)
+ *
+ * #2413's original docblock cited "no total, no price" as proof for D4's
+ * guarantee. That exclusion is REVERSED here, by explicit product decision:
+ * the mockup's order-head shows the total, carrier and ship-by deadline as
+ * fielded values, and the epic's own audit concluded these are real
+ * operator requirements rather than PII to withhold. D4's guarantee is
+ * unaffected — it was never about these four fields specifically, it is
+ * about the projection being an allowlist AT ALL, so a field this list does
+ * not name still cannot silently start leaking (an address edit, for
+ * instance, still cannot fire an interruption — it still is not
+ * expressible). `totalAmount`/`currency` come straight off `OrderRecord`'s
+ * own indexed columns (#1985's read model), never the jsonb snapshot;
+ * `carrierName` reads `OrderRecord.sourceDeliveryMethodName` (#1792, already
+ * a typed getter — source-dependent and `null` when the source reports
+ * none); `dispatchByAt` mirrors the identical field already on
+ * `BenchWorkView`.
  *
  * @module apps/api/src/bench/application/types
  */
@@ -73,6 +90,34 @@ export interface BenchParcelLineView {
   readonly requiredQuantity: number;
   /** Units verified into the box. Never greater than `requiredQuantity`. */
   readonly verifiedQuantity: number;
+  /**
+   * The parent PRODUCT's first image (#3410, epic #3401). `ProductVariant`
+   * carries no image field of its own — a simple product's variant renders
+   * its parent's picture, and no per-variant image is invented for a
+   * multi-variant one either. `null` when the product has none, or is not
+   * in the catalogue.
+   */
+  readonly imageUrl: string | null;
+  /**
+   * The variant's own distinguishing attributes (colour, size, …), verbatim
+   * from `ProductVariant.attributes` (#3410). `null` for a simple product's
+   * synthetic variant, which carries none.
+   */
+  readonly attributes: Record<string, string> | null;
+  /**
+   * Operator-authored bin/shelf code (#3402/#3410) — first non-null across
+   * the variant's live inventory positions. `null` when nothing was ever
+   * recorded, never a placeholder.
+   */
+  readonly binCode: string | null;
+  /**
+   * Physical master data (#3403/#3410) — display-only, never captured here.
+   * `null` on any field means "not recorded", not zero.
+   */
+  readonly weightGrams: number | null;
+  readonly lengthMm: number | null;
+  readonly widthMm: number | null;
+  readonly heightMm: number | null;
 }
 
 /** One parcel at the bench. */
@@ -91,6 +136,23 @@ export interface BenchParcelView {
    */
   readonly parcelIndex: number;
   readonly parcelTotal: number;
+  /**
+   * The order's total, as `OrderRecord.totalAmount` holds it — the source's
+   * OWN currency, never the reporting-currency stamp (#2124, ADR-040), which
+   * would answer a different question ("how much in the deployment's
+   * reporting currency") than the one the mockup's order-head asks ("what
+   * did this buyer pay"). `null` mirrors the column: not yet known, or the
+   * order predates the field.
+   */
+  readonly totalAmount: number | null;
+  readonly currency: string | null;
+  /**
+   * The source's own delivery-method label (#1792), `null` when the source
+   * reports none. Not every source reports a carrier name.
+   */
+  readonly carrierName: string | null;
+  /** The order's dispatch deadline, mirroring the same field on `BenchWorkView`. */
+  readonly dispatchByAt: string | null;
   /** `null` when the parcel may be packed. See `BenchParcelRefusal`. */
   readonly refusal: BenchParcelRefusal | null;
   /** Why it is held, when it is held. `null` otherwise. */
@@ -249,6 +311,52 @@ export interface BenchDocumentsView {
   readonly invoice: BenchInvoiceView;
   readonly label: BenchLabelView;
 }
+
+/**
+ * One entry of a parcel's recent-activity log (#3411, epic #3401) — the
+ * verification ledger, projected with the line's product name so the
+ * surface can render e.g. "Linen tea towel — verified, 2 of 2" the way the
+ * mockup does, rather than a bare id.
+ */
+export interface BenchActivityEntryView {
+  readonly workLineId: string;
+  /** `null` when the line's variant is not in the catalogue — matches `BenchParcelLineView.name`. */
+  readonly name: string | null;
+  /** `'verified'` while active, `'undone'` once voided — see `ParcelVerificationEvent.voidedAt`. */
+  readonly kind: 'verified' | 'undone';
+  /** The instant of the event THIS ENTRY reports — `voidedAt` for `'undone'`, `verifiedAt` otherwise. */
+  readonly at: string;
+  readonly byUserId: string | null;
+}
+
+/**
+ * Why a self-claim was refused (#3412, epic #3401).
+ *
+ * A NARROWER union than `BenchParcelRefusal`: `'not-claimable'` is the
+ * ADR-074 lock (`isClaimableByViewer`), which has no counterpart on that
+ * type — refusing a scan and refusing a claim are different questions with
+ * partly-overlapping but not identical reasons.
+ */
+export const BenchClaimRefusalValues = ['held', 'cancelled', 'not-claimable'] as const;
+export type BenchClaimRefusal = (typeof BenchClaimRefusalValues)[number];
+
+/** What claiming ONE chosen parcel answers (#3412). */
+export interface BenchClaimResultView {
+  readonly outcome: 'claimed' | 'refused';
+  readonly reason: BenchClaimRefusal | null;
+  readonly parcel: BenchParcelView;
+}
+
+/**
+ * What "take next task" answers (#3412) — the server picks the top eligible
+ * row from the ALREADY-sorted, already-eligibility-filtered worklist and
+ * claims it. `'nothing-to-claim'` is a real, ordinary outcome (queue empty),
+ * never an error — the worklist can legitimately have nothing this viewer
+ * may take.
+ */
+export type BenchClaimNextResultView =
+  | { readonly outcome: 'claimed'; readonly parcel: BenchParcelView }
+  | { readonly outcome: 'nothing-to-claim' };
 
 /** One packed parcel with no label on it (story F4). */
 export interface BenchUnlabelledParcelView {

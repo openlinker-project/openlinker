@@ -30,10 +30,12 @@
  * ## Story D4 — the interrupt cannot fire on an address edit
  *
  * The surface polls this read while a parcel is open and interrupts when
- * `refusal` becomes non-null. The projection carries no address, no email, no
- * phone and no total (see `BenchParcelView`), so a change to any of them is
- * invisible here and cannot produce a diff. That is the guarantee, and it is a
- * property of the field list rather than of a comparison somebody wrote
+ * `refusal` becomes non-null. The projection carries no address, no email and
+ * no phone (see `BenchParcelView` — `totalAmount`/`currency`/`carrierName`/
+ * `dispatchByAt` are a deliberate #3409 reversal, not part of this
+ * guarantee), so a change to any of the three still-excluded fields is
+ * invisible here and cannot produce a diff. That is the guarantee, and it is
+ * a property of the field list rather than of a comparison somebody wrote
  * carefully.
  *
  * @module apps/api/src/bench/application/services
@@ -54,6 +56,10 @@ import {
   OrderRecordNotFoundException,
   IOrderRecordService,
 } from '@openlinker/core/orders';
+import {
+  INVENTORY_QUERY_SERVICE_TOKEN,
+  type IInventoryQueryService,
+} from '@openlinker/core/inventory';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import {
   SHIPMENT_QUERY_SERVICE_TOKEN,
@@ -74,6 +80,8 @@ import type {
   IBenchParcelService,
 } from '../interfaces/bench-parcel.service.interface';
 import type {
+  BenchActivityEntryView,
+  BenchClaimResultView,
   BenchParcelLineView,
   BenchParcelRefusal,
   BenchParcelView,
@@ -106,7 +114,9 @@ export class BenchParcelService implements IBenchParcelService {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService,
     @Inject(SHIPMENT_QUERY_SERVICE_TOKEN)
-    private readonly shipments: IShipmentQueryService
+    private readonly shipments: IShipmentQueryService,
+    @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
+    private readonly inventory: IInventoryQueryService
   ) {}
 
   async getParcel(workId: string): Promise<BenchParcelView> {
@@ -234,6 +244,96 @@ export class BenchParcelService implements IBenchParcelService {
       reason: result.outcome === 'refused' ? result.reason : null,
       parcel: await this.project(work, result.state),
     };
+  }
+
+  async listActivity(workId: string): Promise<BenchActivityEntryView[]> {
+    const work = await this.loadBenchWork(workId);
+    const [events, variants] = await Promise.all([
+      this.verification.listVerifications(workId),
+      work.lines.length === 0
+        ? Promise.resolve([])
+        : this.products.getVariantsByIds([
+            ...new Set(work.lines.map((line) => line.productVariantId)),
+          ]),
+    ]);
+
+    const variantById = new Map(variants.map((variant) => [variant.id, variant]));
+    const productIds = [...new Set(variants.map((variant) => variant.productId))];
+    const products =
+      productIds.length === 0 ? [] : await this.products.getProductsByIds(productIds);
+    const productById = new Map(products.map((product) => [product.id, product]));
+    const lineById = new Map(work.lines.map((line) => [line.id, line]));
+
+    const nameForLine = (workLineId: string): string | null => {
+      const line = lineById.get(workLineId);
+      const variant = line === undefined ? undefined : variantById.get(line.productVariantId);
+      const product = variant === undefined ? undefined : productById.get(variant.productId);
+      return product?.name ?? null;
+    };
+
+    // One ledger row can produce TWO activity entries — the verify always
+    // happened, and a voided row means an undo happened LATER, at a
+    // different instant. Splitting them is what lets "verified" and "undone"
+    // both appear on the timeline in their own chronological place, rather
+    // than collapsing a corrected mistake into a single, misleading row.
+    const entries: BenchActivityEntryView[] = [];
+    for (const event of events) {
+      entries.push({
+        workLineId: event.workLineId,
+        name: nameForLine(event.workLineId),
+        kind: 'verified',
+        at: event.verifiedAt.toISOString(),
+        byUserId: event.verifiedByUserId,
+      });
+      if (event.voidedAt !== null) {
+        entries.push({
+          workLineId: event.workLineId,
+          name: nameForLine(event.workLineId),
+          kind: 'undone',
+          at: event.voidedAt.toISOString(),
+          byUserId: event.voidedByUserId,
+        });
+      }
+    }
+
+    // `listVerifications` is already newest-first by `verifiedAt`, which the
+    // split above can invalidate (a row's own `undone` entry sorts after its
+    // `verified` one, but an OLDER row's undo can still be more recent than
+    // a newer row's verify) — so the merged list is re-sorted by its own
+    // `at`.
+    entries.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    return entries;
+  }
+
+  async claimParcel(workId: string, viewerId: string): Promise<BenchClaimResultView> {
+    const work = await this.loadBenchWork(workId);
+
+    const refusal = this.refusalFor(work);
+    if (refusal !== null) {
+      const state = await this.verification.getState(workId);
+      return { outcome: 'refused', reason: refusal, parcel: await this.project(work, state) };
+    }
+
+    if (!isClaimableByViewer(work, viewerId)) {
+      const state = await this.verification.getState(workId);
+      return {
+        outcome: 'refused',
+        reason: 'not-claimable',
+        parcel: await this.project(work, state),
+      };
+    }
+
+    // Idempotent: claiming a parcel already assigned to THIS viewer (or
+    // unassigned-but-self-serve) writes the identical value again rather
+    // than being special-cased, so a double-tap or a retried request is
+    // harmless.
+    const claimed = await this.worklist.updateAssignment({
+      workId,
+      assignedToUserId: viewerId,
+    });
+
+    const state = await this.verification.getState(workId);
+    return { outcome: 'claimed', reason: null, parcel: await this.project(claimed, state) };
   }
 
   async undoLastScan(input: BenchUndoInput): Promise<BenchUndoResultView> {
@@ -446,6 +546,12 @@ export class BenchParcelService implements IBenchParcelService {
       version: state.version,
       orderReference: readOrderReference(order) ?? work.orderId,
       buyerName: readBuyerName(order),
+      // #3409 (epic #3401) — see the type docblock for why this is now a
+      // deliberate reversal of #2413's exclusion rather than an oversight.
+      totalAmount: order?.totalAmount ?? null,
+      currency: order?.currency ?? null,
+      carrierName: order?.sourceDeliveryMethodName ?? null,
+      dispatchByAt: order?.dispatchByAt?.toISOString() ?? null,
       parcelIndex: index >= 0 ? index + 1 : 1,
       parcelTotal: parcels.length > 0 ? parcels.length : 1,
       refusal: this.refusalFor(work),
@@ -470,7 +576,13 @@ export class BenchParcelService implements IBenchParcelService {
     const variantIds = [...new Set(work.lines.map((line) => line.productVariantId))];
     const variants = variantIds.length === 0 ? [] : await this.products.getVariantsByIds(variantIds);
     const productIds = [...new Set(variants.map((variant) => variant.productId))];
-    const products = productIds.length === 0 ? [] : await this.products.getProductsByIds(productIds);
+    const [products, binCodes] = await Promise.all([
+      productIds.length === 0 ? Promise.resolve([]) : this.products.getProductsByIds(productIds),
+      // #3402/#3410 — one batched read for the whole parcel, never one per line.
+      variantIds.length === 0
+        ? Promise.resolve(new Map<string, string>())
+        : this.inventory.findBinCodesByVariantIds(variantIds),
+    ]);
 
     const variantById = new Map(variants.map((variant) => [variant.id, variant]));
     const productById = new Map(products.map((product) => [product.id, product]));
@@ -492,6 +604,15 @@ export class BenchParcelService implements IBenchParcelService {
         gtin: variant?.gtin ?? null,
         requiredQuantity: counts?.requiredQuantity ?? 0,
         verifiedQuantity: counts?.verifiedQuantity ?? 0,
+        // #3410 (epic #3401) — the parent PRODUCT's image; ProductVariant
+        // carries none of its own.
+        imageUrl: product?.images?.[0] ?? null,
+        attributes: variant?.attributes ?? null,
+        binCode: binCodes.get(line.productVariantId) ?? null,
+        weightGrams: variant?.weightGrams ?? null,
+        lengthMm: variant?.lengthMm ?? null,
+        widthMm: variant?.widthMm ?? null,
+        heightMm: variant?.heightMm ?? null,
       };
     });
   }
