@@ -4,7 +4,7 @@
  * In-memory double of `SubiektBridgeClient` — a **plugin-internal contract**,
  * not a core `*.port.ts` (a deliberate, novel use of the `/testing` seam). It
  * lets Mac/Linux contributors develop and unit-test the real Subiekt adapter
- * (#753) without a Windows VM or a live Sfera bridge — Subiekt nexo is
+ * (#753) without a Windows VM or a live Sfera bridge — Subiekt GT is
  * Windows-only and cannot be containerized, so the real dependency is
  * categorically un-runnable here (the textbook case for an in-memory fake).
  *
@@ -115,11 +115,14 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
   private readonly issuedById = new Map<string, BridgeIssueInvoiceResponse>();
   /** The most recent korekta request body (for passthrough assertions in tests). */
   private lastKorektaRequest: BridgeKorektaRequest | null = null;
+  /** The most recent issue-invoice request body (for passthrough assertions in tests). */
+  private lastIssueInvoiceRequest: BridgeIssueInvoiceRequest | null = null;
   /** Discovery state (bank accounts / cash registers), #1324. */
   private bankAccounts: BridgeBankAccount[] = defaultBankAccounts();
   private cashRegisters: BridgeCashRegister[] = defaultCashRegisters();
 
   issueInvoice(_req: BridgeIssueInvoiceRequest): Promise<BridgeIssueInvoiceResponse> {
+    this.lastIssueInvoiceRequest = _req;
     const failure = this.failureError();
     if (failure) {
       return Promise.reject(failure);
@@ -132,6 +135,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
       state: 'issued',
       regulatoryStatus: 'sent',
       pdfUrl: null,
+      clearanceReference: null,
       ...this.issueOverride,
     };
     this.issuedById.set(String(response.providerInvoiceId), response);
@@ -165,6 +169,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
       state,
       regulatoryStatus: this.issueOverride?.regulatoryStatus ?? 'sent',
       pdfUrl: null,
+      clearanceReference: this.issueOverride?.clearanceReference ?? null,
     });
     return Promise.resolve(response);
   }
@@ -192,8 +197,12 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     const known = this.issuedById.get(req.providerInvoiceId);
     return Promise.resolve(
       known
-        ? { state: known.state, regulatoryStatus: known.regulatoryStatus }
-        : { state: 'failed', regulatoryStatus: 'none' },
+        ? {
+            state: known.state,
+            regulatoryStatus: known.regulatoryStatus,
+            clearanceReference: known.clearanceReference,
+          }
+        : { state: 'failed', regulatoryStatus: 'none', clearanceReference: null },
     );
   }
 
@@ -258,6 +267,11 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     return this.lastKorektaRequest;
   }
 
+  /** The body passed to the most recent `issueInvoice` call (passthrough assertions). */
+  getLastIssueInvoiceRequest(): BridgeIssueInvoiceRequest | null {
+    return this.lastIssueInvoiceRequest;
+  }
+
   /** Replace the seeded bank accounts (deep-copied) for `listBankAccounts`/`setDefaultBankAccount`. */
   seedBankAccounts(accounts: BridgeBankAccount[]): void {
     this.bankAccounts = accounts.map((a) => ({ ...a }));
@@ -276,6 +290,7 @@ export class FakeSubiektBridgeAdapter implements SubiektBridgeClient {
     this.issueOverride = null;
     this.issuedById.clear();
     this.lastKorektaRequest = null;
+    this.lastIssueInvoiceRequest = null;
     this.bankAccounts = defaultBankAccounts();
     this.cashRegisters = defaultCashRegisters();
   }

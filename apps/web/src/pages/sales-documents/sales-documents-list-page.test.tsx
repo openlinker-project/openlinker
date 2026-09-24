@@ -47,7 +47,7 @@ function makeDocument(overrides: Partial<SalesDocumentInvoiceView> = {}): SalesD
     identity: {
       recordId: 'inv_1',
       connectionId: 'conn_1',
-      providerType: 'subiekt',
+      providerType: 'subiekt-gt',
       documentNumber: 'FV/2026/001',
       createdAt: '2026-06-01T10:00:00.000Z',
       completedAt: '2026-06-01T10:05:00.000Z',

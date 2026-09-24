@@ -44,6 +44,8 @@ import type {
   UpsertCustomerResult,
 } from '@openlinker/core/invoicing';
 import { InvoiceRecord, MissingTaxRateException } from '@openlinker/core/invoicing';
+import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { BridgeIssueInvoiceRequest } from '../../bridge/subiekt-bridge.types';
 import type { SubiektBridgeClient } from '../../bridge/subiekt-bridge.client';
 import type {
@@ -73,8 +75,14 @@ import { toBridgeUpsertCustomerRequest } from '../mappers/subiekt-customer.mappe
 import { toBridgeKorektaLine, toBridgeLines } from '../mappers/subiekt-line.mapper';
 import { toNeutralRegulatoryStatus } from '../mappers/subiekt-regulatory-status.mapper';
 
-/** Provider identifier stamped onto returned `InvoiceRecord`s. */
-export const SUBIEKT_PROVIDER_TYPE = 'subiekt';
+/**
+ * Provider identifier stamped onto returned `InvoiceRecord`s.
+ *
+ * `subiekt-gt`, never the bare `subiekt`: a document issued through the Sfera
+ * GT bridge must be distinguishable from one the nexo adapter would
+ * issue, and this value is what an operator reads on the document row.
+ */
+export const SUBIEKT_PROVIDER_TYPE = 'subiekt-gt';
 
 /**
  * Neutral document types this provider issues. `credit-note` / `corrected` (#1229)
@@ -131,11 +139,15 @@ export class SubiektInvoicingAdapter
 
   constructor(
     private readonly bridge: SubiektBridgeClient,
+    // Resolves the Subiekt ZK's numeric `dok_Id` for `issueInvoice`'s #3431
+    // warehouse-release step — see `resolveZkId`. Positioned right after
+    // `bridge`, mirroring `SubiektOrderProcessorAdapter`'s constructor.
+    private readonly identifierMapping: IdentifierMappingPort,
     private readonly connectionId: string,
     private readonly logger: LoggerPort,
     // Only the optional defaults are read here; `bridgeBaseUrl`/`timeoutMs`
     // are the HTTP client's concern — accept a `Partial` so the `= {}` default
-    // keeps the existing 3-arg call sites (tests) working without a cast.
+    // keeps the existing 4-arg call sites (tests) working without a cast.
     config: Partial<SubiektConnectionConfig> = {},
   ) {
     this.paymentMethod = config.defaultPaymentMethod;
@@ -160,12 +172,38 @@ export class SubiektInvoicingAdapter
     const bridgeDocumentType = toBridgeDocumentType(neutralDocumentType);
 
     const idempotencyKey = cmd.idempotencyKey;
+    // #3431 follow-up: resolve the ZK's own numeric dok_Id via
+    // identifier_mappings BEFORE the call, so the bridge's warehouse-release
+    // step never has to search dok_NrPelnyOryg by orderId — see `resolveZkId`.
+    const zkId = await this.resolveZkId(cmd.orderId);
+    // Resolve each line's Subiekt catalogue symbol so the document carries real
+    // catalogue positions instead of free-text service lines — see
+    // `resolveTowarSymbols` and the line mapper's header.
+    const { symbolByProductId, unmappedProductIds } = await this.resolveTowarSymbols(cmd.lines);
+    // Count LINES, not products: two lines of the same unmapped product are two
+    // lines the warehouse will not see, and the operator is looking at a
+    // document whose lines are what they can count.
+    //
+    // The three cases are deliberately distinct. A line with NO `productId` is
+    // a shipping or hand-written line - there is no product to link, so it is
+    // not a defect and is not counted. A line whose `productId` is the EMPTY
+    // STRING names a product and supplies no id for it: it cannot be looked
+    // up, so it goes out free-text exactly like an unmapped one, and counting
+    // it is the whole point - the alternative reports it as linked while the
+    // warehouse never sees it. Everything else is counted iff the lookup came
+    // back with no catalogue symbol.
+    const unlinkedCatalogueLines = cmd.lines.filter((line) => {
+      if (line.productId === undefined) return false;
+      if (line.productId === '') return true;
+      return unmappedProductIds.has(line.productId);
+    }).length;
 
     try {
       const response = await this.bridge.issueInvoice({
         documentType: bridgeDocumentType,
         currency: cmd.currency,
         orderId: cmd.orderId,
+        ...(zkId !== null ? { zkId } : {}),
         // Place idempotencyKey on the request BEFORE the call so fiscal dedup
         // holds on every error branch.
         ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
@@ -174,7 +212,7 @@ export class SubiektInvoicingAdapter
         buyer: toBridgeBuyer(cmd.buyer),
         // #2260 review: the era travels with the lines so a pre-rollout order
         // is exempt here exactly as it is on the other two invoicing routes.
-        lines: toBridgeLines(cmd.lines, cmd.taxRateEra),
+        lines: toBridgeLines(cmd.lines, cmd.taxRateEra, symbolByProductId),
         // Connection-level payment + cash-register selection (#1324). Both
         // helpers return `{}` when unset (or when a combination the bridge would
         // 422 is only half-configured), so an unconfigured connection produces a
@@ -205,8 +243,10 @@ export class SubiektInvoicingAdapter
         String(response.providerInvoiceId),
         response.providerInvoiceNumber,
         toNeutralRegulatoryStatus(response.regulatoryStatus),
-        // clearanceReference — populated by a future RegulatoryTransmitter.
-        null,
+        // #3352: the bridge now puts the KSeF number on the wire at
+        // issuance too (it was always read locally via ReadKsefStatus, just
+        // never returned) — `null` until KSeF actually assigns one.
+        response.clearanceReference,
         idempotencyKey ?? null,
         response.pdfUrl,
         now,
@@ -217,7 +257,13 @@ export class SubiektInvoicingAdapter
       );
       // Subiekt does not surface a seller identity or a source document
       // (the bridge is a local adapter with no authority submission).
-      return { record };
+      //
+      // `unlinkedCatalogueLines` is always reported here, INCLUDING the `0`
+      // case: on this provider a linked line is the normal, correct outcome,
+      // so omitting the field would make "every line reached the warehouse"
+      // indistinguishable from "this provider does not report linkage" (the
+      // `null` a non-catalogue provider leaves behind).
+      return { record, unlinkedCatalogueLines };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
     }
@@ -348,12 +394,128 @@ export class SubiektInvoicingAdapter
       }
       return {
         regulatoryStatus: toNeutralRegulatoryStatus(status.regulatoryStatus),
-        // The bridge status read carries no authority reference today; preserve
-        // any reference already captured on the record.
-        clearanceReference: record.clearanceReference,
+        // #3352: the bridge status read now carries the KSeF number too —
+        // preferring the fresh read over the previously-captured value so a
+        // reconcile can pick up a number that appeared since the last read,
+        // falling back to what's already on the record if this read carries
+        // none (a status flip can legitimately answer with no number yet).
+        clearanceReference: status.clearanceReference ?? record.clearanceReference,
       };
     } catch (error: unknown) {
       throw this.translateBridgeError(error);
+    }
+  }
+
+  /**
+   * Resolve each line's Subiekt catalogue symbol (`tw__Towar.tw_Symbol`) from
+   * its OL-internal product id, through the SAME `identifier_mappings` lookup
+   * `SubiektOrderProcessorAdapter.resolveLines` uses when it builds the ZK — so
+   * the invoice names the same catalogue item the order did, resolved the same
+   * way, rather than by a second and possibly-disagreeing rule.
+   *
+   * Returns a map keyed by product id. A product with no mapping on THIS
+   * connection is simply absent from the map and its line degrades to a
+   * free-text service line: an unmapped product must not fail an already-paid
+   * order's fiscal document, which is the one thing that would be worse than a
+   * line the warehouse cannot see. The degradation is warn-logged, because it
+   * is also exactly the condition under which stock silently will not move.
+   *
+   * Never throws: like `resolveZkId`, this is an enrichment of the request, not
+   * a precondition for issuing it.
+   */
+  private async resolveTowarSymbols(
+    lines: readonly { productId?: string }[],
+  ): Promise<{ symbolByProductId: Map<string, string>; unmappedProductIds: Set<string> }> {
+    const resolved = new Map<string, string>();
+    const productIds = [
+      ...new Set(
+        lines
+          .map((line) => line.productId)
+          .filter((id): id is string => id !== undefined && id !== ''),
+      ),
+    ];
+    if (productIds.length === 0) {
+      return { symbolByProductId: resolved, unmappedProductIds: new Set() };
+    }
+
+    const unmapped: string[] = [];
+    for (const productId of productIds) {
+      try {
+        const externalIds = await this.identifierMapping.getExternalIds(
+          CORE_ENTITY_TYPE.Product,
+          productId,
+        );
+        const mapping = externalIds.find((e) => e.connectionId === this.connectionId);
+        if (mapping && mapping.externalId !== '') {
+          resolved.set(productId, mapping.externalId);
+        } else {
+          unmapped.push(productId);
+        }
+      } catch (error: unknown) {
+        unmapped.push(productId);
+        this.logger.warn(
+          'Subiekt resolveTowarSymbols: identifier-mapping lookup failed; the line falls back to a free-text service line and will not move stock',
+          {
+            connectionId: this.connectionId,
+            productId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      }
+    }
+
+    if (unmapped.length > 0) {
+      this.logger.warn(
+        'Subiekt resolveTowarSymbols: product(s) have no Subiekt catalogue mapping on this connection; their document lines will be free-text and will NOT release warehouse stock',
+        { connectionId: this.connectionId, productIds: unmapped },
+      );
+    }
+    return { symbolByProductId: resolved, unmappedProductIds: new Set(unmapped) };
+  }
+
+  /**
+   * Resolve the order's Subiekt ZK numeric `dok_Id` for the #3431
+   * warehouse-release step, via the SAME `identifier_mappings` row
+   * `OrderSyncService.persistDestinationMapping` writes when the order was
+   * created (`createMapping(Order, orderRef.orderId, destinationConnectionId,
+   * internalOrderId)` — and `SubiektOrderProcessorAdapter.createOrder` returns
+   * `orderId: String(response.id)`, the ZK's own `dok_Id`). This is a direct
+   * cross-reference, not a string-matching search: it sidesteps the
+   * order-number-vs-order-id mismatch that made `EnsureWarehouseRelease`'s
+   * fallback `FindZkIdByOrderRef(orderId)` lookup never match a natural
+   * order — that lookup searches `dok_NrPelnyOryg` for the OL-internal order
+   * id, but `dok_NrPelnyOryg` is stamped with the marketplace order NUMBER at
+   * create time (`orderRef: order.orderNumber`, `subiekt-order-processor.adapter.ts`).
+   *
+   * Returns `null` (never throws) when the mapping row doesn't exist yet —
+   * an order created before this fix shipped, or one whose ZK was mapped
+   * under a different connection — the bridge falls back to its
+   * pre-existing lookup in that case. A lookup failure is swallowed the
+   * same way, as defense-in-depth: the ZK id is an OPTIMIZATION for a
+   * downstream step, never a precondition for issuing the invoice itself.
+   */
+  private async resolveZkId(orderId: string): Promise<number | null> {
+    try {
+      const mappings = await this.identifierMapping.getExternalIds(
+        CORE_ENTITY_TYPE.Order,
+        orderId,
+      );
+      const mapping = mappings.find((m) => m.connectionId === this.connectionId);
+      if (!mapping) {
+        return null;
+      }
+      const zkId = Number(mapping.externalId);
+      return Number.isInteger(zkId) && zkId > 0 ? zkId : null;
+    } catch (error: unknown) {
+      this.logger.warn(
+        'Subiekt resolveZkId: identifier-mapping lookup failed; falling back to the bridge order-ref search',
+        {
+          connectionId: this.connectionId,
+          orderId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      return null;
     }
   }
 

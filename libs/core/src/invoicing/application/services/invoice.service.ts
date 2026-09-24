@@ -65,6 +65,7 @@ import {
   invoiceIssueLockKey,
 } from './invoice-issue-lock';
 import { MissingNumberingSeriesException } from '../../domain/exceptions/missing-numbering-series.exception';
+import { deriveCorrectionFallbackKey } from '../../domain/idempotency/correction-fallback-key';
 import { taxRatePercentToFraction } from '../../domain/types/tax-rate-notation.types';
 import { findMissingTaxRate } from '../../domain/types/order-tax-rate-gate.types';
 import { isTaxRateEnforced } from '@openlinker/core/sales-documents';
@@ -784,7 +785,8 @@ export class InvoiceService implements IInvoiceService {
       throw error;
     }
 
-    const { record: issued, seller, sourceDocument, documentLines } = issueResult;
+    const { record: issued, seller, sourceDocument, documentLines, unlinkedCatalogueLines } =
+      issueResult;
     // #2251: prefer the document's OWN per-line amounts over core's
     // recomputation, so the stored figure matches the paper to the grosz.
     const documentContent = this.buildContent(cmd, issued, seller ?? null, documentLines);
@@ -829,6 +831,13 @@ export class InvoiceService implements IInvoiceService {
       sourceDocument: sourceDocument ?? null,
       // #1297: persist the issuance-time line snapshot on the same issued patch.
       issuedLineSnapshot,
+      // How many lines the adapter could not link to the provider's catalogue.
+      // `undefined` from an adapter that does not report linkage stays `null`,
+      // which reads as "not reported" — deliberately distinct from a reported
+      // `0`, "every line was linked". Only the issue path carries this: no
+      // correction adapter reports linkage today, and a field nothing populates
+      // is noise until one does.
+      unlinkedCatalogueLines: unlinkedCatalogueLines ?? null,
     };
     return this.repo.updateOutcome(recordId, patch);
   }
@@ -1039,19 +1048,141 @@ export class InvoiceService implements IInvoiceService {
       : reason.slice(0, MAX_FAILURE_REASON_LENGTH);
   }
 
+  /**
+   * Issue a correction of an already-issued document (#3372).
+   *
+   * A correction is a distinct new fiscal document with its own record (never
+   * the at-most-one-per-order guard `issueInvoice` enforces — see that
+   * method's docblock), but it is NOT exempt from the fiscal-safety invariant
+   * `resumeExisting` protects: a caller retrying the same `idempotencyKey`
+   * (e.g. a job runner retry after a timeout) used to skip the read-gate
+   * entirely and call `adapter.issueCorrection` a second time, risking a
+   * duplicate correction document for the identical original invoice — the
+   * `issueInvoice` bug class, one method over. The gate mirrors
+   * `issueLocked`'s steps (1)/(2)/(5): an `issued` hit replays verbatim; a
+   * live-leased or in-doubt-failed hit is surfaced without a second provider
+   * call; a create-race re-reads the winner by key. There is deliberately no
+   * per-order LOCK the way `issueInvoice` has one — two DIFFERENT idempotency
+   * keys correcting the same original document is a legitimate
+   * multi-correction sequence, not a race to exclude.
+   *
+   * UNLIKE `issueInvoice`, a keyless call here is NOT exempt from the gate
+   * (#3365 review, IMPORTANT). `issueInvoice`'s R1 ("keyless is never
+   * deduplicated") is a long-standing, documented CALLER contract every
+   * existing consumer already assumes; `issueCorrection` is new in this same
+   * change and has exactly one shipped caller — the operator "Issue
+   * correction" button — which never threads an `idempotencyKey` through at
+   * all, so R1 would have left every real correction request completely
+   * undeduplicated. Rather than push that burden onto every future caller,
+   * this method derives a deterministic fallback key
+   * (`deriveCorrectionFallbackKey`, hashing what the correction actually
+   * changes — the original document reference, lines, reason, requested
+   * document type) whenever the caller omits one, and uses it for the
+   * read-gate, the `pending` row, and the command handed to the adapter. Two
+   * things follow: (1) a genuine retry (byte-identical content) dedupes
+   * through core's own `(connectionId, idempotencyKey)` guard exactly as a
+   * caller-supplied key would; (2) an adapter that ALSO derives its own
+   * fallback token when it sees no key (eparagony's `resolveRegistrationKey`,
+   * flagged from the adapter side on #3332 — no shipped `CorrectionIssuer`
+   * does this today, but the concern is adapter-agnostic) instead receives a
+   * REAL, non-empty key from core and uses it, so core and the adapter can no
+   * longer disagree about how many corrections exist for one request. See
+   * `correction-fallback-key.ts` for why the key must be content-derived
+   * rather than `(connectionId, orderId)` alone — the latter would silently
+   * collapse every subsequent keyless correction of one order into the FIRST
+   * one ever issued.
+   */
   async issueCorrection(cmd: IssueCorrectionCommand): Promise<InvoiceRecord> {
+    const key = cmd.idempotencyKey ?? deriveCorrectionFallbackKey(cmd);
+    const effectiveCmd: IssueCorrectionCommand = { ...cmd, idempotencyKey: key };
+
+    const existing = await this.repo.findByIdempotencyKey(effectiveCmd.connectionId, key);
+    if (existing) {
+      return this.resumeExistingCorrection(effectiveCmd, existing);
+    }
+
     // Persist intent before the provider call: `pending` row so a crash leaves
-    // a durable trace. Corrections do not share the idempotency-gate / CAS-lease
-    // of issueInvoice — each correction is a distinct new fiscal document with
-    // its own record; the caller supplies an idempotencyKey for dedup if needed.
-    const pending = await this.repo.create({
-      connectionId: cmd.connectionId,
-      orderId: cmd.orderId,
-      providerType: '',
-      documentType: cmd.documentType ?? 'corrected',
-      status: 'pending',
-      idempotencyKey: cmd.idempotencyKey ?? null,
-    });
+    // a durable trace.
+    let pending: InvoiceRecord;
+    try {
+      pending = await this.repo.create({
+        connectionId: effectiveCmd.connectionId,
+        orderId: effectiveCmd.orderId,
+        providerType: '',
+        documentType: effectiveCmd.documentType ?? 'corrected',
+        status: 'pending',
+        idempotencyKey: key,
+      });
+    } catch (error) {
+      // Create-race: a concurrent same-key call won the dedup guard between our
+      // read-gate and create. Re-read by key and resume the winner under the
+      // SAME fiscal-safety gate.
+      if (error instanceof DuplicateInvoiceRecordException) {
+        const winner = await this.repo.findByIdempotencyKey(effectiveCmd.connectionId, key);
+        if (winner) {
+          return this.resumeExistingCorrection(effectiveCmd, winner);
+        }
+      }
+      throw error;
+    }
+
+    return this.issueCorrectionWithAdapter(effectiveCmd, pending.id);
+  }
+
+  /**
+   * Decide how to resume an EXISTING same-key correction record — the
+   * correction-path counterpart of {@link resumeExisting}. See that method's
+   * docblock for the fiscal-safety reasoning; the rules are identical.
+   */
+  private async resumeExistingCorrection(
+    cmd: IssueCorrectionCommand,
+    existing: InvoiceRecord,
+  ): Promise<InvoiceRecord> {
+    if (existing.status === 'issued') {
+      return existing;
+    }
+
+    const now = new Date();
+    if (existing.isLeaseLive(now)) {
+      this.logger.warn(
+        `Correction record ${existing.id} is claimed by a live in-flight attempt; not re-attempting`,
+      );
+      return existing;
+    }
+
+    if (existing.status === 'failed' && !existing.isReattemptableFailure) {
+      this.logger.warn(
+        `Correction record ${existing.id} failed in-doubt (failureMode=${existing.failureMode ?? 'unknown'}); ` +
+          `not auto-re-attempting — surfaced for manual reconciliation`,
+      );
+      return existing;
+    }
+
+    return this.issueCorrectionWithAdapter(cmd, existing.id);
+  }
+
+  private async issueCorrectionWithAdapter(
+    cmd: IssueCorrectionCommand,
+    recordId: string,
+  ): Promise<InvoiceRecord> {
+    // Atomic claim — the R2 single-flight guard: a concurrent same-key retry
+    // that fails to claim backs off WITHOUT calling the provider, exactly as
+    // `issueWithAdapter` does for a fresh invoice.
+    const leaseExpiresAt = new Date(Date.now() + ISSUING_LEASE_MS);
+    const claimed = await this.repo.claimForIssue(recordId, leaseExpiresAt);
+    if (claimed === null) {
+      this.logger.warn(
+        `Could not claim correction record ${recordId} for issuance ` +
+          `(held by a live attempt or already terminal); not re-attempting`,
+      );
+      const current = await this.repo.findById(recordId);
+      if (current) {
+        return current;
+      }
+      throw new InvoiceRecordNotFoundException(recordId);
+    }
+
+    const pending = claimed;
 
     const adapter = await this.integrations.getCapabilityAdapter<InvoicingPort>(
       cmd.connectionId,
@@ -1116,6 +1247,7 @@ export class InvoiceService implements IInvoiceService {
         failureMode,
         failureCode,
         failureReason,
+        // Release the lease: the attempt is over (terminal rejection or in-doubt).
         leaseExpiresAt: null,
       });
       throw error;
@@ -1181,7 +1313,49 @@ export class InvoiceService implements IInvoiceService {
       issuedLineSnapshot,
       documentContent,
       sourceDocument: sourceDocument ?? null,
+      // Carried forward from the document being corrected when the correction
+      // adapter reports nothing of its own.
+      //
+      // A correction is a NEW record, and every read surface resolves an
+      // order's document with `findLatestByOrderId` - so leaving this null
+      // would make the "these lines never reached the warehouse" warning
+      // disappear the moment anyone corrected the invoice for any unrelated
+      // reason, while the stock still had not moved. Inheriting is the
+      // truthful answer: correcting a document does not link its lines to a
+      // catalogue. An adapter that DOES report its own count overrides it,
+      // which is why this is a `??` and not an override.
+      unlinkedCatalogueLines:
+        issueResult.unlinkedCatalogueLines ??
+        (await this.readOriginalUnlinkedCatalogueLines(cmd)),
     });
+  }
+
+  /**
+   * The corrected document's own unlinked-line count, or `null` when it cannot
+   * be read.
+   *
+   * Best-effort by design: this is supplementary operator information, so a
+   * lookup failure must never fail a correction that the provider has already
+   * accepted. `null` then means "not reported", which is the same thing every
+   * pre-#3445 row says.
+   */
+  private async readOriginalUnlinkedCatalogueLines(
+    cmd: IssueCorrectionCommand,
+  ): Promise<number | null> {
+    try {
+      const original = await this.repo.findByProviderInvoiceId(
+        cmd.connectionId,
+        cmd.originalProviderInvoiceId,
+      );
+      return original?.unlinkedCatalogueLines ?? null;
+    } catch (error) {
+      this.logger.warn(
+        `Could not read the corrected document's unlinked-catalogue-line count for order ${cmd.orderId}: ${
+          error instanceof Error ? error.name : 'unknown error'
+        }. The correction is unaffected; the count is reported as not available.`,
+      );
+      return null;
+    }
   }
 
   async getInvoice(query: GetInvoiceByOrderQuery): Promise<InvoiceRecord | null> {

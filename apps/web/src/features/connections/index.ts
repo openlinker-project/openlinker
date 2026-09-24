@@ -74,6 +74,19 @@ export type {
   EditConnectionFormValues,
 } from './components/edit-connection.schema';
 
+// Subiekt product identity (#3464) — the two guided-setup routes live in
+// `plugins/subiekt-gt` and `plugins/subiekt-nexo` and each passes its OWN
+// identity into the shared wizard page, so the constants have to cross the
+// feature boundary. They are re-exported here rather than deep-imported
+// because a plugin reaching into `components/` is banned (#609), and the
+// distinction they carry is load-bearing: a connection created under the
+// wrong identity points at an adapter that cannot talk to its bridge.
+export {
+  SUBIEKT_GT_IDENTITY,
+  SUBIEKT_NEXO_IDENTITY,
+} from './components/subiekt-setup.schema';
+export type { SubiektProductIdentity } from './components/subiekt-setup.schema';
+
 export {
   InfaktWebhookConfig,
   InfaktWebhookConfigDialog,

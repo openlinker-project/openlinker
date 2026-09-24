@@ -30,12 +30,23 @@
  * #753 adapter — it is not referenced here. Observed live values: `none` (PA),
  * `pending` (FV pre-KSeF); the rest are the documented KSeF lifecycle.
  */
+/**
+ * #3351: widened from the original 5-value set. GT's `StatusKSeF` enum
+ * (Pomoc/gta.chm/StatusKSeFEnum.htm) has 9 values, and the bridge's original
+ * `MapKsefStatus` collapsed "not yet sent" (GT 1/2) AND "comms error on a
+ * send attempt" (GT 8) into the same `'pending'` — which the mapper below
+ * then read as core's `'submitted'`, a false claim (KSeF had not received
+ * the document). `'queued'` and `'error'` are told apart from `'sent'` (GT
+ * 3/4, genuinely in flight) so both route to core's `'pending-submission'`
+ * instead.
+ */
 export const BridgeRegulatoryStatusValues = [
   'none',
-  'pending',
+  'queued',
   'sent',
   'accepted',
   'rejected',
+  'error',
 ] as const;
 export type BridgeRegulatoryStatus = (typeof BridgeRegulatoryStatusValues)[number];
 
@@ -133,6 +144,18 @@ export interface BridgeIssueInvoiceRequest {
    * session-bound branch).
    */
   stanowiskoKasoweId?: number;
+  /**
+   * The Subiekt ZK's own numeric `dok_Id`, resolved by the adapter via
+   * `identifier_mappings` (the same row `OrderSyncService.persistDestinationMapping`
+   * writes when the order was created). When present the bridge's #3431
+   * warehouse-release step uses it DIRECTLY instead of searching
+   * `dok_NrPelnyOryg` by `orderId` — that search keys on the OL-internal order
+   * id, which was NEVER what got written there (the ZK's `dok_NrPelnyOryg` is
+   * stamped with the marketplace order NUMBER at create time, #3369). Absent
+   * (order-less/manual invoice, or a pre-fix mapping) falls back to the
+   * pre-existing string-matching lookup.
+   */
+  zkId?: number;
 }
 
 /**
@@ -146,6 +169,23 @@ export interface BridgeIssueInvoiceResponse {
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
   pdfUrl: string | null;
+  /**
+   * KSeF-assigned number (#3352). `null` until KSeF actually assigns one —
+   * before this field existed the bridge read it locally (`dok_NumerKSeF`)
+   * but never put it on the wire, so `clearanceReference` was `null` on
+   * every Subiekt document forever.
+   */
+  clearanceReference: string | null;
+  /**
+   * #3431: the warehouse-release (WZ, Wydanie Zewnętrzne) document number
+   * the bridge created (or detected Subiekt already auto-created) alongside
+   * this invoice, releasing the order's stock in Subiekt's own bookkeeping.
+   * `null` means no linked ZK was found for this order (a manually-issued,
+   * order-less invoice has nothing to release) — never a failure signal;
+   * a genuine release failure is a thrown request error, not a null here.
+   * Optional/additive on the wire — an older bridge build omits it entirely.
+   */
+  warehouseReleaseNumber?: string | null;
 }
 
 /**
@@ -231,6 +271,8 @@ export interface BridgeInvoiceStatusRequest {
 export interface BridgeInvoiceStatusResponse {
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
+  /** KSeF-assigned number (#3352) — `null` until KSeF assigns one. */
+  clearanceReference: string | null;
 }
 
 /**

@@ -106,6 +106,15 @@ export interface ExternalIdMapping {
 export interface ProductVariant {
   id: string;
   productId: string;
+  /**
+   * Soft-deleted at the master (#1478/#1599): the master stopped reporting this
+   * variant, so it is excluded from availability and its offers are paused.
+   *
+   * A spec asserting anything about what a product currently HAS must filter on
+   * this. A stale row is history, not catalogue - counting it reads a retired
+   * variant as a live one.
+   */
+  isStale?: boolean;
   sku: string | null;
   attributes: Record<string, unknown> | null;
   ean: string | null;
@@ -136,6 +145,14 @@ export interface Product {
   variantCount?: number;
   /** Only on the DETAIL read (`GET /products/:id`), never on the list. */
   variants?: ProductVariant[];
+  /**
+   * Master-supplied image URLs, cover first (`product-response.dto.ts`).
+   *
+   * OpenLinker never fetches these - it stores the master's URL verbatim and
+   * the operator's BROWSER dereferences it - so a spec that checks an image
+   * must request it from a browser context, not from Node.
+   */
+  images?: string[] | null;
   externalIds?: ExternalIdMapping[];
   createdAt: string;
   updatedAt: string;
@@ -694,6 +711,15 @@ export interface ListProductsQuery {
   search?: string;
   limit?: number;
   offset?: number;
+  /**
+   * Narrows to the products a given connection is the MASTER of.
+   *
+   * A spec that asserts one integration's rules has to pass this: `/products`
+   * is the whole catalogue, so an unscoped read checks a Subiekt rule against
+   * a PrestaShop product and fails for a reason that has nothing to do with
+   * what it is testing.
+   */
+  connectionId?: string;
 }
 
 export interface ListListingsQuery {

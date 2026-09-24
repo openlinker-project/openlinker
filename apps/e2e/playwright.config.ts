@@ -194,6 +194,19 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
     },
     {
+      // Subiekt GT: models as product variants, and images that load (#3365).
+      // Opt-in via E2E_TEST_SUBIEKT, because the dependency is a live Subiekt
+      // GT on Windows behind a hand-deployed bridge that no CI runner has -
+      // the specs skip cleanly without it. `retries: 0`: the suite triggers a
+      // real catalogue sweep, and a silent retry would run a second one over a
+      // stack that is still draining the first.
+      name: 'subiekt',
+      testMatch: /subiekt\/.*\.spec\.ts/,
+      retries: 0,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: STORAGE_STATE },
+    },
+    {
       // Access-control coverage — independent of golden-path/full-flow. Depends
       // only on `setup` for the admin storageState the UI-reflection spec's
       // admin-session assertions consume; the viewer/guest browser cases build

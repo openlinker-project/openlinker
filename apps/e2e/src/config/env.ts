@@ -217,6 +217,17 @@ export interface E2eEnv {
    */
   allowDestructivePrune: boolean;
   /**
+   * Opt-in for the Subiekt GT suite (`tests/subiekt/**`).
+   *
+   * That suite triggers a real catalogue sweep against a live Subiekt GT
+   * through the bridge - a Windows-only dependency that no CI runner has, and
+   * one whose data is somebody's actual warehouse. It reads and never writes,
+   * but a full sweep on an unsuspecting stack is still load nobody asked for,
+   * so it is opt-in rather than skip-if-absent (`E2E_TEST_RATE_LIMIT`
+   * precedent). Set `E2E_TEST_SUBIEKT=true` to run it.
+   */
+  testSubiekt: boolean;
+  /**
    * Direct Postgres connection string, used ONLY by `tests/sales-documents/`
    * (#2563 M10) to seed rows for states no HTTP API can put the stack into on
    * demand — a fabricated order in a country nobody has ordered from yet, in
@@ -338,6 +349,7 @@ export function resolveEnv(): E2eEnv {
     testRateLimit: process.env.E2E_TEST_RATE_LIMIT?.trim() === 'true',
     testInpostWebhook: process.env.E2E_TEST_INPOST_WEBHOOK?.trim() === 'true',
     allowDestructivePrune: process.env.E2E_ALLOW_DESTRUCTIVE_PRUNE?.trim() === 'true',
+    testSubiekt: process.env.E2E_TEST_SUBIEKT?.trim() === 'true',
     databaseUrl: process.env.E2E_DATABASE_URL?.trim() || DEFAULTS.databaseUrl,
   };
 }

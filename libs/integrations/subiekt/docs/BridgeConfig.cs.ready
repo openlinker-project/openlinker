@@ -1,0 +1,235 @@
+// BridgeConfig.cs.ready - mirror of the bridge source, committed for review.
+//
+// A FULL DUMP of `bridge-gt/BridgeConfig.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
+//
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// from the same source in the same commit, so drift between the three is a
+// review finding rather than something to discover at runtime.
+
+// BridgeConfig.cs - the bridge's one source of deployment configuration.
+//
+// Every value below used to be a `const` compiled into the binary, and the SQL
+// connection string was a `const` in SIX different files. A second Subiekt
+// installation therefore meant editing sources and recompiling, and the
+// operator account, its password and the shared API token sat in version
+// control as literals.
+//
+// RESOLUTION ORDER, highest first:
+//   1. an environment variable  (OL_BRIDGE_*)
+//   2. appsettings.json         (next to the .exe, reloaded never - read once)
+//   3. the historical hardcoded value, kept verbatim as the default
+//
+// Rung 3 is what makes this change safe to deploy: THIS installation keeps
+// working with no appsettings.json and no environment at all, byte for byte
+// as before. A second installation supplies rungs 1 or 2 and needs no rebuild.
+//
+// The file is OPTIONAL and a malformed one is reported and then ignored rather
+// than fatal: a bridge that refuses to start because a config file has a
+// trailing comma is a bridge that cannot be fixed remotely, and every value it
+// would have supplied has a working default.
+using System.Text.Json;
+
+public static class BridgeConfig
+{
+    private const string FileName = "appsettings.json";
+
+    private static readonly Dictionary<string, string> FileValues = LoadFile();
+
+    /// <summary>SQL Server instance holding the Subiekt database. The default
+    /// is InsERT's own installer default for a GT install
+    /// (`localhost\INSERTGT` - this file lives in `bridge-gt/`, the GT-only
+    /// bridge; the sibling nexo bridge's own config still uses
+    /// `localhost\INSERTNEXO`, which is INSERT's default for THAT product
+    /// line, not this one). A machine name compiled in here would name one
+    /// host and be wrong everywhere else.</summary>
+    public static readonly string SqlServer = Read("SqlServer", @"localhost\INSERTGT");
+
+    /// <summary>Subiekt database name.</summary>
+    public static readonly string SqlDatabase = Read("SqlDatabase", "DEMO");
+
+    /// <summary>
+    /// The full ADO.NET connection string.
+    ///
+    /// Composed from <see cref="SqlServer"/> / <see cref="SqlDatabase"/> unless
+    /// `OL_BRIDGE_SQL_CONNECTION_STRING` (or the matching JSON key) supplies a
+    /// complete one - which is the escape hatch for an installation that needs
+    /// SQL authentication rather than the integrated security this composes.
+    /// </summary>
+    public static readonly string ConnectionString = Read(
+        "SqlConnectionString",
+        $"Server={SqlServer};Database={SqlDatabase};Integrated Security=True;"
+        + "TrustServerCertificate=True;Encrypt=False;Connect Timeout=10");
+
+    /// <summary>Subiekt operator the Sfera session logs in as.</summary>
+    public static readonly string SferaOperator = Read("SferaOperator", "Szef");
+
+    /// <summary>That operator's password. Blank is legitimate on a demo install.</summary>
+    public static readonly string SferaPassword = Read("SferaPassword", "");
+
+    /// <summary>Basic-auth user for the WooCommerce-dialect shim routes.
+    ///
+    /// NO DEFAULT, and that is the point: a credential compiled into a binary
+    /// that ships in a public repository is a credential everybody has. An
+    /// unset value leaves the routes it guards CLOSED (see AuthConfigured),
+    /// so a bridge nobody configured refuses work rather than accepting it
+    /// from anyone who read the source.</summary>
+    public static readonly string ApiUser = Read("ApiUser", "");
+
+    /// <summary>Basic-auth password for the WooCommerce-dialect shim routes.
+    /// Unset closes those routes - see ApiUser.</summary>
+    public static readonly string ApiPassword = Read("ApiPassword", "");
+
+    /// <summary>Bearer / x-bridge-token value for the /api/* routes. Unset
+    /// closes them - see ApiUser.</summary>
+    public static readonly string InvoiceToken = Read("InvoiceToken", "");
+
+    /// <summary>Are the shim routes' Basic credentials configured? Both halves
+    /// must be present: a blank password with a set user is a configuration
+    /// nobody intends and would otherwise admit an empty password.</summary>
+    public static bool ShimAuthConfigured => ApiUser != "" && ApiPassword != "";
+
+    /// <summary>Is the /api/* token configured?</summary>
+    public static bool TokenAuthConfigured => InvoiceToken != "";
+
+    /// <summary>Path to the HTTPS certificate. Absolute, because the bridge is
+    /// launched from arbitrary working directories.
+    ///
+    /// NO DEFAULT. A path baked into the binary names one machine's file
+    /// layout and cannot be right anywhere else, and its passphrase below
+    /// would be a plaintext password shipped in source. Unset simply means
+    /// the HTTPS listener is not opened; the plain-HTTP port still serves,
+    /// which is the port OpenLinker actually reaches the bridge on.</summary>
+    public static readonly string CertificatePath = Read("CertificatePath", "");
+
+    /// <summary>Password for <see cref="CertificatePath"/>. No default - see
+    /// there.</summary>
+    public static readonly string CertificatePassword = Read("CertificatePassword", "");
+
+    /// <summary>Is there a certificate to open the HTTPS listener with?</summary>
+    public static bool HttpsConfigured => CertificatePath != "";
+
+    /// <summary>HTTPS port. The plain-HTTP sibling is <see cref="HttpPort"/>.</summary>
+    public static readonly int HttpsPort = ReadInt("HttpsPort", 5055);
+
+    /// <summary>Plain-HTTP port - image bytes only; OpenLinker and the
+    /// marketplaces fetch them, so it cannot be loopback-only.</summary>
+    public static readonly int HttpPort = ReadInt("HttpPort", 5056);
+
+    /// <summary>Base URL the image links in a catalogue read are built from.
+    ///
+    /// THE CONSUMER IS THE BROWSER, NOT OPENLINKER. OpenLinker never fetches an
+    /// image: it copies the string into its own catalogue, and the only things
+    /// that dereference it are the operator's browser and, eventually, a
+    /// marketplace. The previous compiled default named `host.docker.internal`,
+    /// which is a container-only name - measured on the reference stand, the
+    /// OpenLinker worker resolves it and a browser on the very same machine
+    /// does not, so every thumbnail failed while every sync reported success.
+    ///
+    /// There is no default any more, deliberately. Unset, the base is derived
+    /// from the address the request came in on (see ResolveImageBase), which is
+    /// right whenever the caller and the browser share a network view and is at
+    /// worst no more wrong than a guess. An operator whose browser reaches the
+    /// bridge at a different address than OpenLinker does - a Docker Desktop
+    /// stand is exactly that - must set this key, and the startup log says so.
+    ///
+    /// A "localhost" here is correct for a browser on the bridge's own machine
+    /// and wrong for a marketplace, which needs a publicly-resolvable name.</summary>
+    public static readonly string PublicBase = Read("PublicBase", "");
+
+    /// <summary>The base an image URL is built from for THIS request: the
+    /// operator's explicit <see cref="PublicBase"/> when set, otherwise the
+    /// scheme and host the request arrived on.
+    ///
+    /// Deriving from the request is not a fix for the split-view case above -
+    /// it answers with the CALLER's view of the bridge, and the caller is
+    /// OpenLinker rather than the browser - but it is right for every
+    /// deployment where the two agree, and it removes a hardcoded hostname
+    /// that could only ever be correct on one machine.</summary>
+    public static string ResolveImageBase(HttpRequest request) =>
+        PublicBase.Length > 0 ? PublicBase : $"{request.Scheme}://{request.Host}";
+
+    /// <summary>True when the effective base names a host only a container can
+    /// resolve. Reported at startup rather than silently accepted: the symptom
+    /// otherwise is a broken thumbnail, which the operator's screen renders
+    /// identically to a product that simply has no photo.</summary>
+    public static bool PublicBaseIsContainerOnly =>
+        PublicBase.Contains("host.docker.internal", StringComparison.OrdinalIgnoreCase)
+        || PublicBase.Contains("gateway.docker.internal", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Reports which rung answered each key, for the startup log - an
+    /// operator who set an environment variable and sees no effect needs to be
+    /// able to tell "not read" from "read and overridden".</summary>
+    public static string Describe()
+    {
+        var file = FileValues.Count == 0 ? "none" : $"{FileName} ({FileValues.Count} key(s))";
+        return $"config: file={file}; sqlServer={SqlServer}; sqlDatabase={SqlDatabase}; "
+             + $"sferaOperator={SferaOperator}; httpsPort={HttpsPort}; httpPort={HttpPort}; "
+             + $"publicBase={(PublicBase.Length > 0 ? PublicBase : "<derived from request>")}; httpsConfigured={HttpsConfigured}; shimAuthConfigured={ShimAuthConfigured}; "
+             + $"tokenAuthConfigured={TokenAuthConfigured}";
+    }
+
+    /// <summary>`SqlServer` -> `OL_BRIDGE_SQL_SERVER`.</summary>
+    private static string EnvName(string key)
+    {
+        var sb = new System.Text.StringBuilder("OL_BRIDGE");
+        foreach (var ch in key)
+        {
+            if (char.IsUpper(ch)) sb.Append('_');
+            sb.Append(char.ToUpperInvariant(ch));
+        }
+        return sb.ToString();
+    }
+
+    private static string Read(string key, string fallback)
+    {
+        var env = Environment.GetEnvironmentVariable(EnvName(key));
+        if (!string.IsNullOrWhiteSpace(env)) return env;
+        if (FileValues.TryGetValue(key, out var fromFile) && !string.IsNullOrWhiteSpace(fromFile))
+            return fromFile;
+        return fallback;
+    }
+
+    private static int ReadInt(string key, int fallback)
+    {
+        var raw = Read(key, "");
+        // A non-numeric or non-positive port is reported and ignored rather
+        // than crashing the process: the default binds and the operator can
+        // see why their value did not take effect.
+        if (raw != "" && int.TryParse(raw, out var parsed) && parsed > 0 && parsed <= 65535)
+            return parsed;
+        if (raw != "")
+            Console.Error.WriteLine($"BridgeConfig: '{key}' = '{raw}' is not a usable port; using {fallback}.");
+        return fallback;
+    }
+
+    private static Dictionary<string, string> LoadFile()
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var dir = AppContext.BaseDirectory;
+            var path = Path.Combine(dir, FileName);
+            if (!File.Exists(path)) return result;
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return result;
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                result[prop.Name] = prop.Value.ValueKind switch
+                {
+                    JsonValueKind.String => prop.Value.GetString() ?? "",
+                    JsonValueKind.Number => prop.Value.GetRawText(),
+                    _ => "",
+                };
+            }
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"BridgeConfig: could not read {FileName} ({e.Message}); using environment and built-in defaults.");
+            result.Clear();
+        }
+        return result;
+    }
+}

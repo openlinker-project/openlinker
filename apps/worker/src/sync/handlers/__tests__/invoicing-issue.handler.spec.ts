@@ -16,6 +16,7 @@ import { InvoicingIssueHandler, MAX_INVOICE_LINES } from '../invoicing-issue.han
 import { BuyerProfile } from '@openlinker/core/invoicing';
 import { SyncJobExecutionError } from '@openlinker/core/sync';
 import type { IInvoiceService } from '@openlinker/core/invoicing';
+import type { IPostSaleInventoryRefreshService } from '@openlinker/core/inventory';
 import type {
   InvoicingIssuePayloadV1,
   SyncJob as SyncJobEntity,
@@ -68,11 +69,12 @@ function makeJob(payload: unknown): SyncJobEntity {
 describe('InvoicingIssueHandler', () => {
   let invoiceService: jest.Mocked<IInvoiceService>;
   let handler: InvoicingIssueHandler;
+  let postSaleInventoryRefresh: jest.Mocked<IPostSaleInventoryRefreshService>;
   let warnSpy: jest.SpyInstance<void, [message: string]>;
 
   beforeEach(() => {
     invoiceService = {
-      issueInvoice: jest.fn().mockResolvedValue({} as never),
+      issueInvoice: jest.fn().mockResolvedValue({ id: 'inv-record-1' } as never),
       getInvoice: jest.fn(),
       getInvoiceById: jest.fn(),
       getLatestInvoiceForOrder: jest.fn(),
@@ -89,7 +91,13 @@ describe('InvoicingIssueHandler', () => {
       applyRegulatoryClearance: jest.fn(),
       listInvoicesKeyset: jest.fn(),
     };
-    handler = new InvoicingIssueHandler(invoiceService as unknown as IInvoiceService);
+    postSaleInventoryRefresh = {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+    } as unknown as jest.Mocked<IPostSaleInventoryRefreshService>;
+    handler = new InvoicingIssueHandler(
+      invoiceService as unknown as IInvoiceService,
+      postSaleInventoryRefresh,
+    );
     warnSpy = jest
       .spyOn(
         (handler as unknown as { logger: { warn: (m: string) => void } }).logger,
@@ -271,6 +279,37 @@ describe('InvoicingIssueHandler', () => {
 
       expect(result.outcome).toBe('business_failure');
       expect(invoiceService.issueInvoice).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('post-document master inventory refresh (Z3)', () => {
+    it('enqueues a refresh keyed on the issued invoice record, with productIds from the payload lines', async () => {
+      invoiceService.issueInvoice.mockResolvedValue({ id: 'inv-record-42' } as never);
+      await handler.execute(
+        makeJob(
+          makePayload({
+            lines: [
+              { name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '', productId: 'ol_product_1' },
+              // Shipping/manual lines carry no productId — must be filtered, not passed through blank.
+              { name: 'Shipping', quantity: 1, unitPriceGross: 5, taxRate: '' },
+              { name: 'Gadget', quantity: 1, unitPriceGross: 20, taxRate: '', productId: '' },
+            ],
+          }),
+        ),
+      );
+
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalledWith({
+        productIds: ['ol_product_1'],
+        keyScope: 'invoice:inv-record-42',
+      });
+    });
+
+    it('a rejecting enqueue does not change the returned outcome', async () => {
+      postSaleInventoryRefresh.enqueue.mockRejectedValue(new Error('queue unavailable'));
+
+      const result = await handler.execute(makeJob(makePayload()));
+
+      expect(result).toEqual({ outcome: 'ok' });
     });
   });
 

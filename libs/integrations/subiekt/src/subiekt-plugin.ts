@@ -1,11 +1,22 @@
 /**
  * Subiekt Plugin Descriptor (#753)
  *
- * Framework-neutral `AdapterPlugin` for the Subiekt nexo (Sfera bridge)
- * invoicing integration. Holds the static manifest (capability `'Invoicing'`),
- * the side-registrations the host wires at boot (config-shape validator,
- * connection tester, retry classifier), and the per-connection
- * `createCapabilityAdapter` factory.
+ * Framework-neutral `AdapterPlugin` for the **Subiekt GT** (Sfera GT bridge)
+ * integration. Holds the static manifest, the side-registrations the host
+ * wires at boot (config-shape validator, connection tester, retry classifier,
+ * auth-failure classifier), and the per-connection `createCapabilityAdapter`
+ * factory.
+ *
+ * SUBIEKT GT AND SUBIEKT nexo ARE TWO SEPARATE ENTITIES and must never be
+ * joined anywhere in this application. They are different InsERT products
+ * reached through different bridges with different wire contracts: four of the
+ * routes this adapter calls (`/api/orders`, `/api/orders/feed`,
+ * `/api/inventory/adjust`, `/api/products/categories`, `/api/fiscalize`) do
+ * not exist on the nexo bridge at all, and where the routes do overlap the
+ * envelopes differ. The nexo adapter (`@openlinker/integrations-subiekt-nexo`) has its OWN
+ * `platformType` and its OWN `adapterKey` - never a shared one, never an alias
+ * that maps the old bare `'subiekt'` onto either of them, because such an
+ * alias would be ambiguous the moment the second entity exists.
  *
  * Subiekt needs no plugin-specific NestJS providers, so the host wires it via
  * `createNestAdapterModule` — see `subiekt-integration.module.ts`.
@@ -25,7 +36,9 @@ import { Logger } from '@openlinker/shared/logging';
 import { SubiektConnectionConfigShapeValidatorAdapter } from './infrastructure/adapters/subiekt-connection-config-shape-validator.adapter';
 import { SubiektConnectionTesterAdapter } from './infrastructure/adapters/subiekt-connection-tester.adapter';
 import { SubiektRetryClassifierAdapter } from './infrastructure/adapters/subiekt-retry-classifier.adapter';
+import { SubiektAuthFailureClassifierAdapter } from './infrastructure/adapters/subiekt-auth-failure-classifier.adapter';
 import { SubiektAdapterFactory } from './application/subiekt-adapter.factory';
+import { buildSubiektSchedulerTasks } from './infrastructure/scheduler/subiekt-scheduler-tasks';
 
 /**
  * Static plugin manifest. Exported as a top-level `const` so host tooling can
@@ -33,20 +46,71 @@ import { SubiektAdapterFactory } from './application/subiekt-adapter.factory';
  * returns this same reference so static and runtime views cannot drift.
  */
 export const subiektAdapterManifest: AdapterMetadata = {
-  adapterKey: 'subiekt.invoicing.v1',
-  platformType: 'subiekt',
-  supportedCapabilities: ['Invoicing'],
-  displayName: 'Subiekt nexo (Sfera bridge)',
+  // `subiekt-gt`, not the bare `subiekt` this shipped as: the bare name could
+  // not tell GT from nexo, and the operator's connection list showed both
+  // under one identifier. The key drops `invoicing` for the same reason the
+  // name gained `-gt` - it described a fifth of what the adapter does (it is
+  // also the product master, the inventory master, an order source and an
+  // order destination).
+  adapterKey: 'subiekt.gt.v1',
+  platformType: 'subiekt-gt',
+  // NOTE: 'Fiscalization' is deliberately NOT listed here yet (#3365 review).
+  // The adapter exists in TypeScript, but the bridge-side endpoint it talks to
+  // (FiscalizationEndpoints.cs) has never been copied onto the Windows bridge,
+  // compiled, or run against a real fiscal printer - see
+  // docs/fiscalization-not-live-verified.md for the full unverified-assumption
+  // list (the dok_StatusFiskalny mapping, the printer configuration, the
+  // guessed poll timeout, no E2E run). Per #980, a capability name enters the
+  // manifest together with the adapter delivering it - here the thing it talks
+  // to does not exist at all, so advertising it would make it operator-
+  // tickable and auto-issue-reachable (#2156) against an unverified endpoint,
+  // and ADR-042 requires exactly-once fiscal registration to be an honest
+  // guarantee, not one resting on a status mapper that reports "unknown" for
+  // everything. Add it back once fiscalization-not-live-verified.md's steps
+  // 1-4 are done (bridge file compiled + run, dok_StatusFiskalny confirmed,
+  // printer configuration confirmed, an E2E run proving the wire contract).
+  supportedCapabilities: [
+    'Invoicing',
+    'ProductMaster',
+    'InventoryMaster',
+    'OrderSource',
+    'OrderProcessorManager',
+  ],
+  // Driving Subiekt GT (InsERT GT product line) via the classic COM "Sfera GT"
+  // automation surface (ProgID InsERT.GT) — NOT Subiekt nexo, which is a
+  // different InsERT product with its own, unrelated .NET Sfera API
+  // (InsERT.Moria.Sfera). Corrected from an earlier, factually wrong label —
+  // the installed product was confirmed live this session (InsERT GT 1.89 SP1).
+  displayName: 'Subiekt GT (Sfera GT bridge)',
   version: '1.0.0',
   isDefault: true,
-  // #1810 §1 — the Sfera bridge runs on the operator's own machine alongside
-  // Subiekt nexo, the same merchant-hosted profile PrestaShop's 60/4 (#1815)
-  // was calibrated for (not a borrowed number — Subiekt genuinely fits that
-  // rationale, unlike a carrier/marketplace platform). Both call sites already
-  // pass this to `host.http.forConnection` (see `createCapabilityAdapter` below
-  // and `SubiektConnectionTesterAdapter`, injected via constructor — never via
-  // an import of this module, which would cycle back into it).
-  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 4 },
+  // #1810 §1 — the Sfera bridge runs on the operator's own machine (not a
+  // borrowed number — Subiekt genuinely fits the merchant-hosted rationale,
+  // unlike a carrier/marketplace platform). Both call sites already pass this
+  // to `host.http.forConnection` (see `createCapabilityAdapter` below and
+  // `SubiektConnectionTesterAdapter`, injected via constructor — never via an
+  // import of this module, which would cycle back into it).
+  //
+  // maxConcurrent: 1 (#3367 audit finding, corrected from 4). Sfera GT drives
+  // every write through ONE dedicated STA COM worker thread with a single
+  // internal job queue (`Sfera.cs` — confirmed by reading the bridge source,
+  // not inferred) — the bridge itself never processes more than one request
+  // at a time regardless of how many OL sends concurrently. Its per-call
+  // server-side timeouts (60-120s for writes) already exceed every OL client
+  // timeout (15-30s), and that server-side wait is NOT tied to the HTTP
+  // request's cancellation — a queued call that OL gives up on keeps running
+  // and commits later. Allowing >1 concurrent request just makes it more
+  // likely that a slow call (a NIP-whitelist lookup, a cold COM re-attach)
+  // pushes its queue-mates past their own short timeout before even being
+  // dequeued — a client-side "unreachable" that is really "still queued,"
+  // indistinguishable from a genuine outage and, on the order-create path,
+  // risking exactly the duplicate-ZK/duplicate-kontrahent failure mode #3369
+  // fixes. At maxConcurrent=1, a slow call still delays its neighbours, but
+  // it does so through OL's own rate limiter (a controlled, observable wait)
+  // rather than manufacturing a spurious transport failure inside the
+  // bridge's queue. Revisit only once the bridge gets its own idempotency
+  // and/or a queue-depth signal OL could back off on.
+  defaultRateLimit: { requestsPerMinute: 60, maxConcurrent: 1 },
 };
 
 /** Short brand label for domain-exception / dispatch error prefixes. */
@@ -76,6 +140,22 @@ export function createSubiektPlugin(): AdapterPlugin {
         subiektAdapterManifest.adapterKey,
         new SubiektRetryClassifierAdapter(),
       );
+      // #3358: before this the plugin registered no AuthFailureClassifierPort
+      // at all, so a bad/missing bridge token produced no connection-status
+      // signal whatsoever — an operator would only discover it by reading raw
+      // sync_jobs. A bridge outage (unreachable, not a 401/403) still
+      // produces no signal here by design; that's a different failure class
+      // (see the scheduled reachability sweep, subiekt-reachability-sweep
+      // scheduler task) with a different remedy than re-entering credentials.
+      host.authFailureClassifierRegistry.register(
+        subiektAdapterManifest.adapterKey,
+        new SubiektAuthFailureClassifierAdapter(),
+      );
+      // #3358: periodic reachability sweep — see subiekt-scheduler-tasks.ts
+      // and subiekt-bridge-reachability-sweep.handler.ts.
+      for (const task of buildSubiektSchedulerTasks()) {
+        host.schedulerTaskRegistry.register(task);
+      }
     },
 
     // DIVERGENCE FROM WooCommerce: does NOT reject an empty credentialsRef — the
@@ -95,14 +175,25 @@ export function createSubiektPlugin(): AdapterPlugin {
           host.credentialsResolver,
           logger,
           host.http.forConnection(connection, subiektAdapterManifest.defaultRateLimit),
+          host.identifierMapping,
         );
-        return dispatchCapability<T>(
-          capability,
-          {
-            Invoicing: () => adapters.invoicing,
-          },
-          SUBIEKT_BRAND,
-        );
+        // Fiscalization's table entry is OMITTED (not merely undefined-valued)
+        // when the connection has no drukarkaFiskalnaId configured —
+        // dispatchCapability only checks key PRESENCE (Object.hasOwn), so an
+        // unconditional `Fiscalization: () => adapters.fiscalization` would
+        // silently hand a caller `undefined as T` instead of the clear
+        // "capability not supported" error this omission produces.
+        const table: Record<string, () => unknown> = {
+          Invoicing: () => adapters.invoicing,
+          ProductMaster: () => adapters.productMaster,
+          InventoryMaster: () => adapters.inventoryMaster,
+          OrderSource: () => adapters.orderSource,
+          OrderProcessorManager: () => adapters.orderProcessor,
+        };
+        if (adapters.fiscalization) {
+          table.Fiscalization = (): unknown => adapters.fiscalization;
+        }
+        return dispatchCapability<T>(capability, table, SUBIEKT_BRAND);
       } catch (err) {
         return Promise.reject(err as Error);
       }

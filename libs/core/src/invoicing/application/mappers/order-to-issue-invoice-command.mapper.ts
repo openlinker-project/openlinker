@@ -272,6 +272,10 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
     quantity: item.quantity,
     unitPriceGross: item.price,
     taxRate: item.taxRate?.trim() ?? '',
+    // Carried so a provider can emit a real catalogue line rather than a
+    // free-text one - see `InvoiceLine.productId`. The shipping lines composed
+    // below deliberately omit it: a delivery charge is not a catalogue item.
+    productId: item.productId,
   };
 }
 

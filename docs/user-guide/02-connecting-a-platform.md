@@ -162,13 +162,14 @@ Beyond the PrestaShop/Allegro worked example above:
 | **InPost** | `inpost.shipx.v1` | ShippingProviderManager | Generates shipment labels and paczkomat (parcel-locker) tracking, surfaced in the order's [Shipment panel](./06-orders.md#shipment-panel) |
 | **DPD Polska** | `dpd.polska.rest.v1` | ShippingProviderManager | Same shipment-panel integration point as InPost |
 | **KSeF** | `ksef.publicapi.v2` | Invoicing | Polish national e-invoicing; see [Invoices](./04-invoices.md) |
-| **Subiekt** (nexo, Sfera bridge) | `subiekt.invoicing.v1` | Invoicing | Alternative invoicing provider; see [Invoices](./04-invoices.md) |
+| **Subiekt GT** (Sfera GT bridge) | `subiekt.gt.v1` | Invoicing, ProductMaster, InventoryMaster, OrderSource, OrderProcessorManager | InsERT GT, reached through COM automation. Serves the catalogue, stock and orders as well as invoices; see the **[Subiekt GT setup guide](../../libs/integrations/subiekt/docs/setup-guide.md)** |
+| **Subiekt nexo** (Sfera bridge) | `subiekt.nexo.v1` | Invoicing | A **different** InsERT product on a **different** bridge — not a variant of Subiekt GT. Invoicing only; see the **[Subiekt nexo setup guide](../../libs/integrations/subiekt-nexo/docs/setup-guide.md)** |
 | **inFakt** | `infakt.accounting.v1` | Invoicing | Alternative invoicing provider; see [Invoices](./04-invoices.md) |
 | **eparagony.pl** | `eparagony.documents.v3` | Fiscalization | Registers Polish fiscal e-receipts with your own fiscal printer; see [Fiscal receipts](./04a-fiscal-receipts.md) |
 
 ### Invoicing providers
 
-To issue invoices for orders, add a connection to any one of the **Invoicing**-role adapters above (KSeF, Subiekt, or inFakt) the same way you'd add a shop or marketplace connection: **New connection** → pick the provider → fill in its credentials form → **Test connection**. KSeF in particular requires a Polish NIP and a KSeF authorization token generated from the taxpayer's own KSeF portal — see the [KSeF setup guide](../../libs/integrations/ksef/docs/setup-guide.md) for the full flow and current limitations.
+To issue invoices for orders, add a connection to any one of the **Invoicing**-role adapters above (KSeF, Subiekt GT, Subiekt nexo, or inFakt) the same way you'd add a shop or marketplace connection: **New connection** → pick the provider → fill in its credentials form → **Test connection**. KSeF in particular requires a Polish NIP and a KSeF authorization token generated from the taxpayer's own KSeF portal — see the [KSeF setup guide](../../libs/integrations/ksef/docs/setup-guide.md) for the full flow and current limitations.
 
 Once the connection is `active` and has `Invoicing` in its enabled capabilities, the **Invoice** panel appears on every order's detail page. See [Invoices](./04-invoices.md) for the full walkthrough.
 

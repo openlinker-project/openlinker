@@ -1,0 +1,530 @@
+// Sfera.cs.ready - mirror of the bridge source, committed for review.
+//
+// A FULL DUMP of `bridge-gt/Sfera.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
+//
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// from the same source in the same commit, so drift between the three is a
+// review finding rather than something to discover at runtime.
+
+/*
+ * Sfera GT writer.
+ *
+ * COM is apartment-bound, so every call runs on one dedicated STA thread with a
+ * work queue. The session is opened lazily and reused; a failed call drops it so
+ * the next one reconnects. Zakoncz() runs on shutdown - an abandoned Sfera
+ * session leaves document locks and a stale pd_Sesja row behind.
+ */
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class Sfera
+{
+    private static BlockingCollection<Job> _queue = new();
+    private static Thread? _thread;
+    private static dynamic? _sub;
+    private static readonly object Gate = new();
+
+    /// <summary>
+    /// #10-review fix: RecycleWorker abandons a thread + its Sfera session on
+    /// every COM timeout with no operator-visible signal before this degrades
+    /// into a slow handle/session leak. This counts every recycle; nothing
+    /// currently exposes it over HTTP (a spike-scale gap, not fixed here),
+    /// but it is at least visible in the process log and to anything that
+    /// wants to poll it in-process later.
+    /// </summary>
+    public static int RecycleCount => _recycleCount;
+    private static int _recycleCount;
+
+    private sealed class Job
+    {
+        public required Action<dynamic> Work;
+        public readonly ManualResetEventSlim Done = new(false);
+        public Exception? Error;
+    }
+
+    // Still mutable (a host may override before Start()), but seeded from
+    // BridgeConfig rather than from literals compiled into the binary - the
+    // operator name and its password were credentials living in source.
+    public static string Server = BridgeConfig.SqlServer;
+    public static string Database = BridgeConfig.SqlDatabase;
+    public static string Operator = BridgeConfig.SferaOperator;
+    public static string Password = BridgeConfig.SferaPassword;
+
+    public static void Start()
+    {
+        lock (Gate)
+        {
+            if (_thread is not null) return;
+            SpawnWorker();
+        }
+    }
+
+    /// <summary>
+    /// Attaches to Subiekt right away instead of waiting for the first real
+    /// request. A cold attach measured ~81s in practice, well past OpenLinker's
+    /// 30s HTTP timeout - OL then reports the sync as failed even though the
+    /// write actually completes. Fire-and-forget from Program.cs at boot so the
+    /// session is already warm by the time an order arrives.
+    /// </summary>
+    public static void Warmup()
+    {
+        Task.Run(() =>
+        {
+            try { Run(_ => { }, TimeSpan.FromSeconds(150)); }
+            catch { /* best-effort; a real request will retry the attach anyway */ }
+        });
+    }
+
+    private static void SpawnWorker()
+    {
+        var q = _queue;
+        var t = new Thread(() => Loop(q)) { IsBackground = true, Name = "sfera-sta" };
+        t.SetApartmentState(ApartmentState.STA);
+        _thread = t;
+        t.Start();
+    }
+
+    /// <summary>
+    /// A COM call blocked on a modal dialog cannot be aborted on .NET Core, so a
+    /// timed-out worker is abandoned (it leaks its thread and its Sfera session)
+    /// and a fresh one takes over. Without this every later write queues behind
+    /// the stuck one and the bridge looks dead.
+    /// </summary>
+    private static void RecycleWorker()
+    {
+        lock (Gate)
+        {
+            var count = System.Threading.Interlocked.Increment(ref _recycleCount);
+            Console.Error.WriteLine($"Sfera.RecycleWorker: abandoning the current worker thread + Sfera session (recycle #{count}) - a stuck COM call cannot be aborted on .NET Core.");
+            _queue.CompleteAdding();
+            _queue = new BlockingCollection<Job>();
+            _sub = null;
+            SpawnWorker();
+        }
+    }
+
+    public static void Run(Action<dynamic> work, TimeSpan timeout)
+    {
+        Start();
+        var job = new Job { Work = work };
+        // #9-review fix: `_queue` is reassigned under `Gate` by RecycleWorker,
+        // but this read (and the .Add() itself) used to happen with no lock
+        // at all - a Run() call racing a concurrent recycle could read the
+        // OLD `_queue` reference and then call .Add() on it right as
+        // RecycleWorker calls CompleteAdding(), which throws
+        // InvalidOperationException - surfacing as a spurious 500 for an
+        // otherwise-healthy request. Reading the reference AND adding to it
+        // both happen under the same lock RecycleWorker mutates under, which
+        // is cheap here: `_queue` is unbounded, so `.Add()` never blocks and
+        // this never contends with the actual (long) COM call below.
+        lock (Gate) { _queue.Add(job); }
+        if (!job.Done.Wait(timeout))
+        {
+            RecycleWorker();
+            throw new TimeoutException(
+                "Sfera nie odpowiedziala w wyznaczonym czasie - najczesciej Subiekt czeka na okno dialogowe.");
+        }
+        if (job.Error is not null) throw job.Error;
+    }
+
+    private static void Loop(BlockingCollection<Job> queue)
+    {
+        foreach (var job in queue.GetConsumingEnumerable())
+        {
+            try
+            {
+                job.Work(Session());
+            }
+            catch (Exception e)
+            {
+                job.Error = e;
+                Drop();            // a broken session must not poison the next call
+            }
+            finally
+            {
+                job.Done.Set();
+            }
+        }
+        Drop();
+    }
+
+    private static dynamic Session()
+    {
+        if (_sub is not null) return _sub;
+        dynamic gt = Activator.CreateInstance(Type.GetTypeFromProgID("InsERT.GT", true))!;
+        gt.Produkt = 1;
+        gt.Serwer = Server;
+        gt.Baza = Database;
+        gt.Autentykacja = 0;
+        gt.Operator = Operator;
+        gt.OperatorHaslo = Password;
+        // UruchomEnum.gtaUruchomWTle = 0x4 ("w tle", headless) - eliminates
+        // every modal-dialog hang (Pomoc/gta.chm/UruchomEnum.htm), confirmed
+        // live: 90s -> ~1s, and no modal is ever raised for kontrahent/ZK/FS/
+        // PA/KFS creation in this mode. The "Brak wymaganej nazwy dla
+        // kontrahenta jednorazowego" rejection this mode used to hit was NOT
+        // about headless per se - it needs Nazwa (short name) set, not only
+        // NazwaPelna, which the interactive UI silently derives for you and
+        // headless does not. Fixed at both call sites (EnsureKontrahent here,
+        // Invoicing.UpsertCustomer) rather than worked around by falling back
+        // to interactive mode. DialogWatcher below is kept only as a
+        // best-effort backstop for a dialog class nobody has hit yet in this
+        // mode - it should never fire in practice.
+        _sub = gt.Uruchom(4, 1);
+        return _sub!;
+    }
+
+    private static void Drop()
+    {
+        if (_sub is null) return;
+        try { _sub.Zakoncz(); } catch { }
+        _sub = null;
+    }
+
+    public static void Shutdown()
+    {
+        _queue.CompleteAdding();
+        _thread?.Join(TimeSpan.FromSeconds(10));
+        DialogWatcher.Stop();
+    }
+
+
+    /// <summary>Finds a kontrahent by symbol, or creates one. Returns kh_Id.</summary>
+    public static int EnsureKontrahent(KontrahentInfo k, int existingId)
+    {
+        int id = 0;
+        Run(sub =>
+        {
+            // An existing kontrahent is returned untouched. Re-saving one raises a
+            // modal confirmation in Subiekt (the COM call then blocks forever), and
+            // an integration has no business rewriting records the operator owns.
+            if (existingId > 0) { id = existingId; return; }
+
+            dynamic mgr = sub.KontrahenciManager;
+            dynamic kh = mgr.DodajKontrahenta();
+            kh.Symbol = k.Symbol;
+            try
+            {
+                // Headless (gtaUruchomWTle) skips whatever UI-layer convenience
+                // normally derives the short "Nazwa" from NazwaPelna/Symbol -
+                // Zapisz() rejects with "Brak wymaganej nazwy" if Nazwa is left
+                // unset, even though NazwaPelna is set and reads back fine.
+                // Nazwa is nvarchar(50) in kh__Kontrahent (kh_Nazwa) - trimmed
+                // defensively, same discipline as Trim30 for dok_NrPelnyOryg.
+                kh.Nazwa = Trim50(k.NazwaPelna != "" ? k.NazwaPelna : k.Symbol);
+                if (k.NazwaPelna != "") kh.NazwaPelna = k.NazwaPelna;
+                if (k.Nip != "")        kh.NIP        = k.Nip;
+                if (k.Ulica != "")      kh.Ulica      = k.Ulica;
+                if (k.NrDomu != "")     kh.NrDomu     = k.NrDomu;
+                if (k.Kod != "")        kh.KodPocztowy = k.Kod;
+                if (k.Miejscowosc != "") kh.Miejscowosc = k.Miejscowosc;
+                if (k.Email != "")      kh.EMail      = k.Email;
+                // Country is what lets Subiekt's own VAT classification tell a
+                // domestic sale from an intra-EU one; without it every buyer
+                // looked Polish. Best-effort on purpose: an older Sfera build
+                // that does not expose PanstwoId must not fail an order that is
+                // already paid, so a missing property degrades to the previous
+                // behaviour (column left NULL) rather than throwing.
+                if (k.PanstwoId > 0)
+                {
+                    // The GT kontrahent's country property is `Panstwo`, NOT
+                    // `PanstwoId` - probed against the live COM object, which
+                    // raises a COMException for every other spelling tried
+                    // (IdPanstwo, KodPanstwa, Kraj, KrajId, IdKraju,
+                    // AdrPanstwoId). It takes the sl_Panstwo id, which is what
+                    // lands in adr__Ewid.adr_IdPanstwo.
+                    try { kh.Panstwo = k.PanstwoId; }
+                    catch (Exception e)
+                    {
+                        Console.Error.WriteLine($"Sfera.EnsureKontrahent: could not set Panstwo={k.PanstwoId} on {k.Symbol}: {e.Message}");
+                    }
+                }
+                kh.Zapisz();
+                id = (int)kh.Identyfikator;
+            }
+            finally { try { kh.Zamknij(); } catch { } }
+        }, TimeSpan.FromSeconds(90));
+        return id;
+    }
+
+    /// <summary>Creates a ZK (customer order) in Subiekt. Returns its id and full number.</summary>
+    public static (int Id, string Numer) CreateZk(ZkRequest req)
+    {
+        int docId = 0;
+        string numer = "";
+        Run(sub =>
+        {
+            dynamic d = sub.SuDokumentyManager.DodajZK();
+            try
+            {
+                d.KontrahentId = req.KontrahentId;
+                d.LiczonyOdCenBrutto = true;          // marketplace prices are gross
+                // The buyer-paid figures below are denominated in the SOURCE's
+                // currency. Left unset the document silently takes Subiekt's
+                // own default, so a EUR order became a PLN order of the same
+                // numeric value. Best-effort: an unknown symbol must not fail
+                // an order that is already paid.
+                if (req.Waluta != "")
+                {
+                    try { d.WalutaSymbol = req.Waluta; }
+                    catch (Exception e) { Console.Error.WriteLine($"Sfera.CreateZk: could not set WalutaSymbol='{req.Waluta}' - {e.Message}"); }
+                }
+                // Answer the stock-reservation question up front. Left unset,
+                // Subiekt raises a modal Tak/Nie dialog and the COM call blocks
+                // forever - an integration must never wait on a GUI prompt.
+                try { d.Rezerwacja = req.Rezerwacja; } catch { }
+
+                foreach (var line in req.Lines)
+                {
+                    // A symbol-less line (e.g. shipping, #3347) is a one-off
+                    // service position — same DodajUslugeJednorazowa pattern
+                    // Invoicing.cs::IssueInvoice already uses.
+                    dynamic poz = line.Symbol != ""
+                        ? d.Pozycje.Dodaj(line.Symbol)
+                        : d.Pozycje.DodajUslugeJednorazowa();
+                    if (line.Symbol == "")
+                    {
+                        poz.UslJednNazwa = line.Name ?? "Pozycja";
+                        poz.Jm = "szt.";
+                    }
+                    poz.IloscJm = line.Quantity;
+                    // ADR-014: the buyer-paid amount wins over the price list.
+                    poz.WartoscBruttoPrzedRabatem = line.GrossTotal;
+                    poz.WartoscBruttoPoRabacie    = line.GrossTotal;
+                }
+
+                if (req.NumerOryginalny != "")
+                    d.NumerOryginalny = Trim30(req.NumerOryginalny);
+                if (req.Uwagi != "")
+                    d.Uwagi = req.Uwagi;
+
+                d.Zapisz();
+                docId = (int)d.Identyfikator;
+                numer = Convert.ToString(d.NumerPelny) ?? "";
+            }
+            finally { try { d.Zamknij(); } catch { } }
+        }, TimeSpan.FromSeconds(120));
+        return (docId, numer);
+    }
+
+    /// <summary>dok_NrPelnyOryg is varchar(30) — a longer value is refused outright.</summary>
+    public static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
+
+    /// <summary>kh_Nazwa (short name) is nvarchar(50).</summary>
+    public static string Trim50(string s) => s.Length <= 50 ? s : s.Substring(0, 50);
+
+    /// <summary>Writes the shipping block onto a Subiekt document (ZK/FS/...).</summary>
+    public static string WriteShipping(int dokId, ShippingInfo s)
+    {
+        string numer = "";
+        Run(sub =>
+        {
+            dynamic d = sub.SuDokumentyManager.WczytajDokument(dokId);
+            try
+            {
+                numer = Convert.ToString(d.NumerPelny) ?? "";
+                d.Uwagi = s.OneLine();
+                d.UwagiExt = s.Block();
+                d.Zapisz();
+            }
+            finally
+            {
+                try { d.Zamknij(); } catch { }
+            }
+        }, TimeSpan.FromSeconds(90));
+        return numer;
+    }
+}
+
+/// <summary>
+/// Dismisses a small, closed set of SPECIFIC, verified-harmless Subiekt
+/// dialogs - each matched by its own exact static text (read via Win32
+/// reflection, never blind-clicked) and its own safe button:
+///
+///   1. "You have unsent KSeF documents - go to the unsent-documents view?"
+///      - raised on every FS/PA save while ANY KSeF-eligible document in the
+///      whole installation is unsent (independent of the document just
+///      saved, so it recurs indefinitely in this demo DB). Pure navigation
+///      prompt; "Nie" never touches data.
+///   2. "UWAGA! Wersja próbna." (trial-version notice) - raised on EVERY
+///      freshly-spawned Subiekt instance (gt.Uruchom's non-attach fallback
+///      spawns a new one whenever no unblocked instance is found to attach
+///      to). Purely informational, single "OK" button, no data implication.
+///
+/// Any OTHER #32770 dialog is left alone for a human/RecycleWorker to handle
+/// - this is a narrow allowlist, not a generic "click something" reflex.
+/// </summary>
+public static class DialogWatcher
+{
+    private const uint BM_CLICK = 0x00F5;
+
+    private static readonly (string Marker, string Button)[] KnownDialogs =
+    {
+        ("Krajowym Systemie e-Faktur", "Nie"),
+        ("Wersja próbna", "OK"),
+    };
+
+    private static volatile bool _running;
+    private static Thread? _thread;
+
+    public static void Start()
+    {
+        if (_running) return;
+        _running = true;
+        _thread = new Thread(Loop) { IsBackground = true, Name = "dialog-watcher" };
+        _thread.Start();
+    }
+
+    public static void Stop() => _running = false;
+
+    private static void Loop()
+    {
+        Console.Error.WriteLine("DialogWatcher: loop starting");
+        int i = 0;
+        while (_running)
+        {
+            i++;
+            if (i % 10 == 1) Console.Error.WriteLine($"DialogWatcher: tick {i}, subiekt procs={Process.GetProcessesByName("Subiekt").Length}");
+            try { TryDismissOnce(); }
+            catch (Exception e) { Console.Error.WriteLine("DialogWatcher error: " + e); }
+            Thread.Sleep(500);
+        }
+    }
+
+    /// <summary>
+    /// KNOWN (root-caused live): the marker text is NOT necessarily a child of a
+    /// top-level #32770 window - "UWAGA! Wersja probna." renders as a descendant
+    /// of Subiekt's main MDI frame (class "Afx:...", not #32770) instead, several
+    /// levels deep. Gating the outer loop on ClassName(t) == "#32770" (the
+    /// original implementation) skips that frame entirely and NEVER finds it -
+    /// this is why the watcher "saw PIDs but never modals". The fix: walk the
+    /// FULL descendant tree of every top-level window owned by the process
+    /// (EnumChildWindows already recurses through every depth per Win32 docs),
+    /// not just the children of a window pre-filtered to #32770.
+    /// </summary>
+    private static void TryDismissOnce()
+    {
+        foreach (var p in Process.GetProcessesByName("Subiekt"))
+        {
+            var pid = p.Id;
+            var tops = new List<IntPtr>();
+            EnumWindows((h, l) => { GetWindowThreadProcessId(h, out int owner); if (owner == pid) tops.Add(h); return true; }, IntPtr.Zero);
+
+            foreach (var t in tops)
+            {
+                if (!IsWindowVisible(t)) continue;
+
+                var kids = new List<IntPtr>();
+                EnumChildWindows(t, (h, l) => { kids.Add(h); return true; }, IntPtr.Zero);
+                if (kids.Count == 0) continue;
+
+                foreach (var (marker, button) in KnownDialogs)
+                {
+                    var matches = kids.Any(k => IsWindowVisible(k) && ClassName(k) == "Static" && Text(k).Contains(marker));
+                    if (!matches) continue;
+
+                    var btn = kids.FirstOrDefault(k => IsWindowVisible(k) && ClassName(k) == "Button"
+                        && Text(k).Replace("&", "").Trim() == button);
+                    if (btn == IntPtr.Zero) continue;
+
+                    Console.Error.WriteLine($"DialogWatcher: dismissing [{marker}] on pid={pid} top-hwnd={t} btn-hwnd={btn}");
+                    SendMessage(btn, BM_CLICK, IntPtr.Zero, IntPtr.Zero);
+                    break;
+                }
+            }
+        }
+    }
+
+    private static string ClassName(IntPtr h) { var sb = new StringBuilder(256); GetClassName(h, sb, 256); return sb.ToString(); }
+    private static string Text(IntPtr h) { var sb = new StringBuilder(1024); GetWindowText(h, sb, 1024); return sb.ToString(); }
+
+    private delegate bool EnumProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumProc cb, IntPtr l);
+    [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr p, EnumProc cb, IntPtr l);
+    [DllImport("user32.dll")] private static extern int GetWindowThreadProcessId(IntPtr h, out int pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassName(IntPtr h, StringBuilder sb, int n);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr h, StringBuilder sb, int n);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+}
+
+public sealed class ShippingInfo
+{
+    public string Carrier = "";
+    public string Tracking = "";
+    public string PickupPoint = "";
+    public string Status = "";
+    public string TrackingUrl = "";
+    public string ShipmentRef = "";
+    public string OrderRef = "";
+
+    public string OneLine()
+    {
+        var parts = new List<string>();
+        if (Carrier != "") parts.Add(Carrier);
+        if (PickupPoint != "") parts.Add(PickupPoint);
+        if (Tracking != "") parts.Add(Tracking);
+        if (Status != "") parts.Add(Status);
+        return string.Join(" / ", parts);
+    }
+
+    public string Block()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("[OpenLinker - wysylka]");
+        if (Carrier != "")      sb.AppendLine("Przewoznik: " + Carrier);
+        if (Tracking != "")     sb.AppendLine("Nr przesylki: " + Tracking);
+        if (PickupPoint != "")  sb.AppendLine("Punkt odbioru: " + PickupPoint);
+        if (Status != "")       sb.AppendLine("Status: " + Status);
+        if (TrackingUrl != "")  sb.AppendLine("Sledzenie: " + TrackingUrl);
+        if (ShipmentRef != "")  sb.AppendLine("Przesylka OL: " + ShipmentRef);
+        if (OrderRef != "")     sb.AppendLine("Zamowienie OL: " + OrderRef);
+        sb.Append("Aktualizacja: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
+        return sb.ToString();
+    }
+}
+
+public sealed class KontrahentInfo
+{
+    public string Symbol = "";
+    public string NazwaPelna = "";
+    public string Nip = "";
+    public string Ulica = "";
+    public string NrDomu = "";
+    public string Kod = "";
+    public string Miejscowosc = "";
+    public string Email = "";
+    /// <summary>sl_Panstwo.pa_Id resolved from the caller's ISO-3166-1 alpha-2
+    /// code; 0 means "not supplied or not recognised", and the column is then
+    /// left NULL rather than defaulted to Poland. See EnsureKontrahent.</summary>
+    public int PanstwoId = 0;
+}
+
+public sealed class ZkLine
+{
+    public string Symbol = "";
+    public decimal Quantity;
+    public decimal GrossTotal;
+    /// <summary>Display name for a symbol-less service line (e.g. shipping) — ignored when Symbol is set.</summary>
+    public string? Name;
+}
+
+public sealed class ZkRequest
+{
+    public int KontrahentId;
+    public List<ZkLine> Lines = new();
+    public string NumerOryginalny = "";
+    public string Uwagi = "";
+    public bool Rezerwacja = false;
+    /// <summary>ISO currency of the buyer-paid amounts. Empty = the document
+    /// keeps Subiekt's own default (PLN on a Polish install), which is the
+    /// pre-fix behaviour and still correct for a domestic order. Set, it is
+    /// written to SuDokument.WalutaSymbol so a foreign-currency order is not
+    /// silently booked as though its figures were zlotys.</summary>
+    public string Waluta = "";
+}

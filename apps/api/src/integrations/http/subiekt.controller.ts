@@ -53,7 +53,7 @@ function isSubiektInvoicingAdapter(adapter: InvoicingPort): adapter is SubiektIn
 
 @Roles('admin')
 @ApiBearerAuth()
-@ApiTags('subiekt')
+@ApiTags('subiekt-gt')
 @Controller('integrations/subiekt')
 export class SubiektController {
   private readonly logger = new Logger(SubiektController.name);

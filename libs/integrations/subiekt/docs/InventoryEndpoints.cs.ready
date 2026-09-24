@@ -1,0 +1,267 @@
+// InventoryEndpoints.cs.ready - mirror of the bridge source, committed for review.
+//
+// A FULL DUMP of `bridge-gt/InventoryEndpoints.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
+//
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// from the same source in the same commit, so drift between the three is a
+// review finding rather than something to discover at runtime.
+
+// InventoryEndpoints - InventoryMaster capability.
+//
+// Speaks the contract in libs/integrations/subiekt/src/bridge/subiekt-bridge-inventory.types.ts.
+// Reads go via raw SQL on tw_Stan (confirmed live this session:
+// st_TowId/st_MagId/st_Stan/st_StanRez). Writes go via SuDokumentyManager's
+// PW (Przyjecie Wewnetrzne, delta > 0) / RW (Rozchod Wewnetrzny, delta < 0),
+// mirroring Sfera.CreateZk's Pozycje.Dodaj/Zapisz pattern in Sfera.cs.
+//
+// Idempotency (#2368): mirrors Invoicing.cs's FindByIdempotencyKey exactly -
+// the caller's idempotencyKey is stamped onto dok_NrPelnyOryg (Trim30) and
+// checked BEFORE writing. dok_Typ for PW/RW is not established from a prior
+// session, so the idempotency lookup matches on dok_NrPelnyOryg alone (no
+// dok_Typ filter) - acceptable because idempotencyKey is caller-chosen and
+// expected to be globally unique per adjustment.
+
+using System.Data;
+using Microsoft.Data.SqlClient;
+
+public static class InventoryEndpoints
+{
+    // One source of configuration for every file that talks to SQL - see
+    // BridgeConfig.cs. Was a `const` literal here and in five sibling files.
+    private static readonly string ConnStr = BridgeConfig.ConnectionString;
+
+    private static IResult Ok<T>(T data) => Results.Ok(new { success = true, data, error = (object?)null });
+    // #3371 fix: this used to emit a PLAIN STRING error, but
+    // SubiektInventoryBridgeClient (TS) expects the SAME structured
+    // {code,reason,correlationId} envelope Invoicing.cs/OrdersEndpoints.cs
+    // already send — the mismatch meant envelope.error?.reason was always
+    // undefined, so every rejected write reported a generic "HTTP 422"
+    // instead of the real Subiekt-side reason, and looksLikeNotFound's
+    // reason-matching regex could never match anything.
+    // #7-review fix: `failureMode` tells a caller "rejected" (safe to retry
+    // as-is once fixed) apart from "in-doubt" (a Sfera.Run COM timeout, whose
+    // write may still commit later - see Sfera.Run's own docblock).
+    private static IResult Fail(string code, string reason, int status = 422, string failureMode = "rejected") =>
+        Results.Json(new { success = false, data = (object?)null, error = new { code, reason, correlationId = (string?)null, failureMode } }, statusCode: status);
+
+    private static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
+
+    public static void MapInventoryEndpoints(this WebApplication app)
+    {
+        app.MapGet("/api/inventory/{towarSymbol}/stock", async (string towarSymbol) =>
+        {
+            // #3371 fix: a null result now means "towar doesn't exist, or is
+            // soft-deleted (tw_Usuniety=1)" — a REAL not-found, distinct from
+            // the documented "towar exists but has no tw_Stan rows yet" case
+            // (which still legitimately returns an empty `positions` array).
+            // Before this fix ReadStock could never distinguish the two, so
+            // an archived product kept reporting whatever stock rows it had
+            // left forever — the #1688/#1689 deletion-safety chain never
+            // fired for InventoryMaster-only Subiekt connections.
+            var positions = await ReadStock(towarSymbol);
+            if (positions is null)
+                return Fail("not_found", $"Towar nie znaleziono lub usunięty: {towarSymbol}", 404);
+            // Which magazyn a movement for this towar lands in. Reported so
+            // OpenLinker can publish the stock of the warehouse a sale
+            // actually releases from, instead of summing every magazyn and
+            // advertising units that can never ship. Same resolution the
+            // adjust path below already uses - one rule, one place.
+            var domyslnyMagazynId = await ResolveDefaultMagazyn(towarSymbol);
+            return Ok(new { towarSymbol, positions, domyslnyMagazynId });
+        });
+
+        app.MapPost("/api/inventory/adjust", async (HttpRequest req) =>
+        {
+            AdjustRequest? body;
+            try { body = await req.ReadFromJsonAsync<AdjustRequest>(); }
+            catch (Exception e) { return Fail("bad_request", $"bad request: {e.Message}", 400); }
+            if (body is null || string.IsNullOrWhiteSpace(body.TowarSymbol) || body.Delta == 0)
+                return Fail("bad_request", "towarSymbol and a non-zero delta are required", 400);
+
+            try
+            {
+                var result = await AdjustInventory(body);
+                return Ok(result);
+            }
+            catch (TimeoutException e)
+            {
+                return Fail("sfera_error", e.Message, failureMode: "in-doubt");
+            }
+            catch (Exception e)
+            {
+                return Fail("sfera_error", e.Message);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Returns `null` when the towar doesn't exist at all or is soft-deleted
+    /// (tw_Usuniety=1) — a real not-found. Returns an EMPTY (never null) list
+    /// when the towar exists, is active, and simply has no tw_Stan rows yet
+    /// (the pre-existing, still-legitimate "never stocked" case the TS-side
+    /// contract's own docblock documents).
+    /// </summary>
+    private static async Task<List<StockRow>?> ReadStock(string towarSymbol)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+
+        // #3371 fix: existence + soft-delete check FIRST — every ProductsEndpoints.cs
+        // read already filters tw_Usuniety=0; this read never did, so a deleted
+        // towar's stale tw_Stan rows kept reporting live stock forever.
+        await using (var existsCmd = new SqlCommand(
+            "SELECT 1 FROM tw__Towar WHERE tw_Symbol = @sym AND tw_Usuniety = 0", c))
+        {
+            existsCmd.Parameters.AddWithValue("@sym", towarSymbol);
+            var exists = await existsCmd.ExecuteScalarAsync();
+            if (exists is null) return null;
+        }
+
+        await using var cmd = new SqlCommand(
+            @"SELECT s.st_MagId, m.mag_Symbol, s.st_Stan, s.st_StanRez
+              FROM tw_Stan s
+              JOIN tw__Towar t ON t.tw_Id = s.st_TowId AND t.tw_Usuniety = 0
+              LEFT JOIN sl_Magazyn m ON m.mag_Id = s.st_MagId
+              WHERE t.tw_Symbol = @sym", c);
+        cmd.Parameters.AddWithValue("@sym", towarSymbol);
+        var list = new List<StockRow>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            list.Add(new StockRow(
+                r.GetInt32(0),
+                r.IsDBNull(1) ? null : r.GetString(1).Trim(),
+                r.GetDecimal(2),
+                r.GetDecimal(3)));
+        return list;
+    }
+
+    /// <summary>
+    /// #7-review fix: this used to also read a "post-write" stock figure via
+    /// ReadStanForMagazyn(magazynId) - a query with NO towar filter at all
+    /// ("SELECT TOP 1 st_Stan FROM tw_Stan WHERE st_MagId = @mag ORDER BY
+    /// st_TowId DESC"), so it picked an arbitrary product's stock row rather
+    /// than the one the caller actually asked about. It was harmless only
+    /// because AdjustInventory always discarded that value and re-read the
+    /// CORRECTLY towar-filtered figure via ReadStanFor afterward - dead,
+    /// misleading work. Removed rather than fixed in place: the caller
+    /// already has towarSymbol and always re-reads via ReadStanFor, so there
+    /// is nothing this method's result was ever used for.
+    /// </summary>
+    private static async Task<(int Id, string Numer)?> FindByIdempotencyKey(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT TOP 1 dok_Id, dok_NrPelny FROM dok__Dokument WHERE dok_NrPelnyOryg = @k", c);
+        cmd.Parameters.AddWithValue("@k", Trim30(key));
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync()) return null;
+        return (r.GetInt32(0), r.GetString(1).Trim());
+    }
+
+    private static async Task<decimal> ReadStanFor(string towarSymbol, int magazynId)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT s.st_Stan FROM tw_Stan s JOIN tw__Towar t ON t.tw_Id = s.st_TowId
+              WHERE t.tw_Symbol = @sym AND s.st_MagId = @mag", c);
+        cmd.Parameters.AddWithValue("@sym", towarSymbol);
+        cmd.Parameters.AddWithValue("@mag", magazynId);
+        var r = await cmd.ExecuteScalarAsync();
+        return r is null || r is DBNull ? 0m : Convert.ToDecimal(r);
+    }
+
+    private static async Task<AdjustResponse> AdjustInventory(AdjustRequest req)
+    {
+        // Default magazyn: the lowest st_MagId the towar already has a tw_Stan
+        // row in, or magazyn 1 (this DB's only configured warehouse - confirmed
+        // live: tw_Stan carries st_MagId IN (1,2) for every seeded towar) when
+        // it has none yet.
+        var magazynId = req.MagazynId ?? await ResolveDefaultMagazyn(req.TowarSymbol);
+
+        // #1-review fix (idempotency race): the SELECT above and the check-then-
+        // write below used to have nothing between them. Two overlapping calls
+        // under the SAME idempotencyKey (a caller retry racing the original,
+        // still-in-flight request - Sfera.Run's COM-side wait outlives the
+        // HTTP request that started it) could both read "not found" and both
+        // write a PW/RW, double-moving stock. Serialized per reduced key via
+        // IdempotencyLock; a blank key (opt-in dedup, caller supplied none)
+        // runs unlocked exactly as before.
+        var lockKey = req.IdempotencyKey is { Length: > 0 } lk ? Trim30(lk) : "";
+        return await IdempotencyLock.RunExclusive(lockKey, async () =>
+        {
+            if (req.IdempotencyKey is { Length: > 0 } key)
+            {
+                var existing = await FindByIdempotencyKey(key);
+                if (existing is not null)
+                {
+                    var (exId, exNumer) = existing.Value;
+                    var stanNow = await ReadStanFor(req.TowarSymbol, magazynId);
+                    return new AdjustResponse(true, exId, exNumer, stanNow);
+                }
+            }
+
+            int docId = 0;
+            string numer = "";
+            Sfera.Run(sub =>
+            {
+                dynamic mgr = sub.SuDokumentyManager;
+                // DodajPW (Przyjecie Wewnetrzne, increase) / DodajRW (Rozchod
+                // Wewnetrzny, decrease) - SuDokumentyManager_DodajPW.htm /
+                // _DodajRW.htm, confirmed present in this GT install's method list.
+                dynamic d = req.Delta > 0 ? mgr.DodajPW() : mgr.DodajRW();
+                try
+                {
+                    try { d.MagazynId = magazynId; } catch { }
+                    dynamic poz = d.Pozycje.Dodaj(req.TowarSymbol);
+                    poz.IloscJm = Math.Abs(req.Delta);
+
+                    if (!string.IsNullOrEmpty(req.Uwagi)) d.Uwagi = req.Uwagi;
+                    if (req.IdempotencyKey is { Length: > 0 } k2) d.NumerOryginalny = Trim30(k2);
+
+                    d.Zapisz();
+                    docId = (int)d.Identyfikator;
+                    numer = Convert.ToString(d.NumerPelny) ?? "";
+                }
+                finally { try { d.Zamknij(); } catch { } }
+            }, TimeSpan.FromSeconds(90));
+
+            var stanAfter = await ReadStanFor(req.TowarSymbol, magazynId);
+            return new AdjustResponse(false, docId, numer, stanAfter);
+        });
+    }
+
+    private static async Task<int> ResolveDefaultMagazyn(string towarSymbol)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT TOP 1 s.st_MagId FROM tw_Stan s JOIN tw__Towar t ON t.tw_Id = s.st_TowId
+              WHERE t.tw_Symbol = @sym ORDER BY s.st_MagId", c);
+        cmd.Parameters.AddWithValue("@sym", towarSymbol);
+        var r = await cmd.ExecuteScalarAsync();
+        return r is null || r is DBNull ? 1 : Convert.ToInt32(r);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Wire DTOs - mirror libs/integrations/subiekt/src/bridge/subiekt-bridge-inventory.types.ts
+// ---------------------------------------------------------------------------
+
+public sealed record StockRow(int MagazynId, string? MagazynSymbol, decimal Stan, decimal StanRez);
+
+public sealed class AdjustRequest
+{
+    public string TowarSymbol { get; set; } = "";
+    public int? MagazynId { get; set; }
+    public decimal Delta { get; set; }
+    public string? Uwagi { get; set; }
+    public string? IdempotencyKey { get; set; }
+}
+
+public sealed record AdjustResponse(bool Deduplicated, int DocumentId, string DocumentNumber, decimal StanAfter);

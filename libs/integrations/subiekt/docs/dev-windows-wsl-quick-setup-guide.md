@@ -1,12 +1,12 @@
-# Dev quick-setup - PrestaShop + OpenLinker + Subiekt bridge on Windows + WSL2
+# Dev quick-setup - PrestaShop + OpenLinker + Subiekt GT bridge on Windows + WSL2
 
 Run the **whole local stack** on a single Windows 11 machine with WSL2 (Ubuntu) so you can
 develop and test the Subiekt invoicing flow end-to-end: a shop (PrestaShop) that produces
-orders, OpenLinker that orchestrates, and the Subiekt bridge + Subiekt nexo that issue the
+orders, OpenLinker that orchestrates, and the Subiekt bridge + Subiekt GT that issue the
 real documents.
 
 > **Scope.** This is the **developer** quick-start (running everything locally for
-> development/testing). For the operator-facing bridge/Sfera configuration, the version
+> development/testing). For the operator-facing bridge configuration, the version
 > support matrix, TLS/auth, and the full field list, see the
 > [setup guide](./setup-guide.md) and the [runbook](./runbook.md). This doc links to them
 > rather than repeating them, and focuses on the one thing that is unique to this topology:
@@ -21,11 +21,12 @@ Everything runs on **one physical machine**, split across two worlds:
 ```
 ┌─────────────────────────── Windows 11 host ───────────────────────────┐
 │                                                                        │
-│   Subiekt nexo (desktop)          Subiekt bridge (.NET 8, WinExe)      │
-│         │  Sfera SDK                     binds 127.0.0.1:5005          │
+│   Subiekt GT (desktop)            Subiekt bridge (.NET 8)              │
+│         │  Sfera GT (COM,                 binds 0.0.0.0:5055 (https)  │
+│         │   ProgID InsERT.GT)             and :5056 (http)             │
 │         └───────────────────────────────────┘                         │
 │                                            ▲                           │
-│                                            │  http://<gateway-IP>:5005 │
+│                                            │  http://<gateway-IP>:5055 │
 │  ┌──────────────────────── WSL2 (Ubuntu) ──┼─────────────────────┐    │
 │  │                                          │                     │    │
 │  │   OpenLinker API  localhost:3000  (base path /v1) ────────────┘    │
@@ -40,15 +41,21 @@ Everything runs on **one physical machine**, split across two worlds:
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Why the split:** the InsERT **Sfera SDK is Windows-only** - it needs the InsERT nexo
-binaries plus SQL Server. So Subiekt nexo and the bridge run **native on Windows**, while
-OpenLinker and its dev-stack containers run **inside WSL2**. The interesting part is the
-seam between them.
+**Why the split:** Subiekt GT is driven through **Sfera GT COM automation** (the COM
+ProgID `InsERT.GT`), which is Windows-only and apartment-bound to the desktop session -
+it needs the Subiekt GT installation plus SQL Server on the same machine. So Subiekt GT
+and the bridge run **native on Windows**, while OpenLinker and its dev-stack containers
+run **inside WSL2**. The interesting part is the seam between them.
+
+> **Not Subiekt nexo, and not the .NET Sfera SDK.** This integration targets **Subiekt
+> GT** (the InsERT GT product line), automated over classic **Sfera GT COM** (`InsERT.GT`).
+> That is a different product and a different API from Subiekt nexo and its managed
+> `InsERT.Moria.Sfera` SDK - do not mix up setup instructions between the two.
 
 **The key fact:** WSL2 runs in its own virtual network. From WSL, the Windows host is **not**
 `127.0.0.1` - it is the **WSL default gateway IP** (a `172.x.x.x` address WSL assigns). So
 the WSL-hosted OpenLinker reaches the Windows-hosted bridge at
-`http://<gateway-IP>:5005`, not `http://127.0.0.1:5005`.
+`http://<gateway-IP>:5055`, not `http://127.0.0.1:5055`.
 
 ---
 
@@ -58,11 +65,12 @@ the WSL-hosted OpenLinker reaches the Windows-hosted bridge at
 - Inside WSL: **Node.js 22+**, **pnpm 10+**, and **Docker** (Docker Desktop with WSL2
   integration, or Docker Engine inside the distro). The authoritative version table
   is [`README.md` § Runtime requirements](../../../../README.md#runtime-requirements).
-- On Windows: **Subiekt nexo PRO + Sfera**, **.NET 8 runtime/SDK**, **SQL Server** (the
-  `INSERTNEXO` instance the nexo installer creates), and the
-  [`openlinker-subiekt-bridge`](https://github.com/openlinker-project/openlinker-subiekt-bridge)
-  repo built locally. See the [setup guide](./setup-guide.md#part-a--run-the-bridge-on-windows)
-  for the bridge/Sfera details.
+- On Windows: **Subiekt GT** (InsERT GT product line - tested against **GT 1.89 SP1**),
+  a **SQL Server** instance holding the Subiekt GT database, **.NET 8 SDK/runtime**, and the
+  Subiekt bridge project built locally. See the
+  [setup guide](./setup-guide.md#part-a--run-the-bridge-on-windows) for the bridge
+  configuration details. There is no separate "Sfera SDK" install step - Sfera GT COM
+  automation (ProgID `InsERT.GT`) is registered as part of the Subiekt GT installation.
 - The OpenLinker monorepo cloned inside the WSL filesystem (not on `/mnt/c`, for I/O speed).
 
 ---
@@ -165,118 +173,123 @@ Open the web UI at `http://localhost:4173` and log in with the bootstrap admin
 
 ---
 
-## Step 3 - Subiekt nexo + the bridge on Windows
+## Step 3 - Subiekt GT + the bridge on Windows
 
-Do this on the **Windows side** (a PowerShell terminal - you can even drive it from WSL with
-`powershell.exe -NoProfile -Command "..."`). The deep configuration lives in the
-[setup guide](./setup-guide.md#part-a--run-the-bridge-on-windows); the **dev gotchas that
-cost hours** are below.
+Do this on the **Windows side** (a PowerShell terminal or `cmd` - you can even drive it
+from WSL with `powershell.exe -NoProfile -Command "..."`). The deep configuration lives
+in the [setup guide](./setup-guide.md#part-a--run-the-bridge-on-windows); the **dev
+gotchas that cost hours** are below.
 
-### 3.1 - Close the Subiekt nexo desktop client
+### 3.1 - Close the Subiekt GT desktop client
 
-Sfera has a **single-session licence**. If the desktop Subiekt nexo client is open, the
-bridge's Sfera connect **hangs** waiting for the licence. Close nexo before starting the
-bridge.
+Sfera GT COM automation opens its session against the same desktop context Subiekt GT
+runs in, and a stray modal dialog left open in the desktop client can block the bridge's
+single COM worker thread forever. Close the Subiekt GT desktop client before starting the
+bridge, and keep it closed while the bridge is running.
 
-### 3.2 - Configure the base `appsettings.json`
+### 3.2 - Credentials and configuration
 
-The base `appsettings.json` (gitignored) must carry the **real** Sfera config. For local dev
-set `Port=5005` and `Auth.Enabled=false`. Worked-example values on this machine:
+The bridge reads every credential from its own configuration - `appsettings.json` next
+to `GtBridge.exe`, or an `OL_BRIDGE_*` environment variable, which wins. **None of them
+has a built-in default**: unset leaves the routes they guard closed, because a credential
+compiled into a binary is a credential everybody has.
 
-```jsonc
-{
-  "Port": 5005,
-  "Auth": { "Enabled": false },
-  "Sfera": {
-    "BinariesDir": "C:\\Users\\{{USER_NAME}}\\AppData\\Local\\InsERT\\Deployments\\Nexo\\Demo_1269000381e084a6bb1f8d36d8c\\Binaries",
-    "ConfigDir":   "C:\\Users\\{{USER_NAME}}\\AppData\\Local\\InsERT\\Deployments\\Nexo\\Demo_1269000381e084a6bb1f8d36d8c\\...",
-    "TempDir":     "C:\\Users\\{{USER_NAME}}\\AppData\\Local\\InsERT\\Deployments\\Nexo\\Demo_1269000381e084a6bb1f8d36d8c\\...",
-    "SqlServer":   "localhost\\INSERTNEXO",
-    "SqlDatabase": "Nexo_Demo_1",
-    "SqlUseWindowsAuth": true,
-    "NexoUser":    "<operator-account>"   // a nexo operator with minimal rights, NOT "Szef"
-    // NexoPassword - set via env / your local file; never commit it
-  }
-}
+- **`/api/*`** - every route OpenLinker uses (products, inventory, orders, invoicing,
+  models) - is guarded by `InvoiceToken`, sent as `Authorization: Bearer <token>` or
+  `x-bridge-token: <token>`.
+- **`/wp-json/wc/v3/*`** - the retired WooCommerce-dialect shim from the original spike,
+  which OpenLinker no longer uses - is guarded by `ApiUser` / `ApiPassword`.
+
+So the values are yours to choose and set, not something to obtain from anyone: pick
+them, put them in `appsettings.json` on the bridge machine, and give the same
+`InvoiceToken` to the OpenLinker connection. An earlier version of this section said the
+credentials were hardcoded and told you to consult the bridge maintainer for them; that
+was wrong in both halves.
+
+The Sfera GT **database connection** is a plain SQL Server connection string, e.g.
+(values are per-machine - this is a worked dev example, not a fixed requirement):
+
 ```
+Server=<your-sqlserver-instance>;Database=<your-subiekt-gt-database>;
+Integrated Security=True;TrustServerCertificate=True;Encrypt=False
+```
+
+On the machine this guide's examples were verified against, that was
+`Server=DESKTOP-FJ0P3NU\INSERTNEXO;Database=DEMO` with Windows Integrated Security
+(the SQL Server **instance name** happens to be `INSERTNEXO` on that machine - a legacy
+naming artifact, not an indication that the product is "nexo"). Use whatever your own
+SQL Server instance and database are actually named.
+
+One environment variable the bridge **does** read:
+
+- **`OL_BRIDGE_PUBLIC_BASE`** - the base URL image links in bridge responses are
+  rewritten to. Defaults to `http://host.docker.internal:5056`. This exists because
+  OpenLinker (and, through it, Allegro) fetches product images from **outside** the
+  bridge machine's own loopback; `localhost`/`127.0.0.1` image URLs would fail there.
+  Set this only if the default `host.docker.internal` hostname does not resolve from
+  wherever the images are actually being fetched.
 
 See the [setup guide](./setup-guide.md#part-a--run-the-bridge-on-windows) and
-[runbook](./runbook.md#connection-configuration) for the full field list.
+[runbook](./runbook.md#connection-configuration) for the full operational picture.
 
-### 3.3 - Set `ASPNETCORE_ENVIRONMENT=Development` before launching
+### 3.3 - Launch the bridge
 
-This is the single biggest time-sink if you miss it. The **default environment is
-Production**, and `appsettings.Production.json` ships **template placeholders** that
-**override** your real base `appsettings.json`:
-
-- `Sfera.BinariesDir` becomes a non-existent path
-  (`C:\Users\<USER>\AppData\Local\InsERT\Deployments\Nexo\<WDROZENIE>\Binaries`), so any
-  Sfera call throws
-  `System.IO.FileNotFoundException: Could not load file or assembly 'InsERT.Moria.Sfera'`.
-- `Auth.Enabled=true` with an empty key, so **every `/api/*` returns 401**.
-
-`Development` loads only the base `appsettings.json` (real `BinariesDir`, Auth disabled), so
-set it first:
+The bridge ships with a `start-bridge.bat` launcher. Run it **directly** - double-click
+it in Explorer, or run it from a `cmd`/PowerShell prompt in the bridge project's
+directory:
 
 ```powershell
-$env:ASPNETCORE_ENVIRONMENT = "Development"
+.\start-bridge.bat
 ```
 
-### 3.4 - Launch via the .NET muxer, NOT the apphost
+It kills any already-running bridge process (`GtBridge.exe`) first, builds, then runs
+the bridge in the foreground and keeps a **console window open with live logs**.
 
-Run the bridge through `dotnet`:
+**There is no process supervision.** No Windows Service, no auto-restart, nothing
+watches the bridge - it is a plain foreground console process for local development.
+**Closing that console window stops the bridge.** If OpenLinker suddenly can't reach
+the bridge, check first whether the console window is still open.
 
-```powershell
-dotnet Subiekt.Bridge.Api.dll
-```
-
-**Optional - launch it from WSL** (fun: keeps everything except the Subiekt nexo desktop app
-in one WSL terminal). The bridge still runs **natively on Windows**; `powershell.exe` just
+**Optional - launch it from WSL** (keeps everything except the Subiekt GT desktop app in
+one WSL terminal). The bridge still runs **natively on Windows**; `powershell.exe` just
 drives it from your WSL shell:
 
 ```bash
 # from WSL - starts the Windows bridge in the background, logs to a file you can tail
-powershell.exe -NoProfile -Command '$env:ASPNETCORE_ENVIRONMENT="Development"; Start-Process dotnet -ArgumentList "Subiekt.Bridge.Api.dll" -WorkingDirectory "C:\subiekt-bridge-run" -RedirectStandardOutput "C:\subiekt-bridge-run\bridge.log" -WindowStyle Hidden'
+powershell.exe -NoProfile -Command 'Start-Process cmd -ArgumentList "/c start-bridge.bat" -WorkingDirectory "C:\path\to\bridge" -WindowStyle Hidden'
 
-# then connect Sfera + check health from WSL too (via the gateway IP, see Step 4):
-curl -sX POST http://172.26.96.1:5005/api/session/connect
-curl -s     http://172.26.96.1:5005/health
+# then check health from WSL too (via the gateway IP, see Step 4):
+curl -sk https://172.26.96.1:5055/health
+curl -s   http://172.26.96.1:5056/health
 ```
 
-**Do NOT double-click / launch `Subiekt.Bridge.Api.exe`.** The project is
-`net8.0-windows` with `UseWPF=true`, so the apphost is a **WinExe (GUI subsystem) with no
-console** - it produces **zero stdout/stderr**, so startup failures are completely silent.
-The `dotnet <dll>` muxer runs it as a console app with full logs.
+> **Two ports, two purposes.** The bridge listens on **`5055` (HTTPS, self-signed
+> certificate)** for the real API traffic, and **`5056` (plain HTTP)** so a browser or an
+> image-fetcher (OpenLinker, Allegro) can pull product images without having to trust a
+> self-signed cert. Point OpenLinker's `bridgeBaseUrl` at `5055`; the `5056` port is for
+> images only.
 
-> **Tip.** Copy the build output (`bin/Debug/net8.0-windows`) to a local Windows dir such as
-> `C:\subiekt-bridge-run` and run from there. Running over the `\\wsl.localhost\Ubuntu\...`
-> UNC path is slow.
-
-### 3.5 - Connect the Sfera session
-
-`AutoConnect` is off in the base dev config, so Sfera is **not** connected automatically.
-After the bridge is up, connect explicitly:
+### 3.4 - Verify the bridge is up
 
 ```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:5005/api/session/connect
+Invoke-RestMethod -SkipCertificateCheck https://127.0.0.1:5055/health
+# → { "success": true, "data": { "ok": true }, "error": null }
 ```
 
-Verify the bridge is healthy and connected:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:5005/health
-# → {"status":"ok","bridge":"up","sferaSession":"valid","subiekt":"reachable"}
-Invoke-RestMethod http://127.0.0.1:5005/api/session/status
-# → { "connected": true, ... }
-```
+The Sfera GT COM session is opened lazily on first use (and warmed up at bridge startup)
+- there is no separate "connect" step to run by hand. If a call to a general endpoint
+(products/inventory/orders) or an invoicing endpoint fails immediately after startup,
+give the bridge a few seconds: a cold COM attach to Subiekt GT can take well over a
+minute.
 
 ---
 
 ## Step 4 - Wire WSL to the Windows bridge (the tunnel)
 
-This is the crux. The bridge binds `127.0.0.1:5005` **on Windows** - WSL's own
-`127.0.0.1:5005` does **not** reach it. From WSL you must use the **WSL default gateway IP**,
-which points at the Windows host.
+This is the crux. The bridge binds on **all interfaces** on Windows (`5055`/`5056`) -
+but WSL's own `127.0.0.1:5055` does **not** reach it, because WSL2 runs in its own
+virtual network. From WSL you must use the **WSL default gateway IP**, which points at
+the Windows host.
 
 **Derive the gateway IP from inside WSL:**
 
@@ -288,44 +301,34 @@ ip route | grep default | awk '{print $3}'
 **Verify reachability from WSL:**
 
 ```bash
-curl -s http://172.26.96.1:5005/health
-# → {"status":"ok","bridge":"up","sferaSession":"valid","subiekt":"reachable"}
+curl -sk https://172.26.96.1:5055/health
+# → { "success": true, "data": { "ok": true }, "error": null }
 ```
 
 > **This IP can change.** The `172.x.x.x` gateway address is assigned by WSL and **can
 > change after a Windows or WSL restart**. If the bridge suddenly becomes unreachable from
 > WSL, re-derive the gateway IP with the `ip route` command above and update the connection
-> config (Step 4.2).
+> config (Step 4.1).
 
-### 4.1 - Fallback if the gateway IP doesn't reach a loopback-bound bridge
-
-On some machines a loopback-bound (`127.0.0.1`) bridge is **not** reachable via the gateway
-IP. Two options:
-
-1. **`netsh` port-proxy on Windows** - forward the Windows host interface to the loopback
-   listener:
-   ```powershell
-   netsh interface portproxy add v4tov4 listenport=5005 listenaddress=0.0.0.0 connectport=5005 connectaddress=127.0.0.1
-   ```
-2. **Bind the bridge to a non-loopback host** - but the bridge **refuses** a non-loopback
-   bind unless `Auth.Enabled=true` (with a non-empty `ApiKey`) **and** HTTPS/TLS are
-   configured (fail-closed). See the [runbook](./runbook.md#bridge-configuration-windows)
-   for that config.
-
-### 4.2 - Create the Subiekt connection in OpenLinker
+### 4.1 - Create the Subiekt connection in OpenLinker
 
 In the OpenLinker web UI (`http://localhost:4173`) go to **Connections → Add connection** and
-pick **Subiekt nexo** (or use advanced mode). Use the **gateway URL** as the bridge base URL:
+pick **Subiekt GT** (or use advanced mode). Use the **gateway URL** as the bridge base URL:
 
 - **Platform type** `subiekt`
 - **Adapter key** `subiekt.invoicing.v1`
 - **Enabled capabilities** `Invoicing`
-- **Config JSON** `{ "bridgeBaseUrl": "http://172.26.96.1:5005" }` (your gateway IP, **no**
+- **Config JSON** `{ "bridgeBaseUrl": "https://172.26.96.1:5055" }` (your gateway IP, **no**
   `/api` suffix)
-- **Bridge token** - the create DTO requires **exactly one** of credentials / credentialsRef,
-  even though the local bridge has `Auth.Enabled=false`. A **dummy token** is fine locally.
+- **Bridge token** - the create DTO requires **exactly one** of credentials / credentialsRef.
+  Use the bearer token configured into the bridge (Step 3.2).
 
 Click **Test connection** - OpenLinker probes the bridge `/health` from the API (WSL) side.
+
+> **Self-signed cert.** The bridge's HTTPS listener uses a self-signed certificate. If
+> your local OpenLinker HTTP client validates TLS chains strictly, either trust the
+> bridge's cert on the WSL side or point `bridgeBaseUrl` at the plain-HTTP `5056` port for
+> local dev only - never do that against a real deployment.
 
 > **Windows → WSL direction** (rarely needed - e.g. the bridge or PrestaShop calling back
 > into OpenLinker): thanks to WSL `localhostForwarding`, WSL services are usually reachable
@@ -335,13 +338,13 @@ Click **Test connection** - OpenLinker probes the bridge `/health` from the API 
 
 ## Verify end-to-end
 
-1. **Bridge reachable from WSL:** `curl -s http://<gateway-IP>:5005/health` →
-   `sferaSession:"valid"`, `subiekt:"reachable"`.
+1. **Bridge reachable from WSL:** `curl -sk https://<gateway-IP>:5055/health` →
+   `{"success":true,"data":{"ok":true},"error":null}`.
 2. **Connection test** passes in the OpenLinker UI.
 3. **Full invoice flow.** Create a PrestaShop order (see the
    [setup guide, Part C](./setup-guide.md#part-c--get-an-order-prestashop-example)), let
    OpenLinker ingest it, then issue the invoice from the order screen. The document appears
-   in Subiekt nexo (**Dokumenty → Sprzedaży**) and on OpenLinker's `/invoices` list.
+   in Subiekt GT (**Dokumenty → Sprzedaży**) and on OpenLinker's `/invoices` list.
 
 ---
 
@@ -349,14 +352,13 @@ Click **Test connection** - OpenLinker probes the bridge `/health` from the API 
 
 | Symptom | Cause / fix |
 |---|---|
-| `curl http://127.0.0.1:5005/health` from **WSL** fails/hangs | Loopback in WSL is not the Windows host. Use the **gateway IP** (`ip route \| grep default \| awk '{print $3}'`), e.g. `http://172.26.96.1:5005`. |
+| `curl https://127.0.0.1:5055/health` from **WSL** fails/hangs | Loopback in WSL is not the Windows host. Use the **gateway IP** (`ip route \| grep default \| awk '{print $3}'`), e.g. `https://172.26.96.1:5055`. |
 | Bridge was reachable, now times out from WSL | The WSL gateway `172.x.x.x` changed after a restart. Re-derive it and update the connection's `bridgeBaseUrl`. |
-| Gateway IP still can't reach a loopback bridge | Add a `netsh interface portproxy` rule on Windows, or bind non-loopback **with** Auth + TLS (Step 4.1). |
-| Bridge starts but shows no logs / seems to do nothing | You launched `Subiekt.Bridge.Api.exe` (WinExe, no console). Launch `dotnet Subiekt.Bridge.Api.dll` instead. |
-| `FileNotFoundException: ... 'InsERT.Moria.Sfera'` on any Sfera call | Running in **Production** env, whose `appsettings.Production.json` placeholders overrode `BinariesDir`. Set `ASPNETCORE_ENVIRONMENT=Development`. |
-| Every `/api/*` returns **401** locally | Same Production-env problem: `Auth.Enabled=true` with an empty key. Set `ASPNETCORE_ENVIRONMENT=Development` (base config disables Auth). |
-| Bridge's Sfera connect **hangs** on start | The desktop Subiekt nexo client is open - single-session licence. Close nexo, restart the bridge. |
-| `/health` shows `subiekt` not reachable / `sferaSession` invalid | Sfera not connected - `POST /api/session/connect` (AutoConnect is off in dev). |
+| Bridge console window shows nothing happening / connection refused | The console window running `start-bridge.bat` was closed - there is no process supervision, so closing it stops the bridge. Re-run `start-bridge.bat`. |
+| `System.Runtime.InteropServices.COMException` / bridge hangs on a Sfera call | The Subiekt GT desktop client is open with a stray modal dialog, blocking the single COM worker thread. Close the desktop client and any of its dialogs, restart the bridge. |
+| General endpoints (products/inventory/orders) return **401** | Basic-auth credentials wrong. Confirm the fixed username/password pair configured into the bridge (Step 3.2) - not an OpenLinker-side setting. |
+| Invoicing endpoints (`/api/*`) return **401** | Bearer/`x-bridge-token` mismatch. Confirm the token in the OpenLinker connection matches the one configured into the bridge. |
+| Images fail to load / Allegro reports `IMAGE_DOWNLOAD_FAILED` | The bridge's image URLs resolve to a host unreachable from the fetcher. Set `OL_BRIDGE_PUBLIC_BASE` to a base URL reachable from wherever OpenLinker/Allegro actually fetch images from. |
 | Browser calls to the API blocked (CORS) | `OL_CORS_ORIGIN` must include `http://localhost:4173` (this project's web port, not 5173). |
 | API won't boot | Integration `dist/` missing - run `pnpm -r --filter "./libs/**" build`, then re-run migrations. |
 | A page reload drops you to `/login` | Known dev bug - see below (issue #1327). |
@@ -379,15 +381,17 @@ Click **Test connection** - OpenLinker probes the bridge `/health` from the API 
 | PrestaShop (storefront / back office) | `http://localhost:8080` / `http://localhost:8080/admin-dev/` | WSL (Docker) |
 | phpMyAdmin | `http://localhost:8081` | WSL (Docker) |
 | Postgres / Redis / MySQL | `localhost:5432` / `6379` / `3306` | WSL (Docker) |
-| Subiekt bridge (from Windows) | `http://127.0.0.1:5005` | Windows |
-| Subiekt bridge (**from WSL**) | `http://<gateway-IP>:5005` - example `http://172.26.96.1:5005` | Windows, via WSL gateway |
+| Subiekt bridge, HTTPS API (from Windows) | `https://127.0.0.1:5055` | Windows |
+| Subiekt bridge, HTTP images (from Windows) | `http://127.0.0.1:5056` | Windows |
+| Subiekt bridge (**from WSL**) | `https://<gateway-IP>:5055` - example `https://172.26.96.1:5055` | Windows, via WSL gateway |
 | WSL → Windows gateway IP | `ip route \| grep default \| awk '{print $3}'` | derive per machine |
 | Windows → WSL services | `http://localhost:<port>` (WSL `localhostForwarding`) | - |
 
-**Values that vary per machine:** the WSL gateway IP (`172.26.96.1` here), the Sfera
-`BinariesDir`/`ConfigDir`/`TempDir` deployment folder, the Windows username (`{{USER_NAME}}` here),
-and the Nexo database name (`Nexo_Demo_1` here). The port numbers above are fixed by the repo
-config.
+**Values that vary per machine:** the WSL gateway IP (`172.26.96.1` here), the SQL Server
+instance name and database holding Subiekt GT's data (`DESKTOP-FJ0P3NU\INSERTNEXO` /
+`DEMO` here - a worked dev example, not a fixed value), and the Basic-auth /
+bearer-token credentials configured into the bridge. The port numbers above (`5055`
+HTTPS, `5056` HTTP) are fixed by the bridge's own Kestrel configuration.
 
 ---
 

@@ -33,8 +33,8 @@ review, no manual clicking, unless you want it that way.
 ## Prerequisites
 
 - At least one **active** connection with `Invoicing` and/or `Fiscalization`
-  enabled (KSeF, inFakt, Subiekt, or eparagony.pl — see the two guides linked
-  above).
+  enabled (KSeF, inFakt, Subiekt GT, Subiekt nexo, or eparagony.pl — see the two
+  guides linked above).
 - Knowing which of your order sources actually reports a **buyer tax ID**, if
   you plan to write rules that read one. All four sources can report it, but
   each only under its own condition: PrestaShop when the buyer filled in a VAT

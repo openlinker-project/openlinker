@@ -204,6 +204,30 @@ export interface AdapterMetadata {
    * rather than directly, so the safe default is always applied.
    */
   requiresCredentials?: boolean;
+
+  /**
+   * Overrides `ConnectionService.create`'s inferred default for
+   * `enabledCapabilities` when the caller omits the field entirely (#3350).
+   *
+   * A generic rule existed for exactly one adapter (eparagony, #3192): a
+   * manifest declaring BOTH `Invoicing` and `Fiscalization` had `Invoicing`
+   * stripped from the inferred default, since eparagony's guided wizard
+   * collects only the receipts-lane config and omitting the field must not
+   * silently grant the invoicing lane too. That rule then fired for every
+   * OTHER adapter whose manifest happens to declare both — live-reproduced
+   * for Subiekt, whose guided wizard is Invoicing-only and has no
+   * Fiscalization UI at all, silently omitting `Invoicing` from a
+   * wizard-created connection with no error anywhere.
+   *
+   * Declaring this field explicitly is the fix: when present, it is used
+   * verbatim (still filtered against `supportedCapabilities`) as the
+   * default; when absent, `ConnectionService` applies only the generic
+   * `InventoryMaster`-present-drops-`OfferManager` carve-out and no longer
+   * the blanket Invoicing-strip rule. eparagony sets this to `['Fiscalization']`
+   * (preserving its exact prior behaviour); every other adapter leaves it
+   * unset and falls through to the sane, capability-driven default.
+   */
+  defaultEnabledCapabilities?: string[];
 }
 
 /**

@@ -86,7 +86,7 @@ function makeInvoiceRecord(overrides: Partial<InvoiceRecord> = {}): InvoiceRecor
     id: 'inv_1',
     connectionId: 'conn_1',
     orderId: 'ol_order_1',
-    providerType: 'subiekt',
+    providerType: 'subiekt-gt',
     documentType: 'invoice',
     status: 'issued',
     providerInvoiceId: 'FV/2026/1',
@@ -525,7 +525,7 @@ describe('InvoicingController', () => {
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
       invoiceService.getInvoice.mockResolvedValue(null);
       invoiceService.issueInvoice.mockRejectedValue(
-        new CapabilityNotSupportedException('subiekt', 'Invoicing'),
+        new CapabilityNotSupportedException('subiekt-gt', 'Invoicing'),
       );
       await expect(controller.issueInvoice(dto)).rejects.toBeInstanceOf(
         CapabilityNotSupportedException,
@@ -535,7 +535,7 @@ describe('InvoicingController', () => {
     it('AdapterNotFoundException -> 502 provider-unavailable message', async () => {
       orders.getOrderRecord.mockResolvedValue(makeOrderRecord());
       invoiceService.getInvoice.mockResolvedValue(null);
-      invoiceService.issueInvoice.mockRejectedValue(new AdapterNotFoundException('subiekt'));
+      invoiceService.issueInvoice.mockRejectedValue(new AdapterNotFoundException('subiekt-gt'));
       await expect(controller.issueInvoice(dto)).rejects.toBeInstanceOf(BadGatewayException);
     });
 
@@ -686,7 +686,11 @@ describe('InvoicingController', () => {
             clearanceReference: null,
             documentNumber: 'FV/2026/1',
             issueDate: '2026-06-23',
-            lines: [{ name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '' }],
+            // Rebuilt from the ORDER, so the line carries `productId` (see the
+            // sibling assertion below, which reads the persisted issuedLineSnapshot
+            // instead and therefore does not). `objectContaining` does not recurse
+            // into this array - it is compared field for field.
+            lines: [{ name: 'Widget', productId: 'p_1', quantity: 1, unitPriceGross: 100, taxRate: '' }],
           }),
         }),
       );

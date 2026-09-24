@@ -1,0 +1,940 @@
+// Invoicing.cs.ready - mirror of the bridge source, committed for review.
+//
+// A FULL DUMP of `bridge-gt/Invoicing.cs` as it stands in the bridge repository
+// (openlinker-project/openlinker-subiekt-bridge), not a diff.
+//
+// NOT compiled or type-checked by this repository - there is no C# build here,
+// and editing this copy changes nothing. A real change goes to the bridge repo
+// and is then deployed to the Windows host by hand; this mirror is re-synced
+// from the same source in the same commit, so drift between the three is a
+// review finding rather than something to discover at runtime.
+
+/*
+ * Invoicing bridge for @openlinker/integrations-subiekt (subiekt.invoicing.v1).
+ *
+ * Speaks the FROZEN contract in libs/integrations/subiekt/src/bridge/*.ts -
+ * English /api/* routes, { success, data, error } envelope, Polish field
+ * names inside the payloads. Reconciled against the real GT Sfera object
+ * model (Pomoc/gta.chm, extracted 2026-09-21) - see per-method comments for
+ * the exact InsERT.GT attribute/method names each write uses.
+ *
+ * This is what closes the double-invoice gap: once a connection using this
+ * bridge has Invoicing enabled, ADR-041's one-document-per-order guard can
+ * see a Subiekt-issued FS/PA and refuse a second document from another
+ * connection (inFakt/KSeF) for the same order.
+ */
+using System.Data;
+using System.Globalization;
+using Microsoft.Data.SqlClient;
+
+public static class Invoicing
+{
+    // dok__Dokument.dok_Typ values, confirmed live against this DB:
+    //   FS (Faktura Sprzedaży VAT) = 2, PA (Paragon) = 21.
+    private const int DokTypFS = 2;
+    private const int DokTypPA = 21;
+    private const int DokTypKFS = 6; // korekta FS (Pomoc/gta.chm/SuDokument_Typ.htm)
+
+    // One source of configuration for every file that talks to SQL - see
+    // BridgeConfig.cs. Was a `const` literal here and in five sibling files.
+    private static readonly string ConnStr = BridgeConfig.ConnectionString;
+
+    // StatusKSeFEnum (Pomoc/gta.chm/StatusKSeFEnum.htm), mapped onto the
+    // bridge's BridgeRegulatoryStatus vocabulary (#3351 - widened from the
+    // original 5-value set). GT 1/2 (DoWyslania / ...WygenerowanaEFaktura)
+    // are genuinely NOT YET SENT - the document was issued locally but never
+    // reached KSeF - and were previously folded into the same "pending" that
+    // GT 8 (comms error) also produced, which the TS mapper then read as
+    // core's 'submitted'. That is a false claim: 'submitted' means KSeF
+    // received it, and GT 1/2/8 all mean KSeF has NOT. "queued" (not-yet-sent)
+    // and "error" (comms failure on a send attempt) are now told apart from
+    // "sent" (3/4, genuinely in flight/being processed) so the TS side can
+    // route the former two to core's 'pending-submission' instead.
+    private static string MapKsefStatus(int? status) => status switch
+    {
+        null or 0 => "none",
+        1 or 2 => "queued",
+        3 or 4 => "sent",
+        5 => "accepted",
+        6 or 7 => "rejected",
+        8 => "error",
+        _ => "none",
+    };
+
+    private static string Trim30(string s) => s.Length <= 30 ? s : s.Substring(0, 30);
+    private static string Trim50(string s) => s.Length <= 50 ? s : s.Substring(0, 50);
+
+    /// <summary>#3440: dok_NrPelnyOryg is varchar(30), but the invoice/correction
+    /// idempotency key core hands us (`invoice:{connectionId}:{orderId}`, ~90
+    /// chars) is far longer — naive Trim30 silently discarded the order id (the
+    /// only part that varies per invoice), collapsing every second document for
+    /// a connection onto the first one ever issued. Hash rather than truncate:
+    /// SHA-256 hex, first 30 chars — deterministic (a genuine retry of the same
+    /// key still resolves to the same document, preserving the fiscal-safety
+    /// idempotency guarantee), and collision probability across any realistic
+    /// order volume is astronomically small (30 hex chars = 120 bits of hash
+    /// space). Applied ONLY where the key being stored/looked-up is this long,
+    /// semantically-structured idempotency key - NOT to FindZkIdByOrderRef's
+    /// plain order-id lookup, which is short enough on its own and was confirmed
+    /// unaffected (#3440 investigation).</summary>
+    private static string ReduceIdempotencyKey(string key)
+    {
+        if (key.Length <= 30) return key;
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(key));
+        return Convert.ToHexString(hash).Substring(0, 30);
+    }
+
+    /// <summary>sl_StawkaVAT.vat_Id for a percent-as-string rate code (e.g. "23"). Sfera's
+    /// SuPozycja.VatId (writable) is the only way to set a line's VAT rate -
+    /// VatProcent is read-only (Pomoc/gta.chm/SuPozycja_VatProcent.htm).</summary>
+    private static async Task<int?> ResolveVatId(decimal rate)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT TOP 1 vat_Id FROM sl_StawkaVAT WHERE vat_Stawka = @r", c);
+        cmd.Parameters.AddWithValue("@r", rate);
+        var r = await cmd.ExecuteScalarAsync();
+        return r is null || r is DBNull ? null : Convert.ToInt32(r);
+    }
+
+    /// <summary>Idempotency pre-check: a document previously issued under this key is
+    /// found by dok_NrPelnyOryg (the same 30-char field the order bridge uses for
+    /// OL order ids) rather than re-issued. Real fiscal dedup, not a marker.</summary>
+    private static async Task<(int Id, string Numer)?> FindByIdempotencyKey(string key, int dokTyp)
+    {
+        if (key == "") return null;
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT TOP 1 dok_Id, dok_NrPelny FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_Typ = @t", c);
+        cmd.Parameters.AddWithValue("@k", ReduceIdempotencyKey(key));
+        cmd.Parameters.AddWithValue("@t", dokTyp);
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync()) return null;
+        return (r.GetInt32(0), r.GetString(1).Trim());
+    }
+
+    /// <summary>#3389 (RegulatoryRecordLocator, ADR-035 crash-recovery): find a
+    /// document by its ORIGINAL idempotency key alone, no dok_Typ filter - the
+    /// key is an OL-minted value unique across the whole install regardless of
+    /// which document type it was issued as (FS/PA/KFS), so unlike
+    /// FindByIdempotencyKey (used at write time, where the caller already knows
+    /// the type it's about to create) this is the read-side counterpart the
+    /// crash-recovery sweep needs: it has only the key, not the type, because the
+    /// crash may have happened before OL itself learned what got created.
+    /// Returns the full status (incl. KSeF fields) so a single round trip answers
+    /// "does it exist, and what's its current regulatory state" together -
+    /// exactly what RegulatoryRecordLocator.locateByQuery needs to reconcile a
+    /// lapsed-lease `issuing` record without a second call.</summary>
+    public static async Task<(int Id, string Numer, string RegulatoryStatus, string? KsefNumer)?> LocateByOriginalKey(string key)
+    {
+        if (key == "") return null;
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT TOP 1 dok_Id, dok_NrPelny, dok_StatusKSeF, dok_NumerKSeF FROM dok__Dokument WHERE dok_NrPelnyOryg = @k", c);
+        cmd.Parameters.AddWithValue("@k", ReduceIdempotencyKey(key));
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync()) return null;
+        var id = r.GetInt32(0);
+        var numer = r.GetString(1).Trim();
+        var status = r.IsDBNull(2) ? (int?)null : r.GetInt32(2);
+        var ksef = r.IsDBNull(3) ? null : r.GetString(3).Trim();
+        return (id, numer, MapKsefStatus(status), string.IsNullOrEmpty(ksef) ? null : ksef);
+    }
+
+    /// <summary>Does this document itself carry the warehouse movement?
+    /// dok_JestRuchMag = 1 means Subiekt released the stock as part of issuing
+    /// the document ("sprzedaz z magazynu"), which is the default posture on a
+    /// standard install - a separate WZ would then release the same units a
+    /// second time. On an install configured to sell with a separate warehouse
+    /// document the flag is 0 and the WZ below is what actually moves stock.
+    /// Fails CLOSED (returns false -> write the WZ) only on a read error, on
+    /// the reasoning that a missing release is recoverable by hand while a
+    /// double release is not; the WZ's own idempotency check still guards the
+    /// repeat.</summary>
+    private static async Task<bool> DocumentCarriesStockMovement(int docId)
+    {
+        try
+        {
+            await using var c = new SqlConnection(ConnStr);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                "SELECT dok_JestRuchMag FROM dok__Dokument WHERE dok_Id = @id", c);
+            cmd.Parameters.AddWithValue("@id", docId);
+            var r = await cmd.ExecuteScalarAsync();
+            return r is not null && r is not DBNull && Convert.ToInt32(r) == 1;
+        }
+        catch (Exception e)
+        {
+            Console.Error.WriteLine($"Invoicing.DocumentCarriesStockMovement: could not read dok_JestRuchMag for {docId} - {e.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>#3431: finds the order's ZK document by OL order id
+    /// (dok_NrPelnyOryg, the same field CreateOrder's FindExistingZk keys on
+    /// in OrdersEndpoints.cs), so an invoice can release the warehouse stock
+    /// the order actually reserved. Filtered by 'ZK %' rather than a dok_Typ
+    /// code for the same unconfirmed-numeric-code reason FindExistingZk is
+    /// (see OrdersEndpoints.cs file header note 2).</summary>
+    private static async Task<int?> FindZkIdByOrderRef(string orderRef)
+    {
+        if (orderRef == "") return null;
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT TOP 1 dok_Id FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_NrPelny LIKE 'ZK %' ORDER BY dok_Id DESC", c);
+        cmd.Parameters.AddWithValue("@k", Trim30(orderRef));
+        var r = await cmd.ExecuteScalarAsync();
+        return r is null || r is DBNull ? null : Convert.ToInt32(r);
+    }
+
+    /// <summary>#3431 idempotency pre-check for the warehouse-release
+    /// document - mirrors FindByIdempotencyKey, filtered by 'WZ %' for the
+    /// same unconfirmed-dok_Typ reason as ZK.</summary>
+    private static async Task<(int Id, string Numer)?> FindExistingWz(string key)
+    {
+        if (key == "") return null;
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT TOP 1 dok_Id, dok_NrPelny FROM dok__Dokument WHERE dok_NrPelnyOryg = @k AND dok_NrPelny LIKE 'WZ %' ORDER BY dok_Id DESC", c);
+        cmd.Parameters.AddWithValue("@k", ReduceIdempotencyKey(key));
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync()) return null;
+        return (r.GetInt32(0), r.GetString(1).Trim());
+    }
+
+    /// <summary>#3431 review finding: on SOME Subiekt configurations, issuing
+    /// an FS/PA via DodajFS()/DodajPA().Zapisz() ALREADY auto-generates a
+    /// linked WZ as a side effect (dok_Pozycja.ob_DokMagId on the invoice's
+    /// own position row gets stamped with the auto-WZ's id - live-confirmed
+    /// this session: an invoice issued before this fix left ob_DokMagId NULL
+    /// on its positions, one issued after left it populated with a real WZ,
+    /// on the SAME install with no code change on the read side - almost
+    /// certainly an operator-toggled Subiekt document-type setting
+    /// ("rozchoduj automatycznie"), not something this bridge controls).
+    /// Detecting this is load-bearing: without it, an install where Subiekt
+    /// already auto-releases would get a SECOND, independent WZ from the
+    /// NaPodstawie(zkId) call below and double-release the same units -
+    /// confirmed live during this fix's own verification (tw_Stan dropped by
+    /// 2 for a 1-unit order before this check was added).</summary>
+    private static async Task<(int Id, string Numer)?> FindAutoReleasedWzForInvoice(int invoiceDocId)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT TOP 1 d.dok_Id, d.dok_NrPelny
+              FROM dok_Pozycja p
+              JOIN dok__Dokument d ON d.dok_Id = p.ob_DokMagId
+              WHERE p.ob_DokHanId = @id AND p.ob_DokMagId IS NOT NULL
+              ORDER BY d.dok_Id DESC", c);
+        cmd.Parameters.AddWithValue("@id", invoiceDocId);
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync()) return null;
+        return (r.GetInt32(0), r.GetString(1).Trim());
+    }
+
+    /// <summary>#3431: releases the order's warehouse stock via a WZ (Wydanie
+    /// Zewnetrzne) linked to its ZK - mirrors the DodajKFS+NaPodstawie
+    /// correction pattern below: NaPodstawie(zkId) both stamps the link AND
+    /// auto-loads the WZ's lines from the ZK's own positions, so the WZ
+    /// releases exactly what was ordered with no re-entry. Idempotent on
+    /// `key` (the SAME key IssueInvoice uses for the invoice itself), via the
+    /// WZ %-prefixed NumerOryginalny lookup above - called from BOTH the
+    /// fresh-issuance path and the found-existing-invoice (retry-after-
+    /// partial-failure) path in IssueInvoice, so a crash between "invoice
+    /// committed" and "WZ committed" self-heals on the next retry instead of
+    /// leaving stock permanently unreleased. No ZK found for this order (a
+    /// manually-issued, order-less invoice) is NOT an error - there is
+    /// nothing to release - and is logged rather than thrown. A genuine
+    /// Sfera failure here is deliberately left to propagate: the caller must
+    /// see the request as failed and retry, or stock silently never gets
+    /// released while the invoice looks fully issued.
+    ///
+    /// #3431 follow-up: `zkId`, when supplied, is the ZK's own numeric
+    /// dok_Id, resolved OL-side via identifier_mappings (the same row
+    /// written when the order was created) - a direct cross-reference, not a
+    /// search. It is used DIRECTLY instead of `FindZkIdByOrderRef(orderId)`,
+    /// whose search was NEVER reachable on a natural order: it searches
+    /// dok_NrPelnyOryg for the OL-internal order id, but dok_NrPelnyOryg is
+    /// stamped with the marketplace order NUMBER at ZK-create time
+    /// (OrdersEndpoints.cs's FindExistingZk, keyed on req.OrderRef) - a
+    /// different field entirely. `zkId` absent (order-less/manual invoice,
+    /// or a pre-fix mapping) falls back to that search unchanged.</summary>
+    private static async Task<string?> EnsureWarehouseRelease(string orderId, string key, int invoiceDocId, int? zkId = null, List<InvoiceLine>? lines = null)
+    {
+        var autoWz = await FindAutoReleasedWzForInvoice(invoiceDocId);
+        if (autoWz is not null)
+        {
+            Console.Error.WriteLine($"Invoicing.EnsureWarehouseRelease: Subiekt already auto-released via {autoWz.Value.Numer} for invoice {invoiceDocId} - not creating a second WZ.");
+            return autoWz.Value.Numer;
+        }
+
+        var resolvedZkId = zkId ?? await FindZkIdByOrderRef(orderId);
+        if (resolvedZkId is null)
+        {
+            Console.Error.WriteLine($"Invoicing.EnsureWarehouseRelease: no ZK found for order '{orderId}' - skipping WZ (order-less/manual invoice).");
+            return null;
+        }
+
+        var existingWz = await FindExistingWz(key);
+        if (existingWz is not null)
+        {
+            Console.Error.WriteLine($"Invoicing.EnsureWarehouseRelease: WZ already exists ({existingWz.Value.Numer}) for key '{key}' - not creating a second one.");
+            return existingWz.Value.Numer;
+        }
+
+        string wzNumer = "";
+        Sfera.Run(sub =>
+        {
+            dynamic mgr = sub.SuDokumentyManager;
+            // DodajWZ() confirmed callable (Pomoc/gta.chm/SuDokumentyManager_DodajWZ.htm
+            // family) - NaPodstawie(zkId) is the SAME link+autoload primitive
+            // DodajKFS uses against an FS/PA below, applied here to a ZK instead.
+            dynamic wz = mgr.DodajWZ();
+            try
+            {
+                wz.NaPodstawie(resolvedZkId.Value);
+                // NaPodstawie LINKS the WZ to the ZK; it does not copy the
+                // ZK's specification onto it (confirmed live: every WZ written
+                // before this carried zero dok_Pozycja rows and released no
+                // stock at all). The positions are therefore added explicitly,
+                // from the same lines the invoice was built from, using the
+                // same SuPozycje.Dodaj(symbol) call CreateZk already uses.
+                // A symbol-less line is a service charge (delivery) and has no
+                // warehouse movement, so it is skipped rather than added.
+                var wzPozycji = 0;
+                foreach (var line in lines ?? new List<InvoiceLine>())
+                {
+                    if (line.TowarSymbol is null || line.TowarSymbol == "") continue;
+                    dynamic wpoz = wz.Pozycje.Dodaj(line.TowarSymbol);
+                    wpoz.IloscJm = line.Ilosc;
+                    wzPozycji++;
+                }
+                if (wzPozycji == 0)
+                {
+                    // Nothing to release (an order of pure services, or no line
+                    // carried a catalogue symbol). Writing an empty WZ is what
+                    // this code used to do and it is worse than writing none:
+                    // it looks like a release that happened.
+                    Console.Error.WriteLine($"Invoicing.EnsureWarehouseRelease: no catalogue lines to release for order '{orderId}' - not writing an empty WZ.");
+                    try { wz.Zamknij(); } catch { }
+                    return;
+                }
+                if (key != "") wz.NumerOryginalny = ReduceIdempotencyKey(key);
+                wz.Zapisz();
+                wzNumer = Convert.ToString(wz.NumerPelny) ?? "";
+                Console.Error.WriteLine($"Invoicing.EnsureWarehouseRelease: released stock via {wzNumer} for ZK {resolvedZkId.Value}.");
+            }
+            finally { try { wz.Zamknij(); } catch { } }
+        }, TimeSpan.FromSeconds(120));
+        return wzNumer == "" ? null : wzNumer;
+    }
+
+    public static async Task<IssueResult> IssueInvoice(IssueRequest req)
+    {
+        var dokTyp = req.DocumentType == "PA" ? DokTypPA : DokTypFS;
+
+        // Idempotency: a retried call with the same key returns the SAME
+        // document rather than issuing a second one (fiscal safety).
+        var key = req.IdempotencyKey != "" ? req.IdempotencyKey : req.OrderId;
+
+        // #1-review fix (idempotency race): the whole check-then-write
+        // sequence below - including EnsureWarehouseRelease's own inner
+        // check-then-write for the linked WZ - used to have no lock between
+        // the SELECT and the COM write. Two overlapping calls under the SAME
+        // key (a caller retry racing an original call still in flight -
+        // Sfera.Run's COM-side wait outlives the HTTP request) could both
+        // read "not found" and both issue a fiscal document, and/or both
+        // release the same warehouse stock. Serialized per reduced key.
+        return await IdempotencyLock.RunExclusive(ReduceIdempotencyKey(key), async () =>
+        {
+            var existing = await FindByIdempotencyKey(key, dokTyp);
+            if (existing is not null)
+            {
+                var (exId, exNumer) = existing.Value;
+                var (regStatus, ksefNr) = await ReadKsefStatus(exId);
+                // #3431: the invoice already exists (this is a retry), but a
+                // crash may have happened BETWEEN the original invoice commit and
+                // its WZ commit - always re-check/re-attempt, never assume a
+                // found invoice means its stock was already released too.
+                var wzNumerExisting = await DocumentCarriesStockMovement(exId)
+                    ? null
+                    : await EnsureWarehouseRelease(req.OrderId, key, exId, req.ZkId, req.Lines);
+                return new IssueResult(exId, exNumer, "issued", regStatus, null, ksefNr, wzNumerExisting);
+            }
+
+            // Line VAT rates must resolve BEFORE the Sfera call - a bad rate is a
+            // caller error (400), not a mid-write fiscal failure.
+            //
+            // #2-review fix: `StawkaVAT` used to default to "23" on the C#
+            // side (a plain field initializer), so a caller that OMITTED the
+            // field entirely got a SILENT 23% assumption - the explicit
+            // validation below only ever fired for a present-but-invalid
+            // value, never for an absent one. `StawkaVAT` is now nullable
+            // with no default, and an absent/blank rate holds the document
+            // instead of guessing one.
+            var vatIds = new List<int>();
+            foreach (var line in req.Lines)
+            {
+                if (string.IsNullOrWhiteSpace(line.StawkaVAT))
+                    throw new InvoiceValidationException("Each invoice line requires an explicit stawkaVAT - no rate was supplied, and this bridge refuses to assume one.");
+                if (!decimal.TryParse(line.StawkaVAT, NumberStyles.Any, CultureInfo.InvariantCulture, out var rate))
+                    throw new InvoiceValidationException($"stawkaVAT '{line.StawkaVAT}' is not numeric - only percent-rate codes are supported by this bridge.");
+                var vatId = await ResolveVatId(rate);
+                if (vatId is null)
+                    throw new InvoiceValidationException($"No VAT rate {line.StawkaVAT}% configured in sl_StawkaVAT.");
+                vatIds.Add(vatId.Value);
+            }
+
+            int docId = 0;
+            string numer = "";
+            Sfera.Run(sub =>
+            {
+                dynamic mgr = sub.SuDokumentyManager;
+                // SuDokumentyManager.DodajFS() / DodajPA() - confirmed live
+                // (Pomoc/gta.chm/SuDokumentyManager_DodajFS.htm, _DodajPA.htm).
+                dynamic d = req.DocumentType == "PA" ? mgr.DodajPA() : mgr.DodajFS();
+                try
+                {
+                // A PARAGON DOES NOT KEEP A CUSTOMER, and that is Subiekt's
+                // rule rather than a gap here. Probed live on 2026-09-23: set
+                // KontrahentId=79 on a DodajPA() document, read it straight
+                // back, and it is EMPTY - while the identical assignment on a
+                // DodajFS() document persists (FS 35/2026 carries kontrahent
+                // 79). The assignment is left in place because it is correct
+                // and load-bearing for FS/KFS; on PA it is simply dropped.
+                //
+                // The buyer is NOT lost: the ZK the receipt came from carries
+                // the kontrahent, so "who bought this" is answerable in Subiekt
+                // from the order document. Wanting it ON the receipt means
+                // issuing an FS instead, which is a fiscal decision and not
+                // this bridge's to make.
+                d.KontrahentId = req.KontrahentId;
+                d.LiczonyOdCenBrutto = true; // gross-priced, same ADR-014 stance as ZK
+
+                if (req.Currency != "" && req.Currency != "PLN")
+                    d.WalutaSymbol = req.Currency;
+
+                for (int i = 0; i < req.Lines.Count; i++)
+                {
+                    var line = req.Lines[i];
+                    dynamic poz = line.TowarSymbol != null && line.TowarSymbol != ""
+                        ? d.Pozycje.Dodaj(line.TowarSymbol)
+                        // No catalogue symbol - a one-time service line
+                        // (Pomoc/gta.chm/SuPozycje_DodajUslugeJednorazowa.htm).
+                        : d.Pozycje.DodajUslugeJednorazowa();
+                    if (line.TowarSymbol is null || line.TowarSymbol == "")
+                    {
+                        poz.UslJednNazwa = line.Name ?? "Pozycja";
+                        poz.Jm = "szt.";
+                    }
+                    poz.IloscJm = line.Ilosc;
+                    poz.VatId = vatIds[i];
+                    var wartosc = line.CenaBrutto * line.Ilosc;
+                    poz.WartoscBruttoPrzedRabatem = wartosc;
+                    poz.WartoscBruttoPoRabacie = wartosc;
+                }
+
+                // Payment (Pomoc/gta.chm/SuDokument_Platnosc*.htm). The document
+                // total is read back AFTER lines are added, before Zapisz().
+                if (req.PaymentMethod == "transfer")
+                {
+                    try
+                    {
+                        d.PlatnoscPrzelewKwota = d.KwotaDoZaplaty;
+                        if (req.BankAccountId is int bId && bId > 0)
+                            d.BankRachunekPodmiotuId = bId; // rb__RachBankowy.rb_Id
+                    }
+                    catch { /* older Sfera build may lack the 1.20 payment attrs - best-effort */ }
+                }
+                else if (req.PaymentMethod == "cash")
+                {
+                    try { d.PlatnoscGotowkaKwota = d.KwotaDoZaplaty; } catch { }
+                }
+
+                if (req.StanowiskoKasoweId is int ksaId && ksaId > 0)
+                {
+                    try { d.KasaId = ksaId; } catch { } // dks_Kasa.ks_Id
+                }
+
+                if (key != "") d.NumerOryginalny = ReduceIdempotencyKey(key);
+
+                d.Zapisz();
+                docId = (int)d.Identyfikator;
+                numer = Convert.ToString(d.NumerPelny) ?? "";
+            }
+                finally { try { d.Zamknij(); } catch { } }
+            }, TimeSpan.FromSeconds(120));
+
+            // #3352: this discarded the KSeF number ReadKsefStatus already reads,
+            // so clearanceReference stayed null on every Subiekt document forever
+            // even after KSeF assigned a real number.
+            var (finalRegStatus, finalKsefNr) = await ReadKsefStatus(docId);
+            // #3431: release the order's warehouse stock via a linked WZ. Left
+            // OUTSIDE the Sfera.Run above so a WZ failure never rolls back or
+            // masks the already-committed invoice - the invoice is real fiscal
+            // state and must be reported as issued regardless. An exception here
+            // propagates to the caller as a genuine request failure (retryable;
+            // EnsureWarehouseRelease's idempotency check makes the retry safe).
+            var wzNumer = await DocumentCarriesStockMovement(docId)
+                ? null
+                : await EnsureWarehouseRelease(req.OrderId, key, docId, req.ZkId, req.Lines);
+            return new IssueResult(docId, numer, "issued", finalRegStatus, null, finalKsefNr, wzNumer);
+        });
+    }
+
+    private static async Task<(string RegulatoryStatus, string? Ksef)> ReadKsefStatus(int dokId)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT dok_StatusKSeF, dok_NumerKSeF FROM dok__Dokument WHERE dok_Id = @id", c);
+        cmd.Parameters.AddWithValue("@id", dokId);
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync()) return ("none", null);
+        var status = r.IsDBNull(0) ? (int?)null : r.GetInt32(0);
+        var ksef = r.IsDBNull(1) ? null : r.GetString(1).Trim();
+        return (MapKsefStatus(status), string.IsNullOrEmpty(ksef) ? null : ksef);
+    }
+
+    public static async Task<StatusResult> GetStatus(int providerInvoiceId)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        // #3352: dok_NumerKSeF was never selected here, so clearanceReference
+        // could never populate from a status read either — only ReadKsefStatus
+        // (a private helper used by IssueInvoice) selected it.
+        // #3390: dok_Rozliczony (bit, NOT NULL) is Subiekt's own settled/paid
+        // flag - confirmed live, currently 0 on every FS/PA row in this DB (no
+        // document has been marked paid yet). A plain read closes
+        // PaymentStatusReader with no write-side change.
+        await using var cmd = new SqlCommand(
+            "SELECT dok_NrPelny, dok_StatusKSeF, dok_NumerKSeF, dok_Rozliczony FROM dok__Dokument WHERE dok_Id = @id", c);
+        cmd.Parameters.AddWithValue("@id", providerInvoiceId);
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync())
+            throw new InvoiceNotFoundException(providerInvoiceId);
+        var numer = r.GetString(0).Trim();
+        var status = r.IsDBNull(1) ? (int?)null : r.GetInt32(1);
+        var ksef = r.IsDBNull(2) ? null : r.GetString(2).Trim();
+        var paid = !r.IsDBNull(3) && r.GetBoolean(3);
+        return new StatusResult(numer, MapKsefStatus(status), string.IsNullOrEmpty(ksef) ? null : ksef, paid);
+    }
+
+    /// <summary>Issues a faktura korygujaca (KFS) linked to an existing FS/PA via
+    /// SuDokument.NaPodstawie(origId) - confirmed live against gta.chm example 7
+    /// (KFS_UtworzDoIstniejacego). NaPodstawie() BOTH stamps SuDokument.DoDokumentuId
+    /// (readable back as the link to the original) AND auto-populates d.Pozycje as
+    /// SuPozycjaKorekty objects mirroring the original's lines - "before korekta"
+    /// fields are read-only snapshots of the original, only the "*PoKorekcie" fields
+    /// are writable. Positions are addressed by Lp (1-based, matches the original
+    /// document's line ordinal), never by TowarId, since the bridge contract's
+    /// BridgeKorektaLine keys on `lp`.</summary>
+    public static async Task<CorrectionResult> IssueCorrection(int origId, CorrectionRequest req)
+    {
+        // Idempotency is opt-in here (unlike IssueInvoice, which falls back to
+        // OrderId): a correction request carries no natural fallback key, and the
+        // bridge contract states idempotencyKey is optional - a caller that omits
+        // it accepts the risk of a duplicate korekta on a retried call.
+        //
+        // #1-review fix (idempotency race): serialized on the reduced key when
+        // one is supplied, same reasoning as IssueInvoice - two overlapping
+        // calls under the SAME key must not both observe "not found" and both
+        // issue a korekta. A blank key runs unlocked, unchanged.
+        var lockKey = req.IdempotencyKey != "" ? ReduceIdempotencyKey(req.IdempotencyKey) : "";
+        return await IdempotencyLock.RunExclusive(lockKey, async () =>
+        {
+            if (req.IdempotencyKey != "")
+            {
+                var existing = await FindByIdempotencyKey(req.IdempotencyKey, DokTypKFS);
+                if (existing is not null)
+                {
+                    var (exId, exNumer) = existing.Value;
+                    // A retry: report what the ORIGINAL call already committed,
+                    // not a fabricated "everything is fine" answer.
+                    var alreadyReleased = await DocumentCarriesStockMovement(exId);
+                    return new CorrectionResult(exId, exNumer, origId, req.Przyczyna, "issued", null, alreadyReleased);
+                }
+            }
+
+            int docId = 0;
+            string numer = "";
+            int linkedOrigId = 0;
+            // #4-review fix: this bridge has NO confirmed-live way to reverse a
+            // warehouse movement (there is no gta.chm-cited, live-tested COM
+            // primitive here the way DodajPW/DodajRW/DodajWZ are for the other
+            // write paths), so a quantity-REDUCING correction (a partial
+            // return) is not given an invented, unverified stock write - that
+            // would risk moving the WRONG quantity against the WRONG towar
+            // silently, which is worse than moving nothing. Instead the
+            // per-line quantity delta is tracked and reported back on
+            // CorrectionResult.QuantityDeltas so the caller (who already knows
+            // which towar each Lp is, from the invoice it issued) can decide
+            // what to do - typically POST /api/inventory/adjust, the
+            // confirmed-live PW/RW primitive, for exactly the returned amount.
+            var quantityDeltas = new List<CorrectionQuantityDelta>();
+            Sfera.Run(sub =>
+            {
+                dynamic mgr = sub.SuDokumentyManager;
+                dynamic d = mgr.DodajKFS();
+                try
+                {
+                    // THE LINK: NaPodstawie(origId) both stamps DoDokumentuId and
+                    // auto-loads d.Pozycje from the original document's own lines.
+                    d.NaPodstawie(origId);
+
+                    foreach (var line in req.Lines)
+                    {
+                        dynamic poz = d.Pozycje.Element(line.Lp);
+
+                        // "Before korekta" snapshot, read back from the auto-loaded
+                        // position - the only source of truth for a field the caller
+                        // did not override.
+                        decimal beforeQty = Convert.ToDecimal(poz.IloscJm);
+                        decimal beforeTotal = Convert.ToDecimal(poz.WartoscBruttoPoRabacie);
+                        decimal beforeUnitPrice = beforeQty != 0m ? beforeTotal / beforeQty : 0m;
+
+                        decimal finalQty = line.NowaIlosc ?? beforeQty;
+                        decimal finalUnitPrice = line.NowaCena ?? beforeUnitPrice;
+                        decimal finalTotal = finalQty * finalUnitPrice;
+
+                        poz.IloscJmPoKorekcie = finalQty;
+                        poz.WartoscBruttoPrzedRabatemPoKorekcie = finalTotal;
+                        poz.WartoscBruttoPoRabaciePoKorekcie = finalTotal;
+
+                        if (beforeQty != finalQty)
+                            quantityDeltas.Add(new CorrectionQuantityDelta(line.Lp, beforeQty - finalQty));
+                    }
+
+                    if (req.Przyczyna != "") d.Uwagi = req.Przyczyna;
+                    if (req.IdempotencyKey != "") d.NumerOryginalny = ReduceIdempotencyKey(req.IdempotencyKey);
+
+                    d.Zapisz();
+                    docId = (int)d.Identyfikator;
+                    numer = Convert.ToString(d.NumerPelny) ?? "";
+                    // Verification: read the link back from the object we just saved,
+                    // rather than trusting the origId we passed in.
+                    try { linkedOrigId = (int)d.DoDokumentuId; } catch { linkedOrigId = 0; }
+                }
+                finally { try { d.Zamknij(); } catch { } }
+            }, TimeSpan.FromSeconds(120));
+
+            var stockAutoReleased = await DocumentCarriesStockMovement(docId);
+            if (!stockAutoReleased && quantityDeltas.Count > 0)
+            {
+                Console.Error.WriteLine(
+                    $"Invoicing.IssueCorrection: korekta {numer} (doc {docId}, of original {origId}) " +
+                    $"changed quantity on {quantityDeltas.Count} line(s) and Subiekt did not auto-release " +
+                    "the warehouse movement (dok_JestRuchMag=0) - no confirmed-live way to reverse stock " +
+                    "on a KFS exists in this bridge yet, so stock was NOT adjusted. See CorrectionResult.QuantityDeltas.");
+            }
+
+            return new CorrectionResult(docId, numer, linkedOrigId, req.Przyczyna == "" ? null : req.Przyczyna,
+                "issued", quantityDeltas.Count > 0 ? quantityDeltas : null, stockAutoReleased);
+        });
+    }
+
+    public static async Task<List<BankAccountRow>> ListBankAccounts()
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        // rb_Status is CHAR, not the int this file first guessed, and every row in
+        // this demo DB carries the same value - so filtering on it would either
+        // error (bad implicit conversion) or hide every account. List them all.
+        await using var cmd = new SqlCommand(
+            @"SELECT rb_Id, rb_Nazwa, rb_Numer, rb_Bank, rb_Podstawowy, rb_IdObiektu
+              FROM rb__RachBankowy ORDER BY rb_Id", c);
+        await using var r = await cmd.ExecuteReaderAsync();
+        var list = new List<BankAccountRow>();
+        while (await r.ReadAsync())
+            list.Add(new BankAccountRow(
+                r.GetInt32(0),
+                r.IsDBNull(1) ? null : r.GetString(1).Trim(),
+                r.IsDBNull(2) ? null : r.GetString(2).Trim(),
+                r.IsDBNull(3) ? null : r.GetString(3).Trim(),
+                !r.IsDBNull(4) && r.GetBoolean(4), // rb_Podstawowy is BIT, not int
+                r.IsDBNull(5) ? 0 : r.GetInt32(5)));
+        return list;
+    }
+
+    public static async Task<List<CashRegisterRow>> ListCashRegisters()
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT ks_Id, ks_Nazwa, ks_Symbol FROM dks_Kasa ORDER BY ks_Id", c);
+        await using var r = await cmd.ExecuteReaderAsync();
+        var list = new List<CashRegisterRow>();
+        while (await r.ReadAsync())
+            list.Add(new CashRegisterRow(
+                r.GetInt32(0),
+                r.IsDBNull(1) ? null : r.GetString(1).Trim(),
+                r.IsDBNull(2) ? null : r.GetString(2).Trim()));
+        return list;
+    }
+
+    /// <summary>kh__Kontrahent carries no NIP column of its own - it lives on the
+    /// kontrahent's primary address (adr__Ewid.adr_TypAdresu = 1), the same join
+    /// the order bridge's OrderSelect already uses.</summary>
+    private static async Task<int?> FindKontrahentIdByNip(string nip)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            @"SELECT TOP 1 k.kh_Id FROM kh__Kontrahent k
+              JOIN adr__Ewid a ON a.adr_IdObiektu = k.kh_Id AND a.adr_TypAdresu = 1
+              WHERE a.adr_NIP = @nip ORDER BY k.kh_Id", c);
+        cmd.Parameters.AddWithValue("@nip", nip);
+        var r = await cmd.ExecuteScalarAsync();
+        return r is null || r is DBNull ? null : Convert.ToInt32(r);
+    }
+
+    /// <summary>kh__Kontrahent looked up by its OWN symbol - the deterministic
+    /// fallback identity a NIP-less buyer resolves through (MakeSymbol derives it
+    /// from the buyer's name). Mirrors OrdersEndpoints.FindKontrahentIdBySymbol
+    /// (#3369/#3372, epic #3367): the same duplicate-kontrahent gap exists at
+    /// THIS entry point too - a retried UpsertCustomer for an unchanged, NIP-less
+    /// buyer previously created a second kontrahent on every attempt.</summary>
+    private static async Task<int?> FindKontrahentIdBySymbol(string symbol)
+    {
+        await using var c = new SqlConnection(ConnStr);
+        await c.OpenAsync();
+        await using var cmd = new SqlCommand(
+            "SELECT TOP 1 kh_Id FROM kh__Kontrahent WHERE kh_Symbol = @sym ORDER BY kh_Id", c);
+        cmd.Parameters.AddWithValue("@sym", symbol);
+        var r = await cmd.ExecuteScalarAsync();
+        return r is null || r is DBNull ? null : Convert.ToInt32(r);
+    }
+
+    /// <summary>Resolve an ISO-3166-1 alpha-2 country code to sl_Panstwo.pa_Id.
+    ///
+    /// NOT the same policy as the PRINTED DOCUMENT's buyer block, and the two
+    /// must not be made to match by copying one into the other. That one
+    /// (BridgeAddress.countryCode on the TypeScript side) defaults a blank to
+    /// "PL", because a printed invoice has to show some country and the
+    /// document is Polish. THIS one stores a country on the operator's own
+    /// kontrahent RECORD, which Subiekt's VAT classification then acts on -
+    /// so a guess here moves money, and an unknown code deliberately writes
+    /// nothing at all.
+    ///
+    /// Returns 0 for a blank, an unrecognised or an ambiguous code, and the
+    /// caller then leaves adr_IdPanstwo NULL. Never falls back to Poland: a
+    /// kontrahent stamped with the wrong country is worse than one with none,
+    /// because Subiekt's VAT classification would act on it and nothing in the
+    /// document says the value was guessed.
+    ///
+    /// Shared by BOTH entry points - this one and OrdersEndpoints' ZK path -
+    /// so the two cannot resolve the same code to different countries. It
+    /// lives here because this file already owns a SQL connection; the
+    /// duplicated connection strings across the bridge are a separate
+    /// cleanup.</summary>
+    public static async Task<int> ResolveCountryId(string? iso2)
+    {
+        var code = (iso2 ?? "").Trim().ToUpperInvariant();
+        if (code.Length != 2) return 0;
+        try
+        {
+            await using var c = new SqlConnection(ConnStr);
+            await c.OpenAsync();
+            await using var cmd = new SqlCommand(
+                "SELECT TOP 1 pa_Id FROM sl_Panstwo WHERE pa_KodPanstwaISO = @iso ORDER BY pa_Id", c);
+            cmd.Parameters.AddWithValue("@iso", code);
+            var r = await cmd.ExecuteScalarAsync();
+            if (r is null || r is DBNull)
+            {
+                Console.Error.WriteLine($"Invoicing.ResolveCountryId: no sl_Panstwo row for ISO code '{code}' - leaving the kontrahent's country unset.");
+                return 0;
+            }
+            return Convert.ToInt32(r);
+        }
+        catch (Exception e)
+        {
+            // A lookup failure must never fail a document that is otherwise
+            // issuable; the country is supplementary information.
+            Console.Error.WriteLine($"Invoicing.ResolveCountryId('{code}') failed: {e.Message}");
+            return 0;
+        }
+    }
+
+    /// <summary>Upsert a kontrahent for invoicing. Same never-resave-an-existing-
+    /// kontrahent rule as the order bridge's EnsureKontrahent (avoids the modal
+    /// confirmation hang) - a match by NIP wins over creating a new one, and for
+    /// a NIP-less buyer a match by the deterministic name-derived symbol wins
+    /// next (#3372) - only MakeSymbol's OWN randomized-per-call fallback ("INV" +
+    /// a timestamp, minted when the buyer's name yields no usable symbol) is
+    /// excluded from that lookup, since it must never dedupe against itself.</summary>
+    public static async Task<int> UpsertCustomer(CustomerRequest req)
+    {
+        // #1-review fix (idempotency race): UpsertCustomer's own check-then-
+        // create (NIP/symbol lookup, then DodajKontrahenta) had the identical
+        // shape as the fiscal-document guards - two overlapping calls for the
+        // same buyer could both read "not found" and both create a
+        // kontrahent. Serialized on the strongest identity available (NIP
+        // when supplied, else the deterministic name-derived symbol) so two
+        // concurrent upserts for the SAME buyer serialize together.
+        var lockKey = req.Nip is { Length: > 0 } nipKey ? $"nip:{nipKey}" : $"sym:{MakeSymbol(req.NazwaSkrocona)}";
+        return await IdempotencyLock.RunExclusive(lockKey, async () =>
+        {
+            int existingId = 0;
+            if (req.Nip != null && req.Nip != "")
+                existingId = await Kontrahent.FindByNip(req.Nip) ?? 0;
+            if (existingId > 0) return existingId;
+
+            var symbol = MakeSymbol(req.NazwaSkrocona);
+            // `Kontrahent.FindBySymbol` rather than the old exact-match lookup: it
+            // also sees Subiekt's own `SYMBOL(n)` variants, and verifies the
+            // address before trusting a match. Without the first half, a buyer
+            // whose record Subiekt once suffixed could never be found again and
+            // gained a fresh kontrahent on every single order.
+            if (!symbol.StartsWith("INV", StringComparison.Ordinal))
+                existingId = await Kontrahent.FindBySymbol(
+                    symbol, req.Address?.KodPocztowy, req.Address?.Miejscowosc) ?? 0;
+            if (existingId > 0) return existingId;
+
+            // Resolved BEFORE Sfera.Run, which is synchronous and runs on the COM
+            // apartment thread - an await inside it would deadlock.
+            var panstwoId = await ResolveCountryId(req.Address?.CountryCode);
+
+            int id = 0;
+            Sfera.Run(sub =>
+            {
+                dynamic khMgr = sub.KontrahenciManager;
+                dynamic kh = khMgr.DodajKontrahenta();
+                try
+                {
+                    kh.Symbol = symbol;
+                    // Headless mode requires Nazwa (short name) too, not just
+                    // NazwaPelna - see the matching fix + comment in Sfera.cs.
+                    kh.Nazwa = Trim50(req.NazwaSkrocona != "" ? req.NazwaSkrocona : kh.Symbol);
+                    kh.NazwaPelna = req.NazwaSkrocona;
+                    if (req.Nip != null && req.Nip != "") kh.NIP = req.Nip;
+                    if (req.Address?.Ulica is string ul && ul != "") kh.Ulica = ul;
+                    if (req.Address?.KodPocztowy is string kod && kod != "") kh.KodPocztowy = kod;
+                    if (req.Address?.Miejscowosc is string m && m != "") kh.Miejscowosc = m;
+                    if (req.Telefon != null && req.Telefon != "") kh.Telefon = req.Telefon;
+                    // Best-effort for the same reason as the order path's twin in
+                    // Sfera.EnsureKontrahent - see the comment there.
+                    if (panstwoId > 0)
+                    {
+                        // `Panstwo`, not `PanstwoId` - see the twin in
+                        // Sfera.EnsureKontrahent for how that was established.
+                        try { kh.Panstwo = panstwoId; }
+                        catch (Exception e)
+                        {
+                            Console.Error.WriteLine($"Invoicing.UpsertCustomer: could not set Panstwo={panstwoId} on {symbol}: {e.Message}");
+                        }
+                    }
+                    kh.Zapisz();
+                    id = (int)kh.Identyfikator;
+                }
+                finally { try { kh.Zamknij(); } catch { } }
+            }, TimeSpan.FromSeconds(90));
+            return id;
+        });
+    }
+
+    private static string MakeSymbol(string name)
+    {
+        var baseSym = name.ToUpperInvariant();
+        var sym = new string(baseSym.Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_').Take(16).ToArray());
+        return sym == "" ? "INV" + DateTime.Now.ToString("HHmmssfff") : sym;
+    }
+}
+
+public sealed class InvoiceValidationException : Exception
+{
+    public InvoiceValidationException(string message) : base(message) { }
+}
+
+public sealed class InvoiceNotFoundException : Exception
+{
+    public InvoiceNotFoundException(int id) : base($"No document with id {id}.") { }
+}
+
+public sealed class InvoiceLine
+{
+    public string? TowarSymbol;
+    public decimal Ilosc;
+    public decimal CenaBrutto;
+    /// <summary>#2-review fix: NO default. A default of "23" here meant an
+    /// omitted rate was silently treated as 23% VAT rather than holding the
+    /// document - see IssueInvoice's explicit-presence check.</summary>
+    public string? StawkaVAT;
+    public string? Name;
+}
+
+public sealed class IssueRequest
+{
+    public string DocumentType = "FV";
+    public string Currency = "PLN";
+    public string OrderId = "";
+    public string IdempotencyKey = "";
+    public int KontrahentId;
+    public List<InvoiceLine> Lines = new();
+    public string? PaymentMethod;
+    public int? BankAccountId;
+    public int? StanowiskoKasoweId;
+    /// <summary>#3431 follow-up: the ZK's own numeric dok_Id, resolved
+    /// OL-side via identifier_mappings. See EnsureWarehouseRelease's
+    /// docblock. Null (order-less/manual invoice, or a pre-fix caller) falls
+    /// back to the pre-existing FindZkIdByOrderRef(OrderId) search.</summary>
+    public int? ZkId;
+}
+
+public sealed record IssueResult(int ProviderInvoiceId, string ProviderInvoiceNumber, string State, string RegulatoryStatus, string? PdfUrl, string? KsefNumer = null, string? WarehouseReleaseNumber = null);
+public sealed record StatusResult(string Numer, string RegulatoryStatus, string? KsefNumer = null, bool Paid = false);
+public sealed record BankAccountRow(int Id, string? Name, string? Number, string? BankName, bool IsDefault, int OwnerPodmiotId);
+public sealed record CashRegisterRow(int Id, string? Name, string? Symbol);
+
+public sealed class CorrectionLine
+{
+    public int Lp;
+    public decimal? NowaIlosc;
+    public decimal? NowaCena;
+}
+
+public sealed class CorrectionRequest
+{
+    public string Przyczyna = "";
+    public string IdempotencyKey = "";
+    public List<CorrectionLine> Lines = new();
+}
+
+/// <summary>Per-line quantity change on a korekta - positive `Delta` means the
+/// quantity was REDUCED by that many units (a partial return: stock should
+/// come back up by this much) and negative means it was INCREASED. See
+/// Invoicing.IssueCorrection's "#4-review fix" comment for why this bridge
+/// reports the delta instead of writing a stock movement for it.</summary>
+public sealed record CorrectionQuantityDelta(int Lp, decimal Delta);
+
+public sealed record CorrectionResult(int ProviderInvoiceId, string ProviderInvoiceNumber, int KorygowanyId, string? Przyczyna, string State,
+    List<CorrectionQuantityDelta>? QuantityDeltas = null,
+    /// <summary>True when Subiekt itself carried the warehouse movement for
+    /// this korekta (dok_JestRuchMag=1 on the KFS document) - i.e. QuantityDeltas,
+    /// if any, were already applied by Subiekt and need no caller action.</summary>
+    bool StockAutoReleased = false);
+
+public sealed class CustomerAddress
+{
+    public string? Ulica;
+    public string? KodPocztowy;
+    public string? Miejscowosc;
+    /// <summary>ISO-3166-1 alpha-2, resolved against sl_Panstwo.pa_KodPanstwaISO.
+    /// OpenLinker has always sent it on the invoice path; until now the bridge
+    /// read no such field at all, so it was silently discarded.</summary>
+    public string? CountryCode;
+}
+
+public sealed class CustomerRequest
+{
+    public string NazwaSkrocona = "";
+    public string? Nip;
+    public string Typ = "osoba";
+    public string? Telefon;
+    public CustomerAddress? Address;
+}

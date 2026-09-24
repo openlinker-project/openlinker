@@ -237,8 +237,20 @@ describe('FiscalizationController', () => {
           orderId: ORDER_ID,
           currency: 'PLN',
           totalGross: 100,
+          // `objectContaining` does NOT recurse into an array, so this literal is
+          // compared strictly: every field the composer emits has to be listed.
+          // `productId` is one of them - a declared optional on
+          // `FiscalTransactionLine`, carried from `OrderItem.productId` so a
+          // caller can tie a registered receipt back to the product it sold.
           lines: [
-            { name: 'Widget', quantity: 1, unitPriceGross: 100, taxRate: '', sku: null },
+            {
+              name: 'Widget',
+              productId: 'p_1',
+              quantity: 1,
+              unitPriceGross: 100,
+              taxRate: '',
+              sku: null,
+            },
           ],
         }),
         expect.anything(),

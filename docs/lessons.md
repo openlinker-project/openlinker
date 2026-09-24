@@ -1895,3 +1895,109 @@ record file — currently `startSharedPrestashopContainer()` in
 `apps/api/test/integration/helpers/prestashop-container.helper.ts`.
 
 **Source**: PR #3276 review (piotrswierzy), fixed same-branch.
+
+## A probe that skips the auth boundary proves nothing about auth
+
+**Context**: #3462. `SubiektConnectionTesterAdapter` verified a Subiekt connection with
+`GET /health`, and the same adapter backs the `subiekt.bridge.reachabilitySweep` job. Both
+Subiekt bridges deliberately exempt `/health` from their auth middleware so a load balancer or
+monitoring probe needs no credential.
+
+**Problem**: the probe therefore proved reachability and nothing else. A connection created with
+no bridge token got a green "Connection test passed - OK" and then failed `401` on its first
+invoice, because every `/api/*` route is closed until the token is configured. The wizard
+compounded it by calling the field optional, so the operator was told to leave it blank, told the
+setup was fine, and found out at the first real document. The sweep was blind to the same thing -
+a rotated bridge token is the likeliest way a working connection stops working, and the sweep kept
+reporting green through it.
+
+**Rule**: a connection test must exercise the same authorization the real work does. Probe a route
+that sits BEHIND the auth boundary and is a side-effect-free read, so any answer other than
+401/403 proves the credential works; assert the probed URL in the test, not the client method
+name, so swapping back to the unauthenticated route fails even if the method keeps its name. When
+a health endpoint is deliberately anonymous, that is a reason not to build a credential check on
+it - not a convenience.
+
+**Applies to**: every `ConnectionTesterPort` implementation, and any periodic reachability job
+built on one. Currently `libs/integrations/{subiekt,subiekt-nexo}/src/infrastructure/adapters/subiekt-connection-tester.adapter.ts`.
+
+**Source**: PR #3464, issue #3462.
+
+## Documentation can state the opposite of the code, and the test can agree with the documentation
+
+**Context**: #3463. Three Subiekt guides (`setup-guide.md`, `tutorial.md`, `runbook.md`) said the
+bridge credentials were *"hardcoded constants in the bridge, not read from an environment variable
+or config file - consult the bridge operator"*.
+
+**Problem**: `BridgeConfig.cs` resolves every key as env `OL_BRIDGE_*` -> `appsettings.json` ->
+built-in default, and the three credentials have no default at all, so the operator both CAN and
+MUST set them. The bridge's own `appsettings.example.json` said so in its `_readme`
+(*"choose your own"*), one directory away. Two independent sources of truth disagreed for months,
+and nothing noticed, because the connection test (see the lesson above) agreed with the wrong one.
+The guides also shipped an example `appsettings.json` that was the OTHER product's bridge schema
+with names swapped - every key wrong - and told the reader the public bridge repository was
+*"not yet published"*.
+
+**Rule**: when a document states a fact about a component's behaviour, cite where that behaviour is
+defined and read it. Prefer pointing at the authoritative artifact (`appsettings.example.json`, a
+port interface, a migration) over restating it in prose, because a restatement is a second copy
+that can drift. When a claim turns out to be wrong in the direction that blocks the reader, say so
+where it was: a one-line note that the previous text claimed X saves the next reader from
+concluding the correction is the mistake.
+
+**Applies to**: `libs/integrations/*/docs/**`, `docs/user-guide/**` - anywhere prose describes
+runtime behaviour defined in another repository or another language.
+
+**Source**: PR #3465, issue #3463.
+
+## Green locally does not mean green in the image, and a rebuilt stack may not include the service you changed
+
+**Context**: #3461 added a new workspace package (`libs/integrations/subiekt-nexo`) and a
+migration, then deployed to the demo stack to verify.
+
+**Problem**: two independent failures, both silent. The `Dockerfile` enumerates every workspace
+`package.json` by hand before `pnpm install`, so a new package is invisible to the image until it
+is named there - `pnpm lint`, `type-check` and every test pass locally while the image build dies
+on `ERR_PNPM_WORKSPACE_PKG_NOT_FOUND`. Separately, `docker compose build api worker web` does not
+rebuild `migrate`: it is its own service with its own `build.target` and its own image, so the
+migration ran from the previous build and the command still exited 0.
+
+**Rule**: adding a workspace package is a `Dockerfile` edit as well as a `tsconfig`/`plugins.ts`
+edit. Before concluding a deployment verified a change, confirm the container that performs it was
+one of the containers rebuilt - list the compose services and check each one's build target rather
+than rebuilding the ones whose names match the change. A zero exit code from a build or a compose
+command is not evidence the new code ran.
+
+**Applies to**: `Dockerfile`, `docker-compose.yml`, and any verification run on a locally built
+stack.
+
+**Source**: PR #3464.
+
+## TypeORM keys an applied migration by class NAME, so renumbering one makes it run again
+
+**Context**: while checking a suspected duplicate migration prefix, the demo database's
+`migrations` table was read directly.
+
+**Problem**: it contained BOTH `SplitSubiektGtIdentity1898000000000` and
+`SplitSubiektProductLines1898000000000` - two different classes at the same timestamp, both
+recorded as applied. TypeORM matches executed migrations by class name (`MigrationExecutor`), not
+by timestamp, so a duplicate prefix does not collide at runtime at all; it is caught only by
+`scripts/check-migration-timestamps.mjs` rule 3, and only within ONE tree. Two branches can each
+carry a different migration at the same prefix and both pass their own lint - the failure appears
+when the second one merges.
+
+The corollary bites in the other direction: renumbering an already-merged migration changes its
+class name, so TypeORM treats it as new and runs it again. On any environment that already applied
+it, a plain `ALTER TABLE ... ADD COLUMN` then fails on "column already exists".
+
+**Rule**: before picking a migration prefix, scan every remote ref, not just the current branch and
+`origin/main` - the guard cannot see the branch that will collide with yours. If a merged migration
+must be renumbered, make its `up()` and `down()` idempotent (`ADD COLUMN IF NOT EXISTS` /
+`DROP COLUMN IF EXISTS`) in the same commit, and say in a comment why that one is idempotent so the
+pattern is not copied without cause. Check whether the colliding branch has already renumbered
+before doing it yourself: a stale branch can keep a prefix its own base has already moved off.
+
+**Applies to**: `apps/api/src/migrations/**`, `scripts/check-migration-timestamps.mjs`.
+
+**Source**: #3461 (investigated; renumbering proved unnecessary once the colliding branch turned
+out to be three commits behind its own base).

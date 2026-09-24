@@ -168,6 +168,16 @@ const orderInvoiceSchema = z.object({
    *  blocks are still worth explaining. Optional: a snapshot written before this
    *  field existed is treated as suppressing, matching the pre-#2100 behaviour. */
   blocksIssuanceElsewhere: z.boolean().optional(),
+  /** How many of the document's lines the provider could not link to its own
+   *  catalogue and issued as free text - on Subiekt such a line does not move
+   *  warehouse stock, so the document looks correct while the sale never
+   *  reaches the warehouse. TRI-STATE, and `nullish` is load-bearing: absent /
+   *  `null` means the provider does not report linkage (inFakt, KSeF and
+   *  eparagony never will), `0` means every line was linked, `> 0` is the
+   *  badge. Read it through `unlinkedCatalogueLineCount`, never as a
+   *  truthiness test, which reports false for `0` and for `null` alike while
+   *  meaning two different things. */
+  unlinkedCatalogueLines: z.number().int().nullish(),
 });
 export type ParsedOrderInvoice = z.infer<typeof orderInvoiceSchema>;
 

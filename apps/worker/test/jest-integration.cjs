@@ -145,6 +145,18 @@ module.exports = {
       __dirname,
       '../../../libs/integrations/subiekt/src/$1',
     ),
+    // Subiekt nexo is a SEPARATE package for a separate InsERT product - see
+    // libs/integrations/subiekt-nexo. The longer specifier must be mapped too,
+    // or an integration test resolves it through the built dist instead of
+    // source.
+    '^@openlinker/integrations-subiekt-nexo$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/subiekt-nexo/src/index.ts',
+    ),
+    '^@openlinker/integrations-subiekt-nexo/(.*)$': path.resolve(
+      __dirname,
+      '../../../libs/integrations/subiekt-nexo/src/$1',
+    ),
     '^@openlinker/integrations-fx$': path.resolve(
       __dirname,
       '../../../libs/integrations/fx/src/index.ts',
