@@ -6,6 +6,7 @@
  * can detect regressions per method.
  *
  * GET    /users                — list all users (optional ?status filter)
+ * GET    /users/packers        — minimal active-packer roster (admin+operator, #3340)
  * POST   /users/:id/approve    — approve a pending registration with a role
  * POST   /users/:id/reject     — reject and delete a pending registration
  * PATCH  /users/:id/role       — change a user's role
@@ -45,6 +46,7 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { ApproveUserDto } from '../dto/approve-user.dto';
 import { ListUsersQueryDto } from '../dto/list-users-query.dto';
+import { PackerListResponseDto } from '../dto/packer-list-response.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
 import { UserListResponseDto } from '../dto/user-list-response.dto';
 import { IUserManagementService, USER_MANAGEMENT_SERVICE_TOKEN } from '../user-management.service.interface';
@@ -69,6 +71,30 @@ export class UsersController {
       pageSize: query.pageSize,
     });
     return UserListResponseDto.fromDomain(result);
+  }
+
+  @Get('packers')
+  @Roles('admin', 'operator')
+  @ApiOperation({
+    summary: 'List active packers for work assignment (admin/operator)',
+    description:
+      'Minimal roster used by the Assign Packing Work screen (#3340) — id + ' +
+      'username only, unlike GET /users which is admin-only and carries the ' +
+      'full user-management projection. ' +
+      'Deliberately narrowed to role=packer only, even though the bench routes ' +
+      '(@Roles(admin, operator, packer)) and the claim predicate accept any user ' +
+      'id — an operator/admin packing a shift is not offered as an assignment ' +
+      'target here. Capped at 500 rows (pageSize) with no total reported back; ' +
+      'past that cap the board silently renders a partial roster.',
+  })
+  @ApiResponse({ status: 200, description: 'Packer roster', type: PackerListResponseDto })
+  async listPackers(): Promise<PackerListResponseDto> {
+    const result = await this.userManagement.listUsers({
+      status: 'active',
+      role: 'packer',
+      pageSize: 500,
+    });
+    return PackerListResponseDto.fromDomain(result.users);
   }
 
   @Post(':id/approve')

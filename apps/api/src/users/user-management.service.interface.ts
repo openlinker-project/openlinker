@@ -14,7 +14,13 @@ import type { User } from '@openlinker/core/users';
 import type { UserRole, UserStatus } from '@openlinker/core/users';
 
 export interface IUserManagementService {
-  listUsers(opts?: { status?: UserStatus; page?: number; pageSize?: number }): Promise<{ users: User[]; total: number }>;
+  listUsers(opts?: {
+    status?: UserStatus;
+    /** #3340 — the packer-roster read filters by this. */
+    role?: UserRole;
+    page?: number;
+    pageSize?: number;
+  }): Promise<{ users: User[]; total: number }>;
   approveUser(userId: string, role: UserRole): Promise<void>;
   rejectUser(userId: string): Promise<void>;
   updateRole(userId: string, role: UserRole, actorId: string): Promise<void>;

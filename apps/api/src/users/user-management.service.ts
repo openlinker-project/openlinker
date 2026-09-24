@@ -40,6 +40,7 @@ export class UserManagementService implements IUserManagementService {
 
   async listUsers(opts?: {
     status?: UserStatus;
+    role?: UserRole;
     page?: number;
     pageSize?: number;
   }): Promise<{ users: User[]; total: number }> {

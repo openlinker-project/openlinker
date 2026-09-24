@@ -33,3 +33,18 @@ export interface UserListFilters {
 export interface ApproveUserInput {
   role: UserRole;
 }
+
+/**
+ * Minimal roster entry from `GET /users/packers` (#3340) — id + username
+ * only. NOT a narrowed `UserSummary`: that endpoint is reachable by
+ * `operator` as well as `admin`, so its response deliberately carries no
+ * email/status/createdAt.
+ */
+export interface PackerSummary {
+  id: string;
+  username: string;
+}
+
+export interface PackerListResponse {
+  packers: PackerSummary[];
+}

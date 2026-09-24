@@ -75,6 +75,18 @@ export interface FulfillmentTask {
   deliveryMethod: string | null;
   assignedConnectionId: string | null;
   /**
+   * A supervisor's advisory pre-assignment to a specific PACKER (#3340,
+   * ADR-074) — a distinct axis from `assignedConnectionId`, which is the
+   * HOLDER connection (the executor). `null` = unassigned.
+   */
+  assignedToUserId: string | null;
+  /**
+   * Whether a packer other than `assignedToUserId` may still claim this
+   * task. `true` is the advisory default; server-side enforcement of
+   * `false` lives at the pack bench, not here.
+   */
+  selfServeEligible: boolean;
+  /**
    * The orchestration status. **Not the authority on heldness** — nothing
    * writes `on_hold`, so a held task reads `open` with a non-empty
    * `activeHolds`. Read `activeHolds` for that.
@@ -139,4 +151,18 @@ export interface FulfillmentTaskFilters {
   /** Server-clamped; the response reports what was actually applied. */
   limit?: number;
   offset?: number;
+}
+
+/**
+ * Body of `PATCH /fulfillment/works/:workId/assignment` (#3337, ADR-074).
+ *
+ * Both fields optional and independently applied — `undefined` means "leave
+ * alone". `assignedToUserId: null` clears an assignment; a string id sets or
+ * reassigns it. NOT gated by `expectedVersion` — ADR-074 places this outside
+ * the legality matrix `applyAction` enforces, so there is no optimistic
+ * token to send.
+ */
+export interface UpdateFulfillmentWorkAssignmentRequest {
+  assignedToUserId?: string | null;
+  selfServeEligible?: boolean;
 }

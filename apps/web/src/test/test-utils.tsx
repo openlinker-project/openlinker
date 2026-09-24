@@ -969,6 +969,7 @@ export function createMockApiClient(
       list: vi.fn().mockResolvedValue({ works: [], total: 0, limit: 25, offset: 0 }),
       get: vi.fn().mockResolvedValue(null),
       applyAction: vi.fn().mockResolvedValue(null),
+      updateAssignment: vi.fn().mockResolvedValue(null),
       ...overrides.fulfillment,
     } as ApiClient['fulfillment'],
     // #3307 — the merged /sales-documents list. Default is an exhausted
@@ -1102,6 +1103,7 @@ export function createMockApiClient(
     } as ApiClient['webhookDeliveries'],
     users: {
       list: vi.fn().mockResolvedValue({ users: [], total: 0 }),
+      listPackers: vi.fn().mockResolvedValue({ packers: [] }),
       approve: vi.fn().mockResolvedValue(undefined),
       reject: vi.fn().mockResolvedValue(undefined),
       updateRole: vi.fn().mockResolvedValue(undefined),

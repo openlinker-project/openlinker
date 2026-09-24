@@ -46,12 +46,15 @@ export class UserRepository implements UserRepositoryPort {
 
   async findAll(opts?: {
     status?: UserStatus;
+    role?: UserRole;
     page?: number;
     pageSize?: number;
   }): Promise<{ users: User[]; total: number }> {
     const page = opts?.page ?? 0;
     const pageSize = opts?.pageSize ?? 25;
-    const where = opts?.status ? { status: opts.status } : {};
+    const where: { status?: UserStatus; role?: UserRole } = {};
+    if (opts?.status) where.status = opts.status;
+    if (opts?.role) where.role = opts.role;
 
     const [entities, total] = await this.ormRepository.findAndCount({
       where,

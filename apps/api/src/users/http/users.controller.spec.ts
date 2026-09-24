@@ -83,6 +83,39 @@ describe('UsersController', () => {
     });
   });
 
+  describe('listPackers', () => {
+    it('should request only active packers and project id+username only', async () => {
+      const packer = new User(
+        'p1',
+        'packer-one',
+        'p1@test.com',
+        'hash',
+        'packer',
+        'active',
+        new Date(),
+        new Date()
+      );
+      service.listUsers.mockResolvedValue({ users: [packer], total: 1 });
+
+      const result = await controller.listPackers();
+
+      expect(service.listUsers).toHaveBeenCalledWith({
+        status: 'active',
+        role: 'packer',
+        pageSize: 500,
+      });
+      expect(result.packers).toEqual([{ id: 'p1', username: 'packer-one' }]);
+    });
+
+    it('should return an empty roster when no packers exist', async () => {
+      service.listUsers.mockResolvedValue({ users: [], total: 0 });
+
+      const result = await controller.listPackers();
+
+      expect(result.packers).toEqual([]);
+    });
+  });
+
   describe('approveUser', () => {
     it('should call service.approveUser with id and role', async () => {
       service.approveUser.mockResolvedValue(undefined);
