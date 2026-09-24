@@ -4,6 +4,7 @@
  * @module libs/core/src/fulfillment/application/services
  */
 import { EmptyFulfillmentWorkAssignmentUpdateError } from '../../../domain/exceptions/empty-fulfillment-work-assignment-update.error';
+import { ExclusiveAssignmentRequiresPackerError } from '../../../domain/exceptions/exclusive-assignment-requires-packer.error';
 import { FulfillmentWorkActionNotLegalError } from '../../../domain/exceptions/fulfillment-work-action-not-legal.error';
 import { FulfillmentWorkNotFoundError } from '../../../domain/exceptions/fulfillment-work-not-found.error';
 import { FulfillmentWorkVersionConflictError } from '../../../domain/exceptions/fulfillment-work-version-conflict.error';
@@ -369,6 +370,10 @@ describe('FulfillmentWorklistService', () => {
       const repo = makeRepo({
         setSelfServeEligible: jest.fn().mockResolvedValue(true),
         assignToPacker,
+        // ADR-074 / #3360: an ASSIGNED parcel, because exclusivity now needs a
+        // packer to be exclusive to. The property under test is unchanged —
+        // the two axes are written independently, one call each.
+        findById: jest.fn().mockResolvedValue(workAt({ assignedToUserId: 'user-9' })),
       });
 
       await makeService(repo).updateAssignment({ workId: 'work-1', selfServeEligible: false });
@@ -377,10 +382,44 @@ describe('FulfillmentWorklistService', () => {
       expect(assignToPacker).not.toHaveBeenCalled();
     });
 
+    // ADR-074 / #3360 — the refusal, in its own case rather than folded into
+    // the one above. It matters because the repository's guard answers the
+    // same `false` every benign no-op on this axis answers, so without the
+    // named error the supervisor gets a 200 and a toggle that silently snapped
+    // back.
+    it('should refuse exclusivity on a parcel with no assigned packer', async () => {
+      const repo = makeRepo({
+        setSelfServeEligible: jest.fn().mockResolvedValue(false),
+        findById: jest.fn().mockResolvedValue(workAt({ assignedToUserId: null })),
+      });
+
+      await expect(
+        makeService(repo).updateAssignment({ workId: 'work-1', selfServeEligible: false })
+      ).rejects.toThrow(ExclusiveAssignmentRequiresPackerError);
+    });
+
+    // The opposite direction is NOT refused: `true` restores the column
+    // default and is the state `clearAssignment` itself writes, so refusing it
+    // on an unassigned row would refuse a no-op.
+    it('should allow restoring self-serve on a parcel with no assigned packer', async () => {
+      const repo = makeRepo({
+        setSelfServeEligible: jest.fn().mockResolvedValue(true),
+        findById: jest.fn().mockResolvedValue(workAt({ assignedToUserId: null })),
+      });
+
+      await expect(
+        makeService(repo).updateAssignment({ workId: 'work-1', selfServeEligible: true })
+      ).resolves.toBeDefined();
+    });
+
     it('should apply both axes in one call when both are supplied', async () => {
       const repo = makeRepo({
         assignToPacker: jest.fn().mockResolvedValue(true),
         setSelfServeEligible: jest.fn().mockResolvedValue(true),
+        // The re-read must show the assignee the first write just made — a
+        // fixture that still reads unassigned would contradict the call under
+        // test and trip #3360's check on a sequence that is entirely legal.
+        findById: jest.fn().mockResolvedValue(workAt({ assignedToUserId: 'user-9' })),
       });
 
       await makeService(repo).updateAssignment({

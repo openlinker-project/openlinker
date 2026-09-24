@@ -45,6 +45,7 @@ import {
 } from '@nestjs/swagger';
 import {
   EmptyFulfillmentWorkAssignmentUpdateError,
+  ExclusiveAssignmentRequiresPackerError,
   FulfillmentHoldAlreadyReleasedError,
   FulfillmentHoldLimitExceededError,
   FulfillmentHoldNotFoundError,
@@ -268,7 +269,12 @@ export class FulfillmentWorkController {
     }
     if (
       error instanceof FulfillmentHoldLimitExceededError ||
-      error instanceof FulfillmentHoldAlreadyReleasedError
+      error instanceof FulfillmentHoldAlreadyReleasedError ||
+      // 409 rather than 400 (ADR-074, #3360): the request is well formed and
+      // the work object exists — its STATE refuses, because a parcel with no
+      // assigned packer has nobody to be exclusive to. Assigning it and
+      // re-sending succeeds, which is what separates this from the 400s above.
+      error instanceof ExclusiveAssignmentRequiresPackerError
     ) {
       return new ConflictException(error.message);
     }

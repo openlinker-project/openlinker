@@ -33,6 +33,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Logger } from '@openlinker/shared/logging';
 
 import { EmptyFulfillmentWorkAssignmentUpdateError } from '../../domain/exceptions/empty-fulfillment-work-assignment-update.error';
+import { ExclusiveAssignmentRequiresPackerError } from '../../domain/exceptions/exclusive-assignment-requires-packer.error';
 import { FulfillmentWorkActionNotLegalError } from '../../domain/exceptions/fulfillment-work-action-not-legal.error';
 import { MissingFulfillmentWorkActionFieldError } from '../../domain/exceptions/missing-fulfillment-work-action-field.error';
 import { FulfillmentWorkNotFoundError } from '../../domain/exceptions/fulfillment-work-not-found.error';
@@ -163,7 +164,25 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
       }
     }
     if (input.selfServeEligible !== undefined) {
-      await this.works.setSelfServeEligible(input.workId, input.selfServeEligible);
+      const applied = await this.works.setSelfServeEligible(
+        input.workId,
+        input.selfServeEligible
+      );
+      // `false` on the `false` (lock) direction is NOT the ordinary no-op the
+      // rest of this axis tolerates: `setSelfServeEligible` guards it on
+      // `assignedToUserId IS NOT NULL` (ADR-074's "exclusive to nobody" is
+      // unrepresentable), so a refusal here means the caller tried to lock an
+      // unassigned parcel. Read off the RE-READ, never guessed from `applied`
+      // alone, so a benign race (the work vanished between the write and this
+      // check) still reports "not found" rather than a misleading exclusivity
+      // refusal.
+      if (!applied && input.selfServeEligible === false) {
+        const now = await this.works.findById(input.workId);
+        if (now === null) throw new FulfillmentWorkNotFoundError(input.workId);
+        if (now.assignedToUserId === null) {
+          throw new ExclusiveAssignmentRequiresPackerError(input.workId);
+        }
+      }
     }
 
     // The boolean outcomes above are not inspected individually: `false` from
