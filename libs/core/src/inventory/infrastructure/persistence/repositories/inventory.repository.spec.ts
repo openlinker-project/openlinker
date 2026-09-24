@@ -659,10 +659,12 @@ describe('InventoryRepository', () => {
         ...INVENTORY_OL_OWNED_COLUMNS,
       ];
 
-      // Classification says "exactly one group"; the sibling spec proves total
-      // coverage, this one proves no column is claimed twice — a column in both
-      // the master-owned and OL-owned sets would type-check and silently make
-      // the master the writer of an OL-owned value.
+      // Classification says "exactly one group"; the sibling spec above,
+      // "should classify every declared entity column into exactly one
+      // group", proves total coverage, this one proves no column is claimed
+      // twice — a column in both the master-owned and OL-owned sets would
+      // type-check and silently make the master the writer of an OL-owned
+      // value.
       expect(new Set(all).size).toBe(all.length);
     });
 
