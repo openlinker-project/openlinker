@@ -1187,6 +1187,15 @@ async function ensureCarrierFullyDelivered(conn: Connection, idCarrier: number):
  *
  * Narrowed to the duplicate-key error on purpose - any other failure is a real
  * one and must not be swallowed into a second SELECT that then returns nothing.
+ *
+ * Known, accepted residual: the recovered row can still be deleted out from
+ * under this call by the very peer that created it (its own DELETE may not
+ * have run yet, or a third spec's delete may land after the recovery SELECT).
+ * Not worth a lock or a retry loop here - `ps_delivery` carries no FK to the
+ * range tables, the rows are re-seeded by whichever spec runs next, and the
+ * downstream `INSERT IGNORE` absorbs the duplicate. If this ever surfaces as a
+ * flake, it looks like one spec's carrier silently un-priced, not like a
+ * failure in this function.
  */
 async function insertOrRecoverRange(
   conn: Connection,
@@ -1207,7 +1216,7 @@ async function insertOrRecoverRange(
     // `id_range_weight`) and a single literal would be wrong for one of them.
     // `ps_x -> id_x` is PrestaShop's own convention and the one this file
     // already leans on throughout (`id_carrier`, `id_zone`, `id_shop`).
-    const idColumn = table.replace(/^ps_/, "id_");
+    const idColumn = table.replace(/^ps_/, 'id_');
     const [rows] = await conn.execute<RowDataPacket[]>(
       `SELECT ${idColumn} AS id FROM ${table}
         WHERE id_carrier = ? AND delimiter1 = 0.000000 AND delimiter2 = 10000.000000
