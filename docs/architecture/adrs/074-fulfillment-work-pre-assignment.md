@@ -32,15 +32,21 @@ assignment; it is a per-parcel operator decision, not a policy default.
 
 `assignedToUserId` and `selfServeEligible` are coupled by one invariant: `NOT selfServeEligible`
 implies `assignedToUserId IS NOT NULL`. An unassigned-and-locked parcel — nobody may work it —
-is not a state this decision allows, so it must not be independently reachable through
+is not a state this decision allows, so it must not be reachable through
 `setSelfServeEligible(workId, false)` on unassigned work, nor left behind by
-`clearAssignment(workId)` on an exclusively-assigned one. The write API therefore folds the two
-into a single call, `assignToPacker(workId, userId, { exclusive })`, rather than exposing
-`setSelfServeEligible` as its own standalone writer; `clearAssignment` resets `selfServeEligible`
-to `true` as part of the same statement that nulls `assignedToUserId`. A class-level `@Check`
+`clearAssignment(workId)` on an exclusively-assigned one. The write API keeps the two axes as
+**separate calls** — `assignToPacker(workId, userId)` and `setSelfServeEligible(workId, boolean)`
+— because they are independent decisions in time: a supervisor routinely assigns a parcel first
+and decides on exclusivity later (or never), and a combined signature would force every
+assignment to also state an exclusivity opinion. The invariant is instead enforced at **every**
+writer that could otherwise reach it: `setSelfServeEligible(workId, false)` refuses when no
+packer is assigned; `clearAssignment` resets `selfServeEligible` to `true` in the same statement
+that nulls `assignedToUserId`, so a cleared parcel never hands its predecessor's exclusivity
+decision to whoever is assigned next; and a class-level `@Check`
 (`fulfillment-work-migration-parity.int-spec.ts`'s territory, per #2392's own precedent for this
-table) is a second line of defense, not the primary one — the combined write signature is what
-makes the state unwritable in the first place, rather than merely refused after the fact.
+table) is the DB-level backstop for anything that reaches the row outside these two guarded
+paths — a defense-in-depth line, not the primary one, since the application-level guards are
+what make the state unwritable through the port in the first place.
 
 The affordance is not the boundary. `selfServeEligible: false` changes what the bench *renders*;
 what actually refuses a non-assignee from doing the work is a check inside the write path a
@@ -91,20 +97,24 @@ decision one layer below the matrix, and the matrix must not grow a row for it.
   until a supervisor notices — accepted for v1, named as the reason a v2 reap pass may be needed.
 
 **Migration path:**
-- One migration adding `assignedToUserId` (nullable `text`) and `selfServeEligible` (`boolean not
-  null default true`) to `fulfillment_works`, plus a class-level `@Check` under the migration's
-  own constraint name enforcing `NOT selfServeEligible → assignedToUserId IS NOT NULL` — declared
-  by name so the migration and the `synchronize`-built test schema agree, the same discipline
-  `fulfillment-work-migration-parity.int-spec.ts` already checks for this table; that spec should
-  be extended to cover the two new columns.
-- `FulfillmentWorkRepositoryPort` gains `assignToPacker(workId, userId, { exclusive: boolean })`
-  and `clearAssignment(workId)` — each a single conditional `UPDATE`, no full-row save. There is
-  no standalone `setSelfServeEligible`: the exclusivity flag is folded into `assignToPacker` so
-  an unassigned-and-locked parcel cannot be written, and `clearAssignment` resets
+- One migration adding `assignedToUserId` (nullable `uuid` — matching the sibling
+  `packedByUserId` column on this table rather than restating a user-id reference with a second
+  spelling) and `selfServeEligible` (`boolean not null default true`) to `fulfillment_works`,
+  plus a class-level `@Check` (`CHK_fulfillment_works_exclusive_needs_packer`) under the
+  migration's own constraint name enforcing `NOT (selfServeEligible = false AND assignedToUserId
+  IS NULL)` — declared by name so the migration and the `synchronize`-built test schema agree,
+  the same discipline `fulfillment-work-migration-parity.int-spec.ts` already checks for this
+  table.
+- `FulfillmentWorkRepositoryPort` gains `assignToPacker(workId, userId)`, `clearAssignment(workId)`
+  and `setSelfServeEligible(workId, boolean)` — each a single conditional `UPDATE`, no full-row
+  save. `assignToPacker` is not claim-once like `assignHolder`: a supervisor may reassign an idle
+  parcel, so its guard is existence-only. `setSelfServeEligible(workId, false)` is guarded on
+  `assignedToUserId IS NOT NULL` (`true` is unguarded — it is both the column default and the
+  state `clearAssignment` restores, so refusing it would refuse a no-op). `clearAssignment` resets
   `selfServeEligible` to `true` in the same statement that nulls `assignedToUserId`.
 - The two new rows for `fulfillment-work.repository.ts`'s per-column writer table:
-  `assignedToUserId` — sole writer `assignToPacker`, cleared by `clearAssignment`;
-  `selfServeEligible` — sole writer `assignToPacker`, reset to `true` by `clearAssignment`. Unlike
+  `assignedToUserId` — writers `assignToPacker`, `clearAssignment` (always `null`);
+  `selfServeEligible` — writers `setSelfServeEligible`, `clearAssignment` (always `true`). Unlike
   #2728's declined `shippedAt` column — rejected there as *"a sixth writer on a five-writer
   table, a second source of truth, and backfillable only from the same `eventKind` read"* —
   neither new column duplicates a fact the table or the claim rows already hold, so the "second
