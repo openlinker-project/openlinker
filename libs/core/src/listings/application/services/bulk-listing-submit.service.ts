@@ -196,8 +196,8 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // batches, and Allegro doesn't enforce uniqueness on product-offer
     // `external.id`) and fragment the grouped listing. The FE `alreadyListed`
     // hint is advisory only; this is the authoritative backend guard.
-    const listableJobs = await this.filterAlreadyListed(input.connectionId, expandedJobs);
-    const skippedAlreadyListedCount = expandedJobs.length - listableJobs.length;
+    const afterAlreadyListed = await this.filterAlreadyListed(input.connectionId, expandedJobs);
+    const skippedAlreadyListedCount = expandedJobs.length - afterAlreadyListed.length;
 
     // Post-exclusion empty guard (#1741). Two distinct causes, #1933: if the
     // expansion itself produced no jobs (every submitted id was excluded /
@@ -208,17 +208,22 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     // such rather than reusing the generic "requires at least one productId"
     // message, which the #1837 duplicate-guard confirm flow renders after an
     // explicit "Publish anyway (creates duplicate)" click.
-    if (listableJobs.length === 0) {
+    if (afterAlreadyListed.length === 0) {
       if (expandedJobs.length > 0) {
         throw new AllVariantsAlreadyListedException(skippedAlreadyListedCount);
       }
       throw new EmptyBulkSubmissionException();
     }
-    // Identifier enforcement (#1741): GS1 check-digit on every included job's
-    // effective EAN + batch-wide effective-identifier uniqueness. Done before
-    // persisting so a bad/duplicate barcode never creates a batch row (the
-    // #742 retry rebuilds from the snapshot and does NOT re-validate).
-    this.enforceIdentifierRules(input, listableJobs, variantsById);
+    // Identifier enforcement (#1741, exclude-not-abort #3492): GS1 check-digit
+    // on every included job's effective EAN (excluding, not aborting, an
+    // unacknowledged failure) + batch-wide effective-identifier uniqueness.
+    // Done before persisting so a duplicate barcode never creates a batch row
+    // (the #742 retry rebuilds from the snapshot and does NOT re-validate).
+    const { jobs: listableJobs, skippedInvalidEanCount } = this.enforceIdentifierRules(
+      input,
+      afterAlreadyListed,
+      variantsById
+    );
     const masterStock = await this.resolveMasterStock(
       listableJobs.filter((job) => job.useMasterStock).map((job) => job.variantId)
     );
@@ -349,6 +354,7 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       jobIds,
       skippedAlreadyListedCount,
       skippedAvailabilityUnknownCount: unknownAvailability.length,
+      skippedInvalidEanCount,
     };
   }
 
@@ -652,23 +658,38 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
   }
 
   /**
-   * Enforce identifier integrity on the included fan-out (#1741). For each job
-   * the effective EAN is
+   * Enforce identifier integrity on the included fan-out (#1741, exclude-not-
+   * abort + operator override #3492). For each job the effective EAN is
    * `perVariantOverrides[variantId].overrides.ean ?? variant.ean ?? variant.gtin`
    * - the same value the offer builder self-links / category-resolves by:
    *
-   * - a present GTIN-length EAN (8/12/13/14) with an invalid GS1 check digit
-   *   throws `InvalidEanException`. Operator-entered override EANs are already
-   *   constrained to a valid GTIN length by the request DTO
-   *   (`^(\d{8}|\d{12,14})$`, #1741 review #4); master-sourced codes of an
-   *   off-GTIN length are tolerated here rather than failing the whole batch on
-   *   one dirty catalogue row (the checksum gate simply skips them);
-   * - two included variants (of the same or different products) resolving to the
-   *   same GTIN identity throw `DuplicateBatchEanException` - they would
-   *   otherwise collapse onto one catalog card and lose their variant grouping.
+   * - a present GTIN-length EAN (8/12/13/14) with an invalid GS1 check digit is
+   *   EXCLUDED from the batch (mirroring the `filterAlreadyListed` /
+   *   `unknownAvailability` pattern elsewhere in this service), not a whole-
+   *   batch abort — one dirty barcode among fifty siblings used to kill all
+   *   fifty. UNLESS the job's override carries `eanOverrideAcknowledged: true`
+   *   (#3492): the operator is confident OpenLinker's own checksum is a false
+   *   positive, so the check is skipped for that one job and the EAN is
+   *   forwarded unchanged - the destination marketplace is the real judge, not
+   *   OpenLinker. Operator-entered override EANs are already constrained to a
+   *   valid GTIN length by the request DTO (`^(\d{8}|\d{12,14})$`, #1741
+   *   review #4) - a length-invalid EAN never reaches this method at all, so
+   *   the acknowledgement flag has nothing to rescue there; master-sourced
+   *   codes of an off-GTIN length are tolerated here rather than excluded
+   *   (the checksum gate simply skips them, as before).
+   * - two included variants (of the same or different products) resolving to
+   *   the same GTIN identity still throw `DuplicateBatchEanException` and
+   *   still abort the whole batch, unconditionally - a genuine data conflict
+   *   the operator must fix, not a checksum dispute an acknowledgement can
+   *   paper over. Only evaluated over jobs that survived the checksum gate
+   *   above (an excluded job was never going to submit, so it cannot collide).
    *   Uniqueness compares the GTIN-14-normalised form (left zero-padded), so
    *   `5901234123457` and `05901234123457` — the same GS1 identity — collide as
    *   intended (#1741 review suggestion).
+   * - excluding every job down to zero still throws `InvalidEanException`
+   *   (for the first excluded job) rather than silently creating an empty
+   *   batch - same "only throws if it empties the whole batch" rule
+   *   `unknownAvailability` already uses.
    *
    * Null / barcode-less variants are skipped (a barcode-less sibling lists
    * standalone). Runs before persistence because #742 retry rebuilds from the
@@ -678,20 +699,30 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
     input: BulkListingSubmitInput,
     jobs: ExpandedVariantJob[],
     variantsById: Map<string, ProductVariant | null>
-  ): void {
+  ): { jobs: ExpandedVariantJob[]; skippedInvalidEanCount: number } {
     const firstSeenByGtin = new Map<string, string>();
+    const kept: ExpandedVariantJob[] = [];
+    const skippedInvalid: { variantId: string; ean: string }[] = [];
+
     for (const job of jobs) {
       const variant = variantsById.get(job.variantId) ?? null;
-      const ean =
-        input.perVariantOverrides?.[job.variantId]?.overrides?.ean ??
-        variant?.ean ??
-        variant?.gtin ??
-        null;
-      if (ean == null) continue;
+      const override = input.perVariantOverrides?.[job.variantId];
+      const ean = override?.overrides?.ean ?? variant?.ean ?? variant?.gtin ?? null;
+      if (ean == null) {
+        kept.push(job);
+        continue;
+      }
 
       const isGtinLength = GTIN_LENGTHS.has(ean.length);
       if (isGtinLength && !isValidGs1CheckDigit(ean)) {
-        throw new InvalidEanException(job.variantId, ean);
+        if (override?.overrides?.eanOverrideAcknowledged === true) {
+          // Operator confirmed the checksum failure is a false positive - fall
+          // through into the duplicate-identity check below and let the
+          // destination be the real judge.
+        } else {
+          skippedInvalid.push({ variantId: job.variantId, ean });
+          continue;
+        }
       }
 
       // Normalise to GTIN-14 for the identity comparison so zero-padding variants
@@ -702,7 +733,15 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
         throw new DuplicateBatchEanException(ean, [firstVariantId, job.variantId]);
       }
       firstSeenByGtin.set(gtinKey, job.variantId);
+      kept.push(job);
     }
+
+    if (kept.length === 0 && skippedInvalid.length > 0) {
+      const first = skippedInvalid[0];
+      throw new InvalidEanException(first.variantId, first.ean);
+    }
+
+    return { jobs: kept, skippedInvalidEanCount: skippedInvalid.length };
   }
 
   /**
@@ -812,6 +851,14 @@ export class BulkListingSubmitService implements IBulkListingSubmitService {
       const withoutCard: CreateOfferOverrides = { ...overrides };
       delete withoutCard.productCardId;
       overrides = Object.keys(withoutCard).length > 0 ? withoutCard : undefined;
+    }
+    // `eanOverrideAcknowledged` (#3492) is control-plane only - it tells
+    // `enforceIdentifierRules` to skip its checksum gate for this job and has
+    // no meaning to an adapter, so it never reaches a real `CreateOfferCommand`.
+    if (overrides?.eanOverrideAcknowledged !== undefined) {
+      const withoutAck: CreateOfferOverrides = { ...overrides };
+      delete withoutAck.eanOverrideAcknowledged;
+      overrides = Object.keys(withoutAck).length > 0 ? withoutAck : undefined;
     }
 
     return {

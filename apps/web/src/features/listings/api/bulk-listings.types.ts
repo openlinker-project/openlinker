@@ -52,6 +52,14 @@ export interface BulkOfferOverrides {
    * maps only for `categoryId`; `ean` is kept. Must be a GS1-valid GTIN-8/13.
    */
   ean?: string;
+  /**
+   * Operator confirmation that `ean` above is correct despite failing the
+   * wizard's own GS1 checksum (#3492) - "I confirm this EAN is correct,
+   * submit anyway". Lets the backend skip its checksum-only exclusion for
+   * this one variant and let the destination judge it for real. Never
+   * rescues a length-invalid EAN.
+   */
+  eanOverrideAcknowledged?: boolean;
   imageUrls?: string[] | null;
   /** Operator-picked neutral category parameters (#1071). */
   parameters?: OfferParameter[];

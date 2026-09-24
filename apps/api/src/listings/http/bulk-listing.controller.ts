@@ -127,9 +127,20 @@ export class BulkListingController {
     };
 
     try {
-      const { batchId, jobIds, skippedAlreadyListedCount, skippedAvailabilityUnknownCount } =
-        await this.bulkSubmit.submit(input);
-      return { batchId, jobIds, skippedAlreadyListedCount, skippedAvailabilityUnknownCount };
+      const {
+        batchId,
+        jobIds,
+        skippedAlreadyListedCount,
+        skippedAvailabilityUnknownCount,
+        skippedInvalidEanCount,
+      } = await this.bulkSubmit.submit(input);
+      return {
+        batchId,
+        jobIds,
+        skippedAlreadyListedCount,
+        skippedAvailabilityUnknownCount,
+        skippedInvalidEanCount,
+      };
     } catch (error) {
       // Invalid-input identifier / override enforcement (#1741) → 400, the same
       // mapping shape as the empty-submission guard. `AllVariantsAlreadyListedException`

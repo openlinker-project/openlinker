@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, ConfirmDialog, PageLayout, SetupStepper } from '../../../../shared/ui';
+import type { StatusBadgeTone } from '../../../../shared/ui';
 import { useToast } from '../../../../shared/ui/toast-provider';
 import {
   usePlatforms,
@@ -53,6 +54,7 @@ import {
 } from './bulk-shop-review-step';
 import { ShopPublishTracker } from '../shop-publish-tracker';
 import { BulkConfirmModal } from './bulk-confirm-modal';
+import { NEUTRAL_BLOCKER_CHIPS, gatingBlockers, type ChipDescriptor } from './bulk-blockers';
 import {
   computeResolvedPrice,
   computeResolvedStock,
@@ -263,6 +265,21 @@ export function BulkWizard({
     return validateBatch({ connectionConfig: batchConnection.config });
   }, [batchPlatform, batchConnection]);
   const platformBlockerChips = batchPlatform?.offerValidation?.blockers ?? [];
+  // Same merge the Review step builds (#1741 review #11's "never drift" rule) -
+  // readiness here must agree with the banner's readiness, or a row the banner
+  // calls ready gets excluded at submit for an advisory-only chip (#2243/#3492).
+  const blockerChips = useMemo<Record<string, ChipDescriptor>>(() => {
+    const merged: Record<string, ChipDescriptor> = { ...NEUTRAL_BLOCKER_CHIPS };
+    for (const chip of platformBlockerChips) {
+      merged[chip.id] = {
+        tone: chip.tone as StatusBadgeTone,
+        label: chip.label,
+        fixable: true,
+        advisory: chip.advisory === true,
+      };
+    }
+    return merged;
+  }, [platformBlockerChips]);
 
   const destinationBrowsesCategories =
     (batchConnection?.supportedCapabilities.includes('CategoryBrowser') ?? false) ||
@@ -478,7 +495,7 @@ export function BulkWizard({
       for (const row of rows) {
         if (row.variants.length === 0) continue;
         const includedReady = row.variants.filter(
-          (v) => v.included && v.blockers.length === 0,
+          (v) => v.included && gatingBlockers(v.blockers, blockerChips).length === 0,
         );
         // The product's shared-base policy (if diverged) wins over the batch.
         const rowPricingPolicy = effectivePricingPolicy(row.override, config.pricingPolicy);
@@ -488,13 +505,17 @@ export function BulkWizard({
             excludedVariantIds.push(v.variantId);
             continue;
           }
-          if (v.blockers.length > 0) {
+          if (gatingBlockers(v.blockers, blockerChips).length > 0) {
             // A blocked-but-included sibling must be EXCLUDED, not merely
             // skipped (#1934/F13). Skipping alone leaves it in neither map, and
             // the backend then re-expands it as a sibling with no per-variant
             // override at all - so it reaches the builder with no price and
             // fails the very gate the wizard blocked it for. `canApprove` is a
             // `disabled` attribute, not a guard, so this is the only real fence.
+            // Gated on `gatingBlockers`, not the raw array, so an advisory-only
+            // chip (e.g. `allegro:ean-unverified`) never excludes a row the
+            // Review banner already counted as ready (readiness/submit drift,
+            // #3492).
             excludedVariantIds.push(v.variantId);
             continue;
           }
@@ -616,7 +637,7 @@ export function BulkWizard({
     [config, shopMutation, showToast, canGenerateDescription],
   );
 
-  const counts = useMemo(() => countBatch(rows), [rows]);
+  const counts = useMemo(() => countBatch(rows, blockerChips), [rows, blockerChips]);
   // `'marketplace'` stays the fallback for "no destination chosen yet"; once a
   // connection IS chosen its label comes from the registry like everywhere else,
   // so an unregistered platform reads as its raw type rather than the generic
@@ -663,7 +684,7 @@ export function BulkWizard({
       for (const variant of row.variants) {
         if (
           variant.included &&
-          variant.blockers.length === 0 &&
+          gatingBlockers(variant.blockers, blockerChips).length === 0 &&
           alreadyListedSet.has(variant.variantId)
         ) {
           n += 1;
@@ -671,7 +692,7 @@ export function BulkWizard({
       }
     }
     return n;
-  }, [rows, alreadyListedSet, isShop]);
+  }, [rows, alreadyListedSet, isShop, blockerChips]);
 
   const dupGuardKind = isShop ? 'shop' : 'marketplace';
   const dupGuardDestinationName = activeConnection?.name ?? marketplaceName;
@@ -1031,7 +1052,7 @@ interface BatchCounts {
   mixedPublish: boolean;
 }
 
-function countBatch(rows: BulkWizardRow[]): BatchCounts {
+function countBatch(rows: BulkWizardRow[], chips: Record<string, ChipDescriptor>): BatchCounts {
   let totalVariants = 0;
   let includedReady = 0;
   let includedNeedsAttention = 0;
@@ -1055,7 +1076,7 @@ function countBatch(rows: BulkWizardRow[]): BatchCounts {
         continue;
       }
       hasIncluded = true;
-      if (v.blockers.length === 0) includedReady += 1;
+      if (gatingBlockers(v.blockers, chips).length === 0) includedReady += 1;
       else includedNeedsAttention += 1;
       const publish = v.override.publishImmediately;
       if (publish === false) sawDraft = true;

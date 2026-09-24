@@ -175,6 +175,15 @@ export interface BulkListingSubmitResult {
    * recovers.
    */
   skippedAvailabilityUnknownCount: number;
+  /**
+   * Count of expanded jobs dropped because the effective EAN failed the GS1
+   * check digit and the operator did not set `eanOverrideAcknowledged`
+   * (#3492). Zero when nothing was skipped. Mirrors `skippedAlreadyListedCount`
+   * / `skippedAvailabilityUnknownCount` - reported, not fatal, unless the
+   * exclusion emptied the whole batch (see `enforceIdentifierRules`, which
+   * throws `InvalidEanException` in that case instead).
+   */
+  skippedInvalidEanCount: number;
 }
 
 /**
