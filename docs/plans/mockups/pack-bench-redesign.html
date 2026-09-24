@@ -433,11 +433,23 @@
  <div class="hero-line__scan">
  <input type="text" class="mono" id="scanInput" placeholder="Scan or type SKU / EAN, then press Enter…" aria-label="Scan this item" autofocus />
  <button class="btn btn--ghost" type="button" id="confirmManualBtn" style="height:44px" title="For an item whose barcode is damaged, missing or will not read">Confirm this item</button>
+ <!-- STALE as of #3339: the real /bench has no undo capability at all — scans
+      are append-only, matching the codebase's general act-ledger discipline.
+      This button and its keyboard binding ("U" below) were audited and
+      DECLINED in the implementing PR rather than ported; inventing an undo
+      shortcut for a capability that doesn't exist would be UI with nothing
+      behind it. -->
  <button class="btn btn--ghost btn--sm" type="button" id="undoScanBtn" style="height:44px">↶ Undo last scan on this item</button>
 </div>
  <div style="margin-top:8px; font-size:11.5px; color:var(--text-muted)">
  <strong>Scanning confirms on its own — no button needed. Try it: type <span class="mono" style="color:var(--text-secondary)">MUG-WHT-350</span> and press Enter.</strong> Only use <em>Confirm this item</em> when a barcode is damaged, missing or won't read. <em>Undo</em> only touches this item, never one you already finished.
 </div>
+ <!-- STALE as of #3339: the real /bench ships ONLY the "C" binding below.
+      "U" (undo) was declined for the reason noted on #undoScanBtn above; "N"
+      (take next task) was declined because that control lives in a sibling
+      component (bench-work-list.tsx) the parcel view does not reach, and
+      wiring it blind without a live browser to verify against was judged
+      too risky for one shortcut. Do not implement from this line as drawn. -->
  <div style="margin-top:6px; font-size:11px; color:var(--text-disabled)">Keyboard, when you're not scanning: <span class="mono">C</span> confirm this item · <span class="mono">U</span> undo · <span class="mono">N</span> take next task · <span class="mono">Esc</span> back to the scan box</div>
  <div style="margin-top:8px; font-size:12px; min-height:18px">
  <span id="scanFeedback" class="status-badge status-badge--success" style="display:none">✓ Matched</span>
@@ -456,6 +468,12 @@
 
  <div class="lines-wrap">
  <div class="lines-wrap__head">
+ <!-- STALE as of #3339: "click any row to scan it next" (click-to-reorder
+      the active scan target) is architecturally incompatible with the real
+      matcher. `parcel-scan-match.ts` matches a scan against EVERY line by
+      barcode value, not against a pre-selected "current" line, so there is
+      no position-based target to reorder — the real UI has no equivalent
+      of this row-click, and the implementing PR declined to force one in. -->
  <span style="font-size:12px; color:var(--text-muted)">All items in this parcel — click any row to scan it next</span>
  <label><input type="checkbox" id="groupByLocation" /> Group by location</label>
 </div>
@@ -1043,6 +1061,18 @@
     // inert while the scan box itself has focus — a scanned SKU/EAN
     // containing a stray "c" or "n" must never be read as a shortcut,
     // only as scan data.
+    //
+    // STALE as of #3339: this whole handler demonstrates a THREE-key set
+    // ("c"/"u"/"n") guarded by FOCUS, because this mockup has a real
+    // focusable #scanInput to test focus against. The real /bench has no
+    // such element (its scanner listener is on `document`, needing no
+    // focused target at all — see useScannerInput's own module docblock),
+    // so the focus guard shown here has no equivalent to port. The
+    // implementing PR shipped ONLY the "c" binding, guarded instead by
+    // whether a scan burst is currently in the scanner hook's own keystroke
+    // buffer (`isBurstInProgress()`) — the burst-based analogue of this
+    // handler's focus check. "u" and "n" were declined; see the annotations
+    // above their own controls/hint text in this file.
     document.addEventListener('keydown', function (e) {
       if (document.activeElement === scanInputEl) {
         if (e.key === 'Escape') scanInputEl.blur();

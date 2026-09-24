@@ -76,6 +76,7 @@ import { useBenchReopenMutation } from '../hooks/use-bench-reopen-mutation';
 import { useBenchVerifyMutation } from '../hooks/use-bench-verify-mutation';
 import { useScannerInput } from '../hooks/use-scanner-input';
 import {
+  benchLineState,
   describeParcelRefusal,
   describeReopenRefusal,
   describeVerificationRefusal,
@@ -91,6 +92,7 @@ import {
   type ScanSoundKind,
 } from '../lib/bench-scan-sound';
 import { matchScanToParcelLine, outstandingScanCodes } from '../lib/parcel-scan-match';
+import { isEditableTarget } from '../lib/scanner-gesture';
 import { beginGesture } from '../lib/scanner-gesture-log';
 import { BenchDocumentsPanel } from './bench-documents';
 import { BenchParcelLineRow } from './bench-parcel-line';
@@ -310,7 +312,7 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
       });
   };
 
-  useScannerInput({
+  const scannerInput = useScannerInput({
     // Off while the box is closed, refused or still loading: a scan made then
     // has nothing it could legitimately record, and accepting it would be the
     // surface pretending to work.
@@ -372,6 +374,83 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
       );
     },
   });
+
+  /**
+   * "C" hand-confirms the first not-yet-satisfied line — a keyboard
+   * equivalent of pressing the topmost visible "Confirm this line" button
+   * (#3339, mockup fix). Deliberately NOT a full ShipStation-style hotkey
+   * set: the mockup also demonstrated "U" (undo) and "N" (take next task),
+   * but neither has a real counterpart here — this app has no undo
+   * capability at all (scans are append-only, matching the codebase's
+   * general act-ledger discipline), and "take next task" lives in a sibling
+   * component this one does not reach. Inventing either would be UI with no
+   * capability behind it.
+   *
+   * Same enabled-gate as the scanner listener above (`interactive && !closed
+   * && !refused`). While unreachable, the shortcut raises the SAME
+   * `unreachable` notice the scan path does two dozen lines up — a shown
+   * control with no feedback would be the one way to record a unit that
+   * never says why it failed (#3339 review).
+   *
+   * ## Why the scanner burst check exists, and why capture-phase (#3339 review)
+   *
+   * `useScannerInput`'s own module docblock is explicit that its listener is
+   * on `document` and needs no focused element — which means DURING A SCAN
+   * there is no focused element either, `isEditableTarget` returns `false`
+   * for the document body, and a scanned value containing a stray "c"/"C"
+   * (SKU scanning against alphanumeric codes is normal here) would otherwise
+   * pass every guard below and hand-confirm a line nobody scanned.
+   *
+   * `scannerInput.isBurstInProgress()` guards against that by reading
+   * `useScannerInput`'s own keystroke buffer. Registering THIS listener with
+   * `{ capture: true }` is what makes the check answer the right question:
+   * capture-phase listeners on `document` run before bubble-phase ones for
+   * the same event, so this handler sees the buffer as it stood BEFORE the
+   * scanner hook (a plain, bubble-phase listener) appends the current
+   * keystroke — i.e. "was a burst already under way", not "does the buffer
+   * now contain this keystroke" (which would be true for every press,
+   * including a genuine standalone "C").
+   *
+   * No `preventDefault()` — the scanner hook declines it on purpose (see its
+   * module docblock), and a plain "c" keypress with nothing focused has no
+   * browser default to suppress anyway.
+   */
+  useEffect(() => {
+    if (!interactive || closed || refused) return;
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isEditableTarget(event.target)) return;
+      if (event.key.toLowerCase() !== 'c') return;
+      if (scannerInput.isBurstInProgress()) return;
+
+      if (reachabilityRef.current) {
+        sequence.current += 1;
+        raise({ seq: sequence.current, kind: 'unreachable' }, 'unreachable');
+        return;
+      }
+
+      const current = parcelRef.current;
+      if (current === undefined) return;
+      const next = current.lines.find((candidate) => benchLineState(candidate) !== 'verified');
+      if (next === undefined) return;
+
+      sequence.current += 1;
+      const gesture = beginGesture(next.workLineId, Date.now());
+      submit(next, gesture.gestureId, sequence.current);
+    };
+
+    document.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => document.removeEventListener('keydown', handleKeyDown, { capture: true });
+    // Deliberate dep list: this project's ESLint config carries no
+    // `react-hooks/exhaustive-deps` rule (verified via `pnpm lint`), so there
+    // is no suppression to add. `submit`/`raise` close over state via refs
+    // (parcelRef/reachabilityRef) by the same convention useScannerInput's
+    // onScan above uses; `scannerInput.isBurstInProgress` is a `useCallback`
+    // with an empty dep list and is therefore stable across renders, the
+    // same reason `settle` needs no entry either. Re-running per parcel
+    // change would thrash the listener on every poll tick.
+  }, [interactive, closed, refused]);
 
   if (parcel === undefined && query.isPending) {
     return (
@@ -629,6 +708,7 @@ export function BenchParcelView({ workId, onClose }: BenchParcelProps): ReactEle
               {muted ? benchParcelCopy.audio.offLabel : benchParcelCopy.audio.onLabel}
             </span>
             <span>{benchParcelCopy.footer.scannerReady}</span>
+            <span>{benchParcelCopy.footer.keyboardHint}</span>
           </span>
         </footer>
       )}
