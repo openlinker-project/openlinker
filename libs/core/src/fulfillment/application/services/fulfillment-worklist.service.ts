@@ -32,7 +32,6 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { Logger } from '@openlinker/shared/logging';
 
-import { ExclusiveAssignmentRequiresPackerError } from '../../domain/exceptions/exclusive-assignment-requires-packer.error';
 import { EmptyFulfillmentWorkAssignmentUpdateError } from '../../domain/exceptions/empty-fulfillment-work-assignment-update.error';
 import { ExclusiveAssignmentRequiresPackerError } from '../../domain/exceptions/exclusive-assignment-requires-packer.error';
 import { FulfillmentWorkActionNotLegalError } from '../../domain/exceptions/fulfillment-work-action-not-legal.error';
@@ -237,23 +236,6 @@ export class FulfillmentWorklistService implements IFulfillmentWorklistService {
     // supplied no token at all.
     const work = await this.works.findById(input.workId);
     if (work === null) throw new FulfillmentWorkNotFoundError(input.workId);
-
-    // The one `false` on this axis that is NOT an ordinary no-op (ADR-074,
-    // #3360). `setSelfServeEligible(false)` is guarded on an assignee existing,
-    // because "exclusive to nobody" is the state the table's own
-    // `CHK_fulfillment_works_exclusive_needs_packer` forbids — so its refusal
-    // arrives as the same `false` every benign no-op produces and would
-    // otherwise answer 200 with the toggle silently back where it started.
-    //
-    // Read off the re-read ABOVE rather than a query of its own: that read
-    // already runs, and the row it returns carries the deciding fact. Placed
-    // after the not-found throw on purpose — a work object that vanished
-    // mid-request is `FulfillmentWorkNotFoundError`, not a configuration
-    // mistake the supervisor could act on.
-    if (input.selfServeEligible === false && work.assignedToUserId === null) {
-      throw new ExclusiveAssignmentRequiresPackerError(input.workId);
-    }
-
     return this.toView(work, await this.works.listActiveHolds(input.workId));
   }
 

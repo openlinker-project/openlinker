@@ -14,7 +14,6 @@ import { UnsupportedFulfillmentWorkActionError } from '../../../domain/exception
 import type { FulfillmentWorkRepositoryPort } from '../../../domain/ports/fulfillment-work-repository.port';
 import type { FulfillmentHold } from '../../../domain/types/fulfillment-hold.types';
 import type { FulfillmentWork } from '../../../domain/types/fulfillment-work.types';
-import { ExclusiveAssignmentRequiresPackerError } from '../../../domain/exceptions/exclusive-assignment-requires-packer.error';
 import { FulfillmentWorklistService } from '../fulfillment-worklist.service';
 
 const workAt = (over: Partial<FulfillmentWork> = {}): FulfillmentWork => ({
