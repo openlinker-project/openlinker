@@ -26,6 +26,7 @@ import type {
 } from '../../../domain/ports/inventory-sale-decrement-repository.port';
 import type { InventoryOwnerPosition } from '../../../domain/types/inventory.types';
 import type { IInventoryService } from '../inventory.service.interface';
+import type { IReservationService } from '../reservation.service.interface';
 import { InventorySaleDecrementService } from '../inventory-sale-decrement.service';
 import type { DecrementForWorkInput } from '../inventory-sale-decrement.service.interface';
 
@@ -167,6 +168,7 @@ describe('InventorySaleDecrementService', () => {
   let integrations: { getCapabilityAdapter: jest.Mock };
   let inventoryService: { setInventory: jest.Mock };
   let syncLock: { acquire: jest.Mock; release: jest.Mock; extend: jest.Mock };
+  let reservations: { closeForOrder: jest.Mock };
   let service: InventorySaleDecrementService;
 
   const makeAdapter = () => ({
@@ -203,6 +205,9 @@ describe('InventorySaleDecrementService', () => {
       }),
     };
     inventoryService = { setInventory: jest.fn().mockResolvedValue(undefined) };
+    reservations = {
+      closeForOrder: jest.fn().mockResolvedValue({ closed: 1, alreadyTerminal: 0, failed: 0 }),
+    };
 
     // Always granted: the lock's own contention behaviour is covered by its
     // own case below, not by every other test in this file.
@@ -219,7 +224,8 @@ describe('InventorySaleDecrementService', () => {
       repository,
       inventoryService as unknown as IInventoryService,
       integrations as unknown as IIntegrationsService,
-      syncLock as unknown as SyncLockPort
+      syncLock as unknown as SyncLockPort,
+      reservations as unknown as IReservationService
     );
   });
 
@@ -556,6 +562,103 @@ describe('InventorySaleDecrementService', () => {
     expect(shop().adjustInventory).toHaveBeenCalledWith(
       expect.objectContaining({ variantId: undefined, quantity: -1 })
     );
+  });
+
+  describe('closing the routed order\'s hold (#3480)', () => {
+    const consumedLine = {
+      orderRecordId: 'ol_order_1',
+      terminalStatus: 'consumed',
+      orderLineIds: ['line-1'],
+    };
+
+    it('should consume the line\'s hold once the decrement lands', async () => {
+      await service.decrementForWork(input());
+
+      expect(reservations.closeForOrder).toHaveBeenCalledWith(consumedLine);
+    });
+
+    // The propagation `setInventory` enqueues must see the hold already gone and
+    // the master already lower, or the sale is subtracted twice.
+    it('should consume the hold BEFORE writing the new quantity to the mirror', async () => {
+      await service.decrementForWork(input());
+
+      const consumeOrder = reservations.closeForOrder.mock.invocationCallOrder[0];
+      const mirrorOrder = inventoryService.setInventory.mock.invocationCallOrder[0];
+      expect(consumeOrder).toBeLessThan(mirrorOrder);
+    });
+
+    it('should consume the hold when the line is skipped because the shop lowered its own stock', async () => {
+      await service.decrementForWork(input({ orderSourceConnectionId: 'conn-shop' }));
+
+      expect(reservations.closeForOrder).toHaveBeenCalledWith(consumedLine);
+    });
+
+    it('should re-run the consume on a replay so a failed consume heals', async () => {
+      reservations.closeForOrder
+        .mockRejectedValueOnce(new Error('db blip'))
+        .mockResolvedValue({ closed: 1, alreadyTerminal: 0, failed: 0 });
+
+      // The first run reports the failure — this is what makes the caller
+      // retry, and the retry is what makes the second call below a genuine
+      // heal rather than an untested assertion (#3491 review).
+      const first = await service.decrementForWork(input());
+      expect(first.holdCloseFailedLineIds).toEqual(['line-1']);
+
+      const second = await service.decrementForWork(input());
+
+      expect(reservations.closeForOrder).toHaveBeenCalledTimes(2);
+      expect(shop().adjustInventory).toHaveBeenCalledTimes(1);
+      expect(second.holdCloseFailedLineIds).toEqual([]);
+    });
+
+    it('should keep the hold when the decrement is in doubt', async () => {
+      shop().adjustInventory.mockRejectedValue(new Error('PrestaShop answered 500'));
+
+      await service.decrementForWork(input());
+
+      expect(reservations.closeForOrder).not.toHaveBeenCalled();
+    });
+
+    it('should keep the hold when the line is blocked before the master', async () => {
+      positions = [];
+
+      await service.decrementForWork(input());
+
+      expect(reservations.closeForOrder).not.toHaveBeenCalled();
+    });
+
+    it('should keep the hold while the line is retryable', async () => {
+      adapters.delete('conn-shop');
+
+      await service.decrementForWork(input());
+
+      expect(reservations.closeForOrder).not.toHaveBeenCalled();
+    });
+
+    // The decrement is already durable; a consume failure must not undo or fail
+    // it — but it must be REPORTED, or nothing ever re-enters the heal path
+    // above (#3491 review).
+    it('should keep the line applied and report the failure when closing the hold fails', async () => {
+      reservations.closeForOrder.mockRejectedValue(new Error('db blip'));
+
+      const result = await service.decrementForWork(input());
+
+      expect(result.lines[0]).toMatchObject({ status: 'applied' });
+      expect(result.holdCloseFailedLineIds).toEqual(['line-1']);
+      expect(inventoryService.setInventory).toHaveBeenCalled();
+    });
+
+    // A settled `failed > 0` result (as opposed to a thrown error) must also
+    // be reported and retried — `result.failed > 0` from `closeForOrder` is a
+    // per-row failure, not an exception, and both paths must reach the caller.
+    it('should report a settled failed>0 close the same way as a thrown error', async () => {
+      reservations.closeForOrder.mockResolvedValue({ closed: 0, alreadyTerminal: 0, failed: 1 });
+
+      const result = await service.decrementForWork(input());
+
+      expect(result.lines[0]).toMatchObject({ status: 'applied' });
+      expect(result.holdCloseFailedLineIds).toEqual(['line-1']);
+    });
   });
 
   // The master is already lowered; a mirror failure must not fail the line.

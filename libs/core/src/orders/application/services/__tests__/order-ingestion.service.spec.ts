@@ -2294,6 +2294,13 @@ describe('OrderIngestionService', () => {
         expect(orderSyncService.syncOrder.mock.calls[0][0].destinationConnectionIds).toBeUndefined();
       });
 
+      // #3480: an order that will not be routed keeps the dispatch-routing stamp.
+      it('should stamp the hold from the dispatch routing, not as published', async () => {
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+      });
+
       it('persists NOTHING — #2352 already reports A2-A at order grain', async () => {
         // THE assertion this arm exists for. `'sourcing-ambiguous'` (spec row
         // A2-A) is derived on every read by `resolveAuthorities` with
@@ -2347,6 +2354,57 @@ describe('OrderIngestionService', () => {
         for (const [, block] of markBlock().mock.calls) {
           expect(block).toBeNull();
         }
+      });
+
+      // #3480 — the routed order's hold counts the sold units from the moment it
+      // is routed; the sale decrement then consumes it.
+      describe('stamping the routed order\'s hold (#3480)', () => {
+        beforeEach(() => {
+          routingCommit.route.mockResolvedValue({
+            status: 'routed',
+            decisionId: 'dec-1',
+            works: [{ workId: 'w-1', assignedConnectionId: 'holder-1' }],
+          });
+        });
+
+        it('should hold the units as published, whatever the dispatch routing says', async () => {
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+          expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('published');
+          // The ADR-012 dispatch routing (default `omp_fulfilled` -> diagnostic)
+          // is not consulted for an order OpenLinker routes.
+          expect(fulfillmentRouting.resolve).not.toHaveBeenCalled();
+        });
+
+        // The intercept enqueues the sale decrement, which consumes the hold — so
+        // the hold must already exist when that job can run.
+        it('should record the hold before the order is routed', async () => {
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(reservationService.reserveForOrder.mock.invocationCallOrder[0]).toBeLessThan(
+            routingCommit.route.mock.invocationCallOrder[0]
+          );
+        });
+
+        it('should resolve the router once for both the hold and the intercept', async () => {
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(resolveRouterMock).toHaveBeenCalledTimes(1);
+          expect(connections.list).toHaveBeenCalledTimes(1);
+        });
+
+        it('should keep the dispatch-routing stamp when the order carries no shipping address', async () => {
+          orderSource.getOrder.mockResolvedValue({
+            ...interceptIncoming,
+            shippingAddress: undefined,
+          });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+          expect(routingCommit.route).not.toHaveBeenCalled();
+        });
       });
 
       // #3453 — a routed order is never created in the product master, so its
