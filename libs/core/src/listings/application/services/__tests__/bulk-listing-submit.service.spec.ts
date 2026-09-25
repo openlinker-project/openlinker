@@ -204,6 +204,7 @@ describe('BulkListingSubmitService', () => {
         jobIds: ['job-v-a', 'job-v-b', 'job-v-c'],
         skippedAlreadyListedCount: 0,
         skippedAvailabilityUnknownCount: 0,
+        skippedInvalidEanCount: 0,
       });
       expect(bulkBatchRepo.updateStatus).toHaveBeenCalledWith('batch-1', 'running');
     });
@@ -975,6 +976,97 @@ describe('BulkListingSubmitService', () => {
           // Passthrough variant (unknown) + a 13-digit override EAN with a bad
           // check digit (…457 is valid, …458 is not).
           perVariantOverrides: { ol_variant_a: { overrides: { ean: '5901234123458' } } },
+        })
+      ).rejects.toBeInstanceOf(InvalidEanException);
+
+      expect(bulkBatchRepo.create).not.toHaveBeenCalled();
+      expect(enqueueService.enqueueCreation).not.toHaveBeenCalled();
+    });
+
+    it('excludes a job with a checksum-invalid EAN but submits the rest of the batch (#3492)', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '5901234123457' },
+          { id: 'ol_variant_b', ean: '5901234123458' }, // bad check digit
+          { id: 'ol_variant_c', ean: '5900000000008' },
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_b', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_c', totalAvailable: 1 },
+        ]
+      );
+
+      const result = await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+      });
+
+      expect(bulkBatchRepo.create).toHaveBeenCalled();
+      expect(enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId)).toEqual([
+        'ol_variant_a',
+        'ol_variant_c',
+      ]);
+      expect(result.skippedInvalidEanCount).toBe(1);
+    });
+
+    it('submits a checksum-invalid EAN unchanged when eanOverrideAcknowledged is true (#3492)', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '5901234123457' },
+          { id: 'ol_variant_b', ean: '5901234123458' },
+          { id: 'ol_variant_c', ean: '5900000000008' },
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_b', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_c', totalAvailable: 1 },
+        ]
+      );
+
+      const result = await service.submit({
+        connectionId,
+        initiatedBy,
+        productIds: ['ol_variant_a'],
+        sharedConfig: { stock: 1, publishImmediately: false },
+        perVariantOverrides: {
+          ol_variant_b: { overrides: { eanOverrideAcknowledged: true } },
+        },
+      });
+
+      expect(enqueueService.enqueueCreation.mock.calls.map((c) => c[0].internalVariantId)).toEqual([
+        'ol_variant_a',
+        'ol_variant_b',
+        'ol_variant_c',
+      ]);
+      expect(result.skippedInvalidEanCount).toBe(0);
+      // Control-plane only - never leaks into what would become CreateOfferCommand.overrides.
+      const bJob = enqueueService.enqueueCreation.mock.calls.find(
+        (c) => c[0].internalVariantId === 'ol_variant_b'
+      );
+      expect(bJob?.[0].overrides?.eanOverrideAcknowledged).toBeUndefined();
+    });
+
+    it('still throws InvalidEanException when the checksum-invalid exclusion empties the whole batch (#3492)', async () => {
+      wireMultiVariant(
+        [
+          { id: 'ol_variant_a', ean: '5901234123458' },
+          { id: 'ol_variant_b', ean: '5901234123458' },
+        ],
+        [
+          { productVariantId: 'ol_variant_a', totalAvailable: 1 },
+          { productVariantId: 'ol_variant_b', totalAvailable: 1 },
+        ]
+      );
+
+      await expect(
+        service.submit({
+          connectionId,
+          initiatedBy,
+          productIds: ['ol_variant_a'],
+          sharedConfig: { stock: 1, publishImmediately: false },
         })
       ).rejects.toBeInstanceOf(InvalidEanException);
 

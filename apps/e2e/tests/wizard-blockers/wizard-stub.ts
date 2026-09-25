@@ -350,3 +350,29 @@ export async function stubResolveStream(page: Page, opts: StubOptions = {}): Pro
 export function wizardUrl(): string {
   return `/listings/bulk-create/wizard?productIds=${PRODUCT_ID}&connectionId=${CONNECTION_ID}`;
 }
+
+/** The request body captured by `stubBulkOfferSubmit`, mutated on each POST. */
+export interface CapturedBulkSubmit {
+  body: unknown;
+}
+
+/**
+ * Stub the real submit endpoint (#3492) so a test can drive all the way
+ * through the confirm dialog and inspect what the wizard actually sent -
+ * never exercised by this project before, since every prior test stopped at
+ * the confirm dialog's own counts.
+ */
+export async function stubBulkOfferSubmit(page: Page): Promise<CapturedBulkSubmit> {
+  const captured: CapturedBulkSubmit = { body: undefined };
+  await page.route('**/v1/listings/bulk-create', async (route) => {
+    captured.body = route.request().postDataJSON();
+    await json(route, {
+      batchId: 'batch-e2e-3492',
+      jobIds: ['job-e2e-3492'],
+      skippedAlreadyListedCount: 0,
+      skippedAvailabilityUnknownCount: 0,
+      skippedInvalidEanCount: 0,
+    });
+  });
+  return captured;
+}

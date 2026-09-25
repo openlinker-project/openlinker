@@ -37,6 +37,12 @@ export class BulkOfferCreateResponseDto {
       'Count of expanded jobs dropped because OpenLinker could not resolve the variant availability (#2323) — a TRANSIENT exclusion, worth re-submitting. Zero when nothing was skipped.',
   })
   skippedAvailabilityUnknownCount!: number;
+
+  @ApiProperty({
+    description:
+      'Count of expanded jobs dropped because the effective EAN failed the GS1 check digit and the operator did not confirm it as correct (#3492). Zero when nothing was skipped.',
+  })
+  skippedInvalidEanCount!: number;
 }
 
 export class BulkBatchRecordSummaryDto {
