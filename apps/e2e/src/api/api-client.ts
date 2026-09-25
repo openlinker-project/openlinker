@@ -647,6 +647,23 @@ export class ApiClient {
         method: 'POST',
         body: JSON.stringify({ connectionId, variantIds }),
       }).then((response) => response.publishedVariantIds),
+
+    /**
+     * Publish one variant to a shop connection
+     * (`POST /listings/connections/:id/shop-publish`).
+     *
+     * Enqueues and returns immediately (202) - the `ShopProduct` mapping the
+     * publish writes appears only once the job has run, so a caller waits by
+     * polling `publishedVariants` above rather than by reading this result.
+     */
+    shopPublish: (
+      connectionId: string,
+      body: { internalVariantId: string; status: string; stock: number; price?: number },
+    ): Promise<{ jobId: string; listingCreationRecordId: string }> =>
+      this.request<{ jobId: string; listingCreationRecordId: string }>(
+        `/listings/connections/${encodeURIComponent(connectionId)}/shop-publish`,
+        { method: 'POST', body: JSON.stringify(body) },
+      ),
   };
 
   // ── Orders ──────────────────────────────────────────────────────────────

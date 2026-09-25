@@ -429,6 +429,30 @@ export class PrestashopWebserviceClient {
   }
 
   /**
+   * Look up a product id by its `reference` (the SKU column), or null.
+   *
+   * Needed because a product OpenLinker PUBLISHED to this shop is invisible to
+   * its own products API: the publish writes a `ShopProduct` identifier
+   * mapping keyed by VARIANT, and `GET /products/:id` returns only `Product`
+   * mappings (`products.controller.ts` reads `CORE_ENTITY_TYPE.Product` for
+   * both the product and its variants). So the shop's own side is the only
+   * place the published id can be read back from, and `reference` is what
+   * carries the SKU across.
+   *
+   * Exact-match filter, first hit wins. A shop with two products sharing one
+   * reference has a catalogue problem this lookup cannot resolve and does not
+   * try to - it returns the first, which is what the webservice ordered.
+   */
+  async getProductIdByReference(reference: string): Promise<string | null> {
+    const body = await this.get(
+      `/api/products?filter[reference]=${encodeURIComponent(reference)}&display=[id,reference]`,
+    );
+    const products = asArray(pick(body, 'products'));
+    if (products.length === 0) return null;
+    return asStringOrNull(pick(asRecord(products[0]), 'id'));
+  }
+
+  /**
    * Look up an existing category id by exact name so provisioning can REUSE a
    * category across runs instead of creating a duplicate every time. Returns the
    * first match's id, or null when no category with that name exists.

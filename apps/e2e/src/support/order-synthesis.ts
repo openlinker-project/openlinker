@@ -71,6 +71,21 @@ export interface SynthesizeOrderOptions {
    * its turn.
    */
   timeoutMs?: number;
+  /**
+   * Sell THIS product/variant instead of whatever `pickDriverProduct` finds.
+   *
+   * The picker answers "any catalogue product this PrestaShop connection has a
+   * mapping for", which is the right default and the wrong one for a caller
+   * that needs a SPECIFIC product - one mapped on a second system, say,
+   * because the thing under test is what happens on that second system when
+   * this one sells it. Such a caller cannot express its requirement as a
+   * filter on the picker without teaching the picker about the other system.
+   *
+   * The variant must still carry a PrestaShop mapping, exactly as a picked one
+   * does; supplying one that does not fails the same way and with the same
+   * message.
+   */
+  driver?: { product: Product; variant: ProductVariant };
 }
 
 export interface SynthesizedOrder {
@@ -163,7 +178,7 @@ export async function synthesizeOrder(
     );
   }
 
-  const driver = await pickDriverProduct(api, prestashop.id);
+  const driver = options.driver ?? (await pickDriverProduct(api, prestashop.id));
   if (!driver) {
     throw new Error('synthesizeOrder found no catalogue product with a priced, EAN-complete variant');
   }
