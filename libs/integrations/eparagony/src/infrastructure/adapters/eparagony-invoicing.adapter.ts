@@ -65,6 +65,7 @@ import { randomUUID } from 'node:crypto';
 import type { LoggerPort } from '@openlinker/shared/logging';
 import type {
   CorrectionIssuer,
+  DocumentNumberConsumer,
   DocumentType,
   GetInvoiceQuery,
   InvoicingPort,
@@ -186,9 +187,36 @@ if (MAX_STATUS_POLL_TIMEOUT_MS >= EPARAGONY_ISSUE_DEADLINE_MS) {
  */
 const ISSUED_STATUSES: readonly string[] = [EPARAGONY_STATUS_CONFIRMED, EPARAGONY_STATUS_OFFLINE];
 
+/**
+ * IANA timezone the core numbering allocation resolves date variables and the
+ * period-reset bucket in when this connection carries no override (#3500).
+ * eparagony is PL-only in this codebase today, so there is no per-connection
+ * config field for it, and `Europe/Warsaw` is the only value that has ever
+ * applied - the same default `KsefInvoicingAdapter` uses.
+ */
+const DEFAULT_NUMBERING_TIME_ZONE = 'Europe/Warsaw';
+
 export class EparagonyInvoicingAdapter
-  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer
+  implements InvoicingPort, RegulatoryStatusReader, CorrectionIssuer, DocumentNumberConsumer
 {
+  /**
+   * Marks eparagony as an OpenLinker-numbered provider (#3500): the vendor's
+   * `POST /documents` REJECTS an invoice with `errorCode: 99` when
+   * `metadata.invoiceNumber` is absent - it does not generate one itself, which
+   * an earlier version of this adapter assumed. With this flag set, the core
+   * `InvoiceService` allocates a number from the connection's numbering series
+   * and passes it as `IssueInvoiceCommand.documentNumber`, which
+   * `composeInvoiceDocument` already honours when present. Read by
+   * `isDocumentNumberConsumer`.
+   */
+  readonly consumesDocumentNumber = true as const;
+
+  /**
+   * IANA timezone (#7) the core numbering allocation resolves date variables
+   * and the period-reset bucket in. Read by the core `InvoiceService`.
+   */
+  readonly numberingTimeZone: string = DEFAULT_NUMBERING_TIME_ZONE;
+
   constructor(
     private readonly connectionId: string,
     private readonly http: IEparagonyHttpClient,

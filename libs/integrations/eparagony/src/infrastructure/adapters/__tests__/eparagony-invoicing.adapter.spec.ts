@@ -9,7 +9,7 @@
  * @module libs/integrations/eparagony/src/infrastructure/adapters/__tests__
  */
 import type { LoggerPort } from '@openlinker/shared/logging';
-import { BuyerProfile, InvoiceRecord } from '@openlinker/core/invoicing';
+import { BuyerProfile, InvoiceRecord, isDocumentNumberConsumer } from '@openlinker/core/invoicing';
 import type {
   IssueCorrectionCommand,
   IssueInvoiceCommand,
@@ -576,6 +576,12 @@ describe('EparagonyInvoicingAdapter - the rest of the port', () => {
     const adapter = makeAdapter(makeClient([OFFLINE]));
     adapter.getSupportedDocumentTypes().push('receipt');
     expect(adapter.getSupportedDocumentTypes()).toEqual(['invoice']);
+  });
+
+  it('declares itself a DocumentNumberConsumer (#3500), so core always allocates and sends a number', () => {
+    const adapter = makeAdapter(makeClient([OFFLINE]));
+    expect(isDocumentNumberConsumer(adapter)).toBe(true);
+    expect(adapter.numberingTimeZone).toBe('Europe/Warsaw');
   });
 });
 

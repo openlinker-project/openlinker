@@ -341,10 +341,13 @@ export function composeInvoiceDocument(input: CreateInvoiceRequestInput): Compos
     metadata.merchantAddress = merchantAddress;
   }
 
-  // Present only when OpenLinker allocated the number. This adapter is not a
-  // `DocumentNumberConsumer`, so core does not set it today and the vendor
-  // generates the legal number itself - the field is honoured so that turning
-  // numbering on later needs no change here.
+  // REQUIRED in practice (#3500): the vendor does not generate the legal
+  // number itself - `POST /documents` rejects a request with no
+  // `invoiceNumber` with an opaque `errorCode: 99`. `EparagonyInvoicingAdapter`
+  // is a `DocumentNumberConsumer`, so core always allocates one from the
+  // connection's numbering series and sets `command.documentNumber` before
+  // reaching this mapper; the `readNonEmpty` guard stays defensive for a
+  // caller that constructs the command directly without going through core.
   const documentNumber = readNonEmpty(command.documentNumber);
   if (documentNumber !== null) {
     metadata.invoiceNumber = documentNumber;
@@ -543,9 +546,10 @@ export function composeCorrectiveInvoiceDocument(
     metadata.consumerTIN = consumerTIN;
   }
 
-  // The CORRECTION's own number when OpenLinker allocated one - never the
-  // original's, which lives only on `correctedMetadata`. This adapter is not a
-  // `DocumentNumberConsumer`, so today the vendor generates it.
+  // The CORRECTION's own number, allocated by core (#3500) - never the
+  // original's, which lives only on `correctedMetadata`. Required the same
+  // way the plain issue path requires it: the vendor rejects a document with
+  // no `invoiceNumber`, it does not generate one itself.
   const documentNumber = readNonEmpty(command.documentNumber);
   if (documentNumber !== null) {
     metadata.invoiceNumber = documentNumber;
