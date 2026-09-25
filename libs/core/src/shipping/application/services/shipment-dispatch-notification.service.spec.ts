@@ -162,6 +162,18 @@ describe('ShipmentDispatchNotificationService', () => {
     expect(relay.relay).not.toHaveBeenCalled();
   });
 
+  it('should skip an inbound shipment without relaying, even when it is otherwise notifiable', async () => {
+    // The shipment is `generated` and carries a waybill — i.e. it clears every
+    // OTHER gate — so a pass here proves the direction check, not the status one.
+    shipments.findById.mockResolvedValue(makeShipment({ direction: 'return' }));
+
+    const result = await service.notifyDispatched({ shipmentId: 'ol_shipment_1' });
+
+    expect(result.outcome).toBe('skipped-inbound');
+    expect(relay.relay).not.toHaveBeenCalled();
+    expect(shipments.update).not.toHaveBeenCalled();
+  });
+
   it('should skip (status-gate) when the shipment is not generated — relay not called', async () => {
     shipments.findById.mockResolvedValue(makeShipment({ status: 'dispatched' }));
     const result = await service.notifyDispatched({ shipmentId: 'ol_shipment_1' });
