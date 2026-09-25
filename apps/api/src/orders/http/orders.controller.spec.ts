@@ -119,6 +119,7 @@ describe('OrdersController', () => {
       markCancelled: jest.fn(),
       updateSalesDocumentBlock: jest.fn(),
       updateFulfillmentBlock: jest.fn(),
+      updateFulfillmentRoutingSkipReason: jest.fn(),
       updateOmsAttention: jest.fn(),
       countOrdersWithOmsAttention: jest.fn(),
       claimFxIntentIfAbsent: jest.fn(),

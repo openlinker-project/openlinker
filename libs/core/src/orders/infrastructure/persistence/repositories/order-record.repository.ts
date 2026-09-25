@@ -27,6 +27,10 @@ import type { OrderRecordRepositoryPort } from '../../../domain/ports/order-reco
 import { OrderRecord } from '../../../domain/entities/order-record.entity';
 import type { OrderLineItemDraft } from '../../../domain/order-analytics-projection';
 import type { OrderSyncStatus, SyncAttempt } from '../../../domain/types/order-sync.types';
+import {
+  isFulfillmentRoutingSkipReason,
+  type FulfillmentRoutingSkipReason,
+} from '../../../domain/types/fulfillment-routing-eligibility.types';
 import { SYNC_ATTEMPTS_PER_DESTINATION_CAP } from '../../../domain/types/order-sync.types';
 import { OrderRecordNotFoundException } from '../../../domain/exceptions/order-record-not-found.exception';
 import type {
@@ -2180,6 +2184,31 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * #3455 — the sole writer of `fulfillmentRoutingSkipReason`, level-triggered by
+   * the ingestion intercept: it stores the answer INCLUDING `null`, which is what
+   * clears a stale reason once the order is routed or the OMS is switched off.
+   *
+   * The same `IS DISTINCT FROM` guard as {@link updateFulfillmentBlock}, for the
+   * same reason: the overwhelmingly common `null -> null` path (every ingestion
+   * on an install with the OMS off) must not bump `updatedAt`, a live filter axis.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  async updateFulfillmentRoutingSkipReason(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
+  ): Promise<void> {
+    await this.repository.query(
+      `UPDATE "order_records"
+          SET "fulfillmentRoutingSkipReason" = $1,
+              "updatedAt" = now()
+        WHERE "internalOrderId" = $2
+          AND "fulfillmentRoutingSkipReason" IS DISTINCT FROM $1`,
+      [reason, internalOrderId]
+    );
+  }
+
+  /**
    * How many orders carry at least one COUNTED OMS inert state (#2352)?
    *
    * The `Needs attention (N)` count's order half. Deliberately a COUNT of ORDERS
@@ -2586,6 +2615,8 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
     // columns (#2396 - sole writer `updateFulfillmentBlock`; `persistOrder` runs
     // BEFORE the intercept on every ingestion, so a round-trip would null the
     // reason the previous transition wrote and then re-add none),
+    // `fulfillmentRoutingSkipReason` (#3455 - sole writer
+    // `updateFulfillmentRoutingSkipReason`, same reason as `fulfillmentBlock*`),
     // `omsAttention` (#2352 -
     // sole writer `updateOmsAttention`, whose whole contract is that it edits
     // ONE producer's entry; a round-trip here would drop every producer's entry
@@ -3022,7 +3053,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       entity.buyerTaxId ?? null,
       entity.shippingAddressHash ?? null,
       (entity.totalTaxTreatment as PriceTaxTreatment | null) ?? null,
-      entity.salesDocumentMatchedRuleId ?? null
+      entity.salesDocumentMatchedRuleId ?? null,
+      // #3455 - coerced, never cast: an unrecognised persisted value reads as
+      // "no recorded reason" rather than reaching the UI as an unknown literal.
+      isFulfillmentRoutingSkipReason(entity.fulfillmentRoutingSkipReason)
+        ? entity.fulfillmentRoutingSkipReason
+        : null
     );
   }
 

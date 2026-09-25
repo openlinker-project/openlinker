@@ -164,4 +164,31 @@ describe('OrderRecord fulfilment block (integration, #2396)', () => {
 
     expect((await readRow()).updatedAt.getTime()).toBe(before.getTime());
   });
+
+  // #3455 — the routing-skip reason follows the same single-writer rule.
+  it('keeps a recorded routing skip reason across a subsequent persistOrder (#3455)', async () => {
+    const sourceId = await seedOrder();
+
+    await orderRecordService.markFulfillmentRoutingSkip(ORDER_ID, 'mirrored-before-routing');
+    // Non-vacuity: the write itself must have landed.
+    expect((await readRow()).fulfillmentRoutingSkipReason).toBe('mirrored-before-routing');
+
+    await orderRecordService.persistOrder(makeOrder({ status: 'processing' }), sourceId, 'evt-2');
+
+    const after = await readRow();
+    expect(after.fulfillmentRoutingSkipReason).toBe('mirrored-before-routing');
+    expect(after.recordStatus).toBe('ready');
+  });
+
+  it('reads the recorded routing skip reason back onto the domain record (#3455)', async () => {
+    await seedOrder();
+
+    await orderRecordService.markFulfillmentRoutingSkip(ORDER_ID, 'own-shop-order');
+
+    const record = await orderRecordService.getOrderRecord(ORDER_ID);
+    expect(record?.fulfillmentRoutingSkipReason).toBe('own-shop-order');
+
+    await orderRecordService.markFulfillmentRoutingSkip(ORDER_ID, null);
+    expect((await orderRecordService.getOrderRecord(ORDER_ID))?.fulfillmentRoutingSkipReason).toBeNull();
+  });
 });

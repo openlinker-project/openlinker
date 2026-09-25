@@ -33,6 +33,7 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentRoutingSkipReason } from '../../domain/types/fulfillment-routing-eligibility.types';
 import type {
   AuthorityAttentionOutcome,
   AuthorityAttentionProducer,
@@ -914,6 +915,17 @@ export class OrderRecordService implements IOrderRecordService {
     block: FulfillmentBlock | null
   ): Promise<void> {
     await this.repository.updateFulfillmentBlock(internalOrderId, block);
+  }
+
+  /**
+   * #3455 — the write half of the intercept's routing-skip report. Thin by
+   * design: the decision belongs to the intercept.
+   */
+  async markFulfillmentRoutingSkip(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
+  ): Promise<void> {
+    await this.repository.updateFulfillmentRoutingSkipReason(internalOrderId, reason);
   }
 
   /**
