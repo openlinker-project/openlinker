@@ -93,4 +93,27 @@ export const RETURN_PROPOSAL_COPY = {
       'The invoice was issued before OpenLinker recorded its lines, so they cannot be matched automatically.',
     'no-disposed-lines': 'No returned units have been disposed of yet.',
   } as Record<string, string>,
+
+  /**
+   * A short badge per non-proposing outcome — the mockup's per-state
+   * `badge` text, minus `credit-issued` (no issuing surface exists here)
+   * and `credit-absent-orphan` (the page never requests a proposal for an
+   * orphan at all, so no outcome-specific copy is needed for it).
+   */
+  outcomeBadges: {
+    'nothing-correctable': 'Nothing to credit',
+    'no-invoice': 'No invoice',
+    'no-line-snapshot': 'Lines not stored',
+    'no-disposed-lines': 'Nothing to credit yet',
+  } as Record<string, string>,
+
+  /**
+   * Where a non-proposing outcome names a real, reachable remedy on THIS
+   * page. Only `no-disposed-lines` gets one: the custody section exists at
+   * `#custody` and is the actual next step. `no-invoice` and
+   * `no-line-snapshot` have no in-app destination — the mockup's own hrefs
+   * for those are placeholders (`#`), and a fabricated link would be worse
+   * than none.
+   */
+  recordWhatCameBack: 'Record what came back',
 } as const;

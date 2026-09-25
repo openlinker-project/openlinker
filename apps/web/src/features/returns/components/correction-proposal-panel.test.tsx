@@ -229,6 +229,74 @@ describe('CorrectionProposalPanel — headline + breakdown (#3090)', () => {
 
     expect(screen.getByText('some-future-outcome')).toBeInTheDocument();
   });
+
+  it('should render no badge for an unrecognised outcome, never a fabricated one', () => {
+    renderPanel(null, { outcome: 'some-future-outcome' });
+
+    // Every KNOWN badge text must be absent — proves nothing is guessed.
+    for (const badge of Object.values(RETURN_PROPOSAL_COPY.outcomeBadges)) {
+      expect(screen.queryByText(badge)).not.toBeInTheDocument();
+    }
+  });
+});
+
+describe('CorrectionProposalPanel — the 4 non-proposing outcomes (#3093)', () => {
+  it('should render a distinct badge and message for no-invoice', () => {
+    renderPanel(null, { outcome: 'no-invoice' });
+
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.outcomeBadges['no-invoice'])).toBeInTheDocument();
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.outcomes['no-invoice'])).toBeInTheDocument();
+  });
+
+  it('should render a distinct badge and message for no-line-snapshot', () => {
+    renderPanel(null, { outcome: 'no-line-snapshot' });
+
+    expect(
+      screen.getByText(RETURN_PROPOSAL_COPY.outcomeBadges['no-line-snapshot']),
+    ).toBeInTheDocument();
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.outcomes['no-line-snapshot'])).toBeInTheDocument();
+  });
+
+  it('should render a distinct badge, message and a real remedy link for no-disposed-lines', () => {
+    renderPanel(null, { outcome: 'no-disposed-lines' });
+
+    expect(
+      screen.getByText(RETURN_PROPOSAL_COPY.outcomeBadges['no-disposed-lines']),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(RETURN_PROPOSAL_COPY.outcomes['no-disposed-lines']),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: RETURN_PROPOSAL_COPY.recordWhatCameBack }),
+    ).toHaveAttribute('href', '#custody');
+  });
+
+  it('should render a distinct badge and message for nothing-correctable', () => {
+    renderPanel(null, { outcome: 'nothing-correctable' });
+
+    expect(
+      screen.getByText(RETURN_PROPOSAL_COPY.outcomeBadges['nothing-correctable']),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(RETURN_PROPOSAL_COPY.outcomes['nothing-correctable']),
+    ).toBeInTheDocument();
+  });
+
+  it('should give each of the 4 outcomes a DIFFERENT badge and message', () => {
+    const outcomes = ['no-invoice', 'no-line-snapshot', 'no-disposed-lines', 'nothing-correctable'];
+    const badges = outcomes.map((o) => RETURN_PROPOSAL_COPY.outcomeBadges[o]);
+    const messages = outcomes.map((o) => RETURN_PROPOSAL_COPY.outcomes[o]);
+
+    expect(new Set(badges).size).toBe(outcomes.length);
+    expect(new Set(messages).size).toBe(outcomes.length);
+  });
+
+  it('should NOT render the remedy link for no-invoice or no-line-snapshot — no real destination exists', () => {
+    renderPanel(null, { outcome: 'no-invoice' });
+    expect(
+      screen.queryByRole('link', { name: RETURN_PROPOSAL_COPY.recordWhatCameBack }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe('CorrectionProposalPanel — record for review (#3092)', () => {
