@@ -314,7 +314,7 @@ export interface BulkDispatchResult {
 /** `POST /shipments/:id/notify-dispatched` response (#769). */
 export interface NotifyDispatchedResult {
   shipmentId: string;
-  outcome: 'notified' | 'skipped-not-generated';
+  outcome: 'notified' | 'skipped-not-generated' | 'skipped-inbound' | 'shipment-not-found';
   source: 'ok' | 'failed' | 'absent';
   destinations: ReadonlyArray<{
     connectionId: string;
