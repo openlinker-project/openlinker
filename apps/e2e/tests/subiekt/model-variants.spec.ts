@@ -171,6 +171,59 @@ test.describe('Subiekt GT: models as variants (#3365)', () => {
     }
   });
 
+  // #3365. `readProductTaxRate` resolved the product key and then GET
+  // `/api/products/model%3A5` unconditionally; the bridge answered 404 and
+  // `MasterProductSyncService.syncTaxRate` swallowed the throw as a warn. So a
+  // model-carrying catalogue got NOTHING from #3357 - every one of its order
+  // lines kept the NULL rate that fix exists to remove - and the only trace
+  // was a log line. This asserts the read now lands.
+  test('a model product carries the VAT rate its members agree on', async ({
+    api,
+    world,
+    env,
+  }) => {
+    // No sweep of its own: the file is serial and the first test already ran
+    // `master.product.syncAll` + `master.product.reconcile`. A second full
+    // sweep here would double a real catalogue read for nothing.
+    test.skip(!env.testSubiekt, 'opt-in — set E2E_TEST_SUBIEKT=true against a live Subiekt GT bridge');
+    const connection = world.connectionFor(PlatformType.subiektGt);
+    test.skip(!connection, 'no Subiekt GT connection on this stack');
+
+    const grouped = await waitForGroupedProducts(api, connection!.id, 180_000);
+    test.skip(grouped.length === 0, 'no multi-variant product on this Subiekt');
+
+    for (const { product } of grouped) {
+      // The detail read, because the rate is a product-level column and the
+      // list projection is not the shape this is about.
+      const detail = await api.products.getById(product.id);
+
+      // `taxRateReadAt` is the discriminator that matters. A null rate WITH a
+      // read timestamp is the master honestly answering "no rate assigned";
+      // a null rate with NO timestamp is the 404 this test exists to catch,
+      // and the two are indistinguishable from the rate alone.
+      expect(
+        detail.taxRateReadAt,
+        `${detail.name}: no VAT rate was ever read - the model-key branch is not resolving ` +
+          `(check for a 404 on /api/products/model%3A... in the worker log)`,
+      ).toBeTruthy();
+
+      // On a healthy Subiekt every member of a model shares its VAT rate, so
+      // a resolved code is the expected answer. `ambiguous` is a REAL answer
+      // too - members disagreeing - so it is reported rather than failed, or
+      // this spec would fail on a catalogue whose data is simply mixed.
+      if (detail.taxRate === null || detail.taxRate === undefined) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `${detail.name}: members carry no agreed VAT rate ` +
+            `(reason=${detail.taxRateUnknownReason ?? 'unspecified'}). That is a persisted ` +
+            `answer, not a failed read - fix the tw_IdVatSp assignment in Subiekt.`,
+        );
+      } else {
+        expect(detail.taxRate).toMatch(/^(\d+|zw|np|oo)$/);
+      }
+    }
+  });
+
   test('a towar the operator did NOT group stays its own product — grouping is never guessed', async ({
     api,
     world,

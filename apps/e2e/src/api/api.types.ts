@@ -153,6 +153,19 @@ export interface Product {
    * must request it from a browser context, not from Node.
    */
   images?: string[] | null;
+  /**
+   * The master's VAT rate as a percent-as-string code (`'23'`, `'0'`, `'zw'`),
+   * projected onto the catalogue at product-sync time (#3357, ADR-063).
+   *
+   * `null` with a non-null `taxRateReadAt` is the master answering "no rate" -
+   * a real, persisted answer. `null` with a null `taxRateReadAt` means nobody
+   * asked yet, or the read FAILED and the failure was swallowed as a warn,
+   * which is a different thing and is what a spec proving a read works must
+   * distinguish.
+   */
+  taxRate?: string | null;
+  taxRateReadAt?: string | null;
+  taxRateUnknownReason?: string | null;
   externalIds?: ExternalIdMapping[];
   createdAt: string;
   updatedAt: string;
