@@ -7,6 +7,7 @@
  *
  * GET    /users                — list all users (optional ?status filter)
  * GET    /users/packers        — minimal active-packer roster (admin+operator, #3340)
+ * POST   /users                — create an active account with a one-time password (#3456)
  * POST   /users/:id/approve    — approve a pending registration with a role
  * POST   /users/:id/reject     — reject and delete a pending registration
  * PATCH  /users/:id/role       — change a user's role
@@ -36,6 +37,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import {
   CannotSelfModifyException,
   LastAdminException,
+  UserAlreadyExistsException,
   UserNotFoundException,
   UserNotActiveException,
   UserNotDeactivatedException,
@@ -45,6 +47,8 @@ import { AuthenticatedUser } from '../../auth/auth.types';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { ApproveUserDto } from '../dto/approve-user.dto';
+import { CreateUserDto } from '../dto/create-user.dto';
+import { CreateUserResponseDto } from '../dto/create-user-response.dto';
 import { ListUsersQueryDto } from '../dto/list-users-query.dto';
 import { PackerListResponseDto } from '../dto/packer-list-response.dto';
 import { UpdateRoleDto } from '../dto/update-role.dto';
@@ -72,6 +76,45 @@ export class UsersController {
       pageSize: query.pageSize,
     });
     return UserListResponseDto.fromDomain(result);
+  }
+
+  @Post()
+  @Roles('admin')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Create an active account with a one-time password (admin only). The account ' +
+      'must set a new password at first sign-in.',
+  })
+  @ApiResponse({ status: 201, description: 'User created', type: CreateUserResponseDto })
+  @ApiResponse({ status: 400, description: 'Validation error' })
+  @ApiResponse({ status: 403, description: 'Caller is not an admin' })
+  @ApiResponse({ status: 409, description: 'Username or email already in use (field named)' })
+  async createUser(@Body() dto: CreateUserDto): Promise<CreateUserResponseDto> {
+    try {
+      const created = await this.userManagement.createUser({
+        displayName: dto.displayName,
+        username: dto.username,
+        email: dto.email ?? null,
+        role: dto.role,
+      });
+      const response = new CreateUserResponseDto();
+      response.id = created.id;
+      response.temporaryPassword = created.temporaryPassword;
+      return response;
+    } catch (error) {
+      if (error instanceof UserAlreadyExistsException) {
+        // Naming the field is safe HERE (admin-only; an admin already sees
+        // every account) and is what the form needs to point at the right input.
+        // The public registration route keeps its generic message.
+        const field = error.field ?? 'username';
+        throw new ConflictException({
+          field,
+          message: `That ${field} is already in use.`,
+        });
+      }
+      throw error;
+    }
   }
 
   @Get('packers')

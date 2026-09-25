@@ -17,7 +17,7 @@ import {
   USER_REPOSITORY_TOKEN,
 } from '@openlinker/core/users';
 import { LoginResponseDto } from './dto/login-response.dto';
-import type { IAuthService } from './auth.service.interface';
+import type { ChangePasswordOutcome, IAuthService } from './auth.service.interface';
 import type { JwtPayload } from './auth.types';
 
 @Injectable()
@@ -27,6 +27,9 @@ export class AuthService implements IAuthService {
     private readonly userRepository: UserRepositoryPort,
     private readonly jwtService: JwtService
   ) {}
+
+  // Same cost `RegistrationService` and `BootstrapAdminService` use.
+  private static readonly BCRYPT_COST = 10;
 
   // Dummy hash used when user is not found to keep response time constant and
   // prevent user-enumeration via timing differences.
@@ -75,6 +78,9 @@ export class AuthService implements IAuthService {
       username: user.username,
       role: user.role,
       analyticsConsent: user.analyticsConsent,
+      // #3456 — `PasswordChangeRequiredGuard` reads this. Re-minted by
+      // /auth/refresh, which is how a completed change clears it.
+      mustChangePassword: user.mustChangePassword,
     };
     const dto = new LoginResponseDto();
     dto.access_token = this.jwtService.sign(payload);
@@ -95,5 +101,30 @@ export class AuthService implements IAuthService {
     await this.getMe(userId);
     await this.userRepository.updateAnalyticsConsent(userId, analyticsConsent);
     return this.getMe(userId);
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<ChangePasswordOutcome> {
+    // getMe first: a deleted-but-still-bearing-a-valid-JWT caller gets a 401,
+    // not a silent no-op UPDATE reported as a success.
+    const user = await this.getMe(userId);
+
+    if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      return 'incorrect-current';
+    }
+    // Keeping an admin-issued one-time password would defeat the point of the
+    // forced change, so an unchanged password is refused for everyone.
+    if (await bcrypt.compare(newPassword, user.passwordHash)) {
+      return 'unchanged';
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, AuthService.BCRYPT_COST);
+    await this.userRepository.updatePasswordHash(userId, passwordHash, {
+      clearMustChangePassword: true,
+    });
+    return 'changed';
   }
 }
