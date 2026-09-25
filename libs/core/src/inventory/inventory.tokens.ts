@@ -44,3 +44,5 @@ export const INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN = Symbol(
   'InventorySaleDecrementRepositoryPort'
 );
 export const INVENTORY_SALE_DECREMENT_SERVICE_TOKEN = Symbol('IInventorySaleDecrementService');
+// #3479 — the inverse: raising a cancelled routed order's decrements back.
+export const INVENTORY_SALE_REVERSAL_SERVICE_TOKEN = Symbol('IInventorySaleReversalService');

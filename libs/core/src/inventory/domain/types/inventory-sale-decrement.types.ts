@@ -122,6 +122,24 @@ export function buildUnresolvedSaleDecrementKey(workId: string, orderLineId: str
   return `sale:unresolved:${workId}:${orderLineId}`;
 }
 
+/**
+ * The idempotency key for one line's sale REVERSAL (#3479), exactly as the
+ * issue specifies it.
+ *
+ * A distinct prefix (`sale-reversal:`, not `sale:`) rather than reusing the
+ * `order_sale` key: the two claims share the same `inventory_sale_decrements`
+ * table (one line's decrement and its later reversal are simply two rows keyed
+ * by direction), and a shared key would make the reversal's `claim()` collide
+ * with the decrement's own row instead of inserting a sibling.
+ */
+export function buildSaleReversalIdempotencyKey(
+  ownerConnectionId: string,
+  workId: string,
+  orderLineId: string
+): string {
+  return `sale-reversal:${ownerConnectionId}:${workId}:${orderLineId}`;
+}
+
 /** The outcome of resolving which product master owns one line. */
 export type SaleDecrementOwnerResolution =
   | {

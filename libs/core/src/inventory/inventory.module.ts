@@ -33,6 +33,7 @@ import type { ObligationReaders } from './domain/types/reservation-obligation.ty
 import { ReservationLedgerReader } from './infrastructure/reservations/reservation-ledger.reader';
 import { InventoryProvenanceBackfillService } from './application/services/inventory-provenance-backfill.service';
 import { InventorySaleDecrementService } from './application/services/inventory-sale-decrement.service';
+import { InventorySaleReversalService } from './application/services/inventory-sale-reversal.service';
 import {
   AVAILABILITY_SERVICE_TOKEN,
   RESERVATION_EXPIRY_SERVICE_TOKEN,
@@ -52,6 +53,7 @@ import {
   INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
   INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN,
   INVENTORY_SALE_DECREMENT_SERVICE_TOKEN,
+  INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
 } from './inventory.tokens';
 import { ProductsModule } from '@openlinker/core/products';
 import { IntegrationsModule } from '@openlinker/core/integrations';
@@ -75,6 +77,7 @@ export {
   LOCATION_REPOSITORY_TOKEN,
   LOCATION_SERVICE_TOKEN,
   INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
+  INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
 } from './inventory.tokens';
 
 @Module({
@@ -123,6 +126,8 @@ export {
     // #3453 — the routed-order sale decrement.
     InventorySaleDecrementRepository,
     InventorySaleDecrementService,
+    // #3479 — the inverse, on cancellation.
+    InventorySaleReversalService,
     // Then provide token bindings using useExisting
     {
       provide: INVENTORY_REPOSITORY_TOKEN,
@@ -239,6 +244,10 @@ export {
       provide: INVENTORY_SALE_DECREMENT_SERVICE_TOKEN,
       useExisting: InventorySaleDecrementService,
     },
+    {
+      provide: INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
+      useExisting: InventorySaleReversalService,
+    },
   ],
   exports: [
     INVENTORY_REPOSITORY_TOKEN,
@@ -258,6 +267,7 @@ export {
     AVAILABILITY_SERVICE_TOKEN,
     INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN,
     INVENTORY_SALE_DECREMENT_SERVICE_TOKEN,
+    INVENTORY_SALE_REVERSAL_SERVICE_TOKEN,
   ],
 })
 export class InventoryModule {}

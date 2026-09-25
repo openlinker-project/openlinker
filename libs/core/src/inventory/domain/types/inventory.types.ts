@@ -47,7 +47,9 @@ export const LEGACY_SOURCE_CONNECTION_ID = 'legacy';
  * stock-take correction named in #2368. `order_sale` is #3453's — the units a
  * routed order sold, lowered in the product master that owns each line because,
  * with the OMS on, the order is never created there and so the master's own
- * order flow never lowers them.
+ * order flow never lowers them. `order_sale_reversal` is #3479's — the exact
+ * inverse, raised back into the same master when a routed, not-yet-dispatched
+ * order carrying an `order_sale` decrement is cancelled.
  *
  * **Narrowed from `string` (#2368).** The field already existed as free text and
  * was written by nobody and read by nobody in this tree. An audit-bearing value
@@ -61,6 +63,7 @@ export const InventoryAdjustmentReasonValues = [
   'return_restock',
   'manual_correction',
   'order_sale',
+  'order_sale_reversal',
 ] as const;
 
 /**
