@@ -112,6 +112,7 @@ describe('ReturnCustodyService', () => {
   let returns: { assertAttributedForTrigger: jest.Mock; getReturn: jest.Mock };
   let integrations: { listCapabilityAdapters: jest.Mock; getAdapter?: jest.Mock };
   let products: { getVariantsBySkus: jest.Mock };
+  let inventory: { resolveStockOwner: jest.Mock };
   let lock: { acquire: jest.Mock; release: jest.Mock; extend: jest.Mock };
   let adjustInventory: jest.Mock;
   let service: ReturnCustodyService;
@@ -203,6 +204,14 @@ describe('ReturnCustodyService', () => {
       ),
     };
 
+    // #3486: only consulted with SEVERAL masters; a default that would pass
+    // unnoticed if the single-master path started reading it is `owner: none`.
+    inventory = {
+      resolveStockOwner: jest.fn(() =>
+        Promise.resolve({ kind: 'blocked', reason: 'no-position', ownerCount: 0 })
+      ),
+    };
+
     lock = {
       acquire: jest.fn(() => Promise.resolve('token-1')),
       release: jest.fn(() => Promise.resolve(true)),
@@ -214,7 +223,8 @@ describe('ReturnCustodyService', () => {
       returns as never,
       integrations as never,
       products as never,
-      lock as never
+      lock as never,
+      inventory as never
     );
   });
 
@@ -490,19 +500,194 @@ describe('ReturnCustodyService', () => {
       expect(adjustInventory).not.toHaveBeenCalled();
     });
 
-    it('should block rather than guess when several inventory masters resolve', async () => {
-      integrations.listCapabilityAdapters.mockResolvedValueOnce([
-        { connectionId: 'a', connection: { id: 'a', name: 'A' }, adapter: {}, metadata: {} },
-        { connectionId: 'b', connection: { id: 'b', name: 'B' }, adapter: {}, metadata: {} },
-      ]);
-
+    // #3486 — with one master the restock goes there exactly as before; the
+    // owner read is for several masters only, so a single-master install whose
+    // positions predate provenance keeps working.
+    it('should not read stock ownership when exactly one inventory master is connected', async () => {
       const result = await service.disposeLine(LINE_ID, {
         quantity: 2,
         disposition: 'restock',
       });
 
-      expect(result.restockBlocked?.reason).toBe('ambiguous-inventory-master');
-      expect(adjustInventory).not.toHaveBeenCalled();
+      expect(inventory.resolveStockOwner).not.toHaveBeenCalled();
+      expect(adjustInventory).toHaveBeenCalledTimes(1);
+      expect(result.restockBlocked).toBeNull();
+      expect(lastWrite?.event.masterConnectionId).toBe('conn-master');
+    });
+
+    describe('with several product masters (#3486)', () => {
+      let adjustA: jest.Mock;
+      let adjustB: jest.Mock;
+
+      const ownedBy = (ownerConnectionId: string) => ({
+        kind: 'owner',
+        ownerConnectionId,
+        position: {
+          inventoryItemId: 'inv-1',
+          productId: 'ol_product_1',
+          productVariantId: 'ol_variant_1',
+          locationId: null,
+          sourceConnectionId: ownerConnectionId,
+          availableQuantity: 3,
+          reservedQuantity: 0,
+        },
+        availableQuantity: 3,
+      });
+
+      beforeEach(() => {
+        const applied = {
+          productId: 'ol_product_1',
+          available: 5,
+          adjustmentOutcome: {
+            disposition: 'applied' as const,
+            idempotency: 'honoured' as const,
+            appliedAt: null,
+          },
+        };
+        adjustA = jest.fn(() => Promise.resolve(applied));
+        adjustB = jest.fn(() => Promise.resolve(applied));
+        integrations.listCapabilityAdapters.mockResolvedValue([
+          {
+            connectionId: 'master-a',
+            connection: { id: 'master-a', name: 'Shop A' },
+            adapter: { adjustInventory: adjustA },
+            metadata: {},
+          },
+          {
+            connectionId: 'master-b',
+            connection: { id: 'master-b', name: 'Shop B' },
+            adapter: { adjustInventory: adjustB },
+            metadata: {},
+          },
+        ]);
+      });
+
+      it('should restock the line in the master that owns its variant, and only there', async () => {
+        inventory.resolveStockOwner.mockResolvedValueOnce(ownedBy('master-b'));
+
+        const result = await service.disposeLine(LINE_ID, {
+          quantity: 2,
+          disposition: 'restock',
+        });
+
+        expect(inventory.resolveStockOwner).toHaveBeenCalledWith({
+          productId: 'ol_product_1',
+          productVariantId: 'ol_variant_1',
+          locationId: null,
+        });
+        expect(adjustB).toHaveBeenCalledWith(
+          expect.objectContaining({
+            productId: 'ol_product_1',
+            variantId: 'ol_variant_1',
+            quantity: 2,
+            reason: 'return_restock',
+          })
+        );
+        expect(adjustA).not.toHaveBeenCalled();
+        expect(result.restockBlocked).toBeNull();
+        expect(lastWrite?.event.masterConnectionId).toBe('master-b');
+      });
+
+      // A mixed basket: each line's units go back to its own owner.
+      it('should route each line to its own owner when two lines belong to different masters', async () => {
+        inventory.resolveStockOwner
+          .mockResolvedValueOnce(ownedBy('master-a'))
+          .mockResolvedValueOnce(ownedBy('master-b'));
+
+        await service.disposeLine(LINE_ID, { quantity: 1, disposition: 'restock' });
+        await service.disposeLine(LINE_ID, { quantity: 1, disposition: 'restock' });
+
+        expect(adjustA).toHaveBeenCalledTimes(1);
+        expect(adjustB).toHaveBeenCalledTimes(1);
+      });
+
+      it('should block with ambiguous-owner when both masters hold stock for the variant', async () => {
+        inventory.resolveStockOwner.mockResolvedValueOnce({
+          kind: 'blocked',
+          reason: 'ambiguous-owner',
+          ownerCount: 2,
+        });
+
+        const result = await service.disposeLine(LINE_ID, {
+          quantity: 2,
+          disposition: 'restock',
+        });
+
+        expect(result.restockBlocked?.reason).toBe('ambiguous-owner');
+        expect(result.restockBlocked?.connectionId).toBeNull();
+        expect(adjustA).not.toHaveBeenCalled();
+        expect(adjustB).not.toHaveBeenCalled();
+      });
+
+      it('should block with unattributed-owner when the stock has no known owner', async () => {
+        inventory.resolveStockOwner.mockResolvedValueOnce({
+          kind: 'blocked',
+          reason: 'unattributed-owner',
+          ownerCount: 0,
+        });
+
+        const result = await service.disposeLine(LINE_ID, {
+          quantity: 2,
+          disposition: 'restock',
+        });
+
+        expect(result.restockBlocked?.reason).toBe('unattributed-owner');
+        expect(adjustA).not.toHaveBeenCalled();
+        expect(adjustB).not.toHaveBeenCalled();
+      });
+
+      it('should block with no-position when OpenLinker holds no stock for the product', async () => {
+        const result = await service.disposeLine(LINE_ID, {
+          quantity: 2,
+          disposition: 'restock',
+        });
+
+        expect(result.restockBlocked?.reason).toBe('no-position');
+        expect(adjustA).not.toHaveBeenCalled();
+        expect(adjustB).not.toHaveBeenCalled();
+      });
+
+      // The owner is named, but it is not an active InventoryMaster: writing to
+      // the other master instead would be the silent pick this rule forbids.
+      it('should block as adapter-unresolved when the owner is not an active inventory master', async () => {
+        inventory.resolveStockOwner.mockResolvedValueOnce(ownedBy('master-disabled'));
+
+        const result = await service.disposeLine(LINE_ID, {
+          quantity: 2,
+          disposition: 'restock',
+        });
+
+        expect(result.restockBlocked?.reason).toBe('adapter-unresolved');
+        expect(lastWrite?.event.masterConnectionId).toBe('master-disabled');
+        expect(adjustA).not.toHaveBeenCalled();
+        expect(adjustB).not.toHaveBeenCalled();
+      });
+
+      it('should block as unknown, not throw, when the ownership read fails', async () => {
+        inventory.resolveStockOwner.mockRejectedValueOnce(new Error('db down'));
+
+        const result = await service.disposeLine(LINE_ID, {
+          quantity: 2,
+          disposition: 'restock',
+        });
+
+        expect(result.restockBlocked?.reason).toBe('unknown');
+        expect(adjustA).not.toHaveBeenCalled();
+        expect(adjustB).not.toHaveBeenCalled();
+      });
+
+      // The product must be known before its owner can be.
+      it('should block as unresolved-product without reading ownership when the sku is unknown', async () => {
+        products.getVariantsBySkus.mockResolvedValueOnce([]);
+
+        const result = await service.disposeLine(LINE_ID, {
+          quantity: 2,
+          disposition: 'restock',
+        });
+
+        expect(result.restockBlocked?.reason).toBe('unresolved-product');
+        expect(inventory.resolveStockOwner).not.toHaveBeenCalled();
+      });
     });
 
     it('should report a build failure as adapter-unresolved, never as nothing configured', async () => {
