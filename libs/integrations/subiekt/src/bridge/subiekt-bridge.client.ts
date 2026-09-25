@@ -20,6 +20,7 @@ import type {
   BridgeKorektaResponse,
   BridgeListBankAccountsResponse,
   BridgeListCashRegistersResponse,
+  BridgeLocateResponse,
   BridgeSetDefaultBankAccountResponse,
   BridgeUpsertCustomerRequest,
   BridgeUpsertCustomerResponse,
@@ -62,4 +63,13 @@ export interface SubiektBridgeClient {
    * is `GET /api/cash-registers` (#1324).
    */
   listCashRegisters(): Promise<BridgeListCashRegistersResponse>;
+
+  /**
+   * Crash-recovery lookup (#3389, `RegulatoryRecordLocator`): find a document by
+   * the ORIGINAL idempotency key OL stamped on its creation request, with no
+   * document-type filter (the caller may not know the type — see
+   * `Invoicing.LocateByOriginalKey`'s bridge-side docblock). The REAL bridge
+   * route is `GET /api/invoices/locate?key=...` (#752).
+   */
+  locateByOriginalKey(key: string): Promise<BridgeLocateResponse>;
 }

@@ -226,12 +226,32 @@ export interface BridgeInvoiceStatusRequest {
  * `GET /api/invoices/{id}/status`. The bridge's status payload carries the KSeF
  * `regulatoryStatus` and a Polish document `status` (e.g. `"zatwierdzony"`) but no
  * `state` field; the HTTP client derives `state: 'issued'` for a document that
- * reads back, `'failed'` otherwise.
+ * reads back, `'failed'` otherwise. `paid` (#3390) is Subiekt's own
+ * `dok_Rozliczony` settled flag — a single boolean, no partial-payment concept.
  */
 export interface BridgeInvoiceStatusResponse {
   state: BridgeInvoiceState;
   regulatoryStatus: BridgeRegulatoryStatus;
+  paid: boolean;
 }
+
+/**
+ * `GET /api/invoices/locate?key=...` response (#3389, `RegulatoryRecordLocator`
+ * crash-recovery). `found: false` is a NORMAL, expected outcome (nothing was
+ * ever created under this key) — deliberately never expressed as a null `data`
+ * envelope, since `SubiektBridgeHttpClient`'s generic envelope-unwrap treats a
+ * null `data` on a 2xx as a rejection, which would turn "not found" into a
+ * thrown error instead of the clean `null` the capability's contract requires.
+ */
+export type BridgeLocateResponse =
+  | { found: false }
+  | {
+      found: true;
+      providerInvoiceId: number;
+      numer: string;
+      regulatoryStatus: BridgeRegulatoryStatus;
+      clearanceReference: string | null;
+    };
 
 /**
  * One bank account (rachunek bankowy) as the bridge returns it from
