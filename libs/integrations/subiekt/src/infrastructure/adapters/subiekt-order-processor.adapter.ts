@@ -236,21 +236,36 @@ export class SubiektOrderProcessorAdapter
 
   /**
    * `OrderFulfillmentUpdater` (#837) — writes a post-create status + tracking
-   * update onto the ZK via `Sfera.WriteShipping`. Subiekt exposes no
-   * fulfillment-status field on a ZK, so this is a remarks write
-   * (`d.Uwagi`/`d.UwagiExt`), not a native status transition — an honest
-   * "best available" surface, not a Subiekt-native state machine.
+   * update onto the ZK via `Sfera.WriteShipping`.
+   *
+   * This is a REMARKS write, and that is a narrower statement than it used to
+   * be. The old wording said Subiekt "exposes no fulfillment-status field on a
+   * ZK", which is false: `SuDokument.StatusDokumentu` is settable and
+   * `SubiektDokumentStatusEnum` carries four order-specific values, 8 being
+   * `zrealizowane`. What is true is that the status belongs to a DIFFERENT
+   * event - a ZK becomes realized when its goods are released, not when a
+   * marketplace reports a parcel moving - so the bridge writes it from the
+   * warehouse-release path (`Invoicing.EnsureWarehouseRelease`) rather than
+   * from here. Carrier, waybill and status genuinely have no native ZK field
+   * and stay in the remarks.
+   *
+   * The carrier is passed through (#3365) because the bridge composes a
+   * `Przewoznik:` line from it, and because the remarks write MERGES since the
+   * same change - so a field sent once survives every later status-only write
+   * instead of being erased by it.
    */
   async updateFulfillment(input: {
     externalOrderId: string;
     status: OrderStatus;
     trackingNumber?: string;
+    carrier?: string;
   }): Promise<void> {
     let numer: string;
     try {
       ({ numer } = await this.bridge.writeShipping(input.externalOrderId, {
         status: STATUS_LABEL_PL[input.status],
         trackingNumber: input.trackingNumber,
+        ...(input.carrier !== undefined && input.carrier !== '' ? { carrier: input.carrier } : {}),
       }));
     } catch (error) {
       throw this.translateBridgeError(error);
@@ -282,6 +297,10 @@ export class SubiektOrderProcessorAdapter
             externalOrderId: event.externalOrderId,
             status: 'shipped',
             trackingNumber: event.trackingNumber,
+            // The neutral carrier identity the relay already carries. Sent so
+            // the remarks block names WHO is carrying the parcel, which is the
+            // first thing an operator looks for when a buyer calls.
+            carrier: event.carrier?.platformType,
           });
           return { outcome: 'applied' };
         }

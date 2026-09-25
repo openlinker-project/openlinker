@@ -260,6 +260,55 @@ describe('SubiektOrderProcessorAdapter', () => {
       expect(error.retryability).toBe('indeterminate');
     });
   });
+  describe('status writeback carries the carrier (#3365)', () => {
+    // The bridge composes a `Przewoznik:` line from this, and since the same
+    // change the remarks write MERGES rather than overwrites - so a field sent
+    // once survives every later status-only write instead of being erased by
+    // it. Before this the adapter sent 2 of the 7 fields the bridge accepts.
+    const buildAdapter = (capture: (url: string, body: unknown) => void): SubiektOrderProcessorAdapter => {
+      const fetchImpl = ((url: RequestInfo | URL, init?: RequestInit) => {
+        capture(String(url), init?.body ? JSON.parse(init.body as string) : undefined);
+        return Promise.resolve(
+          new Response(JSON.stringify({ success: true, data: { numer: 'ZK 7/2026' }, error: null }), {
+            status: 200,
+          }),
+        );
+      }) as unknown as typeof fetch;
+      return new SubiektOrderProcessorAdapter(
+        new SubiektOrdersBridgeClient('http://127.0.0.1:5056', { fetchImpl }),
+        new InMemoryIdentifierMappingAdapter(),
+        CONNECTION_ID,
+        noopLogger,
+      );
+    };
+
+    it('sends the carrier alongside the status and the waybill on a dispatch', async () => {
+      let body: unknown;
+      const adapter = buildAdapter((_u, b) => (body = b));
+
+      await adapter.write({
+        type: 'dispatched',
+        externalOrderId: '7',
+        trackingNumber: '6800000001',
+        carrier: { platformType: 'inpost' },
+      });
+
+      expect(body).toMatchObject({ status: 'Wysłane', trackingNumber: '6800000001', carrier: 'inpost' });
+    });
+
+    it('omits the carrier entirely when the event carries none', async () => {
+      let body: Record<string, unknown> | undefined;
+      const adapter = buildAdapter((_u, b) => (body = b as Record<string, unknown>));
+
+      await adapter.write({ type: 'cancelled', externalOrderId: '7' });
+
+      // Absent, not empty: the bridge merges blanks from what the document
+      // already holds, so sending '' would be indistinguishable from "unset"
+      // only by luck - and an explicit key invites a future writer to trust it.
+      expect(body && 'carrier' in body).toBe(false);
+    });
+  });
+
   describe('buyer country (adr__Ewid.adr_IdPanstwo)', () => {
     const captureBuyer = async (
       country: string | undefined,
