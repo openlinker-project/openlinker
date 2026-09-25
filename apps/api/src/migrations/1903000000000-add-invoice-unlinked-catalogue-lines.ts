@@ -32,9 +32,24 @@
  * promote it to an independently-filterable order-level axis (the
  * `taxRateConflict` shape), not to index this column.
  *
- * SELF-HEALING, and re-timestamped twice. This file was `1893000000000`, then
- * `1894000000000`, and is now `1900000000000` - the first prefix free across
- * every local and remote ref.
+ * SELF-HEALING, and re-timestamped THREE times. This file was `1893000000000`,
+ * then `1894000000000`, then `1900000000000`, and is now `1903000000000`.
+ *
+ * The third move has a different cause from the first two, and the difference
+ * is the useful part. Those were collisions WITHIN one tree. This one is the
+ * ORDERING rule: while this branch was open, `main` gained
+ * `1901000000000-add-return-line-resolved-catalog-identity`, so a `1900` prefix
+ * here now sorts BEFORE the newest migration already merged - which
+ * `check-migration-timestamps.mjs` refuses, because a branch whose migration
+ * interleaves with main's history has no defined order on a database that
+ * applied main's first. `1902000000000` was already taken by this branch's own
+ * `split-subiekt-product-lines`, so `1903000000000` is the next free prefix
+ * above both.
+ *
+ * The lesson the header can usefully carry: a merged-but-unrebased branch's
+ * migration number DECAYS. Picking a free number once is not enough; it has to
+ * still be free against `origin/main` at merge time, and this file has now been
+ * caught by that twice under two different rules.
  *
  * The move off `1893` was made on a reason that is FALSE, and the correction
  * matters more than the move. The old header claimed TypeORM keys an applied
@@ -89,10 +104,11 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
 const SUPERSEDED_MIGRATION_NAMES = [
   'AddInvoiceUnlinkedCatalogueLines1893000000000',
   'AddInvoiceUnlinkedCatalogueLines1894000000000',
+  'AddInvoiceUnlinkedCatalogueLines1900000000000',
 ];
 
-export class AddInvoiceUnlinkedCatalogueLines1900000000000 implements MigrationInterface {
-  name = 'AddInvoiceUnlinkedCatalogueLines1900000000000';
+export class AddInvoiceUnlinkedCatalogueLines1903000000000 implements MigrationInterface {
+  name = 'AddInvoiceUnlinkedCatalogueLines1903000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

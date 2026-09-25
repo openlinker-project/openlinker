@@ -115,12 +115,13 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  * nothing once the rows already carry `subiekt-nexo`. So TypeORM treating
  * `SplitSubiektProductLines1902000000000` as a new migration re-runs a clean
  * no-op rather than the `42701 column already exists` that forced
- * `1900000000000` to write a self-healing DELETE. A stand that applied the
+ * `add-invoice-unlinked-catalogue-lines` to write a self-healing DELETE. A stand that applied the
  * `1898` name keeps that row in `migrations` as a harmless orphan; nothing
  * reads it, and deleting it would be a write with no defect to fix.
  *
- * `1900000000000-add-invoice-unlinked-catalogue-lines` is unaffected - it is
- * still above the tail - and the two are order-independent: this one rewrites
+ * `add-invoice-unlinked-catalogue-lines` is unaffected - it has since moved to
+ * `1903000000000`, above this one, and the two are order-independent anyway:
+ * this one rewrites
  * `identifier_mappings` / `connections` / `integration_credentials`, that one
  * adds a column to `invoice_records`.
  */
