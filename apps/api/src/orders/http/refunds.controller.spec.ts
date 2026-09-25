@@ -48,6 +48,7 @@ describe('RefundsController', () => {
       markSalesDocumentBlock: jest.fn(),
       markFulfillmentBlock: jest.fn(),
       markFulfillmentRoutingSkip: jest.fn(),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn(),
       getEarliestOrderDateByConnection: jest.fn(),
       markItemResolutionFailure: jest.fn(),
       getFailedSyncValueSummary: jest.fn(),

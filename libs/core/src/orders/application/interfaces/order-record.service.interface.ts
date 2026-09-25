@@ -20,7 +20,7 @@ import type {
   SalesDocumentMatchedRuleWrite,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
 import type { FulfillmentRoutingSkipReason } from '../../domain/types/fulfillment-routing-eligibility.types';
 import type {
   AuthorityAttentionOutcome,
@@ -307,6 +307,16 @@ export interface IOrderRecordService {
     internalOrderId: string,
     block: FulfillmentBlock | null
   ): Promise<void>;
+
+  /**
+   * #3485 — one keyset page of order ids held with one of `reasons`, for
+   * `fulfillment.work.rerouteSweep`. See the repository port for why the page is
+   * keyed on `internalOrderId`.
+   */
+  listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<string[]>;
 
   /**
    * #3455 — record why the fulfilment intercept deliberately did not route this

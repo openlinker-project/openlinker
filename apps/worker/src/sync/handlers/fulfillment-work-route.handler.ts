@@ -29,21 +29,19 @@
  * configured the layer is a degenerate pass-through: no work objects, today's
  * path byte-identical — the property that survives the Wave-5 kill."*
  *
- * ## Nothing enqueues this job type yet, and no outcome is surfaced yet
+ * ## Its producer is the reroute sweep, and it persists what it decided
  *
- * There is no producer in the tree: #2396 owns the ingestion intercept that will
- * enqueue it. Combined with the `null` router above, every arm below except the
- * two `ok` short-circuits is unreachable on any installation this slice ships.
+ * `fulfillment.work.rerouteSweep` (#3485) enqueues this job for orders HELD
+ * because routing could not place them (`routing-refused` / `routing-failed`),
+ * so they route once stock arrives. The handler therefore writes the order's
+ * hold state after every routing attempt, through `deriveRoutingHoldOutcome` —
+ * the SAME rule the ingestion intercept uses, so the two routing sites cannot
+ * disagree about one order. A routed order has its block and its UF-L entry
+ * cleared; a re-refused one keeps them. The writes are best-effort: the routing
+ * outcome is already durable, and the next attempt re-decides.
  *
- * More importantly, **every non-routed outcome here is log-only**. An order that
- * will never ship because two connections claim A2 currently reads as a healthy
- * `ok` job. That is the shape ADR-041 §54 / #2100 forbid for sales documents,
- * where the gate REPORTS and `OrderIngestionService` PERSISTS the reason onto
- * the order. Routing is designed the same way — DESIGN §5.3's
- * "gate-reports / caller-persists", the one-way edge that keeps
- * `fulfillment -> orders` from becoming a DI cycle — and the caller in question
- * is #2396. So the persistence half lands there, not here; until it does, an
- * ambiguity is visible only in this log line.
+ * The no-router and ambiguous arms still persist nothing: nothing was attempted,
+ * and an ambiguity is reported by the A2 authority read model (#2352).
  *
  * ## Outcome contract (ADR-007)
  *
@@ -53,6 +51,7 @@
  * | the router answered and OpenLinker refused the plan | `business_failure` — deterministic; retrying is told the same thing |
  * | the router timed out or threw | **throws** (retryable) — the decision stays `live`, see below |
  * | the order cannot be read yet | **throws** (retryable) |
+ * | the order carries no shipping address | `ok` — held as `routing-no-shipping-address` (#3485); only a re-ingestion can supply one |
  *
  * An `in-doubt` outcome throws rather than terminating, and the asymmetry is the
  * point: the decision row is deliberately left `live`, so the retry RESUMES it
@@ -70,8 +69,10 @@ import {
   ROUTING_COMMIT_SERVICE_TOKEN,
   buildRoutingShipTo,
   deriveFulfillmentDispatchEnqueueIntents,
+  deriveRoutingHoldOutcome,
   deriveSaleDecrementEnqueueIntents,
   findUndispatchableWorkIds,
+  type FulfillmentBlock,
   type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
   type RoutingCommitOutcome,
@@ -81,6 +82,7 @@ import {
 import {
   isFulfillmentRouterUnroutable,
   selectPrimaryFulfillmentRouter,
+  type AuthorityAttentionOutcome,
   type AuthorityClaimantInput,
 } from '@openlinker/core/fulfillment-authority';
 import { CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/identifier-mapping';
@@ -161,6 +163,17 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
     }
 
     const projection = await this.projectOrder(job, payload.orderId);
+    if (projection === null) {
+      // #3485 — nothing to route to. Held, never mirrored: this job only runs
+      // for an order the OMS owns. The re-ingestion that brings an address
+      // re-enters routing on its own.
+      await this.persistHoldOutcome(
+        payload.orderId,
+        { reason: 'routing-no-shipping-address', detail: null },
+        { kind: 'none' }
+      );
+      return { outcome: 'ok' };
+    }
 
     const outcome = await this.routingCommit.route({
       orderId: payload.orderId,
@@ -187,6 +200,9 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
     await this.enqueueRoutedDispatchJobs(payload.orderId, outcome);
     await this.enqueueRoutedSaleDecrementJobs(payload.orderId, outcome);
 
+    const hold = deriveRoutingHoldOutcome(outcome);
+    await this.persistHoldOutcome(payload.orderId, hold.block, hold.lineAttention);
+
     return this.toJobResult(job, payload.orderId, outcome);
   }
 
@@ -200,12 +216,9 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
    * there), which is why the derivation returns a neutral intent rather than a
    * request. One decision, two mappings.
    *
-   * **This branch is unreachable today, deliberately.** `fulfillment.work.route`
-   * has no producer of its own, so nothing calls this handler in production.
-   * Wiring it anyway is not oversight: the handler is registered and may gain a
-   * producer, and a route handler that silently fails to dispatch is strictly
-   * worse than an unexercised branch — the #2400 posture. Do not "clean this up"
-   * as dead code without also giving `fulfillment.work.route` a producer.
+   * **Reachable since #3485**: `fulfillment.work.rerouteSweep` enqueues this job
+   * for held orders, so a re-route that succeeds dispatches its work here — the
+   * reason the branch was wired before it had a producer (the #2400 posture).
    *
    * Never throws. A retry re-enters `route()`, which answers `already-routed`
    * and reaches no enqueue, so rethrowing would burn the retry ladder and still
@@ -374,6 +387,40 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
     }));
   }
 
+  /**
+   * Write the order's hold state after a routing attempt (#3485).
+   *
+   * BEST-EFFORT, each write in its own catch: the routing outcome is already
+   * durable on the decision row and the work, so failing the job here would buy
+   * a retry that answers `already-routed` and writes nothing anyway. The next
+   * attempt — the sweep's next tick, or a re-ingestion — re-decides the state.
+   */
+  private async persistHoldOutcome(
+    orderId: string,
+    block: FulfillmentBlock | null,
+    lineAttention: AuthorityAttentionOutcome<'routing'>
+  ): Promise<void> {
+    try {
+      await this.orderRecords.markFulfillmentBlock(orderId, block);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to persist the fulfilment block after routing (swallowed): orderId=${orderId} ` +
+          `error=${error instanceof Error ? error.name : 'UnknownError'}`
+      );
+    }
+
+    if (lineAttention.kind === 'indeterminate') return;
+    try {
+      await this.orderRecords.markOmsAttention(orderId, 'routing', lineAttention);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to persist the routing attention after routing (swallowed): orderId=${orderId} ` +
+          `error=${error instanceof Error ? error.name : 'UnknownError'}`
+      );
+    }
+  }
+
+  /** `null` means the order carries no shipping address — a hold, not a retry (#3485). */
   private async projectOrder(
     job: SyncJob,
     orderId: string
@@ -381,7 +428,7 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
     lines: RoutingInputLine[];
     shipTo: RoutingShipTo;
     requestedDeliveryMethod: string | null;
-  }> {
+  } | null> {
     const record = await this.orderRecords.getOrderRecord(orderId);
     if (record === null) {
       throw this.retryable(job, `order record not found: orderId=${orderId}`);
@@ -403,7 +450,8 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
 
     const shippingAddress = order.shippingAddress;
     if (shippingAddress === undefined) {
-      throw this.retryable(job, `order carries no shipping address: orderId=${orderId}`);
+      // No retry can supply an address; only a re-ingestion of the order can.
+      return null;
     }
 
     const lines: RoutingInputLine[] = order.items.map((item) => ({
