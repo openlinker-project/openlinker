@@ -113,19 +113,22 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
   let soldVariantId: string | null = null;
   const soldQuantity = 1;
   /**
-   * Set when the source reports NET line prices, which Subiekt refuses.
+   * Set when the source reports net line prices AND no gross figure at all,
+   * which is still refused.
    *
-   * `SubiektOrderProcessorAdapter` will not write a net-priced order to a ZK:
-   * the document is gross-priced (`LiczonyOdCenBrutto`) and OpenLinker does
-   * not compute tax to convert (ADR-014 - the buyer-paid figure is carried,
-   * never recomputed). That is a correct refusal and a hard product fact: a
-   * shop whose orders report net prices cannot send them to Subiekt at all.
+   * **This used to be true of PrestaShop and is not any more (#3365).** The
+   * refusal was written as a hard product fact - a shop pricing net could
+   * never send an order to Subiekt - on the premise that such a shop reports
+   * nothing gross. PrestaShop reports `unit_price_tax_incl` on every order row
+   * and the mapper simply discarded it; it is carried now, so a synthesised
+   * PrestaShop order reaches the ZK and the document tests below RUN rather
+   * than skip. That is the point of this whole file.
    *
-   * It is also what makes the document tests below unreachable from a
-   * PrestaShop-synthesised order, since PrestaShop reports net. So the refusal
-   * is ASSERTED rather than worked around, and the two tests after it skip
-   * naming it - a skip that states a real constraint beats a green test that
-   * exercised nothing.
+   * The refusal branch is kept because it is still reachable, by a source that
+   * genuinely reports neither a gross line price nor gross shipping. When it
+   * fires it is ASSERTED rather than worked around, and the two tests after it
+   * skip naming it - a skip that states a real constraint beats a green test
+   * that exercised nothing.
    */
   let sourceIsNetPriced = false;
 
@@ -162,10 +165,18 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
       // seller with a sale in the channel, nothing in Subiekt and no reason
       // anywhere - which is the failure shape this whole exercise is about.
       sourceIsNetPriced = true;
+      // The sentence is composed in `libs/core` and is deliberately
+      // PLATFORM-NEUTRAL (#3365) - naming Subiekt there would put a platform
+      // name in the domain, which ADR-026 keeps out. So this asserts the two
+      // things an operator actually needs: what could not be done, and which
+      // half of the data was missing.
       expect(
         reason,
-        'a refused order must say which source reported net prices and why Subiekt cannot take it',
-      ).toContain('Subiekt');
+        'a refused order must say what could not be done and which gross figure was missing',
+      ).toContain('cannot be recorded in the destination system');
+      expect(reason, 'a refusal must name the missing figure, not merely refuse').toMatch(
+        /no gross \(tax-inclusive\) (price|shipping)/i,
+      );
       // PASSES rather than skips. The refusal IS the assertion here, and a
       // skipped test reports nothing to whoever reads the run - which is the
       // same complaint this whole exercise makes about silent behaviour. The
@@ -173,10 +184,12 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
       testInfo.annotations.push({
         type: 'subiekt',
         description:
-          `source reports NET line prices; Subiekt refused the ZK explicitly, as designed ` +
-          `(ADR-014 — OpenLinker carries the buyer-paid figure and never recomputes tax). The ` +
-          `document chain below needs a GROSS-priced source, which on this install means an ` +
-          `Allegro order, and that cannot be minted without a human buyer.`,
+          `source reports NET line prices AND no gross figure of its own, so the ZK was ` +
+          `refused explicitly, as designed (ADR-014 — OpenLinker carries the buyer-paid figure ` +
+          `and never recomputes tax). Since #3365 a PrestaShop order should NOT land here: it ` +
+          `reports unit_price_tax_incl and the mapper carries it. Seeing this annotation on a ` +
+          `PrestaShop-synthesised order means that carrying broke somewhere between the mapper ` +
+          `and the order snapshot — check the snapshot allowlist first, it has lost a field twice.`,
       });
       return;
     }

@@ -156,6 +156,13 @@ export class OrderRecordService implements IOrderRecordService {
         ...(item.taxSource !== undefined && { taxSource: item.taxSource }),
         ...(item.taxRateReadAt !== undefined && { taxRateReadAt: item.taxRateReadAt }),
         ...(item.taxRateChannel !== undefined && { taxRateChannel: item.taxRateChannel }),
+        // #3365 - the source-reported gross unit price, and the second time
+        // this exact allowlist has lost a field. The warning above was written
+        // about the tax rate; it applies verbatim here, and this omission was
+        // likewise caught by a live run rather than by a unit test: every spec
+        // passed while a PrestaShop order reached the destination adapter with
+        // no gross price and was refused for not having one it HAD reported.
+        ...(item.unitPriceGross !== undefined && { unitPriceGross: item.unitPriceGross }),
       })),
       totals: order.totals,
       shippingAddress: piiConfig.storePii

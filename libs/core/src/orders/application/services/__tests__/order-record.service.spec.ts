@@ -325,6 +325,41 @@ describe('OrderRecordService', () => {
       });
     });
 
+    // #3365 regression, and the SECOND field this allowlist has lost. Same
+    // shape as #2254 above, same way it was found - every unit test passed
+    // while a live PrestaShop order reached the destination adapter with no
+    // gross price and was refused for not reporting one it HAD reported.
+    it('serialises the source-reported gross unit price into the snapshot (#3365)', async () => {
+      const order = createMockOrder();
+      order.items[0].unitPriceGross = 1843.77;
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
+      expect(snapshotItems[0]).toMatchObject({ unitPriceGross: 1843.77 });
+    });
+
+    it('keeps the gross key absent when the source reported none (#3365)', async () => {
+      const order = createMockOrder();
+      expect(order.items[0].unitPriceGross).toBeUndefined();
+
+      repository.upsertWithLineItems.mockResolvedValue({} as OrderRecord);
+
+      await service.persistOrder(order, 'source-connection-123', 'event-456');
+
+      const [callArg] = repository.upsertWithLineItems.mock.calls[0];
+      const snapshotItems = (callArg.orderSnapshot as { items: Array<Record<string, unknown>> })
+        .items;
+      // Absent, never `undefined`: the document gate reads absence as "this
+      // source does not report gross", and a present-but-empty key would have
+      // to be re-checked by every consumer.
+      expect('unitPriceGross' in snapshotItems[0]).toBe(false);
+    });
+
     it('keeps every tax key absent when the order line carries no rate (#2254)', async () => {
       const order = createMockOrder();
       expect(order.items[0].taxRate).toBeUndefined();

@@ -2054,3 +2054,36 @@ before doing it yourself: a stale branch can keep a prefix its own base has alre
 
 **Source**: #3461 (investigated; renumbering proved unnecessary once the colliding branch turned
 out to be three commits behind its own base).
+
+## A snapshot allowlist has two halves, and adding a field to one of them changes nothing
+
+Adding a field to an entity and to every mapper that produces it is not enough to make it survive.
+`OrderRecordService.persistOrder` projects order items through an explicit allowlist on the way
+INTO the `orderSnapshot` jsonb, and `orderFromReadySnapshot.readItems` projects them through a
+second one on the way back OUT. A field named in only one of the two is silently dropped - and
+which half is missing decides which paths break, so the bug looks path-dependent rather than
+structural.
+
+It has now happened twice in the same function. #2254 lost the per-line tax rate on the write side,
+which left every MANUAL issuance path rehydrating a rate-less order while the auto-issue path -
+which composes from the live `Order` and never reads the snapshot - was fine. #3365 lost the
+source-reported gross unit price the same way: the mapper read it, the adapter carried it, the
+ingestion service carried it, the reader was updated to accept it, and the writer was not, so a
+PrestaShop order reached the destination adapter with no gross price and was refused for not
+reporting one it HAD reported.
+
+Both times every unit test passed. Both times it was found by a live run. That is not a coincidence:
+a unit test naturally exercises one side of the pair, and the round trip is the only thing that
+exercises both.
+
+**Rule**: treat the two allowlists as one edit. When adding an `OrderItem` field that must persist,
+change `order-record.service.ts`'s snapshot projection and `order-from-ready-snapshot.ts`'s reader
+in the same commit, and add a writer spec asserting the key is present when set and ABSENT when not
+- absent rather than `undefined`, because the snapshot is a JSON contract and consumers distinguish
+the two. Before trusting a live run, confirm the running container is on the image you just built:
+both times the first "verification" ran against a stale one.
+
+**Applies to**: `libs/core/src/orders/application/services/order-record.service.ts`,
+`libs/core/src/orders/domain/order-from-ready-snapshot.ts`.
+
+**Source**: #2254 (first occurrence), #3365 (second, in the same function, found the same way).
