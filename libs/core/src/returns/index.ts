@@ -183,6 +183,7 @@ export type {
 export { ReturnLineNotFoundError } from './domain/exceptions/return-line-not-found.error';
 export { ReturnRestockAttestationInvalidError } from './domain/exceptions/return-restock-attestation-invalid.error';
 export { ReturnCustodyContendedError } from './domain/exceptions/return-custody-contended.error';
+export { ReturnRestockAlreadyBlockedError } from './domain/exceptions/return-restock-already-blocked.error';
 export {
   returnCustodyLockKey,
   RETURN_CUSTODY_LOCK_TTL_MS,

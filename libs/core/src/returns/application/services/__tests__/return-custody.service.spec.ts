@@ -20,6 +20,7 @@ import { ReturnRecord } from '../../../domain/entities/return-record.entity';
 import { ReturnCustodyTransitionError } from '../../../domain/exceptions/return-custody-transition.error';
 import { ReturnCustodyContendedError } from '../../../domain/exceptions/return-custody-contended.error';
 import { ReturnRestockAttestationInvalidError } from '../../../domain/exceptions/return-restock-attestation-invalid.error';
+import { ReturnRestockAlreadyBlockedError } from '../../../domain/exceptions/return-restock-already-blocked.error';
 import { ReturnCustodyService } from '../return-custody.service';
 
 const RETURN_ID = 'ol_return_1';
@@ -262,6 +263,26 @@ describe('ReturnCustodyService', () => {
       // Scrap never asks the master, so it never asks for the lock either.
       expect(lock.acquire).not.toHaveBeenCalled();
     });
+
+    it('should succeed even while the line has an outstanding restock block (#3466)', async () => {
+      // Scrap makes no master write and can never produce a block itself, so an
+      // outstanding block from a PRIOR restock attempt on the same line must not
+      // gate it.
+      lineState = makeLine({ quantityReceived: 3, custodyState: 'received' });
+      repository.findOutstandingRestockEvents.mockResolvedValueOnce([
+        makeEvent(1, { id: 'blocked-1', restockState: 'blocked', quantity: 2 }),
+      ]);
+
+      const result = await service.disposeLine(LINE_ID, { quantity: 3, disposition: 'scrap' });
+
+      expect(result.restockBlocked).toBeNull();
+      expect(lastWrite?.outcome).toMatchObject({ quantityScrapped: 3 });
+      // The scrap branch never consults the block — it returns before the
+      // restock branch's guard is ever reached, which is what makes the two
+      // dispositions structurally independent rather than "checked, but happens
+      // to pass".
+      expect(repository.findOutstandingRestockEvents).not.toHaveBeenCalled();
+    });
   });
 
   describe('disposeLine — restock', () => {
@@ -358,6 +379,61 @@ describe('ReturnCustodyService', () => {
         sku: 'SKU-1',
         reason: 'master-refused',
         connectionName: 'Main shop',
+      });
+    });
+
+    describe('a second restock attempt while one is already outstanding (#3466)', () => {
+      it('should refuse rather than mint a duplicate blocked act', async () => {
+        repository.findOutstandingRestockEvents.mockResolvedValueOnce([
+          makeEvent(1, { id: 'blocked-1', restockState: 'blocked', quantity: 2 }),
+        ]);
+
+        await expect(
+          service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' })
+        ).rejects.toBeInstanceOf(ReturnRestockAlreadyBlockedError);
+
+        // Refused before the master is ever reached, and before a second act
+        // row is written — the whole point is that no duplicate is created.
+        expect(adjustInventory).not.toHaveBeenCalled();
+        expect(repository.settleLineRestock).not.toHaveBeenCalled();
+      });
+
+      it('should check the block INSIDE the lock, not before it', async () => {
+        repository.findOutstandingRestockEvents.mockResolvedValueOnce([
+          makeEvent(1, { id: 'blocked-1', restockState: 'blocked', quantity: 2 }),
+        ]);
+
+        await expect(
+          service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' })
+        ).rejects.toBeInstanceOf(ReturnRestockAlreadyBlockedError);
+
+        // A refusal reached AFTER acquiring the lock still releases it — a
+        // leaked lock would wedge every future dispose on this line, including
+        // a legitimate one submitted after attestation.
+        expect(lock.acquire).toHaveBeenCalledTimes(1);
+        expect(lock.release).toHaveBeenCalledTimes(1);
+      });
+
+      it('should scope the outstanding-block read to THIS line', async () => {
+        repository.findOutstandingRestockEvents.mockResolvedValueOnce([]);
+
+        await service.disposeLine(LINE_ID, { quantity: 2, disposition: 'restock' });
+
+        expect(repository.findOutstandingRestockEvents).toHaveBeenCalledWith(LINE_ID);
+      });
+
+      it('should succeed again once the prior block has been resolved (nothing outstanding)', async () => {
+        // The realistic sequence: attestation resolves the block, so the next
+        // read reports nothing outstanding and a fresh dispose is not refused.
+        repository.findOutstandingRestockEvents.mockResolvedValueOnce([]);
+
+        const result = await service.disposeLine(LINE_ID, {
+          quantity: 2,
+          disposition: 'restock',
+        });
+
+        expect(result.restockBlocked).toBeNull();
+        expect(settledOutcome).toMatchObject({ quantityRestocked: 2 });
       });
     });
 

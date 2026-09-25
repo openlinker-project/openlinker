@@ -121,6 +121,12 @@ export function ReturnCustodyPanel({
       ),
     }))
     .filter(({ blocks, attestations }) => blocks.length > 0 || attestations.length > 0);
+  // #3466 — lines with an outstanding (unattested) restock block. The server
+  // refuses a second restock on them (409 `restock-already-blocked`), so the
+  // dispose form disables `Restock` there — but only `Restock`: scrap makes no
+  // master write, the server accepts it, and hiding it would make the UI
+  // stricter than the gate it mirrors.
+  const restockBlockedLineIds = new Set(detail.restockBlocks.map((block) => block.returnLineId));
   const outstandingLines = detail.lines.filter((line) => outstandingToReceive(line) > 0);
 
   const setError = (lineId: string, message: string | null): void => {
@@ -290,6 +296,7 @@ export function ReturnCustodyPanel({
               error={error}
               isOrphan={isOrphan}
               line={line}
+              restockBlocked={restockBlockedLineIds.has(line.id)}
               onCancel={() => setError(line.id, null)}
               onSubmit={(input) => runDispose(line, input)}
               pending={dispose.isPending && pendingLineId === line.id}

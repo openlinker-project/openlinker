@@ -60,6 +60,7 @@ import type { ReturnLine } from '../../domain/entities/return-line.entity';
 import type { ReturnRecord } from '../../domain/entities/return-record.entity';
 import type { ReturnLineEvent } from '../../domain/entities/return-line-event.entity';
 import { ReturnCustodyContendedError } from '../../domain/exceptions/return-custody-contended.error';
+import { ReturnRestockAlreadyBlockedError } from '../../domain/exceptions/return-restock-already-blocked.error';
 import { ReturnLineNotFoundError } from '../../domain/exceptions/return-line-not-found.error';
 import { ReturnRestockAttestationInvalidError } from '../../domain/exceptions/return-restock-attestation-invalid.error';
 import { ReturnRepositoryPort } from '../../domain/ports/return-repository.port';
@@ -202,6 +203,18 @@ export class ReturnCustodyService implements IReturnCustodyService {
     }
 
     try {
+      // #3466 — a blocked restock never bumps `quantityRestocked`, so
+      // `outstandingToDispose` never shrinks after a refusal and nothing else
+      // stopped a resubmission of the SAME still-undisposed units: each one
+      // mints a fresh act under a fresh `seq` (#2368), and the restock-blocked
+      // banner sums quantity across every outstanding act for the line, so the
+      // remedy quantity grows without bound on every retry. Checked INSIDE the
+      // lock, never before it, so a concurrent submission cannot race this read.
+      const outstanding = await this.repository.findOutstandingRestockEvents(lineId);
+      if (outstanding.length > 0) {
+        throw new ReturnRestockAlreadyBlockedError(lineId);
+      }
+
       return await this.disposeRestock(lineId, input, at);
     } finally {
       await this.lock.release(returnCustodyLockKey(lineId), token);
