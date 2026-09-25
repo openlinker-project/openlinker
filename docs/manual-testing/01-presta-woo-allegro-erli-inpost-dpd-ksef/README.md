@@ -32,6 +32,7 @@ have no order-create API — noted per-doc as an environment limitation, not a g
 | 5 | [`05-inpost.md`](./05-inpost.md) | Shipping label generation | ✅ Confirmed — label→download→dispatch clean; Part C (tracking) is a sandbox-side limitation, researched (InPost-side, not OL) |
 | 6 | [`06-dpd.md`](./06-dpd.md) | Shipping label generation | ✅ Confirmed — connection created + Active, real waybill generated (`0000876013430Q`), SOAP tracking path verified; 4 findings filed (#1775, #1777, #1778 fixed by #1781; #1776 open, promoted to an epic) |
 | 7 | [`07-ksef.md`](./07-ksef.md) | Invoicing + regulatory clearance | ✅ Confirmed — full issue→clearance→UPO cycle verified against real KSeF; found & fixed #1447 (missing Test connection) |
+| 9 | [`09-subiekt-gt.md`](./09-subiekt-gt.md) | ERP: catalogue, orders, documents, stock | ✅ Second round on PR #3365 — 4 real bugs found & fixed (gross price discarded by both shop mappers, orders never marked realized in Subiekt, status writes erasing each other, a latent return-label relay); 1 test blocked by a host firewall, stated not worked around |
 
 ## Environment (as used in this run)
 

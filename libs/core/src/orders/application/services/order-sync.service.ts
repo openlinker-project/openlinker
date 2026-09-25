@@ -222,6 +222,13 @@ export class OrderSyncService implements IOrderSyncService {
       orderNumber: order.orderNumber,
       status: orderStatus,
       customerId: order.customerId,
+      // This projection is an ALLOWLIST, and it is the one that actually feeds
+      // the destination adapter - the THIRD such list an `OrderItem` field has
+      // to be named in, after the snapshot writer (`OrderRecordService`) and
+      // the snapshot reader (`orderFromReadySnapshot`). A field missing here
+      // is invisible to every destination while being perfectly present on the
+      // order, which is the hardest of the three to diagnose: the data is
+      // visibly there and the adapter still says it is not.
       items: order.items.map((item) => ({
         id: item.id,
         productId: item.productId,
@@ -229,6 +236,11 @@ export class OrderSyncService implements IOrderSyncService {
         quantity: item.quantity,
         price: item.price,
         sku: item.sku,
+        // #3365 - the source-reported gross unit price. A destination whose
+        // document is gross-priced reads this when `price` is net; without it
+        // the order is refused for not reporting a figure the source DID
+        // report. Spread conditionally so absence stays absence.
+        ...(item.unitPriceGross !== undefined ? { unitPriceGross: item.unitPriceGross } : {}),
       })),
       totals: {
         subtotal: order.totals.subtotal,
@@ -237,6 +249,11 @@ export class OrderSyncService implements IOrderSyncService {
         total: order.totals.total,
         currency: order.totals.currency,
         taxTreatment: order.totals.taxTreatment,
+        // Same rule as the per-line gross above, and needed for the same
+        // reason: a shipping line composed from the net figure mislabels it.
+        ...(order.totals.shippingGross !== undefined
+          ? { shippingGross: order.totals.shippingGross }
+          : {}),
       },
       shippingAddress: order.shippingAddress,
       billingAddress: order.billingAddress,

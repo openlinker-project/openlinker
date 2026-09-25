@@ -2055,7 +2055,7 @@ before doing it yourself: a stale branch can keep a prefix its own base has alre
 **Source**: #3461 (investigated; renumbering proved unnecessary once the colliding branch turned
 out to be three commits behind its own base).
 
-## A snapshot allowlist has two halves, and adding a field to one of them changes nothing
+## An order field has to be named in THREE allowlists, and each omission fails differently
 
 Adding a field to an entity and to every mapper that produces it is not enough to make it survive.
 `OrderRecordService.persistOrder` projects order items through an explicit allowlist on the way
@@ -2076,14 +2076,30 @@ Both times every unit test passed. Both times it was found by a live run. That i
 a unit test naturally exercises one side of the pair, and the round trip is the only thing that
 exercises both.
 
-**Rule**: treat the two allowlists as one edit. When adding an `OrderItem` field that must persist,
-change `order-record.service.ts`'s snapshot projection and `order-from-ready-snapshot.ts`'s reader
-in the same commit, and add a writer spec asserting the key is present when set and ABSENT when not
-- absent rather than `undefined`, because the snapshot is a JSON contract and consumers distinguish
-the two. Before trusting a live run, confirm the running container is on the image you just built:
-both times the first "verification" ran against a stale one.
+**There is a THIRD list, and it is the worst one to miss.** `OrderSyncService` projects `Order`
+into `OrderCreate` field by field before handing it to a destination adapter. A field missing there
+is invisible to every destination while being visibly present on the order and in its snapshot -
+so the data is demonstrably there and the adapter still says it is not, which is the hardest of the
+three to diagnose. #3365 hit all three in one change, one after another, each found only by the
+next live run.
+
+**Rule**: adding an `OrderItem` or `OrderTotals` field that must reach a destination is a
+THREE-file edit, in one commit:
+
+| file | what it feeds | how the omission shows |
+|---|---|---|
+| `order-record.service.ts` (writer) | the persisted snapshot | manual/rehydrating paths lose it; the auto path works |
+| `order-from-ready-snapshot.ts` (reader) | rehydrated `Order` | manual paths lose it, invisibly |
+| `order-sync.service.ts` (`OrderCreate`) | every destination adapter | present everywhere except where it is used |
+
+Add a spec per site asserting the key is present when set and ABSENT when not - absent rather than
+`undefined`, because the snapshot is a JSON contract and consumers distinguish the two. Before
+trusting a live run, confirm the running container is on the image you just built: the first
+"verification" of each of these ran against a stale one.
 
 **Applies to**: `libs/core/src/orders/application/services/order-record.service.ts`,
-`libs/core/src/orders/domain/order-from-ready-snapshot.ts`.
+`libs/core/src/orders/domain/order-from-ready-snapshot.ts`,
+`libs/core/src/orders/application/services/order-sync.service.ts`.
 
-**Source**: #2254 (first occurrence), #3365 (second, in the same function, found the same way).
+**Source**: #2254 (first occurrence, writer only), #3365 (all three, in sequence, each found by a
+live run after the previous fix).

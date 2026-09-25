@@ -158,6 +158,52 @@ describe('OrderSyncService', () => {
   });
 
   describe('syncOrder', () => {
+    // #3365. This projection is the THIRD allowlist an `OrderItem` field has to
+    // be named in, after the snapshot writer and the snapshot reader, and it is
+    // the one that feeds the destination adapter. A field missing here is
+    // invisible to every destination while being visibly present on the order -
+    // which is exactly how it was found: a PrestaShop order carried
+    // `unitPriceGross` in its persisted snapshot and the Subiekt adapter still
+    // refused it for not reporting one.
+    it('carries the source-reported gross figures onto the destination command', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      const order = createOrder();
+      order.items[0].unitPriceGross = 36.89;
+      order.totals.taxTreatment = 'exclusive';
+      order.totals.shippingGross = 6.15;
+
+      await service.syncOrder({
+        order,
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'event-456',
+      });
+
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect(command.items[0].unitPriceGross).toBe(36.89);
+      expect(command.totals.shippingGross).toBe(6.15);
+      // `price` and `shipping` are untouched - the gross figures are carried
+      // beside them, never in place of them.
+      expect(command.items[0].price).toBe(29.99);
+      expect(command.totals.shipping).toBe(5.0);
+    });
+
+    it('leaves the gross keys absent when the source reported none', async () => {
+      const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
+      registerDestinations([{ connectionId: 'dest-a', adapter }]);
+
+      await service.syncOrder({
+        order: createOrder(),
+        sourceConnectionId: 'source-1',
+        sourceEventId: 'event-456',
+      });
+
+      const [command] = adapter.createOrder.mock.calls[0];
+      expect('unitPriceGross' in command.items[0]).toBe(false);
+      expect('shippingGross' in command.totals).toBe(false);
+    });
+
     it('should sync to a single destination and return a success result', async () => {
       const adapter = makeAdapter({ orderId: 'dest_order_789', orderNumber: 'DEST-001' });
       registerDestinations([{ connectionId: 'dest-a', adapter }]);
