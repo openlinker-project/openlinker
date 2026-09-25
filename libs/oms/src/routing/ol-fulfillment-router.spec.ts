@@ -30,6 +30,8 @@ interface FakeStock {
   availableQuantity: number;
   /** The inventory row's own identity. Defaults to `(location, variant)`. */
   id?: string;
+  /** #3481 — a row the repository marks stale; the fake honours `excludeStale`. */
+  isStale?: boolean;
 }
 
 function buildRouter(options: {
@@ -39,6 +41,8 @@ function buildRouter(options: {
   blocked?: readonly string[];
   /** When true, every variant asked about is abundantly stocked at every location. */
   abundant?: boolean;
+  /** Records every inventory filter the router asked with (#3481). */
+  inventoryFilters?: Array<Record<string, unknown>>;
 }): OlFulfillmentRouter {
   const locations = options.locations ?? [{ id: 'loc-a', countryIso2: 'PL', postcode: '00-001' }];
 
@@ -51,7 +55,8 @@ function buildRouter(options: {
   } as unknown as Parameters<typeof createOlFulfillmentRouter>[0]['locations'];
 
   const inventory = {
-    listInventoryItems: async (filters: { productVariantId?: string }) => {
+    listInventoryItems: async (filters: { productVariantId?: string; excludeStale?: boolean }) => {
+      options.inventoryFilters?.push({ ...filters });
       const variantId = filters.productVariantId ?? '';
       const rows = options.abundant
         ? locations.map((location) => ({
@@ -64,6 +69,8 @@ function buildRouter(options: {
           }))
         : (options.stock ?? [])
             .filter((entry) => entry.productVariantId === variantId)
+            // Mirrors the repository: `excludeStale` drops stale rows, absent keeps them.
+            .filter((entry) => !(filters.excludeStale === true && entry.isStale === true))
             .map((entry) => ({
               item: {
                 id: entry.id ?? `inv-${entry.locationId}-${variantId}`,
@@ -250,6 +257,59 @@ describe('OlFulfillmentRouter', () => {
       const plan = await router.route(input(), { idempotencyKey: 'route:d11' });
       if (plan.status !== 'resolved') throw new Error('expected resolved');
       expect(plan.explanation[0]?.detail).toContain('ranked nothing');
+    });
+  });
+
+  // #3481 — stale rows hold units that no longer exist (a located row left
+  // behind after `stockLocationOverride` is cleared, #2322/#3206, or a product
+  // deleted at the master, #1689). Every other availability read excludes them.
+  describe('stale inventory rows (#3481)', () => {
+    it('should ask the inventory read for live rows only', async () => {
+      const inventoryFilters: Array<Record<string, unknown>> = [];
+      const router = buildRouter({ rules: [filter('in-stock')], stock: [], inventoryFilters });
+
+      await router.route(input(), { idempotencyKey: 'route:stale-1' });
+
+      expect(inventoryFilters).toEqual([
+        { productVariantId: 'ol_variant_1', excludeStale: true },
+      ]);
+    });
+
+    it('should not count a stale row as routable stock', async () => {
+      const router = buildRouter({
+        rules: [filter('in-stock')],
+        stock: [
+          { locationId: 'loc-a', productVariantId: 'ol_variant_1', availableQuantity: 5, isStale: true },
+        ],
+      });
+
+      const plan = await router.route(input(), { idempotencyKey: 'route:stale-2' });
+
+      if (plan.status !== 'resolved') throw new Error('expected resolved');
+      expect(plan.assignments).toEqual([]);
+      expect(plan.unfulfillable).toEqual([
+        expect.objectContaining({ orderLineId: 'line-1', quantity: 2 }),
+      ]);
+    });
+
+    it('should route to the location holding live stock, not the one holding only stale stock', async () => {
+      const router = buildRouter({
+        rules: [filter('in-stock')],
+        locations: [
+          { id: 'loc-a', countryIso2: 'PL', postcode: '00-001' },
+          { id: 'loc-b', countryIso2: 'PL', postcode: '00-001' },
+        ],
+        stock: [
+          { locationId: 'loc-a', productVariantId: 'ol_variant_1', availableQuantity: 5, isStale: true },
+          { locationId: 'loc-b', productVariantId: 'ol_variant_1', availableQuantity: 2 },
+        ],
+      });
+
+      const plan = await router.route(input(), { idempotencyKey: 'route:stale-3' });
+
+      if (plan.status !== 'resolved') throw new Error('expected resolved');
+      expect(plan.unfulfillable).toEqual([]);
+      expect(plan.assignments.map((assignment) => assignment.locationId)).toEqual(['loc-b']);
     });
   });
 

@@ -173,7 +173,11 @@ export class OlFulfillmentRouter implements FulfillmentRouterPort {
 
       for (let offset = 0; ; offset += INVENTORY_PAGE_SIZE) {
         const result = await this.deps.inventory.listInventoryItems(
-          { productVariantId: variantId },
+          // #3481 — live rows only. A stale row (a located row left behind after
+          // `stockLocationOverride` is cleared, #2322/#3206, or a product
+          // deleted at the master, #1689) holds units that do not exist, and
+          // routing on them commits a work row nobody can pick.
+          { productVariantId: variantId, excludeStale: true },
           { limit: INVENTORY_PAGE_SIZE, offset }
         );
 
