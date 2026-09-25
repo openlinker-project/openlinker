@@ -102,6 +102,7 @@ import { GenerateProtocolDto } from './dto/generate-protocol.dto';
 import { ListShipmentsQueryDto } from './dto/list-shipments-query.dto';
 import { NotifyDispatchedResponseDto } from './dto/notify-dispatched-response.dto';
 import { PaginatedShipmentsResponseDto } from './dto/paginated-shipments-response.dto';
+import { CancelShipmentResponseDto } from './dto/cancel-shipment-response.dto';
 import { REDACTED_ERROR_MESSAGE, ShipmentResponseDto } from './dto/shipment-response.dto';
 import { resolveWaybillRelayThresholdFromEnv } from './waybill-relay-threshold';
 
@@ -381,21 +382,33 @@ export class ShipmentController {
   @Post(':id/cancel')
   @Roles('admin', 'operator')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Cancel a not-yet-dispatched shipment' })
-  @ApiResponse({ status: 200, type: ShipmentResponseDto })
+  @ApiOperation({
+    summary: 'Cancel a shipment',
+    description:
+      'Voids the provider shipment and advances the row to `cancelled`. The window covers ' +
+      '`draft`, `generated` and `dispatched` (#3365) — a dispatched one is included because the ' +
+      'automatic dispatch notification closes the window within seconds of a label being bought, ' +
+      'so refusing left an operator paying for a parcel they would not send. Terminal states are ' +
+      'still refused. Nothing is sent to the marketplace on either path; see ' +
+      '`cancelledAfterDispatch` for what that leaves outstanding.',
+  })
+  @ApiResponse({ status: 200, type: CancelShipmentResponseDto })
   @ApiResponse({ status: 404, description: 'Shipment not found' })
-  @ApiResponse({ status: 409, description: 'Shipment is past the cancellable window' })
+  @ApiResponse({ status: 409, description: 'Shipment is in a terminal state' })
   @ApiResponse({ status: 422, description: 'Provider does not support cancellation' })
-  async cancel(@Param('id') id: string): Promise<ShipmentResponseDto> {
+  async cancel(@Param('id') id: string): Promise<CancelShipmentResponseDto> {
     try {
-      const shipment = await this.cancellation.cancel(id);
+      const result = await this.cancellation.cancel(id);
       // `@Roles('admin', 'operator')`-gated — the caller holds `shipments:write`.
-      return ShipmentResponseDto.fromDomain(
-        shipment,
-        null,
-        true,
-        null,
-        resolveWaybillRelayThresholdFromEnv(),
+      return CancelShipmentResponseDto.fromResult(
+        ShipmentResponseDto.fromDomain(
+          result.shipment,
+          null,
+          true,
+          null,
+          resolveWaybillRelayThresholdFromEnv(),
+        ),
+        result.cancelledAfterDispatch,
       );
     } catch (error) {
       throw this.toHttpException(error, true);

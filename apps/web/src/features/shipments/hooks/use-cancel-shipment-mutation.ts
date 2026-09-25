@@ -10,9 +10,13 @@
 import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/react-query';
 import { useApiClient } from '../../../app/api/api-client-provider';
 import { shipmentsQueryKeys } from '../api/shipments.query-keys';
-import type { Shipment } from '../api/shipments.types';
+import type { CancelShipmentResult } from '../api/shipments.types';
 
-export function useCancelShipmentMutation(): UseMutationResult<Shipment, Error, string> {
+export function useCancelShipmentMutation(): UseMutationResult<
+  CancelShipmentResult,
+  Error,
+  string
+> {
   const apiClient = useApiClient();
   const queryClient = useQueryClient();
 

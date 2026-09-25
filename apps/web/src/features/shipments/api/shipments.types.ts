@@ -161,6 +161,27 @@ export interface Shipment {
 }
 
 /**
+ * What `POST /shipments/:id/cancel` answers with (#3365).
+ *
+ * A result rather than the row, because cancelling after dispatch leaves
+ * something outstanding that the row cannot express.
+ */
+export interface CancelShipmentResult {
+  shipment: Shipment;
+  /**
+   * The shipment had already been marked dispatched when it was cancelled, so
+   * the sales channel was told the parcel shipped. OpenLinker sends nothing to
+   * withdraw that: the only cancellation event it has says the CUSTOMER'S
+   * ORDER was cancelled, which is a different claim and usually untrue here.
+   *
+   * Reports what the shipment can attest to, not what the channel received -
+   * the dispatch notification advances the row both when a channel applied the
+   * event and when there was no channel to apply it.
+   */
+  cancelledAfterDispatch: boolean;
+}
+
+/**
  * FE mirror of the BE `WaybillRelayResponseDto` (#2073). Hand-maintained under
  * the FE-001 hand-written-contract strategy.
  *

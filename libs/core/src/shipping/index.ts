@@ -32,6 +32,7 @@ export type {
   TerminalShipmentStatus,
 } from './domain/types/shipment-status.types';
 
+export type { ShipmentCancellationResult } from './domain/types/shipment-cancellation.types';
 export { ShipmentDirectionValues } from './domain/types/shipment-direction.types';
 export type { ShipmentDirection } from './domain/types/shipment-direction.types';
 // #2073 — the waybill-relay failure vocabulary and its two pure rules. The
