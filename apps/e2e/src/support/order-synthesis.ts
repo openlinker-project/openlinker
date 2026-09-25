@@ -120,7 +120,13 @@ async function pickDriverProduct(
   api: ApiClient,
   connectionId: string,
 ): Promise<{ product: Product; variant: ProductVariant } | undefined> {
-  const page = await api.products.list({ limit: 50 });
+  // SCOPED to the connection, not a bare first page. `externalIdFor` below
+  // filters by connection anyway, so an unscoped page merely decided the
+  // outcome by whatever happened to sort first - on a stack whose catalogue is
+  // mostly another master's, every candidate fell off the end of page one and
+  // this answered "no catalogue product with a priced, EAN-complete variant"
+  // about a catalogue that had six.
+  const page = await api.products.list({ limit: 50, connectionId });
   for (const summary of page.items) {
     const detail = await api.products.getById(summary.id);
     if (!externalIdFor(detail, connectionId)) continue;

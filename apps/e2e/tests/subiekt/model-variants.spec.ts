@@ -111,6 +111,30 @@ async function waitForGroupedProducts(
   }
 }
 
+/**
+ * Poll a product until its VAT rate has been READ, whatever the answer.
+ *
+ * The sweep is budgeted and fans out per-product children (#2218/#2593), and
+ * `triggerAndWait` returns when the PARENT succeeds - so the read this asserts
+ * on happens after the trigger returns, not during it. Keyed on
+ * `taxRateReadAt` rather than on the rate, because "the master answered, and
+ * named no rate" is a legitimate end state that must not keep the poll
+ * spinning.
+ */
+async function waitForTaxRateRead(
+  api: ApiClient,
+  productId: string,
+  timeoutMs: number,
+): Promise<Product> {
+  const deadline = Date.now() + timeoutMs;
+  let detail = await api.products.getById(productId);
+  while (Date.now() < deadline && !detail.taxRateReadAt) {
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    detail = await api.products.getById(productId);
+  }
+  return detail;
+}
+
 test.describe('Subiekt GT: models as variants (#3365)', () => {
   test.describe.configure({ mode: 'serial' });
 
@@ -193,9 +217,13 @@ test.describe('Subiekt GT: models as variants (#3365)', () => {
     test.skip(grouped.length === 0, 'no multi-variant product on this Subiekt');
 
     for (const { product } of grouped) {
-      // The detail read, because the rate is a product-level column and the
-      // list projection is not the shape this is about.
-      const detail = await api.products.getById(product.id);
+      // POLLED, not read once. `jobs.triggerAndWait` waits for the SWEEP, and
+      // a sweep's job is to enqueue children - the per-product syncs that
+      // actually read the rate drain afterwards, behind whatever the stack
+      // already had queued. Asserting immediately reported "the model-key
+      // branch is not resolving" against a branch that was resolving fine
+      // ninety seconds later.
+      const detail = await waitForTaxRateRead(api, product.id, 180_000);
 
       // `taxRateReadAt` is the discriminator that matters. A null rate WITH a
       // read timestamp is the master honestly answering "no rate assigned";
@@ -203,7 +231,8 @@ test.describe('Subiekt GT: models as variants (#3365)', () => {
       // and the two are indistinguishable from the rate alone.
       expect(
         detail.taxRateReadAt,
-        `${detail.name}: no VAT rate was ever read - the model-key branch is not resolving ` +
+        `${detail.name}: no VAT rate was ever read within the budget - either the per-product ` +
+          `sync children have not drained, or the model-key branch is not resolving ` +
           `(check for a 404 on /api/products/model%3A... in the worker log)`,
       ).toBeTruthy();
 

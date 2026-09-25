@@ -58,14 +58,14 @@ async function waitForDestinationRow(
   internalOrderId: string,
   destinationConnectionId: string,
   timeoutMs: number,
-): Promise<{ status: string; message?: string | null } | null> {
+): Promise<{ status: string; error: string | null } | null> {
   const deadline = Date.now() + timeoutMs;
-  let last: { status: string; message?: string | null } | null = null;
+  let last: { status: string; error: string | null } | null = null;
   while (Date.now() < deadline) {
     const order: OrderRecord = await api.orders.getById(internalOrderId);
     const row = order.syncStatus.find((s) => s.destinationConnectionId === destinationConnectionId);
     if (row) {
-      last = { status: row.status, message: (row as { message?: string | null }).message ?? null };
+      last = { status: row.status, error: row.error };
       if (row.status !== 'pending' && row.status !== 'syncing') return last;
     }
     await new Promise((resolve) => setTimeout(resolve, 5_000));
@@ -112,8 +112,24 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
   let soldProduct: Product | null = null;
   let soldVariantId: string | null = null;
   const soldQuantity = 1;
+  /**
+   * Set when the source reports NET line prices, which Subiekt refuses.
+   *
+   * `SubiektOrderProcessorAdapter` will not write a net-priced order to a ZK:
+   * the document is gross-priced (`LiczonyOdCenBrutto`) and OpenLinker does
+   * not compute tax to convert (ADR-014 - the buyer-paid figure is carried,
+   * never recomputed). That is a correct refusal and a hard product fact: a
+   * shop whose orders report net prices cannot send them to Subiekt at all.
+   *
+   * It is also what makes the document tests below unreachable from a
+   * PrestaShop-synthesised order, since PrestaShop reports net. So the refusal
+   * is ASSERTED rather than worked around, and the two tests after it skip
+   * naming it - a skip that states a real constraint beats a green test that
+   * exercised nothing.
+   */
+  let sourceIsNetPriced = false;
 
-  test('an order reaches Subiekt as a ZK', async ({ api, world, jobs, poll, env }) => {
+  test('an order reaches Subiekt as a ZK, or is refused for a stated reason', async ({ api, world, jobs, poll, env }, testInfo) => {
     test.skip(!env.testSubiekt, 'opt-in — set E2E_TEST_SUBIEKT=true against a live Subiekt GT bridge');
     const subiekt = world.connectionFor(PlatformType.subiektGt);
     test.skip(!subiekt, 'no Subiekt GT connection on this stack');
@@ -139,9 +155,35 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
       `order ${internalOrderId} never got a syncStatus row for the Subiekt connection — the ` +
         `destination fan-out did not reach it (check OrderProcessorManager is enabled)`,
     ).not.toBeNull();
+
+    const reason = row!.error ?? '';
+    if (row!.status === 'failed' && /net \(tax-exclusive\) line prices/i.test(reason)) {
+      // The refusal must be EXPLICIT. A silently-dropped order would leave the
+      // seller with a sale in the channel, nothing in Subiekt and no reason
+      // anywhere - which is the failure shape this whole exercise is about.
+      sourceIsNetPriced = true;
+      expect(
+        reason,
+        'a refused order must say which source reported net prices and why Subiekt cannot take it',
+      ).toContain('Subiekt');
+      // PASSES rather than skips. The refusal IS the assertion here, and a
+      // skipped test reports nothing to whoever reads the run - which is the
+      // same complaint this whole exercise makes about silent behaviour. The
+      // two tests after it skip, because there is genuinely no ZK to document.
+      testInfo.annotations.push({
+        type: 'subiekt',
+        description:
+          `source reports NET line prices; Subiekt refused the ZK explicitly, as designed ` +
+          `(ADR-014 — OpenLinker carries the buyer-paid figure and never recomputes tax). The ` +
+          `document chain below needs a GROSS-priced source, which on this install means an ` +
+          `Allegro order, and that cannot be minted without a human buyer.`,
+      });
+      return;
+    }
+
     expect(
       row!.status,
-      `order ${internalOrderId} failed to mirror into Subiekt: ${row!.message ?? 'no message'}`,
+      `order ${internalOrderId} failed to mirror into Subiekt: ${reason || 'no message'}`,
     ).toBe('synced');
   });
 
@@ -150,6 +192,7 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
     const subiekt = world.connectionFor(PlatformType.subiektGt);
     test.skip(!subiekt, 'no Subiekt GT connection on this stack');
     test.skip(internalOrderId === null, 'the ZK test did not produce an order');
+    test.skip(sourceIsNetPriced, 'the source reports net prices, so no ZK exists to document');
 
     const record = await waitForDocument(api, internalOrderId!, subiekt!.id, DOCUMENT_TIMEOUT_MS);
 
@@ -200,6 +243,7 @@ test.describe('Subiekt GT: order to documents (#3365)', () => {
     const subiekt = world.connectionFor(PlatformType.subiektGt);
     test.skip(!subiekt, 'no Subiekt GT connection on this stack');
     test.skip(internalOrderId === null || soldProduct === null, 'no order was produced');
+    test.skip(sourceIsNetPriced, 'the source reports net prices, so no document released any stock');
 
     const symbol = subiektSymbolOf(soldProduct!, subiekt!.id);
     test.skip(
