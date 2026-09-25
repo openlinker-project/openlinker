@@ -69,6 +69,23 @@ export const SalesDocumentUnresolvedReasonValues = [
    * so a currency mismatch here is exactly as terminal as `net-priced-order`.
    */
   'threshold-currency-mismatch',
+  /**
+   * Connections capable of issuing exist, but not one of them declares
+   * `config.salesDocument.documentKind`, so there was no routing candidate to
+   * choose between (#3365).
+   *
+   * Distinct from `'ambiguous-connection-no-primary'`, which is the opposite
+   * shape - SEVERAL candidates and no primary - and whose own docblock in
+   * `resolve-sales-document-routing.ts` says a caller holding ZERO eligible
+   * connections is expected to short-circuit instead. It short-circuited into
+   * silence: `{kind:'none'}` with no persisted reason, so an order carried a
+   * destination record and no document, and every operator surface agreed
+   * that nothing was wrong.
+   *
+   * The remedy is one operator action - set the document kind on Settings ->
+   * Sales documents - which is why this must reach a badge rather than a log.
+   */
+  'no-connection-declares-document-kind',
 ] as const;
 
 export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReasonValues)[number];

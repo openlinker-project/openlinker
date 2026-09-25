@@ -449,11 +449,28 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
 
     const decision = await this.resolveSalesDocumentDecision(order, candidates);
     if (decision === null) {
-      // Neither the rule engine nor the operator-configured resolver has
-      // anything to route with — mirrors the pre-#2173 zero-eligible-candidate
-      // short-circuit below, NOT a block, same reasoning as the
-      // zero-connections case above.
-      return { kind: 'none' };
+      // Connections that CAN issue exist - the zero-connections arm above
+      // already returned - but not one of them declares
+      // `config.salesDocument.documentKind`, so there was no candidate to
+      // route to.
+      //
+      // This used to `return { kind: 'none' }` with nothing persisted, and
+      // that silence was the defect (#3365). An order reached its destination,
+      // carried no document, and every operator surface agreed nothing was
+      // wrong: no badge, no counter, no failed job, one log line nobody reads.
+      // A Subiekt connection created through the guided wizard was in exactly
+      // this state from the moment it was created.
+      //
+      // It is a genuine block rather than a "nothing to do", by the same test
+      // the zero-connections arm passes in the opposite direction: there IS an
+      // operator action that fixes it, on this order, today - name the kind on
+      // Settings -> Sales documents.
+      return this.reportUnresolved(
+        'no-connection-declares-document-kind',
+        candidates,
+        order,
+        sourceEventId,
+      );
     }
 
     switch (decision.kind) {
@@ -561,7 +578,7 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
 
     // PII-free detail: a count and the neutral routing reason only. It reaches
     // an operator screen verbatim, so it must never carry buyer data.
-    const detail = this.describeUnresolvedDetail(reason, eligible);
+    const detail = this.describeUnresolvedDetail(reason, eligible, candidates);
 
     return this.reportBlock(
       { reason: 'unresolved-routing', unresolvedReason: reason, detail },
@@ -586,7 +603,14 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
   private describeUnresolvedDetail(
     reason: SalesDocumentUnresolvedReason,
     eligible: readonly SalesDocumentRoutingCandidate[],
+    candidates: readonly SalesDocumentRoutingCandidate[],
   ): string {
+    if (reason === 'no-connection-declares-document-kind') {
+      // `eligible` is empty by construction here, so the count that means
+      // anything to an operator is the pool they can go and fix.
+      const noun = candidates.length === 1 ? 'connection' : 'connections';
+      return `${candidates.length} capable ${noun}, none declaring a document kind`;
+    }
     if (reason === 'ambiguous-connection-no-primary') {
       const primaryCount = eligible.filter((candidate) => candidate.isPrimary).length;
       const qualifier = primaryCount === 0 ? 'none marked primary' : 'more than one marked primary';

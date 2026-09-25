@@ -114,6 +114,11 @@ export const SALES_DOCUMENT_UNRESOLVED_REASON_COPY = {
     detail:
       'A rule sets its limit in a different currency from this order. Amounts are never converted when routing decides, so the order is held.',
   },
+  'no-connection-declares-document-kind': {
+    short: 'No document kind set',
+    detail:
+      'This system can issue documents, but no connection says which kind it should issue. Pick one in Settings, Sales documents, and orders start getting invoices.',
+  },
 } satisfies Record<SalesDocumentUnresolvedReasonValue, SalesDocumentReasonCopy>;
 
 /**

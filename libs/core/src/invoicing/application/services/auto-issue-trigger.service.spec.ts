@@ -321,15 +321,20 @@ describe('AutoIssueTriggerService', () => {
       expect(syncJobs.schedule.mock.calls[0][0].jobType).toBe('fiscalization.register');
     });
 
-    it('a connection carrying no config.salesDocument.documentKind is NOT a routing candidate', async () => {
+    it('a connection carrying no config.salesDocument.documentKind is NOT a routing candidate, and says so', async () => {
       connectionPort.list.mockResolvedValue([
         makeConnection('auto-on-paid', { id: 'unconfigured', config: { invoicing: { triggerModel: 'auto-on-paid' } } }),
       ]);
-      await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
+      const outcome = await service.onOrderTransition(makeOrder({ paymentStatus: 'paid' }), 'src-1');
       expect(syncJobs.schedule).not.toHaveBeenCalled();
-      // Zero eligible candidates short-circuits before the resolver — no
-      // spurious "ambiguous" error either.
-      expect(errorSpy).not.toHaveBeenCalled();
+      // Zero eligible candidates still short-circuits before the resolver, so
+      // there is no spurious "ambiguous" reason - but since #3365 the exit is
+      // REPORTED rather than silent, because the remedy is one operator
+      // action on a screen that exists.
+      expect(outcome).toMatchObject({
+        kind: 'blocked',
+        block: { unresolvedReason: 'no-connection-declares-document-kind' },
+      });
     });
   });
 
@@ -1490,7 +1495,12 @@ describe('AutoIssueTriggerService', () => {
       });
     });
 
-    it('reports `none` (not a block) when the rule engine has nothing AND the operator-configured pool is also empty', async () => {
+    // #3365: this used to answer `{kind:'none'}` and persist nothing, so an
+    // order reached its destination, carried no document, and no surface said
+    // why. A connection that CAN issue but does not say WHICH kind is an
+    // operator-fixable misconfiguration on this order, today - which is the
+    // same test the zero-connections arm passes in the other direction.
+    it('reports a block when the rule engine has nothing AND no connection declares a document kind', async () => {
       salesDocumentRules.resolveRouting.mockResolvedValue({
         kind: 'unresolved',
         reason: 'no-configuration-for-country',
@@ -1509,8 +1519,16 @@ describe('AutoIssueTriggerService', () => {
       );
 
       expect(syncJobs.schedule).not.toHaveBeenCalled();
-      expect(outcome).toEqual({ kind: 'none' });
-      expect(errorSpy).not.toHaveBeenCalled();
+      expect(outcome).toEqual({
+        kind: 'blocked',
+        block: {
+          reason: 'unresolved-routing',
+          unresolvedReason: 'no-connection-declares-document-kind',
+          // The count an operator can act on is the pool they go and fix, not
+          // the empty eligible set.
+          detail: '1 capable connection, none declaring a document kind',
+        },
+      });
     });
   });
 

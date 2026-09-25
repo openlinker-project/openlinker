@@ -27,6 +27,7 @@ describe('sales-document reason vocabularies (ADR-041 decision 11)', () => {
       'net-priced-order',
       'no-configuration-for-country',
       'threshold-currency-mismatch',
+      'no-connection-declares-document-kind',
     ]);
   });
 
