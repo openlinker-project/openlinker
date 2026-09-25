@@ -3,7 +3,7 @@
  *
  * Pins the ADR-050 lane partition (#2278): every `JobTypeValues` member is
  * registered with exactly one lane, the per-lane counts match the ADR's
- * table (17 realtime / 31 bulk / 5 fiscal / 7 fan-out across 60 job types —
+ * table (18 realtime / 31 bulk / 5 fiscal / 7 fan-out across 61 job types —
  * `subiekt.bridge.reachabilitySweep` joined `bulk` with #3358: it re-probes a
  * Subiekt connection's own reachability on a cron, nobody is waiting on any
  * one tick of it, and a late check costs nothing beyond a delayed log line;
@@ -60,7 +60,7 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     expect(() => registry.assertFullLaneCoverage()).not.toThrow();
   });
 
-  it('should partition the 60 job types 17/31/5/7 per ADR-050 decision 1', () => {
+  it('should partition the 61 job types 18/31/5/7 per ADR-050 decision 1', () => {
     // 17: four of the SIX fulfilment job types are `realtime` by
     // cost-of-starvation. The other two, #2712's
     // `fulfillment.work.timeoutSweep` and #2728's
@@ -88,7 +88,14 @@ describe('HandlerRegistrationService (ADR-050 lane partition, #2278)', () => {
     // buying the label is the same outbound "someone is waiting on this" act
     // as `fulfillment.work.dispatch` — a packer at the bench, this time,
     // rather than the holder's own acceptance.
-    expect(registry.getJobTypesByLane('realtime')).toHaveLength(17);
+    //
+    // #3365's `shipping.shipment.notifyDispatched` is the eighteenth, and the
+    // first `realtime` member outside that family: a buyer is waiting to be
+    // told their parcel is on its way and the marketplace's own dispatch clock
+    // is running, so it is the same outbound-half-of-a-sale profile as
+    // `fulfillment.work.dispatch` rather than the paced reconcile its
+    // `marketplace.shipment.statusSync` neighbour is.
+    expect(registry.getJobTypesByLane('realtime')).toHaveLength(18);
     // 27, and every one of the additions since the lane split shares one
     // profile: background catch-up work that enqueues no children, writes
     // locally, and whose lateness costs nobody a request — so `fan-out` (whose

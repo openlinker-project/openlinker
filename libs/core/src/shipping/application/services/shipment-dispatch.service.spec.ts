@@ -133,6 +133,7 @@ describe('ShipmentDispatchService', () => {
   let dispatchLock: jest.Mocked<SyncLockPort>;
   let orderHolds: jest.Mocked<IOrderHoldService>;
   let fulfillmentWorks: { resolveLinkForOrder: jest.Mock; listBlockingRejectionConnectionIds: jest.Mock };
+  let jobQueue: { enqueue: jest.Mock; enqueueBulk: jest.Mock };
   let service: ShipmentDispatchService;
 
   beforeEach(() => {
@@ -224,6 +225,14 @@ describe('ShipmentDispatchService', () => {
       resolveLinkForOrder: jest.fn().mockResolvedValue({ kind: 'none' }),
       listBlockingRejectionConnectionIds: jest.fn().mockResolvedValue([]),
     };
+    // #3365: every successful label buy enqueues the dispatch notification, so
+    // the queue is present on every pre-existing test. Resolving by default
+    // keeps them byte-identical; the enqueue is best-effort, so a rejection
+    // would be swallowed rather than changing any assertion here.
+    jobQueue = {
+      enqueue: jest.fn().mockResolvedValue('job-1'),
+      enqueueBulk: jest.fn().mockResolvedValue([]),
+    };
     service = new ShipmentDispatchService(
       repository,
       routing,
@@ -233,6 +242,7 @@ describe('ShipmentDispatchService', () => {
       dispatchLock,
       orderHolds,
       fulfillmentWorks,
+      jobQueue,
     );
   });
 
@@ -298,6 +308,53 @@ describe('ShipmentDispatchService', () => {
 
       await expect(service.dispatch(makeInput())).rejects.toThrow('db down');
       expect(adapter.generateLabel).not.toHaveBeenCalled();
+    });
+  });
+
+  // #3365. Before this, `notifyDispatched` had one caller - the "Mark
+  // dispatched" button - so a marketplace learned a tracking number only if
+  // somebody clicked, and a label bought by `fulfillment.work.autoDispatch`
+  // told nobody at all. Both paths reach `dispatch()`, so the enqueue lives
+  // here and covers both.
+  describe('automatic dispatch notification (#3365)', () => {
+    it('enqueues the notification once a label is bought', async () => {
+      arrangeOlManagedCarrierHappyPath();
+
+      await service.dispatch(makeInput());
+
+      expect(jobQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'shipping.shipment.notifyDispatched',
+          payload: expect.objectContaining({ schemaVersion: 1 }),
+          // Per SHIPMENT, so the retry path - which reuses the same row after
+          // a failed label - does not enqueue a second notification for one
+          // parcel.
+          options: expect.objectContaining({
+            dedupeKey: expect.stringContaining('shipment:notifyDispatched:') as unknown as string,
+          }),
+        }),
+      );
+    });
+
+    // The label is bought and the carrier has committed. A queue that is
+    // momentarily unreachable must not turn that into a failed dispatch - the
+    // operator's manual action is the remaining route, and the warn names it.
+    it('still reports the dispatch when the enqueue fails', async () => {
+      arrangeOlManagedCarrierHappyPath();
+      jobQueue.enqueue.mockRejectedValue(new Error('redis down'));
+
+      const result = await service.dispatch(makeInput());
+
+      expect(result.kind).toBe('dispatched');
+    });
+
+    it('enqueues nothing when the label was never bought', async () => {
+      routing.resolve.mockResolvedValue(resolution());
+      orderHolds.getOpenHold.mockRejectedValue(new Error('db down'));
+
+      await expect(service.dispatch(makeInput())).rejects.toThrow('db down');
+
+      expect(jobQueue.enqueue).not.toHaveBeenCalled();
     });
   });
 

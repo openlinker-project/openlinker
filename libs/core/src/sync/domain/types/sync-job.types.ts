@@ -127,6 +127,28 @@ export const JobTypeValues = [
 
   // Shipping (core-owned; capability-scoped, executed by worker)
   'shipping.pickupPoint.refreshFrequent',
+  /**
+   * Tell the order's participants a parcel shipped, without waiting for a
+   * human to press a button (#3365).
+   *
+   * Enqueued by `ShipmentDispatchService` the moment a label is bought, on
+   * BOTH the operator's own dispatch and the automatic one - `dispatch()` is
+   * the single site both reach. Before it, `notifyDispatched` was reachable
+   * only from `POST /shipments/:id/notify-dispatched`, so a marketplace
+   * learned a tracking number only if somebody clicked, and an
+   * auto-dispatched label told nobody at all.
+   *
+   * A JOB rather than an inline call for three reasons: a bulk dispatch of N
+   * parcels would otherwise make N sequential marketplace calls inside one
+   * HTTP request; a marketplace that is momentarily down deserves the retry
+   * ladder rather than a lost notification; and the label purchase must not
+   * fail because a writeback did.
+   *
+   * `realtime` (ADR-050 cost-of-starvation): a buyer is waiting to be told
+   * their parcel is on its way, and the marketplace's own dispatch clock is
+   * running.
+   */
+  'shipping.shipment.notifyDispatched',
 
   // Invoicing (core-owned; capability-scoped, executed by worker)
   // KSeF regulatory-status reconciliation sweep (#1121).
