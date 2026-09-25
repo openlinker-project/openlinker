@@ -12,6 +12,44 @@ From `0.2.0` onward this file is generated automatically by
 Commits. The `0.1.0` entry below is the hand-curated baseline of what shipped
 before automated releases began.
 
+## [0.13.0](https://github.com/openlinker-project/openlinker/compare/v0.12.0...v0.13.0) (2026-09-25)
+
+
+### Features
+
+* **bench,fulfillment:** mockup-parity Interface layer — widened projections, activity log, self-claim, packed-today, masked buyer name ([#3401](https://github.com/openlinker-project/openlinker/issues/3401)) ([#3438](https://github.com/openlinker-project/openlinker/issues/3438)) ([3acef84](https://github.com/openlinker-project/openlinker/commit/3acef8476e1442f468c8c3fb35db8633daed6394))
+* **bench:** add the C keyboard shortcut (scope narrowed after auditing the real feature) ([#3363](https://github.com/openlinker-project/openlinker/issues/3363)) ([91a746c](https://github.com/openlinker-project/openlinker/commit/91a746cb72afce737dee013b9650e3329abeed47))
+* **bench:** render the assigned/unassigned/assignment-only rail distinction ([#3374](https://github.com/openlinker-project/openlinker/issues/3374)) ([b18f4c3](https://github.com/openlinker-project/openlinker/commit/b18f4c3761ccd4d674c94ee5df312c3e6ca7548f))
+* **connections:** add stock-location override field to connection form ([#3326](https://github.com/openlinker-project/openlinker/issues/3326)) ([b18033d](https://github.com/openlinker-project/openlinker/commit/b18033dc87da298dda59cac6b874c9c7cddcec68))
+* **core:** mockup-parity CORE schema — bin location, weight/dims, undo-scan, presence ([#3401](https://github.com/openlinker-project/openlinker/issues/3401)) ([#3435](https://github.com/openlinker-project/openlinker/issues/3435)) ([99f5c20](https://github.com/openlinker-project/openlinker/commit/99f5c203d0e999b183a17af965bc11b89a595aab))
+* **eparagony:** issue corrective invoices ([#3332](https://github.com/openlinker-project/openlinker/issues/3332)) ([b418ffa](https://github.com/openlinker-project/openlinker/commit/b418ffaa70de5d08e5d5b86d2a7d152d6471ec59))
+* **fulfillment:** add FulfillmentWork assignment columns + repository writers (ADR-074) ([#3360](https://github.com/openlinker-project/openlinker/issues/3360)) ([f196564](https://github.com/openlinker-project/openlinker/commit/f19656429b6f2ed6c1d0eb8f07d2009b1f8bf6fc))
+* **fulfillment:** Assign Packing Work operator screen ([#3368](https://github.com/openlinker-project/openlinker/issues/3368)) ([a1bd4a7](https://github.com/openlinker-project/openlinker/commit/a1bd4a797e587613daa7a2a3d4fd3d3efed39543))
+* **fulfillment:** assignment endpoint, worklist projection, server-side claim guard ([#3361](https://github.com/openlinker-project/openlinker/issues/3361)) ([78009bb](https://github.com/openlinker-project/openlinker/commit/78009bb9e03f5fc16207b0767a41661a51437b90))
+* **fulfillment:** pack-bench mockup parity + one merged /fulfillment screen ([#3401](https://github.com/openlinker-project/openlinker/issues/3401)) ([#3439](https://github.com/openlinker-project/openlinker/issues/3439)) ([fbae25c](https://github.com/openlinker-project/openlinker/commit/fbae25c1bb1770ae175d5611a4b33df30444cc31))
+* **listings:** replace CHIP_COUNTS_LIMIT with a real counts-by-connection endpoint ([#3387](https://github.com/openlinker-project/openlinker/issues/3387)) ([5510f6a](https://github.com/openlinker-project/openlinker/commit/5510f6ae407625bacceba49e04f29e91d60a1a23)), closes [#3325](https://github.com/openlinker-project/openlinker/issues/3325)
+* **listings:** resolve a destination's real currency for price-change detection ([#3328](https://github.com/openlinker-project/openlinker/issues/3328)) ([b1ab2eb](https://github.com/openlinker-project/openlinker/commit/b1ab2eb17c7a066d3831219cc8997737ee72e77b))
+* **returns:** correction-proposal entry point + orphan placeholder ([#3379](https://github.com/openlinker-project/openlinker/issues/3379)) ([015837a](https://github.com/openlinker-project/openlinker/commit/015837abed860d09aacd0a93aab97052897eb637))
+* **returns:** correction-proposal headline + breakdown panel ([#3376](https://github.com/openlinker-project/openlinker/issues/3376)) ([131f0a6](https://github.com/openlinker-project/openlinker/commit/131f0a66829aa7c02f3c485a5be73ec46e6577ad))
+* **returns:** correction-proposal record API client ([#3088](https://github.com/openlinker-project/openlinker/issues/3088)) ([#3301](https://github.com/openlinker-project/openlinker/issues/3301)) ([b869c39](https://github.com/openlinker-project/openlinker/commit/b869c399af082fee6ae9a2f2c141b980b2a63797))
+* **returns:** correction-proposal record mutation hook ([#3375](https://github.com/openlinker-project/openlinker/issues/3375)) ([653f930](https://github.com/openlinker-project/openlinker/commit/653f93088aa78e86a41b79db6ac1a86ba58ebf9c))
+* **returns:** distinct badges + a real remedy link for the 4 non-proposing correction-proposal outcomes ([#3093](https://github.com/openlinker-project/openlinker/issues/3093)) ([#3378](https://github.com/openlinker-project/openlinker/issues/3378)) ([45f7b18](https://github.com/openlinker-project/openlinker/commit/45f7b1811591b174b17204b6496345f878b51be7))
+* **returns:** narrow the correction matcher onto ReturnLine.resolvedOrderLineId ([#3313](https://github.com/openlinker-project/openlinker/issues/3313)) ([6dc871f](https://github.com/openlinker-project/openlinker/commit/6dc871fa9e1cb1035889dbe87f673d4605fed829))
+* **returns:** record-for-review action + recorded state ([#3092](https://github.com/openlinker-project/openlinker/issues/3092)) ([#3377](https://github.com/openlinker-project/openlinker/issues/3377)) ([85ce338](https://github.com/openlinker-project/openlinker/commit/85ce3381f3c68db4cf31672e53cc2de9b6eca878))
+* **sales-documents:** invoice clearance filters, rule dry-run, and dual-role connections ([#3320](https://github.com/openlinker-project/openlinker/issues/3320)) ([a6069dd](https://github.com/openlinker-project/openlinker/commit/a6069dd0e11f50c9c473333ec6b05ceedc56f379))
+* **web:** give DataTable per-row identity, migrate the price-changes queue onto it ([#3327](https://github.com/openlinker-project/openlinker/issues/3327)) ([bd5a2c4](https://github.com/openlinker-project/openlinker/commit/bd5a2c4e02152d6f75a55316dabdc142f7ab369d))
+
+
+### Bug Fixes
+
+* **eparagony:** memoize HTTP client per connection to cut redundant /auth/token calls ([#3383](https://github.com/openlinker-project/openlinker/issues/3383)) ([5d470b9](https://github.com/openlinker-project/openlinker/commit/5d470b97eb304f748b9153d797d1915e9814c408)), closes [#3382](https://github.com/openlinker-project/openlinker/issues/3382)
+* **price-changes:** scope toast-copy assertions to avoid Radix announcer duplicate ([#3315](https://github.com/openlinker-project/openlinker/issues/3315)) ([bc7bd61](https://github.com/openlinker-project/openlinker/commit/bc7bd618ec5a7ea86643640c1583abb6dece4f3b))
+* **returns:** refuse a second restock dispose while one is already blocked ([#3477](https://github.com/openlinker-project/openlinker/issues/3477)) ([c3dccc1](https://github.com/openlinker-project/openlinker/commit/c3dccc180bb84f57f9bb46b963fc032158d66382))
+* **returns:** resolve restock target via resolvedOrderLineId, fall back to sku ([#3451](https://github.com/openlinker-project/openlinker/issues/3451)) ([113d192](https://github.com/openlinker-project/openlinker/commit/113d19262bb33b4a9162495731d1a1cf3715146a))
+* **sales-documents:** warn at pick time instead of converging the destination predicate ([#3324](https://github.com/openlinker-project/openlinker/issues/3324)) ([803dd53](https://github.com/openlinker-project/openlinker/commit/803dd53bb45dac330be9ac982e7a3bbda71dbc42))
+* **web:** eparagony.pl unrecognised-select can now be fixed by re-selecting its own recommended option ([#3318](https://github.com/openlinker-project/openlinker/issues/3318)) ([81333c9](https://github.com/openlinker-project/openlinker/commit/81333c9adac197fd129be2cffb28db8d0231d586))
+* **woocommerce:** resolve store currency for ProductMaster reads ([#3317](https://github.com/openlinker-project/openlinker/issues/3317)) ([3868e0f](https://github.com/openlinker-project/openlinker/commit/3868e0fc39c2e37c78ec36358b68b7830dec8e67))
+
 ## [0.12.0](https://github.com/openlinker-project/openlinker/compare/v0.11.0...v0.12.0) (2026-09-21)
 
 
