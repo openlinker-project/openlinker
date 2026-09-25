@@ -84,6 +84,45 @@ describe('toRegisterTransactionCommand', () => {
     });
   });
 
+  // The mirror of the invoicing mapper's test: the shipping split weights each
+  // rate by its share of the basket's GROSS value, and on a net-priced source
+  // reporting its own gross figures (#3365) `price` is net. Only a MIXED-rate
+  // basket shows it, because net scales to gross by a different factor per
+  // rate. Net weights would give 11.40/11.40 here.
+  it('should weight the shipping split by gross, not by net, on a mixed-rate net-priced order', () => {
+    const cmd = toRegisterTransactionCommand({
+      order: order({
+        items: [
+          { id: 'a', productId: 'p1', quantity: 1, price: 100, unitPriceGross: 123, taxRate: '23' },
+          { id: 'b', productId: 'p2', quantity: 1, price: 100, unitPriceGross: 105, taxRate: '5' },
+        ],
+        totals: {
+          subtotal: 200,
+          tax: 28,
+          shipping: 18.54,
+          shippingGross: 22.8,
+          total: 250.8,
+          currency: 'PLN',
+          taxTreatment: 'exclusive',
+        },
+      }),
+      connectionId: 'conn-1',
+      idempotencyKey: 'k',
+    });
+
+    const shipping = cmd.lines.filter((line) => line.name === 'Shipping');
+    expect(shipping.map((line) => ({ taxRate: line.taxRate, amount: line.unitPriceGross }))).toEqual(
+      [
+        { taxRate: '23', amount: 12.3 },
+        { taxRate: '5', amount: 10.5 },
+      ]
+    );
+    // The composed lines still reconcile against the order's own total, which
+    // is the guard this mapper already enforces - so a re-weighting that moved
+    // money rather than re-labelling it would have thrown instead.
+    expect(shipping.reduce((sum, line) => sum + line.unitPriceGross, 0)).toBeCloseTo(22.8, 2);
+  });
+
   it('should honour a caller-supplied shipping line label', () => {
     const cmd = toRegisterTransactionCommand({
       order: order({

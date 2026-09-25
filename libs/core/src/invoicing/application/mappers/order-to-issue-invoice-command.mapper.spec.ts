@@ -58,6 +58,43 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
 }
 
 describe('toIssueInvoiceCommand', () => {
+  // The shipping split weights each rate by its share of the basket's GROSS
+  // value. On a net-priced source reporting its own gross figures (#3365),
+  // weighting by `price` weights by NET - which is only visible on a
+  // MIXED-rate basket, because net scales to gross by a different factor per
+  // rate. Net weights here would give 11.40/11.40; gross weights give
+  // 12.30/10.50, which is where the buyer's shipping actually sat.
+  it('weights the shipping split by gross, not by net, on a mixed-rate net-priced order', () => {
+    const cmd = toIssueInvoiceCommand({
+      order: makeOrder({
+        items: [
+          makeItem({ id: 'a', price: 100, unitPriceGross: 123, taxRate: '23' }),
+          makeItem({ id: 'b', price: 100, unitPriceGross: 105, taxRate: '5' }),
+        ],
+        totals: {
+          subtotal: 200,
+          tax: 28,
+          shipping: 18.54,
+          shippingGross: 22.8,
+          total: 250.8,
+          currency: 'PLN',
+          taxTreatment: 'exclusive',
+        },
+      }),
+      connectionId: 'conn-1',
+    });
+
+    const shippingLines = cmd.lines.filter((line) => line.name === 'Shipping');
+    expect(
+      shippingLines.map((line) => ({ taxRate: line.taxRate, amount: line.unitPriceGross }))
+    ).toEqual([
+      { taxRate: '23', amount: 12.3 },
+      { taxRate: '5', amount: 10.5 },
+    ]);
+    // Whatever the weights, the parts still sum to exactly what was charged.
+    expect(shippingLines.reduce((sum, line) => sum + line.unitPriceGross, 0)).toBeCloseTo(22.8, 2);
+  });
+
   it('B2B: buyerTaxId present -> buyer.type "company", scheme-tagged taxId carried through', () => {
     const taxId = { scheme: 'pl-nip', value: '1234567890' };
     const cmd = toIssueInvoiceCommand({

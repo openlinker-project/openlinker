@@ -312,7 +312,14 @@ function toShippingLines(
     shipping,
     items.map((item) => ({
       taxRate: item.taxRate?.trim() ?? null,
-      gross: item.price * item.quantity,
+      // The field is named `gross` and must be given one. On a gross-priced
+      // source `price` already is; on a net-priced one that reports its own
+      // gross figure (#3365) it is not, and a net weight is wrong here for a
+      // specific reason: the split is proportional, so a uniform-rate basket
+      // is unaffected, but a MIXED-rate one shifts, because net scales to
+      // gross by a different factor per rate. The shipping then lands under
+      // the wrong rate - silently, with the total still adding up.
+      gross: (item.unitPriceGross ?? item.price) * item.quantity,
     })),
     // The order's own currency decides how many decimals the parts round to, so
     // they sum exactly in the units the buyer paid in (#2260 review).
