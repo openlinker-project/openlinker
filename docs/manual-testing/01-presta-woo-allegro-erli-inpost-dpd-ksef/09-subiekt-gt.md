@@ -173,8 +173,41 @@ native `/api/orders/{id}/shipping` route did not.
 | the shop reports it and always did | `ps_order_detail.unit_price_tax_incl = 1843.770000` on the same order |
 | the bridge answers after the restart | `/health` 200 from inside the worker container |
 | the renumbered migration is genuinely self-healing | its `up()` deleted the row recorded under `…1894000000000`, the guarded `ADD COLUMN IF NOT EXISTS` no-opped, and the new class name was inserted — on a database that had already applied it |
+| an order is marked realized once its goods leave | `ZK 41/2026` went `dok_Status` 6 → 8 on an invoice whose release document links to the INVOICE (`WZ 66 → FS 40`), with `Invoicing: marked ZK 230 realized` in the bridge log |
 
-## Part H — Not run, and why (fiscalization)
+> **Finding (my own fix was dead code, caught by testing it):** the first version of the
+> realize-the-order change sat inside `EnsureWarehouseRelease`. Both call sites skip that method
+> **entirely** when the invoice already carries a stock movement (`dok_JestRuchMag = 1`) — which is
+> exactly the auto-releasing install it was written for. FS 38 and FS 39 both proved it: auto-WZ
+> present, ZK left at 6, and not one `EnsureWarehouseRelease` line in the bridge's stderr. The call
+> moved to both call sites, and only then did a ZK actually move.
+
+## Part H — What was NOT proven here
+
+- [ ] **A shop order becoming a Subiekt document, end to end.** The gross price now reaches the
+      order snapshot AND the destination command (three separate allowlists, each found by the run
+      after the previous fix). What is NOT shown is a PrestaShop order becoming a ZK: on this stack
+      no product exists in both catalogues, so every synthesised order is refused for the honest
+      reason that its product is unknown to Subiekt. The realized-status row above was therefore
+      proven on a Subiekt-sourced order instead. Closing this needs a fixture with one product in
+      both catalogues, and until it exists the chain is proven in two halves rather than in one.
+- [ ] **Fiscalization against Subiekt** — the bridge carries routes that have never been compiled
+      against a live install in this walkthrough. Claiming it untested is more useful than a green
+      line that exercised a stub.
+
+## Part I — Open, and not mine to decide
+
+- **An invoice can be issued for more than the buyer paid.** Neither shop mapper carries an
+  order-level discount (`total_discounts*` is read nowhere; WooCommerce `fee_lines` are never mapped
+  onto items), and the invoice mapper has no line-versus-total reconciliation — the fiscal-receipt
+  mapper does. Before this round the gross-price gate refused those orders outright, so the gap was
+  unreachable; it is reachable now. A reconciliation was written and **deliberately not landed**:
+  it changes what OpenLinker refuses, and its effect on real orders could not be validated here.
+- **A marketplace sale does not reduce Subiekt stock** — the order is written with reservation off,
+  and nothing else decrements. "Synchronise stock **between** Subiekt and the channels" is true in
+  one direction only.
+- **A towar that joins a model gets a new variant identity**, so offers attached to its previous
+  identity are orphaned — on the very grouping operation this feature introduces.
 
 - [ ] `FiscalizationPort` against Subiekt — the bridge carries fiscalization routes that have never
       been compiled against a live install in this walkthrough. Not attempted here; claiming it
