@@ -56,7 +56,7 @@ import {
   RETURN_SOURCE_PANEL_COPY,
   ReturnCustodyPanel,
   ReturnMoneyPanel,
-  ReturnProposalPanel,
+  CorrectionProposalPanel,
   useReturnProposalQuery,
   ReturnDeclineAction,
   ReturnRailsNote,
@@ -355,7 +355,7 @@ export function ReturnDetailPage(): ReactElement {
           first), and asking anyway would render an error for a state the page
           already explains with its own banner. */}
       {proposalQuery.data !== undefined ? (
-        <ReturnProposalPanel
+        <CorrectionProposalPanel
           outcome={proposalQuery.data.outcome}
           proposal={proposalQuery.data.proposal}
         />

@@ -1,17 +1,17 @@
 /**
- * Credit-Note Proposal Panel (#2382, returns spec § 5.8)
+ * Credit-Note Correction Proposal Panel (#3090, returns spec § 5.8)
  *
- * The acceptance criterion this file exists for: **an ambiguous proposal is
- * visually distinguishable from a clean one BEFORE any confirm.** The rest
- * defends the reason that matters — a transmitted correction cannot be
- * withdrawn, so nothing here may choose on the operator's behalf.
+ * Two acceptance criteria this file exists for: the headline credit amount
+ * and its breakdown must be present (visible above the fold on desktop is a
+ * layout property this test cannot assert, but their presence is), and each
+ * line's status must render in plain language, not the raw enum value.
  *
  * @module apps/web/src/features/returns/components
  */
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
-import { ReturnProposalPanel } from './return-proposal-panel';
+import { CorrectionProposalPanel } from './correction-proposal-panel';
 import { RETURN_PROPOSAL_COPY } from '../lib/return-proposal.copy';
 import type {
   ReturnCorrectionProposal,
@@ -28,7 +28,9 @@ function line(
     sku: 'SKU-1',
     quantityDisposed: 1,
     status: 'matched',
-    candidates: [],
+    candidates: [
+      { originalLineNumber: 1, name: 'Widget', quantity: 2, unitPriceGross: 10, taxRate: '23' },
+    ],
     selectedOriginalLineNumber: 1,
     newQuantity: 1,
     noMatchReason: null,
@@ -53,12 +55,51 @@ function proposal(lines: ReturnCorrectionProposalLine[]): ReturnCorrectionPropos
 function renderPanel(p: ReturnCorrectionProposal | null, outcome = 'proposed') {
   render(
     <MemoryRouter>
-      <ReturnProposalPanel outcome={outcome} proposal={p} />
+      <CorrectionProposalPanel outcome={outcome} proposal={p} />
     </MemoryRouter>,
   );
 }
 
-describe('ReturnProposalPanel (#2382)', () => {
+describe('CorrectionProposalPanel (#3090)', () => {
+  it('should render a headline total and its automatic/pick/no-credit breakdown', () => {
+    renderPanel(
+      proposal([
+        line(),
+        line({ returnLineId: 'line-2', status: 'ambiguous', candidates: [
+          { originalLineNumber: 1, name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '23' },
+          { originalLineNumber: 2, name: 'Widget', quantity: 1, unitPriceGross: 12, taxRate: '23' },
+        ] }),
+        line({ returnLineId: 'line-3', status: 'no-match', noMatchReason: 'no-line-name' }),
+      ]),
+    );
+
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.headlineLabel)).toBeInTheDocument();
+    // 1 matched (credits 10.00 PLN for the (2-1) unit delta at unit price 10),
+    // 1 ambiguous, 1 no-match.
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.breakdownAutomatic).nextElementSibling)
+      .toHaveTextContent('1');
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.breakdownNeedsPick).nextElementSibling)
+      .toHaveTextContent('1');
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.breakdownCantCredit).nextElementSibling)
+      .toHaveTextContent('1');
+  });
+
+  it('should label the headline as an estimate, never as the amount the document will carry (review finding on #3376)', () => {
+    renderPanel(proposal([line()]));
+
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.headlineEstimateNote)).toBeInTheDocument();
+  });
+
+  it('should show a plain-language status, never the raw enum value', () => {
+    renderPanel(proposal([line({ status: 'ambiguous', candidates: [
+      { originalLineNumber: 1, name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '23' },
+      { originalLineNumber: 2, name: 'Widget', quantity: 1, unitPriceGross: 12, taxRate: '23' },
+    ] })]));
+
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.statusAmbiguous)).toBeInTheDocument();
+    expect(screen.queryByText('ambiguous')).not.toBeInTheDocument();
+  });
+
   it('should lead with the irreversibility warning', () => {
     renderPanel(proposal([line()]));
 
@@ -89,8 +130,6 @@ describe('ReturnProposalPanel (#2382)', () => {
       { originalLineNumber: 3, name: 'Widget C', quantity: 1, unitPriceGross: 14, taxRate: '23' },
     ] })]));
 
-    // `originalLineNumber` is an array POSITION; picking one on a price
-    // coincidence stamps a line number into a document that cannot be withdrawn.
     expect(screen.getByText(/Widget A/)).toBeInTheDocument();
     expect(screen.getByText(/Widget B/)).toBeInTheDocument();
     expect(screen.getByText(/Widget C/)).toBeInTheDocument();
@@ -107,7 +146,6 @@ describe('ReturnProposalPanel (#2382)', () => {
     })]));
 
     expect(screen.getByText(RETURN_PROPOSAL_COPY.candidatesDiffer)).toBeInTheDocument();
-    // Still ambiguous — showing a difference is not choosing.
     expect(screen.getByText(RETURN_PROPOSAL_COPY.ambiguousBanner)).toBeInTheDocument();
   });
 
@@ -131,8 +169,6 @@ describe('ReturnProposalPanel (#2382)', () => {
       noMatchExplanation: null,
     })]));
 
-    // A silent exclusion would hide a refused restock's units vanishing from the
-    // credit note.
     expect(
       screen.getByText(/not confirmed disposed of yet/),
     ).toBeInTheDocument();
@@ -142,7 +178,6 @@ describe('ReturnProposalPanel (#2382)', () => {
     renderPanel(proposal([line()]));
 
     expect(screen.getByText(RETURN_PROPOSAL_COPY.noAutoIssue)).toBeInTheDocument();
-    // The handoff is a LINK to the provider's own flow, not a local issue button.
     expect(
       screen.getByRole('link', { name: RETURN_PROPOSAL_COPY.handoff }),
     ).toHaveAttribute('href', '/invoices/inv-1');
@@ -158,7 +193,6 @@ describe('ReturnProposalPanel (#2382)', () => {
   it('should pass an unrecognised outcome through rather than blanking it', () => {
     renderPanel(null, 'some-future-outcome');
 
-    // Quotable in a support ticket; a blank is not.
     expect(screen.getByText('some-future-outcome')).toBeInTheDocument();
   });
 });
