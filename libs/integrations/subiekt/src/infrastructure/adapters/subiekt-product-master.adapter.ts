@@ -134,6 +134,52 @@ function toDomainCategories(bridgeProduct: BridgeProduct): Category[] {
   ];
 }
 
+/**
+ * A model product's VAT rate: the one its members agree on.
+ *
+ * Subiekt assigns `tw_IdVatSp` per TOWAR, and a model is not a row in
+ * `tw__Towar` at all, so a model-keyed product has no rate of its own to
+ * read. Its members are the same article in different sizes and in practice
+ * carry one rate, so the agreed value IS the product's rate.
+ *
+ * Disagreement answers `unknown` / `ambiguous` rather than taking the first
+ * member's: `readsTaxRatePerVariant()` is false, so whatever this returns
+ * settles EVERY sibling's order lines, and one member's rate silently applied
+ * to another member's sale is a wrong figure on a fiscal document. The
+ * ambiguous answer is persistable (`isPersistableTaxRateRead`), so it records
+ * "the master named no rate" and the operator fixes the assignment in
+ * Subiekt - which is the whole chain ADR-063 exists to keep pointed at the
+ * catalogue rather than at a guess.
+ *
+ * A member with no assignment counts as a distinct value, so a model where
+ * one towar is unassigned and the rest are 23% is ambiguous rather than 23%.
+ *
+ * An empty member list answers `unreadable`, not `not-configured`: the bridge
+ * 404s a model with no live members (openlinker-subiekt-bridge#7), so this is
+ * unreachable, and blaming a VAT assignment for a model that has no towar to
+ * carry one would send an operator to the wrong screen.
+ */
+function toModelTaxRate(model: BridgeModel): TaxRateResolution {
+  const members = model.pozycje;
+  if (members.length === 0) {
+    return { kind: 'unknown', reason: 'unreadable', detail: 'model carries no live members' };
+  }
+  const codes = new Set(members.map((member) => member.stawkaVat));
+  if (codes.size > 1) {
+    const listed = [...codes].map((code) => code ?? 'none').sort().join(', ');
+    return {
+      kind: 'unknown',
+      reason: 'ambiguous',
+      detail: `members disagree on tw_IdVatSp (${listed})`,
+    };
+  }
+  const code = members[0].stawkaVat;
+  if (code === null) {
+    return { kind: 'unknown', reason: 'not-configured', detail: 'tw_IdVatSp is not set' };
+  }
+  return { kind: 'resolved', code, countryIso2: 'PL' };
+}
+
 function readRetryability(error: SubiektBridgeUnreachableError): SubiektTransportRetryability {
   const phase = (error as { retryability?: unknown }).retryability;
   return phase === 'safe' || phase === 'indeterminate' ? phase : 'indeterminate';
@@ -438,15 +484,35 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
    * same answer as "this bridge does not report one": in both cases there is
    * nothing to map, and the alternative (throwing, as this used to) makes a
    * perfectly ordinary ungrouped product fail a catalogue read.
+   *
+   * A MODEL-keyed product takes the group of its representative member - the
+   * first by symbol, the same deterministic pick `toDomainProductFromModel`
+   * already makes for description, weight, currency and price. Without this
+   * branch the method GET `/api/products/model%3A5`, the bridge answered 404,
+   * and a model product reported master-side DELETION rather than "no
+   * category": `ProductPublishBuilderService` catches that and publishes the
+   * product uncategorised, silently, so the defect surfaced as a shop listing
+   * in no category rather than as an error anywhere.
+   *
+   * A member may in principle sit in a different group from its siblings;
+   * Subiekt gives each towar exactly one `tw_IdGrupa` and offers no group on
+   * the model itself, so there is no more authoritative answer to take. A
+   * model with no members answers `[]` rather than throwing.
    */
   async getProductCategories(productId: string): Promise<Category[]> {
-    const symbol = await this.resolveExternalSymbol(productId);
-    if (symbol === null) {
+    const key = await this.resolveExternalSymbol(productId);
+    if (key === null) {
       throw new MasterProductNotFoundError(productId, this.connection.id);
     }
+    const modelId = modelIdFromProductKey(key);
     try {
+      if (modelId !== null) {
+        const model = await this.getJson<BridgeModel>(`/api/models/${modelId}`);
+        const head = model.pozycje[0];
+        return head === undefined ? [] : toDomainCategories(head);
+      }
       const bridgeProduct = await this.getJson<BridgeProduct>(
-        `/api/products/${encodeURIComponent(symbol)}`,
+        `/api/products/${encodeURIComponent(key)}`,
       );
       return toDomainCategories(bridgeProduct);
     } catch (error: unknown) {
@@ -613,8 +679,22 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
    * Subiekt GT's VAT-rate assignment (`tw_IdVatSp`) is a property of the
    * towar itself, not of any per-variant concept — same posture as
    * PrestaShop (#2054), whose synthetic-variant simple-product model this
-   * adapter already shares. Every variant of a product shares the
-   * product's rate; `variantId` is ignored.
+   * adapter already shares. `variantId` is ignored.
+   *
+   * On a MODEL-keyed product each member IS a towar and so carries its own
+   * assignment, which makes a per-variant read expressible here in a way it
+   * is not on PrestaShop. It stays off, for two reasons and one missing
+   * piece. The members of a model are one article in several sizes and share
+   * a rate in practice, so the flag would buy a different answer only on a
+   * catalogue that is already misconfigured — and `toModelTaxRate` REPORTS
+   * that case as `ambiguous` rather than hiding it. Flipping it also costs
+   * one bridge GET per variant per sweep against a connection whose declared
+   * 60 requests/minute the catalogue sweep already outruns. And it would need
+   * a variant-typed sibling of `resolveExternalSymbol`, which is hardcoded to
+   * `CoreEntityType.Product`; no such helper exists.
+   *
+   * Flip it when a real install's `ambiguous` reads show a model that
+   * genuinely mixes rates — that answer is the signal, and it is persisted.
    */
   readsTaxRatePerVariant(): boolean {
     return false;
@@ -630,15 +710,31 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
    * assignment at all (`tw_IdVatSp IS NULL`) — a genuine `unknown`, not a
    * real 0% rate — versus a resolved `'0'` string, which IS a deliberate
    * zero (export, exempt goods; #2054's "unknown is not zero" rule).
+   *
+   * A MODEL-keyed product reads its members' rates through `toModelTaxRate`.
+   * Without that branch this method GET `/api/products/model%3A5`, took the
+   * bridge's 404 and raised `MasterProductNotFoundError` — which
+   * `MasterProductSyncService.syncTaxRate` swallows as a warn, so #3357 bought
+   * a model-carrying catalogue NOTHING and every one of its order lines kept
+   * the NULL rate the fix exists to remove. Silently: no failed job, no
+   * blocked document, one log line nobody reads.
+   *
+   * `/api/models/{id}` already carries `stawkaVat` per member (the bridge
+   * reads `sl_StawkaVAT` in the same query that hydrates them), so this costs
+   * no extra round trip over the read every other model path already makes.
    */
   async readProductTaxRate(input: ReadProductTaxRateInput): Promise<TaxRateResolution> {
-    const symbol = await this.resolveExternalSymbol(input.productId);
-    if (symbol === null) {
+    const key = await this.resolveExternalSymbol(input.productId);
+    if (key === null) {
       throw new MasterProductNotFoundError(input.productId, this.connection.id);
     }
+    const modelId = modelIdFromProductKey(key);
     let bridgeProduct: BridgeProduct;
     try {
-      bridgeProduct = await this.getJson<BridgeProduct>(`/api/products/${encodeURIComponent(symbol)}`);
+      if (modelId !== null) {
+        return toModelTaxRate(await this.getJson<BridgeModel>(`/api/models/${modelId}`));
+      }
+      bridgeProduct = await this.getJson<BridgeProduct>(`/api/products/${encodeURIComponent(key)}`);
     } catch (error: unknown) {
       if (error instanceof SubiektRejectedError) {
         throw new MasterProductNotFoundError(input.productId, this.connection.id, error);

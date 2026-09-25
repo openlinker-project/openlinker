@@ -435,6 +435,117 @@ describe('SubiektProductMasterAdapter', () => {
         adapter.readProductTaxRate({ productId: 'ol_product_unmapped' }),
       ).rejects.toBeInstanceOf(MasterProductNotFoundError);
     });
+
+    // A model-keyed product used to GET `/api/products/model%3A5`, take the
+    // bridge's 404 and raise MasterProductNotFoundError, which the sync
+    // service swallows as a warn - so #3357 bought a model catalogue nothing
+    // and every one of its order lines kept a NULL rate, silently.
+    describe('a MODEL-keyed product', () => {
+      const seedModel = async (): Promise<void> => {
+        await idMapping.createMapping('Product', 'model:5', 'conn-1', 'ol_product_model');
+      };
+
+      it('reads /api/models/{id}, never /api/products/model%3A{id}', async () => {
+        await seedModel();
+        const urls: string[] = [];
+        const adapter = buildAdapter(((url: string) => {
+          urls.push(String(url));
+          return Promise.resolve(
+            jsonResponse(
+              200,
+              envelope({
+                modelId: 5,
+                modelNazwa: 'Black Tiger woda toaletowa',
+                pozycje: [bridgeProduct('WOBLACK100', 'Black Tiger 100ml', { stawkaVat: '23' })],
+              }),
+            ),
+          );
+        }) as unknown as FetchLike);
+
+        await adapter.readProductTaxRate({ productId: 'ol_product_model' });
+
+        expect(urls).toHaveLength(1);
+        expect(urls[0]).toContain('/api/models/5');
+        expect(urls[0]).not.toContain('/api/products');
+      });
+
+      it('resolves the rate its members agree on', async () => {
+        await seedModel();
+        const adapter = buildAdapter(
+          routed({}, {}, {
+            modelId: 5,
+            modelNazwa: 'Black Tiger woda toaletowa',
+            pozycje: [
+              bridgeProduct('WOBLACK50', 'Black Tiger 50ml', { stawkaVat: '23' }),
+              bridgeProduct('WOBLACK70', 'Black Tiger 70ml', { stawkaVat: '23' }),
+              bridgeProduct('WOBLACK100', 'Black Tiger 100ml', { stawkaVat: '23' }),
+            ],
+          }),
+        );
+
+        await expect(adapter.readProductTaxRate({ productId: 'ol_product_model' })).resolves.toEqual({
+          kind: 'resolved',
+          code: '23',
+          countryIso2: 'PL',
+        });
+      });
+
+      // Never the first member's rate: readsTaxRatePerVariant() is false, so
+      // one answer settles every sibling's order lines, and a silently-applied
+      // wrong rate is a wrong figure on a fiscal document.
+      it('reports unknown/ambiguous when members disagree', async () => {
+        await seedModel();
+        const adapter = buildAdapter(
+          routed({}, {}, {
+            modelId: 5,
+            modelNazwa: 'Mieszany',
+            pozycje: [
+              bridgeProduct('A', 'A', { stawkaVat: '23' }),
+              bridgeProduct('B', 'B', { stawkaVat: '8' }),
+            ],
+          }),
+        );
+
+        const resolution = await adapter.readProductTaxRate({ productId: 'ol_product_model' });
+
+        expect(resolution).toMatchObject({ kind: 'unknown', reason: 'ambiguous' });
+      });
+
+      // An unassigned member is a distinct value, not a hole to fill from a
+      // sibling - otherwise a half-configured model reads as fully configured.
+      it('reports unknown/ambiguous when one member carries no assignment', async () => {
+        await seedModel();
+        const adapter = buildAdapter(
+          routed({}, {}, {
+            modelId: 5,
+            modelNazwa: 'Czesciowo skonfigurowany',
+            pozycje: [
+              bridgeProduct('A', 'A', { stawkaVat: '23' }),
+              bridgeProduct('B', 'B', { stawkaVat: null }),
+            ],
+          }),
+        );
+
+        const resolution = await adapter.readProductTaxRate({ productId: 'ol_product_model' });
+
+        expect(resolution).toMatchObject({ kind: 'unknown', reason: 'ambiguous' });
+      });
+
+      it('reports unknown/not-configured when no member carries an assignment', async () => {
+        await seedModel();
+        const adapter = buildAdapter(
+          routed({}, {}, {
+            modelId: 5,
+            modelNazwa: 'Bez stawki',
+            pozycje: [bridgeProduct('A', 'A', { stawkaVat: null })],
+          }),
+        );
+
+        const resolution = await adapter.readProductTaxRate({ productId: 'ol_product_model' });
+
+        expect(resolution).toMatchObject({ kind: 'unknown', reason: 'not-configured' });
+      });
+    });
   });
   describe('categories (sl_GrupaTw)', () => {
     const productWithGroup = (
@@ -582,6 +693,68 @@ describe('SubiektProductMasterAdapter', () => {
       await expect(adapter.getProductCategories('ol_product_unknown')).rejects.toBeInstanceOf(
         MasterProductNotFoundError,
       );
+    });
+
+    // Before this branch the method GET `/api/products/model%3A5`, took the
+    // bridge's 404 and reported master-side DELETION rather than "no
+    // category" - and ProductPublishBuilderService catches that and publishes
+    // the product with no category at all, so the defect showed up as a shop
+    // listing in no category and as an error nowhere.
+    describe('a MODEL-keyed product', () => {
+      const seedModel = async (): Promise<void> => {
+        await idMapping.createMapping('Product', 'model:5', 'conn-1', 'ol_product_model');
+      };
+
+      it('reads /api/models/{id}, never /api/products/model%3A{id}', async () => {
+        await seedModel();
+        const urls: string[] = [];
+        const adapter = buildAdapter(((url: string) => {
+          urls.push(String(url));
+          return Promise.resolve(
+            jsonResponse(
+              200,
+              envelope({
+                modelId: 5,
+                modelNazwa: 'Black Tiger woda toaletowa',
+                pozycje: [bridgeProduct('WOBLACK100', 'Black Tiger 100ml', { grupaId: 3, grupaNazwa: 'Perfumy' })],
+              }),
+            ),
+          );
+        }) as unknown as FetchLike);
+
+        await adapter.getProductCategories('ol_product_model');
+
+        expect(urls).toHaveLength(1);
+        expect(urls[0]).toContain('/api/models/5');
+        expect(urls[0]).not.toContain('/api/products');
+      });
+
+      it('answers with the representative member group', async () => {
+        await seedModel();
+        const adapter = buildAdapter(
+          routed({}, {}, {
+            modelId: 5,
+            modelNazwa: 'Black Tiger woda toaletowa',
+            pozycje: [
+              bridgeProduct('WOBLACK100', 'Black Tiger 100ml', { grupaId: 3, grupaNazwa: 'Perfumy' }),
+              bridgeProduct('WOBLACK50', 'Black Tiger 50ml', { grupaId: 6, grupaNazwa: 'Wody' }),
+            ],
+          }),
+        );
+
+        await expect(adapter.getProductCategories('ol_product_model')).resolves.toEqual([
+          { id: '3', name: 'Perfumy' },
+        ]);
+      });
+
+      it('answers with an empty list for a model carrying no members', async () => {
+        await seedModel();
+        const adapter = buildAdapter(
+          routed({}, {}, { modelId: 5, modelNazwa: 'Pusty', pozycje: [] }),
+        );
+
+        await expect(adapter.getProductCategories('ol_product_model')).resolves.toEqual([]);
+      });
     });
   });
 });
