@@ -56,6 +56,10 @@ const proposalSchema = z.object({
       lines: z.array(lineSchema),
     })
     .nullish(),
+  changeId: z.string().nullish(),
+  // Absent degrades to `false` — "not reported as freshly opened" — never a
+  // claim that a row was reused, which is a fact this build cannot invent.
+  opened: z.boolean().nullish(),
 });
 
 export function parseCorrectionProposal(raw: unknown): ReturnCorrectionProposalResult {
@@ -68,6 +72,8 @@ export function parseCorrectionProposal(raw: unknown): ReturnCorrectionProposalR
 
   return {
     outcome: parsed.data.outcome,
+    changeId: parsed.data.changeId ?? null,
+    opened: parsed.data.opened ?? false,
     proposal:
       body === undefined || body === null
         ? null
