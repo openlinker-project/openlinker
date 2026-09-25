@@ -62,6 +62,7 @@ import type {
   OrderLifecycleEvent,
   OrderWritebackResult,
 } from '@openlinker/core/orders';
+import { describeNetPricedOrderRefusal } from '@openlinker/core/sales-documents';
 import type { OrderFulfillmentUpdater, OrderStatusWriteback } from '@openlinker/core/orders';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
@@ -150,7 +151,13 @@ export class SubiektOrderProcessorAdapter
         ilosc: item.quantity,
         // Buyer-paid TOTAL for the line, not the unit price — mirrors
         // `Sfera.CreateZk`'s `GrossTotal` convention (`ZkLine.GrossTotal`).
-        wartoscBrutto: item.price * item.quantity,
+        //
+        // The gross UNIT price the source reported, times the quantity (#3365);
+        // `price` only when the source prices gross already, in which case it IS
+        // the gross unit price. The guard in `createOrder` has refused the order
+        // unless one of the two is genuinely gross, so this multiplication scales
+        // a gross figure by a count - it never applies a tax rate.
+        wartoscBrutto: (item.unitPriceGross ?? item.price) * item.quantity,
       });
     }
     // #3347: the item loop above never carried shipping — every ZK silently
@@ -161,7 +168,11 @@ export class SubiektOrderProcessorAdapter
       lines.push({
         symbol: '',
         ilosc: 1,
-        wartoscBrutto: order.totals.shipping,
+        // Gross shipping when the source reported one, else `shipping` - which
+        // on a gross-priced source already is gross. The presence test above
+        // stays on `shipping`, because that is the field that says whether the
+        // buyer was charged for delivery at all.
+        wartoscBrutto: order.totals.shippingGross ?? order.totals.shipping,
         nazwa: 'Dostawa',
       });
     }
@@ -169,12 +180,25 @@ export class SubiektOrderProcessorAdapter
   }
 
   async createOrder(order: OrderCreate): Promise<OrderRef> {
-    // Refuse a net-priced source BEFORE anything is written. The lines below go
-    // onto a gross-priced document, so a net figure would be booked as gross and
-    // silently under-record the order by roughly one VAT rate — see the
-    // exception's own docblock for why this refuses rather than converts.
-    if (order.totals.taxTreatment === 'exclusive') {
-      throw new SubiektNetPricedOrderException(order.orderNumber ?? '(no order number)');
+    // Refuse BEFORE anything is written, and ask CORE whether to refuse rather
+    // than testing `taxTreatment` here (#3365). The adapter used to carry its
+    // own copy of that test; the rule has since been narrowed - a net-priced
+    // source that reports its own gross amounts is issuable - and a private
+    // copy would have gone on refusing those orders while the shared rule let
+    // them through, with nothing to say why.
+    // `OrderCreate` carries no internal id - the order exists, but this shape is
+    // the destination-facing projection of it - so the operator-facing reference
+    // is the order number, which is what an operator would search Subiekt by.
+    const refusal = describeNetPricedOrderRefusal(
+      {
+        id: order.orderNumber ?? '(no order number)',
+        totals: order.totals,
+        items: order.items,
+      },
+      'recorded in the destination system',
+    );
+    if (refusal !== null) {
+      throw new SubiektNetPricedOrderException(order.orderNumber ?? '(no order number)', refusal);
     }
 
     const buyer = resolveBuyer(order);

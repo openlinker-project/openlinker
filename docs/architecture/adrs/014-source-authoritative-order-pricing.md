@@ -275,3 +275,60 @@ the append-only rule this design defers to (`README.md:40`) binds an **accepted*
 change): the "proposal, not a recorded refinement" preamble is gone, and ADR-014's own
 `Proposed`-while-its-decisions-shipped status is resolved to **Accepted**. Doing only the first would
 have cleared this proposal by leaving a second bookkeeping gap behind.
+
+---
+
+## Amendment (#3365, 2026-09-25): reading a gross amount the source reported is not computing tax
+
+**Status: Accepted.** Narrows nothing in Decisions 1-3; it corrects a *premise* that had grown around
+them and had hardened into a documented permanent limitation.
+
+**What was believed.** `describeNetPricedOrderRefusal` (`@openlinker/core/sales-documents`, #2835)
+refused every order whose source prices its lines net, on the grounds that a fiscal document's lines
+are gross by contract and core may not compute `net x (1 + rate)` to get there. That reasoning is
+correct and is unchanged. What was wrong was the sentence beside it, which called the refusal "a
+PERMANENT limitation of a net-line-price source (PrestaShop, WooCommerce)" - i.e. it treated *prices
+its lines net* and *cannot tell us a gross amount* as the same fact.
+
+**What is actually true.** Both shipped sources report gross amounts already, and both mappers threw
+them away:
+
+| source | reports | what the mapper read |
+|---|---|---|
+| PrestaShop | `order_detail.unit_price_tax_incl`, `orders.total_shipping_tax_incl` | `product_price`, `total_shipping` (both net) |
+| WooCommerce | `line_items[].total` + `total_tax`, `shipping_total` + `shipping_tax` | `price` (net) |
+
+Verified live against a running shop rather than inferred from a schema: one row carried
+`product_price = 1499.000000` beside `unit_price_tax_incl = 1843.770000`, and 1843.77 is that same
+order's `total_paid_tax_incl`. The webservice returns the field on the read OpenLinker already makes
+(`display=full` is this client's default), so nothing extra is fetched.
+
+**The distinction this amendment records.** *Computing* tax means applying a rate to an amount.
+*Carrying* an amount the source itself computed is transcription. ADR-063 § 5 already draws the line
+in those terms - core "may group and divide amounts; it may never compute tax" - so summing two
+components a platform reported (`total + total_tax`) and dividing by a quantity are on the permitted
+side, and no rate is read on any path this change touches.
+
+**What follows.**
+
+- `OrderItem.unitPriceGross` and `OrderTotals.shippingGross` are additive carriers for a
+  source-reported gross figure. They are SECOND fields, never a redefinition of `price` / `shipping`,
+  because `taxTreatment` describes those two and also drives destination-side net conversion
+  (PrestaShop `specific_price` pinning, the ADR-063 net-sales path). Moving gross into `price` would
+  silently re-price those; adding a field beside it cannot.
+- The guard is narrowed, not relaxed: it refuses when the source prices net **and** reports no gross.
+  EVERY line must carry one - a document mixing real gross lines with net ones relabelled gross is
+  the same corruption, merely partial - and gross shipping is required whenever the order charges
+  shipping at all.
+- `taxTreatment` is untouched and still says what it always said. An order from a source that reports
+  only net is refused exactly as before, with the same force.
+- One rule, one place. The Subiekt destination adapter had grown a private copy of the same
+  `taxTreatment === 'exclusive'` test; it now asks the shared function, which is why
+  `NetPricedOrderRefusalActionValues` gained a third, deliberately platform-neutral value. A private
+  copy would have kept refusing orders the shared rule had started admitting, with nothing anywhere
+  to say why.
+
+**What this does NOT do.** It adds no conversion, no rate lookup and no arithmetic involving a rate.
+It does not make `OL_TAX_RATE_STRICT_ENABLED` safe to turn on - that is a separate decision resting on
+catalogue coverage. And it says nothing about a source that reports neither a gross line price nor a
+rate: that order is still held, which is Decision 2 working as intended.

@@ -597,6 +597,11 @@ export class PrestashopOrderSourceAdapter implements OrderSourcePort {
         quantity: item.quantity,
         price: item.price,
         sku: item.sku,
+        // Carry the mapper's gross unit price onto the neutral shape. This
+        // hop is 1:1 and positional (see the mapper's own note), so dropping
+        // the field here would silently un-do the mapper's read - which is
+        // exactly how it went missing for as long as it did.
+        ...(item.unitPriceGross !== undefined ? { unitPriceGross: item.unitPriceGross } : {}),
       };
     });
 

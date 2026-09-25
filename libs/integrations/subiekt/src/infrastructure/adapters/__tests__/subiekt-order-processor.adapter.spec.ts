@@ -68,6 +68,115 @@ describe('SubiektOrderProcessorAdapter', () => {
     });
   });
 
+  describe('an order from a net-priced shop (#3365)', () => {
+    // The shape a real PrestaShop order arrives in: line prices net, and the
+    // shop's own gross figures beside them. Before this, every such order was
+    // refused outright and never reached Subiekt at all.
+    const netPricedOrder = (overrides: Partial<OrderCreate> = {}): OrderCreate => ({
+      status: 'pending',
+      items: [
+        {
+          id: '1',
+          productId: 'ol_product_x',
+          quantity: 1,
+          price: 1499,
+          unitPriceGross: 1843.77,
+          sku: 'SKU-1',
+        },
+      ],
+      totals: {
+        subtotal: 1499,
+        tax: 344.77,
+        shipping: 10,
+        shippingGross: 12.3,
+        total: 1843.77,
+        currency: 'PLN',
+        taxTreatment: 'exclusive',
+        totalTaxTreatment: 'inclusive',
+      },
+      billingAddress: {
+        company: 'Acme Sp. z o.o.',
+        address1: 'Testowa 1',
+        city: 'Warszawa',
+        postalCode: '00-001',
+        country: 'PL',
+      },
+      orderNumber: 'OL-PS-1',
+      ...overrides,
+    });
+
+    const buildAdapter = (
+      capture: (body: unknown) => void,
+    ): SubiektOrderProcessorAdapter => {
+      const fetchImpl = ((_url: RequestInfo | URL, init?: RequestInit) => {
+        capture(JSON.parse(init!.body as string));
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ success: true, data: { id: 9, numer: 'ZK 9/2026' }, error: null }),
+            { status: 200 },
+          ),
+        );
+      }) as unknown as typeof fetch;
+      const identifierMapping = new InMemoryIdentifierMappingAdapter();
+      identifierMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: 'SYM-1',
+        connectionId: CONNECTION_ID,
+        internalId: 'ol_product_x',
+      });
+      return new SubiektOrderProcessorAdapter(
+        new SubiektOrdersBridgeClient('http://127.0.0.1:5056', { fetchImpl }),
+        identifierMapping,
+        CONNECTION_ID,
+        noopLogger,
+      );
+    };
+
+    it('books the line and the shipping at the GROSS figures the shop reported', async () => {
+      let body: unknown;
+      const adapter = buildAdapter((b) => (body = b));
+
+      await adapter.createOrder(netPricedOrder());
+
+      expect(body).toMatchObject({
+        lines: [
+          // 1843.77, not 1499 - a net figure written to a gross-priced document
+          // would under-record the order by one VAT rate, silently.
+          { symbol: 'SYM-1', ilosc: 1, wartoscBrutto: 1843.77 },
+          { symbol: '', ilosc: 1, wartoscBrutto: 12.3, nazwa: 'Dostawa' },
+        ],
+      });
+    });
+
+    it('still REFUSES when the shop reported no gross line price', async () => {
+      const adapter = buildAdapter(() => undefined);
+      const order = netPricedOrder();
+      delete order.items[0].unitPriceGross;
+
+      await expect(adapter.createOrder(order)).rejects.toThrow(/gross \(tax-inclusive\)/);
+    });
+
+    it('still REFUSES when shipping is charged with no gross shipping figure', async () => {
+      const adapter = buildAdapter(() => undefined);
+      const order = netPricedOrder();
+      delete order.totals.shippingGross;
+
+      await expect(adapter.createOrder(order)).rejects.toThrow(/shipping/);
+    });
+
+    it('carries core\'s own sentence rather than a second copy of the rule', async () => {
+      const adapter = buildAdapter(() => undefined);
+      const order = netPricedOrder();
+      delete order.items[0].unitPriceGross;
+
+      // The neutral third action value, composed in `libs/core` - proof the
+      // adapter delegates instead of restating the test locally.
+      await expect(adapter.createOrder(order)).rejects.toThrow(
+        /cannot be recorded in the destination system/,
+      );
+    });
+  });
+
   it('falls back to first/last name when no company is present', async () => {
     const fetchImpl = (() =>
       Promise.resolve(

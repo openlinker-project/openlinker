@@ -125,7 +125,17 @@ export function toIssueInvoiceCommand(
   // resolves its tax rate the same way it does for product lines; core never
   // names a tax rate. Skipped when shipping is 0 (no phantom line).
   lines.push(
-    ...toShippingLines(order.totals.shipping, order.items, order.totals.currency, shippingLineName)
+    ...toShippingLines(
+      // The gross shipping the source reported, when it reported one (#3365);
+      // otherwise `shipping`, which on a gross-priced source already is gross.
+      // Same shape as the per-line choice above, and guarded by the same gate:
+      // a net-priced order charging shipping with no gross figure never gets
+      // here.
+      order.totals.shippingGross ?? order.totals.shipping,
+      order.items,
+      order.totals.currency,
+      shippingLineName
+    )
   );
 
   const command: IssueInvoiceCommand = {
@@ -270,7 +280,13 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
   return {
     name: item.name?.trim() || item.sku || item.productId,
     quantity: item.quantity,
-    unitPriceGross: item.price,
+    // `price` alone was right only while every issuable order priced its lines
+    // gross. A net-priced source now reports its own gross beside the net one
+    // (#3365, `OrderItem.unitPriceGross`), and the eligibility guard above has
+    // already refused the order unless EVERY line carries it - so the fallback
+    // is reached only on a gross-priced source, where `price` IS the gross
+    // figure. No arithmetic either way: one of two reported numbers is chosen.
+    unitPriceGross: item.unitPriceGross ?? item.price,
     taxRate: item.taxRate?.trim() ?? '',
     // Carried so a provider can emit a real catalogue line rather than a
     // free-text one - see `InvoiceLine.productId`. The shipping lines composed

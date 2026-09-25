@@ -147,6 +147,13 @@ export interface IncomingOrderItem {
   sku?: string;
 
   /**
+   * Gross (tax-inclusive) UNIT price as the SOURCE reported it. See
+   * {@link OrderItem.unitPriceGross} for why this exists and why carrying a
+   * reported figure is not computing tax. Absent when the source reports none.
+   */
+  unitPriceGross?: number;
+
+  /**
    * Source-reported display label (e.g. Allegro `lineItem.offer.name`).
    * Optional because not every adapter has it — PrestaShop's order-source
    * doesn't expose a free per-line product name and would need catalog
@@ -214,6 +221,12 @@ export interface IncomingOrderTotals {
    * {@link OrderTotals.totalTaxTreatment} (#2829).
    */
   totalTaxTreatment?: PriceTaxTreatment;
+
+  /**
+   * Gross shipping as the SOURCE reported it. See
+   * {@link OrderTotals.shippingGross}.
+   */
+  shippingGross?: number;
 }
 
 export interface IncomingOrderAddress {

@@ -204,6 +204,75 @@ describe('PrestashopOrderMapper', () => {
     // #2068 — the line id was `String(row.id || index)`, which fell back to the row's array
     // POSITION. That id is persisted into the order snapshot, rendered to operators and used as a
     // React row key, so a positional or colliding value is a live defect, not a cosmetic one.
+
+    describe('gross amounts the shop already reports (#3365)', () => {
+      // Measured on a live shop: product_price 1499.000000 beside
+      // unit_price_tax_incl 1843.770000, and 1843.77 is the same order's
+      // total_paid_tax_incl. The mapper used to read only the net column, which
+      // is why a PrestaShop order could not be invoiced at all.
+      const grossOrder = (): PrestashopOrder => ({
+        id: '34',
+        reference: 'ORDER-GROSS',
+        current_state: '2',
+        total_paid: '1843.77',
+        total_paid_tax_excl: '1499.00',
+        total_paid_tax_incl: '1843.77',
+        total_shipping: '10.00',
+        total_shipping_tax_incl: '12.30',
+        date_add: '2026-09-25 10:00:00',
+        date_upd: '2026-09-25 10:00:00',
+        id_customer: '10',
+      });
+
+      it('should carry unit_price_tax_incl onto the line as unitPriceGross', () => {
+        const rows: PrestashopOrderRow[] = [
+          {
+            id: '1',
+            product_id: '7',
+            product_quantity: '1',
+            product_price: '1499.000000',
+            unit_price_tax_incl: '1843.770000',
+            product_reference: 'OL-CANON-SX740LE',
+          },
+        ];
+
+        const result = mapper.mapOrder(grossOrder(), rows);
+
+        // `price` is untouched and still net - the gross figure is a SECOND
+        // field, so nothing that reads `price` or `taxTreatment` moves.
+        expect(result.items[0].price).toBe(1499);
+        expect(result.items[0].unitPriceGross).toBe(1843.77);
+        expect(result.totals.taxTreatment).toBe('exclusive');
+      });
+
+      it('should carry total_shipping_tax_incl as shippingGross, leaving shipping net', () => {
+        const result = mapper.mapOrder(grossOrder(), []);
+
+        expect(result.totals.shipping).toBe(10);
+        expect(result.totals.shippingGross).toBe(12.3);
+      });
+
+      it('should leave unitPriceGross ABSENT when the shop reports no gross column', () => {
+        const rows: PrestashopOrderRow[] = [
+          { id: '1', product_id: '7', product_quantity: '1', product_price: '1499.000000' },
+        ];
+
+        const result = mapper.mapOrder(grossOrder(), rows);
+
+        // Absent, not 0: a zero here would land on a fiscal document.
+        expect('unitPriceGross' in result.items[0]).toBe(false);
+      });
+
+      it('should leave shippingGross ABSENT when the shop reports no gross shipping', () => {
+        const order = grossOrder();
+        delete order.total_shipping_tax_incl;
+
+        const result = mapper.mapOrder(order, []);
+
+        expect('shippingGross' in result.totals).toBe(false);
+      });
+    });
+
     describe('line id (#2068)', () => {
       const orderFor = (): PrestashopOrder => ({
         id: '42',

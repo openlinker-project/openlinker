@@ -64,6 +64,16 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
           ? String(row.product_attribute_id)
           : undefined;
 
+      // The gross unit price PrestaShop already computed. Carried, never
+      // derived: this mapper does not multiply `product_price` by a rate, it
+      // reads the column the shop filled in at checkout. Absent or unparseable
+      // leaves the field unset, which reads downstream as "the source did not
+      // report one" and restores the pre-#3365 refusal for that order rather
+      // than inventing a figure. `|| 0` is deliberately NOT used here - a zero
+      // gross price is a real, free line, and coercing an unreadable value into
+      // one would put 0.00 on a fiscal document.
+      const unitPriceGross = this.parseNumber(row.unit_price_tax_incl);
+
       return {
         id: this.resolveOrderRowId(row, index, prestashopOrder.id),
         productId: '', // Will be set by adapter using identifier mapping
@@ -71,6 +81,9 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
         quantity: this.parseNumber(row.product_quantity) || 0,
         price: this.parseNumber(row.product_price) || 0,
         sku: this.getStringField(row.product_reference),
+        ...(unitPriceGross !== undefined && Number.isFinite(unitPriceGross)
+          ? { unitPriceGross }
+          : {}),
       };
     });
 
@@ -106,6 +119,12 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
       // sales-document rule condition can trust it without also relabeling
       // the (still net) line prices as gross (#2829).
       totalTaxTreatment: 'inclusive',
+      // Gross shipping, same rule as the per-line gross above: read, not
+      // derived, and left unset when the shop does not report it.
+      ...(((): { shippingGross?: number } => {
+        const gross = this.parseNumber(prestashopOrder.total_shipping_tax_incl);
+        return gross !== undefined && Number.isFinite(gross) ? { shippingGross: gross } : {};
+      })()),
     };
 
     return {

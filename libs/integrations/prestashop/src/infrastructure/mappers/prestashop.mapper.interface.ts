@@ -140,6 +140,8 @@ export interface PrestashopOrder {
   total_paid_tax_incl?: string | number;
   total_paid_tax_excl?: string | number;
   total_shipping?: string | number;
+  /** Gross shipping as PrestaShop computed it; the counterpart of `unit_price_tax_incl`. */
+  total_shipping_tax_incl?: string | number;
   date_add?: string;
   date_upd?: string;
   associations?: {
@@ -159,6 +161,18 @@ export interface PrestashopOrderRow {
   product_attribute_id?: string | number;
   product_quantity?: string | number;
   product_price?: string | number;
+  /**
+   * Gross unit price as PrestaShop itself computed it at checkout. Present on
+   * `order_detail` since 1.5 and returned by the webservice without any extra
+   * parameter (`display=full` is the default this client sends). Verified live:
+   * `product_price = 1499.000000` against `unit_price_tax_incl = 1843.770000`
+   * on the same row, and `1843.77` is also that order's `total_paid_tax_incl`.
+   *
+   * Read so a PrestaShop order can be invoiced at all - see `unitPriceGross`
+   * on `OrderItem`. It is the UNIT price, which is what the document contract
+   * wants, so nothing here multiplies or divides.
+   */
+  unit_price_tax_incl?: string | number;
   product_reference?: string;
   [key: string]: unknown;
 }

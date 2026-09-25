@@ -143,7 +143,12 @@ export function toRegisterTransactionCommand(
   const lines = order.items.map((item) => toFiscalLine(item, order.id));
 
   lines.push(
-    ...toShippingLines(order.totals.shipping, order.items, order.totals.currency, shippingLineName),
+    ...toShippingLines(
+      order.totals.shippingGross ?? order.totals.shipping,
+      order.items,
+      order.totals.currency,
+      shippingLineName
+    ),
   );
 
   assertLinesSumToTotal(lines, order.totals.total, order.id, order.totals.currency);
@@ -269,7 +274,11 @@ function toFiscalLine(item: OrderItem, orderId: string): FiscalTransactionLine {
   return {
     name: item.name?.trim() || item.sku || item.productId,
     quantity: item.quantity,
-    unitPriceGross: item.price,
+    // See the invoicing twin: the source's own gross when it reported one
+    // (#3365), otherwise `price`, which is already gross on a gross-priced
+    // source. The eligibility guard refuses the order before this point unless
+    // one of the two is genuinely a gross figure.
+    unitPriceGross: item.unitPriceGross ?? item.price,
     taxRate: item.taxRate?.trim() ?? '',
     sku: item.sku ?? null,
     // Carried so the post-registration stock re-read knows what moved; the

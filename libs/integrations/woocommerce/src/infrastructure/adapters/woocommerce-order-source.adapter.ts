@@ -226,7 +226,41 @@ function mapLineItem(item: WooCommerceLineItem): IncomingOrderItem {
     sku: item.sku || undefined,
     name: item.name || undefined,
     imageUrl: item.image?.src || undefined,
+    ...toUnitPriceGross(item),
   };
+}
+
+/**
+ * The gross UNIT price for a WooCommerce line (#3365).
+ *
+ * WooCommerce reports LINE totals net (`total`) with the tax beside them
+ * (`total_tax`), and no gross unit price of its own - unlike PrestaShop, which
+ * stores `unit_price_tax_incl` directly. So this sums two figures the platform
+ * reported and divides by the quantity. Both operations are what ADR-063 § 5
+ * permits; what it forbids is `net * (1 + rate)`, and no rate is read here.
+ *
+ * Dividing is also what makes the result faithful to a DISCOUNTED line: `total`
+ * is post-discount, so `unitPriceGross * quantity` reproduces what the buyer
+ * actually paid, which `price` (the pre-discount unit price) would not.
+ *
+ * Returns nothing - never a zero - when `total_tax` is absent or either side is
+ * unreadable, and when the quantity is not a positive number. An absent tax
+ * component silently read as zero would label a net figure gross, and a
+ * non-positive quantity has no unit price to speak of.
+ */
+function toUnitPriceGross(item: WooCommerceLineItem): { unitPriceGross?: number } {
+  if (item.total_tax === undefined) {
+    return {};
+  }
+  const lineNet = Number(item.total);
+  const lineTax = Number(item.total_tax);
+  if (!Number.isFinite(lineNet) || !Number.isFinite(lineTax)) {
+    return {};
+  }
+  if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+    return {};
+  }
+  return { unitPriceGross: roundCurrency((lineNet + lineTax) / item.quantity) };
 }
 
 function mapBaseAddress(
@@ -331,6 +365,22 @@ function mapTotals(order: WooCommerceOrder): IncomingOrderTotals {
     // rule condition can trust it without also relabeling the (still net)
     // line prices as gross (#2836).
     totalTaxTreatment: 'inclusive',
+    // #3365: gross shipping, so a fiscal document's shipping line carries what
+    // the buyer paid rather than the net figure `shipping` holds. Summing two
+    // amounts WooCommerce itself reported is not computing tax (ADR-063 § 5
+    // permits grouping and division; it forbids `net * (1 + rate)`), and
+    // nothing here reads a rate. Left ABSENT when `shipping_tax` is missing or
+    // unreadable - an absent component must not be silently read as zero tax,
+    // which would publish a net figure while claiming it was gross.
+    ...(((): { shippingGross?: number } => {
+      const shippingTax = Number(order.shipping_tax);
+      if (order.shipping_tax === undefined || !Number.isFinite(shippingTax)) {
+        return {};
+      }
+      return Number.isFinite(shipping)
+        ? { shippingGross: roundCurrency(shipping + shippingTax) }
+        : {};
+    })()),
   };
 }
 

@@ -242,6 +242,33 @@ export interface OrderItem {
   sku?: string;
 
   /**
+   * The gross (tax-inclusive) UNIT price the SOURCE itself reported for this
+   * line, when it reports one. Absent means the source did not.
+   *
+   * It exists because a document's lines are gross by contract
+   * (`InvoiceLine.unitPriceGross`, `FiscalTransactionLine.unitPriceGross`) and
+   * `price` is net on a net-priced source, so without a carrier those sources
+   * could not produce a document at all. `describeNetPricedOrderRefusal`
+   * (`@openlinker/core/sales-documents`) names this exact escape hatch: the
+   * refusal "clears only if the source adapter itself starts reporting gross
+   * line prices". This field is how an adapter reports them.
+   *
+   * **Carrying a reported figure is not computing tax.** ADR-063 § 5 forbids
+   * core from `net * (1 + rate)`; nothing here multiplies by a rate. An adapter
+   * reads the value its platform already stores (PrestaShop
+   * `order_detail.unit_price_tax_incl`) or sums components the platform already
+   * reported (WooCommerce `total + total_tax`, divided by quantity) - summing
+   * and dividing are exactly what ADR-063 permits.
+   *
+   * It is a SECOND field rather than a change to `price` on purpose. `price`
+   * and `totals.taxTreatment` describe each other, and `taxTreatment` also
+   * drives destination-side net conversion (PrestaShop `specific_price`
+   * pinning, the ADR-063 net-sales path). Moving gross into `price` would
+   * silently re-price those paths; adding a field beside it cannot.
+   */
+  unitPriceGross?: number;
+
+  /**
    * Source-reported display label, propagated from `IncomingOrderItem.name`
    * by `OrderIngestionService.buildUnifiedOrder`. Optional because not every
    * order-source adapter populates it.
@@ -370,6 +397,22 @@ export interface OrderTotals {
    * gross `total`) and sets this field too (#2836), mirroring PrestaShop.
    */
   totalTaxTreatment?: PriceTaxTreatment;
+
+  /**
+   * Gross (tax-inclusive) shipping as the SOURCE reported it, when it reports
+   * it. Absent means it did not; `shipping` stays whatever `taxTreatment` says
+   * it is and is untouched by this field.
+   *
+   * The per-line counterpart of `OrderItem.unitPriceGross`, and needed for the
+   * same reason: a document's shipping line is gross, so on a net-priced source
+   * composing it from `shipping` would mislabel a net figure. PrestaShop reports
+   * `total_shipping_tax_incl`; WooCommerce reports `shipping_total` and
+   * `shipping_tax` separately and the adapter sums them.
+   *
+   * Distinct from `totalTaxTreatment`, which says how `total` ALONE expresses
+   * tax and carries no shipping figure of its own.
+   */
+  shippingGross?: number;
 }
 
 export interface Address {

@@ -266,6 +266,14 @@ function readItems(value: unknown): OrderItem[] {
     }
     if (typeof item.taxRateReadAt === 'string') orderItem.taxRateReadAt = item.taxRateReadAt;
     if (typeof item.taxRateChannel === 'string') orderItem.taxRateChannel = item.taxRateChannel;
+    // The source-reported gross unit price. Same allowlist trap as the rate
+    // fields above: omitted here, a net-priced order that CAN be invoiced would
+    // be refused on every manual-issuance path while the auto path succeeded.
+    // `Number.isFinite` rather than the bare `typeof` used above, because this
+    // figure lands on a fiscal document and a NaN there is not recoverable.
+    if (typeof item.unitPriceGross === 'number' && Number.isFinite(item.unitPriceGross)) {
+      orderItem.unitPriceGross = item.unitPriceGross;
+    }
     return orderItem;
   });
 }
@@ -289,6 +297,9 @@ function readTotals(value: unknown): OrderTotals {
   // would vanish on any manual-issuance path that reaches this function.
   if (raw.totalTaxTreatment === 'inclusive' || raw.totalTaxTreatment === 'exclusive') {
     totals.totalTaxTreatment = raw.totalTaxTreatment;
+  }
+  if (typeof raw.shippingGross === 'number' && Number.isFinite(raw.shippingGross)) {
+    totals.shippingGross = raw.shippingGross;
   }
   return totals;
 }
