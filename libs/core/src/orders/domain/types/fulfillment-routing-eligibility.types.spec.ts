@@ -1,7 +1,10 @@
 /**
- * Fulfilment Routing Eligibility — spec (#3487)
+ * Fulfilment Routing Eligibility — spec (#3487, #3488)
  */
-import { isOrderFromOwnProductMaster } from './fulfillment-routing-eligibility.types';
+import {
+  isOrderFromOwnProductMaster,
+  isOrderShippedElsewhere,
+} from './fulfillment-routing-eligibility.types';
 
 describe('isOrderFromOwnProductMaster', () => {
   const shop = { id: 'conn-shop', enabledCapabilities: ['ProductMaster', 'OrderSource'] };
@@ -26,5 +29,36 @@ describe('isOrderFromOwnProductMaster', () => {
   // master says nothing about where this order came from.
   it('should report false when the source is a marketplace and only another connection is a product master', () => {
     expect(isOrderFromOwnProductMaster([shop, marketplace], 'conn-allegro')).toBe(false);
+  });
+});
+
+describe('isOrderShippedElsewhere', () => {
+  it('should report true when a rule routes the delivery method to omp_fulfilled', () => {
+    expect(isOrderShippedElsewhere({ source: 'rule', processorKind: 'omp_fulfilled' })).toBe(true);
+  });
+
+  // The resolver answers omp_fulfilled for EVERY order no rule covers; reading
+  // that as "shipped elsewhere" would stop routing on every rule-less install.
+  it('should report false for the omp_fulfilled default when no rule matched', () => {
+    expect(isOrderShippedElsewhere({ source: 'default', processorKind: 'omp_fulfilled' })).toBe(
+      false
+    );
+  });
+
+  it('should report false when a rule routes the delivery method to an OL-managed carrier', () => {
+    expect(
+      isOrderShippedElsewhere({ source: 'rule', processorKind: 'ol_managed_carrier' })
+    ).toBe(false);
+  });
+
+  it('should report false when a rule routes the delivery method to the source broker', () => {
+    expect(isOrderShippedElsewhere({ source: 'rule', processorKind: 'source_brokered' })).toBe(
+      false
+    );
+  });
+
+  // A failed routing read is not a positive answer: the order stays routed.
+  it('should report false when the routing could not be resolved', () => {
+    expect(isOrderShippedElsewhere(null)).toBe(false);
   });
 });

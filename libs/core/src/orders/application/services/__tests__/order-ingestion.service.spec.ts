@@ -2418,6 +2418,105 @@ describe('OrderIngestionService', () => {
       });
     });
 
+    // #3488 — an order whose delivery method an ADR-012 rule routes to
+    // `omp_fulfilled` is shipped by that system, so it is not routed too.
+    describe('an order another system ships (#3488)', () => {
+      const router = { route: jest.fn() };
+
+      /** A marketplace source connection — not a product master. */
+      const marketplaceSource = {
+        id: connectionId,
+        status: 'active',
+        enabledCapabilities: ['OrderSource', 'OfferManager'],
+        config: {},
+      };
+
+      const resolveTo = (processorKind: string, source: 'rule' | 'default') =>
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind,
+          processorConnectionId: source === 'rule' ? 'processor-1' : null,
+          source,
+          processorAvailable: true,
+        } as never);
+
+      beforeEach(() => {
+        resolveRouterMock.mockResolvedValue(router as never);
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
+        });
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          marketplaceSource,
+        ] as never);
+      });
+
+      it('should not route the order and should follow today\'s path when a rule resolves omp_fulfilled', async () => {
+        resolveTo('omp_fulfilled', 'rule');
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(resolveRouterMock).not.toHaveBeenCalled();
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+        for (const [, block] of markBlock().mock.calls) {
+          expect(block).toBeNull();
+        }
+      });
+
+      // #3480 x #3488 — the rule is part of the ONE routing answer the hold's
+      // insert-only `atpEffect` is decided from, so an order another system
+      // ships is never held `published` by OpenLinker.
+      it('should not hold the order as published when a rule resolves omp_fulfilled', async () => {
+        resolveTo('omp_fulfilled', 'rule');
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+        expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+        expect(fulfillmentRouting.resolve).toHaveBeenCalledTimes(1);
+      });
+
+      it('should still route an order whose delivery method resolves to an OL-managed carrier', async () => {
+        resolveTo('ol_managed_carrier', 'rule');
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      });
+
+      // The default is omp_fulfilled too; only a matched rule is a positive answer.
+      it('should still route an order no fulfilment routing rule covers', async () => {
+        resolveTo('omp_fulfilled', 'default');
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      });
+
+      it('should still route an order whose fulfilment routing cannot be resolved', async () => {
+        fulfillmentRouting.resolve.mockRejectedValue(new Error('routing store unreachable'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      });
+
+      // The reservation's atpEffect and the routing skip share one resolution.
+      it('should resolve the fulfilment routing only once per ingestion', async () => {
+        resolveTo('ol_managed_carrier', 'rule');
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+        expect(fulfillmentRouting.resolve).toHaveBeenCalledTimes(1);
+      });
+    });
+
     describe('the selected arm', () => {
       const router = { route: jest.fn() };
 
@@ -2472,8 +2571,10 @@ describe('OrderIngestionService', () => {
           expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
           expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('published');
           // The ADR-012 dispatch routing (default `omp_fulfilled` -> diagnostic)
-          // is not consulted for an order OpenLinker routes.
-          expect(fulfillmentRouting.resolve).not.toHaveBeenCalled();
+          // does not decide the stamp of an order OpenLinker routes. It IS read
+          // once — #3488's "another system ships it" rule needs it — and that one
+          // resolution is shared, never repeated.
+          expect(fulfillmentRouting.resolve).toHaveBeenCalledTimes(1);
         });
 
         // The intercept enqueues the sale decrement, which consumes the hold — so
