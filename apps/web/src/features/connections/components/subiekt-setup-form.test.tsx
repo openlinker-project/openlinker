@@ -95,7 +95,15 @@ describe('SubiektSetupForm', () => {
           name: 'My Subiekt',
           platformType: 'subiekt-gt',
           adapterKey: 'subiekt.gt.v1',
-          config: { bridgeBaseUrl: 'http://127.0.0.1:5056' },
+          config: {
+            bridgeBaseUrl: 'http://127.0.0.1:5056',
+            // Without BOTH of these a Subiekt connection auto-issues nothing
+            // and reports nothing: no document kind means the connection is
+            // not a routing candidate at all, and the trigger model defaults
+            // to `manual` even when it is.
+            salesDocument: { documentKind: 'invoice' },
+            invoicing: { triggerModel: 'manual' },
+          },
         }),
       );
     });
@@ -105,6 +113,11 @@ describe('SubiektSetupForm', () => {
     // would read as "no timeout".
     expect(payload).toHaveProperty('credentials');
     expect(payload).not.toHaveProperty('enabledCapabilities');
+    // `isPrimary` is a CROSS-connection tiebreaker the settings panel owns; a
+    // wizard writing it would claim a precedence it cannot see.
+    expect((payload.config as { invoicing: Record<string, unknown> }).invoicing).not.toHaveProperty(
+      'isPrimary',
+    );
     expect(await findToastTitle('Connection created')).toBeInTheDocument();
   });
 
@@ -131,7 +144,12 @@ describe('SubiektSetupForm', () => {
     await waitFor(() => {
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          config: { bridgeBaseUrl: 'https://bridge.local:5000', timeoutMs: 30000 },
+          config: {
+            bridgeBaseUrl: 'https://bridge.local:5000',
+            timeoutMs: 30000,
+            salesDocument: { documentKind: 'invoice' },
+            invoicing: { triggerModel: 'manual' },
+          },
           credentials: { bridgeToken: 'shared-secret-token' },
         }),
       );
@@ -139,6 +157,42 @@ describe('SubiektSetupForm', () => {
     // timeoutMs must be a number, not the raw input string.
     const payload = create.mock.calls[0][0] as { config: { timeoutMs: unknown } };
     expect(typeof payload.config.timeoutMs).toBe('number');
+  });
+
+  // The choice is RENDERED rather than assumed in either direction: silently
+  // defaulting to auto would issue fiscal documents nobody asked for, and
+  // offering no control at all is how a wizard-created connection ended up
+  // issuing nothing, forever, with no signal.
+  it('writes the trigger model the operator picked', async () => {
+    const create = vi.fn().mockResolvedValue({ id: 'conn-1', name: 'My Subiekt' });
+    const apiClient = createMockApiClient({ connections: { create } });
+
+    renderWithProviders(<SubiektSetupForm identity={SUBIEKT_GT_IDENTITY} />, { apiClient });
+
+    fireEvent.change(screen.getByLabelText('Connection name'), {
+      target: { value: 'My Subiekt' },
+    });
+    fireEvent.change(screen.getByLabelText('Bridge URL'), {
+      target: { value: 'http://127.0.0.1:5056' },
+    });
+    fireEvent.change(screen.getByLabelText('Bridge token'), {
+      target: { value: 'a-token' },
+    });
+    fireEvent.change(screen.getByLabelText('Issue the invoice'), {
+      target: { value: 'auto-on-paid' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Subiekt' }));
+
+    await waitFor(() => {
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            salesDocument: { documentKind: 'invoice' },
+            invoicing: { triggerModel: 'auto-on-paid' },
+          }),
+        }),
+      );
+    });
   });
 
   it('rejects a timeout below the allowed minimum', async () => {

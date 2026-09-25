@@ -8,6 +8,7 @@
  *   - Bridge base URL (a LAN service — http allowed; the port differs per product)
  *   - Optional request timeout (advanced)
  *   - Bridge token, REQUIRED for both shipped products
+ *   - When to issue the sales document
  *
  * The token is required because both bridges refuse every `/api/*` request
  * without one. It used to be labelled optional and described as "leave blank
@@ -48,6 +49,7 @@ import { Button } from '../../../shared/ui/button';
 import { FormErrorSummary } from '../../../shared/ui/form-error-summary';
 import { FormField } from '../../../shared/ui/form-field';
 import { Input } from '../../../shared/ui/input';
+import { Select } from '../../../shared/ui/select';
 import { useToast } from '../../../shared/ui/toast-provider';
 
 /**
@@ -202,6 +204,21 @@ export function SubiektSetupForm({
         />
       </FormField>
 
+      <FormField
+        label="Issue the invoice"
+        name="triggerModel"
+        error={form.formState.errors.triggerModel?.message}
+        description={`Every order OpenLinker sends to ${identity.productName} becomes a ZK. This decides whether the invoice follows automatically, or waits for you. Change it later in Settings → Sales documents.`}
+      >
+        <Select
+          {...form.register('triggerModel')}
+          invalid={Boolean(form.formState.errors.triggerModel)}
+        >
+          <option value="manual">By hand — I issue each one myself</option>
+          <option value="auto-on-paid">Automatically, once the order is paid</option>
+        </Select>
+      </FormField>
+
       {createdConnectionId ? (
         <>
           {testResult ? (
@@ -218,6 +235,14 @@ export function SubiektSetupForm({
               {testConnection.error.message}
             </Alert>
           ) : null}
+          <Alert tone="info" title="Where the invoice setting lives">
+            This connection will issue invoices{' '}
+            {form.getValues('triggerModel') === 'auto-on-paid'
+              ? 'automatically once an order is paid'
+              : 'only when you issue them by hand'}
+            . Change that, or switch it off entirely, in{' '}
+            <a href="/settings/sales-documents">Settings → Sales documents</a>.
+          </Alert>
           <div className="form-actions">
             <Button type="button" onClick={() => void onTest()} disabled={testConnection.isPending}>
               {testConnection.isPending ? 'Testing…' : 'Test connection'}

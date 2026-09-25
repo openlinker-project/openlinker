@@ -148,6 +148,11 @@ export function buildSubiektSetupSchema(identity: SubiektProductIdentity) {
         ])
         .optional(),
       bridgeToken: z.string().trim().optional(),
+      // Only the two usable values: `batched` throws
+      // `BatchedTriggerNotImplementedError`, and `auto-on-shipped` is
+      // meaningless for a connection that issues the document rather than
+      // shipping the parcel.
+      triggerModel: z.enum(['manual', 'auto-on-paid']),
     })
     // Always attached, branching INSIDE, so the return type does not depend on
     // `tokenRequired` and the exported form types stay single.
@@ -177,13 +182,40 @@ export const SUBIEKT_SETUP_DEFAULT_VALUES: SubiektSetupFormValues = {
   bridgeBaseUrl: '',
   timeoutMs: '',
   bridgeToken: '',
+  // Defaulting to `auto-on-paid` would start issuing fiscal documents nobody
+  // asked for on the very first paid order. The control is rendered, not
+  // assumed.
+  triggerModel: 'manual',
 };
 
 export function toCreateConnectionInput(
   values: SubiektSetupFormSubmission,
   identity: SubiektProductIdentity,
 ): CreateConnectionInput {
-  const config: Record<string, unknown> = { bridgeBaseUrl: values.bridgeBaseUrl };
+  const config: Record<string, unknown> = {
+    bridgeBaseUrl: values.bridgeBaseUrl,
+    // WITHOUT these two keys a Subiekt connection auto-issues nothing, ever,
+    // and says nothing about it. `readSalesDocumentRouting` reads
+    // `config.salesDocument.documentKind`; absent, the connection is not a
+    // routing candidate at all, `chooseSalesDocumentDecision` answers null and
+    // `AutoIssueTriggerService` returns `{kind:'none'}`. An order then carries
+    // a ZK in Subiekt and no document, with no badge, no failed job and no log
+    // line an operator would read. `triggerModel` is the second gate:
+    // `parseTriggerModel` defaults to `manual`, so even a connection carrying
+    // the kind issues only by hand.
+    //
+    // No backend change is needed to write them - the Subiekt config-shape
+    // validator runs `whitelist: false` and `CreateConnectionDto.config` is a
+    // bare `@IsObject()` - and the settings panel writes the identical shape
+    // through `mergeSalesDocumentConfig`, so the two surfaces stay one.
+    //
+    // `documentKind` is pinned rather than offered: neither Subiekt manifest
+    // advertises `Fiscalization`, so `fiscal-receipt` (and `both`) would
+    // resolve to `unsupported-document-kind-on-connection` - a picker offering
+    // a value that cannot work.
+    salesDocument: { documentKind: 'invoice' },
+    invoicing: { triggerModel: values.triggerModel },
+  };
   if (typeof values.timeoutMs === 'number') {
     config.timeoutMs = values.timeoutMs;
   }
