@@ -25,6 +25,7 @@ import {
   describeNetPricedOrderRefusal,
   minorUnitExponentFor,
   splitShippingAcrossRates,
+  totalReconciliationEpsilon,
 } from '@openlinker/core/sales-documents';
 
 import type {
@@ -41,35 +42,6 @@ import { UnsupportedFiscalPriceTreatmentError } from './errors/unsupported-fisca
  * overrides it via {@link OrderToRegisterTransactionCommandInput.shippingLineName}.
  */
 const SHIPPING_LINE_NAME = 'Shipping';
-
-/**
- * Tolerance, in the currency's own units, when checking that the composed lines
- * sum to the reported total.
- *
- * ONE MINOR UNIT of the order's own currency - `0.01` for PLN/EUR, `1` for JPY,
- * `0.001` for KWD. Wide enough to absorb IEEE-754 accumulation across a normal
- * basket and per-line rounding the source already did; narrow enough that a
- * folded discount, a coupon or a zero-defaulted snapshot field cannot hide
- * inside it.
- *
- * Deriving it rather than fixing it at `0.01` matters in both directions: a
- * 3-decimal currency (KWD) would otherwise tolerate ten of its own minor units
- * of unexplained drift, and a 0-decimal currency (JPY) would reject a whole-yen
- * basket carrying float dust. Neither is reachable from the PL v1 regime, but
- * the constant is in `libs/core` and the next regime is what it exists for.
- *
- * NOT tax arithmetic - it compares two sets of gross figures the source itself
- * reported (ADR-042 decision 8's negative half is about never computing a RATE,
- * which this does not). Nor is it a price conversion: nothing here rewrites an
- * amount, it only decides whether two reported amounts agree.
- */
-function totalReconciliationEpsilon(currency: string | undefined): number {
-  // One table for the whole repository (#2260 review). The shipping split needs
-  // the same answer to make its parts sum in the currency the buyer paid in, so
-  // the exponents live in the `sales-documents` leaf both document contexts
-  // already share rather than once per consumer.
-  return 10 ** -minorUnitExponentFor(currency);
-}
 
 /** Inputs to {@link toRegisterTransactionCommand}. */
 export interface OrderToRegisterTransactionCommandInput {

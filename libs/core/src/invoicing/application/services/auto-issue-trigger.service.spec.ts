@@ -589,7 +589,7 @@ describe('AutoIssueTriggerService', () => {
         const outcome = await service.onOrderTransition(
           makeOrder({
             paymentStatus: 'paid',
-            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+            items: [{ id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget' }],
             // Totals kept consistent with the single line, or the compose step
             // fails its own sum check and the outcome is `indeterminate` rather
             // than the block this test is about.
@@ -1024,7 +1024,7 @@ describe('AutoIssueTriggerService', () => {
         const outcome = await service.onOrderTransition(
           makeOrder({
             paymentStatus: 'paid',
-            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+            items: [{ id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget' }],
           }),
           'src-1',
         );
@@ -1049,7 +1049,7 @@ describe('AutoIssueTriggerService', () => {
         const outcome = await service.onOrderTransition(
           makeOrder({
             paymentStatus: 'paid',
-            items: [{ id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Widget' }],
+            items: [{ id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Widget' }],
           }),
           'src-1',
         );
@@ -1069,7 +1069,7 @@ describe('AutoIssueTriggerService', () => {
         makeOrder({
           paymentStatus: 'paid',
           items: [
-            { id: 'i1', productId: 'p1', quantity: 1, price: 10, name: 'Book', taxRate: '0' },
+            { id: 'i1', productId: 'p1', quantity: 2, price: 10, name: 'Book', taxRate: '0' },
           ],
         }),
         'src-1',

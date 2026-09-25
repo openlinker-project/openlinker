@@ -26,6 +26,7 @@ import {
   describeNetPricedOrderRefusal,
   minorUnitExponentFor,
   splitShippingAcrossRates,
+  totalReconciliationEpsilon,
 } from '@openlinker/core/sales-documents';
 
 /**
@@ -137,6 +138,8 @@ export function toIssueInvoiceCommand(
       shippingLineName
     )
   );
+
+  assertLinesSumToTotal(lines, order.totals.total, order.id, order.totals.currency);
 
   const command: IssueInvoiceCommand = {
     connectionId,
@@ -252,6 +255,55 @@ function toBuyerAddress(address: Address): BuyerAddress {
     postalCode: address.postalCode,
     countryIso2: address.country,
   };
+}
+
+/**
+ * Refuse to compose an invoice whose own lines do not add up to what the order
+ * says the buyer paid.
+ *
+ * The mirror of the fiscal-receipt mapper's guard, which has had one since it
+ * shipped; the invoicing mapper had none, so an order whose lines and total
+ * disagreed produced a perfectly well-formed invoice for the wrong amount. The
+ * realistic cause is a whole-order discount: PrestaShop applies a `CartRule`
+ * outside `OrderDetail::setSpecificPrice()`, so the line prices are the
+ * pre-discount ones while `total` is net of it, and the invoice then asks the
+ * buyer for more than they were charged - with every figure on it internally
+ * consistent and nothing downstream able to notice.
+ *
+ * Blocking is the right answer rather than adjusting: OpenLinker does not know
+ * WHICH lines the discount belonged to, and FA(3) can only express a discount
+ * per line (`P_10` appears once, inside `FaWiersz`), so folding it would mean
+ * inventing an attribution for a legal document. A held order with a stated
+ * reason is recoverable; a filed invoice for the wrong amount is not.
+ *
+ * Arithmetic on figures the SOURCE reported - a sum and a comparison. It
+ * neither computes nor infers a tax rate.
+ */
+function assertLinesSumToTotal(
+  lines: readonly InvoiceLine[],
+  total: number,
+  orderId: string,
+  currency: string | null | undefined
+): void {
+  if (!Number.isFinite(total)) {
+    throw new InvalidInvoiceLineError(
+      `Order ${orderId} reports a non-finite total; cannot compose an invoice`
+    );
+  }
+
+  const summed = lines.reduce((sum, line) => sum + line.quantity * line.unitPriceGross, 0);
+  if (!Number.isFinite(summed)) {
+    throw new InvalidInvoiceLineError(
+      `Order ${orderId} has a line with a non-finite amount; cannot compose an invoice`
+    );
+  }
+
+  if (Math.abs(summed - total) > totalReconciliationEpsilon(currency)) {
+    throw new InvalidInvoiceLineError(
+      `Order ${orderId} lines sum to ${summed.toFixed(2)} but the order reports a total of ` +
+        `${total.toFixed(2)}; an invoice may not state an amount its own lines contradict`
+    );
+  }
 }
 
 /**

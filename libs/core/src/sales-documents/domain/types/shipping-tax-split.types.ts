@@ -195,3 +195,32 @@ export function minorUnitExponentFor(currency: string | null | undefined): numbe
   if (FOUR_DECIMAL_CURRENCIES.has(code)) return 4;
   return DEFAULT_MINOR_UNIT_EXPONENT;
 }
+
+/**
+ * How far a composed document's lines may drift from the order's own total
+ * before the disagreement is a refusal rather than rounding: one minor unit of
+ * the currency the buyer paid in.
+ *
+ * Wide enough to absorb IEEE-754 accumulation across a normal basket and the
+ * per-line rounding the source already did; narrow enough that a folded
+ * discount, a coupon or a zero-defaulted snapshot field cannot hide inside it.
+ *
+ * Deriving it rather than fixing it at `0.01` matters in both directions: a
+ * 3-decimal currency (KWD) would otherwise tolerate ten of its own minor units
+ * of unexplained drift, and a 0-decimal one (JPY) would reject a whole-yen
+ * basket carrying float dust.
+ *
+ * WHY HERE. Both document kinds ask this question and must get the identical
+ * answer - a figure an invoice refuses and a receipt accepts is two different
+ * claims about one sale - and a fiscal receipt is not an invoice, so neither
+ * context could own it for the other. That is the same argument that already
+ * put {@link splitShippingAcrossRates} and {@link minorUnitExponentFor} in
+ * this leaf. It first lived privately in the fiscalization mapper and moved
+ * here when the invoicing mapper needed it too (#3365).
+ *
+ * NOT tax arithmetic - it compares two sets of gross figures the source itself
+ * reported, and rewrites neither.
+ */
+export function totalReconciliationEpsilon(currency: string | null | undefined): number {
+  return 10 ** -minorUnitExponentFor(currency);
+}
