@@ -21,6 +21,7 @@ import type {
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentRoutingSkipReason } from '../../domain/types/fulfillment-routing-eligibility.types';
 import type {
   AuthorityAttentionOutcome,
   AuthorityAttentionProducer,
@@ -305,6 +306,17 @@ export interface IOrderRecordService {
   markFulfillmentBlock(
     internalOrderId: string,
     block: FulfillmentBlock | null
+  ): Promise<void>;
+
+  /**
+   * #3455 — record why the fulfilment intercept deliberately did not route this
+   * order while the OMS is on (`own-shop-order`, `shipped-by-other-system`,
+   * `mirrored-before-routing`), or clear it with `null`. The write half of
+   * "intercept decides, caller persists"; level-triggered.
+   */
+  markFulfillmentRoutingSkip(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
   ): Promise<void>;
 
   /**
