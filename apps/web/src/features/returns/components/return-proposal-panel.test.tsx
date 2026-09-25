@@ -111,6 +111,19 @@ describe('ReturnProposalPanel (#2382)', () => {
     expect(screen.getByText(RETURN_PROPOSAL_COPY.ambiguousBanner)).toBeInTheDocument();
   });
 
+  it('should treat a no-match/ambiguous-invoice-line residual exactly like the retired ambiguous status (#3312)', () => {
+    renderPanel(proposal([line({
+      status: 'no-match',
+      noMatchReason: 'ambiguous-invoice-line',
+      noMatchExplanation: 'This return could not be matched to exactly one invoice line automatically.',
+    })]));
+
+    // The matcher never emits `status: 'ambiguous'` anymore, but the SAME
+    // attention-worthy banner must still fire for the reason that replaced it.
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.ambiguousBanner)).toBeInTheDocument();
+    expect(screen.queryByText(RETURN_PROPOSAL_COPY.cleanBanner)).not.toBeInTheDocument();
+  });
+
   it('should state WHY an excluded line was excluded', () => {
     renderPanel(proposal([line({
       status: 'no-match',

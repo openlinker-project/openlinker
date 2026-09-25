@@ -31,13 +31,14 @@ function buildLine(overrides: Partial<Record<string, unknown>> = {}): ReturnLine
     name?: string | null;
     quantityRestocked?: number;
     quantityScrapped?: number;
+    resolvedOrderLineId?: string | null;
   };
   return new ReturnLine(
     o.id ?? 'rl-1',
     RETURN_ID,
     o.lineIndex ?? 0,
     null,
-    null,
+    o.resolvedOrderLineId ?? null,
     null,
     null,
     null,
@@ -274,7 +275,7 @@ describe('ReturnCorrectionProposalService', () => {
       );
     });
 
-    it('should propose an ambiguous line without selecting a candidate', async () => {
+    it('should propose an unresolved (ambiguous-invoice-line) line without selecting a candidate, and still count it as correctable (#3312)', async () => {
       repository.findById.mockResolvedValue(buildReturn([buildLine()]));
       invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(
         buildInvoice({
@@ -291,10 +292,37 @@ describe('ReturnCorrectionProposalService', () => {
 
       const result = await service.buildProposal(input);
 
+      // `status: 'ambiguous'` is retired — the same condition now reports
+      // `no-match` / `ambiguous-invoice-line`, and the outcome must still be
+      // `proposed` (a row still opens), not `nothing-correctable`.
       expect(result.outcome).toBe('proposed');
-      expect(result.proposal?.lines[0].status).toBe('ambiguous');
+      expect(result.proposal?.lines[0].status).toBe('no-match');
+      expect(result.proposal?.lines[0].noMatchReason).toBe('ambiguous-invoice-line');
       expect(result.proposal?.lines[0].candidates).toHaveLength(2);
       expect(result.proposal?.lines[0].selectedOriginalLineNumber).toBeNull();
+    });
+
+    it('should thread ReturnLine.resolvedOrderLineId into the matcher so an id match wins over an ambiguous by-name set', async () => {
+      repository.findById.mockResolvedValue(
+        buildReturn([buildLine({ resolvedOrderLineId: 'order-item-2' })])
+      );
+      invoices.getLatestIssuedInvoiceForOrder.mockResolvedValue(
+        buildInvoice({
+          snapshot: {
+            buyer: {},
+            currency: 'PLN',
+            lines: [
+              { name: 'Widget', quantity: 3, unitPriceGross: 100, taxRate: '23', orderLineId: 'order-item-1' },
+              { name: 'Widget', quantity: 3, unitPriceGross: 100, taxRate: '23', orderLineId: 'order-item-2' },
+            ],
+          },
+        }) as never
+      );
+
+      const result = await service.buildProposal(input);
+
+      expect(result.proposal?.lines[0].status).toBe('matched');
+      expect(result.proposal?.lines[0].selectedOriginalLineNumber).toBe(2);
     });
 
     it('should classify a line whose only disposition is unconfirmed, rather than dropping it', async () => {

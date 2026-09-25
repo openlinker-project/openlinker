@@ -23,6 +23,14 @@
  * without saying so, which is the silent-decline shape this programme keeps
  * closing.
  *
+ * **`status: 'ambiguous'` is retired (#3312).** The matcher no longer produces
+ * it — the same underlying condition (no single invoice line can be identified
+ * automatically) now arrives as `status: 'no-match'` with
+ * `noMatchReason: 'ambiguous-invoice-line'`. It must read as attention-worthy
+ * here too, not as a routine, closed exclusion, so both the page-level banner
+ * and the per-line badge tone treat it exactly like the old `'ambiguous'`
+ * status did — see `NEEDS_ATTENTION_NO_MATCH_REASON` below.
+ *
  * @module apps/web/src/features/returns/components
  */
 import type { ReactElement } from 'react';
@@ -37,6 +45,14 @@ interface ReturnProposalPanelProps {
   proposal: ReturnCorrectionProposal | null;
   outcome: string;
 }
+
+/**
+ * The one `noMatchReason` value that must read as attention-worthy rather than
+ * as a routine, closed exclusion — the residual case `status: 'ambiguous'`
+ * used to carry before #3312 retired it. Named once so the banner check and
+ * the badge-tone check below cannot drift.
+ */
+const NEEDS_ATTENTION_NO_MATCH_REASON = 'ambiguous-invoice-line';
 
 export function ReturnProposalPanel({
   proposal,
@@ -53,7 +69,10 @@ export function ReturnProposalPanel({
     );
   }
 
-  const hasAmbiguity = proposal.lines.some((line) => line.status === 'ambiguous');
+  const hasAmbiguity = proposal.lines.some(
+    (line) =>
+      line.status === 'ambiguous' || line.noMatchReason === NEEDS_ATTENTION_NO_MATCH_REASON
+  );
 
   return (
     <section className="returns-proposal-panel" id="correction">
@@ -82,7 +101,8 @@ export function ReturnProposalPanel({
                 tone={
                   line.status === 'matched'
                     ? 'success'
-                    : line.status === 'ambiguous'
+                    : line.status === 'ambiguous' ||
+                        line.noMatchReason === NEEDS_ATTENTION_NO_MATCH_REASON
                       ? 'warning'
                       : 'neutral'
                 }
