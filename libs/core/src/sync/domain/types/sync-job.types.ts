@@ -199,6 +199,14 @@ export const JobTypeValues = [
   // stock drop puts at risk, as persisted episodes. Reads OL's own tables and
   // repairs nothing; no platform call.
   'inventory.reservations.shortfall',
+  // #3453 — the routed-order SALE DECREMENT. With the OMS on, a routed order is
+  // never created in the product master, so OpenLinker lowers each line's stock
+  // in the master that owns it. One job per routed work; the per-line
+  // at-most-once guarantee is a Postgres claim, not this job's dedupe key.
+  // Unlike its `inventory.*` neighbours it DOES call a platform
+  // (`InventoryMasterPort.adjustInventory`). `connectionId` is the order's
+  // source connection, never a synthetic id (#2609).
+  'inventory.saleDecrement',
   // Repairs the `order_records.activeHoldReason` cache against `order_holds`
   // (#2340). Deliberately NOT named `marketplace.*`: it makes zero platform
   // calls and reads only OL's own tables - `inventory.provenance.backfill` is

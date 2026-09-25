@@ -38,3 +38,9 @@ export const RESERVATION_SERVICE_TOKEN = Symbol('IReservationService');
 export const INVENTORY_PROVENANCE_BACKFILL_SERVICE_TOKEN = Symbol(
   'IInventoryProvenanceBackfillService'
 );
+
+// #3453 — the routed-order sale decrement.
+export const INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN = Symbol(
+  'InventorySaleDecrementRepositoryPort'
+);
+export const INVENTORY_SALE_DECREMENT_SERVICE_TOKEN = Symbol('IInventorySaleDecrementService');

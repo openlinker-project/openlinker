@@ -70,6 +70,7 @@ import {
   ROUTING_COMMIT_SERVICE_TOKEN,
   buildRoutingShipTo,
   deriveFulfillmentDispatchEnqueueIntents,
+  deriveSaleDecrementEnqueueIntents,
   findUndispatchableWorkIds,
   type FulfillmentRouterResolverPort,
   type IRoutingCommitService,
@@ -184,6 +185,7 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
     });
 
     await this.enqueueRoutedDispatchJobs(payload.orderId, outcome);
+    await this.enqueueRoutedSaleDecrementJobs(payload.orderId, outcome);
 
     return this.toJobResult(job, payload.orderId, outcome);
   }
@@ -244,6 +246,63 @@ export class FulfillmentWorkRouteHandler implements SyncJobHandler {
         this.logger.error(
           `Failed to enqueue fulfilment dispatch job; the work is routed but was ` +
             `NOT offered to its holder: orderId=${orderId} workId=${intent.workId}`,
+          error instanceof Error ? error.stack : undefined
+        );
+      }
+    }
+  }
+
+  /**
+   * Lower the sold stock in each routed line's product master (#3453).
+   *
+   * The same ONE derivation `OrderIngestionService` uses
+   * (`deriveSaleDecrementEnqueueIntents`), mapped onto this host's enqueue port.
+   * Scoped to the ORDER'S source connection, read from the record — never to
+   * `job.connectionId`, which here is the ROUTER's connection, nor to the holder
+   * every OMS-packed work shares (#2609).
+   *
+   * Never throws, for the reason its dispatch sibling above does not: a retry
+   * re-enters `route()`, answers `already-routed` and reaches no enqueue.
+   */
+  private async enqueueRoutedSaleDecrementJobs(
+    orderId: string,
+    outcome: RoutingCommitOutcome
+  ): Promise<void> {
+    if (outcome.status !== 'routed') return;
+
+    let sourceConnectionId: string;
+    try {
+      const record = await this.orderRecords.getOrderRecord(orderId);
+      if (record === null) {
+        this.logger.error(
+          `Not lowering product-master stock for routed order ${orderId}: its record ` +
+            `could not be read`
+        );
+        return;
+      }
+      sourceConnectionId = record.sourceConnectionId;
+    } catch (error) {
+      this.logger.error(
+        `Not lowering product-master stock for routed order ${orderId}: ` +
+          (error instanceof Error ? error.message : String(error))
+      );
+      return;
+    }
+
+    const intents = deriveSaleDecrementEnqueueIntents(outcome.works, orderId, sourceConnectionId);
+
+    for (const intent of intents) {
+      try {
+        await this.jobEnqueue.enqueueJob({
+          jobType: 'inventory.saleDecrement',
+          connectionId: intent.connectionId,
+          payload: { schemaVersion: 1, workId: intent.workId, orderId: intent.orderId },
+          idempotencyKey: intent.dedupeKey,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Failed to enqueue a sale decrement job; the order is routed but the product ` +
+            `master's stock was NOT lowered: orderId=${orderId} workId=${intent.workId}`,
           error instanceof Error ? error.stack : undefined
         );
       }

@@ -131,7 +131,10 @@ export type {
   MarketplaceReturnsStatusSyncPayloadV1,
   ReturnsOrphanReconcilePayloadV1,
 } from './domain/types/returns-job-payloads.types';
-export type { InventoryProvenanceBackfillPayloadV1 } from './domain/types/inventory-job-payloads.types';
+export type {
+  InventoryProvenanceBackfillPayloadV1,
+  InventorySaleDecrementPayloadV1,
+} from './domain/types/inventory-job-payloads.types';
 export {
   ShopProductPublishPayloadV1,
   ShopProductPublishPayloadV2,
