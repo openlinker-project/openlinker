@@ -1260,5 +1260,27 @@ describe('InventoryRepository', () => {
         })
       );
     });
+
+    // #3481 — opt-in, so the operator-facing list keeps showing stale rows.
+    it('excludes stale rows only when excludeStale is set', async () => {
+      ormRepository.findAndCount.mockResolvedValue([[], 0]);
+
+      await repository.findMany(
+        { productVariantId: 'ol_variant_1', excludeStale: true },
+        { limit: 10, offset: 0 }
+      );
+      await repository.findMany({ productVariantId: 'ol_variant_1' }, { limit: 10, offset: 0 });
+
+      expect(ormRepository.findAndCount).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          where: { productVariantId: 'ol_variant_1', isStale: false },
+        })
+      );
+      expect(ormRepository.findAndCount).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ where: { productVariantId: 'ol_variant_1' } })
+      );
+    });
   });
 });

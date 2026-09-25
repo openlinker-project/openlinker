@@ -215,6 +215,19 @@ export interface InventoryFilters {
    * unattributed rows would misreport whose stock the operator is looking at.
    */
   sourceConnectionId?: string;
+  /**
+   * Return only LIVE positions (`isStale = false`) (#3481).
+   *
+   * Opt-in, and absent means "every row, stale included" — exactly the
+   * pre-#3481 behaviour — because the operator-facing inventory list shows
+   * stale rows on purpose. A caller that turns the read into a quantity it acts
+   * on (the OMS router) must set it: a row the #2322 / #3206 repairs staled, or
+   * one of a product deleted at the master (#1689), holds units that no longer
+   * exist, and every other availability read already excludes it.
+   *
+   * Repository-level only, like `sourceConnectionId` — no request DTO exposes it.
+   */
+  excludeStale?: boolean;
 }
 
 /**
