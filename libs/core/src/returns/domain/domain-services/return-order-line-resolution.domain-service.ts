@@ -49,6 +49,17 @@ export interface ResolvableOrderLine {
   quantity: number;
   price: number;
   sku?: string;
+  /**
+   * Already-resolved catalogue identity (#3450) — `OrderItem.productId` /
+   * `OrderItem.variantId`, carried through so a successful resolution can
+   * denormalize them onto the return line (`resolvedProductId` /
+   * `resolvedVariantId`). This is STILL a caller-supplied value, not a
+   * catalogue lookup — the rule stays pure. `variantId` is optional because
+   * `OrderItem.variantId` itself is optional; a resolution with no variant id
+   * is persisted product-only and restock target resolution falls back to sku.
+   */
+  productId?: string;
+  variantId?: string;
 }
 
 /** The subset of a returned line this rule reads. */
@@ -108,7 +119,14 @@ export const ReturnOrderLineMatchAxisValues = [
 export type ReturnOrderLineMatchAxis = (typeof ReturnOrderLineMatchAxisValues)[number];
 
 export type ReturnOrderLineResolution =
-  | { status: 'resolved'; orderLineId: string; matchedOn: ReturnOrderLineMatchAxis }
+  | {
+      status: 'resolved';
+      orderLineId: string;
+      matchedOn: ReturnOrderLineMatchAxis;
+      /** Carried straight from the winning `ResolvableOrderLine` (#3450). */
+      productId?: string;
+      variantId?: string;
+    }
   | { status: 'unresolved'; reason: ReturnOrderLineUnresolvedReason };
 
 /**
@@ -156,7 +174,13 @@ function resolveByIdentity(
   );
 
   if (matches.length === 1) {
-    return { status: 'resolved', orderLineId: matches[0].id, matchedOn: axis };
+    return {
+      status: 'resolved',
+      orderLineId: matches[0].id,
+      matchedOn: axis,
+      productId: matches[0].productId,
+      variantId: matches[0].variantId,
+    };
   }
 
   if (matches.length > 1) {
@@ -165,7 +189,13 @@ function resolveByIdentity(
     }
     const byPrice = matches.filter((candidate) => samePrice(candidate.price, unitPrice));
     return byPrice.length === 1
-      ? { status: 'resolved', orderLineId: byPrice[0].id, matchedOn: tieBreakAxis }
+      ? {
+          status: 'resolved',
+          orderLineId: byPrice[0].id,
+          matchedOn: tieBreakAxis,
+          productId: byPrice[0].productId,
+          variantId: byPrice[0].variantId,
+        }
       : { status: 'unresolved', reason: byPrice.length === 0 ? 'no-candidate' : 'ambiguous' };
   }
 
@@ -218,7 +248,13 @@ export function resolveReturnLineOrderLine(
 
   const byPrice = orderLines.filter((candidate) => samePrice(candidate.price, unitPrice));
   if (byPrice.length === 1) {
-    return { status: 'resolved', orderLineId: byPrice[0].id, matchedOn: 'price' };
+    return {
+      status: 'resolved',
+      orderLineId: byPrice[0].id,
+      matchedOn: 'price',
+      productId: byPrice[0].productId,
+      variantId: byPrice[0].variantId,
+    };
   }
   return { status: 'unresolved', reason: byPrice.length === 0 ? 'no-candidate' : 'ambiguous' };
 }

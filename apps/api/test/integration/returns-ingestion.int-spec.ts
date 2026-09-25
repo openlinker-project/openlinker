@@ -52,6 +52,7 @@ import type {
   IReturnReattributionService,
   IReturnsService,
   IncomingReturn,
+  ResolvableOrderLine,
   ReturnRepositoryPort,
 } from '@openlinker/core/returns';
 import {
@@ -179,7 +180,8 @@ describe('Returns Ingestion Integration', () => {
            SET "quantityReceived" = 2, "quantityRestocked" = 1, "quantityScrapped" = 1,
                "custodyState" = 'disposed', "moneyState" = 'refunded',
                "disposition" = 'restock', "receivedAt" = now(), "disposedAt" = now(),
-               "resolvedOrderLineId" = 'ol_orderline_x'
+               "resolvedOrderLineId" = 'ol_orderline_x',
+               "resolvedProductId" = 'ol_product_x', "resolvedVariantId" = 'ol_variant_x'
          WHERE "returnId" = $1`,
         [record.id]
       );
@@ -214,6 +216,13 @@ describe('Returns Ingestion Integration', () => {
       expect(line.receivedAt).not.toBeNull();
       expect(line.disposedAt).not.toBeNull();
       expect(line.resolvedOrderLineId).toBe('ol_orderline_x');
+      // #3450 — resolvedProductId / resolvedVariantId are core-resolved,
+      // denormalized attribution exactly like resolvedOrderLineId, and must
+      // survive re-ingestion the same way; a migration/entity column-name
+      // mismatch would surface here as `undefined` rather than the hand-written
+      // value, since `upsertFromSource` must never write either column.
+      expect(line.resolvedProductId).toBe('ol_product_x');
+      expect(line.resolvedVariantId).toBe('ol_variant_x');
     });
 
     it('should report the OL-owned timestamps as null on the returned record, per the contract', async () => {
@@ -645,6 +654,71 @@ describe('Returns Ingestion Integration', () => {
       expect(first.authorizedAt).toBeNull();
       expect(first.lines[0].custodyState).toBe('advised');
       expect(first.lines[0].quantityReceived).toBe(0);
+    });
+  });
+
+  describe('order-line resolution catalogue identity (#3450)', () => {
+    const orderLine = (over: Partial<ResolvableOrderLine> = {}): ResolvableOrderLine => ({
+      id: 'oi_1',
+      quantity: 2,
+      price: 189,
+      sku: 'SKU-1',
+      productId: 'ol_product_1',
+      variantId: 'ol_variant_1',
+      ...over,
+    });
+
+    it('should persist resolvedProductId / resolvedVariantId onto the real column through resolveOrderLinesForReturn', async () => {
+      const created = await service().upsertFromObservation(connectionA, observation());
+
+      const summary = await service().resolveOrderLinesForReturn(created.record.id, [orderLine()]);
+
+      expect(summary.resolved).toBe(1);
+      const [row] = await query<{ resolvedProductId: string | null; resolvedVariantId: string | null }>(
+        `SELECT "resolvedProductId", "resolvedVariantId" FROM "return_lines" WHERE "returnId" = $1`,
+        [created.record.id]
+      );
+      expect(row.resolvedProductId).toBe('ol_product_1');
+      expect(row.resolvedVariantId).toBe('ol_variant_1');
+    });
+
+    it('should backfill a legacy resolved line through the real conditional UPDATE, and leave a genuinely resolved one untouched', async () => {
+      const created = await service().upsertFromObservation(connectionA, observation());
+      const lineId = created.record.lines[0].id;
+
+      // Simulate a line resolved before #3450 shipped: resolvedOrderLineId set,
+      // catalogue identity columns still NULL.
+      await query(
+        `UPDATE "return_lines" SET "resolvedOrderLineId" = $2 WHERE "id" = $1`,
+        [lineId, 'oi_1']
+      );
+
+      const summary = await service().resolveOrderLinesForReturn(created.record.id, [orderLine()]);
+
+      expect(summary.alreadyResolved).toBe(1);
+      expect(summary.catalogIdentityBackfilled).toBe(1);
+      expect(summary.resolved).toBe(0);
+
+      const [row] = await query<{
+        resolvedOrderLineId: string | null;
+        resolvedProductId: string | null;
+        resolvedVariantId: string | null;
+        updatedAt: Date;
+      }>(
+        `SELECT "resolvedOrderLineId", "resolvedProductId", "resolvedVariantId", "updatedAt"
+           FROM "return_lines" WHERE "id" = $1`,
+        [lineId]
+      );
+      // The already-claimed pointer must survive the backfill untouched.
+      expect(row.resolvedOrderLineId).toBe('oi_1');
+      expect(row.resolvedProductId).toBe('ol_product_1');
+      expect(row.resolvedVariantId).toBe('ol_variant_1');
+
+      // A SECOND pass must not re-attempt the backfill — the real conditional
+      // UPDATE's `resolvedProductId IS NULL` guard, proved against Postgres
+      // rather than a mock, is what makes this idempotent.
+      const second = await service().resolveOrderLinesForReturn(created.record.id, [orderLine()]);
+      expect(second.catalogIdentityBackfilled).toBe(0);
     });
   });
 });

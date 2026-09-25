@@ -42,6 +42,7 @@ describe('ReturnsService', () => {
     countReturnsByBucket: jest.Mock;
     claimAttribution: jest.Mock;
     claimOrderLineResolution: jest.Mock;
+    backfillResolvedCatalogIdentity: jest.Mock;
   };
   let identifierMapping: {
     getInternalId: jest.Mock;
@@ -73,6 +74,7 @@ describe('ReturnsService', () => {
       countReturnsByBucket: jest.fn().mockResolvedValue({ total: 0, orphan: 0, attributed: 0 }),
       claimAttribution: jest.fn().mockResolvedValue(true),
       claimOrderLineResolution: jest.fn().mockResolvedValue(true),
+      backfillResolvedCatalogIdentity: jest.fn().mockResolvedValue(true),
     };
     identifierMapping = {
       getInternalId: jest.fn().mockResolvedValue('ol_order_abc'),
@@ -634,6 +636,8 @@ describe('ReturnsService', () => {
       sku: null,
       offerId: 'offer-abc',
       resolvedOrderLineId: null,
+      resolvedProductId: null,
+      resolvedVariantId: null,
       ...over,
     });
 
@@ -656,7 +660,34 @@ describe('ReturnsService', () => {
       expect(summary.resolved).toBe(1);
       expect(repository.claimOrderLineResolution).toHaveBeenCalledWith(
         'ol_return_line_1',
-        'oi_1'
+        'oi_1',
+        { productId: undefined, variantId: undefined }
+      );
+    });
+
+    it('should thread the resolved order line\'s catalogue identity into the claim (#3450)', async () => {
+      const record = {
+        id: 'ol_return_1',
+        lines: [returnLine()],
+        rawPayload: null,
+      };
+      repository.findById.mockResolvedValue(record);
+
+      await service.resolveOrderLinesForReturn('ol_return_1', [
+        {
+          id: 'oi_1',
+          quantity: 1,
+          price: 100,
+          sku: 'offer-abc',
+          productId: 'ol_product_1',
+          variantId: 'ol_variant_1',
+        },
+      ]);
+
+      expect(repository.claimOrderLineResolution).toHaveBeenCalledWith(
+        'ol_return_line_1',
+        'oi_1',
+        { productId: 'ol_product_1', variantId: 'ol_variant_1' }
       );
     });
 
@@ -674,6 +705,95 @@ describe('ReturnsService', () => {
 
       expect(summary.alreadyResolved).toBe(1);
       expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+    });
+
+    it('should backfill catalogue identity onto an already-resolved legacy line (#3450)', async () => {
+      const record = {
+        id: 'ol_return_1',
+        lines: [
+          returnLine({
+            resolvedOrderLineId: 'oi_1',
+            resolvedProductId: null,
+            resolvedVariantId: null,
+          }),
+        ],
+        rawPayload: null,
+      };
+      repository.findById.mockResolvedValue(record);
+
+      const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+        {
+          id: 'oi_1',
+          quantity: 1,
+          price: 100,
+          sku: 'offer-abc',
+          productId: 'ol_product_1',
+          variantId: 'ol_variant_1',
+        },
+      ]);
+
+      expect(summary.alreadyResolved).toBe(1);
+      expect(summary.catalogIdentityBackfilled).toBe(1);
+      expect(repository.backfillResolvedCatalogIdentity).toHaveBeenCalledWith('ol_return_line_1', {
+        productId: 'ol_product_1',
+        variantId: 'ol_variant_1',
+      });
+      // The already-resolved order line, never a re-derived match — a
+      // re-ingested order could otherwise resolve this legacy line onto a
+      // DIFFERENT order line than the one it was originally attributed to.
+      expect(repository.claimOrderLineResolution).not.toHaveBeenCalled();
+    });
+
+    it('should not attempt a backfill when the already-resolved order line no longer exists in the snapshot (#3450)', async () => {
+      const record = {
+        id: 'ol_return_1',
+        lines: [
+          returnLine({
+            resolvedOrderLineId: 'oi_vanished',
+            resolvedProductId: null,
+            resolvedVariantId: null,
+          }),
+        ],
+        rawPayload: null,
+      };
+      repository.findById.mockResolvedValue(record);
+
+      const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+        { id: 'oi_1', quantity: 1, price: 100, sku: 'offer-abc' },
+      ]);
+
+      expect(summary.alreadyResolved).toBe(1);
+      expect(summary.catalogIdentityBackfilled).toBe(0);
+      expect(repository.backfillResolvedCatalogIdentity).not.toHaveBeenCalled();
+    });
+
+    it('should not touch a line whose catalogue identity is already backfilled', async () => {
+      const record = {
+        id: 'ol_return_1',
+        lines: [
+          returnLine({
+            resolvedOrderLineId: 'oi_1',
+            resolvedProductId: 'ol_product_1',
+            resolvedVariantId: 'ol_variant_1',
+          }),
+        ],
+        rawPayload: null,
+      };
+      repository.findById.mockResolvedValue(record);
+
+      const summary = await service.resolveOrderLinesForReturn('ol_return_1', [
+        {
+          id: 'oi_1',
+          quantity: 1,
+          price: 100,
+          sku: 'offer-abc',
+          productId: 'ol_product_1',
+          variantId: 'ol_variant_1',
+        },
+      ]);
+
+      expect(summary.catalogIdentityBackfilled).toBe(0);
+      expect(repository.backfillResolvedCatalogIdentity).not.toHaveBeenCalled();
     });
 
     it('should report ambiguous rather than pick when two order lines share the offerId and price', async () => {

@@ -32,8 +32,10 @@ function makeLine(overrides: Partial<ReturnLine> = {}): ReturnLine {
     0,
     null,
     null,
+    overrides.resolvedProductId ?? null,
+    overrides.resolvedVariantId ?? null,
     null,
-    'SKU-1',
+    overrides.sku === undefined ? 'SKU-1' : overrides.sku,
     'Widget',
     'other',
     overrides.quantityAdvised ?? 5,
@@ -484,6 +486,77 @@ describe('ReturnCustodyService', () => {
       });
 
       expect(result.restockBlocked?.reason).toBe('unresolved-product');
+    });
+
+    it('should resolve the restock target from the resolved order line, without a sku lookup (#3450)', async () => {
+      lineState = makeLine({
+        quantityReceived: 3,
+        custodyState: 'received',
+        sku: null,
+        resolvedProductId: 'ol_product_9',
+        resolvedVariantId: 'ol_variant_9',
+      });
+
+      const result = await service.disposeLine(LINE_ID, {
+        quantity: 2,
+        disposition: 'restock',
+      });
+
+      expect(result.restockBlocked).toBeNull();
+      expect(products.getVariantsBySkus).not.toHaveBeenCalled();
+      expect(adjustInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ productId: 'ol_product_9', variantId: 'ol_variant_9' })
+      );
+    });
+
+    it('should fall back to sku when the resolved order line carries no variant id (#3450)', async () => {
+      lineState = makeLine({
+        quantityReceived: 3,
+        custodyState: 'received',
+        resolvedProductId: 'ol_product_9',
+        resolvedVariantId: null,
+      });
+
+      const result = await service.disposeLine(LINE_ID, {
+        quantity: 2,
+        disposition: 'restock',
+      });
+
+      expect(result.restockBlocked).toBeNull();
+      expect(products.getVariantsBySkus).toHaveBeenCalledWith(['SKU-1']);
+      expect(adjustInventory).toHaveBeenCalledWith(
+        expect.objectContaining({ productId: 'ol_product_1', variantId: 'ol_variant_1' })
+      );
+    });
+
+    it('should block naming both absences when there is neither a sku nor a resolved order-line identity (#3450)', async () => {
+      lineState = makeLine({ quantityReceived: 3, custodyState: 'received', sku: null });
+
+      const result = await service.disposeLine(LINE_ID, {
+        quantity: 2,
+        disposition: 'restock',
+      });
+
+      expect(result.restockBlocked?.reason).toBe('unresolved-product');
+      expect(products.getVariantsBySkus).not.toHaveBeenCalled();
+    });
+
+    it('should block when the resolved order line carries no variant id and there is no sku either (#3450)', async () => {
+      lineState = makeLine({
+        quantityReceived: 3,
+        custodyState: 'received',
+        sku: null,
+        resolvedProductId: 'ol_product_9',
+        resolvedVariantId: null,
+      });
+
+      const result = await service.disposeLine(LINE_ID, {
+        quantity: 2,
+        disposition: 'restock',
+      });
+
+      expect(result.restockBlocked?.reason).toBe('unresolved-product');
+      expect(products.getVariantsBySkus).not.toHaveBeenCalled();
     });
 
     it('should treat a deduplicated master response as a success', async () => {
