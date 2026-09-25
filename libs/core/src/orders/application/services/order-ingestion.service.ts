@@ -24,7 +24,7 @@ import {
   SyncLockPort,
   SYNC_LOCK_TOKEN,
 } from '@openlinker/core/sync';
-import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE, CONNECTION_PORT_TOKEN, type ConnectionPort } from '@openlinker/core/identifier-mapping';
+import { IIdentifierMappingService, IDENTIFIER_MAPPING_SERVICE_TOKEN, CORE_ENTITY_TYPE, CONNECTION_PORT_TOKEN, type Connection, type ConnectionPort } from '@openlinker/core/identifier-mapping';
 import {
   IAutoIssueTriggerService,
   AUTO_ISSUE_TRIGGER_SERVICE_TOKEN,
@@ -96,6 +96,7 @@ import type { Order } from '../../domain/types/order.types';
 import type { OrderFeedEventType } from '../../domain/types/order-feed.types';
 import { compareOrderCursors } from '../../domain/types/order-cursor.types';
 import { withheldOnHoldError } from '../../domain/types/order-hold.types';
+import { isOrderFromOwnProductMaster } from '../../domain/types/fulfillment-routing-eligibility.types';
 import type { OrderRecord } from '../../domain/entities/order-record.entity';
 import type { SalesDocumentBlockOutcome } from '@openlinker/core/sales-documents';
 import type { OrderRecordStatus } from '../../domain/types/order-record.types';
@@ -121,8 +122,9 @@ interface FulfillmentInterceptOutcome {
 /**
  * The fulfilment router this order would be handed to, resolved ONCE (#3480).
  *
- * `null` means the pass-through: nobody claims A2, the claim is ambiguous, or the
- * claimant has no router wired. Resolved before the advisory hold is recorded, so
+ * `null` means the pass-through: nobody claims A2, the claim is ambiguous, the
+ * claimant has no router wired, or the order comes from the operator's own shop
+ * (#3487). Resolved before the advisory hold is recorded, so
  * the hold's immutable `atpEffect` and the intercept that routes the order are
  * decided from the same answer and cannot disagree.
  */
@@ -572,7 +574,7 @@ export class OrderIngestionService implements IOrderIngestionService {
     // intercept: the intercept enqueues the sale decrement, and a hold created
     // after it could land after its own consume and then subtract for its whole
     // TTL.
-    const routingTarget = await this.resolveRoutingTarget(order.id);
+    const routingTarget = await this.resolveRoutingTarget(order.id, connectionId);
     await this.reserveOrderInventory(
       order,
       connectionId,
@@ -856,10 +858,31 @@ export class OrderIngestionService implements IOrderIngestionService {
    * **Never throws**, exactly as the intercept it was extracted from: a failure
    * degrades to the pass-through (`null`), which is also what stamps the hold the
    * way it was stamped before #3480.
+   *
+   * **#3487's "never route the operator's own shop" rule lives HERE, not in the
+   * intercept.** This answer also decides the advisory hold's insert-only
+   * `atpEffect`, so a rule checked only later would stamp a storefront order's
+   * hold `published` while the order is never routed — the shop has already
+   * lowered its own stock, so that subtracts the same units twice (#3480).
+   * Checked BEFORE router selection so an A2 ambiguity is not warned about for
+   * an order that would never be routed.
    */
-  private async resolveRoutingTarget(orderId: string): Promise<RoutingTarget> {
+  private async resolveRoutingTarget(
+    orderId: string,
+    orderSourceConnectionId: string
+  ): Promise<RoutingTarget> {
     try {
-      const selection = selectPrimaryFulfillmentRouter(await this.loadRoutingClaimants());
+      const connections = await this.connections.list();
+
+      if (isOrderFromOwnProductMaster(connections, orderSourceConnectionId)) {
+        this.logger.debug(
+          `Not routing order ${orderId}: its source connection ${orderSourceConnectionId} ` +
+            `is a product master (the operator's own shop); following today's path.`
+        );
+        return null;
+      }
+
+      const selection = selectPrimaryFulfillmentRouter(this.toRoutingClaimants(connections));
 
       if (selection.holder === null) {
         if (isFulfillmentRouterUnroutable(selection.reason)) {
@@ -1235,9 +1258,11 @@ export class OrderIngestionService implements IOrderIngestionService {
    * `updatedAt`. If `connections` ever stops being small, cache HERE — never by
    * skipping the selection, which would decide routing from a stale claimant
    * set.
+   *
+   * The same read also answers #3487's "is this order from the operator's own
+   * shop?", so that check costs no extra statement.
    */
-  private async loadRoutingClaimants(): Promise<AuthorityClaimantInput[]> {
-    const connections = await this.connections.list();
+  private toRoutingClaimants(connections: readonly Connection[]): AuthorityClaimantInput[] {
     return connections.map((connection) => ({
       connectionId: connection.id,
       isActive: connection.status === 'active',
