@@ -23,6 +23,59 @@ When a lesson hardens into a rule, **graduate it** to the canonical doc and leav
 
 ---
 
+## `triggerAndWait` on a SWEEP waits for the fan-out, not for the work
+
+**Context**: an e2e asserting that a Subiekt model product carries the VAT rate
+its members agree on (#3365). The spec triggered `master.product.syncAll` via
+`jobs.triggerAndWait`, then read the product.
+
+**Problem**: it failed with "the model-key branch is not resolving" against a
+branch that was resolving perfectly - the rate landed about ninety seconds
+later. A budgeted sweep's job is to ENQUEUE children (#2218/#2593); the
+per-product syncs that actually read the rate drain afterwards, behind whatever
+the stack already had queued. `triggerAndWait` returns when the PARENT
+succeeds, and the parent succeeding means the children were enqueued. The
+failure message named the wrong culprit with total confidence, which is the
+expensive part: ten minutes went into reading an adapter that was correct.
+
+**Rule**: after triggering a sweep, POLL for the effect rather than reading it
+once. Key the poll on the marker that says the work HAPPENED (a `*ReadAt`
+column, a status transition) rather than on the value, so an honest "the master
+answered and named nothing" ends the poll instead of spinning it out. This
+applies to every `master.*.syncAll`, `master.product.reconcile` and
+`*.statusSync` trigger - anything whose handler fans out.
+
+**Applies to**: `apps/e2e/**` specs that call `SyncJobs.triggerAndWait` with a
+sweep job type.
+
+**Source**: #3365.
+
+---
+
+## A shared e2e fixture picker that pages BEFORE it filters answers about the wrong catalogue
+
+**Context**: `pickDriverProduct` in `apps/e2e/src/support/order-synthesis.ts`
+listed `{ limit: 50 }` across every connection and then filtered by the
+connection it had been handed.
+
+**Problem**: on a stack whose catalogue is mostly another master's, every
+candidate fell off the end of page one, and `synthesizeOrder` threw "found no
+catalogue product with a priced, EAN-complete variant" about a catalogue that
+had six of them. The error was about the pager, and it read as being about the
+data.
+
+**Rule**: when a support helper filters a paged read by a field the API can
+filter on, pass the filter to the API. A post-page filter turns "which page did
+this land on" into the answer, and the resulting failure message describes the
+operator's data rather than the query.
+
+**Applies to**: `apps/e2e/src/support/**` helpers that call a `list()` and then
+narrow the result.
+
+**Source**: #3365.
+
+---
+
 ## A push plan built from pre-rebase subjects silently drops commits made after it
 
 **Context**: the pack-bench stack (#3330-#3439). After rebasing fourteen
