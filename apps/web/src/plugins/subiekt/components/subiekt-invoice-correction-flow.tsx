@@ -7,12 +7,13 @@
  *   - an optional free-text reason;
  *   - per-line new quantity and/or new unit price gross.
  *
- * The mockup shows N rows pre-populated from the original invoice lines. Since
- * the FE has no access to line-item detail (the invoice record carries only the
- * provider invoice ID), the operator enters line numbers explicitly. The form
- * starts with ONE empty row and an "Add line" affordance for multi-line
- * corrections. The host dialog owns the outer chrome; this component is
- * content-only — call `onClose` to close the dialog.
+ * The line table is the shared `CorrectionLineGrid` (#3090) whenever the
+ * invoice's content is authoritative — see `KsefInvoiceCorrectionFlow`'s
+ * docblock for the full rationale, unchanged here. When it is not, this flow
+ * falls back to the original manual entry: the operator enters line numbers
+ * explicitly, starting with ONE empty row and an "Add line" affordance. The
+ * host dialog owns the outer chrome; this component is content-only — call
+ * `onClose` to close the dialog.
  *
  * @module plugins/subiekt/components
  */
@@ -22,7 +23,9 @@ import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { InvoiceCorrectionFlowProps } from '../../../shared/plugins/plugin.types';
 import {
+  CorrectionLineGrid,
   CorrectionLinePicker,
+  useInvoiceContentQuery,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
 } from '../../../features/invoicing';
@@ -57,13 +60,16 @@ export function SubiektInvoiceCorrectionFlow({
   invoice,
   onClose,
   onCorrectionIssued,
+  suggestedLines,
 }: InvoiceCorrectionFlowProps): ReactElement {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
+  const { linesAreAuthoritative, query: contentQuery } = useInvoiceContentQuery(invoice.id);
 
   const [reason, setReason] = useState('');
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
+  const [gridLines, setGridLines] = useState<CorrectionLineInput[]>([]);
   const [linesError, setLinesError] = useState<string | null>(null);
 
   // Stable per-dialog-mount key — collapses post-timeout retries / duplicate tabs
@@ -86,15 +92,30 @@ export function SubiektInvoiceCorrectionFlow({
   }
 
   function handleSubmit(): void {
-    const parsedLines = parseLineRows(lines);
-    if (parsedLines.length === 0) {
-      setLinesError(
-        t(
-          'subiekt.correction.linesRequired',
-          'At least one line with a line number is required.',
-        ),
-      );
-      return;
+    let parsedLines: CorrectionLineInput[];
+    if (linesAreAuthoritative) {
+      if (gridLines.length === 0) {
+        setLinesError(
+          t(
+            'subiekt.correction.gridLinesRequired',
+            'Change at least one line’s quantity or price before issuing a correction.',
+          ),
+        );
+        return;
+      }
+      parsedLines = gridLines;
+    } else {
+      const parsed = parseLineRows(lines);
+      if (parsed.length === 0) {
+        setLinesError(
+          t(
+            'subiekt.correction.linesRequired',
+            'At least one line with a line number is required.',
+          ),
+        );
+        return;
+      }
+      parsedLines = parsed;
     }
     setLinesError(null);
     mutation.mutate(
@@ -186,88 +207,101 @@ export function SubiektInvoiceCorrectionFlow({
       </div>
 
       {/* Line items */}
-      <div className="table-wrap subiekt-correction__table-scroll">
-        <table className="lineitems">
-          <thead>
-            <tr>
-              <th>{t('subiekt.correction.col.lp', 'Lp')}</th>
-              <th className="subiekt-correction__col-qty">{t('subiekt.correction.col.newQty', 'New qty')}</th>
-              <th className="subiekt-correction__col-price">
-                {t('subiekt.correction.col.newPrice', 'New gross')}
-              </th>
-              <th aria-label={t('subiekt.correction.col.remove', 'Remove')} />
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((row, i) => (
-              <tr key={i}>
-                <td>
-                  <CorrectionLinePicker
-                    invoiceId={invoice.id}
-                    value={row.originalLineNumber}
-                    onChange={(next) => updateLine(i, 'originalLineNumber', next)}
-                    ariaLabel={`${t('subiekt.correction.lineNum', 'Line number')} ${i + 1}`}
-                    disabled={isSubmitting}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    className="input input--num input--w-qty"
-                    value={row.newQuantity}
-                    onChange={(e) => updateLine(i, 'newQuantity', e.target.value)}
-                    placeholder="—"
-                    min={0}
-                    step="any"
-                    aria-label={`${t('subiekt.correction.newQty', 'New qty, line')} ${i + 1}`}
-                    disabled={isSubmitting}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    className="input input--num input--w-price"
-                    value={row.newUnitPriceGross}
-                    onChange={(e) => updateLine(i, 'newUnitPriceGross', e.target.value)}
-                    placeholder="—"
-                    min={0}
-                    step="any"
-                    aria-label={`${t('subiekt.correction.newPrice', 'New gross, line')} ${i + 1}`}
-                    disabled={isSubmitting}
-                  />
-                </td>
-                <td>
-                  <Button
-                    tone="secondary"
-                    onClick={() => removeLine(i)}
-                    disabled={lines.length === 1 || isSubmitting}
-                    aria-label={`${t('subiekt.correction.removeLine', 'Remove line')} ${i + 1}`}
-                  >
-                    ✕
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
       {linesError ? (
         <p className="error-text" role="alert">
           {linesError}
         </p>
       ) : null}
 
-      <Button tone="secondary" onClick={addLine} disabled={isSubmitting}>
-        {t('subiekt.correction.addLine', '+ Add line')}
-      </Button>
+      {contentQuery.isLoading ? (
+        <p className="text-muted">{t('subiekt.correction.loadingLines', 'Loading invoice lines…')}</p>
+      ) : linesAreAuthoritative ? (
+        <CorrectionLineGrid
+          invoiceId={invoice.id}
+          suggestedLines={suggestedLines}
+          disabled={isSubmitting}
+          onChange={setGridLines}
+        />
+      ) : (
+        <>
+          <div className="table-wrap subiekt-correction__table-scroll">
+            <table className="lineitems">
+              <thead>
+                <tr>
+                  <th>{t('subiekt.correction.col.lp', 'Lp')}</th>
+                  <th className="subiekt-correction__col-qty">{t('subiekt.correction.col.newQty', 'New qty')}</th>
+                  <th className="subiekt-correction__col-price">
+                    {t('subiekt.correction.col.newPrice', 'New gross')}
+                  </th>
+                  <th aria-label={t('subiekt.correction.col.remove', 'Remove')} />
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((row, i) => (
+                  <tr key={i}>
+                    <td>
+                      <CorrectionLinePicker
+                        invoiceId={invoice.id}
+                        value={row.originalLineNumber}
+                        onChange={(next) => updateLine(i, 'originalLineNumber', next)}
+                        ariaLabel={`${t('subiekt.correction.lineNum', 'Line number')} ${i + 1}`}
+                        disabled={isSubmitting}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="input input--num input--w-qty"
+                        value={row.newQuantity}
+                        onChange={(e) => updateLine(i, 'newQuantity', e.target.value)}
+                        placeholder="—"
+                        min={0}
+                        step="any"
+                        aria-label={`${t('subiekt.correction.newQty', 'New qty, line')} ${i + 1}`}
+                        disabled={isSubmitting}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="input input--num input--w-price"
+                        value={row.newUnitPriceGross}
+                        onChange={(e) => updateLine(i, 'newUnitPriceGross', e.target.value)}
+                        placeholder="—"
+                        min={0}
+                        step="any"
+                        aria-label={`${t('subiekt.correction.newPrice', 'New gross, line')} ${i + 1}`}
+                        disabled={isSubmitting}
+                      />
+                    </td>
+                    <td>
+                      <Button
+                        tone="secondary"
+                        onClick={() => removeLine(i)}
+                        disabled={lines.length === 1 || isSubmitting}
+                        aria-label={`${t('subiekt.correction.removeLine', 'Remove line')} ${i + 1}`}
+                      >
+                        ✕
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-      <p className="corr-note subiekt-correction__note">
-        {t(
-          'subiekt.correction.note',
-          'A correcting invoice (faktura korygująca) can adjust quantity and/or price per line — e.g. a returned unit or a post-sale price reduction. Subiekt transmits the correction to KSeF; OpenLinker tracks the status.',
-        )}
-      </p>
+          <Button tone="secondary" onClick={addLine} disabled={isSubmitting}>
+            {t('subiekt.correction.addLine', '+ Add line')}
+          </Button>
+
+          <p className="corr-note subiekt-correction__note">
+            {t(
+              'subiekt.correction.note',
+              'A correcting invoice (faktura korygująca) can adjust quantity and/or price per line — e.g. a returned unit or a post-sale price reduction. Subiekt transmits the correction to KSeF; OpenLinker tracks the status.',
+            )}
+          </p>
+        </>
+      )}
 
       {/* Actions */}
       <div className="wizard__actions">

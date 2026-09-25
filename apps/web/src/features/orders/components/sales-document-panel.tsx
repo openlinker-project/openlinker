@@ -951,7 +951,10 @@ export function SalesDocumentPanel({ order }: SalesDocumentPanelProps): ReactEle
                     {t('invoice.action.issueCorrection', 'Issue correction')}
                   </Button>
                   <Dialog open={correctionOpen} onOpenChange={setCorrectionOpen}>
-                    <DialogContent aria-describedby={undefined}>
+                    {/* Wide: the correction-line grid (#3090) is a 5-column
+                        table the default 520px dialog crushes — same fix as
+                        the returns-page mount of this same flow. */}
+                    <DialogContent aria-describedby={undefined} className="dialog__content--wide">
                       <DialogTitle>{t('invoice.correction.dialogTitle', 'Issue correction')}</DialogTitle>
                       <InvoiceCorrectionFlow
                         invoice={invoice}

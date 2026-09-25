@@ -68,6 +68,7 @@ function renderPanel(
     changeId?: string | null;
     writeAccess?: typeof WRITE_ACCESS;
     recordCorrectionProposal?: Mock<(returnId: string) => Promise<ReturnCorrectionProposalResult>>;
+    orphan?: boolean;
   } = {},
 ) {
   const recordCorrectionProposal =
@@ -89,6 +90,7 @@ function renderPanel(
         proposal={p}
         changeId={overrides.changeId ?? null}
         writeAccess={overrides.writeAccess ?? WRITE_ACCESS}
+        orphan={overrides.orphan}
       />,
       { apiClient },
     ),
@@ -207,13 +209,18 @@ describe('CorrectionProposalPanel — headline + breakdown (#3090)', () => {
     ).toBeInTheDocument();
   });
 
-  it('should never auto-issue, and say so in the footer', () => {
+  it('should never auto-issue, and never hand off via a dead link (#3094 amendment)', () => {
     renderPanel(proposal([line()]));
 
     expect(screen.getByText(RETURN_PROPOSAL_COPY.noAutoIssue)).toBeInTheDocument();
+    // The `/invoices/:id` link this used to assert was itself the defect
+    // (#3094's own amendment: "drift, not a design choice") — the handoff now
+    // opens the real `InvoiceCorrectionFlow` in a dialog (see
+    // `ksef-invoice-correction-flow.test.tsx` etc. for that wiring), so no
+    // link of any kind may exist here.
     expect(
-      screen.getByRole('link', { name: RETURN_PROPOSAL_COPY.handoff }),
-    ).toHaveAttribute('href', '/invoices/inv-1');
+      screen.queryByRole('link', { name: RETURN_PROPOSAL_COPY.handoff }),
+    ).not.toBeInTheDocument();
     // "Record for review" exists; a literal "Issue" CTA must not.
     expect(screen.queryByRole('button', { name: /issue/i })).not.toBeInTheDocument();
   });
@@ -346,5 +353,72 @@ describe('CorrectionProposalPanel — record for review (#3092)', () => {
 
     expect(await screen.findByText(RETURN_PROPOSAL_COPY.recordError)).toBeInTheDocument();
     expect(screen.queryByText(RETURN_PROPOSAL_COPY.recordedBadge)).not.toBeInTheDocument();
+  });
+});
+
+describe('CorrectionProposalPanel — record for review (#3092)', () => {
+  it('should record the proposal and show a success toast on click', async () => {
+    const user = userEvent.setup();
+    const { recordCorrectionProposal } = renderPanel(proposal([line()]));
+
+    await user.click(screen.getByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction }));
+
+    await waitFor(() => expect(recordCorrectionProposal).toHaveBeenCalledWith(RETURN_ID));
+    expect(await screen.findByText(RETURN_PROPOSAL_COPY.recordSuccess)).toBeInTheDocument();
+  });
+
+  it('should disable the action while any line is ambiguous, with a reason beside it', () => {
+    renderPanel(proposal([line({ status: 'ambiguous', selectedOriginalLineNumber: null, candidates: [
+      { originalLineNumber: 1, name: 'Widget', quantity: 1, unitPriceGross: 10, taxRate: '23' },
+      { originalLineNumber: 2, name: 'Widget', quantity: 1, unitPriceGross: 12, taxRate: '23' },
+    ] })]));
+
+    expect(screen.getByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction })).toBeDisabled();
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.recordBlockedAmbiguous)).toBeInTheDocument();
+  });
+
+  it('should render a persistent recorded badge and disable re-recording once changeId is set', () => {
+    renderPanel(proposal([line()]), { changeId: 'ol_order_change_1' });
+
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.recordedBadge)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction })).toBeDisabled();
+  });
+
+  it('should not render the action at all when write access is not visible', () => {
+    renderPanel(proposal([line()]), {
+      writeAccess: { canWrite: false, demoReadOnly: false, visible: false },
+    });
+
+    expect(
+      screen.queryByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('should show an error toast without leaving the recorded state on a failed attempt', async () => {
+    const user = userEvent.setup();
+    const recordCorrectionProposal = vi.fn().mockRejectedValue(new Error('network error'));
+    renderPanel(proposal([line()]), { recordCorrectionProposal });
+
+    await user.click(screen.getByRole('button', { name: RETURN_PROPOSAL_COPY.recordAction }));
+
+    expect(await screen.findByText(RETURN_PROPOSAL_COPY.recordError)).toBeInTheDocument();
+    expect(screen.queryByText(RETURN_PROPOSAL_COPY.recordedBadge)).not.toBeInTheDocument();
+  });
+});
+
+describe('CorrectionProposalPanel — orphan shell (#3094, PR #3379 review)', () => {
+  it('owns its own section shell + heading, at the #correction anchor', () => {
+    renderPanel(null, { orphan: true });
+
+    const heading = screen.getByText(RETURN_PROPOSAL_COPY.sectionTitle);
+    expect(heading.closest('section')).toHaveAttribute('id', 'correction');
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.orphanAbsent)).toBeInTheDocument();
+  });
+
+  it('never renders the proposal body, even if a proposal is somehow supplied alongside orphan', () => {
+    renderPanel(proposal([line()]), { orphan: true });
+
+    expect(screen.queryByText(RETURN_PROPOSAL_COPY.headlineLabel)).not.toBeInTheDocument();
+    expect(screen.getByText(RETURN_PROPOSAL_COPY.orphanAbsent)).toBeInTheDocument();
   });
 });

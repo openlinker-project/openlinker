@@ -36,8 +36,39 @@ export const RETURN_PROPOSAL_COPY = {
   /** § 5.8's rule, stated in the footer so nobody has to infer it. */
   noAutoIssue:
     'OpenLinker never issues a credit note on its own. It matches the returned lines to the invoice and shows you what it found; issuing is always your decision.',
-  handoff: 'Review and issue on the invoice',
+  /**
+   * Opens the provider's own `InvoiceCorrectionFlow` in a dialog on THIS
+   * page (#3094 amendment) — never navigation. Deliberately not "…on the
+   * invoice": that phrase read as a `/invoices/:id` link (what it replaced)
+   * and is misleading now that the flow opens here, with the operator's
+   * unsaved page state still around them (PR #3379 review).
+   */
+  handoff: 'Review and issue correction',
+  handoffDialogTitle: 'Issue correction',
   reviewCta: 'Confirm these matches',
+  /** While the invoice + connection reads this needs are still in flight. */
+  handoffLoading: 'Loading correction options…',
+  /**
+   * The issuing connection is inactive or no longer has `Invoicing`
+   * enabled — the same "stale" signal `sales-document-panel.tsx` surfaces
+   * on the order page, repeated here so an operator does not click a
+   * button that cannot do anything.
+   */
+  handoffConnectionStale:
+    'The connection that issued this invoice is disabled or no longer set up for invoicing — a correction cannot be issued from here right now.',
+  /**
+   * No `InvoiceCorrectionFlow` is registered for this invoice's platform, or
+   * the invoice/connection could not be resolved at all. Never a fabricated
+   * link — the mockup's own gap legend calls a dead link "drift, not a
+   * design choice". A real, resolved invoice still gets a real route to its
+   * own page (`viewInvoice` below) — that page still exists and still has
+   * the provider region; the dialog removed a shortcut, not the destination
+   * (PR #3379 review).
+   */
+  handoffUnavailable:
+    'No correction flow is available for this invoice from here yet.',
+  /** The fallback route when the on-page dialog cannot help — the invoice's own page. */
+  viewInvoice: 'View the invoice',
 
   /**
    * The action this panel actually performs — recording an ADR-044 change
@@ -116,4 +147,12 @@ export const RETURN_PROPOSAL_COPY = {
    * than none.
    */
   recordWhatCameBack: 'Record what came back',
+
+  /**
+   * `credit-absent-orphan` (#3094). The page never REQUESTS a proposal for an
+   * orphan — the route answers 409 — so this is never a fetched outcome, only
+   * a fixed message keeping the section's place at #correction rather than
+   * leaving it silently absent.
+   */
+  orphanAbsent: 'No credit note is prepared for an unmatched return. Match it to an order first.',
 } as const;

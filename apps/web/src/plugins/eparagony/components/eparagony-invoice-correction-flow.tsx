@@ -9,11 +9,14 @@
  *   - an optional free-text reason;
  *   - per-line new quantity and/or new unit price gross.
  *
- * Near-1:1 port of `SubiektInvoiceCorrectionFlow` / `KsefInvoiceCorrectionFlow`
- * — same line-row model, same generic `useIssueCorrectionMutation` hook, same
- * `InvoiceCorrectionFlowProps` slot contract. The host dialog owns the outer
- * chrome; this component is content-only — call `onClose` to close the
- * dialog.
+ * **The line table is the shared `CorrectionLineGrid` (#3090) whenever the
+ * invoice's content is authoritative** — same as the other three providers
+ * (PR #3379 review: this was the fourth `InvoiceCorrectionFlow` and had been
+ * left on the pre-#3090 manual table). When the content is NOT authoritative
+ * (`useInvoiceContentQuery`), this flow falls back to the original manual
+ * table below — ONE empty row, `+ Add line`, a `CorrectionLinePicker` per
+ * row. The host dialog owns the outer chrome; this component is
+ * content-only — call `onClose` to close the dialog.
  *
  * The explainer copy deliberately says "the provider" / "the national
  * e-invoicing hub" rather than naming KSeF directly — the same restraint
@@ -30,7 +33,9 @@ import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { InvoiceCorrectionFlowProps } from '../../../shared/plugins/plugin.types';
 import {
+  CorrectionLineGrid,
   CorrectionLinePicker,
+  useInvoiceContentQuery,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
 } from '../../../features/invoicing';
@@ -75,10 +80,15 @@ export function EparagonyInvoiceCorrectionFlow({
   invoice,
   onClose,
   onCorrectionIssued,
+  suggestedLines,
 }: InvoiceCorrectionFlowProps): ReactElement {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
+  // Same read `CorrectionLineGrid` uses internally — resolved here too so this
+  // component can decide WHICH table to render (react-query dedupes the
+  // fetch by query key, so this costs no extra request).
+  const { linesAreAuthoritative, query: contentQuery } = useInvoiceContentQuery(invoice.id);
 
   // Per-mount stable idempotency key — prevents duplicate correction issuance
   // on timeout/retry (the eparagony adapter derives a distinct
@@ -90,6 +100,7 @@ export function EparagonyInvoiceCorrectionFlow({
 
   const [reason, setReason] = useState('');
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
+  const [gridLines, setGridLines] = useState<CorrectionLineInput[]>([]);
   const [linesError, setLinesError] = useState<string | null>(null);
 
   function updateLine(index: number, field: keyof LineRow, value: string): void {
@@ -106,24 +117,42 @@ export function EparagonyInvoiceCorrectionFlow({
   }
 
   function handleSubmit(): void {
-    const parsedLines = parseLineRows(lines);
-    if (parsedLines === null) {
-      setLinesError(
-        t(
-          'eparagony.correction.lineDeltaRequired',
-          'Each line must specify a new quantity and/or a new price.',
-        ),
-      );
-      return;
-    }
-    if (parsedLines.length === 0) {
-      setLinesError(
-        t(
-          'eparagony.correction.linesRequired',
-          'At least one line with a line number is required.',
-        ),
-      );
-      return;
+    let parsedLines: CorrectionLineInput[];
+    if (linesAreAuthoritative) {
+      // Every row in the grid already differs from what is on the document,
+      // or it would not be in `gridLines` at all (see CorrectionLineGrid) —
+      // there is nothing to parse, only a "did anything change" check.
+      if (gridLines.length === 0) {
+        setLinesError(
+          t(
+            'eparagony.correction.gridLinesRequired',
+            'Change at least one line’s quantity or price before issuing a correction.',
+          ),
+        );
+        return;
+      }
+      parsedLines = gridLines;
+    } else {
+      const parsed = parseLineRows(lines);
+      if (parsed === null) {
+        setLinesError(
+          t(
+            'eparagony.correction.lineDeltaRequired',
+            'Each line must specify a new quantity and/or a new price.',
+          ),
+        );
+        return;
+      }
+      if (parsed.length === 0) {
+        setLinesError(
+          t(
+            'eparagony.correction.linesRequired',
+            'At least one line with a line number is required.',
+          ),
+        );
+        return;
+      }
+      parsedLines = parsed;
     }
     setLinesError(null);
     mutation.mutate(
@@ -216,84 +245,98 @@ export function EparagonyInvoiceCorrectionFlow({
           {linesError}
         </p>
       ) : null}
-      <div className="eparagony-correction__table-scroll">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>{t('eparagony.correction.col.lp', 'Lp')}</th>
-              <th className="eparagony-correction__col-qty">
-                {t('eparagony.correction.col.newQty', 'New qty')}
-              </th>
-              <th className="eparagony-correction__col-price">
-                {t('eparagony.correction.col.newPrice', 'New gross')}
-              </th>
-              <th aria-label={t('eparagony.correction.col.remove', 'Remove')} />
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((row, i) => (
-              <tr key={i}>
-                <td>
-                  <CorrectionLinePicker
-                    invoiceId={invoice.id}
-                    value={row.originalLineNumber}
-                    onChange={(next) => updateLine(i, 'originalLineNumber', next)}
-                    ariaLabel={`${t('eparagony.correction.lineNum', 'Line number')} ${i + 1}`}
-                    disabled={isSubmitting}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    className="input input--w-qty"
-                    value={row.newQuantity}
-                    onChange={(e) => updateLine(i, 'newQuantity', e.target.value)}
-                    placeholder="—"
-                    min={0}
-                    step="any"
-                    aria-label={`${t('eparagony.correction.newQty', 'New qty, line')} ${i + 1}`}
-                    disabled={isSubmitting}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    className="input input--w-price"
-                    value={row.newUnitPriceGross}
-                    onChange={(e) => updateLine(i, 'newUnitPriceGross', e.target.value)}
-                    placeholder="—"
-                    min={0}
-                    step="any"
-                    aria-label={`${t('eparagony.correction.newPrice', 'New gross, line')} ${i + 1}`}
-                    disabled={isSubmitting}
-                  />
-                </td>
-                <td>
-                  <Button
-                    tone="secondary"
-                    onClick={() => removeLine(i)}
-                    disabled={lines.length === 1 || isSubmitting}
-                    aria-label={`${t('eparagony.correction.removeLine', 'Remove line')} ${i + 1}`}
-                  >
-                    ✕
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
 
-      <Button tone="secondary" onClick={addLine} disabled={isSubmitting}>
-        {t('eparagony.correction.addLine', '+ Add line')}
-      </Button>
+      {contentQuery.isLoading ? (
+        <p className="text-muted">{t('eparagony.correction.loadingLines', 'Loading invoice lines…')}</p>
+      ) : linesAreAuthoritative ? (
+        <CorrectionLineGrid
+          invoiceId={invoice.id}
+          suggestedLines={suggestedLines}
+          disabled={isSubmitting}
+          onChange={setGridLines}
+        />
+      ) : (
+        <>
+          <div className="eparagony-correction__table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>{t('eparagony.correction.col.lp', 'Lp')}</th>
+                  <th className="eparagony-correction__col-qty">
+                    {t('eparagony.correction.col.newQty', 'New qty')}
+                  </th>
+                  <th className="eparagony-correction__col-price">
+                    {t('eparagony.correction.col.newPrice', 'New gross')}
+                  </th>
+                  <th aria-label={t('eparagony.correction.col.remove', 'Remove')} />
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((row, i) => (
+                  <tr key={i}>
+                    <td>
+                      <CorrectionLinePicker
+                        invoiceId={invoice.id}
+                        value={row.originalLineNumber}
+                        onChange={(next) => updateLine(i, 'originalLineNumber', next)}
+                        ariaLabel={`${t('eparagony.correction.lineNum', 'Line number')} ${i + 1}`}
+                        disabled={isSubmitting}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="input input--w-qty"
+                        value={row.newQuantity}
+                        onChange={(e) => updateLine(i, 'newQuantity', e.target.value)}
+                        placeholder="—"
+                        min={0}
+                        step="any"
+                        aria-label={`${t('eparagony.correction.newQty', 'New qty, line')} ${i + 1}`}
+                        disabled={isSubmitting}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="input input--w-price"
+                        value={row.newUnitPriceGross}
+                        onChange={(e) => updateLine(i, 'newUnitPriceGross', e.target.value)}
+                        placeholder="—"
+                        min={0}
+                        step="any"
+                        aria-label={`${t('eparagony.correction.newPrice', 'New gross, line')} ${i + 1}`}
+                        disabled={isSubmitting}
+                      />
+                    </td>
+                    <td>
+                      <Button
+                        tone="secondary"
+                        onClick={() => removeLine(i)}
+                        disabled={lines.length === 1 || isSubmitting}
+                        aria-label={`${t('eparagony.correction.removeLine', 'Remove line')} ${i + 1}`}
+                      >
+                        ✕
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-      <p className="eparagony-correction__note">
-        {t(
-          'eparagony.correction.note',
-          'A correcting document adjusts quantity and/or price per line. The provider submits it on your behalf; OpenLinker tracks the status.',
-        )}
-      </p>
+          <Button tone="secondary" onClick={addLine} disabled={isSubmitting}>
+            {t('eparagony.correction.addLine', '+ Add line')}
+          </Button>
+
+          <p className="eparagony-correction__note">
+            {t(
+              'eparagony.correction.note',
+              'A correcting document adjusts quantity and/or price per line. The provider submits it on your behalf; OpenLinker tracks the status.',
+            )}
+          </p>
+        </>
+      )}
 
       {/* Actions */}
       <div className="wizard__actions">

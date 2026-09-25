@@ -8,9 +8,10 @@
  *   - an optional free-text reason;
  *   - per-line new quantity and/or new unit price gross.
  *
- * The form starts with ONE empty row and an "Add line" affordance for
- * multi-line corrections. Near-1:1 port of `KsefInvoiceCorrectionFlow` — same
- * line-row model, same generic `useIssueCorrectionMutation` hook, same
+ * The line table is the shared `CorrectionLineGrid` (#3090) whenever the
+ * invoice's content is authoritative — see `KsefInvoiceCorrectionFlow`'s
+ * docblock for the full rationale, unchanged here. Near-1:1 port of that
+ * component — same generic `useIssueCorrectionMutation` hook, same
  * `InvoiceCorrectionFlowProps` slot contract. The host dialog owns the outer
  * chrome; this component is content-only — call `onClose` to close the
  * dialog.
@@ -23,7 +24,9 @@ import { Button } from '../../../shared/ui/button';
 import { useToast } from '../../../shared/ui/toast-provider';
 import type { InvoiceCorrectionFlowProps } from '../../../shared/plugins/plugin.types';
 import {
+  CorrectionLineGrid,
   CorrectionLinePicker,
+  useInvoiceContentQuery,
   useIssueCorrectionMutation,
   type CorrectionLineInput,
 } from '../../../features/invoicing';
@@ -68,10 +71,12 @@ export function InfaktInvoiceCorrectionFlow({
   invoice,
   onClose,
   onCorrectionIssued,
+  suggestedLines,
 }: InvoiceCorrectionFlowProps): ReactElement {
   const { t } = useTranslation();
   const { showToast } = useToast();
   const mutation = useIssueCorrectionMutation();
+  const { linesAreAuthoritative, query: contentQuery } = useInvoiceContentQuery(invoice.id);
 
   // Per-mount stable idempotency key — prevents duplicate KOR issuance on timeout/retry.
   const idempotencyKeyRef = useRef(
@@ -80,6 +85,7 @@ export function InfaktInvoiceCorrectionFlow({
 
   const [reason, setReason] = useState('');
   const [lines, setLines] = useState<LineRow[]>([emptyRow()]);
+  const [gridLines, setGridLines] = useState<CorrectionLineInput[]>([]);
   const [linesError, setLinesError] = useState<string | null>(null);
 
   function updateLine(index: number, field: keyof LineRow, value: string): void {
@@ -95,24 +101,39 @@ export function InfaktInvoiceCorrectionFlow({
   }
 
   function handleSubmit(): void {
-    const parsedLines = parseLineRows(lines);
-    if (parsedLines === null) {
-      setLinesError(
-        t(
-          'infakt.correction.lineDeltaRequired',
-          'Each line must specify a new quantity and/or a new price.',
-        ),
-      );
-      return;
-    }
-    if (parsedLines.length === 0) {
-      setLinesError(
-        t(
-          'infakt.correction.linesRequired',
-          'At least one line with a line number is required.',
-        ),
-      );
-      return;
+    let parsedLines: CorrectionLineInput[];
+    if (linesAreAuthoritative) {
+      if (gridLines.length === 0) {
+        setLinesError(
+          t(
+            'infakt.correction.gridLinesRequired',
+            'Change at least one line’s quantity or price before issuing a correction.',
+          ),
+        );
+        return;
+      }
+      parsedLines = gridLines;
+    } else {
+      const parsed = parseLineRows(lines);
+      if (parsed === null) {
+        setLinesError(
+          t(
+            'infakt.correction.lineDeltaRequired',
+            'Each line must specify a new quantity and/or a new price.',
+          ),
+        );
+        return;
+      }
+      if (parsed.length === 0) {
+        setLinesError(
+          t(
+            'infakt.correction.linesRequired',
+            'At least one line with a line number is required.',
+          ),
+        );
+        return;
+      }
+      parsedLines = parsed;
     }
     setLinesError(null);
     mutation.mutate(
@@ -209,84 +230,98 @@ export function InfaktInvoiceCorrectionFlow({
           {linesError}
         </p>
       ) : null}
-      <div className="infakt-correction__table-scroll">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>{t('infakt.correction.col.lp', 'Lp')}</th>
-              <th className="infakt-correction__col-qty">
-                {t('infakt.correction.col.newQty', 'New qty')}
-              </th>
-              <th className="infakt-correction__col-price">
-                {t('infakt.correction.col.newPrice', 'New gross')}
-              </th>
-              <th aria-label={t('infakt.correction.col.remove', 'Remove')} />
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((row, i) => (
-              <tr key={i}>
-                <td>
-                  <CorrectionLinePicker
-                    invoiceId={invoice.id}
-                    value={row.originalLineNumber}
-                    onChange={(next) => updateLine(i, 'originalLineNumber', next)}
-                    ariaLabel={`${t('infakt.correction.lineNum', 'Line number')} ${i + 1}`}
-                    disabled={isSubmitting}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    className="input input--w-qty"
-                    value={row.newQuantity}
-                    onChange={(e) => updateLine(i, 'newQuantity', e.target.value)}
-                    placeholder="—"
-                    min={0}
-                    step="any"
-                    aria-label={`${t('infakt.correction.newQty', 'New qty, line')} ${i + 1}`}
-                    disabled={isSubmitting}
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    className="input input--w-price"
-                    value={row.newUnitPriceGross}
-                    onChange={(e) => updateLine(i, 'newUnitPriceGross', e.target.value)}
-                    placeholder="—"
-                    min={0}
-                    step="any"
-                    aria-label={`${t('infakt.correction.newPrice', 'New gross, line')} ${i + 1}`}
-                    disabled={isSubmitting}
-                  />
-                </td>
-                <td>
-                  <Button
-                    tone="secondary"
-                    onClick={() => removeLine(i)}
-                    disabled={lines.length === 1 || isSubmitting}
-                    aria-label={`${t('infakt.correction.removeLine', 'Remove line')} ${i + 1}`}
-                  >
-                    ✕
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
 
-      <Button tone="secondary" onClick={addLine} disabled={isSubmitting}>
-        {t('infakt.correction.addLine', '+ Add line')}
-      </Button>
+      {contentQuery.isLoading ? (
+        <p className="text-muted">{t('infakt.correction.loadingLines', 'Loading invoice lines…')}</p>
+      ) : linesAreAuthoritative ? (
+        <CorrectionLineGrid
+          invoiceId={invoice.id}
+          suggestedLines={suggestedLines}
+          disabled={isSubmitting}
+          onChange={setGridLines}
+        />
+      ) : (
+        <>
+          <div className="infakt-correction__table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>{t('infakt.correction.col.lp', 'Lp')}</th>
+                  <th className="infakt-correction__col-qty">
+                    {t('infakt.correction.col.newQty', 'New qty')}
+                  </th>
+                  <th className="infakt-correction__col-price">
+                    {t('infakt.correction.col.newPrice', 'New gross')}
+                  </th>
+                  <th aria-label={t('infakt.correction.col.remove', 'Remove')} />
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((row, i) => (
+                  <tr key={i}>
+                    <td>
+                      <CorrectionLinePicker
+                        invoiceId={invoice.id}
+                        value={row.originalLineNumber}
+                        onChange={(next) => updateLine(i, 'originalLineNumber', next)}
+                        ariaLabel={`${t('infakt.correction.lineNum', 'Line number')} ${i + 1}`}
+                        disabled={isSubmitting}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="input input--w-qty"
+                        value={row.newQuantity}
+                        onChange={(e) => updateLine(i, 'newQuantity', e.target.value)}
+                        placeholder="—"
+                        min={0}
+                        step="any"
+                        aria-label={`${t('infakt.correction.newQty', 'New qty, line')} ${i + 1}`}
+                        disabled={isSubmitting}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="input input--w-price"
+                        value={row.newUnitPriceGross}
+                        onChange={(e) => updateLine(i, 'newUnitPriceGross', e.target.value)}
+                        placeholder="—"
+                        min={0}
+                        step="any"
+                        aria-label={`${t('infakt.correction.newPrice', 'New gross, line')} ${i + 1}`}
+                        disabled={isSubmitting}
+                      />
+                    </td>
+                    <td>
+                      <Button
+                        tone="secondary"
+                        onClick={() => removeLine(i)}
+                        disabled={lines.length === 1 || isSubmitting}
+                        aria-label={`${t('infakt.correction.removeLine', 'Remove line')} ${i + 1}`}
+                      >
+                        ✕
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-      <p className="infakt-correction__note">
-        {t(
-          'infakt.correction.note',
-          'A KOR document corrects quantity and/or price per line. inFakt submits it to KSeF; OpenLinker reconciles the status automatically.',
-        )}
-      </p>
+          <Button tone="secondary" onClick={addLine} disabled={isSubmitting}>
+            {t('infakt.correction.addLine', '+ Add line')}
+          </Button>
+
+          <p className="infakt-correction__note">
+            {t(
+              'infakt.correction.note',
+              'A KOR document corrects quantity and/or price per line. inFakt submits it to KSeF; OpenLinker reconciles the status automatically.',
+            )}
+          </p>
+        </>
+      )}
 
       {/* Actions */}
       <div className="wizard__actions">

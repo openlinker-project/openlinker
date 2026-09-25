@@ -351,10 +351,24 @@ export function ReturnDetailPage(): ReactElement {
 
       <ReturnMoneyPanel detail={detail} writeAccess={writeAccess} />
 
-      {/* Not fetched for an ORPHAN — the backend answers 409 (attribute it
-          first), and asking anyway would render an error for a state the page
-          already explains with its own banner. */}
-      {proposalQuery.data !== undefined ? (
+      {/* Section 5 of 8, at the shipped #correction anchor, between Money and
+          "What the channel says" (returns spec § 5.8). Not FETCHED for an
+          ORPHAN — the backend answers 409 (attribute it first) — but the
+          section still renders, with a fixed message rather than silently
+          disappearing: `credit-absent-orphan` keeps the page's section count
+          stable instead of making #correction a dead anchor. The orphan
+          shell is owned by the panel itself (`orphan` prop) — see that
+          component's docblock for why the page must not rebuild it. */}
+      {detail.bucket === 'orphan' ? (
+        <CorrectionProposalPanel
+          returnId={returnId}
+          outcome=""
+          proposal={null}
+          changeId={null}
+          writeAccess={writeAccess}
+          orphan
+        />
+      ) : proposalQuery.data !== undefined ? (
         <CorrectionProposalPanel
           returnId={returnId}
           outcome={proposalQuery.data.outcome}
