@@ -23,11 +23,21 @@
  * and notifying by email — the `forgotPassword` shape — which is tracked on
  * #3156, not done here.
  *
+ * `field` says WHICH column collided, when the raiser knows it (#3456). The
+ * admin-only `POST /users` names it in its 409, as the issue requires: an
+ * admin already sees every account, so naming the field discloses nothing.
+ * The public registration route still reads only the generic message above.
+ *
  * @module libs/core/src/users/domain/exceptions
  */
 
+export type UserIdentifierField = 'username' | 'email';
+
 export class UserAlreadyExistsException extends Error {
-  constructor(public readonly identifier: string) {
+  constructor(
+    public readonly identifier: string,
+    public readonly field: UserIdentifierField | null = null
+  ) {
     super('Username or email is already in use');
     this.name = 'UserAlreadyExistsException';
     Error.captureStackTrace(this, this.constructor);

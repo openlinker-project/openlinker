@@ -22,6 +22,14 @@ export interface JwtPayload {
    * existed reads as no consent (fail closed) rather than crashing.
    */
   analyticsConsent?: boolean;
+  /**
+   * The account must replace an admin-issued one-time password before doing
+   * anything else (#3456). A claim for the same reason as `analyticsConsent`:
+   * `PasswordChangeRequiredGuard` gates every route without a database read.
+   * Optional on the wire: a token minted before the claim existed reads as
+   * `false`, which is correct — no such account existed before this change.
+   */
+  mustChangePassword?: boolean;
 }
 
 /**
@@ -39,4 +47,6 @@ export interface AuthenticatedUser {
    * consent", which is what `AnalyticsConsentGuard`'s truthiness check does.
    */
   analyticsConsent?: boolean;
+  /** Mirrors the claim above (#3456); `JwtStrategy` normalises it to a boolean. */
+  mustChangePassword?: boolean;
 }

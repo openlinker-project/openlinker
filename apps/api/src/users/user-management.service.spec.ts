@@ -3,8 +3,11 @@
  *
  * @module apps/api/src/users
  */
+import * as bcrypt from 'bcryptjs';
+import { Logger } from '@openlinker/shared/logging';
 import { UserManagementService } from './user-management.service';
 import {
+  UserAlreadyExistsException,
   User,
   CannotSelfModifyException,
   LastAdminException,
@@ -61,6 +64,118 @@ describe('UserManagementService', () => {
 
       expect(repo.findAll).toHaveBeenCalledWith({ status: 'active', page: 0, pageSize: 10 });
       expect(result).toEqual(expected);
+    });
+  });
+
+  describe('createUser (#3456)', () => {
+    const input = {
+      displayName: 'Anna Kowalska',
+      username: 'anna',
+      email: null,
+      role: 'packer' as const,
+    };
+
+    beforeEach(() => {
+      repo.findByUsername.mockResolvedValue(null);
+      repo.findByEmail.mockResolvedValue(null);
+      repo.save.mockImplementation((user) =>
+        Promise.resolve(
+          new User(
+            'new-id',
+            user.username,
+            user.email,
+            user.passwordHash,
+            user.role,
+            user.status,
+            new Date(),
+            new Date()
+          )
+        )
+      );
+    });
+
+    it('should create an active account that must change its password', async () => {
+      await service.createUser(input);
+
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          username: 'anna',
+          email: null,
+          role: 'packer',
+          status: 'active',
+          displayName: 'Anna Kowalska',
+          mustChangePassword: true,
+        })
+      );
+    });
+
+    // Never stored in plain text: only a bcrypt hash that verifies against the
+    // password handed back once.
+    it('should store only a hash of the one-time password it returns', async () => {
+      const result = await service.createUser(input);
+
+      const saved = repo.save.mock.calls[0][0];
+      expect(result).toEqual({ id: 'new-id', temporaryPassword: expect.any(String) });
+      expect(result.temporaryPassword.length).toBeGreaterThanOrEqual(16);
+      expect(saved.passwordHash).not.toBe(result.temporaryPassword);
+      expect(await bcrypt.compare(result.temporaryPassword, saved.passwordHash)).toBe(true);
+    });
+
+    it('should generate a different password for every account', async () => {
+      const first = await service.createUser(input);
+      const second = await service.createUser({ ...input, username: 'bartek' });
+
+      expect(first.temporaryPassword).not.toBe(second.temporaryPassword);
+    });
+
+    it('should never write the one-time password to a log', async () => {
+      const logSpy = jest.spyOn(Logger.prototype, 'log');
+      const debugSpy = jest.spyOn(Logger.prototype, 'debug');
+      const warnSpy = jest.spyOn(Logger.prototype, 'warn');
+
+      const { temporaryPassword } = await service.createUser(input);
+
+      const logged = [...logSpy.mock.calls, ...debugSpy.mock.calls, ...warnSpy.mock.calls]
+        .flat()
+        .map((arg) => String(arg));
+      expect(logged.some((line) => line.includes(temporaryPassword))).toBe(false);
+
+      logSpy.mockRestore();
+      debugSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    it('should refuse a taken username, naming the field', async () => {
+      repo.findByUsername.mockResolvedValue(makeUser('existing'));
+
+      await expect(service.createUser(input)).rejects.toMatchObject({
+        constructor: UserAlreadyExistsException,
+        field: 'username',
+      });
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a taken email, naming the field', async () => {
+      repo.findByEmail.mockResolvedValue(makeUser('existing'));
+
+      await expect(
+        service.createUser({ ...input, email: 'anna@example.com' })
+      ).rejects.toMatchObject({ field: 'email' });
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('should not look an email up when none is given', async () => {
+      await service.createUser(input);
+
+      expect(repo.findByEmail).not.toHaveBeenCalled();
+    });
+
+    // A concurrent create can pass both pre-checks; the unique constraint then
+    // answers, and the repository's typed exception surfaces unchanged.
+    it('should let a race lost at the unique constraint surface as a conflict', async () => {
+      repo.save.mockRejectedValue(new UserAlreadyExistsException('anna', 'username'));
+
+      await expect(service.createUser(input)).rejects.toMatchObject({ field: 'username' });
     });
   });
 

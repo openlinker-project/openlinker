@@ -33,6 +33,8 @@ describe('UserRepository', () => {
     analyticsConsent: true,
     packStationLabel: null,
     lastActiveAt: null,
+    displayName: null,
+    mustChangePassword: false,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -161,6 +163,65 @@ describe('UserRepository', () => {
       ).rejects.toThrow(UserAlreadyExistsException);
     });
 
+    // #3456 — the admin create path names the colliding field in its 409.
+    it.each([
+      ['email', 'Key (email)=(alice@example.com) already exists.'],
+      ['username', 'Key (username)=(alice) already exists.'],
+    ] as const)('should report which field collided (%s)', async (field, detail) => {
+      const error = new QueryFailedError('duplicate key value violates unique constraint', [], '');
+      (error as QueryFailedError & { code?: string; detail?: string }).code = '23505';
+      (error as QueryFailedError & { code?: string; detail?: string }).detail = detail;
+      ormRepository.save.mockRejectedValue(error);
+
+      await expect(
+        repository.save({
+          username: 'alice',
+          email: 'alice@example.com',
+          passwordHash: 'hash',
+          role: 'packer',
+          status: 'active',
+        })
+      ).rejects.toMatchObject({ field });
+    });
+
+    it('should persist the display name and the forced-change flag when given (#3456)', async () => {
+      ormRepository.save.mockResolvedValue(
+        buildOrm({ displayName: 'Anna Kowalska', mustChangePassword: true })
+      );
+
+      const saved = await repository.save({
+        username: 'anna',
+        email: null,
+        passwordHash: 'hash',
+        role: 'packer',
+        status: 'active',
+        displayName: 'Anna Kowalska',
+        mustChangePassword: true,
+      });
+
+      expect(ormRepository.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ displayName: 'Anna Kowalska', mustChangePassword: true })
+      );
+      expect(saved.displayName).toBe('Anna Kowalska');
+      expect(saved.mustChangePassword).toBe(true);
+    });
+
+    it('should default the display name to null and the flag to false when omitted (#3456)', async () => {
+      ormRepository.save.mockResolvedValue(buildOrm());
+
+      await repository.save({
+        username: 'alice',
+        email: 'alice@example.com',
+        passwordHash: 'hash',
+        role: 'viewer',
+        status: 'pending',
+      });
+
+      expect(ormRepository.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ displayName: null, mustChangePassword: false })
+      );
+    });
+
     it('should re-throw a QueryFailedError that is not a unique-violation', async () => {
       const error = new QueryFailedError('connection terminated', [], '');
       (error as QueryFailedError & { code?: string }).code = '57P01';
@@ -175,6 +236,30 @@ describe('UserRepository', () => {
           status: 'pending',
         })
       ).rejects.toBe(error);
+    });
+  });
+
+  describe('updatePasswordHash (#3456)', () => {
+    it('should write only the hash when no option is given', async () => {
+      await repository.updatePasswordHash('user-uuid', 'new-hash');
+
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        { id: 'user-uuid' },
+        { passwordHash: 'new-hash' }
+      );
+    });
+
+    // One statement: a crash cannot leave a changed password still flagged.
+    it('should clear the forced-change flag in the same update when asked', async () => {
+      await repository.updatePasswordHash('user-uuid', 'new-hash', {
+        clearMustChangePassword: true,
+      });
+
+      expect(ormRepository.update).toHaveBeenCalledTimes(1);
+      expect(ormRepository.update).toHaveBeenCalledWith(
+        { id: 'user-uuid' },
+        { passwordHash: 'new-hash', mustChangePassword: false }
+      );
     });
   });
 

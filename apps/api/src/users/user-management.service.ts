@@ -13,7 +13,9 @@
  * @module apps/api/src/users
  * @implements {IUserManagementService}
  */
+import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import { Logger } from '@openlinker/shared/logging';
 import {
   CannotSelfModifyException,
@@ -23,11 +25,26 @@ import {
   UserNotDeactivatedException,
   UserNotPendingException,
   UserNotPendingConfirmationException,
+  UserAlreadyExistsException,
   UserRepositoryPort,
   USER_REPOSITORY_TOKEN,
 } from '@openlinker/core/users';
 import type { User, UserRole, UserStatus } from '@openlinker/core/users';
-import type { IUserManagementService } from './user-management.service.interface';
+import type {
+  CreatedUser,
+  CreateUserInput,
+  IUserManagementService,
+} from './user-management.service.interface';
+
+// Same cost `RegistrationService` and `BootstrapAdminService` use.
+const BCRYPT_COST = 10;
+
+/**
+ * Bytes of CSPRNG output behind a temporary password: 12 bytes is 16
+ * base64url characters (96 bits) — far beyond guessing, and short enough to
+ * read aloud or type from a note at a packing bench.
+ */
+const TEMPORARY_PASSWORD_BYTES = 12;
 
 @Injectable()
 export class UserManagementService implements IUserManagementService {
@@ -45,6 +62,35 @@ export class UserManagementService implements IUserManagementService {
     pageSize?: number;
   }): Promise<{ users: User[]; total: number }> {
     return this.userRepository.findAll(opts);
+  }
+
+  async createUser(input: CreateUserInput): Promise<CreatedUser> {
+    // Pre-checks name the colliding field for the admin; the unique
+    // constraints behind `save` stay the guarantee against a concurrent create.
+    if (await this.userRepository.findByUsername(input.username)) {
+      throw new UserAlreadyExistsException(input.username, 'username');
+    }
+    if (input.email !== null && (await this.userRepository.findByEmail(input.email))) {
+      throw new UserAlreadyExistsException(input.email, 'email');
+    }
+
+    const temporaryPassword = randomBytes(TEMPORARY_PASSWORD_BYTES).toString('base64url');
+    const passwordHash = await bcrypt.hash(temporaryPassword, BCRYPT_COST);
+
+    const user = await this.userRepository.save({
+      username: input.username,
+      email: input.email,
+      passwordHash,
+      role: input.role,
+      status: 'active',
+      displayName: input.displayName,
+      mustChangePassword: true,
+    });
+
+    // Never the password, and never the email: an id and a role are enough to
+    // trace the act.
+    this.logger.log(`User created by admin: ${user.id} with role ${user.role}`);
+    return { id: user.id, temporaryPassword };
   }
 
   async approveUser(userId: string, role: UserRole): Promise<void> {
