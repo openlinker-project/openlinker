@@ -39,6 +39,21 @@ export const RETURN_PROPOSAL_COPY = {
   handoff: 'Review and issue on the invoice',
   reviewCta: 'Confirm these matches',
 
+  /**
+   * The action this panel actually performs — recording an ADR-044 change
+   * proposal, never issuing a document. Deliberately not "Issue credit note"
+   * (the mockup's confirm-dialog CTA), which would contradict `noAutoIssue`
+   * printed in the same panel.
+   */
+  recordAction: 'Record for review',
+  recordPending: 'Recording…',
+  recordedBadge: 'Recorded for review',
+  recordSuccess: 'Recorded for review.',
+  recordError: 'Could not record the proposal. Try again.',
+  recordBlockedAmbiguous:
+    'At least one line needs a pick before this can be recorded.',
+  readOnly: 'Your account can see this credit note but cannot record it.',
+
   statusMatched: 'Matched',
   statusAmbiguous: 'Needs your choice',
   statusNoMatch: 'Not included',

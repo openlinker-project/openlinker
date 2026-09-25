@@ -22535,6 +22535,15 @@ legend.analytics-settings-dialog__label {
   margin: 0;
 }
 
+/* Record-for-review action (#3092) — button, its recorded badge and its
+   blocked-reason note are independent parts (#2100), never one ternary. */
+.returns-proposal-panel__action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 /* -------------------------------------------------------------------------
  * Stock-at-risk callout (#2350)
  *

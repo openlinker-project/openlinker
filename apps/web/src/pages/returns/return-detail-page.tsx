@@ -356,8 +356,11 @@ export function ReturnDetailPage(): ReactElement {
           already explains with its own banner. */}
       {proposalQuery.data !== undefined ? (
         <CorrectionProposalPanel
+          returnId={returnId}
           outcome={proposalQuery.data.outcome}
           proposal={proposalQuery.data.proposal}
+          changeId={proposalQuery.data.changeId ?? null}
+          writeAccess={writeAccess}
         />
       ) : null}
 
