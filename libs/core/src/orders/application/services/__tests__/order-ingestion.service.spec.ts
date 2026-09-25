@@ -154,6 +154,7 @@ describe('OrderIngestionService', () => {
       recordEarlyCancellationSignal: jest.fn().mockResolvedValue(undefined),
       markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
       markFulfillmentBlock: jest.fn().mockResolvedValue(undefined),
+      markFulfillmentRoutingSkip: jest.fn().mockResolvedValue(undefined),
       recordAmendment: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
@@ -2514,6 +2515,226 @@ describe('OrderIngestionService', () => {
 
         expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
         expect(fulfillmentRouting.resolve).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    // #3455 — an order the product master already received (a `synced`
+    // destination row) before routing was switched on is not routed again on
+    // re-ingest: it would be packed twice and its stock lowered twice (#3453).
+    describe('an order mirrored before routing was switched on (#3455)', () => {
+      const router = { route: jest.fn() };
+
+      const marketplaceSource = {
+        id: connectionId,
+        status: 'active',
+        enabledCapabilities: ['OrderSource', 'OfferManager'],
+        config: {},
+      };
+
+      const existingWith = (syncStatus: Array<Record<string, unknown>>) =>
+        ({ sourceConnectionId: connectionId, syncStatus }) as unknown as OrderRecord;
+
+      beforeEach(() => {
+        resolveRouterMock.mockResolvedValue(router as never);
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
+        });
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          marketplaceSource,
+        ] as never);
+      });
+
+      it('should not route the order and should follow today\'s path when a destination already has it', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue(
+          existingWith([
+            { destinationConnectionId: 'shop-1', status: 'synced', externalOrderId: '42' },
+          ])
+        );
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(resolveRouterMock).not.toHaveBeenCalled();
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+        expect(
+          jobQueue.enqueue.mock.calls.filter(
+            ([request]) => request.type === 'fulfillment.work.dispatch'
+          )
+        ).toEqual([]);
+      });
+
+      // #3480 x #3455 — the rule is part of the ONE routing answer the hold's
+      // insert-only `atpEffect` is decided from: the product master already has
+      // this order and lowers its own stock, so OpenLinker must not hold it
+      // `published` as well.
+      it('should not hold the order as published when a destination already has it', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue(
+          existingWith([
+            { destinationConnectionId: 'shop-1', status: 'synced', externalOrderId: '42' },
+          ])
+        );
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(reservationService.reserveForOrder).toHaveBeenCalledTimes(1);
+        expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+      });
+
+      it('should still route a new order ingested for the first time', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue(null);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+      });
+
+      // A failed or withheld row means the destination does NOT have the order.
+      it('should still route an order whose destination rows are only failed or pending', async () => {
+        orderRecordService.getOrderRecord.mockResolvedValue(
+          existingWith([
+            { destinationConnectionId: 'shop-1', status: 'failed', error: 'boom' },
+            { destinationConnectionId: 'shop-2', status: 'pending' },
+          ])
+        );
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    // #3455 — why an order was deliberately not routed is persisted on the order,
+    // one field for all three rules, and only while a connection claims A2.
+    describe('the persisted routing skip reason (#3455)', () => {
+      const router = { route: jest.fn() };
+
+      const source = (enabledCapabilities: string[]) => ({
+        id: connectionId,
+        status: 'active',
+        enabledCapabilities,
+        config: {},
+      });
+
+      const markSkip = () =>
+        orderRecordService.markFulfillmentRoutingSkip as jest.MockedFunction<
+          IOrderRecordService['markFulfillmentRoutingSkip']
+        >;
+
+      beforeEach(() => {
+        resolveRouterMock.mockResolvedValue(router as never);
+        routingCommit.route.mockResolvedValue({
+          status: 'routed',
+          decisionId: 'dec-1',
+          works: [{ workId: 'w-1', assignedConnectionId: 'dest-1' }],
+        });
+      });
+
+      it('should record own-shop-order for an order from the operator\'s own shop', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          source(['ProductMaster', 'OrderSource']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markSkip()).toHaveBeenCalledWith('ol_order_int', 'own-shop-order');
+      });
+
+      it('should record mirrored-before-routing for an order a destination already has', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          source(['OrderSource']),
+        ] as never);
+        orderRecordService.getOrderRecord.mockResolvedValue({
+          sourceConnectionId: connectionId,
+          syncStatus: [{ destinationConnectionId: 'shop-1', status: 'synced' }],
+        } as unknown as OrderRecord);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markSkip()).toHaveBeenCalledWith('ol_order_int', 'mirrored-before-routing');
+      });
+
+      it('should record shipped-by-other-system for an order a rule routes to omp_fulfilled', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          source(['OrderSource']),
+        ] as never);
+        fulfillmentRouting.resolve.mockResolvedValue({
+          processorKind: 'omp_fulfilled',
+          processorConnectionId: 'shop-1',
+          source: 'rule',
+          processorAvailable: true,
+        });
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markSkip()).toHaveBeenCalledWith('ol_order_int', 'shipped-by-other-system');
+      });
+
+      // First match wins: "it is from your shop" is the most useful sentence.
+      it('should record own-shop-order when an own-shop order was also mirrored before routing', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          source(['ProductMaster', 'OrderSource']),
+        ] as never);
+        orderRecordService.getOrderRecord.mockResolvedValue({
+          sourceConnectionId: connectionId,
+          syncStatus: [{ destinationConnectionId: 'shop-1', status: 'synced' }],
+        } as unknown as OrderRecord);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markSkip()).toHaveBeenCalledWith('ol_order_int', 'own-shop-order');
+      });
+
+      it('should clear the reason when the order is routed', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          source(['OrderSource']),
+        ] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).toHaveBeenCalledTimes(1);
+        expect(markSkip()).toHaveBeenCalledWith('ol_order_int', null);
+      });
+
+      // With the OMS off nothing is routed, so there is nothing to explain -
+      // a shop order must NOT be labelled "pack it in your shop".
+      it('should record no reason for an own-shop order when no connection claims A2', async () => {
+        connections.list.mockResolvedValue([source(['ProductMaster', 'OrderSource'])] as never);
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markSkip()).toHaveBeenCalledWith('ol_order_int', null);
+      });
+
+      // Fail-open intercept: a transient failure must not erase a true reason.
+      it('should leave the stored reason untouched when the intercept fails', async () => {
+        connections.list.mockRejectedValue(new Error('connections unreachable'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(markSkip()).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      });
+
+      it('should not fail ingestion when persisting the reason throws', async () => {
+        connections.list.mockResolvedValue([
+          routerConnection('conn-oms'),
+          source(['ProductMaster', 'OrderSource']),
+        ] as never);
+        markSkip().mockRejectedValue(new Error('db down'));
+
+        await expect(
+          service.syncOrderFromSource(connectionId, externalOrderId)
+        ).resolves.toBeDefined();
+        expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
       });
     });
 

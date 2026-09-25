@@ -465,6 +465,41 @@ describe('OrderRecordRepository', () => {
     });
   });
 
+  describe('updateFulfillmentRoutingSkipReason (#3455)', () => {
+    function skipCall(): { sql: string; params: unknown[] } {
+      const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
+      return { sql: calls[0][0] as string, params: calls[0][1] as unknown[] };
+    }
+
+    it('should write the reason for the order', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateFulfillmentRoutingSkipReason('order-123', 'mirrored-before-routing');
+
+      expect(skipCall().params).toEqual(['mirrored-before-routing', 'order-123']);
+    });
+
+    // Level-triggered: `null` is what clears a stale reason once the order is
+    // routed or the OMS is switched off.
+    it('should send an explicit null when the reason clears', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateFulfillmentRoutingSkipReason('order-123', null);
+
+      expect(skipCall().params).toEqual([null, 'order-123']);
+    });
+
+    // Every ingestion on an OMS-off install writes null over null; `updatedAt`
+    // is a live filter axis, so the unchanged write must touch no row.
+    it('should guard the write so an unchanged value touches no row', async () => {
+      (ormRepository.query as jest.Mock).mockResolvedValue([]);
+
+      await repository.updateFulfillmentRoutingSkipReason('order-123', null);
+
+      expect(skipCall().sql).toContain('"fulfillmentRoutingSkipReason" IS DISTINCT FROM $1');
+    });
+  });
+
   describe('countOrdersWithOmsAttention (#2352)', () => {
     function countSql(): string {
       const calls = (ormRepository.query as jest.Mock).mock.calls as unknown[][];
@@ -2813,6 +2848,18 @@ describe('OrderRecordRepository', () => {
 
         expectColumnAbsentFromUpsert('fulfillmentBlockReason');
         expectColumnAbsentFromUpsert('fulfillmentBlockDetail');
+      });
+
+      it('should NOT include fulfillmentRoutingSkipReason in the upsert statement (#3455)', async () => {
+        // Same reason as the fulfillmentBlock columns: `persistOrder` runs
+        // BEFORE the intercept, so a round-trip would null the reason the
+        // previous ingestion recorded. `updateFulfillmentRoutingSkipReason` is
+        // the sole writer.
+        mockUpsertReturning(createOrmEntity());
+
+        await repository.upsert(createDomainEntity());
+
+        expectColumnAbsentFromUpsert('fulfillmentRoutingSkipReason');
       });
 
       it('should NOT include any of the six FX columns in the upsert statement', async () => {

@@ -24,6 +24,7 @@ import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
 import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type {
   AuthorityAttentionOutcome,
@@ -576,6 +577,20 @@ export interface OrderRecordRepositoryPort {
   updateFulfillmentBlock(
     internalOrderId: string,
     block: FulfillmentBlock | null
+  ): Promise<void>;
+
+  /**
+   * #3455 — record why the ingestion intercept deliberately did NOT route the
+   * order while the OMS is on, or clear it with `null`. Level-triggered: the
+   * intercept re-decides on every ingestion and writes the answer including
+   * `null`. Outside the ingestion write set, so a re-poll cannot reset it; a
+   * no-change write costs no `updatedAt` bump.
+   *
+   * No-op (no throw) when the order row doesn't exist.
+   */
+  updateFulfillmentRoutingSkipReason(
+    internalOrderId: string,
+    reason: FulfillmentRoutingSkipReason | null
   ): Promise<void>;
 
   /**

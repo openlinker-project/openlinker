@@ -4,9 +4,15 @@
  * Pure rules deciding whether an ingested order may be handed to the fulfilment
  * router at all, before any router is selected.
  *
- * Two rules live here, one per product decision in epic #3460: an order from the
- * operator's own shop (#3487) and an order another system has been told to ship
- * (#3488) both keep today's path.
+ * Three rules live here, one per product decision in epic #3460: an order from
+ * the operator's own shop (#3487), an order another system has been told to
+ * ship (#3488) and an order the product master already received before routing
+ * was switched on (#3455) all keep today's path.
+ *
+ * Each skip is also REPORTED, as one {@link FulfillmentRoutingSkipReason}
+ * persisted on the order: the operator's question is always the same ("why is
+ * this order not on the pack bench?"), so it gets one answer in one place
+ * rather than a column per rule.
  *
  * Product decision (epic #3460): with the OMS on, an order placed in the
  * operator's OWN shop — the product master — is not routed. It stays in that
@@ -26,6 +32,39 @@ import {
   FULFILLMENT_PROCESSOR_KIND,
   type FulfillmentRoutingResolution,
 } from '@openlinker/core/mappings';
+import type { OrderSyncStatus } from './order-sync.types';
+
+/**
+ * Why OpenLinker deliberately did not route an order to the pack bench while
+ * the OMS is on. `order_records.fulfillmentRoutingSkipReason`.
+ *
+ * NOT a hold: a skipped order follows today's path (it is mirrored to the
+ * product master), which is what separates this from `fulfillmentBlockReason`,
+ * whose every value means "held, not mirrored". Recorded only while a
+ * connection claims A2 - with the OMS off nothing is routed, so there is
+ * nothing to explain.
+ */
+export const FulfillmentRoutingSkipReasonValues = [
+  /** The order was placed in the operator's own shop (a product master), #3487. */
+  'own-shop-order',
+  /** An ADR-012 rule routes its delivery method to another system (`omp_fulfilled`), #3488. */
+  'shipped-by-other-system',
+  /** The product master already received it before routing was switched on, #3455. */
+  'mirrored-before-routing',
+] as const;
+
+export type FulfillmentRoutingSkipReason = (typeof FulfillmentRoutingSkipReasonValues)[number];
+
+/**
+ * Read-side coercion. The column is plain `text` with no check constraint, so a
+ * value written by a newer release and then rolled back must read as "no
+ * reason" rather than widening the union at runtime.
+ */
+export const isFulfillmentRoutingSkipReason = (
+  value: unknown
+): value is FulfillmentRoutingSkipReason =>
+  typeof value === 'string' &&
+  (FulfillmentRoutingSkipReasonValues as readonly string[]).includes(value);
 
 /** The capability that marks a connection as the operator's own shop. */
 const OWN_SHOP_CAPABILITY: CoreCapability = 'ProductMaster';
@@ -91,4 +130,24 @@ export function isOrderShippedElsewhere(
     resolution?.source === 'rule' &&
     resolution.processorKind === FULFILLMENT_PROCESSOR_KIND.OmpFulfilled
   );
+}
+
+/**
+ * Whether the order was already created in a destination before routing was
+ * switched on (#3455): at least one destination `syncStatus` row is `synced`.
+ *
+ * A routed order is never mirrored - the intercept holds it and no destination
+ * row is written - so a `synced` row can only come from the path the order took
+ * before routing applied to it. Routing it now would put a parcel the product
+ * master already has (and may already have packed) on the pack bench as well,
+ * and lower its stock a second time through #3453's decrement.
+ *
+ * Only `synced` counts, the same reading #2588's `alreadyProvisioned` makes:
+ * `pending` (a hold withheld provisioning) and `failed` mean the destination
+ * does NOT have the order, so routing it is the right answer.
+ */
+export function isOrderMirroredBeforeRouting(
+  syncStatus: readonly Pick<OrderSyncStatus, 'status'>[] | null | undefined
+): boolean {
+  return syncStatus?.some((row) => row.status === 'synced') ?? false;
 }

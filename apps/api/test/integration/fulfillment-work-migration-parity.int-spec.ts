@@ -277,6 +277,25 @@ describe('Fulfillment Work — migration/entity schema parity', () => {
     }
   });
 
+  it('should build order_records.fulfillmentRoutingSkipReason identically from the migration (#3455)', async () => {
+    const sql = `
+      SELECT column_name, data_type, is_nullable
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'order_records'
+        AND column_name = 'fulfillmentRoutingSkipReason'`;
+
+    const fromMigration = (await migrated.query(sql)) as unknown[];
+    const synchronized = (await harness.getDataSource().query(sql)) as unknown[];
+
+    // Non-vacuity: two empty result sets would compare equal and assert nothing.
+    expect(fromMigration).toHaveLength(1);
+    expect(fromMigration).toEqual(synchronized);
+    // Nullable `text` with no backfill: an order ingested before the column
+    // existed has no recorded answer until its next ingestion re-decides it.
+    expect(fromMigration[0]).toMatchObject({ is_nullable: 'YES', data_type: 'text' });
+  });
+
   it('should agree on every column, type, nullability and default', async () => {
     const [synchronized, fromMigration] = await bothSides(COLUMNS_SQL);
     expect(fromMigration).toEqual(synchronized);

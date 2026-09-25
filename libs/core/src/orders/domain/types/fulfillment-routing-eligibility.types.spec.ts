@@ -1,8 +1,10 @@
 /**
- * Fulfilment Routing Eligibility — spec (#3487, #3488)
+ * Fulfilment Routing Eligibility — spec (#3487, #3488, #3455)
  */
 import {
+  isFulfillmentRoutingSkipReason,
   isOrderFromOwnProductMaster,
+  isOrderMirroredBeforeRouting,
   isOrderShippedElsewhere,
 } from './fulfillment-routing-eligibility.types';
 
@@ -60,5 +62,42 @@ describe('isOrderShippedElsewhere', () => {
   // A failed routing read is not a positive answer: the order stays routed.
   it('should report false when the routing could not be resolved', () => {
     expect(isOrderShippedElsewhere(null)).toBe(false);
+  });
+});
+
+describe('isOrderMirroredBeforeRouting', () => {
+  it('should report true when any destination row is synced', () => {
+    expect(
+      isOrderMirroredBeforeRouting([{ status: 'failed' }, { status: 'synced' }])
+    ).toBe(true);
+  });
+
+  // `pending` (a hold withheld provisioning) and `failed` mean the destination
+  // does NOT have the order, so it may still be routed.
+  it('should report false when no destination row is synced', () => {
+    expect(isOrderMirroredBeforeRouting([{ status: 'failed' }, { status: 'pending' }])).toBe(
+      false
+    );
+  });
+
+  it('should report false for a first ingestion with no record yet', () => {
+    expect(isOrderMirroredBeforeRouting(undefined)).toBe(false);
+    expect(isOrderMirroredBeforeRouting(null)).toBe(false);
+    expect(isOrderMirroredBeforeRouting([])).toBe(false);
+  });
+});
+
+describe('isFulfillmentRoutingSkipReason', () => {
+  it('should accept every declared reason', () => {
+    for (const reason of ['own-shop-order', 'shipped-by-other-system', 'mirrored-before-routing']) {
+      expect(isFulfillmentRoutingSkipReason(reason)).toBe(true);
+    }
+  });
+
+  // A value written by a newer release must read as "no reason", not widen the union.
+  it('should reject an unrecognised or non-string value', () => {
+    expect(isFulfillmentRoutingSkipReason('routed-by-mars')).toBe(false);
+    expect(isFulfillmentRoutingSkipReason(null)).toBe(false);
+    expect(isFulfillmentRoutingSkipReason(3)).toBe(false);
   });
 });

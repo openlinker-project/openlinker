@@ -18,6 +18,8 @@ import {
   SlaState,
   FulfillmentRollupState,
   BuyerTaxId,
+  FulfillmentRoutingSkipReasonValues,
+  type FulfillmentRoutingSkipReason,
 } from '@openlinker/core/orders';
 import {
   OrderLifecyclePhaseValues,
@@ -338,6 +340,19 @@ export class OrderRecordResponseDto {
       'IOrderHoldService.getOpenHold against order_holds (the epic\'s L4 exit criterion).',
   })
   activeHoldReason!: HoldReason | null;
+
+  @ApiPropertyOptional({
+    enum: FulfillmentRoutingSkipReasonValues,
+    nullable: true,
+    description:
+      'Why OpenLinker deliberately did NOT route this order to the pack bench while the OMS is on ' +
+      '(#3455): `own-shop-order` (placed in the operator\'s own shop), `shipped-by-other-system` (a ' +
+      'fulfilment routing rule sends its delivery method to another system), `mirrored-before-routing` ' +
+      '(the product master already had it before routing was switched on). null when the order was ' +
+      'routed, has not been decided yet, or no connection claims sourcing (the OMS is off). NOT a hold: ' +
+      'a skipped order follows today\'s path and is mirrored to its destinations as usual.',
+  })
+  fulfillmentRoutingSkipReason!: FulfillmentRoutingSkipReason | null;
 
   @ApiPropertyOptional({
     type: OrderHoldDto,
