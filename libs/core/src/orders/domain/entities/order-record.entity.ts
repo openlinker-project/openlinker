@@ -20,6 +20,7 @@ import type { OrderDispatchWindow, OrderItem, PriceTaxTreatment } from '../types
 import type { OrderAmendmentChange } from '../order-amendment-diff';
 import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { AuthorityAttentionEntry } from '@openlinker/core/fulfillment-authority';
+import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
 import type {
   SalesDocumentGateBlockReason,
   SalesDocumentUnresolvedReason,
@@ -414,7 +415,19 @@ export class OrderRecord {
      * before the intercept on every ingestion. Appended LAST: positional
      * constructor.
      */
-    public readonly fulfillmentRoutingSkipReason: FulfillmentRoutingSkipReason | null = null
+    public readonly fulfillmentRoutingSkipReason: FulfillmentRoutingSkipReason | null = null,
+    /**
+     * Why fulfilment routing HOLDS this order with no work object explaining it
+     * (#2396), or `null`. #3485 made it readable: with the OMS on, a refused,
+     * address-less or failed route waits in OpenLinker, and the operator needs
+     * to see why. Read from `fulfillmentBlockReason` / `fulfillmentBlockDetail`;
+     * an unrecognised reason reads as `null`.
+     *
+     * NOT round-tripped through `toOrm` — sole writer `updateFulfillmentBlock`,
+     * for the `salesDocumentBlockReason` reason. Appended LAST: positional
+     * constructor.
+     */
+    public readonly fulfillmentBlock: FulfillmentBlock | null = null
   ) {}
 
   /**

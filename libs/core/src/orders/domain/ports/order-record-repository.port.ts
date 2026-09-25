@@ -23,7 +23,7 @@ import type {
 import type { OrderSlaSummary } from '../types/order-sla.types';
 import type { FulfillmentRollupState } from '../types/order-fulfillment.types';
 import type { SyncAttempt } from '../types/order-sync.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
 import type { FulfillmentRoutingSkipReason } from '../types/fulfillment-routing-eligibility.types';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type {
@@ -578,6 +578,22 @@ export interface OrderRecordRepositoryPort {
     internalOrderId: string,
     block: FulfillmentBlock | null
   ): Promise<void>;
+
+  /**
+   * #3485 — one keyset page of internal order ids whose fulfilment block is one
+   * of `reasons`, ascending by `internalOrderId`, starting strictly after
+   * `afterOrderId` (`null` = from the start).
+   *
+   * Keyset, never offset: the set shrinks as orders are re-routed, and an offset
+   * over a shrinking set steps over rows. And keyset, never oldest-`updatedAt`:
+   * a re-refused order rewrites an identical block, the `IS DISTINCT FROM` guard
+   * (correctly) leaves `updatedAt` alone, so an oldest-first page would re-read
+   * the same head for ever and starve everything behind it.
+   */
+  listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<string[]>;
 
   /**
    * #3455 — record why the ingestion intercept deliberately did NOT route the

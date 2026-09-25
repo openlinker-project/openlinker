@@ -57,7 +57,11 @@ import {
   netSalesLineNetAmountSql,
   netSalesOrderNetEligibleSql,
 } from '../../../domain/types/net-sales-tax-rate.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import {
+  isFulfillmentBlockReason,
+  type FulfillmentBlock,
+  type FulfillmentBlockReason,
+} from '@openlinker/core/fulfillment';
 import type { SalesDocumentBlock } from '@openlinker/core/sales-documents';
 import type { FxRestatementRemainingSummary } from '../../../domain/types/order-fx-restatement.types';
 import {
@@ -2184,6 +2188,32 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
   }
 
   /**
+   * #3485 — keyset page for `fulfillment.work.rerouteSweep`. Served by the
+   * primary key at v1 volumes; see the port for why it is keyset and why it is
+   * keyed on `internalOrderId` rather than `updatedAt`.
+   */
+  async listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<string[]> {
+    if (reasons.length === 0 || page.limit <= 0) return [];
+
+    const query = this.repository
+      .createQueryBuilder('rec')
+      .select('rec.internalOrderId', 'internalOrderId')
+      .where('rec.fulfillmentBlockReason IN (:...reasons)', { reasons: [...reasons] })
+      .orderBy('rec.internalOrderId', 'ASC')
+      .limit(page.limit);
+
+    if (page.afterOrderId !== null) {
+      query.andWhere('rec.internalOrderId > :after', { after: page.afterOrderId });
+    }
+
+    const rows = await query.getRawMany<{ internalOrderId: string }>();
+    return rows.map((row) => row.internalOrderId);
+  }
+
+  /**
    * #3455 — the sole writer of `fulfillmentRoutingSkipReason`, level-triggered by
    * the ingestion intercept: it stores the answer INCLUDING `null`, which is what
    * clears a stale reason once the order is routed or the OMS is switched off.
@@ -3058,6 +3088,12 @@ export class OrderRecordRepository implements OrderRecordRepositoryPort {
       // "no recorded reason" rather than reaching the UI as an unknown literal.
       isFulfillmentRoutingSkipReason(entity.fulfillmentRoutingSkipReason)
         ? entity.fulfillmentRoutingSkipReason
+        : null,
+      // #3485 - coerced like the skip reason: a reason this build does not
+      // recognise (written by a newer release, then rolled back) reads as no
+      // block at all, never as an unknown literal.
+      isFulfillmentBlockReason(entity.fulfillmentBlockReason)
+        ? { reason: entity.fulfillmentBlockReason, detail: entity.fulfillmentBlockDetail ?? null }
         : null
     );
   }

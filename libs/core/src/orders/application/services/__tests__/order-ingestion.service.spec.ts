@@ -155,6 +155,8 @@ describe('OrderIngestionService', () => {
       markSalesDocumentBlock: jest.fn().mockResolvedValue(undefined),
       markFulfillmentBlock: jest.fn().mockResolvedValue(undefined),
       markFulfillmentRoutingSkip: jest.fn().mockResolvedValue(undefined),
+      markOmsAttention: jest.fn().mockResolvedValue(undefined),
+      listOrderIdsByFulfillmentBlockReasons: jest.fn().mockResolvedValue([]),
       recordAmendment: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IOrderRecordService>;
 
@@ -2815,7 +2817,11 @@ describe('OrderIngestionService', () => {
           expect(connections.list).toHaveBeenCalledTimes(1);
         });
 
-        it('should keep the dispatch-routing stamp when the order carries no shipping address', async () => {
+        // #3485: an address-less order is HELD in OpenLinker rather than mirrored
+        // to a product master, so its units are OpenLinker's to promise from the
+        // start. The stamp is insert-only, so the later route keeps it and the
+        // sale decrement consumes it — the units are still counted once.
+        it('should hold the units as published when the order carries no shipping address', async () => {
           orderSource.getOrder.mockResolvedValue({
             ...interceptIncoming,
             shippingAddress: undefined,
@@ -2823,7 +2829,7 @@ describe('OrderIngestionService', () => {
 
           await service.syncOrderFromSource(connectionId, externalOrderId);
 
-          expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('diagnostic');
+          expect(reservationService.reserveForOrder.mock.calls[0][0].atpEffect).toBe('published');
           expect(routingCommit.route).not.toHaveBeenCalled();
         });
       });
@@ -3018,6 +3024,16 @@ describe('OrderIngestionService', () => {
           { status: 'skipped', reason: 'already-live-elsewhere' },
           'routing-already-live-elsewhere',
         ],
+        // #3485 — a refused plan is held too: with the OMS as the router the
+        // order stays in OpenLinker instead of being created in every master.
+        [
+          { status: 'refused', decisionId: 'dec-1', reason: 'plan-not-conserving' },
+          'routing-refused',
+        ],
+        [
+          { status: 'refused', decisionId: 'dec-1', reason: 'plan-carries-unfulfillable' },
+          'routing-refused',
+        ],
       ];
 
       it.each(heldOutcomes)('holds and reports %j as %s', async (outcome, reason) => {
@@ -3033,7 +3049,6 @@ describe('OrderIngestionService', () => {
       });
 
       const passThroughOutcomes: [RoutingCommitOutcome][] = [
-        [{ status: 'refused', decisionId: 'dec-1', reason: 'plan-not-conserving' }],
         [{ status: 'skipped', reason: 'order-cancelled' }],
       ];
 
@@ -3042,9 +3057,7 @@ describe('OrderIngestionService', () => {
 
         await service.syncOrderFromSource(connectionId, externalOrderId);
 
-        // `refused` is terminal and creates no work, so the order must keep its
-        // ordinary destination path rather than being stranded behind a hold
-        // nothing would ever clear.
+        // A cancelled order needs no hold; today's path already handles it.
         expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
         for (const [, block] of markBlock().mock.calls) {
           expect(block).toBeNull();
@@ -3082,14 +3095,118 @@ describe('OrderIngestionService', () => {
         expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
       });
 
-      it('degrades to today\'s path when routing throws', async () => {
-        // Fail OPEN. Holding on an unknown would withhold the mirror
-        // indefinitely for a paid order.
+      // #3485 — the router was already selected, so the claim is known to be
+      // on: following today's path would create the order in every master.
+      it('holds the order as routing-failed when routing throws after the router was selected', async () => {
         routingCommit.route.mockRejectedValue(new Error('routing store unreachable'));
 
         await service.syncOrderFromSource(connectionId, externalOrderId);
 
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        expect(markBlock()).toHaveBeenCalledWith('ol_order_int', {
+          reason: 'routing-failed',
+          detail: 'Error',
+        });
+      });
+
+      // Before a router is selected OpenLinker cannot tell whether the claim is
+      // on, so the old fail-open stands.
+      it('degrades to today\'s path when the routing target cannot be resolved', async () => {
+        connections.list.mockRejectedValue(new Error('connections unreachable'));
+
+        await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).not.toHaveBeenCalled();
         expect(orderSyncService.syncOrder).toHaveBeenCalledTimes(1);
+      });
+
+      // #3485 — no shipping address: nothing to route to, and mirroring would
+      // put the order in every product master.
+      it('holds an order with no shipping address instead of mirroring it', async () => {
+        orderSource.getOrder.mockResolvedValue({
+          ...interceptIncoming,
+          shippingAddress: undefined,
+        });
+
+        const results = await service.syncOrderFromSource(connectionId, externalOrderId);
+
+        expect(routingCommit.route).not.toHaveBeenCalled();
+        expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        expect(orderRecordService.updateSyncStatus).not.toHaveBeenCalled();
+        expect(results).toEqual([]);
+        expect(markBlock()).toHaveBeenCalledWith('ol_order_int', {
+          reason: 'routing-no-shipping-address',
+          detail: null,
+        });
+      });
+
+      describe('the line-unfulfillable attention (#3485)', () => {
+        const markAttention = () =>
+          orderRecordService.markOmsAttention as unknown as jest.Mock;
+
+        it('raises line-unfulfillable when the plan carried unfulfillable lines', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'refused',
+            decisionId: 'dec-1',
+            reason: 'plan-carries-unfulfillable',
+          });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(markAttention()).toHaveBeenCalledWith('ol_order_int', 'routing', {
+            kind: 'blocked',
+            reason: 'line-unfulfillable',
+          });
+        });
+
+        it('clears the attention once the order is routed', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'routed',
+            decisionId: 'dec-2',
+            works: [{ workId: 'w-2', assignedConnectionId: 'dest-1' }],
+          });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(markAttention()).toHaveBeenCalledWith('ol_order_int', 'routing', {
+            kind: 'none',
+          });
+        });
+
+        it('leaves the attention untouched when routing is in doubt', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'in-doubt',
+            decisionId: 'dec-3',
+            cause: 'timeout',
+          });
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(markAttention()).not.toHaveBeenCalled();
+        });
+
+        // An install that routes nothing pays no extra statement.
+        it('writes no attention when no router is wired', async () => {
+          resolveRouterMock.mockResolvedValue(null);
+
+          await service.syncOrderFromSource(connectionId, externalOrderId);
+
+          expect(markAttention()).not.toHaveBeenCalled();
+        });
+
+        it('does not fail ingestion or drop the hold when writing the attention throws', async () => {
+          routingCommit.route.mockResolvedValue({
+            status: 'refused',
+            decisionId: 'dec-1',
+            reason: 'plan-carries-unfulfillable',
+          });
+          markAttention().mockRejectedValue(new Error('order_records unreachable'));
+
+          await expect(
+            service.syncOrderFromSource(connectionId, externalOrderId)
+          ).resolves.toEqual([]);
+          expect(orderSyncService.syncOrder).not.toHaveBeenCalled();
+        });
       });
 
       it('does not fail ingestion when persisting the block reason throws', async () => {
@@ -3100,7 +3217,7 @@ describe('OrderIngestionService', () => {
         // transient DB blip while recording a routing reason would fail the
         // whole order sync. The outcome is re-decided next transition, so a
         // lost write self-heals; a lost ORDER does not.
-        routingCommit.route.mockResolvedValue({ status: 'refused', decisionId: 'dec-1', reason: 'plan-not-conserving' });
+        routingCommit.route.mockResolvedValue({ status: 'skipped', reason: 'order-cancelled' });
         markBlock().mockRejectedValue(new Error('order_records unreachable'));
 
         await expect(

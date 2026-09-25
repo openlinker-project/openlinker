@@ -65,6 +65,7 @@ import { FulfillmentWorkDispatchHandler } from './fulfillment-work-dispatch.hand
 import { FulfillmentWorkAutoDispatchHandler } from './fulfillment-work-auto-dispatch.handler';
 import { FulfillmentWorkRouteHandler } from './fulfillment-work-route.handler';
 import { FulfillmentWorkRelaySweepHandler } from './fulfillment-work-relay-sweep.handler';
+import { FulfillmentWorkRerouteSweepHandler } from './fulfillment-work-reroute-sweep.handler';
 import { FulfillmentWorkTimeoutSweepHandler } from './fulfillment-work-timeout-sweep.handler';
 import { InventorySaleDecrementHandler } from './inventory-sale-decrement.handler';
 
@@ -129,7 +130,8 @@ export class HandlerRegistrationService implements OnModuleInit {
     private readonly fulfillmentWorkRouteHandler: FulfillmentWorkRouteHandler,
     private readonly fulfillmentWorkTimeoutSweepHandler: FulfillmentWorkTimeoutSweepHandler,
     private readonly fulfillmentWorkRelaySweepHandler: FulfillmentWorkRelaySweepHandler,
-    private readonly inventorySaleDecrementHandler: InventorySaleDecrementHandler
+    private readonly inventorySaleDecrementHandler: InventorySaleDecrementHandler,
+    private readonly fulfillmentWorkRerouteSweepHandler: FulfillmentWorkRerouteSweepHandler
   ) {}
 
   onModuleInit(): void {
@@ -152,7 +154,9 @@ export class HandlerRegistrationService implements OnModuleInit {
     // alone: it raised the `fan-out` lane's caps instead of moving a job out of
     // it. `fulfillment.work.timeoutSweep` joined `bulk` (#2712) and
     // `fulfillment.work.relaySweep` beside it (#2728) — both cron-paced
-    // reconcilers over work that is already stalled by definition.
+    // reconcilers over work that is already stalled by definition — and
+    // `fulfillment.work.rerouteSweep` (#3485) is a third, over orders held
+    // because routing could not place them.
     // `fulfillment.work.autoDispatch` (#3340, closing #2729) and
     // `inventory.saleDecrement` (#3453) are the newest `realtime` members —
     // both NEW job types. The tripwire in `handler-registration.service.spec.ts`
@@ -634,6 +638,19 @@ export class HandlerRegistrationService implements OnModuleInit {
       'inventory.saleDecrement',
       this.inventorySaleDecrementHandler,
       'realtime'
+    );
+
+    // Reroute sweep for orders held because routing could not place them (#3485).
+    //
+    // 'bulk', like its timeout- and relay-sweep siblings: a cron-paced catch-up
+    // over orders that have ALREADY been waiting (for stock, typically), so a
+    // lane slot's delay adds minutes to a condition measured in hours. The heavy
+    // part — the route itself — runs in the `fulfillment.work.route` children it
+    // enqueues, on 'realtime', where routing always runs.
+    this.handlerRegistry.register(
+      'fulfillment.work.rerouteSweep',
+      this.fulfillmentWorkRerouteSweepHandler,
+      'bulk'
     );
 
     // Data Coverage currency-restatement driver (#2468). 'bulk' lane: an
