@@ -270,6 +270,14 @@ export const JobTypeValues = [
   // nil-UUID system connection id, like its timeout-sweep sibling.
   'fulfillment.work.relaySweep',
 
+  // The reroute sweep (#3485, epic #3460). With the OMS on, an order the router
+  // refused (a line out of stock) or failed to route is HELD in OpenLinker
+  // rather than created in every product master; this pass re-enters routing
+  // for those orders by enqueueing `fulfillment.work.route`, so they route once
+  // stock arrives. Global scope under the nil-UUID system connection id, like
+  // its timeout- and relay-sweep siblings.
+  'fulfillment.work.rerouteSweep',
+
   // Data Coverage currency-restatement driver (#2468, epic #2452 Phase 5).
   // Carries the run's scope + cursor in its payload; the connection it is
   // filed under is the scope's own connection when the operator narrowed to

@@ -191,4 +191,82 @@ describe('OrderRecord fulfilment block (integration, #2396)', () => {
     await orderRecordService.markFulfillmentRoutingSkip(ORDER_ID, null);
     expect((await orderRecordService.getOrderRecord(ORDER_ID))?.fulfillmentRoutingSkipReason).toBeNull();
   });
+
+  // #3485 — the block is READ now: an order held in OpenLinker has to say why.
+  it('reads the fulfilment block back onto the domain record (#3485)', async () => {
+    await seedOrder();
+
+    await orderRecordService.markFulfillmentBlock(ORDER_ID, {
+      reason: 'routing-refused',
+      detail: 'plan-carries-unfulfillable',
+    });
+
+    expect((await orderRecordService.getOrderRecord(ORDER_ID))?.fulfillmentBlock).toEqual({
+      reason: 'routing-refused',
+      detail: 'plan-carries-unfulfillable',
+    });
+
+    await orderRecordService.markFulfillmentBlock(ORDER_ID, null);
+    expect((await orderRecordService.getOrderRecord(ORDER_ID))?.fulfillmentBlock).toBeNull();
+  });
+
+  // A value written by a newer release and then rolled back must read as "no
+  // block", never reach the API as an unknown literal.
+  it('reads an unrecognised persisted reason as no block (#3485)', async () => {
+    await seedOrder();
+    await recordRepo().update(
+      { internalOrderId: ORDER_ID },
+      { fulfillmentBlockReason: 'routing-from-the-future', fulfillmentBlockDetail: 'x' }
+    );
+
+    expect((await orderRecordService.getOrderRecord(ORDER_ID))?.fulfillmentBlock).toBeNull();
+  });
+
+  describe('listOrderIdsByFulfillmentBlockReasons (#3485)', () => {
+    async function seedHeld(ids: readonly string[], reason: 'routing-refused' | 'routing-failed' | 'routing-no-shipping-address'): Promise<void> {
+      const source = await createTestConnection(harness.getDataSource(), {
+        platformType: 'allegro',
+        name: `Allegro source ${reason}`,
+        adapterKey: 'allegro.test.unused',
+      });
+      for (const id of ids) {
+        await orderRecordService.persistOrder(makeOrder({ id, orderNumber: id }), source.id, `evt-${id}`);
+        await orderRecordService.markFulfillmentBlock(id, { reason, detail: null });
+      }
+    }
+
+    it('returns only the requested reasons, ascending by order id', async () => {
+      await seedHeld(['ol_order_c', 'ol_order_a'], 'routing-refused');
+      await seedHeld(['ol_order_b'], 'routing-failed');
+      await seedHeld(['ol_order_d'], 'routing-no-shipping-address');
+
+      const ids = await orderRecordService.listOrderIdsByFulfillmentBlockReasons(
+        ['routing-refused', 'routing-failed'],
+        { afterOrderId: null, limit: 10 }
+      );
+
+      expect(ids).toEqual(['ol_order_a', 'ol_order_b', 'ol_order_c']);
+    });
+
+    // Keyset: a page starts strictly after the cursor, so an order re-routed
+    // (and therefore removed) between two pages cannot make the next page skip
+    // one that is still held — the offset failure mode.
+    it('pages strictly after the cursor and skips nothing when a row leaves the set', async () => {
+      await seedHeld(['ol_order_a', 'ol_order_b', 'ol_order_c'], 'routing-refused');
+
+      const first = await orderRecordService.listOrderIdsByFulfillmentBlockReasons(
+        ['routing-refused'],
+        { afterOrderId: null, limit: 2 }
+      );
+      expect(first).toEqual(['ol_order_a', 'ol_order_b']);
+
+      await orderRecordService.markFulfillmentBlock('ol_order_a', null);
+
+      const second = await orderRecordService.listOrderIdsByFulfillmentBlockReasons(
+        ['routing-refused'],
+        { afterOrderId: 'ol_order_b', limit: 2 }
+      );
+      expect(second).toEqual(['ol_order_c']);
+    });
+  });
 });

@@ -32,7 +32,7 @@ import type {
   SalesDocumentMatchedRuleWrite,
 } from '../../domain/types/order-record.types';
 import type { FulfillmentRollupState } from '../../domain/types/order-fulfillment.types';
-import type { FulfillmentBlock } from '@openlinker/core/fulfillment';
+import type { FulfillmentBlock, FulfillmentBlockReason } from '@openlinker/core/fulfillment';
 import type { FulfillmentRoutingSkipReason } from '../../domain/types/fulfillment-routing-eligibility.types';
 import type {
   AuthorityAttentionOutcome,
@@ -915,6 +915,14 @@ export class OrderRecordService implements IOrderRecordService {
     block: FulfillmentBlock | null
   ): Promise<void> {
     await this.repository.updateFulfillmentBlock(internalOrderId, block);
+  }
+
+  /** #3485 — thin read for the reroute sweep. */
+  async listOrderIdsByFulfillmentBlockReasons(
+    reasons: readonly FulfillmentBlockReason[],
+    page: { readonly afterOrderId: string | null; readonly limit: number }
+  ): Promise<string[]> {
+    return this.repository.listOrderIdsByFulfillmentBlockReasons(reasons, page);
   }
 
   /**
