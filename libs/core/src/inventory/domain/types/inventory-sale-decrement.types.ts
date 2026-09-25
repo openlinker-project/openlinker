@@ -29,10 +29,8 @@
  *
  * @module libs/core/src/inventory/domain/types
  */
-import {
-  LEGACY_SOURCE_CONNECTION_ID,
-  type InventoryOwnerPosition,
-} from './inventory.types';
+import type { InventoryOwnerPosition } from './inventory.types';
+import { resolveInventoryPositionOwner } from './inventory-owner.types';
 
 /**
  * Where one line's decrement stands.
@@ -187,73 +185,35 @@ export function resolveSaleDecrementOwner(
     readonly locationId: string | null;
   }
 ): SaleDecrementOwnerResolution {
-  const atLocation = positions.filter(
-    (position) =>
-      position.productId === input.productId &&
-      (input.locationId === null ||
-        position.locationId === null ||
-        position.locationId === input.locationId)
-  );
+  // #3486 — the rule itself is shared with the returns restock; only the
+  // operator-facing sentence is the sale decrement's own.
+  const resolved = resolveInventoryPositionOwner(positions, input);
+  if (resolved.kind === 'owner') return resolved;
 
-  const variantRows =
-    input.productVariantId === null
-      ? []
-      : atLocation.filter((position) => position.productVariantId === input.productVariantId);
-  const candidates =
-    variantRows.length > 0
-      ? variantRows
-      : atLocation.filter((position) => position.productVariantId === null);
-
-  if (candidates.length === 0) {
-    return {
-      kind: 'blocked',
-      reason: 'no-position',
-      detail: 'OpenLinker has no live stock position for this product at the packing location',
-    };
+  switch (resolved.reason) {
+    case 'no-position':
+      return {
+        kind: 'blocked',
+        reason: 'no-position',
+        detail: 'OpenLinker has no live stock position for this product at the packing location',
+      };
+    case 'unattributed-owner':
+      return {
+        kind: 'blocked',
+        reason: 'unattributed-owner',
+        detail:
+          'the stock for this product has no known owning connection yet; ' +
+          'run a stock sync from the product master first',
+      };
+    case 'ambiguous-owner':
+      return {
+        kind: 'blocked',
+        reason: 'ambiguous-owner',
+        detail:
+          `${String(resolved.ownerCount)} product masters hold stock for this product; ` +
+          'OpenLinker will not guess which one sold it',
+      };
   }
-
-  const unattributed = candidates.filter(
-    (position) =>
-      position.sourceConnectionId === null ||
-      position.sourceConnectionId === LEGACY_SOURCE_CONNECTION_ID
-  );
-  if (unattributed.length > 0) {
-    return {
-      kind: 'blocked',
-      reason: 'unattributed-owner',
-      detail:
-        'the stock for this product has no known owning connection yet; ' +
-        'run a stock sync from the product master first',
-    };
-  }
-
-  const owners = [...new Set(candidates.map((position) => position.sourceConnectionId as string))];
-  if (owners.length > 1) {
-    return {
-      kind: 'blocked',
-      reason: 'ambiguous-owner',
-      detail:
-        `${String(owners.length)} product masters hold stock for this product; ` +
-        'OpenLinker will not guess which one sold it',
-    };
-  }
-
-  const position =
-    candidates.find(
-      (candidate) => input.locationId !== null && candidate.locationId === input.locationId
-    ) ??
-    candidates.find((candidate) => candidate.locationId === null) ??
-    candidates[0];
-
-  return {
-    kind: 'owner',
-    ownerConnectionId: owners[0],
-    position,
-    availableQuantity: candidates.reduce(
-      (sum, candidate) => sum + candidate.availableQuantity,
-      0
-    ),
-  };
 }
 
 /** The slice of a decrement row the attention fold reads. */

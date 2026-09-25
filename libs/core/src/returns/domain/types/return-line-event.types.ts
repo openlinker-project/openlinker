@@ -149,6 +149,21 @@ export const ReturnRestockBlockReasonValues = [
   'ambiguous-inventory-master',
   /** The connection resolved but its adapter could not be built (disabled, credentials). */
   'adapter-unresolved',
+  /**
+   * #3486 — several product masters are connected and OpenLinker holds no live
+   * stock position for this product, so nothing says which master it belongs to.
+   */
+  'no-position',
+  /**
+   * #3486 — several product masters are connected and this product's stock
+   * position has no known owner yet (`NULL` / `'legacy'` provenance).
+   */
+  'unattributed-owner',
+  /**
+   * #3486 — this product's stock is held in more than one product master.
+   * Never a silent pick, the `ambiguous-inventory-master` discipline per line.
+   */
+  'ambiguous-owner',
   /** Anything else the adapter threw. Never swallowed, never assumed benign. */
   'unknown',
 ] as const;

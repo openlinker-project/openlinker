@@ -65,6 +65,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { IdentifierMappingModule } from '@openlinker/core/identifier-mapping';
 import { IntegrationsModule } from '@openlinker/core/integrations';
+import { InventoryModule } from '@openlinker/core/inventory';
 import { InvoicingModule } from '@openlinker/core/invoicing';
 import { OrderChangesModule } from '@openlinker/core/orders';
 import { ProductsModule } from '@openlinker/core/products';
@@ -127,6 +128,12 @@ import {
     // SalesDocumentsModule, none of which reaches this one. Read-only: nothing
     // on this path issues a document.
     InvoicingModule,
+    // #3486 restock per owning master: with more than one InventoryMaster
+    // connection, the owner of a line's stock is read from position provenance
+    // through `IInventoryQueryService.resolveStockOwner`. The SIXTH outbound
+    // edge, and acyclic — `InventoryModule` imports Products / Integrations /
+    // IdentifierMapping / Sync / Events, none of which reaches this one.
+    InventoryModule,
   ],
   providers: [
     ReturnRepository,

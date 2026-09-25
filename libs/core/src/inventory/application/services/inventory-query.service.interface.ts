@@ -18,6 +18,10 @@ import type {
   DuplicatePositionReport,
   ProvenanceBackfillStatus,
 } from '../../domain/types/inventory.types';
+import type {
+  InventoryOwnerQuery,
+  InventoryOwnerResolution,
+} from '../../domain/types/inventory-owner.types';
 import type { PaginatedInventoryView } from '../types/inventory-view.types';
 
 export interface IInventoryQueryService {
@@ -129,4 +133,17 @@ export interface IInventoryQueryService {
    * completion stamp.
    */
   getProvenanceBackfillStatus(): Promise<ProvenanceBackfillStatus>;
+
+  /**
+   * Which connection owns the live stock for one product (and variant) — the
+   * provenance read behind a per-line write to "the" product master (#3486).
+   *
+   * The cross-context seam for {@link resolveInventoryPositionOwner}: a sibling
+   * context (the returns restock) may not read the inventory repository port, so
+   * it asks here and gets the same answer the sale decrement (#3453) acts on.
+   * Reads live (`isStale = false`) positions only; never throws for a modelled
+   * condition — no position, unknown provenance and several owners are all
+   * `blocked` results the caller names to the operator.
+   */
+  resolveStockOwner(query: InventoryOwnerQuery): Promise<InventoryOwnerResolution>;
 }

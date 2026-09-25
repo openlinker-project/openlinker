@@ -178,6 +178,13 @@ export {
 } from './domain/types/inventory.types';
 export { LEGACY_SOURCE_CONNECTION_ID } from './domain/types/inventory.types';
 export {
+  InventoryOwnerBlockReasonValues,
+  resolveInventoryPositionOwner,
+  type InventoryOwnerBlockReason,
+  type InventoryOwnerQuery,
+  type InventoryOwnerResolution,
+} from './domain/types/inventory-owner.types';
+export {
   InventorySaleDecrementStatusValues,
   InventorySaleDecrementStatus,
   InventorySaleDecrementReasonValues,
