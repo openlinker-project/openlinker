@@ -39,6 +39,7 @@ describe('AuthService', () => {
       findById: jest.fn(),
       save: jest.fn(),
       updateAnalyticsConsent: jest.fn(),
+      updatePasswordHash: jest.fn(),
     } as unknown as jest.Mocked<UserRepositoryPort>;
 
     const mockJwtService = {
@@ -165,8 +166,79 @@ describe('AuthService', () => {
         // Claim read by the global AnalyticsConsentGuard (#1938), so it never
         // needs a database round-trip.
         analyticsConsent: user.analyticsConsent,
+        // Claim read by the global PasswordChangeRequiredGuard (#3456).
+        mustChangePassword: false,
       });
       expect(result.access_token).toBe('signed-jwt-token');
+    });
+
+    it('should carry the forced-change claim for an account created with a one-time password (#3456)', () => {
+      const base = makeUser();
+      const flagged = new User(
+        base.id,
+        base.username,
+        base.email,
+        base.passwordHash,
+        'packer',
+        'active',
+        base.createdAt,
+        base.updatedAt,
+        false,
+        null,
+        null,
+        'Anna Kowalska',
+        true
+      );
+
+      service.login(flagged);
+
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ mustChangePassword: true })
+      );
+    });
+  });
+
+  describe('changePassword (#3456)', () => {
+    const current = 'Tmp-one-time-pass';
+
+    beforeEach(async () => {
+      userRepository.findById.mockResolvedValue(
+        makeUser({ passwordHash: await bcrypt.hash(current, 10) })
+      );
+    });
+
+    it('should write the new hash and clear the forced-change flag in one call', async () => {
+      const outcome = await service.changePassword('user-uuid-123', current, 'a-brand-new-pass');
+
+      expect(outcome).toBe('changed');
+      expect(userRepository.updatePasswordHash).toHaveBeenCalledTimes(1);
+      const [userId, hash, opts] = userRepository.updatePasswordHash.mock.calls[0];
+      expect(userId).toBe('user-uuid-123');
+      expect(opts).toEqual({ clearMustChangePassword: true });
+      expect(await bcrypt.compare('a-brand-new-pass', hash)).toBe(true);
+    });
+
+    it('should refuse a wrong current password and write nothing', async () => {
+      const outcome = await service.changePassword('user-uuid-123', 'not-it', 'a-brand-new-pass');
+
+      expect(outcome).toBe('incorrect-current');
+      expect(userRepository.updatePasswordHash).not.toHaveBeenCalled();
+    });
+
+    // Keeping the admin-issued password would defeat the forced change.
+    it('should refuse a new password equal to the current one', async () => {
+      const outcome = await service.changePassword('user-uuid-123', current, current);
+
+      expect(outcome).toBe('unchanged');
+      expect(userRepository.updatePasswordHash).not.toHaveBeenCalled();
+    });
+
+    it('should answer 401 for an account that no longer exists', async () => {
+      userRepository.findById.mockResolvedValue(null);
+
+      await expect(
+        service.changePassword('gone', current, 'a-brand-new-pass')
+      ).rejects.toThrow('User no longer exists');
     });
   });
 
