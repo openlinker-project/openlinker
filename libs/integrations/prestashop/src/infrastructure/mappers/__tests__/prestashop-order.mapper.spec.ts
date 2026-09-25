@@ -271,6 +271,34 @@ describe('PrestashopOrderMapper', () => {
 
         expect('shippingGross' in result.totals).toBe(false);
       });
+
+      // A `CartRule` never reaches a line, so this is the only place the
+      // discount is visible at all (#3365).
+      it('should carry total_discounts_tax_incl as discountTotal', () => {
+        const order = grossOrder();
+        order['total_discounts_tax_incl'] = '10.500000';
+
+        const result = mapper.mapOrder(order, []);
+
+        expect(result.totals.discountTotal).toBe(10.5);
+      });
+
+      // Zero is an answer - the shop looked and found none - and is kept
+      // distinct from "the shop did not report", which the next test covers.
+      it('should carry a reported zero discount as 0, not drop it', () => {
+        const order = grossOrder();
+        order['total_discounts_tax_incl'] = '0.000000';
+
+        const result = mapper.mapOrder(order, []);
+
+        expect(result.totals.discountTotal).toBe(0);
+      });
+
+      it('should leave discountTotal ABSENT when the shop reports no discount field', () => {
+        const result = mapper.mapOrder(grossOrder(), []);
+
+        expect('discountTotal' in result.totals).toBe(false);
+      });
     });
 
     describe('line id (#2068)', () => {

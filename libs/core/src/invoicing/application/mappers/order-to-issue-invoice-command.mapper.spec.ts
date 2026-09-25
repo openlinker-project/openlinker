@@ -114,6 +114,81 @@ describe('toIssueInvoiceCommand', () => {
       }
     });
 
+    // The whole point of carrying `discountTotal` (#3365): turn the arithmetic
+    // complaint into a diagnosis an operator can act on.
+    it('names a whole-order discount that exactly accounts for the difference', () => {
+      try {
+        toIssueInvoiceCommand({
+          order: makeOrder({
+            items: [makeItem({ price: 100, quantity: 1 })],
+            totals: {
+              subtotal: 100,
+              tax: 0,
+              shipping: 0,
+              total: 90,
+              discountTotal: 10,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          connectionId: 'conn-1',
+        });
+        throw new Error('expected the mapper to refuse');
+      } catch (error) {
+        expect((error as Error).message).toContain('whole-order discount of 10.00');
+        expect((error as Error).message).toContain('exactly the difference');
+      }
+    });
+
+    // A cause is attributed only when it accounts for the gap. Naming one on a
+    // coincidence would send an operator after the wrong thing.
+    it('does not attribute the difference to a discount that fails to explain it', () => {
+      try {
+        toIssueInvoiceCommand({
+          order: makeOrder({
+            items: [makeItem({ price: 100, quantity: 1 })],
+            totals: {
+              subtotal: 100,
+              tax: 0,
+              shipping: 0,
+              total: 90,
+              discountTotal: 3,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          connectionId: 'conn-1',
+        });
+        throw new Error('expected the mapper to refuse');
+      } catch (error) {
+        const message = (error as Error).message;
+        expect(message).toContain('does not by itself account for the difference');
+        expect(message).not.toContain('exactly the difference');
+      }
+    });
+
+    it('says nothing about a discount when the source reported none', () => {
+      try {
+        toIssueInvoiceCommand({
+          order: makeOrder({
+            items: [makeItem({ price: 100, quantity: 1 })],
+            totals: {
+              subtotal: 100,
+              tax: 0,
+              shipping: 0,
+              total: 90,
+              currency: 'PLN',
+              taxTreatment: 'inclusive',
+            },
+          }),
+          connectionId: 'conn-1',
+        });
+        throw new Error('expected the mapper to refuse');
+      } catch (error) {
+        expect((error as Error).message).not.toContain('discount');
+      }
+    });
+
     // Float dust from a normal basket is not a discount: 10.10 three times is
     // 30.299999999999997, not 30.30. That is what the tolerance exists for.
     //

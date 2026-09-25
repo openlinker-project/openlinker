@@ -413,6 +413,29 @@ export interface OrderTotals {
    * tax and carries no shipping figure of its own.
    */
   shippingGross?: number;
+
+  /**
+   * A whole-order discount the SOURCE applied and did NOT put on any line,
+   * as the source itself reports it. Absent means it reported none - never
+   * that there was none, and never `0`.
+   *
+   * It exists because such a discount is otherwise invisible in an order's own
+   * arithmetic: PrestaShop applies a `CartRule` outside
+   * `OrderDetail::setSpecificPrice()`, so the per-line `reduction_*` fields
+   * read `0.00` while `total` is net of it. The lines then sum to more than the
+   * total, and a document composed from them asks the buyer for more than they
+   * were charged.
+   *
+   * Carried, never acted on. OpenLinker does not apportion it across the lines:
+   * it does not know which lines it belonged to, and FA(3) can only express a
+   * discount per line (`P_10`, inside `FaWiersz`), so folding it in would mean
+   * inventing an attribution for a legal document. What it does is let a
+   * refusal say WHY the figures disagree instead of only that they do.
+   *
+   * The source's own figure, on the same terms as `shippingGross` - gross when
+   * the source reports it gross, and never derived here.
+   */
+  discountTotal?: number;
 }
 
 export interface Address {

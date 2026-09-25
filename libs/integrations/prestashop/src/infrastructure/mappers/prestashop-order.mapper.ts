@@ -125,6 +125,18 @@ export class PrestashopOrderMapper implements IPrestashopOrderMapper {
         const gross = this.parseNumber(prestashopOrder.total_shipping_tax_incl);
         return gross !== undefined && Number.isFinite(gross) ? { shippingGross: gross } : {};
       })()),
+      // A whole-order discount (`CartRule`) never reaches a line: PrestaShop
+      // applies it outside `OrderDetail::setSpecificPrice()`, so the per-line
+      // `reduction_*` fields read 0.00 while `total_paid_tax_incl` above is
+      // net of it. Carried so a refusal downstream can name the cause; nothing
+      // here apportions it, and a reported 0 is carried as 0 rather than
+      // dropped, because "the shop looked and there was none" is an answer.
+      ...(((): { discountTotal?: number } => {
+        const discount = this.parseNumber(prestashopOrder.total_discounts_tax_incl);
+        return discount !== undefined && Number.isFinite(discount)
+          ? { discountTotal: discount }
+          : {};
+      })()),
     };
 
     return {

@@ -139,7 +139,7 @@ export function toIssueInvoiceCommand(
     )
   );
 
-  assertLinesSumToTotal(lines, order.totals.total, order.id, order.totals.currency);
+  assertLinesSumToTotal(lines, order.totals, order.id);
 
   const command: IssueInvoiceCommand = {
     connectionId,
@@ -281,10 +281,10 @@ function toBuyerAddress(address: Address): BuyerAddress {
  */
 function assertLinesSumToTotal(
   lines: readonly InvoiceLine[],
-  total: number,
-  orderId: string,
-  currency: string | null | undefined
+  totals: Order['totals'],
+  orderId: string
 ): void {
+  const total = totals.total;
   if (!Number.isFinite(total)) {
     throw new InvalidInvoiceLineError(
       `Order ${orderId} reports a non-finite total; cannot compose an invoice`
@@ -298,12 +298,47 @@ function assertLinesSumToTotal(
     );
   }
 
-  if (Math.abs(summed - total) > totalReconciliationEpsilon(currency)) {
+  const epsilon = totalReconciliationEpsilon(totals.currency);
+  const gap = summed - total;
+  if (Math.abs(gap) > epsilon) {
     throw new InvalidInvoiceLineError(
       `Order ${orderId} lines sum to ${summed.toFixed(2)} but the order reports a total of ` +
-        `${total.toFixed(2)}; an invoice may not state an amount its own lines contradict`
+        `${total.toFixed(2)}; an invoice may not state an amount its own lines contradict` +
+        describeDiscountCause(totals.discountTotal, gap, epsilon)
     );
   }
+}
+
+/**
+ * Turn the arithmetic complaint above into a diagnosis, when the source told us
+ * enough to make one.
+ *
+ * Deliberately three outcomes, not two. The gap is ATTRIBUTED only when the
+ * reported discount accounts for it within the same tolerance the check itself
+ * uses - anything looser would name a cause on a coincidence. A discount that
+ * does not explain the gap is still worth saying, because it narrows the search
+ * without claiming to end it. And a source that reported no discount at all
+ * adds nothing, so it adds nothing.
+ */
+function describeDiscountCause(
+  discountTotal: number | undefined,
+  gap: number,
+  epsilon: number
+): string {
+  if (typeof discountTotal !== 'number' || !Number.isFinite(discountTotal) || discountTotal <= 0) {
+    return '';
+  }
+  if (Math.abs(gap - discountTotal) <= epsilon) {
+    return (
+      `. The source reports a whole-order discount of ${discountTotal.toFixed(2)}, which is ` +
+      `exactly the difference: it was applied to the order but to none of its lines, so there ` +
+      `is no line for it to be invoiced against`
+    );
+  }
+  return (
+    `. The source also reports a whole-order discount of ${discountTotal.toFixed(2)}, which ` +
+    `does not by itself account for the difference`
+  );
 }
 
 /**

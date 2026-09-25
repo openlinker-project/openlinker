@@ -254,6 +254,11 @@ export class OrderSyncService implements IOrderSyncService {
         ...(order.totals.shippingGross !== undefined
           ? { shippingGross: order.totals.shippingGross }
           : {}),
+        // Carried so a destination that composes a document can say WHY its
+        // lines and its total disagree, rather than only that they do.
+        ...(order.totals.discountTotal !== undefined
+          ? { discountTotal: order.totals.discountTotal }
+          : {}),
       },
       shippingAddress: order.shippingAddress,
       billingAddress: order.billingAddress,
