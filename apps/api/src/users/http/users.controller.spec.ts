@@ -19,6 +19,7 @@ import {
   UserNotActiveException,
   UserNotDeactivatedException,
   UserNotPendingException,
+  UserAlreadyExistsException,
 } from '@openlinker/core/users';
 import type { AuthenticatedUser } from '../../auth/auth.types';
 
@@ -42,6 +43,7 @@ const makeService = (): jest.Mocked<IUserManagementService> => ({
   confirmEmail: jest.fn(),
   setPackStationLabel: jest.fn(),
   recordBenchActivity: jest.fn(),
+  createUser: jest.fn(),
 });
 
 describe('UsersController', () => {
@@ -114,9 +116,16 @@ describe('UsersController', () => {
       //
       // `online: false` is the honest default for a fixture whose user has
       // never been seen at a bench, and `stationLabel: null` means no printer
-      // is bound - neither is a value the controller invented.
+      // is bound - neither is a value the controller invented. #3456 added
+      // `displayName` - the name an admin typed, null for this fixture.
       expect(result.packers).toEqual([
-        { id: 'p1', username: 'packer-one', online: false, stationLabel: null },
+        {
+          id: 'p1',
+          username: 'packer-one',
+          displayName: null,
+          online: false,
+          stationLabel: null,
+        },
       ]);
     });
 
@@ -126,6 +135,61 @@ describe('UsersController', () => {
       const result = await controller.listPackers();
 
       expect(result.packers).toEqual([]);
+    });
+  });
+
+  describe('createUser (#3456)', () => {
+    const dto = { displayName: 'Anna Kowalska', username: 'anna', role: 'packer' as const };
+
+    it('should create the user and return the id with the one-time password', async () => {
+      service.createUser.mockResolvedValue({ id: 'new-id', temporaryPassword: 'Tmp-pass-123456' });
+
+      const result = await controller.createUser(dto);
+
+      expect(service.createUser).toHaveBeenCalledWith({
+        displayName: 'Anna Kowalska',
+        username: 'anna',
+        email: null,
+        role: 'packer',
+      });
+      expect(result).toEqual({ id: 'new-id', temporaryPassword: 'Tmp-pass-123456' });
+    });
+
+    it('should pass an email through when given', async () => {
+      service.createUser.mockResolvedValue({ id: 'new-id', temporaryPassword: 'x' });
+
+      await controller.createUser({ ...dto, email: 'anna@example.com' });
+
+      expect(service.createUser).toHaveBeenCalledWith(
+        expect.objectContaining({ email: 'anna@example.com' })
+      );
+    });
+
+    it.each(['username', 'email'] as const)(
+      'should answer 409 naming the %s that is taken',
+      async (field) => {
+        service.createUser.mockRejectedValue(new UserAlreadyExistsException('taken', field));
+
+        const error = await controller.createUser(dto).catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(ConflictException);
+        expect((error as ConflictException).getResponse()).toEqual(
+          expect.objectContaining({ field })
+        );
+      }
+    );
+
+    // The 409 names the FIELD, never the colliding value.
+    it('should not echo the submitted value in the conflict', async () => {
+      service.createUser.mockRejectedValue(
+        new UserAlreadyExistsException('anna@example.com', 'email')
+      );
+
+      const error = await controller.createUser(dto).catch((caught: unknown) => caught);
+
+      expect(JSON.stringify((error as ConflictException).getResponse())).not.toContain(
+        'anna@example.com'
+      );
     });
   });
 

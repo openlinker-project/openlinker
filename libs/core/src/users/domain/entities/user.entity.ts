@@ -40,6 +40,14 @@ export class User {
     // Whether that reads as ONLINE is a threshold over this instant computed
     // at read time and never stored - a stored boolean would need something
     // to flip it back, and nothing would.
-    public readonly lastActiveAt: Date | null = null
+    public readonly lastActiveAt: Date | null = null,
+    // The person's name as an admin typed it at account creation (#3456), e.g.
+    // "Anna Kowalska". `null` for every account created another way; surfaces
+    // fall back to `username`, which stays the login.
+    public readonly displayName: string | null = null,
+    // Set when an admin creates the account with a one-time password (#3456),
+    // cleared by the user's own password change. Enforced server-side by
+    // `PasswordChangeRequiredGuard`, never by the UI alone.
+    public readonly mustChangePassword: boolean = false
   ) {}
 }
