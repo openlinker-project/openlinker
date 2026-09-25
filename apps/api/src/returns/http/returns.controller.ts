@@ -372,11 +372,19 @@ export class ReturnsController {
     }
 
     const declineAvailability = await this.returnsService.getDeclineAvailability(record);
-    // The three custody reads the detail renders. Fanned out together: they are
-    // independent, and serialising them would add two round trips to a page load
-    // for no ordering guarantee.
-    const [restockTarget, restockBlocks, restockAttestations, refunds] = await Promise.all([
-      this.custody.getRestockTarget(),
+    // The custody reads the detail renders, fanned out together with the
+    // per-line restock targets (#3491 review — `getRestockTarget` now takes a
+    // `lineId`, so it is one call per line rather than one for the whole
+    // return, both because a return-level answer could not resolve a
+    // per-line owner and because two lines can legitimately restock into two
+    // different connections). All independent, so serialising them would add
+    // round trips to a page load for no ordering guarantee.
+    const [restockTargetsByLine, restockBlocks, restockAttestations, refunds] = await Promise.all([
+      Promise.all(
+        record.lines.map(
+          async (line) => [line.id, await this.custody.getRestockTarget(line.id)] as const
+        )
+      ),
       this.custody.listOutstandingRestockBlocks(returnId),
       this.custody.listRestockAttestations(returnId),
       // BY RETURN, never by order: an orphan has no order id to filter by, and
@@ -397,7 +405,11 @@ export class ReturnsController {
       ...this.toListItemDto(record),
       lines: record.lines.map((line) => this.toLineDto(line)),
       declineAvailability,
-      restockTarget: ReturnsController.toRestockTargetDto(restockTarget),
+      restockTargets: Object.fromEntries(
+        restockTargetsByLine.map(
+          ([lineId, target]) => [lineId, ReturnsController.toRestockTargetDto(target)] as const
+        )
+      ),
       // Disjoint by construction — attesting flips an act out of the blocked
       // set — so a line can appear in at most one of these at a time.
       restockBlocks: restockBlocks.map(

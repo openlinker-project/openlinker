@@ -273,15 +273,20 @@ export class ReturnDeclineAvailabilityDto {
 }
 
 /**
- * Where a restock on this deployment WOULD land, resolved before anything is
- * disposed of (spec § 5.3: *"Stock will be added in {connection name}"*).
+ * Where a restock of ONE LINE on this deployment WOULD land, resolved before
+ * anything is disposed of (spec § 5.3: *"Stock will be added in {connection
+ * name}"*).
  *
- * Answered by the SAME resolver the dispose write uses, so the name shown and
- * the book written cannot disagree. It is on the read for that reason: the
- * resolver's candidate ordering is not reproducible in a browser, so a
- * client-side pick over `enabledCapabilities` could confidently name a
- * connection the write never touches — and a UI asserting a fact the backend
- * never stated costs the operator a manual reconciliation.
+ * Answered by the SAME resolver the dispose write uses — `planRestock`, keyed
+ * by the same `lineId` — so the name shown and the book written cannot
+ * disagree. It is on the read for that reason: the resolver's candidate
+ * ordering is not reproducible in a browser, so a client-side pick over
+ * `enabledCapabilities` could confidently name a connection the write never
+ * touches — and a UI asserting a fact the backend never stated costs the
+ * operator a manual reconciliation. With several `InventoryMaster`
+ * connections this per-line owner resolution (#3486) is what makes the answer
+ * genuinely per line rather than a single return-wide guess (#3491 review) —
+ * see {@link ReturnResponseDto.restockTargets}.
  *
  * `ambiguous-inventory-master` means the restock will be BLOCKED, not routed to
  * a first candidate: OpenLinker refuses to guess which book to write to.
@@ -399,8 +404,17 @@ export class ReturnResponseDto extends ReturnListItemResponseDto {
   @ApiProperty({ type: ReturnDeclineAvailabilityDto })
   declineAvailability!: ReturnDeclineAvailabilityDto;
 
-  @ApiProperty({ type: ReturnRestockTargetDto })
-  restockTarget!: ReturnRestockTargetDto;
+  @ApiProperty({
+    type: ReturnRestockTargetDto,
+    additionalProperties: { $ref: '#/components/schemas/ReturnRestockTargetDto' },
+    description:
+      'Keyed by return-line id — NOT one shared answer for the whole return (#3491 review). ' +
+      'With several `InventoryMaster` connections the owner is resolved per LINE from position ' +
+      'provenance, so two lines of one return can legitimately restock into two different ' +
+      "connections, or one may resolve while a sibling does not. A client keys off a line's own " +
+      'id, never off the return as a whole.',
+  })
+  restockTargets!: Record<string, ReturnRestockTargetDto>;
 
   @ApiProperty({
     type: [ReturnRestockBlockDto],

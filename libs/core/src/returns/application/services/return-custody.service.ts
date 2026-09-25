@@ -26,7 +26,15 @@
  * read-then-act guard across a provider boundary is precisely the shape ADR-041
  * §3a serializes with `invoiceIssueLockKey` — see `return-custody-lock.ts`.
  *
- * **4. An orphan restocks nothing.** The restock path asserts attribution
+ * **4. The book is the one that OWNS the line (#3486).** With one
+ * `InventoryMaster` connection the restock goes there, exactly as before. With
+ * several (v1 allows two product masters feeding one warehouse, #3457) the
+ * owner is read per line from the position's provenance through
+ * `IInventoryQueryService.resolveStockOwner` — the rule the routed-order sale
+ * decrement (#3453) acts on — and an unknown or shared owner is a named block,
+ * never a pick.
+ *
+ * **5. An orphan restocks nothing.** The restock path asserts attribution
  * through the ONE #2332 seam rather than spelling its own `internalOrderId`
  * check. Receiving and scrapping do not: neither moves goods, money or paperwork
  * outside OL's own building.
@@ -40,7 +48,13 @@ import {
   type IIntegrationsService,
 } from '@openlinker/core/integrations';
 import type { Connection } from '@openlinker/core/identifier-mapping';
-import type { InventoryAdjustmentResult, InventoryMasterPort } from '@openlinker/core/inventory';
+import {
+  INVENTORY_QUERY_SERVICE_TOKEN,
+  type IInventoryQueryService,
+  type InventoryAdjustmentResult,
+  type InventoryMasterPort,
+  type InventoryOwnerResolution,
+} from '@openlinker/core/inventory';
 import { PRODUCTS_SERVICE_TOKEN, type IProductsService } from '@openlinker/core/products';
 import { SYNC_LOCK_TOKEN, type SyncLockPort } from '@openlinker/core/sync';
 import { Logger } from '@openlinker/shared/logging';
@@ -99,7 +113,9 @@ export class ReturnCustodyService implements IReturnCustodyService {
     @Inject(PRODUCTS_SERVICE_TOKEN)
     private readonly products: IProductsService,
     @Inject(SYNC_LOCK_TOKEN)
-    private readonly lock: SyncLockPort
+    private readonly lock: SyncLockPort,
+    @Inject(INVENTORY_QUERY_SERVICE_TOKEN)
+    private readonly inventory: IInventoryQueryService
   ) {}
 
   async receiveLine(lineId: string, input: ReceiveLineInput): Promise<ReceiveLineResult> {
@@ -302,22 +318,34 @@ export class ReturnCustodyService implements IReturnCustodyService {
   }
 
   /**
-   * Where a restock would land — resolved WITHOUT constructing an adapter.
-   *
-   * This is a read on the return-detail page, and it needs only a name, a
-   * count and a failure classification; it never calls a method on the master.
+   * Where a restock of THIS line would land — resolved WITHOUT constructing an
+   * adapter, since it never calls a method on the master.
    * `listCapabilityAdapters` constructs eagerly by default, and constructing a
    * capability adapter RESOLVES ITS CREDENTIALS (#2229), so reusing the write
-   * path's `resolveInventoryMaster` here would build every InventoryMaster
-   * connection on every page load of a page that was previously
-   * adapter-free. It lists `lazy` instead.
+   * path's eager `listCapabilityAdapters` call here would build every
+   * `InventoryMaster` connection on every page load of a page that was
+   * previously adapter-free. It lists `lazy` instead — the SAME `lineId`
+   * question `planRestock` answers, over a listing mode that costs nothing
+   * until an adapter is actually about to be written to.
    *
-   * **Reported still equals enforced**, because the part that must not drift
-   * is the SELECTION RULE, not the listing mode: both callers classify through
-   * the one `classifyInventoryMasterCandidates` below, so "which connection"
-   * and "when is it ambiguous" have exactly one definition.
+   * **Reported still equals enforced (#3491 review).** With zero or exactly
+   * one `InventoryMaster` connection, `classifyInventoryMasterCandidates` is
+   * still the one selection rule both callers share. With SEVERAL, this now
+   * resolves the line's OWNER through the same `resolveRestockTarget` +
+   * `resolveStockOwner` pair `planRestock` uses (#3486) — never stopping at
+   * "several connections claim the capability", which would report
+   * `ambiguous-inventory-master` on a line the write resolves cleanly. The two
+   * questions "is this connection-set ambiguous" (the classifier) and "is this
+   * LINE's owner ambiguous" (`resolveInventoryPositionOwner`) are genuinely
+   * different — a two-master install where only one master holds this
+   * product's position is `ambiguous` to the first and `owner` to the second,
+   * which is exactly the case that must resolve here.
+   *
+   * `resolveStockOwner` reads positions only — no adapter — so this stays
+   * adapter-free even on the several-masters path; only `adapter-unresolved`
+   * (the owner is not among the ACTIVE candidates) can still occur.
    */
-  async getRestockTarget(): Promise<ReturnRestockTarget> {
+  async getRestockTarget(lineId: string): Promise<ReturnRestockTarget> {
     let candidates: Array<{ connectionId: string; connection: Connection }>;
 
     try {
@@ -340,29 +368,87 @@ export class ReturnCustodyService implements IReturnCustodyService {
       return { status: 'no-inventory-master' };
     }
 
-    if (classified.kind === 'ambiguous') {
-      // The same refusal `writeMasterStock` makes, made early enough for the
-      // operator to read it before they dispose rather than after.
+    if (classified.kind === 'one') {
       return {
-        status: 'ambiguous-inventory-master',
-        candidateCount: classified.candidateCount,
+        status: 'resolved',
+        connectionId: classified.chosen.connectionId,
+        connectionName: classified.chosen.connection.name,
       };
+    }
+
+    // Several connections claim the capability — the question is now WHICH
+    // ONE owns this line's stock, the same question `planRestock` answers.
+    const line = await this.requireLine(lineId);
+    const target = await this.resolveRestockTarget(line);
+    if ('blocked' in target) {
+      // The product itself could not be named, so there is no owner question
+      // to ask yet — fall back to the connection-level answer, since that is
+      // still true (several masters ARE connected) even though the real
+      // reason this line cannot restock is `target.blocked`, surfaced
+      // separately once the operator actually disposes.
+      return { status: 'ambiguous-inventory-master', candidateCount: classified.candidateCount };
+    }
+
+    let owner: InventoryOwnerResolution;
+    try {
+      owner = await this.inventory.resolveStockOwner({
+        productId: target.productId,
+        productVariantId: target.variantId,
+        // A return names no location; every live position of the product counts.
+        locationId: null,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Return line ${lineId}: could not read which product master owns the stock for the ` +
+          `restock-target read: ${(error as Error).message}`
+      );
+      return { status: 'ambiguous-inventory-master', candidateCount: classified.candidateCount };
+    }
+
+    if (owner.kind === 'blocked') {
+      // `no-position` / `unattributed-owner` / `ambiguous-owner` — none of
+      // these is "several connections claim the capability" any more, but the
+      // type has no arm for them yet (#3491 review, SUGGESTION); reporting
+      // `ambiguous-inventory-master` keeps the control correctly DISABLED,
+      // which is the property this fix exists to guarantee, even though the
+      // sentence a `curl` to `disposeLine` would receive is more precise.
+      return { status: 'ambiguous-inventory-master', candidateCount: classified.candidateCount };
+    }
+
+    const ownerCandidate = candidates.find(
+      (candidate) => candidate.connectionId === owner.ownerConnectionId
+    );
+    if (ownerCandidate === undefined) {
+      return { status: 'adapter-unresolved' };
     }
 
     return {
       status: 'resolved',
-      connectionId: classified.chosen.connectionId,
-      connectionName: classified.chosen.connection.name,
+      connectionId: ownerCandidate.connectionId,
+      connectionName: ownerCandidate.connection.name,
     };
   }
 
   /**
-   * The one selection rule: none / exactly one / ambiguous, and WHICH one.
+   * The CONNECTION-COUNT selection rule: none / exactly one / several, and
+   * which one when there is exactly one.
    *
    * Shared by the write path and the operator-facing disclosure so the name an
-   * operator is shown and the book a restock writes to cannot disagree. It is
-   * generic over the entry shape precisely so a lazy listing (no adapter
-   * constructed) and an eager one can both use it.
+   * operator is shown and the book a restock writes to cannot disagree — for
+   * the zero- and one-connection answers. It is generic over the entry shape
+   * precisely so a lazy listing (no adapter constructed) and an eager one can
+   * both use it.
+   *
+   * **`'ambiguous'` here answers a DIFFERENT question from an ambiguous LINE
+   * owner (#3491 review).** This classifies the CONNECTION SET — "does more
+   * than one connection claim `InventoryMaster`" — and says nothing about any
+   * particular line. `resolveInventoryPositionOwner` classifies a LINE's
+   * OWNER — "does more than one of those connections actually hold this
+   * line's stock". A two-master install where only one master holds a given
+   * product's position is `'ambiguous'` to THIS function and `'owner'` to
+   * that one, and both callers below are written to ask the second question
+   * whenever this one answers `'ambiguous'`, which is what makes #3486's
+   * per-line restock reachable at all.
    */
   private static classifyInventoryMasterCandidates<
     T extends { connectionId: string; connection: Connection },
@@ -525,7 +611,7 @@ export class ReturnCustodyService implements IReturnCustodyService {
       at,
     });
 
-    const master = await this.resolveInventoryMaster();
+    const plan = await this.planRestock(line);
 
     const { event } = await this.repository.runLineWrite(lineId, ({ line: locked }) => {
       // Re-validated against the locked row: the unlocked pass above may have
@@ -547,7 +633,7 @@ export class ReturnCustodyService implements IReturnCustodyService {
           restockBlockedReason: null,
           restockBlockedDetail: null,
           restockedBy: null,
-          masterConnectionId: 'unavailable' in master ? null : master.connectionId,
+          masterConnectionId: plan.connectionId,
           note: input.note ?? null,
           actorUserId: input.actorUserId ?? null,
           occurredAt: at,
@@ -560,7 +646,7 @@ export class ReturnCustodyService implements IReturnCustodyService {
       };
     });
 
-    const outcome = await this.writeMasterStock(master, line, input.quantity, event);
+    const outcome = await this.writeMasterStock(plan, line, input.quantity, event);
 
     // The counters move ONLY where the master's book took the units — and the
     // move is computed INSIDE the settle transaction, against the locked row.
@@ -617,8 +703,8 @@ export class ReturnCustodyService implements IReturnCustodyService {
             sku: line.sku,
             reason: outcome.restockBlockedReason ?? 'unknown',
             detail: outcome.restockBlockedDetail,
-            connectionId: 'unavailable' in master ? null : master.connectionId,
-            connectionName: 'unavailable' in master ? null : master.connection.name,
+            connectionId: plan.connectionId,
+            connectionName: plan.connectionName,
             state: outcome.restockState,
           },
     };
@@ -633,36 +719,20 @@ export class ReturnCustodyService implements IReturnCustodyService {
    * deduping master recognise it.
    */
   private async writeMasterStock(
-    master: ResolvedInventoryMaster | { unavailable: RestockUnavailable },
+    plan: RestockPlan,
     line: ReturnLine,
     quantity: number,
     event: ReturnLineEvent
   ): Promise<RestockOutcome> {
-    if ('unavailable' in master) {
-      return blockedBeforeMaster(
-        master.unavailable,
-        master.unavailable === 'no-inventory-master'
-          ? 'no active connection with the InventoryMaster capability could be resolved'
-          : 'the InventoryMaster connection could not be built — check its credentials and status'
-      );
-    }
-    if (master.ambiguous) {
-      // Never a silent pick: a wrong pick moves real stock in the wrong book.
-      return blockedBeforeMaster(
-        'ambiguous-inventory-master',
-        `${master.candidateCount} connections claim the InventoryMaster capability; ` +
-          'OpenLinker will not guess which book to write to'
-      );
-    }
-    const target = await this.resolveRestockTarget(line);
-    if ('blocked' in target) {
-      return target.blocked;
+    if (plan.kind === 'blocked') {
+      // Never a silent pick, and never a write to a book OpenLinker cannot name.
+      return plan.outcome;
     }
 
     try {
-      const result: InventoryAdjustmentResult = await master.adapter.adjustInventory({
-        productId: target.productId,
-        variantId: target.variantId,
+      const result: InventoryAdjustmentResult = await plan.adapter.adjustInventory({
+        productId: plan.productId,
+        variantId: plan.variantId,
         quantity,
         reason: 'return_restock',
         // Deterministic, never wall-clock (#2368): built from the act's own
@@ -763,36 +833,33 @@ export class ReturnCustodyService implements IReturnCustodyService {
   }
 
   /**
-   * Resolve the single `InventoryMaster` connection, or report why not.
+   * Which book these units go back into, and which product — or why neither.
    *
-   * `lazy: false` because the adapter is about to be used. A construction
-   * failure degrades to `adapter-unresolved` rather than throwing: the
-   * disposition has already been decided by an operator, and losing it because a
-   * credential expired would be the wrong direction of failure.
+   * - **No `InventoryMaster` connection**: `no-inventory-master`.
+   * - **Exactly one**: that one, as before #3486 — provenance is NOT consulted,
+   *   so a single-master install whose positions predate provenance (`NULL` /
+   *   `'legacy'`) keeps restocking exactly as it did.
+   * - **Several**: the owner of THIS line's stock, read from position
+   *   provenance (#3486). No position, an unknown owner, or several owners each
+   *   block with their own reason; an owner that is not among the active
+   *   `InventoryMaster` connections blocks as `adapter-unresolved`.
+   *
+   * `lazy: false` because an adapter is about to be used. A listing failure
+   * degrades to `adapter-unresolved` rather than throwing: the disposition has
+   * already been decided by an operator, and losing it because a credential
+   * expired would be the wrong direction of failure. Never throws for a
+   * modelled condition.
    */
-  private async resolveInventoryMaster(): Promise<
-    ResolvedInventoryMaster | { unavailable: 'no-inventory-master' | 'adapter-unresolved' }
-  > {
+  private async planRestock(line: ReturnLine): Promise<RestockPlan> {
+    let entries: ReadonlyArray<{
+      connectionId: string;
+      connection: Connection;
+      adapter: InventoryMasterPort;
+    }>;
     try {
-      const entries = await this.integrations.listCapabilityAdapters<InventoryMasterPort>({
+      entries = await this.integrations.listCapabilityAdapters<InventoryMasterPort>({
         capability: 'InventoryMaster',
       });
-
-      // The SAME classifier the operator-facing disclosure uses, so the
-      // connection named on the page is the connection written to here.
-      const classified = ReturnCustodyService.classifyInventoryMasterCandidates(entries);
-
-      if (classified.kind === 'none') {
-        return { unavailable: 'no-inventory-master' };
-      }
-
-      return {
-        connectionId: classified.chosen.connectionId,
-        connection: classified.chosen.connection,
-        adapter: classified.chosen.adapter,
-        ambiguous: classified.kind === 'ambiguous',
-        candidateCount: classified.kind === 'ambiguous' ? classified.candidateCount : 1,
-      };
     } catch (error) {
       this.logger.error(
         `Could not resolve an InventoryMaster connection for a return restock: ${
@@ -802,8 +869,94 @@ export class ReturnCustodyService implements IReturnCustodyService {
       // Reported as `adapter-unresolved`, NEVER as `no-inventory-master`: the
       // operator has configured a master, and telling them they have not sends
       // them to fix something that is not broken.
-      return { unavailable: 'adapter-unresolved' };
+      return blockedPlan(
+        blockedBeforeMaster(
+          'adapter-unresolved',
+          'the InventoryMaster connection could not be built — check its credentials and status'
+        )
+      );
     }
+
+    // The SAME classifier the operator-facing disclosure uses, so the zero- and
+    // one-master answers cannot drift from what that read names.
+    const classified = ReturnCustodyService.classifyInventoryMasterCandidates(entries);
+
+    if (classified.kind === 'none') {
+      return blockedPlan(
+        blockedBeforeMaster(
+          'no-inventory-master',
+          'no active connection with the InventoryMaster capability could be resolved'
+        )
+      );
+    }
+
+    const target = await this.resolveRestockTarget(line);
+
+    if (classified.kind === 'one') {
+      const { chosen } = classified;
+      return 'blocked' in target
+        ? blockedPlan(target.blocked, chosen.connectionId, chosen.connection.name)
+        : {
+            kind: 'ready',
+            connectionId: chosen.connectionId,
+            connectionName: chosen.connection.name,
+            adapter: chosen.adapter,
+            productId: target.productId,
+            variantId: target.variantId,
+          };
+    }
+
+    // Several masters: the product must be known before its owner can be.
+    if ('blocked' in target) {
+      return blockedPlan(target.blocked);
+    }
+
+    let owner: InventoryOwnerResolution;
+    try {
+      owner = await this.inventory.resolveStockOwner({
+        productId: target.productId,
+        productVariantId: target.variantId,
+        // A return names no location; every live position of the product counts.
+        locationId: null,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Return line ${line.id}: could not read which product master owns the stock: ${
+          (error as Error).message
+        }`
+      );
+      return blockedPlan(
+        blockedBeforeMaster(
+          'unknown',
+          'OpenLinker could not read which product master owns this product’s stock'
+        )
+      );
+    }
+
+    if (owner.kind === 'blocked') {
+      return blockedPlan(ownerBlockOutcome(owner, classified.candidateCount));
+    }
+
+    const ownerEntry = entries.find((entry) => entry.connectionId === owner.ownerConnectionId);
+    if (ownerEntry === undefined) {
+      return blockedPlan(
+        blockedBeforeMaster(
+          'adapter-unresolved',
+          `the product master that owns this stock (connection ${owner.ownerConnectionId}) is not ` +
+            'an active InventoryMaster connection — enable it, or restock by hand'
+        ),
+        owner.ownerConnectionId
+      );
+    }
+
+    return {
+      kind: 'ready',
+      connectionId: ownerEntry.connectionId,
+      connectionName: ownerEntry.connection.name,
+      adapter: ownerEntry.adapter,
+      productId: target.productId,
+      variantId: target.variantId,
+    };
   }
 
   private async requireLine(lineId: string): Promise<ReturnLine> {
@@ -825,12 +978,60 @@ export class ReturnCustodyService implements IReturnCustodyService {
   }
 }
 
-type RestockUnavailable = 'no-inventory-master' | 'adapter-unresolved';
+/**
+ * What a restock will do: write to one book, or stop with a recorded reason.
+ *
+ * `connectionId` / `connectionName` name the book wherever one is known, so a
+ * blocked act still says which master refused or which one OpenLinker would
+ * have written to; `null` when no single master could be named.
+ */
+type RestockPlan =
+  | {
+      kind: 'ready';
+      connectionId: string;
+      connectionName: string;
+      adapter: InventoryMasterPort;
+      productId: string;
+      variantId: string;
+    }
+  | {
+      kind: 'blocked';
+      outcome: RestockOutcome;
+      connectionId: string | null;
+      connectionName: string | null;
+    };
 
-interface ResolvedInventoryMaster {
-  connectionId: string;
-  connection: Connection;
-  adapter: InventoryMasterPort;
-  ambiguous: boolean;
-  candidateCount: number;
+function blockedPlan(
+  outcome: RestockOutcome,
+  connectionId: string | null = null,
+  connectionName: string | null = null
+): RestockPlan {
+  return { kind: 'blocked', outcome, connectionId, connectionName };
+}
+
+/** The operator-facing sentence for an owner that could not be named (#3486). */
+function ownerBlockOutcome(
+  owner: Extract<InventoryOwnerResolution, { kind: 'blocked' }>,
+  masterCount: number
+): RestockOutcome {
+  switch (owner.reason) {
+    case 'no-position':
+      return blockedBeforeMaster(
+        'no-position',
+        `${String(masterCount)} product masters are connected and OpenLinker holds no stock ` +
+          'for this product in any of them, so it cannot tell which one to put the units back into'
+      );
+    case 'unattributed-owner':
+      return blockedBeforeMaster(
+        'unattributed-owner',
+        `${String(masterCount)} product masters are connected and the stock for this product ` +
+          'has no known owner yet; run a stock sync from the product master first'
+      );
+    case 'ambiguous-owner':
+      return blockedBeforeMaster(
+        'ambiguous-owner',
+        `${String(owner.ownerCount)} product masters hold stock for this product; ` +
+          'OpenLinker will not guess which one to put the units back into'
+      );
+  }
 }

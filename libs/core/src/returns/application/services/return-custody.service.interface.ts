@@ -226,22 +226,26 @@ export interface IReturnCustodyService {
   ): Promise<AttestStockResult>;
 
   /**
-   * Where a restock would land, resolved BEFORE any disposition (#2380).
+   * Where a restock of THIS line would land, resolved BEFORE any disposition
+   * (#2380).
    *
    * Exists so spec § 5.3's *"Stock will be added in {connection name}"* can be
    * shown while the operator is choosing, rather than only afterwards on a
    * `restockBlocked` response — which is to say, only once it already failed.
    *
-   * **Reported === written-to, structurally.** It answers from the very same
-   * private resolver the dispose path uses, so the name shown and the book
-   * written cannot disagree. That is the whole reason this is a service method
-   * rather than a client-side read of `enabledCapabilities`: the resolver's
-   * candidate ordering is not reproducible in a browser, so a client-side pick
-   * could confidently name a connection the write never touched.
+   * **Reported === written-to, structurally.** It answers by calling the SAME
+   * `planRestock` the dispose write uses — never a return-level shortcut — so
+   * the name shown and the book written cannot disagree. With several
+   * `InventoryMaster` connections that means resolving the OWNER of this
+   * line's stock through position provenance (#3486), exactly as the write
+   * does; a return-level answer that stopped at "several connections claim
+   * the capability" would report `ambiguous-inventory-master` on a line the
+   * write resolves cleanly (#3491 review) — that is why `lineId` is required
+   * rather than optional.
    *
    * Never throws: every failure is one of the three non-resolved arms.
    */
-  getRestockTarget(): Promise<ReturnRestockTarget>;
+  getRestockTarget(lineId: string): Promise<ReturnRestockTarget>;
 
   /**
    * Every unresolved restock block on a return — the derivation behind the

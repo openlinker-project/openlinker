@@ -152,7 +152,12 @@ const returnDetailSchema = z.object({
   updatedAt: z.string(),
   lines: z.array(z.unknown()).nullish(),
   declineAvailability: declineAvailabilitySchema.nullish(),
-  restockTarget: restockTargetSchema.nullish(),
+  // Keyed by return-line id (#3491 review) — several `InventoryMaster`
+  // connections can resolve a different owner per LINE, so one shared answer
+  // for the whole return could not represent that. `z.record` rather than
+  // `z.unknown()` per element: an unreadable individual target degrades to
+  // `UNREADABLE_RESTOCK_TARGET` below by KEY, never by dropping the whole map.
+  restockTargets: z.record(z.string(), restockTargetSchema).nullish(),
   // `z.unknown()` per element, parsed row by row below, so ONE unreadable block
   // does not discard the rest — the list schema's own rule.
   restockBlocks: z.array(z.unknown()).nullish(),
@@ -282,7 +287,7 @@ export function parseReturnDetail(raw: unknown, returnId: string): ReturnDetail 
   }
 
   const availability = parsed.data.declineAvailability;
-  const target = parsed.data.restockTarget;
+  const targetsByLine = parsed.data.restockTargets;
 
   return {
     id: parsed.data.id,
@@ -361,15 +366,27 @@ export function parseReturnDetail(raw: unknown, returnId: string): ReturnDetail 
       occurredAt: attestation.occurredAt,
       note: orNull(attestation.note),
     })),
-    restockTarget:
-      target === undefined || target === null
-        ? UNREADABLE_RESTOCK_TARGET
-        : {
-            status: toRestockTargetStatus(target.status),
-            connectionId: orNull(target.connectionId),
-            connectionName: orNull(target.connectionName),
-            candidateCount: orNull(target.candidateCount),
-          },
+    // Keyed by return-line id (#3491 review): built from EVERY line this
+    // parse read, never only from the keys the server sent, so a line whose
+    // target the server omitted (or that failed to parse) still gets the
+    // unreadable fallback rather than leaving the dispose form with no entry
+    // to read at all.
+    restockTargets: Object.fromEntries(
+      lines.map((line): [string, ReturnRestockTarget] => {
+        const target = targetsByLine?.[line.id];
+        return [
+          line.id,
+          target === undefined || target === null
+            ? UNREADABLE_RESTOCK_TARGET
+            : {
+                status: toRestockTargetStatus(target.status),
+                connectionId: orNull(target.connectionId),
+                connectionName: orNull(target.connectionName),
+                candidateCount: orNull(target.candidateCount),
+              },
+        ];
+      })
+    ),
   };
 }
 
