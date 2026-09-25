@@ -757,4 +757,86 @@ describe('SubiektProductMasterAdapter', () => {
       });
     });
   });
+
+  describe('per-instance read memo (#3365 round 2)', () => {
+    // The bridge answers on one STA COM thread with one queue, so the only
+    // lever on a catalogue sweep is requests-per-product. These assert the memo
+    // does what it claims and, more importantly, the three things it must NOT do.
+    const seedModel = async (): Promise<void> => {
+      await idMapping.createMapping('Product', 'model:5', 'conn-1', 'ol_product_model');
+    };
+    const modelEnvelope = (): unknown =>
+      envelope({
+        modelId: 5,
+        modelNazwa: 'Black Tiger woda toaletowa',
+        pozycje: [bridgeProduct('WOBLACK100', 'Black Tiger 100ml', { stawkaVat: '23' })],
+      });
+
+    it('collapses the repeated /api/models/{id} read three methods each issue separately', async () => {
+      await seedModel();
+      const urls: string[] = [];
+      const adapter = buildAdapter(((url: string) => {
+        urls.push(String(url));
+        return Promise.resolve(jsonResponse(200, modelEnvelope()));
+      }) as unknown as FetchLike);
+
+      await adapter.getProduct('ol_product_model');
+      await adapter.getProductVariants('ol_product_model');
+      await adapter.readProductTaxRate({ productId: 'ol_product_model' });
+
+      // Three product-level questions, one request. Before the memo this was three.
+      expect(urls.filter((u) => u.includes('/api/models/5'))).toHaveLength(1);
+    });
+
+    it('does NOT memoize a failure — a transient bridge error must not poison the rest of the sync child', async () => {
+      await seedModel();
+      let call = 0;
+      const adapter = buildAdapter((() => {
+        call += 1;
+        return call === 1
+          ? Promise.reject(new Error('bridge down'))
+          : Promise.resolve(jsonResponse(200, modelEnvelope()));
+      }) as unknown as FetchLike);
+
+      await expect(adapter.readProductTaxRate({ productId: 'ol_product_model' })).rejects.toThrow();
+      // The retry must reach the bridge again rather than replay the rejection.
+      const retried = await adapter.readProductTaxRate({ productId: 'ol_product_model' });
+      expect(retried).toEqual({ kind: 'resolved', code: '23', countryIso2: 'PL' });
+      expect(call).toBe(2);
+    });
+
+    it('invalidates on a write, so a read after a write is never served pre-write data', async () => {
+      await seedModel();
+      const urls: string[] = [];
+      const adapter = buildAdapter(((url: string) => {
+        urls.push(String(url));
+        return Promise.resolve(
+          String(url).includes('/api/models/')
+            ? jsonResponse(200, modelEnvelope())
+            : jsonResponse(200, envelope(bridgeProduct('WIDGET-1', 'Widget'))),
+        );
+      }) as unknown as FetchLike);
+
+      await adapter.getProduct('ol_product_model');
+      await adapter.createProduct({ name: 'Widget', sku: 'WIDGET-1', price: 12.3, currency: 'PLN' });
+      await adapter.getProduct('ol_product_model');
+
+      expect(urls.filter((u) => u.includes('/api/models/5'))).toHaveLength(2);
+    });
+
+    it('does not share memo between instances — each sync child starts cold', async () => {
+      await seedModel();
+      const urls: string[] = [];
+      const fetchImpl = ((url: string) => {
+        urls.push(String(url));
+        return Promise.resolve(jsonResponse(200, modelEnvelope()));
+      }) as unknown as FetchLike;
+
+      await buildAdapter(fetchImpl).getProduct('ol_product_model');
+      await buildAdapter(fetchImpl).getProduct('ol_product_model');
+
+      expect(urls.filter((u) => u.includes('/api/models/5'))).toHaveLength(2);
+    });
+  });
+
 });

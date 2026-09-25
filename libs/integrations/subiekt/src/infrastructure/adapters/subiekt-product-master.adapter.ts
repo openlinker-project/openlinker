@@ -899,16 +899,70 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
     return headers;
   }
 
+  /**
+   * Per-INSTANCE memo of GET responses, keyed by path.
+   *
+   * This is not a cache in the usual sense and must not become one. The bridge
+   * serves every request through a single STA COM worker thread with one queue,
+   * so the connection's ceiling is requests-per-product, not concurrency — and
+   * four methods on this class ask the bridge for the SAME resource while
+   * serving one product: a model product reads `/api/models/{id}` from
+   * `getProduct`, `getProductVariants`, `readProductTaxRate` and
+   * `getProductCategories`; a plain towar reads `/api/products/{symbol}` twice.
+   * The responses are identical, and before this they were fetched separately.
+   *
+   * The lifetime is what makes it safe: `getCapabilityAdapter` constructs a
+   * fresh adapter per call, so this map lives exactly as long as one sync
+   * child and can never hand stale data to the next one. There is deliberately
+   * no TTL and no size bound — a bound would be a second, weaker expression of
+   * a lifetime that is already short by construction.
+   */
+  private readonly readMemo = new Map<string, Promise<unknown>>();
+
   private async getJson<T>(path: string): Promise<T> {
-    return this.request<T>('GET', path, undefined);
+    const memoized = this.readMemo.get(path);
+    if (memoized !== undefined) {
+      return memoized as Promise<T>;
+    }
+    // The PROMISE is memoized, not the value, so two overlapping reads of one
+    // path collapse into one request rather than racing to fill the map. A
+    // rejection is evicted: memoizing a failure would let one transient bridge
+    // error poison every later read in the same sync child, turning a retryable
+    // blip into a whole product's worth of wrong answers.
+    const inFlight = this.request<T>('GET', path, undefined);
+    this.readMemo.set(path, inFlight);
+    return inFlight.catch((error: unknown) => {
+      this.readMemo.delete(path);
+      throw error;
+    });
   }
 
   private async postJson<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>('POST', path, body);
+    return this.writeThrough('POST', path, body);
   }
 
   private async putJson<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>('PUT', path, body);
+    return this.writeThrough('PUT', path, body);
+  }
+
+  /**
+   * A write invalidates EVERYTHING this instance has read, not just the written
+   * path: a write can move a resource already held under a different key (the
+   * product's own row, its model's member list, a listing page).
+   *
+   * It clears on BOTH sides of the request, and the second clear is the one
+   * that matters — clearing only beforehand leaves the window in which a read
+   * issued while the write is in flight repopulates the memo with pre-write
+   * data and then outlives it. It also clears when the write THROWS, because a
+   * failed write against a COM bridge is not proof that nothing committed.
+   */
+  private async writeThrough<T>(method: 'POST' | 'PUT', path: string, body: unknown): Promise<T> {
+    this.readMemo.clear();
+    try {
+      return await this.request<T>(method, path, body);
+    } finally {
+      this.readMemo.clear();
+    }
   }
 
   private async request<T>(
