@@ -1,0 +1,920 @@
+<title>OMS Packing Setup</title>
+<!--
+  OMS onboarding wizard - UX mockup (epic #3460, implementation #3457, E2E #3458).
+  Milestone: "OMS onboarding wizard".
+
+  Durable spec per docs/frontend-architecture.md § UX Mockups. E2E baselines come
+  from THIS file, never from the Artifact it was iterated on.
+
+  How to drive it:
+  - The dashed top bar is the mockup's own harness, not product UI.
+    [data-testid="mockup-state-chip"][data-preset=...] picks a state;
+    [data-testid="mockup-source-chip"][data-source=...] picks the product master setup.
+  - The page writes body[data-state] (full vocabulary: see the comment above
+    stateName() in the script) and body[data-source].
+  - "Show API calls (devs)" reveals, under each action, the endpoint it calls and
+    every TARGET sentence with the issue it depends on (#3453, #3455, #3456,
+    #3479, #3480, #3485, #3486, #3487, #3488).
+
+  Scope (v1): one warehouse, fed by one or two product masters. Two warehouses are #3454.
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* ============================================================================
+   Tokens - every VALUE here is byte-identical to apps/web/src/index.css
+   (:root 185-386, html[data-theme='dark'] 395-505). Only two things differ,
+   and neither changes what renders: this file carries the SUBSET of tokens it
+   uses rather than all 111, and a multi-line value (the two font stacks) is
+   collapsed onto one line to fit the two-per-line layout below.
+
+   Do not hand-tune: the mockup is only useful if a colour here is the colour
+   that ships. A value edited here and not in index.css is a silent lie about
+   the app, which is how the font stacks previously came to drop
+   BlinkMacSystemFont, Consolas and 'Liberation Mono' under a comment that
+   claimed they were verbatim (PR #3125 review).
+
+   The app selects dark with the `data-theme` attribute ALONE (the FOUC guard
+   in index.html resolves `system` to a literal light|dark before paint, so the
+   attribute is never absent). A standalone mockup has no such guard, so the
+   `prefers-color-scheme` block below exists only to make this file readable in
+   a browser with no theme chosen. Both blocks carry identical values.
+   ========================================================================= */
+:root, [data-theme='light'] {
+  --bg-canvas: oklch(99% 0.003 80); --bg-shell: oklch(97.5% 0.004 80);
+  --bg-surface: #ffffff; --bg-surface-elevated: oklch(99% 0.003 80);
+  --bg-muted: oklch(96% 0.005 80); --bg-surface-muted: oklch(96% 0.005 80);
+  --bg-surface-hover: oklch(93% 0.006 80); --bg-strong: oklch(93% 0.006 80);
+  --border-subtle: oklch(93.5% 0.006 80); --border-default: oklch(88% 0.008 80);
+  --border-strong: oklch(78% 0.010 80); --border-focus: oklch(68% 0.18 50);
+  --text-primary: oklch(20% 0.012 80); --text-secondary: oklch(38% 0.010 80);
+  --text-muted: oklch(52% 0.008 80); --text-disabled: oklch(70% 0.005 80);
+  --text-on-primary: oklch(18% 0.012 50); --text-inverse: oklch(96% 0.005 80);
+  --text-link: oklch(50% 0.14 250);
+  --accent-primary: oklch(68% 0.18 50); --accent-primary-hover: oklch(62% 0.19 50);
+  --accent-primary-active: oklch(56% 0.20 50); --accent-primary-soft: oklch(96% 0.04 60);
+  --accent-primary-border: oklch(85% 0.10 55); --accent-focus: oklch(68% 0.18 50);
+  --accent-ring: oklch(68% 0.18 50 / 0.30);
+  --status-success: oklch(54% 0.14 150); --status-success-soft: oklch(96% 0.04 150);
+  --status-success-border: oklch(85% 0.08 150); --status-success-fg: oklch(36% 0.12 150);
+  --status-success-strong: oklch(36% 0.12 150);
+  --status-warning: oklch(72% 0.16 85); --status-warning-soft: oklch(96% 0.05 85);
+  --status-warning-border: oklch(85% 0.10 85); --status-warning-fg: oklch(42% 0.12 80);
+  --status-warning-strong: oklch(42% 0.12 80);
+  --status-error: oklch(58% 0.20 25); --status-error-soft: oklch(96% 0.04 25);
+  --status-error-border: oklch(85% 0.10 25); --status-error-fg: oklch(42% 0.16 25);
+  --status-error-strong: oklch(42% 0.16 25);
+  --status-info: oklch(56% 0.14 245); --status-info-soft: oklch(96% 0.03 245);
+  --status-info-border: oklch(85% 0.08 245); --status-info-fg: oklch(40% 0.12 245);
+  --status-info-strong: oklch(40% 0.12 245);
+  --status-review: oklch(58% 0.16 290); --status-review-soft: oklch(96% 0.04 290);
+  --status-review-border: oklch(85% 0.08 290); --status-review-fg: oklch(42% 0.14 290);
+  --status-disabled: oklch(55% 0.008 80); --status-disabled-soft: oklch(95% 0.005 80);
+  --status-disabled-border: oklch(85% 0.008 80); --status-disabled-fg: oklch(38% 0.010 80);
+  --shadow-soft: 0 1px 2px rgb(15 18 26 / 0.04), 0 6px 16px rgb(15 18 26 / 0.06);
+  --shadow-overlay: 0 24px 48px rgb(15 18 26 / 0.16), 0 8px 16px rgb(15 18 26 / 0.08);
+  --overlay-scrim: rgb(15 18 26 / 0.55);
+  --shadow-xs: 0 1px 2px rgb(15 18 26 / 0.04);
+  --shadow-focus: 0 0 0 3px var(--accent-ring);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+  --button-primary-bg-hover: oklch(62% 0.19 50);
+  --shell-topbar-height: 52px;
+  --space-1:0.25rem; --space-2:0.5rem; --space-3:0.75rem; --space-4:1rem;
+  --space-5:1.5rem; --space-6:2rem; --space-7:3rem;
+  --radius-xs:4px; --radius-sm:6px; --radius-md:8px; --radius-lg:10px;
+  --radius-xl:14px; --radius-pill:9999px;
+  --duration-fast:120ms; --duration-normal:180ms; --ease-out:cubic-bezier(0.16, 1, 0.3, 1);
+  --tracking-tight:-0.012em; --tracking-wide:0.02em; --tracking-caps:0.08em;
+  --font-sans:'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) {
+  color-scheme: dark;
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270); --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270); --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270); --bg-strong: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270); --border-focus: oklch(72% 0.18 50);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50); --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-border: oklch(40% 0.14 55); --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+  --status-review: oklch(74% 0.14 290); --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+  --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+} }
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg-canvas: oklch(14% 0.005 270); --bg-shell: oklch(16% 0.006 270);
+  --bg-surface: oklch(19% 0.007 270); --bg-surface-elevated: oklch(22% 0.008 270);
+  --bg-muted: oklch(24% 0.009 270); --bg-surface-muted: oklch(24% 0.009 270);
+  --bg-surface-hover: oklch(28% 0.010 270); --bg-strong: oklch(28% 0.010 270);
+  --border-subtle: oklch(24% 0.010 270); --border-default: oklch(30% 0.012 270);
+  --border-strong: oklch(42% 0.014 270); --border-focus: oklch(72% 0.18 50);
+  --text-primary: oklch(96% 0.006 270); --text-secondary: oklch(78% 0.010 270);
+  --text-muted: oklch(60% 0.012 270); --text-disabled: oklch(42% 0.012 270);
+  --text-on-primary: oklch(16% 0.012 50); --text-inverse: oklch(20% 0.012 80);
+  --text-link: oklch(76% 0.14 245);
+  --accent-primary: oklch(72% 0.18 50); --accent-primary-hover: oklch(78% 0.18 50);
+  --accent-primary-active: oklch(84% 0.16 50); --accent-primary-soft: oklch(28% 0.08 50);
+  --accent-primary-border: oklch(40% 0.14 55); --accent-focus: oklch(72% 0.18 50);
+  --accent-ring: oklch(72% 0.18 50 / 0.40);
+  --status-success: oklch(68% 0.16 150); --status-success-soft: oklch(26% 0.06 150);
+  --status-success-border: oklch(36% 0.10 150); --status-success-fg: oklch(86% 0.14 150);
+  --status-success-strong: oklch(86% 0.14 150);
+  --status-warning: oklch(78% 0.16 85); --status-warning-soft: oklch(28% 0.07 85);
+  --status-warning-border: oklch(38% 0.10 85); --status-warning-fg: oklch(88% 0.14 85);
+  --status-warning-strong: oklch(88% 0.14 85);
+  --status-error: oklch(70% 0.18 25); --status-error-soft: oklch(28% 0.10 25);
+  --status-error-border: oklch(40% 0.14 25); --status-error-fg: oklch(86% 0.14 25);
+  --status-error-strong: oklch(86% 0.14 25);
+  --status-info: oklch(72% 0.14 245); --status-info-soft: oklch(26% 0.06 245);
+  --status-info-border: oklch(36% 0.10 245); --status-info-fg: oklch(86% 0.12 245);
+  --status-info-strong: oklch(86% 0.12 245);
+  --status-review: oklch(74% 0.14 290); --status-review-soft: oklch(28% 0.06 290);
+  --status-review-border: oklch(38% 0.10 290); --status-review-fg: oklch(88% 0.12 290);
+  --status-disabled: oklch(65% 0.010 270); --status-disabled-soft: oklch(24% 0.010 270);
+  --status-disabled-border: oklch(34% 0.012 270); --status-disabled-fg: oklch(82% 0.010 270);
+  --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.40), 0 8px 24px rgb(0 0 0 / 0.40);
+  --shadow-overlay: 0 24px 48px rgb(0 0 0 / 0.60), 0 8px 16px rgb(0 0 0 / 0.40);
+  --overlay-scrim: rgb(0 0 0 / 0.72);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.40);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --button-primary-bg-hover: oklch(78% 0.18 50);
+}
+
+/* ============================================================================
+   Components. Class names follow apps/web where a shared primitive exists
+   (button, alert, status-badge, field). Layout classes are mockup-local.
+   ========================================================================= */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { background: var(--bg-canvas); }
+body { margin: 0; font-family: var(--font-sans); color: var(--text-primary); font-size: 14px; line-height: 1.5; }
+h1, h2, h3, h4 { text-wrap: balance; margin: 0; }
+p { margin: 0; }
+code, .mono { font-family: var(--font-mono); font-size: .8125rem; }
+button { font: inherit; }
+:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---- mockup harness (not product UI) ---- */
+.harness { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; background: var(--bg-shell);
+  border-bottom: 1px dashed var(--border-strong); padding: var(--space-2) var(--space-4); }
+.harness__row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.harness__label { font-size: .6875rem; text-transform: uppercase; letter-spacing: var(--tracking-caps);
+  color: var(--text-muted); font-weight: 600; margin-right: var(--space-1); }
+.harness__row + .harness__row { margin-top: var(--space-2); }
+.chip { border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary);
+  border-radius: var(--radius-pill); padding: 2px 10px; font-size: .75rem; cursor: pointer; }
+.chip:hover { background: var(--bg-surface-hover); }
+.chip[aria-pressed='true'] { background: var(--text-primary); color: var(--bg-surface); border-color: var(--text-primary); }
+.harness__sep { width: 1px; height: 18px; background: var(--border-default); margin: 0 var(--space-1); }
+
+/* ---- app shell ---- */
+.shell { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: calc(100vh - 80px); }
+.nav { background: var(--bg-shell); border-right: 1px solid var(--border-subtle); padding: var(--space-4) var(--space-3); }
+.nav__brand { font-weight: 700; font-size: .9375rem; padding: 0 var(--space-2) var(--space-4); }
+.nav__group { font-size: .6875rem; text-transform: uppercase; letter-spacing: var(--tracking-caps);
+  color: var(--text-muted); font-weight: 600; padding: var(--space-3) var(--space-2) var(--space-1); }
+.nav a { display: flex; justify-content: space-between; padding: 5px var(--space-2); border-radius: var(--radius-sm);
+  color: var(--text-secondary); text-decoration: none; font-size: .8125rem; }
+.nav a:hover { background: var(--bg-surface-hover); }
+.nav a[aria-current='page'] { background: var(--accent-primary-soft); color: var(--text-primary); font-weight: 600; }
+.nav__new { font-size: .6875rem; color: var(--status-success-fg); font-weight: 600; }
+.content { padding: var(--space-6) var(--space-6) var(--space-7); max-width: 1120px; width: 100%; }
+@media (max-width: 900px) { .shell { grid-template-columns: 1fr; } .nav { display: none; } .content { padding: var(--space-5) var(--space-4) var(--space-6); } }
+
+.back-link { color: var(--text-link); text-decoration: none; font-size: .8125rem; }
+.eyebrow { font-size: .6875rem; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); font-weight: 600; margin-top: var(--space-3); }
+.page-title { font-size: 1.5rem; font-weight: 600; letter-spacing: var(--tracking-tight); margin-top: var(--space-1); }
+.page-description { color: var(--text-secondary); max-width: 64ch; margin-top: var(--space-2); }
+.page-header { margin-bottom: var(--space-6); }
+
+/* ---- wizard layout ---- */
+.wizard { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: var(--space-6); align-items: start; }
+@media (max-width: 800px) { .wizard { grid-template-columns: 1fr; gap: var(--space-4); } }
+
+.stepper { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 110px; }
+.stepper__item button { width: 100%; display: grid; grid-template-columns: 28px 1fr; gap: var(--space-3); align-items: start;
+  text-align: left; background: none; border: 0; padding: var(--space-2); border-radius: var(--radius-md); cursor: pointer; color: inherit; }
+.stepper__item button:hover:not(:disabled) { background: var(--bg-surface-hover); }
+.stepper__item button:disabled { cursor: default; }
+.stepper__dot { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: .75rem; font-weight: 600;
+  border: 1.5px solid var(--border-strong); color: var(--text-secondary); background: var(--bg-surface); font-variant-numeric: tabular-nums; }
+.stepper__title { font-size: .875rem; font-weight: 500; line-height: 1.3; padding-top: 4px; }
+.stepper__meta { font-size: .75rem; color: var(--text-muted); }
+.stepper__item[data-status='current'] .stepper__dot { border-color: var(--accent-primary); background: var(--accent-primary); color: var(--text-on-primary); }
+.stepper__item[data-status='current'] .stepper__title { font-weight: 600; }
+.stepper__item[data-status='done'] .stepper__dot { border-color: var(--status-success); background: var(--status-success-soft); color: var(--status-success-fg); }
+.stepper__item[data-status='locked'] .stepper__title { color: var(--text-muted); }
+@media (max-width: 800px) {
+  .stepper { position: static; flex-direction: row; overflow-x: auto; gap: var(--space-1); padding-bottom: var(--space-1); }
+  .stepper__item { flex: 0 0 auto; }
+  .stepper__item button { grid-template-columns: 24px auto; gap: var(--space-2); }
+  .stepper__dot { width: 24px; height: 24px; }
+  .stepper__meta { display: none; }
+  .stepper__item:not([data-status='current']) .stepper__title { display: none; }
+}
+
+.panel { background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.panel__head { padding: var(--space-5) var(--space-5) 0; }
+.panel__step { font-size: .75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.panel__title { font-size: 1.1875rem; font-weight: 600; margin-top: 2px; }
+.panel__why { color: var(--text-secondary); margin-top: var(--space-2); max-width: 62ch; }
+.panel__body { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-5); }
+.panel__foot { padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border-subtle); display: flex; gap: var(--space-2);
+  justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.panel__foot-right { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+/* ---- form ---- */
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+@media (max-width: 560px) { .fields { grid-template-columns: 1fr; } }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field--wide { grid-column: 1 / -1; }
+.field label { font-size: .8125rem; font-weight: 500; }
+.field__hint { font-size: .75rem; color: var(--text-muted); }
+.input, .select { font: inherit; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 7px 10px;
+  background: var(--bg-surface); color: var(--text-primary); width: 100%; }
+.input:focus, .select:focus { outline: none; border-color: var(--border-focus); box-shadow: var(--shadow-focus); }
+
+/* ---- buttons ---- */
+.button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: var(--radius-sm);
+  padding: 7px 14px; font-weight: 600; font-size: .8125rem; cursor: pointer; background: var(--accent-primary); color: var(--text-on-primary);
+  text-decoration: none; }
+.button:hover { background: var(--button-primary-bg-hover); }
+.button:disabled { background: var(--bg-strong); color: var(--text-disabled); cursor: not-allowed; }
+.button--secondary { background: var(--bg-surface); color: var(--text-primary); border-color: var(--border-default); }
+.button--secondary:hover { background: var(--bg-surface-hover); }
+.button--ghost { background: none; color: var(--text-secondary); }
+.button--ghost:hover { background: var(--bg-surface-hover); }
+.button--danger { background: var(--status-error); color: #fff; }
+.button--danger:hover { background: var(--status-error-fg); }
+
+/* ---- alerts & badges ---- */
+.alert { border: 1px solid; border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; gap: 2px; }
+.alert__title { font-weight: 600; font-size: .8125rem; }
+.alert__text { font-size: .8125rem; color: var(--text-secondary); }
+.alert--info { background: var(--status-info-soft); border-color: var(--status-info-border); }
+.alert--info .alert__title { color: var(--status-info-fg); }
+.alert--warning { background: var(--status-warning-soft); border-color: var(--status-warning-border); }
+.alert--warning .alert__title { color: var(--status-warning-fg); }
+.alert--success { background: var(--status-success-soft); border-color: var(--status-success-border); }
+.alert--success .alert__title { color: var(--status-success-fg); }
+.alert--error { background: var(--status-error-soft); border-color: var(--status-error-border); }
+.alert--error .alert__title { color: var(--status-error-fg); }
+.badge { display: inline-flex; align-items: center; gap: 4px; font-size: .6875rem; font-weight: 600; padding: 1px 8px; border-radius: var(--radius-pill); border: 1px solid; white-space: nowrap; }
+.badge--success { background: var(--status-success-soft); color: var(--status-success-fg); border-color: var(--status-success-border); }
+.badge--muted { background: var(--status-disabled-soft); color: var(--status-disabled-fg); border-color: var(--status-disabled-border); }
+.badge--info { background: var(--status-info-soft); color: var(--status-info-fg); border-color: var(--status-info-border); }
+
+/* ---- summary card (source connection, warehouse) ---- */
+.item-card { border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
+  display: flex; gap: var(--space-3); align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.item-card__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.item-card__name { font-weight: 600; }
+.item-card__sub { font-size: .8125rem; color: var(--text-muted); }
+
+.choice { border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4);
+  display: grid; grid-template-columns: 20px 1fr; gap: var(--space-3); cursor: pointer; align-items: start; }
+.choice:has(input:checked) { border-color: var(--accent-primary); background: var(--accent-primary-soft); }
+.choice input { margin: 3px 0 0; accent-color: var(--accent-primary); width: 16px; height: 16px; }
+.choice__title { font-weight: 600; }
+.choice__text { font-size: .8125rem; color: var(--text-secondary); }
+
+/* ---- progress ---- */
+.progress { display: flex; flex-direction: column; gap: var(--space-2); }
+.progress__row { display: flex; justify-content: space-between; gap: var(--space-3); font-size: .8125rem; flex-wrap: wrap; }
+.progress__num { font-variant-numeric: tabular-nums; font-weight: 600; }
+.progress__track { height: 8px; border-radius: var(--radius-pill); background: var(--bg-strong); overflow: hidden; }
+.progress__fill { height: 100%; background: var(--status-success); border-radius: inherit; transition: width var(--duration-normal) var(--ease-out); }
+
+/* ---- user list ---- */
+.users { border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; }
+.user { display: grid; grid-template-columns: 32px 1fr auto; gap: var(--space-3); align-items: center; padding: var(--space-3) var(--space-4); }
+.user + .user { border-top: 1px solid var(--border-subtle); }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--bg-strong); display: grid; place-items: center; font-size: .75rem; font-weight: 600; color: var(--text-secondary); }
+.user__name { font-weight: 500; }
+.user__mail { font-size: .75rem; color: var(--text-muted); }
+
+/* ---- flow diagram ---- */
+.flow-tabs { display: inline-flex; border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 2px; gap: 2px; background: var(--bg-muted); }
+.flow-tabs button { border: 0; background: none; padding: 5px 12px; border-radius: var(--radius-xs); cursor: pointer; font-size: .8125rem; color: var(--text-secondary); }
+.flow-tabs button[aria-selected='true'] { background: var(--bg-surface); color: var(--text-primary); font-weight: 600; box-shadow: var(--shadow-xs); }
+.flows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+@media (max-width: 720px) { .flows { grid-template-columns: 1fr; } }
+.flow { border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-4); background: var(--bg-surface-elevated); display: flex; flex-direction: column; gap: var(--space-3); }
+.flow__label { font-size: .6875rem; text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-muted); font-weight: 600; }
+.flow--after { border-color: var(--accent-primary-border); }
+.flow--after .flow__label { color: var(--accent-primary-active); }
+.chain { display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+.node { border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 8px 12px; background: var(--bg-surface); }
+.node__t { font-weight: 600; font-size: .8125rem; }
+.node__s { font-size: .75rem; color: var(--text-muted); }
+.node--hl { border-color: var(--accent-primary); background: var(--accent-primary-soft); }
+.node--gone { border-style: dashed; color: var(--text-muted); background: transparent; }
+.node--fail { border-color: var(--status-error-border); background: var(--status-error-soft); }
+.node--fail .node__t { color: var(--status-error-fg); }
+.node--gone .node__t { text-decoration: line-through; color: var(--text-muted); }
+.arrow { align-self: center; width: 2px; height: 16px; background: var(--border-strong); position: relative; margin: 2px 0 6px; }
+.arrow::after { content: ''; position: absolute; left: 50%; bottom: -5px; transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--border-strong); border-bottom: 0; }
+
+.inout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.inout--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 960px) { .inout--3 { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .inout { grid-template-columns: 1fr; } }
+.inout__box { border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); border: 1px solid; }
+.inout__box--in { background: var(--status-success-soft); border-color: var(--status-success-border); }
+.inout__box--out { background: var(--bg-muted); border-color: var(--border-default); }
+.inout__title { font-weight: 600; font-size: .8125rem; margin-bottom: var(--space-2); }
+.inout__box--in .inout__title { color: var(--status-success-fg); }
+.inout ul { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 4px; font-size: .8125rem; color: var(--text-secondary); }
+
+.changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.changes li { display: grid; grid-template-columns: 20px 1fr; gap: var(--space-3); font-size: .875rem; }
+.changes__mark { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: .6875rem; font-weight: 700; background: var(--status-warning-soft); color: var(--status-warning-fg); border: 1px solid var(--status-warning-border); margin-top: 1px; }
+.changes b { font-weight: 600; }
+.changes span.sub { display: block; color: var(--text-muted); font-size: .8125rem; }
+
+.ack { display: grid; grid-template-columns: 20px 1fr; gap: var(--space-3); align-items: start; padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default); border-radius: var(--radius-md); cursor: pointer; }
+.ack input { margin: 3px 0 0; width: 16px; height: 16px; accent-color: var(--accent-primary); }
+
+/* ---- live / status page ---- */
+.live-banner { display: flex; justify-content: space-between; gap: var(--space-4); align-items: center; flex-wrap: wrap;
+  padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); background: var(--status-success-soft); border: 1px solid var(--status-success-border); }
+.live-banner--off { background: var(--bg-muted); border-color: var(--border-default); }
+.live-banner__t { font-weight: 600; font-size: 1rem; display: flex; gap: var(--space-2); align-items: center; }
+.pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--status-success); box-shadow: 0 0 0 0 var(--status-success); animation: pulse 2s infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 oklch(54% 0.14 150 / .5); } 70% { box-shadow: 0 0 0 8px oklch(54% 0.14 150 / 0); } 100% { box-shadow: 0 0 0 0 oklch(54% 0.14 150 / 0); } }
+.live-banner--off .pulse { background: var(--status-disabled); animation: none; }
+.live-banner__s { font-size: .8125rem; color: var(--text-secondary); margin-top: 2px; }
+.checks { list-style: none; margin: 0; padding: 0; }
+.checks li { display: grid; grid-template-columns: 24px 1fr auto; gap: var(--space-3); align-items: center; padding: var(--space-3) var(--space-5); }
+.checks li + li { border-top: 1px solid var(--border-subtle); }
+.tick { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: .75rem; font-weight: 700; }
+.tick--ok { background: var(--status-success-soft); color: var(--status-success-fg); border: 1px solid var(--status-success-border); }
+.tick--warn { background: var(--status-warning-soft); color: var(--status-warning-fg); border: 1px solid var(--status-warning-border); }
+.checks__t { font-weight: 500; }
+.checks__s { font-size: .8125rem; color: var(--text-muted); }
+.linkish { background: none; border: 0; color: var(--text-link); cursor: pointer; font-size: .8125rem; padding: 0; text-decoration: none; }
+.linkish:hover { text-decoration: underline; }
+.section-title { font-size: .9375rem; font-weight: 600; padding: var(--space-4) var(--space-5) var(--space-2); }
+.stack { display: flex; flex-direction: column; gap: var(--space-5); }
+
+.order-event { display: grid; grid-template-columns: 22px 1fr; gap: var(--space-3); align-items: start; }
+.order-event + .order-event { margin-top: var(--space-3); }
+.spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border-default); border-top-color: var(--accent-primary); animation: spin 1s linear infinite; margin-top: 2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- dev API notes (harness toggle) ---- */
+.api { display: none; font-family: var(--font-mono); font-size: .6875rem; color: var(--status-review-fg); background: var(--status-review-soft);
+  border: 1px dashed var(--status-review-border); border-radius: var(--radius-xs); padding: 4px 8px; line-height: 1.5; }
+body.show-api .api { display: block; }
+
+/* ---- dialog ---- */
+.scrim { position: fixed; inset: 0; background: var(--overlay-scrim); z-index: 50; display: grid; place-items: center; padding: var(--space-4); }
+.dialog { background: var(--bg-surface); border-radius: var(--radius-xl); box-shadow: var(--shadow-overlay); max-width: 480px; width: 100%; }
+.dialog__head { padding: var(--space-5) var(--space-5) 0; }
+.dialog__title { font-size: 1.0625rem; font-weight: 600; }
+.dialog__body { padding: var(--space-3) var(--space-5) var(--space-5); color: var(--text-secondary); display: flex; flex-direction: column; gap: var(--space-3); font-size: .875rem; }
+.dialog__foot { padding: var(--space-3) var(--space-5); border-top: 1px solid var(--border-subtle); display: flex; justify-content: flex-end; gap: var(--space-2); }
+</style>
+
+<style>
+.copybox { display: flex; gap: var(--space-2); align-items: stretch; flex-wrap: wrap; }
+.copybox .input { flex: 1 1 260px; font-family: var(--font-mono); font-size: .8125rem; }
+.sub-title { font-weight: 600; font-size: .875rem; margin-bottom: var(--space-2); }
+.muted-empty { padding: var(--space-4); color: var(--text-muted); font-size: .8125rem; text-align: center; }
+.user__actions { display: flex; gap: var(--space-2); }
+details.more { border-top: 1px solid var(--border-subtle); padding-top: var(--space-4); }
+details.more summary { cursor: pointer; font-size: .8125rem; color: var(--text-link); }
+details.more[open] summary { margin-bottom: var(--space-3); }
+.cap-list { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.badge--warn { background: var(--status-warning-soft); color: var(--status-warning-fg); border-color: var(--status-warning-border); }
+</style>
+
+<div class="harness" role="region" aria-label="Mockup controls (not product UI)">
+  <div class="harness__row">
+    <span class="harness__label">Mockup state</span>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s1">1 · Product master</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s1-sync">1 · Stock syncing</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s1-complete">1 · Stock complete</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s2">2 · Packers</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s2-added">2 · Packer added</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s3">3 · What changes</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="s4">4 · Turn on</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="waiting">Waiting for 1st order</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="first">1st order arrived</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="live">Status: on</button>
+    <button class="chip" type="button" data-testid="mockup-state-chip" data-preset="off">Status: off</button>
+  </div>
+  <div class="harness__row">
+    <span class="harness__label">Operator's product master</span>
+    <button class="chip" type="button" data-testid="mockup-source-chip" data-source="prestashop">PrestaShop</button>
+    <button class="chip" type="button" data-testid="mockup-source-chip" data-source="woocommerce">WooCommerce</button>
+    <button class="chip" type="button" data-testid="mockup-source-chip" data-source="subiekt">Subiekt GT</button>
+    <button class="chip" type="button" data-testid="mockup-source-chip" data-source="none">No product master connected</button>
+    <button class="chip" type="button" data-testid="mockup-source-chip" data-source="two">Two product masters, one warehouse</button>
+    <span class="harness__sep" aria-hidden="true"></span>
+    <button class="chip" type="button" id="apiToggle" aria-pressed="false">Show API calls (devs)</button>
+  </div>
+</div>
+
+<div class="shell">
+  <nav class="nav" aria-label="Main">
+    <div class="nav__brand">OpenLinker</div>
+    <div class="nav__group">Operations</div>
+    <a href="#">Orders</a>
+    <a href="#">Products</a>
+    <a href="#">Listings</a>
+    <a href="#">Shipments</a>
+    <a href="#">Fulfilment</a>
+    <a href="#" id="navBench" hidden>Pack bench <span class="nav__new">NEW</span></a>
+    <a href="#">Returns</a>
+    <div class="nav__group">Configuration</div>
+    <a href="#">Connections</a>
+    <a href="#" aria-current="page">Settings</a>
+    <a href="#">Users</a>
+  </nav>
+
+  <main class="content">
+    <header class="page-header">
+      <a class="back-link" href="#">&larr; Settings</a>
+      <p class="eyebrow">Settings</p>
+      <h1 class="page-title" id="pageTitle">Pack orders in OpenLinker</h1>
+      <p class="page-description" id="pageDesc"></p>
+    </header>
+    <div id="root"></div>
+  </main>
+</div>
+
+<div id="dialogHost"></div>
+
+<script>
+/* ---------------------------------------------------------------------------
+   Frontend-only wizard. Every action maps to an endpoint on main today, except
+   where a dev note (toggle "Show API calls") says TARGET.
+   Scope (v1): ONE warehouse, fed by one or two product masters (TWO below).
+   Two warehouses are out of scope (v2, #3454).
+   Decision: with the OMS on, a marketplace order stays in OpenLinker and is NOT
+   created in the product master; the product master only has its stock lowered.
+   OpenLinker keeps no catalogue or stock of its own: products and stock come
+   only from a connection with ProductMaster + InventoryMaster enabled, so step 1
+   is a gate, not a formality, and it also records where that stock sits.
+   ------------------------------------------------------------------------- */
+const TOTAL_STOCK = 4812;
+
+const SOURCES = {
+  prestashop: { name: 'PrestaShop', host: 'sklep-example.pl', ordersOn: true, stockWhen: 'when the order is created in PrestaShop' },
+  woocommerce: { name: 'WooCommerce', host: 'sklep-example.pl', ordersOn: true, stockWhen: 'when the paid order is created in WooCommerce' },
+  subiekt: { name: 'Subiekt GT', host: 'Biuro, Warszawa', ordersOn: true, stockWhen: 'when the invoice or receipt is issued in Subiekt GT (Subiekt then issues the warehouse release, WZ)' },
+};
+
+const S = {
+  source: 'prestashop',   // key of SOURCES, or 'none' | 'two'
+  step: 1, maxReached: 1,
+  done: [false, false, false, false],
+  view: 'wizard',         // 'wizard' | 'waiting' | 'first' | 'status'
+  live: false,
+  located: 0, syncing: false,
+  warehouse: { name: 'Main warehouse', code: 'MAIN' },
+  lastCreated: null,      // shows the one-time password right after creating a packer
+  packers: [],            // approved packers
+  ack: false,
+};
+
+const STEPS = [
+  { title: 'Your product master', meta: 'Products and stock' },
+  { title: 'Add packers', meta: 'Optional' },
+  { title: 'See what changes', meta: 'Read before turning on' },
+  { title: 'Turn it on', meta: '' },
+];
+const N = STEPS.length;
+
+const $ = (q) => document.querySelector(q);
+const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = (n) => n.toLocaleString('en-US');
+const api = (t) => `<div class="api">${t}</div>`;
+/* Two product masters sharing one warehouse (e.g. chemicals in A, electrics in B).
+   Allowed in v1: both point their stock at the same location, the router sees
+   per-variant stock, a mixed basket is one parcel from one place, and each line
+   knows its owner via inventory_items.sourceConnectionId.
+   Known limits, shown as a warning: the same item listed in both product masters is
+   two separate OL products with two stock counts (getOrCreateInternalId is per
+   connection), and nothing can detect that cheaply. */
+const TWO = [
+  { name: 'PrestaShop A', host: 'chemia-example.pl', items: 3120, sells: 'chemicals' },
+  { name: 'PrestaShop B', host: 'elektro-example.pl', items: 1692, sells: 'electrics' },
+];
+const isTwo = () => S.source === 'two';
+const src = () => (isTwo() ? { name: 'your product masters', host: '', ordersOn: true, stockWhen: 'when the order is created in the product master that sells the product' } : SOURCES[S.source]);
+const shops = () => (isTwo() ? TWO : [{ name: SOURCES[S.source].name, host: SOURCES[S.source].host, items: TOTAL_STOCK }]);
+const shopOk = () => isTwo() || Boolean(SOURCES[S.source]);
+const shopNames = () => shops().map((x) => x.name).join(' and ');
+
+/* ---------------- shell ---------------- */
+function stepper() {
+  return `<ol class="stepper" aria-label="Setup steps" data-testid="wizard-stepper">${STEPS.map((s, i) => {
+    const n = i + 1;
+    const status = S.done[i] && n !== S.step ? 'done' : n === S.step ? 'current' : n <= S.maxReached ? 'open' : 'locked';
+    return `<li class="stepper__item" data-status="${status}" data-testid="wizard-stepper-step-${n}">
+      <button data-testid="wizard-stepper-button-${n}" type="button" ${status === 'locked' ? 'disabled' : ''} onclick="goStep(${n})" ${n === S.step ? 'aria-current="step"' : ''}>
+        <span class="stepper__dot" aria-hidden="true">${status === 'done' ? '&#10003;' : n}</span>
+        <span><span class="stepper__title">${s.title}</span>${s.meta ? `<br><span class="stepper__meta">${s.meta}</span>` : ''}</span>
+      </button></li>`;
+  }).join('')}</ol>`;
+}
+
+function panel({ why, body, next, back = true }) {
+  return `<section class="panel" aria-labelledby="panelTitle" data-testid="wizard-step-panel" data-step="${S.step}">
+    <div class="panel__head">
+      <p class="panel__step">Step ${S.step} of ${N}</p>
+      <h2 class="panel__title" id="panelTitle" tabindex="-1">${STEPS[S.step - 1].title}</h2>
+      <p class="panel__why">${why}</p>
+    </div>
+    <div class="panel__body">${body}</div>
+    <div class="panel__foot" data-testid="wizard-step-footer">
+      <span>${back && S.step > 1 ? `<button data-testid="btn-back" class="button button--ghost" type="button" onclick="goStep(${S.step - 1})">&larr; Back</button>` : ''}</span>
+      <span class="panel__foot-right">${next}</span>
+    </div>
+  </section>`;
+}
+
+/* ---------------- step 1: your product master ---------------- */
+/* One step, one decision: "this is my product master". The location is created
+   silently with the fixed name "Main warehouse" (shown later only on Fulfilment
+   and Inventory > Locations); the wizard never mentions or asks for it.
+   Two rows under the hood, both required by the router: the product master
+   (who reports how many) and an inventory location (where they physically sit).
+   The location is created by the operator's Confirm click (#2407: "an offer an
+   operator takes, never a seed"), then the product master's stock is pointed at
+   it with stockLocationOverride (#3206). No address is asked: labels take the
+   sender address from the carrier connection (InPost/DPD senderAddress), and
+   country/postcode only matter for routing rules between several warehouses. */
+function step1() {
+  const gate = api('GET /connections &rarr; one or two connections with status=active AND enabledCapabilities &ni; ProductMaster, InventoryMaster. OrderProcessorManager is NOT required: with the OMS on, OpenLinker lowers the product master\'s stock itself (target, see step 3).');
+  if (S.source === 'none') {
+    return panel({
+      why: 'OpenLinker has no products or stock of its own. It reads them from your product master. Connect it first.',
+      body: `<div class="alert alert--error"><span class="alert__title" data-testid="alert-no-product-master">No product master connected yet</span><span class="alert__text">Connect the product master that holds your products and stock, for example PrestaShop, WooCommerce or Subiekt GT. Then come back here.</span></div>${gate}`,
+      next: `<a class="button" href="#" data-testid="link-connect-product-master">Connect your product master</a>`,
+    });
+  }
+  const s = src();
+  const list = shops();
+  const names = shopNames();
+  const twoWarn = isTwo()
+    ? `<div class="alert alert--warning"><span class="alert__title" data-testid="alert-two-product-masters">Both product masters send stock to this one place</span><span class="alert__text">Keep each product in one product master only. If the same product is in both, OpenLinker sees two different products with two separate stock counts. A sale lowers the stock only in the product master it came from, so the other one can still sell the last units.</span></div>
+      ${api('Two product masters, one warehouse (v1). Prerequisites before release: #3453 lowers stock per line in the master that owns it (sourceConnectionId) with a per-master idempotency key; a refused or fail-open order stays in OpenLinker instead of fanning out to both masters (new issue); returns (#3486) and cancel (#3479) give stock back to the owning master; the override is set on EVERY master. Each marketplace still reads ONE masterCatalogConnectionId for offers, barcode linking and content (offer-builder.service.ts ~121-131, offer-mapping-sync.service.ts ~286-316): not an OMS blocker, v2 (#3454). Same item in both masters is undetectable today (/variants/search is substring).')}`
+    : '';
+  const setupCalls = api(`On Confirm:<br>POST /connections {platformType:"openlinker", enabledCapabilities:["FulfillmentExecutor"]}  (packing connection, no credentials; without FulfillmentExecutor the dispatch job never resolves an executor and nothing reaches the bench)<br>POST /inventory/locations/bootstrap &rarr; MAIN "Main warehouse" (idempotent; name set silently, never shown in the wizard; renamed later in Inventory &rsaquo; Locations)<br>${list.map((x, i) => `PATCH /connections/{productMaster${i + 1}Id} {config: {...fullConfig, stockLocationOverride: "{MAIN id}"}}`).join('<br>')}<br>(config is replaced whole: send the existing config back with only this key changed)`);
+  if (!S.done[0]) {
+    return panel({
+      why: 'OpenLinker has no products or stock of its own. It reads them from your product master.',
+      body: `${masterCards()}${twoWarn}${gate}${setupCalls}`,
+      next: `<button data-testid="btn-confirm-product-master" class="button" type="button" onclick="confirmProductMaster()">Confirm</button>`,
+    });
+  }
+  const pct = Math.round((S.located / TOTAL_STOCK) * 100);
+  const complete = S.located >= TOTAL_STOCK;
+  return panel({
+    why: 'OpenLinker has no products or stock of its own. It reads them from your product master.',
+    body: `${masterCards()}
+      <div class="progress" aria-live="polite" data-testid="stock-located-progress">
+        <div class="progress__row"><span>Stock from ${names} ready for packing</span><span class="progress__num">${fmt(S.located)} of ${fmt(TOTAL_STOCK)}</span></div>
+        <div class="progress__track" role="progressbar" aria-valuemin="0" aria-valuemax="${TOTAL_STOCK}" aria-valuenow="${S.located}" aria-label="Stock ready for packing"><div class="progress__fill" style="width:${pct}%"></div></div>
+      </div>
+      ${complete
+        ? `<div class="alert alert--success"><span class="alert__title">All stock is ready for packing</span><span class="alert__text">OpenLinker can now pack every product.</span></div>`
+        : `<div class="alert alert--info"><span class="alert__title">Filling in with each stock sync from ${names}</span><span class="alert__text">You don't need to wait here. Until it reaches ${fmt(TOTAL_STOCK)}, an order for a product not counted yet is handled the old way.</span></div>`}
+      ${api(`GET /inventory?locationId={MAIN id}&limit=1 &rarr; total (${fmt(S.located)})<br>GET /inventory?limit=1 &rarr; total (all rows from your product master${list.length > 1 ? 's' : ''})<br>The override is applied by the next master inventory sync, not instantly.`)}`,
+    next: `<button data-testid="btn-continue-step-1" class="button" type="button" onclick="markDone(1)">Continue</button>`,
+  });
+}
+
+function masterCards() {
+  if (isTwo()) {
+    return TWO.map((x) => `<div class="item-card"><div class="item-card__main"><span class="item-card__name">${x.name} &middot; ${esc(x.host)}</span>
+        <span class="item-card__sub">Sells ${x.sells} &middot; ${fmt(x.items)} stock items</span>
+        <div class="cap-list"><span class="badge badge--success">&#10003; Products</span><span class="badge badge--success">&#10003; Stock</span></div></div>
+        <span class="badge badge--info">Your product master</span></div>`).join('');
+  }
+  const s = src();
+  return `<div class="item-card">
+      <div class="item-card__main">
+        <span class="item-card__name">${s.name} &middot; ${esc(s.host)}</span>
+        <span class="item-card__sub">${fmt(TOTAL_STOCK)} stock items</span>
+        <div class="cap-list">
+          <span class="badge badge--success">&#10003; Products</span>
+          <span class="badge badge--success">&#10003; Stock</span>
+        </div>
+      </div>
+      <span class="badge badge--info">Your product master</span>
+    </div>`;
+}
+
+/* ---------------- step 2: packers ---------------- */
+/* NEW MODULE (backend needed): an admin creates a packer account directly.
+   Today there is no way: no POST /users, and self-registration is effectively
+   demo-only (the /register link shows only when demoMode is on, LoginForm.tsx:99;
+   the API refuses unless OL_REGISTRATION_ENABLED=true). */
+function step2() {
+  const initials = (n) => n.split(' ').map((p) => p[0]).join('').slice(0, 2);
+  const list = S.packers.length
+    ? `<div><p class="sub-title">Packers (${S.packers.length})</p><div class="users" data-testid="packer-list">${S.packers.map((u) => `<div class="user"><span class="avatar" aria-hidden="true">${initials(u.name)}</span>
+        <span><span class="user__name">${esc(u.name)}</span><br><span class="user__mail">Login: <span class="mono">${esc(u.login)}</span></span></span>
+        <span class="badge badge--success">Packer</span></div>`).join('')}</div></div>`
+    : '';
+  const created = S.lastCreated
+    ? `<div class="alert alert--success" role="status" data-testid="packer-created-notice"><span class="alert__title">${esc(S.lastCreated.name)} can sign in now</span>
+        <span class="alert__text">Give them the login <span class="mono">${esc(S.lastCreated.login)}</span> and the password below. It is shown only once. They are asked to change it at first sign-in.</span>
+        <div class="copybox" style="margin-top:var(--space-2)"><input class="input" id="tmpPass" data-testid="input-tmp-pass" readonly value="${esc(S.lastCreated.pass)}" aria-label="Temporary password"><button data-testid="btn-copy-pass" class="button button--secondary" type="button" id="copyBtn" onclick="copyPass()">Copy password</button></div></div>`
+    : '';
+  return panel({
+    why: 'Create a login for each person who packs. They see the pack bench and nothing else. You can skip this and pack yourself: admins and operators can open the pack bench too.',
+    body: `<div>
+        <p class="sub-title">Add a packer</p>
+        <div class="fields">
+          <div class="field"><label for="pName">Name</label><input class="input" id="pName" data-testid="input-p-name" placeholder="Anna Nowak" autocomplete="off"></div>
+          <div class="field"><label for="pLogin">Login</label><input class="input mono" id="pLogin" data-testid="input-p-login" placeholder="anna" autocomplete="off"><span class="field__hint">What they type at the pack bench to sign in.</span></div>
+          <div class="field field--wide"><label for="pMail">Email <span style="color:var(--text-muted);font-weight:400">(optional)</span></label><input class="input" id="pMail" data-testid="input-p-mail" type="email" placeholder="anna@sklep-example.pl" autocomplete="off"><span class="field__hint">Leave empty if the packer has no work email. The role is always Packer.</span></div>
+        </div>
+        <p id="pErr" class="field__hint" style="color:var(--status-error-fg); margin-top:var(--space-2)" hidden></p>
+        <div style="margin-top:var(--space-3)"><button data-testid="btn-add-packer" class="button button--secondary" type="button" onclick="addPacker()">Add packer</button></div>
+      </div>
+      ${created}
+      ${list}
+      <div class="alert alert--info"><span class="alert__title">New orders start as Unassigned</span><span class="alert__text">Any packer can pick up an unassigned order at the pack bench. To give an order to a specific person, assign it on the <b>Fulfilment</b> page.</span></div>
+      <details class="more"><summary>Someone already has an account?</summary>
+        <p class="field__hint">Change their role to Packer in <a class="linkish" href="#">Users</a>.</p>
+      </details>
+      ${api('NEW, backend needed: POST /users {name, username, email?, role:"packer"} &rarr; {id, temporaryPassword}, admin only, forces a password change at first sign-in.<br>Today: no admin user creation exists; /register is demo-only (LoginForm.tsx:99, OL_REGISTRATION_ENABLED=false). Issue to file.<br>Existing user: PATCH /users/{id}/role {role:"packer"} (exists).')}`,
+    next: `<button data-testid="btn-continue-step-2" class="button" type="button" onclick="markDone(2)">${S.packers.length ? 'Continue' : 'Skip for now'}</button>`,
+  });
+}
+
+/* ---------------- step 3: what changes ---------------- */
+/* Decision: with the OMS on, OpenLinker owns the order. A marketplace order is not
+   created in the product master; the product master only gets its stock lowered.
+   main today already skips syncOrder for a routed order (order-ingestion.service.ts
+   ~628), but nothing lowers the master's stock yet (the only adjustInventory caller
+   is returns restock). */
+function step3() {
+  const s = src();
+  const two = isTwo();
+  const shopsTxt = two ? shopNames() : s.name;
+  const buyer = `<div class="node"><div class="node__t">Allegro, Erli</div><div class="node__s">A customer buys</div></div><div class="arrow"></div>`;
+  const before = `${buyer}<div class="node"><div class="node__t">OpenLinker</div><div class="node__s">Downloads the order and passes it on</div></div><div class="arrow"></div>
+    <div class="node"><div class="node__t">${shopsTxt}</div><div class="node__s">${two
+      ? 'Both get the order. Each shop takes only its own products, so an order with products from both fails in one of them.'
+      : `Gets the order. Stock goes down there. You pack from ${s.name}.`}</div></div>`;
+  const after = `${buyer}<div class="node"><div class="node__t">OpenLinker</div><div class="node__s">Keeps the order</div></div><div class="arrow"></div>
+    <div class="node node--hl"><div class="node__t">Fulfilment &rarr; Pack bench</div><div class="node__s">Arrives as Unassigned. A packer picks it up, scans and packs it.</div></div>
+    <div class="node" style="margin-top:var(--space-2)"><div class="node__t">${shopsTxt}</div><div class="node__s">${two
+      ? "Don't get the order. Stock goes down in the shop that sells each product."
+      : "Doesn't get the order. Only the stock of the sold products goes down."}</div></div>`;
+  return panel({
+    why: 'Read this before you turn it on. You can turn it off with one click, but orders already sent to the pack bench stay there.',
+    body: `<p style="font-weight:600;">How a marketplace order travels</p>
+      <div class="flows" data-testid="order-flow-diagram">
+        <div class="flow"><span class="flow__label">Today</span><div class="chain">${before}</div></div>
+        <div class="flow flow--after"><span class="flow__label">After you turn it on</span><div class="chain">${after}</div></div>
+      </div>
+      ${api(`TARGET (backend, must ship before the wizard): lower the owning product master&#39;s stock once per line, adjustInventory(-qty, reason:"order_sale", key:"sale:{ownerConnectionId}:{workId}:{lineId}"), then propagate to marketplaces (#3453). Cancel gives it back (#3479); the reservation closes so stock is not subtracted twice (#3480).<br>Already true on main: a routed order is not created in the product master (order-ingestion.service.ts:628).${two ? '<br>"Today" with two masters is verified on main: every order fans out to every OrderProcessorManager (order-sync.service.ts:499) and the shop without the product fails "Product not found" (prestashop-order-processor-manager.adapter.ts:278-284).' : ''}<br>Unassigned, pack bench: branch 3415 (#3340), not on main.`)}
+      <div class="inout inout--3" data-testid="order-routing-summary">
+        <div class="inout__box inout__box--in"><p class="inout__title">Goes to the pack bench</p>
+          <ul><li>New orders from Allegro, Erli and your other marketplaces, placed after you turn it on</li><li>When every product is in stock and the order has a delivery address</li>${two ? `<li>An order with products from both shops is packed as one parcel</li>` : ''}</ul></div>
+        <div class="inout__box inout__box--out"><p class="inout__title">Waits for you in Orders</p>
+          <ul><li>An order where even one product is out of stock</li><li>An order with no delivery address</li></ul></div>
+        <div class="inout__box inout__box--out"><p class="inout__title">Stays as it is today</p>
+          <ul><li>Orders from your ${shopsTxt} store. You pack them there.</li><li>Orders the marketplace ships itself, for example Allegro One Fulfillment</li><li>Orders already in ${shopsTxt} before you turn it on</li></ul></div>
+      </div>
+      ${api('TARGET, all in this milestone:<br>- Out of stock / no address / routing error: held in OpenLinker with a visible reason, not sent to the product master (#3485). Today they fail open to the old path (order-ingestion.service.ts:878, :912, :1087).<br>- Storefront orders: routing skips an order whose source connection is itself a product master (#3487). Today routing applies to every OrderSource (:851, :1122).<br>- Marketplace-fulfilled orders: routing skips an order whose delivery method resolves to omp_fulfilled (#3488). Today routing does not look at the delivery method.<br>- Already sent before: not routed on re-ingest (#3455). Today a re-downloaded old order is routed.')}
+      <div>
+        <p style="font-weight:600; margin-bottom:var(--space-3);">What changes for you</p>
+        <ul class="changes" data-testid="what-changes-list">
+          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>Marketplace orders stay in OpenLinker.</b><span class="sub">They no longer appear as orders in ${shopsTxt}, and sales reports there won't include them. Only the stock of the sold products goes down there.</span></span></li>
+          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>You buy labels in OpenLinker.</b><span class="sub">In Orders, or with an automation that buys one when an order is packed. Then Allegro and Erli get the shipped status and the tracking number.</span></span></li>
+          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>The pack bench prints the label and the invoice.</b><span class="sub">It doesn't create them. Invoices and receipts follow your Sales documents settings, as today.</span></span></li>
+          <li><span class="changes__mark" aria-hidden="true">!</span><span><b>It applies to all your marketplaces at once.</b><span class="sub">You can't turn it on for Allegro only.</span></span></li>
+        </ul>
+      </div>
+      ${api('Labels: automatic purchase is an automation rule on T5 order.packed with dispatch-shipment (branch 3415, #2890), not a carrier setting. Shipped status + tracking reach the marketplace only via the shipment dispatch relay (label bought in OL); the work-progress relay has no production caller.<br>Invoices: auto-issue already runs for held orders (order-ingestion.service.ts:758-799); nothing changes, and with no sales-document routing nothing is issued.')}
+      <label class="ack" data-testid="ack-what-changes"><input type="checkbox" id="ack" data-testid="input-ack" ${S.ack ? 'checked' : ''} onchange="S.ack=this.checked; render()">
+        <span>I understand that marketplace orders stay in OpenLinker, and only stock goes down in ${shopsTxt}.</span></label>`,
+    next: `<button data-testid="btn-continue-step-3" class="button" type="button" ${S.ack ? '' : 'disabled'} onclick="markDone(3)">Continue</button>`,
+  });
+}
+
+/* ---------------- step 4: turn on ---------------- */
+function step4() {
+  const s = src();
+  const full = S.located >= TOTAL_STOCK;
+  const who = S.packers.length ? S.packers.map((u) => u.name).join(', ') : 'No packers yet, admins and operators can pack';
+  return panel({
+    why: 'Everything is ready. From the moment you turn it on, new orders go to the pack bench.',
+    body: `<ul class="checks" data-testid="setup-summary" style="border:1px solid var(--border-subtle); border-radius:var(--radius-md);">
+        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Your product master${isTwo() ? 's' : ''}</span><br><span class="checks__s">${shops().map((x) => `${x.name} &middot; ${esc(x.host)}`).join(', ')}</span></span><button data-testid="btn-go-step-1" class="linkish" type="button" onclick="goStep(1)">View</button></li>
+        <li><span class="tick ${full ? 'tick--ok' : 'tick--warn'}" aria-hidden="true">${full ? '&#10003;' : '&hellip;'}</span><span><span class="checks__t">Stock ready for packing</span><br><span class="checks__s">${fmt(S.located)} of ${fmt(TOTAL_STOCK)}${full ? '' : ' &middot; still filling in'}</span></span><button data-testid="btn-go-step-1-stock" class="linkish" type="button" onclick="goStep(1)">View</button></li>
+        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Packers</span><br><span class="checks__s">${esc(who)}</span></span><button data-testid="btn-go-step-2" class="linkish" type="button" onclick="goStep(2)">Change</button></li>
+      </ul>
+      ${api('PATCH /connections/{openlinkerId} {config: {...config, sourcingAuthority: {enabled: true}}}<br>(400 if no active location: cannot happen here, step 1 created one)')}`,
+    next: `<button data-testid="btn-turn-on" class="button" type="button" onclick="turnOn()">Start packing in OpenLinker</button>`,
+  });
+}
+
+/* ---------------- after turning on ---------------- */
+function firstOrderView(arrived) {
+  const s = src();
+  return `<div class="stack">
+    <div class="live-banner" data-testid="packing-status-banner" data-live="true"><div><div class="live-banner__t"><span class="pulse" aria-hidden="true"></span>Packing is on</div>
+      <div class="live-banner__s">New orders now go to the pack bench.</div></div>
+      <a class="button" href="#" data-testid="link-open-fulfilment">Open Fulfilment</a></div>
+    <section class="panel" data-testid="first-order-panel">
+      <h2 class="section-title">Your first order</h2>
+      <div style="padding:0 var(--space-5) var(--space-5)" aria-live="polite">
+        ${arrived
+          ? `<div class="order-event"><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><b>Order #A-10482 from Allegro</b> arrived as Unassigned.<br><span class="checks__s">2 products &middot; 1 min ago &middot; any packer can pick it up, or assign it on Fulfilment</span></span></div>
+             <div class="order-event"><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span>Stock went down in ${s.name}. The order itself stays in OpenLinker.</span></div>
+             <div style="margin-top:var(--space-4); display:flex; gap:var(--space-2); flex-wrap:wrap;"><a class="button" href="#" data-testid="link-open-fulfilment">Open Fulfilment</a><a class="button button--secondary" href="#" data-testid="link-open-pack-bench">Open pack bench</a><button data-testid="btn-go-to-status" class="button button--ghost" type="button" onclick="setPreset('live')">Go to status</button></div>`
+          : `<div class="order-event"><span class="spinner" aria-hidden="true"></span><span><b>Waiting for the next order&hellip;</b><br><span class="checks__s">It shows up here as soon as OpenLinker downloads it, usually within a few minutes. You can leave this page.</span></span></div>`}
+        ${api('GET /fulfillment/works?limit=1  (polled while this page is open)')}
+      </div>
+    </section>
+  </div>`;
+}
+
+function statusView() {
+  const s = src();
+  const who = S.packers.length ? S.packers.map((u) => u.name).join(', ') : 'No packers yet, admins and operators can pack';
+  const banner = S.live
+    ? `<div class="live-banner" data-testid="packing-status-banner" data-live="true"><div><div class="live-banner__t"><span class="pulse" aria-hidden="true"></span>Packing is on</div>
+        <div class="live-banner__s">12 orders on Fulfilment, 4 unassigned &middot; last one arrived 4 min ago</div></div>
+        <span style="display:flex; gap:var(--space-2); flex-wrap:wrap;"><a class="button" href="#" data-testid="link-open-fulfilment">Open Fulfilment</a><button data-testid="btn-ask-stop" class="button button--secondary" type="button" onclick="askStop()">Stop packing in OpenLinker</button></span></div>`
+    : `<div class="live-banner live-banner--off" data-testid="packing-status-banner" data-live="false"><div><div class="live-banner__t"><span class="pulse" aria-hidden="true"></span>Packing is off</div>
+        <div class="live-banner__s">New orders go to ${isTwo() ? 'your product masters' : s.name} and are packed there, as before. Your stock setup is kept.</div></div>
+        <button data-testid="btn-turn-on" class="button" type="button" onclick="turnOn(true)">Start packing again</button></div>`;
+  return `<div class="stack">${banner}
+    <section class="panel" data-testid="setup-status"><h2 class="section-title">Setup</h2>
+      <ul class="checks">
+        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Your product master${isTwo() ? 's' : ''}</span><br><span class="checks__s">${shops().map((x) => `${x.name} &middot; ${esc(x.host)}`).join(', ')}</span></span><a class="linkish" href="#">Open</a></li>
+                <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Stock ready for packing</span><br><span class="checks__s">${fmt(S.located)} of ${fmt(TOTAL_STOCK)} from ${shopNames()}</span></span><a class="linkish" href="#">View</a></li>
+        <li><span class="tick tick--ok" aria-hidden="true">&#10003;</span><span><span class="checks__t">Packers</span><br><span class="checks__s">${esc(who)}</span></span><a class="linkish" href="#">Add packers</a></li>
+      </ul>
+      ${api('<span style="display:block;margin:0 var(--space-5) var(--space-4)">GET /connections · GET /inventory/locations?status=active · GET /inventory?locationId= · GET /fulfillment-authority/status (sourcing row) · GET /fulfillment/works</span>')}
+    </section></div>`;
+}
+
+/* ---------------- dialog ---------------- */
+function askStop() {
+  const s = src();
+  $('#dialogHost').innerHTML = `<div class="scrim" onclick="if(event.target===this) closeDialog()">
+    <div class="dialog" data-testid="dialog-stop-packing" data-state="dialog-stop-confirm" role="dialog" aria-modal="true" aria-labelledby="dT" aria-describedby="dD" tabindex="-1" id="dlg">
+      <div class="dialog__head"><h2 class="dialog__title" id="dT">Stop packing in OpenLinker?</h2></div>
+      <div class="dialog__body" id="dD">
+        <p>New orders go to ${isTwo() ? 'your product masters' : s.name} and are packed there, as before.</p>
+        <p>The 12 orders already on Fulfilment stay there. Finish packing them at the pack bench.</p>
+        <p>Your stock setup is kept, so you can start again with one click.</p>
+        ${api('PATCH /connections/{openlinkerId} {config: {...config, sourcingAuthority: {enabled: false}}}')}
+      </div>
+      <div class="dialog__foot"><button data-testid="btn-close-dialog" class="button button--secondary" type="button" onclick="closeDialog()">Cancel</button><button data-testid="btn-stop-now" class="button button--danger" type="button" onclick="stopNow()">Stop packing</button></div>
+    </div></div>`;
+  $('#dlg').focus();
+}
+function closeDialog() { $('#dialogHost').innerHTML = ''; }
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDialog(); });
+
+/* ---------------- actions ---------------- */
+function markDone(n) { S.done[n - 1] = true; goStep(Math.min(N, n + 1)); }
+function confirmProductMaster() { S.done[0] = true; S.located = 1240; S.syncing = true; render(true); tick(); }
+function addPacker() {
+  const name = $('#pName').value.trim(); const login = $('#pLogin').value.trim(); const err = $('#pErr');
+  if (!name || !login) { err.textContent = 'Enter a name and a login.'; err.hidden = false; return; }
+  if (S.packers.some((u) => u.login === login)) { err.textContent = `The login "${login}" is already taken. Pick another one.`; err.hidden = false; return; }
+  const pass = 'Pack-' + Math.random().toString(36).slice(2, 6) + '-' + Math.random().toString(36).slice(2, 6);
+  S.packers.push({ id: 'u' + Date.now(), name, login, mail: $('#pMail').value.trim() });
+  S.lastCreated = { name, login, pass };
+  render();
+}
+function copyPass() {
+  const btn = $('#copyBtn');
+  const ok = () => { btn.textContent = 'Copied'; setTimeout(() => { if ($('#copyBtn')) $('#copyBtn').textContent = 'Copy password'; }, 1500); };
+  try { navigator.clipboard.writeText($('#tmpPass').value).then(ok, () => $('#tmpPass').select()); } catch (e) { $('#tmpPass').select(); }
+}
+function turnOn(again) { S.done[3] = true; S.live = true; S.view = again ? 'status' : 'waiting'; render(true); }
+function stopNow() { closeDialog(); S.live = false; S.view = 'status'; render(true); }
+function goStep(n) { S.maxReached = Math.max(S.maxReached, n); S.step = n; S.view = 'wizard'; render(true); }
+
+let timer = null;
+function tick() {
+  clearInterval(timer);
+  timer = setInterval(() => {
+    if (!S.syncing) return clearInterval(timer);
+    S.located = Math.min(TOTAL_STOCK, S.located + 600);
+    if (S.located >= TOTAL_STOCK) { S.syncing = false; clearInterval(timer); }
+    if (S.view === 'wizard' && (S.step === 1 || S.step === 4)) render();
+  }, 1400);
+}
+
+/* ---------------- data-state vocabulary (E2E + implementation tickets cite these) ----------------
+   step-1-product-master | step-1-no-product-master | step-1-two-product-masters (two masters, not confirmed yet)
+   step-1-stock-syncing | step-1-stock-complete
+   step-2-packers-empty | step-2-packer-added
+   step-3-what-changes
+   step-4-turn-on | waiting-first-order | first-order-arrived | status-on | status-off
+   dialog-stop-confirm (on the dialog element)
+   body[data-source] = prestashop | woocommerce | subiekt | none | two */
+function stateName() {
+  if (S.view === 'waiting') return 'waiting-first-order';
+  if (S.view === 'first') return 'first-order-arrived';
+  if (S.view === 'status') return S.live ? 'status-on' : 'status-off';
+  switch (S.step) {
+    case 1:
+      if (S.source === 'none') return 'step-1-no-product-master';
+      if (S.done[0]) return S.located >= TOTAL_STOCK ? 'step-1-stock-complete' : 'step-1-stock-syncing';
+      return isTwo() ? 'step-1-two-product-masters' : 'step-1-product-master';
+    case 2: return S.packers.length ? 'step-2-packer-added' : 'step-2-packers-empty';
+    case 3: return 'step-3-what-changes';
+    default: return 'step-4-turn-on';
+  }
+}
+
+/* ---------------- render ---------------- */
+function render(moveFocus) {
+  const inWizard = S.view === 'wizard';
+  $('#navBench').hidden = !S.live;
+  $('#pageTitle').textContent = inWizard ? 'Pack orders in OpenLinker' : 'Packing in OpenLinker';
+  $('#pageDesc').textContent = inWizard
+    ? 'Pick and pack orders on one screen, with a barcode scanner. Setup takes about 5 minutes. Nothing changes in how your orders are handled until the last step.'
+    : 'Orders are packed at the pack bench. You can stop this at any time.';
+  let html;
+  if (inWizard) html = `<div class="wizard">${stepper()}<div>${[step1, step2, step3, step4][S.step - 1]()}</div></div>`;
+  else if (S.view === 'waiting') html = firstOrderView(false);
+  else if (S.view === 'first') html = firstOrderView(true);
+  else html = statusView();
+  $('#root').innerHTML = html;
+  document.body.dataset.state = stateName();
+  document.body.dataset.source = S.source;
+  if (moveFocus && inWizard) { const t = $('#panelTitle'); if (t) t.focus({ preventScroll: true }); }
+}
+
+/* ---------------- harness ---------------- */
+const ANNA = { id: 'u1', name: 'Anna Nowak', login: 'anna', mail: 'anna@sklep-example.pl' };
+let currentPreset = 's1';
+function setPreset(p) {
+  currentPreset = p;
+  Object.assign(S, { step: 1, maxReached: 1, done: Array(N).fill(false), view: 'wizard', live: false, located: 0, syncing: false, lastCreated: null, packers: [], ack: false });
+  clearInterval(timer);
+  if (!shopOk() && p !== 's1') { S.source = 'prestashop'; syncSourceChips(); }
+  const upTo = (n) => { for (let i = 0; i < n; i++) S.done[i] = true; S.maxReached = Math.min(N, n + 1); };
+  const full = () => { S.located = TOTAL_STOCK; };
+  switch (p) {
+    case 's1-sync': S.done[0] = true; S.maxReached = 2; S.located = 1240; S.syncing = true; tick(); break;
+    case 's1-complete': S.done[0] = true; S.maxReached = 2; full(); break;
+    case 's2': upTo(1); S.step = 2; full(); break;
+    case 's2-added': upTo(1); S.step = 2; full(); S.packers = [{ ...ANNA }]; S.lastCreated = { name: ANNA.name, login: ANNA.login, pass: 'Pack-7k2q-m9xd' }; break;
+    case 's3': upTo(2); S.step = 3; full(); break;
+    case 's4': upTo(3); S.step = 4; full(); S.ack = true; S.packers = [{ ...ANNA }]; break;
+    case 'waiting': upTo(4); full(); S.live = true; S.view = 'waiting'; break;
+    case 'first': upTo(4); full(); S.live = true; S.view = 'first'; break;
+    case 'live': upTo(4); full(); S.live = true; S.view = 'status'; S.packers = [{ ...ANNA }]; break;
+    case 'off': upTo(4); full(); S.live = false; S.view = 'status'; S.packers = [{ ...ANNA }]; break;
+  }
+  document.querySelectorAll('[data-preset]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.preset === p)));
+  render(true);
+}
+function syncSourceChips() { document.querySelectorAll('[data-source]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.source === S.source))); }
+document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => setPreset(b.dataset.preset)));
+document.querySelectorAll('[data-source]').forEach((b) => b.addEventListener('click', () => {
+  S.source = b.dataset.source; syncSourceChips();
+  setPreset(shopOk() ? currentPreset : 's1');
+}));
+$('#apiToggle').addEventListener('click', (e) => { const on = document.body.classList.toggle('show-api'); e.currentTarget.setAttribute('aria-pressed', String(on)); });
+
+syncSourceChips();
+setPreset('s1');
+</script>
