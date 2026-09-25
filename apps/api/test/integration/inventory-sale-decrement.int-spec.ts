@@ -24,7 +24,9 @@ import {
   INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN,
   INVENTORY_SERVICE_TOKEN,
   InventorySaleDecrementService,
+  RESERVATION_SERVICE_TOKEN,
   type IInventoryService,
+  type IReservationService,
   type InventoryAdjustmentResult,
 } from '@openlinker/core/inventory';
 import { InventoryItemOrmEntity } from '@openlinker/core/inventory/orm-entities';
@@ -75,6 +77,7 @@ async function seedPosition(
 describe('Inventory sale decrement (#3453)', () => {
   let harness: IntegrationTestHarness;
   let service: InventorySaleDecrementService;
+  let reservations: IReservationService;
   let adjustInventory: jest.Mock;
   let enqueueSpy: jest.SpyInstance;
 
@@ -119,11 +122,13 @@ describe('Inventory sale decrement (#3453)', () => {
     // Typed through the constructor rather than by importing the ports:
     // `*RepositoryPort` is an intra-context contract the cross-context guard denies.
     type Deps = ConstructorParameters<typeof InventorySaleDecrementService>;
+    reservations = app.get<IReservationService>(RESERVATION_SERVICE_TOKEN);
     service = new InventorySaleDecrementService(
       app.get<Deps[0]>(INVENTORY_REPOSITORY_TOKEN),
       app.get<Deps[1]>(INVENTORY_SALE_DECREMENT_REPOSITORY_TOKEN, { strict: false }),
       app.get<IInventoryService>(INVENTORY_SERVICE_TOKEN),
-      integrations
+      integrations,
+      reservations
     );
   });
 
@@ -230,6 +235,63 @@ describe('Inventory sale decrement (#3453)', () => {
         `SELECT "status", "reason" FROM "inventory_sale_decrements"`
       );
     expect(row).toEqual({ status: 'skipped', reason: 'source-is-owner' });
+  });
+
+  // #3480 — the routed order's hold is `published` from the moment it is routed,
+  // and must stop counting exactly when the master itself is lower.
+  describe('the routed order\'s hold (#3480)', () => {
+    const holdFor = async (productId: string, variantId: string): Promise<void> => {
+      await reservations.reserveForOrder({
+        orderRecordId: 'ol_order_sale',
+        atpEffect: 'published',
+        lines: [{ orderLineId: 'line-1', productId, productVariantId: variantId, quantity: 1 }],
+      });
+    };
+
+    const holdState = async (
+      inventoryItemId: string
+    ): Promise<{ status: string; olReserved: number }> => {
+      const [reservation] = await harness
+        .getDataSource()
+        .query<{ status: string }[]>(
+          `SELECT "status" FROM "reservations" WHERE "orderRecordId" = 'ol_order_sale'`
+        );
+      const [position] = await harness
+        .getDataSource()
+        .query<{ olReservedQuantity: number }[]>(
+          `SELECT "olReservedQuantity" FROM "inventory_items" WHERE "id" = $1`,
+          [inventoryItemId]
+        );
+      return { status: reservation.status, olReserved: Number(position.olReservedQuantity) };
+    };
+
+    it('should consume the hold and clear the reserved count once the decrement lands', async () => {
+      const { productId, variantId, inventoryItemId } = await seedPosition(
+        harness.getDataSource(),
+        1
+      );
+      await holdFor(productId, variantId);
+      expect(await holdState(inventoryItemId)).toEqual({ status: 'held', olReserved: 1 });
+
+      await decrement(productId, variantId);
+
+      // Counted once: the master is at 0 and nothing is reserved on top of it,
+      // so no shortfall (reserved > available) can open for this order.
+      expect(await holdState(inventoryItemId)).toEqual({ status: 'consumed', olReserved: 0 });
+    });
+
+    it('should keep the hold while a failed decrement is in doubt', async () => {
+      const { productId, variantId, inventoryItemId } = await seedPosition(
+        harness.getDataSource(),
+        1
+      );
+      await holdFor(productId, variantId);
+      adjustInventory.mockRejectedValueOnce(new Error('PrestaShop answered 500'));
+
+      await decrement(productId, variantId);
+
+      expect(await holdState(inventoryItemId)).toEqual({ status: 'held', olReserved: 1 });
+    });
   });
 
   it('should store a positive quantity only', async () => {

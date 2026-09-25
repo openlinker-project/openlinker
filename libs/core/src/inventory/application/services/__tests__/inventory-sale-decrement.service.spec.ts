@@ -25,6 +25,7 @@ import type {
 } from '../../../domain/ports/inventory-sale-decrement-repository.port';
 import type { InventoryOwnerPosition } from '../../../domain/types/inventory.types';
 import type { IInventoryService } from '../inventory.service.interface';
+import type { IReservationService } from '../reservation.service.interface';
 import { InventorySaleDecrementService } from '../inventory-sale-decrement.service';
 import type { DecrementForWorkInput } from '../inventory-sale-decrement.service.interface';
 
@@ -165,6 +166,7 @@ describe('InventorySaleDecrementService', () => {
   let adapters: Map<string, jest.Mocked<Pick<InventoryMasterPort, 'adjustInventory' | 'listInventory'>>>;
   let integrations: { getCapabilityAdapter: jest.Mock };
   let inventoryService: { setInventory: jest.Mock };
+  let reservations: { closeForOrder: jest.Mock };
   let service: InventorySaleDecrementService;
 
   const makeAdapter = () => ({
@@ -201,6 +203,9 @@ describe('InventorySaleDecrementService', () => {
       }),
     };
     inventoryService = { setInventory: jest.fn().mockResolvedValue(undefined) };
+    reservations = {
+      closeForOrder: jest.fn().mockResolvedValue({ closed: 1, alreadyTerminal: 0, failed: 0 }),
+    };
 
     service = new InventorySaleDecrementService(
       {
@@ -208,7 +213,8 @@ describe('InventorySaleDecrementService', () => {
       } as unknown as InventoryRepositoryPort,
       repository,
       inventoryService as unknown as IInventoryService,
-      integrations as unknown as IIntegrationsService
+      integrations as unknown as IIntegrationsService,
+      reservations as unknown as IReservationService
     );
   });
 
@@ -534,6 +540,82 @@ describe('InventorySaleDecrementService', () => {
     expect(shop().adjustInventory).toHaveBeenCalledWith(
       expect.objectContaining({ variantId: undefined, quantity: -1 })
     );
+  });
+
+  describe('closing the routed order\'s hold (#3480)', () => {
+    const consumedLine = {
+      orderRecordId: 'ol_order_1',
+      terminalStatus: 'consumed',
+      orderLineIds: ['line-1'],
+    };
+
+    it('should consume the line\'s hold once the decrement lands', async () => {
+      await service.decrementForWork(input());
+
+      expect(reservations.closeForOrder).toHaveBeenCalledWith(consumedLine);
+    });
+
+    // The propagation `setInventory` enqueues must see the hold already gone and
+    // the master already lower, or the sale is subtracted twice.
+    it('should consume the hold BEFORE writing the new quantity to the mirror', async () => {
+      await service.decrementForWork(input());
+
+      const consumeOrder = reservations.closeForOrder.mock.invocationCallOrder[0];
+      const mirrorOrder = inventoryService.setInventory.mock.invocationCallOrder[0];
+      expect(consumeOrder).toBeLessThan(mirrorOrder);
+    });
+
+    it('should consume the hold when the line is skipped because the shop lowered its own stock', async () => {
+      await service.decrementForWork(input({ orderSourceConnectionId: 'conn-shop' }));
+
+      expect(reservations.closeForOrder).toHaveBeenCalledWith(consumedLine);
+    });
+
+    it('should re-run the consume on a replay so a failed consume heals', async () => {
+      reservations.closeForOrder
+        .mockRejectedValueOnce(new Error('db blip'))
+        .mockResolvedValue({ closed: 1, alreadyTerminal: 0, failed: 0 });
+
+      await service.decrementForWork(input());
+      await service.decrementForWork(input());
+
+      expect(reservations.closeForOrder).toHaveBeenCalledTimes(2);
+      expect(shop().adjustInventory).toHaveBeenCalledTimes(1);
+    });
+
+    it('should keep the hold when the decrement is in doubt', async () => {
+      shop().adjustInventory.mockRejectedValue(new Error('PrestaShop answered 500'));
+
+      await service.decrementForWork(input());
+
+      expect(reservations.closeForOrder).not.toHaveBeenCalled();
+    });
+
+    it('should keep the hold when the line is blocked before the master', async () => {
+      positions = [];
+
+      await service.decrementForWork(input());
+
+      expect(reservations.closeForOrder).not.toHaveBeenCalled();
+    });
+
+    it('should keep the hold while the line is retryable', async () => {
+      adapters.delete('conn-shop');
+
+      await service.decrementForWork(input());
+
+      expect(reservations.closeForOrder).not.toHaveBeenCalled();
+    });
+
+    // The decrement is already durable; a consume failure must not undo or fail it.
+    it('should keep the line applied when closing the hold fails', async () => {
+      reservations.closeForOrder.mockRejectedValue(new Error('db blip'));
+
+      const result = await service.decrementForWork(input());
+
+      expect(result.lines[0]).toMatchObject({ status: 'applied' });
+      expect(inventoryService.setInventory).toHaveBeenCalled();
+    });
   });
 
   // The master is already lowered; a mirror failure must not fail the line.
