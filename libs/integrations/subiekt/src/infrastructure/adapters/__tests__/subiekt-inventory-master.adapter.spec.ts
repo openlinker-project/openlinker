@@ -99,9 +99,31 @@ describe('SubiektInventoryMasterAdapter', () => {
       const rows = await modelAdapter.listInventory(MODEL_PRODUCT_ID);
 
       expect(rows).toHaveLength(2);
-      expect(rows.map((r) => r.variantId)).toEqual(['ol_variant_WOBLACK100', 'ol_variant_WOBLACK50']);
+      // The CANONICAL key, which is what `SubiektProductMasterAdapter` writes
+      // the variant row under. This expectation used to pin the bare symbol,
+      // and that is exactly why the two writers were able to disagree about
+      // identity while agreeing about quantity: the mock derives the id from
+      // whatever external id it is handed, so it passed under either.
+      expect(rows.map((r) => r.variantId)).toEqual([
+        'ol_variant_WOBLACK100::variant',
+        'ol_variant_WOBLACK50::variant',
+      ]);
       expect(rows.map((r) => r.quantity)).toEqual([517, 516]);
       expect(rows.every((r) => r.productId === MODEL_PRODUCT_ID)).toBe(true);
+    });
+
+    // An install already carrying the bare mapping keeps it. Re-keying those
+    // rows would orphan their offers exactly once, on upgrade, for a
+    // consistency gain nothing reads.
+    it('reuses a pre-existing bare mapping rather than minting the canonical one', async () => {
+      identifierMapping.getInternalId.mockImplementation((_t: string, externalId: string) =>
+        Promise.resolve(externalId === 'WOBLACK100' ? 'ol_variant_legacy' : null),
+      );
+
+      const rows = await modelAdapter.listInventory(MODEL_PRODUCT_ID);
+
+      expect(rows[0].variantId).toBe('ol_variant_legacy');
+      expect(rows[1].variantId).toBe('ol_variant_WOBLACK50::variant');
     });
 
     it('getInventory reports the model TOTAL, not one member', async () => {

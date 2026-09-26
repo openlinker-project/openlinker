@@ -41,6 +41,7 @@ import type {
 } from '@openlinker/core/inventory';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { resolveTowarVariantId } from './subiekt-variant-identity';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { modelIdFromProductKey } from './subiekt-model-key';
 import type { LoggerPort } from '@openlinker/shared/logging';
@@ -164,10 +165,13 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
     }
     const out: Inventory[] = [];
     for (const symbol of symbols) {
-      const variantId = await this.identifierMapping.getOrCreateInternalId(
-        CORE_ENTITY_TYPE.ProductVariant,
-        symbol,
+      // ONE resolver, shared with `SubiektProductMasterAdapter` - see
+      // `subiekt-variant-identity.ts` for why minting here independently is
+      // what broke the identity fix for new data.
+      const variantId = await resolveTowarVariantId(
+        this.identifierMapping,
         this.connectionId,
+        symbol,
       );
       const inventory = await this.readOneTowarInventory(productId, symbol);
       out.push({ ...inventory, variantId });

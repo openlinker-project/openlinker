@@ -86,6 +86,7 @@ import type {
   ExternalIdMapping,
 } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { resolveTowarVariantId } from './subiekt-variant-identity';
 import type {
   BridgeCreateProductRequest,
   BridgeListCategoriesResponse,
@@ -454,19 +455,7 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
    * identity it already had.
    */
   private async resolveMemberVariantId(symbol: string): Promise<string> {
-    const legacy = await this.identifierMapping.getInternalId(
-      CORE_ENTITY_TYPE.ProductVariant,
-      symbol,
-      this.connection.id,
-    );
-    if (legacy) {
-      return legacy;
-    }
-    return this.identifierMapping.getOrCreateInternalId(
-      CORE_ENTITY_TYPE.ProductVariant,
-      `${symbol}::variant`,
-      this.connection.id,
-    );
+    return resolveTowarVariantId(this.identifierMapping, this.connection.id, symbol);
   }
 
   /**
@@ -479,10 +468,14 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
   private async readSyntheticVariant(productId: string, symbol: string): Promise<ProductVariant[]> {
     const bridgeProduct = await this.getJson<BridgeProduct>(`/api/products/${encodeURIComponent(symbol)}`);
     this.assertStillAProduct(productId, bridgeProduct);
-    const variantInternalId = await this.identifierMapping.getOrCreateInternalId(
-      CORE_ENTITY_TYPE.ProductVariant,
-      `${symbol}::variant`,
+    // The same resolver the model path uses. Unconditional canonical minting
+    // here re-keyed a legacy towar on the way OUT of a model, which is the
+    // reverse of the transition the fix was written for and orphans its offers
+    // just the same.
+    const variantInternalId = await resolveTowarVariantId(
+      this.identifierMapping,
       this.connection.id,
+      symbol,
     );
     return [
       {
