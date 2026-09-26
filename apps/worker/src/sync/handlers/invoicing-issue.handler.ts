@@ -96,9 +96,13 @@ export class InvoicingIssueHandler implements SyncJobHandler {
     try {
       // F4: command idempotencyKey === payload.idempotencyKey === job row key.
       // The service's `issued`-only exactly-once gate makes duplicate events /
-      // retries a no-op against the same key.
+      // retries a no-op against the same PROVIDER call. It does NOT make the
+      // returned record `issued` - see the gate below, which is what the
+      // refresh actually keys on.
       const record = await this.invoiceService.issueInvoice(command);
-      await this.refreshMasterStockAfterDocument(record.id, payload);
+      if (record.status === 'issued') {
+        await this.refreshMasterStockAfterDocument(record.id, payload);
+      }
       return { outcome: 'ok' };
     } catch (error) {
       // #2047: the order is already invoiced on ANOTHER connection. A retry can
@@ -164,6 +168,19 @@ export class InvoicingIssueHandler implements SyncJobHandler {
    * exactly-once gate, hence the same key, hence no re-enqueue; a correction
    * is a new record and legitimately earns one more. The upper bound is the
    * number of documents issued against the order.
+   *
+   * CALLED ONLY FOR AN `issued` RECORD, which the caller gates on, for the
+   * reason its fiscal-receipt sibling states in as many words
+   * (`fiscalization-register.handler.ts`): `issueInvoice` returns WITHOUT
+   * throwing when a live in-flight lease is found, and again when an in-doubt
+   * `failed` record is surfaced for manual reconciliation
+   * (`InvoiceService.resumeExisting`). Both reuse the SAME record id. An
+   * ungated call would therefore spend `invoice:{id}` on an attempt that moved
+   * no stock, and `sync_jobs.idempotencyKey` is globally unique and TTL-less -
+   * so the later SUCCESSFUL issuance re-derives that consumed key, enqueues
+   * nothing, and the channels keep publishing the pre-sale quantity until the
+   * next scheduled sweep. Nothing is lost on the gated-out branches: no stock
+   * moved, so there is nothing to re-read.
    *
    * NEVER throws and never changes the job outcome: the document is already
    * committed fiscal state, and a queue hiccup must not turn a successful

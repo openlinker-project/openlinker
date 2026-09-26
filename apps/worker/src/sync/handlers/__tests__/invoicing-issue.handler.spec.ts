@@ -74,7 +74,7 @@ describe('InvoicingIssueHandler', () => {
 
   beforeEach(() => {
     invoiceService = {
-      issueInvoice: jest.fn().mockResolvedValue({ id: 'inv-record-1' } as never),
+      issueInvoice: jest.fn().mockResolvedValue({ id: 'inv-record-1', status: 'issued' } as never),
       getInvoice: jest.fn(),
       getInvoiceById: jest.fn(),
       getLatestInvoiceForOrder: jest.fn(),
@@ -284,7 +284,7 @@ describe('InvoicingIssueHandler', () => {
 
   describe('post-document master inventory refresh (Z3)', () => {
     it('enqueues a refresh keyed on the issued invoice record, with productIds from the payload lines', async () => {
-      invoiceService.issueInvoice.mockResolvedValue({ id: 'inv-record-42' } as never);
+      invoiceService.issueInvoice.mockResolvedValue({ id: 'inv-record-42', status: 'issued' } as never);
       await handler.execute(
         makeJob(
           makePayload({
@@ -310,6 +310,47 @@ describe('InvoicingIssueHandler', () => {
       const result = await handler.execute(makeJob(makePayload()));
 
       expect(result).toEqual({ outcome: 'ok' });
+    });
+
+    // `issueInvoice` returns WITHOUT throwing on two branches that move no
+    // stock, both reusing the SAME record id: a live in-flight lease, and an
+    // in-doubt `failed` record surfaced for manual reconciliation. Enqueueing
+    // there spends `invoice:{id}` on an attempt that issued nothing, and
+    // `sync_jobs.idempotencyKey` is globally unique and TTL-less - so the
+    // later SUCCESSFUL issuance re-derives a consumed key, enqueues nothing,
+    // and the channels keep publishing the pre-sale quantity until the next
+    // sweep. The fiscal-receipt sibling has always gated on this.
+    it.each(['issuing', 'failed', 'pending'] as const)(
+      'does NOT spend the refresh key when the record came back %s',
+      async (status) => {
+        invoiceService.issueInvoice.mockResolvedValue({ id: 'inv-record-7', status } as never);
+
+        const result = await handler.execute(makeJob(makePayload()));
+
+        expect(result).toEqual({ outcome: 'ok' });
+        expect(postSaleInventoryRefresh.enqueue).not.toHaveBeenCalled();
+      },
+    );
+
+    // The key must still be available to the attempt that actually issues.
+    it('spends the key on the later successful issuance of the SAME record', async () => {
+      invoiceService.issueInvoice.mockResolvedValueOnce({
+        id: 'inv-record-7',
+        status: 'issuing',
+      } as never);
+      await handler.execute(makeJob(makePayload()));
+      expect(postSaleInventoryRefresh.enqueue).not.toHaveBeenCalled();
+
+      invoiceService.issueInvoice.mockResolvedValueOnce({
+        id: 'inv-record-7',
+        status: 'issued',
+      } as never);
+      await handler.execute(makeJob(makePayload()));
+
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalledTimes(1);
+      expect(postSaleInventoryRefresh.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ keyScope: 'invoice:inv-record-7' }),
+      );
     });
   });
 
