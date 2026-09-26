@@ -418,11 +418,7 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
     const model = await this.getJson<BridgeModel>(`/api/models/${modelId}`);
     const variants: ProductVariant[] = [];
     for (const member of model.pozycje) {
-      const variantInternalId = await this.identifierMapping.getOrCreateInternalId(
-        CORE_ENTITY_TYPE.ProductVariant,
-        member.symbol,
-        this.connection.id,
-      );
+      const variantInternalId = await this.resolveMemberVariantId(member.symbol);
       variants.push({
         id: variantInternalId,
         productId,
@@ -434,6 +430,43 @@ export class SubiektProductMasterAdapter implements ProductMasterPort, ProductTa
       });
     }
     return variants;
+  }
+
+  /**
+   * The internal variant id for one model member's towar.
+   *
+   * The canonical key is `{symbol}::variant` - the SAME key
+   * {@link readSyntheticVariant} mints under, and that is the whole point.
+   * This path used to mint under the bare `{symbol}`, so a towar the operator
+   * GROUPED into a model was re-identified: a different external id, a
+   * different internal variant id, and the offers attached to the old one
+   * orphaned, staled and paused (#1689) on the very grouping operation this
+   * feature introduces. The divergence stayed hidden because
+   * `SubiektInventoryMasterAdapter` strips `::variant` before asking the
+   * bridge, so stock resolved correctly under either shape.
+   *
+   * The bare key is consulted FIRST and reused when it exists, which is what
+   * makes this safe to deploy rather than a one-time repeat of the bug it
+   * fixes. An install whose model members already carry the bare mapping keeps
+   * it; re-keying them would orphan their offers exactly once, on upgrade, for
+   * a consistency gain nothing reads. A towar that is grouped from here on
+   * finds its standalone `::variant` mapping at the second step and keeps the
+   * identity it already had.
+   */
+  private async resolveMemberVariantId(symbol: string): Promise<string> {
+    const legacy = await this.identifierMapping.getInternalId(
+      CORE_ENTITY_TYPE.ProductVariant,
+      symbol,
+      this.connection.id,
+    );
+    if (legacy) {
+      return legacy;
+    }
+    return this.identifierMapping.getOrCreateInternalId(
+      CORE_ENTITY_TYPE.ProductVariant,
+      `${symbol}::variant`,
+      this.connection.id,
+    );
   }
 
   /**

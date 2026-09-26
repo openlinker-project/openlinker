@@ -274,6 +274,73 @@ describe('SubiektProductMasterAdapter', () => {
     expect(variants.map((v) => v.price)).toEqual([551.02, 309.94]);
   });
 
+  // The defect this closes: a towar the operator GROUPS into a model must keep
+  // the variant identity it had while standalone. It used to be re-keyed from
+  // `{symbol}::variant` to the bare `{symbol}`, which minted a second internal
+  // variant id - orphaning, staling and pausing every offer attached to the
+  // first, on the very grouping operation the feature introduces.
+  describe('a model member keeps the identity it had while standalone', () => {
+    const modelPayload = {
+      modelId: 1,
+      modelNazwa: 'Black Tiger woda toaletowa',
+      pozycje: [
+        bridgeProduct('WOBLACK100', 'Black Tiger woda toaletowa 100ml', {
+          kodKreskowy: '5900232204731',
+        }),
+      ],
+    };
+
+    it('reuses the standalone `{symbol}::variant` mapping instead of minting a new one', async () => {
+      await idMapping.createMapping('Product', 'model:1', 'conn-1', 'ol_product_model');
+      // What the standalone path minted before the operator grouped it.
+      await idMapping.createMapping(
+        'ProductVariant',
+        'WOBLACK100::variant',
+        'conn-1',
+        'ol_variant_standalone',
+      );
+
+      const variants = await buildAdapter(routed({}, {}, modelPayload)).getProductVariants(
+        'ol_product_model',
+      );
+
+      expect(variants).toHaveLength(1);
+      expect(variants[0].id).toBe('ol_variant_standalone');
+    });
+
+    // An install whose model members already carry the bare key keeps it.
+    // Re-keying them would orphan their offers exactly once, on upgrade - a
+    // repeat of the bug being fixed, for a consistency gain nothing reads.
+    it('keeps a pre-existing bare `{symbol}` mapping rather than re-keying it', async () => {
+      await idMapping.createMapping('Product', 'model:1', 'conn-1', 'ol_product_model');
+      await idMapping.createMapping('ProductVariant', 'WOBLACK100', 'conn-1', 'ol_variant_legacy');
+
+      const variants = await buildAdapter(routed({}, {}, modelPayload)).getProductVariants(
+        'ol_product_model',
+      );
+
+      expect(variants[0].id).toBe('ol_variant_legacy');
+    });
+
+    // A member the operator never had standalone mints under the canonical
+    // key, so a fresh install has one shape rather than two.
+    it('mints the canonical `{symbol}::variant` key for a member with no history', async () => {
+      await idMapping.createMapping('Product', 'model:1', 'conn-1', 'ol_product_model');
+
+      const variants = await buildAdapter(routed({}, {}, modelPayload)).getProductVariants(
+        'ol_product_model',
+      );
+
+      const canonical = await idMapping.getInternalId(
+        'ProductVariant',
+        'WOBLACK100::variant',
+        'conn-1',
+      );
+      expect(canonical).toBe(variants[0].id);
+      expect(await idMapping.getInternalId('ProductVariant', 'WOBLACK100', 'conn-1')).toBeNull();
+    });
+  });
+
   it('getProduct on a model reports the model name and every member image', async () => {
     await idMapping.createMapping('Product', 'model:1', 'conn-1', 'ol_product_model');
     const adapter = buildAdapter(

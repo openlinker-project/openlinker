@@ -214,10 +214,11 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
         adjustment.variantId,
       );
     }
-    // A model member's variant external id IS the towar symbol. The synthetic
-    // form belongs to a product with no model and cannot reach this branch,
-    // but it is stripped anyway so a mis-keyed mapping degrades to the right
-    // towar rather than to a symbol the bridge will 404.
+    // Both shapes reach here and both strip to the same towar symbol. A model
+    // member is keyed `{symbol}::variant` since the identity fix, and the bare
+    // `{symbol}` is what that path minted before - an install carrying either
+    // resolves to the right towar, which is why the two never disagreed about
+    // STOCK even while they disagreed about identity.
     return mapping.externalId.endsWith('::variant')
       ? mapping.externalId.slice(0, -'::variant'.length)
       : mapping.externalId;
