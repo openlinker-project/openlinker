@@ -266,3 +266,74 @@ Nothing is sent to the marketplace to withdraw the notification, because there i
 would be true: `OrderLifecycleEvent` carries `dispatched` and `cancelled`, and `cancelled` says the
 buyer's ORDER was cancelled. The operator is warned before confirming and settles it with the
 channel by hand. `in-transit` stays refused — there the carrier has moved something.
+
+---
+
+## Part K — The fourth round's live run, and why the chain still cannot be proven here
+
+Everything Part J listed as "not deployed" is deployed. The bridge carries the three fixes
+(`GtBridge.dll` built 26.09 08:42 with `SetPrimaryBarcode`, `SetPriceLevelCurrency`,
+`ResolvePriceLevel`; `/health` 200 from inside the worker container), and the api and worker images
+were rebuilt from the branch tip and confirmed to carry `resolveViaShopProduct` in **both**
+compiled copies before anything was read from them.
+
+`subiekt` project, final run: **7 passed, 2 failed, 3 skipped, 3 did not run.**
+
+### The two failures, and what each one is
+
+| failure | cause |
+|---|---|
+| `a product image URL loads FROM A BROWSER` | unchanged from Part G: `DefaultInboundAction = Block` on the WSL VM. The assertion is right and the environment fails it. |
+| `an order reaches Subiekt as a ZK` | the stand's two catalogues do not overlap. OpenLinker says so precisely: *"No Subiekt product mapping for ol_product_7d7… — the product must be synced from this Subiekt connection (ProductMaster) before an order referencing it can be created here."* |
+
+### Four things the run found before it could even start
+
+Each would have failed the new spec for a reason that had nothing to do with what it tests. They
+are recorded because three of them are facts about the product, not about the spec.
+
+1. The PrestaShop connection did not have `ProductPublisher` **enabled**. The adapter advertises
+   it; `enabledCapabilities` is stamped at create and never retro-filled (#2085).
+2. `synthesizeOrder` looked the shop-side product id up from the product's `Product` identifier
+   mappings. A publish writes `ShopProduct`, keyed by VARIANT, and `GET /products/:id` returns
+   `Product` mappings only — so a published product is invisible to OpenLinker's own products API.
+3. The publish DTO's `price` is a money OBJECT, not a number.
+4. `PrestashopProductPublisherAdapter` sets `body.reference = internalVariantId`, deliberately —
+   it is the stable server-side key its create-idempotency guard adopts an orphan by (#1107) — so
+   a lookup by SKU finds nothing.
+
+### And one that was making a shipped spec lie
+
+`world.connectionFor` answers POSITIONALLY, and this stand carries three PrestaShop connections.
+The first active one is `E2E bench seed source`: zero enabled capabilities, zero products. So
+`order-to-documents` scoped its driver search to the seed fixture and reported *"no catalogue
+product with a priced, EAN-complete variant"* about a stand whose real store has six. Fixed by
+resolving the store by capability (`resolvePrestashopStore`), which is what let that spec get as
+far as the honest refusal quoted above.
+
+### Why the end-to-end chain is still not proven, stated as a finding
+
+It needs one product present in both catalogues. Three routes were tried and each is closed for a
+different real reason:
+
+- **Publish a Subiekt towar to PrestaShop** — refused by the stand's own topology guard, correctly:
+  a shop that is simultaneously a `ProductMaster` and points at another master *"will re-import
+  products published to it as NEW OpenLinker products, splitting one product in two."* That is the
+  duplicate this round's resolver fix exists to survive at the ORDER level, and the guard is right
+  to refuse creating it deliberately.
+- **Publish to WooCommerce**, the stand's only publish-only shop — its REST keys are stored hashed
+  in the WordPress database and cannot be recovered.
+- **Map the same product by hand** — there is no identifier-mapping write API; no mapping
+  controller exists and the products controller has no `@Post`.
+
+A fourth route exists and was **deliberately not taken**: seeding the mapping directly into
+`identifier_mappings`. It would assert that a PrestaShop product IS a Subiekt towar when they are
+two different items, and the document would then be issued for one product's data while releasing
+another's stock. The chain would go green because the fixture lied — the same failure mode this
+round spent its time removing from the invoicing fixtures.
+
+**So the honest conclusion is a topology one, not a defect one.** OpenLinker supports either one
+master published out to shops, or each system its own master with separate products. This stand is
+the second, so a PrestaShop order has no business reaching Subiekt, and OpenLinker refuses it with
+the right sentence. Proving the chain needs a stand in the first topology: a publish-only shop
+whose `masterCatalogConnectionId` is the Subiekt connection. `published-product-order.spec.ts`
+runs unchanged the moment one exists, and skips with that requirement stated until then.
