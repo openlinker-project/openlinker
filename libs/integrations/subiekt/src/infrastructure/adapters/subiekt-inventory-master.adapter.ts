@@ -41,7 +41,10 @@ import type {
 } from '@openlinker/core/inventory';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
-import { resolveTowarVariantId } from './subiekt-variant-identity';
+import {
+  resolveTowarVariantId,
+  towarSymbolFromVariantExternalId,
+} from './subiekt-variant-identity';
 import { MasterProductNotFoundError } from '@openlinker/core/products';
 import { modelIdFromProductKey } from './subiekt-model-key';
 import type { LoggerPort } from '@openlinker/shared/logging';
@@ -223,9 +226,7 @@ export class SubiektInventoryMasterAdapter implements InventoryMasterPort {
     // `{symbol}` is what that path minted before - an install carrying either
     // resolves to the right towar, which is why the two never disagreed about
     // STOCK even while they disagreed about identity.
-    return mapping.externalId.endsWith('::variant')
-      ? mapping.externalId.slice(0, -'::variant'.length)
-      : mapping.externalId;
+    return towarSymbolFromVariantExternalId(mapping.externalId);
   }
 
   /** The pre-model read, for one towar symbol. */

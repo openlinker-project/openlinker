@@ -17,6 +17,127 @@ const noopLogger: LoggerPort = {
 const CONNECTION_ID = 'conn-subiekt-1';
 
 describe('SubiektOrderProcessorAdapter', () => {
+  // A MODEL product's `Product` external id is `model:{id}` - a grouping, not a
+  // catalogue item. Sending it reaches `d.Pozycje.Dodaj("model:5")`, which
+  // Sfera rejects, so an order for exactly the products this integration's
+  // model support exists to introduce could not reach Subiekt at all.
+  describe('a model product resolves its towar symbol through the variant', () => {
+    function buildAdapter(capture: { body?: unknown }): {
+      adapter: SubiektOrderProcessorAdapter;
+      idMapping: InMemoryIdentifierMappingAdapter;
+    } {
+      const fetchImpl = ((_url: RequestInfo | URL, init?: RequestInit) => {
+        capture.body = JSON.parse(init!.body as string);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ success: true, data: { id: 9, numer: 'ZK 9/2026' }, error: null }),
+            { status: 200 },
+          ),
+        );
+      }) as unknown as typeof fetch;
+      const idMapping = new InMemoryIdentifierMappingAdapter();
+      return {
+        adapter: new SubiektOrderProcessorAdapter(
+          new SubiektOrdersBridgeClient('http://127.0.0.1:5056', { fetchImpl }),
+          idMapping,
+          CONNECTION_ID,
+          noopLogger,
+        ),
+        idMapping,
+      };
+    }
+
+    function modelOrder(variantId?: string): OrderCreate {
+      return {
+        status: 'pending',
+        items: [
+          {
+            id: '1',
+            productId: 'ol_product_model',
+            ...(variantId ? { variantId } : {}),
+            quantity: 1,
+            price: 100,
+            sku: 'WOBLACK100',
+          },
+        ],
+        totals: { subtotal: 100, tax: 0, shipping: 0, total: 100, currency: 'PLN' },
+        billingAddress: {
+          firstName: 'Jan',
+          lastName: 'Kowalski',
+          address1: 'ul. Testowa 1',
+          city: 'Warszawa',
+          postalCode: '00-001',
+          country: 'PL',
+        },
+      } as unknown as OrderCreate;
+    }
+
+    it('sends the towar symbol, not the model key', async () => {
+      const capture: { body?: unknown } = {};
+      const { adapter, idMapping } = buildAdapter(capture);
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: 'model:5',
+        connectionId: CONNECTION_ID,
+        internalId: 'ol_product_model',
+      });
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.ProductVariant,
+        externalId: 'WOBLACK100::variant',
+        connectionId: CONNECTION_ID,
+        internalId: 'ol_variant_1',
+      });
+
+      await adapter.createOrder(modelOrder('ol_variant_1'));
+
+      const lines = (capture.body as { lines: { symbol: string }[] }).lines;
+      expect(lines[0].symbol).toBe('WOBLACK100');
+      expect(lines[0].symbol).not.toContain('model:');
+    });
+
+    // An install whose variants predate the identity fix carries the bare key.
+    it('accepts a legacy bare variant key too', async () => {
+      const capture: { body?: unknown } = {};
+      const { adapter, idMapping } = buildAdapter(capture);
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: 'model:5',
+        connectionId: CONNECTION_ID,
+        internalId: 'ol_product_model',
+      });
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.ProductVariant,
+        externalId: 'WOBLACK100',
+        connectionId: CONNECTION_ID,
+        internalId: 'ol_variant_1',
+      });
+
+      await adapter.createOrder(modelOrder('ol_variant_1'));
+
+      expect((capture.body as { lines: { symbol: string }[] }).lines[0].symbol).toBe(
+        'WOBLACK100',
+      );
+    });
+
+    // Refusing beats sending a symbol-less line: Subiekt would take it as a
+    // one-off service position that no warehouse document can release.
+    it('refuses when neither the product nor a variant names a towar', async () => {
+      const capture: { body?: unknown } = {};
+      const { adapter, idMapping } = buildAdapter(capture);
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: 'model:5',
+        connectionId: CONNECTION_ID,
+        internalId: 'ol_product_model',
+      });
+
+      await expect(adapter.createOrder(modelOrder())).rejects.toBeInstanceOf(
+        SubiektOrderProductMappingException,
+      );
+      expect(capture.body).toBeUndefined();
+    });
+  });
+
   it('creates a ZK priced at the buyer-paid source total, never a catalogue lookup', async () => {
     let capturedBody: unknown;
     const fetchImpl = ((_url: RequestInfo | URL, init?: RequestInit) => {

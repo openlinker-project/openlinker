@@ -66,6 +66,8 @@ import { describeNetPricedOrderRefusal } from '@openlinker/core/sales-documents'
 import type { OrderFulfillmentUpdater, OrderStatusWriteback } from '@openlinker/core/orders';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { modelIdFromProductKey } from './subiekt-model-key';
+import { towarSymbolFromVariantExternalId } from './subiekt-variant-identity';
 import type { SubiektOrdersBridgeClient } from '../../bridge/subiekt-orders-bridge.client';
 import type { BridgeOrderLine, BridgeOrderBuyer } from '../../bridge/subiekt-bridge-orders.types';
 import { SubiektOrderProductMappingException } from '../../domain/exceptions/subiekt-order-product-mapping.exception';
@@ -135,19 +137,59 @@ export class SubiektOrderProcessorAdapter
    * `SubiektOrderProductMappingException` on the first unmapped product,
    * rather than creating a ZK with a wrong or empty symbol.
    */
+  /**
+   * The Subiekt `tw_Symbol` an order line sells.
+   *
+   * The product mapping is the answer for an ordinary towar and is NOT the
+   * answer for a MODEL product, whose `Product` external id is `model:{id}` -
+   * a grouping, not a catalogue item. Sending it reaches
+   * `d.Pozycje.Dodaj("model:5")`, which Sfera rejects, so an order for exactly
+   * the products this integration's model support exists to introduce could
+   * not reach Subiekt at all, and failed with a raw COM message naming neither
+   * the model nor the remedy.
+   *
+   * A model member's towar symbol lives on the VARIANT mapping, which the line
+   * already carries (`OrderItem.variantId`, threaded onto the destination
+   * command by `OrderSyncService`). So a model product resolves through the
+   * variant and every other product resolves as it always did.
+   *
+   * Refusing is still the answer when neither resolves: a line with no towar
+   * would go to Subiekt as a free-text service position that no warehouse
+   * document can release, which is a sale whose stock never moves.
+   */
+  private async resolveTowarSymbol(item: OrderCreate['items'][number]): Promise<string> {
+    const productMappings = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.Product,
+      item.productId,
+    );
+    const productMapping = productMappings.find((e) => e.connectionId === this.connectionId);
+    const isModel =
+      productMapping !== undefined && modelIdFromProductKey(productMapping.externalId) !== null;
+
+    if (productMapping && !isModel) {
+      return productMapping.externalId;
+    }
+
+    if (item.variantId) {
+      const variantMappings = await this.identifierMapping.getExternalIds(
+        CORE_ENTITY_TYPE.ProductVariant,
+        item.variantId,
+      );
+      const variantMapping = variantMappings.find((e) => e.connectionId === this.connectionId);
+      if (variantMapping) {
+        return towarSymbolFromVariantExternalId(variantMapping.externalId);
+      }
+    }
+
+    throw new SubiektOrderProductMappingException(item.productId, this.connectionId);
+  }
+
   private async resolveLines(order: OrderCreate): Promise<BridgeOrderLine[]> {
     const lines: BridgeOrderLine[] = [];
     for (const item of order.items) {
-      const externalIds = await this.identifierMapping.getExternalIds(
-        CORE_ENTITY_TYPE.Product,
-        item.productId,
-      );
-      const mapping = externalIds.find((e) => e.connectionId === this.connectionId);
-      if (!mapping) {
-        throw new SubiektOrderProductMappingException(item.productId, this.connectionId);
-      }
+      const symbol = await this.resolveTowarSymbol(item);
       lines.push({
-        symbol: mapping.externalId,
+        symbol,
         ilosc: item.quantity,
         // Buyer-paid TOTAL for the line, not the unit price — mirrors
         // `Sfera.CreateZk`'s `GrossTotal` convention (`ZkLine.GrossTotal`).

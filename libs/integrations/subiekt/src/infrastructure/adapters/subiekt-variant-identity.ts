@@ -74,3 +74,17 @@ export async function resolveTowarVariantId(
     connectionId
   );
 }
+
+/**
+ * The towar symbol behind a variant's external id, whichever shape it carries.
+ *
+ * The inverse of {@link canonicalVariantExternalId}, and tolerant of the bare
+ * legacy key for the same reason the resolver is. This is what lets a model
+ * member's variant name a real `tw_Symbol` on a document or an order line -
+ * the PRODUCT mapping cannot, because a model product's external id is
+ * `model:{id}`, which is not a towar at all.
+ */
+export function towarSymbolFromVariantExternalId(externalId: string): string {
+  const suffix = '::variant';
+  return externalId.endsWith(suffix) ? externalId.slice(0, -suffix.length) : externalId;
+}
