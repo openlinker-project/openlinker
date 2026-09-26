@@ -75,10 +75,10 @@ async function pickSubiektProduct(
       detail.variants && detail.variants.length > 0
         ? detail.variants
         : (await api.products.listVariants(summary.id)).items;
-    // A price is required to sell it and a SKU is required to find it again on
-    // the shop side - the publish carries the SKU across as `reference`, which
-    // is the only handle the shop's own API offers for a product OpenLinker
-    // created (see `getProductIdByReference`).
+    // A price is required to sell it. The SKU is the towar symbol, which is
+    // what makes the variant resolvable back to Subiekt at all - the shop-side
+    // lookup uses the internal variant id instead (see the reference note
+    // below).
     const variant = variants.find(
       (v) => (v.price ?? detail.price ?? 0) > 0 && !!(v.sku ?? detail.sku)
     );
@@ -122,11 +122,28 @@ test.describe('Subiekt GT: a published product sold in the shop (#3365)', () => 
       'opt-in — set E2E_TEST_SUBIEKT=true against a live Subiekt GT bridge'
     );
     const subiekt = world.connectionFor(PlatformType.subiektGt);
-    const prestashop = world.connectionFor(PlatformType.prestashop);
+    // The connection that PUBLISHES, resolved by capability rather than by
+    // position. A stand can carry several PrestaShop connections and the
+    // positional answer is whichever sorts first - on this stand a seed
+    // fixture with zero enabled capabilities, which would skip this whole file
+    // while the real store sat one row down.
+    const prestashop = world
+      .connectionsFor(PlatformType.prestashop)
+      .find((c) => c.status === 'active' && c.enabledCapabilities.includes('ProductPublisher'));
     test.skip(!subiekt, 'no Subiekt GT connection on this stack');
-    test.skip(!prestashop, 'no PrestaShop connection on this stack');
     const ps = buildPrestashopWebserviceClient(world);
     test.skip(ps === null, 'no PrestaShop webservice credentials — set OL_PS_WEBSERVICE_KEY');
+    // The ENABLED list, not the adapter's advertised one: `enabledCapabilities`
+    // is stamped at connection create and never retro-filled (#2085), so a
+    // PrestaShop connection that predates ProductPublisher advertises it and
+    // still rejects the publish with a 422. Skipping states that as the
+    // configuration fact it is, rather than reporting it as a defect.
+    test.skip(
+      !prestashop,
+      `no ACTIVE PrestaShop connection has ProductPublisher enabled. Enable it on the store — ` +
+        `the adapter advertises the capability, but enabledCapabilities is stamped at create ` +
+        `and never retro-filled (#2085).`
+    );
 
     driver = await pickSubiektProduct(api, subiekt!.id);
     test.skip(
@@ -147,8 +164,15 @@ test.describe('Subiekt GT: a published product sold in the shop (#3365)', () => 
         // and then asserts the drop, so it only needs enough to sell, and a
         // large number here would be a claim about stock it did not check.
         stock: 10,
+        // A money object, not a number. The currency is the product's own, so
+        // publishing never restates what the master priced in.
         ...(driver!.variant.price !== null && driver!.variant.price !== undefined
-          ? { price: driver!.variant.price }
+          ? {
+              price: {
+                amount: driver!.variant.price,
+                currency: driver!.product.currency ?? 'PLN',
+              },
+            }
           : {}),
       });
 
@@ -168,12 +192,19 @@ test.describe('Subiekt GT: a published product sold in the shop (#3365)', () => 
     // The shop's own side is the only place the published id can be read back
     // from: `GET /products/:id` returns `Product` mappings only, and a publish
     // writes `ShopProduct`.
-    const reference = driver!.variant.sku ?? driver!.product.sku ?? '';
+    //
+    // The lookup key is the INTERNAL VARIANT ID, not the SKU.
+    // `PrestashopProductPublisherAdapter` sets `body.reference =
+    // cmd.internalVariantId` deliberately - it is the stable server-side key
+    // its own create-idempotency guard adopts an orphan by (#1107) - so a
+    // lookup by SKU finds nothing and would fail this test for the wrong
+    // reason.
+    const reference = driver!.variant.id;
     shopProductId = await ps!.getProductIdByReference(reference);
     expect(
       shopProductId,
       `no shop product carries reference "${reference}" — the publish reported a mapping but the ` +
-        `product is not findable by the SKU it was published under`
+        `product is not findable by the reference it was published under`
     ).not.toBeNull();
   });
 
@@ -190,7 +221,14 @@ test.describe('Subiekt GT: a published product sold in the shop (#3365)', () => 
 
     const synthesized = await synthesizeOrder(
       { api, world, jobs, poll },
-      { quantity: soldQuantity, driver: { product: driver!.product, variant: driver!.variant } }
+      {
+        quantity: soldQuantity,
+        driver: { product: driver!.product, variant: driver!.variant },
+        // The id the shop itself reports for the product OpenLinker published.
+        // Its `ShopProduct` mapping is invisible to OpenLinker's products API,
+        // so the synthesiser's own lookup would find nothing.
+        externalProductId: shopProductId!,
+      }
     );
 
     // THE ASSERTION THIS FILE EXISTS FOR. Resolving to a DUPLICATE is also a

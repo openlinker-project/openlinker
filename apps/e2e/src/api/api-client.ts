@@ -658,7 +658,17 @@ export class ApiClient {
      */
     shopPublish: (
       connectionId: string,
-      body: { internalVariantId: string; status: string; stock: number; price?: number },
+      body: {
+        internalVariantId: string;
+        status: string;
+        stock: number;
+        /**
+         * A money OBJECT, not a number: `PublishPriceDto` is
+         * `{amount, currency}` and a bare number is rejected with
+         * "nested property price must be either object or array".
+         */
+        price?: { amount: number; currency: string };
+      },
     ): Promise<{ jobId: string; listingCreationRecordId: string }> =>
       this.request<{ jobId: string; listingCreationRecordId: string }>(
         `/listings/connections/${encodeURIComponent(connectionId)}/shop-publish`,

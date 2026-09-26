@@ -23,7 +23,7 @@ import type { SyncJobs } from './jobs';
 import type { Poller } from './poller';
 import type { World } from '../world/world';
 import { PlatformType } from '../world/world';
-import type { Product, ProductVariant } from '../api/api.types';
+import type { Connection, Product, ProductVariant } from '../api/api.types';
 import { PrestashopWebserviceClient } from '../api/prestashop-webservice';
 import { waitForOrderByExternalId } from './orders';
 
@@ -86,6 +86,18 @@ export interface SynthesizeOrderOptions {
    * message.
    */
   driver?: { product: Product; variant: ProductVariant };
+  /**
+   * The SHOP-side product id to put on the order, overriding the lookup.
+   *
+   * The lookup reads the product's `Product`-type identifier mappings, and a
+   * shop OpenLinker PUBLISHED to has none: the publish writes `ShopProduct`,
+   * keyed by VARIANT, and `GET /products/:id` returns `Product` mappings only
+   * for both the product and its variants. So a caller that published the
+   * product itself already holds the shop-side id - read back from the shop,
+   * because OpenLinker's own API does not expose it - and passes it here
+   * rather than being told the product has no mapping.
+   */
+  externalProductId?: string;
 }
 
 export interface SynthesizedOrder {
@@ -104,8 +116,33 @@ export interface SynthesizedOrder {
  * see `docs/engineering-standards.md`, this is test-support code, not a
  * cross-context port).
  */
+/**
+ * The PrestaShop connection that is an actual STORE, not merely the first
+ * active row for the platform.
+ *
+ * `world.connectionFor` answers positionally, and a stand can carry several
+ * PrestaShop connections - a seed fixture, a retired perf harness, the real
+ * shop. On the demo stand the seed fixture ("E2E bench seed source", zero
+ * enabled capabilities, zero products) sorts FIRST, so every caller resolving
+ * the platform positionally got it: `pickDriverProduct` scoped to it found no
+ * catalogue and reported "no catalogue product with a priced, EAN-complete
+ * variant" about a stand whose real store has six.
+ *
+ * A connection OpenLinker reads a catalogue from declares `ProductMaster`, so
+ * that is what this asks for. It falls back to the positional answer rather
+ * than throwing: a stand with exactly one PrestaShop connection that happens
+ * to declare nothing behaves as it always did.
+ */
+export function resolvePrestashopStore(world: World): Connection | undefined {
+  const active = world.connectionsFor(PlatformType.prestashop).filter((c) => c.status === 'active');
+  return (
+    active.find((c) => c.enabledCapabilities.includes('ProductMaster')) ??
+    world.connectionFor(PlatformType.prestashop)
+  );
+}
+
 export function buildPrestashopWebserviceClient(world: World): PrestashopWebserviceClient | null {
-  const connection = world.connectionFor(PlatformType.prestashop);
+  const connection = resolvePrestashopStore(world);
   const key = process.env.OL_PS_WEBSERVICE_KEY?.trim();
   const baseUrl =
     process.env.OL_PS_ADMIN_URL?.trim() ||
@@ -170,7 +207,10 @@ export async function synthesizeOrder(
   options: SynthesizeOrderOptions = {},
 ): Promise<SynthesizedOrder> {
   const { api, world, jobs } = ctx;
-  const prestashop = world.requireConnection(PlatformType.prestashop);
+  const prestashop = resolvePrestashopStore(world);
+  if (!prestashop) {
+    throw new Error('synthesizeOrder found no active PrestaShop connection to sell through');
+  }
   const ps = buildPrestashopWebserviceClient(world);
   if (!ps) {
     throw new Error(
@@ -212,7 +252,7 @@ export async function synthesizeOrder(
     idCountry: countryId,
   });
 
-  const externalProductId = externalIdFor(product, prestashop.id);
+  const externalProductId = options.externalProductId ?? externalIdFor(product, prestashop.id);
   if (!externalProductId) {
     throw new Error(`synthesizeOrder: product ${product.id} has no PrestaShop external id mapped`);
   }
