@@ -212,3 +212,57 @@ native `/api/orders/{id}/shipping` route did not.
 - [ ] `FiscalizationPort` against Subiekt — the bridge carries fiscalization routes that have never
       been compiled against a live install in this walkthrough. Not attempted here; claiming it
       untested is more useful than a green line that exercised a stub.
+
+---
+
+## Part J — Third round, and what it changes above
+
+Parts H and I are left as written: they record what was true at the end of the second round. This
+part says which of their claims no longer hold, because a reader who stops at Part I would carry
+away four things that have since been fixed and one that was never right.
+
+### Closed since
+
+| Part I said | now |
+|---|---|
+| "An invoice can be issued for more than the buyer paid" — reconciliation written and deliberately not landed | **Landed.** The invoice mapper refuses lines that contradict the order's own total, sharing the receipt mapper's tolerance (one minor unit of the order's currency). It found five self-contradicting fixtures on its first run, including a base fixture declaring a total of 123 for a single gross-priced line of 100 |
+| "Neither shop mapper carries an order-level discount" | **PrestaShop does now.** `total_discounts_tax_incl` is carried as `OrderTotals.discountTotal`, and the refusal above names it when it exactly accounts for the gap — a diagnosis rather than an arithmetic complaint. Nothing apportions it: FA(3) expresses a discount only per line (`P_10`, inside `FaWiersz`), so folding it in would mean inventing an attribution for a legal document. WooCommerce `fee_lines` remain unmapped |
+| "A towar that joins a model gets a new variant identity" | **Fixed.** The model path minted under the bare `{symbol}` while the standalone path used `{symbol}::variant`. It now consults the bare key first and reuses it, then mints the canonical one — so a towar grouped from here on keeps the identity it had, and an install already carrying bare keys is not re-identified on upgrade |
+| Part H: "a shop order becoming a Subiekt document, end to end … no product exists in both catalogues" | **The blocker is gone, the proof is not.** The line could not resolve at all: publishing writes a `ShopProduct` mapping and the order resolver read `Offer` / `Product` / `ProductVariant` / `Sku` and never `ShopProduct`. It does now. `apps/e2e/tests/subiekt/published-product-order.spec.ts` publishes a Subiekt towar to the shop and sells it, so the fixture no longer has to be hoped for — but the spec has not been run |
+
+### Corrected
+
+**"A marketplace sale does not reduce Subiekt stock — the order is written with reservation off, and
+nothing else decrements."** The first half is true and the conclusion does not follow. The
+connection runs `triggerModel: auto-on-paid`, so OpenLinker issues the document itself, and issuing
+it moves stock: WZ 64, 65 and 66 each carry one unit of `PUYAR06`. Measured across eight orders,
+including real Allegro ones, the window from OpenLinker seeing the order to the document being
+issued is **25–79 s, median ~54 s**. What was genuinely missing was the re-read: the post-sale
+inventory refresh fired right after the order was mirrored, half a minute before the document moved
+anything, and nothing read again afterwards. That is now called after the document too.
+
+### Still not proven, and precisely why
+
+- [ ] **The whole chain in one piece.** Every link is proven and two of them were proven on
+      different orders — the gross price on a PrestaShop order, the realize-and-release on a
+      Subiekt-sourced one. One run of the new spec against a live stack closes it.
+- [ ] **The bridge carries three fixes that are not deployed.** Currency read from
+      `tw_Cena.tc_IdWaluta1` instead of a hardcoded `"PLN"`, the primary barcode written where the
+      read looks for it (`KodyKreskowe.Podstawowy`, before `Zapisz`, rather than the ADDITIONAL
+      collection after it), and `UpdateProduct` writing the `Waluta` and `KodKreskowy` it had always
+      accepted and discarded. Compiled clean against the real project; the deployed copy at
+      `gtspike\bridge` is a separate flat folder and still runs the previous build.
+- [ ] **A receipt (PA).** It takes the same `IssueInvoice` path as an invoice — `DocumentType == "PA"`
+      selects `DodajPA()` and then the identical release-and-realize sequence — so the code is
+      shared rather than parallel, but no PA has been issued in this walkthrough.
+- [ ] **The waybill reaching Allegro.** Unchanged from Part H: not attempted this round.
+
+### One shipping behaviour changed deliberately
+
+Cancelling a label used to be refused once the shipment was `dispatched`, and since the dispatch
+notification is now automatic that window closed within seconds of a label being bought — an
+operator who bought the wrong one could not void it at all. `dispatched` is cancellable now.
+Nothing is sent to the marketplace to withdraw the notification, because there is no event that
+would be true: `OrderLifecycleEvent` carries `dispatched` and `cancelled`, and `cancelled` says the
+buyer's ORDER was cancelled. The operator is warned before confirming and settles it with the
+channel by hand. `in-transit` stays refused — there the carrier has moved something.

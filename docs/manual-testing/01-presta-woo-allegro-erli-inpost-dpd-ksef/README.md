@@ -32,7 +32,7 @@ have no order-create API — noted per-doc as an environment limitation, not a g
 | 5 | [`05-inpost.md`](./05-inpost.md) | Shipping label generation | ✅ Confirmed — label→download→dispatch clean; Part C (tracking) is a sandbox-side limitation, researched (InPost-side, not OL) |
 | 6 | [`06-dpd.md`](./06-dpd.md) | Shipping label generation | ✅ Confirmed — connection created + Active, real waybill generated (`0000876013430Q`), SOAP tracking path verified; 4 findings filed (#1775, #1777, #1778 fixed by #1781; #1776 open, promoted to an epic) |
 | 7 | [`07-ksef.md`](./07-ksef.md) | Invoicing + regulatory clearance | ✅ Confirmed — full issue→clearance→UPO cycle verified against real KSeF; found & fixed #1447 (missing Test connection) |
-| 9 | [`09-subiekt-gt.md`](./09-subiekt-gt.md) | ERP: catalogue, orders, documents, stock | ⚠️ Second round on PR #3365 — 6 real bugs found & fixed, incl. one in the fix itself; **partly confirmed**: the realized-order fix is proven live, the shop-order→document chain is proven in halves only (no product exists in both catalogues on this stand). Three gaps left open and named in Part I |
+| 9 | [`09-subiekt-gt.md`](./09-subiekt-gt.md) | ERP: catalogue, orders, documents, stock | ⚠️ Third round on PR #3365 — **the scope is code-complete and proven in halves, never in one piece**. Proven live: the gross sale price reaching the destination, and invoice → warehouse release → order realized. Round 3 closed the over-charging invoice, the unmapped order-level discount, the variant identity a towar lost on joining a model, and the shop-order line that could not resolve at all. Not proven: one end-to-end run, and three bridge fixes that compile but are not deployed — Part J |
 
 ## Environment (as used in this run)
 
