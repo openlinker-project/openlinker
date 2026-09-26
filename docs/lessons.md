@@ -2103,3 +2103,57 @@ trusting a live run, confirm the running container is on the image you just buil
 
 **Source**: #2254 (first occurrence, writer only), #3365 (all three, in sequence, each found by a
 live run after the previous fix).
+
+---
+
+## Two paths can agree about a VALUE and disagree about IDENTITY, and nothing notices
+
+**Context**: `SubiektProductMasterAdapter` mints a standalone towar's variant
+under the external id `{symbol}::variant` and, on the model path, minted the
+same towar's variant under the bare `{symbol}` (#3365, round 3).
+
+**Problem**: grouping a standalone towar into a model therefore minted a SECOND
+internal variant id, orphaning and pausing every offer attached to the first —
+on the very grouping operation the feature introduces. It survived three
+verification rounds because `SubiektInventoryMasterAdapter` strips `::variant`
+before asking the bridge, so **stock resolved correctly under either shape**.
+Every quantity assertion passed. The only thing that differed was which row the
+identity pointed at, and nothing asserted that.
+
+It also survived a grep: searching for `::variant` returns a hit on the
+*standalone* path, which reads as evidence the model path is fine.
+
+**Rule**: when two code paths mint an identifier for the same real-world thing,
+assert they produce the SAME identifier — not merely that both downstream reads
+work. A reader that normalises the two shapes (a strip, a trim, a case-fold, a
+`??` fallback) is precisely what hides the divergence, so its existence is a
+reason to test identity harder, not evidence that identity is fine. And when a
+grep for a literal is your evidence that a path is correct, check which path the
+hit is on.
+
+**Applies to**: any adapter with more than one path minting ids through
+`getOrCreateInternalId`; anywhere a reader normalises an id shape before use.
+
+**Source**: PR #3365 (`resolveMemberVariantId`, and the strip it revealed in
+`subiekt-inventory-master.adapter.ts`)
+
+## Changing a minting key orphans existing rows unless the old key is consulted first
+
+**Context**: fixing the divergence above (#3365).
+
+**Problem**: simply switching the model path to the canonical key would have
+caused, once and on upgrade, exactly the orphaning it was fixing — every install
+whose model members already carried the bare key would be re-identified on the
+next sweep.
+
+**Rule**: a change to a minting key is a data migration wearing a code change's
+clothes. Consult the OLD key first and reuse it when present, then mint the new
+one; the fix then applies only to rows that do not yet exist under either. State
+which of the three cases each test covers (legacy reused, canonical reused,
+fresh minted), and confirm the legacy case passes with AND without the change —
+that it does not move is the no-change-on-upgrade guarantee, not a weak test.
+
+**Applies to**: `getOrCreateInternalId` call sites; any `identifier_mappings`
+key format change.
+
+**Source**: PR #3365
