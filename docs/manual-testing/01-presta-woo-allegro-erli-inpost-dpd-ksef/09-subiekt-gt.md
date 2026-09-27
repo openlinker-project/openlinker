@@ -435,11 +435,22 @@ about:
 ### Still not proven, stated plainly
 
 `the sale reaches Subiekt and moves the towar stock` fails: stock read 517 where 516 or less
-was required. The order reaches OpenLinker `ready` and its destination fan-out has not run
-— `syncStatus` is `[]` and five `marketplace.order.sync` jobs sit queued behind the
-`realtime` lane's per-scope cap on a stand carrying 8 430 dead jobs from earlier rounds.
-That is a throughput condition on this stand, not a verdict on the chain, and it is written
-here as unproven rather than explained away.
+was required. The order reaches OpenLinker `ready` and its destination fan-out has not run —
+`syncStatus` is `[]`.
+
+**The first diagnosis written here was wrong and is corrected rather than quietly replaced.**
+It blamed the `realtime` lane's per-scope cap on a stand carrying 8 430 dead jobs. Dead rows
+are terminal and are never claimed, so they block nothing; the cap was not wedged either —
+eight jobs were running at the moment of the check, two of them for this very connection.
+
+The real cause is the fixture's own one-time cost: a SECOND `OrderSource` on a shop that
+already holds ~47 orders back-fills that entire history, so 45 `marketplace.order.sync` jobs
+were queued for the new connection and the stock test's 180 s window landed inside the
+drain. A throughput condition on this stand, not a verdict on the chain, and worth knowing
+before anyone adds a second source connection to a live shop.
+
+The 8 430 dead rows were cleared anyway — 24 days of debris, and `sync_jobs` has no
+retention sweep anywhere in the tree — but that is hygiene, not the fix.
 
 `an order reaches Subiekt as a ZK` also still fails, for Part K's original reason: the
 order it builds uses the catalogue master's own driver product, which has no Subiekt
