@@ -113,7 +113,7 @@ export class SubiektAdapterFactory {
         // product adapter, so it cannot start reaching for a second capability.
         (modelId: number) => productMaster.readModelMemberSymbols(modelId),
       ),
-      orderSource: new SubiektOrderSourceAdapter(ordersClient, logger),
+      orderSource: new SubiektOrderSourceAdapter(ordersClient, logger, identifierMapping, connection.id),
       orderProcessor: new SubiektOrderProcessorAdapter(
         ordersClient,
         identifierMapping,

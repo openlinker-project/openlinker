@@ -76,6 +76,46 @@ export async function resolveTowarVariantId(
 }
 
 /**
+ * Which variant external id, if any, a towar symbol is already mapped under -
+ * WITHOUT minting one.
+ *
+ * The lookup-only twin of {@link resolveTowarVariantId}, and the distinction is
+ * the whole reason it exists separately. That one is called by the ProductMaster
+ * sync, which is entitled to mint: it is reading the catalogue and recording
+ * what it found. This one is called while ingesting an ORDER, where minting
+ * would create a variant id for a towar OpenLinker has never synced and point
+ * the order line at a product that does not exist - the `getOrCreateInternalId`
+ * trap the returns attribution avoided for the same reason.
+ *
+ * Checks both shapes in the same order and for the same reason the minting twin
+ * does: an install that predates the canonical key still carries bare symbols.
+ *
+ * Returns the EXTERNAL id (not the internal one), because its caller builds an
+ * `OrderItemProductRef`, which names an external id by contract.
+ */
+export async function findTowarVariantExternalId(
+  identifierMapping: IdentifierMappingPort,
+  connectionId: string,
+  symbol: string
+): Promise<string | null> {
+  const legacy = await identifierMapping.getInternalId(
+    CORE_ENTITY_TYPE.ProductVariant,
+    symbol,
+    connectionId
+  );
+  if (legacy) {
+    return symbol;
+  }
+  const canonical = canonicalVariantExternalId(symbol);
+  const mapped = await identifierMapping.getInternalId(
+    CORE_ENTITY_TYPE.ProductVariant,
+    canonical,
+    connectionId
+  );
+  return mapped ? canonical : null;
+}
+
+/**
  * The towar symbol behind a variant's external id, whichever shape it carries.
  *
  * The inverse of {@link canonicalVariantExternalId}, and tolerant of the bare

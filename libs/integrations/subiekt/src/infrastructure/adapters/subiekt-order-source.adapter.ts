@@ -39,12 +39,19 @@ import type {
   OrderFeedOutput,
   IncomingOrder,
 } from '@openlinker/core/orders';
+import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { SubiektOrdersBridgeClient } from '../../bridge/subiekt-orders-bridge.client';
+import { findTowarVariantExternalId } from './subiekt-variant-identity';
 
 export class SubiektOrderSourceAdapter implements OrderSourcePort {
   constructor(
     private readonly bridge: SubiektOrdersBridgeClient,
     private readonly logger: LoggerPort,
+    // #3365 - needed to tell a modelled towar from a standalone one. The
+    // factory already holds this port and hands it to every other Subiekt
+    // adapter; this was the only one it skipped.
+    private readonly identifierMapping: IdentifierMappingPort,
+    private readonly connectionId: string,
   ) {}
 
   async listOrderFeed(input: OrderFeedInput): Promise<OrderFeedOutput> {
@@ -71,6 +78,61 @@ export class SubiektOrderSourceAdapter implements OrderSourcePort {
     };
   }
 
+  /**
+   * Which mapping kind a ZK line's towar symbol should be resolved through.
+   *
+   * ## Why this is not simply `Product`
+   *
+   * #3359 established that `line.symbol` is the towar symbol
+   * `SubiektProductMasterAdapter` maps as `CORE_ENTITY_TYPE.Product` - which is
+   * true for a STANDALONE towar and false for one the operator has grouped into
+   * a model. A model is ONE OpenLinker product whose external id is
+   * `model:{mdt_Id}`, and its members are mapped as VARIANTS. So a modelled
+   * towar has no `Product` mapping under its own symbol, and never will.
+   *
+   * `OrderItemRefResolverService`'s `'product'` case looks up `Product`, then
+   * falls back to `ShopProduct` (#3365) - which is a publish record and cannot
+   * exist for a towar nobody published TO Subiekt. It then throws
+   * `MissingOrderItemMappingError`, and the order sits `awaiting_mapping`
+   * forever. Silently: an unmapped line is a normal, self-healing state, so
+   * nothing about it reads as permanent.
+   *
+   * ## It looks up; it never mints
+   *
+   * `findTowarVariantExternalId` is deliberately the lookup-only twin of the
+   * resolver the ProductMaster sync uses. Minting here would create a variant
+   * id for a towar OpenLinker has never synced and point a real order line at a
+   * product that does not exist.
+   *
+   * A miss falls through to `'product'` unchanged, so a standalone towar - and
+   * an install that has not run the catalogue sweep yet - behaves exactly as it
+   * did before.
+   */
+  private async resolveProductRef(
+    symbol: string,
+  ): Promise<{ type: 'product' | 'variant'; externalId: string }> {
+    try {
+      const variantExternalId = await findTowarVariantExternalId(
+        this.identifierMapping,
+        this.connectionId,
+        symbol,
+      );
+      if (variantExternalId !== null) {
+        return { type: 'variant', externalId: variantExternalId };
+      }
+    } catch (error) {
+      // A mapping read that fails must not fail the whole order hydration: the
+      // fallback is exactly the pre-#3365 behaviour, which is right for every
+      // standalone towar and no worse than before for a modelled one.
+      this.logger.warn(
+        `subiekt_order_variant_lookup_failed: could not check whether ${symbol} is a model member; falling back to a product reference. ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    return { type: 'product', externalId: symbol };
+  }
+
   async getOrder(input: { externalOrderId: string }): Promise<IncomingOrder> {
     const detail = await this.bridge.getOrder(input.externalOrderId);
 
@@ -80,22 +142,16 @@ export class SubiektOrderSourceAdapter implements OrderSourcePort {
       orderNumber: detail.numer,
       status: 'pending',
       customerEmail: detail.kontrahentEmail ?? undefined,
-      items: detail.lines.map((line, index) => ({
-        id: `${detail.id}-${index}`,
-        // #3359: `line.symbol` is exactly the towar symbol
-        // `SubiektProductMasterAdapter` maps as `CORE_ENTITY_TYPE.Product`
-        // (never `CORE_ENTITY_TYPE.Sku`, a distinct mapping kind nothing in
-        // this adapter's ProductMaster sync ever creates) — `type: 'sku'`
-        // made every line's product resolution fail 100% of the time
-        // (19/19 dead `marketplace.order.sync` jobs, live-confirmed), since
-        // `OrderItemRefResolverService`'s `'sku'` case looks up ONLY the
-        // `Sku` mapping kind and never falls back to `Product`.
-        productRef: { type: 'product', externalId: line.symbol },
-        quantity: line.ilosc,
-        price: line.ilosc > 0 ? line.wartoscBrutto / line.ilosc : line.wartoscBrutto,
-        sku: line.symbol,
-        name: line.nazwa ?? undefined,
-      })),
+      items: await Promise.all(
+        detail.lines.map(async (line, index) => ({
+          id: `${detail.id}-${index}`,
+          productRef: await this.resolveProductRef(line.symbol),
+          quantity: line.ilosc,
+          price: line.ilosc > 0 ? line.wartoscBrutto / line.ilosc : line.wartoscBrutto,
+          sku: line.symbol,
+          name: line.nazwa ?? undefined,
+        })),
+      ),
       totals: {
         subtotal: detail.wartoscBrutto,
         tax: 0,
