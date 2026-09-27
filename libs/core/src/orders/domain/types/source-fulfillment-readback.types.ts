@@ -37,12 +37,18 @@
  * ## Waybills are OPTIONAL and their absence asserts nothing
  *
  * `waybills: null` means this source does not report attached waybills back —
- * not that none is attached. As of #3365 Allegro is in exactly that position:
- * `POST /order/checkout-forms/{id}/shipments` accepts one and no verified read
- * returns it (the repo already struck down inventing such a GET once, see
- * `docs/plans/implementation-plan-waybill-relay-on-tracking-backfill.md`). An
- * empty array is the different, stronger claim that the source answered and
- * listed none.
+ * NOT that none is attached, and NOT that a read failed to find any. An empty
+ * array is the different, stronger claim that the source answered and listed
+ * none. A caller that collapses the two will eventually tell an operator no
+ * tracking number was attached on the strength of a call that never succeeded.
+ *
+ * Allegro reports them (verified live on the sandbox, 2026-09-27: two orders
+ * OpenLinker had dispatched itself read back with both waybills under
+ * `carrierId: "INPOST"`), and does so from a SEPARATE resource, so reading
+ * them costs a second request. That call is best-effort by contract: an
+ * adapter whose status read succeeded and whose waybill read did not must
+ * report the status with `waybills: null` rather than failing the whole
+ * answer.
  *
  * @module libs/core/src/orders/domain/types
  */

@@ -15,11 +15,12 @@
  * their own headers. An operator whose parcel "did not reach Allegro" has no
  * way to find out inside the product.
  *
- * This is the read half. It makes no new outbound call where the adapter
- * already fetches the order: Allegro's `GET /order/checkout-forms/{id}` returns
- * the very `fulfillment.status` field `PUT .../fulfillment` writes, and the
- * adapter already reads it — but only to detect a cancellation, discarding the
- * rest.
+ * This is the read half. The status costs nothing extra where the adapter
+ * already fetches the order — Allegro's `GET /order/checkout-forms/{id}`
+ * returns the very `fulfillment.status` field `PUT .../fulfillment` writes, and
+ * the adapter already read it, only to detect a cancellation. Waybills live on
+ * a separate resource and therefore do cost a second call, which is why the
+ * shape lets an implementation answer the status alone.
  *
  * ## The method name is NOT `getFulfillmentStatus`, on purpose
  *

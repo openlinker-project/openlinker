@@ -61,6 +61,10 @@ import type {
 } from '../../domain/types/allegro-api.types';
 import { ALLEGRO_ORDER_STATUS_OPTIONS } from '../../domain/types/allegro-order-status.types';
 import { ALLEGRO_PAYMENT_TYPE_OPTIONS } from '../../domain/types/allegro-payment-type.types';
+import type {
+  AllegroOrderShipment,
+  AllegroOrderShipmentsResponse,
+} from '../../domain/types/allegro-order-fulfillment.types';
 import {
   ALLEGRO_CARRIER_BY_PLATFORM_TYPE,
   ALLEGRO_FULFILLMENT_STATUS_SENT,
@@ -262,17 +266,22 @@ export class AllegroOrderSourceAdapter
    * that same field - the adapter already fetches it in `getOrder` and reads it
    * only to detect a cancellation. Nothing beyond that one GET is issued here.
    *
-   * ## What it deliberately does NOT report
+   * ## The waybill read, and why it costs a SECOND call
    *
-   * `waybills` is `null`, not `[]`. Allegro accepts a waybill on
-   * `POST /order/checkout-forms/{id}/shipments` and NO verified read returns
-   * one: the checkout-form resource carries no shipment block, and the one
-   * previous attempt to assume a `GET .../shipments` exists was struck down as
-   * an unverified assumption about somebody else's API
-   * (`docs/plans/implementation-plan-waybill-relay-on-tracking-backfill.md`).
-   * `null` says "this source does not report them"; `[]` would say "it answered
-   * and there are none", which is a claim nothing here can support.
-   * `needs-sandbox-probe`: whether such a read exists at all.
+   * `GET /order/checkout-forms/{id}/shipments` returns the waybills
+   * `POST .../shipments` attached - VERIFIED live on the sandbox on
+   * 2026-09-27 against two orders OpenLinker had dispatched itself, answering
+   * 200 with both tracking numbers under `carrierId: "INPOST"`. The repository
+   * had previously struck down assuming that endpoint exists, and rightly so;
+   * it is no longer assumed.
+   *
+   * It is a separate resource from the checkout form, so reading waybills
+   * genuinely costs one more request. That call is made BEST-EFFORT and never
+   * degrades the status half: a source that answers the status and not the
+   * shipments reports the status with `waybills: null`, which is the same
+   * "not reported" this shape has always meant. Reporting the whole read as
+   * `unavailable` because a supplementary call failed would lose the answer
+   * that did arrive.
    *
    * ## A failure is an OUTCOME, never a throw
    *
@@ -292,7 +301,7 @@ export class AllegroOrderSourceAdapter
         outcome: 'read',
         rawStatus,
         dispatched: this.readDispatchedFlag(rawStatus),
-        waybills: null,
+        waybills: await this.readWaybills(checkoutFormId),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -302,6 +311,45 @@ export class AllegroOrderSourceAdapter
       return unavailableSourceFulfillmentReadback(
         `Allegro did not answer for checkout form ${checkoutFormId}`
       );
+    }
+  }
+
+  /**
+   * The waybills Allegro reports as attached to this order.
+   *
+   * `null` on ANY failure, which the neutral shape defines as "this source does
+   * not report them" - deliberately not `[]`, which would be the stronger claim
+   * that the source answered and listed none. A caller must not read a failed
+   * supplementary call as evidence that no waybill is attached.
+   *
+   * A shipment with no `waybill` field is skipped rather than carried as an
+   * empty string: Allegro's own model allows one, and a blank tracking number
+   * rendered on an operator's screen is worse than an absent one.
+   */
+  private async readWaybills(
+    checkoutFormId: string,
+  ): Promise<SourceFulfillmentReadback['waybills']> {
+    try {
+      const response = await this.httpClient.get<AllegroOrderShipmentsResponse>(
+        `/order/checkout-forms/${checkoutFormId}/shipments`
+      );
+      const shipments = response.data.shipments ?? [];
+      return shipments
+        .filter((s): s is AllegroOrderShipment & { waybill: string } =>
+          typeof s.waybill === 'string' && s.waybill.trim() !== ''
+        )
+        .map((s) => ({
+          waybill: s.waybill,
+          ...(s.carrierId !== undefined && { carrierId: s.carrierId }),
+          ...(s.carrierName !== undefined && { carrierName: s.carrierName }),
+        }));
+    } catch (error) {
+      this.logger.debug(
+        `Allegro reported no shipments for ${checkoutFormId} (connection: ${this.connectionId}): ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return null;
     }
   }
 

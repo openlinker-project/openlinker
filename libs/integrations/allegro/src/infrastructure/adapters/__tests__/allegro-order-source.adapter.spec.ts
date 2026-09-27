@@ -136,8 +136,16 @@ describe('AllegroOrderSourceAdapter', () => {
   });
 
   describe('readFulfillment - OrderFulfillmentReadback (#3365)', () => {
-    function answerWith(fulfillment: unknown): void {
-      (httpClient.get as jest.Mock).mockResolvedValue({ data: { fulfillment } });
+    // Two different resources now: the checkout form carries the status, the
+    // shipments resource carries the waybills.
+    function answerWith(fulfillment: unknown, shipments?: unknown): void {
+      (httpClient.get as jest.Mock).mockImplementation((path: string) =>
+        path.endsWith('/shipments')
+          ? shipments === undefined
+            ? Promise.reject(new Error('no shipments fixture'))
+            : Promise.resolve({ data: { shipments } })
+          : Promise.resolve({ data: { fulfillment } })
+      );
     }
 
     it('reports what Allegro said, verbatim, from the order read it already makes', async () => {
@@ -192,14 +200,56 @@ describe('AllegroOrderSourceAdapter', () => {
       });
     });
 
-    // Allegro ACCEPTS a waybill on POST .../shipments and exposes no verified
-    // read that returns one. `null` says "this source does not report them";
-    // `[]` would claim it answered and listed none, which nothing supports.
-    it('reports waybills as NOT REPORTED, never as an empty list', async () => {
-      answerWith({ status: 'SENT' });
+    // The read was PROBED live on the sandbox (#3365) before this was written:
+    // two orders OpenLinker had dispatched itself answered 200 with both
+    // tracking numbers under carrierId INPOST. The repository had previously
+    // struck down ASSUMING this endpoint exists, which was the right call then.
+    it('reports the waybills Allegro says are attached', async () => {
+      answerWith({ status: 'SENT' }, [
+        { waybill: '602222927611300011874668', carrierId: 'INPOST' },
+      ]);
+
       const result = await adapter.readFulfillment({ externalOrderId: 'cf-1' });
+
+      expect(result.waybills).toEqual([
+        { waybill: '602222927611300011874668', carrierId: 'INPOST' },
+      ]);
+    });
+
+    // An order the seller has not shipped yet: the source ANSWERED and listed
+    // none. That is a different and stronger claim than "not reported".
+    it('distinguishes an answered-and-empty list from not reported', async () => {
+      answerWith({ status: 'NEW' }, []);
+      await expect(adapter.readFulfillment({ externalOrderId: 'cf-1' })).resolves.toMatchObject({
+        waybills: [],
+      });
+    });
+
+    // The one that keeps the second call from costing the first: a status that
+    // WAS read must survive a waybill read that was not.
+    it('still reports the status when the waybill read fails', async () => {
+      answerWith({ status: 'SENT' }); // no shipments fixture -> that call rejects
+
+      const result = await adapter.readFulfillment({ externalOrderId: 'cf-1' });
+
+      expect(result.outcome).toBe('read');
+      expect(result.rawStatus).toBe('SENT');
+      expect(result.dispatched).toBe(true);
       expect(result.waybills).toBeNull();
-      expect(result.waybills).not.toEqual([]);
+    });
+
+    // A blank tracking number rendered on an operator's screen is worse than
+    // an absent one, and Allegro's own model permits a shipment without one.
+    it('skips a shipment carrying no waybill rather than reporting an empty string', async () => {
+      answerWith({ status: 'SENT' }, [
+        { carrierId: 'INPOST' },
+        { waybill: '   ' },
+        { waybill: '602222927611300019379731', carrierId: 'INPOST' },
+      ]);
+
+      await expect(adapter.readFulfillment({ externalOrderId: 'cf-1' })).resolves.toMatchObject({
+        waybills: [{ waybill: '602222927611300019379731', carrierId: 'INPOST' }],
+      });
     });
 
     // The caller is a read surface: a momentarily unreachable marketplace must

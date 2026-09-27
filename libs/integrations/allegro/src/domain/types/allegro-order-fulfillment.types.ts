@@ -94,3 +94,30 @@ export const ALLEGRO_FULFILLMENT_UNDISPATCHED_STATUSES: readonly string[] = [
   'CANCELLED',
   'ANULOWANE',
 ];
+
+/**
+ * `GET /order/checkout-forms/{id}/shipments` response (#3365).
+ *
+ * VERIFIED LIVE on the sandbox, 2026-09-27, against two orders OpenLinker had
+ * itself dispatched: the route answers 200 and returns exactly the waybills
+ * `POST .../shipments` attached, each with the carrier id it was sent under.
+ *
+ * That probe is why this type exists at all. The repository had previously
+ * struck down a `GET .../shipments` as an unverified assumption about somebody
+ * else's API (`implementation-plan-waybill-relay-on-tracking-backfill.md`),
+ * and it was right to: the endpoint was assumed rather than checked. It is
+ * checked now, and the recorded evidence is two live waybills read back under
+ * `carrierId: "INPOST"`.
+ */
+export interface AllegroOrderShipmentsResponse {
+  shipments?: AllegroOrderShipment[];
+}
+
+export interface AllegroOrderShipment {
+  /** The tracking number, as the carrier issued it. */
+  waybill?: string;
+  /** Allegro's own carrier vocabulary (`INPOST`, `DPD`, `OTHER`, ...). */
+  carrierId?: string;
+  /** Present when the seller sent `OTHER` plus a free-text name. */
+  carrierName?: string;
+}
