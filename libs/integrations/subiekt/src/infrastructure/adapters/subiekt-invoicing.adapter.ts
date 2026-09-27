@@ -45,6 +45,8 @@ import type {
 } from '@openlinker/core/invoicing';
 import { InvoiceRecord, MissingTaxRateException } from '@openlinker/core/invoicing';
 import { CORE_ENTITY_TYPE } from '@openlinker/core/identifier-mapping';
+import { modelIdFromProductKey } from './subiekt-model-key';
+import { towarSymbolFromVariantExternalId } from './subiekt-variant-identity';
 import type { IdentifierMappingPort } from '@openlinker/core/identifier-mapping';
 import type { BridgeIssueInvoiceRequest } from '../../bridge/subiekt-bridge.types';
 import type { SubiektBridgeClient } from '../../bridge/subiekt-bridge.client';
@@ -423,31 +425,76 @@ export class SubiektInvoicingAdapter
    * Never throws: like `resolveZkId`, this is an enrichment of the request, not
    * a precondition for issuing it.
    */
+  /**
+   * The Subiekt `tw_Symbol` behind one OL variant, or `null`.
+   *
+   * The same lookup `SubiektOrderProcessorAdapter.resolveTowarSymbol` makes,
+   * and for the same reason - a model member names its towar only on the
+   * variant. Never throws: the caller counts an unresolved line and the
+   * document still issues, as a free-text position, which is what the
+   * `unlinkedCatalogueLines` figure reports to the operator.
+   */
+  private async resolveVariantTowarSymbol(variantId: string): Promise<string | null> {
+    const variantMappings = await this.identifierMapping.getExternalIds(
+      CORE_ENTITY_TYPE.ProductVariant,
+      variantId,
+    );
+    const mapping = variantMappings.find((e) => e.connectionId === this.connectionId);
+    if (!mapping || mapping.externalId === '') {
+      return null;
+    }
+    const symbol = towarSymbolFromVariantExternalId(mapping.externalId);
+    return symbol === '' ? null : symbol;
+  }
+
   private async resolveTowarSymbols(
-    lines: readonly { productId?: string }[],
+    lines: readonly { productId?: string; variantId?: string }[],
   ): Promise<{ symbolByProductId: Map<string, string>; unmappedProductIds: Set<string> }> {
     const resolved = new Map<string, string>();
-    const productIds = [
-      ...new Set(
+    // Keyed by the LINE's catalogue key - `variantId` when it has one - not by
+    // the product. A Subiekt MODEL is ONE OL product standing for several
+    // towary, so two members of the same model on one document share a
+    // `productId` and need different symbols; a product-keyed map would give
+    // them both whichever resolved last.
+    const keys = [
+      ...new Map(
         lines
-          .map((line) => line.productId)
-          .filter((id): id is string => id !== undefined && id !== ''),
-      ),
+          .filter((line) => line.productId !== undefined && line.productId !== '')
+          .map((line) => [line.variantId ?? line.productId!, line] as const),
+      ).values(),
     ];
-    if (productIds.length === 0) {
+    if (keys.length === 0) {
       return { symbolByProductId: resolved, unmappedProductIds: new Set() };
     }
 
     const unmapped: string[] = [];
-    for (const productId of productIds) {
+    for (const line of keys) {
+      const productId = line.productId!;
+      const key = line.variantId ?? productId;
       try {
         const externalIds = await this.identifierMapping.getExternalIds(
           CORE_ENTITY_TYPE.Product,
           productId,
         );
         const mapping = externalIds.find((e) => e.connectionId === this.connectionId);
-        if (mapping && mapping.externalId !== '') {
-          resolved.set(productId, mapping.externalId);
+        // A MODEL's product external id is `model:{mdt_Id}` - a grouping, not a
+        // towar. Sending it reaches `d.Pozycje.Dodaj("model:5")` bridge-side,
+        // inside a try that carries no catch, so the whole issuance fails with
+        // a raw COM message. It does NOT degrade to a free-text line: the
+        // mapping exists and is non-empty, so nothing here would have called it
+        // unmapped either. The towar lives on the VARIANT.
+        const isModel =
+          mapping !== undefined && modelIdFromProductKey(mapping.externalId) !== null;
+        if (mapping && mapping.externalId !== '' && !isModel) {
+          resolved.set(key, mapping.externalId);
+          continue;
+        }
+
+        const variantSymbol = line.variantId
+          ? await this.resolveVariantTowarSymbol(line.variantId)
+          : null;
+        if (variantSymbol) {
+          resolved.set(key, variantSymbol);
         } else {
           unmapped.push(productId);
         }

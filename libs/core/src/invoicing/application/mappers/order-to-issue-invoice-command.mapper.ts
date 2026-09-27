@@ -379,6 +379,10 @@ function toInvoiceLine(item: OrderItem, orderId: string): InvoiceLine {
     // free-text one - see `InvoiceLine.productId`. The shipping lines composed
     // below deliberately omit it: a delivery charge is not a catalogue item.
     productId: item.productId,
+    // Present-only, because it genuinely is absent for a simple product. A
+    // destination whose catalogue item is the VARIANT rather than the product
+    // cannot name the goods without it - see `InvoiceLine.variantId`.
+    ...(item.variantId !== undefined && { variantId: item.variantId }),
   };
 }
 

@@ -411,6 +411,23 @@ export interface InvoiceLine {
    * for `name`, which stays the human-readable text the document prints.
    */
   productId?: string;
+
+  /**
+   * The OL-internal VARIANT id this line sells, when the caller knows it -
+   * the same id `OrderItem.variantId` carries.
+   *
+   * Optional and provider-ignorable on exactly the terms `productId` above is,
+   * and it exists because for some destinations `productId` is not enough to
+   * name a catalogue item. A Subiekt MODEL is one OL product standing for
+   * several towary, so its product-level external id is a grouping key
+   * (`model:{id}`) rather than a `tw_Symbol`; only the variant names goods the
+   * warehouse can release. Without it such a line does not degrade to free
+   * text - it is sent as the grouping key and the document fails outright.
+   *
+   * A provider whose catalogue has no variant concept ignores it and reads
+   * `productId`, exactly as before.
+   */
+  variantId?: string;
 }
 
 /**

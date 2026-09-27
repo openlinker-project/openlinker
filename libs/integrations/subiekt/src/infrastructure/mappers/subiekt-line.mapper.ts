@@ -110,8 +110,13 @@ export function toBridgeLines(
     // stock; without one the bridge falls back to `DodajUslugeJednorazowa` and
     // the line is a one-time service that the warehouse never sees. A shipping
     // charge legitimately has no product and stays a service line.
+    // Keyed by the line's own catalogue key - the VARIANT when it has one.
+    // Two members of one Subiekt model share a `productId` and are different
+    // towary, so a product-keyed lookup would give them both the same symbol.
     const towarSymbol =
-      line.productId !== undefined ? symbolByProductId?.get(line.productId) : undefined;
+      line.productId !== undefined
+        ? symbolByProductId?.get(line.variantId ?? line.productId)
+        : undefined;
     return {
       name: line.name,
       ilosc: line.quantity,

@@ -927,6 +927,162 @@ describe('SubiektInvoicingAdapter', () => {
     });
   });
 
+  // A Subiekt MODEL is ONE OL product standing for several towary, so its
+  // product-level external id is `model:{mdt_Id}` - a grouping key, not a
+  // `tw_Symbol`. Sending it reaches `d.Pozycje.Dodaj("model:5")` bridge-side,
+  // inside a try that carries no catch, so the whole issuance fails with a raw
+  // COM message. It never looked unmapped either: the mapping exists and is
+  // non-empty, so nothing warned and nothing counted it.
+  describe('a model product names its towar through the variant (#3365)', () => {
+    async function capturedLines(
+      cmd: IssueInvoiceCommand,
+      idMapping: InMemoryIdentifierMappingAdapter,
+    ): Promise<{ name: string; towarSymbol?: string }[]> {
+      const { adapter, bridge } = makeAdapter(new FakeSubiektBridgeAdapter(), idMapping);
+      const spy = jest.spyOn(bridge, 'issueInvoice');
+      await adapter.issueInvoice(cmd);
+      return (spy.mock.calls[0][0] as unknown as { lines: { name: string; towarSymbol?: string }[] })
+        .lines;
+    }
+
+    function seedModel(idMapping: InMemoryIdentifierMappingAdapter): void {
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: 'model:5',
+        connectionId: 'conn-1',
+        internalId: 'ol_product_model',
+      });
+    }
+
+    it('sends the towar symbol, never the model grouping key', async () => {
+      const idMapping = new InMemoryIdentifierMappingAdapter();
+      seedModel(idMapping);
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.ProductVariant,
+        externalId: 'WOBLACK100::variant',
+        connectionId: 'conn-1',
+        internalId: 'ol_variant_1',
+      });
+
+      const lines = await capturedLines(
+        command({
+          lines: [
+            {
+              name: 'Black Tiger 100ml',
+              quantity: 1,
+              unitPriceGross: 551.02,
+              taxRate: '23',
+              productId: 'ol_product_model',
+              variantId: 'ol_variant_1',
+            },
+          ],
+        }),
+        idMapping,
+      );
+
+      expect(lines[0].towarSymbol).toBe('WOBLACK100');
+      expect(lines[0].towarSymbol).not.toContain('model:');
+    });
+
+    // Two members of ONE model share a productId and are different towary. A
+    // product-keyed symbol map gave them both whichever resolved last.
+    it('gives each member of one model its OWN symbol', async () => {
+      const idMapping = new InMemoryIdentifierMappingAdapter();
+      seedModel(idMapping);
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.ProductVariant,
+        externalId: 'WOBLACK100::variant',
+        connectionId: 'conn-1',
+        internalId: 'ol_variant_1',
+      });
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.ProductVariant,
+        externalId: 'WOBLACK50::variant',
+        connectionId: 'conn-1',
+        internalId: 'ol_variant_2',
+      });
+
+      const lines = await capturedLines(
+        command({
+          lines: [
+            {
+              name: '100ml',
+              quantity: 1,
+              unitPriceGross: 551.02,
+              taxRate: '23',
+              productId: 'ol_product_model',
+              variantId: 'ol_variant_1',
+            },
+            {
+              name: '50ml',
+              quantity: 1,
+              unitPriceGross: 309.94,
+              taxRate: '23',
+              productId: 'ol_product_model',
+              variantId: 'ol_variant_2',
+            },
+          ],
+        }),
+        idMapping,
+      );
+
+      expect(lines.map((l) => l.towarSymbol)).toEqual(['WOBLACK100', 'WOBLACK50']);
+    });
+
+    // Without a resolvable towar the line goes out free-text, which is the
+    // documented degradation - the document still issues and the operator sees
+    // the count. What must NOT happen is the grouping key reaching the bridge.
+    it('falls back to a free-text line when the variant names no towar', async () => {
+      const idMapping = new InMemoryIdentifierMappingAdapter();
+      seedModel(idMapping);
+
+      const lines = await capturedLines(
+        command({
+          lines: [
+            {
+              name: 'Black Tiger 100ml',
+              quantity: 1,
+              unitPriceGross: 551.02,
+              taxRate: '23',
+              productId: 'ol_product_model',
+            },
+          ],
+        }),
+        idMapping,
+      );
+
+      expect(lines[0].towarSymbol).toBeUndefined();
+    });
+
+    // An ordinary towar is untouched by any of this.
+    it('leaves a non-model product resolving through its own mapping', async () => {
+      const idMapping = new InMemoryIdentifierMappingAdapter();
+      idMapping.seed({
+        entityType: CORE_ENTITY_TYPE.Product,
+        externalId: 'SYM-1',
+        connectionId: 'conn-1',
+        internalId: 'ol_product_x',
+      });
+
+      const lines = await capturedLines(
+        command({
+          lines: [
+            {
+              name: 'Widget',
+              quantity: 1,
+              unitPriceGross: 123.0,
+              taxRate: '23',
+              productId: 'ol_product_x',
+            },
+          ],
+        }),
+        idMapping,
+      );
+
+      expect(lines[0].towarSymbol).toBe('SYM-1');
+    });
+  });
+
   describe('issueInvoice payment + cash-register field stamping (#1324)', () => {
     async function capturedRequest(
       config: Partial<SubiektConnectionConfig>,

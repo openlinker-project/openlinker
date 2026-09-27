@@ -166,7 +166,12 @@ export class SubiektOrderProcessorAdapter
     const isModel =
       productMapping !== undefined && modelIdFromProductKey(productMapping.externalId) !== null;
 
-    if (productMapping && !isModel) {
+    // `!== ''` matters as much as the model test. A blank external id reaches
+    // the bridge as a blank symbol, which takes the `DodajUslugeJednorazowa`
+    // branch - a one-time service position named "Pozycja" that no warehouse
+    // document can release. That is the outcome this method refuses below, so
+    // it must not be produced here by omission.
+    if (productMapping && productMapping.externalId !== '' && !isModel) {
       return productMapping.externalId;
     }
 
@@ -177,7 +182,12 @@ export class SubiektOrderProcessorAdapter
       );
       const variantMapping = variantMappings.find((e) => e.connectionId === this.connectionId);
       if (variantMapping) {
-        return towarSymbolFromVariantExternalId(variantMapping.externalId);
+        const symbol = towarSymbolFromVariantExternalId(variantMapping.externalId);
+        // `towarSymbolFromVariantExternalId('::variant')` is `''`, and a blank
+        // symbol is the service-line branch again.
+        if (symbol !== '') {
+          return symbol;
+        }
       }
     }
 
