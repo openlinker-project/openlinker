@@ -1284,6 +1284,65 @@ describe('AutoIssueTriggerService', () => {
       expect(fiscalRegistrations.getByOrderId).toHaveBeenCalledWith('order-1');
     });
 
+    // #3365. The refusal was already correct and already invisible: the error
+    // reached the catch below and returned `indeterminate`, which deliberately
+    // leaves the persisted reason untouched - so the operator got no invoice,
+    // no job, no badge and one log line. The condition is a fact about the
+    // order's own numbers and throws identically on every future transition, so
+    // it earns a persisted reason.
+    it('should BLOCK with line-total-mismatch when the order contradicts its own total', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({
+          paymentStatus: 'paid',
+          items: [{ id: 'i1', productId: 'p1', quantity: 2, price: 50, name: 'Widget' }],
+          // 2 x 50 = 100 of lines against a total of 95: the shape an
+          // Allegro-side coupon produces.
+          totals: {
+            subtotal: 100,
+            tax: 0,
+            shipping: 0,
+            total: 95,
+            currency: 'PLN',
+            taxTreatment: 'inclusive',
+          },
+        }),
+        'src-1',
+      );
+
+      expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'line-total-mismatch' } });
+      expect(syncJobs.schedule).not.toHaveBeenCalled();
+    });
+
+    // The whole point of populating `discountTotal` upstream: the block an
+    // operator reads must say WHY, not merely that two numbers differ.
+    it('should name the discount in the block detail when it accounts for the gap', async () => {
+      connectionPort.list.mockResolvedValue([makeConnection('auto-on-paid')]);
+
+      const outcome = await service.onOrderTransition(
+        makeOrder({
+          paymentStatus: 'paid',
+          items: [{ id: 'i1', productId: 'p1', quantity: 2, price: 50, name: 'Widget' }],
+          totals: {
+            subtotal: 100,
+            tax: 0,
+            shipping: 0,
+            total: 95,
+            currency: 'PLN',
+            taxTreatment: 'inclusive',
+            discountTotal: 5,
+          },
+        }),
+        'src-1',
+      );
+
+      expect(outcome).toMatchObject({ kind: 'blocked', block: { reason: 'line-total-mismatch' } });
+      const detail = (outcome as { block: { detail?: string } }).block.detail ?? '';
+      expect(detail).toContain('whole-order discount');
+      expect(detail).toContain('5.00');
+    });
+
     it('should report `indeterminate` when the document read fails — never a clear', async () => {
       connectionPort.list.mockResolvedValue([makeConnection('manual')]);
       invoices.getLatestInvoiceForOrder.mockRejectedValue(new Error('db down'));

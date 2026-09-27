@@ -133,6 +133,7 @@ export const SalesDocumentGateBlockReasonValues = [
   'missing-required-tax-id',
   'missing-tax-rate',
   'tax-rate-conflict',
+  'line-total-mismatch',
   'trigger-model-manual',
   'trigger-model-batched',
 ] as const;

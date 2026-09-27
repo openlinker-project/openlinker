@@ -25,6 +25,7 @@ import {
   describeNetPricedOrderRefusal,
   minorUnitExponentFor,
   splitShippingAcrossRates,
+  describeDiscountCause,
   totalReconciliationEpsilon,
 } from '@openlinker/core/sales-documents';
 
@@ -123,7 +124,7 @@ export function toRegisterTransactionCommand(
     ),
   );
 
-  assertLinesSumToTotal(lines, order.totals.total, order.id, order.totals.currency);
+  assertLinesSumToTotal(lines, order.totals, order.id);
 
   const command: RegisterTransactionCommand = {
     connectionId,
@@ -183,8 +184,11 @@ export function toRegisterTransactionCommand(
  * "the lines sum to the total" has to be CHECKED, not asserted in a comment.
  * Three real ways it breaks today, none of them exotic:
  *
- *   - `OrderTotals` carries no discount field, so a source that folds a coupon
- *     or an order-level discount into `total` reports lines that sum higher;
+ *   - a source that folds a coupon or an order-level discount into `total`
+ *     reports lines that sum higher. `OrderTotals.discountTotal` exists since
+ *     5e85a35d7 and the refusal now NAMES it when it accounts for the gap
+ *     (#3365) - but only a source that populates it can be named, and a source
+ *     that does not still produces this refusal with no cause stated;
  *   - `orderFromReadySnapshot`'s `readTotals` / `readItems` zero-default every
  *     missing numeric, so a partially malformed snapshot composes zero-priced
  *     lines under a non-zero total (or the reverse);
@@ -200,10 +204,11 @@ export function toRegisterTransactionCommand(
  */
 function assertLinesSumToTotal(
   lines: FiscalTransactionLine[],
-  totalGross: number,
+  totals: Order['totals'],
   orderId: string,
-  currency: string | undefined,
 ): void {
+  const totalGross = totals.total;
+  const currency = totals.currency;
   if (!Number.isFinite(totalGross)) {
     throw new InvalidFiscalLineError(
       `Order ${orderId} reports a non-finite gross total; cannot compose a registrable sale`,
@@ -217,11 +222,21 @@ function assertLinesSumToTotal(
     );
   }
 
-  if (Math.abs(summed - totalGross) > totalReconciliationEpsilon(currency)) {
+  const epsilon = totalReconciliationEpsilon(currency);
+  const gap = summed - totalGross;
+  if (Math.abs(gap) > epsilon) {
     throw new InvalidFiscalLineError(
       `Order ${orderId} lines sum to ${summed.toFixed(2)} but the order reports a gross total of ` +
         `${totalGross.toFixed(2)}; a fiscal registration may not transmit lines that contradict ` +
-        `their own total`,
+        `their own total` +
+        // #3365 - the same diagnosis the invoice half already gave. Both
+        // contexts share ONE implementation in `sales-documents`, because a
+        // fiscal receipt is not an invoice and neither could own the sentence
+        // for the other. Taking the whole `totals` rather than a bare number is
+        // what makes it reachable at all: the previous signature could not see
+        // `discountTotal`, so this refusal named no cause even on a source that
+        // reports one.
+        describeDiscountCause(totals.discountTotal, gap, epsilon),
     );
   }
 }

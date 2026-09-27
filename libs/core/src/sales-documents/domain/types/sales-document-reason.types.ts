@@ -109,6 +109,28 @@ export type SalesDocumentUnresolvedReason = (typeof SalesDocumentUnresolvedReaso
  * panel's issue button, the receipt's register button, and bulk issue — which
  * no other reason does.
  *
+ * ALSO WRITTEN (#3365): `'line-total-mismatch'` - the order's own lines do not
+ * sum to the total it reports, so no document could state an amount without
+ * contradicting itself.
+ *
+ * It exists because the refusal was already correct and already INVISIBLE.
+ * `assertLinesSumToTotal` raises `InvalidInvoiceLineError`, which reaches
+ * `AutoIssueTriggerService`'s catch and returns `indeterminate` - and
+ * `indeterminate` deliberately leaves the persisted reason untouched. The
+ * operator got no invoice, no job, no badge and one log line. That reading of
+ * `indeterminate` is right for the errors it was written for (a compose or
+ * enqueue error that may well not recur), and wrong for this one: the condition
+ * is a fact about the order's own numbers and throws identically on every
+ * future transition. A permanent condition deserves a permanent, visible
+ * reason. Note the distinction from the comment that argues for
+ * `indeterminate`: it defends against CLEARING a true reason, and this SETS
+ * one.
+ *
+ * Like `'missing-tax-rate'`, this one means "this cannot be issued as it
+ * stands" rather than "auto-issue did not happen" - but unlike it, the remedy
+ * is upstream (correct the order, or teach its adapter to report the discount
+ * that explains the gap), not a provider configuration change.
+ *
  * DECLARED BUT NEVER WRITTEN, each blocked on a prerequisite ADR-041 names:
  *   - `'missing-required-tax-id'` — needs a buyer tax id on the order contract;
  *     no such field exists on `Order` today.
@@ -125,6 +147,7 @@ export const SalesDocumentGateBlockReasonValues = [
   'missing-required-tax-id',
   'missing-tax-rate',
   'tax-rate-conflict',
+  'line-total-mismatch',
   'trigger-model-manual',
   'trigger-model-batched',
 ] as const;

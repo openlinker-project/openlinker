@@ -152,6 +152,33 @@ export const SALES_DOCUMENT_GATE_REASON_COPY = {
    * any rate. A surface holding the order's lines can name the subject; this
    * copy must not, because a row does not hold them.
    */
+  /**
+   * #3365. The refusal is upstream of any provider: the order's own lines do
+   * not add up to the total it reports, so no document could state an amount
+   * without contradicting itself.
+   *
+   * `keepsAction: false`, for a different reason from `missing-tax-rate` beside
+   * it. That one is closed by an explicit server-side refusal. This one is
+   * closed by arithmetic: the manual issue path runs the IDENTICAL
+   * `assertLinesSumToTotal` check and answers 400
+   * (`invoicing.controller.ts` maps `InvalidInvoiceLineError`), so the button
+   * could only ever produce the same refusal the badge already states. The
+   * remedy is upstream - correct the order, or teach its adapter to report the
+   * discount that explains the gap - and the badge clears on the next
+   * transition once it is.
+   *
+   * The copy says what to look at rather than what the gap is - the `detail`
+   * carried on the block already states both amounts, and repeating a number
+   * here that a row cannot recompute would be a second, drifting answer.
+   */
+  'line-total-mismatch': {
+    short: 'Amounts do not add up',
+    detail:
+      "The order's items do not add up to the total it reports, so no document can be issued " +
+      'automatically. A discount the marketplace applied to the whole order is the usual cause.',
+    tone: 'error',
+    keepsAction: false,
+  },
   'missing-tax-rate': {
     short: 'Tax rate missing',
     detail:

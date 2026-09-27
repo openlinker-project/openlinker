@@ -23,6 +23,7 @@ import { InvalidBuyerProfileError } from './errors/invalid-buyer-profile.error';
 import { InvalidInvoiceLineError } from './errors/invalid-invoice-line.error';
 import { UnsupportedPriceTreatmentError } from './errors/unsupported-price-treatment.error';
 import {
+  describeDiscountCause,
   describeNetPricedOrderRefusal,
   minorUnitExponentFor,
   splitShippingAcrossRates,
@@ -307,38 +308,6 @@ function assertLinesSumToTotal(
         describeDiscountCause(totals.discountTotal, gap, epsilon)
     );
   }
-}
-
-/**
- * Turn the arithmetic complaint above into a diagnosis, when the source told us
- * enough to make one.
- *
- * Deliberately three outcomes, not two. The gap is ATTRIBUTED only when the
- * reported discount accounts for it within the same tolerance the check itself
- * uses - anything looser would name a cause on a coincidence. A discount that
- * does not explain the gap is still worth saying, because it narrows the search
- * without claiming to end it. And a source that reported no discount at all
- * adds nothing, so it adds nothing.
- */
-function describeDiscountCause(
-  discountTotal: number | undefined,
-  gap: number,
-  epsilon: number
-): string {
-  if (typeof discountTotal !== 'number' || !Number.isFinite(discountTotal) || discountTotal <= 0) {
-    return '';
-  }
-  if (Math.abs(gap - discountTotal) <= epsilon) {
-    return (
-      `. The source reports a whole-order discount of ${discountTotal.toFixed(2)}, which is ` +
-      `exactly the difference: it was applied to the order but to none of its lines, so there ` +
-      `is no line for it to be invoiced against`
-    );
-  }
-  return (
-    `. The source also reports a whole-order discount of ${discountTotal.toFixed(2)}, which ` +
-    `does not by itself account for the difference`
-  );
 }
 
 /**

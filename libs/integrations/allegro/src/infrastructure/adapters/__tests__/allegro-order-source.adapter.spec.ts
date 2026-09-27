@@ -54,6 +54,87 @@ describe('AllegroOrderSourceAdapter', () => {
   // ADR-027, so every "the marketplace was told" check asserts an OpenLinker
   // row or a mock. `GET /order/checkout-forms/{id}` returns the very
   // `fulfillment.status` field `PUT .../fulfillment` writes.
+  // The refusal that blocked these orders was correct and it named no cause,
+  // because nothing here ever populated the field `describeDiscountCause`
+  // reads. Allegro composes `total` from `summary.totalToPay` while `subtotal`
+  // is summed from the lines - so any whole-order coupon moves one and not the
+  // other.
+  describe('totals.discountTotal - naming the cause of a line-vs-total gap (#3365)', () => {
+    function checkoutForm(overrides: Record<string, unknown>): unknown {
+      return {
+        id: 'cf-1',
+        status: 'READY_FOR_PROCESSING',
+        buyer: { id: 'b1', email: 'b@example.com', login: 'b' },
+        payment: { type: 'ONLINE', finishedAt: '2026-09-01T10:00:00Z' },
+        lineItems: [
+          {
+            id: 'li-1',
+            offer: { id: 'off-1', name: 'Widget' },
+            quantity: 2,
+            price: { amount: '50.00', currency: 'PLN' },
+            boughtAt: '2026-09-01T09:00:00Z',
+          },
+        ],
+        summary: { totalToPay: { amount: '100.00', currency: 'PLN' } },
+        ...overrides,
+      };
+    }
+
+    async function totalsOf(overrides: Record<string, unknown>): Promise<Record<string, number>> {
+      (httpClient.get as jest.Mock).mockResolvedValue({ data: checkoutForm(overrides) });
+      const order = await adapter.getOrder({ externalOrderId: 'cf-1' });
+      return order.totals as unknown as Record<string, number>;
+    }
+
+    it('reports the discount a whole-order coupon left behind', async () => {
+      // 2 x 50 = 100 of lines, 15 of shipping, but the buyer paid 95.
+      const totals = await totalsOf({
+        delivery: { cost: { amount: '15.00', currency: 'PLN' } },
+        summary: { totalToPay: { amount: '95.00', currency: 'PLN' } },
+      });
+
+      expect(totals.subtotal).toBe(100);
+      expect(totals.shipping).toBe(15);
+      expect(totals.total).toBe(95);
+      expect(totals.discountTotal).toBe(20);
+    });
+
+    // An order that adds up must not grow a field, or every order on every
+    // install starts carrying a `0` that reads as "a discount of nothing".
+    it('reports NO discount when the lines already add up', async () => {
+      const totals = await totalsOf({
+        delivery: { cost: { amount: '15.00', currency: 'PLN' } },
+        summary: { totalToPay: { amount: '115.00', currency: 'PLN' } },
+      });
+
+      expect(totals.total).toBe(115);
+      expect(totals).not.toHaveProperty('discountTotal');
+    });
+
+    // A negative gap is a surcharge, not a discount. Filing it as one would be
+    // a false statement about the order rather than a missing one.
+    it('reports NO discount when the buyer paid MORE than the lines', async () => {
+      const totals = await totalsOf({
+        delivery: { cost: { amount: '15.00', currency: 'PLN' } },
+        summary: { totalToPay: { amount: '130.00', currency: 'PLN' } },
+      });
+
+      expect(totals).not.toHaveProperty('discountTotal');
+    });
+
+    // Without `delivery.cost` the adapter derives shipping as
+    // `max(0, total - subtotal)`, which clamps to 0 under a discount - so the
+    // whole gap is attributable and must be reported.
+    it('reports the discount when Allegro names no delivery cost', async () => {
+      const totals = await totalsOf({
+        summary: { totalToPay: { amount: '80.00', currency: 'PLN' } },
+      });
+
+      expect(totals.shipping).toBe(0);
+      expect(totals.discountTotal).toBe(20);
+    });
+  });
+
   describe('readFulfillment - OrderFulfillmentReadback (#3365)', () => {
     function answerWith(fulfillment: unknown): void {
       (httpClient.get as jest.Mock).mockResolvedValue({ data: { fulfillment } });

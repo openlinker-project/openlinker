@@ -842,6 +842,22 @@ export class AllegroOrderSourceAdapter
       const shipping = checkoutForm.delivery?.cost
         ? Number.parseFloat(checkoutForm.delivery.cost.amount)
         : Math.max(0, total - subtotal);
+      // #3365 - carry the whole-order discount so a refusal can NAME its cause.
+      //
+      // Allegro composes `total` from `summary.totalToPay` while `subtotal` is
+      // summed from the line items and `shipping` comes from `delivery.cost` -
+      // three independently sourced numbers. Any coupon, promotion or seller
+      // discount moves `totalToPay` without moving the lines, so the invoicing
+      // mapper's line-vs-total check refuses the document (correctly: better no
+      // document than a wrong amount). `describeDiscountCause` already exists to
+      // say WHY, and could not, because nothing here ever populated the field -
+      // so the operator got a refusal that named no cause.
+      //
+      // Reported only when POSITIVE. A negative gap is a surcharge, not a
+      // discount, and filing it as one would be a false statement about the
+      // order rather than a missing one.
+      const discountGap = roundCurrency(subtotal + shipping - total);
+      const discountTotal = discountGap > 0 ? discountGap : undefined;
 
       // #1435 — for a cash-on-delivery order the buyer pays the full order total
       // on delivery, so the collectable amount is `summary.totalToPay` verbatim
@@ -893,6 +909,7 @@ export class AllegroOrderSourceAdapter
           tax: 0,
           shipping: roundCurrency(shipping),
           total: roundCurrency(total),
+          ...(discountTotal !== undefined && { discountTotal }),
           currency: checkoutForm.summary.totalToPay.currency,
           // Allegro reports buyer-paid GROSS prices (line `price.amount` and
           // `summary.totalToPay` include tax); it does not decompose tax.

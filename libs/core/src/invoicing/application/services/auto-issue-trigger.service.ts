@@ -130,6 +130,10 @@ import {
   ISyncJobsService,
   SYNC_JOBS_SERVICE_TOKEN,
 } from '@openlinker/core/sync';
+import { InvalidInvoiceLineError } from '../mappers/errors/invalid-invoice-line.error';
+// Same-context relative reach into `fiscalization`'s mapper error is not
+// available (cross-context), so the fiscal arm narrows by NAME rather than by
+// `instanceof` - see `isFiscalLineError` below.
 import { IInvoiceService } from './invoice.service.interface';
 import { INVOICE_SERVICE_TOKEN } from '../../invoicing.tokens';
 import type { Order } from '@openlinker/core/orders';
@@ -866,10 +870,24 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           matchedRuleId,
         );
       }
-      // Anything else is `indeterminate`, NOT a clear (#2100 review). Three of the
+      if (error instanceof InvalidInvoiceLineError) {
+        // #3365 - the order's own lines do not sum to its own total, so no
+        // document could state an amount without contradicting itself. This is
+        // a fact about the order's numbers and will throw identically on every
+        // future transition, so it earns a persisted, visible reason instead of
+        // the silence below. Note this does not weaken the `indeterminate`
+        // argument in the next comment: that one defends against CLEARING a
+        // true reason, and this SETS one.
+        return await this.reportBlock(
+          { reason: 'line-total-mismatch', detail: describeLineTotalMismatch(error) },
+          order.id,
+          matchedRuleId,
+        );
+      }
+      // Anything else is `indeterminate`, NOT a clear (#2100 review). Two of the
       // four errors this class allow-lists as deterministic and PII-clean
-      // (`InvalidBuyerProfileError`, `InvalidInvoiceLineError`,
-      // `UnsupportedPriceTreatmentError`) come out of command composition here and
+      // (`InvalidBuyerProfileError`, `UnsupportedPriceTreatmentError`) come out
+      // of command composition here and
       // will throw identically on every future transition. Clearing on them would
       // erase a true reason — say, the ambiguity the operator has just fixed — and
       // replace it with nothing at all: no invoice, no badge, no count, and no
@@ -979,9 +997,20 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
           matchedRuleId,
         );
       }
-      // Same reasoning as dispatchInvoice's catch: InvalidFiscalLineError /
-      // UnsupportedFiscalPriceTreatmentError are deterministic and will throw
-      // identically on every future transition, so clearing on them would
+      if (isFiscalLineError(error)) {
+        // #3365 - the receipt half of the same fact. A fiscal registration may
+        // not transmit lines that contradict their own total either, and the
+        // condition is equally permanent, so it earns the same persisted
+        // reason rather than the silence below.
+        return await this.reportBlock(
+          { reason: 'line-total-mismatch', detail: describeLineTotalMismatch(error) },
+          order.id,
+          matchedRuleId,
+        );
+      }
+      // Same reasoning as dispatchInvoice's catch:
+      // UnsupportedFiscalPriceTreatmentError is deterministic and will throw
+      // identically on every future transition, so clearing on it would
       // erase a true reason and replace it with nothing at all.
       return { kind: 'indeterminate' };
     }
@@ -1333,4 +1362,46 @@ export class AutoIssueTriggerService implements IAutoIssueTriggerService {
       return undefined;
     }
   }
+}
+
+/**
+ * Turn a line-vs-total refusal into the PII-FREE `detail` the operator reads
+ * beside the block badge (#3365).
+ *
+ * The message these errors carry is composed entirely from the order id, two
+ * amounts and, where the adapter reported one, the discount that explains the
+ * gap (`describeDiscountCause`) - ids, numbers and neutral vocabulary, which is
+ * exactly what `SalesDocumentBlock.detail` permits. It carries no buyer data
+ * and no provider error text; both errors are already on this class's
+ * `PII_SAFE_ERROR_NAMES` allow-list for the same reason.
+ *
+ * Truncated because `detail` reaches a badge rather than a log, and a sentence
+ * an operator cannot finish reading is not a better answer than a short one.
+ */
+function describeLineTotalMismatch(error: Error): string {
+  const message = error.message.trim();
+  return message.length > LINE_TOTAL_MISMATCH_DETAIL_MAX
+    ? `${message.slice(0, LINE_TOTAL_MISMATCH_DETAIL_MAX - 1)}\u2026`
+    : message;
+}
+
+const LINE_TOTAL_MISMATCH_DETAIL_MAX = 400;
+
+/**
+ * Recognise the fiscal twin of `InvalidInvoiceLineError` by NAME.
+ *
+ * `InvalidFiscalLineError` lives in `@openlinker/core/fiscalization`, and this
+ * service already reaches that context only through a lazy `ModuleRef` so the
+ * module graph stays acyclic (`fiscalization` imports `invoicing`, never the
+ * reverse). A top-level `import` for an `instanceof` would reverse that edge
+ * for one error class.
+ *
+ * Narrowing by name is weaker than `instanceof` and the weakness is bounded:
+ * the worst case is that a same-named error from elsewhere is reported as a
+ * line-total mismatch, which is a mislabelled block rather than a missed one -
+ * and the class is already on this file's `PII_SAFE_ERROR_NAMES` allow-list by
+ * the same name, so the two agree.
+ */
+function isFiscalLineError(error: unknown): error is Error {
+  return error instanceof Error && error.name === 'InvalidFiscalLineError';
 }
