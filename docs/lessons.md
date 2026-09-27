@@ -2157,3 +2157,40 @@ that it does not move is the no-change-on-upgrade guarantee, not a weak test.
 key format change.
 
 **Source**: PR #3365
+
+## A diagnosis that never checked which BUILD was running cost three wrong answers
+
+**Symptom**: a live e2e run failed with a destination error, and three successive
+explanations were written for it - a lane cap, then a queue back-fill, then the real one.
+The first two were confidently reasoned from real data and were both wrong.
+
+**What actually happened**: `Subiekt rejected the request: Parametr jest niepoprawny.` was
+the OLD `resolveTowarSymbol` putting a model's grouping key (`model:1`) on the wire as a
+towar symbol. The fix for it had been written, tested and committed hours earlier in the
+same session - and the `api` and `worker` containers were two days old, so none of it was
+running. The bridge had been redeployed twice during that session; OpenLinker had not.
+
+**The specific trap**: this repository already carries the entry *"Green locally does not
+mean green in the image, and a rebuilt stack may not include the service you changed"*. It
+was applied - to the C# bridge, which was correctly rebuilt and verified each time. Having
+applied it once, the same session then read every OpenLinker-side e2e result as evidence
+about code it had just written. A rule remembered for one component is not remembered.
+
+**What made it findable**: replaying the same failing order through the bridge BY HAND, in
+six shapes - buyer name, `uwagi`, a symbol-less shipping line, PLN, EUR, minimal. All six
+created a ZK. Only once the bridge was positively ruled out did the image become the
+obvious suspect. The wrong two answers had both been reached without ever reproducing the
+failure outside the stack.
+
+**Rule**: before explaining ANY behaviour observed on a running stack, verify the running
+artefact contains the change being reasoned about. One command:
+
+```bash
+docker inspect <container> --format '{{.Created}}'
+docker exec <container> grep -rc '<a symbol from the new code>' /app/node_modules/...
+```
+
+A container older than the commit under discussion invalidates every observation made
+through it - including the ones that look like they confirm something.
+
+**Source**: PR #3365

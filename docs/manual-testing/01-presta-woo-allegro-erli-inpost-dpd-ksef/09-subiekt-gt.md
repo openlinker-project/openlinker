@@ -438,19 +438,35 @@ about:
 was required. The order reaches OpenLinker `ready` and its destination fan-out has not run —
 `syncStatus` is `[]`.
 
-**The first diagnosis written here was wrong and is corrected rather than quietly replaced.**
-It blamed the `realtime` lane's per-scope cap on a stand carrying 8 430 dead jobs. Dead rows
-are terminal and are never claimed, so they block nothing; the cap was not wedged either —
-eight jobs were running at the moment of the check, two of them for this very connection.
+**Two diagnoses were written here before the right one, and both are kept rather than
+quietly replaced, because the way they were wrong is the useful part.**
 
-The real cause is the fixture's own one-time cost: a SECOND `OrderSource` on a shop that
-already holds ~47 orders back-fills that entire history, so 45 `marketplace.order.sync` jobs
-were queued for the new connection and the stock test's 180 s window landed inside the
-drain. A throughput condition on this stand, not a verdict on the chain, and worth knowing
-before anyone adds a second source connection to a live shop.
+*First:* the `realtime` lane's per-scope cap, on a stand carrying 8 430 dead jobs. Dead rows
+are terminal and are never claimed, so they block nothing, and the cap was not wedged either
+— eight jobs were running at the moment of the check, two of them for this very connection.
+
+*Second:* the fixture's own one-time cost. That one is a REAL observation — a second
+`OrderSource` on a shop holding ~47 orders back-fills that entire history, and 43 of those
+jobs can never succeed because the products were never published through this connection, so
+they retry up the ladder holding lane slots. Worth knowing before anyone points a second
+source connection at a live shop. It was not the cause of this failure.
+
+*The actual cause:* **the `api` and `worker` containers were built on 26 September and
+carried none of this round's OpenLinker changes.** `Subiekt rejected the request: Parametr
+jest niepoprawny` is the OLD `resolveTowarSymbol` putting `model:1` on the wire as a towar
+symbol, straight into a catch-less `Pozycje.Dodaj` — precisely the defect `a837e9588`
+fixed. The bridge had been redeployed twice during the round; OpenLinker had not, and every
+conclusion drawn from these runs about the OpenLinker side was a conclusion about code from
+two days earlier.
+
+What ruled the bridge out first was replaying the same order through it by hand in six
+shapes — with a buyer name, with `uwagi`, with a symbol-less shipping line, in PLN and in
+EUR. All six created a ZK. Only then did the image become the obvious suspect, and
+`docs/lessons.md` had the entry already: *green locally does not mean green in the image*.
+It was applied to the bridge and not to OpenLinker.
 
 The 8 430 dead rows were cleared anyway — 24 days of debris, and `sync_jobs` has no
-retention sweep anywhere in the tree — but that is hygiene, not the fix.
+retention sweep anywhere in the tree — but that is hygiene, not a fix.
 
 `an order reaches Subiekt as a ZK` also still fails, for Part K's original reason: the
 order it builds uses the catalogue master's own driver product, which has no Subiekt
