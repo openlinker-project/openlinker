@@ -38,7 +38,7 @@
  */
 import { expect, test } from '../../src/fixtures/test';
 import type { ApiClient } from '../../src/api/api-client';
-import type { Product, ProductVariant } from '../../src/api/api.types';
+import type { Connection, Product, ProductVariant } from '../../src/api/api.types';
 import { PlatformType } from '../../src/world/world';
 import {
   synthesizeOrder,
@@ -110,6 +110,7 @@ test.describe('Subiekt GT: a published product sold in the shop (#3365)', () => 
 
   let driver: { product: Product; variant: ProductVariant; symbol: string } | null = null;
   let shopProductId: string | null = null;
+  let publishConnection: Connection | null = null;
   const soldQuantity = 1;
 
   test('a Subiekt towar publishes to the shop and becomes findable there', async ({
@@ -144,6 +145,8 @@ test.describe('Subiekt GT: a published product sold in the shop (#3365)', () => 
         `the adapter advertises the capability, but enabledCapabilities is stamped at create ` +
         `and never retro-filled (#2085).`
     );
+
+    publishConnection = prestashop ?? null;
 
     driver = await pickSubiektProduct(api, subiekt!.id);
     test.skip(
@@ -228,6 +231,12 @@ test.describe('Subiekt GT: a published product sold in the shop (#3365)', () => 
         // Its `ShopProduct` mapping is invisible to OpenLinker's products API,
         // so the synthesiser's own lookup would find nothing.
         externalProductId: shopProductId!,
+        // WAIT on the connection that PUBLISHED, not on the catalogue master.
+        // This stand carries two PrestaShop connections on one store; both
+        // poll the same order and only this one holds the `ShopProduct`
+        // mapping that resolves the line. The other ingests it as
+        // `awaiting_mapping` - correctly - so waiting there can only time out.
+        ingestConnection: publishConnection!,
       }
     );
 

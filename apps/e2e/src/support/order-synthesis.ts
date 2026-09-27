@@ -98,6 +98,21 @@ export interface SynthesizeOrderOptions {
    * rather than being told the product has no mapping.
    */
   externalProductId?: string;
+  /**
+   * Which PrestaShop connection's ingestion to WAIT for.
+   *
+   * The default is `resolvePrestashopStore`, which prefers the connection that
+   * owns the catalogue - right for every spec that sells a product OpenLinker
+   * mastered FROM the shop. It is wrong for a spec that sells a product
+   * OpenLinker PUBLISHED to the shop: a stand may carry two connections on the
+   * same store, both poll the same order, and only the publishing one holds a
+   * mapping that resolves the line. The other ingests the same order as
+   * `awaiting_mapping` - correctly - so waiting on it can only ever time out.
+   *
+   * Passing the connection makes the spec state which ingestion it means,
+   * rather than inheriting a preference expressed for a different question.
+   */
+  ingestConnection?: Connection;
 }
 
 export interface SynthesizedOrder {
@@ -297,14 +312,15 @@ export async function synthesizeOrder(
   // order before that call lands — the order then sits INSIDE the snapshot and
   // the wait can never be satisfied. Identity beats novelty, and it also
   // removes any confusion with orders other activity produces concurrently.
+  const ingestConnection = options.ingestConnection ?? prestashop;
   const order = await waitForOrderByExternalId(api, {
-    sourceConnectionId: prestashop.id,
+    sourceConnectionId: ingestConnection.id,
     externalOrderId: created.id,
     timeoutMs: options.timeoutMs ?? 180_000,
     intervalMs: 3_000,
     // The webhook is the fast path; re-triggering a direct per-order sync is
     // the backstop for a dropped delivery. See `retriggerDirectOrderSync`.
-    retriggerPoll: jobs.retriggerDirectOrderSync(prestashop.id, created.id),
+    retriggerPoll: jobs.retriggerDirectOrderSync(ingestConnection.id, created.id),
   });
 
   return { order, externalOrderId: created.id, product, variant };
