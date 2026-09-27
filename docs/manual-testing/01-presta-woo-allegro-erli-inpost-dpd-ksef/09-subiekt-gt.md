@@ -435,8 +435,7 @@ about:
 ### Still not proven, stated plainly
 
 `the sale reaches Subiekt and moves the towar stock` fails: stock read 517 where 516 or less
-was required. The order reaches OpenLinker `ready` and its destination fan-out has not run —
-`syncStatus` is `[]`.
+was required.
 
 **Two diagnoses were written here before the right one, and both are kept rather than
 quietly replaced, because the way they were wrong is the useful part.**
@@ -468,6 +467,32 @@ It was applied to the bridge and not to OpenLinker.
 The 8 430 dead rows were cleared anyway — 24 days of debris, and `sync_jobs` has no
 retention sweep anywhere in the tree — but that is hygiene, not a fix.
 
-`an order reaches Subiekt as a ZK` also still fails, for Part K's original reason: the
-order it builds uses the catalogue master's own driver product, which has no Subiekt
-mapping. The new fixture does not change that spec.
+### After the rebuild: the ZK is created, and the last link is a FIXTURE defect
+
+Re-run against images built from the branch tip:
+
+**`Order ol_order_eb2e… synced to destination d0361bd0… (destination order: 237, orderNumber:
+ZK 46/2026)`** — `syncStatus` records `"status": "synced"` against the Subiekt connection.
+
+So the chain runs: Subiekt towar → published to the shop → bought there → ingested by the
+publishing connection with the line resolved to the Subiekt VARIANT → **a ZK in Subiekt**.
+`Parametr jest niepoprawny` is gone, because `resolveTowarSymbol` now resolves a model
+member's towar instead of sending the grouping key.
+
+The document and the stock drop still do not happen, and the reason is exact: the
+synthesised PrestaShop order lands in **state 8, "Payment error"** — not the state 2
+("Payment accepted") the synthesiser asks for. PrestaShop reassigns it when the order total
+does not reconcile with its cart. OpenLinker reads state 8 correctly as `pending` (and warns
+by name that it is one of eight states carrying no flag it recognises), so the connection's
+`auto-on-paid` trigger correctly does not fire. No invoice, therefore no WZ, therefore no
+stock movement.
+
+That is a defect in the ORDER SYNTHESISER, not in the chain: it builds an order the shop
+refuses to mark paid. Closing it means reconciling the cart and order totals it writes, and
+it is the one thing standing between this stand and the whole promise set being proven end
+to end.
+
+`an order reaches Subiekt as a ZK` still fails for Part K's original reason: the order it
+builds uses the catalogue master's own driver product, which has no Subiekt mapping. The new
+fixture does not change that spec — repointing it is the obvious follow-up now that a
+publish-only connection exists.
