@@ -354,7 +354,17 @@ test.describe('Subiekt GT: models as variants (#3365)', () => {
     test.skip(!connection, 'no Subiekt GT connection on this stack');
 
     const withImages = (await loadProducts(api, connection!.id, 200)).filter(
-      (p) => Array.isArray(p.product.images) && p.product.images.length > 0,
+      (p) =>
+        Array.isArray(p.product.images) &&
+        p.product.images.length > 0 &&
+        // A product with NO live variants left is retired - the towar joined a
+        // model and #1599 staled the standalone row behind it. `loadProducts`
+        // filters stale VARIANTS and keeps the product, so such a row survives
+        // here carrying whatever image URL it held when it was retired. That
+        // URL is not what the catalogue reports today, so asserting on it
+        // proves nothing about the live catalogue - and it is a URL nothing
+        // will ever refresh, so it fails for a reason the test is not about.
+        p.variants.length > 0,
     );
     test.skip(withImages.length === 0, 'no Subiekt product carries an image URL');
 
